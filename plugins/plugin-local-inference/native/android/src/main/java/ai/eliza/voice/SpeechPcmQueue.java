@@ -45,6 +45,8 @@ public final class SpeechPcmQueue {
  }
  /** The producer delivered its final chunk. */
  public synchronized void complete(){if(!closed){complete=true;notifyAll();}}
+ /** A further producer continues the completed stream: chunks are accepted again until the next {@link #complete}. */
+ public synchronized void reopen(){if(!closed)complete=false;}
  /**
   * The next chunk (ownership passes to the caller, who zeroes it after use), {@link #END} after
   * the last one, or null when nothing arrived within the timeout (an underrun).

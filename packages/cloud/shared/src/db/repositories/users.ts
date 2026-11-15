@@ -2379,6 +2379,25 @@ export class UsersRepository {
   }
 
   /**
+   * Clears `email` from a row only while that row still holds it unverified.
+   * Returns the cleared row, or undefined when the row no longer matches.
+   */
+  async clearUnverifiedEmail(id: string, email: string): Promise<User | undefined> {
+    const [updated] = await dbWrite
+      .update(users)
+      .set({ email: null, email_verified: false, updated_at: new Date() })
+      .where(
+        and(
+          eq(users.id, id),
+          eq(users.email, email),
+          or(eq(users.email_verified, false), isNull(users.email_verified)),
+        ),
+      )
+      .returning();
+    return updated;
+  }
+
+  /**
    * Links Telegram on the canonical user and routing projection atomically.
    * The Telegram gateway resolves senders through the userIdentities
    * projection (`findByTelegramIdWithOrganization`), so a canonical-only

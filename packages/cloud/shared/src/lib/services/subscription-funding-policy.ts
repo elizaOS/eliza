@@ -231,16 +231,6 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     routedBy: "shared/src/lib/services/organization-inference-admission.ts",
   },
   {
-    relativePath: "shared/src/lib/services/inference-billing-ledger.ts",
-    operation: "ai_inference",
-    fundingClass: "allowance_eligible",
-    expectedSignals: {
-      raw_credit_balance_decrement: 1,
-      raw_credit_transaction_sql_insert: 1,
-    },
-    routedBy: "shared/src/lib/services/organization-inference-admission.ts",
-  },
-  {
     relativePath: "shared/src/lib/services/influencer-marketplace.ts",
     operation: "app_or_marketplace",
     fundingClass: "cash_only",

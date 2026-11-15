@@ -181,6 +181,12 @@ function parseFormBody(body: string): FormInteraction | null {
 }
 
 type MarkerKind = "CHOICE" | "FOLLOWUPS" | "FORM" | "TASK";
+const MARKER_KINDS: ReadonlySet<string> = new Set<MarkerKind>([
+	"CHOICE",
+	"FOLLOWUPS",
+	"FORM",
+	"TASK",
+]);
 
 interface ParsedMarker {
 	kind: MarkerKind;
@@ -224,9 +230,13 @@ function parseMarker(value: string): ParsedMarker | null {
 	}
 	const nameStart = cursor;
 	while (cursor < value.length && /[A-Za-z]/.test(value[cursor])) cursor += 1;
-	const kind = value.slice(nameStart, cursor).toUpperCase() as MarkerKind;
-	if (!["CHOICE", "FOLLOWUPS", "FORM", "TASK"].includes(kind)) return null;
-	return { kind, closing, rest: value.slice(cursor).trim() };
+	const kind = value.slice(nameStart, cursor).toUpperCase();
+	if (!MARKER_KINDS.has(kind)) return null;
+	return {
+		kind: kind as MarkerKind,
+		closing,
+		rest: value.slice(cursor).trim(),
+	};
 }
 
 function isValidOpeningMarker(marker: ParsedMarker): boolean {
@@ -403,6 +413,15 @@ function isUnclaimedMarkerLine(line: string): boolean {
 	return value[cursor] === ":" || cursor === value.length - 1;
 }
 
+const UNCLAIMED_OPTION_KINDS: ReadonlySet<string> = new Set([
+	"reply",
+	"navigate",
+	"prompt",
+	"value",
+	"action",
+	"url",
+]);
+
 function isUnclaimedOptionLine(line: string): boolean {
 	const value = line.trim();
 	const equals = value.indexOf("=");
@@ -410,11 +429,7 @@ function isUnclaimedOptionLine(line: string): boolean {
 	const colon = value.indexOf(":");
 	if (colon >= 0 && colon < equals) {
 		const kind = value.slice(0, colon).trim().toLowerCase();
-		if (
-			!["reply", "navigate", "prompt", "value", "action", "url"].includes(kind)
-		) {
-			return false;
-		}
+		if (!UNCLAIMED_OPTION_KINDS.has(kind)) return false;
 	}
 	return true;
 }
@@ -471,13 +486,6 @@ function sourceLines(text: string): SourceLine[] {
  * because it can contain user data, and fenced examples are never rewritten.
  */
 function stripUnclaimedInteractionMarkupTail(text: string): string {
-	const upper = text.toUpperCase();
-	if (
-		!upper.includes("FOLLOWUPS") &&
-		!upper.includes("CHOICE") &&
-		!upper.includes("TASK")
-	)
-		return text;
 	const lines = sourceLines(text);
 	let suffixStart = lines.length;
 	for (let index = lines.length - 1; index >= 0; index -= 1) {
@@ -551,16 +559,6 @@ export function parseInteractionBlocks(text: string): ParsedInteractions {
 			.trim(),
 	);
 	return { blocks, cleanedText };
-}
-
-/** True when `text` contains at least one interaction block. */
-export function hasInteractionBlocks(text: string): boolean {
-	return findInteractionRegions(text).length > 0;
-}
-
-/** Message text with every interaction marker removed and whitespace tidied. */
-export function stripInteractionMarkers(text: string): string {
-	return parseInteractionBlocks(text).cleanedText;
 }
 
 /**

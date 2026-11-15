@@ -42,6 +42,11 @@ function configureProductHost(consumerRoot, output, fixture, javaHome) {
     "package example.qualification; public final class MockOnly {}\n",
   );
   write("rules.pro", "-dontwarn example.**\n");
+  // Not an ELF: AGP packages it as it is, so only its place in the APK is checked.
+  write(
+    "jni/x86_64/libeliza_fixture.so",
+    "fixture library bytes\n".repeat(512),
+  );
   write("fixture-receipt.json", '{"fixture":true}\n');
   write(
     "product.gradle",
@@ -77,6 +82,7 @@ function configureProductHost(consumerRoot, output, fixture, javaHome) {
     releaseMinify: true,
     kotlin: false,
     preserveRuntimeBytes: true,
+    nativeLibraries: "extract-16k",
     buildTypes: {
       release: { shrinkResources: true, proguardFiles: [source("rules.pro")] },
     },
@@ -115,6 +121,7 @@ function configureProductHost(consumerRoot, output, fixture, javaHome) {
     appScripts: [source("product.gradle")],
     generationInputs: [source("main.xml")],
   });
+  fixture.profile.sourceSets.main.jniLibs = [source("jni")];
   return {
     FIXTURE_STORE: keystore,
     FIXTURE_STORE_PASSWORD: "synthetic-fixture",
@@ -165,6 +172,7 @@ try {
     if (brand === "second") {
       runtimeDirectory = path.join(consumerRoot, "packaging-fixture");
       const main = path.join(runtimeDirectory, "android/app/src/main");
+      // A retired slice must also stay out of reused consumer checkouts.
       for (const abi of ["arm64-v8a", "x86_64", "riscv64"]) {
         const directory = path.join(main, "assets/agent", abi);
         fs.mkdirSync(directory, { recursive: true });
@@ -173,7 +181,11 @@ try {
           "must not enter APK assets",
         );
       }
-      fs.mkdirSync(path.join(main, "jniLibs"), { recursive: true });
+      fs.mkdirSync(path.join(main, "jniLibs/x86_64"), { recursive: true });
+      fs.writeFileSync(
+        path.join(main, "jniLibs/x86_64/libeliza_fixture.so"),
+        "fixture library bytes\n".repeat(512),
+      );
       fs.writeFileSync(
         path.join(main, "assets/agent/agent-bundle.js"),
         "// packaging fixture only; not an executable runtime\n",
@@ -267,6 +279,7 @@ try {
       );
     }
     const apksigner = path.join(sdk, "build-tools/36.0.0/apksigner");
+    const zipalign = path.join(sdk, "build-tools/36.0.0/zipalign");
     for (const variant of ["standalone", "launcher"])
       for (const build of ["debug", "release"]) {
         const signedRelease =
@@ -289,7 +302,23 @@ try {
           encoding: "utf8",
         }).split("\n");
         assert.ok(entries.includes(`assets/${build}-only.txt`));
+        // extract-16k (product host): stored, 16 KiB aligned, extracted on install and
+        // still verifiable after realignment. The default compresses the library.
+        const library = execFileSync(
+          "unzip",
+          ["-Zv", apk, "lib/x86_64/libeliza_fixture.so"],
+          { encoding: "utf8" },
+        );
+        assert.match(
+          library,
+          productEnvironment
+            ? /compression method:\s+none \(stored\)/
+            : /compression method:\s+deflated/,
+        );
         if (productEnvironment) {
+          execFileSync(zipalign, ["-c", "-P", "16", "4", apk]);
+          if (build === "debug" || signedRelease)
+            execFileSync(apksigner, ["verify", apk]);
           assert.ok(entries.includes("assets/fixture-receipt.json"));
           const classes = dexClasses(apk);
           // Test sources and the admission-generated class reach debug variants only.
@@ -377,6 +406,11 @@ try {
           variant === "launcher",
         );
         assert.ok(manifest.includes("android.intent.category.LAUNCHER"));
+        // Both hosts extract on install: the runtime host by byte preservation.
+        assert.match(
+          manifest,
+          /android:extractNativeLibs\([^)]*\)=\(type 0x12\)0xffffffff/,
+        );
         assert.ok(!manifest.includes("ai.elizaos.app"));
         receipts.push({
           appId: fixture.identity.appId,

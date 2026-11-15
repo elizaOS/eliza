@@ -147,11 +147,6 @@ export interface AppBootConfig {
   autoUpgradeSharedToDedicated?: boolean;
   /** Character catalog data — replaces cross-package import of catalog.json. */
   characterCatalog?: CharacterCatalogData;
-  /**
-   * Env var alias pairs for brand compatibility (e.g. ELIZA_* ↔ ELIZA_*).
-   * Each pair is [brandKey, elizaKey]. Called at server startup.
-   */
-  envAliases?: readonly (readonly [string, string])[];
   /** Client middleware flags — replaces the post-construction patches. */
   clientMiddleware?: ClientMiddleware;
   /**

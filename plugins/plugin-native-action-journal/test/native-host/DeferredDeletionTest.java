@@ -39,6 +39,7 @@ public final class DeferredDeletionTest {
   journal();
   claimAndRecovery();
   coordinator();
+  strictOwnerFence();
   System.out.println(checks + " assertions passed");
  }
 
@@ -46,10 +47,10 @@ public final class DeferredDeletionTest {
   DeletionDeadline d = new DeletionDeadline("boot:1", 100, 100000);
   check(DeletionDeadline.WINDOW_MS == 10000);
   check(d.expiresAt == 110000);
-  check(d.state("boot:1", 10099) == DeletionDeadline.State.OPEN);
-  check(d.state("boot:1", 10100) == DeletionDeadline.State.EXPIRED);
-  check(d.state("boot:1", 99) == DeletionDeadline.State.CLOCK_CHANGED);
-  check(d.state("boot:2", 20000) == DeletionDeadline.State.CLOCK_CHANGED);
+  check(DeletionDeadline.window(d.continuity, d.createdElapsed, d.expiresElapsed, "boot:1", 10099).equals("open"));
+  check(DeletionDeadline.window(d.continuity, d.createdElapsed, d.expiresElapsed, "boot:1", 10100).equals("expired"));
+  check(DeletionDeadline.window(d.continuity, d.createdElapsed, d.expiresElapsed, "boot:1", 99).equals("clock-changed"));
+  check(DeletionDeadline.window(d.continuity, d.createdElapsed, d.expiresElapsed, "boot:2", 20000).equals("clock-changed"));
   refuses(IllegalArgumentException.class, () -> new DeletionDeadline("boot", Long.MAX_VALUE, 0));
   refuses(IllegalArgumentException.class, () -> new DeletionDeadline("", 0, 0));
  }
@@ -156,6 +157,30 @@ public final class DeferredDeletionTest {
   for (int n = 0; n < largeRows.length(); n++) retainedUnknown |= largeRows.getJSONObject(n).getString("id").equals("keep_unknown");
   check(retainedUnknown);
   check(largeRows.length() < 20);
+  // Retirement keeps the newest receipts by wall-clock expiry, even when a reboot reset elapsed time.
+  DeferredDeletionJournal rebooted = new DeferredDeletionJournal(new Store());
+  for (int n = 0; n < 10; n++) { String id = "before_" + n; rebooted.stage(id, owner, target, new DeletionDeadline("boot:1", 1000000 + n, n + 1)); rebooted.undo(id, owner, "boot:1", 1000000 + n); }
+  for (int n = 0; n < DeferredDeletionJournal.RETAINED_TERMINAL; n++) { String id = "after_" + n; rebooted.stage(id, owner, target, new DeletionDeadline("boot:2", n + 1, 1000000 + n)); rebooted.undo(id, owner, "boot:2", n + 1); }
+  rebooted.stage("latest", owner, target, new DeletionDeadline("boot:2", 500, 2000000));
+  JSONArray retainedRows = rebooted.list("boot:2", 600);
+  check(retainedRows.length() == DeferredDeletionJournal.RETAINED_TERMINAL + 1);
+  for (int n = 0; n < retainedRows.length(); n++) check(!retainedRows.getJSONObject(n).getString("id").startsWith("before_"));
+  // A full journal retires terminal receipts before refusing; only unresolved rows refuse.
+  DeferredDeletionJournal crowded = new DeferredDeletionJournal(new Store());
+  for (int n = 0; n < 20; n++) { String id = "kept_" + n; crowded.stage(id, owner, target, new DeletionDeadline("boot", n + 1, n + 1)); crowded.undo(id, owner, "boot", n + 1); }
+  for (int n = 0; n < DeferredDeletionJournal.MAX_ROWS - 20; n++) crowded.stage("open_" + n, owner, target, new DeletionDeadline("boot", 100 + n, 100 + n));
+  check(crowded.list("boot", 200).length() == DeferredDeletionJournal.MAX_ROWS);
+  crowded.stage("one_more", owner, target, new DeletionDeadline("boot", 1000, 1000));
+  JSONArray crowdedRows = crowded.list("boot", 1000);
+  check(crowdedRows.length() == DeferredDeletionJournal.MAX_ROWS);
+  boolean staged = false, oldestKept = false;
+  for (int n = 0; n < crowdedRows.length(); n++) { String id = crowdedRows.getJSONObject(n).getString("id"); staged |= id.equals("one_more"); oldestKept |= id.equals("kept_0"); }
+  check(staged && !oldestKept);
+  DeferredDeletionJournal unresolved = new DeferredDeletionJournal(new Store());
+  for (int n = 0; n < DeferredDeletionJournal.MAX_ROWS; n++) unresolved.stage("open_" + n, owner, target, new DeletionDeadline("boot", n + 1, n + 1));
+  checks++;
+  try { unresolved.stage("refused", owner, target, new DeletionDeadline("boot", 1000, 1000)); throw new AssertionError("Check " + checks + " should have been refused"); }
+  catch (IllegalStateException full) { if (!"Too many unresolved deletions. Resolve pending deletions before deleting more.".equals(full.getMessage())) throw new AssertionError("Check " + checks + ": " + full); }
  }
 
  static void claimAndRecovery() throws Exception {
@@ -217,8 +242,10 @@ public final class DeferredDeletionTest {
  // ---- Coordinator with in-memory ports ----
  static final class Ports implements DeferredDeletionCoordinator.Slots, DeferredDeletionCoordinator.Clock, DeferredDeletionCoordinator.Owners, DeferredDeletionCoordinator.Reminders, DeferredDeletionCoordinator.CalendarDeletions, DeferredDeletionCoordinator.Scheduler {
   final Map<String, String> slots = new HashMap<>();
+  final Map<String, Integer> slotReads = new HashMap<>();
   String boot = "boot:1"; long elapsed = 1000;
-  JSONObject identity; String fence = "fence-1"; boolean offline; int identityReads;
+  JSONObject identity; String fence = "fence-1"; boolean offline; int identityReads; long identityDelay;
+  boolean strictFence; int fenceReads, rotateAtFence = -1;
   DeferredDeletionCoordinator coordinator;
   final List<Long> scheduled = new ArrayList<>();
   final List<String> dispatched = new ArrayList<>();
@@ -229,7 +256,7 @@ public final class DeferredDeletionTest {
    identity = new JSONObject().put("subjectUserId", "owner").put("agentId", "agent").put("installationId", "install").put("enrollmentId", "enrollment").put("accountRef", "account").put("environment", "production").put("sessionId", "s1");
    outcome = new JSONObject().put("status", "deleted");
   }
-  public String read(String slot) { return slots.get(slot); }
+  public String read(String slot) { slotReads.merge(slot, 1, Integer::sum); return slots.get(slot); }
   public void write(String slot, String value) { slots.put(slot, value); }
   public String continuity() { return boot; }
   public long elapsed() { return elapsed; }
@@ -238,10 +265,16 @@ public final class DeferredDeletionTest {
    identityReads++;
    if (coordinator != null && Thread.holdsLock(coordinator)) throw new AssertionError("Owner route read under the coordinator lock");
    if (offline) throw new java.io.IOException("owner offline");
+   elapsed += identityDelay;
    return new JSONObject(identity.toString());
   }
   /** The fence names the current session, so an owner captured in an older session is stale. */
-  public String reviewFence(JSONObject value) { return fence + ":" + identity.optString("sessionId"); }
+  public String reviewFence(JSONObject value) throws Exception {
+   fenceReads++;
+   if (fenceReads == rotateAtFence) identity.put("sessionId", "raced-session");
+   if (strictFence && !DeferredDeletionJournal.same(value, identity)) throw new SecurityException("Retired owner identity");
+   return fence + ":" + identity.optString("sessionId");
+  }
   public JSONArray pendingDeletions() throws Exception { JSONArray rows = new JSONArray(); for (JSONObject row : reminderRows.values()) rows.put(new JSONObject(row.toString())); return rows; }
   public JSONObject stageDeletion(String id, String owner, JSONObject target, JSONObject clock, JSONObject binding) throws Exception {
    JSONObject row = new JSONObject().put("id", id).put("owner", owner).put("target", target).put("phase", "queued").put("continuity", clock.getString("continuity")).put("createdElapsed", clock.getLong("elapsed")).put("expiresElapsed", clock.getLong("elapsed") + DeletionDeadline.WINDOW_MS).put("delivery", "suspended");
@@ -271,6 +304,58 @@ public final class DeferredDeletionTest {
   DeferredDeletionCoordinator coordinator = new DeferredDeletionCoordinator(new DeferredDeletionCoordinator.Configuration("native-delete-journal:v1", "native-delete-installation:v1"), ports, ports, ports, ports, ports, ports);
   ports.coordinator = coordinator;
   return coordinator;
+ }
+
+ /** A host may throw when asked to confirm a retired identity, instead of returning a new fence. */
+ static void strictOwnerFence() throws Exception {
+  Ports changed = new Ports(); changed.strictFence = true;
+  DeferredDeletionCoordinator c = coordinator(changed);
+  JSONObject owner = c.agentOwner();
+  c.stageCalendar(event("strict-calendar"), owner, "strict-calendar");
+  c.stageReminder(reminder("strict-reminder"), owner, "strict-reminder", null);
+  changed.identity.put("sessionId", "new-session");
+  changed.elapsed += DeletionDeadline.WINDOW_MS;
+  int reads = changed.fenceReads;
+  check(!c.reconcile());
+  check(changed.fenceReads == reads + 1); // Only the newly authenticated owner needs a fence.
+  check(c.receipt("calendar", "strict-calendar").getString("phase").equals("paused"));
+  check(c.receipt("calendar", "strict-calendar").getString("blocked").equals("owner-changed"));
+  check(changed.paused.equals(List.of("strict-reminder:owner-changed")));
+  check(changed.dispatched.isEmpty() && changed.settled.isEmpty());
+  check(!c.reconcile());
+  check(changed.paused.size() == 1 && changed.dispatched.isEmpty() && changed.settled.isEmpty());
+
+  // An equal authenticated snapshot still needs the final fence. A race must not dispatch.
+  Ports raced = new Ports(); raced.strictFence = true;
+  DeferredDeletionCoordinator r = coordinator(raced);
+  JSONObject beforeRace = r.agentOwner();
+  r.stageCalendar(event("race-calendar"), beforeRace, "race-calendar");
+  r.stageReminder(reminder("race-reminder"), beforeRace, "race-reminder", null);
+  raced.elapsed += DeletionDeadline.WINDOW_MS;
+  raced.rotateAtFence = raced.fenceReads + 2; // Authenticate once, then rotate at the final check.
+  check(r.reconcile());
+  check(r.receipt("calendar", "race-calendar").getString("phase").equals("paused"));
+  check(r.receipt("calendar", "race-calendar").getString("blocked").equals("owner-unavailable"));
+  check(raced.reminderRows.get("race-reminder").getString("phase").equals("queued"));
+  check(raced.dispatched.isEmpty() && raced.settled.isEmpty() && raced.paused.isEmpty());
+  // The next owner read makes that change definite, so both rows can pause without effects.
+  check(!r.reconcile());
+  check(r.receipt("calendar", "race-calendar").getString("phase").equals("paused"));
+  check(raced.paused.equals(List.of("race-reminder:owner-changed")));
+  check(raced.dispatched.isEmpty() && raced.settled.isEmpty());
+
+  // The same owner and unchanged final fence still settle each kind once.
+  Ports same = new Ports(); same.strictFence = true;
+  DeferredDeletionCoordinator s = coordinator(same);
+  JSONObject current = s.agentOwner();
+  s.stageCalendar(event("same-calendar"), current, "same-calendar");
+  s.stageReminder(reminder("same-reminder"), current, "same-reminder", null);
+  same.elapsed += DeletionDeadline.WINDOW_MS;
+  check(!s.reconcile());
+  check(same.dispatched.equals(List.of("same-calendar")));
+  check(same.settled.equals(List.of("same-reminder:false")) && same.paused.isEmpty());
+  check(!s.reconcile());
+  check(same.dispatched.size() == 1 && same.settled.size() == 1);
  }
 
  static JSONObject event(String id) throws Exception { return new JSONObject().put("version", 3).put("sourceId", "7").put("eventId", id).put("revision", "r1").put("fields", new JSONObject().put("title", "Standup")); }
@@ -342,7 +427,7 @@ public final class DeferredDeletionTest {
   refuses(IllegalArgumentException.class, () -> active.dismiss("note", "op_lost"));
   ports.outcome = new JSONObject().put("status", "deleted");
 
-  // Agent-owned rows: the owner route is read outside the lock; an offline owner pauses, never deletes.
+  // Agent-owned rows: the owner route is read outside the lock; an offline owner retries, never deletes.
   JSONObject agent = c.agentOwner();
   check(agent.getString("kind").equals("agent") && agent.getString("reviewFence").equals("fence-1:s1"));
   check(c.stageAdmissible(agent));
@@ -351,13 +436,20 @@ public final class DeferredDeletionTest {
   check(c.pending().length() == 0);
   ports.elapsed += DeletionDeadline.WINDOW_MS;
   int reads = ports.identityReads;
-  c.reconcile();
+  check(c.reconcile());
   check(ports.identityReads > reads);
+  check(c.receipt("calendar", "op_agent").getString("phase").equals("queued"));
+  check(ports.dispatched.size() == 2);
+  // Past the retry bound the row pauses as owner-unavailable.
+  ports.elapsed += DeferredDeletionCoordinator.OWNER_RETRY_MS;
+  c.reconcile();
   check(c.receipt("calendar", "op_agent").getString("phase").equals("paused"));
   check(c.receipt("calendar", "op_agent").getString("blocked").equals("owner-unavailable"));
   check(ports.dispatched.size() == 2);
-  final DeferredDeletionCoordinator offline = c;
+  // A fresh process that never authenticated the owner cannot confirm an offline Undo.
+  final DeferredDeletionCoordinator offline = coordinator(ports);
   refuses(SecurityException.class, () -> offline.undo("calendar", "op_agent"));
+  c = coordinator(ports);
   ports.offline = false;
   // A new session of the same enrolled owner sees and can undo the paused row.
   ports.identity.put("sessionId", "s2");
@@ -406,10 +498,104 @@ public final class DeferredDeletionTest {
   c.stageReminder(reminder("r3"), c.agentOwner(), "op_reminder_agent", null);
   ports.offline = true;
   ports.elapsed += DeletionDeadline.WINDOW_MS;
+  check(c.reconcile());
+  check(ports.paused.isEmpty() && !ports.settled.contains("op_reminder_agent:false"));
+  check(ports.reminderRows.get("op_reminder_agent").getString("phase").equals("queued"));
+  // When the route recovers, the same owner settles it.
+  ports.offline = false;
+  check(!c.reconcile());
+  check(ports.settled.contains("op_reminder_agent:false"));
+  // A different owner pauses it as owner-changed at any age; an unreachable one pauses as owner-unavailable past the retry bound.
+  c.stageReminder(reminder("r5"), c.agentOwner(), "op_reminder_other", null);
+  c.stageReminder(reminder("r6"), c.agentOwner(), "op_reminder_lost", null);
+  ports.identity.put("enrollmentId", "enrollment-2");
+  ports.elapsed += DeletionDeadline.WINDOW_MS;
+  ports.reminderRows.get("op_reminder_lost").put("expiresElapsed", ports.elapsed - DeferredDeletionCoordinator.OWNER_RETRY_MS);
   c.reconcile();
-  check(ports.paused.contains("op_reminder_agent:owner-unavailable"));
-  check(!ports.settled.contains("op_reminder_agent:false"));
+  check(ports.paused.contains("op_reminder_other:owner-changed") && ports.paused.contains("op_reminder_lost:owner-changed"));
+  ports.identity.put("enrollmentId", "enrollment");
+  c.stageReminder(reminder("r7"), c.agentOwner(), "op_reminder_unreachable", null);
+  ports.offline = true;
+  ports.elapsed += DeletionDeadline.WINDOW_MS + DeferredDeletionCoordinator.OWNER_RETRY_MS;
+  c.reconcile();
+  check(ports.paused.contains("op_reminder_unreachable:owner-unavailable"));
   ports.offline = false;
   refuses(SecurityException.class, () -> reminders.undo("reminder", "missing"));
+
+  // Pending effects of a settled reminder survive a rotated review fence; an unavailable owner retries.
+  JSONObject rotated = c.agentOwner();
+  ports.reminderRows.put("op_effects", new JSONObject().put("id", "op_effects").put("owner", rotated.toString()).put("target", reminder("r4")).put("phase", "deleted").put("effects", "pending"));
+  ports.fence = "fence-2";
+  check(!c.reconcile());
+  check(ports.settled.contains("op_effects:false"));
+  ports.settled.clear();
+  ports.offline = true;
+  check(c.reconcile());
+  check(ports.settled.isEmpty());
+  ports.offline = false;
+  ports.fence = "fence-1";
+  ports.reminderRows.remove("op_effects");
+  undoArrival();
+  ownerReadsOnce();
+  noticeReadsOnce();
+ }
+
+ /** Undo is judged at the tap's arrival, and a cached authenticated owner needs no owner read. */
+ static void undoArrival() throws Exception {
+  Ports ports = new Ports();
+  DeferredDeletionCoordinator c = coordinator(ports);
+  JSONObject agent = c.agentOwner();
+  c.stageCalendar(event("31"), agent, "op_cached");
+  c.stageCalendar(event("32"), agent, "op_slow");
+  int reads = ports.identityReads;
+  check(c.undo("calendar", "op_cached").getString("phase").equals("undone"));
+  check(ports.identityReads == reads);
+  // A fresh process reads the owner; the read outlasts the window but the tap arrived inside it.
+  ports.elapsed += DeletionDeadline.WINDOW_MS - 10;
+  ports.identityDelay = 1000;
+  DeferredDeletionCoordinator fresh = coordinator(ports);
+  check(fresh.undo("calendar", "op_slow").getString("phase").equals("undone"));
+  check(ports.identityReads == reads + 1 && ports.elapsed >= 1000 + DeletionDeadline.WINDOW_MS);
+ }
+
+ /** A failed owner read is not repeated once per row while the notice lists them. */
+ static void ownerReadsOnce() throws Exception {
+  Ports ports = new Ports();
+  DeferredDeletionCoordinator c = coordinator(ports);
+  JSONObject agent = c.agentOwner();
+  for (int n = 0; n < 5; n++) c.stageCalendar(event("4" + n), agent, "op_hidden_" + n);
+  ports.offline = true;
+  int reads = ports.identityReads;
+  check(c.pending().length() == 0);
+  check(ports.identityReads == reads + 1);
+  check(c.pending().length() == 0);
+  check(ports.identityReads == reads + 1);
+  ports.offline = false;
+  ports.elapsed += 5000;
+  check(c.pending().length() == 5);
+ }
+
+ /** One notice poll reads the installation slot and the journal slot once each. */
+ static void noticeReadsOnce() throws Exception {
+  Ports ports = new Ports();
+  DeferredDeletionCoordinator c = coordinator(ports);
+  JSONObject manual = c.manualOwner();
+  for (int n = 0; n < 6; n++) { c.stageReminder(reminder("t" + n), manual, "op_terminal_" + n, null); }
+  c.stageCalendar(event("51"), manual, "op_listed");
+  ports.elapsed += DeletionDeadline.WINDOW_MS;
+  c.reconcile();
+  c.stageReminder(reminder("t9"), manual, "op_open", null);
+  ports.slotReads.clear();
+  JSONObject notice = c.pendingWithOrigins();
+  check(notice.getJSONArray("deletedNoteOrigins").length() == 6);
+  check(notice.getJSONArray("pending").length() == 1 && notice.getJSONArray("pending").getJSONObject(0).getString("id").equals("op_open"));
+  check(ports.slotReads.get("native-delete-installation:v1") == 1);
+  check(ports.slotReads.get("native-delete-journal:v1") == 1);
+  ports.slotReads.clear();
+  check(c.pending().length() == 1);
+  check(ports.slotReads.get("native-delete-journal:v1") == 1 && ports.slotReads.get("native-delete-installation:v1") == 1);
+  ports.slotReads.clear();
+  check(c.deletedNoteOrigins().length() == 6);
+  check(ports.slotReads.get("native-delete-installation:v1") == 1);
  }
 }

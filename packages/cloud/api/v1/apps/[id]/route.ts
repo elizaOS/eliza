@@ -12,7 +12,6 @@ import type { NewApp } from "@elizaos/cloud-shared/db/schemas/apps";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import { isSafeRegistrationUrl } from "@elizaos/cloud-shared/lib/security/outbound-url";
-import { appCleanupService } from "@elizaos/cloud-shared/lib/services/app-cleanup";
 import { buildReviewCandidate } from "@elizaos/cloud-shared/lib/services/app-review";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
@@ -220,6 +219,8 @@ app.delete("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id");
     if (!id) return c.json({ success: false, error: "Missing app id" }, 400);
+    if (!z.uuid().safeParse(id).success)
+      return c.json({ success: false, error: "Invalid app id" }, 400);
 
     // App-delete GitHub-repo identity, not leftover tax on telegram
     // webhook flag or share-ingest consume. deleteGitHubRepo=FALSE
@@ -242,9 +243,7 @@ app.delete("/", async (c) => {
     }
 
     const existing = await appsService.getById(id);
-    if (!existing)
-      return c.json({ success: false, error: "App not found" }, 404);
-    if (existing.organization_id !== user.organization_id) {
+    if (existing && existing.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
     // An app-scoped API key may only act on its own app, never a sibling (#10852).
@@ -254,28 +253,25 @@ app.delete("/", async (c) => {
 
     const deleteGitHubRepo = requestedDeleteGitHub !== "false";
 
-    const cleanupResult = await appCleanupService.deleteAppWithCleanup(id, {
-      deleteGitHubRepo,
-      continueOnError: true,
-    });
-
-    logger.info(`[Apps API] Deleted app with cleanup: ${id}`, {
+    const deletion = await appsService.requestDeletion({
       appId: id,
-      userId: user.id,
       organizationId: user.organization_id,
-      cleaned: cleanupResult.cleaned,
-      errors: cleanupResult.errors,
+      userId: user.id,
+      deleteGitHubRepo,
     });
-
-    return c.json({
-      success: cleanupResult.success,
-      message: cleanupResult.success
-        ? "App deleted successfully with all resources cleaned up"
-        : "App deleted with some cleanup errors",
-      cleaned: cleanupResult.cleaned,
-      errors:
-        cleanupResult.errors.length > 0 ? cleanupResult.errors : undefined,
-    });
+    if (!deletion)
+      return c.json({ success: false, error: "App not found" }, 404);
+    const complete = deletion.state === "completed";
+    return c.json(
+      {
+        success: complete,
+        ...deletion,
+        message: complete
+          ? "App deletion completed"
+          : "App deletion accepted; follow the original job",
+      },
+      complete ? 200 : 202,
+    );
   } catch (error) {
     logger.error("[Apps API] Failed to delete app:", error);
     return failureResponse(c, error);

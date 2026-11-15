@@ -20,7 +20,7 @@
  *   4. codesign --verify --deep --strict, devicectl install, optional launch.
  *
  * Usage:
- *   node scripts/ios-device-deploy.ts [--device <devicectl-id|udid|name>]
+ *   bun scripts/ios-device-deploy.ts [--device <devicectl-id|udid|name>]
  *     [--skip-build] [--no-launch] [--skip-appexes] [--staging <dir>]
  *     [--identity <sha1>] [--derived-data <dir>] [--bundle-id <id>]
  *     [--configuration Debug|Release]
@@ -447,7 +447,7 @@ async function main() {
   });
   if (args.help) {
     console.log(
-      "Usage: node scripts/ios-device-deploy.ts [--device <id>] [--skip-build] [--no-launch] [--skip-appexes] [--allow-stale-renderer] [--staging <dir>] [--identity <sha1>] [--derived-data <dir>] [--bundle-id <id>] [--configuration Debug|Release]",
+      "Usage: bun scripts/ios-device-deploy.ts [--device <id>] [--skip-build] [--no-launch] [--skip-appexes] [--allow-stale-renderer] [--staging <dir>] [--identity <sha1>] [--derived-data <dir>] [--bundle-id <id>] [--configuration Debug|Release]",
     );
     return;
   }

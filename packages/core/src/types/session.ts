@@ -6,32 +6,16 @@
  * duplicate exports when both sessions and types are exported from index.
  */
 
-import type { SessionOrigin, SessionSkillsSnapshot } from "./memory.js";
-
-// Chat Types
+import type {
+	DeliveryContext,
+	SessionOrigin,
+	SessionSkillsSnapshot,
+} from "./memory.js";
 
 /**
  * Normalized chat type for session classification.
  */
 export type SessionChatType = "dm" | "group" | "channel" | "thread";
-
-// Delivery Context
-
-/**
- * Delivery context for routing responses.
- */
-export type SessionDeliveryContext = {
-	/** Channel to deliver to */
-	channel?: string;
-	/** Target recipient/destination */
-	to?: string;
-	/** Account to use for delivery */
-	accountId?: string;
-	/** Thread to deliver to */
-	threadId?: string | number;
-};
-
-// Session Entry
 
 /**
  * Core session entry representing a conversation session.
@@ -39,8 +23,6 @@ export type SessionDeliveryContext = {
  * This is the primary data structure for session state in elizaOS.
  */
 export type SessionEntry = {
-	// ---- Identity ----
-
 	/** Unique session identifier (UUID) */
 	sessionId: string;
 
@@ -59,15 +41,11 @@ export type SessionEntry = {
 	/** Display name for UI purposes */
 	displayName?: string;
 
-	// ---- State Flags ----
-
 	/** Whether system introduction has been sent */
 	systemSent?: boolean;
 
 	/** Whether the last run was aborted */
 	abortedLastRun?: boolean;
-
-	// ---- Chat Context ----
 
 	/** Type of chat (dm, group, channel, thread) */
 	chatType?: SessionChatType;
@@ -90,10 +68,8 @@ export type SessionEntry = {
 	/** Origin information */
 	origin?: SessionOrigin;
 
-	// ---- Delivery Routing ----
-
 	/** Current delivery context */
-	deliveryContext?: SessionDeliveryContext;
+	deliveryContext?: DeliveryContext;
 
 	/** Last channel used for delivery */
 	lastChannel?: string;
@@ -106,8 +82,6 @@ export type SessionEntry = {
 
 	/** Last thread ID */
 	lastThreadId?: string | number;
-
-	// ---- Model Configuration ----
 
 	/** Thinking/reasoning level */
 	thinkingLevel?: string;
@@ -136,8 +110,6 @@ export type SessionEntry = {
 	/** Compaction count when auth profile was set */
 	authProfileOverrideCompactionCount?: number;
 
-	// ---- Token Usage ----
-
 	/** Input tokens consumed */
 	inputTokens?: number;
 
@@ -159,15 +131,11 @@ export type SessionEntry = {
 	/** Model identifier used */
 	model?: string;
 
-	// ---- Group Behavior ----
-
 	/** Group activation mode (mention or always) */
 	groupActivation?: "mention" | "always";
 
 	/** Whether group needs system introduction */
 	groupActivationNeedsSystemIntro?: boolean;
-
-	// ---- Messaging Behavior ----
 
 	/** Send policy (allow or deny responses) */
 	sendPolicy?: "allow" | "deny";
@@ -175,12 +143,8 @@ export type SessionEntry = {
 	/** Response usage display mode */
 	responseUsage?: "on" | "off" | "tokens" | "full";
 
-	// ---- TTS ----
-
 	/** Text-to-speech auto mode */
 	ttsAuto?: "on" | "off" | "voice-only";
-
-	// ---- Execution ----
 
 	/** Execution host */
 	execHost?: string;
@@ -194,20 +158,14 @@ export type SessionEntry = {
 	/** Execution node */
 	execNode?: string;
 
-	// ---- Memory ----
-
 	/** Timestamp when memory was last flushed */
 	memoryFlushAt?: number;
 
 	/** Compaction count when memory was flushed */
 	memoryFlushCompactionCount?: number;
 
-	// ---- Skills ----
-
 	/** Snapshot of active skills */
 	skillsSnapshot?: SessionSkillsSnapshot;
-
-	// ---- Heartbeat ----
 
 	/** Last delivered heartbeat payload */
 	lastHeartbeatText?: string;
@@ -215,119 +173,6 @@ export type SessionEntry = {
 	/** Timestamp when last heartbeat was sent */
 	lastHeartbeatSentAt?: number;
 
-	// ---- External CLI Sessions ----
-
 	/** Map of CLI session identifiers */
 	cliSessionIds?: Record<string, string>;
 };
-
-// Session Store Types
-
-/**
- * Session store mapping session keys to entries.
- */
-export type SessionStore = Record<string, SessionEntry>;
-
-// Utility Functions
-
-/**
- * Merge a session entry with a partial update.
- *
- * @param existing - Existing session entry (or undefined for new)
- * @param patch - Partial updates to apply
- * @returns Merged session entry
- */
-export function mergeSessionEntry(
-	existing: SessionEntry | undefined,
-	patch: Partial<SessionEntry>,
-): SessionEntry {
-	const sessionId =
-		patch.sessionId ?? existing?.sessionId ?? globalThis.crypto.randomUUID();
-	const updatedAt = Math.max(
-		existing?.updatedAt ?? 0,
-		patch.updatedAt ?? 0,
-		Date.now(),
-	);
-
-	if (!existing) {
-		return { ...patch, sessionId, updatedAt };
-	}
-
-	return { ...existing, ...patch, sessionId, updatedAt };
-}
-
-/**
- * Create a new session entry with minimal required fields.
- *
- * @param overrides - Optional field overrides
- * @returns New session entry
- */
-export function createSessionEntry(
-	overrides?: Partial<SessionEntry>,
-): SessionEntry {
-	return {
-		sessionId: globalThis.crypto.randomUUID(),
-		updatedAt: Date.now(),
-		...overrides,
-	};
-}
-
-/**
- * Check if a session entry is valid.
- *
- * @param entry - Entry to validate
- * @returns True if entry has required fields
- */
-export function isValidSessionEntry(entry: unknown): entry is SessionEntry {
-	if (!entry || typeof entry !== "object") {
-		return false;
-	}
-
-	const e = entry as Record<string, unknown>;
-	return (
-		typeof e.sessionId === "string" &&
-		e.sessionId.length > 0 &&
-		typeof e.updatedAt === "number"
-	);
-}
-
-// Session Resolution
-
-/**
- * Result of resolving a session key.
- */
-export type SessionResolution = {
-	/** The resolved session key */
-	sessionKey: string;
-	/** Whether this is a new session */
-	isNew: boolean;
-	/** The session entry */
-	entry: SessionEntry;
-};
-
-// Group Key Resolution
-
-/**
- * Result of resolving a group session key.
- */
-export type GroupKeyResolution = {
-	/** The resolved group key */
-	key: string;
-	/** Channel identifier */
-	channel?: string;
-	/** Group/room identifier */
-	id?: string;
-	/** Chat type */
-	chatType?: SessionChatType;
-};
-
-// Constants
-
-/** Default trigger for resetting a session */
-export const DEFAULT_RESET_TRIGGER = "/new";
-
-/** All default reset triggers */
-export const DEFAULT_RESET_TRIGGERS = ["/new", "/reset"];
-
-/** Default idle timeout in minutes */
-export const DEFAULT_IDLE_MINUTES = 60;

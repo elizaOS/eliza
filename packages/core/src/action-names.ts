@@ -21,14 +21,13 @@ export const NON_EXECUTABLE_RESPONSE_ACTION_NAMES = [
  * envelope, and STOP is the extra planner terminal
  * (`isTerminalPlannerToolName`) — not a side-effecting result.
  */
+const RESERVED_NON_TOOL_ACTION_NAMES: ReadonlySet<string> = new Set([
+	...NON_EXECUTABLE_RESPONSE_ACTION_NAMES,
+	STOP_ACTION_NAME,
+]);
+
 export function isReservedNonToolActionName(name: string): boolean {
-	const normalized = name.toUpperCase().replace(/_/g, "");
-	if (
-		(NON_EXECUTABLE_RESPONSE_ACTION_NAMES as readonly string[]).some(
-			(entry) => entry.toUpperCase().replace(/_/g, "") === normalized,
-		)
-	) {
-		return true;
-	}
-	return normalized === STOP_ACTION_NAME;
+	return RESERVED_NON_TOOL_ACTION_NAMES.has(
+		name.toUpperCase().replace(/_/g, ""),
+	);
 }

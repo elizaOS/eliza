@@ -1,0 +1,18 @@
+{
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "ExecutionAuthorization",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "sources": [
+    "packages/auth/src/server/api/services/execution-authorization.ts"
+  ],
+  "bounds": "One nonce, three consumers, time 0..4, expiry 3."
+}

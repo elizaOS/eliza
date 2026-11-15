@@ -1,0 +1,59 @@
+{
+  "sources": [
+    "packages/ui/src/events/index.ts",
+    "packages/ui/src/events/__e2e__/navigate-view-claims.test.ts"
+  ],
+  "bounds": "Lifecycle has two request identities, two listener identities, two allocated callbacks, and queue capacity two. A separate overflow instance admits seventeen requests to the real capacity-sixteen FIFO with no listeners. Each listener mounts once. Callback invocation/return are split to expose reentrant delivery. Identities and dispatch epochs never wrap.",
+  "conformance": "packages/ui/quint/check-navigation-claims.mjs",
+  "cases": [
+    {
+      "name": "lifecycle",
+      "main": "NavigateViewClaims",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "queueBound",
+        "oneResolution",
+        "queuedClaimsLive",
+        "distinctQueue"
+      ],
+      "temporal": ["EventuallySingleEffect", "RetiredPromiseDoesNotBlock"],
+      "temporalChecks": [
+        {
+          "property": "EventuallySingleEffect",
+          "expect": "counterexample",
+          "assumptions": [
+            "No exactly-once effect contract is assumed for arbitrary callbacks. A listener can apply a partial effect and retire before its returned promise settles. The real helper suite reproduces effect repetition.",
+            "Each per-request effect count is monotone. An eventual suffix with at most one effect is therefore impossible once the duplicated-effect witness occurs. This formulation retains an explicit loop for the negative temporal checker."
+          ]
+        },
+        {
+          "property": "RetiredPromiseDoesNotBlock",
+          "expect": "counterexample",
+          "assumptions": [
+            "No settlement fairness is assumed for an external promise owned by an unmounted listener. Its applying flag can block a replacement forever."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    },
+    {
+      "name": "overflow",
+      "main": "NavigateViewClaims",
+      "init": "initOverflow",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "queueBound",
+        "oneResolution",
+        "queuedClaimsLive",
+        "distinctQueue"
+      ],
+      "temporal": [],
+      "maxSteps": 25,
+      "samples": 1000
+    }
+  ]
+}

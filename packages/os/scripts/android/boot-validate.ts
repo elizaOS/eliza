@@ -3,11 +3,13 @@
  * boot-validate.ts — Validate that a booted brand-AOSP device is healthy.
  *
  * Brand-aware. Reads brand config (package name, app name, classPrefix,
- * envPrefix, productName) and runs a series of adb checks:
- *   - Boot properties (ro.<envPrefix>.product, <envPrefix>.boot_phase, …)
+ * productName) and runs a series of adb checks:
+ *   - Boot properties (ro.<propertyPrefix>.product, <propertyPrefix>.boot_phase, …)
  *   - Nonprivileged launcher install path (/product/app/<AppName>/ or, on a
  *     system-only GSI, /system/app/<AppName>/), SYSTEM and not PRIVILEGED
- *   - HOME and ASSISTANT role holders == brand package; HOME resolves to it
+ *   - HOME and ASSISTANT role holders == brand package; HOME resolves to it.
+ *     ASSISTANT is required only when the brand takes the assistant role
+ *     (brand config assistantRole, default true); otherwise it is recorded.
  *   - A stock system HOME remains installed as the recovery path
  *   - The reviewed first-boot grants are granted; no privileged permission is
  *   - Logcat scrubbed for brand-introduced FATAL / SecurityException / avc denied
@@ -24,7 +26,8 @@ import { fileURLToPath } from "node:url";
 import { loadBrandFromArgv } from "./brand-config.ts";
 import { imageProduct, loadImagesPolicy } from "./image-launcher.ts";
 
-const REQUIRED_ROLES = ["android.app.role.HOME", "android.app.role.ASSISTANT"];
+const HOME_ROLE = "android.app.role.HOME";
+const ASSISTANT_ROLE = "android.app.role.ASSISTANT";
 /** Recorded only: the image leaves these with the stock apps. */
 const RECORDED_ROLES = ["android.app.role.DIALER", "android.app.role.SMS"];
 
@@ -115,7 +118,7 @@ export function parseSubArgs(argv) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/boot-validate.ts [--brand-config <PATH>] [--adb <ADB>] [--serial <SERIAL>] [--timeout-ms <MS>] [--json] [--skip-logcat] [--expected-abi <ABI>]",
+        "Usage: bun scripts/android/boot-validate.ts [--brand-config <PATH>] [--adb <ADB>] [--serial <SERIAL>] [--timeout-ms <MS>] [--json] [--skip-logcat] [--expected-abi <ABI>]",
       );
       process.exit(0);
     } else {
@@ -425,8 +428,12 @@ function validateRecoveryHome(adb, serial, brand) {
   );
 }
 
-export function assertRoleHolders(holders, packageName) {
-  for (const role of REQUIRED_ROLES) {
+export function assertRoleHolders(
+  holders,
+  packageName,
+  { assistant = true } = {},
+) {
+  for (const role of assistant ? [HOME_ROLE, ASSISTANT_ROLE] : [HOME_ROLE]) {
     const owners = String(holders[role] ?? "")
       .split(/[\s;,]+/)
       .filter(Boolean);
@@ -438,10 +445,12 @@ export function assertRoleHolders(holders, packageName) {
 
 function validateRoles(adb, serial, brand) {
   const roles = {};
-  for (const role of [...REQUIRED_ROLES, ...RECORDED_ROLES]) {
+  for (const role of [HOME_ROLE, ASSISTANT_ROLE, ...RECORDED_ROLES]) {
     roles[role] = shell(adb, serial, `cmd role get-role-holders ${role}`);
   }
-  return assertRoleHolders(roles, brand.packageName);
+  return assertRoleHolders(roles, brand.packageName, {
+    assistant: brand.assistantRole !== false,
+  });
 }
 
 /**

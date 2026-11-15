@@ -23,10 +23,6 @@ import {
   rankByKeyword,
 } from "@elizaos/agent/api/memory-routes";
 import { relevantConversationsProvider } from "@elizaos/agent/providers/relevant-conversations";
-import {
-  executeRawSql,
-  extractRows,
-} from "@elizaos/agent/runtime/trajectory-internals";
 import type { Plugin } from "@elizaos/core";
 import {
   AgentRuntime,
@@ -37,7 +33,11 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { embedRecallQuery } from "@elizaos/plugin-assistant";
+import {
+  embedRecallQuery,
+  executeRawSql,
+  extractRows,
+} from "@elizaos/plugin-assistant";
 
 interface BenchArgs {
   vectors: number;

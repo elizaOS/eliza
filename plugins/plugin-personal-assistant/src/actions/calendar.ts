@@ -1465,7 +1465,7 @@ export const calendarAction: Action & {
     {
       name: "queries",
       description:
-        "Optional event-content filters for search_events. Combined/deduped. Do not use dates as keywords; an unfiltered agenda uses feed with time bounds.",
+        "Optional event-content filters for search_events. Every query must exactly match the verified calendarReadBindings filterEvidence for this intent. Omit queries when query already supplies the requested title. Do not invent variants, shorten the title, or add dates as keywords; an unfiltered agenda uses feed with time bounds.",
       required: false,
       subactions: ["search_events", "trip_window"],
       schema: { type: "array" as const, items: { type: "string" as const } },
@@ -1879,7 +1879,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
           ...(name === "search_events"
             ? {
                 description:
-                  "Find existing events matching required query text within their CURRENT time window. Additional queries can broaden the content filter. A date alone is not a content filter; use CALENDAR_FEED for an unfiltered agenda. Filtered results cannot establish free time: use CALENDAR_CHECK_AVAILABILITY or CALENDAR_PROPOSE_TIMES. For rescheduling, use CALENDAR_UPDATE_EVENT with the existing title or ID, not a search of the destination window. Empty results never authorize a replacement event.",
+                  "Find existing events matching source-bound query text within their CURRENT time window. Copy query exactly from this intent's verified calendarReadBindings filterEvidence. Omit queries unless each item also exactly matches an approved filter. Do not broaden, shorten, paraphrase or invent search terms. A rejected or failed search performed no successful read and cannot establish that an event is missing. A date alone is not a content filter; use CALENDAR_FEED for an unfiltered agenda. Filtered results cannot establish free time: use CALENDAR_CHECK_AVAILABILITY or CALENDAR_PROPOSE_TIMES. For rescheduling, use CALENDAR_UPDATE_EVENT with the existing title or ID, not a search of the destination window. Empty results never authorize a replacement event.",
               }
             : {
                 description:

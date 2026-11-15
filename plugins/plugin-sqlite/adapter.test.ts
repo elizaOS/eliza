@@ -1816,6 +1816,12 @@ describe("durable SQLite agent adapter", () => {
     expect((await restored.getCaches(["backup"])).get("backup")).toEqual({
       bytes: "durable",
     });
+    const nestedBackup = join("new-parent", "new-child", "backup.sqlite");
+    await adapter.backup(join(directory, nestedBackup));
+    const nestedRestored = await open(nestedBackup);
+    expect((await nestedRestored.getCaches(["backup"])).get("backup")).toEqual({
+      bytes: "durable",
+    });
     const competing = new SQLiteStorage(
       join(directory, "agent.sqlite"),
       agentId,
@@ -2890,6 +2896,15 @@ it("scopes log reads and mutations to the adapter agent", async () => {
       .sort(),
   ).toEqual(["orphan", "this agent"]);
   expect(await adapter.getLogsByIds([orphanLogId])).toHaveLength(1);
+  // Retention's inventory has the same rows and order, with no body, and
+  // leaves out the excluded types.
+  const visible = await adapter.getLogs({});
+  expect(await adapter.getLogInventory({})).toEqual(
+    visible.map(({ id, roomId, createdAt }) => ({ id, roomId, createdAt })),
+  );
+  expect(
+    await adapter.getLogInventory({ excludeTypes: ["scope-probe"] }),
+  ).toEqual([]);
 
   await adapter.updateLogs([
     { id: orphanLogId, updates: { type: "rewritten" } },

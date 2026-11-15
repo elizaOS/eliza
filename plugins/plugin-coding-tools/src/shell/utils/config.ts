@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
 import { z } from "zod";
+import { expandHome } from "../../lib/path-utils.js";
 import type { ShellConfig } from "../types";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -112,7 +113,9 @@ export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
 ] as const;
 
 export function loadShellConfig(): ShellConfig {
-  const allowedDirectory = process.env.SHELL_ALLOWED_DIRECTORY || process.cwd();
+  const allowedDirectory = expandHome(
+    process.env.SHELL_ALLOWED_DIRECTORY || process.cwd(),
+  );
   const timeout = parsePositiveIntegerEnv(
     "SHELL_TIMEOUT",
     30000,

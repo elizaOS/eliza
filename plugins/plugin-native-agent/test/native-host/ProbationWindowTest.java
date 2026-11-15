@@ -2,6 +2,8 @@ package ai.eliza.plugins.agent.updater;
 import java.io.*;import java.nio.channels.FileChannel;import java.nio.file.*;import java.util.concurrent.*;import java.util.concurrent.atomic.*;
 import static ai.eliza.plugins.agent.updater.UpdateJournal.*;
 public final class ProbationWindowTest {
+ /** A plan that is still fresh: these cases are about the install, not commit freshness. */
+ static final UpdateJournal.FreshnessCheck FRESH=(plan,generation)->{};
  static int assertions;
  static final Durability SYNC=p->{try(FileChannel f=FileChannel.open(p,StandardOpenOption.READ)){f.force(true);}};
  static final Identity BASE=new Identity(1,"a".repeat(64)),CANDIDATE=new Identity(2,"b".repeat(64)),RECOVERY=new Identity(3,"c".repeat(64));
@@ -12,7 +14,7 @@ public final class ProbationWindowTest {
  static void check(boolean v){assertions++;if(!v)throw new AssertionError("Assertion "+assertions);}
  static void rejects(Work w)throws Exception{try{w.run();throw new AssertionError("Expected IOException");}catch(IOException expected){assertions++;}}
  static ProbationSample sample(long boot,long elapsed,ProbationKind kind){return new ProbationSample(boot,elapsed,PROCESS,RUNTIME,kind);}
- static UpdateJournal create(Path directory)throws Exception{UpdateJournal j=new UpdateJournal(directory,SYNC);j.begin(PLAN,BASE,0);j.committing(PLAN.id,4,0);j.reconcile(CANDIDATE,false);return j;}
+ static UpdateJournal create(Path directory)throws Exception{UpdateJournal j=new UpdateJournal(directory,SYNC);j.begin(PLAN,BASE,0);j.committingWithAction(PLAN.id,4,0,FRESH,()->{});j.reconcile(CANDIDATE,false);return j;}
  static Snapshot record(UpdateJournal j,long boot,long time,ProbationKind kind)throws Exception{return j.observeProbation(j.read(),CANDIDATE,POLICY,sample(boot,time,kind));}
  public static void main(String[] args)throws Exception {
   Path root=Path.of(args[0]);Files.createDirectories(root);

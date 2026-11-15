@@ -23,7 +23,7 @@
  * explicitly skipped until the device matrix supplies evidence.
  *
  * Usage:
- *   node packages/inference/verify/eliza1_gates_collect.mjs \
+ *   bun packages/inference/verify/eliza1_gates_collect.mjs \
  *     [--tier 2b|4b|9b|27b|27b-256k] [--bundle PATH] \
  *     [--sync-bundle-manifest-evals] [--gates PATH] [--report PATH] [--json]
  */
@@ -123,7 +123,7 @@ function parseArgs(argv) {
       args.json = true;
     } else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: node eliza1_gates_collect.mjs [--tier <tier>] [--bundle PATH] [--sync-bundle-manifest-evals] [--gates PATH] [--report PATH] [--json]",
+        "Usage: bun eliza1_gates_collect.mjs [--tier <tier>] [--bundle PATH] [--sync-bundle-manifest-evals] [--gates PATH] [--report PATH] [--json]",
       );
       process.exit(0);
     }

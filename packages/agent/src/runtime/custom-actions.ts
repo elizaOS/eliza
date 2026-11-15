@@ -21,15 +21,27 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   isPrivateIpAddress,
+  logger,
   normalizeHostLike,
   toWellFormedUnicode,
 } from "@elizaos/core";
 import {
+  buildStoreVariantBlockedMessage,
+  isLocalCodeExecutionAllowed,
+} from "@elizaos/host";
+import {
   createSelfApiRequestHeaders,
+  isMobilePlatform,
   resolveSelfApiBaseUrl,
 } from "@elizaos/host/protocol";
 
 import { hasSelectedContextOrSignalSync } from "@elizaos/plugin-assistant";
+import {
+  hasSelfApiTcpListener,
+  resolveSelfApiTcpBaseUrl,
+  SELF_API_UNREACHABLE_TEXT,
+} from "../api/self-api-endpoint.ts";
+import { resolveTerminalRunLimits } from "../api/terminal-run-limits.ts";
 import { loadElizaConfig } from "../config/config.ts";
 
 /** Cached runtime reference for hot-registration of new actions. */
@@ -72,10 +84,49 @@ export function unregisterCustomActionLive(id: string): boolean {
   return _runtime.unregisterAction(action.name);
 }
 
+/**
+ * Why a shell or code custom action may not run in this process, or null when
+ * it may. Uses the same gate as the terminal action: store builds and a
+ * disabled shell permission refuse local execution.
+ */
+export function customActionExecutionBlockReason(
+  handlerType: string,
+  shellEnabled: boolean | undefined,
+): string | null {
+  if (handlerType !== "shell" && handlerType !== "code") return null;
+  if (!isLocalCodeExecutionAllowed()) {
+    return buildStoreVariantBlockedMessage(`${handlerType} custom actions`);
+  }
+  if (shellEnabled === false) {
+    return `${handlerType === "shell" ? "Shell" : "Code"} custom actions need shell access, which is turned off.`;
+  }
+  if (handlerType === "shell") {
+    if (isMobilePlatform()) {
+      return "Shell custom actions are not available on this device.";
+    }
+    // Shell runs through this process's own terminal route over HTTP.
+    if (!hasSelfApiTcpListener()) return SELF_API_UNREACHABLE_TEXT;
+  }
+  return null;
+}
+
 /** Register every enabled custom action saved in config. Called from plugin.init(). */
 export function registerSavedCustomActions(): void {
-  for (const def of loadElizaConfig().customActions ?? []) {
-    if (def.enabled) registerCustomActionLive(def);
+  const config = loadElizaConfig();
+  for (const def of config.customActions ?? []) {
+    if (!def.enabled) continue;
+    const blocked = customActionExecutionBlockReason(
+      def.handler.type,
+      config.features?.shellEnabled !== false,
+    );
+    if (blocked) {
+      logger.warn(
+        { actionId: def.id, actionName: def.name },
+        `[custom-actions] Not registering saved action: ${blocked}`,
+      );
+      continue;
+    }
+    registerCustomActionLive(def);
   }
 }
 
@@ -83,9 +134,10 @@ export function registerSavedCustomActions(): void {
 const VALID_HANDLER_TYPES = new Set(["http", "shell", "code"]);
 
 type VmRunner = {
-  runInNewContext: (
+  createContext: (contextObject: object) => Record<string, unknown>;
+  runInContext: (
     code: string,
-    contextObject: Record<string, unknown>,
+    context: Record<string, unknown>,
     options?: { filename?: string; timeout?: number },
   ) => unknown;
 };
@@ -93,7 +145,15 @@ type VmRunner = {
 let vmRunner: VmRunner | null = null;
 
 const CUSTOM_ACTION_FETCH_TIMEOUT_MS = 15_000;
-const CUSTOM_ACTION_SHELL_TIMEOUT_MS = 30_000;
+const CUSTOM_ACTION_CODE_TIMEOUT_MS = 30_000;
+// After response headers arrive, a body must keep delivering bytes (idle) and
+// finish within the overall cap, so a stalled server cannot hold a turn open.
+let bodyIdleTimeoutMs = 15_000;
+let bodyTotalTimeoutMs = 60_000;
+// Same transport grace TERMINAL_SHELL adds to the route's run limit.
+const CUSTOM_ACTION_SHELL_TRANSPORT_GRACE_MS = 10_000;
+// The terminal route can return up to four MiB per stream, JSON-escaped.
+const CUSTOM_ACTION_SHELL_RESPONSE_BYTE_LIMIT = 25 * 1024 * 1024;
 const CUSTOM_ACTION_CONTEXTS = [
   "general",
   "automation",
@@ -117,7 +177,7 @@ type ResolvedUrlTarget = {
   pinnedAddress: string;
 };
 
-type PinnedFetchInput = {
+export type PinnedFetchInput = {
   url: URL;
   init: RequestInit;
   target: ResolvedUrlTarget;
@@ -136,46 +196,6 @@ let dnsLookupImpl: DnsLookupAllFn = dnsLookup as DnsLookupAllFn;
 /** Port of this process's own API listener (same resolver as self-calls). */
 function getApiPort(): string {
   return new URL(resolveSelfApiBaseUrl(process.env)).port;
-}
-
-async function fetchWithTimeout(
-  input: string,
-  init: RequestInit,
-  timeoutMs: number,
-): Promise<Response> {
-  const timeoutMessage = `Terminal request timed out after ${timeoutMs}ms`;
-
-  return await new Promise<Response>((resolve, reject) => {
-    const controller = new AbortController();
-    let settled = false;
-    const timeoutHandle = setTimeout(() => {
-      controller.abort();
-      if (settled) return;
-      settled = true;
-      reject(new CustomActionTimeoutError(timeoutMessage));
-    }, timeoutMs);
-
-    const settle = (callback: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutHandle);
-      callback();
-    };
-
-    fetch(input, {
-      ...init,
-      signal: controller.signal,
-    }).then(
-      (response) => settle(() => resolve(response)),
-      (error) => {
-        if (controller.signal.aborted) {
-          settle(() => reject(new CustomActionTimeoutError(timeoutMessage)));
-          return;
-        }
-        settle(() => reject(error));
-      },
-    );
-  });
 }
 
 function resolveFetchInputUrl(input: FetchInput | URL): string | null {
@@ -212,7 +232,10 @@ async function safeCodeFetch(
         requestInit,
         CUSTOM_ACTION_FETCH_TIMEOUT_MS,
       )
-    : await fetch(input, requestInit);
+    : await fetch(input, {
+        ...requestInit,
+        signal: withBodyDeadline(requestInit.signal),
+      });
   if (response.status >= 300 && response.status < 400) {
     throw new Error(
       "Blocked: redirects are not allowed for code custom actions",
@@ -234,27 +257,51 @@ async function runCodeHandler(
     vmRunner = (await import("node:vm")) as VmRunner;
   }
 
+  // node:vm is not a security boundary: code actions are trusted owner code,
+  // gated by customActionExecutionBlockReason. Building params inside the
+  // context only keeps host-realm objects out of the script's reach by default.
   const script = `(async () => { ${code} })();`;
-  const context: Record<string, unknown> = Object.create(null);
-  context.params = Object.freeze({ ...params });
+  const context = vmRunner.createContext(Object.create(null));
+  const buildParams = vmRunner.runInContext(
+    "(function(json) { return Object.freeze(JSON.parse(json)); })",
+    context,
+    { filename: "eliza-params", timeout: 1_000 },
+  ) as (json: string) => unknown;
+  context.params = buildParams(JSON.stringify(params));
 
-  const wrapperScript = `(function(hostFetch) {
+  const wrapFetch = vmRunner.runInContext(
+    `(function(hostFetch) {
     return function fetch(input, init) { return hostFetch(input, init); };
-  })`;
-  const wrapFetch = vmRunner.runInNewContext(
-    wrapperScript,
-    Object.create(null),
-    {
-      filename: "eliza-fetch-wrapper",
-      timeout: 1_000,
-    },
+  })`,
+    context,
+    { filename: "eliza-fetch-wrapper", timeout: 1_000 },
   ) as (fn: typeof safeCodeFetch) => typeof safeCodeFetch;
   context.fetch = wrapFetch(safeCodeFetch);
 
-  return vmRunner.runInNewContext(`"use strict"; ${script}`, context, {
+  // vm's timeout only bounds the synchronous part; race the async remainder.
+  const run = vmRunner.runInContext(`"use strict"; ${script}`, context, {
     filename: "eliza-custom-action",
-    timeout: 30_000,
+    timeout: CUSTOM_ACTION_CODE_TIMEOUT_MS,
   });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      run,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new CustomActionTimeoutError(
+                `Code action timed out after ${CUSTOM_ACTION_CODE_TIMEOUT_MS}ms`,
+              ),
+            ),
+          CUSTOM_ACTION_CODE_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function shellEscape(value: string): string {
@@ -304,20 +351,77 @@ function incomingMessageBody(
 ): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
+      let finished = false;
       response.on("data", (chunk: Buffer | string) => {
+        if (finished) return;
         controller.enqueue(
           typeof chunk === "string"
             ? Buffer.from(chunk)
             : new Uint8Array(chunk),
         );
       });
-      response.on("end", () => controller.close());
-      response.on("error", (error) => controller.error(error));
+      response.on("end", () => {
+        if (finished) return;
+        finished = true;
+        controller.close();
+      });
+      response.on("error", (error) => {
+        if (finished) return;
+        finished = true;
+        controller.error(error);
+      });
     },
     cancel() {
       response.destroy();
     },
   });
+}
+
+/**
+ * Keep a deadline on the body after headers: destroy the response when no
+ * bytes arrive for the idle window or the whole body outlasts the overall cap.
+ * The destroy error reaches the body stream through its "error" listener.
+ */
+function armBodyDeadline(response: IncomingMessage): void {
+  const fail = (message: string) => {
+    response.destroy(new CustomActionTimeoutError(message));
+  };
+  let idleHandle: ReturnType<typeof setTimeout> | undefined;
+  const resetIdle = () => {
+    clearTimeout(idleHandle);
+    idleHandle = setTimeout(
+      () => fail(`Custom action response stalled for ${bodyIdleTimeoutMs}ms`),
+      bodyIdleTimeoutMs,
+    );
+  };
+  const totalHandle = setTimeout(
+    () =>
+      fail(
+        `Custom action response did not finish within ${bodyTotalTimeoutMs}ms`,
+      ),
+    bodyTotalTimeoutMs,
+  );
+  const clear = () => {
+    clearTimeout(idleHandle);
+    clearTimeout(totalHandle);
+  };
+  resetIdle();
+  response.on("data", resetIdle);
+  response.once("end", clear);
+  response.once("close", clear);
+}
+
+/** A signal that ends a plain fetch (headers and body) at the overall cap. */
+function withBodyDeadline(signal: AbortSignal | null | undefined): AbortSignal {
+  const deadline = AbortSignal.timeout(bodyTotalTimeoutMs);
+  return signal ? AbortSignal.any([signal, deadline]) : deadline;
+}
+
+export function __setBodyDeadlinesForTests(
+  deadlines: { idleMs: number; totalMs: number } | null,
+): void {
+  bodyIdleTimeoutMs = deadlines?.idleMs ?? 15_000;
+  bodyTotalTimeoutMs = deadlines?.totalMs ?? 60_000;
 }
 
 function responseFromIncomingMessage(response: IncomingMessage): Response {
@@ -331,10 +435,11 @@ function responseFromIncomingMessage(response: IncomingMessage): Response {
   }
 
   const status = response.statusCode ?? 500;
-  const body =
-    status === 204 || status === 205 || status === 304
-      ? null
-      : incomingMessageBody(response);
+  armBodyDeadline(response);
+  const bodyless = status === 204 || status === 205 || status === 304;
+  // A bodyless response is never read; drain it so "end" clears the deadline.
+  if (bodyless) response.resume();
+  const body = bodyless ? null : incomingMessageBody(response);
 
   return new Response(body, {
     status,
@@ -433,6 +538,13 @@ async function requestWithPinnedAddress(
 }
 
 let pinnedFetchImpl: PinnedFetchImpl = requestWithPinnedAddress;
+
+/** The real pinned transport, so tests can redirect it to a local server. */
+export function __pinnedRequestForTests(
+  input: PinnedFetchInput,
+): Promise<Response> {
+  return requestWithPinnedAddress(input);
+}
 
 export function __setPinnedFetchImplForTests(
   impl: PinnedFetchImpl | null,
@@ -728,7 +840,10 @@ async function performGuardedHttpRequest(
   for (let hop = 0; hop <= GUARDED_GET_MAX_REDIRECTS; hop++) {
     const response = currentSafety.target
       ? await fetchWithPinnedTarget(currentSafety.target, fetchOpts, timeoutMs)
-      : await fetch(currentUrl, fetchOpts);
+      : await fetch(currentUrl, {
+          ...fetchOpts,
+          signal: withBodyDeadline(undefined),
+        });
 
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
@@ -801,6 +916,64 @@ export async function performGuardedHttpPost(
   return performGuardedHttpRequest(url, { ...opts, method: "POST" });
 }
 
+function parseShellRunResponse(
+  status: number,
+  text: string,
+): { ok: boolean; output: string } {
+  let body: Record<string, unknown> | null = null;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      body = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // error-policy:J3 a non-JSON reply is reported as a failed request below.
+    body = null;
+  }
+  if (status < 200 || status >= 300 || !body) {
+    const reason =
+      body && typeof body.error === "string"
+        ? body.error
+        : body && typeof body.message === "string"
+          ? body.message
+          : `HTTP ${status}`;
+    return { ok: false, output: `Terminal request failed: ${reason}` };
+  }
+  if (typeof body.exitCode !== "number") {
+    return {
+      ok: false,
+      output: "Terminal request failed: the reply had no exit code",
+    };
+  }
+  if (body.truncated === true) {
+    return {
+      ok: false,
+      output:
+        "Terminal result is incomplete: output was truncated. The command may have completed. Do not repeat it automatically.",
+    };
+  }
+  const stdout = typeof body.stdout === "string" ? body.stdout : "";
+  const stderr = typeof body.stderr === "string" ? body.stderr : "";
+  const timedOut = body.timedOut === true;
+  const parts: string[] = [];
+  if (stdout.length > 0) parts.push(stdout);
+  if (stderr.length > 0) parts.push(stderr);
+  if (timedOut) {
+    parts.push(
+      typeof body.maxDurationMs === "number"
+        ? `Timed out after ${body.maxDurationMs}ms`
+        : "Timed out",
+    );
+  } else if (body.exitCode !== 0) {
+    parts.push(`Exit code ${body.exitCode}`);
+  }
+  const output = parts.join("\n") || "Done";
+  return {
+    ok: body.exitCode === 0 && !timedOut,
+    output: toWellFormedUnicode(output),
+  };
+}
+
 function buildHandler(
   handler: CustomActionHandler,
   paramDefs: CustomActionDef["parameters"],
@@ -855,7 +1028,10 @@ function buildHandler(
               fetchOpts,
               CUSTOM_ACTION_FETCH_TIMEOUT_MS,
             )
-          : await fetch(url, fetchOpts);
+          : await fetch(url, {
+              ...fetchOpts,
+              signal: withBodyDeadline(undefined),
+            });
         if (response.status >= 300 && response.status < 400) {
           return {
             ok: false,
@@ -875,9 +1051,19 @@ function buildHandler(
           command = command.replaceAll(`{{${p.name}}}`, shellEscape(value));
         }
 
-        const response = await fetchWithTimeout(
-          `${resolveSelfApiBaseUrl(process.env)}/api/terminal/run`,
-          {
+        // Wait for the command itself: the route holds the reply until the
+        // run ends, bounded by its own max duration plus transport grace.
+        const timeoutMs =
+          resolveTerminalRunLimits().maxDurationMs +
+          CUSTOM_ACTION_SHELL_TRANSPORT_GRACE_MS;
+        // No listener of ours: the bearer must not go to a port another app owns.
+        const base = resolveSelfApiTcpBaseUrl(process.env);
+        if (base === null)
+          return { ok: false, output: SELF_API_UNREACHABLE_TEXT };
+        let text: string;
+        let status: number;
+        try {
+          const response = await fetch(`${base}/api/terminal/run`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -886,19 +1072,24 @@ function buildHandler(
             body: JSON.stringify({
               command,
               clientId: "runtime-shell-action",
+              captureOutput: true,
             }),
-          },
-          CUSTOM_ACTION_SHELL_TIMEOUT_MS,
-        );
-
-        if (!response.ok) {
-          return {
-            ok: false,
-            output: `Terminal request failed: HTTP ${response.status}`,
-          };
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+          status = response.status;
+          text = await readCompleteBodyWithinByteLimit(
+            response,
+            CUSTOM_ACTION_SHELL_RESPONSE_BYTE_LIMIT,
+          );
+        } catch (error) {
+          if (error instanceof Error && error.name === "TimeoutError") {
+            throw new CustomActionTimeoutError(
+              `Shell action timed out after ${timeoutMs}ms`,
+            );
+          }
+          throw error;
         }
-
-        return { ok: true, output: `Executed: ${command}` };
+        return parseShellRunResponse(status, text);
       };
 
     case "code":
@@ -931,7 +1122,9 @@ function defToAction(def: CustomActionDef): Action {
     roleGate:
       def.requiredRole && def.requiredRole !== "GUEST"
         ? { minRole: def.requiredRole }
-        : { minRole: "USER" },
+        : def.handler.type === "shell" || def.handler.type === "code"
+          ? { minRole: "OWNER" }
+          : { minRole: "USER" },
     similes: def.similes ?? [],
     description: def.description,
     validate: async (_runtime, message, state) => {
@@ -945,6 +1138,11 @@ function defToAction(def: CustomActionDef): Action {
 
     handler: async (_runtime, _message, _state, options) => {
       try {
+        const blocked = customActionExecutionBlockReason(
+          def.handler.type,
+          loadElizaConfig().features?.shellEnabled !== false,
+        );
+        if (blocked) return { text: blocked, success: false };
         const opts = options as HandlerOptions | undefined;
         const params: Record<string, string> = {};
 

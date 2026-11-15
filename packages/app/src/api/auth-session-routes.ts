@@ -6,7 +6,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger } from "@elizaos/core";
+import { firstHeaderValue, logger } from "@elizaos/core";
 import type { AuthRepository } from "../services/auth-repository";
 import { authStoreForHost } from "../services/auth-store";
 import {
@@ -29,7 +29,6 @@ import {
 } from "./auth/index";
 import { findActiveSession, readAllCookieValues } from "./auth/sessions";
 import {
-  extractHeaderValue,
   getCompatApiToken,
   getProvidedApiToken,
   roleForIdentityKind,
@@ -204,7 +203,7 @@ export async function handleAuthSessionRoutes(
     return false;
   }
   const ip = req.socket.remoteAddress ?? null;
-  const userAgent = extractHeaderValue(req.headers["user-agent"]);
+  const userAgent = firstHeaderValue(req.headers["user-agent"]);
 
   // POST /api/auth/setup — first-run owner identity creation
   if (method === "POST" && url.pathname === "/api/auth/setup") {
@@ -757,7 +756,7 @@ async function handleListSessions(
           id: "local-loopback",
           kind: "local" as const,
           ip: req.socket.remoteAddress ?? "127.0.0.1",
-          userAgent: extractHeaderValue(req.headers["user-agent"]),
+          userAgent: firstHeaderValue(req.headers["user-agent"]),
           lastSeenAt: Date.now(),
           expiresAt: null,
           current: true,

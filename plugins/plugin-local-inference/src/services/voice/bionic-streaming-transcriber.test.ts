@@ -157,9 +157,11 @@ describe("BionicStreamingTranscriber", () => {
 		await expect(t.flush()).rejects.toThrow("EPIPE");
 		expect(host.batchCalls).toHaveLength(0);
 		expect(s.closed).toBe(true);
-		// The next segment starts clean on a new stream.
+		// The next segment starts clean on a new stream, fed only its own audio:
+		// what arrived after the failure belonged to the failed segment.
 		await feedSeconds(t, 1);
 		expect((await t.flush()).partial).toBe("set a timer for ten minutes");
+		expect(host.streams[1]?.fed).toBe(16000);
 		t.dispose();
 	});
 

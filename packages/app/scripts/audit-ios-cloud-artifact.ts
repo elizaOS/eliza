@@ -11,7 +11,7 @@ import { auditIosCloudArtifact } from "./lib/ios-cloud-artifact-audit.ts";
 const artifactPath = process.argv[2];
 if (!artifactPath) {
   console.error(
-    "Usage: node scripts/audit-ios-cloud-artifact.ts <App.app|App.ipa>",
+    "Usage: bun scripts/audit-ios-cloud-artifact.ts <App.app|App.ipa>",
   );
   process.exit(2);
 }

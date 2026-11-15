@@ -1144,7 +1144,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (target === "paired") {
     const directKeyEnv = values["direct-api-key-env"] || "CEREBRAS_API_KEY";
     const gatewayKeyEnv =
-      values["gateway-api-key-env"] || "ELIZA_CLOUD_API_KEY";
+      values["gateway-api-key-env"] || "ELIZAOS_CLOUD_API_KEY";
     records = await runPairedProbes({
       cases,
       repeats,
@@ -1166,7 +1166,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     streamedRecords = true;
   } else {
     const defaultKeyEnv =
-      target === "direct" ? "CEREBRAS_API_KEY" : "ELIZA_CLOUD_API_KEY";
+      target === "direct" ? "CEREBRAS_API_KEY" : "ELIZAOS_CLOUD_API_KEY";
     const keyEnv = values["api-key-env"] || defaultKeyEnv;
     const apiKey = readKey(keyEnv);
     if (target === "dedicated") {

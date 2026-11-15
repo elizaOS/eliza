@@ -101,6 +101,36 @@ public final class PasswordVaultEntriesInstrumentedTest {
       assertEquals(0, vault.entries().length());
       vault.saveEntry(null, "Fresh", "fixture-user", Arrays.asList("https://example.test"), secret);
       assertEquals(1, vault.entries().length());
+      // Every write moves the revision. A stale or missing record writes nothing.
+      JSONObject created = vault.commitEntry(null, 0, "Revised", "revision-user", Arrays.asList("https://revision.test"), secret);
+      String revised = created.getString("id");
+      assertEquals(1, created.getLong("revision"));
+      assertFalse(created.has("password"));
+      assertEquals(2, vault.commitEntry(revised, 1, "Renamed", "revision-user", Arrays.asList("https://revision.test"), null).getLong("revision"));
+      assertEquals(secret, vault.get(revised).getString("password"));
+      vault.saveEntry(revised, "Elsewhere", "revision-user", Arrays.asList("https://revision.test"), null);
+      assertEquals(3, vault.get(revised).getLong("revision"));
+      byte[] current = Files.readAllBytes(new File(root, "vault.enc").toPath());
+      try { vault.commitEntry(revised, 2, "Lost", "revision-user", Arrays.asList("https://revision.test"), "must-not-replace"); fail("Stale revision overwrote"); }
+      catch (PasswordVaultStore.RevisionConflict expected) {}
+      try { vault.commitEntry("missing", 0, "Lost", "revision-user", Arrays.asList("https://revision.test"), "must-not-recreate"); fail("Missing record recreated"); }
+      catch (PasswordVaultStore.RevisionConflict expected) {}
+      assertArrayEquals(current, Files.readAllBytes(new File(root, "vault.enc").toPath()));
+      // A record from before revisions is at revision 0, and the legacy writer moves it too.
+      String older = vault.save(null, "https://older.test", "older-user", "synthetic-older");
+      assertEquals(1, vault.get(older).getLong("revision"));
+      vault.save(older, "https://older.test", "older-user", "synthetic-older-2");
+      assertEquals(2, vault.get(older).getLong("revision"));
+      // Destroy takes a readable vault and its key, reports nothing left, and can repeat.
+      assertFalse(vault.unrecoverable());
+      vault.destroy();
+      assertFalse(keys.containsAlias(alias));
+      assertFalse(new File(root, "vault.enc").exists());
+      assertFalse(new File(root, "vault.enc.bak").exists());
+      vault.destroy();
+      assertEquals(0, vault.entries().length());
+      vault.saveEntry(null, "After destroy", "fixture-user", Arrays.asList("https://example.test"), secret);
+      assertEquals(1, new PasswordVaultStore(root, alias, aad, (PasswordVaultStore.KeyPolicy) null).entries().length());
     } finally {
       File[] files = root.listFiles(); if (files != null) for (File file : files) file.delete(); root.delete();
       if (keys.containsAlias(alias)) keys.deleteEntry(alias);

@@ -1,6 +1,6 @@
 {
 	"root": false,
-	"$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.6.6/schema.json",
 	"files": {
 		"includes": [
 			"src/lib/config-env.ts",
@@ -21,7 +21,11 @@
 			"init.ts",
 			"package.json",
 			"tsconfig.json",
-			"tsconfig.build.json"
+			"tsconfig.build.json",
+			"src/routes/cloud-warm-route.ts",
+			"src/routes/cloud-warm-route.test.ts",
+			"quint/**/*.mjs",
+			"quint/**/*.json"
 		]
 	},
 	"assist": {

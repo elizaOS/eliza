@@ -210,10 +210,23 @@ export function recordedStageToSemanticStage(
 export function recordedStagesToSemanticStages(
 	stages: readonly RecordedStage[],
 ): TrajectorySemanticStageRecord[] {
-	return (
-		parseTrajectorySemanticStages(stages.map(recordedStageToSemanticStage)) ??
-		[]
-	);
+	// Each conversion already validates its stage; only cross-stage id
+	// uniqueness remains, so the batch is not walked a second time.
+	const converted = stages.map(recordedStageToSemanticStage);
+	assertUniqueStageIds(converted);
+	return converted;
+}
+
+function assertUniqueStageIds(
+	stages: readonly TrajectorySemanticStageRecord[],
+): void {
+	const stageIds = new Set<string>();
+	for (const stage of stages) {
+		if (stageIds.has(stage.stageId)) {
+			throw invalidSemanticStage("stageId.duplicate", stage.stageId);
+		}
+		stageIds.add(stage.stageId);
+	}
 }
 
 /** Validate one untrusted persisted semantic-stage envelope. */

@@ -142,11 +142,11 @@ export function classifyRegistryVersion(
   const actualSourceSha = metadata.gitHead;
   const actualPublisher = metadata._npmUser?.name;
   const hasRegistryProvenance =
-    actualSourceSha !== undefined || actualPublisher !== undefined;
+    actualSourceSha !== undefined && actualPublisher !== undefined;
   if (
-    (hasRegistryProvenance &&
-      (actualSourceSha !== sourceSha || actualPublisher !== publisher)) ||
-    (!hasRegistryProvenance && requireRegistryProvenance)
+    (actualSourceSha !== undefined && actualSourceSha !== sourceSha) ||
+    (actualPublisher !== undefined && actualPublisher !== publisher) ||
+    (requireRegistryProvenance && !hasRegistryProvenance)
   ) {
     throw new RegistryInspectionError(
       `Registry provenance for ${packageRecord.name}@${packageRecord.version} is ${actualPublisher ?? "missing"}/${actualSourceSha ?? "missing"}, expected ${publisher}/${sourceSha}`,

@@ -269,12 +269,6 @@ export interface LocalInferenceBackend {
 		opts: { slotId: number; cacheKey: string },
 	): Promise<boolean>;
 
-	/**
-	 * Resize the backend's parallel slot pool. Returns true on a real
-	 * restart/resize, false when no resize was needed (target ≤ current, etc).
-	 */
-	resizeParallel?(target: number): Promise<boolean>;
-
 	/** Active parallel slot count. Default `1` on backends without pooling. */
 	parallelSlots?(): number;
 
@@ -752,12 +746,6 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		this.ensureLoaded();
 		if (!this.active?.prewarmConversation) return false;
 		return this.active?.prewarmConversation(promptPrefix, opts);
-	}
-
-	async resizeParallel(target: number): Promise<boolean> {
-		this.ensureLoaded();
-		if (!this.active?.resizeParallel) return false;
-		return this.active?.resizeParallel(target);
 	}
 
 	parallelSlots(): number {

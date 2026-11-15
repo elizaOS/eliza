@@ -1,0 +1,40 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/agent-backup-restore-lease.ts",
+    "packages/cloud/shared/src/db/repositories/agent-backup-restore-authority.ts"
+  ],
+  "bounds": "Two restore attempts, two owners, one exact backup authority tuple, two catalogue epochs, database time 0..5 and durations 1..2. No identifier wraparound.",
+  "cases": [
+    {
+      "name": "ownership-and-expiry",
+      "main": "RestoreLease",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OneUnreleasedLease",
+        "ReleasedLeasesExist",
+        "ReplayPreservesExpiry",
+        "RenewalExtendsLiveLease",
+        "ExactScope"
+      ],
+      "temporal": ["NoReopen"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "NoReopen",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in RestoreLease: NoReopen = always((s.released.subseteq(next(s.released))).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Database transactions and row locks are atomic model actions. The model assumes the database enforces those locks and rollback.",
+    "Canonical input validation and the full cross-tenant authority tuple are abstracted by equality guards.",
+    "The restore coordinator's provider calls, cancellation, attestation and route-publication CAS remain separate protocols."
+  ]
+}

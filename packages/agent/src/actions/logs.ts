@@ -1,21 +1,26 @@
 /**
  * LOGS — polymorphic action for log inspection.
  *
- *   search    → GET /api/logs   (filter by source/level/tag/since; HTTP because the log
- *                                buffer lives on server state, not the runtime)
- *   delete    → DELETE /api/logs (clears the in-memory log buffer; HTTP for the same reason)
+ *   search    → GET /api/logs   (filter by source/level/tag/since; the log buffer
+ *                                lives on server state, not the runtime, so this
+ *                                runs in process when no listener is bound)
+ *   delete    → DELETE /api/logs (clears the in-memory log buffer; over HTTP only,
+ *                                and refused when no listener is bound)
  */
 
 import {
   type Action,
   type ActionResult,
   type HandlerOptions,
+  type IAgentRuntime,
   logger,
 } from "@elizaos/core";
+import { createSelfApiRequestHeaders } from "@elizaos/host/protocol";
+import { callSelfApi } from "../api/self-api.ts";
 import {
-  createSelfApiRequestHeaders,
-  resolveSelfApiBaseUrl,
-} from "@elizaos/host/protocol";
+  resolveSelfApiTcpBaseUrl,
+  SELF_API_UNREACHABLE_TEXT,
+} from "../api/self-api-endpoint.ts";
 
 const LOGS_OPS = ["search", "delete"] as const;
 type LogsOp = (typeof LOGS_OPS)[number];
@@ -66,10 +71,6 @@ interface LogsResponseShape {
 
 interface ClearResponseShape {
   cleared?: unknown;
-}
-
-function getApiBase(): string {
-  return resolveSelfApiBaseUrl(process.env);
 }
 
 function parseSince(since: string | undefined): number | undefined {
@@ -125,7 +126,10 @@ function failure(text: string, code: string, extra?: object): ActionResult {
   };
 }
 
-async function searchLogs(params: LogsParams): Promise<ActionResult> {
+async function searchLogs(
+  runtime: IAgentRuntime,
+  params: LogsParams,
+): Promise<ActionResult> {
   const limit = params.limit;
   if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
     return failure(
@@ -144,27 +148,28 @@ async function searchLogs(params: LogsParams): Promise<ActionResult> {
     );
   }
 
-  const search = new URLSearchParams();
-  if (params.source) search.set("source", params.source);
-  if (params.level) search.set("level", params.level);
+  const query: Record<string, string> = {};
+  if (params.source) query.source = params.source;
+  if (params.level) query.level = params.level;
   // Server only filters on a single tag — additional tags are intersected client-side.
-  if (tagFilter.length > 0) search.set("tag", tagFilter[0]);
-  if (sinceMs !== undefined) search.set("since", String(sinceMs));
+  if (tagFilter.length > 0) query.tag = tagFilter[0];
+  if (sinceMs !== undefined) query.since = String(sinceMs);
 
-  const qs = search.toString();
-  const url = `${getApiBase()}/api/logs${qs ? `?${qs}` : ""}`;
-
-  const resp = await fetch(url, {
-    headers: createSelfApiRequestHeaders(),
-    signal: AbortSignal.timeout(10_000),
+  // LOGS is OWNER-gated, which is what the root bearer granted.
+  const resp = await callSelfApi({
+    runtime,
+    path: "/api/logs",
+    query,
+    isAuthorized: () => true,
+    timeoutMs: 10_000,
   });
-  if (!resp.ok) {
+  if (resp.status < 200 || resp.status >= 300) {
     return failure(
       `Failed to load logs: HTTP ${resp.status}`,
       "LOGS_SEARCH_FAILED",
     );
   }
-  const data = (await resp.json()) as LogsResponseShape;
+  const data = resp.body as LogsResponseShape;
   const entries =
     tagFilter.length > 1
       ? data.entries.filter((entry) =>
@@ -209,7 +214,11 @@ async function searchLogs(params: LogsParams): Promise<ActionResult> {
 }
 
 async function deleteLogs(): Promise<ActionResult> {
-  const resp = await fetch(`${getApiBase()}/api/logs`, {
+  const base = resolveSelfApiTcpBaseUrl(process.env);
+  if (base === null) {
+    return failure(SELF_API_UNREACHABLE_TEXT, "LOGS_DELETE_FAILED");
+  }
+  const resp = await fetch(`${base}/api/logs`, {
     method: "DELETE",
     headers: createSelfApiRequestHeaders(),
     signal: AbortSignal.timeout(10_000),
@@ -277,7 +286,7 @@ export const logsAction: Action = {
   descriptionCompressed: "search/delete in-mem agent logs owner-only",
   validate: async () => true,
   handler: async (
-    _runtime,
+    runtime,
     _message,
     _state,
     options,
@@ -310,7 +319,9 @@ export const logsAction: Action = {
     }
 
     try {
-      return op === "search" ? await searchLogs(params) : await deleteLogs();
+      return op === "search"
+        ? await searchLogs(runtime, params)
+        : await deleteLogs();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn(`[LOGS] ${op} failed: ${msg}`);

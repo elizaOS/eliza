@@ -57,11 +57,11 @@ export function modalityForModelType(
 
 /**
  * Slots whose primary input is binary media. Secret substitution skips them:
- * there is no text graph to substitute.
+ * there is no text graph to substitute. IMAGE is not here: its text prompt can
+ * carry a secret, and dispatch swaps that prompt string only.
  */
 export const SECRET_SWAP_SKIP_MODEL_TYPES: ReadonlySet<string> = new Set([
 	ModelType.TRANSCRIPTION,
-	ModelType.IMAGE,
 	ModelType.AUDIO,
 	ModelType.VIDEO,
 ]);

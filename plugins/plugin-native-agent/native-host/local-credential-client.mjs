@@ -1,9 +1,15 @@
 /** Private process-to-process client for LocalCredentialBroker; never expose to a renderer. */
+/**
+ * The broker could not be reached or gave an invalid answer. Its message is
+ * the store's safe `unavailableMessage`; `status` 503 lets a host route
+ * answer "unavailable" instead of a generic upstream failure.
+ */
 export class LocalCredentialBrokerError extends Error {
   constructor(message) {
     super(message);
     this.name = "LocalCredentialBrokerError";
     this.code = "CREDENTIAL_BROKER_UNAVAILABLE";
+    this.status = 503;
   }
 }
 
@@ -42,9 +48,10 @@ function createCredentialStore(
       throw new TypeError("Verified account snapshots must be strings or null");
     if (operation === "write" && typeof value !== "string")
       throw new TypeError("Credential value must be a string");
+    const removal =
+      taskKeys && (operation === "remove" || operation === "stranded-complete");
     if (
-      taskKeys &&
-      operation === "remove" &&
+      removal &&
       (typeof value !== "string" ||
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
           value,
@@ -81,12 +88,15 @@ function createCredentialStore(
           throw new Error("Invalid verified account acknowledgement");
         return body.exchanged;
       }
-      if (taskKeys && operation === "remove") {
+      if (removal) {
         if (Object.keys(body).length !== 1 || typeof body.removed !== "boolean")
           throw new Error("Invalid task key acknowledgement");
         return body.removed;
       }
-      if (operation === "read" || (taskKeys && operation === "create")) {
+      if (
+        operation === "read" ||
+        (taskKeys && ["create", "stranded-read"].includes(operation))
+      ) {
         if (
           Object.keys(body).length !== 1 ||
           !Object.hasOwn(body, "value") ||
@@ -94,7 +104,7 @@ function createCredentialStore(
         )
           throw new Error("Invalid broker read response");
         if (!taskKeys) return body.value;
-        if (body.value === null && operation === "read") return null;
+        if (body.value === null && operation !== "create") return null;
         const record = JSON.parse(body.value);
         if (
           !record ||
@@ -137,6 +147,11 @@ function createCredentialStore(
       read: () => request("read"),
       createForNewDatabase: () => request("create"),
       remove: (expectedKeyId) => request("remove", expectedKeyId),
+      // A slot kept apart by a refused adoption: read it to merge its rows,
+      // then complete, which erases it if it still holds that generation.
+      readStranded: () => request("stranded-read"),
+      completeStranded: (expectedKeyId) =>
+        request("stranded-complete", expectedKeyId),
     };
   return {
     read: () => request("read"),

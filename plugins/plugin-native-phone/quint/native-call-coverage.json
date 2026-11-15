@@ -1,0 +1,34 @@
+[
+  {
+    "id": "NativeCallRegistry",
+    "model": "plugins/plugin-native-phone/quint/NativeCallRegistry.qnt",
+    "sources": [
+      "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/TelecomCallService.java",
+      "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/TelecomCallActivity.java",
+      "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/TelecomCallConfiguration.java",
+      "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/TelecomCallPresentation.java",
+      "plugins/plugin-native-phone/android/src/test/java/ai/eliza/plugins/phone/TelecomCallPresentationTest.java",
+      "plugins/plugin-native-phone/android/src/test/java/ai/eliza/plugins/phone/TelecomCallToneTest.java",
+      "plugins/plugin-native-phone/android/build.gradle",
+      "plugins/plugin-native-phone/quint/check-native-call-registry.ts",
+      "plugins/plugin-native-phone/quint/native-call-conformance.json",
+      "packages/app/scripts/android-native-plugins-gradle/build.gradle",
+      "packages/app/scripts/android-native-plugins-gradle/settings.gradle"
+    ],
+    "invariants": [
+      "TypeOK",
+      "CallbacksMatchRegistry",
+      "NotificationsHaveCurrentOwner",
+      "DestroyedOwnerHasNoPublishedCalls"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One successful Android InCallService lifetime on the Main thread, two unique call ids and at most one posted callback per call. UUID collision, overlapping host service components and process restart are outside the finite domain. Each id is admitted at most once.",
+      "Native call state and details callbacks use the same registry-identity guard. The contact-name refresh of a call notification posts to Main behind the same guard (current owner and registered call id). The model groups their notification effect and retains an already posted callback after unregister or destroy. A disconnected call can remain registered without a notification until Android removes it.",
+      "Safety assumes native registration, notification operations and the lifecycle callback itself return normally. Android permission/channel/startActivity exceptions, notification delivery, physical calls, carrier/SIM state, VVM, foreground/lock-screen policy and user controls are separate qualification. This is a bounded projection, not a machine-checked refinement of Android.",
+      "Progress of a retired posted callback requires weak fairness for that callback dispatcher. Without that assumption a queued runnable can remain pending; an expected counterexample records the gap.",
+      "Mandatory tests execute the production service and actual Android Call asynchronous callback dispatcher under Robolectric API 35, with real Android notification shadows. They verify state and details callbacks after removal, queued work after destroy, preservation of another call and current-call publication. Existing presentation and keypad ownership tests also run. No device or carrier success is inferred.",
+      "The companion NativeCallContactLookup configuration bounds a single contact lookup and cached refresh. New publication requires the current grant, service and call; existing delivered notifications are not revoked by an unobserved permission change. Mandatory exact Android tests hold real provider queries across permission withdrawal, call removal and service destruction."
+    ]
+  }
+]

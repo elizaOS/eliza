@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "AccountDeletionPhase",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "sources": [
+    "packages/cloud/shared/src/lib/services/account-deletion-saga.ts",
+    "packages/cloud/shared/src/db/repositories/account-deletion-requests.ts"
+  ],
+  "bounds": "One provider phase, two workers, four lease generations, attempt budget 3, time 0..6."
+}

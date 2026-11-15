@@ -34,11 +34,11 @@ import {
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
   assertBrowserWorkspaceJsdomScriptNotRequested,
+  BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE,
+  browserWorkspaceGuardedDocumentFetch,
   createBrowserWorkspaceCommandTargetError,
   createBrowserWorkspaceJsdomScriptExecutionError,
   createBrowserWorkspaceNotFoundError,
-  DEFAULT_TIMEOUT_MS,
-  DEFAULT_WAIT_INTERVAL_MS,
   normalizeBrowserWorkspaceText,
   readBrowserWorkspaceElementText,
   resolveBrowserWorkspaceCommandElementRefs,
@@ -46,10 +46,7 @@ import {
   sleep,
   writeBrowserWorkspaceFile,
 } from "./browser-workspace-helpers.js";
-import {
-  applyBrowserWorkspaceDomSettings,
-  ensureBrowserWorkspaceDom,
-} from "./browser-workspace-jsdom.js";
+import { applyBrowserWorkspaceDomSettings } from "./browser-workspace-jsdom.js";
 import {
   fetchBrowserWorkspaceTrackedResponse,
   normalizeBrowserWorkspaceHeaders,
@@ -76,6 +73,7 @@ import {
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
+  BrowserWorkspaceRuntimeState,
   BrowserWorkspaceSettingsState,
   WebBrowserWorkspaceTabState,
 } from "./browser-workspace-types.js";
@@ -144,9 +142,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
   command: BrowserWorkspaceCommand,
 ): Promise<BrowserWorkspaceCommandResult | null> {
   if (command.subaction === "upload") {
-    throw new Error(
-      "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
-    );
+    throw new Error(BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE);
   }
   return withWebStateLock(async () => {
     if (
@@ -177,6 +173,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
     }
 
     const id = findWebBrowserWorkspaceTargetTabId(command);
+    command = resolveBrowserWorkspaceCommandElementRefs(command, "web", id);
     const tab = getWebBrowserWorkspaceTabState(id);
     const dom = await ensureLoadedWebBrowserWorkspaceTabDocument(tab);
     const runtime = getBrowserWorkspaceRuntimeState("web", id);
@@ -346,9 +343,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
         };
       }
       case "upload": {
-        throw new Error(
-          "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
-        );
+        throw new Error(BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE);
       }
       case "set": {
         const action = command.setAction ?? "viewport";
@@ -682,27 +677,34 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
               "Eliza browser workspace diff url requires secondaryUrl.",
             );
           }
-          const left = await fetchBrowserWorkspaceTrackedResponse(
-            runtime,
+          // The agent process fetches both pages, so each redirect hop gets
+          // the URL check and domain policy; hops still land in the network log.
+          const fetchHop = (url: string, init: RequestInit) =>
+            fetchBrowserWorkspaceTrackedResponse(
+              runtime,
+              url,
+              init,
+              "document",
+            );
+          const left = await browserWorkspaceGuardedDocumentFetch(
             leftUrl,
-            {},
-            "document",
+            command.subaction,
+            fetchHop,
           );
-          const right = await fetchBrowserWorkspaceTrackedResponse(
-            runtime,
+          const right = await browserWorkspaceGuardedDocumentFetch(
             rightUrl,
-            {},
-            "document",
+            command.subaction,
+            fetchHop,
           );
           const leftSnapshot = createBrowserWorkspaceSnapshotRecord(
             leftUrl,
-            left.url || leftUrl,
-            await left.text(),
+            left.url,
+            left.text,
           );
           const rightSnapshot = createBrowserWorkspaceSnapshotRecord(
             rightUrl,
-            right.url || rightUrl,
-            await right.text(),
+            right.url,
+            right.text,
           );
           return {
             mode: "web",
@@ -711,14 +713,12 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
           };
         }
         if (command.diffAction === "screenshot") {
-          const currentData =
-            runtime.lastScreenshotData ??
-            createBrowserWorkspaceSyntheticScreenshotData(
-              tab.title,
-              tab.url,
-              buildBrowserWorkspaceDocumentSnapshotText(document),
-              runtime.settings.viewport ?? undefined,
-            );
+          const currentData = createBrowserWorkspaceSyntheticScreenshotData(
+            tab.title,
+            tab.url,
+            buildBrowserWorkspaceDocumentSnapshotText(document),
+            runtime.settings.viewport ?? undefined,
+          );
           const baseline = command.baselinePath?.trim()
             ? await fsp.readFile(
                 resolveBrowserWorkspaceFilePath(command.baselinePath.trim()),
@@ -926,6 +926,45 @@ function placeCaretAtEndOnFocus(element: Element): void {
   }
 }
 
+/**
+ * fill and type: write the control the way a user would. The control takes
+ * focus and becomes the tab's last-interacted element, so a following press
+ * without a target lands on it. Disabled and read-only controls refuse input,
+ * and a select only accepts a value one of its options has.
+ */
+function writeWebBrowserWorkspaceControl(
+  runtime: BrowserWorkspaceRuntimeState,
+  element: Element,
+  subaction: "fill" | "type",
+  text: string,
+): { selector: string; value: string } {
+  const control = ensureBrowserWorkspaceFormControlElement(element, subaction);
+  if (control.matches(":disabled")) {
+    throw new Error(`Eliza browser workspace ${subaction} target is disabled.`);
+  }
+  if (control.tagName !== "SELECT" && (control as HTMLInputElement).readOnly) {
+    throw new Error(
+      `Eliza browser workspace ${subaction} target is read-only.`,
+    );
+  }
+  const nextValue =
+    subaction === "type" ? `${control.value ?? ""}${text}` : text;
+  if (typeof (control as HTMLElement).focus === "function") {
+    (control as HTMLElement).focus();
+  }
+  setBrowserWorkspaceControlValue(control, nextValue);
+  if (control.tagName === "SELECT" && control.value !== nextValue) {
+    throw new Error(
+      `Eliza browser workspace ${subaction} found no option with value "${nextValue}" in the select.`,
+    );
+  }
+  runtime.lastInteractedElement = new WeakRef(control);
+  return {
+    selector: buildBrowserWorkspaceElementSelector(control),
+    value: control.value,
+  };
+}
+
 export async function executeWebBrowserWorkspaceDomCommand(
   command: BrowserWorkspaceCommand,
 ): Promise<BrowserWorkspaceCommandResult> {
@@ -933,9 +972,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
     command.subaction === "upload" ||
     command.subaction === "realistic-upload"
   ) {
-    throw new Error(
-      "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
-    );
+    throw new Error(BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE);
   }
   return withWebStateLock(async () => {
     const id = findWebBrowserWorkspaceTargetTabId(command);
@@ -959,36 +996,30 @@ export async function executeWebBrowserWorkspaceDomCommand(
 
     switch (command.subaction) {
       case "inspect":
+      case "snapshot": {
         clearWebBrowserWorkspaceTabElementRefs(tab.id);
+        const inspected = collectBrowserWorkspaceInspectElements(document);
         return {
           mode: "web",
           subaction: command.subaction,
           elements: registerBrowserWorkspaceElementRefs(
             "web",
             tab.id,
-            collectBrowserWorkspaceInspectElements(document),
+            inspected.summaries,
+            { elements: inspected.elements, url: tab.url },
           ),
           value: {
+            ...(command.subaction === "snapshot"
+              ? {
+                  bodyText: buildBrowserWorkspaceDocumentSnapshotText(document),
+                }
+              : {}),
             title: tab.title,
             url: tab.url,
+            truncated: inspected.truncated,
           },
         };
-      case "snapshot":
-        clearWebBrowserWorkspaceTabElementRefs(tab.id);
-        return {
-          mode: "web",
-          subaction: command.subaction,
-          elements: registerBrowserWorkspaceElementRefs(
-            "web",
-            tab.id,
-            collectBrowserWorkspaceInspectElements(document),
-          ),
-          value: {
-            bodyText: buildBrowserWorkspaceDocumentSnapshotText(document),
-            title: tab.title,
-            url: tab.url,
-          },
-        };
+      }
       case "get": {
         if (command.getMode === "title") {
           return {
@@ -1119,21 +1150,18 @@ export async function executeWebBrowserWorkspaceDomCommand(
               )),
               subaction: command.subaction,
             };
-          case "fill": {
-            const control = ensureBrowserWorkspaceFormControlElement(
-              element,
-              "fill",
-            );
-            setBrowserWorkspaceControlValue(control, command.value ?? "");
+          case "fill":
+          case "type":
             return {
               mode: "web",
               subaction: command.subaction,
-              value: {
-                selector: buildBrowserWorkspaceElementSelector(control),
-                value: control.value,
-              },
+              value: writeWebBrowserWorkspaceControl(
+                runtime,
+                element,
+                command.action,
+                command.value ?? "",
+              ),
             };
-          }
           case "focus":
             if (typeof (element as HTMLElement).focus === "function") {
               (element as HTMLElement).focus();
@@ -1157,24 +1185,6 @@ export async function executeWebBrowserWorkspaceDomCommand(
                 selector: buildBrowserWorkspaceElementSelector(element),
               },
             };
-          case "type": {
-            const control = ensureBrowserWorkspaceFormControlElement(
-              element,
-              "type",
-            );
-            setBrowserWorkspaceControlValue(
-              control,
-              `${control.value ?? ""}${command.value ?? ""}`,
-            );
-            return {
-              mode: "web",
-              subaction: command.subaction,
-              value: {
-                selector: buildBrowserWorkspaceElementSelector(control),
-                value: control.value,
-              },
-            };
-          }
           case "uncheck": {
             const input = ensureBrowserWorkspaceCheckboxElement(
               element,
@@ -1228,22 +1238,15 @@ export async function executeWebBrowserWorkspaceDomCommand(
         if (!element) {
           throw new Error("Target element was not found.");
         }
-        const control = ensureBrowserWorkspaceFormControlElement(
-          element,
-          command.subaction,
-        );
-        const nextValue =
-          command.subaction === "type"
-            ? `${control.value ?? ""}${command.value ?? ""}`
-            : (command.value ?? "");
-        setBrowserWorkspaceControlValue(control, nextValue);
         return {
           mode: "web",
           subaction: command.subaction,
-          value: {
-            selector: buildBrowserWorkspaceElementSelector(control),
-            value: nextValue,
-          },
+          value: writeWebBrowserWorkspaceControl(
+            runtime,
+            element,
+            command.subaction,
+            command.value ?? "",
+          ),
         };
       }
       case "focus": {
@@ -1358,7 +1361,17 @@ export async function executeWebBrowserWorkspaceDomCommand(
       }
       case "press": {
         const key = command.key?.trim() || "Enter";
-        const element = resolveTarget();
+        // Without a target the key goes where the last fill or type left the
+        // focus, as it would for a user.
+        const lastInteracted = runtime.lastInteractedElement?.deref();
+        const active = document.activeElement;
+        const element =
+          resolveTarget() ??
+          (lastInteracted?.isConnected &&
+          lastInteracted.ownerDocument === document
+            ? lastInteracted
+            : null) ??
+          (active && active !== document.body ? active : null);
         const form = findClosestBrowserWorkspaceForm(element);
 
         if (key === "Enter" && element?.tagName === "TEXTAREA") {
@@ -1450,7 +1463,15 @@ export async function executeWebBrowserWorkspaceDomCommand(
           };
         }
 
-        return { mode: "web", subaction: command.subaction, value: { key } };
+        return {
+          mode: "web",
+          subaction: command.subaction,
+          value: {
+            key,
+            effect: "none",
+            message: "The key had no default action here.",
+          },
+        };
       }
       case "scroll": {
         return {
@@ -1554,77 +1575,66 @@ export async function executeWebBrowserWorkspaceDomCommand(
             value: { waitedMs },
           };
         }
-        const timeoutMs =
-          typeof command.timeoutMs === "number" &&
-          Number.isFinite(command.timeoutMs)
-            ? Math.max(100, command.timeoutMs)
-            : DEFAULT_TIMEOUT_MS;
-        const deadline = Date.now() + timeoutMs;
+        // JSDOM runs no page scripts and this command holds the workspace
+        // lock, so nothing can change the page while waiting: check once
+        // against the selected frame's document and answer at once.
+        const matchesSelector = command.selector?.trim()
+          ? (() => {
+              const found = resolveBrowserWorkspaceElement(
+                document,
+                command.selector,
+                undefined,
+                command,
+              );
+              if (command.state === "hidden") {
+                return !found || !isBrowserWorkspaceElementVisible(found);
+              }
+              return found ? isBrowserWorkspaceElementVisible(found) : false;
+            })()
+          : false;
+        const matchesFind = command.findBy
+          ? (() => {
+              const found = resolveBrowserWorkspaceFindElement(
+                document,
+                command,
+              );
+              return command.state === "hidden" ? !found : Boolean(found);
+            })()
+          : false;
+        const matchesText = command.text?.trim()
+          ? normalizeBrowserWorkspaceText(document.body?.textContent).includes(
+              command.text.trim(),
+            )
+          : false;
+        const matchesUrl = command.url?.trim()
+          ? tab.url.includes(command.url.trim())
+          : false;
 
-        while (Date.now() <= deadline) {
-          await ensureLoadedWebBrowserWorkspaceTabDocument(tab);
-          const currentDom = ensureBrowserWorkspaceDom(tab);
-          const currentDocument = currentDom.window.document;
-
-          const matchesSelector = command.selector?.trim()
-            ? (() => {
-                const found = resolveBrowserWorkspaceElement(
-                  currentDocument,
-                  command.selector,
-                  undefined,
-                  command,
-                );
-                if (command.state === "hidden") {
-                  return !found || !isBrowserWorkspaceElementVisible(found);
-                }
-                return found ? isBrowserWorkspaceElementVisible(found) : false;
-              })()
-            : false;
-          const matchesFind = command.findBy
-            ? (() => {
-                const found = resolveBrowserWorkspaceFindElement(
-                  currentDocument,
-                  command,
-                );
-                return command.state === "hidden" ? !found : Boolean(found);
-              })()
-            : false;
-          const matchesText = command.text?.trim()
-            ? normalizeBrowserWorkspaceText(
-                currentDocument.body?.textContent,
-              ).includes(command.text.trim())
-            : false;
-          const matchesUrl = command.url?.trim()
-            ? tab.url.includes(command.url.trim())
-            : false;
-
-          if (
-            matchesSelector ||
-            matchesFind ||
-            matchesText ||
-            matchesUrl ||
-            (!command.selector &&
-              !command.findBy &&
-              !command.text &&
-              !command.url)
-          ) {
-            return {
-              mode: "web",
-              subaction: command.subaction,
-              value: {
-                findBy: command.findBy ?? null,
-                selector: command.selector ?? null,
-                state: command.state ?? null,
-                text: command.text ?? null,
-                url: tab.url,
-              },
-            };
-          }
-
-          await sleep(DEFAULT_WAIT_INTERVAL_MS);
+        if (
+          matchesSelector ||
+          matchesFind ||
+          matchesText ||
+          matchesUrl ||
+          (!command.selector &&
+            !command.findBy &&
+            !command.text &&
+            !command.url)
+        ) {
+          return {
+            mode: "web",
+            subaction: command.subaction,
+            value: {
+              findBy: command.findBy ?? null,
+              selector: command.selector ?? null,
+              state: command.state ?? null,
+              text: command.text ?? null,
+              url: tab.url,
+            },
+          };
         }
-
-        throw new Error("Timed out waiting for browser workspace condition.");
+        throw new Error(
+          "Wait condition not met; the web backend does not run page scripts, so the page cannot change while waiting.",
+        );
       }
       default:
         throw new Error(

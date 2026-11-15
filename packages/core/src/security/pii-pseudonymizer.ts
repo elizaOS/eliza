@@ -8,6 +8,7 @@ import { isRuntimeAbortSignal } from "./runtime-abort-signal";
 
 import { ElizaError } from "../errors";
 import { BufferUtils } from "../utils/buffer";
+import { hashStringToUint32 } from "../utils/deterministic";
 import type { EntitySpan, PiiEntityRecognizer } from "./entity-recognizer";
 
 /**
@@ -297,17 +298,7 @@ const STREET_TYPES: readonly string[] = [
 	"Way",
 ];
 
-// Deterministic hashing (FNV-1a 32-bit) — reproducible surrogate selection.
-
-function fnv1a(input: string): number {
-	let hash = 0x811c9dc5;
-	for (let i = 0; i < input.length; i += 1) {
-		hash ^= input.charCodeAt(i);
-		// hash *= 16777619, kept in 32-bit unsigned range.
-		hash = Math.imul(hash, 0x01000193) >>> 0;
-	}
-	return hash >>> 0;
-}
+// Surrogate selection is seeded by FNV-1a 32-bit (`hashStringToUint32`).
 
 function pick<T>(pool: readonly T[], seed: number): T {
 	return pool[seed % pool.length] as T;
@@ -317,8 +308,7 @@ function generateSessionSalt(): string {
 	// Fail closed through BufferUtils.randomBytes (the W1-066 policy): the salt
 	// seeds surrogate minting, so a predictable Math.random() fallback would
 	// make session pseudonyms reproducible by an observer.
-	const bytes = BufferUtils.randomBytes(16);
-	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+	return BufferUtils.toHex(BufferUtils.randomBytes(16));
 }
 
 type PiiPseudonymWalkContext = {
@@ -608,7 +598,7 @@ export function mintSurrogate(
 	value: string,
 	attempt: number,
 ): string {
-	const seed = fnv1a(`${salt}\0${kind}\0${value}\0${attempt}`);
+	const seed = hashStringToUint32(`${salt}\0${kind}\0${value}\0${attempt}`);
 	switch (kind) {
 		case "person": {
 			const first = pick(FIRST_NAMES, seed);
@@ -670,6 +660,11 @@ export class PseudonymSession {
 	private readonly surrogateToEntry = new Map<string, PseudonymEntry>();
 	/** Lowercased surrogates in use, for O(1) collision checks when minting. */
 	private readonly usedSurrogatesLower = new Set<string>();
+	/**
+	 * Lowercased surrogates replaced by {@link remintEntry}. Text from an earlier
+	 * call (a model reply echoed into the next prompt) can still carry them.
+	 */
+	private readonly retiredSurrogatesLower = new Set<string>();
 	/**
 	 * Every swappable real value ever learned, lowercased. The value namespace and
 	 * the surrogate namespace are kept mutually exclusive: a surrogate is never
@@ -737,8 +732,9 @@ export class PseudonymSession {
 	/**
 	 * Run the configured recognizer over `text` and learn every accepted span.
 	 * This is the single async step; call it once per model call on the assembled
-	 * prompt text before the (synchronous) substitution passes. Idempotent: text
-	 * already learned re-uses existing mappings.
+	 * prompt text before the (synchronous) substitution passes. Text already
+	 * learned re-uses existing mappings, and spans that are this session's own
+	 * surrogates are skipped, so learning substituted text adds nothing.
 	 */
 	async learn(text: string): Promise<void> {
 		if (!this.recognizer || !text) return;
@@ -759,6 +755,7 @@ export class PseudonymSession {
 		for (const span of spans) {
 			const value = span.value.trim();
 			if (!this.isSwappable(value, span.kind)) continue;
+			if (this.isOnlySurrogate(value)) continue;
 			this.knownValuesLower.add(value.toLowerCase());
 			if (!this.valueToEntry.has(value))
 				incoming.push({ value, kind: span.kind });
@@ -772,6 +769,34 @@ export class PseudonymSession {
 		}
 		// 3. Mint entries for the new values.
 		for (const { value, kind } of incoming) this.entryForValue(value, kind);
+	}
+
+	/**
+	 * True when `value` is a current or retired surrogate, alone or with only
+	 * whitespace or punctuation around it. Learning one would mint a surrogate
+	 * for a surrogate, and restore would then return fictional text. A span with
+	 * other text around a surrogate is still learned so that text stays masked.
+	 */
+	private isOnlySurrogate(value: string): boolean {
+		const lower = value.toLowerCase();
+		if (
+			this.usedSurrogatesLower.has(lower) ||
+			this.retiredSurrogatesLower.has(lower)
+		) {
+			return true;
+		}
+		let remainder = lower;
+		for (const surrogates of [
+			this.usedSurrogatesLower,
+			this.retiredSurrogatesLower,
+		]) {
+			for (const surrogate of surrogates) {
+				if (remainder.includes(surrogate)) {
+					remainder = remainder.split(surrogate).join(" ");
+				}
+			}
+		}
+		return remainder !== lower && /^[\s\p{P}]*$/u.test(remainder);
 	}
 
 	/** True when a value/kind pair is eligible for swapping. */
@@ -821,8 +846,27 @@ export class PseudonymSession {
 			...entries.map((e) => ({ from: e.value, to: e.surrogate })),
 			...entries.map((e) => ({ from: e.surrogate, to: e.surrogate })),
 		]);
+		const restorePairs = entries.map((e) => ({
+			from: e.surrogate,
+			to: e.value,
+		}));
+		// A learned value can contain an earlier surrogate (a model reply echoed
+		// into a later prompt, e.g. "<surrogate> Apt 4"), and that value's own
+		// surrogate can be echoed again. Restore inner surrogates to a fixed point,
+		// so restore always yields the user's real text.
+		const inner = compileReplacer(restorePairs);
+		const resolve = (text: string): string => {
+			if (!inner) return text;
+			for (let depth = 0; depth < restorePairs.length; depth += 1) {
+				inner.regex.lastIndex = 0;
+				const next = text.replace(inner.regex, (m) => inner.map.get(m) ?? m);
+				if (next === text) break;
+				text = next;
+			}
+			return text;
+		};
 		this.restoreReplacer = compileReplacer(
-			entries.map((e) => ({ from: e.surrogate, to: e.value })),
+			restorePairs.map(({ from, to }) => ({ from, to: resolve(to) })),
 		);
 		this.replacersDirty = false;
 	}
@@ -867,6 +911,7 @@ export class PseudonymSession {
 		if (fresh.toLowerCase() === entry.surrogate.toLowerCase()) return;
 		this.surrogateToEntry.delete(entry.surrogate);
 		this.usedSurrogatesLower.delete(entry.surrogate.toLowerCase());
+		this.retiredSurrogatesLower.add(entry.surrogate.toLowerCase());
 		const next: PseudonymEntry = {
 			value: entry.value,
 			surrogate: fresh,
@@ -900,6 +945,6 @@ export class PseudonymSession {
 		}
 		// Exhausted the deterministic space (astronomically unlikely): fall back to
 		// a salted, obviously-unique token rather than risk an ambiguous restore.
-		return `${mintSurrogate(this.salt, kind, value, 0)} ${fnv1a(`${this.salt}${value}${this.size}`).toString(36)}`;
+		return `${mintSurrogate(this.salt, kind, value, 0)} ${hashStringToUint32(`${this.salt}${value}${this.size}`).toString(36)}`;
 	}
 }

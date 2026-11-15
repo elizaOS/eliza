@@ -1,0 +1,39 @@
+{
+  "sources": [
+    "packages/os/scripts/android/system-updater-staging.mjs",
+    "packages/os/scripts/android/pixel10a-product.ts"
+  ],
+  "bounds": "One product staging transaction. Actual files/copy/hash and refusal preservation run in the existing Pixel product tests. This model does not prove Android installation or activation.",
+  "cases": [
+    {
+      "name": "inactive-product-source",
+      "main": "SystemUpdateStaging",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 12,
+      "samples": 100
+    },
+    {
+      "name": "stable-selected-source",
+      "main": "SystemUpdateStaging",
+      "init": "selectedInit",
+      "step": "stableStep",
+      "invariants": ["safety"],
+      "temporal": ["SelectedSourcePublishes"],
+      "temporalChecks": [
+        {
+          "property": "SelectedSourcePublishes",
+          "expect": "holds",
+          "assumptions": [
+            "The product explicitly includes the client, source stays valid and disabled, and no existing output collides.",
+            "No I/O failure interrupts publication, and admission, copying and publishing are weakly fair."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 100
+    }
+  ]
+}

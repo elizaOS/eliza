@@ -234,10 +234,11 @@ export function completeReminderOccurrence(
       skippedDates: next?.skippedDates ?? 0,
     },
   ].slice(-REMINDER_HISTORY_LIMIT);
-  delete row.snoozedAt;
-  delete row.postedAt;
   delete row.legacyAlarm;
   if (next && row.recurrence) {
+    // One-off Done keeps snoozedAt/postedAt, as ReminderStore.decide does.
+    delete row.snoozedAt;
+    delete row.postedAt;
     row.recurrence = { ...row.recurrence, date: next.date };
     row.dueAt = next.dueAt;
     row.at = next.at;

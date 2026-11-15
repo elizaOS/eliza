@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "packages/auth/src/auth/account-storage.ts",
+    "packages/auth/src/auth/account-storage-subprocess.test.ts",
+    "packages/auth/test/fixtures/storage-ownership-probe.ts"
+  ],
+  "conformance": "packages/auth/quint/check-account-storage.mjs",
+  "bounds": {
+    "domain": "One reset with two initial credential artifacts, one old-policy write, one fresh-policy write, one reset-process crash and one optional recovery-process crash. File publication and generation/intent operations are atomic effects. Partial deletion and rollback restore individual artifacts.",
+    "assumptions": "AccountStorageLock supplies mutual exclusion. The durable intent precedes deletion; filesystem atomic rename and fsync durability are trusted. Recovery gets successful filesystem effects under fairness. Host callback runs once in the original process and its arbitrary side effects are not replayable. Malformed journal, generation exhaustion, symlink rejection and persistent I/O errors are covered by real boundary tests rather than this finite protocol.",
+    "progress": "Weak fairness of reset and recovery work and pending writer admission. A reset that crashes reports an unknown outcome, while recovery clears its credential intent and fences old policies. Full application configuration rollback and power-loss hardware behavior are outside this model."
+  },
+  "cases": [
+    {
+      "name": "intent-generation-recovery",
+      "main": "AccountStorageReset",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "RecordsBelongToCurrentGeneration",
+        "OldPolicyCannotWriteNewGeneration",
+        "SuccessRequiresFence",
+        "RecoveryPreservesUnknownOutcome",
+        "OneShotHostCallback",
+        "CompleteRollbackClearsIntent"
+      ],
+      "temporal": ["CallsSettle"],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in AccountStorageReset: CallsSettle = FairWork.implies(eventually(and { s.phase.in(Set(\"done\", \"failed\", \"unknown\")), not(s.intent), s.oldWriter != \"pending\", s.freshWriter != \"pending\", }))",
+            "Model fairness predicate FairWork = and { beginReset.weakFair(s), resetWork.weakFair(s), recoveryWork.weakFair(s), oldWrite.weakFair(s), freshPolicy.weakFair(s), freshWrite.weakFair(s), }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

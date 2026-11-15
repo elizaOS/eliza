@@ -18,6 +18,11 @@ import {
   withRequiredCompletionSourceIdentity,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import {
+  type JsonSchema,
+  validateSchema,
+} from "../../../../../packages/core/src/actions/validate-tool-args.ts";
+import { requiredFixtureValue } from "../../../test/required-fixture-value.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../runtime/builtin-field-evaluators.ts";
 import {
   createContextReadTool,
@@ -26,6 +31,11 @@ import {
   withAvailableContextRequests,
 } from "./context-discovery.ts";
 import { withReviewedHistorySelection } from "./history-discovery.ts";
+import {
+  assertNativeContextReadToolBudget,
+  decodeNativeContextReads,
+  type NativeContextReadContract,
+} from "./native-context-read.ts";
 import { runV5MessageRuntimeStage1 } from "./pipeline.ts";
 import { createSourceSelectionBinding } from "./source-selection-binding.ts";
 
@@ -575,7 +585,7 @@ describe("invalid context read recovery", () => {
       const directory = await mkdtemp(
         join(tmpdir(), "stage1-invalid-read-recording-"),
       );
-      vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "1");
+      vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "1");
       vi.stubEnv("ELIZA_TRAJECTORY_DIR", directory);
       vi.stubEnv("ELIZA_AWAIT_FACTS_STAGE", "true");
       const rejected = {
@@ -654,7 +664,7 @@ describe("invalid context read recovery", () => {
       const directory = await mkdtemp(
         join(tmpdir(), "stage1-failed-recording-"),
       );
-      vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "1");
+      vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "1");
       vi.stubEnv("ELIZA_TRAJECTORY_DIR", directory);
       vi.stubEnv("ELIZA_AWAIT_FACTS_STAGE", "true");
       const f = fixture([]);
@@ -739,4 +749,493 @@ describe("invalid context read recovery", () => {
       }
     },
   );
+});
+
+describe("typed native context read contract", () => {
+  const baseSchema = {
+    type: "object",
+    properties: {
+      contextRequests: { type: "array", items: { type: "string" } },
+    },
+    required: ["contextRequests"],
+  };
+  function bound() {
+    let current = true;
+    const contract: NativeContextReadContract = {
+      providers: new Set(["VISIBLE", "h3"]),
+      history: {
+        sourceSetId: "a".repeat(64),
+        sources: new Map([
+          [1, "history:h1"],
+          [3, "history:h3"],
+          [551, "history:h551"],
+        ]),
+        all: "history:all",
+        assertCurrent() {
+          if (!current) throw new Error("stale binding");
+        },
+        search(scope, query) {
+          return (
+            (scope === "all"
+              ? "history:search:"
+              : scope === "user"
+                ? "history:search-user:"
+                : "history:search-assistant:") + query
+          );
+        },
+      },
+    };
+    return {
+      contract,
+      stale() {
+        current = false;
+      },
+    };
+  }
+  it("keeps constructor, native schema and existing read language coherent without a broad string branch", () => {
+    const { contract } = bound();
+    const tool = requiredFixtureValue(
+      createContextReadTool(baseSchema, true, contract),
+    );
+    expect(tool.name).toBe("READ_CONTEXT");
+    expect(tool.parameters).toHaveProperty("properties.reads");
+    expect(tool.parameters).not.toHaveProperty("properties.contextRequests");
+    const query = " \n café:会議\t ";
+    const reads = [
+      { kind: "provider", references: ["VISIBLE", "h3"] },
+      {
+        kind: "history-source",
+        sourceSetId: requiredFixtureValue(contract.history).sourceSetId,
+        sourceOrdinals: [551, 3],
+      },
+      {
+        kind: "history-search",
+        sourceSetId: requiredFixtureValue(contract.history).sourceSetId,
+        speaker: "assistant",
+        query,
+      },
+    ];
+    const errors: string[] = [];
+    validateSchema(
+      tool.parameters as JsonSchema,
+      { reads, acknowledgment: "" },
+      "",
+      errors,
+    );
+    expect(errors).toEqual([]);
+    expect(decodeNativeContextReads(reads, contract)).toEqual([
+      "VISIBLE",
+      "h3",
+      "history:h551",
+      "history:h3",
+      "history:search-assistant:" + query,
+    ]);
+    assertNativeContextReadToolBudget([tool]);
+    const holeErrors: string[] = [];
+    validateSchema(
+      tool.parameters as JsonSchema,
+      {
+        reads: [
+          {
+            kind: "history-source",
+            sourceSetId: requiredFixtureValue(contract.history).sourceSetId,
+            sourceOrdinals: [2],
+          },
+        ],
+        acknowledgment: "",
+      },
+      "",
+      holeErrors,
+    );
+    expect(holeErrors.length).toBeGreaterThan(0);
+  });
+  it.each(
+    [
+      [{ kind: "provider", references: ["calendar"] }],
+      [{ kind: "provider", references: [] }],
+      [{ kind: "history-source", sourceSetId: "wrong", sourceOrdinals: [1] }],
+      [
+        {
+          kind: "history-source",
+          sourceSetId: "a".repeat(64),
+          sourceOrdinals: [2],
+        },
+      ],
+      [
+        {
+          kind: "history-source",
+          sourceSetId: "a".repeat(64),
+          sourceOrdinals: ["3"],
+        },
+      ],
+      [
+        {
+          kind: "history-source",
+          sourceSetId: "a".repeat(64),
+          sourceOrdinals: [0, 1.5, Number.MAX_SAFE_INTEGER + 1],
+        },
+      ],
+      [
+        {
+          kind: "history-search",
+          sourceSetId: "a".repeat(64),
+          speaker: "all",
+          query: " \n\t",
+        },
+      ],
+      [
+        {
+          kind: "history-all",
+          sourceSetId: "a".repeat(64),
+          extra: "not admitted",
+        },
+      ],
+    ].map((reads) => ({ reads })),
+  )(
+    "rejects malformed, unoffered or stale selectors before any field effects: %j",
+    ({ reads }) => {
+      const { contract } = bound();
+      expect(() => decodeNativeContextReads(reads, contract)).toThrowError(
+        expect.objectContaining({ code: "CONTEXT_DISCOVERY_INVALID_READ" }),
+      );
+    },
+  );
+  it.each([
+    { type: "array", items: { type: "string", enum: ["VISIBLE"] } },
+    { type: "array", items: { type: "string", pattern: "^VISIBLE$" } },
+    { type: "array", items: { type: "string" }, maxItems: 1 },
+    { type: "array", items: { type: "string" }, minItems: 1 },
+    { type: "array", items: { type: "string" }, uniqueItems: true },
+  ])(
+    "retains custom string-list constraints instead of silently replacing them: %j",
+    (requests) => {
+      const schema = {
+        ...baseSchema,
+        properties: { contextRequests: requests },
+      };
+      const legacy = createContextReadTool(schema);
+      expect(
+        requiredFixtureValue(
+          requiredFixtureValue(requiredFixtureValue(legacy).parameters)
+            .properties,
+        ).contextRequests,
+      ).toEqual(requests);
+      expect(
+        createContextReadTool(schema, false, bound().contract),
+      ).toBeUndefined();
+    },
+  );
+  it("uses only the existing single correction budget for repeated invalid typed reads", async () => {
+    const invalid = () => ({
+      text: "",
+      toolCalls: [
+        {
+          name: "READ_CONTEXT",
+          arguments: {
+            reads: [{ kind: "provider", references: ["calendar"] }],
+            acknowledgment: "",
+          },
+        },
+      ],
+    });
+    const f = fixture([invalid(), invalid()]);
+    await expect(
+      runV5MessageRuntimeStage1({
+        runtime: f.runtime,
+        state: f.state,
+        message,
+        responseId: "00000000-0000-4000-8000-000000000005" as UUID,
+        stage1DecisionOnly: true,
+      }),
+    ).rejects.toMatchObject({ code: "CONTEXT_DISCOVERY_INVALID_READ" });
+    expect(f.useModel).toHaveBeenCalledTimes(2);
+    expect(f.dispatch).not.toHaveBeenCalled();
+    expect(f.composeState).not.toHaveBeenCalled();
+    expect(f.action).not.toHaveBeenCalled();
+  });
+  it("keeps legacy input decoding behind the same exact offered-reference validator", () => {
+    const contract = bound().contract;
+    const legacy = (contextRequests: string[]) => ({
+      text: "",
+      toolCalls: [{ name: "READ_CONTEXT", arguments: { contextRequests } }],
+    });
+    expect(
+      readContextRequests(
+        requiredFixtureValue(
+          extractContextRead(legacy(["VISIBLE"]), true, contract),
+        ),
+        contract.providers,
+      ),
+    ).toEqual(["VISIBLE"]);
+    for (const value of ["calendar", "history:3", "3"]) {
+      expect(() =>
+        readContextRequests(
+          requiredFixtureValue(
+            extractContextRead(legacy([value]), true, contract),
+          ),
+          contract.providers,
+        ),
+      ).toThrowError(
+        expect.objectContaining({ code: "CONTEXT_DISCOVERY_INVALID_REQUEST" }),
+      );
+    }
+  });
+  it("retains source currentness and refuses mixed old/new control fields", () => {
+    const f = bound();
+    f.stale();
+    expect(() =>
+      decodeNativeContextReads(
+        [
+          {
+            kind: "history-all",
+            sourceSetId: requiredFixtureValue(f.contract.history).sourceSetId,
+          },
+        ],
+        f.contract,
+      ),
+    ).toThrow("stale binding");
+    expect(() =>
+      extractContextRead(
+        {
+          text: "",
+          toolCalls: [
+            {
+              name: "READ_CONTEXT",
+              arguments: {
+                reads: [{ kind: "provider", references: ["VISIBLE"] }],
+                contextRequests: ["VISIBLE"],
+              },
+            },
+          ],
+        },
+        true,
+        bound().contract,
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "CONTEXT_DISCOVERY_INVALID_READ" }),
+    );
+    expect(
+      createContextReadTool(baseSchema, false, { providers: new Set() }),
+    ).toBeUndefined();
+  });
+  it("rejects unsupported complete schemas rather than dropping provider references", () => {
+    const providers = new Set(
+      Array.from({ length: 501 }, (_, n) => `REF_${n}`),
+    );
+    const tool = requiredFixtureValue(
+      createContextReadTool(baseSchema, false, { providers }),
+    );
+    expect(() => assertNativeContextReadToolBudget([tool])).toThrowError(
+      expect.objectContaining({ code: "CONTEXT_DISCOVERY_SCHEMA_UNSUPPORTED" }),
+    );
+    expect(providers.size).toBe(501);
+  });
+  it("uses the same two model rounds and existing provider read barrier for a valid typed read", async () => {
+    const f = fixture([
+      {
+        text: "",
+        toolCalls: [
+          {
+            name: "READ_CONTEXT",
+            arguments: {
+              reads: [{ kind: "provider", references: ["CHOICE"] }],
+              acknowledgment: "",
+            },
+          },
+        ],
+      },
+      decision,
+    ]);
+    const result = await runV5MessageRuntimeStage1({
+      runtime: f.runtime,
+      state: f.state,
+      message,
+      responseId: "00000000-0000-4000-8000-000000000005" as UUID,
+      stage1DecisionOnly: true,
+    });
+    expect(result.kind).toBe("decision");
+    expect(f.useModel).toHaveBeenCalledTimes(2);
+    expect(f.composeState).toHaveBeenCalledTimes(1);
+    expect(f.action).not.toHaveBeenCalled();
+    const first = f.useModel.mock.calls[0] as unknown as [
+      unknown,
+      { tools: Array<{ name: string; parameters: unknown }> },
+    ];
+    expect(
+      requiredFixtureValue(
+        first[1].tools.find((t) => t.name === "READ_CONTEXT"),
+      ).parameters,
+    ).toHaveProperty("properties.reads");
+  });
+});
+
+describe("builtin request-local completion ordinals", () => {
+  function selectionFixture() {
+    const context = {
+      id: "turn",
+      metadata: { roomId: "room", messageId: "turn" },
+      events: [1, 2, 3].map((i) => ({
+        id: `prior-${i}`,
+        type: "segment" as const,
+        source: "prior-dialogue",
+        segment: {
+          id: `prior-${i}`,
+          label: "prior_message:user",
+          content: `Original ${i}.`,
+          stable: false,
+        },
+      })),
+    };
+    const schema = {
+      type: "object" as const,
+      properties: { completionContext: COMPLETION_CONTEXT_SCHEMA },
+    };
+    const bound = withRequiredCompletionSourceIdentity(schema, context);
+    const completion = requiredFixtureValue(
+      requiredFixtureValue(bound.properties).completionContext,
+    );
+    const original = requiredFixtureValue(
+      requiredFixtureValue(completion.properties).constraintSourceIds,
+    );
+    const sparse = {
+      ...bound,
+      properties: {
+        ...bound.properties,
+        completionContext: {
+          ...completion,
+          properties: {
+            ...completion.properties,
+            constraintSourceIds: {
+              ...original,
+              items: { type: "string" as const, enum: ["h1", "h3"] },
+            },
+          },
+        },
+      },
+    };
+    const assertCurrent = vi.fn();
+    const binding = requiredFixtureValue(
+      createSourceSelectionBinding(sparse, context, {
+        sourceOrdinals: true,
+        assertCurrent,
+      }),
+    );
+    const selection = {
+      mode: "relevant_prior_dialogue",
+      sourceSetId: "current_request",
+      complete: true,
+      relevantSourceIds: [1, 2, 3],
+      constraintSourceIds: [3],
+      referentSourceIds: [],
+      pendingIntentSourceIds: [],
+    };
+    const response = (value: unknown) => ({
+      text: "",
+      toolCalls: [
+        { name: "HANDLE_RESPONSE", arguments: { completionContext: value } },
+      ],
+    });
+    return { context, sparse, binding, assertCurrent, selection, response };
+  }
+  it("decodes only exact per-field ordinals to canonical strings and preserves sparse repair subsets", () => {
+    const f = selectionFixture();
+    const resolved = f.binding.resolve(f.response(f.selection)) as {
+      toolCalls: Array<{ arguments: { completionContext: unknown } }>;
+    };
+    expect(
+      requiredFixtureValue(resolved.toolCalls[0]).arguments.completionContext,
+    ).toEqual({
+      ...f.selection,
+      sourceSetId: completionContextSources(f.context).sourceSetId,
+      relevantSourceIds: ["h1", "h2", "h3"],
+      constraintSourceIds: ["h3"],
+    });
+    expect(f.assertCurrent).toHaveBeenCalledTimes(1);
+    for (const sourceSetId of [
+      "wrong",
+      completionContextSources(f.context).sourceSetId,
+    ]) {
+      expect(() =>
+        f.binding.resolve(f.response({ ...f.selection, sourceSetId })),
+      ).toThrowError(
+        expect.objectContaining({ code: "COMPLETION_CONTEXT_INVALID_ORDINAL" }),
+      );
+    }
+    for (const value of [
+      [2],
+      ["3"],
+      [0],
+      [1.5],
+      [Number.MAX_SAFE_INTEGER + 1],
+      [1, "3"],
+      [3, 3],
+    ]) {
+      expect(() =>
+        f.binding.resolve(
+          f.response({ ...f.selection, constraintSourceIds: value }),
+        ),
+      ).toThrowError(
+        expect.objectContaining({ code: "COMPLETION_CONTEXT_INVALID_ORDINAL" }),
+      );
+    }
+  });
+  it("keeps default/custom constraints unchanged and checks freshness before resolving", () => {
+    const f = selectionFixture();
+    const legacy = requiredFixtureValue(
+      createSourceSelectionBinding(f.sparse, f.context),
+    );
+    expect(
+      requiredFixtureValue(
+        requiredFixtureValue(
+          requiredFixtureValue(
+            requiredFixtureValue(legacy.parameters.properties)
+              .completionContext,
+          ).properties,
+        ).constraintSourceIds,
+      ).items,
+    ).toMatchObject({ type: "string", enum: ["h1", "h3"] });
+    const complete = requiredFixtureValue(
+      requiredFixtureValue(f.sparse.properties).completionContext,
+    );
+    const custom = {
+      ...f.sparse,
+      properties: {
+        ...f.sparse.properties,
+        completionContext: {
+          ...complete,
+          properties: {
+            ...complete.properties,
+            relevantSourceIds: {
+              ...requiredFixtureValue(complete.properties).relevantSourceIds,
+              minItems: 1,
+            },
+          },
+        },
+      },
+    };
+    const fallback = requiredFixtureValue(
+      createSourceSelectionBinding(custom, f.context, {
+        sourceOrdinals: true,
+        assertCurrent() {},
+      }),
+    );
+    expect(
+      requiredFixtureValue(
+        requiredFixtureValue(
+          requiredFixtureValue(fallback.parameters.properties)
+            .completionContext,
+        ).properties,
+      ).relevantSourceIds,
+    ).toMatchObject({ minItems: 1, items: { type: "string" } });
+    f.assertCurrent.mockImplementation(() => {
+      throw new Error("revoked");
+    });
+    expect(() => f.binding.resolve(f.response(f.selection))).toThrow("revoked");
+    f.assertCurrent.mockReset();
+    expect(() =>
+      f.binding.resolve(f.response({ ...f.selection, unexpected: true })),
+    ).toThrowError(
+      expect.objectContaining({ code: "COMPLETION_CONTEXT_INVALID_ORDINAL" }),
+    );
+  });
 });

@@ -958,112 +958,126 @@ def _run_command_with_deadlines(
             text=True,
             start_new_session=os.name == "posix",
         )
-        signature = _progress_signature(
-            stdout_path=stdout_path,
-            stderr_path=stderr_path,
-            telemetry_path=telemetry_path,
-            output_root=output_root,
-        )
-        _write_process_progress(
-            progress_file,
-            event="process_started",
-            elapsed_seconds=0.0,
-            signature=signature,
-        )
-        progress_events = 1
-        last_progress = started
-
-        while True:
-            now = time.monotonic()
-            current_signature = _progress_signature(
+        try:
+            signature = _progress_signature(
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
                 telemetry_path=telemetry_path,
                 output_root=output_root,
             )
-            if current_signature != signature:
-                signature = current_signature
-                last_progress = now
-                progress_events += 1
-                _write_process_progress(
-                    progress_file,
-                    event="output_observed",
-                    elapsed_seconds=now - started,
-                    signature=signature,
-                )
+            _write_process_progress(
+                progress_file,
+                event="process_started",
+                elapsed_seconds=0.0,
+                signature=signature,
+            )
+            progress_events = 1
+            last_progress = started
 
-            returncode = process.poll()
-            if returncode is not None:
-                progress_events += 1
-                _write_process_progress(
-                    progress_file,
-                    event="process_exited",
-                    elapsed_seconds=now - started,
-                    signature=signature,
-                    detail=f"returncode={returncode}",
+            while True:
+                now = time.monotonic()
+                current_signature = _progress_signature(
+                    stdout_path=stdout_path,
+                    stderr_path=stderr_path,
+                    telemetry_path=telemetry_path,
+                    output_root=output_root,
                 )
-                return ProcessExecutionResult(
-                    returncode=returncode,
-                    timeout_error=None,
-                    cancellation_error=None,
-                    progress_event_count=progress_events,
-                )
+                if current_signature != signature:
+                    signature = current_signature
+                    last_progress = now
+                    progress_events += 1
+                    _write_process_progress(
+                        progress_file,
+                        event="output_observed",
+                        elapsed_seconds=now - started,
+                        signature=signature,
+                    )
 
-            if execution_cancel_event is not None and execution_cancel_event.is_set():
-                cancellation_error = (
-                    "Command cancelled by the benchmark cohort coordinator"
-                )
+                returncode = process.poll()
+                if returncode is not None:
+                    progress_events += 1
+                    _write_process_progress(
+                        progress_file,
+                        event="process_exited",
+                        elapsed_seconds=now - started,
+                        signature=signature,
+                        detail=f"returncode={returncode}",
+                    )
+                    return ProcessExecutionResult(
+                        returncode=returncode,
+                        timeout_error=None,
+                        cancellation_error=None,
+                        progress_event_count=progress_events,
+                    )
+
+                if execution_cancel_event is not None and execution_cancel_event.is_set():
+                    cancellation_error = (
+                        "Command cancelled by the benchmark cohort coordinator"
+                    )
+                    _terminate_benchmark_process(process)
+                    progress_events += 1
+                    _write_process_progress(
+                        progress_file,
+                        event="cohort_cancelled",
+                        elapsed_seconds=time.monotonic() - started,
+                        signature=signature,
+                        detail=cancellation_error,
+                    )
+                    return ProcessExecutionResult(
+                        returncode=130,
+                        timeout_error=None,
+                        cancellation_error=cancellation_error,
+                        progress_event_count=progress_events,
+                    )
+
+                if (
+                    policy.wall_timeout_seconds is not None
+                    and now - started >= policy.wall_timeout_seconds
+                ):
+                    timeout_error = (
+                        "Command exceeded wall timeout after "
+                        f"{policy.wall_timeout_seconds:g}s"
+                    )
+                elif (
+                    policy.silent_timeout_seconds is not None
+                    and now - last_progress >= policy.silent_timeout_seconds
+                ):
+                    timeout_error = (
+                        "Command made no observable progress for "
+                        f"{policy.silent_timeout_seconds:g}s"
+                    )
+                else:
+                    time.sleep(poll_interval)
+                    continue
+
                 _terminate_benchmark_process(process)
                 progress_events += 1
                 _write_process_progress(
                     progress_file,
-                    event="cohort_cancelled",
+                    event="deadline_exceeded",
                     elapsed_seconds=time.monotonic() - started,
                     signature=signature,
-                    detail=cancellation_error,
+                    detail=timeout_error,
                 )
                 return ProcessExecutionResult(
-                    returncode=130,
-                    timeout_error=None,
-                    cancellation_error=cancellation_error,
+                    returncode=124,
+                    timeout_error=timeout_error,
+                    cancellation_error=None,
                     progress_event_count=progress_events,
                 )
-
-            if (
-                policy.wall_timeout_seconds is not None
-                and now - started >= policy.wall_timeout_seconds
-            ):
-                timeout_error = (
-                    "Command exceeded wall timeout after "
-                    f"{policy.wall_timeout_seconds:g}s"
-                )
-            elif (
-                policy.silent_timeout_seconds is not None
-                and now - last_progress >= policy.silent_timeout_seconds
-            ):
-                timeout_error = (
-                    "Command made no observable progress for "
-                    f"{policy.silent_timeout_seconds:g}s"
-                )
-            else:
-                time.sleep(poll_interval)
-                continue
-
-            _terminate_benchmark_process(process)
-            progress_events += 1
-            _write_process_progress(
-                progress_file,
-                event="deadline_exceeded",
-                elapsed_seconds=time.monotonic() - started,
-                signature=signature,
-                detail=timeout_error,
-            )
-            return ProcessExecutionResult(
-                returncode=124,
-                timeout_error=timeout_error,
-                cancellation_error=None,
-                progress_event_count=progress_events,
-            )
+        except BaseException as error:
+            if process.poll() is None:
+                try:
+                    _terminate_benchmark_process(process)
+                except BaseException as cleanup_error:
+                    # error-policy:J6 retain both failures when child cleanup
+                    # cannot be confirmed after monitoring failed.
+                    raise BaseExceptionGroup(
+                        f"Benchmark monitoring failed ({error}) and "
+                        f"process cleanup failed ({cleanup_error})",
+                        [error, cleanup_error],
+                    ) from None
+            raise
 
 
 def _required_env_for_request(

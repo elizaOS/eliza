@@ -40,11 +40,27 @@ void calendar.insertHandoff({
     title: "Editor draft",
     begin: 1,
     end: 2,
+    allDay: false,
     attendees: ["owner@example.test"],
     alerts: [10],
   },
 });
+void calendar.saveOptions({
+  // @ts-expect-error Direct option saves name both allDay and timeZone.
+  event: { title: "Missing zone", begin: 1, end: 2, allDay: false },
+  creationId: "a1595e18-16c9-480c-b77d-c21e6b0a3d89",
+});
+void calendar.acknowledgeCreation({
+  creationId: "a1595e18-16c9-480c-b77d-c21e6b0a3d88",
+  resolution: "dismissed",
+});
 // @ts-expect-error Option creations also require a durable creation identity.
 calendar.saveOptions({
-  event: { title: "Missing identity", begin: 1, end: 2 },
+  event: {
+    title: "Missing identity",
+    begin: 1,
+    end: 2,
+    allDay: false,
+    timeZone: "UTC",
+  },
 });

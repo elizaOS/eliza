@@ -122,11 +122,10 @@ export async function withRoomDeliverySettlement<T>(
 }
 
 function pendingSet(runtime: TrackableRuntime): Set<TrackedPostDeliveryTask> {
-	const identity = runtime as object;
-	let pending = pendingByRuntime.get(identity);
+	let pending = pendingByRuntime.get(runtime);
 	if (!pending) {
 		pending = new Set();
-		pendingByRuntime.set(identity, pending);
+		pendingByRuntime.set(runtime, pending);
 	}
 	return pending;
 }
@@ -137,7 +136,7 @@ export function trackPostDeliveryTask(
 	task: (signal: AbortSignal) => Promise<unknown>,
 	options: PostDeliveryTaskOptions = { kind: "room-state" },
 ): Promise<void> {
-	const quarantine = quarantineByRuntime.get(runtime as object);
+	const quarantine = quarantineByRuntime.get(runtime);
 	if (quarantine) {
 		throw new ElizaError(
 			"Post-delivery work cannot start on a quarantined runtime",
@@ -193,10 +192,10 @@ export function trackPostDeliveryTask(
 	}
 	let roomPending: Set<TrackedPostDeliveryTask> | undefined;
 	if (roomId) {
-		let rooms = pendingByRuntimeRoom.get(runtime as object);
+		let rooms = pendingByRuntimeRoom.get(runtime);
 		if (!rooms) {
 			rooms = new Map();
-			pendingByRuntimeRoom.set(runtime as object, rooms);
+			pendingByRuntimeRoom.set(runtime, rooms);
 		}
 		roomPending = rooms.get(roomId);
 		if (!roomPending) {
@@ -224,12 +223,12 @@ export function trackPostDeliveryTask(
 			pending.delete(tracked);
 			roomPending?.delete(tracked);
 			if (roomId && roomPending?.size === 0) {
-				const rooms = pendingByRuntimeRoom.get(runtime as object);
+				const rooms = pendingByRuntimeRoom.get(runtime);
 				rooms?.delete(roomId);
-				if (rooms?.size === 0) pendingByRuntimeRoom.delete(runtime as object);
+				if (rooms?.size === 0) pendingByRuntimeRoom.delete(runtime);
 			}
 			if (pending.size === 0) {
-				pendingByRuntime.delete(runtime as object);
+				pendingByRuntime.delete(runtime);
 			}
 		});
 	tracked = { label, controller, promise };
@@ -241,27 +240,27 @@ export function trackPostDeliveryTask(
 export function pendingPostDeliveryTaskCount(
 	runtime: TrackableRuntime,
 ): number {
-	return pendingByRuntime.get(runtime as object)?.size ?? 0;
+	return pendingByRuntime.get(runtime)?.size ?? 0;
 }
 
 export function pendingRoomPostDeliveryTaskCount(
 	runtime: TrackableRuntime,
 	roomId: string,
 ): number {
-	return pendingByRuntimeRoom.get(runtime as object)?.get(roomId)?.size ?? 0;
+	return pendingByRuntimeRoom.get(runtime)?.get(roomId)?.size ?? 0;
 }
 
 export async function drainPostDeliveryTasks(
 	runtime: TrackableRuntime,
 	options: { signal?: AbortSignal } = {},
 ): Promise<number> {
-	const quarantine = quarantineByRuntime.get(runtime as object);
+	const quarantine = quarantineByRuntime.get(runtime);
 	if (quarantine) {
 		throw quarantinedDrainError(runtime, quarantine.reason);
 	}
 	let drained = 0;
 	while (true) {
-		const pending = pendingByRuntime.get(runtime as object);
+		const pending = pendingByRuntime.get(runtime);
 		if (!pending || pending.size === 0) return drained;
 		if (options.signal?.aborted) {
 			throw quarantinePostDeliveryTasks(runtime, options.signal.reason);
@@ -301,14 +300,13 @@ export function quarantinePostDeliveryTasks(
 	runtime: TrackableRuntime,
 	_reason: unknown,
 ): ElizaError {
-	const identity = runtime as object;
 	const quarantine =
-		quarantineByRuntime.get(identity) ??
+		quarantineByRuntime.get(runtime) ??
 		({
 			reason: POST_DELIVERY_QUARANTINE_REASON,
 		} satisfies PostDeliveryTaskQuarantine);
-	quarantineByRuntime.set(identity, quarantine);
-	const pending = pendingByRuntime.get(identity);
+	quarantineByRuntime.set(runtime, quarantine);
+	const pending = pendingByRuntime.get(runtime);
 	for (const entry of pending ?? []) {
 		if (!entry.controller.signal.aborted) {
 			entry.controller.abort(new Error(quarantine.reason));
@@ -321,7 +319,7 @@ function quarantinedDrainError(
 	runtime: TrackableRuntime,
 	reason: string,
 ): ElizaError {
-	const pending = pendingByRuntime.get(runtime as object);
+	const pending = pendingByRuntime.get(runtime);
 	return new ElizaError(
 		"Post-delivery tasks did not reach quiescence; runtime quarantined",
 		{
@@ -337,7 +335,7 @@ function quarantinedDrainError(
 export function postDeliveryTaskQuarantineReason(
 	runtime: TrackableRuntime,
 ): string | undefined {
-	return quarantineByRuntime.get(runtime as object)?.reason;
+	return quarantineByRuntime.get(runtime)?.reason;
 }
 
 /** Drain every post-delivery task spawned under one live room owner. */
@@ -345,13 +343,13 @@ export async function drainRoomPostDeliveryTasks(
 	runtime: TrackableRuntime,
 	roomId: string,
 ): Promise<number> {
-	const quarantine = quarantineByRuntime.get(runtime as object);
+	const quarantine = quarantineByRuntime.get(runtime);
 	if (quarantine) {
 		throw quarantinedDrainError(runtime, quarantine.reason);
 	}
 	let drained = 0;
 	while (true) {
-		const pending = pendingByRuntimeRoom.get(runtime as object)?.get(roomId);
+		const pending = pendingByRuntimeRoom.get(runtime)?.get(roomId);
 		if (!pending || pending.size === 0) return drained;
 		const batch = [...pending];
 		drained += batch.length;

@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/scripts/run-vitest-batches.ts"],
+  "bounds": {
+    "domain": "Two batches and two subprocess slots.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "tooling_batches",
+      "main": "tooling_batches",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

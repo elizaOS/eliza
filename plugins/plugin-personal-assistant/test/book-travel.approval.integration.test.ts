@@ -718,6 +718,9 @@ describe("BOOK_TRAVEL approval execution", () => {
     }
 
     expect(approved?.success).toBe(false);
+    expect(approved?.text).toBe(
+      "The flight price rose after you approved it, so I did not book it. Ask me to quote it again.",
+    );
     const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
     expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(false);
     expect(calledUrls.some((url) => url.endsWith("/air/payments"))).toBe(false);
@@ -757,8 +760,9 @@ describe("BOOK_TRAVEL approval execution", () => {
       pendingRequest.id,
       "approve the London flight",
     );
+    let approved: ActionResult | undefined;
     try {
-      await approveRequestAction.handler?.(
+      approved = await approveRequestAction.handler?.(
         runtime,
         ownerMessage("yes, approve that booking"),
         {} as never,
@@ -771,10 +775,22 @@ describe("BOOK_TRAVEL approval execution", () => {
       restoreModel();
     }
 
+    expect(approved?.success).toBe(false);
+    expect(approved?.text).toContain("ord_test_123");
+    expect(approved?.text).toContain("Don't book it again");
+    expect(approved?.text).not.toContain("not changed");
+    expect(approved?.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: {
+        code: "APPROVAL_RECONCILIATION_REQUIRED",
+        acceptance: "unknown",
+      },
+    });
     const latest = await queue.byId(
       pendingRequest.id,
       pendingRequest.subjectUserId,
     );
+    expect(latest?.state).toBe("reconciliation_required");
     expect(latest?.execution?.providerReceipt).toMatchObject({
       provider: "duffel",
       orderId: "ord_test_123",

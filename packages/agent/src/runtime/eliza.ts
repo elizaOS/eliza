@@ -19,6 +19,7 @@ import { resolveDefaultVaultDataDir } from "@elizaos/auth/vault";
 import {
   AgentRuntime,
   addLogListener,
+  assertActionAllowlistMatchesActions,
   ChannelType,
   type Component,
   createMessageMemory,
@@ -26,6 +27,7 @@ import {
   EmbeddingDimensionProbeError,
   type Entity,
   formatError,
+  handoffTaskSchedulerAdapter,
   type IAgentRuntime,
   type IDatabaseAdapter,
   type LogEntry,
@@ -55,7 +57,6 @@ import {
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
   normalizeFirstRunProviderId,
-  readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveDesktopApiPort,
   resolveElizaCloudTopology,
@@ -74,6 +75,7 @@ import {
   getPgliteErrorCode,
   PGLITE_ERROR_CODES,
 } from "@elizaos/plugin-sql/errors";
+import { validateDbHost } from "../api/database.ts";
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
@@ -129,6 +131,7 @@ import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adap
 import {
   SandboxManager,
   type SandboxMode,
+  setActiveSandboxManager,
 } from "../services/sandbox-manager.ts";
 import {
   evaluateTeeBootGate,
@@ -196,10 +199,7 @@ import {
   resolvePreferredProviderPluginName,
   resolvePrimaryModel,
 } from "./model-resolution.ts";
-import {
-  runtimeDocumentsEnabled,
-  runtimeTrajectoriesEnabled,
-} from "./native-runtime-features.ts";
+import { runtimeDocumentsEnabled } from "./native-runtime-features.ts";
 import {
   isVaultRef,
   resolveConfigEnvForProcess,
@@ -212,7 +212,10 @@ import {
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
 } from "./optional-plugins.ts";
 import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
-import { PROVIDER_PLUGIN_MAP } from "./plugin-collector.ts";
+import {
+  collectConfiguredDeniedPluginNames,
+  PROVIDER_PLUGIN_MAP,
+} from "./plugin-collector.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
 import {
   isWorkspacePluginSourceFallbackAllowed,
@@ -255,8 +258,6 @@ import {
   resolveSandboxRouteAgentId,
 } from "./sandbox-character.ts";
 import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";
-import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-internals.ts";
-import { installDatabaseTrajectoryLogger } from "./trajectory-storage.ts";
 import { validateViewActionMap } from "./view-action-affinity.ts";
 
 // Single-flight desktop vault boot hydration: the OS-keychain wallet/steward
@@ -276,7 +277,10 @@ async function runVaultBootHydration(): Promise<void> {
   // Same environments the old inline block skipped: Android has no D-Bus for
   // libsecret and no plaintext secrets to migrate; cloud-provisioned sandboxes
   // get real env vars from the daemon and vault-pglite init has hung there.
-  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+  if (
+    isMobilePlatform() ||
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
+  ) {
     return;
   }
   const bridge = getAgentHostBridge();
@@ -591,10 +595,19 @@ function shouldBlockDeferredPluginImports(): boolean {
 }
 async function registerStaticPluginPhase(
   phase: CoreStaticPluginPhase,
+  denied: ReadonlySet<string> = new Set(),
 ): Promise<void> {
+  // A denied plugin is never resolved, so do not evaluate its module. Its lazy
+  // loader stays registered in case the deny list changes later.
   const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
     (registration) =>
       registration.phase === phase &&
+      !(
+        phase === "deferred" &&
+        (denied.has(registration.packageName) ||
+          (registration.registryName !== undefined &&
+            denied.has(registration.registryName)))
+      ) &&
       (!["@elizaos/plugin-sql", SQLITE_PLUGIN].includes(
         registration.packageName,
       ) ||
@@ -721,13 +734,20 @@ async function ensureBlockingCoreStaticPluginsRegistered(
     abortSignal,
   );
 }
+/**
+ * Imports the deferred static plugins once. `denied` (from
+ * collectConfiguredDeniedPluginNames) is read by the first call only.
+ */
 export async function ensureDeferredCoreStaticPluginsRegistered(
   abortSignal?: AbortSignal,
+  denied: ReadonlySet<string> = collectConfiguredDeniedPluginNames(undefined),
 ): Promise<void> {
   if (_deferredStaticPluginsRegistered) return;
   if (!_deferredStaticPluginsRegistrationPromise) {
-    _deferredStaticPluginsRegistrationPromise =
-      registerStaticPluginPhase("deferred");
+    _deferredStaticPluginsRegistrationPromise = registerStaticPluginPhase(
+      "deferred",
+      denied,
+    );
   }
   await awaitOwnedPromise(
     _deferredStaticPluginsRegistrationPromise,
@@ -1574,7 +1594,8 @@ export async function closeRuntimeAdapter(
   if (!adapter || typeof adapter.close !== "function") return;
   try {
     logger.debug(`[eliza] ${context}: closing database adapter`);
-    await adapter.close();
+    // Core owns adapter-wide scheduler queries and pending diagnostics.
+    await runtime.close();
     logger.debug(`[eliza] ${context}: database adapter closed`);
   } catch (err) {
     logger.warn(
@@ -1745,27 +1766,41 @@ export async function disposeReplacedRuntime(
   previousRuntime: AgentRuntime,
   activeRuntime: AgentRuntime,
 ): Promise<void> {
+  if (previousRuntime === activeRuntime) return;
   const connection = (runtime: AgentRuntime) =>
     (
       runtime.adapter as { getRawConnection?: () => unknown } | undefined
     )?.getRawConnection?.();
   const shared = connection(previousRuntime);
-  await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
-    fast: true,
-    keepAdapterOpen:
-      shared !== undefined && shared === connection(activeRuntime),
-  });
+  const keepAdapterOpen =
+    shared !== undefined && shared === connection(activeRuntime);
+  const handoff = keepAdapterOpen
+    ? handoffTaskSchedulerAdapter(
+        previousRuntime.adapter,
+        activeRuntime.adapter,
+      )
+    : Promise.resolve();
+  const retire = async () => {
+    try {
+      await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
+        fast: true,
+        // Fast stop clears service lookups at its cap; original callbacks can
+        // still own database work. Keep their original retirement receipt.
+        requireQuiescence: true,
+        keepAdapterOpen,
+      });
+    } finally {
+      await handoff;
+    }
+  };
+  if (keepAdapterOpen) {
+    // Publish the outgoing owner before shutdown's first await. The API has
+    // already published the replacement; concurrent final close must join it.
+    await activeRuntime.retainSharedAdapterRetirement(retire);
+  } else {
+    await retire();
+  }
 }
-interface TrajectoryLoggerControl {
-  isEnabled?: () => boolean;
-  setEnabled?: (enabled: boolean) => void;
-}
-type TrajectoryLoggerRegistrationStatus =
-  | "pending"
-  | "registering"
-  | "registered"
-  | "failed"
-  | "unknown";
 /** Subset of AutonomyService used to enable the autonomy loop. */
 interface AutonomyServiceLike {
   enableAutonomy(): Promise<void>;
@@ -1792,87 +1827,6 @@ async function startAndRegisterAutonomyService(
   runtime.services.set(AUTONOMY_SERVICE_TYPE as never, [service as never]);
   return service as AutonomyServiceLike;
 }
-type TrajectoryLoggerRuntimeLike = {
-  getServicesByType?: (serviceType: string) => unknown;
-  getService?: (serviceType: string) => unknown;
-  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
-  getServiceRegistrationStatus?: (
-    serviceType: string,
-  ) => TrajectoryLoggerRegistrationStatus;
-};
-async function waitForTrajectoriesService(
-  runtime: AgentRuntime,
-  context: string,
-  abortSignal?: AbortSignal,
-): Promise<void> {
-  if (!runtimeTrajectoriesEnabled(runtime)) {
-    return;
-  }
-  const runtimeLike = runtime as TrajectoryLoggerRuntimeLike;
-  // Check if already available
-  if (typeof runtimeLike.getService === "function") {
-    const existing = runtimeLike.getService("trajectories");
-    if (existing) return;
-  }
-  const registrationStatus =
-    typeof runtimeLike.getServiceRegistrationStatus === "function"
-      ? runtimeLike.getServiceRegistrationStatus("trajectories")
-      : "unknown";
-  if (
-    registrationStatus !== "pending" &&
-    registrationStatus !== "registering"
-  ) {
-    return;
-  }
-  if (typeof runtimeLike.getServiceLoadPromise !== "function") return;
-  try {
-    await awaitOwnedPromise(
-      runtimeLike.getServiceLoadPromise("trajectories"),
-      abortSignal,
-    );
-  } catch (err) {
-    if (abortSignal?.aborted) throw err;
-    // error-policy:J4 trajectory persistence is optional, but a failed service
-    // remains visible instead of silently disabling runtime telemetry.
-    runtime.reportError("eliza.trajectoryServiceReadiness", err, { context });
-    logger.debug(
-      `[eliza] trajectories registration failed while waiting (${context}): ${formatError(err)}`,
-    );
-  }
-}
-function ensureTrajectoryLoggerEnabled(
-  runtime: AgentRuntime,
-  context: string,
-): void {
-  if (!runtimeTrajectoriesEnabled(runtime)) {
-    logger.info(`[eliza] Native trajectories disabled (${context})`);
-    return;
-  }
-  const trajectoryLogger = runtime.getService("trajectories") as
-    | TrajectoryLoggerControl
-    | null
-    | undefined;
-  if (!trajectoryLogger) {
-    logger.warn(
-      `[eliza] trajectories service unavailable (${context}); trajectory capture disabled`,
-    );
-    return;
-  }
-  const isEnabled =
-    typeof trajectoryLogger.isEnabled === "function"
-      ? trajectoryLogger.isEnabled()
-      : shouldEnableTrajectoryLoggingByDefault();
-  const shouldEnable = shouldEnableTrajectoryLoggingByDefault();
-  if (
-    isEnabled !== shouldEnable &&
-    typeof trajectoryLogger.setEnabled === "function"
-  ) {
-    trajectoryLogger.setEnabled(shouldEnable);
-    logger.info(
-      `[eliza] trajectories defaulted ${shouldEnable ? "on" : "off"} (${context})`,
-    );
-  }
-}
 async function installPromptOptimizationLayer(
   runtime: AgentRuntime,
   context: string,
@@ -1886,33 +1840,6 @@ async function installPromptOptimizationLayer(
   } catch (err) {
     logger.warn(
       `[eliza] Failed to install prompt optimizations (${context}): ${err instanceof Error ? err.message : err}`,
-    );
-  }
-}
-/**
- * The service-dependent half of trajectory-capture prep: wait for
- * the async "trajectories" service registration, default its enabled state,
- * and bridge it to the SQL trajectory_steps tables that the viewer +
- * collection read. Without the bridge the core service captures LLM calls
- * only into its own trajectory_step_index store, while the viewer reads SQL
- * trajectory_steps. It starts in the background and is joined by the
- * deferred wave instead of blocking runtime readiness; capture of an LLM call
- * that lands before this settles may be lost, which is the accepted latency
- * tradeoff.
- */
-async function wireTrajectoryCaptureService(
-  runtime: AgentRuntime,
-  context: string,
-  abortSignal?: AbortSignal,
-): Promise<void> {
-  await waitForTrajectoriesService(runtime, context, abortSignal);
-  abortSignal?.throwIfAborted();
-  ensureTrajectoryLoggerEnabled(runtime, context);
-  try {
-    await installDatabaseTrajectoryLogger(runtime);
-  } catch (err) {
-    logger.warn(
-      `[eliza] Failed to install database trajectory logger (${context}): ${err instanceof Error ? err.message : err}`,
     );
   }
 }
@@ -2066,7 +1993,10 @@ export async function resolveConnectorSecretsOverlayForBoot(
     .filter(([, value]) => isVaultRef(value))
     .map(([key]) => key);
   if (refKeys.length === 0) return {};
-  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+  if (
+    isMobilePlatform() ||
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
+  ) {
     logger.error(
       `[vault-bootstrap] connector vault ref(s) present but the vault is unavailable on this platform (fail-closed): ${refKeys.join(", ")}`,
     );
@@ -2089,7 +2019,10 @@ export async function resolveConnectorSecretsOverlayForBoot(
 export async function resolveConfigEnvVaultRefsForBoot(
   config: ElizaConfig,
 ): Promise<void> {
-  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+  if (
+    isMobilePlatform() ||
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
+  ) {
     return;
   }
   if (
@@ -2387,6 +2320,8 @@ function applyCloudConfigToEnvResolved(config: ElizaConfig): void {
   const setCloudUsageEnv = (key: string, enabled: boolean): void => {
     if (enabled) {
       process.env[key] = "true";
+    } else if (shouldLoadCloudPlugin) {
+      process.env[key] = "false";
     } else {
       delete process.env[key];
     }
@@ -2713,12 +2648,18 @@ function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
  * Postgres. Without this, the provider defaulted to "pglite" whenever the
  * loaded config lacked an explicit provider — even when Postgres was wired via
  * env — so the WebAssembly PGlite build was attempted and aborted on runtimes
- * that have no WASM (e.g. the riscv64 image, which provisions native Postgres).
+ * that have no WASM.
  * Keeping env authoritative makes the env-only Postgres path consistent across
  * applyDatabaseConfigToEnv, resolveActivePgliteDataDir, and the provider log.
  */
-/** @internal Exported for testing. */
-export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
+/**
+ * Returns the Postgres URL when it was built from `config.database` (the
+ * value the database API saves), or null when it came from the environment
+ * or the provider is not Postgres.
+ *
+ * @internal Exported for testing.
+ */
+export function applyDatabaseConfigToEnv(config: ElizaConfig): string | null {
   const db = config.database;
   const provider = resolveEffectiveDbProvider(config);
   const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -2733,11 +2674,12 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     delete process.env.POSTGRES_URL;
     delete process.env.DATABASE_URL;
     delete process.env.PGLITE_DATA_DIR;
-    return;
+    return null;
   }
   if (provider === "postgres") {
     const pg = db?.postgres;
     let url = pg?.connectionString ?? postgresUrl ?? databaseUrl;
+    let fromConfig = Boolean(url) && url === pg?.connectionString;
     if (!url && pg) {
       const host = pg.host ?? "localhost";
       const port = pg.port ?? 5432;
@@ -2747,6 +2689,7 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
       const auth = password ? `${user}:${password}` : user;
       const sslParam = pg.ssl ? "?sslmode=verify-full" : "";
       url = `postgresql://${auth}@${host}:${port}/${database}${sslParam}`;
+      fromConfig = true;
     }
     process.env.POSTGRES_URL = url;
     // Clear PGLite dir so plugin-sql does not fall back to PGLite
@@ -2758,6 +2701,7 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     ) {
       logger.info("[eliza] DATABASE_URL detected: using Postgres database");
     }
+    return fromConfig && url ? url : null;
   } else {
     // PGLite mode (default): ensure no leftover POSTGRES_URL and pin
     // PGLite to the workspace path unless overridden by config/env.
@@ -2794,6 +2738,52 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
       // recovery enabled, triggers the resetPgliteDataDir path.
       cleanStalePglitePid(dataDir);
     }
+  }
+  return null;
+}
+/**
+ * Re-validate a configured Postgres URL at boot and pin it to the validated
+ * address. The hostname stays in the URL so TLS verify-full and SNI check
+ * the real name; `hostaddr` carries the address libpq-compatible clients
+ * connect to. node-postgres ignores `hostaddr` and resolves the name again,
+ * so for it this check narrows, but does not close, a DNS-rebinding window.
+ * Unix sockets and multi-host lists are validated but not pinned.
+ *
+ * @internal Exported for testing.
+ */
+export async function pinConfiguredPostgresUrl(url: string): Promise<string> {
+  if (isUnixSocketPostgresUrl(url)) return url;
+  const validation = await validateDbHost({ connectionString: url });
+  if (validation.error || !validation.pinnedHost) {
+    throw new ElizaError(
+      `The configured Postgres host failed validation: ${validation.error ?? "no address to connect to"}`,
+      { code: "POSTGRES_HOST_REJECTED" },
+    );
+  }
+  const parsed = new URL(url);
+  const hostParam = parsed.searchParams.get("host");
+  if (hostParam?.includes(",") || parsed.searchParams.has("hostaddr")) {
+    return url;
+  }
+  parsed.searchParams.set(
+    "hostaddr",
+    validation.pinnedHost.replace(/^::ffff:/i, ""),
+  );
+  return parsed.toString();
+}
+function isUnixSocketPostgresUrl(url: string): boolean {
+  try {
+    // node-postgres accepts an empty host ("user@/db?host=/run/postgresql")
+    // by parsing it with a placeholder host; do the same here.
+    const parsed = URL.canParse(url)
+      ? new URL(url)
+      : new URL(url.replace("@/", "@placeholder/"));
+    return (
+      parsed.searchParams.get("host")?.startsWith("/") === true ||
+      /^%2f/i.test(parsed.hostname)
+    );
+  } catch {
+    return false;
   }
 }
 type PglitePidFileStatus =
@@ -4140,7 +4130,12 @@ export async function startEliza(
   // 2c. Propagate x402 config into process.env
   applyX402ConfigToEnv(config);
   // 2d. Propagate database config into process.env for plugin-sql
-  applyDatabaseConfigToEnv(config);
+  const configuredPostgresUrl = applyDatabaseConfigToEnv(config);
+  if (configuredPostgresUrl) {
+    process.env.POSTGRES_URL = await pinConfiguredPostgresUrl(
+      configuredPostgresUrl,
+    );
+  }
   // Boot-time vault hydration is DEFERRED off the blocking path. The desktop
   // flow (`hydrateWalletKeysFromNodePlatformSecureStore` + `runVaultBootstrap`)
   // reaches the OS keychain through `defaultMasterKey().load()` and opens a
@@ -4167,7 +4162,8 @@ export async function startEliza(
   // records which of those keys the launch environment actually set, letting
   // the deferred hydrate keep that exact precedence (vault beats config-merged
   // values; never clobbers a real env var).
-  const isCloudProvisioned = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+  const isCloudProvisioned =
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1";
   vaultBootHydration = null;
   if (!isMobilePlatform() && !isCloudProvisioned) {
     getAgentHostBridge().captureWalletEnvBootBaseline();
@@ -4280,7 +4276,7 @@ export async function startEliza(
   // injected by the daemon as env vars, so there's nothing to multiplex. The
   // pool implementation is supplied by the host through the injected agent host
   // bridge (see ./host-bridge.ts) — no app import, no boot-time cycle.
-  if (readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1")
+  if (process.env.ELIZA_CLOUD_PROVISIONED?.trim() !== "1")
     try {
       const accountPool = getAgentHostBridge();
       accountPool.getDefaultAccountPool();
@@ -4495,7 +4491,7 @@ export async function startEliza(
   // PGlite cold start this inventory listing would otherwise trigger.
   if (
     process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1" &&
-    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1" &&
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() !== "1" &&
     existsSync(resolveDefaultVaultDataDir())
   ) {
     try {
@@ -4525,7 +4521,7 @@ export async function startEliza(
   if (
     preferredProviderId &&
     preferredProviderId !== "elizacloud" &&
-    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1"
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() !== "1"
   ) {
     const providerCredential = await hydrateSelectedProviderCredentialFromVault(
       {
@@ -4751,6 +4747,7 @@ export async function startEliza(
       });
       try {
         await sandboxManager.start();
+        setActiveSandboxManager(sandboxManager);
         logger.info("[eliza] Sandbox manager started");
       } catch (err) {
         logger.error(
@@ -4789,7 +4786,7 @@ export async function startEliza(
   const subAgentCredentialPlugins = shouldRegisterSubAgentCredentialsPlugin()
     ? [{ ...subAgentCredentialsPlugin }]
     : [];
-  const assistantPlugins = createAssistantPlugins(character);
+  const assistantPlugins = createAssistantPlugins(character, config);
   const assistantPlugin = assistantPlugins[0];
   deduplicatePluginActions([
     ...assistantPlugins,
@@ -5023,9 +5020,6 @@ export async function startEliza(
       );
     }
   };
-  // Background trajectory-capture wiring started by initializeCoreRuntime and
-  // joined by the deferred wave (see wireTrajectoryCaptureService).
-  let trajectoryCaptureWiring: Promise<void> = Promise.resolve();
   const initializeCoreRuntime = async (): Promise<void> => {
     assertPersistentDatabaseRequired(runtime);
     await runtime.initialize();
@@ -5064,17 +5058,6 @@ export async function startEliza(
       "runtime.initialize()",
       config,
     );
-    // The trajectories-service wait + db-logger install start in
-    // the background immediately — so capture goes live at the same absolute
-    // moment it used to — but no longer block the readiness gate. The deferred
-    // wave joins this promise so a wiring failure is surfaced there. An LLM
-    // call that lands in the short pre-wired window may miss trajectory_steps
-    // capture; boot itself makes no LLM calls in that window.
-    trajectoryCaptureWiring = wireTrajectoryCaptureService(
-      runtime,
-      "runtime.initialize()",
-      opts?.abortSignal,
-    );
   };
   // One-time TEE boot gate (plan §4.1 / agent A4). Inert when no TEE policy is
   // configured: `evaluateTeeBootGate` returns secretsEnabled:true and normal/
@@ -5083,7 +5066,6 @@ export async function startEliza(
   // gate fails closed and high-value capabilities (remote plugin sync plus
   // model-key/signing consumers) are withheld. Boot still proceeds in a
   // degraded, secret-less mode — it never silently continues with secrets.
-  let teeBootGateResult: TeeBootGate | undefined;
   const runTeeBootGate = async (): Promise<void> => {
     let teeBootGate: TeeBootGate;
     try {
@@ -5117,68 +5099,6 @@ export async function startEliza(
     // reveal/bridge, remote plugin sync) can consult it via the shared
     // singleton. Inert when no TEE: the gate's `required` is false.
     setTeeBootGateState(teeBootGate);
-    teeBootGateResult = teeBootGate;
-  };
-  // TEE-gated remote signing (plan §4.3). Inert unless explicitly enabled:
-  // the host↔guest bridge can request a signature, but the key stays in the
-  // vault and every sign re-attests when the boot-gate policy requires TEE
-  // evidence. Fail-closed: when the boot gate blocks secrets, the service is
-  // not constructed at all.
-  const registerRemoteSigningIfEnabled = async (): Promise<void> => {
-    if (process.env.ELIZA_REMOTE_SIGNING_ENABLED !== "true") return;
-    if (teeBootGateBlocksSecrets()) {
-      logger.warn(
-        "[RemoteSigning] Skipping remote signing activation: TEE evidence is not trusted.",
-      );
-      return;
-    }
-    try {
-      const { sharedVault } = getAgentHostBridge();
-      const { VaultSignerBackend } = await import(
-        "../services/vault-signer-backend.ts"
-      );
-      const {
-        createTeeGatedRemoteSigningService,
-        RemoteSigningRuntimeService,
-      } = await import("../services/remote-signing-service.ts");
-      const signer = new VaultSignerBackend({
-        vault: sharedVault(),
-        agentId,
-        caller: "remote-signing:boot",
-      });
-      const teePolicy = teeBootGateResult?.policy;
-      // Re-attest each sign through the same registered provider the boot gate
-      // used. This path only runs once the gate has already enabled secrets, so
-      // a required policy implies a registered provider; if none is registered
-      // the re-attesting provider is simply absent (the gate would not have
-      // reached here under a required policy).
-      const signingEvidenceProvider = teePolicy?.required
-        ? resolveTeeEvidenceProvider({ env: protectedTeeEnvironment() })
-        : undefined;
-      const signing = createTeeGatedRemoteSigningService({
-        signer,
-        ...(teePolicy ? { teePolicy } : {}),
-        ...(signingEvidenceProvider
-          ? { evidenceProvider: signingEvidenceProvider }
-          : {}),
-      });
-      await runtime.registerService(RemoteSigningRuntimeService);
-      const svc = runtime.getService(
-        RemoteSigningRuntimeService.serviceType,
-      ) as InstanceType<typeof RemoteSigningRuntimeService> | null;
-      if (!svc) {
-        throw new Error("RemoteSigningRuntimeService did not register");
-      }
-      svc.attach(signing);
-      logger.info(
-        { attesting: teePolicy?.required === true },
-        "[RemoteSigning] TEE-gated remote signing service registered.",
-      );
-    } catch (err) {
-      logger.warn(
-        `[RemoteSigning] Remote signing activation failed: ${formatError(err)}`,
-      );
-    }
   };
   const syncRemoteCapabilityPluginsIfAvailable = async (): Promise<void> => {
     if (teeBootGateBlocksSecrets()) {
@@ -5495,7 +5415,7 @@ export async function startEliza(
   ): Promise<readonly import("./agent-wallets.ts").AgentWalletDescriptor[]> => {
     if (
       process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP === "1" ||
-      readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1"
+      process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
     ) {
       return Promise.resolve([]);
     }
@@ -5733,7 +5653,10 @@ export async function startEliza(
     if (blockDeferredPluginImports) {
       return resolvedPlugins;
     }
-    await ensureDeferredCoreStaticPluginsRegistered(abortSignal);
+    await ensureDeferredCoreStaticPluginsRegistered(
+      abortSignal,
+      collectConfiguredDeniedPluginNames(config),
+    );
     const deferredResolvedPlugins = await resolvePlugins(config, {
       quiet: preOnboarding,
       phase: "deferred",
@@ -5761,12 +5684,6 @@ export async function startEliza(
     await ensureVaultBootHydration();
     abortSignal.throwIfAborted();
     bootTimer.lap("deferred:vault-hydration");
-    // Join the background trajectory-capture wiring started inside
-    // initializeCoreRuntime so a wiring failure surfaces here instead of
-    // vanishing into an unobserved promise.
-    await awaitOwnedPromise(trajectoryCaptureWiring, abortSignal);
-    abortSignal.throwIfAborted();
-    bootTimer.lap("deferred:trajectory-wiring");
     // Join the boot-time network lookups (Discord App ID, cloud GitHub token)
     // before resolving the deferred plugin set — the Discord connector and the
     // GitHub/git plugins live in this deferred wave. The cloud GitHub token is
@@ -5830,7 +5747,6 @@ export async function startEliza(
     await runTeeBootGate();
     bootTimer.lap("deferred:tee-gate");
     abortSignal.throwIfAborted();
-    await registerRemoteSigningIfEnabled();
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
     // #12087 Item 19: now that every plugin's actions are registered, warn about
@@ -5967,6 +5883,11 @@ export async function startEliza(
       runtime.logger,
     );
     bootTimer.lap("deferred:complete");
+    // Last, once every deferred step has run: an ELIZA_ACTION_ALLOWLIST entry
+    // that names no registered action (usually an upstream rename) marks the
+    // deferred boot failed and reports INVALID_ACTION_ALLOWLIST. Chat stays
+    // up, and the unmatched name allows nothing.
+    assertActionAllowlistMatchesActions(runtime.actions ?? []);
   };
   try {
     // Time from the register-sql lap up to entering service init (roles
@@ -6038,6 +5959,7 @@ export async function startEliza(
     },
     disposeSandbox: sandboxManager
       ? async () => {
+          setActiveSandboxManager(null);
           await sandboxManager?.stop();
         }
       : undefined,
@@ -6172,7 +6094,7 @@ export async function startEliza(
     // the renderer hit "Failed to fetch". Prefer the desktop API port
     // resolver when ELIZA_API_PORT is set; otherwise fall back to the
     // server-only resolver so CLI-mode defaults (2138) stay untouched.
-    const apiPort = readAliasedEnv("ELIZA_API_PORT")
+    const apiPort = process.env.ELIZA_API_PORT?.trim()
       ? resolveDesktopApiPort(process.env)
       : resolveServerOnlyPort(process.env);
     // Local-agent IPC mode (Android stdio bridge / Capacitor): the WebView
@@ -6221,7 +6143,9 @@ export async function startEliza(
             const teardown = shutdownRuntime(
               runtime,
               "pre-restore runtime disposal",
-              { fast: true },
+              // This process keeps serving after replacement. A fast room
+              // timeout cannot release the old adapter under an admitted owner.
+              { requireQuiescence: true },
             );
             pendingRuntimeTeardown = teardown;
             try {

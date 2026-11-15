@@ -24,7 +24,7 @@ import {
   LAST_ACTIVITY_HEADER_NAME,
   SESSION_COOKIE_NAME,
 } from "@elizaos/auth";
-import { logger } from "@elizaos/core";
+import { firstHeaderValue, logger, tokenMatches } from "@elizaos/core";
 import { ElizaError, isLoopbackBindHost } from "@elizaos/core/protocol";
 import {
   type RuntimeEnvRecord,
@@ -40,7 +40,6 @@ import {
   closeIdentitySockets,
   closeSessionSockets,
 } from "./session-sockets.js";
-import { extractHeaderValue, tokenMatches } from "./tokens.js";
 
 // A successful durable revoke invalidates live transports before the HTTP
 // response. Other processes converge through their bounded session rechecks.
@@ -155,9 +154,7 @@ export const LAST_ACTIVITY_CLOCK_SKEW_MS = 60 * 1000;
 export function readLastActivityHeader(
   req: Pick<http.IncomingMessage, "headers">,
 ): number | null {
-  const raw = extractHeaderValue(
-    req.headers[LAST_ACTIVITY_HEADER_NAME],
-  )?.trim();
+  const raw = firstHeaderValue(req.headers[LAST_ACTIVITY_HEADER_NAME])?.trim();
   if (!raw || !/^\d{1,16}$/.test(raw)) return null;
   const value = Number(raw);
   return Number.isSafeInteger(value) ? value : null;
@@ -664,7 +661,7 @@ export function readCookie(
   name: string,
 ): string | null {
   return (
-    parseCookieHeader(extractHeaderValue(req.headers.cookie)).get(name) ?? null
+    parseCookieHeader(firstHeaderValue(req.headers.cookie)).get(name) ?? null
   );
 }
 /**
@@ -677,7 +674,7 @@ export function readAllCookieValues(
   req: Pick<http.IncomingMessage, "headers">,
   name: string,
 ): string[] {
-  const headerValue = extractHeaderValue(req.headers.cookie);
+  const headerValue = firstHeaderValue(req.headers.cookie);
   if (!headerValue) return [];
   const values = new Set<string>();
   for (const part of headerValue.split(";")) {

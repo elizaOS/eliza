@@ -25,7 +25,7 @@
  * NOT fabricate numbers (AGENTS.md §3).
  *
  * Usage:
- *   node packages/inference/verify/embedding_bench.mjs \
+ *   bun packages/inference/verify/embedding_bench.mjs \
  *     [--bin PATH] [--backend cpu|vulkan|cuda] [--model PATH] \
  *     [--runs 30] [--threads 24] [--report PATH] [--json]
  */
@@ -231,7 +231,7 @@ async function main() {
       ...baseReport,
       status: "skipped",
       reason: !bin
-        ? "no llama-server binary found (build one: node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cpu)"
+        ? "no llama-server binary found (build one: bun packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cpu)"
         : "no embedding GGUF found (point --model at an embedding/ GGUF or an Eliza-1 pooled-text backbone such as eliza-1-2b)",
       resolved: { bin, model },
     };

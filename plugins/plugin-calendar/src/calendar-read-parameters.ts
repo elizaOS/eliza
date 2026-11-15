@@ -197,10 +197,14 @@ export function calendarReadParameters(
           required: operation === "search_events",
           schema: { ...parameter.schema, type: "string", minLength: 1 },
           description:
-            "Required event-content filter from the current user request or its resolved referent, such as the existing event title. Dates/source/account names alone are not content filters; dates go in details. Omit this operation for an unfiltered agenda.",
+            "Copy an exact approved query from this intent's calendarReadBindings filterEvidence, such as the existing event title. Do not shorten, paraphrase or invent a variant. Dates/source/account names alone are not content filters; dates go in details. Omit this operation for an unfiltered agenda.",
         };
       if (parameter.name === "queries")
-        return { ...parameter, description: "Additional content filters." };
+        return {
+          ...parameter,
+          description:
+            "Optional exact approved queries from this intent's calendarReadBindings filterEvidence. Omit when query already supplies the requested title. Never add shortened or related search terms.",
+        };
       return parameter;
     });
 }

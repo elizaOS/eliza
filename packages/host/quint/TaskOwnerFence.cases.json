@@ -1,0 +1,17 @@
+{
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "TaskOwnerFence",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "sources": ["packages/host/native-host/task-owner-fence.mjs"],
+  "conformance": "packages/scripts/quint/check-application.ts",
+  "bounds": "Two owner identities, epochs 0..3, sequences 0..4, started epoch current-1/current/current+1."
+}

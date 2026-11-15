@@ -1,0 +1,64 @@
+{
+  "sources": [
+    "packages/contracts/src/device-reviews.ts",
+    "packages/agent/src/api/device-action-routes.ts",
+    "plugins/plugin-assistant/src/services/device-actions/action.ts",
+    "plugins/plugin-assistant/src/services/device-actions/client-coordinator.ts",
+    "plugins/plugin-assistant/src/services/device-actions/client-coordinator.test.ts",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+    "plugins/plugin-assistant/src/services/device-actions/device-admission.test.ts",
+    "plugins/plugin-assistant/src/services/device-actions/notes-organize-contract.ts",
+    "plugins/plugin-assistant/src/services/device-actions/notes-organize-contract.test.ts",
+    "plugins/plugin-assistant/src/services/device-actions/service.ts",
+    "plugins/plugin-assistant/src/services/device-actions/tools.ts",
+    "plugins/plugin-assistant/test/canonical-notes-list-filter.e2e.test.ts",
+    "plugins/plugin-assistant/vitest.device-actions.config.ts",
+    "plugins/plugin-assistant/quint/check-workflow-device-admission.mjs",
+    "plugins/plugin-assistant/quint/workflow-device-admission-conformance.json"
+  ],
+  "conformance": "plugins/plugin-assistant/quint/check-workflow-device-admission.mjs",
+  "bounds": {
+    "domain": "One proposal and review, one owner, one capability, one eligible or ineligible filter, and up to two changes of visible Notes scope.",
+    "projection": "The authenticated owner, negotiated capability and exact canonical Notes list admit a text/kind filter. The reviewed client context must still match at dispatch. Owner retirement, scope changes and capability loss can invalidate the attempt. Applying the filter only changes presentation.",
+    "conformance": "The actual server admission and operation validators exercise canonical list observations, wrong source, wrong view, sensitive context, capability negotiation and disallowed fields. The maintained coordinator test covers message binding and stale review context.",
+    "limits": "One abstract review attempt. A refused review does not itself consume the durable proposal. Host UI rendering, provider behavior, expiry, actual persistence and unbounded concurrent proposals are outside this model. Progress requires a review decision or retirement."
+  },
+  "cases": [
+    {
+      "name": "CanonicalNotesListFilter",
+      "main": "CanonicalNotesListFilter",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OnlyExactListApplies",
+        "DisallowedInputNeverApplies"
+      ],
+      "temporal": ["TerminalNeverReapplies", "FairSettlement", "Settles"],
+      "temporalChecks": [
+        {
+          "property": "TerminalNeverReapplies",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness is needed for this one-attempt safety property."
+          ]
+        },
+        {
+          "property": "FairSettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance. The owner or host eventually resolves a continuously enabled review step."
+          ]
+        },
+        {
+          "property": "Settles",
+          "expect": "counterexample",
+          "assumptions": ["A proposal can wait if the owner does not decide."]
+        }
+      ],
+      "maxSteps": 15,
+      "samples": 500,
+      "deadlock": false
+    }
+  ]
+}

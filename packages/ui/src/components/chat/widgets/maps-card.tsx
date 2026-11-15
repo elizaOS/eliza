@@ -29,6 +29,10 @@ import type {
   MapsCardSpec,
   MapsTravelMode,
 } from "../message-maps-parser";
+import {
+  formatMapsDistance as formatDistance,
+  formatMapsDuration as formatDuration,
+} from "../message-maps-text";
 import type { InlineWidgetContext } from "./inline-registry";
 
 const TRAVEL_MODE_LABELS: Record<MapsTravelMode, string> = {
@@ -37,20 +41,6 @@ const TRAVEL_MODE_LABELS: Record<MapsTravelMode, string> = {
   bicycle: "Bicycle",
   transit: "Transit",
 };
-
-export function formatDistance(meters: number): string {
-  if (meters < 1_000) return `${Math.round(meters)} m`;
-  const km = meters / 1_000;
-  return `${km >= 100 ? Math.round(km) : Math.round(km * 10) / 10} km`;
-}
-
-export function formatDuration(seconds: number): string {
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${Math.max(minutes, 1)} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
-}
 
 /** Deterministic UTC display of an ISO share timestamp (no locale APIs). */
 export function formatSharedAt(sharedAt: string): string {

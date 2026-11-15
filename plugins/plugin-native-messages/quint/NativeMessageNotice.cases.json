@@ -1,0 +1,80 @@
+{
+  "sources": [
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsStore.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsResultReceiver.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsRoleConfiguration.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsRecords.java",
+    "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/MmsNotificationTest.java",
+    "plugins/plugin-native-messages/android/build.gradle",
+    "packages/scripts/quint/check-native-android.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/app/scripts/android-native-plugins-gradle/settings.gradle",
+    "packages/app/scripts/android-native-plugins-gradle/build.gradle",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsDeliverReceiver.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsWapPushReceiver.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsTelephony.java"
+  ],
+  "conformance": "packages/scripts/quint/check-native-android.ts",
+  "nativeAndroid": {
+    "project": "elizaos-plugin-native-messages",
+    "directory": "plugins/plugin-native-messages/android",
+    "suites": [
+      {
+        "className": "ai.eliza.plugins.messages.MmsNotificationTest",
+        "required": [
+          "hashCollidingThreadsKeepDistinctContentTargets",
+          "conversationRetainsItsMessagesAndReplyOnlyOpensCompose",
+          "markReadChangesOnlyReceivedRowsInTheShownThreadThroughItsCutoff",
+          "lostSmsRoleDismissesTheNoticeWithoutAProviderWrite",
+          "failedProviderWriteKeepsTheNoticeAndFinishesTheReceiver",
+          "oldQueuedReadCannotConsumeANewerConversationNotice",
+          "delayedPublicationRetainsHistoryAndFencesTheOldReadBeforeAcknowledgement",
+          "interruptedPublicationRetiresItsActionEvenIfAndroidPublishesLate",
+          "publicationDeadlinePreservesStoredRowsAndRetiresUnconfirmedActions"
+        ]
+      }
+    ]
+  },
+  "bounds": {
+    "domain": "Two opaque thread identities (TLC symbols 1 and 2); the actual Android hook uses native 64-bit IDs 1 and 4294967296 with the same 32-bit hash. One queued read and two unique native-notice receipt generations per selected conversation. Incoming publication and reads share the existing serial worker. Visible native receipt, live native PendingIntent and pending publication are separate bounded facts. UUID uniqueness is assumed; safety needs no fairness or successful publication/provider writes.",
+    "conformance": "Nine exact Android JVM cases exercise actual notification/PendingIntent identities, MessagingStyle retained text, compose-only reply, actual receiver completion and SQLite update predicates for shown/later/foreign/sent rows, role loss, partial failure/retry and old queued reads. A held NotificationManager publication checks that enqueue does not acknowledge publication, prior read authority retires before the gap, both full texts survive, and a timed-out or interrupted late publication cannot grant a read.",
+    "limits": "Read predicates abstract selected-thread membership; timestamp units/cutoffs use actual SQLite. Separate provider writes can partially succeed. Real system Telephony enforcement, carrier delivery, process death and OS notification scheduling are external; the controlled API36 UI separately checks real notification rendering with synthetic provider ports. Reply never invokes the send journal/radio. The finite model abstracts the three-second monotonic publication bound to success/failure and native PendingIntent cancellation to an acknowledged authority fact; it does not prove Android Binder/cancellation reliability or UUID collision resistance. External/backdated provider writes outside the serial incoming paths remain outside complete snapshot membership. Other markThreadRead callers retain their own view-selection contract."
+  },
+  "cases": [
+    {
+      "name": "bounded-native-owner",
+      "main": "NativeMessageNotice",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "FullConversationIdentity",
+        "WritesHaveSelectedOwner",
+        "NoSendAuthority",
+        "FinishedReleasesReceiver",
+        "StaleReceiptNeverWrites",
+        "ConfirmedReplacementRetainsHistory"
+      ],
+      "temporal": ["FairReceiverFinishes", "ReceiverFinishes"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "FairReceiverFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of native publication completion (acknowledged receipt or explicit failure), the admitted worker, and return of each provider update with success or failure. Calls are assumed finite, not successful; the actual publication wait has a bounded deadline and interruption refusal."
+          ]
+        },
+        {
+          "property": "ReceiverFinishes",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An admitted worker, external query or posted Main continuation can remain stalled indefinitely."
+          ]
+        }
+      ]
+    }
+  ]
+}

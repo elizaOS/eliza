@@ -229,7 +229,9 @@ async function claimed(validityMs = 60000) {
       type,
       api_version: "2024-11-20.acacia",
       livemode: false,
-      created: Math.floor(Date.now() / 1000),
+      created: type.endsWith("created")
+        ? f.rawCreate.created
+        : f.observation.rawCurrentSchedule.released_at,
       request: { id: requestId, idempotency_key: key },
       data: { object: structuredClone(raw) },
     });

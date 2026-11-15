@@ -1,0 +1,27 @@
+[
+  {
+    "id": "ListenerForegroundLifecycle",
+    "model": "packages/app/quint/ListenerForegroundLifecycle.qnt",
+    "sources": [
+      "packages/app/platforms/android/sense/src/main/java/ai/eliza/sense/ListeningService.java",
+      "packages/app/platforms/android/sense/src/main/java/ai/eliza/sense/Listener.java",
+      "packages/app/platforms/android/sense/src/main/java/ai/eliza/sense/ListenerPolicy.java",
+      "packages/app/platforms/android/sense/src/main/java/ai/eliza/sense/IndicatorLease.java",
+      "packages/app/test/android/sense.test.mjs",
+      "packages/app/test/android/sense-fixtures/ListeningServiceLifecycleTest.java.txt"
+    ],
+    "invariants": [
+      "CaptureNeedsForeground",
+      "StoppedOwnsNoCapture",
+      "OldStartCannotStopNewer",
+      "RefusalIsExplicit"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One live Android listener service, two monotonically ordered start IDs, one possible policy withdrawal, one foreground admission response (success or refusal), and one queued reapply. The model treats the foreground and stopSelf ports atomically and preserves Android's expected last-start-ID rule.",
+      "A delivered non-null start creates a foreground obligation even if policy is now off. The service consumes that obligation before it stops; a refused foreground admission is diagnosed and still reaches cleanup. Capture is started only after observed foreground admission. A delivered older start stops only itself, preserving a newer undelivered start.",
+      "Mandatory nine existing Sense Node/JVM/Android36 checks include a new fixture that executes the exact production onStartCommand and applyUnderConsentLock Java method bodies over deterministic service, scheduler and audio ports. Six scenarios cover a null restart, stop after delivery, refused stop admission, an undelivered newer start, admitted capture, and refused older admission with a newer queued start. The real ListenerPolicy class compiles and executes in that fixture.",
+      "This finite lifecycle projection does not prove Android foreground-service deadlines, permission grant behavior, OS process/service scheduling, the static running-service pointer, Binder delivery, actual microphone/ASR operation, consent durability or physical SystemUI visibility. Other Sense fixtures supplement policy and lease checks; they are not a refinement proof. The model accepts current policy and foreground response as host facts and does not grant listening authority. A refused port may preserve a newer queued start but does not guarantee eventual OS admission."
+    ]
+  }
+]

@@ -1,0 +1,39 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/payment-request-settlement.ts",
+    "packages/cloud/shared/src/db/schemas/payment-requests.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/payment-request-settlement.pglite.test.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One payment, two provider events, two workers, eight clock ticks, bounded attempts.",
+      "The final lease check and transport start form one abstract action; arbitrary process suspension between those operations is excluded.",
+      "Late in-flight and duplicate deliveries are allowed. No receiver-side exactly-once, HMAC, SSRF or database/network atomicity proof is claimed."
+    ],
+    "progress": "No fairness or unbounded progress claim. All models include stuttering and rollback or retry paths.",
+    "domain": {
+      "payments": 1,
+      "providerEvents": 2,
+      "workers": 2,
+      "clockTicks": "0..8",
+      "attemptThreshold": 2,
+      "productionAttemptThreshold": 12,
+      "maximumWireAttemptsPerEvent": 4,
+      "claimDurationTicks": 2,
+      "productionClaimDurationSeconds": 60
+    }
+  },
+  "cases": [
+    {
+      "name": "payment-delivery",
+      "main": "payment_delivery",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "cases": [
+    {
+      "name": "reducer",
+      "main": "InteractiveTask_reducer",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOneUnresolved",
+        "WaitingIffDispatched",
+        "BlockedHasUnknown",
+        "RevokedIsNotRunning",
+        "PreparedIsFenced",
+        "ObservedOriginIsAllowed",
+        "ScopeComesFromGrant",
+        "EndedIsSettled"
+      ],
+      "temporal": ["OutcomesAreFinal", "RevocationIsFinal"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "InteractiveTask.reducer.cfg",
+        "constants": [],
+        "specification": ["Spec"],
+        "invariants": [
+          "TypeOK",
+          "AtMostOneUnresolved",
+          "WaitingIffDispatched",
+          "BlockedHasUnknown",
+          "RevokedIsNotRunning",
+          "PreparedIsFenced",
+          "ObservedOriginIsAllowed",
+          "ScopeComesFromGrant",
+          "EndedIsSettled"
+        ],
+        "properties": ["OutcomesAreFinal", "RevocationIsFinal"],
+        "checkDeadlock": false
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": false,
+      "temporalChecks": [
+        {
+          "property": "OutcomesAreFinal",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in InteractiveTask_reducer: OutcomesAreFinal = always((Ops.forall(operation => and { Set(\"succeeded\", \"failed\", \"cancelled\").forall(outcome => s.op.get(operation) == outcome implies next(s.op.get(operation)) == outcome), s.op.get(operation) != \"none\" implies next(s.op.get(operation)) != \"none\" })).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "RevocationIsFinal",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in InteractiveTask_reducer: RevocationIsFinal = always(( s.auth == \"revoked\" implies next(s.auth) == \"revoked\" ).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "packages/core/src/messaging/interactive-task.ts",
+    "packages/core/test/interactive-task-conformance.test.ts"
+  ],
+  "conformance": "packages/core/scripts/quint-interactive-task-graph.ts"
+}

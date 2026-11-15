@@ -1,0 +1,20 @@
+{
+  "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
+    "packages/ui/src/state/durable-draft.ts"
+  ],
+  "conformance": "packages/ui/quint/check-draft-controller.mjs",
+  "bounds": "Two send rounds with two concurrently started hold calls per round, one mark interleaving (typing or authority loss), four mark outcomes, and three settlements. Explicit read/review/new-write recovery between rounds. One binding and synchronous host restoration. cross-binding pending writes and async restores have separate models.",
+  "cases": [
+    {
+      "name": "two-concurrent-send-rounds",
+      "main": "DraftRepeatedSend",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 9,
+      "samples": 1000
+    }
+  ]
+}

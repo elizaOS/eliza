@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { billOwnerKey } from "./bill-owner-key.mjs";
 import { createBillSourceStore } from "./bill-source-store.mjs";
 
 const owner = {
@@ -93,6 +94,54 @@ test("selection survives store recreation, deduplicates retry and is owner bound
   assert.equal(
     f.db.prepare("SELECT COUNT(*) AS n FROM bill_source_selections_v1").get().n,
     1,
+  );
+  // A host finds the checked bill by its source reference, for this owner only.
+  assert.deepEqual(
+    f.store.findSelectionBySourceRef({ owner }, candidate.sourceRef),
+    selection,
+  );
+  assert.equal(
+    f.store.findSelectionBySourceRef(
+      { owner: { ...owner, actorId: "other" } },
+      candidate.sourceRef,
+    ),
+    null,
+  );
+  assert.equal(
+    f.store.findSelectionBySourceRef(
+      { owner },
+      `bill-source:${"e".repeat(64)}`,
+    ),
+    null,
+  );
+  // A selection whose candidate no longer validates is passed over.
+  f.task.allowedOrigins = ["https://other.example"];
+  assert.equal(
+    f.store.findSelectionBySourceRef({ owner }, candidate.sourceRef),
+    null,
+  );
+});
+test("an older selection is found behind many newer stale ones", (t) => {
+  const f = fixture(t),
+    selection = f.api.select(f.input(f.offer()), f.result);
+  // Twenty newer selections of the same bill whose tasks are gone.
+  const insert = f.db.prepare(
+    "INSERT INTO bill_source_selections_v1 VALUES (?,?,?)",
+  );
+  for (let i = 0; i < 20; i++)
+    insert.run(
+      `gone-${i}`,
+      billOwnerKey(owner),
+      JSON.stringify({ ...selection, taskId: `gone-${i}` }),
+    );
+  assert.deepEqual(
+    f.store.findSelectionBySourceRef({ owner }, candidate.sourceRef),
+    selection,
+  );
+  f.task.allowedOrigins = ["https://other.example"];
+  assert.equal(
+    f.store.findSelectionBySourceRef({ owner }, candidate.sourceRef),
+    null,
   );
 });
 test("stale offers and changed source contents cannot select", (t) => {

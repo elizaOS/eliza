@@ -23,7 +23,6 @@ const ANDROID_ABIS = Object.freeze([
   "armeabi-v7a",
   "x86",
   "x86_64",
-  "riscv64",
 ]);
 /** The release-signing inputs a profile names: environment variable names, never values. */
 const RELEASE_SIGNING_KEYS = Object.freeze([
@@ -210,6 +209,12 @@ export function generateAndroidConsumerHost({
     profile.preserveRuntimeBytes === undefined ||
       typeof profile.preserveRuntimeBytes === "boolean",
     "Runtime byte preservation must be a boolean",
+  );
+  // "extract-16k": libraries are extracted on install and also stored, 16 KiB aligned.
+  requireValue(
+    profile.nativeLibraries === undefined ||
+      profile.nativeLibraries === "extract-16k",
+    'Native library packaging must be "extract-16k" or absent',
   );
   const consumedInOutput = new Set();
   function input(reference, kind) {
@@ -598,6 +603,7 @@ export function generateAndroidConsumerHost({
     releaseMinify: profile.releaseMinify,
     kotlin: profile.kotlin ?? true,
     preserveRuntimeBytes: Boolean(profile.preserveRuntimeBytes || runtimeMain),
+    nativeLibraries: profile.nativeLibraries ?? null,
     modules,
     manifest,
     identityResources: path.join(output, CONSUMER_IDENTITY_RESOURCES),

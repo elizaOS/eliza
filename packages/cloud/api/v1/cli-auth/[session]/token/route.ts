@@ -5,7 +5,10 @@
  * /api/auth/cli-session and completed by the authenticated browser flow.
  */
 
-import { cliAuthSessionsService } from "@elizaos/cloud-shared/lib/services/cli-auth-sessions";
+import {
+  CLI_AUTH_SESSION_VERIFIER_HEADER,
+  cliAuthSessionsService,
+} from "@elizaos/cloud-shared/lib/services/cli-auth-sessions";
 import { getCorsHeaders } from "@elizaos/cloud-shared/lib/utils/cors";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -43,12 +46,18 @@ app.get("/", async (c) => {
       return c.json({ status: session.status }, 202, corsHeaders);
     }
 
-    const apiKeyData =
-      await cliAuthSessionsService.getAndClearApiKey(sessionId);
+    const apiKeyData = await cliAuthSessionsService.getAndClearApiKey(
+      sessionId,
+      c.req.header(CLI_AUTH_SESSION_VERIFIER_HEADER) ?? null,
+    );
     if (apiKeyData.status === "unavailable") {
       return c.json(
         { error: `Token unavailable: ${apiKeyData.reason}` },
-        apiKeyData.reason === "not-found" ? 404 : 410,
+        apiKeyData.reason === "not-found"
+          ? 404
+          : apiKeyData.reason === "verifier-mismatch"
+            ? 403
+            : 410,
         corsHeaders,
       );
     }

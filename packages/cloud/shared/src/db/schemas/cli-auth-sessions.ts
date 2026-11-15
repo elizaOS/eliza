@@ -25,6 +25,9 @@ export const cliAuthSessions = pgTable(
     // Single-use retrieval is exposed at
     // `GET /api/v1/cli-auth/:session/token`.
     consumed_at: timestamp("consumed_at"),
+    // SHA-256 (hex) of a secret held only by the client that created the
+    // session. When set, the key is released only to a poll carrying it.
+    verifier_hash: text("verifier_hash"),
     status: text("status")
       .$type<"pending" | "authenticated" | "expired">()
       .notNull()

@@ -1,11 +1,11 @@
 /**
  * Messaging transport contracts: `TargetInfo` and send-handler signatures for
- * delivering a message to a platform, the socket/stream event payloads, UI
- * control messages, and the `IMessagingAdapter` server/channel model. The seam
- * between the runtime and connector plugins that actually send messages.
+ * delivering a message to a platform, UI control messages, and the
+ * `IMessagingAdapter` server/channel model. The seam between the runtime and
+ * connector plugins that actually send messages.
  */
 import type { Memory } from "./memory";
-import type { Content, UUID } from "./primitives";
+import type { Content, Metadata, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
 /**
@@ -427,61 +427,6 @@ export type SendHandlerFunction = (
 	content: Content,
 ) => SendHandlerResult;
 
-export enum SOCKET_MESSAGE_TYPE {
-	ROOM_JOINING = 1,
-	MESSAGE_SEND = 2,
-	MESSAGE = 3,
-	ACK = 4,
-	THINKING = 5,
-	CONTROL = 6,
-}
-
-/**
- * WebSocket/SSE event names for message streaming.
- * Used for real-time streaming of agent responses to clients.
- *
- * Event flow:
- * 1. First `messageStreamChunk` indicates stream start
- * 2. Multiple `messageStreamChunk` events with text chunks
- * 3. `messageBroadcast` event with complete message (indicates stream end)
- * 4. `messageStreamError` if an error occurs during streaming
- */
-export const MESSAGE_STREAM_EVENT = {
-	/** Text chunk during streaming. First chunk indicates stream start. */
-	messageStreamChunk: "messageStreamChunk",
-	/** Error occurred during streaming */
-	messageStreamError: "messageStreamError",
-	/** Complete message broadcast (existing event, indicates stream end) */
-	messageBroadcast: "messageBroadcast",
-} as const;
-
-export type MessageStreamEventType =
-	(typeof MESSAGE_STREAM_EVENT)[keyof typeof MESSAGE_STREAM_EVENT];
-
-/**
- * Payload for messageStreamChunk event
- * Uses camelCase for client-facing WebSocket events (JS convention)
- */
-export interface MessageStreamChunkPayload {
-	messageId: UUID;
-	chunk: string;
-	index: number;
-	channelId: string;
-	agentId: UUID;
-}
-
-/**
- * Payload for messageStreamError event
- * Uses camelCase for client-facing WebSocket events (JS convention)
- */
-export interface MessageStreamErrorPayload {
-	messageId: UUID;
-	channelId: string;
-	agentId: UUID;
-	error: string;
-	partialText?: string;
-}
-
 /**
  * Control message actions that can be sent to the frontend
  */
@@ -513,50 +458,6 @@ export interface ControlMessage {
 	/** Room ID to ensure signal is directed to the correct chat window */
 	roomId: UUID;
 }
-
-/**
- * Handler options for async message processing (User → Agent)
- * Follows the core pattern: HandlerOptions, HandlerCallback, etc.
- */
-export interface MessageHandlerOptions {
-	/**
-	 * Called when the agent generates a response
-	 * If provided, method returns immediately (async mode)
-	 * If not provided, method waits for response (sync mode)
-	 */
-	onResponse?: (content: Content) => Promise<void>;
-
-	/**
-	 * Called if an error occurs during processing
-	 */
-	onError?: (error: Error) => Promise<void>;
-
-	/**
-	 * Called when processing is complete
-	 */
-	onComplete?: () => Promise<void>;
-}
-
-/**
- * Result of sending a message to an agent (User → Agent)
- * Follows the core pattern: ActionResult, ProviderResult, GenerateTextResult, etc.
- */
-export interface MessageUsage {
-	inputTokens: number;
-	outputTokens: number;
-	model: string;
-}
-
-export interface MessageResult {
-	messageId: UUID;
-	userMessage?: Memory;
-	agentResponses?: Content[];
-	usage?: MessageUsage;
-}
-
-// Database Messaging Types
-
-import type { Metadata } from "./primitives";
 
 /**
  * Message Server
@@ -648,8 +549,6 @@ export interface MessagingMessage {
  * ```
  */
 export interface IMessagingAdapter {
-	// ── Message Server Methods ──────────────────────────────────────────
-
 	/**
 	 * Create a new message server
 	 *
@@ -704,8 +603,6 @@ export interface IMessagingAdapter {
 		messageServerId: UUID,
 		agentId: UUID,
 	): Promise<void>;
-
-	// ── Channel Methods ─────────────────────────────────────────────────
 
 	/**
 	 * Create a new channel
@@ -776,8 +673,6 @@ export interface IMessagingAdapter {
 	 * Check if an entity is a channel participant
 	 */
 	isChannelParticipant(channelId: UUID, entityId: UUID): Promise<boolean>;
-
-	// ── Message Methods ─────────────────────────────────────────────────
 
 	/**
 	 * Create a new message

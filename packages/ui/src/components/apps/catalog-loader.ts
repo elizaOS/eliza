@@ -3,8 +3,8 @@
  * internal tools, and available overlay apps — into one deduped `RegistryAppInfo`
  * list for the chat surfaces (AppsSection, agent-orchestrator widget). Each
  * source is fetched with `allSettled` so a single failing endpoint degrades to
- * an empty slice rather than failing the whole load. `AppsView` uses the sibling
- * `load-apps-catalog.ts` instead.
+ * an empty slice rather than failing the whole load. `AppsView` reaches it
+ * through `load-apps-catalog.ts` with hidden apps kept.
  */
 
 import type { RegistryAppInfo } from "@elizaos/core/protocol";

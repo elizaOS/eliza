@@ -103,9 +103,19 @@ export const currentTimeProvider: Provider = {
       now,
       timeZone,
     );
+    // The model-facing line carries minute precision: a turn inside the same
+    // minute renders identical text, so the clock does not change the prompt
+    // on every call. `values` and `data` keep the exact instant.
+    const minute = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
+    const minuteIso = `${minute.toISOString().slice(0, 16)}Z`;
+    // The floored instant always renders ":00" seconds; drop that field.
+    const minuteReadable = formatInZone(minute, timeZone).humanReadable.replace(
+      /(\d{1,2}:\d{2}):00/,
+      "$1",
+    );
     const contextText = userTimeZone
-      ? `Local date: ${dateOnly} (${timeZone}). ${humanReadable}. Resolve today/tomorrow from this local date, not the UTC date. UTC instant: ${isoTimestamp}`
-      : `${origin === "agent-setting" ? "Agent" : "Server"} time: ${humanReadable} (${timeZone}), ISO (UTC): ${isoTimestamp}; user timezone unknown.`;
+      ? `Local date: ${dateOnly} (${timeZone}). ${minuteReadable}. Resolve today/tomorrow from this local date, not the UTC date. UTC instant: ${minuteIso}`
+      : `${origin === "agent-setting" ? "Agent" : "Server"} time: ${minuteReadable} (${timeZone}), ISO (UTC): ${minuteIso}; user timezone unknown.`;
 
     return {
       text: contextText,

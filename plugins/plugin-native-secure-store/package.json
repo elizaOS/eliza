@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-secure-store",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.6",
   "description": "Device-only Apple Keychain and Android Keystore storage for Eliza app credentials.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
@@ -18,6 +18,8 @@
   "files": [
     "android/src/main/",
     "android/build.gradle",
+    "android-nativeonly/src/main/",
+    "android-nativeonly/build.gradle",
     "dist/",
     "ios/Sources/",
     "*.podspec"
@@ -29,16 +31,18 @@
     "url": "https://github.com/elizaOS/eliza.git"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-secure-store -- bun run build:unlocked",
+    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-secure-store -- bun run build:unlocked",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test:native-session": "node --test test/native-host/credential-access.node.mjs",
-    "test:native-passwords": "node --test test/native-host/password-custody.node.mjs"
+    "test:native-session": "bun test --timeout=120000 ./test/native-host/credential-access.node.mjs",
+    "test:native-passwords": "bun test --timeout=120000 ./test/native-host/password-custody.node.mjs",
+    "test:native-identity": "bun test --timeout=120000 ./test/native-host/owner-identity.node.mjs",
+    "test:native-slots": "node --test test/native-host/json-slots.node.mjs"
   },
   "capacitor": {
     "android": {
@@ -52,7 +56,7 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "rollup": "^4.65.0",
+    "rollup": "^4.68.0",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

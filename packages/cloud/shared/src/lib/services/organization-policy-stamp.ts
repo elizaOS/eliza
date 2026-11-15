@@ -30,7 +30,6 @@ export function isOrganizationPolicyStamp(
     );
   if (policy.source === "promo_grant")
     return (
-      policy.effectiveUntil !== null &&
       typeof policy.sourceGrantId === "string" &&
       policy.sourceGrantId.length > 0 &&
       policy.sourceSubscriptionId === null &&

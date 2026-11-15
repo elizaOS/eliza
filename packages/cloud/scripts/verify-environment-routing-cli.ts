@@ -10,7 +10,7 @@
  * to the wrong environment). See `verify-environment-routing.ts` for the why.
  *
  * Usage:
- *   node packages/cloud/scripts/verify-environment-routing-cli.ts \
+ *   bun packages/cloud/scripts/verify-environment-routing-cli.ts \
  *     [--environment development|staging|production|all]   (default: all)
  *     [--require-beacon]        treat a build-without-beacon as a failure
  *     [--allow-unreachable]     downgrade an unreachable origin to a warning

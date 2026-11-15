@@ -2,17 +2,26 @@ import net from "node:net";
 
 const BIONIC_MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
-/** A buffered request on the existing Android host socket; each call owns its connection. */
+/**
+ * A buffered request on the existing Android host socket; each call owns its
+ * connection. Aborting `signal` closes that connection, which tells the host
+ * the caller is gone.
+ */
 export function requestBionicHost(
   socketName: string,
   request: Record<string, unknown>,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const payload = Buffer.from(JSON.stringify(request), "utf8");
   const frame = Buffer.allocUnsafe(4 + payload.length);
   frame.writeUInt32BE(payload.length, 0);
   payload.copy(frame, 4);
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError(signal));
+      return;
+    }
     const sock = net.connect({ path: `\0${socketName}` });
     let settled = false;
     let chunks = Buffer.alloc(0);
@@ -21,9 +30,12 @@ export function requestBionicHost(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       sock.destroy();
       err ? reject(err) : resolve(value);
     };
+    const onAbort = () => finish(abortError(signal));
+    signal?.addEventListener("abort", onAbort, { once: true });
     const timer = setTimeout(
       () => finish(new Error("[mobile-device-bridge] bionic host timed out")),
       timeoutMs,
@@ -65,4 +77,13 @@ export function requestBionicHost(
         finish(new Error("[mobile-device-bridge] bionic host closed early"));
     });
   });
+}
+
+/** The rejection for an aborted bionic request: the signal's reason when it is an Error. */
+export function abortError(signal: AbortSignal | undefined): Error {
+  const reason = signal?.reason;
+  if (reason instanceof Error) return reason;
+  const error = new Error("[mobile-device-bridge] bionic request aborted");
+  error.name = "AbortError";
+  return error;
 }

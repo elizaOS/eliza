@@ -201,13 +201,14 @@ function wrapProviderWithMinRole(
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
+    context?: Parameters<Provider["get"]>[3],
   ): Promise<ProviderResult> => {
     const check = await getCachedSenderRole(runtime, message);
     if (!check || !satisfiesRoleGate([check.role], { minRole })) {
       return { text: "" };
     }
 
-    return originalGet.call(provider, runtime, message, state);
+    return originalGet.call(provider, runtime, message, state, context);
   };
   (provider as { __roleGate?: string }).__roleGate = marker;
   return true;

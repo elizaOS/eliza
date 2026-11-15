@@ -2,7 +2,11 @@
 
 import { mkdirSync } from "node:fs";
 import path, { join } from "node:path";
-import { resolveStateDir } from "@elizaos/core";
+import {
+  ElizaError,
+  redactSensitiveText,
+  resolveStateDir,
+} from "@elizaos/core";
 import {
   createEngine,
   detectBestEngine,
@@ -128,6 +132,17 @@ export interface SandboxEvent {
 
 // ── Implementation ───────────────────────────────────────────────────────────
 
+// The in-memory log is for diagnostics; SandboxAuditLog is the durable record.
+const MAX_EVENT_LOG_ENTRIES = 1000;
+const MAX_EVENT_COMMAND_CHARS = 200;
+
+function describeCommand(command: string): string {
+  const redacted = redactSensitiveText(command);
+  return redacted.length > MAX_EVENT_COMMAND_CHARS
+    ? `${redacted.slice(0, MAX_EVENT_COMMAND_CHARS)}…`
+    : redacted;
+}
+
 export class SandboxManager {
   private state: SandboxState = "uninitialized";
   private config: SandboxManagerConfig;
@@ -248,6 +263,30 @@ export class SandboxManager {
     await this.engine.removeContainer(containerId);
   }
 
+  private async cleanupOwnedContainers(): Promise<void> {
+    const failures: unknown[] = [];
+    for (const field of ["browserContainerId", "containerId"] as const) {
+      try {
+        await this.cleanupContainer(this[field]);
+        this[field] = null;
+      } catch (err) {
+        // error-policy:J6 Attempt every resource, retaining failed ownership for retry.
+        failures.push(err);
+        this.emitEvent({
+          timestamp: Date.now(),
+          type: "error",
+          detail: `Sandbox cleanup error: ${String(err)}`,
+        });
+      }
+    }
+    if (failures.length > 0) {
+      throw new ElizaError("Sandbox cleanup was not confirmed", {
+        code: "SANDBOX_CLEANUP_FAILED",
+        cause: new AggregateError(failures),
+      });
+    }
+  }
+
   private setState(newState: SandboxState): void {
     const oldState = this.state;
     this.state = newState;
@@ -328,19 +367,7 @@ export class SandboxManager {
           detail: `Container started: ${this.containerId}`,
         });
 
-        // Start browser container if configured
-        if (this.config.browser?.enabled && this.config.browser.autoStart) {
-          try {
-            this.browserContainerId = await this.createBrowserContainer();
-          } catch (err) {
-            this.emitEvent({
-              timestamp: Date.now(),
-              type: "error",
-              detail: `Browser container start failed: ${String(err)}`,
-            });
-            // Non-fatal: sandbox can work without browser
-          }
-        }
+        await this.startBrowserIfConfigured();
 
         // Health check
         const healthy = await this.healthCheck();
@@ -376,10 +403,7 @@ export class SandboxManager {
 
       try {
         const config = this.getMainContainerConfig();
-        await this.cleanupContainer(this.containerId);
-        await this.cleanupContainer(this.browserContainerId);
-        this.containerId = null;
-        this.browserContainerId = null;
+        await this.cleanupOwnedContainers();
 
         const orphans = this.engine.listContainers(config.containerPrefix);
         for (const id of orphans) {
@@ -388,6 +412,7 @@ export class SandboxManager {
         }
 
         this.containerId = await this.createMainContainer();
+        await this.startBrowserIfConfigured();
 
         const healthy = await this.healthCheck();
         if (healthy) {
@@ -402,6 +427,7 @@ export class SandboxManager {
           detail: `Recovery failed: ${String(err)}`,
         });
         this.setState("degraded");
+        throw err;
       }
     });
   }
@@ -420,16 +446,11 @@ export class SandboxManager {
       this.setState("stopping");
 
       try {
-        await this.cleanupContainer(this.browserContainerId);
-        await this.cleanupContainer(this.containerId);
-        this.browserContainerId = null;
-        this.containerId = null;
+        await this.cleanupOwnedContainers();
       } catch (err) {
-        this.emitEvent({
-          timestamp: Date.now(),
-          type: "error",
-          detail: `Sandbox stop error: ${String(err)}`,
-        });
+        // error-policy:J2 Keep failed cleanup retryable and visible to the caller.
+        this.setState("degraded");
+        throw err;
       }
 
       this.setState("stopped");
@@ -468,7 +489,7 @@ export class SandboxManager {
     this.emitEvent({
       timestamp: Date.now(),
       type: "exec",
-      detail: options.command,
+      detail: describeCommand(options.command),
       metadata: {
         workdir: options.workdir ?? this.config.workdir ?? "/workspace",
       },
@@ -493,7 +514,7 @@ export class SandboxManager {
         type: "error",
         detail: `Sandbox exec failed: ${String(err)}`,
         metadata: {
-          command: options.command,
+          command: describeCommand(options.command),
         },
       });
       return {
@@ -547,6 +568,20 @@ export class SandboxManager {
     return `http://localhost:${port}/vnc.html?autoconnect=true&resize=scale&view_only=true`;
   }
 
+  private async startBrowserIfConfigured(): Promise<void> {
+    if (!this.config.browser?.enabled || !this.config.browser.autoStart) return;
+    try {
+      this.browserContainerId = await this.createBrowserContainer();
+    } catch (err) {
+      this.emitEvent({
+        timestamp: Date.now(),
+        type: "error",
+        detail: `Browser container start failed: ${String(err)}`,
+      });
+      // Non-fatal: sandbox can work without browser
+    }
+  }
+
   private async createBrowserContainer(): Promise<string> {
     const name = `${this.config.containerPrefix}-browser-${Date.now()}`;
     const cdpPort = this.config.browser?.cdpPort ?? 9222;
@@ -595,6 +630,9 @@ export class SandboxManager {
 
   private emitEvent(event: SandboxEvent): void {
     this.eventLog.push(event);
+    if (this.eventLog.length > MAX_EVENT_LOG_ENTRIES) {
+      this.eventLog.splice(0, this.eventLog.length - MAX_EVENT_LOG_ENTRIES);
+    }
   }
 
   getEventLog(): SandboxEvent[] {
@@ -614,4 +652,16 @@ export class SandboxManager {
       browserContainerId: this.browserContainerId,
     };
   }
+}
+
+// The runtime owns the started manager; the API server reads it from here so
+// terminal and sandbox routes run through the same sandbox.
+let activeSandboxManager: SandboxManager | null = null;
+
+export function setActiveSandboxManager(manager: SandboxManager | null): void {
+  activeSandboxManager = manager;
+}
+
+export function getActiveSandboxManager(): SandboxManager | null {
+  return activeSandboxManager;
 }

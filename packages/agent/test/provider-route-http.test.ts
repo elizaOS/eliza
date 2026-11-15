@@ -57,7 +57,6 @@ beforeAll(async () => {
     "ELIZA_PROVIDER",
     "OPENAI_BASE_URL",
     "CEREBRAS_BASE_URL",
-    "ELIZA_MOCK_OPENAI_BASE",
     "ELIZA_BRAIN_PROVIDER",
     "ELIZA_CLOUD_PROVISIONED",
   ])
@@ -66,7 +65,6 @@ beforeAll(async () => {
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: configPath,
     ELIZA_PERSIST_CONFIG_PATH: configPath,
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: token,
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
   }))

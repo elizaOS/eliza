@@ -45,11 +45,7 @@ function pin(value: string | undefined) {
 export function installMobileWorkflowProcessHost(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  if (
-    env.ELIZA_PLATFORM !== "android" &&
-    env.ELIZA_MOBILE_PLATFORM !== "android"
-  )
-    return;
+  if (env.ELIZA_PLATFORM !== "android") return;
   if (env.ELIZA_MOBILE_WORKFLOWS !== "1") return;
   const root = directory(env.ELIZA_SMTHRS_RUNTIME_DIR);
   const manifestPath = join(root, "manifest.json");

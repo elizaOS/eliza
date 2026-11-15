@@ -1238,8 +1238,8 @@ export async function startApiServer(
     configureServer: async (httpServer) => {
       await callerOptions?.configureServer?.(httpServer);
     },
-  }).catch((error: unknown) => {
-    voiceHost.close();
+  }).catch(async (error: unknown) => {
+    await voiceHost.close();
     throw error;
   });
   logger.info(
@@ -1292,8 +1292,24 @@ export async function startApiServer(
   server.close = async () => {
     compatState.stoppedAuthRuntime = null;
     closeStandaloneSpeech(compatState);
-    voiceHost.close();
-    await originalClose();
+    let retirementFailure: { error: unknown } | undefined;
+    try {
+      await voiceHost.close();
+    } catch (error) {
+      retirementFailure = { error };
+    }
+    try {
+      await originalClose();
+    } catch (error) {
+      if (retirementFailure) {
+        throw new AggregateError(
+          [retirementFailure.error, error],
+          "Server closed with unconfirmed voice retirement",
+        );
+      }
+      throw error;
+    }
+    if (retirementFailure) throw retirementFailure.error;
   };
   return server;
 }

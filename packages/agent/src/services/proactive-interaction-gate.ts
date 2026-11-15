@@ -78,8 +78,13 @@ export function resolveProactiveChattiness(
   env: Record<string, string | undefined> = process.env,
   userSetting?: string | null,
 ): ProactiveChattiness {
-  // Hard kill-switch mirrors the LifeOps proactive worker's env flag.
-  const disabled = env.ELIZA_DISABLE_PROACTIVE_AGENT;
+  // Hard kill-switch mirrors the LifeOps proactive worker's env flag. That
+  // reader (isDisabledByEnv in plugin-personal-assistant) trims and lowercases
+  // the same key, so an exact-match comparison here let "TRUE" / " True " fall
+  // through to the chattiness setting and left the decider running.
+  const disabled = (env.ELIZA_DISABLE_PROACTIVE_AGENT ?? "")
+    .trim()
+    .toLowerCase();
   if (disabled === "1" || disabled === "true" || disabled === "yes") {
     return "off";
   }

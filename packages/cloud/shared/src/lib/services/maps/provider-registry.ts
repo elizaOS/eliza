@@ -3,8 +3,8 @@
  * production provider and its licence are an operator decision;
  * this seam lets an operator select one without code changes to the routes:
  *
- *   ELIZA_MAPS_PROVIDER        `osm` (default) or `none`; other kinds register
- *                              with `registerMapsProvider`.
+ *   ELIZA_MAPS_PROVIDER        `osm` (default), `google` or `none`; other kinds
+ *                              register with `registerMapsProvider`.
  *   ELIZA_MAPS_GEOCODER        `nominatim` (default); `registerMapsGeocoder` adds kinds.
  *   ELIZA_MAPS_ROUTER          `graphhopper` (default) or `valhalla`; `registerMapsRouter`.
  *   ELIZA_MAPS_GEOCODER_URL, ELIZA_MAPS_GEOCODER_API_KEY,
@@ -14,11 +14,21 @@
  *   ELIZA_MAPS_ROUTE_ALTERNATIVES (`false` disables),
  *   ELIZA_MAPS_PROVIDER_ID, ELIZA_MAPS_ATTRIBUTION, ELIZA_MAPS_OPERATOR.
  *
+ * `google` needs only the secret GOOGLE_MAPS_API_KEY (Places API (New),
+ * Geocoding API, Routes API and Map Tiles API enabled on its project). It
+ * also reads ELIZA_MAPS_COVERAGE_JSON (default: the world),
+ * ELIZA_MAPS_DATASET_REVISION, ELIZA_MAPS_ROUTE_ALTERNATIVES,
+ * ELIZA_MAPS_LANGUAGE (BCP-47, e.g. `en-US`), ELIZA_MAPS_REGION (CLDR, e.g.
+ * `US`), ELIZA_MAPS_TILES (`false` turns the tiles proxy off),
+ * ELIZA_MAPS_TRAFFIC (`none` drops live traffic, which bills as Routes Pro)
+ * and ELIZA_MAPS_TRANSIT (`false` drops transit).
+ *
  * A missing required setting means Maps is not configured (null). An invalid
  * setting throws; the route reports it as not configured without echoing it.
  */
 import type { MapsGeocoderBackend, MapsRouterBackend } from "./backends";
 import { MAPS_TRAVEL_MODES, type MapsProviderAdapter, type MapsTravelMode } from "./contract";
+import { GoogleMapsProvider } from "./google-provider";
 import { GRAPHHOPPER_DEFAULT_PROFILES, GraphHopperRouter } from "./graphhopper-router";
 import { NominatimGeocoder } from "./nominatim-geocoder";
 import { OsmMapsProvider, parseCoverageRegions } from "./osm-provider";
@@ -195,6 +205,35 @@ export function osmMapsProviderFromEnv(
   });
 }
 
+/**
+ * The Google Maps Platform provider, or null while GOOGLE_MAPS_API_KEY is
+ * absent. Coverage defaults to the world.
+ */
+export function googleMapsProviderFromEnv(
+  env: MapsEnv,
+  fetchImpl?: typeof fetch,
+): GoogleMapsProvider | null {
+  const apiKey = setting(env, "GOOGLE_MAPS_API_KEY");
+  if (!apiKey) return null;
+  const coverage = setting(env, "ELIZA_MAPS_COVERAGE_JSON");
+  return new GoogleMapsProvider({
+    apiKey,
+    regions: coverage ? parseCoverageRegions(coverage) : undefined,
+    alternatives: env.ELIZA_MAPS_ROUTE_ALTERNATIVES !== "false",
+    providerId: setting(env, "ELIZA_MAPS_PROVIDER_ID"),
+    attribution: setting(env, "ELIZA_MAPS_ATTRIBUTION"),
+    revision: setting(env, "ELIZA_MAPS_DATASET_REVISION"),
+    language: setting(env, "ELIZA_MAPS_LANGUAGE"),
+    region: setting(env, "ELIZA_MAPS_REGION"),
+    tiles: env.ELIZA_MAPS_TILES !== "false",
+    traffic: env.ELIZA_MAPS_TRAFFIC !== "none",
+    transit: env.ELIZA_MAPS_TRANSIT !== "false",
+    fetchImpl,
+  });
+}
+
+registerMapsProvider("google", googleMapsProviderFromEnv);
+
 /** Every setting that changes the configured provider, for cache keys. */
 export const MAPS_PROVIDER_SETTINGS = [
   "ELIZA_MAPS_PROVIDER",
@@ -211,6 +250,12 @@ export const MAPS_PROVIDER_SETTINGS = [
   "ELIZA_MAPS_PROVIDER_ID",
   "ELIZA_MAPS_ATTRIBUTION",
   "ELIZA_MAPS_OPERATOR",
+  "ELIZA_MAPS_LANGUAGE",
+  "ELIZA_MAPS_REGION",
+  "ELIZA_MAPS_TILES",
+  "ELIZA_MAPS_TRAFFIC",
+  "ELIZA_MAPS_TRANSIT",
+  "GOOGLE_MAPS_API_KEY",
 ] as const;
 
 /** The configured provider, or null while Maps is not provisioned. */

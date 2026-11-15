@@ -6,6 +6,8 @@
 import type {
   ElizaPasswordsPlugin,
   PasswordBinding,
+  PasswordEditorInput,
+  PasswordEditorResult,
   PasswordEntrySummary,
   PasswordSaveInput,
   PasswordSaveResult,
@@ -107,6 +109,7 @@ export function parseEntries(value: unknown): PasswordEntrySummary[] {
       username: text(item.username),
       bindings,
       updatedAt: count(item.updatedAt),
+      revision: count(item.revision),
     };
   });
 }
@@ -144,6 +147,8 @@ const CODES: readonly PasswordsErrorCode[] = [
   "invalid",
   "key-invalidated",
   "busy",
+  "conflict",
+  "not-admitted",
   "unavailable",
 ];
 
@@ -162,6 +167,8 @@ export function passwordsError(error: unknown): PasswordsClientError {
     "key-invalidated":
       "Saved passwords can no longer be decrypted on this device.",
     busy: "Finish the current unlock first.",
+    conflict: "This password changed. Reload it and try again.",
+    "not-admitted": "Saved passwords are not available here.",
     unavailable: "Saved passwords are unavailable.",
   };
   // Native validation messages are fixed strings; still only pass through known-safe ones.
@@ -206,9 +213,7 @@ export interface PasswordsClient {
   lock(): Promise<void>;
   list(): Promise<PasswordEntrySummary[]>;
   save(input: PasswordSaveInput): Promise<PasswordSaveResult>;
-  openEditor(): Promise<
-    { status: "saved"; id: string } | { status: "cancelled" }
-  >;
+  openEditor(input?: PasswordEditorInput): Promise<PasswordEditorResult>;
   remove(id: string): Promise<void>;
   reset(): Promise<void>;
   reveal(id: string): Promise<{ hidesAfterMs: number }>;
@@ -261,22 +266,46 @@ export function createPasswordsClient(
         },
       );
     },
-    openEditor: () =>
-      call(
-        () => plugin.openEditor(),
+    openEditor: (input) => {
+      if (
+        input &&
+        (typeof input.entryId !== "string" ||
+          !Number.isSafeInteger(input.expectedRevision) ||
+          input.expectedRevision < 0)
+      )
+        return Promise.reject(
+          new PasswordsClientError("invalid", "Choose a saved password."),
+        );
+      return call(
+        () =>
+          input
+            ? plugin.openEditor({
+                entryId: input.entryId,
+                expectedRevision: input.expectedRevision,
+              })
+            : plugin.openEditor(),
         (value) => {
           assertNoSecretFields(value);
           const item = (value || {}) as Record<string, unknown>;
           if (item.status === "cancelled")
             return { status: "cancelled" as const };
-          if (item.status === "saved")
-            return { status: "saved" as const, id: text(item.id, 128) };
+          if (
+            item.status === "saved" &&
+            Number.isSafeInteger(item.revision) &&
+            (item.revision as number) > 0
+          )
+            return {
+              status: "saved" as const,
+              id: text(item.id, 128),
+              revision: item.revision as number,
+            };
           throw new PasswordsClientError(
             "unavailable",
             "Saved passwords are unavailable.",
           );
         },
-      ),
+      );
+    },
     remove: (id) =>
       call(
         () => plugin.remove({ id }),

@@ -1,0 +1,62 @@
+{
+	"sources": [
+		"packages/core/src/services/agent-event.ts",
+		"packages/core/src/runtime.ts",
+		"packages/core/src/services/agent-event-bridge.ts",
+		"packages/core/test/agent-event-bridge.test.ts"
+	],
+	"conformance": "packages/core/scripts/quint-agent-event-conformance.mjs",
+	"bounds": "One service, two run IDs, four sequence values per run after zero, and one failure and one healthy observer per event. The separate registration case has two channels, one tracked callback identity per channel, three registrations per callback, one healthy peer for self-detach, and sent and failed heartbeat statuses.",
+	"cases": [
+		{
+			"name": "run-sequence-and-diagnostic-fanout",
+			"main": "AgentEventSequence",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"SequenceBounds",
+				"PeerReceivesInSequence",
+				"DiagnosticsFollowOriginal",
+				"SessionUsesCallerOrRun"
+			],
+			"temporal": ["FanoutFinishes"],
+			"temporalChecks": [
+				{
+					"property": "FanoutFinishes",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of drain. The current synchronous callback and diagnostic calls return or throw, so their next stage runs.",
+						"The modeled failing observer throws on the original event and accepts the error diagnostics. Explicit nested emits and teardown from within callbacks are outside this case."
+					]
+				}
+			],
+			"maxSteps": 35,
+			"samples": 500
+		},
+		{
+			"name": "subscriptions-and-heartbeat",
+			"main": "AgentEventSubscriptions",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"OneCurrentRegistration",
+				"DetachRequiresCurrentHandle",
+				"CallbackDetachesBeforePeer",
+				"HeartbeatStatusMatchesIndicator",
+				"StopClearsRegistrationsAndHeartbeat"
+			],
+			"temporal": ["PeerStillReceives"],
+			"temporalChecks": [
+				{
+					"property": "PeerStillReceives",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of deliverPeer. The detaching callback returns and a later peer remains subscribed to this synchronous emission."
+					]
+				}
+			],
+			"maxSteps": 35,
+			"samples": 500
+		}
+	]
+}

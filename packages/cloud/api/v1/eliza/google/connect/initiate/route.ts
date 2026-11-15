@@ -15,6 +15,10 @@ import {
   AgentGoogleConnectorError,
   initiateManagedGoogleConnection,
 } from "@elizaos/cloud-shared/lib/services/agent-google-connector";
+import {
+  OAuthError,
+  OAuthErrorCode,
+} from "@elizaos/cloud-shared/lib/services/oauth";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -99,6 +103,14 @@ app.post("/", async (c) => {
     );
     return c.json(appReturn ? { ...result, appReturn: 2 } : result);
   } catch (error) {
+    if (
+      error instanceof OAuthError &&
+      error.code === OAuthErrorCode.INVALID_SCOPE_REQUEST
+    )
+      return c.json(
+        { error: "Requested Google permissions are not available." },
+        400,
+      );
     if (error instanceof AgentGoogleConnectorError) {
       return c.json({ error: error.message }, error.status as 400);
     }

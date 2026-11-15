@@ -92,6 +92,11 @@ export const appFrontendDeployments = pgTable(
     /** R2 object-key prefix under which this deployment's immutable artifacts live. */
     r2_prefix: text("r2_prefix").notNull(),
 
+    /** Immutable complete plan and original writer; published manifest remains separate. */
+    upload_generation: uuid("upload_generation"),
+    upload_plan: jsonb("upload_plan").$type<FrontendManifest | null>(),
+    upload_quiesced_at: timestamp("upload_quiesced_at"),
+
     /** Validated file manifest (populated at finalize). */
     manifest: jsonb("manifest").$type<FrontendManifest | null>(),
 

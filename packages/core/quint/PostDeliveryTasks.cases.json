@@ -1,0 +1,183 @@
+{
+  "cases": [
+    {
+      "name": "ambient",
+      "main": "PostDeliveryTasks_ambient",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "ScopedAdmission",
+        "ExplicitModeEnforced",
+        "EffectsRequireInvocation",
+        "FailedDeliveryBlocksEffects",
+        "AbortedBeforeInvocationHasNoEffect",
+        "TaskIndexesAgree",
+        "CapturedSettlementRetained"
+      ],
+      "temporal": [
+        "QuarantineIsFinal",
+        "NoAdmissionAfterQuarantine",
+        "RuntimeReturnsEmpty",
+        "RoomReturnsEmpty",
+        "DrainsFinish",
+        "QuarantineRetainsPending"
+      ],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "QuarantineIsFinal",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_ambient: QuarantineIsFinal = always((s.quarantined implies next(s.quarantined)).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "NoAdmissionAfterQuarantine",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_ambient: NoAdmissionAfterQuarantine = always((s.quarantined implies Tasks.forall(t => s.task.get(t) == \"new\" implies next(s.task).get(t) == \"new\")).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "RuntimeReturnsEmpty",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_ambient: RuntimeReturnsEmpty = always((s.runtimeDrain != \"returned\" and next(s.runtimeDrain) == \"returned\" implies pending(s).size() == 0).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "RoomReturnsEmpty",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_ambient: RoomReturnsEmpty = Rooms.forall(r => always((s.roomDrain.get(r) != \"returned\" and next(s.roomDrain).get(r) == \"returned\" implies roomPending(s, r).size() == 0).orKeep(s)))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "DrainsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_ambient: DrainsFinish = Fairness implies eventually(always(ObserversQuiescent))",
+            "Model fairness predicate Fairness = and { Tasks.forall(t => AdvanceTask(t).weakFair(s)), Rooms.forall(r => ResolveDelivery(r, true).weakFair(s)), Rooms.forall(r => AdvanceRoomDrain(r).weakFair(s)), Rooms.forall(r => CloseDelivery(r).weakFair(s)), AdvanceRuntimeDrain.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "QuarantineRetainsPending",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_ambient: QuarantineRetainsPending = always((not(s.quarantined) and next(s.quarantined) implies pending(s).subseteq(next(pending(s)))).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "explicit",
+      "main": "PostDeliveryTasks_explicit",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "ScopedAdmission",
+        "ExplicitModeEnforced",
+        "EffectsRequireInvocation",
+        "FailedDeliveryBlocksEffects",
+        "AbortedBeforeInvocationHasNoEffect",
+        "TaskIndexesAgree",
+        "CapturedSettlementRetained"
+      ],
+      "temporal": [
+        "QuarantineIsFinal",
+        "NoAdmissionAfterQuarantine",
+        "RuntimeReturnsEmpty",
+        "RoomReturnsEmpty",
+        "DrainsFinish",
+        "QuarantineRetainsPending"
+      ],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "QuarantineIsFinal",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_explicit: QuarantineIsFinal = always((s.quarantined implies next(s.quarantined)).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "NoAdmissionAfterQuarantine",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_explicit: NoAdmissionAfterQuarantine = always((s.quarantined implies Tasks.forall(t => s.task.get(t) == \"new\" implies next(s.task).get(t) == \"new\")).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "RuntimeReturnsEmpty",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_explicit: RuntimeReturnsEmpty = always((s.runtimeDrain != \"returned\" and next(s.runtimeDrain) == \"returned\" implies pending(s).size() == 0).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "RoomReturnsEmpty",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_explicit: RoomReturnsEmpty = Rooms.forall(r => always((s.roomDrain.get(r) != \"returned\" and next(s.roomDrain).get(r) == \"returned\" implies roomPending(s, r).size() == 0).orKeep(s)))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "DrainsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_explicit: DrainsFinish = Fairness implies eventually(always(ObserversQuiescent))",
+            "Model fairness predicate Fairness = and { Tasks.forall(t => AdvanceTask(t).weakFair(s)), Rooms.forall(r => ResolveDelivery(r, true).weakFair(s)), Rooms.forall(r => AdvanceRoomDrain(r).weakFair(s)), Rooms.forall(r => CloseDelivery(r).weakFair(s)), AdvanceRuntimeDrain.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "QuarantineRetainsPending",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PostDeliveryTasks_explicit: QuarantineRetainsPending = always((not(s.quarantined) and next(s.quarantined) implies pending(s).subseteq(next(pending(s)))).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "packages/core/src/services/post-delivery-task-tracker.ts",
+    "packages/core/src/runtime/room-handler-queue.ts",
+    "packages/core/test/post-delivery-task-conformance.test.ts"
+  ],
+  "implementationTests": [
+    "packages/core/test/post-delivery-task-conformance.test.ts"
+  ],
+  "bounds": "Two unique task registrations, two rooms, one live lease identity and stale/wrong probes per room, one delivery boundary and one drain observer per room, one runtime drain. No task ID reuse.",
+  "fairness": "DrainsFinish assumes fair queued callback processing, eventual termination of every invoked callback (including tasks which ignore cancellation), settlement of every delivery, and fair drain-loop scheduling. It does not promise termination for a permanently blocked callback. The equivalent compact liveness formula uses eventual permanent observer quiescence because each bounded observer/boundary starts at most once. DrainsFinishExpanded retains the individual obligations in the model.",
+  "limitations": [
+    "Tracker-specific lease checks are modeled. Queue acquisition/generation ordering is delegated to RoomHandlerQueue.qnt.",
+    "Task effects represent callbacks that use roomDeliverySettlement and honor its boolean. Arbitrary callbacks can ignore that result.",
+    "An already invoked callback can ignore AbortSignal and perform effects after quarantine. The tracker retains it until settlement and refuses runtime reuse.",
+    "Concurrent observers of the same room drain, multiple delivery cycles, callback result values and JS garbage collection are outside these bounds.",
+    "Registration may occur while draining or after an earlier successful drain. Empty-at-return properties apply to the return transition, not forever afterward.",
+    "Conformance checks exercise named real queue/promise traces; they do not establish full bisimulation between arbitrary JavaScript schedules and the finite model."
+  ],
+  "abstraction": {
+    "admission": "All explicit, ambient, unscoped and diagnostic inputs remain nondeterministic. Valid aliases merge after sticky scoped/explicit guard witnesses are computed, because the tracker does not retain admission mode.",
+    "indexes": "Runtime and room pending sets are stored independently and checked against task phases and room identities. Registration and finally cleanup update them atomically, matching synchronous Set operations.",
+    "terminalCallbacks": "The cooperation selector is forgotten after settlement because no later transition reads it. Failure-ID history is omitted because it belongs to the diagnostic sink and does not control the tracker; real tests assert error reporting.",
+    "progress": "With finite one-start observers, eventual permanent quiescence is equivalent to the explicitly retained per-observer leads-to obligations."
+  },
+  "conformance": "packages/core/scripts/quint-post-delivery-conformance.mjs"
+}

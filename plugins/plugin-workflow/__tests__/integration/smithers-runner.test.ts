@@ -459,3 +459,224 @@ test('preserves the complete native finish receipt when abort releases pending e
     await rm(dir, { recursive: true, force: true });
   }
 }, 60_000);
+
+describe('worker protocol settles promptly and truthfully', () => {
+  const definition = (id: string, source: string): WorkflowDefinitionResponse => ({
+    ...workflow,
+    id,
+    source: `/** @jsxImportSource smthrs */
+import { createSmithers } from "smthrs/create";
+import { z } from "zod";
+import * as fs from "node:fs";
+const { Workflow, Parallel, Task, smithers, outputs } = createSmithers({
+  a: z.object({ message: z.string() }),
+  b: z.object({ message: z.string() }),
+  output: z.object({ message: z.string() }),
+}, { dbPath: process.env.ELIZA_SMTHRS_DB_PATH });
+const agent = globalThis.__elizaSmithers.agent;
+${source}`,
+  });
+  const parallel = `export default smithers(() => (
+  <Workflow name="parallel"><Parallel>
+    <Task id="a" output={outputs.a} agent={agent}>Task alpha.</Task>
+    <Task id="b" output={outputs.b} agent={agent}>Task beta.</Task>
+  </Parallel></Workflow>
+));`;
+  const hangUntilAborted = (signal: AbortSignal) =>
+    new Promise<never>((_, reject) =>
+      signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+    );
+  const ids: string[] = [];
+  const workflowFor = (name: string, source: string) => {
+    const id = `protocol-${name}`;
+    ids.push(id);
+    return definition(id, source);
+  };
+  afterAll(async () => {
+    await Promise.all(
+      ids.map((id) =>
+        rm(resolveSmithersWorkflowDir(tenantId, id), { recursive: true, force: true })
+      )
+    );
+  });
+
+  test('answers parallel model requests concurrently', async () => {
+    let calls = 0;
+    const result = await runSmithersWorkflow({
+      tenantId,
+      workflow: workflowFor('parallel', parallel),
+      runId: `parallel-${Date.now()}`,
+      mode: 'manual',
+      input: {},
+      timeoutMs: 60_000,
+      generate: async () => {
+        calls += 1;
+        // A serialized bridge never delivers the second request while this waits.
+        for (let n = 0; calls < 2 && n < 1_500; n++) await Bun.sleep(10);
+        if (calls < 2) throw new Error('requests were serialized');
+        return { message: 'concurrent' };
+      },
+    });
+    expect(result.status, JSON.stringify(result.error)).toBe('finished');
+    expect(calls).toBe(2);
+  }, 90_000);
+
+  test('stops the worker at once when an event cannot be persisted', async () => {
+    let calls = 0;
+    const startedAt = Date.now();
+    const outcome = runSmithersWorkflow({
+      tenantId,
+      workflow: workflowFor('delivery', parallel),
+      runId: `delivery-${Date.now()}`,
+      mode: 'manual',
+      input: {},
+      timeoutMs: 120_000,
+      // The first task's model call stays pending; the other task's events
+      // then fail to persist.
+      generate: async ({ signal }) => {
+        calls += 1;
+        if (calls === 1) return hangUntilAborted(signal);
+        return { message: 'second' };
+      },
+      onEvent: () => {
+        if (calls === 2) throw new Error('database unavailable');
+      },
+    });
+    await expect(outcome).rejects.toMatchObject({
+      code: 'WORKFLOW_WORKER_OUTCOME_UNKNOWN',
+      message: expect.stringContaining('event persistence failed: database unavailable'),
+    });
+    expect(Date.now() - startedAt).toBeLessThan(60_000);
+  }, 90_000);
+
+  test('returns a terminal result that arrived before a delivery failure', async () => {
+    const result = await runSmithersWorkflow({
+      tenantId,
+      workflow: workflowFor(
+        'late-delivery',
+        `export default smithers(() => (<Workflow name="late"><Task id="run" output={outputs.output} agent={agent}>Return a message.</Task></Workflow>));`
+      ),
+      runId: `late-delivery-${Date.now()}`,
+      mode: 'manual',
+      input: {},
+      timeoutMs: 60_000,
+      generate: async () => ({ message: 'committed' }),
+      onEvent: async (event) => {
+        if (event.type !== 'RunFinished') return;
+        // Let the worker commit, report and exit before persistence fails.
+        await Bun.sleep(3_000);
+        throw new Error('database unavailable');
+      },
+    });
+    expect(result.status).toBe('finished');
+    expect(result.output).toEqual([expect.objectContaining({ message: 'committed' })]);
+  }, 90_000);
+
+  test('releases the lease when the workflow module fails to load', async () => {
+    const failing = workflowFor(
+      'import-failure',
+      `throw new Error("module exploded at import");
+export default smithers(() => (<Workflow name="never"><Task id="run" output={outputs.output} agent={agent}>x</Task></Workflow>));`
+    );
+    const request = {
+      tenantId,
+      workflow: failing,
+      runId: `import-failure-${Date.now()}`,
+      mode: 'manual' as const,
+      input: {},
+      timeoutMs: 60_000,
+      generate: async () => {
+        throw new Error('A module that failed to load must not invoke the model');
+      },
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await runSmithersWorkflow(request);
+      expect(result.status).toBe('failed');
+      expect(result.error?.message).toContain('module exploded at import');
+    }
+    const owners = join(resolveSmithersWorkflowDir(tenantId, failing.id), '.worker-owners');
+    expect(await readdir(owners)).toEqual([]);
+  }, 90_000);
+
+  test('a host timeout after admission says the agent stopped the run', async () => {
+    const outcome = runSmithersWorkflow({
+      tenantId,
+      workflow: workflowFor(
+        'timeout',
+        `export default smithers(() => (<Workflow name="slow"><Task id="run" output={outputs.output} agent={agent}>Wait.</Task></Workflow>));`
+      ),
+      runId: `timeout-${Date.now()}`,
+      mode: 'manual',
+      input: {},
+      timeoutMs: 15_000,
+      generate: async ({ signal }) => hangUntilAborted(signal),
+    });
+    await expect(outcome).rejects.toMatchObject({
+      code: 'WORKFLOW_WORKER_OUTCOME_UNKNOWN',
+      message: expect.stringContaining(
+        'The agent stopped this run (timed out after 15 s) before it reported a result. Nothing was replayed.'
+      ),
+      context: { terminationCause: 'timeout' },
+    });
+  }, 90_000);
+
+  test('a pending device review does not spend the run time budget', async () => {
+    const result = await runSmithersWorkflow({
+      tenantId,
+      workflow: workflowFor(
+        'device',
+        `const reviewer = { id: "device-review", generate: async () => {
+  const reply = await globalThis.__elizaSmithers.device({ kind: "review" });
+  return { text: JSON.stringify({ message: String(reply) }) };
+} };
+export default smithers(() => (<Workflow name="device"><Task id="run" output={outputs.output} agent={reviewer}>Review.</Task></Workflow>));`
+      ),
+      runId: `device-${Date.now()}`,
+      mode: 'manual',
+      input: {},
+      timeoutMs: 15_000,
+      generate: async () => {
+        throw new Error('The device fixture does not call the model');
+      },
+      device: async () => {
+        await Bun.sleep(20_000);
+        return 'approved';
+      },
+    });
+    expect(result.status, JSON.stringify(result.error)).toBe('finished');
+    expect(result.output).toEqual([expect.objectContaining({ message: 'approved' })]);
+  }, 90_000);
+
+  test('keeps only the last 64 KiB of worker stderr', async () => {
+    // The fixture drops its own reservation and dies, so the parent reports
+    // the missing result with its stderr.
+    const failing = workflowFor(
+      'stderr',
+      `const payload = JSON.parse(fs.readFileSync(process.env.ELIZA_SMTHRS_PAYLOAD_PATH, "utf8"));
+const owners = payload.workerLease.rootDir + "/.worker-owners/" + new Bun.CryptoHasher("sha256").update(payload.runId).digest("hex");
+fs.rmSync(owners, { recursive: true, force: true });
+fs.writeSync(2, "HEAD-MARKER" + "x".repeat(200_000) + "TAIL-MARKER\\n");
+process.exit(3);
+export default smithers(() => (<Workflow name="never"><Task id="run" output={outputs.output} agent={agent}>x</Task></Workflow>));`
+    );
+    const outcome = runSmithersWorkflow({
+      tenantId,
+      workflow: failing,
+      runId: `stderr-${Date.now()}`,
+      mode: 'manual',
+      input: {},
+      timeoutMs: 60_000,
+      generate: async () => {
+        throw new Error('unused');
+      },
+    });
+    const error = await outcome.then(
+      () => undefined,
+      (failure: unknown) => failure as { code?: string; message: string }
+    );
+    expect(error?.code).toBe('SMTHRS_RESULT_MISSING');
+    expect(error?.message).toContain('TAIL-MARKER');
+    expect(error?.message).not.toContain('HEAD-MARKER');
+    expect(error?.message.length).toBeLessThan(70_000);
+  }, 90_000);
+});

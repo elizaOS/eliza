@@ -4,7 +4,15 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.file.Files;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 /**
  * JVM unit tests for the #12453 crash-safe asset-extraction decision. Pure
@@ -143,5 +151,80 @@ public class ElizaAssetExtractionPolicyTest {
                 "valid extraction must never fail for changed=" + apkChanged + " assets=" + hasAssets,
                 action == ElizaAssetExtractionPolicy.Action.FAIL_NO_ASSETS);
         }
+    }
+
+    // ── Aux assets: temp-file writes, completeness and the durable aux stamp ──
+
+    @Rule public TemporaryFolder temporary = new TemporaryFolder();
+
+    private static byte[] tarBytes(int size) {
+        byte[] bytes = new byte[size];
+        for (int i = 0; i < size; i++) bytes[i] = (byte) (i * 31);
+        return bytes;
+    }
+
+    @Test
+    public void truncatedTarballAndStaleTempAreRefreshed() throws IOException {
+        File files = temporary.newFolder("files");
+        File vector = new File(files, "vector.tar.gz");
+        byte[] asset = tarBytes(200_000);
+        ElizaAssetExtractionPolicy.writeAtomically(new ByteArrayInputStream(asset), vector, true);
+        assertTrue(ElizaAssetExtractionPolicy.tarballCurrent(
+            ElizaAssetExtractionPolicy.gzipTrailerSize(vector), asset.length, false));
+
+        // A kill mid-copy under the old in-place writer, plus a leftover temp.
+        try (RandomAccessFile file = new RandomAccessFile(vector, "rw")) {
+            file.setLength(file.length() / 2);
+        }
+        File stale = new File(files, "vector.tar.gz.tmp");
+        try (FileOutputStream out = new FileOutputStream(stale)) {
+            out.write(new byte[] {1, 2, 3});
+        }
+
+        assertTrue(ElizaAssetExtractionPolicy.deleteStaleTemp(vector));
+        assertFalse(stale.exists());
+        assertFalse(ElizaAssetExtractionPolicy.tarballCurrent(
+            ElizaAssetExtractionPolicy.gzipTrailerSize(vector), asset.length, false));
+        ElizaAssetExtractionPolicy.writeAtomically(new ByteArrayInputStream(asset), vector, true);
+        assertTrue(ElizaAssetExtractionPolicy.tarballCurrent(
+            ElizaAssetExtractionPolicy.gzipTrailerSize(vector), asset.length, false));
+        assertFalse(stale.exists());
+    }
+
+    @Test
+    public void auxStampOlderThanTheTreeReplacesCompleteTarballs() throws IOException {
+        File vector = new File(temporary.newFolder("files"), "vector.tar.gz");
+        byte[] asset = tarBytes(4096);
+        ElizaAssetExtractionPolicy.writeAtomically(new ByteArrayInputStream(asset), vector, true);
+        long trailer = ElizaAssetExtractionPolicy.gzipTrailerSize(vector);
+
+        boolean refreshDue = ElizaAssetExtractionPolicy.auxRefreshDue(
+            /* auxStamp */ 1717000000000L, /* treeStamp */ 1718000000000L);
+        assertTrue(refreshDue);
+        assertFalse(ElizaAssetExtractionPolicy.tarballCurrent(trailer, asset.length, refreshDue));
+        // A kill before the aux stamp is written leaves it old: still due next boot.
+        assertTrue(ElizaAssetExtractionPolicy.auxRefreshDue(1717000000000L, 1718000000000L));
+        assertFalse(ElizaAssetExtractionPolicy.auxRefreshDue(1718000000000L, 1718000000000L));
+        // An unstamped tree never forces a refresh.
+        assertFalse(ElizaAssetExtractionPolicy.auxRefreshDue(0L, 0L));
+    }
+
+    @Test
+    public void rawTarOrMissingFileIsNeverCurrent() throws IOException {
+        File raw = temporary.newFile("vector.tar.gz");
+        Files.write(raw.toPath(), tarBytes(4096));
+        assertEquals(-1L, ElizaAssetExtractionPolicy.gzipTrailerSize(raw));
+        assertEquals(-1L, ElizaAssetExtractionPolicy.gzipTrailerSize(new File(raw.getParentFile(), "absent")));
+        assertFalse(ElizaAssetExtractionPolicy.tarballCurrent(-1L, 4096L, false));
+    }
+
+    @Test
+    public void modelsAreReplacedOnlyOnALengthMismatch() {
+        assertTrue(ElizaAssetExtractionPolicy.modelCurrent(67_000_000L, 67_000_000L, true));
+        assertFalse(ElizaAssetExtractionPolicy.modelCurrent(33_000_000L, 67_000_000L, false));
+        assertFalse(ElizaAssetExtractionPolicy.modelCurrent(0L, 67_000_000L, false));
+        // Unknown asset length: fall back to the aux stamp.
+        assertTrue(ElizaAssetExtractionPolicy.modelCurrent(67_000_000L, -1L, false));
+        assertFalse(ElizaAssetExtractionPolicy.modelCurrent(67_000_000L, -1L, true));
     }
 }

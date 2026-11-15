@@ -43,27 +43,13 @@ export function getApiKeyOptional(runtime: IAgentRuntime): ValidatedApiKey | nul
 /** Provides setting values to the pure endpoint resolver. */
 export type EndpointSettingReader = (key: string) => string | undefined;
 
-/**
- * Pure endpoint policy shared by inference and diagnostic surfaces. The
- * scenario runner's `ELIZA_MOCK_ANTHROPIC_BASE` remains authoritative.
- */
-export function resolveAnthropicBaseURL(
-  readSetting: EndpointSettingReader,
-  options: { mockBaseURL?: string } = {}
-): string {
-  const read = (key: string): string | undefined => {
-    const value = readSetting(key)?.trim();
-    return value ? value : undefined;
-  };
-  const mockBaseURL = options.mockBaseURL?.trim();
-  if (mockBaseURL) return mockBaseURL;
-  return read("ANTHROPIC_BASE_URL") ?? DEFAULT_BASE_URL;
+/** Pure endpoint policy shared by inference and diagnostic surfaces. */
+export function resolveAnthropicBaseURL(readSetting: EndpointSettingReader): string {
+  return readSetting("ANTHROPIC_BASE_URL")?.trim() || DEFAULT_BASE_URL;
 }
 
 export function getBaseURL(runtime: IAgentRuntime): string {
-  return resolveAnthropicBaseURL((key) => getRawSetting(runtime, key), {
-    mockBaseURL: getEnvValue("ELIZA_MOCK_ANTHROPIC_BASE"),
-  });
+  return resolveAnthropicBaseURL((key) => getRawSetting(runtime, key));
 }
 
 export function getSmallModel(runtime: IAgentRuntime): ModelName {

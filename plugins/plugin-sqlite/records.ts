@@ -48,6 +48,7 @@ import {
   type JsonValue,
   type Log,
   type LogBody,
+  type LogInventoryRow,
   logger,
   MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
   MESSAGE_CONTENT_READ_MAX_SEGMENTS,
@@ -517,6 +518,26 @@ function compareStoredMemoriesNewestFirst(
   const aId = typeof a.id === "string" ? a.id : "";
   const bId = typeof b.id === "string" ? b.id : "";
   return compareMemoryIds(bId, aId);
+}
+
+/**
+ * getLogs order: newest first. Offset pages are separate queries, and a
+ * time-only order lets two logs written in the same millisecond trade places
+ * and be skipped or repeated. UUID order matches PostgreSQL's descending id
+ * tie-break.
+ */
+function compareLogsNewestFirst(
+  a: Pick<Log, "id" | "createdAt">,
+  b: Pick<Log, "id" | "createdAt">,
+): number {
+  const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+    ? new Date(b.createdAt).getTime()
+    : 0;
+  const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+    ? new Date(a.createdAt).getTime()
+    : 0;
+  if (bTime !== aTime) return bTime - aTime;
+  return compareMemoryIds(String(b.id ?? ""), String(a.id ?? ""));
 }
 
 /** Oldest pages use ascending UUID order; newest pages reverse it. */
@@ -2750,23 +2771,28 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       return true;
     });
     logs = await this.filterLogsVisibleToOwner(logs);
-    logs.sort((a, b) => {
-      const bTime = Number.isFinite(new Date(b.createdAt).getTime())
-        ? new Date(b.createdAt).getTime()
-        : 0;
-      const aTime = Number.isFinite(new Date(a.createdAt).getTime())
-        ? new Date(a.createdAt).getTime()
-        : 0;
-      if (bTime !== aTime) return bTime - aTime;
-      // Offset pages are separate queries. A time-only order lets two logs
-      // written in the same millisecond trade places and be skipped or
-      // repeated. UUID order matches PostgreSQL's descending id tie-break.
-      return compareMemoryIds(String(b.id ?? ""), String(a.id ?? ""));
-    });
+    logs.sort(compareLogsNewestFirst);
     const offset = params.offset ?? 0;
     if (offset > 0) logs = logs.slice(offset);
     if (params.limit !== undefined) logs = logs.slice(0, params.limit);
     return logs;
+  }
+
+  async getLogInventory(params: {
+    excludeTypes?: readonly string[];
+  }): Promise<LogInventoryRow[]> {
+    const excluded = new Set(params.excludeTypes);
+    // Same rows and order as getLogs; each body is dropped once its page is read.
+    const rows = await this.storage.mapAll<Log, LogInventoryRow>(
+      COLLECTIONS.LOGS,
+      (log) =>
+        excluded.has(log.type)
+          ? undefined
+          : { id: log.id, roomId: log.roomId, createdAt: log.createdAt },
+    );
+    const visible = await this.filterLogsVisibleToOwner(rows);
+    visible.sort(compareLogsNewestFirst);
+    return visible;
   }
 
   async createLogs(
@@ -2807,7 +2833,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return !room || this.roomIsVisibleToOwner(room);
   }
 
-  private async filterLogsVisibleToOwner(logs: Log[]): Promise<Log[]> {
+  private async filterLogsVisibleToOwner<L extends Pick<Log, "roomId">>(
+    logs: L[],
+  ): Promise<L[]> {
     const roomIds = [...new Set(logs.map((log) => log.roomId))];
     const visibleByRoom = new Map<UUID | undefined, boolean>();
     for (const roomId of roomIds) {

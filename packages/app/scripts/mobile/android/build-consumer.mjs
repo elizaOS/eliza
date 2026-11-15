@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -37,6 +38,7 @@ const RESERVED_OUTPUT_NAMES = [
  * `{ root, environment }`, or `{ gradleTasks }`: extra tasks added to the one Gradle
  * invocation that builds the app. `lint` and `androidTest` (default true) select
  * `:app:lint` and the androidTest APKs; the archive's `build-checks.json` records both.
+ * `release: false` assembles only the Debug APKs, for local builds; it cannot be archived.
  * `project` is the Gradle project directory and `output` the artifact directory, both
  * relative to `root`. `gradleArguments` admits `-Pname=value` and `--offline` only.
  * A release named `<variant>-release.apk` is signed, otherwise `-release-unsigned.apk`;
@@ -49,7 +51,12 @@ const RESERVED_OUTPUT_NAMES = [
  * is in place and before verification, so it always describes the artifacts beside it;
  * a failed Gradle build leaves the previous record with the previous artifacts, and a
  * copy interrupted after Gradle leaves no record. An archive
- * keeps a copy. `archive` is optional. */
+ * keeps a copy. `archive` is optional. `archive.files` is an optional synchronous function,
+ * called after verification with `{ manifest }` (the parsed apk-manifest.json). It returns
+ * other verified files for the archive, as `{ source, name, sha256 }`: `name` is a relative
+ * path inside the archive and `sha256` the hash the verifier recorded. Each file is checked
+ * against its hash and staged with the APKs, so the archive appears with all of them or not
+ * at all. */
 export function buildAndroidConsumer({
   root = process.cwd(),
   environment = process.env,
@@ -61,6 +68,7 @@ export function buildAndroidConsumer({
   daemon = false,
   lint = true,
   androidTest = true,
+  release = true,
   project = "android",
   output = "artifacts",
   gradleArguments = [],
@@ -80,7 +88,7 @@ export function buildAndroidConsumer({
   )
     throw new Error("Invalid Android distributions");
   if (
-    [lint, androidTest, mappings, sequential, daemon].some(
+    [lint, androidTest, release, mappings, sequential, daemon].some(
       (value) => typeof value !== "boolean",
     )
   )
@@ -91,6 +99,8 @@ export function buildAndroidConsumer({
     !/^[a-z][a-z0-9-]*$/.test(archive.name)
   )
     throw new Error("Invalid Android archive name");
+  if (!release && archive !== undefined && archive !== null)
+    throw new Error("A debug-only Android build cannot be archived");
   if (!safeRelative(project) || !safeRelative(output))
     throw new Error("Android project and output must be relative paths");
   if (
@@ -142,6 +152,8 @@ export function buildAndroidConsumer({
     metadata = JSON.stringify(archive.metadata, null, 2);
     if (metadata === undefined)
       throw new Error("Android archive metadata is required");
+    if (archive.files !== undefined && typeof archive.files !== "function")
+      throw new Error("Android archive files must be a function");
   }
   let recordText = null;
   if (record !== null) {
@@ -177,6 +189,7 @@ export function buildAndroidConsumer({
     } else if (isGradleStep(step)) extraTasks.push(...step.gradleTasks);
     else invoke(step);
   }
+  const modes = release ? ["Debug", "Release"] : ["Debug"];
   const capitalized = variants.map(
     (name) => name[0].toUpperCase() + name.slice(1),
   );
@@ -242,7 +255,7 @@ export function buildAndroidConsumer({
     };
     discardIntermediates();
     for (const name of capitalized)
-      for (const mode of ["Debug", "Release"]) {
+      for (const mode of modes) {
         try {
           gradle([
             `:app:assemble${name}${mode}`,
@@ -257,21 +270,17 @@ export function buildAndroidConsumer({
     if (lint || extraTasks.length)
       gradle([...extraTasks, ...(lint ? [":app:lint"] : [])]);
   } else {
-    const modes = [
-      "Debug",
-      "Release",
-      ...(androidTest ? ["DebugAndroidTest"] : []),
-    ];
     gradle([
-      ...modes.flatMap((mode) =>
-        capitalized.map((name) => `:app:assemble${name}${mode}`),
+      ...[...modes, ...(androidTest ? ["DebugAndroidTest"] : [])].flatMap(
+        (mode) => capitalized.map((name) => `:app:assemble${name}${mode}`),
       ),
       ...extraTasks,
       ...(lint ? [":app:lint"] : []),
     ]);
   }
   const artifacts = variants.flatMap((variant) =>
-    ["debug", "release"].map((mode) => {
+    modes.map((label) => {
+      const mode = label.toLowerCase();
       const directory = path.join(outputs, "apk", variant, mode);
       const signed =
         mode === "release" &&
@@ -367,6 +376,32 @@ export function buildAndroidConsumer({
     throw new Error("Android verification manifest is missing");
   const files = artifacts.map(({ name }) => path.join(outputDirectory, name));
   if (metadata === null) return { files, archive: null };
+  // Extra files are read and hash-checked before the archive is touched.
+  const reserved = new Set([
+    ...artifacts.map(({ name }) => name),
+    ...RESERVED_OUTPUT_NAMES,
+    ...(recordText === null ? [] : [record.name]),
+  ]);
+  const extras =
+    archive.files?.({ manifest: JSON.parse(fs.readFileSync(manifest)) }) ?? [];
+  if (!Array.isArray(extras))
+    throw new Error("Android archive files must be a list");
+  const extraFiles = extras.map(({ source, name, sha256 }) => {
+    if (
+      typeof source !== "string" ||
+      !safeRelative(name) ||
+      reserved.has(name) ||
+      !/^[a-f0-9]{64}$/.test(sha256 ?? "")
+    )
+      throw new Error("Invalid Android archive file");
+    reserved.add(name);
+    const bytes = fs.readFileSync(path.resolve(root, source));
+    if (createHash("sha256").update(bytes).digest("hex") !== sha256)
+      throw new Error(
+        `Android archive file changed after verification: ${name}`,
+      );
+    return { name, bytes };
+  });
   const destination = path.join(outputDirectory, archive.name);
   const staging = fs.mkdtempSync(
     path.join(outputDirectory, ".android-archive-"),
@@ -389,6 +424,12 @@ export function buildAndroidConsumer({
       path.join(replacement, "build-checks.json"),
       JSON.stringify({ lint, androidTest }, null, 2),
     );
+    for (const { name, bytes } of extraFiles) {
+      fs.mkdirSync(path.dirname(path.join(replacement, name)), {
+        recursive: true,
+      });
+      fs.writeFileSync(path.join(replacement, name), bytes);
+    }
     let moved = false;
     try {
       fs.renameSync(destination, previous);

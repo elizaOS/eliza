@@ -42,6 +42,10 @@ public abstract class DeviceLibraryPlugin extends Plugin {
   private PermittedMediaCatalog catalog;
   private PermittedMediaReview review;
   private volatile boolean destroyed, watching;
+  /** The scope last answered or announced; resume announces only a different one. */
+  private volatile String lastScope = "";
+  /** Library generations when the last page was read, or null before one. */
+  private volatile String lastLibrary;
 
   private PhotosPlugin photos() {
     PluginHandle handle = getBridge().getPlugin(photosPluginName());
@@ -98,7 +102,7 @@ public abstract class DeviceLibraryPlugin extends Plugin {
   private JSObject scopeResult() {
     String version;
     try {
-      version = catalog.fence().cursorIdentity();
+      version = catalog.scopeVersion();
     } catch (Exception unavailable) {
       version = "";
     }
@@ -108,7 +112,16 @@ public abstract class DeviceLibraryPlugin extends Plugin {
     } catch (org.json.JSONException impossible) {
       throw new IllegalStateException(impossible);
     }
+    lastScope = out.toString();
     return out;
+  }
+
+  private String generations() {
+    try {
+      return catalog.generations();
+    } catch (Exception unavailable) {
+      return "";
+    }
   }
 
   private boolean readable(PluginCall call) {
@@ -177,6 +190,7 @@ public abstract class DeviceLibraryPlugin extends Plugin {
     submit(call, ticket -> {
       if (!readable(call)) return;
       try {
+        lastLibrary = generations();
         JSObject page = catalog.list(call.getString("before", ""), call.getString("query", ""),
             call.getString("kind", "all"), call.getBoolean("thumbnails", false),
             call.getBoolean("favorites", false) ? "favorites" : "all", call.getLong("from", 0L),
@@ -190,6 +204,8 @@ public abstract class DeviceLibraryPlugin extends Plugin {
         out.put("next", page.getString("next"));
         out.put("generation", 1);
         catalog.publish(call, out, ticket);
+      } catch (PermittedMediaCatalog.StaleCursor stale) {
+        call.reject("Photo page expired. Load from the first page.", "LIBRARY_STALE_CURSOR");
       } catch (Exception failure) {
         call.reject("Photo library changed. Reload before continuing.");
       }
@@ -282,11 +298,22 @@ public abstract class DeviceLibraryPlugin extends Plugin {
   }
 
   // Posted so the Photos plugin's own handleOnResume (plugin order is unspecified) has restored
-  // foreground first.
+  // foreground first. The same scope announces no scopeChanged; rows changed while paused, when
+  // nothing observed them, announce libraryChanged so the caller refreshes without a reset.
   @Override
   protected void handleOnResume() {
     new Handler(Looper.getMainLooper()).post(() -> {
-      if (!destroyed) notifyListeners("scopeChanged", scopeResult());
+      if (destroyed) return;
+      String before = lastScope, library = lastLibrary;
+      JSObject scope = scopeResult();
+      if (!scope.toString().equals(before)) {
+        notifyListeners("scopeChanged", scope);
+        return;
+      }
+      if (library == null) return;
+      lastLibrary = generations();
+      if (library.isEmpty() || !library.equals(lastLibrary))
+        notifyListeners("libraryChanged", new JSObject());
     });
   }
 

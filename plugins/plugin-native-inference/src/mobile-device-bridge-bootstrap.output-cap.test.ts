@@ -169,4 +169,38 @@ describe("bionic-host TEXT handler — no bridge-only decode cap (#32412)", () =
       });
     },
   );
+
+  linuxAbstractSocketIt(
+    "trusts a complete receipt for a reply of exactly maxTokens",
+    async () => {
+      host = startHost(() =>
+        JSON.stringify({
+          ok: true,
+          text: "exact",
+          tokens: 32,
+          incomplete: false,
+          finishReason: "model_terminal",
+        }),
+      );
+      const generate = await textLargeHandler();
+
+      await expect(
+        generate({}, { prompt: "hello", maxTokens: 32 }),
+      ).resolves.toBe("exact");
+    },
+  );
+
+  linuxAbstractSocketIt(
+    "judges a host without a receipt by its token count",
+    async () => {
+      host = startHost(() =>
+        JSON.stringify({ ok: true, text: "cut", tokens: 32 }),
+      );
+      const generate = await textLargeHandler();
+
+      await expect(
+        generate({}, { prompt: "hello", maxTokens: 32 }),
+      ).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
+    },
+  );
 });

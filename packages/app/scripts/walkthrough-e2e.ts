@@ -21,7 +21,7 @@
  * evidence is attached inline to the PR per AGENTS.md.
  *
  * Usage:
- *   node scripts/walkthrough-e2e.ts [--live] [--viewports desktop,mobile]
+ *   bun scripts/walkthrough-e2e.ts [--live] [--viewports desktop,mobile]
  *     [--reuse-server] [--skip-review] [--skip-stitch] [--platform web|ios|android|device]
  */
 

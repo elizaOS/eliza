@@ -19,7 +19,6 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { importMeasuredPackage } from "../../../lib/target-package.ts";
 import {
   actionListPrompt,
@@ -154,9 +153,9 @@ function resolveModelPath(tier: Eliza1TierId): string | null {
  * back to `process.env` (#13423).
  */
 export function elizaModelsDir(): string {
-  const explicit = resolveAliasedEnvValue("ELIZA_STATE_DIR");
-  const ns = resolveAliasedEnvValue("ELIZA_NAMESPACE") ?? "eliza";
-  const stateDir = explicit ?? path.join(homedir(), `.${ns}`);
+  const explicit = process.env.ELIZA_STATE_DIR?.trim();
+  const ns = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const stateDir = explicit || path.join(homedir(), `.${ns}`);
   return path.join(stateDir, "local-inference", "models");
 }
 

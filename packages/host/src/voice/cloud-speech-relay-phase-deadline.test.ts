@@ -5,7 +5,13 @@ import {
   createCloudSpeechRelayPorts,
 } from "./cloud-speech-relay-client";
 
-function fixture(upgradeMs: number, readyMs: number, signal?: AbortSignal) {
+function fixture(
+  upgradeMs: number,
+  readyMs: number,
+  signal?: AbortSignal,
+  consentMs = 0,
+  consentResets = 0,
+) {
   const id = crypto.randomUUID();
   const expiry = new Date(Date.now() + 60000).toISOString();
   const logs: CloudSpeechRelayTransportDiagnostic[] = [];
@@ -15,19 +21,46 @@ function fixture(upgradeMs: number, readyMs: number, signal?: AbortSignal) {
   let closed = 0;
   const timers: ReturnType<typeof setTimeout>[] = [];
   const fetcher = Object.assign(
-    async (input: Parameters<typeof fetch>[0]) => {
+    async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       const url = new URL(String(input));
       requests.push(url.pathname);
+      if (url.pathname.endsWith("/consent") && consentResets > 0) {
+        consentResets--;
+        throw Object.assign(new Error("Connection reset"), {
+          code: "ECONNRESET",
+        });
+      }
+      if (url.pathname.endsWith("/consent") && consentMs > 0)
+        await sleep(consentMs, undefined, {
+          signal: init?.signal ?? undefined,
+        });
       return Response.json(
         url.pathname.endsWith("/consent")
-          ? { consentNonce: crypto.randomUUID(), expiresAt: expiry }
+          ? {
+              consentNonce: crypto.randomUUID(),
+              retirementProofVersion: 1,
+              expiresAt: expiry,
+            }
           : url.pathname.endsWith("/revoke")
-            ? { revoked: true }
+            ? {
+                revoked: true,
+                retirement: {
+                  version: 1,
+                  sessionId: id,
+                  state: "confirmed",
+                  mode: "retired",
+                  stt: "gracefully_drained",
+                  tts: "transport_closed",
+                  accounting: "settled_actual",
+                  completedAt: new Date().toISOString(),
+                },
+              }
             : {
                 sessionId: id,
                 token: "private-fake-token",
                 expiresAt: expiry,
                 version: 1,
+                retirementProofVersion: 1,
                 wsUrl: `wss://example.invalid/api/v1/voice/speech/ws?sessionId=${id}`,
               },
       );
@@ -95,6 +128,90 @@ function fixture(upgradeMs: number, readyMs: number, signal?: AbortSignal) {
     },
   };
 }
+
+test("consent retries one connection reset before its single paid admission", async () => {
+  const f = fixture(0, 0, undefined, 0, 1);
+  try {
+    const ports = await f.pending;
+    expect(f.requests.filter((path) => path.endsWith("/consent"))).toHaveLength(
+      2,
+    );
+    expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+      1,
+    );
+    await ports.close();
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("repeated consent resets stop before any paid admission", async () => {
+  const f = fixture(0, 0, undefined, 0, 2);
+  try {
+    await expect(f.pending).rejects.toMatchObject({ code: "ECONNRESET" });
+    expect(f.requests.filter((path) => path.endsWith("/consent"))).toHaveLength(
+      2,
+    );
+    expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+      0,
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("Stop cancels the consent reset delay before another request", async () => {
+  const abort = new AbortController();
+  const f = fixture(0, 0, abort.signal, 0, 1);
+  const settled = f.pending.catch((error) => error);
+  await sleep(20);
+  abort.abort();
+  try {
+    expect(await settled).toBeInstanceOf(Error);
+    expect(f.requests.filter((path) => path.endsWith("/consent"))).toHaveLength(
+      1,
+    );
+    expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+      0,
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("cold consent can finish just beyond ten seconds without a false startup failure", async () => {
+  const f = fixture(0, 0, undefined, 10_100);
+  try {
+    const ports = await f.pending;
+    expect(f.requests.filter((path) => path.endsWith("/consent"))).toHaveLength(
+      1,
+    );
+    expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+      1,
+    );
+    expect(f.sent).toEqual(["hello"]);
+    await ports.close();
+  } finally {
+    f.cleanup();
+  }
+}, 20_000);
+
+test("Stop cancels a cold consent before any session is allocated", async () => {
+  const abort = new AbortController();
+  const f = fixture(0, 0, abort.signal, 10_100);
+  const settled = f.pending.then(
+    () => null,
+    (error) => error,
+  );
+  await sleep(20);
+  abort.abort();
+  expect(await settled).toBeInstanceOf(Error);
+  expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+    0,
+  );
+  expect(f.sent).toEqual([]);
+  f.cleanup();
+});
 
 test("three-second upgrade plus three-second ready succeeds within separate finite phase budgets", async () => {
   const f = fixture(3000, 3000);
@@ -168,3 +285,20 @@ test("ready deadline closes opening socket without invalid STOP and late ready c
     f.cleanup();
   }
 }, 8000);
+
+// Reproduces the live cold-upgrade failure after consent and mint succeeded.
+test("a cold six-second upgrade reaches ready without renewing its session", async () => {
+  const f = fixture(6000, 50);
+  try {
+    const ports = await f.pending;
+    expect(f.sent).toEqual(["hello"]);
+    expect(f.logs.some((row) => row.cause === "startup_timeout")).toBe(false);
+    expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+      1,
+    );
+    await ports.close();
+    expect(f.sent).toEqual(["hello", "stop"]);
+  } finally {
+    f.cleanup();
+  }
+}, 10000);

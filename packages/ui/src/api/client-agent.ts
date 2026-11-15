@@ -16,7 +16,7 @@ import type {
   PermissionId,
   PermissionState,
 } from "@elizaos/core/protocol";
-import { isTruthyEnvValue, resolveEnvAlias } from "@elizaos/core/protocol";
+import { isTruthyEnvValue } from "@elizaos/core/protocol";
 import type {
   FirstRunConnectorConfig as ConnectorConfig,
   FirstRunOptions,
@@ -37,7 +37,6 @@ import {
   type WebsiteBlockerStatusResult,
 } from "../bridge/native-plugins";
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
-import { getBootConfig } from "../config/boot-config-store";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
@@ -69,7 +68,6 @@ import type {
   CodingAgentRestartTaskInput,
   CodingAgentRestartWithEditedPlanInput,
   CodingAgentRetryTurnInput,
-  CodingAgentScratchWorkspace,
   CodingAgentStatus,
   CodingAgentTaskEventRecord,
   CodingAgentTaskMessageRecord,
@@ -181,15 +179,9 @@ export * from "./client-agent-consumer-keys";
 // Module-level helpers
 // ---------------------------------------------------------------------------
 function clientSettingsDebug(): boolean {
-  const env = Object.fromEntries(
-    Object.entries(import.meta.env ?? {}).map(([key, value]) => [
-      key,
-      value == null ? undefined : String(value),
-    ]),
-  );
-  const aliases = getBootConfig().envAliases;
+  const env: Record<string, unknown> = import.meta.env ?? {};
   return ["ELIZA_SETTINGS_DEBUG", "VITE_ELIZA_SETTINGS_DEBUG"].some((key) =>
-    isTruthyEnvValue(resolveEnvAlias(key, aliases, env)),
+    isTruthyEnvValue(env[key] == null ? undefined : String(env[key])),
   );
 }
 
@@ -908,13 +900,6 @@ declare module "./client-base.js" {
     pauseAllOrchestratorTasks(): Promise<number>;
     resumeAllOrchestratorTasks(): Promise<number>;
     stopCodingAgent(sessionId: string): Promise<boolean>;
-    listCodingAgentScratchWorkspaces(): Promise<CodingAgentScratchWorkspace[]>;
-    keepCodingAgentScratchWorkspace(sessionId: string): Promise<boolean>;
-    deleteCodingAgentScratchWorkspace(sessionId: string): Promise<boolean>;
-    promoteCodingAgentScratchWorkspace(
-      sessionId: string,
-      name?: string,
-    ): Promise<CodingAgentScratchWorkspace | null>;
     /**
      * Spawn an interactive PTY session (a real CLI in the web terminal) via
      * `@elizaos/plugin-pty`'s `POST /api/pty/sessions`. Default `kind`
@@ -3652,65 +3637,6 @@ ElizaClient.prototype.stopCodingAgent = async function (
     // error-policy:J1 boundary translation — the typed contract is an
     // explicit boolean failure the plugin callers render; never fake success.
     return false;
-  }
-};
-ElizaClient.prototype.listCodingAgentScratchWorkspaces = async function (
-  this: ElizaClient,
-) {
-  return this.fetch<CodingAgentScratchWorkspace[]>(
-    "/api/coding-agents/scratch",
-  );
-};
-ElizaClient.prototype.keepCodingAgentScratchWorkspace = async function (
-  this: ElizaClient,
-  sessionId,
-) {
-  try {
-    await this.fetch(
-      `/api/coding-agents/${encodeURIComponent(sessionId)}/scratch/keep`,
-      { method: "POST" },
-    );
-    return true;
-  } catch {
-    // error-policy:J1 boundary translation — the typed contract is an
-    // explicit boolean failure the plugin callers render; never fake success.
-    return false;
-  }
-};
-ElizaClient.prototype.deleteCodingAgentScratchWorkspace = async function (
-  this: ElizaClient,
-  sessionId,
-) {
-  try {
-    await this.fetch(
-      `/api/coding-agents/${encodeURIComponent(sessionId)}/scratch/delete`,
-      { method: "POST" },
-    );
-    return true;
-  } catch {
-    // error-policy:J1 boundary translation — the typed contract is an
-    // explicit boolean failure the plugin callers render; never fake success.
-    return false;
-  }
-};
-ElizaClient.prototype.promoteCodingAgentScratchWorkspace = async function (
-  this: ElizaClient,
-  sessionId,
-  name?,
-) {
-  try {
-    const response = await this.fetch<{
-      success: boolean;
-      scratch?: CodingAgentScratchWorkspace;
-    }>(`/api/coding-agents/${encodeURIComponent(sessionId)}/scratch/promote`, {
-      method: "POST",
-      body: JSON.stringify(name ? { name } : {}),
-    });
-    return response.scratch ?? null;
-  } catch {
-    // error-policy:J1 boundary translation — null is the typed "promotion
-    // failed" signal in this contract; never fake a workspace record.
-    return null;
   }
 };
 ElizaClient.prototype.spawnPtySession = async function (

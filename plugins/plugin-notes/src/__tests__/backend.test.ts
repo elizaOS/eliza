@@ -435,7 +435,14 @@ describe("NotesStore", () => {
       revision: 2,
     });
     expect(Object.keys(persisted).sort()).toEqual(
-      ["notes", "persistedAt", "revision", "schemaVersion", "trash"].sort(),
+      [
+        "noteRevisions",
+        "notes",
+        "persistedAt",
+        "revision",
+        "schemaVersion",
+        "trash",
+      ].sort(),
     );
   });
 
@@ -1703,12 +1710,11 @@ describe("Notes authenticated routes", () => {
     for (const routeValue of notesRoutes) {
       expect(routeValue.public).not.toBe(true);
       expect(routeValue.rawPath).toBe(true);
-      expect(routeValue.modes).toEqual([
-        "local",
-        "local-only",
-        "cloud",
-        "remote",
-      ]);
+      expect(routeValue.modes).toEqual(
+        routeValue.path === "/api/notes/state"
+          ? ["local", "local-only", "cloud", "remote"]
+          : ["local", "local-only"],
+      );
     }
   });
 

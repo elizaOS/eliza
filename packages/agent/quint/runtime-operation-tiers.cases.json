@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/runtime/operations/manager.ts",
+    "packages/agent/src/runtime/operations/classifier.ts"
+  ],
+  "bounds": {
+    "domain": "Hot/warm/cold tiers and all subsets of three strategies.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "runtime_operation_tiers",
+      "main": "runtime_operation_tiers",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

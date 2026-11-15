@@ -153,6 +153,7 @@ test("no bridge response may carry a secret-like field at any depth", () => {
     "bindings",
     "id",
     "label",
+    "revision",
     "updatedAt",
     "username",
   ]);
@@ -295,6 +296,10 @@ test("client rejects leaking native responses and maps errors without echoing in
     passwordsError({ code: "locked", message: SYNTHETIC }).message,
     "Unlock saved passwords first.",
   );
+  assert.equal(
+    passwordsError({ code: "not-admitted", message: SYNTHETIC }).code,
+    "not-admitted",
+  );
 });
 
 test("vault binding metadata is complete or explicitly rejected", () => {
@@ -365,8 +370,13 @@ test("transfer clients accept counts and reject malformed or leaking bridge resu
   }
 });
 
-test("native editor returns only creation receipt and rejects secret-bearing responses", async () => {
-  let response = { status: "saved", id: "native-entry", extra: "ignored" };
+test("native editor returns only a receipt and rejects secret-bearing responses", async () => {
+  let response = {
+    status: "saved",
+    id: "native-entry",
+    revision: 1,
+    extra: "ignored",
+  };
   const client = createPasswordsClient({
     openEditor: async (...args) => {
       assert.deepEqual(args, []);
@@ -376,15 +386,55 @@ test("native editor returns only creation receipt and rejects secret-bearing res
   assert.deepEqual(await client.openEditor(), {
     status: "saved",
     id: "native-entry",
+    revision: 1,
   });
   response = { status: "cancelled", id: "discarded" };
   assert.deepEqual(await client.openEditor(), { status: "cancelled" });
   for (const invalid of [
     { status: "saved" },
+    { status: "saved", id: "x" },
+    { status: "saved", id: "x", revision: 0 },
+    { status: "saved", id: "x", revision: 1.5 },
     { status: "unknown" },
-    { status: "saved", id: "x", nested: { password: SYNTHETIC } },
+    { status: "saved", id: "x", revision: 1, nested: { password: SYNTHETIC } },
   ]) {
     response = invalid;
     await assert.rejects(client.openEditor(), { code: "unavailable" });
   }
+});
+
+test("native edit sends only the entry and revision, and reports a stale revision", async () => {
+  const sent = [];
+  const client = createPasswordsClient({
+    openEditor: async (input) => {
+      sent.push(input);
+      if (input.expectedRevision === 1)
+        throw Object.assign(new Error(`stale ${SYNTHETIC}`), {
+          code: "conflict",
+        });
+      return { status: "saved", id: input.entryId, revision: 3 };
+    },
+  });
+  assert.deepEqual(
+    await client.openEditor({
+      entryId: "entry",
+      expectedRevision: 2,
+      password: SYNTHETIC,
+    }),
+    { status: "saved", id: "entry", revision: 3 },
+  );
+  assert.deepEqual(sent, [{ entryId: "entry", expectedRevision: 2 }]);
+  await assert.rejects(
+    client.openEditor({ entryId: "entry", expectedRevision: 1 }),
+    (error) => error.code === "conflict" && !error.message.includes(SYNTHETIC),
+  );
+  sent.length = 0;
+  for (const invalid of [
+    { entryId: "entry" },
+    { entryId: "entry", expectedRevision: -1 },
+    { entryId: "entry", expectedRevision: 1.5 },
+    { expectedRevision: 1 },
+  ])
+    await assert.rejects(client.openEditor(invalid), { code: "invalid" });
+  assert.deepEqual(sent, []);
 });

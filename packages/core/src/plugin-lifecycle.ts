@@ -31,7 +31,6 @@ import {
 
 type RuntimeAction = NonNullable<Plugin["actions"]>[number];
 type RuntimeProvider = NonNullable<Plugin["providers"]>[number];
-type RuntimeEvaluator = RegisteredEvaluator;
 type RuntimeServiceClass = NonNullable<Plugin["services"]>[number];
 type RuntimeEventHandler = PluginEventRegistration["handler"];
 type RuntimeChatPreHandler = NonNullable<Plugin["chatPreHandlers"]>[number];
@@ -41,9 +40,6 @@ type RuntimeResponseHandlerEvaluator = NonNullable<
 type RuntimeResponseHandlerFieldEvaluator = NonNullable<
 	Plugin["responseHandlerFieldEvaluators"]
 >[number];
-type RuntimeEventRegistration = PluginEventRegistration;
-type RuntimeModelRegistration = PluginModelRegistration;
-type RuntimeServiceRegistration = PluginServiceRegistration;
 
 type RuntimeSendHandler = (
 	runtime: unknown,
@@ -63,7 +59,7 @@ type RuntimePluginWithLifecycleHooks = Plugin & {
 	applyConfig?: PluginApplyConfigHook;
 };
 
-type RuntimeServiceRegistrationStatus =
+type PluginServiceRegistrationStatus =
 	| "pending"
 	| "registering"
 	| "registered"
@@ -86,12 +82,14 @@ type RuntimeModelHandlerRecord = {
 };
 
 type RuntimePluginRegistrationCapture = {
+	runtime: RuntimeWithPluginLifecycle;
 	ownership: PluginOwnership;
 	adapterBefore: IAgentRuntime["adapter"] | null | undefined;
 };
 
-type RuntimePluginServiceStartCapture = {
-	pluginName: string;
+type RuntimeConnectorOwnershipCapture = {
+	runtime: RuntimeWithPluginLifecycle;
+	ownership: PluginOwnership | null;
 };
 
 type RuntimeWithPluginLifecycle = IAgentRuntime &
@@ -123,7 +121,7 @@ type RuntimePrivateState = {
 	failedServiceClasses: Set<RuntimeServiceClass>;
 	serviceRegistrationStatus: Map<
 		ServiceTypeName,
-		RuntimeServiceRegistrationStatus
+		PluginServiceRegistrationStatus
 	>;
 	models: Map<string, RuntimeModelHandlerRecord[]>;
 	_runServiceStart?: (
@@ -131,14 +129,33 @@ type RuntimePrivateState = {
 		serviceType: string,
 		serviceDef: RuntimeServiceClass,
 	) => Promise<Service | null>;
+	_stopServiceOnce: (serviceType: string, service: Service) => Promise<void>;
 	registerSendHandler?: (source: string, handler: RuntimeSendHandler) => void;
 };
 
 const pluginRegistrationContext =
 	new AsyncLocalStorage<RuntimePluginRegistrationCapture>();
-const pluginServiceStartContext =
-	new AsyncLocalStorage<RuntimePluginServiceStartCapture>();
-const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
+const connectorOwnershipContext =
+	new AsyncLocalStorage<RuntimeConnectorOwnershipCapture>();
+const serviceClassOwners = new WeakMap<
+	RuntimeWithPluginLifecycle,
+	WeakMap<RuntimeServiceClass, PluginOwnership>
+>();
+const withdrawnConnectorOwners = new WeakSet<PluginOwnership>();
+
+function getServiceClassOwners(runtime: RuntimeWithPluginLifecycle) {
+	let owners = serviceClassOwners.get(runtime);
+	if (!owners) {
+		owners = new WeakMap();
+		serviceClassOwners.set(runtime, owners);
+	}
+	return owners;
+}
+
+function getRegistrationCapture(runtime: RuntimeWithPluginLifecycle) {
+	const capture = pluginRegistrationContext.getStore();
+	return capture?.runtime === runtime ? capture : undefined;
+}
 
 function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {
 	return (
@@ -172,17 +189,11 @@ function warnOnDuplicateServiceTypeRegistration(
 			serviceClass: getServiceClassLabel(serviceClass),
 			existingServiceClasses: existingServiceClasses.map((existing) => ({
 				serviceClass: getServiceClassLabel(existing),
-				plugin: serviceClassOwners.get(existing),
+				plugin: getServiceClassOwners(runtime).get(existing)?.pluginName,
 			})),
 		},
 		"Duplicate serviceType registration can make getService() ambiguous; use a distinct serviceType or getServicesByType()",
 	);
-}
-
-function getRuntimePrivateState(
-	runtime: RuntimeWithPluginLifecycle,
-): RuntimePrivateState {
-	return runtime;
 }
 
 function getPluginOwnershipStore(
@@ -205,25 +216,12 @@ function getPendingPluginOwnership(
 	return runtime.__elizaPendingPluginOwnership;
 }
 
-function getOwnershipTarget(
-	runtime: RuntimeWithPluginLifecycle,
-	pluginName: string,
-): PluginOwnership | null {
-	const activeCapture = pluginRegistrationContext.getStore();
-	if (activeCapture && activeCapture.ownership.pluginName === pluginName) {
-		return activeCapture.ownership;
-	}
-	return getPluginOwnershipStore(runtime).get(pluginName) ?? null;
-}
-
-/** Ownership of the plugin whose registration or service start is running. */
+/** The exact owner that admitted this callback, even after replacement by name. */
 function getCapturingOwnership(
 	runtime: RuntimeWithPluginLifecycle,
 ): PluginOwnership | null {
-	const pluginName =
-		pluginServiceStartContext.getStore()?.pluginName ??
-		pluginRegistrationContext.getStore()?.ownership.pluginName;
-	return pluginName ? getOwnershipTarget(runtime, pluginName) : null;
+	const capture = connectorOwnershipContext.getStore();
+	return capture?.runtime === runtime ? capture.ownership : null;
 }
 
 /**
@@ -265,6 +263,7 @@ function claimConnector(
 	runtime: RuntimeWithPluginLifecycle,
 	kind: "messageConnectors" | "postConnectors",
 	registration: MessageConnectorRegistration | PostConnectorRegistration,
+	ownership: PluginOwnership | null,
 ): void {
 	const source = registration.source.trim();
 	const accountId =
@@ -272,7 +271,6 @@ function claimConnector(
 		normalizeConnectorAccountId(registration.account?.accountId);
 	const sameKey = (connector: { source: string; accountId?: string }) =>
 		connector.source === source && connector.accountId === accountId;
-	const ownership = getCapturingOwnership(runtime);
 	releaseConnectorKey(runtime, ownership, kind, source, accountId);
 	if (!ownership || ownership[kind].some(sameKey)) return;
 	ownership[kind].push(accountId ? { source, accountId } : { source });
@@ -281,8 +279,8 @@ function claimConnector(
 function claimSendHandlerSource(
 	runtime: RuntimeWithPluginLifecycle,
 	source: string,
+	ownership: PluginOwnership | null,
 ): void {
-	const ownership = getCapturingOwnership(runtime);
 	releaseConnectorKey(
 		runtime,
 		ownership,
@@ -412,18 +410,13 @@ function applyEffectiveActionAccess(
 // re-registration (plugin reload, multi-agent processes) must not spam logs.
 const generalFallbackWarnedProviders = new Set<string>();
 
-/** Test hook: reset the one-time registration-warning guard. */
-export function _resetProviderContextWarningsForTests(): void {
-	generalFallbackWarnedProviders.clear();
-}
-
 /**
  * Materialize `contexts` for a provider that declares none. A gate-only
  * declaration (`contextGate` with context terms but no `contexts`) materializes
  * from the gate's anyOf surface — falling back to allOf when the gate is
  * allOf-only — instead of the `["general"]` default, which would invert the
- * declared routing (ride ordinary chat turns, miss its own gated turns,
- * ). Everything else resolves declared → catalog → `["general"]`; the
+ * declared routing (ride ordinary chat turns, miss its own gated turns).
+ * Everything else resolves declared → catalog → `["general"]`; the
  * uncataloged general fallback logs a one-time nudge so plugin authors declare
  * `contexts`/`contextGate` or opt into `alwaysInResponseState`.
  */
@@ -485,8 +478,8 @@ function applyEffectiveProviderContexts(
 }
 
 function pushUniqueEvent(
-	items: RuntimeEventRegistration[],
-	next: RuntimeEventRegistration,
+	items: PluginEventRegistration[],
+	next: PluginEventRegistration,
 ): void {
 	if (
 		items.some(
@@ -501,8 +494,8 @@ function pushUniqueEvent(
 }
 
 function pushUniqueModel(
-	items: RuntimeModelRegistration[],
-	next: RuntimeModelRegistration,
+	items: PluginModelRegistration[],
+	next: PluginModelRegistration,
 ): void {
 	if (
 		items.some(
@@ -518,8 +511,8 @@ function pushUniqueModel(
 }
 
 function pushUniqueService(
-	items: RuntimeServiceRegistration[],
-	next: RuntimeServiceRegistration,
+	items: PluginServiceRegistration[],
+	next: PluginServiceRegistration,
 ): void {
 	if (
 		items.some(
@@ -570,7 +563,6 @@ function removeArrayItemsByReference<T extends object>(
 }
 
 async function stopOwnedServices(
-	privateState: RuntimePrivateState,
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
 ): Promise<void> {
@@ -583,73 +575,113 @@ async function stopOwnedServices(
 		serviceGroups.set(ownedService.serviceType, nextGroup);
 	}
 
+	const stopErrors: unknown[] = [];
+	const classOwners = getServiceClassOwners(runtime);
 	for (const [serviceType, ownedClasses] of serviceGroups) {
 		const key = serviceType as ServiceTypeName;
-		const inFlightStart = privateState.startingServices.get(key);
-		if (inFlightStart) {
-			try {
-				await inFlightStart;
-			} catch (error) {
-				// error-policy:J6 teardown continues after an already-reported startup failure
-				runtime.logger.debug(
-					{ src: "plugin-lifecycle", serviceType, error },
-					"Service startup failed before plugin teardown",
-				);
-			}
-		}
-
-		const currentClasses = privateState.serviceTypes.get(key) ?? [];
+		const currentClasses = runtime.serviceTypes.get(key) ?? [];
 		if (currentClasses.length === 0) {
 			continue;
 		}
 
+		// Withdraw the classes before the first await, so a concurrent
+		// getServiceLoadPromise() cannot start a fresh instance that nothing
+		// would stop (PluginLifecycle.qnt NoOrphanInstance).
 		const ownedClassSet = new Set(ownedClasses);
-		const instances = runtime.services.get(key) ?? [];
-		for (const ownedClass of ownedClasses) {
-			const instance = privateState.serviceInstancesByClass.get(ownedClass);
-			if (instance && typeof instance.stop === "function") {
-				await instance.stop();
-			}
-			if (instance) {
-				// The same instance can be published more than once when
-				// two plugins register the same service class, so remove
-				// every occurrence instead of just the first. Otherwise
-				// the stopped instance stays reachable through getService().
-				removeArrayItemsByReference(instances, [instance]);
-				privateState.serviceInstancesByClass.delete(ownedClass);
-			}
-		}
-
-		for (const ownedClass of ownedClasses) {
-			privateState.failedServiceClasses.delete(ownedClass);
-			if (typeof ownedClass.stopRuntime === "function") {
-				await ownedClass.stopRuntime(runtime);
-			}
-			serviceClassOwners.delete(ownedClass);
-		}
-
 		const remainingClasses = currentClasses.filter(
 			(serviceClass) => !ownedClassSet.has(serviceClass),
 		);
 		if (remainingClasses.length > 0) {
-			privateState.serviceTypes.set(key, remainingClasses);
+			runtime.serviceTypes.set(key, remainingClasses);
 		} else {
-			privateState.serviceTypes.delete(key);
+			runtime.serviceTypes.delete(key);
 		}
 
+		// Take the owned instances out of every lookup before the first await.
+		// A sibling that publishes meanwhile rebuilds runtime.services from
+		// serviceTypes, so a withdrawn instance left in serviceInstancesByClass
+		// would be out of runtime.services, and a runtime stop in that window
+		// would clear it without stopping it (ServiceLifecycle.qnt NoOrphan).
+		// The same instance can be published more than once when two plugins
+		// register the same service class, so every occurrence goes.
+		const ownedInstances = ownedClasses.flatMap((ownedClass) => {
+			const instance = runtime.serviceInstancesByClass.get(ownedClass);
+			runtime.serviceInstancesByClass.delete(ownedClass);
+			return instance ? [instance] : [];
+		});
+		const instances = (runtime.services.get(key) ?? []).filter(
+			(instance) => !ownedInstances.includes(instance),
+		);
 		if (instances.length > 0) {
 			runtime.services.set(key, instances);
-			privateState.serviceRegistrationStatus.set(key, "registered");
 		} else {
 			runtime.services.delete(key);
-			if (remainingClasses.length > 0) {
-				privateState.serviceRegistrationStatus.set(key, "pending");
-			} else {
-				privateState.serviceRegistrationStatus.delete(key);
-				privateState.servicePromises.delete(key);
-				privateState.servicePromiseHandlers.delete(key);
+		}
+
+		// A start still in flight sees its class gone and stops itself. The
+		// startingServices entry can belong to a later caller that only reused
+		// a published instance, so each owned class's own start is awaited too.
+		const inFlightStarts = [
+			runtime.startingServices.get(key),
+			...ownedClasses.map((ownedClass) =>
+				runtime.startingServiceClasses.get(ownedClass),
+			),
+		].filter((start) => start !== undefined);
+		if (inFlightStarts.length > 0) {
+			for (const result of await Promise.allSettled(inFlightStarts)) {
+				if (result.status === "rejected") {
+					// error-policy:J6 teardown continues after an already-reported startup failure
+					runtime.logger.debug(
+						{ src: "plugin-lifecycle", serviceType, error: result.reason },
+						"Service startup failed before plugin teardown",
+					);
+				}
 			}
 		}
+
+		if ((runtime.services.get(key)?.length ?? 0) > 0) {
+			runtime.serviceRegistrationStatus.set(key, "registered");
+		} else if ((runtime.serviceTypes.get(key)?.length ?? 0) > 0) {
+			runtime.serviceRegistrationStatus.set(key, "pending");
+		} else {
+			runtime.serviceRegistrationStatus.delete(key);
+			runtime.servicePromises.delete(key);
+			runtime.servicePromiseHandlers.delete(key);
+		}
+
+		// The runtime's single-flight stop, so a concurrent runtime.stop()
+		// cannot stop the same instance again (StopAtMostOnce). Every instance
+		// is stopped even when one stop() rejects: none of them is in a lookup
+		// any more, so nothing else would stop it (NoOrphanInstance).
+		for (const instance of ownedInstances) {
+			if (typeof instance.stop === "function") {
+				try {
+					await runtime._stopServiceOnce(key, instance);
+				} catch (error) {
+					// error-policy:J6 attempt every owned instance; failures are rethrown below
+					stopErrors.push(error);
+				}
+			}
+		}
+
+		for (const ownedClass of ownedClasses) {
+			runtime.failedServiceClasses.delete(ownedClass);
+			if (typeof ownedClass.stopRuntime === "function") {
+				await ownedClass.stopRuntime(runtime);
+			}
+			if (classOwners.get(ownedClass) === ownership) {
+				classOwners.delete(ownedClass);
+			}
+		}
+	}
+
+	if (stopErrors.length > 0) {
+		throw stopErrors.length === 1
+			? stopErrors[0]
+			: new AggregateError(
+					stopErrors,
+					`Failed to stop services of plugin "${ownership.pluginName}"`,
+				);
 	}
 }
 
@@ -659,7 +691,7 @@ function removeOwnedModels(
 ): void {
 	if (ownership.models.length === 0) return;
 
-	const modelGroups = new Map<string, RuntimeModelRegistration[]>();
+	const modelGroups = new Map<string, PluginModelRegistration[]>();
 	for (const model of ownership.models) {
 		const nextGroup = modelGroups.get(model.modelType) ?? [];
 		nextGroup.push(model);
@@ -754,10 +786,6 @@ function removeOwnedConnectors(
 	}
 }
 
-function removeOwnedConnectorSources(ownership: PluginOwnership): void {
-	unregisterConnectorSourceMetadataOwner(ownership.pluginName);
-}
-
 function removeOwnedComponents(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
@@ -797,6 +825,10 @@ async function restoreAdapterIfNeeded(
 	runtime.adapter = (adapterBefore ?? null) as IAgentRuntime["adapter"];
 }
 
+function toError(error: unknown): Error {
+	return error instanceof Error ? error : new Error(String(error));
+}
+
 async function teardownPluginOwnership(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
@@ -806,7 +838,6 @@ async function teardownPluginOwnership(
 		adapterBefore?: IAgentRuntime["adapter"] | null | undefined;
 	},
 ): Promise<void> {
-	const privateState = getRuntimePrivateState(runtime);
 	if (ownership.hasAdapter && !options?.allowAdapterUnload) {
 		throw new Error(
 			`Plugin "${ownership.pluginName}" provides a database adapter and requires a runtime reload`,
@@ -823,33 +854,36 @@ async function teardownPluginOwnership(
 			await disposeHook(runtime);
 		} catch (error) {
 			// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
-			errors.push(error instanceof Error ? error : new Error(String(error)));
+			errors.push(toError(error));
 		}
 	}
 
+	// Starts and their detached callbacks may still hold this exact owner.
+	// Fence publication before deleting its keys or awaiting service stops.
+	withdrawnConnectorOwners.add(ownership);
 	try {
 		removeOwnedConnectors(runtime, ownership);
 	} catch (error) {
 		// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
-		errors.push(error instanceof Error ? error : new Error(String(error)));
+		errors.push(toError(error));
 	}
 
 	try {
-		await stopOwnedServices(privateState, runtime, ownership);
+		await stopOwnedServices(runtime, ownership);
 	} catch (error) {
 		// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
-		errors.push(error instanceof Error ? error : new Error(String(error)));
+		errors.push(toError(error));
 	}
 
 	try {
 		removeOwnedEvents(runtime, ownership);
-		removeOwnedModels(privateState, ownership);
-		removeOwnedConnectorSources(ownership);
+		removeOwnedModels(runtime, ownership);
+		unregisterConnectorSourceMetadataOwner(ownership.pluginName);
 		removeOwnedComponents(runtime, ownership);
 		removeOwnedPlugins(runtime, ownership);
 	} catch (error) {
 		// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
-		errors.push(error instanceof Error ? error : new Error(String(error)));
+		errors.push(toError(error));
 	}
 
 	if (ownership.hasAdapter && options?.allowAdapterUnload) {
@@ -857,7 +891,7 @@ async function teardownPluginOwnership(
 			await restoreAdapterIfNeeded(runtime, ownership, options.adapterBefore);
 		} catch (error) {
 			// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
-			errors.push(error instanceof Error ? error : new Error(String(error)));
+			errors.push(toError(error));
 		}
 	}
 
@@ -892,7 +926,8 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		return;
 	}
 
-	const privateState = getRuntimePrivateState(runtimeWithLifecycle);
+	const privateState: RuntimePrivateState = runtimeWithLifecycle;
+	const classOwners = getServiceClassOwners(runtimeWithLifecycle);
 	const originalRegisterPlugin =
 		runtimeWithLifecycle.registerPlugin.bind(runtimeWithLifecycle);
 	const originalRegisterAction =
@@ -933,7 +968,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			: null;
 
 	runtimeWithLifecycle.registerAction = ((action: RuntimeAction) => {
-		const capture = pluginRegistrationContext.getStore();
+		const capture = getRegistrationCapture(runtimeWithLifecycle);
 		const actionsBefore = runtimeWithLifecycle.actions.length;
 		// Plugin-boundary overrides are unsafe for hot teardown; downgrade
 		// to first-wins so a plugin never destructively displaces another's action.
@@ -955,7 +990,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	}) as typeof runtimeWithLifecycle.registerAction;
 
 	runtimeWithLifecycle.registerProvider = ((provider: RuntimeProvider) => {
-		const capture = pluginRegistrationContext.getStore();
+		const capture = getRegistrationCapture(runtimeWithLifecycle);
 		const providersBefore = runtimeWithLifecycle.providers.length;
 		originalRegisterProvider(
 			applyEffectiveProviderContexts(
@@ -973,8 +1008,10 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		}
 	}) as typeof runtimeWithLifecycle.registerProvider;
 
-	runtimeWithLifecycle.registerEvaluator = ((evaluator: RuntimeEvaluator) => {
-		const capture = pluginRegistrationContext.getStore();
+	runtimeWithLifecycle.registerEvaluator = ((
+		evaluator: RegisteredEvaluator,
+	) => {
+		const capture = getRegistrationCapture(runtimeWithLifecycle);
 		const evaluatorsBefore = runtimeWithLifecycle.evaluators.length;
 		originalRegisterEvaluator(
 			capture ? withoutPluginOverride(evaluator) : evaluator,
@@ -995,7 +1032,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		priority,
 		metadata,
 	) => {
-		const capture = pluginRegistrationContext.getStore();
+		const capture = getRegistrationCapture(runtimeWithLifecycle);
 		const modelKey = String(modelType);
 		const modelsBefore = new Set(privateState.models.get(modelKey) ?? []);
 		originalRegisterModel(modelType, handler, provider, priority, metadata);
@@ -1005,7 +1042,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			if (modelsBefore.has(registeredModel)) continue;
 			pushUniqueModel(capture.ownership.models, {
 				modelType: modelKey,
-				handler: registeredModel.handler as RuntimeModelRegistration["handler"],
+				handler: registeredModel.handler as PluginModelRegistration["handler"],
 				metadata: registeredModel.metadata,
 				provider: registeredModel.provider,
 			});
@@ -1016,7 +1053,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		event: string,
 		handler: RuntimeEventHandler,
 	) => {
-		const capture = pluginRegistrationContext.getStore();
+		const capture = getRegistrationCapture(runtimeWithLifecycle);
 		const handlersBefore = runtimeWithLifecycle.events[event]?.length ?? 0;
 		originalRegisterEvent(event as never, handler as never);
 		if (!capture) return;
@@ -1032,7 +1069,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	runtimeWithLifecycle.registerService = (async (
 		serviceClass: RuntimeServiceClass,
 	) => {
-		const capture = pluginRegistrationContext.getStore();
+		const capture = getRegistrationCapture(runtimeWithLifecycle);
 		const serviceType = serviceClass.serviceType as ServiceTypeName;
 		const existingServiceClasses =
 			privateState.serviceTypes.get(serviceType) ?? [];
@@ -1048,7 +1085,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		if (!capture) return;
 		const nextClasses = privateState.serviceTypes.get(serviceType) ?? [];
 		for (const registeredClass of nextClasses.slice(serviceTypesBefore)) {
-			serviceClassOwners.set(registeredClass, capture.ownership.pluginName);
+			classOwners.set(registeredClass, capture.ownership);
 			pushUniqueService(capture.ownership.services, {
 				serviceType,
 				serviceClass: registeredClass,
@@ -1059,7 +1096,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	runtimeWithLifecycle.registerDatabaseAdapter = ((
 		adapter: IAgentRuntime["adapter"],
 	) => {
-		const capture = pluginRegistrationContext.getStore();
+		const capture = getRegistrationCapture(runtimeWithLifecycle);
 		const adapterBefore = runtimeWithLifecycle.adapter;
 		originalRegisterDatabaseAdapter(adapter);
 		if (
@@ -1074,15 +1111,14 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	runtimeWithLifecycle.registerChatPreHandler = ((
 		handler: RuntimeChatPreHandler,
 	) => {
-		const capture = pluginRegistrationContext.getStore();
+		const capture = getRegistrationCapture(runtimeWithLifecycle);
 		if (!capture) {
 			originalRegisterChatPreHandler(handler);
 			return;
 		}
 		// register() is an id-keyed upsert. Across plugin boundaries that would
-		// displace another owner's handler, which teardown cannot restore
-		//, so plugin registration is first-wins like actions/providers/
-		// evaluators. Re-registering an id this plugin already owns stays safe.
+		// displace another owner's handler, which teardown cannot restore, so
+		// plugin registration is first-wins like actions/providers/evaluators. Re-registering an id this plugin already owns stays safe.
 		if (
 			runtimeWithLifecycle.chatPreHandlerRegistry?.has(handler.id) &&
 			!capture.ownership.chatPreHandlerIds.includes(handler.id)
@@ -1105,7 +1141,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	runtimeWithLifecycle.registerResponseHandlerEvaluator = ((
 		evaluator: RuntimeResponseHandlerEvaluator,
 	) => {
-		const capture = pluginRegistrationContext.getStore();
+		const capture = getRegistrationCapture(runtimeWithLifecycle);
 		const countBefore = runtimeWithLifecycle.responseHandlerEvaluators.length;
 		originalRegisterResponseHandlerEvaluator(evaluator);
 		if (
@@ -1126,7 +1162,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	runtimeWithLifecycle.registerResponseHandlerFieldEvaluator = ((
 		evaluator: RuntimeResponseHandlerFieldEvaluator,
 	) => {
-		const capture = pluginRegistrationContext.getStore();
+		const capture = getRegistrationCapture(runtimeWithLifecycle);
 		const countBefore =
 			runtimeWithLifecycle.responseHandlerFieldEvaluators.length;
 		originalRegisterResponseHandlerFieldEvaluator(evaluator);
@@ -1147,38 +1183,55 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 
 	if (originalRegisterSendHandler) {
 		privateState.registerSendHandler = ((source, handler) => {
+			const ownership = getCapturingOwnership(runtimeWithLifecycle);
+			if (ownership && withdrawnConnectorOwners.has(ownership)) return;
 			originalRegisterSendHandler(source, handler);
-			claimSendHandlerSource(runtimeWithLifecycle, source.trim());
+			claimSendHandlerSource(runtimeWithLifecycle, source.trim(), ownership);
 		}) as typeof privateState.registerSendHandler;
 	}
 
 	runtimeWithLifecycle.registerMessageConnector = ((registration) => {
+		const ownership = getCapturingOwnership(runtimeWithLifecycle);
+		if (ownership && withdrawnConnectorOwners.has(ownership)) return;
 		originalRegisterMessageConnector(registration);
-		claimConnector(runtimeWithLifecycle, "messageConnectors", registration);
+		claimConnector(
+			runtimeWithLifecycle,
+			"messageConnectors",
+			registration,
+			ownership,
+		);
 	}) as typeof runtimeWithLifecycle.registerMessageConnector;
 
 	runtimeWithLifecycle.registerPostConnector = ((registration) => {
+		const ownership = getCapturingOwnership(runtimeWithLifecycle);
+		if (ownership && withdrawnConnectorOwners.has(ownership)) return;
 		originalRegisterPostConnector(registration);
-		claimConnector(runtimeWithLifecycle, "postConnectors", registration);
+		claimConnector(
+			runtimeWithLifecycle,
+			"postConnectors",
+			registration,
+			ownership,
+		);
 	}) as typeof runtimeWithLifecycle.registerPostConnector;
 
 	if (originalRunServiceStart) {
 		privateState._runServiceStart = (async (key, serviceType, serviceClass) => {
-			const pluginName =
-				serviceClassOwners.get(serviceClass) ??
-				pluginRegistrationContext.getStore()?.ownership.pluginName;
-			if (!pluginName) {
-				return originalRunServiceStart(key, serviceType, serviceClass);
-			}
-			return pluginServiceStartContext.run(
-				{ pluginName },
+			const registration = getRegistrationCapture(runtimeWithLifecycle);
+			const pendingOwner = registration?.ownership.plugin.services?.includes(
+				serviceClass,
+			)
+				? registration.ownership
+				: null;
+			const ownership = classOwners.get(serviceClass) ?? pendingOwner;
+			return connectorOwnershipContext.run(
+				{ runtime: runtimeWithLifecycle, ownership },
 				async () =>
 					await originalRunServiceStart(key, serviceType, serviceClass),
 			);
 		}) as typeof privateState._runServiceStart;
 	}
 
-	runtimeWithLifecycle.registerPlugin = (async (plugin: Plugin) => {
+	const registerWithOwnership = async (plugin: Plugin): Promise<void> => {
 		const pluginsBefore = new Set(runtimeWithLifecycle.plugins);
 		const serviceClassCountsBefore = new Map<RuntimeServiceClass, number>();
 		for (const classes of privateState.serviceTypes.values()) {
@@ -1190,6 +1243,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			}
 		}
 		const capture: RuntimePluginRegistrationCapture = {
+			runtime: runtimeWithLifecycle,
 			ownership: createEmptyOwnership(plugin),
 			adapterBefore: runtimeWithLifecycle.adapter,
 		};
@@ -1204,7 +1258,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				) {
 					continue;
 				}
-				serviceClassOwners.set(serviceClass, capture.ownership.pluginName);
+				classOwners.set(serviceClass, capture.ownership);
 				pushUniqueService(capture.ownership.services, {
 					serviceType,
 					serviceClass,
@@ -1215,9 +1269,12 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		const pendingOwnership = getPendingPluginOwnership(runtimeWithLifecycle);
 		pendingOwnership.add(capture.ownership);
 		try {
-			await pluginRegistrationContext.run(capture, async () => {
-				await originalRegisterPlugin(plugin);
-			});
+			await pluginRegistrationContext.run(capture, () =>
+				connectorOwnershipContext.run(
+					{ runtime: runtimeWithLifecycle, ownership: capture.ownership },
+					() => originalRegisterPlugin(plugin),
+				),
+			);
 			trackPluginRef(runtimeWithLifecycle, capture.ownership, pluginsBefore);
 			captureDeclaredServices();
 			if (
@@ -1246,38 +1303,69 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			// the original registration failure.
 			trackPluginRef(runtimeWithLifecycle, capture.ownership, pluginsBefore);
 			captureDeclaredServices();
-			await teardownPluginOwnership(runtimeWithLifecycle, capture.ownership, {
-				allowAdapterUnload: true,
-				removeOwnership: true,
-				adapterBefore: capture.adapterBefore,
-			});
+			try {
+				await teardownPluginOwnership(runtimeWithLifecycle, capture.ownership, {
+					allowAdapterUnload: true,
+					removeOwnership: true,
+					adapterBefore: capture.adapterBefore,
+				});
+			} catch (rollbackError) {
+				// error-policy:J2 the registration failure stays the thrown error;
+				// the rollback failure is reported, not substituted for it.
+				runtimeWithLifecycle.reportError(
+					"PluginLifecycle.registrationRollback",
+					rollbackError,
+					{ plugin: plugin.name },
+				);
+			}
 			throw error;
 		} finally {
 			pendingOwnership.delete(capture.ownership);
 		}
-	}) as typeof runtimeWithLifecycle.registerPlugin;
-
-	runtimeWithLifecycle.unloadPlugin = async (pluginName: string) => {
-		const ownership =
-			getPluginOwnershipStore(runtimeWithLifecycle).get(pluginName);
-		if (!ownership) {
-			return null;
-		}
-		await teardownPluginOwnership(runtimeWithLifecycle, ownership, {
-			removeOwnership: true,
-		});
-		return ownership;
 	};
 
+	// A second registration of a name joins the one in flight, so it fails
+	// when that one fails (PluginLifecycle.qnt RegisterHonest).
+	const registrations = new Map<string, Promise<void>>();
+	runtimeWithLifecycle.registerPlugin = ((plugin: Plugin) => {
+		const inFlight = registrations.get(plugin.name);
+		if (inFlight) return inFlight;
+		const registration = registerWithOwnership(plugin);
+		registrations.set(plugin.name, registration);
+		const clear = () => {
+			if (registrations.get(plugin.name) === registration) {
+				registrations.delete(plugin.name);
+			}
+		};
+		void registration.then(clear, clear);
+		return registration;
+	}) as typeof runtimeWithLifecycle.registerPlugin;
+
+	// A second unload of a plugin joins the teardown in flight
+	// (PluginLifecycle.qnt TeardownExclusive).
+	const teardowns = new Map<string, Promise<PluginOwnership | null>>();
+	const unloadOnce = (pluginName: string): Promise<PluginOwnership | null> => {
+		const inFlight = teardowns.get(pluginName);
+		if (inFlight) return inFlight;
+		const ownership =
+			getPluginOwnershipStore(runtimeWithLifecycle).get(pluginName);
+		if (!ownership) return Promise.resolve(null);
+		const teardown = teardownPluginOwnership(runtimeWithLifecycle, ownership, {
+			removeOwnership: true,
+		}).then(() => ownership);
+		teardowns.set(pluginName, teardown);
+		const clear = () => {
+			if (teardowns.get(pluginName) === teardown) teardowns.delete(pluginName);
+		};
+		void teardown.then(clear, clear);
+		return teardown;
+	};
+
+	runtimeWithLifecycle.unloadPlugin = (pluginName: string) =>
+		unloadOnce(pluginName);
+
 	runtimeWithLifecycle.reloadPlugin = async (plugin: Plugin) => {
-		const existingOwnership = getPluginOwnershipStore(runtimeWithLifecycle).get(
-			plugin.name,
-		);
-		if (existingOwnership) {
-			await teardownPluginOwnership(runtimeWithLifecycle, existingOwnership, {
-				removeOwnership: true,
-			});
-		}
+		await unloadOnce(plugin.name);
 		await runtimeWithLifecycle.registerPlugin(plugin);
 	};
 
@@ -1306,18 +1394,4 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		Array.from(getPluginOwnershipStore(runtimeWithLifecycle).values());
 
 	runtimeWithLifecycle.__elizaPluginLifecycleInstalled = true;
-}
-
-export function supportsRuntimePluginLifecycle(
-	runtime: IAgentRuntime | null,
-): runtime is RuntimeWithPluginLifecycle {
-	return Boolean(
-		runtime &&
-			typeof (runtime as RuntimeWithPluginLifecycle).unloadPlugin ===
-				"function" &&
-			typeof (runtime as RuntimeWithPluginLifecycle).reloadPlugin ===
-				"function" &&
-			typeof (runtime as RuntimeWithPluginLifecycle).getPluginOwnership ===
-				"function",
-	);
 }

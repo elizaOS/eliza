@@ -9,7 +9,8 @@
  * reloads the active conversation tail (#PWA-D1/D2/D3).
  *
  *  - On `APP_PAUSE_EVENT`:
- *    abort any in-flight chat stream before iOS suspends the process and
+ *    detach any in-flight chat stream before iOS suspends the process (the
+ *    server turn keeps running; only the local read ends) and
  *    persist the active conversation id so the next foreground can restore
  *    it (the storage bridge mirrors the key to Capacitor Preferences, so
  *    the value survives a WKWebView localStorage purge under memory
@@ -33,6 +34,7 @@ import { type MutableRefObject, useEffect, useRef } from "react";
 import { client } from "../api/client";
 import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
 import type { ConversationMessage } from "../api/client-types-chat";
+import { APP_PAUSE_DETACH } from "../api/conversation-turn-controller";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
@@ -43,6 +45,7 @@ import { isAndroidCloudBuild } from "../platform/android-runtime";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 import { recoverMissedCurrentView } from "../view-action-handoff";
+import { listPendingChatTurns } from "./pending-chat-turns";
 import type { LoadConversationMessagesResult } from "./types";
 
 /** Storage key for the last-known active conversation id. */
@@ -127,12 +130,14 @@ export function useAppLifecycleEvents({
   loadConversationMessages,
   hydrateInitialConversationState,
 }: UseAppLifecycleEventsParams): void {
-  // ── APP_PAUSE: gracefully abort in-flight streams before suspend ──
+  // ── APP_PAUSE: detach in-flight streams before suspend ──
   useEffect(() => {
     const onPause = (): void => {
+      // Detach, not Stop: the agent finishes the turn and the resume tail
+      // reload shows its reply.
       const controller = chatAbortRef.current;
       if (controller && !controller.signal.aborted) {
-        controller.abort();
+        controller.abort(APP_PAUSE_DETACH);
       }
       chatAbortRef.current = null;
 
@@ -187,7 +192,11 @@ export function useAppLifecycleEvents({
     // Sweep the "last assistant turn is an empty streaming placeholder"
     // anomaly (a stream that never produced text before suspend) so the UI
     // does not show a perpetually-loading bubble after resume.
+    // A turn detached on pause still has its pending receipt; its reply may
+    // still be running, so its placeholder is not marked interrupted.
     const sweepStalePlaceholder = (): void => {
+      const activeId = activeConversationIdRefStable.current;
+      if (activeId && listPendingChatTurns(activeId).length > 0) return;
       const messages = conversationMessagesRefStable.current;
       const last = messages.length > 0 ? messages[messages.length - 1] : null;
       if (last && last.role === "assistant" && last.text === "") {

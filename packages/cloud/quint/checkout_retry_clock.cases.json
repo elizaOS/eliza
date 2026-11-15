@@ -1,0 +1,37 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+    "packages/cloud/api/src/checkout-reconciliation.ts",
+    "packages/cloud/shared/src/db/migrations/0559_stripe_checkout_provider_started_at.sql",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/cloud/api/__tests__/checkout-provider-horizon.pglite.test.ts",
+    "packages/cloud/api/__tests__/billing-manager-mutations.pglite.test.ts",
+    "packages/cloud/shared/src/db/migrations/stripe-checkout-provider-started-at.test.ts",
+    "packages/cloud/api/stripe/create-checkout-session/route.ts",
+    "packages/cloud/quint/check-checkout-recovery.mjs"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Independent database and application clocks each range over 0, 22, 44 and 66 hours; up to three create attempts.",
+      "Only primary database time authorizes a new dispatch. The first dispatch time is immutable; audit updates do not restart the retry window.",
+      "This is a bounded time-gate model, not a proof of provider key retention, network arrival time, remote exactly-once behavior or implementation refinement."
+    ],
+    "progress": "No fairness or temporal progress claim. Safety covers only the declared finite model.",
+    "conformance": "The hook requires every named real PGlite route/service/migration scenario for this model. Authentication and remote Stripe are controlled boundaries in the existing tests. General trace equivalence, provider behavior and composition of the two models are not proved."
+  },
+  "cases": [
+    {
+      "name": "checkout-retry-clock",
+      "main": "checkout_retry_clock",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 35,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs"
+}

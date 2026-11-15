@@ -1,0 +1,70 @@
+{
+  "sources": [
+    "packages/voice/README.md",
+    "packages/voice/src/voice-assistant-session.ts",
+    "packages/voice/src/voice-assistant-session.test.ts",
+    "packages/voice/vitest.config.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/voice/src/native-live-voice.ts",
+    "packages/voice/src/native-live-voice.test.ts",
+    "packages/voice/src/live-voice-session.ts",
+    "packages/voice/src/live-voice-session.test.ts",
+    "packages/ui/src/voice/voice-session-client-core.ts",
+    "packages/ui/src/voice/voice-session-mic-capture.ts",
+    "packages/ui/src/voice/__e2e__/voice-session-mic-capture.test.ts",
+    "packages/ui/src/voice/voice-session-cloud-budget-rotation.test.ts",
+    "packages/ui/src/hooks/useRealtimeVoiceSession.ts",
+    "packages/ui/src/hooks/useRealtimeVoiceSession.refusal.test.tsx"
+  ],
+  "conformance": "packages/voice/quint/check-voice-assistant-capture-ownership.mjs",
+  "bounds": {
+    "domain": "One active owner, one initial capture, one replacement acquisition per generation, and one restart after confirmed Stop. Close and cancel receipts can overlap. Mute, cancellation failure, retry and retirement may occur while acquisition or close is pending.",
+    "assumptions": "Send/reply/playback are abstracted to one owned turn. Capture cancellation is asynchronous and may fail arbitrarily often. Progress assumes fair close/acquisition/Stop acknowledgement and strongly fair successful cancellation across retries; no wall-clock bound or unconditional device success is asserted.",
+    "limitations": "Finite protocol projection with maintained implementation scenarios. It does not prove physical device release, native hardware correctness, all owner replacement interleavings, unlimited generations, or open-microphone speech timing. Browser/native ports and the React owner are exercised with injected failures; this is scenario correspondence, not a full implementation refinement proof."
+  },
+  "cases": [
+    {
+      "name": "reopen-mute-and-stop-receipts",
+      "main": "VoiceAssistantCaptureOwnership",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "SendNeedsConfirmedClose",
+        "CaptureAdoptionRequiresLiveUnmutedOwner",
+        "StopWaitsForLateCancellation",
+        "FailedReleaseRetainsOwnership"
+      ],
+      "temporal": [
+        "RetiredOwnerCannotSendOrReopen",
+        "UnderFairCaptureReceipts",
+        "PendingCaptureOperationsSettle"
+      ],
+      "temporalChecks": [
+        {
+          "property": "RetiredOwnerCannotSendOrReopen",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. A retired generation cannot send or adopt capture; a new generation starts only after all old close/cancel receipts confirm release."
+          ]
+        },
+        {
+          "property": "UnderFairCaptureReceipts",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of close, acquisition, cancellation request and Stop acknowledgement; strong fairness of a successful cancel receipt when retried infinitely. The environment can refuse release forever without these assumptions, so unconditional release is not proved."
+          ]
+        },
+        {
+          "property": "PendingCaptureOperationsSettle",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An opening, close or late cancellation can stay pending and keep Stop waiting."
+          ]
+        }
+      ],
+      "maxSteps": 40,
+      "samples": 1000
+    }
+  ]
+}

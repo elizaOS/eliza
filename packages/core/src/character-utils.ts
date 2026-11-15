@@ -21,11 +21,7 @@ export function getCharacterSecret(
 		| undefined;
 	const value = secrets?.[key];
 
-	if (value && typeof value === "string" && value.length > 0) {
-		return value;
-	}
-
-	return null;
+	return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 /**

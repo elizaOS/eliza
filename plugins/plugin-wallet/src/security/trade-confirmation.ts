@@ -40,12 +40,14 @@ interface PendingConfirmationRecord {
   readonly ttlMs?: number;
 }
 
+/** Must match the key `requireConfirmation` in @elizaos/core builds. */
 function confirmationCacheKey(
+  roomId: string,
   userId: string,
   actionName: string,
   pendingKey: string,
 ): string {
-  return `confirmation:${userId}:${actionName}:${pendingKey}`;
+  return `confirmation:${roomId}:${userId}:${actionName}:${pendingKey}`;
 }
 
 function isFreshPendingRecord(
@@ -120,6 +122,7 @@ export async function requireTradeOrderConfirmation(args: {
 }): Promise<TradeConfirmationDecision> {
   const pendingKey = tradeOrderPendingKey(args.order);
   const cacheKey = confirmationCacheKey(
+    String(args.message.roomId),
     String(args.message.entityId),
     TRADE_CONFIRM_ACTION,
     pendingKey,

@@ -5,8 +5,8 @@
  * Requires the Vite dev server to be running (bun run dev) and raw .vrm files in public_src/vrms.
  *
  * Usage:
- *   node scripts/run-screenshotter.ts
- *   node scripts/run-screenshotter.ts --url http://localhost:2138
+ *   bun scripts/run-screenshotter.ts
+ *   bun scripts/run-screenshotter.ts --url http://localhost:2138
  */
 import fs from "node:fs";
 import path from "node:path";

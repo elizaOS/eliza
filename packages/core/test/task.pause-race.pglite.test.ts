@@ -75,10 +75,10 @@ describe("TaskService pause racing a run on PGlite", () => {
 					racedTaskId = taskId;
 					const service = new TaskService(runtime, {
 						now: () => now,
-						setInterval: () => {
+						setTimeout: () => {
 							throw new Error("manual ticks only");
 						},
-						clearInterval: () => undefined,
+						clearTimeout: () => undefined,
 					});
 					const select = () =>
 						runtime.getTasks({ tags: ["queue"], agentIds: [runtime.agentId] });

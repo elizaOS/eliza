@@ -344,6 +344,7 @@ export async function ensureLinkedCalendarControlTable(
     provider_calendar_id TEXT,
     dispatch_token TEXT,
     dispatch_link_id TEXT,
+    dispatch_acquired_at TEXT,
     CONSTRAINT linked_calendar_control_dispatch_valid CHECK (
       (dispatch_token IS NULL AND dispatch_link_id IS NULL) OR
       (dispatch_token IS NOT NULL AND length(dispatch_token) > 0
@@ -353,6 +354,8 @@ export async function ensureLinkedCalendarControlTable(
       OR (connector_account_id IS NOT NULL AND length(trim(connector_account_id)) > 0
         AND provider_calendar_id IS NOT NULL AND length(trim(provider_calendar_id)) > 0))
   )`);
+  await exec(`ALTER TABLE ${TARGET_SCHEMA}.linked_calendar_control
+    ADD COLUMN IF NOT EXISTS dispatch_acquired_at TEXT`);
   await exec(`CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.linked_calendar_control_mutations (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,

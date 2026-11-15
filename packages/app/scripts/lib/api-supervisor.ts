@@ -1,7 +1,7 @@
 /**
  * API process supervisor with crash-loop backoff.
  *
- * Both `dev-ui.ts` and `dev-platform.ts` need to keep the API server alive
+ * `dev-ui.ts` needs to keep the API server alive
  * across `process.exit(0)` (RESTART action), `process.exit(75)` (CLI runner
  * restart exit code), and intentional reloads — but stop trying when the server
  * keeps exiting in a tight window (a real crash that needs a human).

@@ -159,13 +159,14 @@ function formatRelativeMinutes(minutes: number): string {
 export function formatCalendarFeed(
   feed: LifeOpsCalendarFeed,
   label: string,
+  reference?: { asOf: Date; timeZone: string },
 ): string {
   if (feed.events.length === 0) {
     return `No events ${label}.`;
   }
   const lines: string[] = [`Events ${label}:`];
   for (const event of feed.events) {
-    const time = formatCalendarEventTimeRange(event);
+    const time = formatCalendarEventTimeRange(event, reference);
     const parts = [`- **${event.title}** (${time})`];
     if (event.location) {
       parts.push(`  Location: ${event.location}`);

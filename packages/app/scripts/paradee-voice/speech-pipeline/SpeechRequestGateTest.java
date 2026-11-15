@@ -27,10 +27,13 @@ public final class SpeechRequestGateTest {
   check(gate.leaveDrain(waiterOne)&&!gate.leaveDrain(waiterOne),"a timed-out waiter leaves exactly once");
   Map<Object,Runnable> failed=gate.finishDrain(false);
   check(failed.size()==1&&failed.get(waiterTwo)==timeoutTwo,"an incomplete barrier releases the remaining waiter with its timeout");
-  check(gate.draining(),"an incomplete barrier keeps admission closed");
-  check(gate.beginDrain(waiterOne,timeoutOne)==SpeechRequestGate.Drain.JOINED,"a later cancellation waits on the still-open drain");
+  check(gate.draining()&&gate.admit("d",true).refusal==SpeechRequestGate.Refusal.UNAVAILABLE,"an incomplete barrier keeps admission closed");
+  // Nobody runs the failed barrier: the next cancellation opens a new one, and others join that.
+  check(gate.beginDrain(waiterOne,timeoutOne)==SpeechRequestGate.Drain.OPENED,"a cancellation after a failed barrier runs a new one");
+  check(gate.beginDrain(waiterTwo,timeoutTwo)==SpeechRequestGate.Drain.JOINED,"a cancellation joins the new barrier");
+  check(gate.draining(),"admission stays closed while the new barrier runs");
   Map<Object,Runnable> done=gate.finishDrain(true);
-  check(done.size()==1&&!gate.draining(),"the completed barrier reopens admission");
+  check(done.size()==2&&!gate.draining(),"the completed barrier reopens admission");
   SpeechRequestGate.Request last=gate.admit("e",true).request;
   check(last!=null,"admission resumes after the drain");
   gate.destroy();

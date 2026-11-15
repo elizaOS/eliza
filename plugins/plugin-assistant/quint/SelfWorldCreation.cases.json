@@ -1,0 +1,27 @@
+{
+  "sources": [
+    "plugins/plugin-assistant/src/features/secrets/storage/component-store.ts",
+    "plugins/plugin-assistant/src/features/secrets/storage/self-world-model.pglite.test.ts"
+  ],
+  "conformance": "plugins/plugin-assistant/quint/check-secret-store.mjs",
+  "bounds": "Two finite PGlite cases: concurrent first writes of two distinct user secrets when the self-world is absent, and a write with an existing world carrying retained metadata. The actual SQL foreign key, unique world identity and SecretsService are exercised.",
+  "limitations": [
+    "No claim for all database faults, cross-agent world-id collisions, process crash recovery, encryption correctness or same-key competing writes. Safety-only model; the SQL calls must return for test completion."
+  ],
+  "cases": [
+    {
+      "name": "self-world-before-component",
+      "main": "SelfWorldCreation",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "StorageHasWorld",
+        "PreservesWorldMetadata",
+        "BothConcurrentSecretsPersist"
+      ],
+      "temporal": [],
+      "maxSteps": 3,
+      "samples": 80
+    }
+  ]
+}

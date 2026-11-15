@@ -25,7 +25,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../../../src/lib/generative-route-auth";
 
 const navigateSchema = z.object({
   url: z.string().trim().url().max(2_000),

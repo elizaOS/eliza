@@ -2,7 +2,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   type InferenceAdmissionLease,
-  isInferenceAdmissionGateWarmingError,
   markInferenceAdmissionLeaseDispatched,
 } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 
@@ -133,7 +132,7 @@ describe("one total dispatch deadline", () => {
     expect(l.preProviderCancellationToken).toBe("capability-a");
     expect(l.preparedDispatch?.state).toBe("ambiguous");
   });
-  test("a confirmed cold gate rejects before dispatch and remains identifiable through wrappers", async () => {
+  test("a cold gate whose primary hydration fails rejects before dispatch", async () => {
     let calls = 0;
     const l = lease(async () => {
       calls++;
@@ -148,12 +147,11 @@ describe("one total dispatch deadline", () => {
     } catch (error) {
       failure = error;
     }
-    expect(failure).toBeDefined();
-    expect(
-      isInferenceAdmissionGateWarmingError(
-        new Error("Admission wrapper", { cause: failure }),
-      ),
-    ).toBe(true);
+    // This unit has no primary, so the inline hydration fails closed.
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(
+      "Inference admission gate hydration failed",
+    );
     expect(calls).toBe(1);
     expect(l.preparedDispatch?.state).toBe("rejected");
     expect(l.providerDispatched).toBe(false);
@@ -183,11 +181,6 @@ describe("one total dispatch deadline", () => {
         failure = error;
       }
       expect(failure).toBeDefined();
-      expect(
-        isInferenceAdmissionGateWarmingError(
-          new Error("Admission wrapper", { cause: failure }),
-        ),
-      ).toBe(false);
       expect(calls).toBe(3);
       expect(bodies[1]).toEqual(bodies[0]);
       expect(bodies[2]).toEqual(bodies[0]);
@@ -234,7 +227,7 @@ describe("one total dispatch deadline", () => {
 });
 
 test.each([false, true])(
-  "proxy exposes cold admission only with no earlier ambiguous attempt (%s)",
+  "proxy refuses an unhydratable cold gate before provider work (ambiguous %s)",
   async (ambiguous) => {
     const admission = await import(
       "@elizaos/cloud-shared/lib/services/organization-inference-admission"
@@ -302,9 +295,7 @@ test.each([false, true])(
       );
       expect(response.status).toBe(503);
       const body = (await response.json()) as { code?: unknown };
-      expect(body.code).toBe(
-        ambiguous ? "service_unavailable" : "inference_admission_cache_warming",
-      );
+      expect(body.code).toBe("service_unavailable");
       expect(response.headers.get("Retry-After")).toBe("1");
       await Promise.all(pending);
       expect(providerCalls).toBe(0);

@@ -161,6 +161,64 @@ describe("scheduling SQL persistence", () => {
     await Promise.all(harnesses.splice(0).map((harness) => harness.close()));
   });
 
+  it(
+    "uses a late consumer dispatcher without losing boot-created SQL tasks",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const service = await startService(harness);
+      const before = service.getRunner({ agentId: harness.runtime.agentId });
+      const task = await before.schedule({
+        ...receiptReminderInput("late-consumer-boot-task"),
+        trigger: {
+          kind: "cron",
+          expression: "0 8 * * *",
+          tz: "America/Los_Angeles",
+        },
+      });
+      const dispatched: string[] = [];
+      const timezones: Array<string | undefined> = [];
+      const provider = (runtime: IAgentRuntime, agentId: string) => ({
+        store: createSchedulingSqlScheduledTaskStore({ runtime, agentId }),
+        logStore: createSchedulingSqlScheduledTaskLogStore({
+          runtime,
+          agentId,
+        }),
+        dispatcher: {
+          async dispatch(record: { taskId: string; timezone?: string }) {
+            dispatched.push(record.taskId);
+            timezones.push(record.timezone);
+            return { ok: true as const };
+          },
+        },
+        ownerFacts: () => ({ timezone: "UTC" }),
+        globalPause: { current: async () => ({ active: false }) },
+        activity: { hasSignalSince: () => false },
+        subjectStore: { wasUpdatedSince: () => false },
+      });
+      registerScheduledTaskRunnerDeps(harness.runtime, provider);
+      const after = service.getRunner({ agentId: harness.runtime.agentId });
+      expect((await after.list()).map((row) => row.taskId)).toContain(
+        task.taskId,
+      );
+      expect((await after.fireWithResult(task.taskId)).kind).toBe("fired");
+      expect(dispatched).toEqual([task.taskId]);
+      expect(timezones).toEqual(["America/Los_Angeles"]);
+      registerScheduledTaskRunnerDeps(harness.runtime, () => {
+        throw Error("must retain first consumer");
+      });
+      expect(service.getRunner({ agentId: harness.runtime.agentId })).toBe(
+        after,
+      );
+      expect(
+        (await before.list()).find((row) => row.taskId === task.taskId)?.state
+          .status,
+      ).toBe("fired");
+      await service.stop();
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
   it("keeps no-database startup on the in-memory fallback path", async () => {
     const runtime = { agentId: "no-db" } as IAgentRuntime;
     const service = await SchedulingMigrationService.start(runtime);

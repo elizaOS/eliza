@@ -22,6 +22,7 @@ import type { RoleGateRole } from "../types/contexts";
 import type { Memory } from "../types/memory.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state";
+import { validateUuid } from "../utils/uuid.js";
 
 /**
  * Explicit per-turn alias grants: redaction alias name → the identifier value
@@ -30,32 +31,26 @@ import type { State } from "../types/state";
  */
 export type EntityAliasCapabilityMap = Readonly<Record<string, string>>;
 
-export const CANONICAL_OWNER_ENTITY_ALIAS = "ELIZA_ADMIN_ENTITY_ID";
+const CANONICAL_OWNER_ENTITY_ALIAS = "ELIZA_ADMIN_ENTITY_ID";
 
 const REDACTED_ENTITY_ALIAS_REF = /^\[REDACTED:([A-Z0-9_]*_ENTITY_ID)\]$/;
-const UUID_SHAPE =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MAX_ALIAS_SCAN_DEPTH = 8;
 const MAX_ALIAS_SCAN_NODES = 2_048;
 
 const EMPTY_ALIASES: EntityAliasCapabilityMap = Object.freeze({});
 
-function aliasPlaceholder(name: string): string {
-	return `[REDACTED:${name}]`;
-}
-
 /**
  * True when the exact full placeholder token for `name` appears anywhere in
  * the composed state's prompt text or string values — evidence that redaction
  * (not the model's imagination) emitted the alias this turn.
  */
-export function statePresentsEntityAlias(
+function statePresentsEntityAlias(
 	state: State | undefined,
 	name: string,
 ): boolean {
 	if (!state) return false;
-	const token = aliasPlaceholder(name);
+	const token = `[REDACTED:${name}]`;
 	if (typeof state.text === "string" && state.text.includes(token)) {
 		return true;
 	}
@@ -108,8 +103,10 @@ export async function buildTurnEntityAliases(
 	if (!userRoles?.includes("OWNER")) {
 		return EMPTY_ALIASES;
 	}
-	const ownerId = await resolveCanonicalOwnerIdForMessage(runtime, message);
-	if (typeof ownerId !== "string" || !UUID_SHAPE.test(ownerId)) {
+	const ownerId = validateUuid(
+		await resolveCanonicalOwnerIdForMessage(runtime, message),
+	);
+	if (!ownerId) {
 		return EMPTY_ALIASES;
 	}
 	return Object.freeze({ [CANONICAL_OWNER_ENTITY_ALIAS]: ownerId });
@@ -129,9 +126,9 @@ export function resolveEntityAliasRefs(
 	args: Record<string, unknown>,
 ): Record<string, unknown> {
 	if (Object.keys(aliases).length === 0) return args;
-	const budget = { nodes: MAX_ALIAS_SCAN_NODES };
-	const resolved = resolveNode(aliases, args, 0, budget);
-	return resolved === args ? args : (resolved as Record<string, unknown>);
+	return resolveNode(aliases, args, 0, {
+		nodes: MAX_ALIAS_SCAN_NODES,
+	}) as Record<string, unknown>;
 }
 
 function resolveNode(
@@ -145,11 +142,7 @@ function resolveNode(
 	if (typeof value === "string") {
 		const match = REDACTED_ENTITY_ALIAS_REF.exec(value);
 		if (!match?.[1]) return value;
-		const granted = aliases[match[1]];
-		if (typeof granted !== "string" || !UUID_SHAPE.test(granted)) {
-			return value;
-		}
-		return granted;
+		return validateUuid(aliases[match[1]]) ?? value;
 	}
 	if (Array.isArray(value)) {
 		let changed = false;

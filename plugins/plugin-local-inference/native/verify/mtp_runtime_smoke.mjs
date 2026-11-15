@@ -106,7 +106,7 @@ function parseArgs(argv) {
     else if (arg === "--help" || arg === "-h") {
       console.log(
         [
-          "Usage: node plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs [options]",
+          "Usage: bun plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs [options]",
           "",
           "Options:",
           "  --target-model <path>       Target GGUF with built-in MTP/NextN heads",

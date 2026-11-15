@@ -1,0 +1,39 @@
+[
+  {
+    "id": "cloud-exact-restore-recovery",
+    "model": "packages/cloud/quint/exact_restore_recovery.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
+      "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts",
+      "packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/agent-backup-restore-coordinator.pglite.test.ts"
+    ],
+    "invariants": [
+      "safety"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One-shot Docker creation may finish after lease expiry and tombstone. Exact ID or producer quiescence is required before proof.",
+      "Database settlement is atomic. Provider receipt validity, SSH authentication, cryptographic digests and immutable source authority are assumptions exercised separately by integration tests.",
+      "The original operation stays terminal. The conditional liveness property does not cover unavailable/reincarnated nodes or an unresponsive provider."
+    ]
+  },
+  {
+    "id": "cloud-restore-cleanup-rotation",
+    "model": "packages/cloud/quint/restore_cleanup_rotation.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/agent-backup-restore-coordinator.pglite.test.ts"
+    ],
+    "invariants": [
+      "safety"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Row locks select distinct operations and the database clock places selected operations after existing unselected work before remote I/O.",
+      "No unbounded backlog, new arrivals, worker availability, unbounded progress or implementation refinement is proved."
+    ]
+  }
+]

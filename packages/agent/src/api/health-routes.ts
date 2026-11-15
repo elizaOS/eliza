@@ -38,6 +38,7 @@ import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
+import { readNativeInferenceTiming } from "./native-inference-timing.ts";
 import {
   getPairingInstanceId,
   isTrustedLocalRequest,
@@ -94,6 +95,8 @@ export type ApiStatusComposer = (
 ) => Record<string, unknown>;
 
 export interface HealthRouteContext {
+  /** Already verified by the existing request gate; diagnostics never resolve authority. */
+  ownerDiagnostics?: boolean;
   composeStatus?: ApiStatusComposer;
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -517,7 +520,17 @@ export function computeCanRespond(
     if (!hasTextGenerationHandler(runtime)) return false;
     if (!textRegistrationsBehindRouter(runtime).length) return false;
     if (localModelReadiness?.status === "model_not_loaded") return false;
-  } catch {
+  } catch (error) {
+    // error-policy:J7 an unreadable registry is "unknown", not evidence that the
+    // agent has no text handler. Keep the answer fail-closed for the composer,
+    // but report the fault so "never responds" is not diagnosed as "no model".
+    runtime.logger.warn(
+      {
+        src: "health-routes",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Text handler registrations unavailable",
+    );
     return false;
   }
   return !isCloudTextModelUnavailable(runtime);
@@ -804,6 +817,11 @@ export async function handleHealthRoutes(
       startup: state.startup,
       cloud: cloudStatus,
       ...(cloudInferenceFailure ? { cloudInferenceFailure } : {}),
+      ...(ctx.ownerDiagnostics &&
+      state.runtime &&
+      state.agentState === "running"
+        ? { nativeInferenceTiming: readNativeInferenceTiming(state.runtime) }
+        : {}),
       pendingRestart: state.pendingRestartReasons.length > 0,
       pendingRestartReasons: state.pendingRestartReasons,
     };

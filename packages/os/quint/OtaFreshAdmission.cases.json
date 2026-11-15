@@ -1,0 +1,28 @@
+{
+  "sources": [
+    "packages/os/native/ota-trust/admission.go",
+    "packages/os/native/ota-trust/admission_state.go",
+    "packages/os/native/ota-trust/recovery_authorization.go",
+    "packages/os/native/ota-trust/fresh_admission_conformance_test.go"
+  ],
+  "conformance": "packages/os/quint/check-ota-fresh.mjs",
+  "bounds": "The existing differential suite's 11 authenticated descriptor rows, four device rows, four policy intervals and four prepared releases. Two isolated lanes, three refresh bounds and three commit deadlines. Atomic floor and refresh publication is modeled; filesystem crash recovery and cryptographic verification are separate obligations.",
+  "cases": [
+    {
+      "name": "admission-and-freshness",
+      "main": "OtaFreshAdmission",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "FloorRatchets",
+        "NoEquivocation",
+        "LaneIsolation",
+        "CommitUsesCurrentAuthority",
+        "RecoveryUsesCurrentAuthority"
+      ],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 1000
+    }
+  ]
+}

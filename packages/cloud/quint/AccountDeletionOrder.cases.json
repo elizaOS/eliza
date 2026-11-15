@@ -1,0 +1,93 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/account-deletion-saga.ts",
+    "packages/cloud/shared/src/lib/services/account-deletion.ts",
+    "packages/cloud/shared/src/db/repositories/account-deletion-requests.ts",
+    "packages/cloud/shared/src/lib/services/account-deletion-provider-adapters.ts"
+  ],
+  "implementationTests": [
+    "packages/cloud/shared/src/lib/services/__tests__/account-deletion-lane-starvation.pglite.test.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/account-deletion-recovery-activation-starvation.pglite.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "safety",
+      "main": "AccountDeletionOrder",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CompletionHasEveryReceipt",
+        "ReceiptsStayOrdered",
+        "RetainedAdmissionReceipt",
+        "ReceiptMatchesPhase",
+        "ErasureIsTerminal"
+      ],
+      "temporal": [],
+      "maxSteps": 150,
+      "samples": 1000
+    },
+    {
+      "name": "processing-progress",
+      "main": "AccountDeletionOrderProcessing",
+      "init": "init",
+      "step": "progressStep",
+      "invariants": [
+        "CompletionHasEveryReceipt",
+        "ReceiptsStayOrdered",
+        "RetainedAdmissionReceipt",
+        "ReceiptMatchesPhase",
+        "ErasureIsTerminal"
+      ],
+      "temporal": ["CompletesVerifiedEffects"],
+      "maxSteps": 150,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CompletesVerifiedEffects",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in AccountDeletionOrderProcessing: CompletesVerifiedEffects = FairProgress.implies(eventually(s.completionReceipt))",
+            "Model fairness predicate FairProgress = Workers.forall(w => Claim(w).weakFair(s) and Inspect(w).weakFair(s) and Confirm(w).weakFair(s) and Finalize(w).weakFair(s))",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved.",
+            "This progress case starts with provider effects already visible and uses progressStep: authority is stable and expiry/provider execution are excluded."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "scheduled-progress",
+      "main": "AccountDeletionOrderScheduled",
+      "init": "init",
+      "step": "progressStep",
+      "invariants": [
+        "CompletionHasEveryReceipt",
+        "ReceiptsStayOrdered",
+        "RetainedAdmissionReceipt",
+        "ReceiptMatchesPhase",
+        "ErasureIsTerminal"
+      ],
+      "temporal": ["CompletesVerifiedEffects"],
+      "maxSteps": 150,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CompletesVerifiedEffects",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in AccountDeletionOrderScheduled: CompletesVerifiedEffects = FairProgress.implies(eventually(s.completionReceipt))",
+            "Model fairness predicate FairProgress = Workers.forall(w => Claim(w).weakFair(s) and Inspect(w).weakFair(s) and Confirm(w).weakFair(s) and Finalize(w).weakFair(s))",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved.",
+            "This progress case starts with provider effects already visible and uses progressStep: authority is stable and expiry/provider execution are excluded."
+          ]
+        }
+      ]
+    }
+  ],
+  "bounds": {
+    "assumptions": [
+      "The initial state assumes the account_authority receipt has already committed. RetainedAdmissionReceipt checks retention of this initial fact; it is not a live-dispatch authorization proof.",
+      "Phase admission, completion and final erasure have separate authority checks. Authority changes after claim and provider-specific dispatch checks are not proved by the retained receipt invariant.",
+      "All 17 phase identities, two worker lanes, three generations per phase and one coordination fault; provider effects remain abstract."
+    ]
+  }
+}

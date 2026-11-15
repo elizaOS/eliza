@@ -74,11 +74,37 @@ public final class RecordingStore {
   private static final Pattern SLOT_PREFIX = Pattern.compile("[a-z][a-z0-9:._-]{0,63}");
   private static final Pattern FIELD = Pattern.compile("[a-z][A-Za-z0-9]{0,31}");
 
+  /**
+   * A host's bounds for stored recordings and its restore window. {@link #CLIPS} is the default:
+   * short clips and the 30-day window above. A host whose own trash keeps items for the same 30
+   * days chooses a longer window, so the trash decides first and a recording a restored item
+   * still uses is never erased underneath it.
+   */
+  public static final class Limits {
+    public final long maxBytes;
+    public final long maxDurationMs;
+    public final int maxTranscript;
+    public final long restoreWindowMs;
+
+    public Limits(long maxBytes, long maxDurationMs, int maxTranscript, long restoreWindowMs) {
+      if (maxBytes < 1 || maxDurationMs < 1 || maxTranscript < 0 || restoreWindowMs < 1)
+        throw new IllegalArgumentException("Invalid recording limits");
+      this.maxBytes = maxBytes;
+      this.maxDurationMs = maxDurationMs;
+      this.maxTranscript = maxTranscript;
+      this.restoreWindowMs = restoreWindowMs;
+    }
+  }
+
+  public static final Limits CLIPS =
+      new Limits(MAX_BYTES, MAX_DURATION_MS, MAX_TRANSCRIPT, RESTORE_WINDOW_MS);
+
   private final File directory;
   private final String slotPrefix;
   private final String ownerField;
   private final Slots slots;
   private final LongSupplier clock;
+  private final Limits limits;
 
   /**
    * @param directory the host's private recording directory (for example under {@code
@@ -88,12 +114,29 @@ public final class RecordingStore {
    *     {@code "noteId"}
    */
   public RecordingStore(File directory, String slotPrefix, String ownerField, Slots slots) {
-    this(directory, slotPrefix, ownerField, slots, System::currentTimeMillis);
+    this(directory, slotPrefix, ownerField, slots, CLIPS, System::currentTimeMillis);
+  }
+
+  /** As above, with the host's own bounds and restore window. */
+  public RecordingStore(
+      File directory, String slotPrefix, String ownerField, Slots slots, Limits limits) {
+    this(directory, slotPrefix, ownerField, slots, limits, System::currentTimeMillis);
   }
 
   RecordingStore(
       File directory, String slotPrefix, String ownerField, Slots slots, LongSupplier clock) {
+    this(directory, slotPrefix, ownerField, slots, CLIPS, clock);
+  }
+
+  RecordingStore(
+      File directory,
+      String slotPrefix,
+      String ownerField,
+      Slots slots,
+      Limits limits,
+      LongSupplier clock) {
     if (directory == null
+        || limits == null
         || slots == null
         || clock == null
         || slotPrefix == null
@@ -107,6 +150,7 @@ public final class RecordingStore {
     this.ownerField = ownerField;
     this.slots = slots;
     this.clock = clock;
+    this.limits = limits;
   }
 
   /** A recording or owner id: 1-100 letters, digits, '_' or '-'. */
@@ -205,13 +249,29 @@ public final class RecordingStore {
   }
 
   /**
-   * Imports a stopped native recording (at most {@link #MAX_BYTES}, 1 ms to {@link
-   * #MAX_DURATION_MS}) or updates the transcript of one already stored for the same owner. The
-   * clip is copied to a pending file, synced and renamed into place before its metadata is
-   * committed. An id whose recording was deleted under a receipt is retired and refused.
+   * Imports a stopped native recording (within this store's {@link Limits}) or updates the
+   * transcript of one already stored for the same owner. The clip is copied to a pending file,
+   * synced and renamed into place before its metadata is committed. An id whose recording was
+   * deleted under a receipt is retired and refused.
    */
   public JSONObject retain(
       File source, String recordingId, String ownerId, long durationMs, String transcript)
+      throws Exception {
+    return retain(source, recordingId, ownerId, durationMs, transcript, false);
+  }
+
+  /**
+   * As {@link #retain(File, String, String, long, String)}; with {@code move} a source in the
+   * same file system is renamed into place instead of copied (a long recording is not
+   * duplicated). A source that cannot be renamed is copied.
+   */
+  public JSONObject retain(
+      File source,
+      String recordingId,
+      String ownerId,
+      long durationMs,
+      String transcript,
+      boolean move)
       throws Exception {
     synchronized (LOCK) {
       id(recordingId);
@@ -219,11 +279,11 @@ public final class RecordingStore {
       if (source == null
           || !source.isFile()
           || source.length() < 1
-          || source.length() > MAX_BYTES
+          || source.length() > limits.maxBytes
           || durationMs < 1
-          || durationMs > MAX_DURATION_MS
+          || durationMs > limits.maxDurationMs
           || transcript == null
-          || transcript.length() > MAX_TRANSCRIPT)
+          || transcript.length() > limits.maxTranscript)
         throw new IOException();
       File target = audio(recordingId);
       JSONObject record;
@@ -239,13 +299,15 @@ public final class RecordingStore {
           throw new IOException();
       } else {
         File temp = new File(directory(), recordingId + ".pending");
-        try (InputStream in = new FileInputStream(source);
-            FileOutputStream out = new FileOutputStream(temp)) {
-          copyBounded(in, out, MAX_BYTES);
-          out.getFD().sync();
-        } catch (Exception error) {
-          temp.delete();
-          throw error;
+        if (!(move && source.renameTo(temp))) {
+          try (InputStream in = new FileInputStream(source);
+              FileOutputStream out = new FileOutputStream(temp)) {
+            copyBounded(in, out, limits.maxBytes);
+            out.getFD().sync();
+          } catch (Exception error) {
+            temp.delete();
+            throw error;
+          }
         }
         if (!temp.renameTo(target)) {
           temp.delete();
@@ -339,7 +401,7 @@ public final class RecordingStore {
       long now = clock.getAsLong();
       if (!deleted
           && record.optLong("deletedAt", 0) > 0
-          && now - record.getLong("deletedAt") > RESTORE_WINDOW_MS)
+          && now - record.getLong("deletedAt") > limits.restoreWindowMs)
         throw new IOException("Recording expired");
       if (beforeEffect != null) beforeEffect.run();
       if (deleted) {
@@ -460,7 +522,7 @@ public final class RecordingStore {
 
   /**
    * One startup pass over stored metadata: migrates each legacy plaintext record into the
-   * encrypted store and erases legacy trash older than {@link #RESTORE_WINDOW_MS}. A legacy
+   * encrypted store and erases legacy trash older than the restore window. A legacy
    * recording with no receipts loses its metadata too; one with receipts keeps them and only its
    * transcript is cleared. Each record is handled under the lock on its own, so the pass never
    * holds the lock across the collection, and an unreadable record is kept for recovery.
@@ -481,7 +543,7 @@ public final class RecordingStore {
           String key = record.getName().substring(0, record.getName().length() - 5);
           JSONObject value = read(key);
           long deleted = value.optLong("deletedAt", 0);
-          if (deleted > 0 && clock.getAsLong() - deleted > RESTORE_WINDOW_MS) {
+          if (deleted > 0 && clock.getAsLong() - deleted > limits.restoreWindowMs) {
             if (!audio(key).exists() || audio(key).delete()) {
               if (!value.has("deletionOperations")) {
                 slots.remove(slot(key));

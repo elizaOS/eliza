@@ -41,7 +41,7 @@ app.post("/", async (c) => {
     }
 
     const activated = await appFrontendHostingService.activate(
-      id,
+      found,
       deploymentId,
     );
     if (!activated)

@@ -84,10 +84,11 @@ public final class CalendarReadWindowTest {
    if(!uri.value.equals("events"))return linkedInstances.query(uri,fields,where,values,order);
    require(where.contains("_id IN ("),"Bounded metadata query is restricted to returned IDs");require(!where.matches(".*\\b3000\\b.*"),"Unreturned event metadata excluded");
    same("owned.host",values[0],"Metadata is confined to the host package");
-   return new Cursor(){int at=-1;public boolean moveToFirst(){at=0;return true;}public boolean moveToNext(){return ++at<2;}public boolean isNull(int c){return false;}public int getType(int c){return 1;}public long getLong(int c){return 1000+at;}public String getString(int c){return at==0?"host://creation/afc732b3-416e-4dd3-98ce-0bd854106c46":"host://creation/invalid";}public int getInt(int c){return 0;}public void close(){}};
+   return new Cursor(){int at=-1;public boolean moveToFirst(){at=0;return true;}public boolean moveToNext(){return ++at<3;}public boolean isNull(int c){return false;}public int getType(int c){return 1;}public long getLong(int c){return 1000+at;}public String getString(int c){return at==0?"host://creation/afc732b3-416e-4dd3-98ce-0bd854106c46":at==1?"host://creation/invalid":"host://creation/options/afc732b3-416e-4dd3-98ce-0bd854106c47";}public int getInt(int c){return 0;}public void close(){}};
   }};
   JSONArray linkedRows=new CalendarReadAccess(linked,"owned.host","host://creation/").window(base,base+90L*86400000L,2000).getJSONArray("events");
   same("afc732b3-416e-4dd3-98ce-0bd854106c46",linkedRows.getJSONObject(0).getString("creationId"),"Creation identity survives bounded reads");require(!linkedRows.getJSONObject(1).has("creationId"),"Malformed metadata is not an identity");
+  same("afc732b3-416e-4dd3-98ce-0bd854106c47",linkedRows.getJSONObject(2).getString("creationId"),"Option creations carry their identity too");
   System.out.println("PASS shared Calendar window: complete default, bounded first rows, overflow, closure, exact range and query, permission-independent provider failures");
  }
 }

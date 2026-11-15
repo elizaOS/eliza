@@ -28,6 +28,10 @@ export const PII_PSEUDONYM_MAP_CACHE_KEY = "pii:pseudonym-map:v1";
 /** Domain-separation AAD for the map ciphertext. */
 export const PII_PSEUDONYM_MAP_AAD = "elizaos:pii-pseudonym-map:v1";
 
+const PII_PSEUDONYM_MAP_AAD_BYTES = new TextEncoder().encode(
+	PII_PSEUDONYM_MAP_AAD,
+);
+
 /** Ciphertext format marker (mirrors the settings v2 layout). */
 const CIPHERTEXT_PREFIX = "v2";
 
@@ -104,8 +108,13 @@ export class EncryptedCachePseudonymMapStore implements PseudonymMapStore {
 			const iv = BufferUtils.fromHex(parts[1]);
 			const ciphertext = BufferUtils.fromHex(parts[2]);
 			const tag = BufferUtils.fromHex(parts[3]);
-			const aad = new TextEncoder().encode(PII_PSEUDONYM_MAP_AAD);
-			const bytes = decryptAes256Gcm(this.key, iv, ciphertext, tag, aad);
+			const bytes = decryptAes256Gcm(
+				this.key,
+				iv,
+				ciphertext,
+				tag,
+				PII_PSEUDONYM_MAP_AAD_BYTES,
+			);
 			plaintext = BufferUtils.bufferToString(bytes, "utf8");
 		} catch (error) {
 			// error-policy:J2 Preserve decryption failure context at the artifact boundary.
@@ -134,12 +143,11 @@ export class EncryptedCachePseudonymMapStore implements PseudonymMapStore {
 		assertValidSnapshot(snapshot);
 		const plaintext = JSON.stringify(snapshot);
 		const iv = BufferUtils.randomBytes(12);
-		const aad = new TextEncoder().encode(PII_PSEUDONYM_MAP_AAD);
 		const { ciphertext, tag } = encryptAes256Gcm(
 			this.key,
 			iv,
 			BufferUtils.fromString(plaintext, "utf8"),
-			aad,
+			PII_PSEUDONYM_MAP_AAD_BYTES,
 		);
 		const blob = `${CIPHERTEXT_PREFIX}:${BufferUtils.toHex(iv)}:${BufferUtils.toHex(
 			ciphertext,

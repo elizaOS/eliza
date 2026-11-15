@@ -26,20 +26,15 @@ export function worldMetadataValueEquals(
 		);
 	}
 	if (isPlainObject(left) && isPlainObject(right)) {
-		const leftKeys = Object.keys(left).filter(
-			(key) => (left as Record<string, unknown>)[key] !== undefined,
-		);
+		const leftKeys = Object.keys(left).filter((key) => left[key] !== undefined);
 		const rightKeys = Object.keys(right).filter(
-			(key) => (right as Record<string, unknown>)[key] !== undefined,
+			(key) => right[key] !== undefined,
 		);
 		if (leftKeys.length !== rightKeys.length) return false;
 		return leftKeys.every(
 			(key) =>
 				Object.hasOwn(right, key) &&
-				worldMetadataValueEquals(
-					(left as Record<string, unknown>)[key],
-					(right as Record<string, unknown>)[key],
-				),
+				worldMetadataValueEquals(left[key], right[key]),
 		);
 	}
 	return false;

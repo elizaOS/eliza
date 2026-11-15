@@ -930,6 +930,7 @@ export function useChatVoiceController(options: {
     !isComposerLocked &&
     realtime.available &&
     !realtime.error &&
+    !realtime.refused &&
     !realtimeFellBack;
 
   // The batch continuous-chat engine. While the realtime WS session is the
@@ -942,7 +943,8 @@ export function useChatVoiceController(options: {
   const continuous = useContinuousChat({
     voice,
     mode: continuousMode,
-    disabled: isComposerLocked || realtime.active || realtimeWanted,
+    disabled:
+      isComposerLocked || realtime.active || realtimeWanted || realtime.refused,
     latency: continuousChatLatency,
     speaker: voiceSpeaker,
     assistantGenerating: chatSending && !chatFirstTokenReceived,
@@ -997,9 +999,18 @@ export function useChatVoiceController(options: {
     ) {
       realtimeStartPendingRef.current = false;
       realtimeStopPendingRef.current = true;
-      void realtimeStopRef.current();
+      void realtimeStopRef.current().catch(() => {
+        // The hook retains the failed release and shows its error; allow Stop to retry.
+        realtimeStopPendingRef.current = false;
+      });
     }
   }, [realtimeWanted, realtime.active, realtime.connecting]);
+
+  useEffect(() => {
+    if (!realtime.refused) return;
+    realtimeStartPendingRef.current = false;
+    setManualRealtimeIntent(false);
+  }, [realtime.refused, setManualRealtimeIntent]);
 
   // A failed/disabled realtime start hands ownership back to batch. Clear the
   // manual intent as well so the next gesture can take the fallback branch.
@@ -1036,6 +1047,10 @@ export function useChatVoiceController(options: {
         stopSpeaking();
         void voiceSession.start().then((outcome) => {
           realtimeStartPendingRef.current = false;
+          if (outcome.kind === "refused") {
+            setManualRealtimeIntent(false);
+            return;
+          }
           if (outcome.kind !== "fallback-to-batch") return;
           setManualRealtimeIntent(false);
           beginBatchVoiceCapture(mode);
@@ -1077,7 +1092,9 @@ export function useChatVoiceController(options: {
         // false. The composed session's stop is active-gated, so cancel the
         // realtime lifecycle directly to prevent the pending start from
         // resurrecting a socket/mic after the user's stop intent.
-        void realtimeStopRef.current();
+        void realtimeStopRef.current().catch(() => {
+          realtimeStopPendingRef.current = false;
+        });
         return;
       }
       endBatchVoiceCapture(captureOptions);

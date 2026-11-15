@@ -14,6 +14,7 @@ import {
   isReservedNonToolActionName,
   trimEndCharacters,
 } from "@elizaos/core";
+import { nativeOwnedDomains } from "../../runtime/native-owned-domains.ts";
 
 export interface DirectActionInferenceHooks {
   looksLikeCodingWorkRequest?: (text: string) => boolean;
@@ -857,13 +858,23 @@ function detectScheduledItemAdminDomain(
   return null;
 }
 
+/**
+ * When the host's Clock owns alarms (ELIZA_NATIVE_OWNED_DOMAINS), OWNER_ALARMS
+ * is withheld and alarm wording resolves to the reviewed clock_handoff
+ * proposal instead, never the TRIGGER scheduler.
+ */
+function alarmOwnerActionNames(names: readonly string[]): readonly string[] {
+  return nativeOwnedDomains().has("alarms") ? ["PROPOSE_DEVICE_ACTION"] : names;
+}
+
 function findScheduledAdminActionName(
   actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
   domain: ScheduledAdminDomain,
 ): string | undefined {
+  const names = SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN[domain];
   return findAvailableActionName(
     actions,
-    SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN[domain],
+    domain === "alarms" ? alarmOwnerActionNames(names) : names,
   );
 }
 
@@ -1215,9 +1226,10 @@ function findOwnerLifeReadActionName(
   actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
   domain: OwnerLifeReadDomain,
 ): string | undefined {
+  const names = OWNER_READ_ACTION_NAMES_BY_DOMAIN[domain];
   return findAvailableActionName(
     actions,
-    OWNER_READ_ACTION_NAMES_BY_DOMAIN[domain],
+    domain === "alarms" ? alarmOwnerActionNames(names) : names,
   );
 }
 

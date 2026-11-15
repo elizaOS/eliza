@@ -109,6 +109,14 @@ export function createVoiceActivityDetector(
       stopped = true;
       return { shouldBuffer: false, shouldStop: true };
     }
+    // A blip shorter than minSpeechMs followed by a full silence window was
+    // noise, not a turn: forget it so the maxSpeechMs clock starts with real
+    // speech instead of the blip.
+    if (silenceDurationMs >= config.silenceMs) {
+      firstSpeechAtMs = null;
+      lastSpeechAtMs = null;
+      return { shouldBuffer: false, shouldStop: false };
+    }
 
     return { shouldBuffer: true, shouldStop: false };
   };

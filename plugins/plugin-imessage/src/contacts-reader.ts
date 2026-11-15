@@ -31,7 +31,7 @@ import { formatPhoneNumber } from "./types.js";
 
 const NATIVE_DYLIB_CANDIDATES = [
   process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
-  "../../../packages/app/platforms/electrobun/src/libMacWindowEffects.dylib",
+  "../../../packages/app/native/macos/libMacWindowEffects.dylib",
 ].filter(Boolean);
 
 /**

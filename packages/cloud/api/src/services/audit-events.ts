@@ -12,7 +12,7 @@ import {
   authEvents,
   type NewAuthEventRow,
 } from "@elizaos/cloud-shared/db/schemas/auth-events";
-import type { AuditEvent, AuditSink } from "@/api-app/services/audit";
+import type { AuditEvent, AuditSink } from "./audit";
 
 function toAuthEventRow(event: AuditEvent): NewAuthEventRow {
   return {

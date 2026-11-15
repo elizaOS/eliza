@@ -222,6 +222,21 @@ function isDatabaseDeadlineError(error: unknown): boolean {
   return false;
 }
 
+/** Reports a PostgreSQL lock_timeout (SQLSTATE 55P03) anywhere in the cause chain. */
+export function isDatabaseLockTimeoutError(error: unknown): boolean {
+  let current = error;
+  for (
+    let depth = 0;
+    depth < 5 && current && typeof current === "object";
+    depth += 1
+  ) {
+    const candidate = current as { code?: unknown; cause?: unknown };
+    if (candidate.code === "55P03") return true;
+    current = candidate.cause;
+  }
+  return false;
+}
+
 /**
  * Run one database unit of work under an absolute, cancel-safe deadline.
  *

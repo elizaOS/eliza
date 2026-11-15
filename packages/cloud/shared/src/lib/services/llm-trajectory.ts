@@ -21,10 +21,8 @@ import {
   llmTrajectories,
   type NewLlmTrajectory,
 } from "../../db/schemas/llm-trajectories";
-import { logger } from "../utils/logger";
 import { fieldEncryption } from "./field-encryption";
 import {
-  deleteTrajectoryPayload,
   getTrajectoryPayload,
   privateTrajectoryStoreConfigured,
   putTrajectoryPayload,
@@ -155,8 +153,8 @@ async function hydrateTrajectory(row: LlmTrajectory): Promise<LlmTrajectory> {
 class LlmTrajectoryService {
   /**
    * Record one LLM call. Callers check the deployment capture policy first.
-   * Bodies are encrypted before they leave this process; a failed write
-   * throws (after removing any payload object it already stored).
+   * Bodies are encrypted before they leave this process. SQL failure remains
+   * visible; it cannot prove that the row did not commit, so keep its payload.
    */
   async logCall(params: LogCallParams): Promise<void> {
     const totalTokens = (params.inputTokens ?? 0) + (params.outputTokens ?? 0);
@@ -214,21 +212,10 @@ class LlmTrajectoryService {
       created_at: createdAt,
     };
 
-    try {
-      await db.insert(llmTrajectories).values(record);
-    } catch (error) {
-      if (trajectory_payload_key) {
-        await deleteTrajectoryPayload("private_object", trajectory_payload_key).catch(
-          (cleanupError: unknown) => {
-            logger.error("[llm-trajectory] Failed to remove orphaned payload", {
-              key: trajectory_payload_key,
-              error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-            });
-          },
-        );
-      }
-      throw error;
-    }
+    // A lost SQL acknowledgement may follow a committed insert. Only the
+    // existing retention/account-deletion owners may remove the object;
+    // definite rollback can leave an orphan until an owner proves it safe.
+    await db.insert(llmTrajectories).values(record);
   }
 
   /**

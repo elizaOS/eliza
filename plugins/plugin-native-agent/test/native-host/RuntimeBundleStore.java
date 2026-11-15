@@ -8,4 +8,7 @@ public final class RuntimeBundleStore extends ai.eliza.plugins.agent.runtime.Run
   public static java.nio.file.Path prepare(java.nio.file.Path root, byte[] manifest, Source source, java.nio.file.Path nativeLibraries, Durability durability, Faults faults) throws java.io.IOException {
     return ai.eliza.plugins.agent.runtime.RuntimeBundleStore.prepare(root, manifest, source, nativeLibraries, durability, faults, "eliza-runtime-v1");
   }
+  public static Prepared prepareSealed(java.nio.file.Path root, byte[] manifest, Source source, java.nio.file.Path nativeLibraries, Durability durability, Faults faults, String format) throws java.io.IOException {
+    return ai.eliza.plugins.agent.runtime.RuntimeBundleStore.prepareSealed(root, manifest, source, nativeLibraries, durability, faults, format);
+  }
 }

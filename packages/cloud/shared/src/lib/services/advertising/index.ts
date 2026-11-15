@@ -1,4 +1,7 @@
 // Coordinates cloud service index behavior behind route handlers.
+import { ElizaError } from "@elizaos/core";
+import { eq } from "drizzle-orm";
+import { writeTransaction } from "../../../db/helpers";
 import {
   type AdAccount,
   type AdAudienceSegment,
@@ -16,6 +19,8 @@ import {
   parseAdAccountSpendCapCredits,
   parseAdCampaignSpendCapCredits,
 } from "../../../db/repositories/ad-campaigns-spend-cap-numeric";
+import { adCampaigns } from "../../../db/schemas/ad-campaigns";
+import { organizations } from "../../../db/schemas/organizations";
 import { NotFoundError, ValidationError } from "../../api/cloud-worker-errors";
 import { logger } from "../../utils/logger";
 import { type ContentSafetyReview, contentSafetyService } from "../content-safety";
@@ -1739,7 +1744,23 @@ class AdvertisingService {
     credits_spent: string;
     total_spend: string;
   }): Promise<number> {
-    let totalSpendUsd = parseFloat(campaign.total_spend);
+    const accounting = (
+      field: "total_spend" | "credits_allocated" | "budget_amount" | "credits_spent",
+    ) => {
+      const value = campaign[field];
+      const parsed = Number(value);
+      if (!/^(?:\d+|\d*\.\d+)$/.test(value) || !Number.isFinite(parsed) || parsed < 0) {
+        throw new ElizaError("Campaign accounting is invalid", {
+          code: "AD_CAMPAIGN_INVALID_ACCOUNTING",
+          context: { campaignId: campaign.id, field },
+        });
+      }
+      return parsed;
+    };
+    let totalSpendUsd = accounting("total_spend");
+    const creditsAllocated = accounting("credits_allocated");
+    const budgetAmountUsd = accounting("budget_amount");
+    const internalSpentCredits = accounting("credits_spent");
     if (campaign.external_campaign_id) {
       try {
         const freshMetrics = await this.getCampaignMetrics(campaign.id, campaign.organization_id);
@@ -1753,10 +1774,7 @@ class AdvertisingService {
         });
       }
     }
-    const creditsAllocated = parseFloat(campaign.credits_allocated);
-    const budgetAmountUsd = parseFloat(campaign.budget_amount);
     const markup = budgetAmountUsd > 0 ? creditsAllocated / budgetAmountUsd : 1;
-    const internalSpentCredits = Math.max(0, parseFloat(campaign.credits_spent));
     const externalSpentCredits = Math.max(0, totalSpendUsd) * markup;
     return Math.min(creditsAllocated, internalSpentCredits + externalSpentCredits);
   }
@@ -1796,58 +1814,75 @@ class AdvertisingService {
       }
     }
 
-    // Atomic claim: only the caller that actually removes the row refunds, so
-    // two concurrent deletes (or a delete retried after a mid-op failure) can't
-    // both refund the unused budget (#11292). claimDelete returns the row only
-    // to the winner.
-    const deleted = await adCampaignsRepository.claimDelete(campaignId, organizationId);
-    if (!deleted) {
+    // The organization is the existing money owner. Delete the campaign,
+    // restore its unused allocation and publish both ledgers atomically.
+    const settlement = await writeTransaction(async (tx) => {
+      await tx
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .for("update");
+      const deleted = await adCampaignsRepository.claimDelete(campaignId, organizationId, tx);
+      if (!deleted) {
+        const [retained] = await tx
+          .select({ id: adCampaigns.id })
+          .from(adCampaigns)
+          .where(eq(adCampaigns.id, campaignId));
+        if (retained) {
+          throw new ElizaError("Campaign deletion did not return its stored row", {
+            code: "AD_CAMPAIGN_DELETE_NOT_PERSISTED",
+            context: { campaignId },
+          });
+        }
+        return undefined;
+      }
+      // The deleted row is the current allocation/spend authority after waits.
+      // Provider metrics were already refreshed above; no I/O occurs in this calculation.
+      const creditsSpent = await this.computeCreditsSpent({
+        ...deleted,
+        external_campaign_id: null,
+      });
+      const creditsRemaining = Math.max(0, parseFloat(deleted.credits_allocated) - creditsSpent);
+      if (creditsRemaining > 0) {
+        const refund = await creditsService.refundCredits({
+          organizationId,
+          amount: creditsRemaining,
+          description: `Refund unused budget for deleted campaign: ${deleted.name}`,
+          metadata: { campaignId, campaignName: deleted.name },
+          db: tx,
+          deferCacheInvalidation: true,
+        });
+        const ledger = await adTransactionsRepository.create(
+          {
+            organization_id: organizationId,
+            campaign_id: null,
+            credit_transaction_id: refund.transaction.id,
+            external_reference: campaignId,
+            type: "refund",
+            amount: String(creditsRemaining),
+            currency: deleted.budget_currency,
+            credits_amount: String(creditsRemaining),
+            description: `Refund for deleted campaign: ${deleted.name}`,
+          },
+          tx,
+        );
+        if (!ledger) {
+          throw new ElizaError("Campaign refund did not return its advertising receipt", {
+            code: "AD_CAMPAIGN_REFUND_NOT_PERSISTED",
+            context: { campaignId },
+          });
+        }
+      }
+      return { refunded: creditsRemaining > 0 };
+    });
+    if (!settlement) {
       logger.info("[Advertising] Campaign already deleted concurrently; skipping refund", {
         campaignId,
       });
       return;
     }
-
-    // Refund from the CLAIMED row, never the pre-claim findById snapshot: a
-    // concurrent budget DECREASE commits its lower credits_allocated (and
-    // refunds the freed delta) before claimDelete removes the row, so a
-    // snapshot-based refund would pay that freed budget out a second time —
-    // and impressions served after the snapshot would be refunded too. The
-    // two-column (#11151) spend logic lives in the shared helper; external
-    // spend was already refreshed onto the row above and the row is gone now,
-    // so skip the in-helper re-refresh (it could only fail and warn) by
-    // passing external_campaign_id: null.
-    const creditsSpent = await this.computeCreditsSpent({
-      ...deleted,
-      external_campaign_id: null,
-    });
-    const creditsRemaining = Math.max(0, parseFloat(deleted.credits_allocated) - creditsSpent);
-
-    if (creditsRemaining > 0) {
-      await creditsService.refundCredits({
-        organizationId,
-        amount: creditsRemaining,
-        description: `Refund unused budget for deleted campaign: ${campaign.name}`,
-        metadata: { campaignId, campaignName: campaign.name },
-      });
-
-      // The campaign row is already deleted by claimDelete, so a campaign_id
-      // here would violate the ad_transactions FK (23503) and 500 every
-      // refunding delete AFTER the refund committed — dropping the ledger row
-      // (onDelete:'set null' rewrites existing rows; it does not permit a
-      // dangling insert). Keep the deleted id in external_reference, matching
-      // the merged #11255 fix this branch predates.
-      await adTransactionsRepository.create({
-        organization_id: organizationId,
-        campaign_id: null,
-        external_reference: campaignId,
-        type: "refund",
-        amount: String(creditsRemaining),
-        currency: campaign.budget_currency,
-        credits_amount: String(creditsRemaining),
-        description: `Refund for deleted campaign: ${campaign.name}`,
-      });
-    }
+    // Cache publication cannot commit a refund without its advertising receipt.
+    if (settlement.refunded) await creditsService.invalidateCreditCaches(organizationId);
 
     logger.info("[Advertising] Campaign deleted", { campaignId });
   }

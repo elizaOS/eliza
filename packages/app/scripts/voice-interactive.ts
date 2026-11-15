@@ -1313,8 +1313,7 @@ async function main() {
   // Auto-download cheap prereqs (VAD GGUF). These never fake — a failed
   // download is a missing prereq, not silence.
   if (!report.vadPath) {
-    const vp = await tryAutoDownloadVad(report.bundleRoot);
-    if (vp) process.env.ELIZA_SILERO_VAD_GGUF = vp;
+    await tryAutoDownloadVad(report.bundleRoot);
   }
   // ASR is delivered exclusively through the fused libelizainference bundle.
   // The bundle is large — only auto-download if explicitly requested via env.

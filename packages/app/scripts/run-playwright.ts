@@ -11,7 +11,7 @@ const [, , cwd, ...playwrightArgs] = process.argv;
 
 if (!cwd || playwrightArgs.length === 0) {
   console.error(
-    "Usage: node scripts/run-playwright.ts <cwd> <playwright args...>",
+    "Usage: bun scripts/run-playwright.ts <cwd> <playwright args...>",
   );
   process.exit(1);
 }

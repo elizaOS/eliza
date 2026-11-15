@@ -5,8 +5,12 @@ def paradeeSource = project.hasProperty('elizaParadeeSourceDir') ? file(project.
 def paradeeNative = project.hasProperty('elizaParadeeNativeDir') ? file(project.elizaParadeeNativeDir) : new File(paradeeSource, 'native')
 // Hosts with their own bionic inference owner need only the shared installer and model assets.
 def assetsOnly = project.findProperty('elizaParadeeAssetsOnly')?.toString() == 'true'
-def omittedAssets = assetsOnly && (project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1')
-def packageInference = !assetsOnly && (!project.hasProperty('elizaParadeePackageInference') || project.elizaParadeePackageInference.toString() != 'false')
+// Packaging checks that need only the Java API (ai.eliza.voice): no native build, models or record.
+def apiOnly = project.findProperty('elizaParadeeApiOnly')?.toString() == 'true'
+if (apiOnly && assetsOnly) throw new GradleException('elizaParadeeApiOnly and elizaParadeeAssetsOnly are exclusive')
+def nativeBuild = !assetsOnly && !apiOnly
+def omittedAssets = apiOnly || (assetsOnly && (project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'))
+def packageInference = nativeBuild && (!project.hasProperty('elizaParadeePackageInference') || project.elizaParadeePackageInference.toString() != 'false')
 def inferenceLibDir = project.hasProperty('elizaParadeeInferenceLibDir') ? file(project.elizaParadeeInferenceLibDir) : new File(paradeeNative, 'jniLibs')
 def ffiInclude = project.hasProperty('elizaParadeeFfiIncludeDir') ? file(project.elizaParadeeFfiIncludeDir) : new File(paradeeSource, '../llama.cpp/tools/omnivoice/include')
 def jniSource = new File(paradeeSource, '../../../../packages/app/platforms/android/app/src/main/elizavoice-jni')
@@ -24,11 +28,11 @@ def stageInstaller = tasks.register('stageVoiceAssetInstaller', Sync) {
 android {
     namespace assetsOnly ? 'ai.eliza.voice.assets' : 'ai.eliza.voice'
     compileSdk 36
-    if (!assetsOnly) { ndkVersion '28.2.13676358' }
+    if (nativeBuild) { ndkVersion '28.2.13676358' }
     defaultConfig {
         minSdk 26
         consumerProguardFiles new File(paradeeSource, 'consumer-rules.pro')
-        if (!assetsOnly) {
+        if (nativeBuild) {
             externalNativeBuild {
                 cmake {
                     abiFilters(*paradeeAbis)
@@ -40,7 +44,7 @@ android {
             }
         }
     }
-    if (!assetsOnly) {
+    if (nativeBuild) {
         externalNativeBuild {
             cmake {
                 path new File(paradeeSource, 'src/main/cpp/CMakeLists.txt')
@@ -89,21 +93,15 @@ preBuild.doFirst {
     }
     def recordedAssets = approved.files.findAll { it.path.startsWith('assets/') }.collect { it.path }.toSet()
     if (actualAssets != recordedAssets) throw new GradleException('[paradee-voice] model asset inventory differs from build-record.json')
-    def pins = new groovy.json.JsonSlurper().parse(new File(paradeeSource, 'inputs.json'))
-    for (def kind : ['paradee', 'lexicon', 'asr', 'vad']) {
-        def pin = pins[kind]
-        def entries = approved.files.findAll { it.path == "assets/paradee-voice/v1/${pin.path}" }
-        if (entries.size() != 1 || entries[0].bytes != pin.bytes || entries[0].sha256 != pin.sha256) throw new GradleException("[paradee-voice] ${kind} differs from pinned model inputs")
-    }
-    // The Spanish voice follows inputs.json spanish.enabled: the pinned GGUF when on, absent when off.
-    def spanishEntries = approved.files.findAll { it.path == "assets/paradee-voice/v1/${pins.spanish.path}" }
-    if (pins.spanish.enabled == true) {
-        if (spanishEntries.size() != 1 || spanishEntries[0].bytes != pins.spanish.bytes || spanishEntries[0].sha256 != pins.spanish.sha256) throw new GradleException('[paradee-voice] spanish differs from pinned model inputs')
-    } else if (spanishEntries) throw new GradleException('[paradee-voice] spanish is bundled but inputs.json disables it')
-    // Every eSpeak NG data file inputs.json pins (English and Spanish) is in the bundle.
-    def espeakRoot = "assets/paradee-voice/v1/${new File(pins.paradee.path).parent.replace(File.separator, '/')}/espeak-ng-data"
-    def missingEspeak = pins.espeak.data.findAll { relative -> approved.files.count { it.path == "${espeakRoot}/${relative}".toString() } != 1 }
-    if (missingEspeak) throw new GradleException("[paradee-voice] eSpeak NG data missing from build-record.json: ${missingEspeak.join(', ')}")
+    // The producer and consumer use one product selection contract. The default
+    // retains the pinned set; an explicit product selection must be in its receipt.
+    def productArgs = ['node', new File(paradeeSource, 'voice-product-inputs.mjs').absolutePath,
+        '--inputs', new File(paradeeSource, 'inputs.json').absolutePath,
+        '--record', record.absolutePath,
+        '--manifest', new File(paradeeNative, 'assets/paradee-voice/v1/manifest.json').absolutePath]
+    if (project.hasProperty('elizaParadeeLanguages')) productArgs += ['--languages', project.elizaParadeeLanguages.toString()]
+    def productCheck = providers.exec { commandLine productArgs; ignoreExitValue = true }
+    if (productCheck.result.get().exitValue != 0) throw new GradleException(productCheck.standardError.asText.get().trim())
     approved.files.each { entry ->
         if (!packageInference && entry.path.startsWith('jniLibs/')) return
         def target = new File(paradeeNative, entry.path)
@@ -123,10 +121,11 @@ if (capacitorEnabled && !assetsOnly) {
     dependencies { compileOnly project(':capacitor-android') }
 }
 
-// Optional product-subclassable speech bridge (LocalSpeechBridgePlugin). A host that subclasses it
-// sets elizaSpeechBridgeCapacitor=true and registers its own @CapacitorPlugin subclass.
+// Optional product-subclassable local and Cloud speech bridges. The host enables them with
+// elizaSpeechBridgeCapacitor=true and registers its own @CapacitorPlugin subclasses.
 def speechBridgeEnabled = project.hasProperty('elizaSpeechBridgeCapacitor') && project.elizaSpeechBridgeCapacitor.toString() == 'true'
 if (speechBridgeEnabled && !assetsOnly) {
     android.sourceSets.main.java.srcDir new File(paradeeSource, 'speech-bridge/src/main/java')
     if (!capacitorEnabled) dependencies { compileOnly project(':capacitor-android') }
+    dependencies { implementation 'com.squareup.okhttp3:okhttp:5.3.2' }
 }

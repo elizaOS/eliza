@@ -295,8 +295,11 @@ describe("createScreenFocus", () => {
     shell.show("app");
     controller.screenChanged();
     await frames();
-    // A disposed controller moves nothing: focus stays dropped on the retired tile.
-    expect(document.activeElement).toBe(shell.button("Settings"));
+    // A disposed controller leaves focus dropped. Hiding the tile can blur it
+    // to the body; neither outcome moves focus into the new screen.
+    expect([document.body, shell.button("Settings")]).toContain(
+      document.activeElement,
+    );
     expect(isFocusDropped()).toBe(true);
     controller = createScreenFocus({ screen: shell.screen, focusRing: false });
     expect(document.querySelector("style[data-screen-focus-style]")).toBeNull();

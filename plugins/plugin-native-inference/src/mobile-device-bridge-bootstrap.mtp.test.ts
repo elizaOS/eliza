@@ -119,10 +119,15 @@ describe("buildLoadArgsFromRegistryModel — Gemma separate-drafter MTP", () => 
 });
 
 describe("buildGemmaBionicPrompt", () => {
-  it("preserves a complete canonical Gemma 4 prompt byte for byte", () => {
+  it("sends a complete Gemma 4 prompt verbatim only when marked pre-framed", () => {
     const prompt =
       "<|turn>system\nKeep all context.<turn|>\n<|turn>user\nhello<turn|>\n<|turn>model\n";
-    expect(buildGemmaBionicPrompt({ prompt } as never)).toBe(prompt);
+    expect(
+      buildGemmaBionicPrompt({ prompt } as never, { preFramed: true }),
+    ).toBe(prompt);
+    expect(buildGemmaBionicPrompt({ prompt } as never)).toBe(
+      `<|turn>user\n${prompt.trim()}<turn|>\n<|turn>model\n`,
+    );
   });
 
   it("retains the full message content when rendering the model's turn format", () => {

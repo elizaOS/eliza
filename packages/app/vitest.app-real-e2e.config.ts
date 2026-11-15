@@ -20,9 +20,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
  * The default `vitest.config.ts` explicitly EXCLUDES these files and only scans
  * `src/`, so before this config existed nothing ran them — they were dark.
  * Invoke via the `test:app-real-e2e` script. The root `test:e2e:heavy` script
- * runs this config narrowed to the qa-checklist and memory-relationships files
- * for the release gate (`.github/workflows/release-electrobun.yml`); the full
- * suite here has no other scheduled CI caller yet.
+ * runs this config narrowed to the qa-checklist and memory-relationships files;
+ * the full suite here has no scheduled CI caller yet.
  */
 export default defineConfig({
   ...appCoreConfig,

@@ -803,7 +803,7 @@ export function parseInventoryArgs(args) {
 
 function printUsage() {
   process.stdout.write(
-    "Usage: node packages/scripts/audit-scripts-inventory.ts [--json]\n",
+    "Usage: bun packages/scripts/audit-scripts-inventory.ts [--json]\n",
   );
 }
 

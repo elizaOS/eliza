@@ -140,6 +140,10 @@ public class ElizaAgentService extends BaseService {
         root,
         "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/CredentialShutdownLease.java",
       ),
+      join(
+        root,
+        "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/updater/RuntimeUpdatePause.java",
+      ),
     ],
   );
   expect(output).toContain("PASS 19 actual service credential shutdown cases");

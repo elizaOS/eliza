@@ -8,6 +8,9 @@ import java.net.URI;
  * own self-revocation route, short timeouts, never retried, and every failure is ignored. Used for a
  * key a new sign-in replaced and for a confirmed local reset; the key also expires on its own.
  *
+ * <p>To Cloud {@link #revoke} is a sign-out: it ends the presented key and every other key of the
+ * same sign-in. {@link #retire} is the last step of a renewal and ends the replaced key only.
+ *
  * <p>{@link #revokeSaved} is the bounded reset step: it revokes every registered environment's saved
  * key on an interrupted daemon worker and returns within its budget (capped at
  * {@link #RESET_BUDGET_CAP_MS}) whatever the network or credential store does. {@link #resetStep}
@@ -87,19 +90,47 @@ public final class CloudKeyRevocation {
 
  /** One attempt. Returns true only for a 2xx answer; never throws. */
  public static boolean revoke(CloudSignInConfig config, CloudSignInEnvironment environment, String token) {
+  int status = request(config, environment, token);
+  return status >= 200 && status < 300;
+ }
+ /**
+  * Names the key the presented one was renewed into (the `credentialId` Cloud's token exchange
+  * returned). Cloud then revokes only the presented key. Without it a key that revokes itself is
+  * signing out, and Cloud ends every key of its sign-in, the renewed one included.
+  */
+ public static final String RENEWED_CREDENTIAL_HEADER = "X-Renewed-Credential-Id";
+ /** The header value for a renewed key's server credential id, or null when it is not one. */
+ public static String renewedCredential(String credentialId) {
+  return CloudSignInFlow.validUuid(credentialId) ? credentialId.toLowerCase(java.util.Locale.ROOT) : null;
+ }
+ /**
+  * One attempt to make sure a key a renewal replaced is unusable, as the last step of that renewal:
+  * the request names the key it was renewed into, so Cloud revokes the replaced key only. True for a
+  * 2xx answer and for 401: Cloud no longer accepts the key (it was revoked already, by an earlier
+  * request whose answer was lost, or it expired). Without a successor to name no request is sent and
+  * the answer is false: a bare request here would end the renewed key as well. Never throws.
+  */
+ public static boolean retire(CloudSignInConfig config, CloudSignInEnvironment environment, String token, String successorCredentialId) {
+  String successor = renewedCredential(successorCredentialId);
+  return successor != null && retired(request(config, environment, token, successor));
+ }
+ public static boolean retired(int status) { return status >= 200 && status < 300 || status == 401; }
+ private static int request(CloudSignInConfig config, CloudSignInEnvironment environment, String token) { return request(config, environment, token, null); }
+ /** The answer's status, or -1 when no request was sent or none was answered. `renewedInto` is sent only by {@link #retire}. */
+ private static int request(CloudSignInConfig config, CloudSignInEnvironment environment, String token, String renewedInto) {
   HttpURLConnection connection = null;
   try {
-   String value = bearer(token); if (value == null) return false;
+   String value = bearer(token); if (value == null) return -1;
    URI url = URI.create(endpoint(environment));
-   if (!CloudSignInRoutes.selfRevocation(config, url.getScheme(), url.getHost(), url.getPort(), url.getRawPath(), url.getRawQuery(), "DELETE", false)) return false;
+   if (!CloudSignInRoutes.selfRevocation(config, url.getScheme(), url.getHost(), url.getPort(), url.getRawPath(), url.getRawQuery(), "DELETE", false)) return -1;
    connection = (HttpURLConnection) url.toURL().openConnection();
    connection.setInstanceFollowRedirects(false); connection.setUseCaches(false);
    connection.setConnectTimeout(TIMEOUT_MS); connection.setReadTimeout(TIMEOUT_MS);
    connection.setRequestMethod("DELETE");
    connection.setRequestProperty("Accept", "application/json"); connection.setRequestProperty("Authorization", "Bearer " + value);
-   int status = connection.getResponseCode();
-   return status >= 200 && status < 300;
-  } catch (Exception ignored) { return false; }
+   if (renewedInto != null) connection.setRequestProperty(RENEWED_CREDENTIAL_HEADER, renewedInto);
+   return connection.getResponseCode();
+  } catch (Exception ignored) { return -1; }
   finally { if (connection != null) connection.disconnect(); }
  }
 }

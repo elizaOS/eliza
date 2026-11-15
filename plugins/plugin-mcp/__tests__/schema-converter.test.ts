@@ -18,18 +18,18 @@ describe("validateParamsAgainstSchema null handling", () => {
         { properties: { mode: { type: "string", enum: [null, "automatic"] } } }
       )
     ).toEqual(["Parameter 'mode' does not accept null"]);
-    expect(
+    expect(() =>
       validateParamsAgainstSchema(
         { mode: null },
         { properties: { mode: { type: "string", const: null } } }
       )
-    ).toEqual(["Parameter 'mode' does not accept null"]);
-    expect(
+    ).toThrowError(expect.objectContaining({ code: "MCP_PINNED_SCHEMA_UNSATISFIABLE" }));
+    expect(() =>
       validateParamsAgainstSchema(
         { mode: null },
         { properties: { mode: { type: "string", nullable: true, enum: ["automatic"] } } }
       )
-    ).toEqual(["Parameter 'mode' does not accept null"]);
+    ).toThrowError(expect.objectContaining({ code: "MCP_PINNED_SCHEMA_UNSUPPORTED" }));
   });
 
   it("accepts empty schemas and required nullable schemas", () => {

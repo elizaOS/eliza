@@ -3,7 +3,7 @@
 // builds so Linux/Windows workspace-wide Turbo runs exit cleanly without
 // depending on bash being installed.
 //
-// Usage: node packages/scripts/run-bash-darwin-only.ts <script.sh> [args...]
+// Usage: bun packages/scripts/run-bash-darwin-only.ts <script.sh> [args...]
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -17,7 +17,7 @@ const [scriptArg, ...rest] = process.argv.slice(2);
 
 if (!scriptArg) {
   console.error(
-    "Usage: node packages/scripts/run-bash-darwin-only.ts <script.sh> [args...]",
+    "Usage: bun packages/scripts/run-bash-darwin-only.ts <script.sh> [args...]",
   );
   process.exit(2);
 }

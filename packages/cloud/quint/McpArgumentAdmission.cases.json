@@ -1,0 +1,34 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts",
+    "packages/cloud/shared/src/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.test.ts",
+    "plugins/plugin-mcp/src/protocol-utils/schema-converter.ts",
+    "packages/scripts/quint/check-reviewed-repairs.mjs"
+  ],
+  "bounds": {
+    "domain": "One authorized invocation, two validation outcomes, two server outcomes, at most one callTool dispatch. The real MCP transport regressions cover direct pins, mixed enums, exclusive unions, integer validation and service failure.",
+    "limitations": "Validation correctness is separately checked against JSON Schema examples; this admission model assumes its result. Authorization before the handler, arbitrary schema dialects and references, cancellation during a call, transport retries and remote side-effect atomicity are outside this projection."
+  },
+  "conformance": "packages/scripts/quint/check-reviewed-repairs.mjs",
+  "cases": [
+    {
+      "name": "validated-dispatch",
+      "main": "McpArgumentAdmission",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safe"],
+      "temporal": ["Settles"],
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance assumes validation and an admitted server call eventually settle; server success is not assumed."
+          ]
+        }
+      ],
+      "maxSteps": 16,
+      "samples": 100
+    }
+  ]
+}

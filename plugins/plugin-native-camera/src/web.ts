@@ -97,6 +97,14 @@ export class CameraWeb extends WebPlugin {
   // aborts the session without firing onstop, so it rejects through this
   // instead of leaving the caller's promise pending forever.
   private pendingStopReject: ((e: unknown) => void) | null = null;
+  // One stop at a time: every stopRecording() caller while a stop is in
+  // flight gets this promise, so no caller's promise is left pending.
+  private stopPromise: Promise<VideoResult> | null = null;
+  // Whether a stopRecording() caller will receive the in-flight stop's result.
+  private stopClaimed = false;
+  // A recording a limit or preview stop finished that no caller received yet;
+  // the next stopRecording() returns it once, as on Android.
+  private completedRecording: VideoResult | null = null;
   private isRecording = false;
   // Guards the async window between entering startRecording() and start()
   // succeeding. Set synchronously before the first await so a concurrent
@@ -244,9 +252,9 @@ export class CameraWeb extends WebPlugin {
   }
 
   async stopPreview(): Promise<void> {
-    if (this.isRecording) {
+    if (this.isRecording || this.stopPromise) {
       try {
-        await this.stopRecording();
+        await (this.stopPromise ?? this.beginStop(false));
       } catch (err) {
         // error-policy:J6 recording teardown failed while stopping preview;
         // force the shared finalizer and continue tearing down the camera so a
@@ -265,6 +273,8 @@ export class CameraWeb extends WebPlugin {
       });
       this.mediaStream = null;
     }
+
+    this.discardCompletedRecording();
 
     // Defensive: stopRecording() already releases the mic on a normal stop, but
     // if the stream was torn down while a recording was mid-flight or the
@@ -375,11 +385,12 @@ export class CameraWeb extends WebPlugin {
       throw new Error("Preview not started");
     }
 
-    if (this.isRecording || this.isStartingRecording) {
+    if (this.isRecording || this.isStartingRecording || this.stopPromise) {
       throw new Error("Recording already in progress");
     }
 
     assertRecordingOptions(options);
+    this.discardCompletedRecording();
 
     // Claim the lifecycle slot synchronously, before the first await, so a
     // concurrent startRecording() is rejected instead of racing to acquire a
@@ -475,9 +486,8 @@ export class CameraWeb extends WebPlugin {
       fileSize: 0,
     });
 
-    let autoStopping = false;
     this.recordingStateInterval = setInterval(() => {
-      if (!this.isRecording || autoStopping) return;
+      if (!this.isRecording || this.stopPromise) return;
 
       const duration = (Date.now() - this.recordingStartTime) / 1000;
       const fileSize = this.recordedChunks.reduce(
@@ -496,8 +506,7 @@ export class CameraWeb extends WebPlugin {
         (options?.maxFileSize && fileSize >= options.maxFileSize);
 
       if (overLimit) {
-        autoStopping = true;
-        this.stopRecording().catch((err) => {
+        this.beginStop(false).catch((err) => {
           // error-policy:J6 best-effort auto-stop teardown; the rejection is logged here
           console.error("[Camera] Auto-stop recording failed:", err);
         });
@@ -506,10 +515,44 @@ export class CameraWeb extends WebPlugin {
   }
 
   async stopRecording(): Promise<VideoResult> {
+    const completed = this.completedRecording;
+    if (completed) {
+      this.completedRecording = null;
+      return completed;
+    }
+    if (this.stopPromise) {
+      this.stopClaimed = true;
+      return this.stopPromise;
+    }
     if (!this.isRecording || !this.mediaRecorder) {
       throw new Error("Not recording");
     }
+    return this.beginStop(true);
+  }
 
+  // Starts the single stop. An unclaimed result (a limit or preview stop) is
+  // kept for the next stopRecording() before the in-flight promise clears.
+  private beginStop(claimed: boolean): Promise<VideoResult> {
+    this.stopClaimed = claimed;
+    const stop = this.stopRecorder().then((video) => {
+      if (!this.stopClaimed) this.completedRecording = video;
+      return video;
+    });
+    this.stopPromise = stop;
+    const clear = () => {
+      if (this.stopPromise === stop) this.stopPromise = null;
+    };
+    stop.then(clear, clear);
+    return stop;
+  }
+
+  private discardCompletedRecording(): void {
+    if (!this.completedRecording) return;
+    URL.revokeObjectURL(this.completedRecording.path);
+    this.completedRecording = null;
+  }
+
+  private stopRecorder(): Promise<VideoResult> {
     return new Promise((resolve, reject) => {
       const recorder = this.mediaRecorder;
       if (!recorder) {

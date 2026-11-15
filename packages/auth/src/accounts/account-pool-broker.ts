@@ -11,7 +11,10 @@ import {
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import type { LinkedAccountUsage } from "@elizaos/contracts";
+import type {
+  LinkedAccountConfig,
+  LinkedAccountUsage,
+} from "@elizaos/contracts";
 import type {
   AccountPoolBrokerAccountSnapshot,
   AccountPoolBrokerFailoverSnapshot,
@@ -22,8 +25,16 @@ import type {
 import { logger, resolveStateDir } from "@elizaos/core";
 import { isLinkedAccountProviderId } from "@elizaos/host/protocol";
 import { createRuntimeAccountStoragePolicy } from "../auth/account-storage.js";
-import { getAccessToken } from "../auth/credentials.js";
-import { type AccountPool, getDefaultAccountPool } from "./account-pool.js";
+import {
+  getAccessToken,
+  getAccessTokenCredentialReceipt,
+} from "../auth/credentials.js";
+import { KeyedMutex } from "../auth/refresh-mutex.js";
+import {
+  type AccountPool,
+  accountGeneration,
+  getDefaultAccountPool,
+} from "./account-pool.js";
 import {
   claudeMinRemainingMs,
   resolveClaudeExpectedRunMs,
@@ -74,6 +85,8 @@ interface LeaseEntry {
   sessionKeyHash: string;
   atMs: number;
   expiresAt: number;
+  credentialGeneration?: string;
+  healthBaseline: Pick<LinkedAccountConfig, "health" | "healthDetail">;
   model?: string;
 }
 interface AccountObservabilityState {
@@ -290,6 +303,10 @@ function lastReportedStatusFromReport(
     ...(report.model ? { model: report.model } : {}),
   };
 }
+const brokerTokenReceipts = new WeakMap<
+  Awaited<ReturnType<typeof resolveBrokerAccessToken>>,
+  NonNullable<ReturnType<typeof getAccessTokenCredentialReceipt>>
+>();
 export async function resolveBrokerAccessToken(
   providerId: PoolProviderId,
   accountId: string,
@@ -324,10 +341,13 @@ export async function resolveBrokerAccessToken(
   if (!outcome.ok) {
     throw new Error(`token_resolve_failed:${outcome.kind}`);
   }
-  return {
+  const token = {
     accessToken: outcome.accessToken,
     accessExpiresAt: outcome.expiresAt,
   };
+  const receipt = getAccessTokenCredentialReceipt(outcome);
+  if (receipt) brokerTokenReceipts.set(token, receipt);
+  return token;
 }
 export class AccountPoolBroker {
   private readonly pool: AccountPool;
@@ -335,6 +355,7 @@ export class AccountPoolBroker {
   private readonly tokenResolver: typeof resolveBrokerAccessToken;
   private readonly idGenerator: () => string;
   private readonly leaseTtlMs: number;
+  private readonly reportMutex = new KeyedMutex();
   private readonly byLeaseId = new Map<string, LeaseEntry>();
   private readonly bySessionKey = new Map<string, string>();
   private readonly accountObservability = new Map<
@@ -366,7 +387,6 @@ export class AccountPoolBroker {
     request: AccountPoolBrokerLeaseRequest,
   ): Promise<AccountPoolBrokerLeaseResponse | null> {
     this.pruneExpired();
-    const now = this.now();
     const exclude = new Set(request.exclude);
     const pinned = this.resolveSessionPin(request.sessionKey);
     const configured = selectionForProvider(request.providerId);
@@ -394,6 +414,24 @@ export class AccountPoolBroker {
       }));
     if (!selected) return null;
     const token = await this.tokenResolver(request.providerId, selected.id);
+    const receipt = brokerTokenReceipts.get(token);
+    // Legacy injected resolvers have no private receipt and retain their selected context.
+    const resolvedAccount = receipt
+      ? this.pool.get(selected.id, request.providerId)
+      : selected;
+    if (
+      !resolvedAccount ||
+      (receipt &&
+        (receipt.provider !== request.providerId ||
+          receipt.accountId !== selected.id ||
+          accountGeneration(resolvedAccount) !== receipt.credentialGeneration))
+    ) {
+      return null;
+    }
+    const organizationId = receipt
+      ? receipt.organizationId
+      : selected.organizationId;
+    const now = this.now();
     const leaseId = this.idGenerator();
     const leaseExpiresAt = now + this.leaseTtlMs;
     const sessionKeyHash = hashSessionKey(request.sessionKey);
@@ -405,6 +443,15 @@ export class AccountPoolBroker {
       sessionKeyHash,
       atMs: now,
       expiresAt: leaseExpiresAt,
+      ...(receipt
+        ? { credentialGeneration: receipt.credentialGeneration }
+        : {}),
+      healthBaseline: {
+        health: resolvedAccount.health,
+        ...(resolvedAccount.healthDetail
+          ? { healthDetail: { ...resolvedAccount.healthDetail } }
+          : {}),
+      },
     };
     this.byLeaseId.set(leaseId, lease);
     this.bySessionKey.set(request.sessionKey, leaseId);
@@ -416,9 +463,9 @@ export class AccountPoolBroker {
       accessToken: token.accessToken,
       accessExpiresAt: token.accessExpiresAt,
       leaseExpiresAt,
-      ...(selected.usage ? { usage: selected.usage } : {}),
-      ...(request.providerId === "openai-codex" && selected.organizationId
-        ? { chatgptAccountId: selected.organizationId }
+      ...(resolvedAccount.usage ? { usage: resolvedAccount.usage } : {}),
+      ...(request.providerId === "openai-codex" && organizationId
+        ? { chatgptAccountId: organizationId }
         : {}),
     };
   }
@@ -438,105 +485,125 @@ export class AccountPoolBroker {
       return { ok: false, error: "expired_lease" };
     }
     const reportAt = this.now();
-    const observability = this.ensureAccountObservability(
-      lease.providerId,
-      lease.accountId,
-    );
-    if (report.model) {
-      lease.model = report.model;
-      if (observability.lastLease?.leaseId === lease.leaseId) {
-        observability.lastLease = {
-          ...observability.lastLease,
-          model: report.model,
+    return this.reportMutex.acquire(
+      observabilityAccountKey(lease.providerId, lease.accountId),
+      async () => {
+        const mutationOptions = {
+          providerId: lease.providerId,
+          ...(lease.credentialGeneration
+            ? { expectedCredentialGeneration: lease.credentialGeneration }
+            : {}),
         };
-      }
-    }
-    const successPredatesFailure =
-      report.ok &&
-      observability.lastFailureAtMs !== null &&
-      lease.atMs <= observability.lastFailureAtMs;
-    if (!successPredatesFailure) {
-      observability.lastReportedStatus = lastReportedStatusFromReport(
-        report,
-        reportAt,
-      );
-    }
-    if (!report.ok) observability.lastFailureAtMs = reportAt;
-    await this.pool.recordCall(
-      lease.accountId,
-      {
-        ok: report.ok,
-        ...(report.tokens !== undefined ? { tokens: report.tokens } : {}),
-        ...(report.latencyMs !== undefined
-          ? { latencyMs: report.latencyMs }
-          : {}),
-        ...(report.errorCode ? { errorCode: report.errorCode } : {}),
-        ...(report.model ? { model: report.model } : {}),
+        await this.pool.recordCall(
+          lease.accountId,
+          {
+            ok: report.ok,
+            ...(report.tokens !== undefined ? { tokens: report.tokens } : {}),
+            ...(report.latencyMs !== undefined
+              ? { latencyMs: report.latencyMs }
+              : {}),
+            ...(report.errorCode ? { errorCode: report.errorCode } : {}),
+            ...(report.model ? { model: report.model } : {}),
+          },
+          mutationOptions,
+        );
+        const current = this.pool.get(lease.accountId, lease.providerId);
+        if (
+          lease.credentialGeneration &&
+          (!current ||
+            accountGeneration(current) !== lease.credentialGeneration)
+        ) {
+          this.deleteLease(lease);
+          return { ok: true as const };
+        }
+        const observability = this.ensureAccountObservability(
+          lease.providerId,
+          lease.accountId,
+        );
+        if (report.model) {
+          lease.model = report.model;
+          if (observability.lastLease?.leaseId === lease.leaseId) {
+            observability.lastLease = {
+              ...observability.lastLease,
+              model: report.model,
+            };
+          }
+        }
+        const successPredatesFailure =
+          report.ok &&
+          observability.lastFailureAtMs !== null &&
+          lease.atMs <= observability.lastFailureAtMs;
+        if (!successPredatesFailure)
+          observability.lastReportedStatus = lastReportedStatusFromReport(
+            report,
+            reportAt,
+          );
+        if (!report.ok) observability.lastFailureAtMs = reportAt;
+        if (report.ok) {
+          const pendingKey = pendingFailoverKey(
+            lease.providerId,
+            lease.sessionKeyHash,
+          );
+          const pending = this.pendingFailoversBySession.get(pendingKey);
+          if (
+            !successPredatesFailure &&
+            pending?.accountId === lease.accountId
+          ) {
+            this.pendingFailoversBySession.delete(pendingKey);
+          }
+          if (!successPredatesFailure) {
+            await this.pool.markHealthy(lease.accountId, {
+              ...mutationOptions,
+              expectedHealth: lease.healthBaseline,
+            });
+          }
+          return { ok: true as const };
+        }
+        const failoverCause = normalizeReportCause(report);
+        if (failoverCause) {
+          this.pendingFailoversBySession.set(
+            pendingFailoverKey(lease.providerId, lease.sessionKeyHash),
+            {
+              providerId: lease.providerId,
+              accountId: lease.accountId,
+              sessionKeyHash: lease.sessionKeyHash,
+              atMs: reportAt,
+              cause: failoverCause,
+              ...(report.model ? { model: report.model } : {}),
+            },
+          );
+        }
+        if (reportIsRateLimit(report)) {
+          const untilMs = retryUntilMs(this.now(), report.retryAfterMs);
+          if (untilMs === null) {
+            await this.pool.markRateLimitedUnknown(
+              lease.accountId,
+              report.errorCode ?? "rate_limited",
+              mutationOptions,
+            );
+          } else {
+            await this.pool.markRateLimited(
+              lease.accountId,
+              untilMs,
+              report.errorCode ?? "rate_limited",
+              mutationOptions,
+            );
+          }
+          this.deleteLease(lease);
+          return { ok: true as const };
+        }
+        if (reportIsAuthFailure(report)) {
+          await this.pool.markNeedsReauth(
+            lease.accountId,
+            report.errorCode ?? "auth_failed",
+            mutationOptions,
+          );
+          this.deleteLease(lease);
+          return { ok: true as const };
+        }
+        return { ok: true as const };
       },
-      { providerId: lease.providerId },
     );
-    if (report.ok) {
-      const pendingKey = pendingFailoverKey(
-        lease.providerId,
-        lease.sessionKeyHash,
-      );
-      const pending = this.pendingFailoversBySession.get(pendingKey);
-      if (pending?.accountId === lease.accountId) {
-        this.pendingFailoversBySession.delete(pendingKey);
-      }
-      if (!successPredatesFailure) {
-        await this.pool.markHealthy(lease.accountId, {
-          providerId: lease.providerId,
-        });
-      }
-      return { ok: true };
-    }
-    const failoverCause = normalizeReportCause(report);
-    if (failoverCause) {
-      this.pendingFailoversBySession.set(
-        pendingFailoverKey(lease.providerId, lease.sessionKeyHash),
-        {
-          providerId: lease.providerId,
-          accountId: lease.accountId,
-          sessionKeyHash: lease.sessionKeyHash,
-          atMs: reportAt,
-          cause: failoverCause,
-          ...(report.model ? { model: report.model } : {}),
-        },
-      );
-    }
-    if (reportIsRateLimit(report)) {
-      const untilMs = retryUntilMs(this.now(), report.retryAfterMs);
-      if (untilMs === null) {
-        await this.pool.markRateLimitedUnknown(
-          lease.accountId,
-          report.errorCode ?? "rate_limited",
-          { providerId: lease.providerId },
-        );
-      } else {
-        await this.pool.markRateLimited(
-          lease.accountId,
-          untilMs,
-          report.errorCode ?? "rate_limited",
-          { providerId: lease.providerId },
-        );
-      }
-      this.deleteLease(lease);
-      return { ok: true };
-    }
-    if (reportIsAuthFailure(report)) {
-      await this.pool.markNeedsReauth(
-        lease.accountId,
-        report.errorCode ?? "auth_failed",
-        { providerId: lease.providerId },
-      );
-      this.deleteLease(lease);
-      return { ok: true };
-    }
-    if (reportIsTransient(report)) {
-      return { ok: true };
-    }
-    return { ok: true };
   }
   release(request: AccountPoolBrokerReleaseRequest): {
     ok: true;

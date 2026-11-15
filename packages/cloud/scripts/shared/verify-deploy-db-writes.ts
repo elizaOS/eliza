@@ -91,12 +91,21 @@ check(
     view?.image === "ghcr.io/elizaos/app-x:latest",
 );
 
-// --- 3) markRunning writes status + host placement metadata (+ URL if configured) ---
-await appContainerStore.markRunning(created.id, {
-  hostContainerId: "host-ctr-1",
-  hostPort: 21345,
-  network: `app-net-${rand}`,
-});
+// --- 3) markRunning atomically publishes this original row/generation ---
+if (!view) throw new Error("App container view is missing");
+await appContainerStore.markRunning(
+  created.id,
+  {
+    hostContainerId: "host-ctr-1",
+    hostPort: 21345,
+    network: `app-net-${rand}`,
+  },
+  {
+    organizationId: view.organizationId,
+    deploymentGeneration: view.deploymentGeneration ?? null,
+    createdAtSnapshot: view.createdAtSnapshot,
+  },
+);
 const afterRun = await containersRepository.findById(created.id, orgId);
 const meta = (afterRun?.metadata ?? {}) as Record<string, unknown>;
 check("markRunning -> status running", afterRun?.status === "running");

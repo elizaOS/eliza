@@ -1,0 +1,27 @@
+{
+  "sources": [
+    "plugins/plugin-elizacloud/src/index.ts",
+    "plugins/plugin-elizacloud/src/utils/config.ts",
+    "plugins/plugin-elizacloud/__tests__/embedding-routing.test.ts",
+    "packages/agent/src/runtime/eliza.ts",
+    "packages/agent/test/provider-switch-cloud-proxy-env.test.ts"
+  ],
+  "conformance": "plugins/plugin-elizacloud/quint/check-cloud-capabilities.mjs",
+  "cases": [
+    {
+      "name": "cloud_capabilities",
+      "main": "CloudCapabilities",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 4,
+      "samples": 100
+    }
+  ],
+  "bounds": {
+    "groups": 4,
+    "phase": "One synchronous initialization after host flags are resolved. Unset flags enable the corresponding Cloud registrations.",
+    "outsideScope": "Host replacement, credential lifetime, provider execution, network and device acceptance."
+  }
+}

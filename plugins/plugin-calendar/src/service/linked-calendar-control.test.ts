@@ -48,7 +48,9 @@ afterEach(async () => {
   );
 });
 
-describe("durable linked calendar review", { timeout: 30_000 }, () => {
+// Real PGlite initialization and filesystem recovery run on shared CI hosts.
+// Keep a finite per-case budget while allowing cold database startup.
+describe("durable linked calendar review", { timeout: 60_000 }, () => {
   async function mappingFixture() {
     const h = await harness();
     const links = new LinkedCalendarRepository(h.runtime());

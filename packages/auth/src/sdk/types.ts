@@ -475,7 +475,7 @@ export interface TenantSamlSsoUpdate {
 }
 
 export type TenantCaptchaProvider = "turnstile" | "hcaptcha";
-export type TenantCaptchaAction = "email_otp" | "sms_otp";
+export type TenantCaptchaAction = "email_otp" | "sms_otp" | "guest";
 
 export interface TenantAuthAbuseConfig {
   loginMethods?: {
@@ -488,6 +488,8 @@ export interface TenantAuthAbuseConfig {
     siws?: boolean;
     telegram?: boolean;
     farcaster?: boolean;
+    /** Guest sign-in; allowed unless set to false. */
+    guest?: boolean;
     oauth?: Record<string, boolean>;
     oidc?: Record<string, boolean>;
   };

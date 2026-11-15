@@ -49,6 +49,22 @@ describe("mail links and previews", () => {
         text: "bank.example",
       }),
     ).toBe(false);
+    for (const text of [
+      "paypal.com.",
+      "(paypal.com)",
+      "paypal.com, now",
+      "Visit paypal.com!",
+      '"paypal.com"',
+    ])
+      expect(linkTextMismatch({ href: "https://evil.example/", text })).toBe(
+        true,
+      );
+    expect(
+      linkTextMismatch({
+        href: "https://www.paypal.com/",
+        text: "paypal.com.",
+      }),
+    ).toBe(false);
   });
 
   it("decodes references once and collapses padding runs", () => {
@@ -93,6 +109,14 @@ describe("attachments", () => {
       () => expect.unreachable(),
       (error) => expect(attachmentRefused(error)).toBe(true),
     );
+    // Base64 without its padding is an encoding fault, not a size fault.
+    await expect(
+      reviewOpaqueAttachment({
+        name: "data.bin",
+        mimeType: "text/plain",
+        dataBase64: "YWI",
+      }),
+    ).rejects.toThrow("Invalid attachment name or encoding");
   });
 });
 

@@ -195,22 +195,20 @@ export function registerRuntimeManagedInternalActor(
 	runtime: IAgentRuntime,
 	actorEntityId: UUID,
 ): () => void {
-	let registrations = internalActorRegistrations.get(runtime);
-	if (!registrations) {
-		registrations = new Map();
-		internalActorRegistrations.set(runtime, registrations);
-	}
+	const registrations =
+		internalActorRegistrations.get(runtime) ?? new Map<UUID, number>();
+	internalActorRegistrations.set(runtime, registrations);
 	registrations.set(actorEntityId, (registrations.get(actorEntityId) ?? 0) + 1);
 	let released = false;
 	return () => {
 		if (released) return;
 		released = true;
-		const current = registrations?.get(actorEntityId);
+		const current = registrations.get(actorEntityId);
 		if (current === undefined) return;
 		if (current <= 1) {
-			registrations?.delete(actorEntityId);
+			registrations.delete(actorEntityId);
 		} else {
-			registrations?.set(actorEntityId, current - 1);
+			registrations.set(actorEntityId, current - 1);
 		}
 	};
 }

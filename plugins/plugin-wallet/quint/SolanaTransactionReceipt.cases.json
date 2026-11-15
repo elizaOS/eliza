@@ -1,0 +1,28 @@
+{
+  "sources": [
+    "plugins/plugin-wallet/src/chains/registry.ts",
+    "plugins/plugin-wallet/src/chains/wallet-action.ts"
+  ],
+  "implementationTests": [
+    "plugins/plugin-wallet/src/chains/__tests__/solana-transfer-confirmation.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "SolanaTransactionReceipt",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "SignedBeforeSend",
+        "UncertaintyPreservesReceipt",
+        "HonestConfirmation",
+        "NoAutomaticResubmit",
+        "DefinitiveFailureOnly",
+        "SendUncertaintyDistinct"
+      ],
+      "temporal": [],
+      "maxSteps": 100,
+      "samples": 1000
+    }
+  ]
+}

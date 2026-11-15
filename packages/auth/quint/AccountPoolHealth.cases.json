@@ -1,0 +1,181 @@
+{
+  "sources": [
+    "packages/auth/src/accounts/account-pool.ts",
+    "packages/auth/src/accounts/account-selection.ts",
+    "packages/auth/src/accounts/coding-account-bridge.ts",
+    "packages/auth/src/auth/credentials.ts",
+    "packages/auth/src/auth/account-storage.ts",
+    "packages/auth/src/accounts/multi-account-affinity-failover.test.ts",
+    "packages/auth/quint/check-account-pool-health.mjs",
+    "packages/auth/test/fixtures/pool-health-process-probe.ts"
+  ],
+  "conformance": "packages/auth/quint/check-account-pool-health.mjs",
+  "bounds": {
+    "domain": "Three overlapping cases over two accounts from two provider families and generations1..5. Each call may represent an explicit retained metadata snapshot.",
+    "assumptions": "The default adapter supplies verified generation provenance and synchronous credential-lock CAS. Crypto, cross-process lock admission, root reset recovery and collision-free generation allocation rely on the separate credential-storage models.",
+    "limitations": [
+      "Shared verification uses a two-caller fixed-clock case with all external writes, a single-caller advancing-clock case with all external writes, and a two-caller advancing-clock case with only call-owned writes. The combined two-caller advancing-clock graph with independent replacement, health and subscription writes is not a required case. Cross-process implementation checks exercise concurrent reset, expiry, replacement and owned-field races.",
+      "Health and the opaque non-cooldown detail identity are compared together with the explicit cooldown. Two detail identities represent equal or different lastChecked/error fields in this bounded instance. Arbitrary repeated detail/timestamp histories and provider payload schema stay outside finite arithmetic; real adapters exercise the payload and field-merging boundary.",
+      "Storage failure before publication leaves metadata unchanged; a failure after publication may retain it. Calls expose uncertain storage outcomes. Filesystem power-loss persistence remains outside the process-level model.",
+      "Unbranded injected AccountPoolDeps retain their legacy contract when no generation guard is supplied. An explicit generation guard cannot validate an unbranded snapshot and refuses it. These compatibility schedules have real conformance but are outside the default-adapter safety theorem.",
+      "AccountPoolBroker models broker lease reports separately. Timer stop/restart ownership, arbitrary account pools, repeated retries, usage priming cadence and full selection strategies are separate protocols. This model does not claim whole-pool coverage.",
+      "The separate backfill case uses absent email0, fetched profile email1 and independently installed email2, one credential replacement and one email write. Other display metadata stays opaque.",
+      "Resolution keeps only its starting generation, while an explicit metadata snapshot retains the full account until its write. After committing-edge checks run, a completed call drops account, receipt and health baseline inputs. Phase, exact response, outcome and confirmation remain.",
+      "The separate token-context instance models one resolution/probe and one replacement with generations1/2 and organization identities0/1/2, including absent context. Cryptographic authenticity of provider claims and external provider organization validation are assumptions.",
+      "Historical before-account maps and last-event bookkeeping are projected to constants after their original transition predicates are evaluated. A sticky violation set retains any failed transition check. No future protocol action reads the projected historical fields. Every fair CallWork action still changes a call phase, so the projection does not turn its progress action into stuttering."
+    ]
+  },
+  "cases": [
+    {
+      "name": "concurrent-generation-health",
+      "main": "AccountPoolHealth",
+      "init": "init",
+      "step": "concurrentOwnershipStep",
+      "invariants": [
+        "TypeOK",
+        "StaleObservationCannotWrite",
+        "DeletedAccountCannotReappear",
+        "OtherProviderUnchanged",
+        "UsagePreservesNewHealth",
+        "AppliedUsageMatchesResponse",
+        "FailurePreservesUsage",
+        "RotatedReceiptIsCurrent",
+        "UsageAcknowledgementNeedsCommit",
+        "ExpiryVerdictUsesCurrentSubscription",
+        "CurrentResetControlsCooldown"
+      ],
+      "temporal": ["CallsSettle"],
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Two one-shot callers, both provider families, one credential replacement or deletion, one independent health verdict or subscription end, and one extension. The clock stays at zero; end and extension can still interleave with both calls.",
+            "Weak fairness of CallWork(id) supplies eventual completion for each already-started provider, metadata or snapshot call. Calls are one-shot in this finite instance.",
+            "Provider replies and storage operations eventually return or throw. Success, account health and eventual retry are not assumed. The model does not establish timer scheduling or process survival."
+          ]
+        }
+      ],
+      "maxSteps": 40,
+      "samples": 1000
+    },
+    {
+      "name": "timed-external-writes",
+      "main": "AccountPoolHealth",
+      "init": "init",
+      "step": "timedExternalWritesStep",
+      "invariants": [
+        "TypeOK",
+        "StaleObservationCannotWrite",
+        "DeletedAccountCannotReappear",
+        "OtherProviderUnchanged",
+        "UsagePreservesNewHealth",
+        "AppliedUsageMatchesResponse",
+        "FailurePreservesUsage",
+        "RotatedReceiptIsCurrent",
+        "UsageAcknowledgementNeedsCommit",
+        "ExpiryVerdictUsesCurrentSubscription",
+        "CurrentResetControlsCooldown"
+      ],
+      "temporal": ["CallsSettle"],
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "One one-shot caller with both provider families, clock0..2, one credential replacement or deletion, one independent health verdict or subscription end, and one extension.",
+            "Weak fairness of CallWork(id) supplies eventual completion for each already-started provider, metadata or snapshot call. Calls are one-shot in this finite instance.",
+            "Provider replies and storage operations eventually return or throw. Success, account health and eventual retry are not assumed. The model does not establish timer scheduling or process survival."
+          ]
+        }
+      ],
+      "maxSteps": 40,
+      "samples": 1000
+    },
+    {
+      "name": "concurrent-cooldown-clock",
+      "main": "AccountPoolHealth",
+      "init": "init",
+      "step": "concurrentCooldownStep",
+      "invariants": [
+        "TypeOK",
+        "StaleObservationCannotWrite",
+        "DeletedAccountCannotReappear",
+        "OtherProviderUnchanged",
+        "UsagePreservesNewHealth",
+        "AppliedUsageMatchesResponse",
+        "FailurePreservesUsage",
+        "RotatedReceiptIsCurrent",
+        "UsageAcknowledgementNeedsCommit",
+        "ExpiryVerdictUsesCurrentSubscription",
+        "CurrentResetControlsCooldown"
+      ],
+      "temporal": ["CallsSettle"],
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Two one-shot callers with both provider families and clock0..2. Their own writes can change health, usage, cooldown and credential generation. Independent replacement, verdict and subscription writes are disabled.",
+            "Weak fairness of CallWork(id) supplies eventual completion for each already-started provider, metadata or snapshot call. Calls are one-shot in this finite instance.",
+            "Provider replies and storage operations eventually return or throw. Success, account health and eventual retry are not assumed. The model does not establish timer scheduling or process survival."
+          ]
+        }
+      ],
+      "maxSteps": 40,
+      "samples": 1000
+    },
+    {
+      "name": "profile-email-backfill",
+      "main": "AccountPoolBackfill",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "ExistingEmailWins",
+        "ReplacementIsNotBackfilled",
+        "BackfillUsesOnlyObservedEmail",
+        "ExistingEmailSkipsProfile"
+      ],
+      "temporal": ["BackfillSettles"],
+      "temporalChecks": [
+        {
+          "property": "BackfillSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of start and work eventually admits the one request and completes its profile/merge/storage stages by success or error.",
+            "Provider responses and storage calls eventually settle. This finite case assumes one replacement and one independent email installation, and does not prove external identity authenticity."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 1000
+    },
+    {
+      "name": "token-organization-context",
+      "main": "AccountPoolContext",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "TokenAndOrganizationShareDecision",
+        "ReplacementOrganizationIsSelected",
+        "PollCarriesTokenOrganization",
+        "PublicationOwnsGeneration"
+      ],
+      "temporal": ["ContextSettles"],
+      "temporalChecks": [
+        {
+          "property": "ContextSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of work supplies completion of the admitted token resolution, usage admission and usage publication attempt. Provider and storage operations eventually settle.",
+            "One request and one credential replacement are modeled. Token bytes and organization strings are opaque identities, and zero denotes absent organization. Credential generations change when record identity changes."
+          ]
+        }
+      ],
+      "maxSteps": 15,
+      "samples": 1000
+    }
+  ]
+}

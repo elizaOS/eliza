@@ -25,10 +25,7 @@ export type {
   Stage1DecisionObservation,
   V5MessageRuntimeStage1Result,
 } from "./message/contracts.ts";
-export {
-  deliverFirstSentenceVoice,
-  wrapSingleTurnVisibleCallback,
-} from "./message/delivery.ts";
+export { wrapSingleTurnVisibleCallback } from "./message/delivery.ts";
 export { cleanPriorDialogueSpeakerName } from "./message/dialogue-context.ts";
 export {
   enforceTrustedDeliveryAudienceAtEgress,

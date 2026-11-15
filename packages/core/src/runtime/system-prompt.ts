@@ -17,17 +17,28 @@ type MessageLike = {
 	content?: unknown;
 };
 
+/** Trimmed, non-empty string entries of an array; anything else yields none. */
+function trimmedStrings(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	return value
+		.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+		.filter(Boolean);
+}
+
+function characterName(
+	character: { name?: unknown } | null | undefined,
+): string {
+	return typeof character?.name === "string" && character.name.trim()
+		? character.name.trim()
+		: "the agent";
+}
+
 export function renderSystemPromptBio(value: unknown): string {
-	if (typeof value === "string") {
-		return value.trim();
-	}
-	if (Array.isArray(value)) {
-		return value
-			.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-			.filter(Boolean)
-			.join(" ");
-	}
-	return "";
+	return typeof value === "string"
+		? value.trim()
+		: trimmedStrings(value).join(" ");
 }
 
 export function normalizeSystemPromptRole(
@@ -61,10 +72,7 @@ export function buildCanonicalSystemPrompt(args: {
 	userRole?: RoleGateRole | string | null;
 }): string {
 	const character = args.character;
-	const name =
-		typeof character?.name === "string" && character.name.trim()
-			? character.name.trim()
-			: "the agent";
+	const name = characterName(character);
 	const system = replaceNameTokens(
 		typeof character?.system === "string" ? character.system.trim() : "",
 		name,
@@ -81,15 +89,6 @@ export function buildCanonicalSystemPrompt(args: {
 		.trim();
 }
 
-function renderStyleRules(value: unknown): string[] {
-	if (!Array.isArray(value)) {
-		return [];
-	}
-	return value
-		.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-		.filter(Boolean);
-}
-
 /**
  * Renders the character's chat-facing style directions (`style.all` +
  * `style.chat`) as a single self-headed block for the canonical v5 message
@@ -102,14 +101,11 @@ export function buildCharacterStyleDirections(args: {
 	character?: Pick<Character, "name" | "style"> | null;
 }): string {
 	const character = args.character;
-	const name =
-		typeof character?.name === "string" && character.name.trim()
-			? character.name.trim()
-			: "the agent";
+	const name = characterName(character);
 	const style = character?.style;
 	const rules = [
-		...renderStyleRules(style?.all),
-		...renderStyleRules(style?.chat),
+		...trimmedStrings(style?.all),
+		...trimmedStrings(style?.chat),
 	].map((rule) => replaceNameTokens(rule, name));
 	if (rules.length === 0) {
 		return "";

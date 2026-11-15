@@ -20,6 +20,7 @@ import type { AppContext, AuthedUser, Bindings } from "../../types/cloud-worker-
 import { ApiError, AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
 import { timingSafeEqualSecret } from "./cron";
+import { isMobileApiKeySecret } from "./mobile-api-key";
 import {
   organizationCreatedBySignIn,
   STEWARD_SESSION_CLOCK_ALLOWANCE_MS,
@@ -160,20 +161,31 @@ async function validateApiKeyOrServiceUnavailable(
 }
 
 /**
+ * The one API key this request presents in `Authorization: Bearer` or
+ * `X-API-Key`. Both headers may be sent when they carry the same key, which is
+ * what the Cloud SDK does; two different keys are ambiguous and yield
+ * `conflict`. Routes that act on the presented key itself (self-revocation,
+ * mobile key renewal) all read it through here, so a client that can call one
+ * can call the others with the same headers.
+ */
+export function readPresentedApiKey(c: AppContext): string | "conflict" | null {
+  const headerKey = (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
+  const authorization = c.req.header("authorization")?.trim() ?? null;
+  const bearerKey = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
+  if (headerKey && bearerKey && headerKey !== bearerKey) return "conflict";
+  return headerKey ?? bearerKey;
+}
+
+/**
  * Resolves one explicitly presented API key and records its exact database ID.
- * Session cookies and JWTs are excluded, while two credential headers are
+ * Session cookies and JWTs are excluded, while two different credentials are
  * rejected so self-revocation can never select an ambiguous credential.
  */
 export async function requireApiKeyCredential(c: AppContext): Promise<ApiKey> {
-  const headerKey = (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
-  const authorization = c.req.header("authorization")?.trim() ?? null;
-  const bearerMatch = authorization?.match(/^Bearer\s+(.+)$/i);
-  const bearerKey = bearerMatch?.[1]?.trim() || null;
-
-  if (headerKey && bearerKey) {
+  const presented = readPresentedApiKey(c);
+  if (presented === "conflict") {
     throw AuthenticationError("Present exactly one API key credential");
   }
-  const presented = headerKey ?? bearerKey;
   if (!presented?.startsWith("eliza_")) {
     throw AuthenticationError("An API key credential is required");
   }
@@ -302,6 +314,13 @@ export async function getCurrentUserForStewardToken(
           userId: claims.userId,
           error: error instanceof Error ? error.message : String(error),
         });
+        // The session itself is valid: only account provisioning failed.
+        // Optional-auth callers stay anonymous. `requireUser` reports an
+        // outage as a retryable 503 and an identity conflict as a 409, so a
+        // client neither treats an outage as a revoked session nor retries a
+        // conflict forever. Any other failure stays an authentication failure.
+        const failure = classifyStewardSyncFailure(error);
+        if (failure) c.set("stewardAccountSyncFailure", failure);
         c.set("user", null);
         return null;
       }
@@ -318,9 +337,94 @@ export async function getCurrentUserForStewardToken(
   return authed;
 }
 
+/** Sign-in identities that another account already holds; repeating the request cannot succeed. */
+const STEWARD_SYNC_CONFLICT_CODES = new Set([
+  "STEWARD_EMAIL_CLAIM_CONFLICT",
+  "STEWARD_TELEGRAM_ACCOUNT_CLAIM_CONFLICT",
+]);
+const STEWARD_SYNC_CONFLICT_NAMES = new Set([
+  "StewardPhoneAccountConflictError",
+  "StewardTelegramAccountClaimError",
+]);
+/** Driver-level connection failures that carry no SQLSTATE. */
+const TRANSPORT_FAILURE_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "EPIPE",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "CONNECT_TIMEOUT",
+]);
+
+/**
+ * Sorts a first-sign-in provisioning failure. `conflict` is a typed identity
+ * conflict (the same classes `/api/auth/steward-session` answers with 409).
+ * `unavailable` is a dependency outage: a typed `*_UNAVAILABLE` error, a
+ * PostgreSQL connection, resource or transaction-rollback SQLSTATE (classes
+ * 08, 53, 57, 40), or a driver transport failure. Constraint violations,
+ * programming errors and anything unrecognised are neither, and stay 401.
+ */
+export function classifyStewardSyncFailure(error: unknown): "conflict" | "unavailable" | null {
+  const seen = new Set<unknown>();
+  let unavailable = false;
+  for (
+    let current: unknown = error;
+    current && typeof current === "object" && !seen.has(current);
+    current = (current as { cause?: unknown }).cause
+  ) {
+    seen.add(current);
+    const { code, name } = current as { code?: unknown; name?: unknown };
+    if (
+      (typeof code === "string" && STEWARD_SYNC_CONFLICT_CODES.has(code)) ||
+      (typeof name === "string" && STEWARD_SYNC_CONFLICT_NAMES.has(name))
+    )
+      return "conflict";
+    if (typeof code !== "string") continue;
+    if (
+      code.endsWith("_UNAVAILABLE") ||
+      /^(08|53|57|40)[0-9A-Z]{3}$/.test(code) ||
+      TRANSPORT_FAILURE_CODES.has(code)
+    )
+      unavailable = true;
+  }
+  return unavailable ? "unavailable" : null;
+}
+
+/**
+ * The answer for a request whose Steward session is valid but whose account
+ * could not be provisioned on this request: a retryable 503 for an outage, a
+ * 409 for an identity conflict, or null when the request simply has no user.
+ * `requireUser` and the global auth middleware both answer through this, so a
+ * protected route never reports a provisioning failure as a revoked session.
+ */
+export function stewardAccountSyncFailureError(c: AppContext): ApiError | null {
+  const failure = c.get("stewardAccountSyncFailure");
+  if (failure === "unavailable") {
+    return new ApiError(
+      503,
+      "account_not_ready",
+      "Your account could not be prepared. Try again.",
+      {
+        retryAfterSeconds: 5,
+      },
+    );
+  }
+  if (failure === "conflict") {
+    return new ApiError(
+      409,
+      "identity_conflict",
+      "This sign-in cannot be linked to an account automatically.",
+    );
+  }
+  return null;
+}
+
 export async function requireUser(c: AppContext): Promise<AuthedUser> {
   const user = await getCurrentUser(c);
-  if (!user) throw AuthenticationError();
+  if (!user) throw stewardAccountSyncFailureError(c) ?? AuthenticationError();
   if (user.is_active === false) throw ForbiddenError("User account is inactive");
   return user;
 }
@@ -455,16 +559,37 @@ export async function requireCurrentBillingManagerSession(
 ): Promise<CurrentBillingManager> {
   const resolved = await requireSessionUserWithOrg(c);
   await revalidateBillingManagerCredential(c, resolved);
+  const current = await loadCurrentBillingManager({
+    userId: resolved.id,
+    organizationId: resolved.organization_id,
+    stewardUserId: resolved.steward_id,
+  });
+  const authorized = toAuthedUser(current) as CurrentBillingManager;
+  c.set("user", authorized);
+  c.set("authMethod", "session");
+  return authorized;
+}
 
+/**
+ * Reads the caller's membership from primary storage and requires a current
+ * organization owner or admin. Shared by the session and mobile-credential
+ * billing boundaries so both apply one eligibility rule.
+ */
+async function loadCurrentBillingManager(expected: {
+  userId: string;
+  organizationId: string;
+  /** Session callers also pin the Steward subject the session was issued for. */
+  stewardUserId?: string | null;
+}): Promise<UserWithOrganization> {
   let current: UserWithOrganization | undefined;
   try {
     const { usersRepository } = await import("../../db/repositories/users");
-    current = await usersRepository.findWithOrganizationForWrite(resolved.id);
+    current = await usersRepository.findWithOrganizationForWrite(expected.userId);
   } catch (error) {
     // error-policy:J1 the authorization boundary must distinguish an
     // unavailable primary membership read from an ordinary access denial.
     logger.error("[Billing Mutation Authority] Primary membership lookup failed", {
-      userId: resolved.id,
+      userId: expected.userId,
       error: error instanceof Error ? error.message : String(error),
     });
     throw new ApiError(
@@ -474,7 +599,11 @@ export async function requireCurrentBillingManagerSession(
     );
   }
 
-  if (!current || current.id !== resolved.id || current.steward_user_id !== resolved.steward_id) {
+  if (
+    !current ||
+    current.id !== expected.userId ||
+    (expected.stewardUserId !== undefined && current.steward_user_id !== expected.stewardUserId)
+  ) {
     throw AuthenticationError("The signed-in session is no longer valid");
   }
   if (
@@ -488,7 +617,7 @@ export async function requireCurrentBillingManagerSession(
   if (
     !current.organization_id ||
     !current.organization ||
-    current.organization_id !== resolved.organization_id ||
+    current.organization_id !== expected.organizationId ||
     current.organization.id !== current.organization_id ||
     !current.organization.is_active
   ) {
@@ -497,11 +626,56 @@ export async function requireCurrentBillingManagerSession(
   if (current.role !== "owner" && current.role !== "admin") {
     throw ForbiddenError("Only organization owners and admins can cancel billable resources");
   }
+  return current;
+}
 
+export type CurrentBillingManagerCredential = {
+  user: CurrentBillingManager;
+  /** The acknowledged first-party mobile credential, or null for a browser session. */
+  mobileCredential: ApiKey | null;
+};
+
+/**
+ * Billing authority for starting and confirming a subscription checkout: a
+ * signed-in owner/admin session, or that owner/admin's acknowledged first-party
+ * mobile credential (`eliza_mobile_…`). The mobile secret is read from primary
+ * storage on every call and must still belong to the caller's current
+ * organization. Standard API keys never qualify; cancellation, plan changes and
+ * the Customer Portal stay on `requireCurrentBillingManagerSession`.
+ */
+export async function requireCurrentBillingManager(
+  c: AppContext,
+): Promise<CurrentBillingManagerCredential> {
+  const presented = readApiKeyCredential(c);
+  if (!presented) {
+    return { user: await requireCurrentBillingManagerSession(c), mobileCredential: null };
+  }
+  if (!isMobileApiKeySecret(presented)) {
+    throw new ApiError(
+      401,
+      "session_auth_required",
+      "A signed-in user session or the app's own credential is required to manage billing.",
+    );
+  }
+  const credential = await validateApiKeyOrServiceUnavailable(presented);
+  if (!credential) throw AuthenticationError("Invalid or expired API key");
+  if (!credential.is_active) throw ForbiddenError("API key is inactive");
+  if (!credential.expires_at || credential.expires_at <= new Date()) {
+    throw AuthenticationError("API key has expired");
+  }
+  if (!credential.source_app_id) {
+    throw AuthenticationError("Mobile API key identity could not be proven");
+  }
+  const current = await loadCurrentBillingManager({
+    userId: credential.user_id,
+    organizationId: credential.organization_id,
+  });
   const authorized = toAuthedUser(current) as CurrentBillingManager;
+  await requireActiveAuthLifecycle(authorized);
   c.set("user", authorized);
-  c.set("authMethod", "session");
-  return authorized;
+  c.set("authMethod", "api_key");
+  c.set("apiKeyId", credential.id);
+  return { user: authorized, mobileCredential: credential };
 }
 
 async function requireActiveAuthLifecycle(user: AuthedUserWithOrg): Promise<void> {

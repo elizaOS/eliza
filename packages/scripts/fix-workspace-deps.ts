@@ -15,10 +15,10 @@
  *     explicit publish/deploy compatibility work that needs registry specs.
  *
  * Usage:
- *   node packages/scripts/fix-workspace-deps.ts                  # set workspace:*
- *   node packages/scripts/fix-workspace-deps.ts --check          # CI — exit 1 if any need fixing
- *   node packages/scripts/fix-workspace-deps.ts --restore        # restore from HEAD
- *   node packages/scripts/fix-workspace-deps.ts --restore --ref HEAD~3  # restore from specific ref
+ *   bun packages/scripts/fix-workspace-deps.ts                  # set workspace:*
+ *   bun packages/scripts/fix-workspace-deps.ts --check          # CI — exit 1 if any need fixing
+ *   bun packages/scripts/fix-workspace-deps.ts --restore        # restore from HEAD
+ *   bun packages/scripts/fix-workspace-deps.ts --restore --ref HEAD~3  # restore from specific ref
  *
  * Workflow:
  *   1. Pull/clone
@@ -322,7 +322,7 @@ if (CHECK_MODE) {
       console.log(`  ${issue}`);
     }
     console.log(
-      `\nRun \`node packages/scripts/fix-workspace-deps.ts\` to fix them.`,
+      `\nRun \`bun packages/scripts/fix-workspace-deps.ts\` to fix them.`,
     );
     process.exit(1);
   } else {

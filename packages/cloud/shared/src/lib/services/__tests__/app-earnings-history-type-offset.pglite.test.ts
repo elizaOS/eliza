@@ -22,6 +22,7 @@ process.env.NODE_ENV = "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
+import { apiKeys } from "../../../db/schemas/api-keys";
 import { appEarningsTransactions } from "../../../db/schemas/app-earnings";
 import {
   appDeploymentStatusEnum,
@@ -29,7 +30,10 @@ import {
   apps,
   userDatabaseStatusEnum,
 } from "../../../db/schemas/apps";
+import { generations } from "../../../db/schemas/generations";
+import { jobs } from "../../../db/schemas/jobs";
 import { organizations } from "../../../db/schemas/organizations";
+import { usageRecords } from "../../../db/schemas/usage-records";
 import { users } from "../../../db/schemas/users";
 
 type ClientModule = typeof import("../../../db/client");
@@ -63,6 +67,10 @@ beforeAll(async () => {
         appDeploymentStatusEnum,
         userDatabaseStatusEnum,
         appReviewStatusEnum,
+        apiKeys,
+        generations,
+        jobs,
+        usageRecords,
         apps,
         appEarningsTransactions,
       } as never,

@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "packages/auth/src/accounts/account-pool.ts",
+    "packages/auth/src/accounts/account-selection.ts",
+    "packages/auth/src/auth/account-storage.ts"
+  ],
+  "conformance": "packages/auth/quint/check-account-pool-least-used.mjs",
+  "bounds": {
+    "domain": "Least-used picks rank against live in-process selection stamps after the expiry await.",
+    "limitations": [
+      "Two provider namespaces with two accounts each, identical account ids across providers, two overlapping slots, four picks, one named session, and one preview. Provider inventory remains eligible and stable while selection waits. Distinct fixed priorities break equal-usage and equal-age ties.",
+      "Each provider uses equal usage, except one bounded case with one account above its peer. A logical clock models a same-millisecond burst, with one later recorded use and one idle restart. Local selection stamps reset on restart, while recorded use persists.",
+      "Round-robin affinity and provider health races have separate models. Priority, quota-aware and reset-based ranking, mixed strategies, expiry-write failure, eligibility updates during waits, caller cancellation, and 10,000-entry eviction remain outside this case."
+    ]
+  },
+  "cases": [
+    {
+      "name": "least-used-stamp-ownership",
+      "main": "AccountPoolLeastUsed",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "SelectedWithinProvider",
+        "UsageAndEffectiveAgeOrderPicks",
+        "StampsChangeOnlyForFreshPicks",
+        "PersistedRecencySurvivesRestart"
+      ],
+      "temporal": ["PendingPicksSettle"],
+      "temporalChecks": [
+        {
+          "property": "PendingPicksSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of finish(slot) settles a pending pick. The expiry check completes successfully and the process survives until the pick is returned.",
+            "Idle restart clears only in-memory state. Real scheduler fairness, asynchronous expiry failure and a restart during an in-flight call are outside the model."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 1000
+    }
+  ]
+}

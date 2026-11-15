@@ -169,7 +169,8 @@ export const workflowAction: Action = {
     {
       name: 'versionId',
       required: false,
-      description: 'Revision version id.',
+      description:
+        'Revision version id. Required for restore. For activate and deactivate, the change applies only if this is still the current version.',
       schema: { type: 'string' },
     },
   ],
@@ -293,10 +294,18 @@ export const workflowAction: Action = {
         });
       }
       if (op === 'activate' || op === 'deactivate') {
+        // A supplied version binds the change to the exact version that was reviewed.
+        const expectedVersionId = text(params.versionId);
+        if (params.versionId !== undefined && !expectedVersionId) {
+          throw new WorkflowApiError(
+            'Select a valid workflow version before changing activation.',
+            400
+          );
+        }
         const workflow =
           op === 'activate'
-            ? await service.activateWorkflow(workflowId as string, ownerId)
-            : await service.deactivateWorkflow(workflowId as string, ownerId);
+            ? await service.activateWorkflow(workflowId as string, ownerId, expectedVersionId)
+            : await service.deactivateWorkflow(workflowId as string, ownerId, expectedVersionId);
         return respond(callback, {
           success: true,
           text: `${workflow.name} is now ${workflow.active ? 'active' : 'inactive'}.`,

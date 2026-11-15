@@ -1,0 +1,85 @@
+{
+	"sources": [
+		"packages/core/src/services/notification.ts",
+		"packages/core/src/types/notification.ts",
+		"packages/core/test/notification.test.ts"
+	],
+	"conformance": "packages/core/scripts/quint-notification-conformance.mjs",
+	"bounds": "Two notification sequence values, a serial write owner, append/read-mark/delete/clear actions, one atomic cache snapshot per agent, failures before or after commit, one stop/restart cycle at a time. The payload case follows one admitted notification, one producer, one reusable observer slot and two payload values.",
+	"fairness": "AdmittedOperationSettles assumes weak fairness for each enabled local mutation, persistence acknowledgement, reconciliation read and observational broadcast. AdmittedPayloadPersists assumes weak fairness for materialization and a successful write. Permanent non-settling host/storage operations are excluded from progress.",
+	"limitations": [
+		"A single serial owner is explicit. Concurrent independent NotificationService instances writing the same agent cache need a separate cross-process ownership model.",
+		"Hydration begins with a valid version-2 snapshot. NotificationHydration checks legacy migration, coordinate rejection and repaired startup. NotificationGroupPolicy checks grouped replacement and retention, and its triage case checks all supported category defaults and explicit priority and expiry choices.",
+		"The write-queue case projects title/body/data content to identity plus a read mark. The payload case represents complete nested JSON by a distinguishable value and checks its ownership independently of write ambiguity. The real SQLite case covers writes, live events, grouped callbacks, list APIs and restart.",
+		"Storage operations are atomic but their outcome may be ambiguous to the caller. Restart in this case assumes a successful read of the durable version-2 snapshot.",
+		"Ordinary synchronous list/getUnreadCount APIs can observe provisional in-memory work. The DurableFence invariant concerns the quiescent native and durable-read APIs.",
+		"Conformance executes 75 real SQLite/runtime tests. Named scenarios gate real API effects and do not establish exhaustive schedule equivalence."
+	],
+	"cases": [
+		{
+			"name": "durable-writes",
+			"main": "NotificationDurability",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"ValidSequences",
+				"ReadMarksReferenceRows",
+				"PublishedWasCommitted",
+				"UncertaintyFencesMutation",
+				"DurableFence",
+				"StoppedHasNoProvisionalRows",
+				"SuccessAfterAcknowledgement"
+			],
+			"temporal": ["AdmittedOperationSettles"],
+			"maxSteps": 80,
+			"samples": 1000,
+			"temporalChecks": [
+				{
+					"property": "AdmittedOperationSettles",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in NotificationDurability: AdmittedOperationSettles = (mutate.weakFair(s) and exhausted.weakFair(s) and persist(\"ack\").weakFair(s) and reconcile(true).weakFair(s) and broadcast(true).weakFair(s)).implies((s.phase != \"idle\").leadsTo(s.phase == \"idle\"))",
+						"The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+					]
+				}
+			]
+		},
+		{
+			"name": "payload-ownership",
+			"main": "NotificationPayloadOwnership",
+			"init": "init",
+			"step": "step",
+			"invariants": ["OwnedPayloadMatchesAdmission"],
+			"temporal": [
+				"AdmissionCapturesPayload",
+				"AdmittedPayloadPersists",
+				"AdmittedPayloadPersistsWithoutFairness"
+			],
+			"maxSteps": 30,
+			"samples": 200,
+			"temporalChecks": [
+				{
+					"property": "AdmissionCapturesPayload",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness. Check the payload captured at submission and its stability in every later transition."
+					]
+				},
+				{
+					"property": "AdmittedPayloadPersists",
+					"expect": "holds",
+					"assumptions": [
+						"Assume weak fairness of materialize and persist. This case assumes that storage can complete a write. Ambiguous storage outcomes are covered by the durable-writes case."
+					]
+				},
+				{
+					"property": "AdmittedPayloadPersistsWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. A submitted payload can wait indefinitely without materialization or persistence."
+					]
+				}
+			]
+		}
+	]
+}

@@ -25,18 +25,57 @@ public class SensePlugin extends Plugin {
         client().releaseInvocationBridge(bridgeGeneration);
         super.handleOnDestroy();
     }
-    private void resolve(PluginCall call, Bundle result) {
+    private JSObject statusReply(Bundle result) {
         JSObject out = new JSObject(); out.put("available", result != null);
+        if (result == null && client().installation() == SenseListenerClient.Installation.ABSENT) {
+            out.put("reason", "not-installed");
+        }
         if (result != null) {
             out.put("state", result.getString("state", "OFF")); out.put("label", result.getString("label", ""));
             out.put("consented", result.getBoolean("consented", false)); out.put("listening", result.getBoolean("listening", false));
             out.put("microphoneOpen", result.getBoolean("microphoneOpen", false));
         }
-        call.resolve(out);
+        return out;
     }
-    @PluginMethod public void status(PluginCall call) { resolve(call, client().status()); }
-    @PluginMethod public void pause(PluginCall call) { resolve(call, client().pause()); }
-    @PluginMethod public void turnOff(PluginCall call) { resolve(call, client().turnOff()); }
+
+    /** The provider can report OFF or a policy condition that takes precedence over user pause. */
+    private static boolean pauseState(String state) {
+        switch (state) {
+            case "OFF":
+            case "PERMISSION_REQUIRED":
+            case "NOTIFICATIONS_REQUIRED":
+            case "STOPPED_AFTER_ERRORS":
+            case "STOPPED_INDICATOR_LOST":
+            case "PAUSED_OTHER_USER":
+            case "WAITING_FOR_UNLOCK":
+            case "SPEECH_UNAVAILABLE":
+            case "PAUSED_USER":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static JSObject unconfirmedStop() {
+        JSObject out = new JSObject(); out.put("available", false); return out;
+    }
+
+    private JSObject stopReply(Bundle result, boolean turnOff) {
+        if (result == null) return statusReply(null);
+        if (!result.getBoolean("saved", false)
+                || result.getBoolean("listening", true) || result.getBoolean("microphoneOpen", true)) {
+            return unconfirmedStop();
+        }
+        String state = result.getString("state");
+        if (state == null || !(turnOff ? "OFF".equals(state) : pauseState(state))) return unconfirmedStop();
+        JSObject out = statusReply(result);
+        out.put("saved", true);
+        return out;
+    }
+
+    @PluginMethod public void status(PluginCall call) { call.resolve(statusReply(client().status())); }
+    @PluginMethod public void pause(PluginCall call) { call.resolve(stopReply(client().pause(), false)); }
+    @PluginMethod public void turnOff(PluginCall call) { call.resolve(stopReply(client().turnOff(), true)); }
     @PluginMethod public void openSettings(PluginCall call) {
         Intent intent = client().settingsIntent(); boolean opened = false;
         if (intent != null) try { getActivity().startActivity(intent); opened = true; } catch (RuntimeException unavailable) { }

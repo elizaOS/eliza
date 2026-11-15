@@ -1,4 +1,9 @@
-/** Generate the self-contained child prelude; packaged workers cannot import plugin source files. */
+/**
+ * Generate the self-contained child prelude; packaged workers cannot import plugin source files.
+ * Minified output differs between Bun releases, so generate and --check with the repository's
+ * pinned Bun (packageManager, BUN_VERSION in ci.yml). __tests__/unit/worker-lease-prelude.test.ts
+ * guards the behaviour independently of the Bun version.
+ */
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -35,5 +40,7 @@ if (formatted.status !== 0)
 const generated = formatted.stdout;
 if (process.argv.includes('--check')) {
   if (readFileSync(target, 'utf8') !== generated)
-    throw new Error('Worker lease prelude is stale; regenerate it');
+    throw new Error(
+      `Worker lease prelude is stale; regenerate it with the pinned Bun (running ${Bun.version})`
+    );
 } else writeFileSync(target, generated);

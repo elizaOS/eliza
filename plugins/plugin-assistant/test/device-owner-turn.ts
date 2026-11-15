@@ -2,17 +2,24 @@ import type { IAgentRuntime, UUID } from "@elizaos/core";
 import type { DeviceCredential } from "../src/services/device-actions/contract.ts";
 import { withDeviceActionTurn } from "../src/services/device-actions/service.ts";
 
-/** These fixtures authenticate the owner with the same subject and entity ID. */
+/** Authenticate the owner turn. Production subjects are auth identities, not
+ * entity UUIDs: pass `ownerEntityId` to bind a distinct mapped owner entity.
+ * Without it the subject doubles as the entity ID. */
 export function withOwnerDeviceActionTurn<T>(
   runtime: IAgentRuntime,
   credential: DeviceCredential,
   fn: () => Promise<T>,
-  options: NonNullable<Parameters<typeof withDeviceActionTurn>[3]> = {},
+  {
+    ownerEntityId,
+    ...options
+  }: NonNullable<Parameters<typeof withDeviceActionTurn>[3]> & {
+    ownerEntityId?: UUID;
+  } = {},
 ): Promise<T> {
   return withDeviceActionTurn(runtime, credential, fn, {
     requestCaller: {
       subjectUserId: credential.subjectUserId,
-      entityId: credential.subjectUserId as UUID,
+      entityId: ownerEntityId ?? (credential.subjectUserId as UUID),
       role: "OWNER",
     },
     ...options,

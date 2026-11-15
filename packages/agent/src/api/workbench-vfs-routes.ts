@@ -14,6 +14,7 @@ import {
   CLOUD_CONTAINER_SERVICE_TYPE,
   type CloudCodingContainerService,
   type CloudVfsBundle,
+  isStandardBase64,
   PostWorkbenchVfsCompilePluginRequestSchema,
   PostWorkbenchVfsGitRequestSchema,
   PostWorkbenchVfsLoadPluginRequestSchema,
@@ -415,7 +416,12 @@ async function handleFile(
   }
 
   if (method === "PUT") {
-    const raw = await readJsonBody<Record<string, unknown>>(req, res);
+    // JSON can encode one UTF-8 control byte as six ASCII bytes (\u0000).
+    // This also covers base64 expansion. The VFS still applies its decoded
+    // per-file limit; this request budget only covers transport and framing.
+    const raw = await readJsonBody<Record<string, unknown>>(req, res, {
+      maxBytes: vfs.maxFileBytes * 6 + 4096,
+    });
     if (raw === null) return;
     const parsed = PutWorkbenchVfsFileRequestSchema.safeParse(raw);
     if (!parsed.success) {
@@ -424,6 +430,13 @@ async function handleFile(
         parsed.error.issues[0]?.message ?? "Invalid file request",
         400,
       );
+      return;
+    }
+    if (
+      parsed.data.encoding === "base64" &&
+      !isStandardBase64(parsed.data.content)
+    ) {
+      error(res, "content is not valid base64", 400);
       return;
     }
     const data =

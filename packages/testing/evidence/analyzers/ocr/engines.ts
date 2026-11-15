@@ -555,7 +555,7 @@ export class UnlimitedOcrEngine implements OcrEngine {
       return {
         ok: false,
         reason: isEnoent(error)
-          ? `ELIZA_GPU_VISION_URL unset and no gpu-vision serve.json at ${statePath} (start the service: node packages/scripts/gpu-vision/serve.ts)`
+          ? `ELIZA_GPU_VISION_URL unset and no gpu-vision serve.json at ${statePath} (start the service: bun packages/scripts/gpu-vision/serve.ts)`
           : `ELIZA_GPU_VISION_URL unset and gpu-vision serve.json unreadable at ${statePath}: ${errMessage(error)}`,
       };
     }

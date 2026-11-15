@@ -13,7 +13,6 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { AppContext, AppEnv, Bindings } from "../../types/cloud-worker-env";
 import { readStewardAccessCookieFromHeader } from "../auth/steward-cookies";
 import { buildRedisClient, type CompatibleRedis } from "../cache/redis-factory";
-import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import { logger } from "../utils/logger";
 import { getCloudflareRateState } from "./cloudflare-rate-state";
 
@@ -663,7 +662,7 @@ export function rateLimit(
     let result: CheckResult;
     let policy = "redis";
     let headersConfig = effectiveConfig;
-    const leaseEnabled = effectiveConfig.localLease !== false && isHotPathCachesEnabled(env);
+    const leaseEnabled = effectiveConfig.localLease !== false;
     const leaseKey = honoLeaseKey(key, effectiveConfig);
     const now = Date.now();
     const lease = honoRateLimitLeases.get(leaseKey);

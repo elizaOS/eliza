@@ -1,0 +1,30 @@
+{
+  "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
+    "packages/ui/src/state/durable-draft.ts"
+  ],
+  "conformance": "packages/ui/quint/check-draft-controller.mjs",
+  "bounds": "One open/review/release/consume operation, one separate host application and acknowledgement (success or failure), one newer edit, one binding retirement, one consume authority revocation. Six symbolic editor/storage text values. Consume storage completions succeed here and are faulted in a separate case. Synchronous hosts are covered by existing implementation tests. Release persistence may fail before writing or lose its acknowledgement after writing. reads succeed.",
+  "cases": [
+    {
+      "name": "bounded-host-ownership",
+      "main": "DraftRestoreOwnership",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": ["Terminates"],
+      "maxSteps": 10,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "Terminates",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in DraftRestoreOwnership: Terminates = progress.weakFair(s) implies eventually(s.applied and s.acknowledged)",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

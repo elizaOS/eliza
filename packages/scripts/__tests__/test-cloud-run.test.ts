@@ -846,6 +846,35 @@ describe("watchdog configuration", () => {
     expect(result.status).toBe(0);
   });
 
+  it("keeps a multi-byte character that straddles two output chunks", async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter();
+    child.pid = 321;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    const out = [];
+    const resultPromise = runCommandWithWatchdog("bun", ["test"], {
+      timeoutMs: 10_000,
+      writeOut: (text) => out.push(text),
+      writeErr: () => {},
+      signalSource,
+      identityFn: () => "supervisor",
+      spawnFn: () => child,
+    });
+
+    // "héllo": the two UTF-8 bytes of "é" arrive in different chunks.
+    child.stdout.write(Buffer.from([0x68, 0xc3]));
+    child.stdout.write(Buffer.from([0xa9, 0x6c, 0x6c, 0x6f]));
+    child.stdout.end();
+    child.stderr.end();
+    await new Promise((resolve) => setImmediate(resolve));
+    child.emit("close", 0, null);
+    const result = await resultPromise;
+
+    expect(result.stdout).toBe("héllo");
+    expect(out.join("")).toBe("héllo");
+  });
+
   it("fails closed when forced Windows tree termination fails", async () => {
     const codes = [0, 5];
     await expect(

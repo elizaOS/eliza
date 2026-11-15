@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/api/pending-request-map.ts",
+    "packages/agent/src/api/pty-ws-bridge.ts"
+  ],
+  "bounds": {
+    "domain": "Two request generations and one reconnect timer.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_transport",
+      "main": "api_transport",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

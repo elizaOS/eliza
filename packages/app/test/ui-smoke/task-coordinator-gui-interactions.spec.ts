@@ -382,7 +382,7 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
     page.getByText("Loaded task coordinator fixtures"),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Delete task", exact: true }).click();
+  await page.getByRole("button", { name: "Archive task", exact: true }).click();
   await expect.poll(() => recorder.archiveRequests()).toEqual(["task-smoke-1"]);
 
   await openAppPath(page, "/task-coordinator");
@@ -396,5 +396,7 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
   await openAppPath(page, "/task-coordinator");
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
   await page.locator('[data-agent-id="open-task-smoke-1"]').click();
-  await expect(page.getByRole("button", { name: "Delete task" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Archive task" }),
+  ).toBeVisible();
 });

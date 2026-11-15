@@ -10,7 +10,6 @@
   "aospDeviceTreePaths": [
     "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk"
   ],
-  "envPrefix": "ELIZA",
   "propertyPrefix": "elizaos",
   "vendorDir": "android/vendor/eliza",
   "initRcName": "init.eliza.rc",

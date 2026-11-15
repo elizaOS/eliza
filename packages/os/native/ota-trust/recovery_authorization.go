@@ -79,9 +79,36 @@ func persistPreparedAuthorization(directory string, descriptor []byte, device ad
 // Current known revocations and lane/global security floors still apply. The
 // caller must read identities from its committed journal and actual installed
 // package, then perform signature/runtime checks and permit only one recovery.
-func LoadRecoveryAuthorization(directory, admissionDirectory, identity, candidateDigest string, candidateVersion int64, recoveryDigest string, recoveryVersion int64, signer string, globalSecurityFloor int64) (material *RecoveryMaterial, err error) {
+func LoadRecoveryAuthorization(directory, admissionDirectory, identity, candidateDigest string, candidateVersion int64, recoveryDigest string, recoveryVersion int64, signer string, globalSecurityFloor int64) (*RecoveryMaterial, error) {
+	material, refusal, err := preparedRecovery(directory, admissionDirectory, identity, candidateDigest, candidateVersion, recoveryDigest, recoveryVersion, signer, globalSecurityFloor)
+	if err == nil && refusal != "" {
+		err = errors.New("recovery revoked or below security floor")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return material, nil
+}
+
+// EvaluatePreparedRecovery says whether LoadRecoveryAuthorization can load
+// this recovery: "loadable", or "revoked-artifact" or "below-security-floor".
+// Revocations and floors only grow, so a refusal is permanent and the caller
+// may stop waiting for this recovery. Any other failure is an error and
+// decides nothing.
+func EvaluatePreparedRecovery(directory, admissionDirectory, identity, candidateDigest string, candidateVersion int64, recoveryDigest string, recoveryVersion int64, signer string, globalSecurityFloor int64) (string, error) {
+	_, refusal, err := preparedRecovery(directory, admissionDirectory, identity, candidateDigest, candidateVersion, recoveryDigest, recoveryVersion, signer, globalSecurityFloor)
+	if err != nil {
+		return "", err
+	}
+	if refusal == "" {
+		return "loadable", nil
+	}
+	return refusal, nil
+}
+
+func preparedRecovery(directory, admissionDirectory, identity, candidateDigest string, candidateVersion int64, recoveryDigest string, recoveryVersion int64, signer string, globalSecurityFloor int64) (material *RecoveryMaterial, refusal string, err error) {
 	if !validHex(candidateDigest) || !validHex(recoveryDigest) || !validHex(signer) || !bounded(globalSecurityFloor, 1, 2147483647) {
-		return nil, errors.New("invalid recovery observations")
+		return nil, "", errors.New("invalid recovery observations")
 	}
 	err = lockedPrepared(directory, func() error {
 		record, e := readPrepared(directory, identity)
@@ -93,21 +120,19 @@ func LoadRecoveryAuthorization(directory, admissionDirectory, identity, candidat
 			return errors.New("recovery authorization identity mismatch")
 		}
 		return lockedAdmission(admissionDirectory, func() error {
-			state, e := readAdmission(admissionDirectory)
+			floor, e := preparedLane(admissionDirectory, d)
 			if e != nil {
 				return e
 			}
-			if state.Repository != d.Source.Repository || state.Distribution != d.Distribution {
-				return errors.New("recovery enrollment mismatch")
-			}
-			floor, exists := state.Lanes[d.Channel]
-			if !exists || floor.Sequence < d.Sequence || floor.Revision < d.Rollout.Revision {
-				return errors.New("recovery authority state lost")
-			}
 			// Candidate revocation is precisely why local recovery can be needed. A
 			// revoked recovery artifact itself is never an authorized escape route.
-			if contains(floor.Revoked, d.Recovery.SHA256) || d.Recovery.SecurityEpoch < max(globalSecurityFloor, floor.Security) {
-				return errors.New("recovery revoked or below security floor")
+			if contains(floor.Revoked, d.Recovery.SHA256) {
+				refusal = "revoked-artifact"
+				return nil
+			}
+			if d.Recovery.SecurityEpoch < max(globalSecurityFloor, floor.Security) {
+				refusal = "below-security-floor"
+				return nil
 			}
 			artifact, e := json.Marshal(d.Recovery)
 			if e != nil {
@@ -118,9 +143,101 @@ func LoadRecoveryAuthorization(directory, admissionDirectory, identity, candidat
 		})
 	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return material, nil
+	return material, refusal, nil
+}
+
+// preparedLane reads the lane floor a prepared descriptor was admitted under.
+// The caller holds the admission lock. A floor below the descriptor means the
+// durable state was lost, which never reads as a decision.
+func preparedLane(admissionDirectory string, d releaseDescriptor) (admissionFloor, error) {
+	state, err := readAdmission(admissionDirectory)
+	if err != nil {
+		return admissionFloor{}, err
+	}
+	if state.Repository != d.Source.Repository || state.Distribution != d.Distribution {
+		return admissionFloor{}, errors.New("prepared enrollment mismatch")
+	}
+	floor, exists := state.Lanes[d.Channel]
+	if !exists || floor.Sequence < d.Sequence || floor.Revision < d.Rollout.Revision {
+		return admissionFloor{}, errors.New("prepared authority state lost")
+	}
+	return floor, nil
+}
+
+type commitPolicy struct {
+	Lower          int64 `json:"trustedLowerMs"`
+	Upper          int64 `json:"trustedUpperMs"`
+	SecurityFloor  int64 `json:"securityFloor"`
+	RefreshedAfter int64 `json:"refreshedAfterLowerMs"`
+	CommitBy       int64 `json:"commitByUpperMs"`
+}
+
+// EvaluatePreparedForCommit decides, just before commit, whether a prepared
+// release may still install. Admission is not a lasting permission. policyJSON
+// holds the current qualified bounds, the installed/global security floor,
+// refreshedAfterLowerMs, the oldest metadata refresh the caller accepts, and
+// commitByUpperMs, the latest trusted time the commit may happen (0 for none).
+// Together they bound commit time minus refresh time by
+// commitByUpperMs - refreshedAfterLowerMs, so a revocation published before a
+// commit is seen unless it is newer than that bound. It reads only local state
+// and returns "eligible" or the first refusal: "expired", "rollout-time",
+// "revoked-artifact" (candidate or recovery), "below-security-floor",
+// "superseded" (the lane has authenticated a newer sequence, even one this
+// device defers: publishing it withdraws this one) or "stale-metadata" (no
+// refresh at or after refreshedAfterLowerMs, or the bounds reach past
+// commitByUpperMs).
+func EvaluatePreparedForCommit(directory, admissionDirectory, identity string, policyJSON []byte) (decision string, err error) {
+	var policy commitPolicy
+	if err = decodeAdmission(policyJSON, &policy); err != nil {
+		return "", err
+	}
+	if !bounded(policy.Lower, 1, safeInteger) || !bounded(policy.Upper, policy.Lower, safeInteger) || !bounded(policy.SecurityFloor, 1, 2147483647) || !bounded(policy.RefreshedAfter, 0, safeInteger) || !bounded(policy.CommitBy, 0, safeInteger) {
+		return "", errors.New("invalid commit freshness policy")
+	}
+	err = lockedPrepared(directory, func() error {
+		record, e := readPrepared(directory, identity)
+		if e != nil {
+			return e
+		}
+		return lockedAdmission(admissionDirectory, func() error {
+			floor, e := preparedLane(admissionDirectory, record.Descriptor)
+			if e != nil {
+				return e
+			}
+			decision = commitDecision(record.Descriptor, floor, policy)
+			return nil
+		})
+	})
+	if err != nil {
+		return "", err
+	}
+	return decision, nil
+}
+
+// commitDecision reads the rollout window from the prepared descriptor. The
+// lane floor keeps only a hash of a newer rollout revision at the same
+// sequence, so a later pause or earlier expiry at that sequence does not stop
+// an already prepared commit; revocations and newer sequences do.
+func commitDecision(d releaseDescriptor, floor admissionFloor, policy commitPolicy) string {
+	starts, _ := releaseTime(d.Rollout.Starts)
+	expires, _ := releaseTime(d.Rollout.Expires)
+	switch {
+	case policy.Upper >= expires:
+		return "expired"
+	case policy.Lower < starts:
+		return "rollout-time"
+	case contains(floor.Revoked, d.Candidate.SHA256) || contains(floor.Revoked, d.Recovery.SHA256):
+		return "revoked-artifact"
+	case min(d.SecurityFloor, d.Candidate.SecurityEpoch, d.Recovery.SecurityEpoch) < max(policy.SecurityFloor, floor.Security):
+		return "below-security-floor"
+	case floor.Sequence > d.Sequence:
+		return "superseded"
+	case floor.Refreshed < policy.RefreshedAfter, policy.CommitBy > 0 && policy.Upper > policy.CommitBy:
+		return "stale-metadata"
+	}
+	return "eligible"
 }
 func readPrepared(directory, identity string) (*preparedAuthorization, error) {
 	if !validHex(identity) {

@@ -11,11 +11,13 @@ class ChromiumBrowserLauncherTest {
         val url = "https://accounts.google.com/signin?continue=https%3A%2F%2Fwww.google.com#next"
         assertEquals(url, ChromiumBrowserLauncher.validatedUrl(url))
         assertEquals("http://localhost:8080/", ChromiumBrowserLauncher.validatedUrl("http://localhost:8080/"))
+        val unescaped = "https://fonts.example/css?family=A|B&d=50%"
+        assertEquals(unescaped, ChromiumBrowserLauncher.validatedUrl(unescaped))
     }
 
     @Test
     fun rejectsUnsafeSchemesCredentialsAndMalformedAddresses() {
-        for (url in listOf("javascript:alert(1)", "intent://scan/#Intent;end", "file:///data/data/app", "https:///missing-host", "https://user:secret@example.com/", "https://example.com:65536/", "https://example.com/\nheader", "")) {
+        for (url in listOf("javascript:alert(1)", "intent://scan/#Intent;end", "file:///data/data/app", "https:///missing-host", "https://user:secret@example.com/", "https://example.com:65536/", "https://example.com/\nheader", "https://example.com\\@other.example/", "")) {
             val failure = assertThrows(BrowserLaunchException::class.java) {
                 ChromiumBrowserLauncher.validatedUrl(url)
             }

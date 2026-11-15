@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Build + stage the desktop generic-GGUF runtime (#8808 C3).
 //
-//   node build.mjs
+//   bun build.mjs
 //
 // 1. Builds the vendored llama.cpp as a shared lib (Metal on macOS).
 // 2. Compiles shim.cpp (the thin C ABI bun:ffi binds) linking libllama.

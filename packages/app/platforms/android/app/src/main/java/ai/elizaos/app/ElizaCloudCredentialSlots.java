@@ -139,7 +139,7 @@ final class ElizaCloudCredentialSlots implements CloudCredentialSlots {
     private void requireNativeSlot(String slot) {
         if (config.pendingSlot.equals(slot)) return;
         for (CloudSignInEnvironment environment : config.environments())
-            if (config.receiptSlot(environment).equals(slot)) return;
+            if (config.receiptSlot(environment).equals(slot) || config.retiringSlot(environment).equals(slot)) return;
         throw new IllegalArgumentException("Unsupported credential slot");
     }
 

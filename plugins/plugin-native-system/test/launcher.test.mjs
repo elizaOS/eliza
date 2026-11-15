@@ -8,6 +8,7 @@ const {
   appKey,
   localFavorites: sharedLocalFavorites,
   MAX_FAVORITES,
+  observeLauncher,
 } = await import("../src/client/launcher.ts");
 
 const describeLauncherApps = (apps) =>
@@ -1373,4 +1374,129 @@ test("the web plugin reports host reads without inventing native facts", async (
     webLocaleInfo(() => ({ locale: "fr-FR", hour12: false })),
     { locale: "fr-FR", hour24: true },
   );
+});
+
+/** A document whose visibility and resume events the test fires by hand. */
+function fakeDocument() {
+  const listeners = new Map();
+  const previous = globalThis.document;
+  globalThis.document = {
+    hidden: false,
+    addEventListener: (type, listener) => listeners.set(type, listener),
+    removeEventListener: (type) => listeners.delete(type),
+  };
+  return {
+    fire: (type) => listeners.get(type)?.(),
+    restore: () => {
+      globalThis.document = previous;
+    },
+  };
+}
+const settle = () => new Promise((resolve) => setTimeout(resolve, 160));
+
+test("returning to Home re-reads icons only after Android reported a change", async () => {
+  const doc = fakeDocument();
+  let appsChanged;
+  const { launcher, calls } = stub();
+  const stop = observeLauncher(
+    {
+      addListener: async (_event, listener) => {
+        appsChanged = listener;
+        return { remove() {} };
+      },
+    },
+    launcher,
+  );
+  try {
+    await launcher.load();
+    await settle();
+    doc.fire("resume");
+    await settle();
+    doc.fire("visibilitychange");
+    await settle();
+    const lists = () => calls.filter(([name]) => name === "list");
+    assert.deepEqual(lists(), [
+      ["list", { icons: true }],
+      ["list", undefined],
+      ["list", undefined],
+    ]);
+    assert.equal(
+      launcher.snapshot().apps.find((app) => app.label === "Settings").icon,
+      icon,
+      "icons from the last full read stay",
+    );
+    appsChanged({});
+    doc.fire("resume");
+    await settle();
+    assert.deepEqual(lists().at(-1), ["list", { icons: true }]);
+    assert.equal(lists().length, 4, "the change and the resume share one read");
+  } finally {
+    stop();
+    doc.restore();
+  }
+});
+
+test("a new or newly unlocked entry on a light re-read is read again with icons", async () => {
+  let listed = apps;
+  const calls = [];
+  const launcher = createLauncher(
+    {
+      list: async (options) => {
+        calls.push(options);
+        return { apps: listed };
+      },
+      launch: async () => {},
+    },
+    () => {},
+    { icons: true },
+  );
+  await launcher.load();
+  listed = [...apps, { packageName: "org.example.new", label: "New", icon }];
+  await launcher.refresh({ reuseIcons: true });
+  assert.deepEqual(calls, [{ icons: true }, undefined, { icons: true }]);
+  assert.equal(launcher.snapshot().apps.length, 5);
+});
+
+test("without the change listener every resume is a full read", async () => {
+  const doc = fakeDocument();
+  const { launcher, calls } = stub();
+  const stop = observeLauncher({}, launcher, { follow: false });
+  try {
+    await launcher.load();
+    doc.fire("resume");
+    await settle();
+    doc.fire("resume");
+    await settle();
+    assert.deepEqual(
+      calls.filter(([name]) => name === "list"),
+      [
+        ["list", { icons: true }],
+        ["list", { icons: true }],
+        ["list", { icons: true }],
+      ],
+    );
+  } finally {
+    stop();
+    doc.restore();
+  }
+});
+
+test("an aliased entry does not force a full re-read on every light re-read", async () => {
+  const calls = [];
+  const launcher = createLauncher(
+    {
+      list: async (options) => {
+        calls.push(options);
+        return {
+          apps: [...apps, { packageName: "org.example.old", label: "Old" }],
+        };
+      },
+      launch: async () => {},
+    },
+    () => {},
+    { icons: true, aliases: { "org.example.old": "com.android.settings" } },
+  );
+  await launcher.load();
+  await launcher.refresh({ reuseIcons: true });
+  assert.deepEqual(calls, [{ icons: true }, undefined]);
 });

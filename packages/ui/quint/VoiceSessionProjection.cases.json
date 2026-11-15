@@ -1,0 +1,17 @@
+{
+  "sources": ["packages/ui/src/voice/voice-session-state.ts"],
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "VoiceSessionProjection",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "conformance": "packages/scripts/quint/check-application.ts",
+  "bounds": "Two trace IDs; transcripts projected to empty/nonempty; complete modeled event vocabulary."
+}

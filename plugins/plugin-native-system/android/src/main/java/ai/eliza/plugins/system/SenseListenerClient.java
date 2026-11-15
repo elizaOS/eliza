@@ -69,11 +69,17 @@ public final class SenseListenerClient {
         this.packageName = context.getPackageName() + ".sense";
     }
 
-    /** The image listener package exists for this user, whatever its signer or control grant. */
-    public boolean installed() {
-        try { context.getPackageManager().getApplicationInfo(packageName, 0); return true; }
-        catch (PackageManager.NameNotFoundException | RuntimeException absent) { return false; }
+    enum Installation { PRESENT, ABSENT, UNKNOWN }
+
+    /** Hosts declare package visibility; failed reads cannot establish absence. */
+    Installation installation() {
+        try { context.getPackageManager().getApplicationInfo(packageName, 0); return Installation.PRESENT; }
+        catch (PackageManager.NameNotFoundException absent) { return Installation.ABSENT; }
+        catch (RuntimeException unavailable) { return Installation.UNKNOWN; }
     }
+
+    /** The image listener package exists for this user, whatever its signer or control grant. */
+    public boolean installed() { return installation() == Installation.PRESENT; }
 
     public boolean available() {
         try {
@@ -81,6 +87,20 @@ public final class SenseListenerClient {
             return info.enabled && context.getPackageManager().checkSignatures(context.getPackageName(), packageName) == PackageManager.SIGNATURE_MATCH
                     && context.checkSelfPermission(packageName + ".permission.LISTENER_CONTROL") == PackageManager.PERMISSION_GRANTED;
         } catch (PackageManager.NameNotFoundException | RuntimeException unavailable) { return false; }
+    }
+
+    /** The installed listener carries this app's signer; any other signer cannot hold its consent. */
+    public boolean sameSigner() {
+        try { return context.getPackageManager().checkSignatures(context.getPackageName(), packageName) == PackageManager.SIGNATURE_MATCH; }
+        catch (RuntimeException unavailable) { return false; }
+    }
+
+    /**
+     * A same-signer listener is installed but disabled or without the control grant, so it cannot
+     * acknowledge a reset. Checked before a reset is recorded, while nothing has happened yet.
+     */
+    public boolean blocksReset() {
+        return installed() && sameSigner() && !available();
     }
 
     private Bundle control(String method) {
@@ -93,16 +113,25 @@ public final class SenseListenerClient {
     public Bundle pause() { return control("pause"); }
     public Bundle turnOff() { return control("turnOff"); }
 
-    /** Absent is safe to reset; an installed unacknowledged listener must stop the reset. */
+    /**
+     * Absent is safe to reset, and so is a package of that name from another signer: it cannot be
+     * the companion that holds this app's consent. A same-signer listener must acknowledge
+     * durable consent revocation and microphone release.
+     */
     public boolean resetForData() {
         invocation().reset();
         cancelProtectedPowerLaunch();
-        try { context.getPackageManager().getApplicationInfo(packageName, 0); }
+        int signer;
+        try {
+            context.getPackageManager().getApplicationInfo(packageName, 0);
+            signer = context.getPackageManager().checkSignatures(context.getPackageName(), packageName);
+        }
         catch (PackageManager.NameNotFoundException absent) { return true; }
         catch (RuntimeException unavailable) { return false; }
+        if (signer != PackageManager.SIGNATURE_MATCH) return true;
         Bundle result = control("reset");
         return result != null && result.getBoolean("saved", false) && !result.getBoolean("consented", true)
-                && !result.getBoolean("listening", true);
+                && !result.getBoolean("listening", true) && !result.getBoolean("microphoneOpen", true);
     }
 
     /** Only a typed, exported activity inside the admitted package may be opened. */

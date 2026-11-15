@@ -2,10 +2,9 @@
  * Runtime CPU feature detection for the TurboQuant CPU dispatch table.
  *
  * The CMake build still compiles each SIMD TU only for arches whose
- * intrinsics exist (AVX2 on x86_64, NEON on AArch64, RVV 1.0 on
- * riscv64) and sets TBQ_HAVE_* so the dispatcher knows which symbols
- * were linked. Within a build, the actual choice is made at runtime
- * from cpuid / hwcap / hwprobe.
+ * intrinsics exist (AVX2 on x86_64, NEON on AArch64) and sets
+ * TBQ_HAVE_* so the dispatcher knows which symbols were linked. Within
+ * a build, the actual choice is made at runtime from cpuid / hwcap.
  *
  * Mirrors qjl_cpu_features.h and polar_cpu_features.h so the three
  * packages share the same detection plumbing.
@@ -32,32 +31,11 @@
 #  endif
 #endif
 
-#if defined(__riscv) && (__riscv_xlen == 64)
-#  ifndef TBQ_ARCH_RISCV
-#    define TBQ_ARCH_RISCV 1
-#  endif
-#  if defined(__has_include)
-#    if __has_include(<sys/hwprobe.h>)
-#      include <sys/hwprobe.h>
-#      define TBQ_HAS_HWPROBE 1
-#    endif
-#    if __has_include(<sys/auxv.h>)
-#      include <sys/auxv.h>
-#      define TBQ_HAS_AUXV 1
-#    endif
-#    if __has_include(<asm/hwcap.h>)
-#      include <asm/hwcap.h>
-#    endif
-#  endif
-#endif
-
 typedef struct {
     unsigned int has_avx2 : 1;
     unsigned int has_avx_vnni : 1;
     unsigned int has_neon : 1;
     unsigned int has_dotprod : 1;
-    unsigned int has_rvv : 1;
-    unsigned int has_rvv_zvfh : 1;
 } tbq_cpu_features_t;
 
 static inline void tbq_detect_cpu(tbq_cpu_features_t *f) {
@@ -65,8 +43,6 @@ static inline void tbq_detect_cpu(tbq_cpu_features_t *f) {
     f->has_avx_vnni = 0;
     f->has_neon = 0;
     f->has_dotprod = 0;
-    f->has_rvv = 0;
-    f->has_rvv_zvfh = 0;
 
 #if defined(TBQ_ARCH_X86)
     {
@@ -104,43 +80,6 @@ static inline void tbq_detect_cpu(tbq_cpu_features_t *f) {
     f->has_dotprod = 1;
 #  endif
 #endif
-
-#if defined(TBQ_ARCH_RISCV) && defined(__linux__)
-    /* Prefer the modern riscv_hwprobe(2) syscall: it returns granular
-     * ISA-extension bits (V, Zvfh, ...) and is the only reliable way to
-     * detect RVV 1.0. Fall back to AT_HWCAP's coarse 'V' bit on kernels
-     * that predate hwprobe(2) (< 6.4). Both stay best-effort: if neither
-     * header / runtime is present we leave the probe bits 0 and the
-     * dispatcher uses the scalar reference path. */
-#  if defined(TBQ_HAS_HWPROBE) && defined(RISCV_HWPROBE_KEY_IMA_EXT_0)
-    {
-        struct riscv_hwprobe pairs[1] = {
-            { .key = RISCV_HWPROBE_KEY_IMA_EXT_0, .value = 0 },
-        };
-        if (__riscv_hwprobe(pairs, 1, 0, NULL, 0) == 0) {
-#    if defined(RISCV_HWPROBE_IMA_V)
-            if (pairs[0].value & RISCV_HWPROBE_IMA_V) f->has_rvv = 1;
-#    endif
-#    if defined(RISCV_HWPROBE_EXT_ZVFH)
-            if (pairs[0].value & RISCV_HWPROBE_EXT_ZVFH) f->has_rvv_zvfh = 1;
-#    endif
-        }
-    }
-#  endif
-#  if defined(TBQ_HAS_AUXV)
-    if (!f->has_rvv) {
-        unsigned long rvhw = getauxval(AT_HWCAP);
-#    if defined(COMPAT_HWCAP_ISA_V)
-        if (rvhw & COMPAT_HWCAP_ISA_V) f->has_rvv = 1;
-#    elif defined(HWCAP_ISA_V)
-        if (rvhw & HWCAP_ISA_V) f->has_rvv = 1;
-#    elif defined(HWCAP_V)
-        if (rvhw & HWCAP_V) f->has_rvv = 1;
-#    endif
-        (void)rvhw;
-    }
-#  endif
-#endif
 }
 
 /* SIMD enumeration for the dispatcher. NEON / AVX2 entries are listed
@@ -150,7 +89,6 @@ typedef enum tbq_simd_e {
     TBQ_SIMD_REF = 0,
     TBQ_SIMD_NEON,
     TBQ_SIMD_AVX2,
-    TBQ_SIMD_RVV,
 } tbq_simd_t;
 
 /* Note: the public introspection / override API (`tbq_active_simd`,

@@ -5,9 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { crc32, deflateRawSync } from "node:zlib";
+import { observeNativeInstall } from "../../quint/native-install-observation.mjs";
 import { soongAppNativePatch } from "../android/soong-app-native.mjs";
 import {
   createDevelopmentLauncherDescriptor,
+  launcherInstallDirectory,
+  REVIEWED_PRIVILEGED_PERMISSIONS,
   readNativeLibraries,
   renderNativeOverlay,
   renderOverlay,
@@ -82,7 +85,7 @@ const descriptor = {
   schemaVersion: 1 as const,
   brand: "alpha_phone",
   moduleName: "AlphaPhone",
-  packageName: "ai.elizaresearch.alphaphone",
+  packageName: "ai.alphacompute.alphaphone",
   apkSha256: "a".repeat(64),
   certificateSha256: "b".repeat(64),
 };
@@ -156,7 +159,7 @@ test("debug APK requires an explicit development lane", () => {
   );
   validateInspection(descriptor, badging, debugXml, signer, true);
 });
-test("digest mismatch stages nothing and never invokes SDK tools", () => {
+test("digest mismatch stages nothing and never invokes SDK tools", (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-test-"));
   try {
     const file = path.join(dir, "apk");
@@ -177,6 +180,13 @@ test("digest mismatch stages nothing and never invokes SDK tools", () => {
     );
     assert.equal(fs.existsSync(path.join(dir, "out")), false);
     assert.deepEqual(fs.readdirSync(dir).sort(), ["apk", "descriptor.json"]);
+    observeNativeInstall(t, {
+      name: "digest-refusal",
+      kind: "refused",
+      privileged: false,
+      soong: false,
+      output: fs.existsSync(path.join(dir, "out")),
+    });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -245,7 +255,7 @@ test("reviewed default permissions are declared by the APK and granted revocably
   );
   assert.match(
     generated.permissions ?? "",
-    /<exception package="ai.elizaresearch.alphaphone">/,
+    /<exception package="ai.alphacompute.alphaphone">/,
   );
   assert.equal(
     (generated.permissions ?? "").match(/fixed="false"/g)?.length,
@@ -292,7 +302,7 @@ test("system-only launcher keeps the APK and revocable grants in the same image"
 // A second presigned package (for example an update supervisor) of the same product.
 const updater = {
   moduleName: "AlphaPhoneUpdater",
-  packageName: "ai.elizaresearch.alphaphone.updater",
+  packageName: "ai.alphacompute.alphaphone.updater",
   apkSha256: "c".repeat(64),
 };
 test("companions are pinned, distinct, and staged without grants or privilege", () => {
@@ -304,7 +314,7 @@ test("companions are pinned, distinct, and staged without grants or privilege", 
     [{ ...updater, moduleName: "Launcher" }],
     [{ ...updater, moduleName: "AlphaPhoneDefaultPermissions" }],
     [{ ...updater, packageName: descriptor.packageName }],
-    [updater, { ...updater, packageName: "ai.elizaresearch.other" }],
+    [updater, { ...updater, packageName: "ai.alphacompute.other" }],
     [{ ...updater, apkSha256: "C".repeat(64) }],
     [{ ...updater, moduleName: 'X"/>' }],
     // A companion carries no grants and no signer of its own.
@@ -454,11 +464,12 @@ test("companion APKs must match the descriptor before any SDK tool runs", () => 
         apksigner: "must-not-run",
         development: true,
       });
-    for (const companions of [
+    const incomplete: (Record<string, string> | undefined)[] = [
       undefined,
       {},
       { AlphaPhoneUpdater: companion, Other: companion },
-    ])
+    ];
+    for (const companions of incomplete)
       assert.throws(() => stage(companions), /exactly one APK/);
     assert.throws(
       () => stage({ AlphaPhoneUpdater: companion }),
@@ -611,7 +622,7 @@ test("the launcher moves to Android.mk with its JNI; grants and companions stay 
     companions: [
       {
         moduleName: "AlphaPhoneUpdater",
-        packageName: "ai.elizaresearch.alphaphone.updater",
+        packageName: "ai.alphacompute.alphaphone.updater",
         apkSha256: "c".repeat(64),
       },
     ],
@@ -677,7 +688,7 @@ test("the launcher moves to Android.mk with its JNI; grants and companions stay 
     );
 });
 
-test("staging with a native ABI writes the pinned JNI beside the launcher, or nothing", () => {
+test("staging with a native ABI writes the pinned JNI beside the launcher, or nothing", (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-native-test-"));
   try {
     const tool = path.join(dir, "tool");
@@ -740,6 +751,21 @@ test("staging with a native ABI writes the pinned JNI beside the launcher, or no
       report.apkSha256,
       createHash("sha256").update(bytes).digest("hex"),
     );
+    observeNativeInstall(t, {
+      name: "make-publication",
+      kind: "published",
+      privileged: false,
+      soong: false,
+      partition: "product",
+      arch: "arm64",
+      source: readNativeLibraries(bytes, "arm64-v8a"),
+      result: {
+        report,
+        blueprint: fs.readFileSync(path.join(output, "Android.bp"), "utf8"),
+        config: fs.readFileSync(path.join(output, "config.fs"), "utf8"),
+      },
+      output: fs.existsSync(output),
+    });
     assert.throws(
       () =>
         stage(
@@ -755,6 +781,13 @@ test("staging with a native ABI writes the pinned JNI beside the launcher, or no
       /compressed/,
     );
     assert.equal(fs.existsSync(path.join(dir, "refused")), false);
+    observeNativeInstall(t, {
+      name: "compressed-refusal",
+      kind: "refused",
+      privileged: false,
+      soong: false,
+      output: fs.existsSync(path.join(dir, "refused")),
+    });
     assert.equal(
       fs.readdirSync(dir).some((name) => name.startsWith(".launcher-stage-")),
       false,
@@ -777,14 +810,14 @@ test("staging with a native ABI writes the pinned JNI beside the launcher, or no
   }
 });
 
-test("a Soong-only product gets prebuilt_app_native rules required by the launcher", () => {
+test("a Soong-only product gets prebuilt_app_native rules required by the launcher", (t) => {
   const d = {
     ...descriptor,
     defaultPermissions: ["android.permission.RECORD_AUDIO"],
     companions: [
       {
         moduleName: "AlphaPhoneUpdater",
-        packageName: "ai.elizaresearch.alphaphone.updater",
+        packageName: "ai.alphacompute.alphaphone.updater",
         apkSha256: "c".repeat(64),
       },
     ],
@@ -838,6 +871,20 @@ test("a Soong-only product gets prebuilt_app_native rules required by the launch
   );
   assert.match(native.blueprint, /name: "AlphaPhoneDefaultPermissions"/);
   assert.match(native.blueprint, /name: "AlphaPhoneUpdater"/);
+  for (const [name, result, soong] of [
+    ["plain-make", make, false],
+    ["plain-soong", native, true],
+  ] as const)
+    observeNativeInstall(t, {
+      name,
+      kind: "rendered",
+      privileged: false,
+      soong,
+      partition: "product",
+      arch: "arm64",
+      source: libraries,
+      result,
+    });
 
   const system = renderNativeOverlay(
     { ...descriptor, partition: "system" },
@@ -854,6 +901,16 @@ test("a Soong-only product gets prebuilt_app_native rules required by the launch
     system.config,
     /^\[system\/app\/AlphaPhone\/lib\/x86_64\/libeliza_bun\.so\]\nmode: 0755$/m,
   );
+  observeNativeInstall(t, {
+    name: "system-soong",
+    kind: "rendered",
+    privileged: false,
+    soong: true,
+    partition: "system",
+    arch: "x86_64",
+    source: [{ name: "libeliza_bun.so", sha256: "a".repeat(64) }],
+    result: system,
+  });
   assert.throws(
     () =>
       renderNativeOverlay(descriptor, "arm64-v8a", libraries, "bazel" as never),
@@ -861,7 +918,7 @@ test("a Soong-only product gets prebuilt_app_native rules required by the launch
   );
 });
 
-test("staging for a Soong-only product writes no Android.mk, or nothing on refusal", () => {
+test("staging for a Soong-only product writes no Android.mk, or nothing on refusal", (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-soong-test-"));
   try {
     const tool = path.join(dir, "tool");
@@ -928,6 +985,45 @@ test("staging for a Soong-only product writes no Android.mk, or nothing on refus
       report.soongPatch.manifestSha256,
       soongAppNativePatch().manifestSha256,
     );
+    observeNativeInstall(t, {
+      name: "soong-publication",
+      kind: "published",
+      privileged: false,
+      soong: true,
+      partition: "product",
+      arch: "arm64",
+      source: readNativeLibraries(bytes, "arm64-v8a"),
+      result: {
+        report,
+        blueprint,
+        config: fs.readFileSync(path.join(output, "config.fs"), "utf8"),
+      },
+      output: fs.existsSync(output),
+    });
+    assert.throws(
+      () =>
+        stageLauncher({
+          descriptor: descriptorPath,
+          apk,
+          output,
+          aapt: "must-not-run",
+          apksigner: "must-not-run",
+          development: false,
+          nativeAbi: "arm64-v8a",
+          nativeInstall: "soong",
+        }),
+      /Output exists/,
+    );
+    assert.deepEqual(fs.readFileSync(path.join(output, "Launcher.apk")), bytes);
+    observeNativeInstall(t, {
+      name: "existing-output-refusal",
+      kind: "refused",
+      privileged: false,
+      soong: true,
+      valid: true,
+      existing: true,
+      output: fs.existsSync(output),
+    });
     for (const [options, message] of [
       [{ nativeInstall: "soong" }, /requires a native ABI/],
       [
@@ -949,6 +1045,274 @@ test("staging for a Soong-only product writes no Android.mk, or nothing on refus
         message,
       );
     assert.equal(fs.existsSync(path.join(dir, "refused")), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const PHONE_STATE = "android.permission.READ_PRIVILEGED_PHONE_STATE";
+test("a descriptor without privileged permissions renders the same nonprivileged overlay as before", () => {
+  const generated = renderOverlay({
+    ...descriptor,
+    defaultPermissions: ["android.permission.RECORD_AUDIO"],
+    companions: [updater],
+  });
+  assert.equal(
+    generated.blueprint,
+    '// Generated from a hash- and signer-verified downstream launcher.\nandroid_app_import {\n    name: "AlphaPhone",\n    apk: "Launcher.apk",\n    presigned: true,\n    preprocessed: true,\n    product_specific: true,\n    dex_preopt: { enabled: false },\n}\n\n// First-boot runtime grants the person can still revoke (fixed="false").\nprebuilt_etc {\n    name: "AlphaPhoneDefaultPermissions",\n    src: "default-permissions.xml",\n    sub_dir: "default-permissions",\n    filename: "default-permissions-ai.alphacompute.alphaphone.xml",\n    product_specific: true,\n}\n\n// Companion ai.alphacompute.alphaphone.updater: same signer as the launcher, no grants.\nandroid_app_import {\n    name: "AlphaPhoneUpdater",\n    apk: "AlphaPhoneUpdater.apk",\n    presigned: true,\n    preprocessed: true,\n    product_specific: true,\n    dex_preopt: { enabled: false },\n}\n',
+  );
+  assert.equal(
+    generated.product,
+    "# Additive: default HOME selection and privilege policy belong to device provisioning.\nPRODUCT_PACKAGES += AlphaPhone AlphaPhoneDefaultPermissions AlphaPhoneUpdater\n",
+  );
+  assert.equal(
+    generated.permissions,
+    '<?xml version="1.0" encoding="utf-8"?>\n<!-- Generated from the reviewed launcher descriptor. -->\n<exceptions>\n    <exception package="ai.alphacompute.alphaphone">\n        <permission name="android.permission.RECORD_AUDIO" fixed="false"/>\n    </exception>\n</exceptions>\n',
+  );
+  assert.equal(generated.privilegedPermissions, null);
+  assert.equal(launcherInstallDirectory(descriptor), "/product/app/AlphaPhone");
+});
+
+test("privileged permissions are a closed reviewed set, declared by the APK", () => {
+  assert.deepEqual(REVIEWED_PRIVILEGED_PERMISSIONS, [PHONE_STATE]);
+  assert.ok(Object.isFrozen(REVIEWED_PRIVILEGED_PERMISSIONS));
+  const privileged = { ...descriptor, privilegedPermissions: [PHONE_STATE] };
+  assert.deepEqual(validateDescriptor(privileged), privileged);
+  for (const privilegedPermissions of [
+    [],
+    PHONE_STATE,
+    [PHONE_STATE, PHONE_STATE],
+    ["android.permission.READ_PHONE_STATE"],
+    ["android.permission.WRITE_SECURE_SETTINGS"],
+    [PHONE_STATE, "android.permission.INSTALL_PACKAGES"],
+    [`${PHONE_STATE}"/><permission name="android.permission.REBOOT`],
+    [null],
+  ])
+    assert.throws(
+      () => validateDescriptor({ ...descriptor, privilegedPermissions }),
+      /Invalid privileged permissions/,
+    );
+  assert.throws(
+    () =>
+      validateDescriptor({
+        ...privileged,
+        defaultPermissions: ["android.permission.RECORD_AUDIO", PHONE_STATE],
+      }),
+    /both default and privileged/,
+  );
+  // The allow-list module name is the launcher's once the field is present.
+  const allowlistNamed = [
+    { ...updater, moduleName: "AlphaPhonePrivappPermissions" },
+  ];
+  assert.throws(
+    () => validateDescriptor({ ...privileged, companions: allowlistNamed }),
+    /Invalid companion/,
+  );
+  validateDescriptor({ ...descriptor, companions: allowlistNamed });
+  validateInspection(
+    privileged,
+    `${badging}\nuses-permission: name='${PHONE_STATE}'`,
+    xml,
+    signer,
+    false,
+  );
+  assert.throws(
+    () => validateInspection(privileged, badging, xml, signer, false),
+    /Launcher does not declare android.permission.READ_PRIVILEGED_PHONE_STATE/,
+  );
+});
+
+test("reviewed privileged permissions place only the launcher in priv-app with an exact allow-list", () => {
+  const d = {
+    ...descriptor,
+    defaultPermissions: ["android.permission.RECORD_AUDIO"],
+    privilegedPermissions: [PHONE_STATE],
+    companions: [updater],
+  };
+  const generated = renderOverlay(d);
+  const plain = renderOverlay({ ...d, privilegedPermissions: undefined });
+  const allowlist =
+    '\n// Privileged placement for exactly the reviewed permissions in privapp-permissions.xml; nothing else is allow-listed.\nprebuilt_etc {\n    name: "AlphaPhonePrivappPermissions",\n    src: "privapp-permissions.xml",\n    sub_dir: "permissions",\n    filename: "privapp-permissions-ai.alphacompute.alphaphone.xml",\n    product_specific: true,\n}\n';
+  // Exactly two additions to the nonprivileged overlay: the flag and the allow-list.
+  assert.equal(
+    generated.blueprint,
+    plain.blueprint
+      .replace(
+        '    apk: "Launcher.apk",\n    presigned: true,\n    preprocessed: true,\n',
+        '    apk: "Launcher.apk",\n    presigned: true,\n    preprocessed: true,\n    privileged: true,\n',
+      )
+      .replace(
+        "\n// Companion ai.alphacompute.alphaphone.updater",
+        `${allowlist}\n// Companion ai.alphacompute.alphaphone.updater`,
+      ),
+  );
+  assert.equal(generated.blueprint.match(/privileged: true/g)?.length, 1);
+  assert.ok(generated.blueprint.startsWith(generated.launcher));
+  assert.match(generated.launcher, /name: "AlphaPhone",[^}]*privileged: true,/);
+  assert.equal(
+    generated.product,
+    "# Additive: default HOME selection and privilege policy belong to device provisioning.\nPRODUCT_PACKAGES += AlphaPhone AlphaPhoneDefaultPermissions AlphaPhonePrivappPermissions AlphaPhoneUpdater\n",
+  );
+  assert.equal(
+    generated.privilegedPermissions,
+    '<?xml version="1.0" encoding="utf-8"?>\n<!-- Generated from the reviewed launcher descriptor. -->\n<permissions>\n    <privapp-permissions package="ai.alphacompute.alphaphone">\n        <permission name="android.permission.READ_PRIVILEGED_PHONE_STATE"/>\n    </privapp-permissions>\n</permissions>\n',
+  );
+  assert.equal(generated.permissions, plain.permissions);
+  assert.equal(launcherInstallDirectory(d), "/product/priv-app/AlphaPhone");
+  // A system launcher keeps its allow-list in the system image too.
+  const system = { ...d, partition: "system" as const };
+  assert.doesNotMatch(renderOverlay(system).blueprint, /product_specific/);
+  assert.equal(launcherInstallDirectory(system), "/system/priv-app/AlphaPhone");
+});
+
+test("a privileged launcher's bundled JNI installs under priv-app by either rule", (t) => {
+  const d = {
+    ...descriptor,
+    privilegedPermissions: [PHONE_STATE],
+    companions: [updater],
+  };
+  const libraries = readNativeLibraries(launcherApk(), "arm64-v8a");
+  const make = renderNativeOverlay(d, "arm64-v8a", libraries);
+  assert.ok(make.makefile !== null);
+  assert.match(
+    make.makefile,
+    /^LOCAL_PRODUCT_MODULE := true\nLOCAL_PRIVILEGED_MODULE := true$/m,
+  );
+  assert.doesNotMatch(make.blueprint, /privileged: true|name: "AlphaPhone",/);
+  assert.match(make.blueprint, /name: "AlphaPhonePrivappPermissions"/);
+  assert.match(
+    make.config,
+    /^\[product\/priv-app\/AlphaPhone\/lib\/arm64\/libeliza_bun\.so\]\nmode: 0755$/m,
+  );
+  assert.doesNotMatch(make.config, /\/app\//);
+  assert.deepEqual(
+    make.report.libraries.map((library) => library.installPath),
+    libraries.map(
+      (library) => `/product/priv-app/AlphaPhone/lib/arm64/${library.name}`,
+    ),
+  );
+  const soong = renderNativeOverlay(d, "arm64-v8a", libraries, "soong");
+  assert.equal(soong.makefile, null);
+  assert.equal(soong.config, make.config);
+  assert.deepEqual(soong.report.libraries, make.report.libraries);
+  // Both fixed-directory native rules are bound to the same reviewed patch.
+  assert.equal(soong.report.installRule, "soong-priv-app");
+  assert.deepEqual(soong.report.soongPatch, {
+    name: "soong-app-native",
+    manifestSha256: soongAppNativePatch().manifestSha256,
+    project: soongAppNativePatch().manifest.project,
+    revision: soongAppNativePatch().manifest.revision,
+    files: soongAppNativePatch().manifest.files,
+  });
+  assert.doesNotMatch(soong.blueprint, /prebuilt_app_native/);
+  assert.doesNotMatch(soong.blueprint, /prebuilt_priv_app \{/);
+  assert.equal(soong.blueprint.match(/privileged: true/g)?.length, 1);
+  assert.match(
+    soong.blueprint,
+    /name: "AlphaPhone",\n {4}apk: "Launcher\.apk",\n {4}presigned: true,\n {4}preprocessed: true,\n {4}privileged: true,\n {4}product_specific: true,\n {4}required: \[/,
+  );
+  assert.deepEqual(
+    [
+      ...soong.blueprint.matchAll(/prebuilt_priv_app_native \{\n([^}]*)\}/g),
+    ].map((match) => match[1]),
+    libraries.map(
+      (library, index) =>
+        `    name: "AlphaPhone_native_${index}",\n    src: "native-arm64/${library.name}",\n    filename: "${library.name}",\n    relative_install_path: "AlphaPhone/lib/arm64",\n    product_specific: true,\n`,
+    ),
+  );
+  assert.ok(
+    soong.blueprint.endsWith(make.blueprint.split("\n").slice(1).join("\n")),
+  );
+  for (const [name, result, isSoong] of [
+    ["privileged-make", make, false],
+    ["privileged-soong", soong, true],
+  ] as const)
+    observeNativeInstall(t, {
+      name,
+      kind: "rendered",
+      privileged: true,
+      soong: isSoong,
+      partition: "product",
+      arch: "arm64",
+      source: libraries,
+      result,
+    });
+});
+
+test("staging writes the allow-list only for a descriptor that names privileged permissions", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-privapp-test-"));
+  try {
+    const tool = path.join(dir, "tool");
+    fs.writeFileSync(
+      tool,
+      `#!${process.execPath}\nconst a=process.argv.slice(2);if(a[0]==='verify')console.log(process.env.SIGNATURES);else if(a[1]==='badging')console.log(process.env.BADGING);else console.log(process.env.XML);`,
+      { mode: 0o700 },
+    );
+    const apk = path.join(dir, "launcher.apk");
+    fs.writeFileSync(apk, "fixture-apk");
+    const stage = (name: string, extra: object, declared: string) => {
+      const descriptorPath = path.join(dir, `${name}.json`);
+      fs.writeFileSync(
+        descriptorPath,
+        JSON.stringify({
+          ...descriptor,
+          apkSha256: createHash("sha256").update("fixture-apk").digest("hex"),
+          ...extra,
+        }),
+      );
+      return stageLauncher({
+        descriptor: descriptorPath,
+        apk,
+        output: path.join(dir, name),
+        aapt: tool,
+        apksigner: tool,
+        development: false,
+        env: {
+          ...process.env,
+          SIGNATURES: signer,
+          BADGING: declared,
+          XML: xml,
+        },
+      });
+    };
+    const privileged = { privilegedPermissions: [PHONE_STATE] };
+    const output = stage(
+      "privileged",
+      privileged,
+      `${badging}\nuses-permission: name='${PHONE_STATE}'`,
+    );
+    assert.deepEqual(fs.readdirSync(output).sort(), [
+      "Android.bp",
+      "Launcher.apk",
+      "launcher.json",
+      "privapp-permissions.xml",
+      "product.mk",
+    ]);
+    const rendered = renderOverlay({ ...descriptor, ...privileged });
+    assert.equal(
+      fs.readFileSync(path.join(output, "privapp-permissions.xml"), "utf8"),
+      rendered.privilegedPermissions,
+    );
+    assert.match(
+      fs.readFileSync(path.join(output, "Android.bp"), "utf8"),
+      /privileged: true,/,
+    );
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(path.join(output, "launcher.json"), "utf8"))
+        .privilegedPermissions,
+      [PHONE_STATE],
+    );
+    assert.throws(
+      () => stage("undeclared", privileged, badging),
+      /Launcher does not declare android.permission.READ_PRIVILEGED_PHONE_STATE/,
+    );
+    assert.equal(fs.existsSync(path.join(dir, "undeclared")), false);
+    assert.deepEqual(fs.readdirSync(stage("plain", {}, badging)).sort(), [
+      "Android.bp",
+      "Launcher.apk",
+      "launcher.json",
+      "product.mk",
+    ]);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

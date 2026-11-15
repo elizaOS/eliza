@@ -130,7 +130,6 @@ beforeEach(() => {
   fallbackStatus = 200;
   partialStream = false;
   retryAfter = "60";
-  vi.stubEnv("ELIZA_MOCK_OPENAI_BASE", undefined);
   vi.stubEnv("ELIZA_TRAJECTORY_STRICT", "0");
   vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
   vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "0");

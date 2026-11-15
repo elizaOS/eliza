@@ -1,0 +1,172 @@
+{
+	"sources": [
+		"packages/core/src/plugin-lifecycle.ts",
+		"packages/core/src/runtime/service-lifecycle.ts",
+		"packages/core/src/runtime.ts",
+		"packages/core/test/plugin-lifecycle-model.test.ts"
+	],
+	"bounds": {
+		"domain": "The unload cases have two service classes, two unloaders, one or two loaders, one runtime stopper and one competing connector owner. The registration case has no service classes and two registrars. The manifest records which failures are enabled.",
+		"limitations": "The real runtime suite checks concurrent unload and stop, late connectors, failed service teardown and registration rollback. It does not exhaustively replay the bounded actor schedules."
+	},
+	"conformance": "packages/core/quint/check-core-concurrency.mjs",
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "services",
+			"main": "PluginLifecycle",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"TeardownExclusive",
+				"StopAtMostOnce",
+				"NoOrphanInstance",
+				"StopStopsAll",
+				"ConnectorOwnedByLast",
+				"NoOrphanConnector",
+				"RegisterHonest"
+			],
+			"temporal": ["DeadlockFree", "Terminates"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"NumClasses": 2,
+				"Unloaders": ["u1", "u2"],
+				"Loaders": ["l1", "l2"],
+				"Registrars": [],
+				"Stoppers": ["t1"],
+				"Rivals": ["b1"],
+				"StartsInFlight": false,
+				"InitMayFail": true,
+				"StopMayFail": true,
+				"StartMayFail": true
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in PluginLifecycle: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "Terminates",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in PluginLifecycle: Terminates = GeneralTerminates",
+						"Model fairness predicate Fairness = and { Unloaders.forall(u => Unload(u).weakFair(s)), Loaders.forall(l => Load(l).weakFair(s)), Classes.forall(c => SDone(c).weakFair(s)), Stoppers.forall(t => Stop(t).weakFair(s)), Rivals.forall(b => BReg(b).weakFair(s)), Registrars.forall(r => Register(r).weakFair(s)) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				}
+			]
+		},
+		{
+			"name": "inflight",
+			"main": "PluginLifecycleInflight",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"TeardownExclusive",
+				"StopAtMostOnce",
+				"NoOrphanInstance",
+				"StopStopsAll",
+				"ConnectorOwnedByLast",
+				"NoOrphanConnector",
+				"RegisterHonest"
+			],
+			"temporal": ["DeadlockFree", "Terminates"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"NumClasses": 2,
+				"Unloaders": ["u1", "u2"],
+				"Loaders": ["l1"],
+				"Registrars": [],
+				"Stoppers": ["t1"],
+				"Rivals": ["b1"],
+				"StartsInFlight": true,
+				"InitMayFail": true,
+				"StopMayFail": true,
+				"StartMayFail": true
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in PluginLifecycleInflight: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "Terminates",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in PluginLifecycleInflight: Terminates = GeneralTerminates",
+						"Model fairness predicate Fairness = and { Unloaders.forall(u => Unload(u).weakFair(s)), Loaders.forall(l => Load(l).weakFair(s)), Classes.forall(c => SDone(c).weakFair(s)), Stoppers.forall(t => Stop(t).weakFair(s)), Rivals.forall(b => BReg(b).weakFair(s)), Registrars.forall(r => Register(r).weakFair(s)) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				}
+			]
+		},
+		{
+			"name": "register",
+			"main": "PluginLifecycleRegister",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"TeardownExclusive",
+				"StopAtMostOnce",
+				"NoOrphanInstance",
+				"StopStopsAll",
+				"ConnectorOwnedByLast",
+				"NoOrphanConnector",
+				"RegisterHonest"
+			],
+			"temporal": ["DeadlockFree", "Terminates"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"NumClasses": 0,
+				"Unloaders": [],
+				"Loaders": [],
+				"Registrars": ["r1", "r2"],
+				"Stoppers": [],
+				"Rivals": [],
+				"StartsInFlight": false,
+				"InitMayFail": true,
+				"StopMayFail": false,
+				"StartMayFail": false
+			},
+			"deadlock": true,
+			"propertyMapping": {
+				"Terminates": "Exactly the original fairness implication after removing universal quantifiers over empty actor sets."
+			},
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in PluginLifecycleRegister: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "Terminates",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in PluginLifecycleRegister: Terminates = Registrars.forall(r => Register(r).weakFair(s)).implies(eventually(Finished))",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				}
+			]
+		}
+	],
+	"selection": "Set stop-order choices are nondeterministic, including every ordering the implementation can select."
+}

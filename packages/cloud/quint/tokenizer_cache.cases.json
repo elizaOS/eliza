@@ -1,0 +1,46 @@
+{
+  "sources": [
+    "plugins/plugin-elizacloud/src/models/tokenization.ts",
+    "plugins/plugin-elizacloud/__tests__/lazy-tokenizer.test.ts",
+    "plugins/plugin-openai/utils/tokenization.ts",
+    "plugins/plugin-openai/__tests__/lazy-tokenizer.test.ts",
+    "packages/cloud/quint/check-tokenizer-cache.ts",
+    "packages/scripts/vitest/source-aliases.ts",
+    "packages/agent/src/api/server.ts",
+    "packages/agent/src/api/server-boot-graph.test.ts",
+    "packages/agent/src/api/model-config-routes.ts",
+    "packages/agent/src/api/todo-cutover-import.ts",
+    "plugins/plugin-openai/build.ts",
+    "plugins/plugin-wallet/build.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One retained Cloud encoder slot, two encoding kinds, three asynchronous loads and two callers.",
+      "Each caller retains its own load promise. Replacing the cached encoding does not replace an existing caller's result; failure clears only the matching cache entry.",
+      "Timer cancellation and callbacks follow a single JavaScript event loop. Rank-module contents, exact BPE output and idle-release behavior are checked by the real implementation conformance hook. The hook also checks the real API-server import graph.",
+      "The OpenAI per-encoding persistent cache is regression-tested by the hook but is not represented by the one-slot model. No GC reclamation deadline, network/scheduler fairness or TypeScript refinement is proved."
+    ],
+    "progress": "Safety only; no scheduler or provider liveness claim."
+  },
+  "limitations": [
+    "One retained Cloud encoder slot, two encoding kinds, three asynchronous loads and two callers.",
+    "Each caller retains its own load promise. Replacing the cached encoding does not replace an existing caller's result; failure clears only the matching cache entry.",
+    "Timer cancellation and callbacks follow a single JavaScript event loop. Rank-module contents, exact BPE output and idle-release behavior are checked by the real implementation conformance hook. The hook also checks the real API-server import graph.",
+    "The OpenAI per-encoding persistent cache is regression-tested by the hook but is not represented by the one-slot model. No GC reclamation deadline, network/scheduler fairness or TypeScript refinement is proved.",
+    "Finite-state checks and runtime regressions do not establish whole-backend or TypeScript refinement."
+  ],
+  "cases": [
+    {
+      "name": "tokenizer-cache",
+      "main": "tokenizer_cache",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-tokenizer-cache.ts"
+}

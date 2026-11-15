@@ -14,15 +14,15 @@ import {
   type TrajectoryDetailRecord,
   type UUID,
 } from "@elizaos/core";
-import { trajectoriesPlugin } from "@elizaos/plugin-assistant";
+import {
+  createBaseTrajectory,
+  ensureTrajectoriesTable,
+  saveTrajectory,
+  trajectoriesPlugin,
+} from "@elizaos/plugin-assistant";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
-import {
-  createBaseTrajectory,
-  saveTrajectory,
-} from "../runtime/trajectory-internals.ts";
-import { installDatabaseTrajectoryLogger } from "../runtime/trajectory-storage.ts";
 import { handleContextInspectorRoute } from "./context-inspector-routes.ts";
 
 const ROOM = "00000000-0000-4000-8000-000000000101" as UUID;
@@ -135,7 +135,9 @@ async function harness(options: {
   fixtures.push(fixture);
   const { runtime } = fixture;
   await runtime.getServiceLoadPromise("trajectories");
-  await installDatabaseTrajectoryLogger(runtime);
+  // Persistence is off by default under test, so the service defers its DDL;
+  // these fixtures write rows directly and need the schema first.
+  await ensureTrajectoriesTable(runtime);
   for (const roomId of [ROOM, OTHER_ROOM]) {
     await runtime.ensureConnection({
       entityId: USER,
@@ -262,6 +264,7 @@ describe("context inspector HTTP integration", () => {
           usedTokens: 312,
           limitTokens: 900,
           reservedTokens: 100,
+          estimationMode: "reported",
           state: "within-budget",
         },
       ],
@@ -304,6 +307,42 @@ describe("context inspector HTTP integration", () => {
         usedTokens: 312,
         limitTokens: 900,
         reservedTokens: 100,
+        estimationMode: "reported",
+        state: "within-budget",
+      },
+    ]);
+  });
+
+  it("reads reserveTokens and labels a byte-based estimate", async () => {
+    const detail = trajectory(ROOM);
+    const call = detail.steps?.[0]?.llmCalls?.[0];
+    if (!call) throw new Error("fixture must include an LLM call");
+    call.promptTokens = undefined;
+    call.providerOptions = {
+      eliza: {
+        modelInputBudget: {
+          estimatedInputTokens: 1200,
+          contextWindowTokens: 128000,
+          reserveTokens: 10000,
+          dispatchThresholdTokens: 118000,
+          estimationMode: "utf8-upper-bound",
+        },
+      },
+    };
+    const app = await harness({
+      authorization: { ok: true, role: "OWNER" },
+      detail,
+    });
+    const result = await app.request(
+      `/api/context-inspector?conversationId=${ROOM}`,
+    );
+    expect(result.response.status).toBe(200);
+    expect(JSON.parse(result.body).tokenBudgets).toEqual([
+      {
+        usedTokens: 1200,
+        limitTokens: 118000,
+        reservedTokens: 10000,
+        estimationMode: "utf8-upper-bound",
         state: "within-budget",
       },
     ]);

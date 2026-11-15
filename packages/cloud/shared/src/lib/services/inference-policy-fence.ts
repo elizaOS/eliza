@@ -6,9 +6,11 @@ import { sqlRows } from "../../db/execute-helpers";
 import {
   dbWrite,
   registerAfterCommit,
+  registerAfterRollback,
   registerBeforeCommit,
   writeTransaction,
 } from "../../db/helpers";
+import { advanceOrganizationPolicyGeneration } from "../../db/repositories/organization-policy-generation";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 
@@ -20,6 +22,71 @@ export class InferencePolicyFenceError extends Error {
 }
 
 const transactionFences = new WeakMap<DbTransaction, Set<string>>();
+const standingFences = new WeakMap<DbTransaction, Set<string>>();
+
+/**
+ * Standing fence for cache-served inference admission, applied to EVERY
+ * organization a policy mutation touches (enrolled or not).
+ *
+ * Worker admission decides from a cached snapshot (policy, billing hold,
+ * funding) and the organization Durable Object, never from Postgres. To keep
+ * that exact, each mutation opens a pending entry in the organization gate
+ * before its first write (no new lease or dispatch is admitted while it is
+ * open), advances the policy generation in the same transaction, and closes
+ * the entry after COMMIT with that generation. A snapshot read before the
+ * commit therefore carries an older generation and is refused as stale; a
+ * rolled-back mutation only closes its entry. Hosts without the gate binding
+ * (Node services, local harnesses) never serve cache-backed admission.
+ */
+async function fenceStandingMutation(
+  tx: DbTransaction,
+  organizationIds: readonly string[],
+): Promise<void> {
+  if (!getCloudBinding<RuntimeDurableObjectNamespace>("INFERENCE_ADMISSION_GATES")) return;
+  const active = standingFences.get(tx) ?? new Set<string>();
+  const fresh = [...new Set(organizationIds)].sort().filter((id) => !active.has(id));
+  if (fresh.length === 0) return;
+  const mutationId = crypto.randomUUID();
+  const generations = new Map<string, string>();
+  const opened: string[] = [];
+  registerAfterRollback(tx, async () => {
+    for (const organizationId of opened)
+      await policyCall(organizationId, "/policy-fence/abort", { mutationId });
+  });
+  registerBeforeCommit(tx, async () => {
+    for (const organizationId of fresh) {
+      try {
+        const generation = await advanceOrganizationPolicyGeneration(tx, {
+          organizationId,
+          reason: "inference_standing_mutation",
+          actor: "system:inference-policy-fence",
+          change: { mutationId },
+        });
+        generations.set(organizationId, generation.toString());
+      } catch (error) {
+        // An organization without a subscription authority has no admission
+        // snapshot to supersede; closing its entry is the whole fence.
+        if (!(error instanceof ElizaError) || error.code !== "ORGANIZATION_POLICY_UNAVAILABLE")
+          throw error;
+      }
+    }
+  });
+  registerAfterCommit(tx, async () => {
+    for (const organizationId of fresh)
+      await policyCall(organizationId, "/policy-fence/commit", {
+        mutationId,
+        ...(generations.has(organizationId) && {
+          policyGeneration: generations.get(organizationId),
+        }),
+      });
+  });
+  for (const organizationId of fresh) {
+    await policyCall(organizationId, "/policy-fence/begin", { mutationId });
+    opened.push(organizationId);
+    active.add(organizationId);
+  }
+  standingFences.set(tx, active);
+}
 
 interface MutationOptions {
   organizationIds: string[];
@@ -33,6 +100,16 @@ interface MutationOptions {
   /** Enroll only rate policy; never enable funded escrow. */
   rateEnable?: boolean;
   rateDisable?: boolean;
+  /**
+   * Credential association writes (API-key issue/revoke) change no policy,
+   * hold or funding the admission snapshot carries; credential revocation has
+   * its own Durable Object boundary. They skip the standing fence.
+   */
+  credentialOnly?: boolean;
+}
+
+function isCredentialOnly(options: MutationOptions): boolean {
+  return options.credentialOnly ?? (options.userLockIds?.length ?? 0) > 0;
 }
 
 function policyFencingEnabled(): boolean {
@@ -208,8 +285,10 @@ export async function withInferencePolicyMutationInTransaction<T>(
   if (!policyFencingEnabled()) {
     if (options.enable || options.disable || options.rateEnable || options.rateDisable)
       throw new InferencePolicyFenceError("Inference policy admission is disabled");
+    if (!isCredentialOnly(options)) await fenceStandingMutation(tx, options.organizationIds);
     return fn(tx);
   }
+  if (!isCredentialOnly(options)) await fenceStandingMutation(tx, options.organizationIds);
   if (options.enable && options.disable)
     throw new InferencePolicyFenceError("Policy enrollment and rollback cannot share one command");
   if (options.rateEnable && options.rateDisable)
@@ -302,7 +381,11 @@ export async function inspectInferencePolicyMutation(
 > {
   return writeTransaction(async (tx) => {
     await lockInferencePolicyMutation(tx, organizationId, mutationId);
-    const [row] = await sqlRows<{ phase: string; fence_token: string; epoch: string | null }>(
+    const [row] = await sqlRows<{
+      phase: string;
+      fence_token: string;
+      epoch: string | null;
+    }>(
       tx,
       sql`SELECT phase, fence_token, epoch::text AS epoch FROM inference_policy_mutations WHERE organization_id = ${organizationId}::uuid AND mutation_id = ${mutationId}`,
     );

@@ -19,7 +19,7 @@ dependencies {
 
 // Exercise the existing encrypted slot store, without a second fixture cipher.
 android.sourceSets.main.java {
- srcDir file('../../../../plugin-native-secure-store/android/src/main/java')
+ srcDir file('../../../../plugin-native-secure-store/android-nativeonly/src/main/java')
  include '**/JsonCredentialSlots.java'
 }
 

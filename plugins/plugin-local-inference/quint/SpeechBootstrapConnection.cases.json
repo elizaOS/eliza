@@ -1,0 +1,28 @@
+{
+  "sources": [
+    "plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/SpeechStreamBridgePlugin.java",
+    "plugins/plugin-local-inference/native/android/consumer.gradle",
+    "packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs",
+    "packages/app/scripts/paradee-voice/speech-pipeline/SpeechHttpReuseTest.java.in",
+    "packages/app/scripts/paradee-voice/speech-compile-dependencies.json",
+    "plugins/plugin-local-inference/quint/check-speech-bootstrap-connection.mjs"
+  ],
+  "conformance": "plugins/plugin-local-inference/quint/check-speech-bootstrap-connection.mjs",
+  "bounds": "One consent request, one session request and one WebSocket upgrade to the same authorized origin, with HTTP/1.1-only or HTTP/2-first bootstrap and either persistent or closing server connections. Weak fairness assumes enabled transport progress eventually runs; stop/failure is a terminal outcome. The conformance test compiles the actual production client initializer against pinned OkHttp 5.3.2 JVM and measures sockets on a real local TLS HTTP/2+HTTP/1.1 server. It also runs the existing Android 36 compile check against the pinned Android artifact. Android TLS provider behavior, live Cloud frontends, actual RTT and audio hardware remain outside this local transport evidence. It does not claim a fixed latency improvement or guaranteed reuse when the server closes the connection.",
+  "cases": [
+    {
+      "name": "three-step-bootstrap",
+      "main": "SpeechBootstrapConnection",
+      "init": "init",
+      "step": "step",
+      "invariants": ["TypeOK", "ReuseWhenCompatible", "WebSocketAfterBootstrap", "StopSettles"],
+      "temporal": ["Settles", "SettlesWithoutFairness"],
+      "temporalChecks": [
+        { "property": "Settles", "expect": "holds", "assumptions": ["Enabled transport progress eventually executes; responses may succeed or stop the session."] },
+        { "property": "SettlesWithoutFairness", "expect": "counterexample", "assumptions": ["With no fairness, a pending request may remain unprocessed forever."] }
+      ],
+      "maxSteps": 8,
+      "samples": 100
+    }
+  ]
+}

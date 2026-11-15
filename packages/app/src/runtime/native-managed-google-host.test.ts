@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import {
   redactLogValue,
@@ -51,8 +52,11 @@ function fixture(
   roots.push(root);
   const entry = path.join(root, "google-host.mjs");
   const bytes = Buffer.from(`export const nativeCloudRuntime = ${declaration};
+  let current;
+  export function assertCurrentForFixture() { current(); }
   export async function startNativeGoogleAgentHost(options) {
-    options.assertCurrent();
+    current = options.assertCurrent;
+    current();
     ${expectedToken ? `if (options.binding.token !== ${JSON.stringify(expectedToken)}) throw Error("Wrong service credential");` : ""}
     return {port:47899,async close(){}};
   }`);
@@ -265,6 +269,48 @@ test("bound Google still starts after Cloud preparation", async () => {
     "http://127.0.0.1:47899/__alpha-owner-gmail",
   );
   await host?.close();
+});
+
+test("Cloud Google requests use their admitted service credential after inference changes", async () => {
+  const serviceKey = "synthetic-google-service-key";
+  const f = fixture(undefined, serviceKey);
+  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  f.env.ELIZA_NATIVE_GOOGLE_API_KEY = serviceKey;
+  const host = await startNativeManagedGoogleHost(f.env, f.stores);
+  const admitted = await import(pathToFileURL(f.entry).href);
+  try {
+    f.env.ELIZAOS_CLOUD_API_KEY = "synthetic-new-inference-key";
+    expect(() => admitted.assertCurrentForFixture()).not.toThrow();
+    delete f.env.ELIZAOS_CLOUD_API_KEY;
+    expect(() => admitted.assertCurrentForFixture()).not.toThrow();
+
+    f.env.ELIZA_NATIVE_GOOGLE_API_KEY = "synthetic-new-service-key";
+    expect(() => admitted.assertCurrentForFixture()).toThrow(
+      "Native Google owner changed",
+    );
+    f.env.ELIZA_NATIVE_GOOGLE_API_KEY = serviceKey;
+    f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON = '{"generation":"changed"}';
+    expect(() => admitted.assertCurrentForFixture()).toThrow(
+      "Native Google owner changed",
+    );
+  } finally {
+    await host?.close();
+  }
+});
+
+test("an admitted legacy Cloud Google host keeps its existing credential fence", async () => {
+  const f = fixture(undefined, "synthetic-only");
+  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  const host = await startNativeManagedGoogleHost(f.env, f.stores);
+  const admitted = await import(pathToFileURL(f.entry).href);
+  try {
+    delete f.env.ELIZAOS_CLOUD_API_KEY;
+    expect(() => admitted.assertCurrentForFixture()).toThrow(
+      "Native Google owner changed",
+    );
+  } finally {
+    await host?.close();
+  }
 });
 
 function directFixture() {

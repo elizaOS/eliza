@@ -482,7 +482,6 @@ async function setupMapsBench(exec: (query: string) => Promise<void>) {
     }),
   };
   const bindings = { INFERENCE_ADMISSION_GATES: binding };
-  process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
 
   const credential = {
     kind: "api_key" as const,

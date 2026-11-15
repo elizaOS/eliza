@@ -25,6 +25,7 @@ type GoogleCalendarEventDate = {
 
 type GoogleCalendarApiEvent = {
   id?: string;
+  etag?: string;
   status?: string;
   summary?: string;
   description?: string;
@@ -34,6 +35,7 @@ type GoogleCalendarApiEvent = {
   iCalUID?: string;
   recurringEventId?: string;
   created?: string;
+  updated?: string;
   start?: GoogleCalendarEventDate;
   end?: GoogleCalendarEventDate;
   organizer?: {
@@ -84,15 +86,8 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const OFFSET_SAMPLE_HOURS = [-48, -36, -24, -12, 0, 12, 24, 36, 48];
 
-function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    timeZoneName: "shortOffset",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(date);
+function getTimeZoneOffsetMinutes(date: Date, formatter: Intl.DateTimeFormat): number {
+  const parts = formatter.formatToParts(date);
   const token = parts.find((part) => part.type === "timeZoneName")?.value?.trim() ?? "GMT";
   if (token === "GMT" || token === "UTC") {
     return 0;
@@ -128,9 +123,17 @@ export function buildUtcDateFromLocalParts(timeZone: string, parts: LocalDateTim
   if (!Number.isFinite(baseUtcMs)) {
     throw new RangeError(`Local date-time cannot be resolved in timezone ${timeZone}`);
   }
+  const offsetFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "shortOffset",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
   const offsets = new Set(
     OFFSET_SAMPLE_HOURS.map((hours) =>
-      getTimeZoneOffsetMinutes(new Date(baseUtcMs + hours * HOUR_MS), timeZone),
+      getTimeZoneOffsetMinutes(new Date(baseUtcMs + hours * HOUR_MS), offsetFormatter),
     ),
   );
   const candidates = [...offsets]
@@ -262,6 +265,7 @@ function normalizeGoogleCalendarEvent(
     timezone: start.timeZone || end.timeZone,
     htmlLink: event.htmlLink?.trim() || null,
     conferenceLink: readConferenceLink(event),
+    etag: event.etag?.trim() || null,
     organizer: event.organizer
       ? {
           email: event.organizer.email?.trim() || null,
@@ -278,9 +282,11 @@ function normalizeGoogleCalendarEvent(
       optional: Boolean(attendee.optional),
     })),
     metadata: {
+      etag: event.etag?.trim() || null,
       iCalUID: event.iCalUID?.trim() || null,
       recurringEventId: event.recurringEventId?.trim() || null,
       createdAt: event.created?.trim() || null,
+      updatedAt: event.updated?.trim() || null,
     },
   };
 }
@@ -308,7 +314,7 @@ export async function fetchManagedGoogleCalendarFeed(args: {
     timeMin: args.timeMin,
     timeMax: args.timeMax,
     fields:
-      "nextPageToken,items(id,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri)))",
+      "nextPageToken,items(id,etag,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,updated,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri)))",
     timeZone: args.timeZone,
   });
 
@@ -532,7 +538,7 @@ async function fetchManagedGoogleCalendarEvent(args: {
 }): Promise<ManagedGoogleCalendarEvent | null> {
   const params = new URLSearchParams({
     fields:
-      "id,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri))",
+      "id,etag,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,updated,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri))",
   });
   const response = await googleFetch({
     organizationId: args.organizationId,
@@ -563,6 +569,8 @@ export async function updateManagedGoogleCalendarEvent(args: {
     displayName?: string;
     optional?: boolean;
   }>;
+  /** The event `etag` the caller read; Google refuses a newer revision with 412. */
+  ifMatch?: string;
 }): Promise<{ event: ManagedGoogleCalendarEvent }> {
   const ONE_HOUR_MS = 60 * 60 * 1000;
   const needsExistingEventContext =
@@ -617,7 +625,10 @@ export async function updateManagedGoogleCalendarEvent(args: {
     url: `${GOOGLE_CALENDAR_EVENTS_ENDPOINT}/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(args.eventId)}?conferenceDataVersion=1`,
     options: {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(args.ifMatch ? { "If-Match": args.ifMatch } : {}),
+      },
       body: JSON.stringify({
         ...(args.title !== undefined ? { summary: args.title } : {}),
         ...(args.description !== undefined ? { description: args.description } : {}),
@@ -645,6 +656,8 @@ export async function deleteManagedGoogleCalendarEvent(args: {
   grantId?: string;
   calendarId: string;
   eventId: string;
+  /** The event `etag` the caller read; Google refuses a newer revision with 412. */
+  ifMatch?: string;
 }): Promise<{ ok: true }> {
   await googleFetch({
     organizationId: args.organizationId,
@@ -654,6 +667,7 @@ export async function deleteManagedGoogleCalendarEvent(args: {
     url: `${GOOGLE_CALENDAR_EVENTS_ENDPOINT}/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(args.eventId)}`,
     options: {
       method: "DELETE",
+      ...(args.ifMatch ? { headers: { "If-Match": args.ifMatch } } : {}),
     },
   });
   return { ok: true };

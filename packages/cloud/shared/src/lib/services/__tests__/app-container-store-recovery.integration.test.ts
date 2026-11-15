@@ -46,7 +46,7 @@ beforeAll(async () => {
     },
     update: async (id, organizationId, data) => {
       containerUpdates.push({ id, organizationId, data });
-      return null;
+      return { id, ...data } as never;
     },
     tryReleaseNodeSlot: async (id, organizationId, nodeId) => {
       releasedSlots.push({ id, organizationId, nodeId });
@@ -78,6 +78,8 @@ beforeAll(async () => {
       node_id text,
       status text NOT NULL,
       error_message text,
+      created_at timestamp NOT NULL DEFAULT now(),
+      lifecycle_revision integer NOT NULL DEFAULT 0,
       updated_at timestamp NOT NULL DEFAULT now()
     );
     CREATE TABLE docker_nodes (
@@ -169,12 +171,22 @@ describe("app-container persistence transactions", () => {
 
   test("running, failure, and deletion transitions preserve ownership and placement", async () => {
     expect(await store.claimNodeSlot(SLOT_ID, ORG_ONE, "node-1")).toBe("claimed");
-    await store.markRunning(SLOT_ID, {
-      hostContainerId: "docker-1",
-      hostPort: 31000,
-      network: "app-network",
-      nodeHost: "10.0.0.1",
-    });
+    const authority = await store.getById(SLOT_ID);
+    if (!authority) throw new Error("missing publication row");
+    await store.markRunning(
+      SLOT_ID,
+      {
+        hostContainerId: "docker-1",
+        hostPort: 31000,
+        network: "app-network",
+        nodeHost: "10.0.0.1",
+      },
+      {
+        organizationId: ORG_ONE,
+        deploymentGeneration: null,
+        createdAtSnapshot: authority.createdAtSnapshot,
+      },
+    );
     await store.markError(SLOT_ID, "health check failed");
     await store.markCleanupRequired(SLOT_ID, "docker absence unproven");
     expect(await countAllocatedWorkloadsOnNodeWithDatabase(database, "node-1")).toBe(1);
@@ -187,7 +199,7 @@ describe("app-container persistence transactions", () => {
     ).toEqual([{ status: "cleanup_required", error_message: "docker absence unproven" }]);
     await store.markDeleted(SLOT_ID, ORG_ONE, "node-1");
 
-    expect(statusUpdates).toContainEqual({ id: SLOT_ID, status: "running" });
+    expect(containerUpdates[0]?.data.status).toBe("running");
     expect(statusUpdates).toContainEqual({
       id: SLOT_ID,
       status: "failed",
@@ -216,11 +228,15 @@ describe("app-container persistence transactions", () => {
     ).toEqual([{ status: "deleted" }]);
 
     await expect(
-      store.markRunning("00000000-0000-0000-0000-000000000099", {
-        hostContainerId: "missing",
-        hostPort: 31001,
-        network: "app-network",
-      }),
+      store.markRunning(
+        "00000000-0000-0000-0000-000000000099",
+        {
+          hostContainerId: "missing",
+          hostPort: 31001,
+          network: "app-network",
+        },
+        { organizationId: ORG_ONE, deploymentGeneration: null, createdAtSnapshot: "missing" },
+      ),
     ).rejects.toMatchObject({ name: "APP_CONTAINER_ROW_MISSING" });
   });
 
@@ -345,4 +361,37 @@ describe("app-container persistence transactions", () => {
       else process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = previousBaseDomain;
     }
   });
+});
+
+test("stale cleanup authority cannot release a replacement row's slot or mark it failed", async () => {
+  const id = "00000000-0000-4000-8000-0000000000f1";
+  await client.query(
+    `INSERT INTO containers (id,name,project_name,image_tag,port,organization_id,user_id,status)
+    VALUES ($1,'slot-identity','app-identity','image:1',3000,$2,$3,'pending')`,
+    [id, ORG_ONE, USER_ID],
+  );
+  await store.claimNodeSlot(id, ORG_ONE, "node-1");
+  const original = await store.getById(id);
+  if (!original) throw new Error("Missing original slot row");
+  const authority = {
+    organizationId: ORG_ONE,
+    deploymentGeneration: null,
+    createdAtSnapshot: original.createdAtSnapshot,
+  };
+  const before = await client.query<{ allocated_count: number }>(
+    "SELECT allocated_count FROM docker_nodes WHERE node_id='node-1'",
+  );
+  await client.query(
+    "UPDATE containers SET created_at=created_at + interval '1 microsecond' WHERE id=$1",
+    [id],
+  );
+  expect(await store.rollbackNodeSlotClaim(id, ORG_ONE, "node-1", authority)).toBe(false);
+  const writes = containerUpdates.length;
+  await store.markError(id, "old failure", authority);
+  await store.markCleanupRequired(id, "old cleanup", authority);
+  expect(containerUpdates).toHaveLength(writes);
+  const after = await client.query<{ allocated_count: number }>(
+    "SELECT allocated_count FROM docker_nodes WHERE node_id='node-1'",
+  );
+  expect(after.rows).toEqual(before.rows);
 });

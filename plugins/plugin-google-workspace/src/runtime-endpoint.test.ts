@@ -20,12 +20,12 @@ it("accepts local runtime endpoints and rejects remote character overrides", () 
   ).not.toThrow();
 });
 
-it("preserves explicit host environment overrides", () => {
+it("rejects a remote environment override", () => {
   vi.stubEnv("ELIZA_MOCK_GOOGLE_BASE", "https://host-owned-fixture.example.test");
   expect(
     () =>
       new GoogleWorkspaceService(
         createMockRuntime({ getSetting: () => process.env.ELIZA_MOCK_GOOGLE_BASE })
       )
-  ).not.toThrow();
+  ).toThrow(expect.objectContaining({ code: "GOOGLE_MOCK_ENDPOINT_INVALID" }));
 });

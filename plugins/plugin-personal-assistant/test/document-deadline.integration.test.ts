@@ -1,6 +1,8 @@
 import type { ActionResult, Memory, UUID } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { ownerDocumentsAction } from "../src/actions/document.ts";
+import { resolveExplicitOwnerApproval } from "../src/actions/resolve-request.ts";
+import { createApprovalQueue } from "../src/lifeops/approval-queue.ts";
 import { getScheduledTaskRunner } from "../src/lifeops/scheduled-task/service.ts";
 import {
   createLifeOpsTestRuntime,
@@ -133,5 +135,76 @@ describe("OWNER_DOCUMENTS deadline tracking", () => {
       await getScheduledTaskRunner(runtime, { agentId: runtime.agentId }).list()
     ).find((candidate) => candidate.taskId === taskId(created));
     expect(task?.trigger).toEqual({ kind: "once", atIso });
+  });
+
+  it("refuses a portal upload without queueing an approval", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const message = ownerMessage(runtime.agentId, "Upload my deck");
+
+    const result = await ownerDocumentsAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "upload_asset",
+          portalUrl: "https://portal.example.com",
+          assetPath: "/tmp/deck.pdf",
+          assetKind: "deck",
+        },
+      },
+      undefined,
+      [],
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.data).toMatchObject({ error: "PORTAL_UPLOAD_UNAVAILABLE" });
+    const queued = await createApprovalQueue(runtime, {
+      agentId: runtime.agentId,
+    }).list({
+      subjectUserId: runtime.agentId,
+      state: null,
+      action: null,
+    });
+    expect(queued).toHaveLength(0);
+  });
+
+  it("says an approved signature request was not sent to the signer", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const message = ownerMessage(runtime.agentId, "Get the NDA signed");
+
+    const created = await ownerDocumentsAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "request_signature",
+          requesteeEntityId: "counterparty-1",
+          documentTitle: "NDA",
+          deadline: "2030-11-01T17:00:00.000Z",
+        },
+      },
+      undefined,
+      [],
+    );
+    const approvalRequestId = (
+      created?.data as { approvalRequestId?: string } | undefined
+    )?.approvalRequestId;
+    if (!approvalRequestId) throw new Error("no approval was queued");
+
+    const approved = await resolveExplicitOwnerApproval(runtime, {
+      subjectUserId: runtime.agentId,
+      requestId: approvalRequestId,
+      decision: "approve",
+      reason: "Reviewed",
+    });
+
+    expect(approved.success).toBe(true);
+    expect(approved.text).toContain("nothing was sent to the signer");
+    expect(approved.text).not.toContain("dispatched");
+    expect(approved.data).toMatchObject({ sentToCounterparty: false });
   });
 });

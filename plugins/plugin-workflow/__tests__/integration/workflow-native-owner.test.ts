@@ -3,11 +3,8 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import {
-  acquireWorkerLease,
-  inspectWorkerLease,
-  resolveWorkerSocketRoot,
-} from '../../src/services/workflow-worker-lease';
+import { acquireWorkerLease, inspectWorkerLease } from '../../src/services/workflow-worker-lease';
+import { resolveWorkerSocketRoot } from '../../src/services/workflow-worker-socket-root';
 
 test.skipIf(process.platform === 'win32')(
   'source-bound owner records immutable executable identity on Linux and rejects source drift before admission',

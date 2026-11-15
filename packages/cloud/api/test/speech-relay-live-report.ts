@@ -99,6 +99,11 @@ const timings = [
   "sessionMs",
   "wsReadyMs",
   "bootstrapMs",
+  // Staging hosting probe: a new and a live object in each Worker script.
+  "leanNewMs",
+  "apiNewMs",
+  "leanLiveMs",
+  "apiLiveMs",
   "ttsStartupMs",
   "firstPcmMs",
   "ttsCompleteMs",

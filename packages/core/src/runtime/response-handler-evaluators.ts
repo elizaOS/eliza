@@ -95,7 +95,6 @@ export interface ResponseHandlerEvaluationRunResult {
 }
 
 type AppliedResponseHandlerPatch = {
-	invalidatedScopeFields: readonly string[];
 	trace: ResponseHandlerPatchTrace;
 	candidateActionsAdded: string[];
 };
@@ -140,12 +139,13 @@ function normalizeDeterministicToolCall(
 	return params ? { name, params } : { name };
 }
 
-function assertDeterministicToolCallAllowed(
+/** Normalize the patch's deterministic call and require the evaluator to declare it. */
+function allowedDeterministicToolCall(
 	evaluator: ResponseHandlerEvaluator,
 	patch: ResponseHandlerPatch,
-): void {
+): MessageHandlerDeterministicToolCall | null {
 	const toolCall = normalizeDeterministicToolCall(patch.deterministicToolCall);
-	if (!toolCall) return;
+	if (!toolCall) return null;
 
 	const requested = toolCall.name.toLowerCase();
 	const allowed = uniqueStrings(evaluator.deterministicActions).some(
@@ -163,6 +163,7 @@ function assertDeterministicToolCallAllowed(
 			},
 		);
 	}
+	return toolCall;
 }
 
 function availableContextSet(
@@ -195,47 +196,47 @@ function filterAvailableContexts(
 
 // Core routing and source evidence have dedicated contracts; they are not
 // inferred operation-scope extensions a plugin may invalidate by name.
-const PROTECTED_SCOPE_FIELDS = new Set(
-	[
-		"contexts",
-		"reply",
-		"replyeffectstatus",
-		"requirestool",
-		"contextSlices",
-		"completioncontext",
-		"candidateactions",
-		"intents",
-		"parentactionhints",
-		"requiredtoolmissbudget",
-		"requiredtoolevidence",
-		"deterministictoolcall",
-		"simple",
-		"metadata",
-		"data",
-		"state",
-		"messages",
-		"originalmessages",
-		"originalrequest",
-		"history",
-		"receipts",
-		"effectreceipts",
-		"source",
-		"sources",
-		"sourcecontext",
-		"sourcesetid",
-		"sourceselection",
-		"currentsourcerevisions",
-		"invalidatedscopefields",
-		"constructor",
-		"prototype",
-		"__proto__",
-	].map((field) => field.toLowerCase()),
-);
+const PROTECTED_SCOPE_FIELDS: ReadonlySet<string> = new Set([
+	"contexts",
+	"reply",
+	"replyeffectstatus",
+	"requirestool",
+	"contextslices",
+	"completioncontext",
+	"candidateactions",
+	"intents",
+	"parentactionhints",
+	"requiredtoolmissbudget",
+	"requiredtoolevidence",
+	"deterministictoolcall",
+	"simple",
+	"metadata",
+	"data",
+	"state",
+	"messages",
+	"originalmessages",
+	"originalrequest",
+	"history",
+	"receipts",
+	"effectreceipts",
+	"source",
+	"sources",
+	"sourcecontext",
+	"sourcesetid",
+	"sourceselection",
+	"currentsourcerevisions",
+	"invalidatedscopefields",
+	"constructor",
+	"prototype",
+	"__proto__",
+]);
 
 function applyResponseHandlerPatch(
+	evaluatorName: string,
 	messageHandler: MessageHandlerResult,
 	patch: ResponseHandlerPatch,
-	availableContexts: readonly ContextDefinition[],
+	deterministicToolCall: MessageHandlerDeterministicToolCall | null,
+	available: Set<string> | null,
 ): AppliedResponseHandlerPatch | null {
 	const scope = patch.replaceIntentScope;
 	// Validate the whole replacement before applying any other patch field.
@@ -261,7 +262,6 @@ function applyResponseHandlerPatch(
 	}
 	const changed: string[] = [];
 	const debug = uniqueStrings(patch.debug);
-	const available = availableContextSet(availableContexts);
 	let candidateActionsAdded: string[] | undefined;
 	if (scope) {
 		messageHandler.plan.intents = [...scope.intents];
@@ -341,9 +341,6 @@ function applyResponseHandlerPatch(
 		);
 		changed.push("contextSlices:add");
 	}
-	const deterministicToolCall = normalizeDeterministicToolCall(
-		patch.deterministicToolCall,
-	);
 	if (deterministicToolCall) {
 		messageHandler.plan.deterministicToolCall = deterministicToolCall;
 		changed.push("deterministicToolCall:set");
@@ -360,13 +357,8 @@ function applyResponseHandlerPatch(
 		return null;
 	}
 	return {
-		trace: {
-			evaluatorName: "",
-			debug,
-			changed,
-		},
+		trace: { evaluatorName, debug, changed },
 		candidateActionsAdded: candidateActionsAdded ?? [],
-		invalidatedScopeFields: [...new Set(scope?.invalidateFields ?? [])],
 	};
 }
 
@@ -379,11 +371,10 @@ export async function runResponseHandlerEvaluators(args: {
 	userRoles?: readonly RoleGateRole[];
 	evaluators?: readonly ResponseHandlerEvaluator[];
 }): Promise<ResponseHandlerEvaluationRunResult> {
-	const registered = Array.isArray(args.runtime.responseHandlerEvaluators)
-		? (args.runtime
-				.responseHandlerEvaluators as readonly ResponseHandlerEvaluator[])
-		: [];
-	const candidates = [...(args.evaluators ?? []), ...registered].sort(
+	const candidates = [
+		...(args.evaluators ?? []),
+		...(args.runtime.responseHandlerEvaluators ?? []),
+	].sort(
 		(a, b) =>
 			(a.priority ?? 100) - (b.priority ?? 100) || a.name.localeCompare(b.name),
 	);
@@ -398,6 +389,7 @@ export async function runResponseHandlerEvaluators(args: {
 		return result;
 	}
 
+	const available = availableContextSet(args.availableContexts);
 	const invalidatedScopeFields = new Set<string>();
 	let wholeRequestOwner: DirectActionRoutingRule | undefined;
 	for (const evaluator of candidates) {
@@ -421,23 +413,23 @@ export async function runResponseHandlerEvaluators(args: {
 			if (!patch) {
 				continue;
 			}
-			assertDeterministicToolCallAllowed(evaluator, patch);
 			const applied = applyResponseHandlerPatch(
+				evaluator.name,
 				args.messageHandler,
 				patch,
-				args.availableContexts,
+				allowedDeterministicToolCall(evaluator, patch),
+				available,
 			);
 			if (applied) {
-				if (patch.replaceIntentScope)
+				if (patch.replaceIntentScope) {
 					wholeRequestOwner = patch.replaceIntentScope.owner;
-				for (const field of applied.invalidatedScopeFields)
-					invalidatedScopeFields.add(field);
-				if (patch.clearCandidateActions === true) {
+					for (const field of patch.replaceIntentScope.invalidateFields)
+						invalidatedScopeFields.add(field);
+				}
+				if (patch.clearCandidateActions) {
 					result.candidateActionsClearedByEvaluators = true;
 				}
-				const { trace } = applied;
-				trace.evaluatorName = evaluator.name;
-				result.appliedPatches.push(trace);
+				result.appliedPatches.push(applied.trace);
 				result.candidateActionsAddedByEvaluators = mergeUniqueStrings(
 					result.candidateActionsAddedByEvaluators,
 					applied.candidateActionsAdded,

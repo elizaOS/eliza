@@ -14,6 +14,10 @@ const deviceNameMigrationUrl = new URL(
   "./migrations/0279_mobile_app_auth_device_name.sql",
   import.meta.url,
 );
+const clientRegistrationMigrationUrl = new URL(
+  "./migrations/0574_native_app_auth_client_registration.sql",
+  import.meta.url,
+);
 const journalUrl = new URL("./migrations/meta/_journal.json", import.meta.url);
 const APP_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "22222222-2222-4222-8222-222222222222";
@@ -56,13 +60,18 @@ beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests, dbWrite } = await import("./client"));
   await dbWrite.execute("CREATE TABLE organizations (id uuid PRIMARY KEY)");
   await dbWrite.execute("CREATE TABLE users (id uuid PRIMARY KEY)");
-  await dbWrite.execute("CREATE TABLE apps (id uuid PRIMARY KEY)");
+  await dbWrite.execute(
+    "CREATE TABLE apps (id uuid PRIMARY KEY, app_url text, allowed_origins jsonb DEFAULT '[]'::jsonb, is_approved boolean DEFAULT true, is_active boolean DEFAULT true, created_at timestamp with time zone DEFAULT now())",
+  );
   await dbWrite.execute("CREATE TABLE api_keys (id uuid PRIMARY KEY)");
   await applyMigration(migrationUrl);
   await applyMigration(deviceNameMigrationUrl);
+  await applyMigration(clientRegistrationMigrationUrl);
   await dbWrite.execute(`INSERT INTO organizations (id) VALUES ('${ORGANIZATION_ID}')`);
   await dbWrite.execute(`INSERT INTO users (id) VALUES ('${USER_ID}')`);
-  await dbWrite.execute(`INSERT INTO apps (id) VALUES ('${APP_ID}')`);
+  await dbWrite.execute(
+    `INSERT INTO apps (id, app_url, allowed_origins) VALUES ('${APP_ID}', 'https://eliza.app', '["https://eliza.app/auth/callback"]'::jsonb)`,
+  );
   await dbWrite.execute(`INSERT INTO api_keys (id) VALUES ('${CREDENTIAL_ID}')`);
 }, 60_000);
 
@@ -197,5 +206,65 @@ describe("0277 mobile App Auth PKCE grants migration", () => {
       `SELECT credential_id FROM mobile_app_auth_grants WHERE code_hash = '${"a".repeat(64)}'`,
     );
     expect(grant.rows[0]?.credential_id).toBeNull();
+  });
+});
+
+describe("0574 mobile App Auth client registration migration", () => {
+  test("is journaled and applies idempotently", async () => {
+    const journal = JSON.parse(readFileSync(journalUrl, "utf8")) as {
+      entries: Array<{ tag: string }>;
+    };
+    expect(journal.entries.map((entry) => entry.tag)).toContain(
+      "0574_native_app_auth_client_registration",
+    );
+    await applyMigration(clientRegistrationMigrationUrl);
+    await applyMigration(clientRegistrationMigrationUrl);
+    const table = await dbWrite.execute(
+      "SELECT count(*)::int AS count FROM information_schema.tables WHERE table_name = 'mobile_app_auth_clients'",
+    );
+    expect(Number(table.rows[0]?.count)).toBe(1);
+  });
+
+  test("creates indexes and foreign key constraint with cascade deletion", async () => {
+    const indexes = await dbWrite.execute(
+      "SELECT indexname FROM pg_indexes WHERE tablename = 'mobile_app_auth_clients' ORDER BY indexname",
+    );
+    const names = indexes.rows.map((r) => String(r.indexname));
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "idx_mobile_app_auth_clients_app_id",
+        "idx_mobile_app_auth_clients_android_package",
+        "idx_mobile_app_auth_clients_redirect_uri",
+      ]),
+    );
+
+    const constraints = await dbWrite.execute(
+      `SELECT pg_get_constraintdef(oid) AS definition
+       FROM pg_constraint
+       WHERE conrelid = 'mobile_app_auth_clients'::regclass
+         AND contype = 'f'`,
+    );
+    const definitions = constraints.rows.map((row) => String(row.definition).replace(/\s+/g, " "));
+    expect(definitions).toContain("FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE");
+  });
+
+  test("cascades client deletion when parent app is deleted", async () => {
+    const tempAppId = "55555555-5555-4555-8555-555555555555";
+    await dbWrite.execute(`INSERT INTO apps (id) VALUES ('${tempAppId}')`);
+    await dbWrite.execute(
+      `INSERT INTO mobile_app_auth_clients (client_id, app_id, redirect_uri)
+       VALUES ('ai.test.cascadetest', '${tempAppId}', 'https://test.app/auth/callback')`,
+    );
+
+    const before = await dbWrite.execute(
+      `SELECT client_id FROM mobile_app_auth_clients WHERE client_id = 'ai.test.cascadetest'`,
+    );
+    expect(before.rows).toHaveLength(1);
+
+    await dbWrite.execute(`DELETE FROM apps WHERE id = '${tempAppId}'`);
+    const after = await dbWrite.execute(
+      `SELECT client_id FROM mobile_app_auth_clients WHERE client_id = 'ai.test.cascadetest'`,
+    );
+    expect(after.rows).toHaveLength(0);
   });
 });

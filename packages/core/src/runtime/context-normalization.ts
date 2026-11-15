@@ -74,13 +74,19 @@ export function normalizeContextId(context: string): AgentContext {
 		.replace(/[\s-]+/g, "_") as AgentContext;
 }
 
+/** Alias values are canonical ids already; `Object.hasOwn` keeps `__proto__`/`constructor` from resolving to prototype members. */
+function aliasExpansion(
+	normalized: AgentContext,
+): readonly AgentContext[] | undefined {
+	return Object.hasOwn(CONTEXT_ALIASES, normalized)
+		? CONTEXT_ALIASES[normalized]
+		: undefined;
+}
+
 export function expandContextAliases(context: AgentContext): AgentContext[] {
 	const normalized = normalizeContextId(context);
-	const alias = CONTEXT_ALIASES[normalized];
-	if (!alias) {
-		return [normalized];
-	}
-	return alias.map((value) => normalizeContextId(value));
+	const alias = aliasExpansion(normalized);
+	return alias ? [...alias] : [normalized];
 }
 
 export function normalizeContextList(
@@ -91,7 +97,13 @@ export function normalizeContextList(
 	}
 	const normalized = new Set<AgentContext>();
 	for (const context of contexts) {
-		for (const expanded of expandContextAliases(context)) {
+		const id = normalizeContextId(context);
+		const alias = aliasExpansion(id);
+		if (!alias) {
+			normalized.add(id);
+			continue;
+		}
+		for (const expanded of alias) {
 			normalized.add(expanded);
 		}
 	}

@@ -16,6 +16,8 @@ export interface WorkerLeaseHandle {
   finishCanonicalResult(): Promise<void>;
   /** Stop answering; preserve durable unknown reservation, never infer no effect. */
   abandon(): Promise<void>;
+  /** Only before the workflow started executing: no task ran, so the reservation is removed. */
+  releaseUnstarted(): Promise<void>;
 }
 export interface WorkflowPlatformBackend {
   readonly platform: 'posix' | 'win32';

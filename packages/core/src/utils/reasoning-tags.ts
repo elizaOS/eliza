@@ -9,7 +9,8 @@ export const REASONING_TAG_NAMES = [
 	"antthinking",
 ] as const;
 
-const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
+/** Regex alternation of {@link REASONING_TAG_NAMES}, for building tag patterns. */
+export const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
 
 const WHITESPACE_RE = /\s/;
 
@@ -18,6 +19,22 @@ function skipWhitespace(text: string, from: number): number {
 	let i = from;
 	while (i < text.length && WHITESPACE_RE.test(text[i] as string)) i++;
 	return i;
+}
+
+// Callers pass a handful of constant alternations; compile each pair once
+// instead of on every scan step of every model output.
+const tagRegexCache = new Map<string, { open: RegExp; close: RegExp }>();
+
+function tagRegexes(tagAlternation: string): { open: RegExp; close: RegExp } {
+	let cached = tagRegexCache.get(tagAlternation);
+	if (!cached) {
+		cached = {
+			open: new RegExp(`<\\s*(?:${tagAlternation})(?=[\\s/>])`, "gi"),
+			close: new RegExp(`<\\s*\\/\\s*(?:${tagAlternation})(?=[\\s>])`, "gi"),
+		};
+		tagRegexCache.set(tagAlternation, cached);
+	}
+	return cached;
 }
 
 export interface TagMatch {
@@ -51,7 +68,7 @@ export function findNextOpenTag(
 	from: number,
 	tagAlternation: string,
 ): TagMatch | null {
-	const openRe = new RegExp(`<\\s*(?:${tagAlternation})(?=[\\s/>])`, "gi");
+	const openRe = tagRegexes(tagAlternation).open;
 	openRe.lastIndex = from;
 	const match = openRe.exec(text);
 	if (!match) return null;
@@ -78,10 +95,7 @@ export function findNextCloseTag(
 	from: number,
 	tagAlternation: string,
 ): TagMatch | null {
-	const closeRe = new RegExp(
-		`<\\s*\\/\\s*(?:${tagAlternation})(?=[\\s>])`,
-		"gi",
-	);
+	const closeRe = tagRegexes(tagAlternation).close;
 	let pos = from;
 	while (pos <= text.length) {
 		closeRe.lastIndex = pos;

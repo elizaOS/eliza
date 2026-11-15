@@ -1,89 +1,11 @@
 /** Configures the deterministic Vitest harness for @elizaos/core test suites. */
-import path from "node:path";
 import { defineConfig } from "vitest/config";
-import { repoRoot } from "../../packages/scripts/vitest/repo-root.ts";
-import { getElizaWorkspaceRoot } from "../../packages/scripts/vitest/workspace-aliases.ts";
 import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts";
-
-const pluginSqlRoot = path.join(
-	getElizaWorkspaceRoot(repoRoot),
-	"plugins",
-	"plugin-sql",
-	"src",
-);
 
 export default defineConfig({
 	resolve: {
 		conditions: ["eliza-source"],
-		alias: [
-			{
-				find: /^@elizaos\/testing\/runtime$/,
-				replacement: path.join(
-					getElizaWorkspaceRoot(repoRoot),
-					"packages",
-					"testing",
-					"src",
-					"runtime.ts",
-				),
-			},
-			{
-				find: /^@elizaos\/testing$/,
-				replacement: path.join(
-					getElizaWorkspaceRoot(repoRoot),
-					"packages",
-					"testing",
-					"src",
-					"index.ts",
-				),
-			},
-			{
-				find: /^@elizaos\/plugin-sqlite$/,
-				replacement: path.join(
-					getElizaWorkspaceRoot(repoRoot),
-					"plugins",
-					"plugin-sqlite",
-					"index.ts",
-				),
-			},
-			{
-				find: /^@elizaos\/core$/,
-				replacement: new URL("./src/index.ts", import.meta.url).pathname,
-			},
-			{
-				find: /^@elizaos\/prompts\/keywords$/,
-				replacement: new URL("../prompts/src/keywords.ts", import.meta.url)
-					.pathname,
-			},
-
-			{
-				// Retained prompt contract tests exercise the owning package's source.
-				find: /^@elizaos\/prompts$/,
-				replacement: path.join(
-					getElizaWorkspaceRoot(repoRoot),
-					"packages",
-					"prompts",
-					"src",
-					"index.ts",
-				),
-			},
-			{
-				find: /^@elizaos\/plugin-sql$/,
-				replacement: path.join(pluginSqlRoot, "index.ts"),
-			},
-			{
-				find: /^@elizaos\/plugin-sql\/schema$/,
-				replacement: path.join(pluginSqlRoot, "schema", "index.ts"),
-			},
-			{
-				find: /^@elizaos\/plugin-sql\/types$/,
-				replacement: path.join(pluginSqlRoot, "types.ts"),
-			},
-			{
-				find: /^@elizaos\/plugin-sql\/(.+)$/,
-				replacement: path.join(pluginSqlRoot, "$1"),
-			},
-			...buildWorkspaceSourceAliases(),
-		],
+		alias: buildWorkspaceSourceAliases(),
 	},
 	test: {
 		hookTimeout: 60_000,

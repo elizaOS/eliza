@@ -1,0 +1,115 @@
+{
+  "sources": [
+    "packages/cloud/api/src/shared-runtime-conversation.ts",
+    "packages/cloud/shared/src/lib/services/shared-runtime/bounded-hydration.ts",
+    "packages/cloud/api/__tests__/shared-runtime-first-turn-warming.miniflare.test.ts",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
+  "bounds": "The hydration case covers one legacy Shared room, up to three serialized requests, two background history reads, one complete ordered history pair and one deadline per caller. The prewarm case covers one room with an already hydrated history pair, two initial prewarm bodies, one optional cancellation, one concurrent history reply, one retry and one ready reuse. At most two module warmup generations and four bodies.",
+  "limitations": [
+    "The modeled failure is an authoritative history read that rejects before local publication. Success abstracts archive writes, snapshot storage and acknowledgement as one settled operation. Failure during those writes, ambiguous acknowledgement, concurrent eviction and tombstones are outside the bound.",
+    "The caller deadline returns a retryable warming result while its original background read remains owned. A later request may join that read or start another after a failed read settles. The fair proof gives no wall-clock deadline and does not guarantee a successful dependency outcome.",
+    "The Workerd suite runs the real Durable Object, SQLite storage and request path. The history repository response is controlled to exercise delay and failure. The model excludes personal rooms that intentionally start empty, canonical authorization, actual PostgreSQL and provider composition.",
+    "The prewarm case begins at the module-loading boundary after hydration. Workerd holds or rejects the module call and observes full response completion. The retry module attempt succeeds in this finite case. The model assumes owner lookup succeeds. It excludes additional callers, cancellation of every body, eviction, owner lookup failure and shutdown."
+  ],
+  "cases": [
+    {
+      "name": "bounded-wait-and-fresh-retry",
+      "main": "SharedHistoryHydration",
+      "init": "init",
+      "step": "step",
+      "invariants": ["OneWaitingRequest", "ReadyRetainsHistory"],
+      "temporal": [
+        "DeadlineKeepsLookup",
+        "FairRequestReturns",
+        "FairLookupReturns",
+        "RequestReturns"
+      ],
+      "temporalChecks": [
+        {
+          "property": "DeadlineKeepsLookup",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The deadline replies to the one waiting caller and leaves the existing history read in progress."
+          ]
+        },
+        {
+          "property": "FairRequestReturns",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of either the caller deadline or an enabled reply continuation. A reply can indicate warming rather than success."
+          ]
+        },
+        {
+          "property": "FairLookupReturns",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the background dependency settling. A lookup can return the complete ordered history or fail."
+          ]
+        },
+        {
+          "property": "RequestReturns",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The caller timer, dependency response and continuation can all remain pending."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    },
+    {
+      "name": "deferred-prewarm-body-ownership",
+      "main": "SharedDeferredPrewarm",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OneWarmupOwner",
+        "SharedGenerationAndFreshRetry",
+        "BodyCompletionUsesItsWarmup"
+      ],
+      "temporal": [
+        "CancelDoesNotSettleWarmup",
+        "HistoryReadDoesNotConsumeBodies",
+        "FairWarmupAndBodiesSettle",
+        "EveryPrewarmBodySettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "CancelDoesNotSettleWarmup",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Cancellation stops the first response body and leaves the active warmup and the peer body unchanged."
+          ]
+        },
+        {
+          "property": "HistoryReadDoesNotConsumeBodies",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The history read can publish the hydrated pair while both bodies are pending. Its publication leaves both bodies and the warmup unchanged."
+          ]
+        },
+        {
+          "property": "FairWarmupAndBodiesSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the module warmup settling and each eligible body continuation. Settlement can report a failure. No wall-clock bound is assumed."
+          ]
+        },
+        {
+          "property": "EveryPrewarmBodySettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The module work or a body continuation can remain pending indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 16,
+      "samples": 1000
+    }
+  ]
+}

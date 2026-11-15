@@ -380,6 +380,21 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
         }),
       };
     }
+    if (!this.canReachApi()) {
+      // Same gate start/stop/getStatus/chat apply: with no configured base
+      // on a non-HTTP origin, a relative fetch would hit the app shell HTML
+      // and come back as a 200 response. Report the missing endpoint
+      // instead of returning shell HTML as an API result.
+      return {
+        status: 503,
+        statusText: "Service Unavailable",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          error: "agent_api_unavailable",
+          message: "Agent web fallback has no reachable Agent API endpoint",
+        }),
+      };
+    }
     const res = await fetch(`${this.apiBase()}${path}`, {
       method,
       signal: AbortSignal.timeout(timeoutMs),

@@ -100,7 +100,6 @@ beforeAll(async () => {
         },
         bindings: {
           INFERENCE_RATE_POLICY_ADMISSION: "true",
-          INFERENCE_STRONG_REVOCATION_ENABLED: "true",
           INFERENCE_FUNDED_BUDGET_ADMISSION: "false",
         },
         serviceBindings: {

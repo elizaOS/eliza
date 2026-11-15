@@ -1,0 +1,192 @@
+{
+  "sources": [
+    "packages/auth/src/auth/credentials.ts",
+    "packages/auth/src/auth/types.ts",
+    "packages/auth/src/auth/refresh-http-error.ts",
+    "packages/auth/src/auth/refresh-mutex.ts",
+    "packages/auth/src/auth/account-storage.ts",
+    "packages/auth/src/auth/anthropic.ts",
+    "packages/auth/src/auth/openai-codex.ts",
+    "packages/auth/src/auth/vendor/pi-oauth/anthropic-login.ts",
+    "packages/auth/src/auth/vendor/pi-oauth/openai-codex-login.ts",
+    "packages/auth/src/auth/credential-refresh-outcomes.test.ts",
+    "packages/auth/test/fixtures/refresh-process-probe.ts"
+  ],
+  "conformance": "packages/auth/quint/check-access-token-resolution.mjs",
+  "bounds": {
+    "domain": "Two callers and two roots. Admission has one active caller, five provider behavior classes, missing/present credentials, five finite expiry positions, seven raw requested-buffer equivalence classes and explicit/missing/stale policy authority. Protocol cases use two callers, one provider class, one external replace/delete/reset, two success lifetimes, optional token rotation and eight provider/transport response classes plus a request deadline. Logical time 0..3, at most five allocated record generations.",
+    "assumptions": "RefreshMutex supplies a process-local FIFO queue for the same provider/account key. AccountCredentialGeneration supplies atomic generation CAS, and AccountStorageLock/AccountStorageReset supply the filesystem ownership and epoch fence. These are separate checked contracts. Signature validation, cryptography and remote provider behavior are not proved. No process-global mutex is assumed across processes. Successful one-time rotation marks the used remote grant; malformed/transport responses may have consumed it without a durable local record.",
+    "progress": "Weak fairness of call start, FIFO admission, the existing five-second AbortSignal refresh deadline, and storage completion. External provider replies are not required for queue release because the deadline aborts header/body I/O. The model abstracts elapsed wall time as a fair deadline action. Atomic API decisions use the observed record and decision time; later consumer delays can expire an issued token.",
+    "limitations": "One external mutation and two calls bound the coordination cases. Metadata/id-token merge is covered by AccountCredentialGeneration. Full provider enrollment, pool health transitions, arbitrary retries, process death and durable credential recovery remain separate models. Real conformance covers named HTTP/filesystem/process schedules, not every abstract interleaving."
+  },
+  "cases": [
+    {
+      "name": "provider-admission",
+      "main": "AccessTokenResolution",
+      "init": "initAdmission",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "RequestedLifetimeNormalized",
+        "TokenResultMatchesOutcome",
+        "ExplicitPolicyBeforeGrant",
+        "ActiveQueueOwnership",
+        "RefreshedRequiresPublication",
+        "SuccessfulLifetime",
+        "KnownFailureClassification",
+        "FailureDoesNotPublish",
+        "CommitStaysInPolicyRoot",
+        "RemovedRecordNotResurrected",
+        "StaleResponseCannotReplace",
+        "RotatedGrantIsRetained",
+        "QueueRereadsCurrentRecord",
+        "StalePolicyCommitThrows",
+        "ReplacementResultUsesCurrentCredential",
+        "SuccessfulOutcomeOwnsGeneration",
+        "RejectedGrantKeepsCapturedGeneration",
+        "CommitReceiptMatchesDecision"
+      ],
+      "temporal": ["CallsSettle"],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "CallsSettle is conditional on FairWork, which gives weak fairness to each caller start, FIFO admission, providerDeadline and commitWork action.",
+            "The native five-second AbortSignal request deadline eventually fires and aborts unfinished provider headers or body reads. Provider success or response delivery is not required.",
+            "Each admitted storage operation eventually settles by returning a value or throwing. Schedulers, timers, cryptography, arbitrary process death and concrete implementation refinement remain outside the finite proof.",
+            "Each bounded caller starts once. The projection contains at most two calls and one external replace, delete or reset operation; it makes no unbounded retry or successful-provider progress claim."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "same-process-refresh",
+      "main": "AccessTokenResolution",
+      "init": "initSameProcess",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "RequestedLifetimeNormalized",
+        "TokenResultMatchesOutcome",
+        "ExplicitPolicyBeforeGrant",
+        "ActiveQueueOwnership",
+        "RefreshedRequiresPublication",
+        "SuccessfulLifetime",
+        "KnownFailureClassification",
+        "FailureDoesNotPublish",
+        "CommitStaysInPolicyRoot",
+        "RemovedRecordNotResurrected",
+        "StaleResponseCannotReplace",
+        "RotatedGrantIsRetained",
+        "QueueRereadsCurrentRecord",
+        "StalePolicyCommitThrows",
+        "ReplacementResultUsesCurrentCredential",
+        "SuccessfulOutcomeOwnsGeneration",
+        "RejectedGrantKeepsCapturedGeneration",
+        "CommitReceiptMatchesDecision"
+      ],
+      "temporal": ["CallsSettle"],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "CallsSettle is conditional on FairWork, which gives weak fairness to each caller start, FIFO admission, providerDeadline and commitWork action.",
+            "The native five-second AbortSignal request deadline eventually fires and aborts unfinished provider headers or body reads. Provider success or response delivery is not required.",
+            "Each admitted storage operation eventually settles by returning a value or throwing. Schedulers, timers, cryptography, arbitrary process death and concrete implementation refinement remain outside the finite proof.",
+            "Each bounded caller starts once. The projection contains at most two calls and one external replace, delete or reset operation; it makes no unbounded retry or successful-provider progress claim."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "separate-process-refresh",
+      "main": "AccessTokenResolution",
+      "init": "initSeparateProcesses",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "RequestedLifetimeNormalized",
+        "TokenResultMatchesOutcome",
+        "ExplicitPolicyBeforeGrant",
+        "ActiveQueueOwnership",
+        "RefreshedRequiresPublication",
+        "SuccessfulLifetime",
+        "KnownFailureClassification",
+        "FailureDoesNotPublish",
+        "CommitStaysInPolicyRoot",
+        "RemovedRecordNotResurrected",
+        "StaleResponseCannotReplace",
+        "RotatedGrantIsRetained",
+        "QueueRereadsCurrentRecord",
+        "StalePolicyCommitThrows",
+        "ReplacementResultUsesCurrentCredential",
+        "SuccessfulOutcomeOwnsGeneration",
+        "RejectedGrantKeepsCapturedGeneration",
+        "CommitReceiptMatchesDecision"
+      ],
+      "temporal": ["CallsSettle"],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "CallsSettle is conditional on FairWork, which gives weak fairness to each caller start, FIFO admission, providerDeadline and commitWork action.",
+            "The native five-second AbortSignal request deadline eventually fires and aborts unfinished provider headers or body reads. Provider success or response delivery is not required.",
+            "Each admitted storage operation eventually settles by returning a value or throwing. Schedulers, timers, cryptography, arbitrary process death and concrete implementation refinement remain outside the finite proof.",
+            "Each bounded caller starts once. The projection contains at most two calls and one external replace, delete or reset operation; it makes no unbounded retry or successful-provider progress claim."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "policy-root-isolation",
+      "main": "AccessTokenResolution",
+      "init": "initSeparateRoots",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "RequestedLifetimeNormalized",
+        "TokenResultMatchesOutcome",
+        "ExplicitPolicyBeforeGrant",
+        "ActiveQueueOwnership",
+        "RefreshedRequiresPublication",
+        "SuccessfulLifetime",
+        "KnownFailureClassification",
+        "FailureDoesNotPublish",
+        "CommitStaysInPolicyRoot",
+        "RemovedRecordNotResurrected",
+        "StaleResponseCannotReplace",
+        "RotatedGrantIsRetained",
+        "QueueRereadsCurrentRecord",
+        "StalePolicyCommitThrows",
+        "ReplacementResultUsesCurrentCredential",
+        "SuccessfulOutcomeOwnsGeneration",
+        "RejectedGrantKeepsCapturedGeneration",
+        "CommitReceiptMatchesDecision"
+      ],
+      "temporal": ["CallsSettle"],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "CallsSettle is conditional on FairWork, which gives weak fairness to each caller start, FIFO admission, providerDeadline and commitWork action.",
+            "The native five-second AbortSignal request deadline eventually fires and aborts unfinished provider headers or body reads. Provider success or response delivery is not required.",
+            "Each admitted storage operation eventually settles by returning a value or throwing. Schedulers, timers, cryptography, arbitrary process death and concrete implementation refinement remain outside the finite proof.",
+            "Each bounded caller starts once. The projection contains at most two calls and one external replace, delete or reset operation; it makes no unbounded retry or successful-provider progress claim."
+          ]
+        }
+      ]
+    }
+  ]
+}

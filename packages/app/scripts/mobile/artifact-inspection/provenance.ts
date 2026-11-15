@@ -11,21 +11,11 @@ import { rmRecursive, runCaptureSync } from "../build-tools.ts";
 import {
   APP,
   androidDir,
-  androidSmsGatewayDebugApkArtifact,
   elizaOsApkDir,
   elizaOsApkName,
-  localArtifactsDir,
   repoRoot,
 } from "../context.ts";
 import { firstExisting, resolveExecutable } from "../toolchain.ts";
-
-export function preserveAndroidSmsGatewayArtifact(artifact) {
-  fs.mkdirSync(localArtifactsDir, { recursive: true });
-  fs.copyFileSync(artifact, androidSmsGatewayDebugApkArtifact);
-  console.log(
-    `[mobile-build] android-sms-gateway preserved APK: ${androidSmsGatewayDebugApkArtifact}`,
-  );
-}
 
 export function findAndroidSystemApk() {
   // Release-only. Staging a debug APK ships without R8 shrinking and

@@ -65,8 +65,9 @@ public final class BrowserPageReading {
   }
 
   /**
-   * The extraction script: a fixed traversal that first scans the whole document for credential
-   * prose, fields and unlabelled short codes and returns {@code {blocked:true}} for any, then
+   * The extraction script: a fixed traversal that scans the whole document for password and
+   * one-time-code inputs, then the selected article (without nav, header, footer and links) for
+   * credential prose and unlabelled short codes, and returns {@code {blocked:true}} for any; it then
    * returns at most {@link #MAX_EXCERPT} characters of visible article text as {@code
    * {text,truncated}}, or null for a document type it does not read. It reads no input values,
    * cookies, storage, form data or frame documents.
@@ -74,38 +75,56 @@ public final class BrowserPageReading {
   public static final String EXTRACT = """
     (()=>{
     if(!['text/html','application/xhtml+xml','text/plain'].includes(document.contentType))return null;
-    // Scan the whole document before selecting an article: a vault/OTP sidebar
-    // must not be omitted by choosing a harmless-looking main element.
+    // Scan the whole document for credential inputs before selecting an article:
+    // a password or one-time-code field anywhere refuses the page.
     const deny=()=>({blocked:true});
-    const sensitive=/(?:api[\\s_-]*key|access[\\s_-]*token|refresh[\\s_-]*token|password|passphrase|passcode|credential|vault|one[\\s-]*time[\\s-]*(?:password|code)|verification[\\s-]*code|security[\\s-]*code|authentication[\\s-]*code|recovery[\\s-]*(?:code|key|phrase)|backup[\\s-]*(?:code|key)|seed[\\s-]*phrase|secret[\\s-]*key|private[\\s-]*key|authenticator|two[\\s-]*factor|multi[\\s-]*factor|sign[\\s-]*in|log[\\s-]*in|\\botp\\b|\\bmfa\\b|\\b2fa\\b)/i;
+    const sensitive=/(?:api[\\s_-]*key|access[\\s_-]*token|refresh[\\s_-]*token|password|passphrase|passcode|credential|(?<![a-z])vaults?(?![a-z])|one[\\s-]*time[\\s-]*(?:password|code)|verification[\\s-]*code|security[\\s-]*code|authentication[\\s-]*code|recovery[\\s-]*(?:code|key|phrase)|backup[\\s-]*(?:code|key)|seed[\\s-]*phrase|secret[\\s-]*key|private[\\s-]*key|authenticator|two[\\s-]*factor|multi[\\s-]*factor|(?<![a-z])sign[\\s-]*in(?![a-z])|(?<![a-z])log[\\s-]*in(?![a-z])|\\botp\\b|\\bmfa\\b|\\b2fa\\b)/i;
+    const words=value=>value.replace(/([a-z\\d])([A-Z])/g,'$1 $2').replace(/([A-Z])([A-Z][a-z])/g,'$1 $2');
+    const flagged=value=>sensitive.test(value)||sensitive.test(words(value));
+    const field=/(?:^|[^a-z0-9])(?:otp|totp|mfa|2fa)(?:$|[^a-z0-9])|password|passcode|one[\\s_-]*time|verification[\\s_-]*code|security[\\s_-]*code|auth(?:entication)?[\\s_-]*code/i;
     const normalize=value=>value.normalize('NFKC').replace(/[\\u200B-\\u200D\\uFEFF]/g,'');
-    const pending=[document.documentElement];let inspected=0,characters=0,scanText='';
+    const skipped=['SCRIPT','STYLE','NOSCRIPT','TEMPLATE'];
+    const pending=[document.documentElement];let inspected=0;
     while(pending.length){
      if(++inspected>12000)return deny();const n=pending.pop();if(!n)return deny();
+     if(n.nodeType!==1||skipped.includes(n.tagName.toUpperCase()))continue;
+     if(n.tagName.toUpperCase()==='INPUT'){
+      const labels=['autocomplete','id','name','aria-label','placeholder'].map(attr=>normalize(n.getAttribute(attr)||'')).join(' ');
+      if((n.getAttribute('type')||'').toLowerCase()==='password'||field.test(labels))return deny();
+     }
+     if(n.childNodes.length+pending.length>12000)return deny();
+     for(let i=n.childNodes.length-1;i>=0;i--)pending.push(n.childNodes[i]);
+    }
+    let root=document.querySelector('article,main,[role="main"]')||document.body;
+    if(!root)return null;
+    // Credential prose, unlabelled codes and the size budget apply to the
+    // article only; nav, header, footer and links are page chrome.
+    const chrome=['NAV','HEADER','FOOTER','A'];
+    pending.push(root);let characters=0,scanText='';
+    while(pending.length){
+     const n=pending.pop();
      if(n.nodeType===1){
-      if(['SCRIPT','STYLE','NOSCRIPT','TEMPLATE'].includes(n.tagName))continue;
+      if(skipped.includes(n.tagName.toUpperCase())||chrome.includes(n.tagName.toUpperCase())||n.getAttribute('role')==='navigation')continue;
       for(const attr of ['type','autocomplete','id','name','class','aria-label','title','placeholder']){
        const value=n.getAttribute(attr)||'';characters+=value.length;
-       if(value.length>1024||characters>65536||sensitive.test(normalize(value)))return deny();
+       if(value.length>1024||characters>65536||flagged(normalize(value)))return deny();
       }
-      if(n.childNodes.length+pending.length>12000)return deny();
-      for(let i=n.childNodes.length-1;i>=0;i--)pending.push(n.childNodes[i]);
      }else if(n.nodeType===3){
       // No input values, cookies, storage, form data or frame documents are read.
       const value=n.nodeValue||'';characters+=value.length;
       if(value.length>20000||characters>65536)return deny();
       scanText+=' '+normalize(value);
      }
+     for(let i=n.childNodes.length-1;i>=0;i--)pending.push(n.childNodes[i]);
     }
     // Unlabelled short authentication-like numbers are ambiguous. Reject rather
     // than assuming that a visible code is harmless prose. Years remain usable.
-    if(sensitive.test(scanText))return deny();
+    if(flagged(scanText))return deny();
     if(/(?:^|\\D)\\d{6,8}(?:\\D|$)/.test(scanText))return deny();
 
     const blocked='script,style,noscript,template,form,input,textarea,select,option,button,iframe,frame,object,embed,nav,header,footer,[contenteditable]:not([contenteditable="false"]),[hidden],[aria-hidden="true"],[role="navigation"],[role="textbox"],[role="button"]';
     const visible=e=>{const s=getComputedStyle(e);return !e.matches(blocked)&&s.display!=='none'&&s.visibility==='visible'&&Number(s.opacity)!==0&&s.contentVisibility!=='hidden'&&s.clip==='auto'&&s.clipPath==='none'&&Array.from(e.getClientRects()).some(r=>r.width>1&&r.height>1);};
-    let root=document.querySelector('article,main,[role="main"]')||document.body;
-    if(!root)return null;let a=root,depth=0;while(a){if(++depth>128||!visible(a))return null;a=a.parentElement;}
+    let a=root,depth=0;while(a){if(++depth>128||!visible(a))return null;a=a.parentElement;}
     const stack=[root];let text='',count=0,truncated=false;
     while(stack.length){if(++count>12000){truncated=true;break;}const n=stack.pop();
     if(n.nodeType===1){if(!visible(n))continue;const children=n.childNodes;if(children.length+stack.length>12000){truncated=true;break;}for(let i=children.length-1;i>=0;i--)stack.push(children[i]);}

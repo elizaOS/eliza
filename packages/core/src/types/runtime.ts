@@ -10,6 +10,11 @@ import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
 import type { FetchLike } from "../media/fetch";
 import type { ConnectorInteractionCapabilityProfile } from "../messaging/interaction-profiles";
+import type {
+	ExecutionTrace,
+	PromptOptimizationRuntimeHooks,
+	ScoreSignal,
+} from "../prompt-optimization";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type {
@@ -18,6 +23,10 @@ import type {
 } from "../runtime/response-handler-fields";
 import type { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import type { TurnControllerRegistry } from "../runtime/turn-controller";
+import type {
+	SecretFragment,
+	SecretFragmentTaintProfile,
+} from "../security/fragment-redaction";
 import type { Agent, Character } from "./agent";
 import type {
 	ChatPreHandler,
@@ -33,7 +42,12 @@ import type {
 	Provider,
 	StreamChunkCallback,
 } from "./components";
-import type { IDatabaseAdapter, LogBody, PatchOp } from "./database";
+import type {
+	IDatabaseAdapter,
+	LogBody,
+	MemoryEmbeddingUpdate,
+	PatchOp,
+} from "./database";
 import type {
 	Component,
 	Entity,
@@ -58,6 +72,7 @@ import type {
 	GenerateTextOptions,
 	GenerateTextParams,
 	GenerateTextResult,
+	LLMModeType,
 	ModelParamsMap,
 	ModelRegistrationInfo,
 	ModelRegistrationMetadata,
@@ -66,6 +81,11 @@ import type {
 	TextGenerationModelType,
 } from "./model";
 import type { PairingAllowlistEntry, PairingRequest } from "./pairing";
+import type {
+	PipelineHookContext,
+	PipelineHookPhase,
+	PipelineHookSpec,
+} from "./pipeline-hooks";
 import type {
 	Plugin,
 	PluginOwnership,
@@ -81,24 +101,18 @@ import type {
 	SearchCategoryRegistration,
 } from "./search";
 import type { Service, ServiceTypeName } from "./service";
-import type { State } from "./state";
+import type {
+	RetryBackoffConfig,
+	SchemaRow,
+	State,
+	StreamEvent,
+} from "./state";
 import type {
 	Task,
 	TaskMetadataPatch,
 	TaskMetadataPatchOutcome,
 	TaskWorker,
 } from "./task";
-
-export {
-	type SearchCategoryEnumerationOptions,
-	type SearchCategoryFilter,
-	type SearchCategoryFilterOption,
-	type SearchCategoryFilterType,
-	type SearchCategoryLookupOptions,
-	type SearchCategoryRegistration,
-	SearchCategoryRegistryError,
-	type SearchCategoryRegistryErrorCode,
-} from "./search";
 
 export type MessageTargetKind =
 	| "room"
@@ -640,12 +654,6 @@ export interface ConnectorUnregisterOptions {
 	exactAccount?: boolean;
 }
 
-/**
- * Represents the core runtime environment for an agent.
- * Defines methods for database interaction, plugin management, event handling,
- * state composition, model usage, and task management.
- */
-
 type RuntimeDatabaseAdapterSurface = Omit<
 	IDatabaseAdapter<object>,
 	| "documentListQueryCapability"
@@ -683,6 +691,11 @@ export interface OwnerToolExecutionObservation {
 	redactedStrings: number;
 	omittedFields: number;
 }
+/**
+ * Represents the core runtime environment for an agent.
+ * Defines methods for database interaction, plugin management, event handling,
+ * state composition, model usage, and task management.
+ */
 export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	/** Positively attests the canonical executor observation contract. Absent on older Core. */
 	readonly ownerToolExecutionObserverVersion?: 1;
@@ -690,7 +703,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	ownerToolExecutionObserver?: (
 		observation: Readonly<OwnerToolExecutionObservation>,
 	) => void;
-	// Properties
 	/** Database adapter. Set in constructor; required. */
 	adapter: IDatabaseAdapter;
 	agentId: UUID;
@@ -759,7 +771,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	contexts: ContextRegistry;
 
-	// Methods
 	registerPlugin<T extends Plugin>(plugin: T): Promise<void>;
 	unloadPlugin(pluginName: string): Promise<PluginOwnership | null>;
 	reloadPlugin(plugin: Plugin): Promise<void>;
@@ -862,7 +873,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 *
 	 * Priority: constructor option > character setting LLM_MODE > default (DEFAULT)
 	 */
-	getLLMMode(): import("./model").LLMModeType;
+	getLLMMode(): LLMModeType;
 
 	/**
 	 * Check if the shouldRespond evaluation is enabled.
@@ -932,22 +943,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		source: string,
 		world: World,
 	): Promise<void>;
-	ensureConnection({
-		entityId,
-		roomId,
-		roomName,
-		metadata,
-		userName,
-		worldName,
-		name,
-		source,
-		channelId,
-		serverId,
-		messageServerId,
-		type,
-		worldId,
-		userId,
-	}: {
+	ensureConnection(params: {
 		entityId: UUID;
 		roomId: UUID;
 		roomName?: string;
@@ -982,6 +978,13 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		 * rendered text/order. An empty array means maximum reuse.
 		 */
 		refreshProviders?: string[] | null,
+		/**
+		 * `deferredReferenceProviders`: providers whose `discoveryText` this
+		 * caller shows the model in place of `text`. Each named owner-exclusive
+		 * provider receives `referenceBodyDeferred`; restoration composes again
+		 * without this option.
+		 */
+		options?: { deferredReferenceProviders?: readonly string[] },
 	): Promise<State>;
 
 	/**
@@ -1146,9 +1149,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	/** Plugin-supplied execution; an empty kernel has no prompt policy. */
 	structuredPromptExecutor?: IAgentRuntime["dynamicPromptExecFromState"];
 	/** Record generic model/provider trace data for later enrichment. */
-	recordPromptTrace(
-		trace: import("../prompt-optimization").ExecutionTrace,
-	): void;
+	recordPromptTrace(trace: ExecutionTrace): void;
 	purgePromptTraces(): void;
 
 	/**
@@ -1161,7 +1162,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		params: Omit<GenerateTextParams, "prompt"> & {
 			prompt: string | ((ctx: { state: State }) => string);
 		};
-		schema: import("./state").SchemaRow[];
+		schema: SchemaRow[];
 		options?: {
 			key?: string;
 			/**
@@ -1180,12 +1181,12 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 			contextCheckLevel?: 0 | 1 | 2 | 3;
 			checkpointCodes?: boolean;
 			maxRetries?: number;
-			retryBackoff?: number | import("./state").RetryBackoffConfig;
+			retryBackoff?: number | RetryBackoffConfig;
 			disableCache?: boolean;
 			cacheTTL?: number;
 			onStreamChunk?: StreamChunkCallback;
 			onStreamEvent?: (
-				event: import("./state").StreamEvent,
+				event: StreamEvent,
 				messageId?: string,
 			) => void | Promise<void>;
 			abortSignal?: AbortSignal;
@@ -1198,20 +1199,13 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * Traces are keyed by runId and held in memory until finalization (e.g. RUN_ENDED
 	 * in prompt-optimization plugins). Hook actions can attach signals after DPE.
 	 */
-	enrichTrace(
-		runId: string,
-		signal: import("../prompt-optimization").ScoreSignal,
-	): void;
+	enrichTrace(runId: string, signal: ScoreSignal): void;
 
 	/** Retrieve the most recent in-flight optimization trace for a runId. */
-	getActiveTrace(
-		runId: string,
-	): import("../prompt-optimization").ExecutionTrace | undefined;
+	getActiveTrace(runId: string): ExecutionTrace | undefined;
 
 	/** Retrieve all in-flight optimization traces for a runId (multiple DPE calls per run). */
-	getActiveTracesForRun?(
-		runId: string,
-	): import("../prompt-optimization").ExecutionTrace[];
+	getActiveTracesForRun?(runId: string): ExecutionTrace[];
 
 	/** Remove all in-flight optimization traces for a runId after finalization. */
 	deleteActiveTrace(runId: string): void;
@@ -1224,14 +1218,10 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * When `null`, DPE performs no optimization I/O.
 	 */
 	registerPromptOptimizationHooks(
-		hooks:
-			| import("../prompt-optimization").PromptOptimizationRuntimeHooks
-			| null,
+		hooks: PromptOptimizationRuntimeHooks | null,
 	): void;
 
-	getPromptOptimizationHooks():
-		| import("../prompt-optimization").PromptOptimizationRuntimeHooks
-		| null;
+	getPromptOptimizationHooks(): PromptOptimizationRuntimeHooks | null;
 
 	/** Resolved `OPTIMIZATION_DIR` (see `getOptimizationRootDir`). */
 	getOptimizationDir(): string;
@@ -1322,11 +1312,11 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * Pipeline hooks: register with `registerPipelineHook`, run with `applyPipelineHooks`.
 	 * Same `id` replaces any prior registration (any phase). Outgoing phase always finishes with `redactSecrets` on `content.text`.
 	 */
-	registerPipelineHook(spec: import("./pipeline-hooks").PipelineHookSpec): void;
+	registerPipelineHook(spec: PipelineHookSpec): void;
 	unregisterPipelineHook(id: string): void;
 	applyPipelineHooks(
-		phase: import("./pipeline-hooks").PipelineHookPhase,
-		ctx: import("./pipeline-hooks").PipelineHookContext,
+		phase: PipelineHookPhase,
+		ctx: PipelineHookContext,
 		pipelineHookTelemetry?: boolean,
 	): Promise<void>;
 
@@ -1343,8 +1333,8 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * configured secret values.
 	 */
 	locateConfiguredSecretFragmentTaint(
-		fragments: readonly import("../security/fragment-redaction").SecretFragment[],
-	): import("../security/fragment-redaction").SecretFragmentTaintProfile;
+		fragments: readonly SecretFragment[],
+	): SecretFragmentTaintProfile;
 
 	// Single-item wrappers delegate to batch adapter methods. createMemory also redacts secrets;
 	// security-sensitive callers must retain that boundary.
@@ -1353,19 +1343,10 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	getEntitiesForRoom(
 		roomId: UUID,
 		includeComponents?: boolean,
-	): Promise<import("./environment").Entity[]>;
+	): Promise<Entity[]>;
 	getRoom(roomId: UUID): Promise<Room | null>;
 	createEntity(entity: Entity): Promise<boolean>;
-	createRoom({
-		id,
-		name,
-		source,
-		type,
-		channelId,
-		messageServerId,
-		worldId,
-		metadata,
-	}: Room): Promise<UUID>;
+	createRoom(room: Room): Promise<UUID>;
 	addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
 	getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
 	getParticipantUserState(
@@ -1442,7 +1423,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	createComponent(component: Component): Promise<boolean>;
 	patchComponent(
 		componentId: UUID,
-		ops: import("./database").PatchOp[],
+		ops: PatchOp[],
 		options?: { entityContext?: UUID },
 	): Promise<void>;
 	updateComponent(component: Component): Promise<void>;
@@ -1496,9 +1477,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	updateMemory(
 		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
 	): Promise<boolean>;
-	updateMemoryEmbedding(
-		update: import("./database").MemoryEmbeddingUpdate,
-	): Promise<boolean>;
+	updateMemoryEmbedding(update: MemoryEmbeddingUpdate): Promise<boolean>;
 	deleteMemory(memoryId: UUID): Promise<void>;
 
 	removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;

@@ -245,6 +245,15 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
     });
     expect(restoredRow.versionId).not.toBe(row.versionId);
     for (const action of ['activate', 'deactivate']) {
+      const before = await facade.getWorkflow(row.id, owner);
+      for (const versionId of [row.versionId, '', '   ', null, 7]) {
+        const refused = await invoke({ action, workflowId: row.id, versionId });
+        expect(refused.success).toBe(false);
+        expect(refused.effectReceipts ?? []).toHaveLength(0);
+        const held = await facade.getWorkflow(row.id, owner);
+        expect(held.versionId).toBe(before.versionId);
+        expect(held.active).toBe(before.active);
+      }
       const changed = await invoke({ action, workflowId: row.id });
       expect(changed.success).toBe(true);
       const actual = await facade.getWorkflow(row.id, owner);
@@ -255,6 +264,25 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
       });
       expect(delivered).toHaveLength(1);
     }
+    const selected = await facade.getWorkflow(row.id, owner);
+    const activated = await invoke({
+      action: 'activate',
+      workflowId: row.id,
+      versionId: selected.versionId,
+    });
+    expect(activated.success).toBe(true);
+    const active = await facade.getWorkflow(row.id, owner);
+    expect(active.active).toBe(true);
+    expect(
+      (await invoke({ action: 'deactivate', workflowId: row.id, versionId: selected.versionId }))
+        .success
+    ).toBe(false);
+    expect((await facade.getWorkflow(row.id, owner)).versionId).toBe(active.versionId);
+    expect(
+      (await invoke({ action: 'deactivate', workflowId: row.id, versionId: active.versionId }))
+        .success
+    ).toBe(true);
+    expect((await facade.getWorkflow(row.id, owner)).active).toBe(false);
     // Chat has no removal operation: the declared schema refuses it before the handler.
     expect(
       validateToolArgs(workflowAction, { action: 'delete', workflowId: row.id })

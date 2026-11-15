@@ -1,0 +1,81 @@
+{
+  "sources": [
+    "plugins/plugin-sqlite/storage-base.ts",
+    "plugins/plugin-sqlite/adapter.test.ts"
+  ],
+  "conformance": "packages/scripts/quint/check-reviewed-repairs.mjs",
+  "bounds": {
+    "domain": "One backup, one competing creator, zero or two newly-created directories. Required chain includes the closest existing parent.",
+    "limitations": "Assumes successful fsync and hard-link system calls provide their documented filesystem guarantees. Power-loss, platform driver correctness and hostile filesystem mutation are outside the model. Local conformance runs on the current OS, not Windows."
+  },
+  "cases": [
+    {
+      "init": "init",
+      "step": "step",
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": true,
+      "name": "existing",
+      "main": "BackupPublication_existing",
+      "invariants": ["TypeOK", "ReportOnlyDurable", "FailureIsNotSuccess"],
+      "temporal": [
+        "ExistingDestinationPreserved",
+        "CompletesOrFails",
+        "DeadlockFree"
+      ],
+      "temporalChecks": [
+        {
+          "property": "ExistingDestinationPreserved",
+          "expect": "holds",
+          "assumptions": ["No fairness is required for this property."]
+        },
+        {
+          "property": "CompletesOrFails",
+          "expect": "holds",
+          "assumptions": [
+            "Advance is weakly fair. Every filesystem step may fail; no filesystem success is assumed."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": ["No fairness is required for this property."]
+        }
+      ]
+    },
+    {
+      "init": "init",
+      "step": "step",
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": true,
+      "name": "nested",
+      "main": "BackupPublication_nested",
+      "invariants": ["TypeOK", "ReportOnlyDurable", "FailureIsNotSuccess"],
+      "temporal": [
+        "ExistingDestinationPreserved",
+        "CompletesOrFails",
+        "DeadlockFree"
+      ],
+      "temporalChecks": [
+        {
+          "property": "ExistingDestinationPreserved",
+          "expect": "holds",
+          "assumptions": ["No fairness is required for this property."]
+        },
+        {
+          "property": "CompletesOrFails",
+          "expect": "holds",
+          "assumptions": [
+            "Advance is weakly fair. Every filesystem step may fail; no filesystem success is assumed."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": ["No fairness is required for this property."]
+        }
+      ]
+    }
+  ]
+}

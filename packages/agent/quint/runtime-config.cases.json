@@ -1,0 +1,24 @@
+{
+  "sources": [
+    "packages/agent/src/config/config.ts",
+    "packages/agent/src/config/includes.ts",
+    "packages/agent/src/config/env-vars.ts",
+    "packages/agent/src/config/dev-cloud-env-authority.ts"
+  ],
+  "bounds": {
+    "domain": "Two complete documents and include depth two.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "runtime_config",
+      "main": "runtime_config",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

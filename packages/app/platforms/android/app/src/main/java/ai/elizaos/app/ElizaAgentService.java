@@ -67,6 +67,13 @@ public class ElizaAgentService extends Service {
 
     private static final String CHANNEL_ID = "eliza_agent";
     private static final int NOTIFICATION_ID = 2;
+    /** Non-ongoing notice that outlives the service after a terminal failure. */
+    private static final int TERMINAL_NOTIFICATION_ID = 3;
+    /**
+     * The ongoing notification's action: "stop", "restart" or "none". A host
+     * that must never stop its resident rewrites this when it stages the class.
+     */
+    private static final String NOTIFICATION_PRIMARY_ACTION = "stop";
 
     // Intent actions
     public static final String ACTION_START = "app.eliza.action.START_AGENT";
@@ -102,6 +109,8 @@ public class ElizaAgentService extends Service {
     private static final String AGENT_STAGING_DIR_NAME = "agent.staging";
     private static final String AGENT_TRASH_DIR_NAME = "agent.trash";
     private static final String AGENT_STAMP_NAME = ".apk-stamp";
+    // Under getFilesDir(): the agent-tree stamp the aux tarballs were last refreshed for.
+    private static final String AUX_STAMP_NAME = ".aux-apk-stamp";
     /** ELIZA_STATE_DIR under getFilesDir(); {@link ElizaDataResetStores} lists it. */
     static final String AGENT_STATE_DIR_NAME = ".eliza";
     /** Workflow resident state under the agent state dir (see WorkflowSurvivorInventory). */
@@ -118,6 +127,13 @@ public class ElizaAgentService extends Service {
     private static final String EXIT_INFO_PREFS = "eliza-agent-exit-info";
     private static final String DETACHED_LAUNCH_STAMP_KEY = "detachedLaunchStartedAtMs";
     private static final String EXIT_INFO_LAST_TIMESTAMP = "lastTimestamp";
+    // Terminal failure that outlives the service instance; cleared by the next start.
+    private static final String TERMINAL_STATUS_KEY = "terminalStatus";
+    private static final String TERMINAL_REASON_KEY = "terminalReason";
+    private static final String TERMINAL_AT_KEY = "terminalAtMs";
+    // An APK update whose agent staging failed; the last-good tree keeps running.
+    private static final String UPDATE_DEFERRED_STAMP_KEY = "updateDeferredStamp";
+    private static final String UPDATE_DEFERRED_REASON_KEY = "updateDeferredReason";
 
     // The agent binds no TCP port by default (requests ride the abstract UDS
     // below). AGENT_PORT is only used when ELIZA_API_EXPOSE_PORT re-opens the
@@ -217,13 +233,18 @@ public class ElizaAgentService extends Service {
     // ANDROID_HEALTH_ATTEMPTS (240) × 2000 ms = 480 s.
     private static final long STARTUP_HEALTH_GRACE_MS = 480_000L;
     private static final long STARTUP_HEALTH_POLL_MS = 5_000L;
-    private static final int MAX_RESTART_ATTEMPTS = 5;
     private static final long PROCESS_TERMINATE_GRACE_MS = 5_000L;
     // How long after a detached launch we treat a not-yet-listening agent as
     // "still cold-booting" and refuse to relaunch it (the boot — plugin
     // resolution + first model load — runs ~60-90s on an emulated CPU). Past
     // this the boot is considered failed and a relaunch is allowed.
     private static final long AGENT_BOOT_GRACE_MS = 120_000L;
+    // Cheap detached-absence check between the 600 s health probes. Only a
+    // refused connect plus a dead journaled child counts; see checkDetachedAbsence.
+    private static final long ABSENCE_CHECK_INTERVAL_MS = 30_000L;
+    // An adopted agent is "starting" until a health probe passes within this window.
+    private static final long ADOPTION_HEALTH_GRACE_MS = 120_000L;
+    private static final long RESTART_WAKE_LOCK_MS = 60_000L;
 
     private final Object processLock = new Object();
     private volatile long recoveryMaintenanceEpoch;
@@ -236,13 +257,20 @@ public class ElizaAgentService extends Service {
     /** In-process bionic GPU inference host; non-null only when delegating. */
     private volatile ElizaBionicInferenceServer bionicInferenceServer;
     private volatile Thread startWorker;
+    private volatile Thread restartWorker;
     private volatile Thread notificationWorker;
     private volatile boolean shuttingDown;
     private volatile boolean foregroundStartDenied;
     private volatile boolean detachedAgentMode;
     private volatile long detachedLaunchStartedAtMs;
     private long detachedProbeArmedForLaunchMs;
-    private int restartAttempts;
+    // Volatile so getLocalAgentBootState reads status without processLock,
+    // which the start worker holds for the whole extraction.
+    private volatile int restartAttempts;
+    private volatile long healthySinceMs;
+    // A startup or adoption probe is shepherding the agent; adoption never stacks a second one.
+    private volatile Thread healthProbe;
+    private volatile boolean terminalNoticePosted;
     private volatile String currentStatus = "starting";
 
     // Per-boot bearer token for the WebView↔agent loopback. Generated when
@@ -294,7 +322,7 @@ public class ElizaAgentService extends Service {
         new ai.eliza.plugins.agent.runtime.CredentialShutdownLease();
     private long admittedCredentialShutdownEpoch = -1;
 
-    private static void invalidateCredentialShutdown() { credentialShutdown.beforeStart(); }
+    private static void invalidateCredentialShutdown() { ai.eliza.plugins.agent.updater.RuntimeUpdatePause.beforeStart(); credentialShutdown.beforeStart(); }
 
     /** Native credential writers retain this exact request through their durable commit. */
     public static long stopForCredentialChange(Context context) {
@@ -393,25 +421,48 @@ public class ElizaAgentService extends Service {
         boolean hasStartWorker = false;
         boolean detached = false;
         if (instance != null) {
-            synchronized (instance.processLock) {
-                status = instance.currentStatus;
-                attempts = instance.restartAttempts;
-                detached = instance.detachedAgentMode;
-                launchStartedAtMs = instance.detachedLaunchStartedAtMs;
-                hasStartWorker = instance.startWorker != null && instance.startWorker.isAlive();
-            }
+            // Volatile reads only: the start worker holds processLock across
+            // extraction, and this runs on the Capacitor plugin thread.
+            status = instance.currentStatus;
+            attempts = instance.restartAttempts;
+            detached = instance.detachedAgentMode;
+            launchStartedAtMs = instance.detachedLaunchStartedAtMs;
+            Thread worker = instance.startWorker;
+            hasStartWorker = worker != null && worker.isAlive();
         }
-        if (launchStartedAtMs <= 0L && context != null) {
-            launchStartedAtMs = context.getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE)
-                .getLong(DETACHED_LAUNCH_STAMP_KEY, 0L);
+        SharedPreferences prefs = context != null
+            ? context.getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE)
+            : null;
+        if (launchStartedAtMs <= 0L && prefs != null) {
+            launchStartedAtMs = prefs.getLong(DETACHED_LAUNCH_STAMP_KEY, 0L);
+        }
+        // A terminal failure stopped the service; report it instead of "unknown".
+        String terminalReason = null;
+        if (instance == null && prefs != null) {
+            String terminal = prefs.getString(TERMINAL_STATUS_KEY, null);
+            if (terminal != null) {
+                status = terminal;
+                terminalReason = prefs.getString(TERMINAL_REASON_KEY, terminal);
+            }
         }
         long ageMs = launchStartedAtMs > 0L
             ? Math.max(0L, System.currentTimeMillis() - launchStartedAtMs)
             : -1L;
 
-        return projectLocalAgentBootState(status, socketListening,
+        JSONObject result = projectLocalAgentBootState(status, socketListening,
             instance != null || !serviceLifecycleCompletion.isDone(),
             hasStartWorker, detached, ageMs, attempts);
+        if (terminalReason != null && "dead".equals(result.optString("state"))) {
+            result.put("reason", terminalReason);
+            result.put("terminalAtMs", prefs.getLong(TERMINAL_AT_KEY, 0L));
+        }
+        long deferredStamp = prefs != null ? prefs.getLong(UPDATE_DEFERRED_STAMP_KEY, 0L) : 0L;
+        if (deferredStamp > 0L) {
+            result.put("updateDeferred", true);
+            result.put("updateDeferredStamp", deferredStamp);
+            result.put("updateDeferredReason", prefs.getString(UPDATE_DEFERRED_REASON_KEY, "staging-failed"));
+        }
+        return result;
     }
 
     /** Pure boot admission: an identity refusal cannot be hidden by a live old socket. */
@@ -422,12 +473,12 @@ public class ElizaAgentService extends Service {
         if ("runtime-identity-unavailable".equals(status)) {
             result.put("state", "dead");
             result.put("reason", status);
-        } else if (socketListening) {
-            result.put("state", "listening");
-            result.put("reason", "request socket is accepting connections");
         } else if ("restarting".equals(status)) {
             result.put("state", "restarting");
             result.put("reason", status);
+        } else if (socketListening) {
+            result.put("state", "listening");
+            result.put("reason", "request socket is accepting connections");
         } else if (isTerminalBootStatus(status)) {
             result.put("state", "dead");
             result.put("reason", status);
@@ -455,6 +506,7 @@ public class ElizaAgentService extends Service {
     private static boolean isTerminalBootStatus(String status) {
         if (status == null) return false;
         return status.startsWith("agent exited:")
+            || status.startsWith("agent startup blocked:")
             || "fatal".equals(status)
             || "ipc-recovery-required".equals(status)
             || IpcStartupRecovery.RETENTION_LIMIT.equals(status)
@@ -1224,12 +1276,6 @@ public class ElizaAgentService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (ACTION_RESTART.equals(action)) {
-            Log.i(TAG, "Restart requested via intent.");
-            restartAttempts = 0;
-            requestAgentStart(true);
-            return START_STICKY;
-        }
         if (ACTION_UPDATE_STATUS.equals(action)) {
             String status = intent.getStringExtra(EXTRA_STATUS);
             if (status != null) {
@@ -1239,8 +1285,13 @@ public class ElizaAgentService extends Service {
             return START_STICKY;
         }
 
-        // ACTION_START or null (default) — boot the agent if it isn't already up.
-        requestAgentStart(false);
+        if (ACTION_RESTART.equals(action)) {
+            Log.i(TAG, "Restart requested via intent.");
+            requestAgentStart(true);
+        } else {
+            // ACTION_START or null (default) — boot the agent if it isn't already up.
+            requestAgentStart(false);
+        }
         if (watchdog == null) {
             watchdog = new WatchdogThread();
             watchdog.start();
@@ -1264,6 +1315,8 @@ public class ElizaAgentService extends Service {
         details.put("detachedAgentMode", String.valueOf(detachedAgentMode));
         appendDiagnosticEvent("service-onDestroy", details);
         shuttingDown = true;
+        Thread pendingRestart = restartWorker;
+        if (pendingRestart != null) pendingRestart.interrupt();
         if (watchdog != null) {
             watchdog.interrupt();
             watchdog = null;
@@ -1424,7 +1477,8 @@ public class ElizaAgentService extends Service {
         return new ElizaBionicInferenceServer(
             BIONIC_INFERENCE_SOCKET_NAME, defaultBundleDir, ramClass,
             inferenceIdleUnloadMs(ramClass), probe,
-            () -> ai.eliza.plugins.networkpolicy.NetworkPolicyReader.INSTANCE.readNetworkState(this));
+            () -> ai.eliza.plugins.networkpolicy.NetworkPolicyReader.INSTANCE.readNetworkState(this),
+            getDataDir());
     }
 
     // ── Asset extraction ─────────────────────────────────────────────────
@@ -1438,11 +1492,7 @@ public class ElizaAgentService extends Service {
         String[] supported = Build.SUPPORTED_ABIS;
         if (supported != null) {
             for (String abi : supported) {
-                if (
-                    "arm64-v8a".equals(abi) ||
-                    "x86_64".equals(abi) ||
-                    "riscv64".equals(abi)
-                ) return abi;
+                if ("arm64-v8a".equals(abi) || "x86_64".equals(abi)) return abi;
             }
             if (supported.length > 0) return supported[0];
         }
@@ -1512,7 +1562,6 @@ public class ElizaAgentService extends Service {
         ElizaAssetExtractionPolicy.Action action = ElizaAssetExtractionPolicy.decide(
             apkChanged, apkHasAgentAssets, haveValidExtraction);
 
-        boolean staged = false;
         switch (action) {
             case STAGE_AND_SWAP:
                 Log.i(TAG, "[ElizaAgentService] Refreshing agent assets via atomic staging "
@@ -1522,7 +1571,7 @@ public class ElizaAgentService extends Service {
                     deleteRecursively(staging);
                     stageAgentRoot(assets, abi, pkgUpdate, staging);
                     swapStagedAgentRoot(staging, root, trash);
-                    staged = true;
+                    clearUpdateDeferred();
                     Log.i(TAG, "[ElizaAgentService] Atomic agent asset swap complete; stamp=" + pkgUpdate);
                 } catch (IOException error) {
                     deleteRecursively(staging);
@@ -1530,10 +1579,12 @@ public class ElizaAgentService extends Service {
                         // Fall back to the last-good extraction and leave the
                         // stamp unchanged so a later boot retries the refresh.
                         // Never loop on a wipe of a working extraction (#12453).
+                        // Hosts read updateDeferred from the boot state to tell the user.
                         Log.e(TAG, "[ElizaAgentService] Agent asset staging failed; "
                             + "falling back to the existing last-good extraction and "
                             + "leaving the stamp at " + stampedUpdate + " so the refresh retries.",
                             error);
+                        recordUpdateDeferred(pkgUpdate, stampedUpdate, error);
                     } else {
                         throw new IOException("Agent asset staging failed and no valid prior "
                             + "extraction exists to fall back to", error);
@@ -1560,11 +1611,46 @@ public class ElizaAgentService extends Service {
         }
 
         // Aux runtime assets live OUTSIDE the atomically-swapped agent root
-        // (vector/fuzzy tarballs in files/, bundled models in .eliza/). They are
-        // small and/or persistent, their partial state does not brick boot, and
-        // they self-heal idempotently. Force-refresh the tarballs only when we
-        // just re-staged from a full APK.
-        extractAuxRuntimeAssets(assets, filesDir, stateDir, staged);
+        // (vector/fuzzy tarballs in files/, bundled models in .eliza/). Each is
+        // written through a temp file and rename, and the tarballs follow the
+        // stamp of the tree that actually boots (a deferred update keeps both old).
+        extractAuxRuntimeAssets(assets, filesDir, stateDir, readApkStamp(root));
+    }
+
+    /** Record that the new APK's agent could not be staged; the last-good tree boots. */
+    private void recordUpdateDeferred(long pkgUpdate, long stampedUpdate, IOException error) {
+        String reason = isNoSpace(error) ? "ENOSPC" : error.getClass().getSimpleName();
+        Map<String, String> details = new LinkedHashMap<>();
+        details.put("exception", error.getClass().getName());
+        details.put("reason", reason);
+        details.put("apkStamp", String.valueOf(pkgUpdate));
+        details.put("runningStamp", String.valueOf(stampedUpdate));
+        appendDiagnosticEvent("agent-update-deferred", details);
+        getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(UPDATE_DEFERRED_STAMP_KEY, pkgUpdate > 0L ? pkgUpdate : 1L)
+            .putString(UPDATE_DEFERRED_REASON_KEY, reason)
+            .apply();
+    }
+
+    private void clearUpdateDeferred() {
+        SharedPreferences prefs = getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE);
+        if (!prefs.contains(UPDATE_DEFERRED_STAMP_KEY)) return;
+        prefs.edit().remove(UPDATE_DEFERRED_STAMP_KEY).remove(UPDATE_DEFERRED_REASON_KEY).apply();
+    }
+
+    private static boolean isNoSpace(Throwable error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof android.system.ErrnoException
+                    && ((android.system.ErrnoException) cause).errno == android.system.OsConstants.ENOSPC) {
+                return true;
+            }
+            String message = cause.getMessage();
+            if (message != null && (message.contains("ENOSPC") || message.contains("No space left"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1597,7 +1683,10 @@ public class ElizaAgentService extends Service {
 
     /** Read the APK-mtime stamp from a completed extraction; 0 if absent/corrupt. */
     private long readApkStamp(File root) {
-        File stamp = new File(root, AGENT_STAMP_NAME);
+        return readStamp(new File(root, AGENT_STAMP_NAME));
+    }
+
+    private long readStamp(File stamp) {
         if (!stamp.isFile()) {
             return 0L;
         }
@@ -1614,11 +1703,25 @@ public class ElizaAgentService extends Service {
         return 0L;
     }
 
-    /** Persist the APK stamp; throws so a stamp-write failure fails the staging. */
+    /** Persist a stamp durably; throws so a stamp-write failure fails the staging. */
     private void writeApkStamp(File stamp, long value) throws IOException {
-        try (FileOutputStream out = new FileOutputStream(stamp)) {
-            out.write(Long.toString(value).getBytes(StandardCharsets.UTF_8));
-            out.flush();
+        ElizaAssetExtractionPolicy.writeAtomically(
+            new java.io.ByteArrayInputStream(Long.toString(value).getBytes(StandardCharsets.UTF_8)),
+            stamp, false);
+    }
+
+    /** fsync a directory so renames and new entries in it survive power loss. */
+    private static void syncDirectory(File directory) throws IOException {
+        java.io.FileDescriptor fd = null;
+        try {
+            fd = android.system.Os.open(directory.getPath(), android.system.OsConstants.O_RDONLY, 0);
+            android.system.Os.fsync(fd);
+        } catch (android.system.ErrnoException error) {
+            throw new IOException("Could not sync " + directory, error);
+        } finally {
+            if (fd != null) {
+                try { android.system.Os.close(fd); } catch (android.system.ErrnoException ignored) { /* Synced or failed above. */ }
+            }
         }
     }
 
@@ -1699,6 +1802,8 @@ public class ElizaAgentService extends Service {
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(stagingRoot, "pglite.wasm"));
         copyAssetIfPresent(assets, "agent/initdb.wasm", new File(stagingRoot, "initdb.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(stagingRoot, "pglite.data"));
+        copyAssetIfPresent(assets, "agent/pglite-initdb.bin", new File(stagingRoot, "pglite-initdb.bin"));
+        copyAssetIfPresent(assets, "agent/pglite-migrated.bin", new File(stagingRoot, "pglite-migrated.bin"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
             new File(stagingRoot, "plugins-manifest.json"));
 
@@ -1722,12 +1827,15 @@ public class ElizaAgentService extends Service {
         }
 
         finalizeAgentAbiDir(stagingRoot, stagingAbiDir, abiFiles);
+        // Every copy was fsynced; sync the entries too before the stamp exists.
+        syncDirectory(stagingAbiDir);
 
         // Stamp LAST, inside staging, so it travels with the atomic swap and
         // never gets ahead of a completed extraction.
         if (pkgUpdate > 0L) {
             writeApkStamp(new File(stagingRoot, AGENT_STAMP_NAME), pkgUpdate);
         }
+        syncDirectory(stagingRoot);
     }
 
     /**
@@ -1868,6 +1976,13 @@ public class ElizaAgentService extends Service {
             }
             throw new IOException("Could not move staged agent extraction into place at " + root);
         }
+        // The swap already happened; a failed sync must not read as a failed swap.
+        File parent = root.getParentFile();
+        try {
+            if (parent != null) syncDirectory(parent);
+        } catch (IOException error) {
+            Log.w(TAG, "[ElizaAgentService] Could not sync " + parent + " after the swap: " + error.getMessage());
+        }
         deleteRecursively(trash);
     }
 
@@ -1902,11 +2017,13 @@ public class ElizaAgentService extends Service {
     /**
      * Extract the aux runtime assets that live outside the swapped agent root:
      * the PGlite extension tarballs (files/) and bundled default models
-     * (.eliza/). Both self-heal idempotently. Force-refresh the tarballs on a
-     * fresh stage; never force-delete the large, persistent model files.
+     * (.eliza/). Every write goes through a temp file and rename. The tarballs
+     * are rewritten when incomplete or when {@code files/.aux-apk-stamp} lags
+     * the booting tree's stamp; models are replaced only when their length
+     * differs from the asset, and a model with no asset is never touched.
      */
     private void extractAuxRuntimeAssets(AssetManager assets, File filesDir, File stateDir,
-            boolean forceRefreshTarballs) throws IOException {
+            long treeStamp) throws IOException {
         // vector.tar.gz / fuzzystrmatch.tar.gz must live one directory ABOVE the
         // bundle (PGlite resolves them via `new URL("../X.tar.gz", ...)`), so
         // they sit in files/ rather than the agent root. aapt2 strips the `.gz`
@@ -1915,19 +2032,12 @@ public class ElizaAgentService extends Service {
         // entry is `vector.tar` / `fuzzystrmatch.tar`; re-gzip on extraction so
         // the on-disk file is the gzipped tarball the loader's gunzip expects
         // (raw tar → `Z_DATA_ERROR: incorrect header check` → PGlite crashloop).
-        File vector = new File(filesDir, "vector.tar.gz");
-        File fuzzy = new File(filesDir, "fuzzystrmatch.tar.gz");
-        File trigram = new File(filesDir, "pg_trgm.tar.gz");
-        if (forceRefreshTarballs) {
-            if (vector.exists() && !vector.delete()) Log.w(TAG, "Could not delete stale vector.tar.gz");
-            if (fuzzy.exists() && !fuzzy.delete()) Log.w(TAG, "Could not delete stale fuzzystrmatch.tar.gz");
-        }
-        copyAssetIfPresentAsGzipped(assets, "agent/vector.tar", vector);
-        copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar", fuzzy);
-        if (forceRefreshTarballs && trigram.exists() && !trigram.delete()) {
-            throw new IOException("Could not refresh pg_trgm.tar.gz");
-        }
-        copyAssetIfPresentAsGzipped(assets, "agent/pg_trgm.tar", trigram);
+        File auxStamp = new File(filesDir, AUX_STAMP_NAME);
+        boolean refreshDue = ElizaAssetExtractionPolicy.auxRefreshDue(readStamp(auxStamp), treeStamp);
+        copyAssetIfPresentAsGzipped(assets, "agent/vector.tar", new File(filesDir, "vector.tar.gz"), refreshDue);
+        copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar",
+            new File(filesDir, "fuzzystrmatch.tar.gz"), refreshDue);
+        copyAssetIfPresentAsGzipped(assets, "agent/pg_trgm.tar", new File(filesDir, "pg_trgm.tar.gz"), refreshDue);
 
         // Bundled default models (chat + embedding GGUF, staged by
         // scripts/elizaos/stage-default-models.ts at AOSP build time). Land
@@ -1943,11 +2053,22 @@ public class ElizaAgentService extends Service {
             if (!modelsDest.exists() && !modelsDest.mkdirs()) {
                 throw new IOException("Could not create " + modelsDest);
             }
+            int copied = 0;
             for (String name : modelFiles) {
-                copyAssetIfMissing(assets, modelsAssetDir + "/" + name, new File(modelsDest, name));
+                File target = new File(modelsDest, name);
+                String assetPath = modelsAssetDir + "/" + name;
+                ElizaAssetExtractionPolicy.deleteStaleTemp(target);
+                if (ElizaAssetExtractionPolicy.modelCurrent(
+                        target.length(), uncompressedAssetLength(assets, assetPath), refreshDue)) {
+                    continue;
+                }
+                copyAsset(assets, assetPath, target, false);
+                copied++;
             }
-            Log.i(TAG, "Extracted " + modelFiles.length + " bundled model file(s) to " + modelsDest);
+            Log.i(TAG, "Extracted " + copied + " of " + modelFiles.length + " bundled model file(s) to " + modelsDest);
         }
+        // Only after every aux asset refreshed: a kill before this refreshes again.
+        if (refreshDue) writeApkStamp(auxStamp, treeStamp);
     }
 
     /**
@@ -2070,7 +2191,6 @@ public class ElizaAgentService extends Service {
     private String packagedMuslLoaderName(String abi) {
         if ("arm64-v8a".equals(abi)) return "libeliza_ld_musl_aarch64.so";
         if ("x86_64".equals(abi)) return "libeliza_ld_musl_x86_64.so";
-        if ("riscv64".equals(abi)) return "libeliza_ld_musl_riscv64.so";
         return null;
     }
 
@@ -2149,20 +2269,37 @@ public class ElizaAgentService extends Service {
         if (target.exists() && target.length() > 0) {
             return;
         }
-        File parent = target.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IOException("Could not create " + parent);
+        copyAsset(assets, assetPath, target, false);
+    }
+
+    /** Copy through target.tmp + fsync + rename, so a kill never leaves a partial target. */
+    private void copyAsset(AssetManager assets, String assetPath, File target, boolean gzip) throws IOException {
+        try (InputStream in = assets.open(assetPath)) {
+            ElizaAssetExtractionPolicy.writeAtomically(in, target, gzip);
         }
-        try (
-            InputStream in = assets.open(assetPath);
-            OutputStream out = new FileOutputStream(target)
-        ) {
+    }
+
+    /** Length of an asset stored uncompressed in the APK, or -1 when only a stream is available. */
+    private static long uncompressedAssetLength(AssetManager assets, String assetPath) {
+        try (android.content.res.AssetFileDescriptor fd = assets.openFd(assetPath)) {
+            return fd.getLength();
+        } catch (IOException compressedOrMissing) {
+            return -1L;
+        }
+    }
+
+    /** Byte length of an asset, counting a compressed one; -1 when absent. */
+    private static long assetLength(AssetManager assets, String assetPath) {
+        long length = uncompressedAssetLength(assets, assetPath);
+        if (length >= 0L) return length;
+        try (InputStream in = assets.open(assetPath)) {
             byte[] buffer = new byte[64 * 1024];
+            long total = 0L;
             int read;
-            while ((read = in.read(buffer)) > 0) {
-                out.write(buffer, 0, read);
-            }
-            out.flush();
+            while ((read = in.read(buffer)) > 0) total += read;
+            return total;
+        } catch (IOException missing) {
+            return -1L;
         }
     }
 
@@ -2181,39 +2318,28 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Like copyAssetIfPresent, but wraps the asset bytes in a gzip stream on
-     * write. Compensates for aapt2's behaviour of decompressing `.tar.gz`
-     * assets at packaging time even with `androidResources.noCompress`
-     * declared — the on-disk APK entry is raw tar bytes, but PGlite's
-     * loader does `pipeline(createReadStream(file), createGunzip(), …)`
-     * and rejects raw tar with `Z_DATA_ERROR: incorrect header check`.
-     * Re-gzipping on extraction restores the contract the loader expects.
+     * Writes the asset re-gzipped, unless the target is already a complete
+     * gzip of it and no refresh is due; no-ops when the asset is absent, so a
+     * UI-only APK never removes a working tarball. Compensates for aapt2's
+     * behaviour of decompressing `.tar.gz` assets at packaging time even with
+     * `androidResources.noCompress` declared — the on-disk APK entry is raw tar
+     * bytes, but PGlite's loader does
+     * `pipeline(createReadStream(file), createGunzip(), …)` and rejects raw tar
+     * with `Z_DATA_ERROR: incorrect header check`. Re-gzipping on extraction
+     * restores the contract the loader expects.
      */
-    private void copyAssetIfPresentAsGzipped(AssetManager assets, String assetPath, File target) throws IOException {
-        try (InputStream probe = assets.open(assetPath)) {
-            // present — fall through to gzip-wrap via fresh stream
-        } catch (IOException missing) {
+    private void copyAssetIfPresentAsGzipped(AssetManager assets, String assetPath, File target,
+            boolean refreshDue) throws IOException {
+        ElizaAssetExtractionPolicy.deleteStaleTemp(target);
+        long length = assetLength(assets, assetPath);
+        if (length < 0L) {
             return;
         }
-        if (target.exists() && target.length() > 0) {
+        if (ElizaAssetExtractionPolicy.tarballCurrent(
+                ElizaAssetExtractionPolicy.gzipTrailerSize(target), length, refreshDue)) {
             return;
         }
-        File parent = target.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IOException("Could not create " + parent);
-        }
-        try (
-            InputStream in = assets.open(assetPath);
-            FileOutputStream raw = new FileOutputStream(target);
-            java.util.zip.GZIPOutputStream gz = new java.util.zip.GZIPOutputStream(raw)
-        ) {
-            byte[] buffer = new byte[64 * 1024];
-            int read;
-            while ((read = in.read(buffer)) > 0) {
-                gz.write(buffer, 0, read);
-            }
-            gz.flush();
-        }
+        copyAsset(assets, assetPath, target, true);
     }
 
     // ── Process lifecycle ────────────────────────────────────────────────
@@ -2232,10 +2358,10 @@ public class ElizaAgentService extends Service {
      * from {@code libelizainference} + the staged bundle and needs no LLM, so its
      * lifecycle is decoupled from agent inference here.
      *
-     * <p>{@link ElizaBionicInferenceServer#start()} is idempotent and never throws
-     * (it logs + returns on lib-load / socket-bind failure), so this is purely
-     * additive: worst case the host stays down and TalkMode falls back to system
-     * TTS exactly as before — it cannot affect agent startup.
+     * <p>{@link ElizaBionicInferenceServer#start()} is idempotent and throws on
+     * lib-load or socket-bind failure; the catch below leaves no host recorded,
+     * so this is purely additive: worst case the host stays down and TalkMode
+     * falls back to system TTS exactly as before — it cannot affect agent startup.
      */
     private File prepareVoiceBundle() throws IOException {
         if (ai.eliza.voice.VoiceBundleAssets.isPackaged(this)) {
@@ -2271,9 +2397,10 @@ public class ElizaAgentService extends Service {
     }
 
     private void requestAgentStart(boolean restartFirst) {
-        long requestedRecoveryEpoch=recoveryMaintenanceEpoch;
-        try { invalidateCredentialShutdown(); }
-        catch (IllegalStateException retiring) { currentStatus = "stopping"; return; }
+        requestAgentStart(restartFirst, null, recoveryMaintenanceEpoch);
+    }
+
+    private void requestAgentStart(boolean restartFirst, Thread scheduledRestart, long requestedRecoveryEpoch) {
         // Bring up the local-voice (Paradee TTS) bionic host on every service
         // start, before the agent-already-running guards below — so it binds
         // even when the agent is adopted rather than freshly spawned.
@@ -2284,11 +2411,19 @@ public class ElizaAgentService extends Service {
         // for the lock here would block the main thread and trigger a service
         // ANR merely to discover that a start is already in progress.
         Thread activeStartWorker = startWorker;
-        if (activeStartWorker != null && activeStartWorker.isAlive()) {
+        if (scheduledRestart == null && (shuttingDown || terminalNoticePosted
+                || (activeStartWorker != null && activeStartWorker.isAlive())
+                || (!restartFirst && restartWorker != null))) {
             return;
         }
         synchronized (processLock) {
-            if(requestedRecoveryEpoch!=recoveryMaintenanceEpoch)return;
+            if (scheduledRestart != null) {
+                if (restartWorker != scheduledRestart) return;
+                restartWorker = null;
+            } else if (!restartFirst && restartWorker != null) {
+                return;
+            }
+            if (shuttingDown || terminalNoticePosted || requestedRecoveryEpoch != recoveryMaintenanceEpoch) return;
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;
             }
@@ -2297,11 +2432,25 @@ public class ElizaAgentService extends Service {
             // Recheck adoption/cold-boot ownership on the start worker below;
             // never perform socket or process identity I/O on this main-thread path.
             if (startWorker != null && startWorker.isAlive()) {
+                if (scheduledRestart != null) scheduleRestart(restartFirst);
                 return;
             }
+            try { invalidateCredentialShutdown(); }
+            catch (IllegalStateException retiring) { currentStatus = "stopping"; return; }
+            if (restartFirst && scheduledRestart == null) {
+                Thread pendingRestart = restartWorker;
+                restartWorker = null;
+                if (pendingRestart != null) pendingRestart.interrupt();
+                restartAttempts = 0;
+            }
             retireRuntimeRequests();
-            currentStatus = restartFirst ? "restarting" : "starting";
-            updateNotification();
+            clearTerminalStatus();
+            // A redelivered start keeps a probe-proven detached agent "running";
+            // the worker re-checks its socket and adopts it without a new probe.
+            if (restartFirst || scheduledRestart != null || !detachedAgentMode || !"running".equals(currentStatus)) {
+                currentStatus = restartFirst || scheduledRestart != null ? "restarting" : "starting";
+                updateNotification();
+            }
             final java.util.concurrent.CompletableFuture<Void> previousLifecycle, lifecycle =
                 new java.util.concurrent.CompletableFuture<>();
             synchronized (ElizaAgentService.class) {
@@ -2309,6 +2458,8 @@ public class ElizaAgentService extends Service {
                 serviceLifecycleCompletion = lifecycle;
             }
             startWorker = new Thread(() -> {
+                boolean retry = false;
+                boolean retryNeedsStop = restartFirst;
                 try {
                     try {
                         previousLifecycle.get(PROCESS_TERMINATE_GRACE_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
@@ -2318,25 +2469,35 @@ public class ElizaAgentService extends Service {
                         updateNotification();
                         return;
                     } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException unsettled) {
-                        currentStatus = "stopping";
-                        updateNotification();
+                        retry = true;
                         return;
                     }
                     synchronized (processLock) {
                         if (shuttingDown || requestedRecoveryEpoch != recoveryMaintenanceEpoch) return;
+                        try { ai.eliza.plugins.agent.updater.RuntimeUpdatePause.beforeStart(); }
+                        catch (IllegalStateException updating) { currentStatus="stopping"; return; }
                         ensureBionicVoiceHost();
                         if (restartFirst && !stopAgentProcessOrPreserve(false)) {
                             // The prior resident still owns the runtime; never start a second one.
                             currentStatus = "stop-failed";
                             updateNotification();
+                            retry = scheduledRestart != null;
                             return;
                         }
                         long ownerRequestEpoch = beginRuntimeStart();
-                        if (startAgentProcess(!restartFirst)) runtimeStarted(ownerRequestEpoch);
+                        if (startAgentProcess(!restartFirst)) {
+                            runtimeStarted(ownerRequestEpoch);
+                        } else {
+                            retry = "extract-failed".equals(currentStatus) || "spawn-failed".equals(currentStatus);
+                            retryNeedsStop = false;
+                        }
                     }
                 } finally {
                     synchronized (processLock) {
                         startWorker = null;
+                        if (retry && requestedRecoveryEpoch == recoveryMaintenanceEpoch) {
+                            scheduleRestart(retryNeedsStop);
+                        }
                     }
                     // A cancelled/timed-out reservation never releases a still-running predecessor.
                     previousLifecycle.whenComplete((ignored, error) -> lifecycle.complete(null));
@@ -2381,11 +2542,25 @@ public class ElizaAgentService extends Service {
                     updateNotification();
                     return false; // Preserve the prior owner; never launch a second resident.
                 }
+                if (detachedAgentMode && "running".equals(currentStatus)) {
+                    return true; // Already adopted and proven healthy by a probe.
+                }
                 detachedAgentMode = true;
+                // An adopting instance never launched this agent; restore the
+                // launch stamp so absence checks bind to the journaled child.
+                if (detachedLaunchStartedAtMs <= 0L) {
+                    detachedLaunchStartedAtMs = readPersistedDetachedLaunchTimestamp();
+                }
                 restoreAdoptedRuntimeOwnership();
-                if (!"running".equals(currentStatus)) {
-                    currentStatus = "running";
+                // An accepting socket is not health: the agent stays "starting"
+                // until a probe passes, so an unhealthy survivor is not called running.
+                if (!"starting".equals(currentStatus)) {
+                    currentStatus = "starting";
                     updateNotification();
+                }
+                if (healthProbe == null) {
+                    startDetachedStartupProbe(detachedLaunchStartedAtMs, null,
+                        System.currentTimeMillis() + ADOPTION_HEALTH_GRACE_MS, true);
                 }
                 appendDiagnosticEvent("detached-agent-adopted", null);
                 Log.i(TAG, "Detached agent already accepting on the request socket; adopting it (no relaunch).");
@@ -2425,6 +2600,10 @@ public class ElizaAgentService extends Service {
                         childStart != null && isAgentChildProcessAlive(childStart.childPid))) {
                     detachedAgentMode = true;
                     detachedLaunchStartedAtMs = launchStartedAt;
+                    if (!"starting".equals(currentStatus)) {
+                        currentStatus = "starting";
+                        updateNotification();
+                    }
                     Map<String, String> details = new LinkedHashMap<>();
                     details.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
                     details.put("bootGraceMs", String.valueOf(AGENT_BOOT_GRACE_MS));
@@ -2444,12 +2623,17 @@ public class ElizaAgentService extends Service {
                 }
                 Map<String, String> staleDetails = new LinkedHashMap<>();
                 staleDetails.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
-                staleDetails.put("childPid", childStart.childPid);
+                staleDetails.put("childPid", childStart == null ? "unknown" : childStart.childPid);
                 appendDiagnosticEvent("detached-agent-cold-boot-guard-stale", staleDetails);
                 Log.w(TAG, "Detached agent launch stamp is "
                     + (System.currentTimeMillis() - launchStartedAt)
-                    + "ms old but child pid " + childStart.childPid
-                    + " is gone with no journaled exit; relaunching instead of trusting the stamp.");
+                    + "ms old without a verified live child; relaunching instead of trusting the stamp.");
+            }
+
+            // A redelivered start may have kept "running"; the agent it described is gone.
+            if ("running".equals(currentStatus)) {
+                currentStatus = "starting";
+                updateNotification();
             }
 
             String abi = resolveRuntimeAbi();
@@ -2665,7 +2849,16 @@ public class ElizaAgentService extends Service {
                 "ELIZA_ANDROID_APP_DATA_DIR",
                 canonicalAppDataDir
             );
-            agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
+            // Live ASR needs the voice bundle before any text model loads, and
+            // this app's manifest names its own bundle directory.
+            try {
+                agentEnv.put(
+                    "ELIZA_ANDROID_VOICE_BUNDLE_DIR",
+                    ai.eliza.voice.VoiceBundleAssets.bundleRoot(this).getAbsolutePath()
+                );
+            } catch (IOException error) {
+                Log.w(TAG, "Voice bundle directory unavailable for live ASR", error);
+            }
             agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
             agentEnv.put("AGENT_COMMAND", "android-bridge");
@@ -2895,7 +3088,7 @@ public class ElizaAgentService extends Service {
                 // i.e. the arm64 GPU build — offload the model to the GPU. The
                 // aosp loader pins n_gpu_layers=0 by default, so without
                 // this a Vulkan-capable build still runs entirely on CPU. CPU-
-                // only builds (riscv64, or arm64 without the Vulkan backend) ship
+                // only builds (arm64 without the Vulkan backend) ship
                 // no libggml-vulkan.so, so they correctly stay on CPU.
                 // Skipped when delegating: the GPU offload happens in the bionic
                 // host, not the musl bun:ffi path (which can't reach Vulkan).
@@ -3166,29 +3359,21 @@ public class ElizaAgentService extends Service {
             // writes failed; vault unreachable", which the watchdog
             // interprets as a crash and restart-loops the agent.
             //
-            // Derive a per-install stable passphrase from ANDROID_ID
-            // (Settings.Secure.ANDROID_ID — 16 hex chars, per-app-install
-            // on Android 8+, stable across reboots and OS updates).
-            // Prefix with a constant so the value is always ≥12 chars
-            // even if ANDROID_ID is unexpectedly short or null. The
-            // resulting passphrase is opaque to the user and is only
-            // ever stored in memory in the spawned bun process.
+            // A new vault gets a random passphrase generated once and kept
+            // Keystore-wrapped by AgentSecureStore, so a copy of the app's
+            // files plus the (non-secret) ANDROID_ID cannot open it. A vault
+            // created before that keeps its ANDROID_ID-derived passphrase:
+            // a wrong passphrase fails vault-bootstrap and restart-loops,
+            // so existing vaults are not re-keyed here.
             //
             // Operators can override by setting ELIZA_VAULT_PASSPHRASE
             // in the parent service env (e.g. for a deterministic dev
             // passphrase across reinstalls).
             if (!env.containsKey("ELIZA_VAULT_PASSPHRASE")) {
-                String androidId = Settings.Secure.getString(
-                    getContentResolver(),
-                    Settings.Secure.ANDROID_ID
-                );
-                if (androidId == null || androidId.length() < 8) {
-                    androidId = "fallback-" + Build.SERIAL;
+                String passphrase = resolveVaultPassphrase(new File(canonicalStateDir));
+                if (passphrase != null) {
+                    agentEnv.put("ELIZA_VAULT_PASSPHRASE", passphrase);
                 }
-                agentEnv.put(
-                    "ELIZA_VAULT_PASSPHRASE",
-                    "elizaos-android-vault-" + androidId
-                );
             }
 
             // Default to info-level logging so plugin resolution + listen
@@ -3243,6 +3428,13 @@ public class ElizaAgentService extends Service {
             }
 
             if (shuttingDown) return false;
+            try {
+                invalidateCredentialShutdown();
+            } catch (IllegalStateException retiring) {
+                currentStatus = "stopping";
+                updateNotification();
+                return false;
+            }
             Process started;
             try {
                 started = pb.start();
@@ -3250,7 +3442,6 @@ public class ElizaAgentService extends Service {
                 Log.e(TAG, "Failed to spawn agent process: " + command, error);
                 currentStatus = "spawn-failed";
                 updateNotification();
-                scheduleRestart();
                 return false;
             }
 
@@ -3324,19 +3515,15 @@ public class ElizaAgentService extends Service {
                     Log.w(TAG, "Agent process exited early (pid=" + pidForLog
                             + " code=" + code + " alive=" + aliveMs + "ms).");
                 }
-                boolean stillThisProcess;
                 synchronized (processLock) {
-                    stillThisProcess = (agentProcess == watched);
-                    if (stillThisProcess) {
-                        agentProcess = null;
+                    if (agentProcess != watched) return;
+                    agentProcess = null;
+                    if (shuttingDown) return;
+                    if (detachedAgentMode && code == 0) {
+                        armDetachedStartupProbeOnce(launchStartedAtMs, startupTraceId);
+                    } else {
+                        scheduleRestart();
                     }
-                }
-                if (stillThisProcess && !shuttingDown && detachedAgentMode && code == 0) {
-                    armDetachedStartupProbeOnce(launchStartedAtMs, startupTraceId);
-                    return;
-                }
-                if (stillThisProcess && !shuttingDown) {
-                    scheduleRestart();
                 }
             }, "ElizaAgent-exit-watcher");
             exitWatcher.setDaemon(true);
@@ -3482,6 +3669,33 @@ public class ElizaAgentService extends Service {
             // Never fall back to path-wide signals: those also kill admitted workers.
             Log.w(TAG, "Resident stop identity unproven; preserving processes", error);
             throw new IllegalStateException("Resident stop identity unproven", error);
+        }
+    }
+
+    /**
+     * The stored random passphrase when one exists; else the legacy
+     * ANDROID_ID-derived one for a vault created before it; else a new random
+     * passphrase, stored before use. Null when none can be produced, or when
+     * a stored one cannot be read.
+     */
+    private String resolveVaultPassphrase(File stateDir) {
+        String androidId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+        boolean legacyAvailable = androidId != null && androidId.length() >= 8;
+        boolean vaultExists = new File(stateDir, ".vault-pglite").exists()
+            || new File(stateDir, "vault.json").exists();
+        try {
+            String stored = AgentSecureStore.readVaultPassphrase(this);
+            if (stored != null) return stored;
+            if (vaultExists && legacyAvailable) return "elizaos-android-vault-" + androidId;
+            return AgentSecureStore.createVaultPassphrase(this);
+        } catch (Exception error) {
+            // error-policy:J1 Keystore unavailable: keep a legacy vault openable. A
+            // stored random passphrase must never be swapped for the legacy one,
+            // which would open or create a vault under the wrong key.
+            Log.e(TAG, "Vault passphrase store unavailable: " + error.getClass().getSimpleName());
+            appendDiagnosticEvent("vault-passphrase-unavailable", null);
+            if (AgentSecureStore.hasVaultPassphrase(this)) return null;
+            return legacyAvailable ? "elizaos-android-vault-" + androidId : null;
         }
     }
 
@@ -3932,28 +4146,39 @@ public class ElizaAgentService extends Service {
                 return;
             }
             detachedProbeArmedForLaunchMs = launchStartedAtMs;
+            startDetachedStartupProbe(launchStartedAtMs, startupTraceId,
+                launchStartedAtMs + STARTUP_HEALTH_GRACE_MS, false);
         }
-        startDetachedStartupProbe(launchStartedAtMs, startupTraceId);
     }
 
-    private void startDetachedStartupProbe(final long launchStartedAtMs, final String startupTraceId) {
+    /**
+     * Shepherds a launched or adopted detached agent to "running" (only on a
+     * health OK) or to a restart. {@code adopted} probes run until
+     * {@code deadline} from adoption, not from the original launch, so a healthy
+     * long-lived resident is never restarted for its age.
+     */
+    private void startDetachedStartupProbe(final long launchStartedAtMs, final String startupTraceId,
+            final long deadline, final boolean adopted) {
         Thread probe = new Thread(() -> {
-            long deadline = launchStartedAtMs + STARTUP_HEALTH_GRACE_MS;
+          try {
+            ElizaAgentWatchdogPolicy.ProbeResult lastResult = null;
             while (!shuttingDown && System.currentTimeMillis() < deadline) {
                 ElizaAgentWatchdogPolicy.ProbeResult result = probeHealth();
+                lastResult = result;
                 if (result == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
-                    restartAttempts = 0;
+                    // Backoff resets only after stable uptime.
                     synchronized (processLock) {
-                        if (!detachedAgentMode || detachedLaunchStartedAtMs != launchStartedAtMs) {
-                            return;
-                        }
-                        currentStatus = "running";
+                        if (!isCurrentDetachedProbe(launchStartedAtMs)) return;
+                        markRunning();
                     }
-                    updateNotification();
                     Log.i(TAG, "Detached agent health check passed.");
                     return;
                 }
-                AgentChildExit childExit = readLatestAgentChildExit(launchStartedAtMs, startupTraceId);
+                // An adopted agent's journal may hold exits from earlier children
+                // of its launch; its absence is caught by the closed socket instead.
+                AgentChildExit childExit = adopted
+                    ? null
+                    : readLatestAgentChildExit(launchStartedAtMs, startupTraceId);
                 if (childExit != null) {
                     String attribution = describeAgentExit(childExit.exitCode);
                     String fatal = readLatestAgentFatal(launchStartedAtMs, startupTraceId);
@@ -3968,30 +4193,23 @@ public class ElizaAgentService extends Service {
                         details.put("agentFatal", fatal);
                     }
                     appendDiagnosticEvent("detached-agent-child-exited-before-ready", details);
-                    if (ElizaAgentWatchdogPolicy.isTerminalStartupFailure(fatal)) {
-                        synchronized (processLock) {
-                            currentStatus = "agent startup blocked: " + fatal;
-                        }
-                        appendDiagnosticEvent("agent-startup-intervention-required", details);
-                        updateNotification();
-                        Log.e(TAG, "Agent startup requires intervention; automatic restart stopped: " + fatal);
-                        stopSelf();
-                        return;
-                    }
-                    // The death is user-visible: the status (and its
-                    // notification) says WHAT killed the agent instead of
-                    // leaving "starting" up until the generic timeout card.
                     synchronized (processLock) {
-                        currentStatus = "agent exited: " + attribution;
+                        if (!isCurrentDetachedProbe(launchStartedAtMs)) return;
+                        if (ElizaAgentWatchdogPolicy.isTerminalStartupFailure(fatal)) {
+                            String blocked = "agent startup blocked: " + fatal;
+                            appendDiagnosticEvent("agent-startup-intervention-required", details);
+                            Log.e(TAG, "Agent startup requires intervention; automatic restart stopped: " + fatal);
+                            stopForTerminalFailure(blocked, blocked);
+                            return;
+                        }
+                        scheduleRestart();
                     }
-                    updateNotification();
                     Log.w(TAG, "Detached agent child exited before readiness"
                         + " (pid=" + childExit.childPid
                         + " code=" + childExit.exitCode
                         + " cause=" + attribution
                         + (fatal != null ? " fatal=" + fatal : "")
                         + "). Scheduling restart.");
-                    scheduleRestart();
                     return;
                 }
                 try {
@@ -4001,21 +4219,43 @@ public class ElizaAgentService extends Service {
                     return;
                 }
             }
-            boolean stillCurrent;
+            if (adopted && lastResult == ElizaAgentWatchdogPolicy.ProbeResult.BUSY) {
+                // An adopted resident mid-call is not restarted for being busy;
+                // the watchdog's BUSY ceiling owns it.
+                Log.w(TAG, "Adopted agent still busy at its probe deadline; leaving it to the watchdog.");
+                appendDiagnosticEvent("detached-agent-adoption-busy", null);
+                return;
+            }
+            boolean answeredUnready = lastResult == ElizaAgentWatchdogPolicy.ProbeResult.DEAD
+                && isLocalAgentSocketListening();
+            Log.w(TAG, "Detached agent did not become healthy by its deadline"
+                + (answeredUnready ? " (answering unready)" : "") + ". Scheduling restart.");
+            Map<String, String> details = new LinkedHashMap<>();
+            details.put("startupHealthGraceMs", String.valueOf(STARTUP_HEALTH_GRACE_MS));
+            details.put("adopted", String.valueOf(adopted));
+            details.put("answeredUnready", String.valueOf(answeredUnready));
+            appendDiagnosticEvent("detached-agent-startup-timeout", details);
             synchronized (processLock) {
-                stillCurrent = detachedAgentMode && detachedLaunchStartedAtMs == launchStartedAtMs;
+                if (isCurrentDetachedProbe(launchStartedAtMs)) scheduleRestart(true);
             }
-            if (stillCurrent && !shuttingDown) {
-                Log.w(TAG, "Detached agent did not become healthy within "
-                    + STARTUP_HEALTH_GRACE_MS + "ms. Scheduling restart.");
-                Map<String, String> details = new LinkedHashMap<>();
-                details.put("startupHealthGraceMs", String.valueOf(STARTUP_HEALTH_GRACE_MS));
-                appendDiagnosticEvent("detached-agent-startup-timeout", details);
-                scheduleRestart();
+          } finally {
+            // Only the newest probe clears the slot; an older one ending must
+            // not let adoption stack a second probe beside the current one.
+            synchronized (processLock) {
+                if (healthProbe == Thread.currentThread()) healthProbe = null;
             }
+          }
         }, "ElizaAgent-detached-startup-probe");
         probe.setDaemon(true);
+        healthProbe = probe;
         probe.start();
+    }
+
+    /** Called under processLock before accepting results from a startup probe. */
+    private boolean isCurrentDetachedProbe(long launchStartedAtMs) {
+        return !shuttingDown && !terminalNoticePosted && restartWorker == null
+            && detachedAgentMode && detachedLaunchStartedAtMs == launchStartedAtMs
+            && healthProbe == Thread.currentThread();
     }
 
     /**
@@ -4037,6 +4277,23 @@ public class ElizaAgentService extends Service {
             return true;
         } catch (IOException | SecurityException ignored) {
             return false;
+        } finally {
+            closeQuietly(socket);
+        }
+    }
+
+    /**
+     * True only when nothing accepts on the request socket (connect fails).
+     * A peer that connects but fails the identity check is not absence.
+     */
+    private static boolean isLocalAgentSocketRefused() {
+        LocalSocket socket = new LocalSocket();
+        try {
+            socket.connect(new LocalSocketAddress(
+                localSocketPath(), LocalSocketAddress.Namespace.FILESYSTEM));
+            return false;
+        } catch (IOException refused) {
+            return true;
         } finally {
             closeQuietly(socket);
         }
@@ -4101,38 +4358,33 @@ public class ElizaAgentService extends Service {
     }
 
     private void scheduleRestart(boolean requireFreshProcess) {
-        if (shuttingDown) return;
-        ElizaAgentWatchdogPolicy.RestartDecision decision =
-            ElizaAgentWatchdogPolicy.nextRestart(restartAttempts, MAX_RESTART_ATTEMPTS);
-        if (!decision.allowed) {
-            Log.e(TAG, "Agent crashed " + restartAttempts + " times — giving up. Service stopping.");
-            currentStatus = "fatal";
+        synchronized (processLock) {
+            if (shuttingDown || terminalNoticePosted || restartWorker != null) return;
+            final long recoveryEpoch = recoveryMaintenanceEpoch;
+            final ElizaAgentWatchdogPolicy.RestartDecision decision =
+                ElizaAgentWatchdogPolicy.nextRestart(restartAttempts);
+            restartAttempts = decision.nextRestartAttempts;
+            healthySinceMs = 0L;
+            retireRuntimeRequests();
+            currentStatus = "restarting";
+            restartWorker = new Thread(() -> {
+                try {
+                    Thread.sleep(decision.delayMs);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                requestAgentStart(requireFreshProcess, Thread.currentThread(), recoveryEpoch);
+            }, "ElizaAgent-restart");
+            restartWorker.setDaemon(true);
+            restartWorker.start();
             updateNotification();
             Map<String, String> details = new LinkedHashMap<>();
-            details.put("restartAttempts", String.valueOf(restartAttempts));
-            details.put("maxRestartAttempts", String.valueOf(MAX_RESTART_ATTEMPTS));
-            appendDiagnosticEvent("agent-restart-give-up", details);
-            stopSelf();
-            return;
+            details.put("attempt", String.valueOf(restartAttempts));
+            details.put("backoffMs", String.valueOf(decision.delayMs));
+            appendDiagnosticEvent("agent-restart-scheduled", details);
+            Log.w(TAG, "Restarting agent in " + decision.delayMs + "ms (attempt " + restartAttempts + ").");
         }
-        long backoffMs = decision.delayMs;
-        restartAttempts = decision.nextRestartAttempts;
-        Map<String, String> details = new LinkedHashMap<>();
-        details.put("attempt", String.valueOf(restartAttempts));
-        details.put("maxRestartAttempts", String.valueOf(MAX_RESTART_ATTEMPTS));
-        details.put("backoffMs", String.valueOf(backoffMs));
-        appendDiagnosticEvent("agent-restart-scheduled", details);
-        Log.w(TAG, "Restarting agent in " + backoffMs + "ms (attempt " + restartAttempts + "/" + MAX_RESTART_ATTEMPTS + ").");
-        new Thread(() -> {
-            try {
-                Thread.sleep(backoffMs);
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-            if (shuttingDown) return;
-            requestAgentStart(requireFreshProcess);
-        }, "ElizaAgent-restart").start();
     }
 
     private void appendDiagnosticEvent(String event, Map<String, String> details) {
@@ -4287,11 +4539,17 @@ public class ElizaAgentService extends Service {
      * Polls the agent process and the local health endpoint every
      * {@link #WATCHDOG_INTERVAL_MS}. If the process died, schedule a
      * restart with exponential backoff. If the process is alive but the
-     * health endpoint has been unreachable for two consecutive ticks,
-     * also force a restart — the runtime is wedged.
+     * health endpoint fails for {@link #HEALTH_FAIL_STRIKES} consecutive
+     * ticks, or stays BUSY for {@link ElizaAgentWatchdogPolicy#BUSY_RESTART_TICKS},
+     * force a fresh process — the runtime is wedged. Between those probes a
+     * cheap socket check every {@link #ABSENCE_CHECK_INTERVAL_MS} replaces a
+     * detached agent whose process is proven gone.
      */
     private final class WatchdogThread extends Thread {
         private int unhealthyTicks;
+        private int busyTicks;
+        private int socketRefusals;
+        private long observedLaunch;
 
         WatchdogThread() {
             super("ElizaAgent-watchdog");
@@ -4300,119 +4558,151 @@ public class ElizaAgentService extends Service {
 
         @Override
         public void run() {
+            long nextHealthProbeAt = SystemClock.elapsedRealtime() + WATCHDOG_INTERVAL_MS;
             while (!shuttingDown && !isInterrupted()) {
                 try {
-                    Thread.sleep(WATCHDOG_INTERVAL_MS);
+                    Thread.sleep(ABSENCE_CHECK_INTERVAL_MS);
                 } catch (InterruptedException error) {
                     return;
                 }
                 if (shuttingDown) return;
+                checkDetachedAbsence();
+                if (SystemClock.elapsedRealtime() < nextHealthProbeAt) continue;
+                nextHealthProbeAt = SystemClock.elapsedRealtime() + WATCHDOG_INTERVAL_MS;
+                probeOnce();
+            }
+        }
 
-                Process current;
+        /**
+         * Detached agents have no Java child to watch after launch. A refused
+         * connect is only a trigger: absence needs two refusals in a row and
+         * no live process for the child journaled by the current launch. A
+         * busy or unready agent still accepts connects, so it never lands here.
+         */
+        private void checkDetachedAbsence() {
+            long launchStartedAt = detachedLaunchStartedAtMs;
+            if (observedLaunch != launchStartedAt) {
+                socketRefusals = 0;
+                unhealthyTicks = 0;
+                busyTicks = 0;
+                observedLaunch = launchStartedAt;
+            }
+            if (!detachedAgentMode || !"running".equals(currentStatus)
+                    || startWorker != null || restartWorker != null) {
+                socketRefusals = 0;
+                return;
+            }
+            if (!isLocalAgentSocketRefused()) {
+                socketRefusals = 0;
                 synchronized (processLock) {
-                    current = agentProcess;
-                }
-                if (current == null) {
-                    if (detachedAgentMode) {
-                        ElizaAgentWatchdogPolicy.ProbeResult probe = probeHealth();
-                        ElizaAgentWatchdogPolicy.HealthDecision decision =
-                            ElizaAgentWatchdogPolicy.evaluateHealthProbe(
-                                probe,
-                                unhealthyTicks,
-                                HEALTH_FAIL_STRIKES
-                            );
-                        if (probe == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
-                            if (unhealthyTicks > 0) {
-                                Log.i(TAG, "Detached agent health restored.");
-                            }
-                            unhealthyTicks = decision.unhealthyTicks;
-                            if (decision.resetRestartAttempts) {
-                                restartAttempts = 0;
-                            }
-                            if (!"running".equals(currentStatus)) {
-                                currentStatus = "running";
-                                updateNotification();
-                            }
-                        } else if (probe == ElizaAgentWatchdogPolicy.ProbeResult.DEAD) {
-                            unhealthyTicks = decision.unhealthyTicks;
-                            Log.w(TAG, "Detached agent health probe failed ("
-                                + (decision.restartRequired ? HEALTH_FAIL_STRIKES : unhealthyTicks)
-                                + " consecutive).");
-                            if (decision.restartRequired) {
-                                scheduleRestart();
-                            }
-                        }
+                    if (detachedLaunchStartedAtMs == launchStartedAt && restartWorker == null) {
+                        restartAttempts = ElizaAgentWatchdogPolicy.restartAttemptsAfterHealthy(
+                            restartAttempts, healthySinceMs, SystemClock.elapsedRealtime());
                     }
-                    continue;
                 }
-                if (!current.isAlive()) {
-                    int exit = -1;
-                    try {
-                        exit = current.exitValue();
-                    } catch (IllegalThreadStateException ignored) {
-                        // Race: marked alive between checks. Treat as dead.
-                    }
-                    Log.w(TAG, "Agent process exited (code=" + exit + "). Scheduling restart.");
-                    synchronized (processLock) {
-                        agentProcess = null;
-                    }
-                    unhealthyTicks = 0;
-                    scheduleRestart();
-                    continue;
-                }
+                return;
+            }
+            socketRefusals++;
+            synchronized (processLock) {
+                if (detachedLaunchStartedAtMs != launchStartedAt || restartWorker != null) return;
+                healthySinceMs = 0L;
+            }
+            if (socketRefusals < ElizaAgentWatchdogPolicy.ABSENCE_REFUSALS) return;
+            AgentChildStart childStart = launchStartedAt > 0L
+                ? readLatestAgentChildStart(launchStartedAt)
+                : null;
+            boolean childAlive = childStart != null && isAgentChildProcessAlive(childStart.childPid);
+            if (!ElizaAgentWatchdogPolicy.detachedAbsenceProven(
+                    socketRefusals, childStart != null, childAlive)) {
+                return;
+            }
+            synchronized (processLock) {
+                if (detachedLaunchStartedAtMs != launchStartedAt || !"running".equals(currentStatus)
+                        || startWorker != null || restartWorker != null || shuttingDown) return;
+                Map<String, String> details = new LinkedHashMap<>();
+                details.put("socketRefusals", String.valueOf(socketRefusals));
+                details.put("childPid", childStart.childPid);
+                appendDiagnosticEvent("detached-agent-absent", details);
+                Log.w(TAG, "Detached agent child " + childStart.childPid
+                    + " is gone and its socket refuses connects; restarting.");
+                socketRefusals = 0;
+                unhealthyTicks = 0;
+                busyTicks = 0;
+                holdRestartWakeLock();
+                scheduleRestart(true);
+            }
+        }
 
-                ElizaAgentWatchdogPolicy.ProbeResult probe = probeHealth();
+        private void probeOnce() {
+            Process current;
+            long launchStartedAt;
+            synchronized (processLock) {
+                if (!canProbe()) return;
+                current = agentProcess;
+                launchStartedAt = detachedLaunchStartedAtMs;
+            }
+            // The exit watcher distinguishes a crash from the launcher's successful handoff.
+            if (current != null && !current.isAlive()) return;
+            ElizaAgentWatchdogPolicy.ProbeResult probe = probeHealth();
+            synchronized (processLock) {
+                if (!canProbe() || agentProcess != current || detachedLaunchStartedAtMs != launchStartedAt) return;
                 ElizaAgentWatchdogPolicy.HealthDecision decision =
-                    ElizaAgentWatchdogPolicy.evaluateHealthProbe(
-                        probe,
-                        unhealthyTicks,
-                        HEALTH_FAIL_STRIKES
-                    );
+                    ElizaAgentWatchdogPolicy.evaluateHealthProbe(probe, unhealthyTicks, busyTicks, HEALTH_FAIL_STRIKES);
+                unhealthyTicks = decision.unhealthyTicks;
+                busyTicks = decision.busyTicks;
                 if (probe == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
-                    if (unhealthyTicks > 0) {
-                        Log.i(TAG, "Agent health restored.");
-                    }
-                    unhealthyTicks = decision.unhealthyTicks;
-                    if (decision.resetRestartAttempts && restartAttempts > 0) {
-                        // Reset backoff once the agent has been healthy for a tick.
-                        restartAttempts = 0;
-                    }
-                    if (!"running".equals(currentStatus)) {
-                        currentStatus = "running";
-                        updateNotification();
-                    }
-                } else if (probe == ElizaAgentWatchdogPolicy.ProbeResult.BUSY) {
-                    // HTTP listener didn't answer in HEALTH_TIMEOUT_MS but the
-                    // bun process is still alive. The most likely cause is
-                    // synchronous work inside the JS event loop — typically
-                    // a long llama_decode FFI call with a 12k-token prompt
-                    // on emulated CPU. We do NOT count a strike; the
-                    // process is doing exactly what it should be doing.
-                    // Logging is at info-level so operators can correlate
-                    // decode-busy periods with apparent unresponsiveness.
-                    Log.i(TAG, "Agent HTTP probe timed out but process is alive — likely mid-decode. No strike.");
-                } else {
-                    // ProbeResult.DEAD: process is dead, OR /api/health
-                    // did not return 2xx with ready=true. Only here do we
-                    // accumulate strikes toward a force-restart.
-                    unhealthyTicks = decision.unhealthyTicks;
+                    Log.i(TAG, "Agent health check passed.");
+                    markRunning();
+                } else if (probe == ElizaAgentWatchdogPolicy.ProbeResult.DEAD) {
+                    healthySinceMs = 0L;
                     Log.w(TAG, "Agent health probe failed ("
                         + (decision.restartRequired ? HEALTH_FAIL_STRIKES : unhealthyTicks)
                         + " consecutive).");
-                    if (decision.restartRequired) {
-                        Log.w(TAG, "Agent unresponsive — force-restarting.");
-                        retireRuntimeRequests();
-                        if (stopAgentProcessOrPreserve(false)) {
-                            scheduleRestart(true);
-                        } else {
-                            currentStatus = "stop-failed";
-                            updateNotification();
-                        }
-                    }
+                } else {
+                    Log.i(TAG, "Agent probe busy (" + (decision.restartRequired
+                        ? ElizaAgentWatchdogPolicy.BUSY_RESTART_TICKS : busyTicks)
+                        + " consecutive).");
+                }
+                if (decision.restartRequired) {
+                    // The socket may still accept: adopting it again would keep the wedged process.
+                    Log.w(TAG, "Agent unresponsive — force-restarting.");
+                    scheduleRestart(true);
                 }
             }
         }
 
+        private boolean canProbe() {
+            return !shuttingDown && !terminalNoticePosted && startWorker == null
+                && restartWorker == null && healthProbe == null
+                && (agentProcess != null || detachedAgentMode)
+                && (!isTerminalBootStatus(currentStatus) || "stop-failed".equals(currentStatus));
+        }
+    }
+
+    /** Ready on a health OK; backoff resets only after stable uptime. */
+    private void markRunning() {
+        long now = SystemClock.elapsedRealtime();
+        if (healthySinceMs <= 0L) healthySinceMs = now;
+        restartAttempts = ElizaAgentWatchdogPolicy.restartAttemptsAfterHealthy(
+            restartAttempts, healthySinceMs, now);
+        if (!"running".equals(currentStatus)) {
+            currentStatus = "running";
+            updateNotification();
+        }
+    }
+
+    /** Keeps the CPU awake across a restart's backoff; released by timeout. */
+    private void holdRestartWakeLock() {
+        try {
+            android.os.PowerManager power = getSystemService(android.os.PowerManager.class);
+            if (power == null) return;
+            android.os.PowerManager.WakeLock lock = power.newWakeLock(
+                android.os.PowerManager.PARTIAL_WAKE_LOCK, "eliza:agent-restart");
+            lock.setReferenceCounted(false);
+            lock.acquire(RESTART_WAKE_LOCK_MS);
+        } catch (RuntimeException unavailable) {
+            Log.w(TAG, "Restart wake lock unavailable: " + unavailable.getClass().getSimpleName());
+        }
     }
 
     // ── Notification helpers ─────────────────────────────────────────────
@@ -4432,7 +4722,11 @@ public class ElizaAgentService extends Service {
         }
     }
 
-    private Notification buildNotification(String title, String text) {
+    /**
+     * The ongoing foreground notification carries {@link #NOTIFICATION_PRIMARY_ACTION};
+     * a terminal notice ({@code ongoing=false}) has no action and can be dismissed.
+     */
+    private Notification buildNotification(String title, String text, boolean ongoing) {
         Intent launchIntent = new Intent(this, MainActivity.class);
         launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent launchPending = PendingIntent.getActivity(
@@ -4440,23 +4734,36 @@ public class ElizaAgentService extends Service {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        Intent stopIntent = new Intent(this, ElizaAgentService.class);
-        stopIntent.setAction(ACTION_STOP);
-        PendingIntent stopPending = PendingIntent.getService(
-            this, 2, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(launchPending)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .addAction(0, "Stop", stopPending)
-            .build();
+            .setOngoing(ongoing)
+            .setAutoCancel(!ongoing)
+            .setOnlyAlertOnce(true);
+        if (!ongoing) return builder.build();
+        builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE);
+        if ("stop".equals(NOTIFICATION_PRIMARY_ACTION)) {
+            // A bare ACTION_STOP; credential shutdown sends its own epoch.
+            Intent stopIntent = new Intent(this, ElizaAgentService.class);
+            stopIntent.setAction(ACTION_STOP);
+            PendingIntent stopPending = PendingIntent.getService(
+                this, 2, stopIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            builder.addAction(0, "Stop", stopPending);
+        } else if ("restart".equals(NOTIFICATION_PRIMARY_ACTION)) {
+            // Restart replaces the process; the new launch re-arms the periodic wake.
+            Intent restartIntent = new Intent(this, ElizaAgentService.class);
+            restartIntent.setAction(ACTION_RESTART);
+            PendingIntent restartPending = PendingIntent.getService(
+                this, 3, restartIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            builder.addAction(0, "Restart", restartPending);
+        }
+        return builder.build();
     }
 
     private void updateNotification() {
@@ -4492,21 +4799,26 @@ public class ElizaAgentService extends Service {
             .build();
     }
 
+    /**
+     * Every status maps to fixed copy; the raw status (which can carry
+     * internal text such as a fatal message) stays in logs and diagnostics.
+     */
     private void pushNotification() {
+        // After a terminal failure the service has left the foreground; a late
+        // update must not repost an ongoing notification with no service behind it.
+        if (terminalNoticePosted) return;
+        String status = currentStatus;
         String title;
         String text;
-        switch (currentStatus) {
+        switch (status) {
             case "running":
                 title = "Eliza agent · Running";
                 text = "On-device agent ready";
                 break;
             case "starting":
+            case "restarting":
                 title = "Eliza agent · Starting";
                 text = "Preparing on-device runtime…";
-                break;
-            case "fatal":
-                title = "Eliza agent · Stopped";
-                text = "Agent crashed repeatedly; tap to investigate";
                 break;
             case "extract-failed":
                 title = "Eliza agent · Asset error";
@@ -4514,9 +4826,9 @@ public class ElizaAgentService extends Service {
                 break;
             case "missing-bundle":
             case "missing-bun":
-            case "missing-loader":
+            case "missing-launcher":
                 title = "Eliza agent · Missing files";
-                text = currentStatus;
+                text = "Runtime files are missing; reinstall the app";
                 break;
             case "spawn-failed":
                 title = "Eliza agent · Spawn failed";
@@ -4528,15 +4840,56 @@ public class ElizaAgentService extends Service {
                 break;
             default:
                 title = "Eliza agent";
-                text = currentStatus;
+                text = "Open the app to check the agent";
                 break;
         }
 
-        Notification notification = buildNotification(title, text);
+        Notification notification = buildNotification(title, text, true);
         NotificationManager mgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (mgr != null) {
             mgr.notify(NOTIFICATION_ID, notification);
         }
+    }
+
+    /**
+     * Ends the service on a failure that needs the user: persists the status so
+     * getLocalAgentBootState reports it after this instance is gone, leaves the
+     * foreground, and posts a dismissible notice on its own id, which onDestroy's
+     * cancel of {@link #NOTIFICATION_ID} cannot erase.
+     */
+    private void stopForTerminalFailure(String status, String reason) {
+        getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(TERMINAL_STATUS_KEY, status)
+            .putString(TERMINAL_REASON_KEY, reason)
+            .putLong(TERMINAL_AT_KEY, System.currentTimeMillis())
+            .commit();
+        currentStatus = status;
+        terminalNoticePosted = true;
+        stopForeground(Service.STOP_FOREGROUND_REMOVE);
+        NotificationManager mgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (mgr != null) {
+            mgr.cancel(NOTIFICATION_ID);
+            mgr.notify(TERMINAL_NOTIFICATION_ID, buildNotification(
+                "Eliza agent · Stopped",
+                "Open the app to check the agent",
+                false));
+        }
+        stopSelf();
+    }
+
+    /** A new start supersedes the last terminal failure and its notice. */
+    private void clearTerminalStatus() {
+        terminalNoticePosted = false;
+        SharedPreferences prefs = getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE);
+        if (!prefs.contains(TERMINAL_STATUS_KEY)) return;
+        prefs.edit()
+            .remove(TERMINAL_STATUS_KEY)
+            .remove(TERMINAL_REASON_KEY)
+            .remove(TERMINAL_AT_KEY)
+            .apply();
+        NotificationManager mgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (mgr != null) mgr.cancel(TERMINAL_NOTIFICATION_ID);
     }
 
     // ── Static helpers for callers ───────────────────────────────────────
@@ -4796,7 +5149,6 @@ public class ElizaAgentService extends Service {
 
     /** Restart the agent process without tearing down the service. */
     public static void restart(Context context) {
-        retireRuntimeRequests();
         Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_RESTART);
         context.startService(intent);

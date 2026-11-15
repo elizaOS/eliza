@@ -1,0 +1,27 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/credits.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/credits-reconcile.test.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Four rows in a total timestamp/ID order, two initially fail, and the run budget can visit all four.",
+      "The cursor advances after every selected row and resets for the next cron invocation.",
+      "Does not prove progress under an unbounded backlog, continuous insertion, or unfair scheduling."
+    ],
+    "progress": "No temporal or fairness claim. Each model permits stuttering and repeated failures."
+  },
+  "cases": [
+    {
+      "name": "billing-sweep",
+      "main": "billing_sweep",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

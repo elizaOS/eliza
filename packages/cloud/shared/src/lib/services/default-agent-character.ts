@@ -6,6 +6,7 @@
  * examples accepted by the character API.
  */
 
+import { createHash } from "node:crypto";
 import { getDefaultStylePreset } from "@elizaos/host/protocol";
 import { buildCloudElizaPersona } from "../utils/cloud-eliza-persona";
 
@@ -15,24 +16,11 @@ import { buildCloudElizaPersona } from "../utils/cloud-eliza-persona";
  * brought their own persona and the seed must not compete with it.
  */
 const PERSONA_KEYS = ["system", "prompt", "bio"] as const;
-/**
- * Stock bios shipped by older clients. These exact fingerprints are safe to
- * upgrade during create; any user edit, even a one-line change, remains a
- * caller-owned persona and is left untouched.
- */
-const LEGACY_DEFAULT_BIOS: readonly (readonly string[])[] = [
-  [
-    "Helps with the day: plans, reminders, writing, research, decisions.",
-    "Answers short. Goes long only when it's worth it.",
-    "Does the thing, then says what happened.",
-    'Says "I don\'t know" instead of guessing.',
-    "Will tell you a plan has a hole in it.",
-    "No emoji, no filler, no fake enthusiasm.",
-    "Eliza is made by Eliza Research in San Francisco.",
-    "Open source and self-hostable: https://github.com/elizaOS/eliza",
-    "Named after the 1966 original. A fair bit has changed.",
-  ],
-];
+/** Exact JSON fingerprint of the retired stock bio, without retaining its branding. */
+const RETIRED_DEFAULT_BIO = {
+  entries: 9,
+  sha256: "099c509a145739143856c35cc50b711b27f42115ecfc15b3db336c6e29686ca2",
+} as const;
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -92,9 +80,14 @@ export function buildDefaultAgentCharacterConfig(): Record<string, unknown> {
 function hasLegacyDefaultBio(config: Record<string, unknown>): boolean {
   const bio = config.bio;
   if (!Array.isArray(bio)) return false;
-  const knownDefaults = [getDefaultStylePreset().bio, ...LEGACY_DEFAULT_BIOS];
-  return knownDefaults.some(
-    (known) => bio.length === known.length && bio.every((entry, index) => entry === known[index]),
+  const knownDefaults = [getDefaultStylePreset().bio];
+  return (
+    knownDefaults.some(
+      (known) => bio.length === known.length && bio.every((entry, index) => entry === known[index]),
+    ) ||
+    (bio.length === RETIRED_DEFAULT_BIO.entries &&
+      bio.every((entry) => typeof entry === "string") &&
+      createHash("sha256").update(JSON.stringify(bio)).digest("hex") === RETIRED_DEFAULT_BIO.sha256)
   );
 }
 /**

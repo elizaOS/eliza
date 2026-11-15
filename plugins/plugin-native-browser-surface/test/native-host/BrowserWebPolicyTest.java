@@ -53,6 +53,21 @@ public final class BrowserWebPolicyTest {
     equal(null, BrowserWebOrigin.of("https:///nohost"), "no host");
     equal(null, BrowserWebOrigin.of("https://example.com/\nx"), "control characters");
     equal(null, BrowserWebOrigin.of(null), "null");
+    // Chromium reports these unescaped; only the scheme and authority decide the origin.
+    for (String url : new String[] {"https://a.com/?q=a|b", "https://a.com/a|b", "https://a.com/?f={x}",
+        "https://a.com/?d=50%", "https://a.com/?q=a^b", "https://a.com/a[1]", "https://a.com?x@y",
+        "https://a.com#@b.com", "https://A.com:443?sub=auth0|123", "HTTPS://a.com"})
+      equal("https://a.com", BrowserWebOrigin.of(url), "WebView address " + url);
+    for (String url : new String[] {"https://u@a.com/", "https://@a.com/", "https://a.com\\@b.com/",
+        "https://a.com\\b", "https://a.com/\tx", "https://a.com/ x", "https://a.com/\0",
+        "https://a.com/\u00a0", "https://a.com:70000/", "https://a.com:99999999999/", "https://a.com:x/",
+        "https://a.com:-1/", "https://a.com:80:80/", "https://[::1/", "https://[::1]x/", "https://a_b%2e.com/",
+        "https://:443/", "https:a.com", "https:/a.com", "//a.com/", "a.com"})
+      equal(null, BrowserWebOrigin.of(url), "refused " + url);
+    equal("https://[::1]", BrowserWebOrigin.of("https://[::1]:443/?q=a|b"), "IPv6 default port elided");
+    equal("http://[::1]:8080", BrowserWebOrigin.of("http://[::1]:8080"), "IPv6 explicit port");
+    equal("http://a.com", BrowserWebOrigin.of("http://a.com:80?x"), "http default port elided");
+    equal("https://a.com:80", BrowserWebOrigin.of("https://a.com:80/"), "non-default port kept");
     char[] longPath = new char[BrowserWebOrigin.MAX_URL];
     Arrays.fill(longPath, 'a');
     equal(null, BrowserWebOrigin.of("https://example.com/" + new String(longPath)),
@@ -118,6 +133,26 @@ public final class BrowserWebPolicyTest {
         "bounded length");
     equal("_.._etc_passwd", BrowserDownloadPolicy.sanitizeName("/../etc/passwd"),
         "no path separators");
+    String longName =
+        BrowserDownloadPolicy.sanitizeName(new String(new char[150]).replace('\0', 'r') + ".pdf");
+    equal(BrowserDownloadPolicy.MAX_NAME, longName.length(), "long name bounded");
+    check(longName.endsWith("rrr.pdf"), "long name keeps its extension");
+    String longExtension = BrowserDownloadPolicy.sanitizeName(
+        "a." + new String(new char[150]).replace('\0', 'x'));
+    equal(BrowserDownloadPolicy.MAX_NAME, longExtension.length(),
+        "an over-long extension is cut like the rest of the name");
+    equal("\u041e\u0442\u0447\u0451\u0442.pdf",
+        BrowserDownloadPolicy.sanitizeName("\u041e\u0442\u0447\u0451\u0442.pdf"),
+        "Cyrillic name survives");
+    equal("\u5831\u544a 2026.pdf", BrowserDownloadPolicy.sanitizeName("\u5831\u544a 2026.pdf"),
+        "CJK name survives");
+    equal("invoicefdp.exe", BrowserDownloadPolicy.sanitizeName("invoice\u202efdp.exe"),
+        "bidi override removed");
+    equal("ab_c.txt", BrowserDownloadPolicy.sanitizeName("a\u2066b/c\u0007.txt"),
+        "isolates and controls removed, separators replaced");
+    String wide = BrowserDownloadPolicy.sanitizeName(
+        new String(new char[99]).replace('\0', 'e') + "\ud840\udc00\ud840\udc00");
+    equal(99, wide.length(), "a cut never leaves half a surrogate pair");
     check(BrowserDownloadPolicy.validMime("application/pdf"), "valid mime");
     check(!BrowserDownloadPolicy.validMime("text/html; charset=utf-8"),
         "parameters are not a mime type");
@@ -201,8 +236,22 @@ public final class BrowserWebPolicyTest {
     for (int i = 0; i < History.MAX_ENTRIES; i++)
       restored.add(new Entry(100 + i, "n", "https://example.com", false, null));
     check(restored.full(), "bounded");
-    check(!restored.add(new Entry(999, "n", "https://example.com", false, null)),
-        "full list refuses");
+    check(restored.add(new Entry(999, "n", "https://example.com", false, null)),
+        "a full list of finished entries admits a new one");
+    equal(History.MAX_ENTRIES, restored.all().size(), "by retiring one row");
+    check(restored.get(100) == null && restored.get(101) != null && restored.get(999) != null,
+        "the oldest finished row is the one retired");
+    check(restored.add(new Entry(998, "n", "https://example.com", false, null), entry -> entry.id == 101),
+        "a busy OS transfer is skipped");
+    check(restored.get(101) != null && restored.get(102) == null, "the next finished row goes instead");
+    check(!restored.hasRoom(entry -> true), "every row in progress leaves no room");
+    check(!restored.add(new Entry(997, "n", "https://example.com", false, null), entry -> true),
+        "a list of fifty transfers in progress refuses");
+    History active = new History();
+    for (int i = 0; i < History.MAX_ENTRIES; i++)
+      active.add(new Entry(-100 - i, "r", "https://example.com", false, null).started());
+    check(!active.hasRoom(entry -> false) && !active.add(new Entry(-1, "n", "https://example.com", false, null)),
+        "running host transfers are never retired");
     List<Entry> retained = new java.util.ArrayList<>();
     for (int i = 0; i < 75; i++)
       retained.add(new Entry(1000 + i, "saved", "https://example.com", false, null));

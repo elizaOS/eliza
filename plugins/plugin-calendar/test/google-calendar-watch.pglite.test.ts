@@ -3,7 +3,8 @@
  * ScheduledTask runner, and a loopback HTTP server around the public route.
  * Only Google's remote API is represented by a deterministic transport.
  */
-import { createServer, type Server } from "node:http";
+import { readFileSync } from "node:fs";
+import { createServer, request as httpRequest, type Server } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
 import type {
   LifeOpsConnectorGrant,
@@ -17,13 +18,17 @@ import {
 } from "@elizaos/plugin-google-workspace";
 import {
   getScheduledTaskRunner,
+  type ScheduledTaskDispatchRecord,
   ScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  GOOGLE_CALENDAR_WATCH_TASK_CHANNEL,
   GOOGLE_CALENDAR_WEBHOOK_PATH,
   type GoogleCalendarNotificationHeaders,
+  GoogleCalendarWatchLifecycle,
+  GoogleCalendarWatchRepository,
 } from "../src/google-watch/index.js";
 import { calendarRouteHandler } from "../src/routes/plugin-routes.js";
 import {
@@ -507,6 +512,14 @@ async function watchRows(pg: PGlite) {
   ).rows;
 }
 
+function gate() {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
+
 async function waitForMaintenanceTask(harness: Harness): Promise<string> {
   const runner = getScheduledTaskRunner(harness.runtime, {
     agentId: AGENT_ID,
@@ -543,6 +556,102 @@ async function waitForSyncRetryTask(
   throw new Error("Google Calendar notification retry task was not scheduled.");
 }
 
+// Raw X-Forwarded-Proto header lines in Node's rawHeaders form, so a repeated
+// line stays two lines on the wire. The indices match `header` in
+// plugins/plugin-scheduling/quint/ForwardedProtoRouteBase.qnt.
+const FORWARDED_PROTO_LINES: readonly (readonly string[])[] = [
+  [],
+  ["X-Forwarded-Proto", "https"],
+  ["X-Forwarded-Proto", "https, http"],
+  ["X-Forwarded-Proto", "https", "X-Forwarded-Proto", "http"],
+  ["X-Forwarded-Proto", ""],
+];
+const GOOGLE_WEBHOOK_ROUTE = 1;
+
+// Google's delivery relayed by proxies in front of the agent.
+async function postRelayedNotification(
+  baseUrl: string,
+  headers: GoogleCalendarNotificationHeaders,
+  forwardedProto: readonly string[],
+): Promise<number> {
+  const url = new URL(`${baseUrl}${GOOGLE_CALENDAR_WEBHOOK_PATH}`);
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({
+      host: url.hostname,
+      port: url.port,
+      method: "POST",
+      path: url.pathname,
+      headers: [
+        "Host",
+        "calendar.example.com",
+        "Content-Length",
+        "0",
+        "X-Goog-Channel-ID",
+        headers.channelId,
+        "X-Goog-Channel-Token",
+        headers.channelToken,
+        "X-Goog-Resource-ID",
+        headers.resourceId,
+        "X-Goog-Resource-URI",
+        headers.resourceUri,
+        "X-Goog-Resource-State",
+        headers.resourceState,
+        "X-Goog-Message-Number",
+        headers.messageNumber,
+        ...forwardedProto,
+      ],
+    });
+    req.on("response", (res) => {
+      res.resume();
+      res.on("end", () => resolve(res.statusCode ?? 0));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+async function forwardedProtoReplay(
+  harness: Harness,
+  sequences: readonly (readonly number[])[],
+) {
+  await forceInitialSync(harness);
+  const request = harness.google.watchRequests[0];
+  expect(request).toBeDefined();
+  const results: Array<{
+    header: number;
+    status: number;
+    synced: boolean;
+    lastMessageNumber: unknown;
+  }> = [];
+  let messageNumber = 1;
+  for (const sequence of sequences) {
+    for (const index of sequence) {
+      messageNumber += 1;
+      const before = harness.google.eventPageRequests.length;
+      const status = await postRelayedNotification(
+        harness.baseUrl,
+        {
+          channelId: request?.channelId ?? "",
+          channelToken: request?.token ?? "",
+          resourceId: "resource-1",
+          resourceUri: RESOURCE_URI,
+          resourceState: "exists",
+          messageNumber: String(messageNumber),
+        },
+        FORWARDED_PROTO_LINES[index] ?? [],
+      );
+      const rows = await watchRows(harness.pg);
+      results.push({
+        header: index,
+        status,
+        synced: harness.google.eventPageRequests.length > before,
+        lastMessageNumber: rows[0]?.last_message_number,
+      });
+    }
+  }
+  return { results, lastMessageNumber: String(messageNumber) };
+}
+
 describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
   const harnesses: Harness[] = [];
 
@@ -550,6 +659,217 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
     while (harnesses.length > 0) {
       const harness = harnesses.pop();
       if (harness) await harness.close();
+    }
+  });
+
+  async function scheduledSettlement() {
+    const harness = await createHarness();
+    harnesses.push(harness);
+    const repository = new GoogleCalendarWatchRepository(harness.runtime);
+    const channelId = "settlement-fixture";
+    const start = new Date("2026-07-26T12:00:00.000Z");
+    let now = start;
+    const createdAt = start.toISOString();
+    await repository.createProvisional({
+      channelId,
+      agentId: AGENT_ID,
+      grantId: GRANT_ID,
+      connectorAccountId: ACCOUNT_ID,
+      side: "owner",
+      calendarId: "primary",
+      calendarSummary: "Fixture",
+      calendarAccessRole: "owner",
+      timeZone: "UTC",
+      windowStartAt: TIME_MIN,
+      windowEndAt: TIME_MAX,
+      webhookUrl: PUBLIC_WEBHOOK_URL,
+      tokenSha256: "a".repeat(64),
+      provisionalExpirationAt: "2026-07-26T13:00:00.000Z",
+      createdAt,
+    });
+    await repository.finalizeCreated({
+      agentId: AGENT_ID,
+      channelId,
+      resourceId: "fixture-resource",
+      resourceUri: RESOURCE_URI,
+      expirationAt: "2026-07-26T13:00:00.000Z",
+      updatedAt: createdAt,
+    });
+    await repository.enqueueNotification({
+      agentId: AGENT_ID,
+      channelId,
+      messageNumber: "2",
+      notifiedAt: createdAt,
+    });
+
+    const oldEntered = gate(),
+      oldRelease = gate();
+    const newEntered = gate(),
+      newRelease = gate();
+    let calls = 0;
+    const lifecycle = new GoogleCalendarWatchLifecycle(harness.runtime, {
+      now: () => now,
+      syncChannel: async () => {
+        if (calls++ === 0) {
+          oldEntered.release();
+          await oldRelease.promise;
+          throw Object.assign(new Error("sync failed"), { status: 400 });
+        } else {
+          newEntered.release();
+          await newRelease.promise;
+        }
+      },
+    });
+    const record: ScheduledTaskDispatchRecord = {
+      taskId: "fixture-retry",
+      firedAtIso: createdAt,
+      channelKey: GOOGLE_CALENDAR_WATCH_TASK_CHANNEL,
+      promptInstructions: "",
+      contextRequest: undefined,
+      metadata: { calendarGoogleWatchOperation: "sync-retry", channelId },
+    };
+    return {
+      harness,
+      repository,
+      channelId,
+      read: () => repository.get(AGENT_ID, channelId),
+      run: () => lifecycle.runScheduledTask(record),
+      expireLease() {
+        now = new Date(start.getTime() + 301_000);
+      },
+      oldEntered,
+      oldRelease,
+      newEntered,
+      newRelease,
+    };
+  }
+
+  it("keeps the replacement lease when an older scheduled sync fails", async () => {
+    const f = await scheduledSettlement();
+    const old = f.run();
+    void old.catch(() => undefined);
+    await f.oldEntered.promise;
+    const originalToken = (await f.read())?.syncLeaseToken;
+    expect(originalToken).toBeTruthy();
+    f.expireLease();
+    const replacement = f.run();
+    void replacement.catch(() => undefined);
+    try {
+      await f.newEntered.promise;
+      const replacementToken = (await f.read())?.syncLeaseToken;
+      expect(replacementToken).toBeTruthy();
+      expect(replacementToken).not.toBe(originalToken);
+
+      f.oldRelease.release();
+      expect(await old).toEqual({
+        ok: true,
+        messageId: `calendar-watch:sync-retry:${f.channelId}:settled`,
+      });
+      expect(await f.read()).toMatchObject({
+        state: "active",
+        syncLeaseToken: replacementToken,
+        failureCount: 0,
+        lastMessageNumber: "0",
+        pendingMessageNumber: "2",
+      });
+
+      f.newRelease.release();
+      expect(await replacement).toMatchObject({ ok: true });
+      expect(await f.read()).toMatchObject({
+        state: "active",
+        syncLeaseToken: null,
+        failureCount: 0,
+        lastMessageNumber: "2",
+        pendingMessageNumber: null,
+      });
+    } finally {
+      f.oldRelease.release();
+      f.newRelease.release();
+      await Promise.allSettled([old, replacement]);
+    }
+  });
+
+  it("keeps a stopped channel terminal when its old scheduled sync fails", async () => {
+    const f = await scheduledSettlement();
+    const old = f.run();
+    void old.catch(() => undefined);
+    try {
+      await f.oldEntered.promise;
+      await f.repository.markStopped({
+        agentId: AGENT_ID,
+        channelId: f.channelId,
+        state: "stopped",
+        updatedAt: "2026-07-26T12:01:00.000Z",
+      });
+      f.oldRelease.release();
+      expect(await old).toEqual({
+        ok: true,
+        messageId: `calendar-watch:sync-retry:${f.channelId}:settled`,
+      });
+      expect(await f.read()).toMatchObject({
+        state: "stopped",
+        syncLeaseToken: null,
+        failureCount: 0,
+        lastMessageNumber: "0",
+        pendingMessageNumber: null,
+        updatedAt: "2026-07-26T12:01:00.000Z",
+      });
+    } finally {
+      f.oldRelease.release();
+      await Promise.allSettled([old]);
+    }
+  });
+
+  it("keeps a pending stop when its scheduled sync fails with the old lease token", async () => {
+    const f = await scheduledSettlement();
+    const current = f.run();
+    void current.catch(() => undefined);
+    try {
+      await f.oldEntered.promise;
+      const lease = (await f.read())?.syncLeaseToken;
+      expect(lease).toBeTruthy();
+      await f.repository.markStopping(
+        AGENT_ID,
+        f.channelId,
+        "2026-07-26T12:01:00.000Z",
+      );
+      f.oldRelease.release();
+      await current;
+      expect(await f.read()).toMatchObject({
+        state: "stopping",
+        syncLeaseToken: lease,
+        failureCount: 0,
+        lastMessageNumber: "0",
+        pendingMessageNumber: "2",
+      });
+    } finally {
+      f.oldRelease.release();
+      await Promise.allSettled([current]);
+    }
+  });
+
+  it("records a terminal failure while the scheduled sync still owns the lease", async () => {
+    const f = await scheduledSettlement();
+    const current = f.run();
+    void current.catch(() => undefined);
+    try {
+      await f.oldEntered.promise;
+      f.oldRelease.release();
+      await current;
+      expect(await f.read()).toMatchObject({
+        state: "error",
+        syncLeaseToken: null,
+        failureCount: 1,
+        lastMessageNumber: "0",
+        pendingMessageNumber: "2",
+        error: {
+          code: "GOOGLE_CALENDAR_CHANNEL_SYNC_FAILED",
+          retryable: false,
+        },
+      });
+    } finally {
+      f.oldRelease.release();
+      await Promise.allSettled([current]);
     }
   });
 
@@ -711,6 +1031,52 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
     expect(rows[0]?.last_message_number).toBe("13");
     expect(rows[0]?.pending_message_number).toBeNull();
   });
+
+  it("processes a notification that proxies relay with any X-Forwarded-Proto chain", async () => {
+    const harness = await createHarness();
+    harnesses.push(harness);
+    const { results } = await forwardedProtoReplay(harness, [
+      FORWARDED_PROTO_LINES.map((_, header) => header),
+    ]);
+    expect(results).toEqual(
+      FORWARDED_PROTO_LINES.map((_, header) => ({
+        header,
+        status: 204,
+        synced: true,
+        lastMessageNumber: String(header + 2),
+      })),
+    );
+  });
+
+  it("replays the forwarded proto model through the Google Calendar webhook", async () => {
+    const casesFile = process.env.ELIZA_FORWARDED_PROTO_MODEL_CASES;
+    const sequences = casesFile
+      ? (
+          JSON.parse(readFileSync(casesFile, "utf8")) as Array<{
+            route: number;
+            headers: number[];
+          }>
+        )
+          .filter((item) => item.route === GOOGLE_WEBHOOK_ROUTE)
+          .map((item) => item.headers)
+      : [FORWARDED_PROTO_LINES.map((_, header) => header)];
+    expect(sequences.length).toBeGreaterThan(0);
+    // The route admits 60 notifications a minute from one address.
+    expect(sequences.flat().length).toBeLessThanOrEqual(60);
+    const harness = await createHarness();
+    harnesses.push(harness);
+    const { results, lastMessageNumber } = await forwardedProtoReplay(
+      harness,
+      sequences,
+    );
+    for (const result of results) {
+      expect(result, `X-Forwarded-Proto ${result.header}`).toMatchObject({
+        status: 204,
+        synced: true,
+      });
+    }
+    expect(results.at(-1)?.lastMessageNumber).toBe(lastMessageNumber);
+  }, 120_000);
 
   it("does not mutate durable channel state for an invalid capability token", async () => {
     const harness = await createHarness();

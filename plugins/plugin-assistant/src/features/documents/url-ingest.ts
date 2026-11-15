@@ -27,11 +27,16 @@ import {
 } from "@elizaos/core";
 import { decodeBasicHtmlEntities } from "../../utils/html-entities.ts";
 import { decodeHttpText } from "../../utils/http-text.ts";
+import { isBinaryContentType, normalizeDocumentContentType } from "./utils.ts";
 
 const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_YOUTUBE_WATCH_PAGE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_YOUTUBE_TRANSCRIPT_BYTES = 10 * 1024 * 1024; // 10 MB
 const URL_FETCH_TIMEOUT_MS = 15_000;
+// After headers, the body must keep delivering bytes (idle) and finish within
+// the overall cap, so a stalled server cannot hold an import open.
+let urlBodyIdleTimeoutMs = 15_000;
+let urlBodyTotalTimeoutMs = 60_000;
 const BLOCKED_HOST_LITERALS = new Set([
   "localhost",
   "metadata.google.internal",
@@ -43,7 +48,7 @@ type ResolvedUrlTarget = {
   pinnedAddress: string;
 };
 
-type PinnedFetchInput = {
+export type PinnedFetchInput = {
   url: URL;
   init: RequestInit;
   target: ResolvedUrlTarget;
@@ -69,7 +74,48 @@ function nodeReadableChunkToUint8Array(
   return new Uint8Array(chunk);
 }
 
-function incomingMessageToWebBody(stream: IncomingMessage): BodyInit {
+/**
+ * Destroy the response when no bytes arrive for the idle window or the body
+ * outlasts the overall cap. Returns the callback that marks progress.
+ */
+function armBodyDeadline(response: IncomingMessage): () => void {
+  const fail = (message: string) => {
+    response.destroy(new Error(message));
+  };
+  let idleHandle: ReturnType<typeof setTimeout> | undefined;
+  const resetIdle = () => {
+    clearTimeout(idleHandle);
+    idleHandle = setTimeout(
+      () => fail(`URL fetch stalled for ${urlBodyIdleTimeoutMs}ms`),
+      urlBodyIdleTimeoutMs,
+    );
+  };
+  const totalHandle = setTimeout(
+    () => fail(`URL fetch did not finish within ${urlBodyTotalTimeoutMs}ms`),
+    urlBodyTotalTimeoutMs,
+  );
+  const clear = () => {
+    clearTimeout(idleHandle);
+    clearTimeout(totalHandle);
+  };
+  resetIdle();
+  response.once("end", clear);
+  response.once("close", clear);
+  return resetIdle;
+}
+
+// Test hook for exercising the body deadlines without long waits.
+export function __setDocumentUrlBodyDeadlinesForTests(
+  deadlines: { idleMs: number; totalMs: number } | null,
+): void {
+  urlBodyIdleTimeoutMs = deadlines?.idleMs ?? 15_000;
+  urlBodyTotalTimeoutMs = deadlines?.totalMs ?? 60_000;
+}
+
+function incomingMessageToWebBody(
+  stream: IncomingMessage,
+  onProgress: () => void,
+): BodyInit {
   const iterator = stream[Symbol.asyncIterator]() as AsyncIterator<
     Buffer | Uint8Array | string
   >;
@@ -82,6 +128,7 @@ function incomingMessageToWebBody(stream: IncomingMessage): BodyInit {
           controller.close();
           return;
         }
+        onProgress();
         controller.enqueue(nodeReadableChunkToUint8Array(next.value));
       } catch (error) {
         // error-policy:J1 Translate the Node stream failure into the Web
@@ -112,10 +159,13 @@ function responseFromIncomingMessage(response: IncomingMessage): Response {
     statusText: response.statusMessage,
     headers,
   } satisfies ResponseInit;
+  const onProgress = armBodyDeadline(response);
   if (status === 204 || status === 205 || status === 304) {
+    // Never read; drain it so "end" clears the deadline.
+    response.resume();
     return new Response(null, init);
   }
-  return new Response(incomingMessageToWebBody(response), init);
+  return new Response(incomingMessageToWebBody(response, onProgress), init);
 }
 
 async function requestWithPinnedAddress(
@@ -194,6 +244,13 @@ export function __setDocumentUrlFetchImplForTests(
   impl: PinnedFetchImpl | null,
 ): void {
   pinnedFetchImpl = impl ?? requestWithPinnedAddress;
+}
+
+// The real pinned transport, so tests can redirect it to a local server.
+export function __documentUrlPinnedRequestForTests(
+  input: PinnedFetchInput,
+): Promise<Response> {
+  return requestWithPinnedAddress(input);
 }
 
 async function resolveSafeUrlTarget(url: string): Promise<{
@@ -503,6 +560,8 @@ export interface FetchedDocumentUrl {
   contentType: FetchedDocumentUrlKind;
   /** Underlying MIME type from the response headers (or synthesised for transcripts). */
   mimeType: string;
+  /** How `content` is encoded: base64 for binary, utf8 otherwise. */
+  contentEncoding: "utf8" | "base64";
 }
 
 export interface FetchDocumentFromUrlOptions {
@@ -510,19 +569,32 @@ export interface FetchDocumentFromUrlOptions {
   includeImageDescriptions?: boolean;
 }
 
-function classifyMimeType(mimeType: string): FetchedDocumentUrlKind {
-  const normalized = mimeType.toLowerCase();
-  if (
-    normalized.startsWith("application/octet-stream") ||
-    normalized.startsWith("application/pdf") ||
-    normalized.startsWith("application/msword") ||
-    normalized.startsWith("application/vnd.openxmlformats-officedocument") ||
-    normalized.startsWith("image/")
-  ) {
-    return "binary";
+const UNSUPPORTED_URL_MIME_PREFIXES = [
+  "audio/",
+  "video/",
+  "application/zip",
+  "application/x-zip-compressed",
+];
+
+// Same binary/text split the document service applies on store, so a payload
+// is never base64-encoded as text or decoded from base64 when it is text.
+function classifyMimeType(
+  mimeType: string,
+  filename: string,
+): FetchedDocumentUrlKind {
+  const essence = normalizeDocumentContentType(mimeType);
+  if (UNSUPPORTED_URL_MIME_PREFIXES.some((type) => essence.startsWith(type))) {
+    throw new Error(`Can't import ${essence} files from a URL`);
   }
-  if (normalized.startsWith("text/html")) return "html";
-  return "text";
+  if (essence === "text/html") return "html";
+  return isBinaryContentType(mimeType, filename) ? "binary" : "text";
+}
+
+// A text response keeps a name the document service reads as text: a ".pdf"
+// URL that served an HTML login page is stored as ".html", not as a PDF.
+function textFilename(filename: string, kind: FetchedDocumentUrlKind): string {
+  if (!/\.pdf$/i.test(filename)) return filename;
+  return filename.replace(/\.pdf$/i, kind === "html" ? ".html" : ".txt");
 }
 
 function htmlToPlainText(value: string): string {
@@ -567,6 +639,7 @@ export async function fetchDocumentFromUrl(
       content: transcript,
       contentType: "transcript",
       mimeType: "text/plain",
+      contentEncoding: "utf8",
     };
   }
 
@@ -601,12 +674,19 @@ export async function fetchDocumentFromUrl(
     filename = lastSegment;
   }
 
+  let kind: FetchedDocumentUrlKind;
+  try {
+    kind = classifyMimeType(mimeType, filename);
+  } catch (error) {
+    // error-policy:J2 Release the unread body before reporting the
+    // unsupported type.
+    await response.body?.cancel().catch(() => undefined);
+    throw error;
+  }
   const buffer = await readResponseBodyWithLimit(
     response,
     MAX_URL_IMPORT_BYTES,
   );
-
-  const kind = classifyMimeType(mimeType);
 
   if (kind === "binary") {
     const base64 = Buffer.from(buffer).toString("base64");
@@ -615,14 +695,16 @@ export async function fetchDocumentFromUrl(
       content: base64,
       contentType: "binary",
       mimeType,
+      contentEncoding: "base64",
     };
   }
 
   const text = decodeHttpText(buffer, mimeType);
   return {
-    filename,
+    filename: textFilename(filename, kind),
     content: kind === "html" ? htmlToPlainText(text) : text,
     contentType: kind,
     mimeType,
+    contentEncoding: "utf8",
   };
 }

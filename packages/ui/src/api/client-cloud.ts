@@ -489,6 +489,139 @@ function createCloudLoginRequestId(): string | null {
   return cloudLoginSessionIdOrNull(globalThis.crypto?.randomUUID?.());
 }
 
+/**
+ * A Cloud login this browser started. The return URL carries only the session
+ * id, so a link can name any session; the app claims a returned session only
+ * when it finds this entry, and the poll proves it with the verifier.
+ * localStorage (not sessionStorage) because popup and external-browser
+ * returns land in another tab of the same origin.
+ */
+const PENDING_CLOUD_LOGIN_KEY_PREFIX = "eliza-cloud-login-pending:";
+const PENDING_CLOUD_LOGIN_FALLBACK_TTL_MS = 10 * 60_000;
+const CLOUD_LOGIN_VERIFIER_HEADER = "X-Cli-Session-Verifier";
+// Also kept in memory so this page's own poll works when storage is blocked.
+const pendingCloudLogins = new Map<string, PendingCloudLogin>();
+
+export interface PendingCloudLogin {
+  sessionId: string;
+  verifier: string;
+  expiresAt: number;
+}
+
+function pendingCloudLoginStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    // error-policy:J3 storage-disabled browsers have no pending login; a
+    // returned session is then never claimed, which fails closed.
+    return null;
+  }
+}
+
+function createCloudLoginVerifier(): string | null {
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi?.getRandomValues) return null;
+  const bytes = cryptoApi.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/** Hex SHA-256 of the verifier, or null when SubtleCrypto is unavailable. */
+async function hashCloudLoginVerifier(
+  verifier: string,
+): Promise<string | null> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return null;
+  try {
+    const digest = await subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(verifier),
+    );
+    return Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+  } catch {
+    // error-policy:J3 an insecure context has no digest; the session is then
+    // created unbound and only the local pending entry gates the return.
+    return null;
+  }
+}
+
+function rememberPendingCloudLogin(
+  sessionId: string,
+  verifier: string,
+  expiresAtValue: unknown,
+): void {
+  const parsed =
+    typeof expiresAtValue === "string" ? Date.parse(expiresAtValue) : NaN;
+  const expiresAt = Number.isFinite(parsed)
+    ? parsed
+    : Date.now() + PENDING_CLOUD_LOGIN_FALLBACK_TTL_MS;
+  pendingCloudLogins.set(sessionId, { sessionId, verifier, expiresAt });
+  const storage = pendingCloudLoginStorage();
+  if (!storage) return;
+  try {
+    for (let i = storage.length - 1; i >= 0; i--) {
+      const key = storage.key(i);
+      if (!key?.startsWith(PENDING_CLOUD_LOGIN_KEY_PREFIX)) continue;
+      const entry = readPendingCloudLogin(
+        key.slice(PENDING_CLOUD_LOGIN_KEY_PREFIX.length),
+      );
+      if (!entry) storage.removeItem(key);
+    }
+    storage.setItem(
+      `${PENDING_CLOUD_LOGIN_KEY_PREFIX}${sessionId}`,
+      JSON.stringify({ verifier, expiresAt }),
+    );
+  } catch {
+    // error-policy:J3 a full or blocked store leaves no shared entry, so a
+    // return in another tab is not claimed; this page's poll uses memory.
+  }
+}
+
+/** The unexpired pending login for this session id, or null. */
+export function readPendingCloudLogin(
+  sessionId: string,
+): PendingCloudLogin | null {
+  if (!cloudLoginSessionIdOrNull(sessionId)) return null;
+  const inMemory = pendingCloudLogins.get(sessionId);
+  if (inMemory && inMemory.expiresAt > Date.now()) return inMemory;
+  const storage = pendingCloudLoginStorage();
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(
+      `${PENDING_CLOUD_LOGIN_KEY_PREFIX}${sessionId}`,
+    );
+    const entry = recordOrNull(raw ? JSON.parse(raw) : null);
+    const verifier = stringOrNull(entry?.verifier);
+    const expiresAt = entry?.expiresAt;
+    if (
+      !verifier ||
+      typeof expiresAt !== "number" ||
+      !(expiresAt > Date.now())
+    ) {
+      return null;
+    }
+    return { sessionId, verifier, expiresAt };
+  } catch {
+    // error-policy:J3 an unreadable entry is treated as absent (fail closed).
+    return null;
+  }
+}
+
+export function forgetPendingCloudLogin(sessionId: string): void {
+  pendingCloudLogins.delete(sessionId);
+  try {
+    pendingCloudLoginStorage()?.removeItem(
+      `${PENDING_CLOUD_LOGIN_KEY_PREFIX}${sessionId}`,
+    );
+  } catch {
+    // error-policy:J3 the entry expires on its own.
+  }
+}
+
 function resolveCloudCliLoginReturnUrl(sessionId: string): string | null {
   if (
     shouldUseNativeCloudHttp() ||
@@ -1319,7 +1452,10 @@ async function directCloudRequest<T>(
   });
 
   if (shouldUseNativeCloudHttp()) {
+    // Same contract as directCloudJsonResponse: refuse an elapsed caller
+    // deadline before dispatch and let the caller signal abort the wait.
     const data = directCloudBodyData(init?.body);
+    throwIfDirectCloudDispatchDeadlineElapsed(init?.signal);
     const res = await withDirectCloudHttpTimeout(
       CapacitorHttp.request({
         url,
@@ -1331,11 +1467,12 @@ async function directCloudRequest<T>(
         readTimeout: 10_000,
       }),
       { method, url },
+      init?.signal ?? undefined,
     );
     if (res.status === 401) {
       await clearStoredStewardTokenIfCurrent(token);
     }
-    const parsed = parseDirectCloudJson(res.data) as T;
+    const parsed = parseDirectCloudJsonSafe(res.data) as T;
     if (!isAcceptableDirectCloudResponse(res.status, parsed)) {
       throw Object.assign(
         new Error(directCloudResponseErrorMessage(res.status, parsed)),
@@ -3642,6 +3779,18 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       error: "Login failed: a secure UUID generator is unavailable",
     };
   }
+  const verifier = createCloudLoginVerifier();
+  if (!verifier) {
+    return {
+      ok: false,
+      error: "Login failed: a secure random generator is unavailable",
+    };
+  }
+  const verifierHash = await hashCloudLoginVerifier(verifier);
+  const requestBody = {
+    sessionId: requestSessionId,
+    ...(verifierHash ? { verifierHash } : {}),
+  };
   const cloudWebBase = resolveDirectCloudWebBase(cloudApiBase);
   const authApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   try {
@@ -3649,7 +3798,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       const res = await CapacitorHttp.post({
         url: `${authApiBase}/api/auth/cli-session`,
         headers: { "Content-Type": "application/json" },
-        data: { sessionId: requestSessionId },
+        data: requestBody,
         responseType: "json",
         connectTimeout: 10_000,
         readTimeout: 10_000,
@@ -3665,6 +3814,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
           error: "Login failed: Eliza Cloud returned an invalid session ID",
         };
       }
+      rememberPendingCloudLogin(sessionId, verifier, responseData?.expiresAt);
       return {
         ok: true,
         apiBase: authApiBase,
@@ -3681,7 +3831,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: requestSessionId }),
+        body: JSON.stringify(requestBody),
       },
       { method: "POST", url },
       async (response) => ({
@@ -3701,6 +3851,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
         error: "Login failed: Eliza Cloud returned an invalid session ID",
       };
     }
+    rememberPendingCloudLogin(sessionId, verifier, responseData?.expiresAt);
     return {
       ok: true,
       apiBase: authApiBase,
@@ -3721,10 +3872,23 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
   sessionId,
 ) {
   const authApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
+  const pending = readPendingCloudLogin(sessionId);
+  const headers: Record<string, string> = pending
+    ? { [CLOUD_LOGIN_VERIFIER_HEADER]: pending.verifier }
+    : {};
+  // The key is released once; drop the pending entry with it. Errors may be
+  // transient and are retried, so they keep the entry.
+  const settle = (result: ReturnType<typeof parseCloudLoginPollData>) => {
+    if (result.status === "authenticated" || result.status === "expired") {
+      forgetPendingCloudLogin(sessionId);
+    }
+    return result;
+  };
   try {
     if (shouldUseNativeCloudHttp()) {
       const res = await CapacitorHttp.get({
         url: `${authApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+        headers,
         responseType: "json",
         connectTimeout: 10_000,
         readTimeout: 10_000,
@@ -3741,13 +3905,16 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
           error: `Poll failed (${res.status})`,
         };
       }
-      return parseCloudLoginPollData(parseDirectCloudJsonSafe(res.data));
+      return settle(
+        parseCloudLoginPollData(parseDirectCloudJsonSafe(res.data)),
+      );
     }
 
     const res = await directCloudFetch(
       resolveBrowserCloudApiRequestUrl(
         `${authApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
       ),
+      { headers },
     );
     if (!res.ok) {
       if (res.status === 404) {
@@ -3761,7 +3928,7 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
         error: `Poll failed (${res.status})`,
       };
     }
-    return parseCloudLoginPollData(await res.json());
+    return settle(parseCloudLoginPollData(await res.json()));
   } catch {
     return { status: "error" as const, error: "Poll request failed" };
   }

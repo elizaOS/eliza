@@ -1,0 +1,32 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+    "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
+    "packages/cloud/shared/src/lib/services/credits.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/stripe-checkout-orders.pglite.test.ts",
+    "packages/cloud/shared/src/db/migrations/stripe-checkout-legacy-lock.integration.test.ts"
+  ],
+  "bounds": {
+    "domain": "Two organizations, two retained Session/PaymentIntent identities, one current user membership, immutable grant/quarantine records and a paid custom-amount value of two. Arbitrarily many replay, invalid input, ownership change and cache outcome transitions over that finite domain.",
+    "assumptions": "The receipt comes from a verified provider source. valid abstracts paid status, USD, whole positive cents, allowed purchase type, claimed-credit agreement and current customer equality. Membership is read under primary organization/user locks; the model excludes its mutation while that transaction is locked.",
+    "limitations": "Finite identity and amount domain. Does not prove provider authenticity, arbitrary-value validation, cross-protocol reversal/deletion composition or unbounded identity cardinality. Receipt-specific comparison tests and SQL locking checks are independent implementation evidence; this is not a TypeScript refinement theorem."
+  },
+  "conformance": "packages/cloud/quint/check-credit-checkout-order.ts",
+  "cases": [
+    {
+      "name": "legacy-grants-and-quarantine",
+      "main": "LegacyCheckoutSettlement",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ReceiptImmutability",
+        "CreditConservation",
+        "NoPackGrant",
+        "UniqueQuarantinedIntent"
+      ],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}

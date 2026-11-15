@@ -1,0 +1,52 @@
+[
+  {
+    "id": "auth-login-webhook-timer",
+    "model": "packages/auth/quint/LoginWebhookTimer.qnt",
+    "sources": [
+      "packages/auth/src/server/runtime.ts",
+      "packages/auth/src/server/webhooks/persistent-queue.ts",
+      "packages/auth/src/server/webhooks/dispatcher.ts",
+      "packages/auth/src/server/db/client.ts",
+      "packages/auth/src/server/db/pglite.ts",
+      "packages/core/src/services/task-scheduler.ts",
+      "packages/auth/test/login/webhook-timer.integration.test.ts",
+      "packages/auth/test/login/local-webhook-fixture.ts"
+    ],
+    "invariants": [
+      "TimerFollowsOwners",
+      "StorageOutlivesCallback",
+      "WorkerStopsAdmitting",
+      "AuthOwnsRegistration"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One task adapter, one Auth process registration, two durable jobs and two sequential Auth owners. Covers timer ownership, already admitted claims, abort before invocation or a further claim, network settlement, receipt and shutdown. Empty ticks and task-adapter queries are abstracted.",
+      "Conformance runs the production embedded Auth listener, scheduler, signed HTTPS dispatcher and file-backed PGlite queue with a local receiver. It verifies delivery after adapter detach, a Core task after Auth shutdown, durable 200 and 503 receipts, and the next claim after restart. Hosted PostgreSQL and Redis shutdown remain outside the runtime check.",
+      "The proof assumes claim and receipt storage operations settle. The companion immediate fan-out projection covers admitted request deliveries. Lease expiry and reclamation, future retry timing, startup rollback and shutdown errors remain outside this projection. No wall-clock completion guarantee is proved."
+    ]
+  },
+  {
+    "id": "auth-login-request-webhook-fanout",
+    "model": "packages/auth/quint/LoginWebhookTimer.qnt",
+    "sources": [
+      "packages/auth/src/server/runtime.ts",
+      "packages/auth/src/server/api/routes/auth.ts",
+      "packages/auth/src/server/api/services/webhook-dispatch.ts",
+      "packages/auth/src/server/webhooks/persistent-queue.ts",
+      "packages/auth/src/server/db/client.ts",
+      "packages/auth/test/login/local-webhook-fixture.ts",
+      "packages/auth/test/login/request-webhook.integration.test.ts"
+    ],
+    "invariants": [
+      "StorageOutlivesSiblings",
+      "FanoutTracksSiblings",
+      "FailureFollowsSiblings"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One admitted SIWE request, one tenant, two local destinations, one unreadable stored secret, and one healthy immediate delivery. Request response, sibling settlement and runtime shutdown can interleave.",
+      "Real conformance verifies the signature, distinguishes the immediate request owner from the periodic worker, and reopens file-backed PGlite to read the committed receipt.",
+      "Requests that emit after listener retirement, transaction-bound deferred delivery, larger fan-outs, native storage failure and hosted PostgreSQL/Redis closure remain outside this projection. Progress assumes the original HTTP and storage operations settle."
+    ]
+  }
+]
