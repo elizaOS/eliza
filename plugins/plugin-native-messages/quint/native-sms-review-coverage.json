@@ -16,6 +16,7 @@
     "invariants": [
       "TypeOK",
       "AtMostOneInvocation",
+      "InvocationNeedsOwnerApproval",
       "DialogNeedsLiveOwner",
       "SettledOwnerReleased",
       "CancelledMeansNoInvocation",
@@ -24,7 +25,7 @@
     "status": "partial",
     "limitations": [
       "One exact native SMS or MMS bridge call and its pending owner, one worker journal lookup, one main-queue native dialog, one owner Send tap, one queued dispatch, and one cancellation or foreground retirement. At most one platform invocation and one result; fixed operation and binding identity.",
-      "The call owner exists before the journal work is queued and remains until the original call resolves or rejects. Cancellation marks matching outstanding owners before its own acknowledgement. A retired owner cannot open a later dialog or dispatch after a Send tap waits on the worker. A recorded or admitted result is retained through cancellation. An unrelated operation cannot retire this owner.",
+      "The call owner exists before journal work is queued and remains until the call settles. A host-authorized composer or an accepted native dialog can queue one dispatch. Cancellation retires the matching owner before its acknowledgement. A retired owner cannot open a dialog or dispatch. A recorded result survives cancellation. The host's proof of an exact owner action is abstract.",
       "The Android Gradle check runs bridge, journal and outgoing history tests under Robolectric29. The outgoing history tests use a controlled provider and SMS manager to check role ownership, provider refusal and operation replay. Exact testcase names and zero skips are required.",
       "The model covers one abstract platform invocation and one pre-dispatch refusal. It does not enumerate multipart or multi-recipient partial sends, database writes, independent hosts or arbitrary Android lifecycle timing. The Android tests exercise these boundaries with controlled provider responses and journal state. Physical SIM, carrier and provider acceptance need device qualification."
     ]

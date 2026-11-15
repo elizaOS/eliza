@@ -105,6 +105,13 @@ names the host's encrypted journal slot and retired-ID namespace; keep them once
 shipped, and do not share the slot with a `SmsTelephonyConfiguration`. No AOSP
 admission or manifest receiver is needed.
 
+An admitted host with its own trusted composer can use the protected
+`TelephonyPlugin.sendOwnerApprovedSms` and `sendOwnerApprovedMms` methods after
+the owner chooses Send for the exact operation. The host supplies a guard that
+rechecks that authorization on the send worker. The methods use the standard
+telephony journal and receipts. The public bridge methods still show their
+native confirmation dialog.
+
 `android/src/test` holds JVM tests for the journal (SMS and MMS records), cursor,
 provider mapping, the host-native reviewed send (`ReviewedSmsSendCoreTest`,
 with a fake radio), the voicemail store against a fake provider, the WAV

@@ -6,6 +6,7 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.app.Application;
 import android.app.KeyguardManager;
+import android.app.role.RoleManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -58,8 +59,13 @@ public final class TelephonyPluginReviewTest {
     @Override public PermissionState getPermissionState(String alias) { return PermissionState.GRANTED; }
     @Override protected SmsTelephonyConfiguration configuration() { throw new AssertionError("fixture installs its configuration"); }
     void pause() { handleOnPause(); }
+    void sendFromComposer(Call call, SmsTelephony.DispatchGuard guard) {
+      if (call.getMethodName().equals("sendMms")) sendOwnerApprovedMms(call, guard);
+      else sendOwnerApprovedSms(call, guard);
+    }
   }
-  private Host host(String identity) throws Exception {
+  private Host host(String identity) throws Exception { return host(identity, false); }
+  private Host host(String identity, boolean mms) throws Exception {
     AppCompatActivity activity = Robolectric.buildActivity(AppCompatActivity.class).get();
     activity.setTheme(android.R.style.Theme_Material_Light);
     Shadows.shadowOf((Application) activity.getApplicationContext()).grantPermissions(Manifest.permission.READ_PHONE_STATE);
@@ -73,7 +79,8 @@ public final class TelephonyPluginReviewTest {
       public String read(String slot) { return slots.get(slot); }
       public void write(String slot, String value) { slots.put(slot, value); }
     });
-    Field configured = TelephonyPlugin.class.getDeclaredField("config"); configured.setAccessible(true); configured.set(host, config);
+    Field configured = TelephonyPlugin.class.getDeclaredField("config"); configured.setAccessible(true);
+    configured.set(host, mms ? config.withMmsFiles("fixture.mms") : config);
     return host;
   }
   private static Call send(String method) {
@@ -204,5 +211,64 @@ public final class TelephonyPluginReviewTest {
       release.countDown();
       SmsTelephony.WORK.submit(() -> {}).get(10, TimeUnit.SECONDS);
     }
+  }
+  private static void settleComposer() throws Exception {
+    SmsTelephony.WORK.submit(() -> {}).get(10, TimeUnit.SECONDS);
+    ShadowLooper.idleMainLooper();
+    SmsTelephony.WORK.submit(() -> {}).get(10, TimeUnit.SECONDS);
+    SmsTelephony.WORK.submit(() -> {}).get(10, TimeUnit.SECONDS);
+  }
+  @Test public void ownerApprovedSmsUsesTheSameReceiptWithoutDialogOrReplay() throws Exception {
+    Host host = host("owner-sms");
+    RoleManager roles = host.getContext().getSystemService(RoleManager.class);
+    Shadows.shadowOf(roles).addAvailableRole(RoleManager.ROLE_SMS);
+    Call send = send("sendSms");
+    host.sendFromComposer(send, () -> {});
+    settleComposer();
+    AlertDialog shown = ShadowAlertDialog.getLatestAlertDialog();
+    assertTrue(shown == null || !shown.isShowing());
+    assertEquals("submitted", send.result.getString("status"));
+    var manager = Shadows.shadowOf(SmsManager.getSmsManagerForSubscriptionId(1));
+    assertNotNull(manager.getLastSentTextMessageParams());
+    manager.clearLastSentTextMessageParams();
+
+    Call repeat = send("sendSms");
+    host.sendSms(repeat);
+    settleComposer();
+    assertEquals("submitted", repeat.result.getString("status"));
+    noRadioAndNoRetainedOwner(host);
+  }
+  @Test public void ownerApprovedMmsUsesTheSameReceiptWithoutDialogOrReplay() throws Exception {
+    Host host = host("owner-mms", true);
+    RoleManager roles = host.getContext().getSystemService(RoleManager.class);
+    Shadows.shadowOf(roles).addHeldRole(RoleManager.ROLE_SMS);
+    Call send = send("sendMms");
+    host.sendFromComposer(send, () -> {});
+    settleComposer();
+    AlertDialog shown = ShadowAlertDialog.getLatestAlertDialog();
+    assertTrue(shown == null || !shown.isShowing());
+    assertEquals("submitted", send.result.getString("status"));
+    var manager = Shadows.shadowOf(SmsManager.getSmsManagerForSubscriptionId(1));
+    assertNotNull(manager.getLastSentMultimediaMessageParams());
+    manager.clearLastSentMultimediaMessageParams();
+
+    Call repeat = send("sendMms");
+    host.sendMms(repeat);
+    settleComposer();
+    assertEquals("submitted", repeat.result.getString("status"));
+    noRadioAndNoRetainedOwner(host);
+  }
+  @Test public void withdrawnComposerApprovalCannotDispatchOrBeReplayed() throws Exception {
+    Host host = host("owner-withdrawn");
+    Call send = send("sendSms");
+    host.sendFromComposer(send, () -> { throw new IllegalStateException("Composer approval withdrawn"); });
+    settleComposer();
+    assertEquals("denied", send.result.getString("status"));
+
+    Call repeat = send("sendSms");
+    host.sendFromComposer(repeat, () -> {});
+    settleComposer();
+    assertEquals("denied", repeat.result.getString("status"));
+    noRadioAndNoRetainedOwner(host);
   }
 }

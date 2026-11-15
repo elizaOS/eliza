@@ -218,6 +218,7 @@ public final class SmsTelephony {
    // component or the data URI; the callback accepts the operation only when it matches that URI.
    int mutable = android.os.Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0;
    PendingIntent sent = PendingIntent.getBroadcast(context, 0, intent, mutable | PendingIntent.FLAG_ONE_SHOT);
+   guard.check();
    manager.sendMultimediaMessage(context, MmsStore.fileUri(config.mmsFileAuthority, name), null, null, sent);
    handed = true;
   } catch (RuntimeException failed) {
