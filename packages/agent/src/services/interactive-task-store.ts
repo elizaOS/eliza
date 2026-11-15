@@ -69,14 +69,6 @@ function unreadableReason(document: unknown): string | null {
   }
   return null;
 }
-function readable(document: unknown): boolean {
-  try {
-    validateInteractiveTask(parse(document));
-    return true;
-  } catch {
-    return false;
-  }
-}
 const UNRESOLVED = ["prepared", "dispatched", "unknown"];
 
 /** A task record this build could not read; its document stays in the journal. */
@@ -365,7 +357,9 @@ export class SqliteInteractiveTaskStore {
     const key = ownerKey(owner);
     // A record set aside under another build, such as before a rollback was
     // undone, is a task again once this build can read it. An acknowledged one
-    // gave up its slot, so it stays set aside.
+    // gave up its slot, so it stays set aside. A damaged document is not kept
+    // aside either: releasing it lets the read below report the corruption
+    // instead of renewing the reason recorded when it was first set aside.
     const held = this.db
       .prepare(
         "SELECT json_group_array(json_object('id', id, 'document', document)) AS rows FROM interactive_task_journal_v1 WHERE owner_key = ? AND id IN (SELECT task_id FROM interactive_task_quarantine_v1 WHERE owner_key = ? AND acknowledged_at IS NULL)",
@@ -375,7 +369,7 @@ export class SqliteInteractiveTaskStore {
       id: string;
       document: unknown;
     }[])
-      if (readable(row.document))
+      if (unreadableReason(row.document) === null)
         this.db
           .prepare(
             "DELETE FROM interactive_task_quarantine_v1 WHERE task_id = ? AND owner_key = ?",
