@@ -1,0 +1,42 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/lifeops/schedule-state.ts",
+    "plugins/plugin-personal-assistant/test/schedule-merged-meal-window.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-merged-meal-window.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-merged-meal-window.mjs",
+  "bounds": "One device refreshes its local schedule state up to four times between 13:00 and 14:30 UTC on 2026-04-19, after one observed night (23:30 to 07:30 UTC) and a morning of activity up to 12:15 UTC with no lunch seen, so every refresh asks the schedule insight for a lunch window that opens at the refresh and lasts two hours. The first refresh lands 0, 10 or 20 minutes into a 30-minute bucket, and each later one 10 or 20 minutes after the previous one. The conformance script replays every generated refresh sequence (all 45, 3 + 6 + 12 + 24 by length) through the production refreshLocalMergedScheduleState on a PGlite-backed runtime, one device id per sequence, and compares the merged next meal after every refresh. The owner time zone is UTC. Breakfast and dinner windows, other time zones and DST nights, several devices, cloud merged states, rows synced from other devices, meals the insight detects and confidence ties between different meals are not covered by this model. Under weak fairness of the refresh step every requested refresh eventually runs. Explicit stuttering lets the refresh never run, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "merged-meal-window",
+      "main": "MergedMealWindow",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CurrentWindowShown",
+        "EarlierBucketDropped",
+        "ShownWindowOpen",
+        "TypeOK"
+      ],
+      "temporal": ["Settles", "SettlesWithoutFairness"],
+      "maxSteps": 16,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled refresh step eventually runs (weak fairness). This checks that every requested refresh then runs, not how long the database work takes."
+          ]
+        },
+        {
+          "property": "SettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The refresh may never run after it is requested, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
