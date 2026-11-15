@@ -498,6 +498,14 @@ function selectCurrentSleep(
       })[0] ?? null
   );
 }
+/**
+ * A sleep that starts between 18:00 and 06:00 local time is overnight once it
+ * lasts four hours (see classifyLifeOpsSleepCycleType).
+ */
+function startsInOvernightWindow(startMs: number, timezone: string): boolean {
+  const startHour = localHour(startMs, timezone);
+  return startHour >= 18 || startHour < 6;
+}
 export function classifyLifeOpsSleepCycleType(args: {
   startMs: number;
   endMs: number | null;
@@ -507,11 +515,10 @@ export function classifyLifeOpsSleepCycleType(args: {
   const endMs = args.endMs ?? args.nowMs;
   const durationMs = intervalDurationMs(args.startMs, args.endMs, args.nowMs);
   const durationHours = durationMs / (60 * 60 * 1000);
-  const startHour = localHour(args.startMs, args.timezone);
   const endHour = localHour(endMs, args.timezone);
   if (
     durationHours >= 4 &&
-    (startHour >= 18 || startHour < 6 || endHour <= 11)
+    (startsInOvernightWindow(args.startMs, args.timezone) || endHour <= 11)
   ) {
     return "overnight";
   }
@@ -688,13 +695,23 @@ export function resolveLifeOpsDayBoundary(args: {
   const anchor: LifeOpsDayBoundary["anchor"] = overnightAnchor
     ? "before_sleep"
     : "start_of_day";
+  // A sleep in progress is classified by its length so far, so an overnight
+  // sleep reads as a nap for its first four hours. A sleep that started in the
+  // overnight window keeps the day open from its start, whether it becomes
+  // overnight or ends as a nap, so the day key does not change while the
+  // owner sleeps.
+  const currentSleepStartMs = args.sleepCycle.currentSleepStartedAt
+    ? Date.parse(args.sleepCycle.currentSleepStartedAt)
+    : null;
+  const keepsDayOpen =
+    args.sleepCycle.cycleType === "overnight" ||
+    (currentSleepStartMs !== null &&
+      startsInOvernightWindow(currentSleepStartMs, args.timezone));
   const effectiveDaySourceMs =
-    args.sleepCycle.cycleType === "overnight" &&
-    args.sleepCycle.lastSleepEndedAt
+    keepsDayOpen && args.sleepCycle.lastSleepEndedAt
       ? Date.parse(args.sleepCycle.lastSleepEndedAt)
-      : args.sleepCycle.cycleType === "overnight" &&
-          args.sleepCycle.currentSleepStartedAt
-        ? Date.parse(args.sleepCycle.currentSleepStartedAt)
+      : keepsDayOpen && currentSleepStartMs !== null
+        ? currentSleepStartMs
         : args.nowMs;
   return {
     effectiveDayKey: localDateKey(effectiveDaySourceMs, args.timezone),
