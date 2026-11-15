@@ -87,7 +87,7 @@ export function startGroup(command: string, cwd: string, env?: NodeJS.ProcessEnv
 }
 
 /** What the proof stage needs installed. */
-export const NEEDS_DAFNY = "the proof stage needs Dafny 4.11 on the PATH";
+export const NEEDS_DAFNY = "the proof stage needs Dafny 4.11 on the PATH: https://github.com/dafny-lang/dafny/releases";
 
 /** Run a tool from the toolchain, or Dafny, and return whether it succeeded and all it wrote. */
 export async function run(cmd: string, args: string[], cwd: string, input?: string): Promise<{ ok: boolean; out: string; status: number; stderr: string }> {
@@ -139,7 +139,7 @@ export function dafnyVersion(): Promise<{ version?: string; problem?: string }> 
     const version = r.status === 0 ? r.stdout.match(/\d+\.\d+\.\d+/)?.[0] : undefined;
     const problem = !version ? `Dafny could not be run (${`${r.stdout}${r.stderr}`.trim().split("\n")[0] || "it printed no version"})`
       : !version.startsWith("4.11.") ? `this is Dafny ${version}, and LemmaScript targets Dafny 4.11.x` : undefined;
-    return { version, problem: r.stopped ?? (problem && `${problem}: ${NEEDS_DAFNY} (see README, "Getting started")`) };
-  }, (e: Error) => ({ problem: `Dafny could not be run (${e.message}): ${NEEDS_DAFNY} (see README, "Getting started")` }))
+    return { version, problem: r.stopped ?? (problem && `${problem}: ${NEEDS_DAFNY}`) };
+  }, (e: Error) => ({ problem: `Dafny could not be run (${e.message}): ${NEEDS_DAFNY}` }))
     .then((r) => { if (r.problem) dafny = undefined; return r; }));
 }
