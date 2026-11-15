@@ -468,10 +468,16 @@ export function init(root: string, warn: (message: string) => void = (message) =
     done.push("AGENTS.md (Vibestack instructions)");
   }
   const claude = path.join(root, "CLAUDE.md");
-  const own = fs.existsSync(claude) ? fs.readFileSync(claude, "utf8") : "";
-  if (!/^@AGENTS\.md\s*$/m.test(own)) {
+  const claudeEntry = fs.lstatSync(claude, { throwIfNoEntry: false });
+  const own = claudeEntry?.isFile() ? fs.readFileSync(claude, "utf8") : undefined;
+  const instruction = own?.trim();
+  if (!claudeEntry || instruction === "" || instruction === "@AGENTS.md") {
+    if (claudeEntry) fs.unlinkSync(claude);
+    fs.symlinkSync("AGENTS.md", claude, "file");
+    done.push("CLAUDE.md (symlink to AGENTS.md)");
+  } else if (own !== undefined && !/^@AGENTS\.md\s*$/m.test(own)) {
     const eol = own.includes("\r\n") ? "\r\n" : "\n";
-    fs.writeFileSync(claude, `${own.trimEnd()}${own.trim() ? eol + eol : ""}@AGENTS.md${eol}`);
+    fs.writeFileSync(claude, `${own.trimEnd()}${eol}${eol}@AGENTS.md${eol}`);
     done.push("CLAUDE.md (imports AGENTS.md)");
   }
   add("tsconfig.json", () => JSON.stringify({

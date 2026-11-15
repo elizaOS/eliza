@@ -128,7 +128,8 @@ means are in [CONTRIBUTING.md](CONTRIBUTING.md#architecture).
    what needs your review.
 5. Read what it reports, run the app, and sign off with `pnpm accept`.
 
-Agents start with [AGENTS.md](AGENTS.md). Skills and their bundled references
+Agents start with [AGENTS.md](AGENTS.md), which Claude Code reads through the
+relative `CLAUDE.md` symlink. Skills and their bundled references
 live in [`.claude/skills/`](.claude/skills/). `pnpm install` and
 `spec init` create missing project-relative links in `.agents/skills/` and
 under `.codex`, `.cursor`, `.grok`, `.gemini`, `.factory`, `.t3` and `.droid`.
@@ -277,14 +278,14 @@ pnpm check
 | `vibestack/reference/typereferences.md` | the TypeScript type reference |
 | `.agents/skills/` and the other project agent skill directories | links to the same skills in `.claude/skills/` |
 | `.claude/settings.json` | Claude Code refuses edits to `gen/`, `.spec-cache/`, `.studio/`, `spec/lock.json` and `lemmascript.json`, and asks before `pnpm accept` |
-| `CLAUDE.md` | imports `AGENTS.md`, preserving any existing instructions |
+| `CLAUDE.md` | relative symlink to `AGENTS.md`. A standalone `@AGENTS.md` import is converted to the link. Custom Claude instructions are preserved and import `AGENTS.md` |
 | an empty `spec/index.md` | |
 | `tsconfig.json` | for the VibeLang compiler: `src`, `test`, `gen/*.ts` and `gen/*.vibe`, emitting to `dist/`, with the compiler's declarations in `.vibe/declarations` |
 | `vitest.config.ts` | the one Vitest configuration, `project()` from `vibestack/testing/vitest.ts` ([AGENTS.md, "Tests"](AGENTS.md#tests)) |
 | `.gitignore` | `gen/`, `.spec-cache/`, `.studio/`, `dist/`, `.vibe/` |
 | `package.json` | scripts `dev`, `check`, `gen`, `accept`, `build` (`vibelang`) and `test` (`vitest run`); the VibeLang toolchain it lacks, at its pins, with the `@effect/platform-node-shared` override that keeps one Effect; `packageManager` (`pnpm@10.24.0`), `engines.node` (`>=26`, the Node `spec` refuses to run below) and `"type": "module"` if unset |
 
-It replaces no file that exists, and no script or dependency already there.
+It preserves project-authored content, scripts, and dependencies.
 It writes no tests: `check` adds a `test` script on the one Vitest
 configuration when `test/` first appears, and a driver to fill in when
 `src/` first keeps a machine's state.
