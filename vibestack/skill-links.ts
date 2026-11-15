@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const skillRoot = ".claude/skills";
-const agentDirectories = [".agents", ".cursor", ".codex", ".grok", ".gemini", ".factory", ".t3", ".droid"];
+const generatedAgentDirectories = [".codex", ".cursor", ".droid", ".factory", ".gemini", ".grok", ".t3"];
+export const generatedSkillIgnores = generatedAgentDirectories.map((agent) => `/${agent}/skills`);
 
 export function availableDirectory(directory: string, warn: (message: string) => void): boolean {
   const entry = fs.lstatSync(directory, { throwIfNoEntry: false });
@@ -37,7 +38,7 @@ export function linkProjectSkills(project: string, warn: (message: string) => vo
     }
   }
 
-  for (const agent of agentDirectories) {
+  for (const agent of [".agents", ...generatedAgentDirectories]) {
     const parent = path.join(project, agent);
     if (!availableDirectory(parent, warn)) continue;
     const destination = path.join(parent, "skills");

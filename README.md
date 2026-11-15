@@ -132,9 +132,11 @@ Agents start with [AGENTS.md](AGENTS.md). Skills and their bundled references
 live in [`.claude/skills/`](.claude/skills/). `pnpm install` and
 `spec init` create missing project-relative links in `.agents/skills/` and
 under `.codex`, `.cursor`, `.grok`, `.gemini`, `.factory`, `.t3` and `.droid`.
-Both commands preserve occupied paths and report conflicts with project
-skill sources. A client without repository skill discovery must read the
-applicable `SKILL.md` files linked from AGENTS.md explicitly.
+Git tracks the shared `.agents/skills/` links and ignores the harness aliases
+created during setup. Both commands preserve occupied paths and report
+conflicts with project skill sources. A client without repository skill
+discovery must read the applicable `SKILL.md` files linked from AGENTS.md
+explicitly.
 
 ## Studio
 
@@ -281,7 +283,7 @@ pnpm check
 | an empty `spec/index.md` | |
 | `tsconfig.json` | for the VibeLang compiler: `src`, `test`, `gen/*.ts` and `gen/*.vibe`, emitting to `dist/`, with the compiler's declarations in `.vibe/declarations` |
 | `vitest.config.ts` | the one Vitest configuration, `project()` from `vibestack/testing/vitest.ts` ([AGENTS.md, "Tests"](AGENTS.md#tests)) |
-| `.gitignore` | `gen/`, `.spec-cache/`, `.studio/`, `dist/`, `.vibe/` |
+| `.gitignore` | `gen/`, `.spec-cache/`, `.studio/`, `dist/`, `.vibe/` and the generated harness skill paths |
 | `package.json` | scripts `dev`, `check`, `gen`, `accept`, `build` (`vibelang`) and `test` (`vitest run`); the VibeLang toolchain it lacks, at its pins, with the `@effect/platform-node-shared` override that keeps one Effect; `packageManager` (`pnpm@10.24.0`), `engines.node` (`>=26`, the Node `spec` refuses to run below) and `"type": "module"` if unset |
 
 It replaces no file that exists, and no script or dependency already there.
