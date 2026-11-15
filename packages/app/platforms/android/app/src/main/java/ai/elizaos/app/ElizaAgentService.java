@@ -233,7 +233,6 @@ public class ElizaAgentService extends Service {
     // ANDROID_HEALTH_ATTEMPTS (240) × 2000 ms = 480 s.
     private static final long STARTUP_HEALTH_GRACE_MS = 480_000L;
     private static final long STARTUP_HEALTH_POLL_MS = 5_000L;
-    private static final int MAX_RESTART_ATTEMPTS = 5;
     private static final long PROCESS_TERMINATE_GRACE_MS = 5_000L;
     // How long after a detached launch we treat a not-yet-listening agent as
     // "still cold-booting" and refuse to relaunch it (the boot — plugin
@@ -258,6 +257,7 @@ public class ElizaAgentService extends Service {
     /** In-process bionic GPU inference host; non-null only when delegating. */
     private volatile ElizaBionicInferenceServer bionicInferenceServer;
     private volatile Thread startWorker;
+    private volatile Thread restartWorker;
     private volatile Thread notificationWorker;
     private volatile boolean shuttingDown;
     private volatile boolean foregroundStartDenied;
@@ -473,12 +473,12 @@ public class ElizaAgentService extends Service {
         if ("runtime-identity-unavailable".equals(status)) {
             result.put("state", "dead");
             result.put("reason", status);
-        } else if (socketListening) {
-            result.put("state", "listening");
-            result.put("reason", "request socket is accepting connections");
         } else if ("restarting".equals(status)) {
             result.put("state", "restarting");
             result.put("reason", status);
+        } else if (socketListening) {
+            result.put("state", "listening");
+            result.put("reason", "request socket is accepting connections");
         } else if (isTerminalBootStatus(status)) {
             result.put("state", "dead");
             result.put("reason", status);
@@ -1276,12 +1276,6 @@ public class ElizaAgentService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (ACTION_RESTART.equals(action)) {
-            Log.i(TAG, "Restart requested via intent.");
-            restartAttempts = 0;
-            requestAgentStart(true);
-            return START_STICKY;
-        }
         if (ACTION_UPDATE_STATUS.equals(action)) {
             String status = intent.getStringExtra(EXTRA_STATUS);
             if (status != null) {
@@ -1291,8 +1285,13 @@ public class ElizaAgentService extends Service {
             return START_STICKY;
         }
 
-        // ACTION_START or null (default) — boot the agent if it isn't already up.
-        requestAgentStart(false);
+        if (ACTION_RESTART.equals(action)) {
+            Log.i(TAG, "Restart requested via intent.");
+            requestAgentStart(true);
+        } else {
+            // ACTION_START or null (default) — boot the agent if it isn't already up.
+            requestAgentStart(false);
+        }
         if (watchdog == null) {
             watchdog = new WatchdogThread();
             watchdog.start();
@@ -1316,6 +1315,8 @@ public class ElizaAgentService extends Service {
         details.put("detachedAgentMode", String.valueOf(detachedAgentMode));
         appendDiagnosticEvent("service-onDestroy", details);
         shuttingDown = true;
+        Thread pendingRestart = restartWorker;
+        if (pendingRestart != null) pendingRestart.interrupt();
         if (watchdog != null) {
             watchdog.interrupt();
             watchdog = null;
@@ -2396,9 +2397,10 @@ public class ElizaAgentService extends Service {
     }
 
     private void requestAgentStart(boolean restartFirst) {
-        long requestedRecoveryEpoch=recoveryMaintenanceEpoch;
-        try { invalidateCredentialShutdown(); }
-        catch (IllegalStateException retiring) { currentStatus = "stopping"; return; }
+        requestAgentStart(restartFirst, null, recoveryMaintenanceEpoch);
+    }
+
+    private void requestAgentStart(boolean restartFirst, Thread scheduledRestart, long requestedRecoveryEpoch) {
         // Bring up the local-voice (Paradee TTS) bionic host on every service
         // start, before the agent-already-running guards below — so it binds
         // even when the agent is adopted rather than freshly spawned.
@@ -2409,11 +2411,19 @@ public class ElizaAgentService extends Service {
         // for the lock here would block the main thread and trigger a service
         // ANR merely to discover that a start is already in progress.
         Thread activeStartWorker = startWorker;
-        if (activeStartWorker != null && activeStartWorker.isAlive()) {
+        if (scheduledRestart == null && (shuttingDown || terminalNoticePosted
+                || (activeStartWorker != null && activeStartWorker.isAlive())
+                || (!restartFirst && restartWorker != null))) {
             return;
         }
         synchronized (processLock) {
-            if(requestedRecoveryEpoch!=recoveryMaintenanceEpoch)return;
+            if (scheduledRestart != null) {
+                if (restartWorker != scheduledRestart) return;
+                restartWorker = null;
+            } else if (!restartFirst && restartWorker != null) {
+                return;
+            }
+            if (shuttingDown || terminalNoticePosted || requestedRecoveryEpoch != recoveryMaintenanceEpoch) return;
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;
             }
@@ -2422,14 +2432,23 @@ public class ElizaAgentService extends Service {
             // Recheck adoption/cold-boot ownership on the start worker below;
             // never perform socket or process identity I/O on this main-thread path.
             if (startWorker != null && startWorker.isAlive()) {
+                if (scheduledRestart != null) scheduleRestart(restartFirst);
                 return;
+            }
+            try { invalidateCredentialShutdown(); }
+            catch (IllegalStateException retiring) { currentStatus = "stopping"; return; }
+            if (restartFirst && scheduledRestart == null) {
+                Thread pendingRestart = restartWorker;
+                restartWorker = null;
+                if (pendingRestart != null) pendingRestart.interrupt();
+                restartAttempts = 0;
             }
             retireRuntimeRequests();
             clearTerminalStatus();
             // A redelivered start keeps a probe-proven detached agent "running";
             // the worker re-checks its socket and adopts it without a new probe.
-            if (restartFirst || !detachedAgentMode || !"running".equals(currentStatus)) {
-                currentStatus = restartFirst ? "restarting" : "starting";
+            if (restartFirst || scheduledRestart != null || !detachedAgentMode || !"running".equals(currentStatus)) {
+                currentStatus = restartFirst || scheduledRestart != null ? "restarting" : "starting";
                 updateNotification();
             }
             final java.util.concurrent.CompletableFuture<Void> previousLifecycle, lifecycle =
@@ -2439,6 +2458,8 @@ public class ElizaAgentService extends Service {
                 serviceLifecycleCompletion = lifecycle;
             }
             startWorker = new Thread(() -> {
+                boolean retry = false;
+                boolean retryNeedsStop = restartFirst;
                 try {
                     try {
                         previousLifecycle.get(PROCESS_TERMINATE_GRACE_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
@@ -2448,8 +2469,7 @@ public class ElizaAgentService extends Service {
                         updateNotification();
                         return;
                     } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException unsettled) {
-                        currentStatus = "stopping";
-                        updateNotification();
+                        retry = true;
                         return;
                     }
                     synchronized (processLock) {
@@ -2461,14 +2481,23 @@ public class ElizaAgentService extends Service {
                             // The prior resident still owns the runtime; never start a second one.
                             currentStatus = "stop-failed";
                             updateNotification();
+                            retry = scheduledRestart != null;
                             return;
                         }
                         long ownerRequestEpoch = beginRuntimeStart();
-                        if (startAgentProcess(!restartFirst)) runtimeStarted(ownerRequestEpoch);
+                        if (startAgentProcess(!restartFirst)) {
+                            runtimeStarted(ownerRequestEpoch);
+                        } else {
+                            retry = "extract-failed".equals(currentStatus) || "spawn-failed".equals(currentStatus);
+                            retryNeedsStop = false;
+                        }
                     }
                 } finally {
                     synchronized (processLock) {
                         startWorker = null;
+                        if (retry && requestedRecoveryEpoch == recoveryMaintenanceEpoch) {
+                            scheduleRestart(retryNeedsStop);
+                        }
                     }
                     // A cancelled/timed-out reservation never releases a still-running predecessor.
                     previousLifecycle.whenComplete((ignored, error) -> lifecycle.complete(null));
@@ -2594,12 +2623,11 @@ public class ElizaAgentService extends Service {
                 }
                 Map<String, String> staleDetails = new LinkedHashMap<>();
                 staleDetails.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
-                staleDetails.put("childPid", childStart.childPid);
+                staleDetails.put("childPid", childStart == null ? "unknown" : childStart.childPid);
                 appendDiagnosticEvent("detached-agent-cold-boot-guard-stale", staleDetails);
                 Log.w(TAG, "Detached agent launch stamp is "
                     + (System.currentTimeMillis() - launchStartedAt)
-                    + "ms old but child pid " + childStart.childPid
-                    + " is gone with no journaled exit; relaunching instead of trusting the stamp.");
+                    + "ms old without a verified live child; relaunching instead of trusting the stamp.");
             }
 
             // A redelivered start may have kept "running"; the agent it described is gone.
@@ -3400,6 +3428,13 @@ public class ElizaAgentService extends Service {
             }
 
             if (shuttingDown) return false;
+            try {
+                invalidateCredentialShutdown();
+            } catch (IllegalStateException retiring) {
+                currentStatus = "stopping";
+                updateNotification();
+                return false;
+            }
             Process started;
             try {
                 started = pb.start();
@@ -3407,7 +3442,6 @@ public class ElizaAgentService extends Service {
                 Log.e(TAG, "Failed to spawn agent process: " + command, error);
                 currentStatus = "spawn-failed";
                 updateNotification();
-                scheduleRestart();
                 return false;
             }
 
@@ -3481,19 +3515,15 @@ public class ElizaAgentService extends Service {
                     Log.w(TAG, "Agent process exited early (pid=" + pidForLog
                             + " code=" + code + " alive=" + aliveMs + "ms).");
                 }
-                boolean stillThisProcess;
                 synchronized (processLock) {
-                    stillThisProcess = (agentProcess == watched);
-                    if (stillThisProcess) {
-                        agentProcess = null;
+                    if (agentProcess != watched) return;
+                    agentProcess = null;
+                    if (shuttingDown) return;
+                    if (detachedAgentMode && code == 0) {
+                        armDetachedStartupProbeOnce(launchStartedAtMs, startupTraceId);
+                    } else {
+                        scheduleRestart();
                     }
-                }
-                if (stillThisProcess && !shuttingDown && detachedAgentMode && code == 0) {
-                    armDetachedStartupProbeOnce(launchStartedAtMs, startupTraceId);
-                    return;
-                }
-                if (stillThisProcess && !shuttingDown) {
-                    scheduleRestart();
                 }
             }, "ElizaAgent-exit-watcher");
             exitWatcher.setDaemon(true);
@@ -4116,9 +4146,9 @@ public class ElizaAgentService extends Service {
                 return;
             }
             detachedProbeArmedForLaunchMs = launchStartedAtMs;
+            startDetachedStartupProbe(launchStartedAtMs, startupTraceId,
+                launchStartedAtMs + STARTUP_HEALTH_GRACE_MS, false);
         }
-        startDetachedStartupProbe(launchStartedAtMs, startupTraceId,
-            launchStartedAtMs + STARTUP_HEALTH_GRACE_MS, false);
     }
 
     /**
@@ -4136,15 +4166,11 @@ public class ElizaAgentService extends Service {
                 ElizaAgentWatchdogPolicy.ProbeResult result = probeHealth();
                 lastResult = result;
                 if (result == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
-                    // The restart budget resets only after stable uptime (markRunning).
+                    // Backoff resets only after stable uptime.
                     synchronized (processLock) {
-                        if (!detachedAgentMode || detachedLaunchStartedAtMs != launchStartedAtMs) {
-                            return;
-                        }
-                        healthySinceMs = SystemClock.elapsedRealtime();
-                        currentStatus = "running";
+                        if (!isCurrentDetachedProbe(launchStartedAtMs)) return;
+                        markRunning();
                     }
-                    updateNotification();
                     Log.i(TAG, "Detached agent health check passed.");
                     return;
                 }
@@ -4167,27 +4193,23 @@ public class ElizaAgentService extends Service {
                         details.put("agentFatal", fatal);
                     }
                     appendDiagnosticEvent("detached-agent-child-exited-before-ready", details);
-                    if (ElizaAgentWatchdogPolicy.isTerminalStartupFailure(fatal)) {
-                        String blocked = "agent startup blocked: " + fatal;
-                        appendDiagnosticEvent("agent-startup-intervention-required", details);
-                        Log.e(TAG, "Agent startup requires intervention; automatic restart stopped: " + fatal);
-                        stopForTerminalFailure(blocked, blocked);
-                        return;
-                    }
-                    // The death is visible at once: the boot state says WHAT
-                    // killed the agent instead of leaving "starting" up until
-                    // the generic timeout card (the notification shows fixed copy).
                     synchronized (processLock) {
-                        currentStatus = "agent exited: " + attribution;
+                        if (!isCurrentDetachedProbe(launchStartedAtMs)) return;
+                        if (ElizaAgentWatchdogPolicy.isTerminalStartupFailure(fatal)) {
+                            String blocked = "agent startup blocked: " + fatal;
+                            appendDiagnosticEvent("agent-startup-intervention-required", details);
+                            Log.e(TAG, "Agent startup requires intervention; automatic restart stopped: " + fatal);
+                            stopForTerminalFailure(blocked, blocked);
+                            return;
+                        }
+                        scheduleRestart();
                     }
-                    updateNotification();
                     Log.w(TAG, "Detached agent child exited before readiness"
                         + " (pid=" + childExit.childPid
                         + " code=" + childExit.exitCode
                         + " cause=" + attribution
                         + (fatal != null ? " fatal=" + fatal : "")
                         + "). Scheduling restart.");
-                    scheduleRestart();
                     return;
                 }
                 try {
@@ -4197,11 +4219,6 @@ public class ElizaAgentService extends Service {
                     return;
                 }
             }
-            boolean stillCurrent;
-            synchronized (processLock) {
-                stillCurrent = detachedAgentMode && detachedLaunchStartedAtMs == launchStartedAtMs;
-            }
-            if (!stillCurrent || shuttingDown) return;
             if (adopted && lastResult == ElizaAgentWatchdogPolicy.ProbeResult.BUSY) {
                 // An adopted resident mid-call is not restarted for being busy;
                 // the watchdog's BUSY ceiling owns it.
@@ -4209,9 +4226,6 @@ public class ElizaAgentService extends Service {
                 appendDiagnosticEvent("detached-agent-adoption-busy", null);
                 return;
             }
-            // DEAD with the socket open is a real unready answer: re-adopting
-            // that process would keep it, so force a fresh one. A closed socket
-            // relaunches through the normal start path.
             boolean answeredUnready = lastResult == ElizaAgentWatchdogPolicy.ProbeResult.DEAD
                 && isLocalAgentSocketListening();
             Log.w(TAG, "Detached agent did not become healthy by its deadline"
@@ -4221,16 +4235,27 @@ public class ElizaAgentService extends Service {
             details.put("adopted", String.valueOf(adopted));
             details.put("answeredUnready", String.valueOf(answeredUnready));
             appendDiagnosticEvent("detached-agent-startup-timeout", details);
-            scheduleRestart(answeredUnready);
+            synchronized (processLock) {
+                if (isCurrentDetachedProbe(launchStartedAtMs)) scheduleRestart(true);
+            }
           } finally {
             // Only the newest probe clears the slot; an older one ending must
             // not let adoption stack a second probe beside the current one.
-            if (healthProbe == Thread.currentThread()) healthProbe = null;
+            synchronized (processLock) {
+                if (healthProbe == Thread.currentThread()) healthProbe = null;
+            }
           }
         }, "ElizaAgent-detached-startup-probe");
         probe.setDaemon(true);
         healthProbe = probe;
         probe.start();
+    }
+
+    /** Called under processLock before accepting results from a startup probe. */
+    private boolean isCurrentDetachedProbe(long launchStartedAtMs) {
+        return !shuttingDown && !terminalNoticePosted && restartWorker == null
+            && detachedAgentMode && detachedLaunchStartedAtMs == launchStartedAtMs
+            && healthProbe == Thread.currentThread();
     }
 
     /**
@@ -4333,46 +4358,33 @@ public class ElizaAgentService extends Service {
     }
 
     private void scheduleRestart(boolean requireFreshProcess) {
-        if (shuttingDown) return;
-        ElizaAgentWatchdogPolicy.RestartDecision decision =
-            ElizaAgentWatchdogPolicy.nextRestart(restartAttempts, MAX_RESTART_ATTEMPTS);
-        if (!decision.allowed) {
-            if ("fatal".equals(currentStatus)) return; // Give-up already under way.
-            Log.e(TAG, "Agent crashed " + restartAttempts + " times — giving up. Service stopping.");
-            currentStatus = "fatal";
+        synchronized (processLock) {
+            if (shuttingDown || terminalNoticePosted || restartWorker != null) return;
+            final long recoveryEpoch = recoveryMaintenanceEpoch;
+            final ElizaAgentWatchdogPolicy.RestartDecision decision =
+                ElizaAgentWatchdogPolicy.nextRestart(restartAttempts);
+            restartAttempts = decision.nextRestartAttempts;
+            healthySinceMs = 0L;
+            retireRuntimeRequests();
+            currentStatus = "restarting";
+            restartWorker = new Thread(() -> {
+                try {
+                    Thread.sleep(decision.delayMs);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                requestAgentStart(requireFreshProcess, Thread.currentThread(), recoveryEpoch);
+            }, "ElizaAgent-restart");
+            restartWorker.setDaemon(true);
+            restartWorker.start();
+            updateNotification();
             Map<String, String> details = new LinkedHashMap<>();
-            details.put("restartAttempts", String.valueOf(restartAttempts));
-            details.put("maxRestartAttempts", String.valueOf(MAX_RESTART_ATTEMPTS));
-            appendDiagnosticEvent("agent-restart-give-up", details);
-            // Stop the unhealthy process rather than leave it for the next
-            // service instance to adopt as if it were running.
-            new Thread(() -> {
-                retireRuntimeRequests();
-                stopAgentProcessOrPreserve(true);
-                stopForTerminalFailure("fatal",
-                    "agent restarted " + MAX_RESTART_ATTEMPTS + " times without staying healthy");
-            }, "ElizaAgent-give-up").start();
-            return;
+            details.put("attempt", String.valueOf(restartAttempts));
+            details.put("backoffMs", String.valueOf(decision.delayMs));
+            appendDiagnosticEvent("agent-restart-scheduled", details);
+            Log.w(TAG, "Restarting agent in " + decision.delayMs + "ms (attempt " + restartAttempts + ").");
         }
-        healthySinceMs = 0L;
-        long backoffMs = decision.delayMs;
-        restartAttempts = decision.nextRestartAttempts;
-        Map<String, String> details = new LinkedHashMap<>();
-        details.put("attempt", String.valueOf(restartAttempts));
-        details.put("maxRestartAttempts", String.valueOf(MAX_RESTART_ATTEMPTS));
-        details.put("backoffMs", String.valueOf(backoffMs));
-        appendDiagnosticEvent("agent-restart-scheduled", details);
-        Log.w(TAG, "Restarting agent in " + backoffMs + "ms (attempt " + restartAttempts + "/" + MAX_RESTART_ATTEMPTS + ").");
-        new Thread(() -> {
-            try {
-                Thread.sleep(backoffMs);
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-            if (shuttingDown) return;
-            requestAgentStart(requireFreshProcess);
-        }, "ElizaAgent-restart").start();
     }
 
     private void appendDiagnosticEvent(String event, Map<String, String> details) {
@@ -4537,6 +4549,7 @@ public class ElizaAgentService extends Service {
         private int unhealthyTicks;
         private int busyTicks;
         private int socketRefusals;
+        private long observedLaunch;
 
         WatchdogThread() {
             super("ElizaAgent-watchdog");
@@ -4567,22 +4580,34 @@ public class ElizaAgentService extends Service {
          * busy or unready agent still accepts connects, so it never lands here.
          */
         private void checkDetachedAbsence() {
-            Thread worker = startWorker;
+            long launchStartedAt = detachedLaunchStartedAtMs;
+            if (observedLaunch != launchStartedAt) {
+                socketRefusals = 0;
+                unhealthyTicks = 0;
+                busyTicks = 0;
+                observedLaunch = launchStartedAt;
+            }
             if (!detachedAgentMode || !"running".equals(currentStatus)
-                    || (worker != null && worker.isAlive())) {
+                    || startWorker != null || restartWorker != null) {
                 socketRefusals = 0;
                 return;
             }
             if (!isLocalAgentSocketRefused()) {
                 socketRefusals = 0;
-                restartAttempts = ElizaAgentWatchdogPolicy.restartAttemptsAfterHealthy(
-                    restartAttempts, healthySinceMs, SystemClock.elapsedRealtime());
+                synchronized (processLock) {
+                    if (detachedLaunchStartedAtMs == launchStartedAt && restartWorker == null) {
+                        restartAttempts = ElizaAgentWatchdogPolicy.restartAttemptsAfterHealthy(
+                            restartAttempts, healthySinceMs, SystemClock.elapsedRealtime());
+                    }
+                }
                 return;
             }
-            healthySinceMs = 0L;
             socketRefusals++;
+            synchronized (processLock) {
+                if (detachedLaunchStartedAtMs != launchStartedAt || restartWorker != null) return;
+                healthySinceMs = 0L;
+            }
             if (socketRefusals < ElizaAgentWatchdogPolicy.ABSENCE_REFUSALS) return;
-            long launchStartedAt = detachedLaunchStartedAtMs;
             AgentChildStart childStart = launchStartedAt > 0L
                 ? readLatestAgentChildStart(launchStartedAt)
                 : null;
@@ -4591,123 +4616,70 @@ public class ElizaAgentService extends Service {
                     socketRefusals, childStart != null, childAlive)) {
                 return;
             }
-            Map<String, String> details = new LinkedHashMap<>();
-            details.put("socketRefusals", String.valueOf(socketRefusals));
-            details.put("childPid", childStart.childPid);
-            appendDiagnosticEvent("detached-agent-absent", details);
-            Log.w(TAG, "Detached agent child " + childStart.childPid
-                + " is gone and its socket refuses connects; restarting.");
-            socketRefusals = 0;
-            unhealthyTicks = 0;
-            busyTicks = 0;
-            currentStatus = "restarting";
-            updateNotification();
-            holdRestartWakeLock();
-            scheduleRestart(true);
+            synchronized (processLock) {
+                if (detachedLaunchStartedAtMs != launchStartedAt || !"running".equals(currentStatus)
+                        || startWorker != null || restartWorker != null || shuttingDown) return;
+                Map<String, String> details = new LinkedHashMap<>();
+                details.put("socketRefusals", String.valueOf(socketRefusals));
+                details.put("childPid", childStart.childPid);
+                appendDiagnosticEvent("detached-agent-absent", details);
+                Log.w(TAG, "Detached agent child " + childStart.childPid
+                    + " is gone and its socket refuses connects; restarting.");
+                socketRefusals = 0;
+                unhealthyTicks = 0;
+                busyTicks = 0;
+                holdRestartWakeLock();
+                scheduleRestart(true);
+            }
         }
 
         private void probeOnce() {
             Process current;
+            long launchStartedAt;
             synchronized (processLock) {
+                if (!canProbe()) return;
                 current = agentProcess;
+                launchStartedAt = detachedLaunchStartedAtMs;
             }
-            if (current == null) {
-                if (detachedAgentMode) {
-                    ElizaAgentWatchdogPolicy.ProbeResult probe = probeHealth();
-                    ElizaAgentWatchdogPolicy.HealthDecision decision =
-                        ElizaAgentWatchdogPolicy.evaluateHealthProbe(
-                            probe,
-                            unhealthyTicks,
-                            busyTicks,
-                            HEALTH_FAIL_STRIKES
-                        );
-                    unhealthyTicks = decision.unhealthyTicks;
-                    busyTicks = decision.busyTicks;
-                    if (probe == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
-                        Log.i(TAG, "Detached agent health check passed.");
-                        markRunning();
-                    } else if (probe == ElizaAgentWatchdogPolicy.ProbeResult.DEAD) {
-                        healthySinceMs = 0L;
-                        Log.w(TAG, "Detached agent health probe failed ("
-                            + (decision.restartRequired ? HEALTH_FAIL_STRIKES : unhealthyTicks)
-                            + " consecutive).");
-                    } else {
-                        Log.i(TAG, "Detached agent probe busy (" + (decision.restartRequired
-                            ? ElizaAgentWatchdogPolicy.BUSY_RESTART_TICKS : busyTicks)
-                            + " consecutive).");
-                    }
-                    if (decision.restartRequired) {
-                        // The socket may still accept: adopting it again would keep
-                        // the unhealthy process. requestAgentStart(true) stops first.
-                        Log.w(TAG, "Detached agent unhealthy — replacing it with a fresh process.");
-                        scheduleRestart(true);
-                    }
-                }
-                return;
-            }
-            if (!current.isAlive()) {
-                int exit = -1;
-                try {
-                    exit = current.exitValue();
-                } catch (IllegalThreadStateException ignored) {
-                    // Race: marked alive between checks. Treat as dead.
-                }
-                Log.w(TAG, "Agent process exited (code=" + exit + "). Scheduling restart.");
-                synchronized (processLock) {
-                    agentProcess = null;
-                }
-                unhealthyTicks = 0;
-                busyTicks = 0;
-                scheduleRestart();
-                return;
-            }
-
+            // The exit watcher distinguishes a crash from the launcher's successful handoff.
+            if (current != null && !current.isAlive()) return;
             ElizaAgentWatchdogPolicy.ProbeResult probe = probeHealth();
-            ElizaAgentWatchdogPolicy.HealthDecision decision =
-                ElizaAgentWatchdogPolicy.evaluateHealthProbe(
-                    probe,
-                    unhealthyTicks,
-                    busyTicks,
-                    HEALTH_FAIL_STRIKES
-                );
-            unhealthyTicks = decision.unhealthyTicks;
-            busyTicks = decision.busyTicks;
-            if (probe == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
-                Log.i(TAG, "Agent health check passed.");
-                markRunning();
-            } else if (probe == ElizaAgentWatchdogPolicy.ProbeResult.BUSY) {
-                // HTTP listener didn't answer in HEALTH_TIMEOUT_MS but the
-                // bun process is still alive. The most likely cause is
-                // synchronous work inside the JS event loop — typically
-                // a long llama_decode FFI call with a 12k-token prompt
-                // on emulated CPU. We do NOT count a strike; the
-                // process is doing exactly what it should be doing.
-                // BUSY_RESTART_TICKS in a row with no OK is the ceiling.
-                Log.i(TAG, "Agent HTTP probe timed out but process is alive — likely mid-decode. No strike.");
-            } else {
-                // ProbeResult.DEAD: process is dead, OR /api/health
-                // did not return 2xx with ready=true. Only here do we
-                // accumulate strikes toward a force-restart.
-                healthySinceMs = 0L;
-                Log.w(TAG, "Agent health probe failed ("
-                    + (decision.restartRequired ? HEALTH_FAIL_STRIKES : unhealthyTicks)
-                    + " consecutive).");
-            }
-            if (decision.restartRequired) {
-                Log.w(TAG, "Agent unresponsive — force-restarting.");
-                retireRuntimeRequests();
-                if (stopAgentProcessOrPreserve(false)) {
-                    scheduleRestart(true);
+            synchronized (processLock) {
+                if (!canProbe() || agentProcess != current || detachedLaunchStartedAtMs != launchStartedAt) return;
+                ElizaAgentWatchdogPolicy.HealthDecision decision =
+                    ElizaAgentWatchdogPolicy.evaluateHealthProbe(probe, unhealthyTicks, busyTicks, HEALTH_FAIL_STRIKES);
+                unhealthyTicks = decision.unhealthyTicks;
+                busyTicks = decision.busyTicks;
+                if (probe == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
+                    Log.i(TAG, "Agent health check passed.");
+                    markRunning();
+                } else if (probe == ElizaAgentWatchdogPolicy.ProbeResult.DEAD) {
+                    healthySinceMs = 0L;
+                    Log.w(TAG, "Agent health probe failed ("
+                        + (decision.restartRequired ? HEALTH_FAIL_STRIKES : unhealthyTicks)
+                        + " consecutive).");
                 } else {
-                    currentStatus = "stop-failed";
-                    updateNotification();
+                    Log.i(TAG, "Agent probe busy (" + (decision.restartRequired
+                        ? ElizaAgentWatchdogPolicy.BUSY_RESTART_TICKS : busyTicks)
+                        + " consecutive).");
+                }
+                if (decision.restartRequired) {
+                    // The socket may still accept: adopting it again would keep the wedged process.
+                    Log.w(TAG, "Agent unresponsive — force-restarting.");
+                    scheduleRestart(true);
                 }
             }
         }
 
+        private boolean canProbe() {
+            return !shuttingDown && !terminalNoticePosted && startWorker == null
+                && restartWorker == null && healthProbe == null
+                && (agentProcess != null || detachedAgentMode)
+                && (!isTerminalBootStatus(currentStatus) || "stop-failed".equals(currentStatus));
+        }
     }
 
-    /** Ready on a health OK; the restart budget resets only after stable uptime. */
+    /** Ready on a health OK; backoff resets only after stable uptime. */
     private void markRunning() {
         long now = SystemClock.elapsedRealtime();
         if (healthySinceMs <= 0L) healthySinceMs = now;
@@ -4848,10 +4820,6 @@ public class ElizaAgentService extends Service {
                 title = "Eliza agent · Starting";
                 text = "Preparing on-device runtime…";
                 break;
-            case "fatal":
-                title = "Eliza agent · Stopped";
-                text = "Agent crashed repeatedly; tap to investigate";
-                break;
             case "extract-failed":
                 title = "Eliza agent · Asset error";
                 text = "Could not unpack runtime";
@@ -4904,9 +4872,7 @@ public class ElizaAgentService extends Service {
             mgr.cancel(NOTIFICATION_ID);
             mgr.notify(TERMINAL_NOTIFICATION_ID, buildNotification(
                 "Eliza agent · Stopped",
-                "fatal".equals(status)
-                    ? "Agent crashed repeatedly; tap to investigate"
-                    : "Open the app to check the agent",
+                "Open the app to check the agent",
                 false));
         }
         stopSelf();
@@ -5183,7 +5149,6 @@ public class ElizaAgentService extends Service {
 
     /** Restart the agent process without tearing down the service. */
     public static void restart(Context context) {
-        retireRuntimeRequests();
         Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_RESTART);
         context.startService(intent);
