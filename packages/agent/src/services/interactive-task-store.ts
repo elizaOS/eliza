@@ -69,14 +69,6 @@ function unreadableReason(document: unknown): string | null {
   }
   return null;
 }
-function readable(document: unknown): boolean {
-  try {
-    validateInteractiveTask(parse(document));
-    return true;
-  } catch {
-    return false;
-  }
-}
 const UNRESOLVED = ["prepared", "dispatched", "unknown"];
 
 /** A task record this build could not read; its document stays in the journal. */
@@ -375,7 +367,7 @@ export class SqliteInteractiveTaskStore {
       id: string;
       document: unknown;
     }[])
-      if (readable(row.document))
+      if (unreadableReason(row.document) === null)
         this.db
           .prepare(
             "DELETE FROM interactive_task_quarantine_v1 WHERE task_id = ? AND owner_key = ?",
