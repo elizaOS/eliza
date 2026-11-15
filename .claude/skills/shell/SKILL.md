@@ -134,7 +134,7 @@ components before writing one, and follow the
 VibeLang's packages move together, and with one version of Effect: pin them
 exactly, at the versions in the tools' own `package.json`, which `spec init`
 adds. The compiler writes declarations for other tools under `.vibe/`, even
-when it only checks: keep it out of Git, like `dist/`, and out of
-`compilerOptions.rootDirs`. The compiler reads `.vibe` sources itself; a
-declaration left from an earlier compile would still resolve an import whose
-source was deleted or renamed.
+when it only checks: keep it out of Git, like `dist/`. `tsconfig.json` puts
+it on `compilerOptions.rootDirs`, so TypeScript and the linter see `.vibe`
+modules; `pnpm check` first deletes what was declared for a `.vibe` file since
+deleted or renamed, so an import of it fails as it should.

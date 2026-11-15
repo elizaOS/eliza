@@ -1238,7 +1238,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
       "tsconfig.json", "vitest.config.ts", "spec/index.md", ".gitignore", "package.json scripts: dev, check, gen, accept, build, test",
       `package.json VibeLang toolchain: ${[...runtime, ...tooling].join(", ")} (run your package manager's install)`, "package.json packageManager: pnpm@10.24.0", "package.json engines.node: >=26", 'package.json "type": "module"']);
     assert.deepEqual(json(fresh, "tsconfig.json"), {
-      compilerOptions: { target: "es2023", module: "nodenext", strict: true, skipLibCheck: true, types: ["node"], rootDir: ".", outDir: "dist", noEmitOnError: true, rewriteRelativeImportExtensions: true },
+      compilerOptions: { target: "es2023", module: "nodenext", strict: true, skipLibCheck: true, types: ["node"], rootDir: ".", rootDirs: [".", ".vibe/declarations"], outDir: "dist", noEmitOnError: true, rewriteRelativeImportExtensions: true },
       include: ["src", "test", "gen/*.ts", "gen/*.vibe"], vibe: { sidecarDir: ".vibe/declarations" },
     });
     assert.equal(read("vitest.config.ts", fresh), 'import { project } from "vibestack/testing/vitest";\n\nexport default project({ root: import.meta.dirname });\n');
@@ -1504,12 +1504,12 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     // tsconfig.json keeps the compiler's declaration sidecars under .vibe/declarations/.
     assert.deepEqual(fs.readdirSync(path.join(root, "gen")).filter((f) => /\.(ts|vibe)$/.test(f)).sort(),
       ["_conformance.ts", "index.conformance.ts", "index.effect.vibe", "index.ts"]);
-    // A sidecar left by an earlier compile must not resolve an import whose source is gone.
+    // A sidecar left by an earlier compile must not resolve, through rootDirs, an import whose source is gone.
     assert.ok(fs.existsSync(path.join(root, ".vibe/declarations/src/app.d.vibe.ts")));
     fs.renameSync(path.join(root, "src/app.vibe"), path.join(root, "src/renamed.vibe"));
-    const renamed = await tool("vibelang", ["--noEmit", "-p", "."], root);
-    assert.equal(renamed.ok, false, renamed.out);
-    assert.match(renamed.out, /error TS2307: Cannot find module ['"][^'"]*app\.vibe['"]/);
+    const renamed = await run(root);
+    assert.match(stripVTControlCharacters(renamed.said("types", /./)?.detail ?? ""), /error TS2307: Cannot find module ['"][^'"]*app\.vibe['"]/, renamed.text);
+    assert.ok(!fs.existsSync(path.join(root, ".vibe/declarations/src/app.d.vibe.ts")));
   });
 
   test("a truncated cache entry is recomputed and generated modules run in a CommonJS project", async () => {
