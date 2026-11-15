@@ -1539,15 +1539,18 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const first = await runCli(script, root, "check", "--json");
     const checked = answer(first.stdout);
     assert.ok(checked.results.some((r: Result) => r.stage === "proof" && r.ok), first.stdout + first.stderr);
+    const remembered = () => fs.readdirSync(path.join(root, ".spec-cache")).filter((f) => f.startsWith("prove-")).join();
+    const before = remembered();
     const marker = "// A distinct proof-library version for this scratch project.";
     fs.appendFileSync(path.join(root, "vibestack/proof/lib.dfy"), `\n${marker}\n`);
     const second = await runCli(script, root, "check", "--json");
     const again = answer(second.stdout);
     assert.ok(again.results.some((r: Result) => r.stage === "proof" && r.ok), second.stdout + second.stderr);
     assert.ok(fs.readFileSync(path.join(root, "gen/proof/highest/highest.dfy"), "utf8").includes(marker));
-    // A proof is remembered for the part of the library it calls: an edit elsewhere in it proves nothing again.
-    const remembered = () => fs.readdirSync(path.join(root, ".spec-cache")).filter((f) => f.startsWith("prove-")).join();
+    // A change to the library the proof is given is proved again, and remembered beside the earlier proof.
     const entries = remembered();
+    assert.notEqual(entries, before);
+    // A proof is remembered for the part of the library it calls: an edit elsewhere in it proves nothing again.
     fs.writeFileSync(path.join(root, "vibestack/proof/lib.dfy"), read("vibestack/proof/lib.dfy", root).replace(`\n${marker}\n`, "").replace("\n  lemma FilterNil", `\n  ${marker}\n  lemma FilterNil`));
     const sliced = await runCli(script, root, "check", "--json");
     assert.ok(answer(sliced.stdout).results.some((r: Result) => r.stage === "proof" && r.ok), sliced.stdout + sliced.stderr);
@@ -1555,7 +1558,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const unmarked = remembered();
     fs.writeFileSync(path.join(root, "vibestack/proof/lib.dfy"), read("vibestack/proof/lib.dfy", root).replace(`  ${marker}\n`, `  ${marker} Again.\n`));
     await runCli(script, root, "check", "--json");
-    assert.notEqual(unmarked, entries);
+    assert.equal(unmarked, entries);
     assert.equal(remembered(), unmarked);
     fs.writeFileSync(path.join(root, "tsconfig.json"), '{"compilerOptions":{"noEmit":true},"include":["gen/*.ts"]}');
     if (process.platform !== "win32") {
