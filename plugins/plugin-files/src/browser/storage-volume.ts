@@ -86,6 +86,8 @@ const trashFlights = new Map<string, Promise<void>>();
 
 class Missing extends Error {}
 class Exists extends Error {}
+/** The journal exists but cannot be read; it is not an empty trash. */
+class TrashJournalUnreadable extends Error {}
 
 export class BrowserStorageVolume {
   private library: Library;
@@ -457,16 +459,20 @@ export class BrowserStorageVolume {
   }
 
   private records(): Record<string, TrashRecord> {
+    const raw = this.store.getItem(this.namespace.trashKey);
+    // No journal yet is a real empty trash; anything else must parse.
+    if (raw === null || raw === "") return {};
+    let value: unknown;
     try {
-      const value = JSON.parse(
-        this.store.getItem(this.namespace.trashKey) || "{}",
-      );
-      return value && typeof value === "object" && !Array.isArray(value)
-        ? value
-        : {};
+      value = JSON.parse(raw);
     } catch {
-      return {};
+      // A corrupt journal is not an empty trash: flattening it to {} here would
+      // overwrite the only record of every trashed file's name and origin.
+      throw new TrashJournalUnreadable("The trash journal is unreadable.");
     }
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new TrashJournalUnreadable("The trash journal is unreadable.");
+    return value as Record<string, TrashRecord>;
   }
   private save(records: Record<string, TrashRecord>) {
     this.store.setItem(this.namespace.trashKey, JSON.stringify(records));
@@ -822,6 +828,8 @@ export class BrowserStorageVolume {
         return { status: "exists", message: "That name is already used here." };
       if (error instanceof Error && /Invalid/.test(error.message))
         return { status: "invalid", message: "Invalid name or path." };
+      if (error instanceof TrashJournalUnreadable)
+        return { status: "failed", message: "The trash could not be read." };
       return {
         status: "failed",
         message: "The operation could not be confirmed.",
