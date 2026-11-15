@@ -966,9 +966,10 @@ export async function clearRecentLifeSaveCache(
 // cancel/undo forms, and the phrase must lead the message (after optional
 // filler like "oh wait,"). "The dentist reminder, delete it" names another
 // item and "don't forget to set it for 9" is an edit, so neither matches.
+// "don't" may carry U+2019, which iOS and macOS smart punctuation type.
 // The caller also checks the planner's target and operation before deleting.
 const LIFE_SAVE_RETRACTION_RE =
-  /^\s*(?:(?:oh|ok|okay|wait|actually|no|nah|hmm|sorry|ugh)\b[\s,.!-]*)*(?:(?:don'?t|do not)\b(?!\s+forget\b)[^.!?\n]{0,40}\b(?:save|keep|schedule|add|create)\b\s+(?:that(?:\s+one)?|this(?:\s+one)?|it)\b|(?:cancel|undo|scrap|delete|remove|drop)\s+(?:that(?:\s+one)?|it|this(?:\s+one)?|the last one)\b|never\s?mind\b|get rid of (?:that|it)\b)/i;
+  /^\s*(?:(?:oh|ok|okay|wait|actually|no|nah|hmm|sorry|ugh)\b[\s,.!-]*)*(?:(?:don['’]?t|do not)\b(?!\s+forget\b)[^.!?\n]{0,40}\b(?:save|keep|schedule|add|create)\b\s+(?:that(?:\s+one)?|this(?:\s+one)?|it)\b|(?:cancel|undo|scrap|delete|remove|drop)\s+(?:that(?:\s+one)?|it|this(?:\s+one)?|the last one)\b|never\s?mind\b|get rid of (?:that|it)\b)/i;
 
 export function isLifeSaveRetraction(text: string): boolean {
   return LIFE_SAVE_RETRACTION_RE.test(text);
