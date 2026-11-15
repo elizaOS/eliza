@@ -77,6 +77,44 @@ for (const [cwd, config, file, names] of [
     names,
   );
 }
+const native = spawnSync(
+  process.execPath,
+  [
+    "--test",
+    "--test-reporter=tap",
+    "plugins/plugin-native-agent/test/provider-admission/provider-admission.node.mjs",
+    "plugins/plugin-native-agent/test/connection/connection.node.mjs",
+  ],
+  {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+    env: process.env,
+  },
+);
+const nativeOutput = `${native.stdout ?? ""}\n${native.stderr ?? ""}`;
+writeFileSync(path.join(out, "native-jvm.tap"), nativeOutput);
+if (native.error) throw native.error;
+assert.equal(
+  native.signal,
+  null,
+  "Native provider conformance was interrupted",
+);
+assert.equal(native.status, 0, nativeOutput);
+for (const name of [
+  "native provider admission preserves account, expiry, generation and rollback behavior",
+  "connection and resident lifecycle JVM contracts pass",
+  "device billing routes exist in the Cloud API and exclude sign-in",
+]) {
+  assert.match(
+    nativeOutput,
+    new RegExp(`^ok \\d+ - ${RegExp.escape(name)}$`, "m"),
+  );
+}
+assert.match(nativeOutput, /^# tests 3$/m);
+assert.match(nativeOutput, /^# pass 3$/m);
+assert.match(nativeOutput, /^# fail 0$/m);
+assert.match(nativeOutput, /^# skipped 0$/m);
 console.log(
-  "NativeMediaRouting conformance passed actual profile, topology, plugin registration and SDK HTTP",
+  "NativeMediaRouting conformance passed TS profile, JVM model env binding and SDK HTTP",
 );
