@@ -1240,6 +1240,11 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
         assert.equal(fs.realpathSync(link), fs.realpathSync(path.join(dir, source)));
         assert.equal(read(`.agents/skills/${name}/SKILL.md`, dir), read(`${source}/SKILL.md`));
       }
+      for (const agent of [".codex", ".cursor", ".grok", ".gemini", ".factory", ".t3", ".droid"]) {
+        const alias = path.join(dir, agent, "skills");
+        assert.ok(!path.isAbsolute(fs.readlinkSync(alias)));
+        assert.equal(fs.realpathSync(alias), fs.realpathSync(path.join(dir, ".claude/skills")));
+      }
     }
     assert.ok(added.includes("tsconfig.json"), added.join());
     assert.match(fs.readFileSync(path.join(root, "CLAUDE.md"), "utf8"), /^@AGENTS\.md$/m);
@@ -1277,6 +1282,15 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.deepEqual(fs.readdirSync(otherProject), []);
     assert.equal(read(".agents/skills/architect/SKILL.md", occupied), read(".claude/skills/architect/SKILL.md"));
     assert.deepEqual(init(occupied), []);
+    for (const directory of [".agents", ".claude", ".claude/skills"]) {
+      const redirected = scratch({});
+      const link = path.join(redirected, directory);
+      fs.mkdirSync(path.dirname(link), { recursive: true });
+      fs.symlinkSync(otherProject, link, "dir");
+      init(redirected, () => {});
+      assert.equal(fs.readlinkSync(link), otherProject);
+      assert.deepEqual(fs.readdirSync(otherProject), []);
+    }
     fs.writeFileSync(agents, "before\r\n<!-- vibestack:start -->\r\nold instructions\r\n<!-- vibestack:end -->\r\nafter\r\n");
     init(root);
     assert.equal(fs.readFileSync(agents, "utf8"), `before\r\n<!-- vibestack:start -->\r\n${read("AGENTS.md").trim().replace(/\r?\n/g, "\r\n")}\r\n<!-- vibestack:end -->\r\nafter\r\n`);
@@ -1305,7 +1319,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const scripts = { dev: "spec studio", check: "spec check", gen: "spec gen", accept: "spec accept", build: "vibelang", test: "vitest run" };
 
     const fresh = scratch({ "package.json": '{"name":"fresh"}' });
-    assert.deepEqual(init(fresh).filter((file) => !/^\.(?:claude|agents)\/skills\//.test(file)), ["SPEC.md", "vibestack/reference/typereferences.md", ".claude/settings.json", "AGENTS.md (Vibestack instructions)", "CLAUDE.md (imports AGENTS.md)",
+    assert.deepEqual(init(fresh).filter((file) => !/^\.[^/]+\/skills(?:\/|$)/.test(file)), ["SPEC.md", "vibestack/reference/typereferences.md", ".claude/settings.json", "AGENTS.md (Vibestack instructions)", "CLAUDE.md (imports AGENTS.md)",
       "tsconfig.json", "vitest.config.ts", "spec/index.md", ".gitignore", "package.json scripts: dev, check, gen, accept, build, test",
       `package.json VibeLang toolchain: ${[...runtime, ...tooling].join(", ")} (run your package manager's install)`, "package.json packageManager: pnpm@10.24.0", "package.json engines.node: >=26", 'package.json "type": "module"']);
     assert.deepEqual(json(fresh, "tsconfig.json"), {
@@ -1872,11 +1886,12 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
 
   test("a rebuilt packaged command can generate a project from the repository root", async () => {
     const root = oneRule("packaged", "A packaged value", "pure val answer = 42");
-    const inputs = ["package.json", "tsconfig.json", "tsconfig.build.json", "tsconfig.base.json", "turbo.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", ".nvmrc"];
+    const inputs = ["package.json", "tsconfig.json", "tsconfig.build.json", "tsconfig.base.json", "turbo.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", ".nvmrc", "README.md", "AGENTS.md", "SPEC.md", "LICENSE", ".claude/settings.json"];
     const staging = scratch(Object.fromEntries(inputs.map((file) => [file, read(file)])));
     // Studio's page is built from the workspace packages it shares with every interface.
     for (const directory of ["vibestack", "packages", "apps", "spec"])
       copySources(path.join(project, directory), path.join(staging, directory));
+    copySources(path.join(project, ".claude/skills"), path.join(staging, ".claude/skills"));
     const lock = path.join(staging, "vibestack/studio/.spec-cache/lock");
     fs.mkdirSync(path.dirname(lock), { recursive: true });
     fs.writeFileSync(lock, `${process.pid}\n`);
@@ -1906,9 +1921,13 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     // pnpm exposes transitive executables as regular shims while keeping their package beside the tool's dependency.
     const consumer = oneRule("arithmetic", "A value equals itself", "pure def lawIdentity(n: int): bool = n == n");
     const installed = path.join(consumer, "node_modules/vibestack");
-    fs.mkdirSync(path.join(installed, "node_modules"), { recursive: true });
-    fs.writeFileSync(path.join(installed, "package.json"), '{"type":"module"}');
-    fs.cpSync(path.join(copy, "dist"), path.join(installed, "dist"), { recursive: true });
+    const archive = path.join(copy, "toolchain.tgz");
+    const packed = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["pack", "--config.ignore-scripts=true", "--out", archive], copy);
+    assert.equal(packed.status, 0, packed.stdout + packed.stderr);
+    fs.mkdirSync(installed, { recursive: true });
+    const unpacked = await exec("tar", ["-xzf", archive, "--strip-components", "1", "-C", installed], copy);
+    assert.equal(unpacked.status, 0, unpacked.stdout + unpacked.stderr);
+    fs.mkdirSync(path.join(installed, "node_modules"));
     for (const entry of fs.readdirSync(nodeModules).filter((name) => name !== ".bin"))
       fs.symlinkSync(path.join(nodeModules, entry), path.join(installed, "node_modules", entry), fs.statSync(path.join(nodeModules, entry)).isDirectory() ? "dir" : "file");
     const binaries = path.join(consumer, "node_modules/.bin");
@@ -1923,6 +1942,13 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
     fs.writeFileSync(shim, process.platform === "win32" ? `@"${process.execPath}" "${lsc}" %*\r\n` : `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(lsc)} "$@"\n`);
     fs.chmodSync(shim, 0o755);
+    const scaffold = scratch({});
+    const initialized = await runCli(path.join(installed, "dist/spec.js"), scaffold, "init");
+    assert.equal(initialized.status, 0, initialized.stdout + initialized.stderr);
+    for (const file of [".claude/skills/LICENSE.pstack", ".claude/skills/architect/references/runner-prompt.md", ".claude/skills/typescript-best-practices/references/patterns.md", "vibestack/reference/typereferences.md"]) {
+      assert.equal(read(file, scaffold), read(file));
+    }
+    assert.equal(fs.realpathSync(path.join(scaffold, ".grok/skills")), path.join(scaffold, ".claude/skills"));
     assert.ok(!fs.existsSync(path.join(consumer, "node_modules/lemmascript")));
     const checked = await runCli(path.join(installed, "dist/spec.js"), consumer, "check", "--json");
     const proof = answer(checked.stdout).results.find((result: Result) => result.stage === "proof");

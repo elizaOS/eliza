@@ -128,14 +128,13 @@ means are in [CONTRIBUTING.md](CONTRIBUTING.md#architecture).
    what needs your review.
 5. Read what it reports, run the app, and sign off with `pnpm accept`.
 
-Agents start with [AGENTS.md](AGENTS.md). This checkout owns its skills in
-[`.claude/skills/`](.claude/skills/). `pnpm install` creates missing links in
-[`.agents/skills/`](.agents/skills/) and under `.codex`, `.cursor`, `.grok`,
-`.gemini`, `.factory`, `.t3` and `.droid`, all relative to the checkout root.
-The hook creates missing directories and reports links or copies that
-conflict with the project sources. A client without repository skill
-discovery must read the applicable `SKILL.md` files linked from AGENTS.md
-explicitly.
+Agents start with [AGENTS.md](AGENTS.md). Skills and their bundled references
+live in [`.claude/skills/`](.claude/skills/). `pnpm install` and
+`spec init` create missing project-relative links in `.agents/skills/` and
+under `.codex`, `.cursor`, `.grok`, `.gemini`, `.factory`, `.t3` and `.droid`.
+Both commands preserve occupied paths and report conflicts with project
+skill sources. A client without repository skill discovery must read the
+applicable `SKILL.md` files linked from AGENTS.md explicitly.
 
 ## Studio
 
@@ -276,7 +275,7 @@ pnpm check
 | `.claude/skills/`, `AGENTS.md` | the agent's procedure, skills, bundled references and license notice. Later invocations add missing files and refresh the marked Vibestack section in AGENTS.md |
 | `SPEC.md` | the spec reference |
 | `vibestack/reference/typereferences.md` | the TypeScript type reference |
-| `.agents/skills/` | links to the same skills in `.claude/skills/` |
+| `.agents/skills/` and the other project agent skill directories | links to the same skills in `.claude/skills/` |
 | `.claude/settings.json` | Claude Code refuses edits to `gen/`, `.spec-cache/`, `.studio/`, `spec/lock.json` and `lemmascript.json`, and asks before `pnpm accept` |
 | `CLAUDE.md` | imports `AGENTS.md`, preserving any existing instructions |
 | an empty `spec/index.md` | |
