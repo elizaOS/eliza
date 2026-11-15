@@ -289,14 +289,12 @@ export async function resolveStoredDiscordEntityProfile(
 		return null;
 	}
 
-	try {
-		const entity = await runtimeWithEntityLookup.getEntityById(
-			entityId as UUID,
-		);
-		return readStoredDiscordEntityProfile(entity);
-	} catch {
-		return null;
-	}
+	// A null return from getEntityById means "no stored entity", which the
+	// caller legitimately renders without a stored profile. A rejected read is a
+	// storage fault and must not be flattened into that same "no profile" shape,
+	// or the sender silently loses their name and avatar.
+	const entity = await runtimeWithEntityLookup.getEntityById(entityId as UUID);
+	return readStoredDiscordEntityProfile(entity);
 }
 
 export async function resolveDiscordMessageAuthorProfile(
