@@ -1217,6 +1217,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const root = scratch({ "AGENTS.md": "mine\n", "package.json": `{"scripts":{"check":"mine"}}` });
     const added = init(root);
     const agents = path.join(root, "AGENTS.md");
+    const claude = path.join(root, "CLAUDE.md");
     const expected = `mine\n\n<!-- vibestack:start -->\n${read("AGENTS.md").trim()}\n<!-- vibestack:end -->\n`;
     assert.equal(fs.readFileSync(agents, "utf8"), expected);
     const typeReference = "vibestack/reference/typereferences.md";
@@ -1247,11 +1248,18 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
       }
     }
     assert.ok(added.includes("tsconfig.json"), added.join());
-    assert.match(fs.readFileSync(path.join(root, "CLAUDE.md"), "utf8"), /^@AGENTS\.md$/m);
+    assert.equal(fs.readlinkSync(claude), "AGENTS.md");
+    assert.equal(fs.readFileSync(claude, "utf8"), expected);
     assert.deepEqual(init(root), []);
-    fs.writeFileSync(path.join(root, "CLAUDE.md"), "My existing instructions.\n");
+    fs.unlinkSync(claude);
+    fs.writeFileSync(claude, "@AGENTS.md\r\n");
+    assert.deepEqual(init(root), ["CLAUDE.md (symlink to AGENTS.md)"]);
+    assert.equal(fs.readlinkSync(claude), "AGENTS.md");
+    assert.deepEqual(init(root), []);
+    fs.unlinkSync(claude);
+    fs.writeFileSync(claude, "My existing instructions.\n");
     init(root);
-    assert.equal(fs.readFileSync(path.join(root, "CLAUDE.md"), "utf8"), "My existing instructions.\n\n@AGENTS.md\n");
+    assert.equal(fs.readFileSync(claude, "utf8"), "My existing instructions.\n\n@AGENTS.md\n");
     assert.equal(fs.readFileSync(agents, "utf8"), expected);
     assert.deepEqual(init(root), []);
     fs.writeFileSync(path.join(root, ".claude/skills/sync/SKILL.md"), "My sync instructions.\n");
@@ -1319,7 +1327,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const scripts = { dev: "spec studio", check: "spec check", gen: "spec gen", accept: "spec accept", build: "vibelang", test: "vitest run" };
 
     const fresh = scratch({ "package.json": '{"name":"fresh"}' });
-    assert.deepEqual(init(fresh).filter((file) => !/^\.[^/]+\/skills(?:\/|$)/.test(file)), ["SPEC.md", "vibestack/reference/typereferences.md", ".claude/settings.json", "AGENTS.md (Vibestack instructions)", "CLAUDE.md (imports AGENTS.md)",
+    assert.deepEqual(init(fresh).filter((file) => !/^\.[^/]+\/skills(?:\/|$)/.test(file)), ["SPEC.md", "vibestack/reference/typereferences.md", ".claude/settings.json", "AGENTS.md (Vibestack instructions)", "CLAUDE.md (symlink to AGENTS.md)",
       "tsconfig.json", "vitest.config.ts", "spec/index.md", ".gitignore", "package.json scripts: dev, check, gen, accept, build, test",
       `package.json VibeLang toolchain: ${[...runtime, ...tooling].join(", ")} (run your package manager's install)`, "package.json packageManager: pnpm@10.24.0", "package.json engines.node: >=26", 'package.json "type": "module"']);
     assert.deepEqual(json(fresh, "tsconfig.json"), {
