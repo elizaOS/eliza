@@ -327,7 +327,8 @@ public abstract class CloudSignInPlugin extends Plugin {
    if (attempt != null) out.put("kind", attempt.google ? "google" : attempt.mfaType != null ? "mfa" : attempt.phone != null ? "phone" : "email");
    // A key is stored but Cloud has not confirmed it yet: it is not a usable sign-in until signInCompleted.
    if (activating.contains(environment.name)) out.put("activationPending", true);
-   return out.put("methodsKnown", result.methodsKnown).put("inApp", result.inApp).put("email", result.email).put("phone", result.phone).put("google", result.google);
+   boolean google = result.google && (!"browser".equals(config().googleSignInMode) || browserPackage() != null || defaultBrowserPackage() != null);
+   return out.put("methodsKnown", result.methodsKnown).put("inApp", result.email || result.phone || google).put("email", result.email).put("phone", result.phone).put("google", google);
   }
  }
  /**
@@ -496,7 +497,7 @@ public abstract class CloudSignInPlugin extends Plugin {
    for (ResolveInfo resolved : manager.queryIntentServices(service, 0)) {
     if (resolved.serviceInfo == null || !resolved.serviceInfo.exported) continue;
     String name = resolved.serviceInfo.packageName;
-    if (name == null || name.equals(getContext().getPackageName()) || candidates.contains(name)) continue;
+    if (!CloudSignInReadiness.browserPackageAllowed(name, getContext().getPackageName()) || candidates.contains(name)) continue;
     Intent page = new Intent(Intent.ACTION_VIEW, Uri.parse("https://accounts.google.com/"))
      .addCategory(Intent.CATEGORY_BROWSABLE).setPackage(name);
     if (!manager.queryIntentActivities(page, PackageManager.MATCH_DEFAULT_ONLY).isEmpty()) candidates.add(name);
@@ -506,8 +507,8 @@ public abstract class CloudSignInPlugin extends Plugin {
   } catch (RuntimeException unavailable) { return null; }
  }
  /**
-  * Without a Custom Tabs provider (stock AOSP ships only the WebView shell browser), the default
-  * external HTTPS browser, opened with a plain VIEW as AppAuth does. Never the host itself.
+  * A full external browser can open the authorization URL with a plain VIEW when it has no
+  * Custom Tabs service. The AOSP WebView Shell handles HTTPS but embeds an unsupported user agent.
   */
  private String defaultBrowserPackage() {
   try {
@@ -516,7 +517,7 @@ public abstract class CloudSignInPlugin extends Plugin {
    List<String> handlers = new ArrayList<>();
    for (ResolveInfo resolved : manager.queryIntentActivities(page, PackageManager.MATCH_DEFAULT_ONLY)) {
     String name = resolved.activityInfo == null ? null : resolved.activityInfo.packageName;
-    if (name != null && !name.equals(getContext().getPackageName()) && !handlers.contains(name)) handlers.add(name);
+    if (CloudSignInReadiness.browserPackageAllowed(name, getContext().getPackageName()) && !handlers.contains(name)) handlers.add(name);
    }
    // With no default set the system resolver answers, which is not a handler: use the first browser.
    ResolveInfo preferred = manager.resolveActivity(page, PackageManager.MATCH_DEFAULT_ONLY);
