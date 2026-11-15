@@ -77,6 +77,10 @@ installed the tools has `README.md` in `node_modules/vibestack/`.
 
 ## Hard rules
 
+- Never create new Markdown documents. Update the existing rules and spec as
+  needed so guidance stays in one place and does not go stale.
+- Always avoid `useEffect`, `setTimeout`, and similar workarounds. Keep shared
+  application state in the spec-backed `Machine` service.
 - Never edit `gen/`, `.spec-cache/`, `.studio/` or `spec/lock.json`, and never add a
   `lemmascript.json`. The tools own them; a change there could make a check
   pass that should not.
@@ -96,6 +100,8 @@ installed the tools has `README.md` in `node_modules/vibestack/`.
   sees).
 - Never work around the stack above: no other package manager, UI framework,
   state library or test runner, and no effectful shell code outside VibeLang.
+- **Fix the root cause.** Investigate before making a fix. Trace the problem
+  to its source and fix it there. Avoid patches that only hide symptoms.
 
 ## Writing code
 
@@ -109,8 +115,9 @@ Check each point before you write, and again after.
   duplicates or one-offs.
 - **Compact.** Reread for needless branches, `try` blocks, wrappers and
   indirection. Shorter, if it reads as well.
-- **Comments** point to related code or to the spec rule a line serves. Never
-  describe what changed or was added.
+- **No code comments.** Use clear names and structure to make the code readable.
+  Use comment syntax only for required tool directives that need it, such as
+  `//@` contracts and Vitest environment directives.
 - **Scripts and tests.** Extend existing ones before adding; no new scripts.
   Delete code that becomes unused. Tests follow "Tests" below.
 - **Speed.** Keep checks and CI fast: a small change reruns only what it
@@ -131,9 +138,9 @@ and nothing else would catch it.
 | Hand-written code that touches the outside world, through the journey that uses it. Pure logic becomes a `pure def` or gets a `//@` contract instead | Strings, labels, page titles, markup, styles, snapshots and screenshots: no test compares pictures |
 | A shell bug that was found: one more step in the journey it broke | That a function was called; what the `types` stage already checks |
 
-- **Journeys.** A test walks a story end to end, is named after it, and cites
-  the rule each assertion serves (`// spec/index.md, "…"`). A story whose
-  path never leaves the verified core needs none.
+- **Journeys.** A test walks a story end to end, is named after it, and uses
+  the required spec citation described below. A story whose path never leaves
+  the verified core needs none.
 - **Real services.** Run the real database, server, queue and filesystem,
   started and reset by the `test` script or the runner's setup: an in-process
   database such as PGlite, a container, a local emulator, a provider's test
@@ -146,7 +153,7 @@ and nothing else would catch it.
   file. A test that repeats another's setup to assert one more thing belongs
   inside it.
 - **Compact.** Shared helpers over repeated setup, one assertion of a whole
-  value over one per field, no comment that restates the test's name.
+  value over one per field.
 - **One command.** `pnpm check` runs the package's `test` script, which
   runs the tests and never the package's own check (a tool's journeys may check
   scratch projects, as Studio's do). No other test scripts, and nothing a
@@ -181,11 +188,11 @@ How `pnpm check` runs them, in its `tests` stage:
   `// spec/index.md, "A payment never exceeds the balance"`, or
   `// spec/index.md, "Story: Check out"` for a story; several may share a line,
   separated by `;`. The path is the spec's from the root of the spec tree,
-  in an owner's code too: `// spec/app/index.md, "…"`. Each `it` or `test`
-  needs one: on its line or in it, on the `describe` or layer around it, or
-  in the file's header. `check` fails on an uncited test, and on a citation
-  whose heading the spec no longer has, so a renamed or removed rule brings
-  its tests up for review; `review` lists the code that cites a changed rule.
+  in an owner's code too: `// spec/app/index.md, "…"`. Cite each `it` or
+  `test` in its title or in the enclosing `describe` title, for example
+  `'Check out (spec/index.md, "Story: Check out")'`. `check` fails on an
+  uncited test or a citation with a missing heading. When a rule changes,
+  `review` lists the code that cites it.
 - **Past the generated code.** A test that reaches nothing but `gen/` and
   test libraries, through the helpers of its own file, fails: it restates
   what the spec proves. Route it through `src/`, or propose deleting it.
