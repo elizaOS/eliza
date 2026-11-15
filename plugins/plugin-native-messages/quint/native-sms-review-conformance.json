@@ -10,7 +10,8 @@
       "cancellationCannotEraseARecordedSubmission",
       "ownerApprovedSmsUsesTheSameReceiptWithoutDialogOrReplay",
       "ownerApprovedMmsUsesTheSameReceiptWithoutDialogOrReplay",
-      "withdrawnComposerApprovalCannotDispatchOrBeReplayed"
+      "withdrawnComposerApprovalCannotDispatchOrBeReplayed",
+      "mmsRetiredAfterStagingRollsBackOnlyItsOwnRow"
     ]
   },
   {

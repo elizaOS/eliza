@@ -8,9 +8,17 @@ import android.app.Application;
 import android.app.KeyguardManager;
 import android.app.role.RoleManager;
 import android.content.BroadcastReceiver;
+import android.content.ContentProvider;
+import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ProviderInfo;
+import android.database.Cursor;
+import android.database.MatrixCursor;
+import android.net.Uri;
 import android.os.UserManager;
+import android.provider.Telephony;
 import android.telephony.SubscriptionManager;
 import android.telephony.SmsManager;
 import android.telephony.TelephonyManager;
@@ -41,6 +49,41 @@ import org.robolectric.shadows.ShadowSubscriptionManager;
 public final class TelephonyPluginReviewTest {
   public static final class Receiver extends BroadcastReceiver {
     @Override public void onReceive(Context context, Intent intent) {}
+  }
+  public static final class OutboxProvider extends ContentProvider {
+    private static final long OWN_ROW = 12;
+    final Map<Long, ContentValues> outbox = new HashMap<>();
+    int parts;
+    int deletes;
+    @Override public boolean onCreate() { return true; }
+    @Override public Cursor query(Uri uri, String[] columns, String selection, String[] args, String sort) {
+      MatrixCursor thread = new MatrixCursor(new String[] {"_id"});
+      thread.addRow(new Object[] {1});
+      return thread;
+    }
+    @Override public Uri insert(Uri uri, ContentValues values) {
+      if (uri.equals(Telephony.Mms.Outbox.CONTENT_URI)) {
+        ContentValues own = new ContentValues(values);
+        own.put(Telephony.Mms.CREATOR, getContext().getPackageName());
+        outbox.put(OWN_ROW, own);
+        ContentValues other = new ContentValues(own);
+        other.put(Telephony.Mms.TRANSACTION_ID, "another-send");
+        outbox.put(OWN_ROW + 1, other);
+        return ContentUris.withAppendedId(Telephony.Mms.CONTENT_URI, OWN_ROW);
+      }
+      if ("part".equals(uri.getLastPathSegment())) parts++;
+      return ContentUris.withAppendedId(uri, 1);
+    }
+    @Override public int delete(Uri uri, String selection, String[] args) {
+      assertEquals(Telephony.Mms.CONTENT_URI, uri);
+      assertEquals("_id = ? AND msg_box = ? AND creator = ? AND tr_id = ?", selection);
+      assertArrayEquals(new String[] {Long.toString(OWN_ROW), Integer.toString(Telephony.Mms.MESSAGE_BOX_OUTBOX),
+        getContext().getPackageName(), SmsTelephony.mmsTransaction("cancel-1")}, args);
+      deletes++;
+      return outbox.remove(OWN_ROW) == null ? 0 : 1;
+    }
+    @Override public int update(Uri uri, ContentValues values, String selection, String[] args) { throw new UnsupportedOperationException(); }
+    @Override public String getType(Uri uri) { return null; }
   }
   static final class Call extends PluginCall {
     volatile JSObject result;
@@ -269,6 +312,32 @@ public final class TelephonyPluginReviewTest {
     host.sendFromComposer(repeat, () -> {});
     settleComposer();
     assertEquals("denied", repeat.result.getString("status"));
+    noRadioAndNoRetainedOwner(host);
+  }
+  @Test public void mmsRetiredAfterStagingRollsBackOnlyItsOwnRow() throws Exception {
+    Host host = host("owner-mms-retired", true);
+    RoleManager roles = host.getContext().getSystemService(RoleManager.class);
+    Shadows.shadowOf(roles).addHeldRole(RoleManager.ROLE_SMS);
+    ProviderInfo threads = new ProviderInfo(); threads.authority = "mms-sms";
+    Robolectric.buildContentProvider(OutboxProvider.class).create(threads);
+    ProviderInfo messages = new ProviderInfo(); messages.authority = "mms";
+    OutboxProvider provider = Robolectric.buildContentProvider(OutboxProvider.class).create(messages).get();
+    Call send = send("sendMms");
+    host.sendFromComposer(send, () -> {
+      if (!provider.outbox.isEmpty()) throw new IllegalStateException("Composer retired during provider staging");
+    });
+    settleComposer();
+    assertEquals("denied", send.result.getString("status"));
+    assertEquals(1, provider.parts);
+    assertEquals(1, provider.deletes);
+    assertEquals(Collections.singleton(OutboxProvider.OWN_ROW + 1), provider.outbox.keySet());
+    assertEquals(0, MmsStore.directory(host.getContext()).list().length);
+
+    Call repeat = send("sendMms");
+    host.sendFromComposer(repeat, () -> {});
+    settleComposer();
+    assertEquals("denied", repeat.result.getString("status"));
+    assertEquals(1, provider.deletes);
     noRadioAndNoRetainedOwner(host);
   }
 }

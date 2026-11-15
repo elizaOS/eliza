@@ -233,17 +233,28 @@ public final class MmsStore {
   values.put(Telephony.Mms.TEXT_ONLY, textOnly ? 1 : 0);
   if (subscriptionId >= 0) values.put(Telephony.Mms.SUBSCRIPTION_ID, subscriptionId);
   Uri row = resolver.insert(Telephony.Mms.Outbox.CONTENT_URI, values);
-  if (row == null) throw new IllegalStateException("MMS provider refused the message");
-  String id = row.getLastPathSegment();
+  long rowId = row == null ? -1 : ContentUris.parseId(row);
+  if (rowId <= 0) throw new IllegalStateException("MMS provider refused the message");
+  String id = Long.toString(rowId);
   try {
    address(resolver, id, "insert-address-token", ADDRESS_FROM);
    for (String address : recipients) address(resolver, id, address, ADDRESS_TO);
    for (MmsPdu.Part part : parts) part(resolver, id, part);
   } catch (IOException | RuntimeException failed) {
-   resolver.delete(row, null, null);
+   discardOutgoingMms(context, rowId, transactionId);
    throw failed;
   }
-  return Long.parseLong(id);
+  return rowId;
+ }
+
+ /** Removes only this operation's unpublished outbox message. The provider cleans its parts. */
+ static void discardOutgoingMms(Context context, long row, String transactionId) {
+  try {
+   int removed = context.getContentResolver().delete(Telephony.Mms.CONTENT_URI, Telephony.Mms._ID + " = ? AND "
+     + Telephony.Mms.MESSAGE_BOX + " = ? AND " + Telephony.Mms.CREATOR + " = ? AND " + Telephony.Mms.TRANSACTION_ID + " = ?",
+    new String[] { Long.toString(row), Integer.toString(Telephony.Mms.MESSAGE_BOX_OUTBOX), context.getPackageName(), transactionId });
+   if (removed != 1) android.util.Log.w("MmsStore", "No matching unattempted MMS outbox row was removed");
+  } catch (RuntimeException unavailable) { android.util.Log.w("MmsStore", "An unattempted MMS outbox row could not be removed"); }
  }
  /** Moves the default SMS app's own outgoing MMS out of the outbox: sent (2) or failed (5). */
  public static boolean settleOutgoingMms(Context context, long row, boolean sent) {

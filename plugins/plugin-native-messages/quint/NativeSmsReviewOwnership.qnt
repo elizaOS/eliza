@@ -71,4 +71,6 @@ module NativeSmsReviewOwnership {
     .then(dispatch).expect(not(s.dialog) and s.dispatches == 1 and InvocationNeedsOwnerApproval)
   run composerRetiredBeforeDispatchTest = initComposer.then(lookupReturns).then(acceptComposer)
     .then(background).then(settleCancelled).expect(not(s.dialog) and CancelledMeansNoInvocation)
+  run composerGuardRefusalBeforeRadioTest = initComposer.then(lookupReturns).then(acceptComposer)
+    .then(outboxRefused).expect(s.result == "denied" and ProviderRefusalMeansNoInvocation)
 }
