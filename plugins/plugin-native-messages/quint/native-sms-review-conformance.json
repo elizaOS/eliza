@@ -2,6 +2,7 @@
   {
     "className": "ai.eliza.plugins.messages.TelephonyPluginReviewTest",
     "required": [
+      "smsEligibilityMatchesTypedMmsReceiverAndEnabledHostComponents",
       "smsCancellationBeforeJournalReplyMustRetireQueuedReview",
       "mmsCancellationBeforeJournalReplyMustRetireQueuedReview",
       "backgroundBeforeJournalReplyMustRetireQueuedReview",

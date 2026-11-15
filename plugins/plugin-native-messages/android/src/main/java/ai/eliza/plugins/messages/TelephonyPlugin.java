@@ -174,7 +174,7 @@ public abstract class TelephonyPlugin extends Plugin {
      && declares(packages.queryIntentServices(new Intent("android.telecom.InCallService").setPackage(self), 0));
   if (RoleManager.ROLE_SMS.equals(role))
    return declares(packages.queryBroadcastReceivers(new Intent(Telephony.Sms.Intents.SMS_DELIVER_ACTION).setPackage(self), 0))
-     && declares(packages.queryBroadcastReceivers(new Intent(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION).setPackage(self), 0))
+     && declares(packages.queryBroadcastReceivers(new Intent(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION).setType("application/vnd.wap.mms-message").setPackage(self), 0))
      && declares(packages.queryIntentServices(new Intent(TelephonyManager.ACTION_RESPOND_VIA_MESSAGE).setData(Uri.fromParts("smsto", "0", null)).setPackage(self), 0))
      && declares(packages.queryIntentActivities(new Intent(Intent.ACTION_SENDTO).setData(Uri.fromParts("smsto", "0", null)).setPackage(self), 0));
   return false;
