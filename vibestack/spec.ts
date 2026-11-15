@@ -15,7 +15,7 @@ import { contracts, pending, pendingKey, pendingContracts, acceptAllReviews, pen
 import { cacheCredentials, entry, remembered, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
-import { sha, indent, packageScripts, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, filesUnder, type Reported, type SrcFile } from "./util.ts";
+import { sha, indent, packageScripts, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
 
 export { readSpecs, parseSpec, expandListHelpers, type Spec, type Rule, type Story } from "./parse.ts";
@@ -422,6 +422,17 @@ export function init(root: string, warn: (message: string) => void = (message) =
     fs.writeFileSync(path.join(root, file), content());
     done.push(file);
   };
+  const addSkillFiles = (directory: string): void => {
+    const existing = fs.lstatSync(path.join(root, directory), { throwIfNoEntry: false });
+    if (existing && !existing.isDirectory()) return;
+    const source = path.join(pkg, directory);
+    for (const name of fs.readdirSync(source).sort()) {
+      const file = `${directory}/${name}`;
+      const entry = fs.lstatSync(path.join(source, name));
+      if (entry.isDirectory()) addSkillFiles(file);
+      else if (entry.isFile()) add(file, () => fs.readFileSync(path.join(source, name)));
+    }
+  };
   const skillRoot = ".claude/skills";
   const license = `${skillRoot}/LICENSE.pstack`;
   add(license, () => fs.readFileSync(path.join(pkg, license)));
@@ -429,9 +440,11 @@ export function init(root: string, warn: (message: string) => void = (message) =
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   for (const name of skills) {
     const source = `${skillRoot}/${name}`;
-    const files = filesUnder(pkg, source);
-    if (!files.includes(`${source}/SKILL.md`)) continue;
-    for (const file of files) add(file, () => fs.readFileSync(path.join(pkg, file)));
+    if (!fs.statSync(path.join(pkg, source, "SKILL.md"), { throwIfNoEntry: false })?.isFile()) continue;
+    addSkillFiles(source);
+    const installed = path.join(root, source);
+    if (!fs.statSync(installed, { throwIfNoEntry: false })?.isDirectory() ||
+      !fs.statSync(path.join(installed, "SKILL.md"), { throwIfNoEntry: false })?.isFile()) continue;
     const link = path.join(root, `.agents/skills/${name}`);
     if (!fs.lstatSync(link, { throwIfNoEntry: false })) {
       fs.mkdirSync(path.dirname(link), { recursive: true });
