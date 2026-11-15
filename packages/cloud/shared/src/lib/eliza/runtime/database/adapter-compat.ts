@@ -5,6 +5,7 @@ import {
   type Entity,
   elizaLogger,
   type IDatabaseAdapter,
+  type Log,
   type Memory,
   type Relationship,
   type Room,
@@ -560,6 +561,27 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
   );
 
   defineCompatMethod(compat, "getLogsByIds", async () => [], addedMethods);
+
+  // Legacy adapters have no projected inventory query, so this falls back to
+  // the full getLogs read. It keeps the getLogInventory contract (the rows and
+  // order getLogs returns, without bodies, minus excluded types) but not its
+  // memory bound.
+  defineCompatMethod(
+    compat,
+    "getLogInventory",
+    async (params: { excludeTypes?: readonly string[] } = {}) => {
+      if (!hasAdapterMethod(compat, "getLogs")) {
+        return [];
+      }
+
+      const excluded = new Set(params.excludeTypes ?? []);
+      const logs = (await compat.getLogs({ limit: Number.MAX_SAFE_INTEGER })) as Log[];
+      return logs
+        .filter((log) => !excluded.has(log.type))
+        .map(({ id, roomId, createdAt }) => ({ id, roomId, createdAt }));
+    },
+    addedMethods,
+  );
 
   defineCompatMethod(compat, "updateLogs", async () => {}, addedMethods);
 

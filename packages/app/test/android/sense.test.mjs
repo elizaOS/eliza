@@ -20,8 +20,8 @@ const sources = (dir) =>
     .filter((name) => name.endsWith(".java"))
     .map((name) => path.join(dir, name));
 const config =
-  'package ai.eliza.sense; public final class BuildConfig { public static final String APPLICATION_ID="ai.eliza.sense", SENSE_HOST_PACKAGE="ai.eliza", SENSE_ASSIST_ACTIVITY="ai.eliza.AssistActivity", SENSE_APP_NAME="Eliza", SENSE_WAKE_LABEL="alpha", SENSE_WAKE_NAMES="alpha", SENSE_COMPONENT_PACKAGE="ai.eliza.sense", SENSE_STORAGE_NAME="listener-settings"; }';
-function compile(files, run, { android = false } = {}) {
+  'package ai.eliza.sense; public final class BuildConfig { public static final String APPLICATION_ID="ai.eliza.sense", SENSE_HOST_PACKAGE="ai.eliza", SENSE_ASSIST_ACTIVITY="ai.eliza.AssistActivity", SENSE_APP_NAME="Eliza", SENSE_WAKE_LABEL="Alpha", SENSE_WAKE_NAMES="alpha", SENSE_COMPONENT_PACKAGE="ai.alphacompute.alphaphone.sense", SENSE_STORAGE_NAME="listener-settings"; }';
+function compile(files, run, { android = false, expected = /PASS/ } = {}) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "shared-sense-"));
   try {
     const buildConfig = path.join(temp, "BuildConfig.java");
@@ -37,7 +37,7 @@ function compile(files, run, { android = false } = {}) {
           encoding: "utf8",
           timeout: 15000,
         }),
-        /PASS/,
+        expected,
       );
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
@@ -92,6 +92,7 @@ test("persistence failure and restart cannot revive stale consent", () => {
           "ListenerPolicy",
           "CrashLoopBreaker",
           "ListeningEpoch",
+          "SenseConfig",
         ].map((name) => path.join(source, `${name}.java`)),
       ],
       "ai.eliza.sense.ListenerStoreFailureTest",
@@ -158,6 +159,46 @@ test("all shared listener classes compile against Android 36", () => {
         ...sources(source),
       ],
       { timeout: 60000 },
+    );
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("exact listener foreground start and self-stop transitions settle refusal", () => {
+  const service = fs.readFileSync(
+    path.join(source, "ListeningService.java"),
+    "utf8",
+  );
+  const start = service.match(
+    /@Override public int onStartCommand\(Intent intent,int flags,int startId\)\{[^\n]+\}/,
+  )?.[0];
+  const from = service.indexOf(" private void applyUnderConsentLock(){");
+  const to = service.indexOf("\n private void loadEngine(){", from);
+  assert.ok(
+    start && from >= 0 && to > from,
+    "exact lifecycle methods are present",
+  );
+  const template = fs.readFileSync(
+    path.join(fixtures, "ListeningServiceLifecycleTest.java.txt"),
+    "utf8",
+  );
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "sense-foreground-"));
+  try {
+    const file = path.join(temp, "ListeningServiceLifecycleTest.java");
+    fs.writeFileSync(
+      file,
+      template
+        .replace("/* ACTUAL_START */", start)
+        .replace("/* ACTUAL_APPLY */", service.slice(from, to)),
+    );
+    compile(
+      [file, path.join(source, "ListenerPolicy.java")],
+      "ai.eliza.sense.ListeningServiceLifecycleTest",
+      {
+        expected:
+          /^PASS exact listening service foreground lifecycle \(6 scenarios\)$/m,
+      },
     );
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });

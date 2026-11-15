@@ -9,7 +9,34 @@
 export const COMMIT_CONTROL =
   /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i;
 
-export function pageCommand(command, snapshotId, validateOnly = false) {
+/**
+ * Runs one fixed page command in the page. The browser extension and the
+ * native surface run it in an isolated world and keep its state on that
+ * world's `globalThis`.
+ *
+ * `host` is optional. A trusted host that must run this function in the
+ * page's own world (for example a development preview with no isolated
+ * world) passes `{ scope, ownedHosts }`:
+ * - `scope` is an object that the host makes and keeps in its own closure.
+ *   The state of this function (snapshot elements, page observation, effect
+ *   watch and spent commit grants) is kept on it, not on `globalThis`, so
+ *   page script cannot read or replace it. The host can find the element of a
+ *   snapshot id at `scope.__elizaBrowserControlV1.nodes.get(id).node` until
+ *   the next effect.
+ * - `ownedHosts` (optional) is a WeakSet of elements that the host draws on
+ *   the page itself. Blockers ignore them, and adding or removing one does not
+ *   make a snapshot stale. It is read when this document is first observed.
+ * A scope does not protect the browser's own objects: page script in the same
+ * world can still replace them. Where an isolated world exists, use it.
+ * Page guidance keeps its state on `globalThis`, so with a scope a task
+ * policy that names a guidance `actionId` is denied.
+ */
+export function pageCommand(
+  command,
+  snapshotId,
+  validateOnly = false,
+  host = undefined,
+) {
   const policy = command.taskPolicy;
   const denied = () => ({
     error: {
@@ -18,6 +45,20 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         "This action requires the person or a new authorized task observation.",
     },
   });
+  if (
+    host !== undefined &&
+    (!host ||
+      typeof host.scope !== "object" ||
+      host.scope === null ||
+      (host.ownedHosts !== undefined && !(host.ownedHosts instanceof WeakSet)))
+  )
+    return {
+      error: {
+        kind: "INVALID_REQUEST",
+        message: "A host scope must be an object the host keeps.",
+      },
+    };
+  const store = host === undefined ? globalThis : host.scope;
   if (
     policy &&
     (window !== window.top ||
@@ -28,6 +69,14 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
   const key = "__elizaBrowserControlV1";
   const monitorKey = "__elizaBrowserObservationV1";
   const watchKey = "__elizaTaskEffectWatchV1";
+  // What the network watch needs from this realm (effect-watch.mjs): her
+  // presses, her first activated control, and the granted commit's address.
+  const handoffOf = (watch) => ({
+    presses: watch.presses,
+    activatedAt: watch.activatedAt,
+    consentedUrls: watch.consentedUrls,
+    expected: watch.expected,
+  });
   const grantKey = "__elizaCommitGrantsV1";
   // A host-issued grant for the one commit the person said yes to. The bridge
   // checked task, epoch, origin, observation and value and spent it there; the
@@ -39,20 +88,20 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     policy.commitGrant.selector === policy.expectedSelector &&
     Date.now() < policy.commitGrant.expiresAt &&
     !(
-      globalThis[grantKey]?.document === document &&
-      globalThis[grantKey].used.has(policy.commitGrant.grantId)
+      store[grantKey]?.document === document &&
+      store[grantKey].used.has(policy.commitGrant.grantId)
     )
       ? policy.commitGrant
       : null;
   if (policy?.commitGrant && !grant && command.subaction !== "snapshot")
     return denied();
-  let monitor = globalThis[monitorKey];
+  let monitor = store[monitorKey];
   if (!monitor || monitor.document !== document) {
     monitor = {
       document,
       domRevision: 0,
       inputRevision: 0,
-      ownedHosts: new WeakSet(),
+      ownedHosts: host?.ownedHosts ?? new WeakSet(),
       editedFields: new WeakSet(),
     };
     monitor.recordMutations = (records) => {
@@ -98,7 +147,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       },
       true,
     );
-    globalThis[monitorKey] = monitor;
+    store[monitorKey] = monitor;
   }
   // Drain queued mutations synchronously as an effect may arrive before the
   // MutationObserver microtask. Never store or return form values in this monitor.
@@ -290,6 +339,47 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       return "government-id";
     return null;
   };
+  // A control whose effect the browser defines, whatever the page's words.
+  // A link to the page it is on (href="#") runs only the page's handlers.
+  // A disclosure (a plain button with aria-expanded) or a tab is the page's
+  // own claim, not the browser's: a heuristic, since its script may still
+  // send something. So it counts only as a button element or a tab that
+  // names, with aria-controls, an element in this document; a bare
+  // aria-expanded on a div, or a pay button that claims it, does not. A
+  // submit button never gets here (it is denied above), and the network
+  // watch reports what such a control sends.
+  const discloses = (node) =>
+    node.matches("button[type=button][aria-expanded],[role=tab]") &&
+    (node.getAttribute("aria-controls") ?? "")
+      .split(/\s+/)
+      .some((id) => id !== "" && document.getElementById(id) !== null);
+  const inert = (node) => {
+    if (
+      node.matches("input[type=checkbox],input[type=radio],option,summary") ||
+      discloses(node)
+    )
+      return true;
+    if (!(node instanceof HTMLAnchorElement) || !node.hasAttribute("href"))
+      return false;
+    try {
+      const target = new URL(node.href);
+      const here = new URL(location.href);
+      target.hash = "";
+      here.hash = "";
+      return /^https?:$/.test(target.protocol) && target.href !== here.href;
+    } catch {
+      return false;
+    }
+  };
+  const showsMoney = () =>
+    [
+      ...document.querySelectorAll("input,textarea,select,[contenteditable]"),
+    ].some((field) =>
+      ["payment-card", "bank-account"].includes(sensitivity(field)),
+    ) ||
+    /(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)\s?\d|\d\s?(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)/u.test(
+      readVisibleText(document.body ?? document.documentElement),
+    );
   if (command.subaction === "snapshot") {
     const controlState = (node) => {
       const flag = (name) => node.getAttribute(name) === "true";
@@ -714,10 +804,13 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       const AGREES =
         /\b(?:accept|agree|allow|consent|ok(?:ay)?|got it|continue|subscribe|sign|log|buy|pay|confirm)\b/i;
       // An invisible reCAPTCHA or hCaptcha is bound to a page's own button
-      // and is not in the way until the site shows a challenge.
+      // and is not in the way until the site shows a challenge. Its frame's
+      // address says size=invisible.
       const captchas = [...document.querySelectorAll(CAPTCHA)].filter(
         (node) =>
-          !node.matches("button,input,a,[data-size=invisible]") &&
+          !node.matches(
+            'button,input,a,[data-size=invisible],iframe[src*="size=invisible" i]',
+          ) &&
           !node.closest(".grecaptcha-badge") &&
           !owned(node) &&
           visible(node),
@@ -878,7 +971,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         (left, right) => rank[left.covers] - rank[right.covers],
       );
     })();
-    globalThis[key] = {
+    store[key] = {
       snapshotId,
       nodes,
       document,
@@ -889,9 +982,9 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     };
     // A submit or page change that a task fill or click set off in this
     // document, under this binding. The watch below stopped it.
-    const violation = globalThis[watchKey]?.violation;
+    const violation = store[watchKey]?.violation;
     // The commit the person said yes to, which the watch let through once.
-    const consented = globalThis[watchKey]?.consented;
+    const consented = store[watchKey]?.consented;
     // A one-shot comparison from the actual fill, kept in this isolated realm.
     // Neither the expected text nor the field value leaves the page.
     const inputReadback = monitor.inputReadback;
@@ -927,6 +1020,12 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       ...(policy && violation && violation.scope === policy.guidanceScope
         ? { effectViolation: violation.kind }
         : {}),
+      // For the browser host's network watch only; it never reaches a host.
+      ...(policy && store[watchKey]?.scope === policy.guidanceScope
+        ? {
+            watchHandoff: handoffOf(store[watchKey]),
+          }
+        : {}),
       ...(policy && consented && consented.scope === policy.guidanceScope
         ? {
             consentedCommit: {
@@ -938,6 +1037,12 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         : {}),
       url: location.href,
       title: withoutSecrets(document.title),
+      // The language the page declares, so a host knows which words it can read.
+      lang: /^[a-z]{2,3}(?:-[a-z0-9]{1,8}){0,4}$/.test(
+        document.documentElement.lang.trim().toLowerCase(),
+      )
+        ? document.documentElement.lang.trim().toLowerCase()
+        : null,
       readyState: document.readyState,
       domRevision: monitor.domRevision,
       inputRevision: monitor.inputRevision,
@@ -952,7 +1057,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       elements,
     };
   }
-  const state = globalThis[key];
+  const state = store[key];
   if (
     !state ||
     state.snapshotId !== command.snapshotId ||
@@ -1032,6 +1137,15 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       node instanceof HTMLInputElement ? node.value : "",
       ...[...(node.labels ?? [])].map((item) => item.textContent),
     ].join(" ");
+    // The host's own commit words, for the languages it serves (bounded and
+    // checked by the binding). They only add to COMMIT_CONTROL.
+    let commitPattern = null;
+    if (policy.commitPattern !== undefined)
+      try {
+        commitPattern = new RegExp(policy.commitPattern, "iu");
+      } catch {
+        return denied();
+      }
     // A control that commits something stays with the person, whatever its
     // element or role, unless she said yes to this exact commit. Keep this
     // literal equal to COMMIT_CONTROL above; the function runs in the page,
@@ -1044,8 +1158,17 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       ) ||
         /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i.test(
           label,
-        ))
+        ) ||
+        commitPattern?.test(label))
     )
+      return denied();
+    // Words cannot say what a control does in every language. On a page that
+    // shows money, a click with no grant may press only a control whose
+    // effect the browser itself defines: a link to another document, a
+    // checkbox or radio, an option, a disclosure or a tab. Facts decide, not
+    // words: a card or bank field in this document, or a currency sign or
+    // code next to a number in its text.
+    if (command.subaction === "click" && !grant && !inert(node) && showsMoney())
       return denied();
     if (
       command.subaction === "fill" &&
@@ -1133,7 +1256,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
   }
   if (validateOnly) return { validated: true };
   if (policy?.actionId) {
-    const feedback = globalThis.__elizaPageGuidanceV1;
+    const feedback = store.__elizaPageGuidanceV1;
     if (
       !feedback?.actionReady?.(
         policy.actionId,
@@ -1145,26 +1268,27 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       return denied();
     feedback.markActed();
   }
-  delete globalThis[key];
+  delete store[key];
   if (destination) {
-    globalThis[watchKey]?.stop();
+    store[watchKey]?.stop();
     location.assign(destination.href);
     return { dispatched: true, requiresReadback: true };
   }
   if (grant) {
-    if (globalThis[grantKey]?.document !== document)
-      globalThis[grantKey] = { document, used: new Set() };
-    globalThis[grantKey].used.add(grant.grantId);
+    if (store[grantKey]?.document !== document)
+      store[grantKey] = { document, used: new Set() };
+    store[grantKey].used.add(grant.grantId);
   }
+  let previousWatchHandoff;
   if (
     policy &&
     ["click", "fill", "select", "scroll"].includes(command.subaction)
   ) {
     // A task fill or click must not submit a form or leave the page, also
     // not through the page's own script (an auto-submitting code field, or
-    // a button that calls form.submit()). For 30 seconds, or until the next
-    // task fill or click, watch what the page does before the person takes
-    // over by activating a control:
+    // a button that calls form.submit()). Until the task binding expires, or
+    // until the next task fill or click, watch what the page does before the
+    // person takes over by activating a control:
     // - a form submit or a page change to another document is stopped,
     //   except a click on a link that opens that link;
     // - a same-document address change (history.pushState) is recorded;
@@ -1174,6 +1298,11 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // Snapshots report the first of these, so the host treats the outcome as
     // unknown and pauses the task. A request still in flight when a snapshot
     // is read shows up in a later snapshot.
+    //
+    // This page realm sees only its own document's resource timing. The
+    // browser host also watches the network for every frame, at request start
+    // (see effect-watch.mjs); snapshots hand it the person's presses and the
+    // consented commit as watchHandoff, so it can tell her requests apart.
     //
     // With a commit grant, the one commit the person said yes to goes ahead,
     // once: either the submit the granted control itself sends (and the page
@@ -1193,7 +1322,12 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // which is reported), a second submit, another form, another origin, any
     // other own-site request and every other page change, same-document
     // address changes included, are still stopped or recorded as above.
-    globalThis[watchKey]?.stop();
+    const prior = store[watchKey];
+    prior?.stop();
+    // What the earlier watch saw of her up to now. Her press since the last
+    // snapshot reaches the network watch's earlier effect only this way.
+    if (prior?.scope !== undefined)
+      previousWatchHandoff = { scope: prior.scope, ...handoffOf(prior) };
     const anchor =
       command.subaction === "click" ? node.closest("a[href]") : null;
     let personAt = Number.NEGATIVE_INFINITY;
@@ -1202,13 +1336,24 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     const controller = new AbortController();
     const watch = {
       violation:
-        globalThis[watchKey]?.violation?.scope === policy.guidanceScope
-          ? (globalThis[watchKey]?.violation ?? null)
+        store[watchKey]?.violation?.scope === policy.guidanceScope
+          ? (store[watchKey]?.violation ?? null)
           : null,
       // A receipt belongs to this dispatch, not an earlier approved action.
       consented: null,
+      scope: policy.guidanceScope,
+      // For the network watch, in epoch milliseconds: each trusted press,
+      // her first activated control, and the URLs of consented commits.
+      presses: [],
+      activatedAt: null,
+      consentedUrls: [],
+      expected: null,
       stop: () => controller.abort(),
     };
+    // The network watch compares these with request times on the wall clock.
+    // performance.now() is monotonic and stops while the device sleeps, so
+    // timeOrigin + performance.now() falls behind Date.now() by every sleep
+    // since the page loaded; the handoff is stamped with Date.now() instead.
     // The granted control's own form: the only form the grant can send.
     const grantedForm = grant
       ? (node.form ?? node.closest("form") ?? null)
@@ -1273,6 +1418,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         return null;
       }
     })();
+    watch.expected = expectedRequest;
     const sameUrl = (url, expected) => {
       try {
         const a = new URL(url, location.href);
@@ -1404,7 +1550,8 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           formMatched: false,
         }
       : null;
-    const consentTo = (kind) => {
+    const consentTo = (kind, url) => {
+      watch.consentedUrls.push(url);
       watch.consented ??= {
         grantId: consent.grantId,
         kind,
@@ -1447,7 +1594,9 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     };
     const options = { capture: true, signal: controller.signal };
     const person = (event) => {
-      if (event.isTrusted) personAt = performance.now();
+      if (!event.isTrusted) return;
+      personAt = performance.now();
+      watch.presses.push(Date.now());
     };
     const personForms = new WeakSet();
     window.addEventListener("pointerdown", person, options);
@@ -1507,6 +1656,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           (event.key === " " && !control.matches('a[href],[role="link"]')));
       if (keyboard ? !controlKey && !enterForm : !control) return;
       activationAt = Math.min(activationAt, performance.now());
+      watch.activatedAt ??= Date.now();
     };
     window.addEventListener("click", activate, options);
     window.addEventListener("keydown", activate, options);
@@ -1547,7 +1697,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           consent.implicit = submitter === null;
           consent.formHash = sentHash;
           consent.formMatched = grant.formHash !== undefined;
-          consentTo("submit");
+          consentTo("submit", sent.action);
           // A page handler that cancels this submit sends no page load, so
           // none may follow it later; one own-site request still may.
           setTimeout(() => {
@@ -1644,7 +1794,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
             consent.pending = false;
             consent.spent = true;
             consent.formHash = loaded;
-            consentTo("submit");
+            consentTo("submit", event.destination.url);
             if (reportHash && loaded) watch.consented.formHash = loaded;
             return;
           }
@@ -1680,8 +1830,13 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           (a, b) => a.startTime - b.startTime,
         );
         for (const entry of entries) {
+          // Resource timing carries no method, so a read and a write look the
+          // same here: past 30 s (CROSS_SITE_WINDOW_MS in effect-watch.mjs) a
+          // site's own poll is not taken for the effect's. The network watch,
+          // which sees the method, judges writes for the rest of the binding.
           if (
             entry.startTime < startedAt ||
+            entry.startTime - startedAt > 30000 ||
             !["fetch", "xmlhttprequest", "beacon"].includes(
               entry.initiatorType,
             ) ||
@@ -1709,7 +1864,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
               (grant.formHash === undefined || consent.formMatched)
             ) {
               consent.spent = true;
-              consentTo("request");
+              consentTo("request", entry.name);
               continue;
             }
             record("request");
@@ -1720,8 +1875,12 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       requests.observe({ type: "resource" });
       controller.signal.addEventListener("abort", () => requests.disconnect());
     }
-    setTimeout(() => controller.abort(), 30000);
-    globalThis[watchKey] = watch;
+    // A timer delay above 2^31 - 1 ms fires at once; the cap is 24.8 days.
+    setTimeout(
+      () => controller.abort(),
+      Math.min(policy.expiresAt - Date.now(), 2 ** 31 - 1),
+    );
+    store[watchKey] = watch;
   }
   if (command.subaction === "click") {
     // Only text changed during this exact synchronous activation is eligible.
@@ -1801,7 +1960,17 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       behavior: "instant",
     });
   }
-  return { dispatched: true, completed: false, requiresReadback: true };
+  const effectWatch = policy ? store[watchKey] : undefined;
+  return {
+    dispatched: true,
+    completed: false,
+    requiresReadback: true,
+    // Taken out by the browser host before the result leaves it.
+    ...(effectWatch?.scope === policy?.guidanceScope && effectWatch
+      ? { watchHandoff: handoffOf(effectWatch) }
+      : {}),
+    ...(previousWatchHandoff ? { previousWatchHandoff } : {}),
+  };
 }
 
 /**

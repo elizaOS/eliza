@@ -1,26 +1,11 @@
 /**
  * Canonical browser-origin and CSRF policy for Steward session mutations. It
- * permits the exact Eliza-owned UI hosts, explicit redirect-era hosts, and
- * same-origin requests without trusting arbitrary eliza.app subdomains.
+ * permits the exact UI hosts of the Cloud deployment (for Eliza, including
+ * its redirect-era hosts) and same-origin requests without trusting arbitrary
+ * subdomains.
  */
-import {
-  ELIZA_DOMAIN_CONTRACTS,
-  LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { getCloudDeployment } from "../deployment/cloud-deployment";
 
-const ELIZA_BROWSER_ORIGIN_HOSTS: ReadonlySet<string> = new Set([
-  ...Object.values(ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
-    new URL(contract.marketingOrigin).hostname,
-    new URL(contract.cloudAppOrigin).hostname,
-  ]),
-  `www.${new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname}`,
-  ...Object.values(LEGACY_ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
-    ...contract.marketingHostnames,
-    ...contract.cloudAppHostnames,
-  ]),
-  "elizaos.ai",
-  "www.elizaos.ai",
-]);
 const LOCAL_DEV_ORIGIN_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
 export interface RequestHeaderReader {
   header(name: string): string | undefined;
@@ -63,7 +48,7 @@ export function isPermittedElizaBrowserOrigin(
   isProduction: boolean,
 ): boolean {
   if (!origin) return false;
-  if (ELIZA_BROWSER_ORIGIN_HOSTS.has(origin)) return true;
+  if (getCloudDeployment().browserOriginHosts.has(origin)) return true;
   if (requestHost && origin === requestHost) return true;
   return !isProduction && LOCAL_DEV_ORIGIN_HOSTS.has(origin);
 }

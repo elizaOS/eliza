@@ -7,6 +7,11 @@
  * rows are stored under.
  */
 
+import type {
+  LifeOpsScreenTimeDaily,
+  LifeOpsScreenTimeSource,
+  LifeOpsScreenTimeSummary,
+} from "@elizaos/contracts";
 import { normalizeTimeZone } from "@elizaos/contracts";
 import type {
   Action,
@@ -24,11 +29,6 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import type {
-  LifeOpsScreenTimeDaily,
-  LifeOpsScreenTimeSource,
-  LifeOpsScreenTimeSummary,
-} from "../contracts/lifeops.js";
 import { hostnameFromValue } from "../screen-time/social-taxonomy.js";
 import {
   addDaysToLocalDate,

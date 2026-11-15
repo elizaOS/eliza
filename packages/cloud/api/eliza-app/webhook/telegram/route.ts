@@ -2,7 +2,7 @@
 
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { isPersonalSharedTelegramEdgeEnabled } from "@/api-app/personal-shared-telegram-edge";
+import { isPersonalSharedTelegramEdgeEnabled } from "../../../src/personal-shared-telegram-edge";
 import { forwardToWebhookGateway, safeWebhookSuffix } from "../_forward";
 import {
   handlePersonalTelegramDeliveryLedger,

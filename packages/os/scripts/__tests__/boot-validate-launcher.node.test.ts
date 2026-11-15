@@ -70,6 +70,25 @@ test("HOME and assistant are required; dialer and SMS are not", () => {
   );
 });
 
+test("a brand without the assistant role needs only HOME", () => {
+  const holders = {
+    "android.app.role.HOME": PKG,
+    "android.app.role.ASSISTANT": "",
+  };
+  assert.equal(assertRoleHolders(holders, PKG, { assistant: false }), holders);
+  assert.throws(() => assertRoleHolders(holders, PKG), /ASSISTANT holder/);
+  assert.throws(
+    () =>
+      assertRoleHolders(
+        { ...holders, "android.app.role.HOME": "com.android.launcher3" },
+        PKG,
+        { assistant: false },
+      ),
+    /HOME holder/,
+  );
+  assert.equal(brand.assistantRole, true, "brands take the role by default");
+});
+
 test("a stock HOME stays installed as the recovery path", () => {
   assert.deepEqual(
     assertRecoveryHome(
@@ -136,48 +155,4 @@ test("AVD installs prefer the staged signed launcher over the unsigned build out
   fs.mkdirSync(path.dirname(staged), { recursive: true });
   fs.writeFileSync(staged, "signed");
   assert.equal(defaultApkPath(brand, root), staged);
-});
-
-test("grizzly bundles require the staged launcher pin and refuse the platform key", async (t) => {
-  const { assertLauncherSigner, LAUNCHER_INSTALL_PATH, readLauncherPin } =
-    await import("../android/build-grizzly-bundle.ts");
-  assert.equal(LAUNCHER_INSTALL_PATH, "product/app/Eliza/Eliza.apk");
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "grizzly-pin-"));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  assert.throws(() => readLauncherPin(root), /missing or unreadable/);
-  const file = path.join(root, "vendor/eliza/launcher/launcher.json");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const pin = {
-    packageName: PKG,
-    apkSha256: "a".repeat(64),
-    certificateSha256: "b".repeat(64),
-  };
-  fs.writeFileSync(file, JSON.stringify({ ...pin, partition: "system" }));
-  assert.throws(() => readLauncherPin(root), /product-partition/);
-  fs.writeFileSync(file, JSON.stringify(pin));
-  assert.deepEqual(readLauncherPin(root), pin);
-  const ok = {
-    certificateSha256: pin.certificateSha256,
-    apkSha256: pin.apkSha256,
-    pin,
-    platformCertificateSha256: "f".repeat(64),
-  };
-  assertLauncherSigner(ok);
-  assert.throws(
-    () =>
-      assertLauncherSigner({
-        ...ok,
-        certificateSha256: "f".repeat(64),
-        pin: { ...pin, certificateSha256: "f".repeat(64) },
-      }),
-    /platform certificate/,
-  );
-  assert.throws(
-    () => assertLauncherSigner({ ...ok, certificateSha256: "c".repeat(64) }),
-    /signer differs/,
-  );
-  assert.throws(
-    () => assertLauncherSigner({ ...ok, apkSha256: "c".repeat(64) }),
-    /bytes differ/,
-  );
 });

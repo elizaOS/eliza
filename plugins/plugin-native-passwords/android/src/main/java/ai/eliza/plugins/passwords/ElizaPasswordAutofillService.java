@@ -32,7 +32,9 @@ import java.util.List;
  * {@code @xml/eliza_passwords_autofill_service}.
  */
 public class ElizaPasswordAutofillService extends AutofillService {
+  /** A request the host's admission rule refuses gets no dataset and no token, as if nothing were saved. */
   @Override public void onFillRequest(FillRequest request, CancellationSignal cancellation, FillCallback callback) {
+    if (!PasswordVaultAccess.admitted(this)) { callback.onSuccess(null); return; }
     FillResponse response = null;
     try { response = fillResponse(this, latest(request.getFillContexts()), cancellation); }
     catch (Exception rejected) { response = null; }
@@ -40,6 +42,7 @@ public class ElizaPasswordAutofillService extends AutofillService {
   }
 
   @Override public void onSaveRequest(SaveRequest request, SaveCallback callback) {
+    if (!PasswordVaultAccess.admitted(this)) { callback.onSuccess(); return; }
     try {
       PasswordFormPolicy.Target captured = AutofillStructures.evaluate(this, latest(request.getFillContexts()), true);
       String facet = captured.web() ? captured.webOrigin : PasswordFacets.android(captured.appPackage, PasswordVaultAccess.currentSigner(this, captured.appPackage));

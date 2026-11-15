@@ -183,6 +183,36 @@ export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
   );
 }
 
+const cloudMediaModels: NonNullable<Plugin["models"]> = {
+  [ModelType.IMAGE]: handleImageGeneration,
+  [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
+  [ModelType.TEXT_TO_SPEECH]: handleTextToSpeech,
+  [ModelType.TRANSCRIPTION]: handleTranscription,
+  [ModelType.AUDIO]: handleAudioGeneration,
+  [ModelType.VIDEO]: handleVideoGeneration,
+};
+
+export function registerCloudMediaModels(runtime: IAgentRuntime): void {
+  registerProviderModels(
+    runtime,
+    elizaOSCloudPlugin.name,
+    Object.entries(cloudMediaModels)
+      .filter(([modelType]) => {
+        const flag = modelType === ModelType.TEXT_TO_SPEECH
+          ? "ELIZAOS_CLOUD_USE_TTS"
+          : modelType === ModelType.TRANSCRIPTION
+            ? "ELIZAOS_CLOUD_USE_STT"
+            : "ELIZAOS_CLOUD_USE_MEDIA";
+        return !isExplicitFalseFlag(getSetting(runtime, flag));
+      })
+      .map(([modelType, handler]) => ({
+        modelType,
+        handler: handler as Parameters<IAgentRuntime["registerModel"]>[1],
+        priority: elizaOSCloudPlugin.priority,
+      }))
+  );
+}
+
 export const elizaOSCloudPlugin: Plugin = {
   schema: { delegationRecords },
   name: "elizaOSCloud",
@@ -274,11 +304,10 @@ export const elizaOSCloudPlugin: Plugin = {
   async init(config, runtime) {
     // Initialize inference (OpenAI-compatible client)
     initializeOpenAI(config, runtime);
-    // Chat-brain text handlers and embedding handlers are conditional (see
-    // textInferenceModels/cloudEmbeddingModels above); other capability handlers
-    // stay in the static `models` map below.
+    // Each capability retains the host's independent routing choice.
     registerTextInferenceModels(runtime);
     registerCloudEmbeddingModels(runtime);
+    registerCloudMediaModels(runtime);
 
     // The `cloud` routing signal: Stage-1 selects contexts from the registry
     // catalog, and the description text is what routes "my credits / my hosted
@@ -373,21 +402,6 @@ export const elizaOSCloudPlugin: Plugin = {
       desktopTabEnabled: true,
     },
   ],
-
-  // ─── Capability Model Handlers ───────────────────────────────────────
-  // Always registered: these capabilities don't compete with BYO embedding or
-  // chat-brain slots and must survive an external text provider. The chat-brain
-  // text handlers (TEXT_*, RESPONSE_HANDLER, ACTION_PLANNER) and embedding
-  // handlers are registered conditionally from init() — see textInferenceModels
-  // and cloudEmbeddingModels above.
-  models: {
-    [ModelType.IMAGE]: handleImageGeneration,
-    [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
-    [ModelType.TEXT_TO_SPEECH]: handleTextToSpeech,
-    [ModelType.TRANSCRIPTION]: handleTranscription,
-    [ModelType.AUDIO]: handleAudioGeneration,
-    [ModelType.VIDEO]: handleVideoGeneration,
-  },
 
   tests: [
     {

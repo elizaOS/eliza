@@ -1,0 +1,27 @@
+{
+  "sources": ["packages/ui/src/state/durable-draft.ts"],
+  "cases": [
+    {
+      "name": "contention",
+      "main": "DurableDraftCAS",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    },
+    {
+      "name": "isolation",
+      "main": "DurableDraftIsolation",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "conformance": "packages/scripts/quint/check-application.ts",
+  "bounds": "Two separate finite instances. Contention has two writers and one binding. Isolation has one writer and two bindings. Each permits two revisions and three text values."
+}

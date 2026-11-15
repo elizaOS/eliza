@@ -6,6 +6,7 @@ import {
   DOCUMENT_CONSTANTS,
   isValidFilename,
 } from "@elizaos/cloud-shared/lib/constants/documents";
+import { resolveCloudBlobHost } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import type {
   AppEnv,
@@ -56,10 +57,7 @@ export function publicBlobUrl(
   c: { env: AppEnv["Bindings"] },
   key: string,
 ): string {
-  const host =
-    typeof c.env.R2_PUBLIC_HOST === "string" && c.env.R2_PUBLIC_HOST.trim()
-      ? c.env.R2_PUBLIC_HOST.trim()
-      : "blob.eliza.app";
+  const host = resolveCloudBlobHost(c.env);
   return `https://${host.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/${key}`;
 }
 
@@ -233,38 +231,21 @@ export async function createDocumentRecord(
     uploadedAt: now,
     characterId: scope.characterId,
   };
-  const memory = await memoriesRepository.create({
-    id,
-    roomId: scope.roomId,
-    entityId: user.id,
-    agentId: scope.agentId,
-    type: "documents",
-    unique: false,
-    content: {
-      text: input.text,
-      source: "documents",
-    },
-    metadata,
-  });
-
-  for (const [position, text] of fragmentTextChunks(input.text).entries()) {
-    await memoriesRepository.create({
-      id: crypto.randomUUID(),
+  const memory = await memoriesRepository.createDocumentWithFragments(
+    {
+      id,
       roomId: scope.roomId,
       entityId: user.id,
       agentId: scope.agentId,
-      type: "document_fragments",
       unique: false,
-      content: { text },
-      metadata: {
-        ...metadata,
-        type: "fragment",
-        documentId: id,
-        position,
-        timestamp: now,
+      content: {
+        text: input.text,
+        source: "documents",
       },
-    });
-  }
+      metadata,
+    },
+    fragmentTextChunks(input.text),
+  );
 
   return toDocumentRecord(memory);
 }

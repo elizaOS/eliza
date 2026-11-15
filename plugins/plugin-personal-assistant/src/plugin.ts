@@ -14,7 +14,6 @@ import {
   type EventPayload,
   EventType,
   type IAgentRuntime,
-  logger,
   type MessagePayload,
   promoteSubactionsToActions,
   registerCandidateActionBackstopRule,
@@ -114,7 +113,6 @@ import { ActivityTrackerService } from "./activity-profile/activity-tracker-serv
 import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
   ensureProactiveAgentTask,
-  isAppFirstRunComplete,
   PROACTIVE_TASK_NAME,
   registerProactiveTaskWorker,
 } from "./activity-profile/proactive-worker.js";
@@ -122,7 +120,10 @@ import { registerDefaultPackCatalog } from "./default-packs/spine-registration.j
 import {
   ensureFollowupTrackerTask,
   FOLLOWUP_TRACKER_TASK_NAME,
+  listOverdueFollowupsAction,
+  markFollowupDoneAction,
   registerFollowupTrackerWorker,
+  setFollowupThresholdAction,
 } from "./followup/index.js";
 import {
   hasLifeOpsAccess,
@@ -151,7 +152,6 @@ import {
   registerConnectorRegistry,
   registerDefaultConnectorPack,
 } from "./lifeops/connectors/index.js";
-import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
 import { createDelegationInboundMessageHandler } from "./lifeops/delegation-contracts/inbound-event.js";
 import { processDelegationInboundTurn } from "./lifeops/delegation-contracts/index.js";
 import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
@@ -218,7 +218,6 @@ import {
   registerAppLifeOpsEventKinds,
   registerBuiltinTelemetryFamilies,
   registerDefaultBlockerPack,
-  registerDefaultFeatureFlagPack,
   registerDefaultWorkflowStepPack,
   registerEventKindRegistry,
   registerFamilyRegistry,
@@ -497,6 +496,14 @@ async function importGoogleConnectorPluginModule(): Promise<
     }
   }
 }
+/**
+ * Register `@elizaos/plugin-google-workspace` if it is not already in the
+ * runtime. Workspace is a hard dependency of this plugin, so this registers it
+ * even when `plugins.entries["google-workspace"].enabled === false`: that
+ * setting only keeps Workspace out of the auto-enable set. Honoring it here
+ * would need Workspace as a soft dependency with degraded LifeOps Google
+ * features.
+ */
 export async function ensureLifeOpsGooglePluginRegistered(
   runtime: IAgentRuntime,
 ): Promise<void> {
@@ -740,6 +747,9 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(personalAssistantAction),
     resolveReferentAction,
     entityAction,
+    listOverdueFollowupsAction,
+    markFollowupDoneAction,
+    setFollowupThresholdAction,
     ...promoteSubactionsToActions(ownerDocumentsAction),
     ownerAgreementKnowledgeAction,
     ...promoteSubactionsToActions(creativeDraftAction),
@@ -953,15 +963,6 @@ const rawPersonalAssistantPlugin: Plugin = {
       runtime,
       createUndatedOwnerTodoDirectRoutingRule(),
     );
-    // When LIFEOPS_USE_MOCKOON=1, redirect every external connector base URL
-    // to the matching Mockoon environment on localhost. No-op otherwise.
-    const mockoonApplied = applyMockoonEnvOverrides();
-    if (mockoonApplied.length > 0) {
-      logger.info(
-        { mockoonConnectors: mockoonApplied },
-        `[lifeops] LIFEOPS_USE_MOCKOON=1 — redirecting ${mockoonApplied.length} connector base URL(s) to mock servers`,
-      );
-    }
     registerLifeOpsWebsiteBlockingPermissionProber(runtime);
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
@@ -1093,10 +1094,6 @@ const rawPersonalAssistantPlugin: Plugin = {
         workflowStepRegistry?: typeof workflowStepRegistry;
       }
     ).workflowStepRegistry = workflowStepRegistry;
-    // FeatureFlagRegistry — open-key registry covering the 10 closed
-    // `LifeOpsFeatureKey` built-ins plus any 3rd-party plugin contributions.
-    // Audit C top-1 finding (`docs/audit/rigidity-hunt-audit.md`).
-    registerDefaultFeatureFlagPack(runtime);
     const activitySignalBus = createActivitySignalBus({ familyRegistry });
     registerActivitySignalBus(runtime, activitySignalBus);
     // Structural runtime property (same pattern as anchorRegistry /
@@ -1152,7 +1149,9 @@ const rawPersonalAssistantPlugin: Plugin = {
         prefix: "[proactive]",
         label: "task",
         ensure: async () => {
-          if (!isAppFirstRunComplete()) return;
+          // Created regardless of first-run state: the worker's shouldRun
+          // stays false until setup completes, so a fresh profile acquires no
+          // behavior, and finishing setup needs no restart.
           await ensureProactiveAgentTask(runtime);
         },
       });
@@ -1236,7 +1235,9 @@ const rawPersonalAssistantPlugin: Plugin = {
       // after runtime init. Records whose logical slot the first-run pack
       // below already owns (gm/gn/check-in/morning-brief) are reconciled
       // out — see src/default-packs/spine-registration.ts for the upgrade
-      // story.
+      // story. No connector registry is passed: the Google connector is always
+      // registered, so the registry cannot tell whether Gmail is connected.
+      // Capability-gated packs (inbox triage) are offered, not seeded.
       registerDefaultPackCatalog(runtime);
       // Reconcile defaults only after LifeOps owner setup is complete. Fresh
       // profiles must not acquire proactive routines just by booting.

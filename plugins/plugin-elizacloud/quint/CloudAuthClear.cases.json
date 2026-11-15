@@ -1,0 +1,35 @@
+{
+  "sources": [
+    "plugins/plugin-elizacloud/src/routes/cloud-routes-autonomous.ts",
+    "plugins/plugin-elizacloud/src/services/cloud-auth.ts",
+    "plugins/plugin-elizacloud/__tests__/cloud-lifecycle-model.http.test.ts"
+  ],
+  "conformance": "plugins/plugin-elizacloud/quint/check-cloud-lifecycle.mjs",
+  "bounds": "One authorized autonomous disconnect with no remote manager, an initially authenticated or unauthenticated real CloudAuthService, and a synchronous host config save that succeeds or fails. Four model-generated terminal outcomes replay the real HTTP route, service registry, PGlite runtime, and filesystem save boundary.",
+  "limitations": [
+    "This checks the added auth-service clearing call and config-key removal. It does not prove complete credential erasure across every host store, remote manager shutdown, authorization middleware, simultaneous login/disconnect, or pending provider request cancellation.",
+    "The save-failure outcome must remain a failure after local auth clearing. Recovery after that failure is outside this model; no successful persistent logout is claimed.",
+    "Progress assumes the authorized request is dispatched and its host writer returns. Safety does not require fairness."
+  ],
+  "cases": [
+    {
+      "name": "local-auth-clear-before-save",
+      "main": "CloudAuthClear",
+      "init": "init",
+      "step": "step",
+      "invariants": ["ClearedBeforeSave", "SuccessfulReplyIsCleared", "SaveFailureIsReported"],
+      "temporal": ["Finishes"],
+      "temporalChecks": [
+        {
+          "property": "Finishes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of clear, save, and reply; the authorized host invocation and synchronous filesystem save terminate. No provider or remote-manager responsiveness is assumed."
+          ]
+        }
+      ],
+      "maxSteps": 4,
+      "samples": 120
+    }
+  ]
+}

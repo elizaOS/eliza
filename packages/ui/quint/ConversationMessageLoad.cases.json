@@ -1,0 +1,34 @@
+{
+  "sources": [
+    "packages/ui/src/state/useDataLoaders.ts",
+    "packages/ui/src/state/__e2e__/conversation-message-load.test.tsx"
+  ],
+  "bounds": [
+    "Two request identities, two explicit owner claims, four symbolic room identities including null. Newest and centered loads share request/owner generations and exact active fence identity. Callback reentrancy may change ownership before commit.",
+    "Real mounted useDataLoaders checks cover eight source paths with controlled HTTP replies. They preserve the actual cache, visible store, abort and owner machinery. This is scenario conformance, not generated-trace refinement.",
+    "Message values, overlay lineage/retirement arithmetic, cache eviction and prefetch tokens, active sends, runtime reset, pagination, arbitrary callback exceptions and anchor rendering are outside this instance.",
+    "The outer useChatCallbacks selection/fallback and final ChatOverlay anchor/notification settlement still need a composed model. This model covers the loader-owned nested 404 list boundary only."
+  ],
+  "conformance": "packages/ui/quint/check-navigation-claims.mjs",
+  "cases": [
+    {
+      "name": "newest-around-and-reentrant-callback",
+      "main": "ConversationMessageLoad",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant", "NoStalePublication", "Finite"],
+      "temporal": ["RepliesSettle"],
+      "temporalChecks": [
+        {
+          "property": "RepliesSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of reply, nested-list, callback return and finalizer actions for each started request. This assumes controlled provider replies and callback completion, including failure. Two finite owner claims prevent perpetual supersession."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000
+    }
+  ]
+}

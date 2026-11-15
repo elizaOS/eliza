@@ -1,0 +1,18 @@
+[
+  {
+    "id": "cloud-onboarding-greeting-leases",
+    "model": "packages/cloud/quint/OnboardingGreetingLease.qnt",
+    "sources": [
+      "packages/cloud/api/src/onboarding-session-coordinator.ts",
+      "packages/cloud/shared/src/lib/services/eliza-app/onboarding-proactive-greeting.ts",
+      "packages/cloud/api/__tests__/onboarding-coordinator-errors.miniflare.test.ts"
+    ],
+    "invariants": ["TypeOK"],
+    "status": "partial",
+    "limitations": [
+      "One durable session key and four lease identities. Checks exact acknowledgement, serialized claims, duplicate enqueue and loss of a claim response. Fair retirement requires an eventual successful drain for the stale entry.",
+      "Real Workerd checks cover parallel pollers, expiry recovery, stale-entry cleanup and receipt replacement. Provider delivery and Redis compatibility are separate. The model permits explicit re-enqueue after deletion and does not prove exactly-once delivery.",
+      "Onboarding continuation identity, transcript migration, replay alarm pagination, batch partial failures and unbounded queue order remain separate coverage."
+    ]
+  }
+]

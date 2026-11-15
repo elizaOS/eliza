@@ -8,8 +8,14 @@ import { cliAuthSessionsRepository } from "../../db/repositories";
 import type { ApiKey } from "../../db/schemas/api-keys";
 import type { CliAuthSession } from "../../db/schemas/cli-auth-sessions";
 import { organizationCreatedBySignIn } from "../auth/new-organization";
+import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { cliAuthSessionCompletionService } from "./cli-auth-session-completion";
+import {
+  InferenceCredentialRevocationUnavailableError,
+  revokeInferenceApiKey,
+  settlePostCommitRevocations,
+} from "./inference-credential-revocation";
 
 /**
  * Session expiry time in minutes.
@@ -28,6 +34,31 @@ export function looksLikeCliAuthSessionId(sessionId: string): boolean {
   return CLI_AUTH_SESSION_ID_PATTERN.test(sessionId);
 }
 
+/** Header a poll uses to prove it holds the verifier registered at creation. */
+export const CLI_AUTH_SESSION_VERIFIER_HEADER = "X-Cli-Session-Verifier";
+
+const CLI_AUTH_SESSION_VERIFIER_HASH_PATTERN = /^[0-9a-f]{64}$/;
+
+export function looksLikeCliAuthSessionVerifierHash(value: string): boolean {
+  return CLI_AUTH_SESSION_VERIFIER_HASH_PATTERN.test(value);
+}
+
+export async function hashCliAuthSessionVerifier(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function verifierMatches(expectedHash: string, verifier: string | null): Promise<boolean> {
+  if (!verifier) return false;
+  const actual = await hashCliAuthSessionVerifier(verifier);
+  if (actual.length !== expectedHash.length) return false;
+  let diff = 0;
+  for (let i = 0; i < actual.length; i++) {
+    diff |= actual.charCodeAt(i) ^ expectedHash.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 export type CliAuthApiKeyRevealResult =
   | {
       status: "revealed";
@@ -39,7 +70,14 @@ export type CliAuthApiKeyRevealResult =
     }
   | {
       status: "unavailable";
-      reason: "not-found" | "not-authenticated" | "expired" | "consumed" | "revoked" | "claim-lost";
+      reason:
+        | "not-found"
+        | "not-authenticated"
+        | "expired"
+        | "consumed"
+        | "revoked"
+        | "claim-lost"
+        | "verifier-mismatch";
     };
 
 function revealIntegrityError(sessionId: string, defect: string): ElizaError {
@@ -103,9 +141,11 @@ export class CliAuthSessionsService {
   }
 
   /**
-   * Create a new CLI authentication session
+   * Create a new CLI authentication session. A `verifierHash` binds key
+   * release to the client that holds the matching verifier; sessions created
+   * without one keep the unbound legacy behavior.
    */
-  async createSession(sessionId: string): Promise<CliAuthSession> {
+  async createSession(sessionId: string, verifierHash?: string | null): Promise<CliAuthSession> {
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + SESSION_EXPIRY_MINUTES);
 
@@ -113,6 +153,7 @@ export class CliAuthSessionsService {
       session_id: sessionId,
       status: "pending",
       expires_at: expiresAt,
+      verifier_hash: verifierHash ?? null,
     });
   }
 
@@ -222,13 +263,21 @@ export class CliAuthSessionsService {
    * The plaintext is decrypted in-memory from the encrypted api_keys row
    * and never persisted on the cli_auth_sessions row.
    */
-  async getAndClearApiKey(sessionId: string): Promise<CliAuthApiKeyRevealResult> {
+  async getAndClearApiKey(
+    sessionId: string,
+    verifier: string | null = null,
+  ): Promise<CliAuthApiKeyRevealResult> {
     const state = await cliAuthSessionsRepository.findApiKeyRevealState(sessionId);
     if (!state) {
       return { status: "unavailable", reason: "not-found" };
     }
 
     const { apiKey: apiKeyRecord, session, organizationCreatedAt } = state;
+    // A session bound to a verifier releases its key only to that client; a
+    // bare session id (for example from a link) is not enough.
+    if (session.verifier_hash && !(await verifierMatches(session.verifier_hash, verifier))) {
+      return { status: "unavailable", reason: "verifier-mismatch" };
+    }
     if (session.status !== "authenticated") {
       return { status: "unavailable", reason: "not-authenticated" };
     }
@@ -306,11 +355,15 @@ export class CliAuthSessionsService {
   /**
    * Reaps expired sessions and revokes the orphan keys minted by abandoned
    * sign-ins (cron-driven). The revocation commits first, then each revoked
-   * hash's auth caches are invalidated — matching the write-then-invalidate
-   * ordering the revocation paths use. These keys' plaintext was never
-   * revealed (consumed_at was NULL), so no warm cache entry can exist; the
-   * invalidation is defense-in-depth and an unconfirmed delete surfaces to
-   * the cron boundary rather than being swallowed.
+   * key is revoked at the admission gate and its auth caches are invalidated —
+   * matching the write-then-invalidate ordering the revocation paths use.
+   *
+   * The commit deleted the sessions that located these keys, so a later run
+   * cannot find them again: every key is attempted before any failure is
+   * raised, and an unconfirmed key is logged and surfaces to the cron boundary
+   * rather than being swallowed. It is not retried, which is safe because its
+   * plaintext was never revealed (consumed_at was NULL): no caller holds the
+   * key, no warm cache entry can exist, and its row no longer authenticates.
    */
   async cleanupExpiredSessions(): Promise<{
     deletedSessions: number;
@@ -319,8 +372,21 @@ export class CliAuthSessionsService {
     const { deletedSessions, revokedOrphanKeys } =
       await cliAuthSessionsRepository.reapExpiredSessions();
 
-    for (const key of revokedOrphanKeys) {
-      await apiKeysService.invalidateCache(key.key_hash);
+    const failures = await settlePostCommitRevocations(revokedOrphanKeys, (key) => [
+      revokeInferenceApiKey(key.organization_id, key.id),
+      apiKeysService.invalidateCache(key.key_hash),
+    ]);
+    for (const { item, reasons } of failures) {
+      logger.error("[CliAuthSessions] Orphan key revocation was not confirmed", {
+        apiKeyId: item.id,
+        error: reasons.map(String).join("; "),
+      });
+    }
+    if (failures.length > 0) {
+      throw new InferenceCredentialRevocationUnavailableError(
+        `Orphan key revocation was not confirmed for ${failures.length}/${revokedOrphanKeys.length} key(s)`,
+        { cause: failures[0]?.reasons[0] },
+      );
     }
 
     return { deletedSessions, revokedOrphanKeys: revokedOrphanKeys.length };

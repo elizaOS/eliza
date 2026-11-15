@@ -7,20 +7,9 @@
  * runner. Each runtime keeps one runner service, one injected deps set, and one
  * scheduled-task REST route.
  */
-import {
-  ElizaError,
-  type IAgentRuntime,
-  logger,
-  resolveSetting,
-} from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
-import {
-  ALPHA_ROUTINES_PACK_ID,
-  buildAlphaRoutinesPack,
-  parseDefaultPackSetting,
-  SCHEDULING_DEFAULT_PACKS_SETTING,
-} from "./scheduled-task/alpha-routines-pack.js";
 import { schedulingDbSchema } from "./scheduled-task/db-schema.js";
 import { buildFallbackDefaultPack } from "./scheduled-task/default-pack.js";
 import {
@@ -29,7 +18,6 @@ import {
   ScheduledTaskRunnerService,
 } from "./scheduled-task/runner-service.js";
 import {
-  type DefaultTaskPack,
   getDefaultTaskPacks,
   registerDefaultTaskPack,
   seedRegisteredTaskPacks,
@@ -38,6 +26,7 @@ import {
   disposeStandaloneTick,
   ensureStandaloneTickTask,
   registerStandaloneTickWorker,
+  STANDALONE_TICK_TASK_NAME,
 } from "./scheduled-task/standalone-tick.js";
 export const SCHEDULED_TASK_RUNNER_REGISTRATION_TIMEOUT =
   "SCHEDULED_TASK_RUNNER_REGISTRATION_TIMEOUT";
@@ -224,51 +213,6 @@ export async function waitForScheduledTaskRunnerService(
     signal,
   )) as ScheduledTaskRunnerService;
 }
-/** Opt-in supplemental packs selectable via `ELIZA_SCHEDULING_DEFAULT_PACKS`. */
-const OPT_IN_DEFAULT_PACK_BUILDERS: Readonly<
-  Record<string, (opts: { agentId: string }) => DefaultTaskPack>
-> = {
-  [ALPHA_ROUTINES_PACK_ID]: buildAlphaRoutinesPack,
-};
-
-/**
- * Register the opt-in supplemental packs named by the
- * `ELIZA_SCHEDULING_DEFAULT_PACKS` setting or environment variable. Unknown
- * ids are reported (not silently ignored) and do not block the known packs
- * from seeding.
- */
-export function registerOptInDefaultPacks(runtime: IAgentRuntime): string[] {
-  // Runtime setting first, then the deployment environment (e.g. the
-  // measured dstack compose), matching other single-tenant host settings.
-  const requested = parseDefaultPackSetting(
-    resolveSetting(runtime, SCHEDULING_DEFAULT_PACKS_SETTING),
-  );
-  const registered: string[] = [];
-  for (const packId of requested) {
-    const build = Object.hasOwn(OPT_IN_DEFAULT_PACK_BUILDERS, packId)
-      ? OPT_IN_DEFAULT_PACK_BUILDERS[packId]
-      : undefined;
-    if (!build) {
-      runtime.reportError(
-        "scheduling.optInDefaultPack",
-        new ElizaError(`Unknown opt-in default pack "${packId}"`, {
-          code: "SCHEDULING_UNKNOWN_DEFAULT_PACK",
-          context: {
-            setting: SCHEDULING_DEFAULT_PACKS_SETTING,
-            packId,
-            known: Object.keys(OPT_IN_DEFAULT_PACK_BUILDERS),
-          },
-        }),
-        { agentId: runtime.agentId },
-      );
-      continue;
-    }
-    registerDefaultTaskPack(runtime, build({ agentId: runtime.agentId }));
-    registered.push(packId);
-  }
-  return registered;
-}
-
 export const schedulingPlugin: Plugin = {
   name: "@elizaos/plugin-scheduling",
   description:
@@ -307,7 +251,9 @@ export const schedulingPlugin: Plugin = {
     },
   ],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    registerStandaloneTickWorker(runtime);
+    const tickWorker = registerStandaloneTickWorker(runtime);
+    const ownsTick = () =>
+      runtime.getTaskWorker(STANDALONE_TICK_TASK_NAME) === tickWorker;
     // Seed registered default-task packs through the runner boot hook: the
     // hook fires with the live service instance the moment
     // ScheduledTaskRunnerService.start constructs it, so seeding structurally
@@ -318,6 +264,7 @@ export const schedulingPlugin: Plugin = {
     registerScheduledTaskRunnerBootHook(runtime, async (service) => {
       try {
         await runtime.initPromise;
+        if (!ownsTick()) return;
         // Register the built-in fallback pack only when no consumer host has
         // injected deps (e.g. a stock mobile boot without
         // @elizaos/plugin-personal-assistant). When a host is present it owns
@@ -335,7 +282,6 @@ export const schedulingPlugin: Plugin = {
             buildFallbackDefaultPack({ agentId: runtime.agentId }),
           );
         }
-        registerOptInDefaultPacks(runtime);
         const runner = service.getRunner({ agentId: runtime.agentId });
         await seedRegisteredTaskPacks(runtime, runner);
         // Fallback TaskService worker: without this, a runtime with no
@@ -344,7 +290,7 @@ export const schedulingPlugin: Plugin = {
         // rows sat `scheduled` forever (sol-dev cutover QA 2026-08-11).
         // The worker defers per-invocation when a consumer host's deps are
         // registered. Core TaskService remains the only wall clock.
-        await ensureStandaloneTickTask(runtime);
+        if (ownsTick()) await ensureStandaloneTickTask(runtime);
       } catch (error) {
         // error-policy:J7 boot seeding is diagnostic work relative to the
         // runner service: report it so boot health observers see the failure

@@ -1,0 +1,58 @@
+{
+  "sources": [
+    "plugins/plugin-workflow/src/actions/workflow.ts",
+    "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+    "plugins/plugin-workflow/src/services/workflow-service.ts",
+    "plugins/plugin-workflow/__tests__/integration/workflow-action-effects-e2e.test.ts",
+    "plugins/plugin-assistant/quint/check-workflow-device-admission.mjs",
+    "plugins/plugin-assistant/quint/workflow-device-admission-conformance.json",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/vitest-conformance.ts"
+  ],
+  "conformance": "plugins/plugin-assistant/quint/check-workflow-device-admission.mjs",
+  "bounds": {
+    "domain": "One fixed owner, one activation or deactivation, selected version zero or omitted legacy field or malformed field, one same-owner concurrent edit, versions zero through two.",
+    "projection": "Action validation refuses malformed present values. The embedded workflow service checks the selected version under its existing write lock. Omitted version keeps the existing unconditional latest-version contract. The receipt keeps the committed version if a later edit occurs.",
+    "conformance": "The required existing real on-disk PGlite integration runs the WORKFLOW handler, canonical settlement and evaluator. It checks malformed/stale refusals with no mutation or fabricated effect, valid selected activation/deactivation, and the omitted-field legacy path.",
+    "limits": "Finite projection, not a machine-checked refinement. Owner metadata is fixed. Arbitrary concurrent writers, other processes, engine publication and runtime scheduling are outside this model."
+  },
+  "cases": [
+    {
+      "name": "ActivationVersionAdmission",
+      "main": "ActivationVersionAdmission",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OnlyAdmittedVersionChanges",
+        "MalformedNeverMutates",
+        "ForeignOwnerNeverMutates",
+        "ReceiptNamesCommittedVersion"
+      ],
+      "temporal": [
+        "FairSettlement",
+        "Settles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "FairSettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance: a continuously enabled modeled validation, commit or settlement action eventually runs. Provider success and real scheduler fairness are not proved."
+          ]
+        },
+        {
+          "property": "Settles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness: stuttering can prevent a queued attempt from settling. A temporal loop counterexample is required."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 500,
+      "deadlock": false
+    }
+  ]
+}

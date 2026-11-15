@@ -6,9 +6,7 @@
  * types/memory-storage.ts, which re-imports these as its persistence boundary.
  */
 
-import type { JsonPrimitive, JsonValue, UUID } from "./primitives.ts";
-
-export type { JsonPrimitive, JsonValue };
+import type { JsonValue, UUID } from "./primitives.ts";
 
 export enum LongTermMemoryCategory {
 	EPISODIC = "episodic",

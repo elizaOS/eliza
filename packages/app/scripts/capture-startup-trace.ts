@@ -11,7 +11,7 @@
  * captures those paths too.
  *
  * Usage:
- *   node scripts/capture-startup-trace.ts [--url <renderer-url>] [--runs N]
+ *   bun scripts/capture-startup-trace.ts [--url <renderer-url>] [--runs N]
  *        [--out <file.json>] [--wait-ready] [--timeout <ms>] [--headed]
  *
  *   --url         renderer URL (default http://localhost:$ELIZA_UI_PORT|2138)

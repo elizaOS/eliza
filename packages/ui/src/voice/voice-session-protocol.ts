@@ -34,6 +34,8 @@ export const DEFAULT_DOWNLINK_CODEC: VoiceSessionCodec = "pcm16";
 export const VOICE_SESSION_SAMPLE_RATE = 16000 as const;
 // ── Client -> server control frames ────────────────────────────────────
 export interface ClientHelloFrame {
+  turnTerminal?: true;
+  leaseRenewal?: true;
   t: "hello";
   token: string;
   protocol: number;
@@ -61,6 +63,12 @@ export interface ClientBargeInFrame {
 }
 export interface ClientByeFrame {
   t: "bye";
+  intent?: {
+    version: 1;
+    kind: "user_stop" | "budget_rotation";
+    generation: string;
+    successorSessionId?: string;
+  };
 }
 export type ClientControlFrame =
   | {
@@ -75,6 +83,8 @@ export type ClientControlFrame =
   | ClientByeFrame;
 // ── Server -> client control / state events ────────────────────────────
 export interface ServerReadyEvent {
+  turnTerminal?: true;
+  leaseExpiresAt?: number;
   t: "ready";
   uiContext?: boolean;
   playbackCompletion?: boolean;
@@ -103,6 +113,12 @@ export interface ServerLlmFirstTextEvent {
 export interface ServerProgressEvent {
   t: "progress";
   text: string;
+  traceId: string;
+}
+/** Content-free activity name shown while a turn works; never spoken or saved. */
+export interface ServerActivityEvent {
+  t: "activity";
+  label: string;
   traceId: string;
 }
 export interface ServerSpeakingStartEvent {
@@ -166,6 +182,13 @@ export interface ServerUsageEvent {
   traceId: string;
 }
 export type ServerControlFrame =
+  | { t: "lease_extended"; sessionId: string; expiresAt: number }
+  | {
+      t: "turn_terminal";
+      traceId: string;
+      outcome: "failed" | "ignored";
+      code?: string;
+    }
   | {
       t: "reply_complete";
       traceId: string;
@@ -177,6 +200,7 @@ export type ServerControlFrame =
   | ServerSttFinalEvent
   | ServerLlmFirstTextEvent
   | ServerProgressEvent
+  | ServerActivityEvent
   | ServerSpeakingStartEvent
   | ServerSpeakingEndEvent
   | ServerAssistantPlayingEvent
@@ -193,6 +217,8 @@ export interface VoiceSessionCodecOffer {
   codecs: VoiceSessionCodec[];
 }
 export interface VoiceSessionMintResponse {
+  turnTerminal?: true;
+  leaseRenewal?: true;
   sessionId: string;
   wsUrl: string;
   token: string;
@@ -200,6 +226,10 @@ export interface VoiceSessionMintResponse {
   uplink: VoiceSessionCodecOffer;
   downlink: VoiceSessionCodecOffer;
   iceServers?: unknown | null;
+  stopIntentVersion?: 1;
+  stopIntentGeneration?: string;
+  /** Host guarantees predecessor retirement before opening a replacement provider. */
+  rotationPreparation?: "retire-before-open-v1";
 }
 // ── Serialization / parsing (pure) ─────────────────────────────────────
 /** Serialize a client control frame to a JSON text-frame payload. */
@@ -227,6 +257,54 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
   ).t;
   if (typeof t !== "string") return null;
   if (!isKnownServerType(t)) return null;
+  if (t === "ready") {
+    const frame = parsed as Record<string, unknown>;
+    if (
+      frame.leaseExpiresAt !== undefined &&
+      !Number.isSafeInteger(frame.leaseExpiresAt)
+    )
+      return null;
+  }
+  if (t === "lease_extended") {
+    const frame = parsed as Record<string, unknown>;
+    if (
+      typeof frame.sessionId !== "string" ||
+      !frame.sessionId ||
+      !Number.isSafeInteger(frame.expiresAt) ||
+      Object.keys(frame).some(
+        (key) => !["t", "sessionId", "expiresAt"].includes(key),
+      )
+    )
+      return null;
+    return {
+      t,
+      sessionId: frame.sessionId,
+      expiresAt: frame.expiresAt as number,
+    };
+  }
+  if (t === "turn_terminal") {
+    const frame = parsed as Record<string, unknown>;
+    if (
+      typeof frame.traceId !== "string" ||
+      !frame.traceId ||
+      frame.traceId.length > 256 ||
+      (frame.outcome !== "failed" && frame.outcome !== "ignored") ||
+      (frame.code !== undefined &&
+        (frame.outcome !== "failed" ||
+          typeof frame.code !== "string" ||
+          !/^[A-Za-z0-9_]{1,64}$/.test(frame.code))) ||
+      Object.keys(frame).some(
+        (key) => !["t", "traceId", "outcome", "code"].includes(key),
+      )
+    )
+      return null;
+    return {
+      t,
+      traceId: frame.traceId,
+      outcome: frame.outcome,
+      ...(typeof frame.code === "string" ? { code: frame.code } : {}),
+    };
+  }
   if (t === "reply_complete") {
     const frame = parsed as Record<string, unknown>;
     if (
@@ -267,6 +345,22 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
     )
       return null;
     return { t, text, traceId };
+  }
+  if (t === "activity") {
+    const { label, traceId } = parsed as {
+      label?: unknown;
+      traceId?: unknown;
+    };
+    if (
+      typeof label !== "string" ||
+      !label.trim() ||
+      label.length > 160 ||
+      typeof traceId !== "string" ||
+      !traceId.trim() ||
+      traceId.length > 256
+    )
+      return null;
+    return { t, label, traceId };
   }
   if (t === "navigate_view") {
     const viewId = readBoundedString(
@@ -343,13 +437,16 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
   return parsed as ServerControlFrame;
 }
 const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
+  "lease_extended",
   "ready",
   "stt_partial",
   "stt_eager_eot",
   "stt_final",
   "llm_first_text",
   "reply_complete",
+  "turn_terminal",
   "progress",
+  "activity",
   "speaking_start",
   "speaking_end",
   "assistant_playing",
@@ -384,7 +481,10 @@ export function isUsableMintResponse(
     typeof v.wsUrl === "string" &&
     v.wsUrl.length > 0 &&
     typeof v.token === "string" &&
-    v.token.length > 0
+    v.token.length > 0 &&
+    ((v.stopIntentVersion === undefined &&
+      v.stopIntentGeneration === undefined) ||
+      (v.stopIntentVersion === 1 && v.stopIntentGeneration === v.sessionId))
   );
 }
 /**

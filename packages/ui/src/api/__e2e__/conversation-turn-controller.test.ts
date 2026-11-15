@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  APP_PAUSE_DETACH,
   type ConversationRoom,
   type ConversationTurnContext,
   ConversationTurnController,
@@ -394,6 +395,37 @@ describe("ConversationTurnController.request", () => {
     await tick(); abort.abort(); await rejected;
     expect(h.sends[0].turn.signal.aborted).toBe(true);
     expect(h.stops).toEqual([room]);
+  });
+
+  it("detaches on an app pause: no remote stop, no stopped turn, next send admitted", async () => {
+    const h = harness();
+    const abort = new AbortController();
+    const reply = h.controller.request("long task", { conversation: room, signal: abort.signal });
+    const rejected = expect(reply).rejects.toMatchObject({
+      name: "AbortError", notDispatched: false, cause: APP_PAUSE_DETACH,
+    });
+    await tick(); abort.abort(APP_PAUSE_DETACH); await rejected;
+    expect(h.sends[0].turn.signal.aborted).toBe(true);
+    expect(h.sends[0].turn.current()).toBe(false);
+    expect(h.stops).toEqual([]);
+    expect(h.controller.stopped).toBeNull();
+    expect(h.controller.pending).toBe(false);
+    expect(h.controller.conversation).toEqual(room);
+    const next = h.controller.request("next", { conversation: room });
+    await tick();
+    expect(h.sends).toHaveLength(2);
+    h.sends[1].reply.resolve("next reply");
+    expect(await next).toBe("next reply");
+  });
+
+  it("still stops the server turn for a plain abort", async () => {
+    const h = harness();
+    const abort = new AbortController();
+    const reply = h.controller.request("hello", { conversation: room, signal: abort.signal });
+    const rejected = expect(reply).rejects.toMatchObject({ name: "AbortError" });
+    await tick(); abort.abort(); await rejected;
+    expect(h.stops).toEqual([room]);
+    expect(h.controller.stopped?.clientMessageId).toBe("client-1");
   });
 
   it("never lets an old caller's cancellation interrupt its successor", async () => {

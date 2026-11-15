@@ -3,6 +3,7 @@ import {
   CALENDAR_AVAILABILITY_CAPABILITY,
   CALENDAR_NAMED_READ_CAPABILITY,
   NAMED_TARGET_CAPABILITY,
+  NOTES_LIST_FILTER_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
 } from "@elizaos/contracts";
 import {
@@ -29,6 +30,7 @@ import {
   type DeviceCredential,
   type DeviceReadCompletionHint,
   deviceProposalDigest,
+  FILES_CAPABILITY,
 } from "@elizaos/plugin-assistant";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
@@ -95,8 +97,13 @@ export function deviceRequestCredential(
     "calendar.agenda-read.v1",
     "notes.local-record.v1",
     "notes.query.v1",
+    "notes.organize.v1",
+    NOTES_LIST_FILTER_CAPABILITY,
+    "photos.library.v1",
+    "photos.view.v1",
     CALENDAR_NAMED_READ_CAPABILITY,
     CALENDAR_AVAILABILITY_CAPABILITY,
+    FILES_CAPABILITY,
     NAMED_TARGET_CAPABILITY,
     NOTES_SEARCH_CAPABILITY,
     "reminders.local-record.v1",
@@ -111,6 +118,14 @@ export function deviceRequestCredential(
     // phones advertise them only with the native telephony profile.
     "phone.dial.v1",
     "contacts.lookup.v1",
+    // Owner-approved calls, contact changes, contact SMS and open-item reads
+    // (@elizaos/contracts/telephony-actions), under the same native profile.
+    "phone.call.v1",
+    "contacts.write.v1",
+    "sms.compose.v1",
+    "messages.read.v1",
+    "voicemail.read.v1",
+    "voicemail.delete.v1",
   ]);
   if (
     capabilities.length > allowedCapabilities.size ||
@@ -182,7 +197,12 @@ export async function handleDeviceActionRoutes(
             "calendar.agenda-read.v1",
             "notes.local-record.v1",
             "notes.query.v1",
+            "notes.organize.v1",
+            NOTES_LIST_FILTER_CAPABILITY,
+            "photos.library.v1",
+            "photos.view.v1",
             CALENDAR_AVAILABILITY_CAPABILITY,
+            FILES_CAPABILITY,
             NAMED_TARGET_CAPABILITY,
             NOTES_SEARCH_CAPABILITY,
             "reminders.local-record.v1",
@@ -271,7 +291,7 @@ export async function handleDeviceActionRoutes(
     if (method === "POST" && pathname === "/api/client-devices/register") {
       const body = await ctx.readJsonBody<{
         label: string;
-        workflowProtocol?: 0 | 1 | 2;
+        workflowProtocol?: number;
       }>(req, res);
       if (body)
         json(

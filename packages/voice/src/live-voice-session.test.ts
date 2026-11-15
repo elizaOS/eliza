@@ -4,6 +4,7 @@ import {
   createLiveSegmentStream,
   createLiveVoiceSession,
   encodeLiveFrame,
+  LIVE_MAX_UNPOSTED_FRAMES,
   type LiveAudioFrame,
   type LiveCaptureOpenOptions,
   type LiveCaptureStream,
@@ -531,6 +532,46 @@ describe("live segment stream", () => {
     await flush();
     expect(results).toEqual([null, null]);
   });
+
+  it("stops with one TRANSPORT failure when the agent does not take the audio", async () => {
+    const posts: Body[] = [];
+    const segments: (string | null)[] = [];
+    const fatal: string[] = [];
+    let answer: ((value: unknown) => void) | undefined;
+    const stream = createLiveSegmentStream({
+      transport: {
+        // The agent stalls until after the stream has overflowed.
+        post: (body: Record<string, unknown>) => {
+          posts.push(body as Body);
+          return new Promise((resolve) => {
+            answer = resolve;
+          });
+        },
+      },
+      onSegment: (text) => segments.push(text),
+      onFatal: (code) => fatal.push(code),
+    });
+    const batch = Array.from({ length: 32 }, (_, index) => small(index));
+    void stream.accept(batch, [{ type: "speech-start", timestampMs: 1 }]);
+    await flush();
+    void stream.accept(batch, [{ type: "speech-end", timestampMs: 2 }]);
+    for (let index = 0; index < LIVE_MAX_UNPOSTED_FRAMES / 32; index++)
+      void stream.accept(batch, []);
+    await flush();
+    expect(fatal).toEqual(["TRANSPORT"]);
+    expect(segments).toEqual([null]);
+    expect(stream.speaking()).toBe(false);
+    expect(posts).toHaveLength(1);
+    // A provider that ignores abort can answer late. It cannot revive the stream,
+    // post its queued frames or manufacture a transcript after the explicit failure.
+    answer?.({ final: { turnId: "late", text: "late text", mode: "stream" } });
+    await flush();
+    await stream.accept(batch, [{ type: "speech-start", timestampMs: 3 }]);
+    await stream.close();
+    expect(posts).toHaveLength(1);
+    expect(fatal).toEqual(["TRANSPORT"]);
+    expect(segments).toEqual([null]);
+  });
 });
 
 /** A host capture that records how it was opened and lets the test drive its callbacks. */
@@ -540,6 +581,7 @@ function fakeOpener() {
   let cancels = 0;
   let segmentsOnClose: string[] = [];
   let closeFailure: Error | undefined;
+  let cancelFailure: Error | undefined;
   const open = async (
     input: LiveCaptureOpenOptions,
   ): Promise<LiveCaptureStream> => {
@@ -556,6 +598,7 @@ function fakeOpener() {
       },
       async cancel() {
         cancels++;
+        if (cancelFailure) throw cancelFailure;
       },
     };
   };
@@ -571,6 +614,9 @@ function fakeOpener() {
     },
     failClose(error: Error | undefined) {
       closeFailure = error;
+    },
+    failCancel(error: Error | undefined) {
+      cancelFailure = error;
     },
   };
 }
@@ -636,6 +682,95 @@ describe("live dictation over a host capture", () => {
     expect(Number.isNaN(stopped[0]?.durationMs)).toBe(true);
     // Transcribe can start again after a lost capture.
     await expect(dictation.startRecording()).resolves.toBeTruthy();
+  });
+
+  it("keeps a refused cancel: the repeat asks the same capture, and only its answer frees Transcribe", async () => {
+    const host = fakeOpener();
+    const dictation = createLiveDictation(host.open);
+    await dictation.startRecording();
+    host.failCancel(new Error("cancel refused"));
+    await expect(dictation.cancelRecording()).rejects.toThrow("cancel refused");
+    await expect(dictation.cancelRecording()).rejects.toThrow("cancel refused");
+    expect(host.cancels).toBe(2);
+    await expect(dictation.startRecording()).rejects.toThrow("cancel refused");
+    expect(host.cancels).toBe(3);
+    expect(host.opened).toHaveLength(1);
+    host.failCancel(undefined);
+    await dictation.cancelRecording();
+    expect(host.cancels).toBe(4);
+    await dictation.cancelRecording();
+    expect(host.cancels).toBe(4);
+    await dictation.startRecording();
+    expect(host.opened).toHaveLength(2);
+  });
+
+  it("drops speech that arrives while a refused cancel waits for its repeat", async () => {
+    const host = fakeOpener();
+    const dictation = createLiveDictation(host.open);
+    const { recordingId } = await dictation.startRecording();
+    host.failCancel(new Error("cancel refused"));
+    await expect(dictation.cancelRecording()).rejects.toThrow("cancel refused");
+    host.opened[0]?.onSegment("private");
+    await expect(
+      dictation.transcribe(recordingId, new AbortController().signal),
+    ).rejects.toThrow("no longer available");
+  });
+
+  it("keeps a failed finalize whose cancel is refused until the host's cancel confirms", async () => {
+    const host = fakeOpener();
+    const dictation = createLiveDictation(host.open);
+    await dictation.startRecording();
+    host.failClose(new Error("close not confirmed"));
+    host.failCancel(new Error("cancel refused"));
+    await expect(dictation.stopRecording()).rejects.toThrow(
+      "close not confirmed",
+    );
+    await expect(dictation.startRecording()).rejects.toThrow("cancel refused");
+    expect(host.opened).toHaveLength(1);
+    host.failCancel(undefined);
+    host.failClose(undefined);
+    await dictation.cancelRecording();
+    await dictation.startRecording();
+    expect(host.opened).toHaveLength(2);
+  });
+
+  it("keeps a lost capture whose cancel is refused: no capture opens over it", async () => {
+    const host = fakeOpener();
+    const dictation = createLiveDictation(host.open);
+    await dictation.startRecording();
+    host.opened[0]?.onLost(new Error("mic"));
+    host.failCancel(new Error("cancel refused"));
+    await expect(dictation.stopRecording()).rejects.toThrow(
+      "No transcription is recording",
+    );
+    await expect(dictation.startRecording()).rejects.toThrow("cancel refused");
+    expect(host.opened).toHaveLength(1);
+    host.failCancel(undefined);
+    await dictation.startRecording();
+    expect(host.opened).toHaveLength(2);
+  });
+
+  it("keeps a capture that opens after Cancel until it confirms", async () => {
+    const host = fakeOpener();
+    let opened!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      opened = resolve;
+    });
+    const dictation = createLiveDictation(async (input) => {
+      await gate;
+      return host.open(input);
+    });
+    const starting = dictation.startRecording();
+    await dictation.cancelRecording();
+    host.failCancel(new Error("cancel refused"));
+    opened();
+    await expect(starting).rejects.toThrow("cancel refused");
+    await expect(dictation.cancelRecording()).rejects.toThrow("cancel refused");
+    expect(host.cancels).toBe(2);
+    host.failCancel(undefined);
+    await dictation.cancelRecording();
+    await dictation.startRecording();
+    expect(host.opened).toHaveLength(2);
   });
 
   it("releases the recording when the host cannot confirm the finalize", async () => {
@@ -723,5 +858,21 @@ describe("assistant listen port over a host capture", () => {
     expect(host.closes).toEqual([undefined]);
     await capture.cancel();
     expect(host.cancels).toBe(1);
+  });
+
+  it("forwards the assistant's automatic reopen to the host, never on a first open", async () => {
+    const host = fakeOpener();
+    const listen = liveAssistantListener(host.open);
+    const handlers = {
+      signal: new AbortController().signal,
+      onSpeechStart() {},
+      onSpeechEnd() {},
+      onSegment() {},
+      onEnd() {},
+    };
+    await listen(handlers);
+    await listen({ ...handlers, reopen: true });
+    expect(host.opened.map((input) => input.reopen)).toEqual([undefined, true]);
+    expect(host.opened[0]).not.toHaveProperty("reopen");
   });
 });

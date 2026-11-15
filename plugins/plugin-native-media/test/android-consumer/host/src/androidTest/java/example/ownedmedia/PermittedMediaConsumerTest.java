@@ -128,4 +128,42 @@ public final class PermittedMediaConsumerTest {
       resolver.delete(item, null, null);
     }
   }
+
+  @Test
+  public void pauseAndResumeKeepTheScopeVersionAndExpireOldCursors() throws Exception {
+    Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+    for (String permission : Build.VERSION.SDK_INT >= 33
+            ? new String[] {Manifest.permission.READ_MEDIA_IMAGES,
+                  Manifest.permission.READ_MEDIA_VIDEO}
+            : new String[] {Manifest.permission.READ_EXTERNAL_STORAGE})
+      InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(
+          context.getPackageName(), permission);
+    ContentResolver resolver = context.getContentResolver();
+    String prefix = "scope-" + UUID.randomUUID().toString().substring(0, 8);
+    List<Uri> items = new ArrayList<>();
+    items.add(publish(resolver, prefix + "-a.jpg", jpeg()));
+    items.add(publish(resolver, prefix + "-b.jpg", jpeg()));
+    PermittedMediaCatalog catalog = new PermittedMediaCatalog(context, false, () -> {});
+    try {
+      String version = catalog.scopeVersion();
+      String next =
+          catalog.list("", prefix, "image", false, "all", 0, Long.MAX_VALUE, 1).getString("next");
+      assertFalse(next.isEmpty());
+      catalog.foreground(false);
+      catalog.foreground(true);
+      assertEquals("pause and resume keep the scope version", version, catalog.scopeVersion());
+      try {
+        catalog.list(next, prefix, "image", false, "all", 0, Long.MAX_VALUE, 1);
+        fail("A cursor from before the resume must be refused as stale");
+      } catch (PermittedMediaCatalog.StaleCursor expected) {
+        // The caller pages again from the first page.
+      }
+      items.add(publish(resolver, prefix + "-c.jpg", jpeg()));
+      assertEquals("a new row is a library change, not a scope change", version,
+          catalog.scopeVersion());
+    } finally {
+      catalog.close();
+      for (Uri item : items) resolver.delete(item, null, null);
+    }
+  }
 }

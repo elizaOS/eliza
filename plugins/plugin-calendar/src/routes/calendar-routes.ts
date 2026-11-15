@@ -49,6 +49,8 @@ export interface CalendarRouteService {
   getCalendarFeed(
     requestUrl: URL,
     request?: GetLifeOpsCalendarFeedRequest,
+    now?: Date,
+    signal?: AbortSignal,
   ): Promise<unknown>;
   listCalendars(
     requestUrl: URL,
@@ -113,6 +115,8 @@ export interface CalendarRouteService {
 
 /** Host-provided HTTP plumbing. */
 export interface CalendarRouteDeps {
+  /** The calling transport owns cancellation. */
+  signal?: AbortSignal;
   method: string;
   pathname: string;
   url: URL;
@@ -314,7 +318,12 @@ export async function handleCalendarRoutes(
     return deps.runRoute(async (service) => {
       deps.json(
         ownerCalendarFeedWithReadDiagnostics(
-          await service.getCalendarFeed(url, parseCalendarFeedQuery(q, deps)),
+          await service.getCalendarFeed(
+            url,
+            parseCalendarFeedQuery(q, deps),
+            undefined,
+            deps.signal,
+          ),
         ),
       );
     });

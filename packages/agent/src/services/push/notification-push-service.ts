@@ -83,6 +83,7 @@ export class NotificationPushService extends Service {
   private readonly registry: PushTokenRegistry;
   private readonly providers: PushProviderSet;
   private unsubscribe: (() => void) | null = null;
+  private attachmentEpoch = 0;
 
   constructor(
     runtime: IAgentRuntime,
@@ -105,6 +106,7 @@ export class NotificationPushService extends Service {
   /** Subscribe to the notification rail (idempotent). */
   async attach(): Promise<void> {
     if (this.unsubscribe) return;
+    const epoch = this.attachmentEpoch;
     const anyConfigured =
       this.providers.ios.isConfigured() ||
       this.providers.android.isConfigured();
@@ -122,6 +124,8 @@ export class NotificationPushService extends Service {
       (this.runtime.hasService(ServiceType.AGENT_EVENT)
         ? await this.runtime.getServiceLoadPromise(ServiceType.AGENT_EVENT)
         : null);
+    // Lazy startup yields. A stop or another attach may have won meanwhile.
+    if (epoch !== this.attachmentEpoch || this.unsubscribe) return;
     if (!isSubscribableBus(bus)) {
       // No event bus (headless/test boot without AgentEventService): nothing to
       // subscribe to. The registry + routes still function for diagnostics.
@@ -225,6 +229,7 @@ export class NotificationPushService extends Service {
   }
 
   async stop(): Promise<void> {
+    this.attachmentEpoch += 1;
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;

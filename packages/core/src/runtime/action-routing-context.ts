@@ -1,7 +1,7 @@
-import type { BoundRequestOperationAttempt } from "../actions/task-extraction-context";
 /** AsyncLocalStorage propagates the executing action’s modelClass to nested useModel calls across asynchronous boundaries. */
 
-import { getAmbientSingleton, setAmbientSingleton } from "../ambient-context";
+import type { BoundRequestOperationAttempt } from "../actions/task-extraction-context";
+import { getAmbientSingleton } from "../ambient-context";
 import type { ActionModelClass } from "../types/components";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
@@ -25,24 +25,15 @@ export interface ActionRoutingContext {
 	readonly requestOperationAttempt?: BoundRequestOperationAttempt;
 }
 
-interface IActionRoutingContextManager {
-	run<T>(
-		ctx: ActionRoutingContext | undefined,
-		fn: () => T | Promise<T>,
-	): T | Promise<T>;
-	active(): ActionRoutingContext | undefined;
-}
-
 const MANAGER_KEY = Symbol.for("elizaos.actionRoutingContextManager");
 
-function initManagerSync(): IActionRoutingContextManager {
-	return new AsyncContextManager<ActionRoutingContext | undefined>();
-}
-
-function getOrCreate(): IActionRoutingContextManager {
+function getOrCreate(): AsyncContextManager<ActionRoutingContext | undefined> {
 	// Shared global slot is the single source of truth (no module-local cache),
 	// matching the trajectory context manager — see ambient-context.ts.
-	return getAmbientSingleton(MANAGER_KEY, initManagerSync);
+	return getAmbientSingleton(
+		MANAGER_KEY,
+		() => new AsyncContextManager<ActionRoutingContext | undefined>(),
+	);
 }
 
 export function runWithActionRoutingContext<T>(
@@ -65,14 +56,4 @@ export function runWithoutActionRoutingContext<T>(
 	fn: () => T | Promise<T>,
 ): T | Promise<T> {
 	return getOrCreate().run(undefined, fn);
-}
-
-/**
- * Test-only helper to inject a context manager (e.g. a deterministic stack
- * implementation). Not used in production.
- */
-export function setActionRoutingContextManager(
-	manager: IActionRoutingContextManager,
-): void {
-	setAmbientSingleton(MANAGER_KEY, manager);
 }

@@ -3,6 +3,7 @@ import {
   ApiError,
   failureResponse,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { MobileAppAuthProtocolError } from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
 import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 /** Reasons a retry of the same request can never succeed; the client must refresh billing. */
@@ -24,6 +25,24 @@ function reasonOf(error: unknown): string | null {
 export function checkoutFailure(c: AppContext, error: unknown): Response {
   const code = error instanceof Error && "code" in error ? error.code : null;
   const reason = reasonOf(error);
+  if (error instanceof MobileAppAuthProtocolError) {
+    // The credential's native client is unknown, disabled or re-registered: the app must
+    // sign in again. A broken server registration is a retryable outage, not the caller's fault.
+    return failureResponse(
+      c,
+      error.protocolCode === "invalid_client"
+        ? new ApiError(
+            401,
+            "authentication_required",
+            "This app credential can no longer manage billing. Sign in again.",
+          )
+        : new ApiError(
+            503,
+            "service_unavailable",
+            "Subscription checkout is not available for this app right now.",
+          ),
+    );
+  }
   if (error instanceof ApiError && error.status === 403)
     return failureResponse(
       c,

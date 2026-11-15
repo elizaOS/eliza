@@ -65,24 +65,19 @@ export function splitKeywordDoc(value: string | undefined): string[] {
 	return terms;
 }
 
-function compileKeywordTerm(term: string) {
+function compileKeywordTerm(term: string): (normalizedText: string) => boolean {
 	const normalizedTerm = normalizeKeywordMatchText(term);
+	if (!normalizedTerm) {
+		return () => false;
+	}
 	// Word-boundary terms test the normalized text: NFKC forms still match, a
 	// collapsed whitespace run lets multi-word terms span line breaks, and an
 	// emoji or accented letter elsewhere in the text keeps the boundaries.
-	const pattern = usesAsciiWordBoundaries(normalizedTerm)
-		? new RegExp(`\\b${escapePattern(normalizedTerm)}\\b`, "i")
-		: null;
-
-	return (normalizedText: string) => {
-		if (!normalizedText || !normalizedTerm) {
-			return false;
-		}
-		if (pattern) {
-			return pattern.test(normalizedText);
-		}
-		return normalizedText.includes(normalizedTerm);
-	};
+	if (usesAsciiWordBoundaries(normalizedTerm)) {
+		const pattern = new RegExp(`\\b${escapePattern(normalizedTerm)}\\b`, "i");
+		return (normalizedText) => pattern.test(normalizedText);
+	}
+	return (normalizedText) => normalizedText.includes(normalizedTerm);
 }
 
 export function textIncludesKeywordTerm(text: string, term: string): boolean {
@@ -164,8 +159,9 @@ export function findKeywordTermMatch(
 	text: string,
 	terms: readonly string[],
 ): string | undefined {
+	const normalizedText = normalizeKeywordMatchText(text);
 	const sorted = [...terms].sort((left, right) => right.length - left.length);
-	return sorted.find((term) => textIncludesKeywordTerm(text, term));
+	return sorted.find((term) => compileKeywordTerm(term)(normalizedText));
 }
 
 export function getCatalogValidationKeywordTerms(
@@ -177,29 +173,16 @@ export function getCatalogValidationKeywordTerms(
 ): string[] {
 	const doc = lookupValidationKeywordDoc(key);
 	if (options?.includeAllLocales) {
+		// Array.join writes an absent locale as an empty line, which splitKeywordDoc skips.
 		return splitKeywordDoc(
-			[doc.base, ...Object.values(doc.locales ?? {})]
-				.filter((value): value is string => typeof value === "string")
-				.join("\n"),
+			[doc.base, ...Object.values(doc.locales ?? {})].join("\n"),
 		);
 	}
 
 	return splitKeywordDoc(
 		`${doc.base ?? ""}\n${
-			options?.locale
-				? (doc.locales?.[options.locale as keyof typeof doc.locales] ?? "")
-				: ""
+			options?.locale ? (doc.locales?.[options.locale] ?? "") : ""
 		}`,
-	);
-}
-
-export function getCatalogValidationKeywordLocaleTerms(
-	key: string,
-	locale: string,
-): string[] {
-	const doc = lookupValidationKeywordDoc(key);
-	return splitKeywordDoc(
-		doc.locales?.[locale as keyof typeof doc.locales] ?? "",
 	);
 }
 
@@ -226,13 +209,4 @@ export function getValidationKeywordTerms(
 		...options,
 		locale: normalizeCharacterLanguage(options?.locale),
 	});
-}
-export function getValidationKeywordLocaleTerms(
-	key: string,
-	locale: unknown,
-): string[] {
-	return getCatalogValidationKeywordLocaleTerms(
-		key,
-		normalizeCharacterLanguage(locale),
-	);
 }

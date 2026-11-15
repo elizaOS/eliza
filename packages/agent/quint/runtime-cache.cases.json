@@ -1,0 +1,26 @@
+{
+  "sources": [
+    "packages/agent/src/runtime/tool-call-cache/cache.ts",
+    "packages/agent/src/runtime/tool-call-cache/disk-store.ts",
+    "packages/agent/src/runtime/tool-call-cache/lru.ts",
+    "packages/agent/src/runtime/tool-call-cache/key.ts",
+    "packages/agent/src/runtime/tool-call-cache/redact.ts",
+    "packages/agent/src/runtime/tool-call-cache/registry.ts"
+  ],
+  "bounds": {
+    "domain": "Two descriptor versions, two executions and TTL classes.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "runtime_cache",
+      "main": "runtime_cache",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

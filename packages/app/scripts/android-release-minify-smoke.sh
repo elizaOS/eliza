@@ -10,29 +10,10 @@ mkdir -p "$artifact_root/inline" "$artifact_root/logs"
 # The production Vite graph resolves @elizaos/core through its dist export.
 # A clean workflow checkout has no dist until this package boundary is built.
 bun run --cwd packages/core build
-bun run --cwd packages/app build:android:host-e2e
-
-# The release signing contract reads these variables. Generate a disposable
-# debug identity so this fork-safe proof does not require a repository secret.
-export ELIZAOS_KEYSTORE_PATH="${RUNNER_TEMP:?}/eliza-release-smoke.jks"
-export ELIZAOS_KEYSTORE_PASSWORD=android
-export ELIZAOS_KEY_ALIAS=androiddebugkey
-export ELIZAOS_KEY_PASSWORD=android
-keytool -genkeypair \
-  -keystore "$ELIZAOS_KEYSTORE_PATH" \
-  -storepass "$ELIZAOS_KEYSTORE_PASSWORD" \
-  -alias "$ELIZAOS_KEY_ALIAS" \
-  -keypass "$ELIZAOS_KEY_PASSWORD" \
-  -dname "CN=Eliza Android Release Smoke,O=elizaOS,C=US" \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 1 \
-  -noprompt
-test -s "$ELIZAOS_KEYSTORE_PATH"
-(
-  cd packages/app/platforms/android
-  ./gradlew -PelizaStripAgentAssets=true :app:assembleRelease
-)
+# The android-system target is the minified release build. The workflow sets
+# the ELIZAOS_KEYSTORE_* signing inputs to a disposable identity.
+test -s "${ELIZAOS_KEYSTORE_PATH:?}"
+bun run --cwd packages/app build:android:system
 test -s "$release_apk"
 
 unzip -p "$release_apk" 'classes*.dex' \

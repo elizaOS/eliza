@@ -26,6 +26,14 @@ public final class LocalCredentialBroker implements AutoCloseable {
     String read() throws Exception;
     String createForNewDatabase() throws Exception;
     boolean remove(String expectedKeyId) throws Exception;
+    /**
+     * The key of a slot this host kept apart because the bound account already held a key of its
+     * own (a refused adoption), or null. The gateway opens it only to merge its rows into the bound
+     * database. A host that never keeps such a slot keeps this default.
+     */
+    default String readStranded() throws Exception { return null; }
+    /** After the merge commits: crypto-erase the kept slot if it still holds {@code expectedKeyId}. */
+    default boolean completeStranded(String expectedKeyId) throws Exception { return false; }
   }
   /** Check launch/account ownership. Hosts must serialize owner transitions on this same guard object. */
   @FunctionalInterface public interface Guard { void check() throws Exception; }
@@ -118,7 +126,7 @@ public final class LocalCredentialBroker implements AutoCloseable {
         }
       } else if (operation.startsWith("task-key-")) {
         if (taskKeys == null || server.isClosed()) throw new IOException("Task key custody unavailable");
-        boolean removal = operation.equals("task-key-remove");
+        boolean removal = operation.equals("task-key-remove") || operation.equals("task-key-stranded-complete");
         if (body.length() != (removal ? 2 : 1)) throw new IOException("Invalid task key request");
         synchronized (taskKeyGuard) {
           if (server.isClosed()) throw new IOException("Task key custody retired");
@@ -127,6 +135,8 @@ public final class LocalCredentialBroker implements AutoCloseable {
             case "task-key-read": String key = taskKeys.read(); result.put("value", key == null ? JSONObject.NULL : key); break;
             case "task-key-create": result.put("value", java.util.Objects.requireNonNull(taskKeys.createForNewDatabase())); break;
             case "task-key-remove": result.put("removed", taskKeys.remove(body.getString("value"))); break;
+            case "task-key-stranded-read": String stranded = taskKeys.readStranded(); result.put("value", stranded == null ? JSONObject.NULL : stranded); break;
+            case "task-key-stranded-complete": result.put("removed", taskKeys.completeStranded(body.getString("value"))); break;
             default: throw new IOException("Unsupported task key operation");
           }
           taskKeyGuard.check();

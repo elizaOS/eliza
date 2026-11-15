@@ -30,11 +30,3 @@ export function getAmbientSingleton<T>(key: symbol, factory: () => T): T {
 export function setAmbientSingleton<T>(key: symbol, value: T): void {
 	ambientSlot()[key] = value;
 }
-
-/**
- * Read the process-global singleton at `key` without creating one. Returns
- * `undefined` when nothing has been stored yet.
- */
-export function peekAmbientSingleton<T>(key: symbol): T | undefined {
-	return ambientSlot()[key] as T | undefined;
-}

@@ -166,12 +166,8 @@ export async function handleTranscription(
   }
 
   try {
-    // Ride through the cloud's transient cold-cache warming 503: on a box
-    // whose text brain runs elsewhere the STT admission cache goes cold
-    // between rare calls and the first one 503s with a warming body that
-    // clears in ~1s — the raw-Response companion to the throw-shaped retries
-    // in image/video/music (#18323/#18325/#18333). A non-warming failure
-    // still throws immediately.
+    // Retry the cloud's typed transient 503 (see utils/warming.ts); any other
+    // failure throws immediately.
     let response: Response;
     let warmingRetries = 0;
     for (;;) {
@@ -184,7 +180,7 @@ export async function handleTranscription(
         if (waitSeconds !== null) {
           warmingRetries++;
           logger.warn(
-            `[ELIZAOS_CLOUD] STT cold-cache warming (503), retry ${warmingRetries}/2 after ${waitSeconds}s...`
+            `[ELIZAOS_CLOUD] STT transient unavailability (503), retry ${warmingRetries}/2 after ${waitSeconds}s...`
           );
           await new Promise((r) => setTimeout(r, waitSeconds * 1000));
           continue;

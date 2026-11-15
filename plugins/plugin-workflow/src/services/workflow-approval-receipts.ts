@@ -3,7 +3,9 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
+import { workflowOccurrenceNotRun } from '@elizaos/contracts/workflow-client';
 import { WorkflowApiError, type WorkflowExecution } from '../types/index';
+import { TYPED_SCHEDULE_INPUT } from './phone-workflow-spec';
 import { resolveSmithersWorkflowDir } from './smithers-runtime';
 import { workflowProcessCommand } from './workflow-process-host';
 export interface ApprovalReceipt {
@@ -29,6 +31,27 @@ const {Effect}=await import(pathToFileURL(smithersRequire.resolve('effect')).hre
 import {openSmithersStore} from 'smthrs/openSmithersStore';
 const input=JSON.parse(await Bun.stdin.text());const store=await openSmithersStore({mode:'read',backend:'sqlite',dbPath:input.dbPath});
 try{const pending=await Effect.runPromise(store.adapter.listPendingApprovals(input.runId));const decided=await Effect.runPromise(store.adapter.listAllDecidedApprovals(input.runId));process.stdout.write(JSON.stringify([...pending,...decided]));}finally{await store.cleanup();}`;
+/**
+ * A scheduled occurrence settled without running (missed, overlap, unavailable
+ * source) never opens a Smithers store, so it has no approvals to read. Same
+ * rule as notRunOccurrence, which this module cannot import without a cycle.
+ */
+function settledWithoutRun(execution: WorkflowExecution): boolean {
+  if (!execution.finished || execution.status !== 'finished') return false;
+  const [typed, hosted] = [
+    execution.input?.[TYPED_SCHEDULE_INPUT],
+    execution.input?.hostedDigest,
+  ].map((value) => !!value && typeof value === 'object' && !Array.isArray(value));
+  const settled = workflowOccurrenceNotRun(execution.output, hosted);
+  if (!settled) return false;
+  return (
+    typed ||
+    hosted ||
+    (settled.status === 'missed' &&
+      typeof execution.missedOccurrenceAt === 'string' &&
+      Number.isFinite(Date.parse(execution.missedOccurrenceAt)))
+  );
+}
 function bounded(value: unknown, max: number): string {
   if (typeof value !== 'string') return '';
   if (value.length > max)
@@ -45,7 +68,9 @@ export async function readApprovalReceipts(
   } catch (error) {
     if (
       (error as NodeJS.ErrnoException).code === 'ENOENT' &&
-      (execution.status === 'queued' || execution.status === 'running')
+      (execution.status === 'queued' ||
+        execution.status === 'running' ||
+        settledWithoutRun(execution))
     )
       return [];
     throw new WorkflowApiError('Approval store unavailable', 503);

@@ -675,7 +675,7 @@ export async function writeOrgBalanceHint(
     balanceRevision,
   };
   // Physical lifetime is orgBalanceStale (5m): the hint must survive past the
-  // orgBalance freshness window so getGateBalanceUsd can serve it stale-while-
+  // orgBalance freshness window so getGateBalanceHint can serve it stale-while-
   // revalidate. `balanceAt` is the freshness clock the reader checks; the debit
   // settler (lowerOrgBalanceHint) and top-ups (invalidateOrgBalanceHint) still
   // keep the served value correct on writes.
@@ -726,9 +726,8 @@ export async function lowerOrgBalanceHint(
  * debit's invalidation deletes the old hint, preventing the next Worker turn
  * from failing closed on an avoidable cache miss. The projection is not the
  * monetary authority: Worker provider dispatch is serialized by the
- * revision-aware InferenceAdmissionGate Durable Object. Non-Worker paths use
- * the atomic DB-ledger admission or reserve credits synchronously; the legacy
- * KV lane cannot dispatch from this projection. A delayed projection write can
+ * revision-aware InferenceAdmissionGate Durable Object, and non-Worker paths
+ * reserve credits synchronously. A delayed projection write can
  * therefore be stale, but it cannot authorize spend by itself; the next Durable
  * Object admission applies only a newer revision and accounts for active holds.
  */

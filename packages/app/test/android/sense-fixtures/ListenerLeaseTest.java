@@ -265,7 +265,7 @@ public final class ListenerLeaseTest {
   String[] systemui={IndicatorLease.SYSTEMUI_PACKAGE};
   check(IndicatorLease.admitsController(true,10_123,systemui,true),"platform-signed SystemUI in user 0");
   check(!IndicatorLease.admitsController(false,10_123,systemui,true),"without STATUS_BAR_SERVICE");
-  check(!IndicatorLease.admitsController(true,10_123,new String[]{"ai.elizaresearch.alphaphone"},false),"Alpha cannot renew");
+  check(!IndicatorLease.admitsController(true,10_123,new String[]{"ai.alphacompute.alphaphone"},false),"Alpha cannot renew");
   check(!IndicatorLease.admitsController(true,10_123,systemui,false),"a non-platform package named like SystemUI");
   check(!IndicatorLease.admitsController(true,1_010_123,systemui,true),"another user's SystemUI");
   check(!IndicatorLease.admitsController(true,10_123,new String[]{IndicatorLease.SYSTEMUI_PACKAGE,"other"},true),"shared UID");

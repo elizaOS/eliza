@@ -132,6 +132,7 @@ export function generateGoogleAuthUrl(params: {
   url.searchParams.set("state", state);
   url.searchParams.set("access_type", accessType);
   url.searchParams.set("prompt", prompt);
+  url.searchParams.set("include_granted_scopes", "true");
 
   return url.toString();
 }

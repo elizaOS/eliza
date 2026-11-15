@@ -139,11 +139,11 @@ public class OriginTransportTest {
   FormFieldData password=new FormFieldData();password.mOrigin="https://other.test:9443";password.mAutocompleteAttr="current-password";
   FormData form=FormData.createFormData(1,"page-controlled-form-name",origin,"https://top.test:443",java.util.List.of(username,password));
   android.view.ViewStructure output=new android.view.ViewStructure();form.fillViewStructure(output,(short)0);
-  equal(output.domain,"example.test");equal(output.extras.get("ai.elizaresearch.autofill.version"),1);
-  equal(output.extras.get("ai.elizaresearch.autofill.origin"),origin);equal(output.extras.get("ai.elizaresearch.autofill.topOrigin"),"https://top.test:443");
-  equal(output.children.get(0).extras.get("ai.elizaresearch.autofill.fieldOrigin"),origin);equal(output.children.get(1).extras.get("ai.elizaresearch.autofill.fieldOrigin"),"https://other.test:9443");
+  equal(output.domain,"example.test");equal(output.extras.get("ai.alphacompute.autofill.version"),1);
+  equal(output.extras.get("ai.alphacompute.autofill.origin"),origin);equal(output.extras.get("ai.alphacompute.autofill.topOrigin"),"https://top.test:443");
+  equal(output.children.get(0).extras.get("ai.alphacompute.autofill.fieldOrigin"),origin);equal(output.children.get(1).extras.get("ai.alphacompute.autofill.fieldOrigin"),"https://other.test:9443");
   equal(output.children.get(0).hints[0],"username");equal(output.children.get(1).hints[0],"current-password");
-  android.view.ViewStructure missing=new android.view.ViewStructure();new FormData(2,"untrusted",origin,java.util.List.of(username)).fillViewStructure(missing,(short)0);equal(missing.extras.get("ai.elizaresearch.autofill.topOrigin"),"");
+  android.view.ViewStructure missing=new android.view.ViewStructure();new FormData(2,"untrusted",origin,java.util.List.of(username)).fillViewStructure(missing,(short)0);equal(missing.extras.get("ai.alphacompute.autofill.topOrigin"),"");
   System.out.println("PASS patched Chromium FormData preserves browser full origins, ports, per-field mismatch and missing-top fail-closed marker");
  }
 }`,

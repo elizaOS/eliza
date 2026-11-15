@@ -336,7 +336,7 @@ const pageHtml = `<!doctype html><html><head><meta charset="utf-8">
   window.__VITE_ENV__ = { VITE_PLAYWRIGHT_TEST_AUTH: "true" };
   document.cookie = "eliza-test-auth=1";
   window.process = {
-    env: { NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH: "true" },
+    env: {},
     platform: "browser", cwd: () => "/", versions: {},
   };
   localStorage.setItem("steward_session_token", ${JSON.stringify(KEY)});

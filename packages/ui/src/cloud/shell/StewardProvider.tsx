@@ -47,17 +47,11 @@ export {
  * only the standard fields. Custom `VITE_*` vars are inlined only when read via
  * the literal property name — a dynamic `env[name]` lookup silently returns
  * `undefined` in prod. Read each env var by its literal name below.
+ *
+ * A build-time constant, so production bundles drop every test sign-in branch.
  */
-function isPlaywrightTestAuthEnabled(): boolean {
-  if (import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true") return true;
-  if (
-    typeof process !== "undefined" &&
-    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true"
-  ) {
-    return true;
-  }
-  return false;
-}
+const PLAYWRIGHT_TEST_AUTH_ENABLED =
+  import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true";
 
 const StewardAuthRuntimeProvider = lazy(
   () => import("./StewardProviderRuntime"),
@@ -182,7 +176,6 @@ function StewardConfigError() {
 export function StewardAuthProvider({ children }: { children: ReactNode }) {
   const hasLoggedConfigError = useRef(false);
   const location = useLocation();
-  const playwrightTestAuthEnabled = isPlaywrightTestAuthEnabled();
 
   const apiUrl = resolveBrowserStewardApiUrl();
   const tenantId = configuredStewardTenantId(DEFAULT_STEWARD_TENANT_ID);
@@ -190,7 +183,7 @@ export function StewardAuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (
-      playwrightTestAuthEnabled ||
+      PLAYWRIGHT_TEST_AUTH_ENABLED ||
       typeof window === "undefined" ||
       hasValidUrl ||
       hasLoggedConfigError.current
@@ -202,9 +195,9 @@ export function StewardAuthProvider({ children }: { children: ReactNode }) {
       scope: "steward.invalid-api-url",
       error: new Error("Steward API URL is invalid"),
     });
-  }, [hasValidUrl, playwrightTestAuthEnabled]);
+  }, [hasValidUrl]);
 
-  if (playwrightTestAuthEnabled) {
+  if (PLAYWRIGHT_TEST_AUTH_ENABLED) {
     return (
       <PlaywrightStewardAuthProvider>{children}</PlaywrightStewardAuthProvider>
     );

@@ -1,0 +1,48 @@
+{
+  "sources": [
+    "packages/auth/src/auth/account-storage.ts",
+    "packages/auth/src/vault/crypto.ts",
+    "packages/auth/src/vault/master-key.ts"
+  ],
+  "conformance": "packages/auth/quint/check-account-storage-migration.mjs",
+  "bounds": {
+    "domain": "Per-file legacy credential rewrite during locked reads.",
+    "limitations": [
+      "Two present files in one provider, at most two locked load or list calls, and one fixed list order. The finite file kinds represent plaintext, canonical and legacy authenticated envelopes, corrupt bytes and authenticated wrong identity. Initial generation can be absent or present.",
+      "Cryptographic correctness, lock ownership, key availability and atomic rename are assumptions. Credentials and metadata are opaque identities. The first published generation is symbolic, and unobserved candidates discarded before rename are outside generation uniqueness.",
+      "A failure before rename preserves original bytes. A directory sync failure after rename returns an error with the canonical file visible in this process. Earlier files in a list stay migrated if a later file rejects. Filesystem power loss, failed lock release and process death stay outside this model.",
+      "Missing files, arbitrary list lengths, multiple providers, key rotation, explicit writes and reset interleavings are outside this bound. Named scenarios use actual encrypted bytes and controlled filesystem faults. Windows skips the directory sync error scenario because the implementation omits that sync there."
+    ]
+  },
+  "cases": [
+    {
+      "name": "legacy-rewrite-and-publication",
+      "main": "AccountStorageMigration",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "PreservesContentsAndExistingGeneration",
+        "InvalidRecordsStayUntouched",
+        "OneCanonicalRewritePerFile",
+        "FailedReadHasNoResult",
+        "ReturnedRecordsAreCanonical",
+        "FailurePreservesPublicationBoundary",
+        "EarlierListRewriteSurvives"
+      ],
+      "temporal": ["AdmittedReadSettles"],
+      "temporalChecks": [
+        {
+          "property": "AdmittedReadSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of readWork settles an admitted operation by a result or error. Reads enter only after acquiring the existing lock.",
+            "The storage and crypto calls eventually return. The finite model does not require another call after error or prove scheduler fairness."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000
+    }
+  ]
+}

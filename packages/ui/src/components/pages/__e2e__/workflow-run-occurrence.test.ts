@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DIGEST_NOT_RUN_STATUSES } from "../../../../../../plugins/plugin-workflow/src/services/hosted-digest-policy";
 import { triggerRunMissed, workflowRunNotRun } from "../workflow-run-occurrence";
 
 const at = "2026-10-28T07:30:00.000Z";
@@ -78,6 +79,52 @@ describe("workflow run occurrence", () => {
         "Scheduled for 02:30 on 2026-03-08, a time the clocks skipped when they moved forward, so nothing ran. It is not run later; use Run now to start it once.",
       offerRunNow: true,
     });
+  });
+
+  it("presents a hosted digest's unavailable occurrence as not run", () => {
+    const text =
+      "Source expired. This schedule is paused until you renew the source. No fresh phone data was read.";
+    expect(
+      workflowRunNotRun(
+        {
+          status: "finished",
+          finished: true,
+          input: { hostedDigest: { status: "unavailable" } },
+          output: { status: "unavailable", scheduledAt: at, text },
+        },
+        iso,
+      ),
+    ).toEqual({
+      status: "unavailable",
+      label: "Not run — source unavailable",
+      notice: `Scheduled for ${at}. ${text}`,
+      offerRunNow: false,
+    });
+    // Only the hosted digest admission writes this settlement.
+    expect(
+      workflowRunNotRun({
+        status: "finished",
+        finished: true,
+        input: admitted,
+        output: { status: "unavailable", scheduledAt: at, text },
+      }),
+    ).toBeNull();
+  });
+
+  it("presents every status a hosted digest records without running as not run", () => {
+    for (const status of DIGEST_NOT_RUN_STATUSES)
+      expect(
+        workflowRunNotRun(
+          {
+            status: "finished",
+            finished: true,
+            input: { hostedDigest: { status } },
+            output: { status, scheduledAt: at, text: "Not run" },
+          },
+          iso,
+          false,
+        )?.status,
+      ).toBe(status);
   });
 
   it("leaves runs that ran, unfinished runs and malformed settlements alone", () => {

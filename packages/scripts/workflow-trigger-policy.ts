@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * Enforces one lightweight pull-request authority and one latest-tip branch
- * authority. Periodic and completion-chained triggers remain forbidden so the
- * canonical branch workflow remains the only automatic full-validation authority.
+ * Enforces one lightweight pull-request authority and one latest-tip promotion
+ * authority that runs on pushes to staging and main only. Periodic and
+ * completion-chained triggers remain forbidden so the promotion workflow
+ * remains the only automatic full-validation authority.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -17,7 +18,8 @@ const FORBIDDEN_EVENTS = new Set([
   "pull_request_target",
 ]);
 const CANONICAL_ADMISSION_WORKFLOW = "pr-validation.yml";
-const DEVELOP_AUTHORITY_WORKFLOW = "develop-full.yml";
+const PROMOTION_AUTHORITY_WORKFLOW = "develop-full.yml";
+const PROMOTION_PUSH_BRANCHES = ["staging", "main"];
 const FORBIDDEN_AUTOMATION_EVENTS = new Set(["schedule", "workflow_run"]);
 const REQUIRED_PR_BRANCHES = ["develop", "staging", "main"];
 const REQUIRED_PR_TYPES = [
@@ -50,7 +52,7 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
   const workflowsDir = path.join(repoRoot, ".github", "workflows");
   const failures = [];
   let files = 0;
-  let developPushWorkflows = 0;
+  let promotionPushWorkflows = 0;
   let sawCanonicalWorkflow = false;
   let sawCanonicalPullRequest = false;
   let sawCanonicalMergeGroup = false;
@@ -74,7 +76,7 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
     for (const [eventName, config] of entries) {
       if (FORBIDDEN_AUTOMATION_EVENTS.has(eventName)) {
         failures.push(
-          `${name}: ${eventName} is forbidden; Develop Full owns automatic post-merge validation`,
+          `${name}: ${eventName} is forbidden; Develop Full owns automatic promotion validation`,
         );
       }
       if (FORBIDDEN_EVENTS.has(eventName)) {
@@ -123,7 +125,7 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
       if (eventName !== "push") continue;
       if (!config || typeof config !== "object") {
         failures.push(
-          `${name}: push must be branch-filtered to develop (tag-only release pushes are allowed)`,
+          `${name}: push must be branch-filtered to staging and main (tag-only release pushes are allowed)`,
         );
         continue;
       }
@@ -132,31 +134,25 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
       const hasBranchIgnore = stringList(config["branches-ignore"]).length > 0;
       if (branches.length === 0 && tags.length > 0 && !hasBranchIgnore)
         continue;
-      if (
-        branches.length !== 3 ||
-        !["develop", "staging", "main"].every((branch) =>
-          branches.includes(branch),
-        ) ||
-        hasBranchIgnore
-      ) {
+      if (!sameStrings(branches, PROMOTION_PUSH_BRANCHES) || hasBranchIgnore) {
         failures.push(
-          `${name}: push branches must be exactly [develop, staging, main], received ${JSON.stringify(branches)}`,
+          `${name}: push branches must be exactly [staging, main], received ${JSON.stringify(branches)}`,
         );
         continue;
       }
-      developPushWorkflows += 1;
-      if (name !== DEVELOP_AUTHORITY_WORKFLOW) {
+      promotionPushWorkflows += 1;
+      if (name !== PROMOTION_AUTHORITY_WORKFLOW) {
         failures.push(
-          `${name}: develop push is reserved for ${DEVELOP_AUTHORITY_WORKFLOW}`,
+          `${name}: branch push is reserved for ${PROMOTION_AUTHORITY_WORKFLOW}`,
         );
       }
     }
   }
 
   if (files === 0) failures.push("No workflow files were found.");
-  if (developPushWorkflows !== 1)
+  if (promotionPushWorkflows !== 1)
     failures.push(
-      `Expected exactly one develop push workflow (${DEVELOP_AUTHORITY_WORKFLOW}); found ${developPushWorkflows}.`,
+      `Expected exactly one promotion push workflow (${PROMOTION_AUTHORITY_WORKFLOW}); found ${promotionPushWorkflows}.`,
     );
   if (sawCanonicalWorkflow && !sawCanonicalPullRequest) {
     failures.push(
@@ -176,13 +172,13 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
       ].join("\n"),
     );
   }
-  return { developPushWorkflows, files };
+  return { promotionPushWorkflows, files };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const repoRoot = path.resolve(import.meta.dirname, "../..");
   const result = validateWorkflowTriggerPolicy(repoRoot);
   console.log(
-    `[workflow-trigger-policy] verified ${result.files} workflows; ${result.developPushWorkflows} develop push surfaces`,
+    `[workflow-trigger-policy] verified ${result.files} workflows; ${result.promotionPushWorkflows} promotion push surfaces`,
   );
 }

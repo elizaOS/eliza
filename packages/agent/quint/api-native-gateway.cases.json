@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/native-host/gateway.mjs"],
+  "bounds": {
+    "domain": "Two owners, bounded epoch and three output frames.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_native_gateway",
+      "main": "api_native_gateway",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

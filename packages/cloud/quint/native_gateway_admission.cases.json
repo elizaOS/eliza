@@ -1,0 +1,37 @@
+{
+  "sources": [
+    "packages/agent/native-host/gateway.mjs",
+    "packages/agent/native-host/gateway.e2e.test.mjs",
+    "packages/host/native-host/gateway-bootstrap.mjs",
+    "packages/host/native-host/gateway-bootstrap.test.mjs",
+    "packages/cloud/quint/check-native-access.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One request, two owner identities, epochs 0..2; inference and owner reads acknowledge independently.",
+      "Matches source admission timing: requestEpoch is captured after inference readiness. A reset during inference discards the memo and reads current ownership again.",
+      "Dispatch and reply separately recheck current ownership. Upstream conversation-ID allocation, credential-provider truth, task presentation, streaming and process shutdown are outside this model."
+    ],
+    "progress": "Safety only; no scheduler or provider liveness claim."
+  },
+  "limitations": [
+    "One request, two owner identities, epochs 0..2; inference and owner reads acknowledge independently.",
+    "Matches source admission timing: requestEpoch is captured after inference readiness. A reset during inference discards the memo and reads current ownership again.",
+    "Dispatch and reply separately recheck current ownership. Upstream conversation-ID allocation, credential-provider truth, task presentation, streaming and process shutdown are outside this model.",
+    "Finite-state checks and runtime regressions do not establish whole-backend or TypeScript refinement."
+  ],
+  "cases": [
+    {
+      "name": "native-gateway-admission",
+      "main": "native_gateway_admission",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 25,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-native-access.ts"
+}

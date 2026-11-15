@@ -1,0 +1,175 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/jobs.ts",
+    "packages/cloud/shared/src/db/repositories/agent-lifecycle-execution-fence.ts",
+    "packages/cloud/shared/src/db/repositories/job-timestamp-fence.ts",
+    "packages/cloud/shared/src/db/schemas/jobs.ts",
+    "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
+    "packages/cloud/shared/src/db/schemas/agent-sandboxes.ts",
+    "packages/cloud/shared/src/lib/services/provisioning-job-types.ts",
+    "packages/cloud/shared/src/db/repositories/job-execution-lease.postgres.integration.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-job-execution-lease.mjs",
+  "bounds": "One already-due detached job, two process owners, two fresh generations, two concurrent recovery snapshots and live/expired/grace-elapsed lease ages. Current, absent and foreign lifecycle resources are separate cases.",
+  "limitations": [
+    "One detached job, two process owners, two fresh generations and at most two recovery snapshots. Zero represents a legacy NULL generation and resource3 represents a different job.",
+    "The job is already due. Shared-capacity admission, queue ordering across multiple jobs, tenant authorization before repository calls and worker dispatch are outside this slice. The claim action includes the repository organization filter.",
+    "Lease age partitions preserve live expiry, expired within the30-second takeover grace, and outside grace. Matching owners may renew any age until recovery commits.",
+    "Resource existence is fixed for each case. Current, missing and foreign resource fences are separate cases. Deletion during execution and complete lifecycle revision and stop-intent bookkeeping remain separate protocols.",
+    "Recovery here projects successful retry onto status, generation, quiescence and lease ownership. Attempts, interruption and requeue budgets, canary-specific payload fences, dependent writebacks and object storage contents are not abstracted as proved.",
+    "Claimed payload hydration happens after the claim transaction. Successful response and response failure have the same database projection. The PostgreSQL hook checks both persistence and recoverability.",
+    "Weak fairness of each pending recovery completion establishes bounded call completion. Overall job completion depends on dispatch and external work and is not claimed."
+  ],
+  "cases": [
+    {
+      "name": "plain",
+      "main": "JobExecutionLease_plain",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "LeaseIdentity",
+        "TerminalHasNoLease",
+        "FenceMatchesGeneration",
+        "ForeignFenceRetained",
+        "StaleGenerationCannotWrite"
+      ],
+      "temporal": ["RecoveryCallsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in JobExecutionLease_plain: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion.",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "lifecycle",
+      "main": "JobExecutionLease_lifecycle",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "LeaseIdentity",
+        "TerminalHasNoLease",
+        "FenceMatchesGeneration",
+        "ForeignFenceRetained",
+        "StaleGenerationCannotWrite"
+      ],
+      "temporal": ["RecoveryCallsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in JobExecutionLease_lifecycle: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion.",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "legacy",
+      "main": "JobExecutionLease_legacy",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "LeaseIdentity",
+        "TerminalHasNoLease",
+        "FenceMatchesGeneration",
+        "ForeignFenceRetained",
+        "StaleGenerationCannotWrite"
+      ],
+      "temporal": ["RecoveryCallsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in JobExecutionLease_legacy: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion.",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing-resource",
+      "main": "JobExecutionLease_missing_resource",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "LeaseIdentity",
+        "TerminalHasNoLease",
+        "FenceMatchesGeneration",
+        "ForeignFenceRetained",
+        "StaleGenerationCannotWrite"
+      ],
+      "temporal": ["RecoveryCallsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in JobExecutionLease_missing_resource: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion.",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "foreign-resource",
+      "main": "JobExecutionLease_foreign_resource",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "LeaseIdentity",
+        "TerminalHasNoLease",
+        "FenceMatchesGeneration",
+        "ForeignFenceRetained",
+        "StaleGenerationCannotWrite"
+      ],
+      "temporal": ["RecoveryCallsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in JobExecutionLease_foreign_resource: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion.",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

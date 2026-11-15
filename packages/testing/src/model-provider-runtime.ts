@@ -56,7 +56,6 @@ export async function createTestRuntimeWithModelProvider(
     plugins: [modelProvider, ...(options.plugins ?? [])],
     pgliteDir: options.pgliteDir,
     removePgliteDirOnCleanup: options.removePgliteDirOnCleanup,
-    flushTrajectoryWrites: options.flushTrajectoryWrites,
   });
   return {
     ...runtime,

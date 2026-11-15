@@ -10,7 +10,10 @@ import {
   setServerState,
 } from "./redis";
 
-export async function reconciler(instance: Server) {
+export async function reconciler(
+  instance: Server,
+  beforeReset: () => void = () => {},
+) {
   const name = instance.metadata?.name;
   const ns = instance.metadata?.namespace ?? "eliza-agents";
   const generation = instance.metadata?.generation ?? 0;
@@ -33,6 +36,7 @@ export async function reconciler(instance: Server) {
   }
 
   Log.info(`Reconciling Server ${name} (gen ${generation})`);
+  beforeReset();
 
   await applyResources(instance);
   Log.info(`Server ${name}: K8s resources applied`);
@@ -51,7 +55,7 @@ export async function reconciler(instance: Server) {
     (id) => !currentAgentIds.includes(id),
   );
   for (const agentId of removedAgents) {
-    await removeAgentServer(agentId);
+    await removeAgentServer(agentId, name);
     Log.info(`Server ${name}: removed agent mapping ${agentId}`);
   }
 

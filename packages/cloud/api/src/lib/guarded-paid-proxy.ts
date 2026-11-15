@@ -91,34 +91,21 @@ export async function withGuardedPaidProxyAdmission(
       ...(caller.apiKeyId ? { apiKey: { id: caller.apiKeyId } } : {}),
     };
 
-    if (!executionCtx || !caller.admissionSnapshot) {
-      if (executionCtx) {
-        logger.error(
-          "[PaidProxyAdmission] Combined admission snapshot missing",
-          {
-            requestId,
-            route: new URL(c.req.url).pathname,
-            organizationId: caller.user.organization_id,
-            authSource: caller.authSource,
-          },
-        );
-        return paidProxyApiErrorResponse(
-          new ApiError(
-            503,
-            "service_unavailable",
-            "Provider admission is unavailable; retry shortly",
-            { retryable: true, retryAfterSeconds: 1 },
-          ),
-        );
-      }
-      return dispatch({ mode: "compatibility", auth, requestId });
-    }
+    if (!executionCtx)
+      return await dispatch({ mode: "compatibility", auth, requestId });
 
-    return dispatch({
+    // A Worker caller authorized authoritatively (the combined auth cache is
+    // not qualified) carries no admission snapshot. Durable admission then
+    // takes the authoritative hold, policy and balance path itself, as the
+    // inference and speech routes do, instead of refusing the request.
+    // Keep the credential guard alive until dispatch has settled.
+    return await dispatch({
       mode: "combined",
       auth,
       requestId,
-      admissionSnapshot: caller.admissionSnapshot,
+      ...(caller.admissionSnapshot
+        ? { admissionSnapshot: caller.admissionSnapshot }
+        : {}),
       ...(caller.credential ? { credential: caller.credential } : {}),
       credentialForAdmission: () => credentialGuard.credentialForAdmission(),
       executionCtx,

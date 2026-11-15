@@ -4,49 +4,15 @@
  */
 
 import type { RegistryAppInfo } from "@elizaos/core/protocol";
-import { client } from "../../api/client";
-import {
-  getAvailableOverlayApps,
-  overlayAppToRegistryInfo,
-} from "../../apps/overlay-app-registry.js";
-import { fetchAvailableViews } from "../../hooks/useAvailableViews";
 import { writeAppsCache } from "./apps-cache";
-import { getInternalToolApps } from "./internal-tool-apps";
+import { loadMergedCatalogApps } from "./catalog-loader";
 /**
- * Fetch the merged apps catalog used by AppsView. Internal-tool entries are
- * authoritative — server / overlay duplicates are dropped via first-occurrence
- * dedup on `name`.
+ * Fetch the merged apps catalog used by the launcher catalog, hidden apps
+ * included. Shares the merge with the chat surfaces so the AOSP-only gate and
+ * per-source failure tolerance apply here too.
  */
-export async function loadAppsCatalog(): Promise<RegistryAppInfo[]> {
-  const serverAppsResult = await client
-    .listApps()
-    .then((apps) => ({ status: "fulfilled" as const, value: apps }))
-    .catch((reason) => ({ status: "rejected" as const, reason }));
-  const serverApps =
-    serverAppsResult.status === "fulfilled" ? serverAppsResult.value : [];
-  // A server list failure leaves catalog and overlay entries to fill the gap.
-  const networkViews = await fetchAvailableViews();
-  let catalogApps: RegistryAppInfo[];
-  try {
-    catalogApps = [
-      ...getInternalToolApps(networkViews),
-      ...(await client.listCatalogApps()),
-    ];
-  } catch {
-    catalogApps = getInternalToolApps(networkViews);
-  }
-  const overlayDescriptors = getAvailableOverlayApps()
-    .filter((oa) => !serverApps.some((a) => a.name === oa.name))
-    .filter((oa) => !catalogApps.some((a) => a.name === oa.name))
-    .map(overlayAppToRegistryInfo);
-  const seen = new Set<string>();
-  return [...catalogApps, ...overlayDescriptors, ...serverApps].filter(
-    (app) => {
-      if (seen.has(app.name)) return false;
-      seen.add(app.name);
-      return true;
-    },
-  );
+export function loadAppsCatalog(): Promise<RegistryAppInfo[]> {
+  return loadMergedCatalogApps({ includeHiddenApps: true });
 }
 /**
  * Fire-and-forget prefetch used at hydration so the Apps tab opens warm.

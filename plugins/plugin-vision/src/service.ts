@@ -47,7 +47,6 @@ import {
 import { FileBridgeCameraSource } from "./mobile/file-bridge-camera";
 import { OCRService } from "./ocr-service";
 import { ScreenCaptureService } from "./screen-capture";
-import { getTestImage } from "./test-input";
 import {
   type BoundingBox,
   type CameraInfo,
@@ -530,7 +529,7 @@ export class VisionService extends Service {
       // mobile platform env ElizaAgentService sets; a no-op everywhere else.
       // Static imports (not dynamic) so the source is in the mobile agent
       // bundle — a code-split chunk can't be loaded there (no filesystem).
-      if (process.env.ELIZA_MOBILE_PLATFORM === "android") {
+      if (process.env.ELIZA_PLATFORM === "android") {
         registerMobileCameraSource(new FileBridgeCameraSource());
       }
 
@@ -1044,24 +1043,17 @@ export class VisionService extends Service {
       const currentTime = Date.now();
       const previousSceneDescription = this.lastSceneDescription;
 
-      // Test-input override: when ELIZA_VISION_TEST_INPUT=image, replace the
-      // captured frame with the fixture PNG so the rest of the pipeline runs
-      // unmodified. Returns null when no override is active.
-      const testImage = getTestImage();
-
       // Convert frame to base64 for VLM
       const sharp = await getSharp();
-      const jpegBuffer = testImage
-        ? await sharp(testImage).jpeg().toBuffer()
-        : await sharp(frame.data, {
-            raw: {
-              width: frame.width,
-              height: frame.height,
-              channels: 4,
-            },
-          })
-            .jpeg()
-            .toBuffer();
+      const jpegBuffer = await sharp(frame.data, {
+        raw: {
+          width: frame.width,
+          height: frame.height,
+          channels: 4,
+        },
+      })
+        .jpeg()
+        .toBuffer();
 
       const base64Image = jpegBuffer.toString("base64");
       const imageUrl = `data:image/jpeg;base64,${base64Image}`;
@@ -1260,27 +1252,26 @@ export class VisionService extends Service {
         // Prefer the change-gated per-tile describe on incremental updates: once
         // a prior scene description exists we only re-describe the tiles that
         // changed since the last frame (the rest reuse cached tile text), which
-        // avoids paying for a full-frame VLM pass every tick. The first frame,
-        // the test-image override, and any unavailable/empty result fall back to
-        // the full-frame describe below.
-        const incremental =
-          !testImage && this.lastSceneDescription
-            ? await this.describeSceneWithDirtyTiles(
-                await sharp(frame.data, {
-                  raw: {
-                    width: frame.width,
-                    height: frame.height,
-                    channels: 4,
-                  },
-                })
-                  .png()
-                  .toBuffer(),
-                frame.width,
-                frame.height,
-                detectedObjects,
-                recognizedFaces,
-              )
-            : null;
+        // avoids paying for a full-frame VLM pass every tick. The first frame
+        // and any unavailable/empty result fall back to the full-frame describe
+        // below.
+        const incremental = this.lastSceneDescription
+          ? await this.describeSceneWithDirtyTiles(
+              await sharp(frame.data, {
+                raw: {
+                  width: frame.width,
+                  height: frame.height,
+                  channels: 4,
+                },
+              })
+                .png()
+                .toBuffer(),
+              frame.width,
+              frame.height,
+              detectedObjects,
+              recognizedFaces,
+            )
+          : null;
         description =
           incremental ??
           (await this.describeSceneWithVLM(

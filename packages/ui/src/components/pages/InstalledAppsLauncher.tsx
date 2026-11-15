@@ -13,6 +13,9 @@ export interface InstalledAppsLauncherProps
   extends HTMLAttributes<HTMLElement> {
   launcher: Launcher;
   query: string;
+  title?: string;
+  /** Show only the platform inventory and its favorites. */
+  installedOnly?: boolean;
   onQuery: (query: string) => void;
   onClose?: () => void;
   productName?: string;
@@ -69,6 +72,8 @@ const STAR =
 export function InstalledAppsLauncher({
   launcher,
   query,
+  title = "All apps",
+  installedOnly = false,
   onQuery,
   onClose,
   productName = "Eliza",
@@ -78,11 +83,14 @@ export function InstalledAppsLauncher({
   ...attributes
 }: InstalledAppsLauncherProps) {
   const snapshot = launcher.snapshot();
-  const matching = filterLauncherApps(snapshot.apps, query);
-  const pinned = query.trim() ? [] : launcher.favoriteApps();
+  const showApp = (app: InstalledApp) =>
+    !installedOnly || !app.packageName.startsWith(builtinPrefix);
+  const apps = snapshot.apps.filter(showApp);
+  const matching = filterLauncherApps(apps, query);
+  const pinned = query.trim() ? [] : launcher.favoriteApps().filter(showApp);
   const pinnedKeys = new Set(pinned.map(appKey));
   const rows = matching.filter((app) => !pinnedKeys.has(appKey(app)));
-  const details = describeLauncherApps(snapshot.apps, {
+  const details = describeLauncherApps(apps, {
     productName,
     builtinPrefix,
   });
@@ -92,9 +100,7 @@ export function InstalledAppsLauncher({
       : snapshot.status === "failed"
         ? "Installed apps could not be read."
         : !query.trim() &&
-            !snapshot.apps.some(
-              (app) => !app.packageName.startsWith(builtinPrefix),
-            )
+            !apps.some((app) => !app.packageName.startsWith(builtinPrefix))
           ? "No other apps are installed."
           : !matching.length
             ? `No apps match “${query.trim()}”.`
@@ -181,7 +187,13 @@ export function InstalledAppsLauncher({
               type="button"
               className="ib"
               style={button}
-              onClick={() => launcher.moveFavorite(app, -1)}
+              onClick={() =>
+                launcher.moveFavorite(
+                  app,
+                  -1,
+                  installedOnly ? pinnedKeys : undefined,
+                )
+              }
               disabled={favoriteIndex === 0}
               aria-label={`Move ${name} earlier`}
             >
@@ -191,7 +203,13 @@ export function InstalledAppsLauncher({
               type="button"
               className="ib"
               style={button}
-              onClick={() => launcher.moveFavorite(app, 1)}
+              onClick={() =>
+                launcher.moveFavorite(
+                  app,
+                  1,
+                  installedOnly ? pinnedKeys : undefined,
+                )
+              }
               disabled={favoriteIndex === pinned.length - 1}
               aria-label={`Move ${name} later`}
             >
@@ -243,7 +261,7 @@ export function InstalledAppsLauncher({
             fontWeight: "var(--launcher-title-weight,inherit)",
           }}
         >
-          All apps
+          {title}
         </h1>
         <span role="status" style={muted}>
           {snapshot.status === "ready"
@@ -255,7 +273,9 @@ export function InstalledAppsLauncher({
             type="button"
             className="ib"
             style={button}
-            aria-label="Close all apps"
+            aria-label={
+              title === "All apps" ? "Close all apps" : `Close ${title}`
+            }
             onClick={onClose}
           >
             <Glyph path="m6 6 12 12 M18 6 6 18" />
@@ -313,7 +333,7 @@ export function InstalledAppsLauncher({
           touchAction: "pan-y",
         }}
       >
-        {snapshot.dial && !query.trim() && (
+        {!installedOnly && snapshot.dial && !query.trim() && (
           <button
             type="button"
             onClick={() => void launcher.openDial()}

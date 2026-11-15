@@ -26,6 +26,7 @@ describe("native benchmark image transport", () => {
     ["delivers image bytes and records model usage", "--positive"],
     ["rejects a failed native turn", "--invalid-agent"],
     ["delivers VisualWebBench attachments", "--visualwebbench"],
+    ["keeps a UTF-8 character split across body chunks", "--split-utf8"],
   ]) {
     it(
       name,

@@ -55,7 +55,7 @@ function WorkflowStepNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
               : state === "waiting"
                 ? "shadow-[0_0_0_2px_rgb(245_158_11/0.6)]"
                 : ""
-      }`}
+      }${state === "skipped" ? " opacity-60" : ""}`}
       title={[step.kind, step.agent, step.description]
         .filter(Boolean)
         .join(" · ")}
@@ -81,7 +81,9 @@ function WorkflowStepNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
                 ? "bg-status-success"
                 : state === "waiting"
                   ? "bg-warning"
-                  : "animate-pulse bg-primary"
+                  : state === "running"
+                    ? "animate-pulse bg-primary"
+                    : "bg-muted-foreground/40"
           }`}
           title={state}
         >

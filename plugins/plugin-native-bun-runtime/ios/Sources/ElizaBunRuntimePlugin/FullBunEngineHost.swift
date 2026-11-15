@@ -32,10 +32,14 @@ private let fullBunHostCallCallback: @convention(c) (
 ///   native side. `bun_start(...)` receives the read end of the parent's stdin
 ///   pipe and the write end of its stdout pipe; no other network socket is
 ///   created by the shim.
-/// - Input validation: the C shim (`eliza_bun_engine_shim.c`) validates all
-///   NDJSON frames before dispatch: `id` must be numeric, `method` must be a
-///   JSON string, `payload` is extracted as a bounded value field. The
-///   `ELIZA_MAX_PROTOCOL_LINE_BYTES` (16 MiB) cap prevents unbounded reads.
+/// - Framing: one reader thread per run in the C shim
+///   (`eliza_bun_engine_shim.c`) splits the bridge's stdout into lines.
+///   Responses are routed to the waiting call by their numeric `id`; a
+///   `host_call` frame needs a string `id` and `method`, and `payload` is
+///   extracted as a bounded value field. JSON strings are decoded strictly:
+///   an unterminated string or a malformed escape is rejected, and `\u`
+///   escapes (including surrogate pairs) become UTF-8. A line over
+///   `ELIZA_MAX_PROTOCOL_LINE_BYTES` (16 MiB) ends the run's reader.
 /// - Host-call allowlist: only `llama_hardware_info`, `llama_load_model`,
 ///   `llama_generate`, `llama_free`, `llama_cancel`, `eliza_tts_synthesize`,
 ///   `eliza_asr_transcribe`, `keep_awake_set`, `stream_emit`,
@@ -144,6 +148,7 @@ final class FullBunEngineHost {
         guard let startFn else {
             throw makeError("ElizaBunEngine missing start symbol")
         }
+        LlamaBridgeImpl.configureVoiceEnvironment()
         let argvJson = try encodeJSON(argv)
         let envJson = try encodeJSON(env)
         let code = bundlePath.withCString { bundlePtr in
@@ -180,7 +185,15 @@ final class FullBunEngineHost {
             throw makeError("ElizaBunEngine missing call symbol")
         }
         let previousError = lastError()
-        let payloadJson = try encodeJSON(payload ?? NSNull())
+        // JSONSerialization raises an uncatchable NSException for a top-level
+        // value that is not an array or object; the shim treats {} as no args.
+        let payloadObject: Any
+        if let payload, JSONSerialization.isValidJSONObject(payload) {
+            payloadObject = payload
+        } else {
+            payloadObject = [String: Any]()
+        }
+        let payloadJson = try encodeJSON(payloadObject)
         let resultPtr = method.withCString { methodPtr in
             payloadJson.withCString { payloadPtr in
                 callFn(methodPtr, payloadPtr)
@@ -389,7 +402,6 @@ final class FullBunEngineHost {
         payloadJson: String,
         timeoutMs: Int32
     ) -> String {
-        _ = timeoutMs
         NSLog("[FullBunEngineHost] host call method=\(method) payloadBytes=\(payloadJson.lengthOfBytes(using: .utf8)) timeoutMs=\(timeoutMs)")
         do {
             let payload = try decodeHostPayload(payloadJson)
@@ -399,10 +411,12 @@ final class FullBunEngineHost {
             case "llama_load_model":
                 return try handleLoadModel(payload)
             case "llama_generate":
-                return try handleGenerate(payload)
+                return try handleGenerate(payload, timeoutMs: timeoutMs)
             case "llama_free":
                 return handleFree(payload)
             case "llama_cancel":
+                // Only sets the session's cancel flag; never waits on the
+                // generation it stops.
                 return handleCancel(payload)
             case "eliza_tts_synthesize":
                 return handleTtsSynthesize(payload)
@@ -490,16 +504,23 @@ final class FullBunEngineHost {
         guard let contextId = result.contextId else {
             return encodeHostEnvelope(ok: false, error: "llama_load_model returned no context_id")
         }
+        // The load may shrink the context and GPU offload to fit the memory
+        // budget; report what was admitted, not what was asked for.
+        let resolvedContextSize = result.contextSize ?? contextSize
+        let gpuLayers = result.gpuLayers ?? 0
         return encodeHostEnvelope(ok: true, result: [
             "context_id": NSNumber(value: contextId),
             "contextId": NSNumber(value: contextId),
             "modelPath": path,
-            "contextSize": NSNumber(value: contextSize),
-            "useGpu": NSNumber(value: useGPU),
+            "context_size": NSNumber(value: resolvedContextSize),
+            "contextSize": NSNumber(value: resolvedContextSize),
+            "requestedContextSize": NSNumber(value: contextSize),
+            "gpu_layers": NSNumber(value: gpuLayers),
+            "useGpu": NSNumber(value: useGPU && gpuLayers > 0),
         ])
     }
 
-    private func handleGenerate(_ payload: [String: Any]) throws -> String {
+    private func handleGenerate(_ payload: [String: Any], timeoutMs: Int32) throws -> String {
         guard let contextId = int64Value(payload, "context_id")
             ?? int64Value(payload, "contextId") else {
             return encodeHostEnvelope(ok: false, error: "llama_generate requires context_id")
@@ -517,6 +538,11 @@ final class FullBunEngineHost {
             ?? stringArrayValue(payload, "stopSequences")
             ?? []
 
+        // The caller's timeout also bounds native decoding, so a run the
+        // caller gave up on stops instead of holding the session queue.
+        let deadline: DispatchTime? = timeoutMs > 0
+            ? DispatchTime.now() + .milliseconds(Int(timeoutMs))
+            : nil
         let generate = {
             LlamaBridgeImpl.shared.generate(
                 contextId: contextId,
@@ -525,9 +551,14 @@ final class FullBunEngineHost {
                 temperature: temperature,
                 topP: topP,
                 topK: topK,
-                stopSequences: stopSequences
+                stopSequences: stopSequences,
+                deadline: deadline
             )
         }
+        // Count the run as pending while it waits for the session queue, so a
+        // cancel that arrives first is honored.
+        LlamaBridgeImpl.shared.beginGeneration(contextId: contextId)
+        defer { LlamaBridgeImpl.shared.endGeneration(contextId: contextId) }
         let result: LlamaGenerateResult
         if let queue = LlamaBridgeImpl.shared.workQueue(for: contextId) {
             result = queue.sync(execute: generate)
@@ -658,8 +689,8 @@ final class FullBunEngineHost {
         return encodeHostEnvelope(ok: true, result: payload)
     }
 
-    /// Wire format: `pcm` is mono fp32 audio in [-1, 1] carried as a JSON number
-    /// array (no base64). `bridge.ts` encodes the same way. `sampleRate` is the
+    /// Wire format: `pcmBase64` is mono fp32 audio in [-1, 1], little-endian,
+    /// base64-encoded (`encodeIosAsrPcm` in `bridge.ts`). `sampleRate` is the
     /// source rate in Hz; the inference slice resamples internally as needed.
     private func handleAsrTranscribe(_ payload: [String: Any]) -> String {
         guard let bundleDir = stringValue(payload, "bundleDir")
@@ -667,8 +698,8 @@ final class FullBunEngineHost {
             !bundleDir.isEmpty else {
             return encodeHostEnvelope(ok: false, error: "eliza_asr_transcribe requires bundleDir")
         }
-        guard let pcm = floatArrayValue(payload, "pcm"), !pcm.isEmpty else {
-            return encodeHostEnvelope(ok: false, error: "eliza_asr_transcribe requires pcm")
+        guard let pcm = float32Base64Value(payload, "pcmBase64"), !pcm.isEmpty else {
+            return encodeHostEnvelope(ok: false, error: "eliza_asr_transcribe requires pcmBase64")
         }
         let sampleRate = intValue(payload, "sampleRate")
             ?? intValue(payload, "sample_rate")
@@ -782,13 +813,19 @@ final class FullBunEngineHost {
         return nil
     }
 
-    private func floatArrayValue(_ payload: [String: Any], _ key: String) -> [Float]? {
-        if let values = payload[key] as? [NSNumber] {
-            return values.map { $0.floatValue }
+    private func float32Base64Value(_ payload: [String: Any], _ key: String) -> [Float]? {
+        guard let encoded = payload[key] as? String,
+              let data = Data(base64Encoded: encoded),
+              data.count % MemoryLayout<Float>.size == 0 else {
+            return nil
         }
-        if let values = payload[key] as? [Any] {
-            return values.compactMap { ($0 as? NSNumber)?.floatValue }
+        return data.withUnsafeBytes { raw in
+            (0..<(data.count / MemoryLayout<Float>.size)).map { index in
+                Float(bitPattern: UInt32(littleEndian: raw.loadUnaligned(
+                    fromByteOffset: index * MemoryLayout<Float>.size,
+                    as: UInt32.self
+                )))
+            }
         }
-        return nil
     }
 }

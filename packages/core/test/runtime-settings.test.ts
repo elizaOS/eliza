@@ -5,11 +5,16 @@
  * adapter, no model calls.
  */
 
+import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../src/character";
 import { AgentRuntime } from "../src/runtime";
 import type { SecretSwapSession } from "../src/security/secret-swap";
+import { clearSaltCache, encryptStringValue, getSalt } from "../src/settings";
 import type { Character } from "../src/types/agent.js";
 import { stringToUuid as sqliteTestAgentId } from "../src/utils/string-to-uuid.js";
 
@@ -327,4 +332,123 @@ describe("AgentRuntime.getSetting", () => {
 			await secondRuntime?.stop({ fast: true });
 		}
 	});
+});
+
+describe("retired default-salt override through runtime settings", () => {
+	const configuredSalt = randomUUID();
+	const fullValue =
+		"SALT_POLICY_HEAD\nComplete selected value: café 🌳\nSALT_POLICY_TAIL";
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		clearSaltCache();
+	});
+
+	it.each([
+		{ label: "unset", salt: undefined },
+		{ label: "historical", salt: "secretsalt" },
+	])(
+		"refuses production $label salt despite the retired override",
+		async ({ salt }) => {
+			vi.stubEnv("NODE_ENV", "production");
+			vi.stubEnv("SECRET_SALT", configuredSalt);
+			vi.stubEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "true");
+			clearSaltCache();
+			const runtime = new AgentRuntime({
+				character: {
+					name: "SaltPolicyRefusal",
+					bio: [],
+					settings: { POLICY_VALUE: fullValue },
+				},
+				logLevel: "fatal",
+			});
+			try {
+				vi.stubEnv("SECRET_SALT", salt);
+				clearSaltCache();
+				expect(() => runtime.getSetting("POLICY_VALUE")).toThrow(
+					"SECRET_SALT must be set to a non-default value in production",
+				);
+				expect(runtime.character.settings?.POLICY_VALUE).toBe(fullValue);
+			} finally {
+				vi.stubEnv("SECRET_SALT", configuredSalt);
+				clearSaltCache();
+				await runtime.stop({ fast: true });
+			}
+		},
+	);
+
+	it("keeps configured encrypted SQLite settings readable after runtime and adapter restart", async () => {
+		vi.stubEnv("NODE_ENV", "production");
+		vi.stubEnv("SECRET_SALT", configuredSalt);
+		vi.stubEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "true");
+		clearSaltCache();
+		const directory = await mkdtemp(join(tmpdir(), "core-salt-policy-"));
+		const name = "SaltPolicyPersistent";
+		const database = join(directory, "settings.sqlite");
+		const agentId = sqliteTestAgentId(name);
+		const ciphertext = encryptStringValue(fullValue, getSalt());
+		const firstAdapter = SQLiteDatabaseAdapter.create(database, agentId);
+		const first = new AgentRuntime({
+			character: { name, bio: [], settings: {} },
+			adapter: firstAdapter,
+			logLevel: "fatal",
+		});
+		let second: AgentRuntime | undefined;
+		try {
+			await first.initialize({ skipMigrations: true });
+			await firstAdapter.updateAgents([
+				{ agentId, agent: { secrets: { POLICY_VALUE: ciphertext } } },
+			]);
+			await first.close();
+			clearSaltCache();
+			const secondAdapter = SQLiteDatabaseAdapter.create(database, agentId);
+			second = new AgentRuntime({
+				character: { name, bio: [], settings: {} },
+				adapter: secondAdapter,
+				logLevel: "fatal",
+			});
+			await second.initialize({ skipMigrations: true });
+			expect(second.getSetting("POLICY_VALUE")).toBe(fullValue);
+			expect(
+				(await secondAdapter.getAgents()).find((agent) => agent.id === agentId)
+					?.secrets?.POLICY_VALUE,
+			).toBe(ciphertext);
+			expect(ciphertext).not.toContain(fullValue);
+		} finally {
+			await first.close();
+			await second?.close();
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it.each([
+		{ label: "unset", salt: undefined },
+		{ label: "historical", salt: "secretsalt" },
+	])(
+		"keeps one process-local development key for $label salt despite the retired override and cache clears",
+		async ({ salt: configured }) => {
+			vi.stubEnv("NODE_ENV", "development");
+			vi.stubEnv("SECRET_SALT", configured);
+			vi.stubEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "true");
+			clearSaltCache();
+			const salt = getSalt();
+			expect(salt).toMatch(/^[a-f0-9]{64}$/);
+			expect(salt).not.toBe("secretsalt");
+			const ciphertext = encryptStringValue(fullValue, salt);
+			clearSaltCache();
+			expect(getSalt()).toBe(salt);
+			const runtime = new AgentRuntime({
+				character: {
+					name: "SaltPolicyEphemeral",
+					bio: [],
+					secrets: { POLICY_VALUE: ciphertext },
+				},
+				logLevel: "fatal",
+			});
+			try {
+				expect(runtime.getSetting("POLICY_VALUE")).toBe(fullValue);
+			} finally {
+				await runtime.stop({ fast: true });
+			}
+		},
+	);
 });

@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { randomBytes } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { get, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
+import { text } from "node:stream/consumers";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 
@@ -259,30 +262,46 @@ describe("Cloudflare voice quota accounting", () => {
       "VoiceUsageStateError",
     );
   });
+  async function expectMeteringRejection(path: string): Promise<void> {
+    const url = new URL(path, await worker.ready);
+    // Bun can drop rejected handshake bodies in Miniflare's dispatchFetch.
+    // Use a real HTTP handshake to verify the complete Workerd response.
+    const response = await new Promise<IncomingMessage>((resolve, reject) => {
+      const request = get(
+        url,
+        {
+          headers: {
+            Connection: "Upgrade",
+            Upgrade: "websocket",
+            "Sec-WebSocket-Key": randomBytes(16).toString("base64"),
+            "Sec-WebSocket-Version": "13",
+          },
+        },
+        resolve,
+      );
+      request.once("error", reject);
+      request.once("upgrade", (_, socket) => {
+        socket.destroy();
+        reject(new Error(`Unexpected WebSocket upgrade at ${path}`));
+      });
+    });
+    const body = await text(response);
+    expect(response.statusCode).toBe(503);
+    expect(JSON.parse(body)).toEqual({
+      error: "voice realtime metering unavailable",
+    });
+  }
+
   test("both production socket routes reject missing metering before upgrade", async () => {
-    for (const path of ["/voice?sessionId=synthetic-session", "/twilio"]) {
-      const response = await worker.dispatchFetch(`https://voice.test${path}`, {
-        headers: { Upgrade: "websocket" },
-      });
-      expect(response.status).toBe(503);
-      expect(await response.json()).toEqual({
-        error: "voice realtime metering unavailable",
-      });
-      expect(response.webSocket).toBeNull();
-    }
+    await worker.dispose();
+    worker = start(false);
+    await expectMeteringRejection("/voice?sessionId=synthetic-session");
+    await expectMeteringRejection("/twilio");
   });
   test("production sockets cannot use the local Redis mock as quota authority", async () => {
     await worker.dispose();
     worker = start(false, "redis");
-    for (const path of ["/voice?sessionId=synthetic-session", "/twilio"]) {
-      const response = await worker.dispatchFetch(`https://voice.test${path}`, {
-        headers: { Upgrade: "websocket" },
-      });
-      expect(response.status).toBe(503);
-      expect(await response.json()).toEqual({
-        error: "voice realtime metering unavailable",
-      });
-      expect(response.webSocket).toBeNull();
-    }
+    await expectMeteringRejection("/voice?sessionId=synthetic-session");
+    await expectMeteringRejection("/twilio");
   });
 });

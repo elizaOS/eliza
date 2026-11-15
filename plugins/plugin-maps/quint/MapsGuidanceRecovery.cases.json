@@ -1,0 +1,85 @@
+{
+  "sources": [
+    "plugins/plugin-maps/src/client/guidance.ts",
+    "plugins/plugin-maps/src/client/route-distance.ts",
+    "plugins/plugin-maps/src/client/maps-screen.ts",
+    "plugins/plugin-maps/src/client/state.ts",
+    "plugins/plugin-maps/test/guidance-client.test.mjs",
+    "plugins/plugin-maps/test/maps-screen.test.mjs",
+    "plugins/plugin-maps/test/navigation-client.test.mjs"
+  ],
+  "conformance": "plugins/plugin-maps/quint/check-guidance-recovery.mjs",
+  "bounds": {
+    "domain": "One unchanged route with one pending maneuver and its final arrival step. Each admitted fix is either near the maneuver, sufficiently clear beyond it on the route, or resets consecutive evidence. The forward case admits only continued usable clear fixes.",
+    "limitations": [
+      "Geometry, route projection, the40m near threshold and max(60m,2*accuracy) clearance are checked by actual-source tests, not expanded into finite coordinates. GPS quality admission, route replacement, arrival, native permissions, voice/provider delivery and physical navigation remain external.",
+      "The mixed case admits an arbitrary sequence of fixes and claims safety only. Progress is conditional on continued forward clear fixes and weakly fair delivery. Stuttering can leave guidance pending forever."
+    ]
+  },
+  "cases": [
+    {
+      "name": "mixed-usable-fix-evidence",
+      "main": "MapsGuidanceRecovery_mixed",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "ArrivalNeverPassed",
+        "OneClearRetainsManeuver",
+        "AdvancingHasEvidence"
+      ],
+      "temporal": ["PassedStaysPassed"],
+      "temporalChecks": [
+        {
+          "property": "PassedStaysPassed",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. One fixed route never moves an already-passed maneuver backward."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 1000
+    },
+    {
+      "name": "continued-clear-forward-fixes",
+      "main": "MapsGuidanceRecovery_forward",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "ArrivalNeverPassed",
+        "OneClearRetainsManeuver",
+        "AdvancingHasEvidence"
+      ],
+      "temporal": [
+        "PassedStaysPassed",
+        "FairForwardProgress",
+        "UnfairForwardProgress"
+      ],
+      "temporalChecks": [
+        {
+          "property": "PassedStaysPassed",
+          "expect": "holds",
+          "assumptions": ["No fairness. The final arrival step is not passed."]
+        },
+        {
+          "property": "FairForwardProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Every subsequent admitted usable fix remains on-route and clearly beyond the pending maneuver. Weak fairness of clear-fix delivery supplies two such fixes; this is no provider, wall-clock or physical motion guarantee."
+          ]
+        },
+        {
+          "property": "UnfairForwardProgress",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An admitted route may receive no further usable fix and can stutter forever."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 1000
+    }
+  ]
+}

@@ -397,10 +397,6 @@
         </receiver>
 
         <service
-            android:name="ai.elizaos.app.ElizaSmsGatewayService"
-            android:exported="false" />
-
-        <service
             android:name="ai.elizaos.app.ElizaRespondViaMessageService"
             android:exported="true"
             android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
@@ -412,14 +408,6 @@
                 <data android:scheme="mmsto" />
             </intent-filter>
         </service>
-
-        <!-- Owner review of a Cloud-drafted SMS reply; opened only from this app's own notice. -->
-        <activity
-            android:name="ai.elizaos.app.ElizaSmsReplyReviewActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTop"
-            android:theme="@style/AppTheme.NoActionBar" />
 
         <activity
             android:name="ai.elizaos.app.ElizaSmsComposeActivity"

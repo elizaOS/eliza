@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { once } from "node:events";
+import { createServer } from "node:http";
 import test from "node:test";
-import { createNativeCloudAuth } from "./cloud-enrollment.mjs";
+import {
+  createNativeCloudAuth,
+  SIGN_IN_CONFLICT,
+} from "./cloud-enrollment.mjs";
 
 const binding = Object.freeze({
   clientId: "org.example.native",
@@ -317,6 +322,169 @@ test("a second factor from the Google exchange finishes in-app through MFA", asy
     challengeId: "challenge-1",
     code: "123456",
   });
+});
+
+test("Google MFA retry uses the current private challenge and cancellation fences grant dispatch", {
+  timeout: 15_000,
+}, async (t) => {
+  const receiptRead = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const replacementExpiry = new Date(Date.now() + 60_000).toISOString();
+  const factors = [];
+  const unexpected = [];
+  let holdReceiptRead = false;
+  const server = createServer(async (request, response) => {
+    const route = new URL(request.url, "http://127.0.0.1").pathname;
+    const send = (body, status = 200) => {
+      response.writeHead(status, { "Content-Type": "application/json" });
+      response.end(JSON.stringify(body));
+    };
+    if (route === "/api/v1/app-auth/mobile/config") {
+      return send({
+        ...binding,
+        codeChallengeMethod: "S256",
+        scopes: ["cloud:user"],
+      });
+    }
+    if (route === "/auth/oauth/exchange") {
+      return send({
+        ok: true,
+        mfaRequired: true,
+        mfa: {
+          type: "totp",
+          challengeId: "private-first-factor",
+          expiresAt: new Date(Date.now() + 120_000).toISOString(),
+        },
+      });
+    }
+    if (
+      route === "/auth/mfa/totp/complete" ||
+      route === "/auth/mfa/sms/complete"
+    ) {
+      let bytes = "";
+      for await (const chunk of request) bytes += chunk;
+      factors.push({ route, body: JSON.parse(bytes) });
+      if (factors.length === 1) return send({ ok: false }, 401);
+      if (factors.length === 2)
+        return send({
+          ok: true,
+          mfaRequired: true,
+          mfa: {
+            type: "sms",
+            challengeId: "private-replacement-factor",
+            expiresAt: replacementExpiry,
+          },
+        });
+      holdReceiptRead = true;
+      return send({ ok: true, token: SESSION });
+    }
+    unexpected.push(route);
+    return send({ ok: false }, 404);
+  });
+  server.listen(0, "127.0.0.1");
+  t.after(async () => {
+    release.resolve();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+  await once(server, "listening");
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const host = createNativeCloudAuth({
+    api: origin,
+    auth: origin,
+    binding,
+    appName: "Fixture",
+    googleRedirectUri: RETURN,
+    pendingStore: {
+      read: async () => {
+        if (holdReceiptRead) {
+          holdReceiptRead = false;
+          receiptRead.resolve();
+          await release.promise;
+        }
+        return null;
+      },
+      write: async () => assert.fail("cancelled MFA cannot publish a receipt"),
+      clear: async () => {},
+    },
+    activate: async () => assert.fail("cancelled MFA cannot activate"),
+  });
+  const begun = await startGoogle({ auth: host });
+  const first = await host.handle("google-return", {
+    callbackUrl: returnUrl(stateOf(begun)),
+  });
+  assert.equal(first.method, "totp");
+  assert(!JSON.stringify(first).includes("private-first-factor"));
+  const input = { sessionId: begun.sessionId, code: "123456" };
+  await assert.rejects(host.handle("mfa", { ...input, sessionId: "wrong" }), {
+    status: 410,
+  });
+  await assert.rejects(host.handle("mfa", { ...input, code: "123" }), {
+    status: 400,
+  });
+  await assert.rejects(host.handle("mfa", input), { status: 401 });
+  const second = await host.handle("mfa", input);
+  assert.deepEqual(second, {
+    status: "mfa",
+    method: "sms",
+    sessionId: begun.sessionId,
+    expiresAt: replacementExpiry,
+  });
+
+  const rejected = assert.rejects(host.handle("mfa", input), {
+    status: 409,
+    code: SIGN_IN_CONFLICT.cancelled,
+  });
+  await receiptRead.promise;
+  const cancelled = host.cancel();
+  release.resolve();
+  await rejected;
+  assert.deepEqual(await cancelled, { status: "cancelled" });
+  await assert.rejects(host.handle("mfa", input), { status: 410 });
+  assert.deepEqual(factors, [
+    {
+      route: "/auth/mfa/totp/complete",
+      body: { challengeId: "private-first-factor", code: input.code },
+    },
+    {
+      route: "/auth/mfa/totp/complete",
+      body: { challengeId: "private-first-factor", code: input.code },
+    },
+    {
+      route: "/auth/mfa/sms/complete",
+      body: { challengeId: "private-replacement-factor", code: input.code },
+    },
+  ]);
+  assert.deepEqual(unexpected, []);
+});
+
+test("Google MFA refuses an expired challenge at its exact deadline", async (t) => {
+  const expiresAt = future();
+  const f = fixture({
+    fetch: (route) =>
+      route === "/auth/oauth/exchange"
+        ? Response.json({
+            ok: true,
+            mfaRequired: true,
+            mfa: { type: "totp", challengeId: "expired-factor", expiresAt },
+          })
+        : undefined,
+  });
+  const begun = await startGoogle(f);
+  const mfa = await f.auth.handle("google-return", {
+    callbackUrl: returnUrl(stateOf(begun)),
+  });
+  t.mock.method(Date, "now", () => Date.parse(mfa.expiresAt));
+  await assert.rejects(
+    f.auth.handle("mfa", { sessionId: mfa.sessionId, code: "123456" }),
+    { status: 410 },
+  );
+  assert.equal(
+    f.calls.some((call) => call.path.startsWith("/auth/mfa/")),
+    false,
+  );
 });
 
 test("an email code cannot be verified against a Google attempt", async () => {

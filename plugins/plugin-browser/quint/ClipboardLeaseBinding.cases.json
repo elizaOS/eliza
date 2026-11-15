@@ -1,0 +1,33 @@
+{
+  "sources": [
+    "plugins/plugin-browser/src/credential-clipboard.ts",
+    "plugins/plugin-browser/src/credential-clipboard-binding.test.ts",
+    "plugins/plugin-browser/quint/check-clipboard-lease-binding.mjs"
+  ],
+  "bounds": {
+    "domain": "One admitted lease, two command/environment identities, three clipboard value classes, explicit/automatic expiry or process-exit cleanup, and optional removal of the bound executable.",
+    "scope": "Fixed command paths and environment cannot be redirected by later PATH/display changes. A newer copy is preserved and completion erases owned secret bytes. Executable-file replacement, hostile filesystems, Windows native execution, wall-clock scheduling and arbitrary OS failures are outside this projection."
+  },
+  "conformance": "plugins/plugin-browser/quint/check-clipboard-lease-binding.mjs",
+  "cases": [
+    {
+      "name": "bound-cleanup",
+      "main": "ClipboardLeaseBinding",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["Settles"],
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of finish assumes a scheduled expiry or process-exit cleanup runs and its subprocess operations settle; it is not an OS termination or wall-clock proof."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 200
+    }
+  ]
+}

@@ -86,7 +86,7 @@ import { z } from "zod";
 import {
   PersonalDeliveryAccountResolutionError,
   resolvePersonalDeliveryProjection,
-} from "@/api-app/personal-delivery-projection";
+} from "../../../../src/personal-delivery-projection";
 import { requireInternalAuth } from "../../../_auth";
 import { consumePreverifiedPersonalSharedRequest } from "../preverified-auth";
 

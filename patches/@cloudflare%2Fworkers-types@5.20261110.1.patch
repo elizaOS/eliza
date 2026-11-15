@@ -1,0 +1,11 @@
+diff --git a/index.d.ts b/index.d.ts
+--- a/index.d.ts
++++ b/index.d.ts
+@@ -483,7 +483,6 @@
+ declare const performance: Performance;
+ declare const Cloudflare: Cloudflare;
+ declare const origin: string;
+-declare var Buffer: any;
+ declare var process: any;
+ declare var global: ServiceWorkerGlobalScope;
+ declare function setImmediate(

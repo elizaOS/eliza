@@ -16,7 +16,7 @@ export interface SubscriptionCatalogPreflightResult {
   catalogVersion: "v1";
   approvedPlanKeys: string[];
   approvedProviderObjects: number;
-  wrongFixtureRejected: true;
+  wrongFixtureRejected: boolean;
   mode: "test";
 }
 
@@ -25,6 +25,8 @@ export async function runSubscriptionCatalogPreflight(
   options: {
     env?: NodeJS.ProcessEnv;
     provider?: SubscriptionCatalogProvider;
+    /** Release validation checks the approved catalog without a separate wrong-price fixture. */
+    catalogOnly?: boolean;
   } = {},
 ): Promise<SubscriptionCatalogPreflightResult> {
   const env = options.env ?? getCloudAwareEnv();
@@ -36,6 +38,20 @@ export async function runSubscriptionCatalogPreflight(
   }
   if (env.ENVIRONMENT === "production" || env.NODE_ENV === "production") {
     throw new Error("Subscription catalog preflight cannot run in production");
+  }
+
+  if (options.catalogOnly) {
+    const provider =
+      options.provider ??
+      adaptStripeSubscriptionCatalogProvider(requireStripe());
+    const approved = await getVerifiedSubscriptionPlans({ env, provider });
+    return {
+      catalogVersion: approved.catalogVersion,
+      approvedPlanKeys: approved.plans.map((plan) => plan.key),
+      approvedProviderObjects: approved.plans.length * 2,
+      wrongFixtureRejected: false,
+      mode: "test",
+    };
   }
 
   const wrongPriceId = env.STRIPE_SUBSCRIPTION_PREFLIGHT_WRONG_PRICE_ID?.trim();
@@ -91,8 +107,11 @@ export async function runSubscriptionCatalogPreflight(
 
 if (import.meta.main) {
   try {
+    const args = process.argv.slice(2);
+    if (args.length > 1 || (args.length === 1 && args[0] !== "--catalog-only"))
+      throw new Error("Expected only the optional --catalog-only argument");
     process.stdout.write(
-      `${JSON.stringify(await runSubscriptionCatalogPreflight())}\n`,
+      `${JSON.stringify(await runSubscriptionCatalogPreflight({ catalogOnly: args[0] === "--catalog-only" }))}\n`,
     );
   } catch (error) {
     // error-policy:J1 The operator CLI reports only a safe summary and never

@@ -47,3 +47,61 @@ it("emits a final short response or tail exactly once", () => {
   aggregator.push("   ");
   expect(aggregator.flush()).toBeNull();
 });
+
+describe("PhraseAggregator short segments", () => {
+  it("keeps a short spoken line by joining it to the next phrase", () => {
+    const out = phrases("The total comes to:\n5\nThat includes tax.");
+    expect(out.join(" ")).toContain("5");
+    expect(out.at(-1)).toBe("5\nThat includes tax.");
+  });
+
+  it("does not prefix the next phrase with lone punctuation", () => {
+    const aggregator = new PhraseAggregator({ minEmitChars: 4 });
+    expect(aggregator.push("!\nHello there.")).toEqual(["Hello there."]);
+  });
+
+  it("never loses a letter or digit across push and flush", () => {
+    const alphabet = [
+      "a",
+      "Z",
+      "7",
+      "好",
+      ".",
+      "!",
+      "?",
+      "\n",
+      " ",
+      ":",
+      ";",
+      "—",
+      "3.5",
+    ];
+    let seed = 42;
+    const next = (n: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    const signal = (text: string) => text.replace(/[^\p{L}\p{N}]/gu, "");
+    for (let round = 0; round < 500; round += 1) {
+      const minEmitChars = 1 + next(6);
+      const aggregator = new PhraseAggregator({
+        minEmitChars,
+        maxBufferChars: 8 + next(20),
+        preferWordBoundaryAtMax: next(2) === 1,
+      });
+      let text = "";
+      const out: string[] = [];
+      for (let i = next(40); i > 0; i -= 1) {
+        const delta = Array.from(
+          { length: 1 + next(3) },
+          () => alphabet[next(alphabet.length)],
+        ).join("");
+        text += delta;
+        out.push(...aggregator.push(delta));
+      }
+      const tail = aggregator.flush();
+      if (tail) out.push(tail);
+      expect(signal(out.join(""))).toBe(signal(text));
+    }
+  });
+});

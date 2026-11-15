@@ -206,3 +206,34 @@ func TestPreparedPairBindsJournalScopeAndArtifacts(t *testing.T) {
 		})
 	}
 }
+
+// A refusal that floors keep for good is a decision; anything else is an error.
+func TestPreparedRecoveryEvaluationSeparatesPermanentRefusals(t *testing.T) {
+	evaluate := func(dir, state, id string, floor int64) (string, error) {
+		return EvaluatePreparedRecovery(dir, state, id, strings.Repeat("b", 64), 2, strings.Repeat("c", 64), 3, strings.Repeat("d", 64), floor)
+	}
+	dir, state, id, v := preparedFixture(t)
+	if decision, err := evaluate(dir, state, id, 1); err != nil || decision != "loadable" {
+		t.Fatal(decision, err)
+	}
+	if decision, err := evaluate(dir, state, id, 2); err != nil || decision != "below-security-floor" {
+		t.Fatal(decision, err)
+	}
+	revoking := mutateAdmission(t, v.Release, func(r map[string]any) {
+		rollout := r["rollout"].(map[string]any)
+		rollout["revision"] = 2
+		rollout["revokedSha256"] = []string{strings.Repeat("c", 64)}
+	})
+	if _, err := EvaluateRememberedReleaseInterval(state, revoking, v.Device, v.Policy); err != nil {
+		t.Fatal(err)
+	}
+	if decision, err := evaluate(dir, state, id, 1); err != nil || decision != "revoked-artifact" {
+		t.Fatal(decision, err)
+	}
+	if err := os.Remove(filepath.Join(state, "admission.json")); err != nil {
+		t.Fatal(err)
+	}
+	if decision, err := evaluate(dir, state, id, 1); err == nil || decision != "" {
+		t.Fatal("lost admission state decided", decision)
+	}
+}

@@ -4,8 +4,8 @@
   "type": "module",
   "description": "Desktop/server memory-benchmark harness for eliza-1 tiers (measures an ELIZA_REPO_DIR checkout).",
   "scripts": {
-    "bench": "node run-all.mjs",
-    "bench:json": "node run-all.mjs --json",
+    "bench": "bun run-all.mjs",
+    "bench:json": "bun run-all.mjs --json",
     "typecheck": "tsc --noEmit -p tsconfig.check.json"
   },
   "devDependencies": {

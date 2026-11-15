@@ -75,9 +75,12 @@ final class ReminderTaps {
   // In-flight identical publication reuses its identity. A deliberate later
   // publication after consumption receives a fresh token; old taps never revive.
   for (String token : keys(rows)) if (rows.getJSONObject(token).optBoolean("question")==question && !rows.getJSONObject(token).getString("state").equals("consumed") && same(exact, rows.getJSONObject(token).getJSONObject("target"))) return token;
-  // Only acknowledged routes whose exact OS notice is absent may be reclaimed.
+  // Untapped or acknowledged routes whose exact OS notice is absent may be
+  // reclaimed, except rows for this target (the other half of an in-flight
+  // delivery). Pending rows stay: pending() surfaces them in tap order.
   // Forgotten UUIDs resolve UnknownTap; never bind an old token to a newer record.
-  for (String token : keys(rows)) if (rows.getJSONObject(token).getString("state").equals("consumed") && !posted(token)) rows.remove(token);
+  for (String token : keys(rows)) { JSONObject row = rows.getJSONObject(token); String state = row.getString("state");
+   if ((state.equals("new") || state.equals("consumed")) && !same(exact, row.getJSONObject("target")) && !posted(token)) rows.remove(token); }
   if (rows.length() >= 512) throw new IllegalStateException("Reminder tap storage full");
   String token = UUID.randomUUID().toString();
   rows.put(token, new JSONObject().put("target", exact).put("state", "new").put("order", 0));

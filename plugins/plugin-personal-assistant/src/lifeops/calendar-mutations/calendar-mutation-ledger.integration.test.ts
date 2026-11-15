@@ -20,6 +20,10 @@ import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
+import {
+  resolveExplicitOwnerApproval,
+  resolveRequestAction,
+} from "../../actions/resolve-request.js";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
   ApprovalEnqueueInput,
@@ -841,7 +845,7 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
     });
     expect(
       (await approvals.byId(request.id, request.subjectUserId))?.state,
-    ).toBe("executing");
+    ).toBe("retryable");
 
     providerMode = "success";
     const retried = await executeCalendarMutationApproval({
@@ -877,9 +881,15 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
         },
       },
     });
-    expect(
-      (await approvals.byId(request.id, request.subjectUserId))?.state,
-    ).toBe("executing");
+    const quarantined = await approvals.byId(request.id, request.subjectUserId);
+    expect(quarantined).toMatchObject({
+      state: "reconciliation_required",
+      execution: {
+        attemptId: ambiguous.attempt.id,
+        error:
+          "The calendar provider outcome is unknown; automatic retry is disabled.",
+      },
+    });
     expect(
       [...events.values()].some(
         (event) => event.title === "Create pickup hold",
@@ -898,6 +908,181 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
       reason: "ambiguous",
     });
     expect(mutationRequests).toHaveLength(1);
+
+    const reconciled = await new CalendarMutationLedger(runtime).reconcile(
+      request.id,
+      {
+        outcome: "applied",
+        receipt: null,
+        reconciledBy: String(runtime.agentId),
+        reason: "Owner saw the event on the calendar.",
+      },
+    );
+    expect(reconciled.state).toBe("ambiguous");
+    expect(
+      await approvals.byId(request.id, request.subjectUserId),
+    ).toMatchObject({
+      state: "done",
+      execution: {
+        attemptId: ambiguous.attempt.id,
+        reconciliationReason: "Owner saw the event on the calendar.",
+      },
+    });
+    expect(mutationRequests).toHaveLength(1);
+  }, 60_000);
+
+  it("retries a crash before the provider call once the owner confirms nothing changed", async () => {
+    const request = await approved(createPayload());
+    const claim = await new CalendarMutationLedger(runtime).claim(request);
+    if (claim.kind !== "claimed") throw new Error("claim fixture failed");
+    expect(
+      (await approvals.byId(request.id, request.subjectUserId))?.execution,
+    ).toBeNull();
+
+    const restartedRuntime = Object.create(runtime) as IAgentRuntime;
+    const restartedLedger = new CalendarMutationLedger(restartedRuntime);
+    await expect(restartedLedger.inspect(request)).resolves.toMatchObject({
+      kind: "blocked",
+      reason: "ambiguous",
+    });
+    expect(
+      await approvals.byId(request.id, request.subjectUserId),
+    ).toMatchObject({
+      state: "reconciliation_required",
+      execution: { attemptId: claim.attempt.id },
+    });
+
+    const reconciled = await restartedLedger.reconcile(request.id, {
+      outcome: "not_applied",
+      reconciledBy: String(runtime.agentId),
+      reason: "Owner checked: no event was created.",
+    });
+    expect(reconciled).toMatchObject({
+      state: "failed_retryable",
+      lastFailure: { code: "CALENDAR_MUTATION_RECONCILED_NOT_APPLIED" },
+    });
+    const retryable = await approvals.byId(request.id, request.subjectUserId);
+    expect(retryable?.state).toBe("retryable");
+
+    const retried = await executeCalendarMutationApproval({
+      runtime: restartedRuntime,
+      request: retryable ?? request,
+      port: port(),
+    });
+    expect(retried).toMatchObject({
+      kind: "succeeded",
+      duplicateSuppressed: false,
+      attempt: { attemptCount: 2 },
+    });
+    expect(
+      await approvals.byId(request.id, request.subjectUserId),
+    ).toMatchObject({ state: "done", execution: null });
+    expect(mutationRequests).toHaveLength(1);
+  }, 60_000);
+
+  it("answers RESOLVE_REQUEST on a running calendar row without generic recovery", async () => {
+    const request = await approved(createPayload());
+    const claim = await new CalendarMutationLedger(runtime).claim(request);
+    expect(claim.kind).toBe("claimed");
+    const decide = (decision: "approve" | "reject") =>
+      resolveExplicitOwnerApproval(runtime, {
+        subjectUserId: request.subjectUserId,
+        requestId: request.id,
+        decision,
+        reason: "owner decision",
+      });
+
+    await expect(decide("reject")).resolves.toMatchObject({
+      success: false,
+      text: `Request ${request.id} is still running, so I did not reject it.`,
+    });
+    await expect(decide("approve")).resolves.toMatchObject({
+      success: false,
+      data: { error: "CALENDAR_MUTATION_IN_FLIGHT" },
+    });
+    expect(
+      await approvals.byId(request.id, request.subjectUserId),
+    ).toMatchObject({ state: "executing", execution: null });
+    expect(mutationRequests).toHaveLength(0);
+  }, 60_000);
+
+  it("reconciles an ambiguous calendar row through RESOLVE_REQUEST", async () => {
+    const request = await approved(createPayload());
+    const ledger = new CalendarMutationLedger(runtime);
+    const claim = await ledger.claim(request);
+    if (claim.kind !== "claimed") throw new Error("claim fixture failed");
+    await ledger.recordAmbiguous(claim.attempt, {
+      code: "CALENDAR_MUTATION_PROVIDER_OUTCOME_UNKNOWN",
+      message: "provider timed out after the request was sent",
+      retryable: false,
+    });
+
+    await expect(
+      resolveExplicitOwnerApproval(runtime, {
+        subjectUserId: request.subjectUserId,
+        requestId: request.id,
+        decision: "approve",
+        reason: "owner decision",
+      }),
+    ).resolves.toMatchObject({
+      success: false,
+      data: {
+        error: "APPROVAL_EXECUTION_OUTCOME_UNKNOWN",
+        attemptId: claim.attempt.id,
+      },
+    });
+
+    const reconciled = await resolveRequestAction.handler(
+      runtime,
+      {
+        id: randomUUID(),
+        agentId: runtime.agentId,
+        entityId: request.subjectUserId,
+        roomId: runtime.agentId,
+        content: { text: `reconcile ${request.id}`, source: "test" },
+        createdAt: Date.now(),
+      } as never,
+      undefined,
+      {
+        parameters: {
+          action: "reconcile_not_delivered",
+          requestId: request.id,
+          reason: "Owner checked: no event was created.",
+        },
+      } as never,
+      undefined,
+    );
+    expect(reconciled).toMatchObject({
+      success: true,
+      data: { state: "retryable", deliveryReconciled: true },
+    });
+    expect(await ledger.byApprovalRequestId(request.id)).toMatchObject({
+      state: "failed_retryable",
+    });
+    await expect(
+      resolveExplicitOwnerApproval(runtime, {
+        subjectUserId: request.subjectUserId,
+        requestId: request.id,
+        decision: "reject",
+        reason: "owner no longer wants it",
+      }),
+    ).resolves.toMatchObject({ success: true, data: { state: "rejected" } });
+    expect(mutationRequests).toHaveLength(0);
+  }, 60_000);
+
+  it("refuses to reconcile an attempt whose outcome is known", async () => {
+    const request = await approved(createPayload());
+    await executeCalendarMutationApproval({ runtime, request, port: port() });
+    await expect(
+      new CalendarMutationLedger(runtime).reconcile(request.id, {
+        outcome: "not_applied",
+        reconciledBy: String(runtime.agentId),
+        reason: "wrong row",
+      }),
+    ).rejects.toMatchObject({ code: "CALENDAR_MUTATION_NOT_AMBIGUOUS" });
+    expect(
+      (await approvals.byId(request.id, request.subjectUserId))?.state,
+    ).toBe("done");
   }, 60_000);
 
   it("quarantines an orphaned executing claim after a runtime restart", async () => {
@@ -923,6 +1108,9 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
         },
       },
     });
+    expect(
+      (await approvals.byId(request.id, request.subjectUserId))?.state,
+    ).toBe("reconciliation_required");
     const replay = await executeCalendarMutationApproval({
       runtime: restartedRuntime,
       request,

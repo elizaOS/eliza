@@ -16,15 +16,22 @@ import type {
 } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core/protocol";
 import { shellLocalStorage } from "../../../surface-realm-channel";
-import { api, apiFetch } from "../../lib/api-client";
+import { ApiError, api, apiFetch } from "../../lib/api-client";
 import { signOutFromSsoBridgedHost } from "../../sso-bridge/sso-bridge";
 
-const STATUS_CREDENTIAL_KEY = "eliza.account-deletion.status.v1";
-const RECOVERY_CREDENTIAL_KEY = "eliza.account-deletion.recovery.v1";
-const ADMISSION_CREDENTIAL_KEY = "eliza.account-deletion.admission.v1";
+// One record holds every deletion request this browser can still act on, so a
+// second account on the same profile never overwrites the first's recovery
+// authority. The v1 single-request keys are migrated into it once.
+const REQUESTS_KEY = "eliza.account-deletion.requests.v2";
+const LEGACY_STATUS_CREDENTIAL_KEY = "eliza.account-deletion.status.v1";
+const LEGACY_RECOVERY_CREDENTIAL_KEY = "eliza.account-deletion.recovery.v1";
+const LEGACY_ADMISSION_CREDENTIAL_KEY = "eliza.account-deletion.admission.v1";
+const MAX_STORED_REQUESTS = 8;
 
 export type AccountDeletionClientErrorCode =
+  | "ACCOUNT_DELETION_ACTIVATION_PENDING"
   | "ACCOUNT_DELETION_CAPABILITY_STORAGE_UNAVAILABLE"
+  | "ACCOUNT_DELETION_CAPABILITY_STORE_FULL"
   | "ACCOUNT_DELETION_EXPORT_CRYPTO_UNAVAILABLE"
   | "ACCOUNT_DELETION_EXPORT_DIGEST_INVALID"
   | "ACCOUNT_DELETION_EXPORT_DIGEST_MISMATCH"
@@ -36,6 +43,8 @@ export type AccountDeletionClientErrorCode =
 export class AccountDeletionClientError extends ElizaError {
   override readonly name = "AccountDeletionClientError";
   override readonly code: AccountDeletionClientErrorCode;
+  /** The saved request a pending-activation failure refers to. */
+  readonly requestId: string | null;
 
   constructor(
     message: string,
@@ -43,10 +52,12 @@ export class AccountDeletionClientError extends ElizaError {
       code: AccountDeletionClientErrorCode;
       cause?: unknown;
       severity?: "ephemeral" | "fatal";
+      requestId?: string;
     },
   ) {
     super(message, options);
     this.code = options.code;
+    this.requestId = options.requestId ?? null;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
@@ -342,42 +353,246 @@ function createAdmissionCredential(): string {
     .replace(/=+$/g, "");
 }
 
-function getOrCreateAdmissionCredential(): string {
-  const current = readDurableCredential(ADMISSION_CREDENTIAL_KEY);
-  if (current && /^[A-Za-z0-9_-]{43}$/.test(current)) return current;
-  const created = createAdmissionCredential();
-  writeDurableCredential(ADMISSION_CREDENTIAL_KEY, created);
+const OPAQUE_CREDENTIAL_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/** What this browser holds for one deletion request. */
+interface StoredDeletionRequest {
+  /** Signed-in user id when the request was made; null for migrated v1 keys. */
+  accountId: string | null;
+  accountLabel: string | null;
+  /** Null until the server's receipt (or a status read) names the request. */
+  requestId: string | null;
+  admissionCredential: string | null;
+  statusCredential: string | null;
+  recoveryCredential: string | null;
+}
+
+function nullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function parseStoredRequests(raw: string): StoredDeletionRequest[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (cause) {
+    // error-policy:J2 an unreadable record may hold live recovery authority, so
+    // it is never silently replaced with an empty list.
+    throw capabilityStorageError(cause);
+  }
+  if (
+    !isRecord(parsed) ||
+    parsed.version !== 2 ||
+    !Array.isArray(parsed.requests) ||
+    !parsed.requests.every(
+      (entry) =>
+        isRecord(entry) &&
+        nullableString(entry.accountId) &&
+        nullableString(entry.accountLabel) &&
+        nullableString(entry.requestId) &&
+        nullableString(entry.admissionCredential) &&
+        nullableString(entry.statusCredential) &&
+        nullableString(entry.recoveryCredential),
+    )
+  ) {
+    throw capabilityStorageError("malformed account-deletion request record");
+  }
+  return (parsed.requests as Record<string, unknown>[]).map((entry) => ({
+    accountId: entry.accountId as string | null,
+    accountLabel: entry.accountLabel as string | null,
+    requestId: entry.requestId as string | null,
+    admissionCredential: entry.admissionCredential as string | null,
+    statusCredential: entry.statusCredential as string | null,
+    recoveryCredential: entry.recoveryCredential as string | null,
+  }));
+}
+
+function writeStoredRequests(requests: StoredDeletionRequest[]): void {
+  writeDurableCredential(
+    REQUESTS_KEY,
+    JSON.stringify({ version: 2, requests }),
+  );
+}
+
+function loadStoredRequests(): StoredDeletionRequest[] {
+  const raw = readDurableCredential(REQUESTS_KEY);
+  if (raw !== null) return parseStoredRequests(raw);
+
+  // One-time migration of the v1 single-request keys. The new record is
+  // written and verified before the old keys are removed, so a live recovery
+  // credential is never lost in between.
+  const legacy: StoredDeletionRequest = {
+    accountId: null,
+    accountLabel: null,
+    requestId: null,
+    admissionCredential: readDurableCredential(LEGACY_ADMISSION_CREDENTIAL_KEY),
+    statusCredential: readDurableCredential(LEGACY_STATUS_CREDENTIAL_KEY),
+    recoveryCredential: readDurableCredential(LEGACY_RECOVERY_CREDENTIAL_KEY),
+  };
+  if (
+    !legacy.admissionCredential &&
+    !legacy.statusCredential &&
+    !legacy.recoveryCredential
+  ) {
+    return [];
+  }
+  writeStoredRequests([legacy]);
+  removeDurableCredential(LEGACY_ADMISSION_CREDENTIAL_KEY);
+  removeDurableCredential(LEGACY_STATUS_CREDENTIAL_KEY);
+  removeDurableCredential(LEGACY_RECOVERY_CREDENTIAL_KEY);
+  return [legacy];
+}
+
+function sameStoredRequest(
+  a: StoredDeletionRequest,
+  b: StoredDeletionRequest,
+): boolean {
+  return Boolean(
+    (a.requestId && a.requestId === b.requestId) ||
+      (a.admissionCredential &&
+        a.admissionCredential === b.admissionCredential) ||
+      (a.statusCredential && a.statusCredential === b.statusCredential),
+  );
+}
+
+function isEmptyStoredRequest(entry: StoredDeletionRequest): boolean {
+  return (
+    !entry.admissionCredential &&
+    !entry.statusCredential &&
+    !entry.recoveryCredential
+  );
+}
+
+/** Replaces `previous` with `next` (or removes it when `next` is null). */
+function saveStoredRequest(
+  previous: StoredDeletionRequest | null,
+  next: StoredDeletionRequest | null,
+): void {
+  const requests = loadStoredRequests().filter(
+    (entry) =>
+      !(previous && sameStoredRequest(entry, previous)) &&
+      !(next && sameStoredRequest(entry, next)),
+  );
+  if (next && !isEmptyStoredRequest(next)) requests.push(next);
+  while (requests.length > MAX_STORED_REQUESTS) {
+    // Only an entry without recovery authority may be evicted. Dropping a
+    // recovery credential would strand cancel and export for that account.
+    const evictable = requests.findIndex(
+      (entry) => !entry.recoveryCredential && entry !== next,
+    );
+    if (evictable < 0) {
+      throw new AccountDeletionClientError(
+        "This browser already holds recovery access for too many deletion requests. Resolve one on the account-deletion page first.",
+        { code: "ACCOUNT_DELETION_CAPABILITY_STORE_FULL", severity: "fatal" },
+      );
+    }
+    requests.splice(evictable, 1);
+  }
+  writeStoredRequests(requests);
+}
+
+function findStoredRequest(requestId: string): StoredDeletionRequest {
+  const entry = loadStoredRequests().find(
+    (candidate) => candidate.requestId === requestId,
+  );
+  if (!entry?.recoveryCredential) {
+    throw new AccountDeletionClientError(
+      "The recovery capability is unavailable in this browser session.",
+      {
+        code: "ACCOUNT_DELETION_RECOVERY_CAPABILITY_UNAVAILABLE",
+        severity: "fatal",
+      },
+    );
+  }
+  return entry;
+}
+
+/** The account a deletion request is made for, used to keep requests apart. */
+export interface AccountDeletionAccount {
+  id: string;
+  label: string | null;
+}
+
+function getOrCreateAdmissionEntry(
+  account: AccountDeletionAccount | null,
+): StoredDeletionRequest {
+  const accountId = account?.id ?? null;
+  const current = loadStoredRequests().find(
+    (entry) =>
+      entry.accountId === accountId &&
+      entry.admissionCredential !== null &&
+      OPAQUE_CREDENTIAL_PATTERN.test(entry.admissionCredential),
+  );
+  if (current) return current;
+  const created: StoredDeletionRequest = {
+    accountId,
+    accountLabel: account?.label || null,
+    requestId: null,
+    admissionCredential: createAdmissionCredential(),
+    statusCredential: null,
+    recoveryCredential: null,
+  };
+  saveStoredRequest(null, created);
   return created;
 }
 
-export function rememberAccountDeletionCapabilities(
+function rememberAccountDeletionCapabilities(
+  entry: StoredDeletionRequest,
   accepted: AccountDeletionAcceptedDto,
-): void {
-  writeDurableCredential(STATUS_CREDENTIAL_KEY, accepted.statusCredential);
-  writeDurableCredential(RECOVERY_CREDENTIAL_KEY, accepted.recoveryCredential);
+): StoredDeletionRequest {
+  const next: StoredDeletionRequest = {
+    ...entry,
+    requestId: accepted.request.requestId,
+    statusCredential: accepted.statusCredential,
+    recoveryCredential: accepted.recoveryCredential,
+  };
+  saveStoredRequest(entry, next);
+  return next;
 }
 
-async function recoverAccountDeletionCapabilities(): Promise<AccountDeletionAcceptedDto | null> {
-  const admissionCredential = readDurableCredential(ADMISSION_CREDENTIAL_KEY);
-  if (!admissionCredential) return null;
-  const accepted = parseAccepted(
-    await api<unknown>("/api/public/account-deletion", {
-      method: "POST",
-      skipAuth: true,
-      json: { confirmation: "DELETE", admissionCredential },
-    }),
-  );
-  rememberAccountDeletionCapabilities(accepted);
-  return accepted;
+/**
+ * Recovers the receipt for an admission credential whose POST outcome was
+ * lost. Returns null, and forgets the credential, when the server says no
+ * request was ever admitted with it.
+ */
+async function recoverAccountDeletionCapabilities(
+  entry: StoredDeletionRequest,
+): Promise<StoredDeletionRequest | null> {
+  let accepted: AccountDeletionAcceptedDto;
+  try {
+    accepted = parseAccepted(
+      await api<unknown>("/api/public/account-deletion", {
+        method: "POST",
+        skipAuth: true,
+        json: {
+          confirmation: "DELETE",
+          admissionCredential: entry.admissionCredential,
+        },
+      }),
+    );
+  } catch (cause) {
+    if (
+      cause instanceof ApiError &&
+      cause.code === "ADMISSION_CREDENTIAL_INVALID"
+    ) {
+      const next = { ...entry, admissionCredential: null };
+      saveStoredRequest(entry, next);
+      return isEmptyStoredRequest(next) ? null : next;
+    }
+    throw cause;
+  }
+  return rememberAccountDeletionCapabilities(entry, accepted);
 }
 
 async function activateAccountDeletion(
-  recoveryCredential: string,
+  entry: StoredDeletionRequest,
 ): Promise<AccountDeletionStatusDto> {
   const response = await api<unknown>("/api/public/account-deletion", {
     method: "PATCH",
     skipAuth: true,
-    headers: { "X-Account-Deletion-Recovery": recoveryCredential },
+    headers: {
+      "X-Account-Deletion-Recovery": entry.recoveryCredential ?? "",
+    },
     json: { confirmation: "ACTIVATE DELETION" },
   });
   const status = parseStatusEnvelope(response);
@@ -390,67 +605,147 @@ async function activateAccountDeletion(
       },
     );
   }
-  removeDurableCredential(ADMISSION_CREDENTIAL_KEY);
+  saveStoredRequest(entry, { ...entry, admissionCredential: null });
   return status;
 }
 
-export async function submitAccountDeletion(): Promise<AccountDeletionAcceptedDto> {
+export async function submitAccountDeletion(
+  account: AccountDeletionAccount | null,
+): Promise<AccountDeletionAcceptedDto> {
   // Persist before the destructive request. A network failure leaves this
   // one-time authority available to recover the already-committed receipt.
-  const admissionCredential = getOrCreateAdmissionCredential();
-  const accepted = parseAccepted(
-    await api<unknown>("/api/v1/me/account-deletion", {
-      method: "POST",
-      json: { confirmation: "DELETE", admissionCredential },
-    }),
-  );
-  rememberAccountDeletionCapabilities(accepted);
-  const request = await activateAccountDeletion(accepted.recoveryCredential);
-  return { ...accepted, request };
-}
-
-export async function readAccountDeletionStatus(): Promise<AccountDeletionStatusDto | null> {
-  let statusCredential = readDurableCredential(STATUS_CREDENTIAL_KEY);
-  let recoveryCredential = readDurableCredential(RECOVERY_CREDENTIAL_KEY);
-  if (!statusCredential || !recoveryCredential) {
-    const recovered = await recoverAccountDeletionCapabilities();
-    if (recovered) {
-      statusCredential = recovered.statusCredential;
-      recoveryCredential = recovered.recoveryCredential;
+  const admission = getOrCreateAdmissionEntry(account);
+  let accepted: AccountDeletionAcceptedDto;
+  try {
+    accepted = parseAccepted(
+      await api<unknown>("/api/v1/me/account-deletion", {
+        method: "POST",
+        json: {
+          confirmation: "DELETE",
+          admissionCredential: admission.admissionCredential,
+        },
+      }),
+    );
+  } catch (cause) {
+    // A 400 or 409 is answered only after the server found no admitted
+    // request for this credential, so nothing exists to recover. A 401, 5xx
+    // or network failure may follow a committed request and keeps it. Only
+    // the admission credential goes: a saved request keeps its recovery.
+    if (
+      cause instanceof ApiError &&
+      (cause.status === 400 || cause.status === 409)
+    ) {
+      saveStoredRequest(admission, { ...admission, admissionCredential: null });
     }
-    statusCredential = readDurableCredential(STATUS_CREDENTIAL_KEY);
+    throw cause;
   }
-  if (recoveryCredential && readDurableCredential(ADMISSION_CREDENTIAL_KEY)) {
-    return activateAccountDeletion(recoveryCredential);
-  }
-  if (!statusCredential) return null;
-  const response = await api<unknown>("/api/public/account-deletion", {
-    skipAuth: true,
-    headers: { "X-Account-Deletion-Status": statusCredential },
-  });
-  return parseStatusEnvelope(response);
-}
-
-export async function cancelAccountDeletion(): Promise<AccountDeletionStatusDto> {
-  const recoveryCredential = readDurableCredential(RECOVERY_CREDENTIAL_KEY);
-  if (!recoveryCredential) {
+  const entry = rememberAccountDeletionCapabilities(admission, accepted);
+  let request: AccountDeletionStatusDto;
+  try {
+    request = await activateAccountDeletion(entry);
+  } catch (cause) {
     throw new AccountDeletionClientError(
-      "The recovery capability is unavailable in this browser session.",
+      "Your deletion request was saved but not confirmed. Finish it or keep your account on the account-deletion page.",
       {
-        code: "ACCOUNT_DELETION_RECOVERY_CAPABILITY_UNAVAILABLE",
-        severity: "fatal",
+        code: "ACCOUNT_DELETION_ACTIVATION_PENDING",
+        cause,
+        severity: "ephemeral",
+        requestId: accepted.request.requestId,
       },
     );
   }
+  return { ...accepted, request };
+}
+
+/** One deletion request this browser can act on, with its server status. */
+export interface StoredAccountDeletion {
+  accountId: string | null;
+  accountLabel: string | null;
+  request: AccountDeletionStatusDto;
+}
+
+/**
+ * Reads the server status of every deletion request saved in this browser.
+ * A read never activates a request: one left in pending_activation is
+ * returned as is, and only {@link finishAccountDeletion} activates it.
+ */
+export async function readAccountDeletionStatuses(): Promise<
+  StoredAccountDeletion[]
+> {
+  const results: StoredAccountDeletion[] = [];
+  for (const stored of loadStoredRequests()) {
+    let entry: StoredDeletionRequest | null = stored;
+    if (
+      (!entry.statusCredential || !entry.recoveryCredential) &&
+      entry.admissionCredential
+    ) {
+      entry = await recoverAccountDeletionCapabilities(entry);
+    }
+    if (!entry?.statusCredential) continue;
+    let response: unknown;
+    try {
+      response = await api<unknown>("/api/public/account-deletion", {
+        skipAuth: true,
+        headers: { "X-Account-Deletion-Status": entry.statusCredential },
+      });
+    } catch (cause) {
+      // An expired status credential with no recovery authority left is a
+      // finished request; forget it so it cannot hide the others.
+      if (
+        cause instanceof ApiError &&
+        cause.code === "STATUS_CREDENTIAL_INVALID" &&
+        !entry.recoveryCredential
+      ) {
+        saveStoredRequest(entry, null);
+        continue;
+      }
+      throw cause;
+    }
+    const request = parseStatusEnvelope(response);
+    if (entry.requestId !== request.requestId) {
+      saveStoredRequest(entry, { ...entry, requestId: request.requestId });
+    }
+    results.push({
+      accountId: entry.accountId,
+      accountLabel: entry.accountLabel,
+      request,
+    });
+  }
+  return results;
+}
+
+/** Activates a saved pending_activation request after the user confirms. */
+export async function finishAccountDeletion(
+  requestId: string,
+): Promise<AccountDeletionStatusDto> {
+  return activateAccountDeletion(findStoredRequest(requestId));
+}
+
+/**
+ * Forgets a request that never activated. The server keeps it inert in
+ * pending_activation and lets the same account replace it later, so the
+ * account stays active.
+ */
+export function abandonAccountDeletion(requestId: string): void {
+  const entry = loadStoredRequests().find(
+    (candidate) => candidate.requestId === requestId,
+  );
+  if (entry) saveStoredRequest(entry, null);
+}
+
+export async function cancelAccountDeletion(
+  requestId: string,
+): Promise<AccountDeletionStatusDto> {
+  const entry = findStoredRequest(requestId);
   const response = await api<unknown>("/api/public/account-deletion", {
     method: "DELETE",
     skipAuth: true,
-    headers: { "X-Account-Deletion-Recovery": recoveryCredential },
+    headers: { "X-Account-Deletion-Recovery": entry.recoveryCredential ?? "" },
     json: { confirmation: "CANCEL DELETION" },
   });
   const status = parseStatusEnvelope(response);
   if (status.status === "canceled") {
-    removeDurableCredential(RECOVERY_CREDENTIAL_KEY);
+    saveStoredRequest(entry, { ...entry, recoveryCredential: null });
   }
   return status;
 }
@@ -461,21 +756,14 @@ export interface AccountDeletionExportDownload {
   filename: string;
 }
 
-export async function downloadAccountDeletionExport(): Promise<AccountDeletionExportDownload> {
-  const recoveryCredential = readDurableCredential(RECOVERY_CREDENTIAL_KEY);
-  if (!recoveryCredential) {
-    throw new AccountDeletionClientError(
-      "The recovery capability is unavailable in this browser session.",
-      {
-        code: "ACCOUNT_DELETION_RECOVERY_CAPABILITY_UNAVAILABLE",
-        severity: "fatal",
-      },
-    );
-  }
+export async function downloadAccountDeletionExport(
+  requestId: string,
+): Promise<AccountDeletionExportDownload> {
+  const entry = findStoredRequest(requestId);
   const response = await apiFetch("/api/public/account-deletion/export", {
     method: "POST",
     skipAuth: true,
-    headers: { "X-Account-Deletion-Recovery": recoveryCredential },
+    headers: { "X-Account-Deletion-Recovery": entry.recoveryCredential ?? "" },
     json: { confirmation: "EXPORT MY DATA" },
   });
   return readVerifiedExportDownload(response, "deletion export");

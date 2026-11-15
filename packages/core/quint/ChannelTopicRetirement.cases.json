@@ -1,0 +1,63 @@
+{
+	"sources": [
+		"packages/core/src/services/channel-topics.ts",
+		"packages/core/src/plugin-lifecycle.ts",
+		"packages/core/src/runtime/data-mutations.ts",
+		"packages/core/src/runtime.ts",
+		"plugins/plugin-sqlite/adapter.ts",
+		"plugins/plugin-sqlite/records.ts",
+		"packages/core/test/channel-topics.test.ts",
+		"packages/scripts/lib/vitest-conformance.ts",
+		"packages/scripts/lib/test-output.ts",
+		"packages/scripts/run-vitest.ts",
+		"packages/scripts/run-with-deadline.ts"
+	],
+	"bounds": [
+		"One original service, one sequential replacement, two rooms and four calls. Original room 0 has one optional cold reader or writer and a second writer. Original room 1 has one writer, and the replacement writes room 0.",
+		"Labels are distinct and below LRU capacity. Successful persistence replaces durable topics with the current local list. A failed write leaves local topics, so a later successful call can persist them. Failed hydration leaves the room cold.",
+		"The runtime suite uses real SQLite for plugin unload/reload, durable readback, persistence failure and recovery. Controlled I/O ports cover same-room ordering, independent rooms and pending stop.",
+		"Metadata mutations by unrelated writers, missing-room races, process crashes, unknown commits, duplicate labels, capacity eviction and simultaneous independent runtimes remain outside this finite projection."
+	],
+	"conformance": "packages/core/quint/check-core-concurrency.mjs",
+	"cases": [
+		{
+			"name": "room-queue-and-service-generation",
+			"main": "ChannelTopicRetirement",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"RoomOrder",
+				"NoLateOriginalAdmission",
+				"RetirementJoinsOriginal",
+				"RetirementClearsLocal",
+				"RoomIsolation"
+			],
+			"temporal": ["FairStopSettles", "FairAcceptedCallsSettle", "StopSettles"],
+			"temporalChecks": [
+				{
+					"property": "FairStopSettles",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of each admitted operation and stop cleanup. No future operation, successful write or wall-clock bound is assumed."
+					]
+				},
+				{
+					"property": "FairAcceptedCallsSettle",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of each queued room operation, including hydration and storage settlement. These operations may fail."
+					]
+				},
+				{
+					"property": "StopSettles",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. An original operation or stop cleanup can remain pending."
+					]
+				}
+			],
+			"maxSteps": 40,
+			"samples": 1000
+		}
+	]
+}

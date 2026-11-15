@@ -1,0 +1,28 @@
+{
+  "sources": [
+    "plugins/plugin-wallet/src/sdk/x402/budget.ts",
+    "plugins/plugin-wallet/src/sdk/x402/client.ts"
+  ],
+  "implementationTests": [
+    "plugins/plugin-wallet/src/sdk/x402/client.timeout.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "X402PaymentBudget",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "BudgetConserved",
+        "TransferHasApproval",
+        "UnknownKeepsHold",
+        "ReceiptReplacesReservation",
+        "PreTransferFailureReleases",
+        "RecordedHasReceipt"
+      ],
+      "temporal": [],
+      "maxSteps": 100,
+      "samples": 1000
+    }
+  ]
+}

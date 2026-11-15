@@ -307,6 +307,61 @@ export async function prepareSchedulingDelivery(
   return attempt;
 }
 
+/**
+ * A send that has been dispatching this long outlived every connector timeout:
+ * the process that started it stopped before recording the provider outcome.
+ */
+const INTERRUPTED_DISPATCH_MS = 10 * 60_000;
+
+/**
+ * Evidence that settles an ambiguous send: the owner checked the provider's
+ * message history. "sent" completes the approval; "not_sent" makes it
+ * retryable.
+ */
+export interface SchedulingDeliveryReconciliation {
+  readonly outcome: "sent" | "not_sent";
+  readonly reconciledBy: string;
+  readonly reason: string;
+  readonly providerReceipt?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Moves the approval of an unknown-outcome send to reconciliation_required and
+ * records the delivery attempt as its execution, so the approval queue's
+ * reconcile path can address it.
+ */
+async function quarantineApprovalTx(
+  tx: TransactionalDb,
+  agentId: string,
+  attempt: SchedulingDeliveryAttempt,
+  error: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const startedAt = attempt.lastAttemptedAt ?? now;
+  await executeRawSqlTx(
+    tx,
+    `UPDATE approval_requests
+        SET state = ${sqlText("reconciliation_required")},
+            execution_attempt_id = ${sqlText(attempt.id)},
+            execution_provider = ${sqlText(attempt.provider ?? attempt.channel)},
+            provider_idempotency_key = ${sqlText(attempt.idempotencyKey)},
+            execution_claimed_at = ${sqlText(startedAt)},
+            dispatch_started_at = ${sqlText(startedAt)},
+            execution_error = ${sqlText(error)},
+            updated_at = ${sqlText(now)}
+      WHERE id = ${sqlText(attempt.approvalRequestId)}
+        AND agent_id = ${sqlText(agentId)}
+        AND state = ${sqlText("executing")}`,
+  );
+}
+
+function failureMessage(failure: Record<string, unknown> | null): string {
+  const message = failure?.message ?? failure?.reason ?? failure?.code;
+  return typeof message === "string" && message.trim()
+    ? message
+    : "scheduling send outcome is unknown";
+}
+
 export class SchedulingDeliveryStore {
   constructor(private readonly runtime: IAgentRuntime) {}
 
@@ -373,9 +428,29 @@ export class SchedulingDeliveryStore {
         return { kind: "already_succeeded", attempt };
       }
       if (attempt.state === "ambiguous") {
+        // Rows quarantined before the approval moved with its attempt still
+        // sit in executing; move them now so they can be reconciled.
+        await quarantineApprovalTx(
+          tx,
+          this.runtime.agentId,
+          attempt,
+          failureMessage(attempt.lastFailure),
+        );
         return { kind: "blocked", reason: "ambiguous", attempt };
       }
       if (attempt.state === "dispatching") {
+        const startedAt = Date.parse(attempt.lastAttemptedAt ?? "");
+        if (
+          Number.isFinite(startedAt) &&
+          Date.now() - startedAt >= INTERRUPTED_DISPATCH_MS
+        ) {
+          const interrupted = await this.markAmbiguousTx(tx, attempt, {
+            code: "SCHEDULING_DELIVERY_INTERRUPTED",
+            message:
+              "the send stopped before its provider outcome was recorded",
+          });
+          return { kind: "blocked", reason: "ambiguous", attempt: interrupted };
+        }
         return { kind: "blocked", reason: "in_flight", attempt };
       }
       if (attempt.state === "invalidated") {
@@ -422,11 +497,18 @@ export class SchedulingDeliveryStore {
         tx,
         `UPDATE approval_requests
             SET state = ${sqlText("executing")},
+                execution_attempt_id = NULL,
+                execution_provider = NULL,
+                provider_idempotency_key = NULL,
+                execution_claimed_at = NULL,
+                dispatch_started_at = NULL,
+                provider_receipt = NULL,
+                execution_error = NULL,
                 updated_at = ${sqlText(new Date().toISOString())}
           WHERE id = ${sqlText(request.id)}
             AND agent_id = ${sqlText(this.runtime.agentId)}
             AND subject_user_id = ${sqlText(request.subjectUserId)}
-            AND state = ${sqlText("approved")}
+            AND state IN (${sqlText("approved")}, ${sqlText("retryable")})
           RETURNING id`,
       );
       if (approvalRows.length === 0) {
@@ -439,7 +521,7 @@ export class SchedulingDeliveryStore {
         }
         throw deliveryInvariant(
           "SCHEDULING_DELIVERY_APPROVAL_NOT_CLAIMABLE",
-          `approval ${request.id} is not claimable from approved`,
+          `approval ${request.id} is not claimable from approved or retryable`,
           { approvalRequestId: request.id },
         );
       }
@@ -734,13 +816,13 @@ export class SchedulingDeliveryStore {
               updated_at = ${sqlText(now)}
         WHERE id = ${sqlText(request.id)}
           AND agent_id = ${sqlText(this.runtime.agentId)}
-          AND state = ${sqlText("approved")}
+          AND state IN (${sqlText("approved")}, ${sqlText("retryable")})
         RETURNING id`,
     );
     if (approvals.length === 0) {
       throw deliveryInvariant(
         "SCHEDULING_DELIVERY_INVALIDATION_CONFLICT",
-        `approval ${request.id} cannot be invalidated outside approved`,
+        `approval ${request.id} cannot be invalidated outside approved or retryable`,
         { approvalRequestId: request.id, attemptId: attempt.id },
       );
     }
@@ -872,13 +954,107 @@ export class SchedulingDeliveryStore {
     });
   }
 
+  /**
+   * Settles an ambiguous send on the owner's check of the provider history,
+   * moving the approval and its attempt together.
+   */
+  async reconcile(
+    approvalRequestId: string,
+    evidence: SchedulingDeliveryReconciliation,
+  ): Promise<SchedulingDeliveryAttempt> {
+    return withRequiredTransaction(this.runtime, async (tx) => {
+      const attempt = await this.byApprovalRequestIdTx(tx, approvalRequestId);
+      if (attempt?.state !== "ambiguous") {
+        throw deliveryInvariant(
+          "SCHEDULING_DELIVERY_NOT_AMBIGUOUS",
+          `approval ${approvalRequestId} has no unknown send outcome to reconcile`,
+          { approvalRequestId, state: attempt?.state ?? "missing" },
+        );
+      }
+      await quarantineApprovalTx(
+        tx,
+        this.runtime.agentId,
+        attempt,
+        failureMessage(attempt.lastFailure),
+      );
+      const now = new Date().toISOString();
+      const sent = evidence.outcome === "sent";
+      const approvals = await executeRawSqlTx(
+        tx,
+        `UPDATE approval_requests
+            SET state = ${sqlText(sent ? "done" : "retryable")},
+                provider_receipt = ${
+                  evidence.providerReceipt
+                    ? sqlJson(evidence.providerReceipt)
+                    : "provider_receipt"
+                },
+                execution_error = ${
+                  sent
+                    ? "NULL"
+                    : sqlText("provider reconciliation confirmed non-delivery")
+                },
+                reconciliation_resolved_at = ${sqlText(now)},
+                reconciliation_resolved_by = ${sqlText(evidence.reconciledBy)},
+                reconciliation_reason = ${sqlText(evidence.reason)},
+                updated_at = ${sqlText(now)}
+          WHERE id = ${sqlText(approvalRequestId)}
+            AND agent_id = ${sqlText(this.runtime.agentId)}
+            AND state = ${sqlText("reconciliation_required")}
+            AND execution_attempt_id = ${sqlText(attempt.id)}
+          RETURNING id`,
+      );
+      if (approvals.length === 0) {
+        throw deliveryInvariant(
+          "SCHEDULING_DELIVERY_RECONCILE_CONFLICT",
+          `approval ${approvalRequestId} is not awaiting reconciliation of attempt ${attempt.id}`,
+          { approvalRequestId, attemptId: attempt.id },
+        );
+      }
+      // No provider receipt exists for an owner-confirmed send, so the attempt
+      // keeps its unknown-outcome record; a done approval is never claimed.
+      if (sent) return attempt;
+      const rows = await executeRawSqlTx(
+        tx,
+        `UPDATE app_lifeops.life_scheduling_delivery_attempts
+            SET state = ${sqlText("failed_retryable")},
+                last_failure_json = ${sqlJson({
+                  code: "SCHEDULING_DELIVERY_RECONCILED_NOT_SENT",
+                  message: evidence.reason,
+                })},
+                updated_at = ${sqlText(now)}
+          WHERE id = ${sqlText(attempt.id)}
+            AND agent_id = ${sqlText(this.runtime.agentId)}
+            AND state = ${sqlText("ambiguous")}
+          RETURNING ${SELECT_COLUMNS}`,
+      );
+      if (!rows[0]) {
+        throw deliveryInvariant(
+          "SCHEDULING_DELIVERY_RECONCILE_CONFLICT",
+          `attempt ${attempt.id} left ambiguous during reconciliation`,
+          { attemptId: attempt.id },
+        );
+      }
+      return rowToAttempt(rows[0]);
+    });
+  }
+
   private async recordAmbiguous(
     attempt: SchedulingDeliveryAttempt,
     failure: Record<string, unknown>,
   ): Promise<SchedulingDeliveryAttempt> {
+    return withRequiredTransaction(this.runtime, (tx) =>
+      this.markAmbiguousTx(tx, attempt, failure),
+    );
+  }
+
+  private async markAmbiguousTx(
+    tx: TransactionalDb,
+    attempt: SchedulingDeliveryAttempt,
+    failure: Record<string, unknown>,
+  ): Promise<SchedulingDeliveryAttempt> {
     const now = new Date().toISOString();
-    const rows = await executeRawSql(
-      this.runtime,
+    const rows = await executeRawSqlTx(
+      tx,
       `UPDATE app_lifeops.life_scheduling_delivery_attempts
           SET state = ${sqlText("ambiguous")},
               last_failure_json = ${sqlJson(failure)},
@@ -895,6 +1071,13 @@ export class SchedulingDeliveryStore {
         { attemptId: attempt.id, state: attempt.state },
       );
     }
-    return rowToAttempt(rows[0]);
+    const ambiguous = rowToAttempt(rows[0]);
+    await quarantineApprovalTx(
+      tx,
+      this.runtime.agentId,
+      ambiguous,
+      failureMessage(failure),
+    );
+    return ambiguous;
   }
 }

@@ -3,9 +3,9 @@
  *
  * Catalog rows remain short-lived process caches for non-Worker billing work.
  * Cache-only inference admission reads canonical rates from an L1 plus the
- * configured Worker cache. A normal cold miss may join the same coalesced
- * authoritative catalog load under a bounded deadline, while durable writes
- * and stale refreshes remain under `waitUntil` without a cache readback.
+ * configured Worker cache. A cold miss or unreadable cache joins the coalesced
+ * authoritative catalog load inline, while durable writes and stale refreshes
+ * remain under `waitUntil` without a cache readback.
  */
 import type { AiPricingEntry } from "../../../db/schemas/ai-pricing";
 import { cache } from "../../cache/client";
@@ -23,16 +23,9 @@ export interface PricingCacheReadOptions {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
 
-export class AiPricingCacheWarmingError extends Error {
-  constructor() {
-    super("AI pricing cache is warming; retry the request");
-    this.name = "AiPricingCacheWarmingError";
-  }
-}
-
 export class AiPricingCacheUnavailableError extends Error {
-  constructor() {
-    super("AI pricing cache is unavailable; retry the request");
+  constructor(options?: { cause?: unknown }) {
+    super("AI pricing is unavailable; retry the request", options);
     this.name = "AiPricingCacheUnavailableError";
   }
 }
@@ -160,6 +153,16 @@ const TEXT_PRICING_HARD_TTL_SECONDS = 15 * 60;
 const TEXT_PRICING_HARD_TTL_MS = TEXT_PRICING_HARD_TTL_SECONDS * 1000;
 const TEXT_PRICING_FAILURE_TTL_MS = 15 * 1000;
 const TEXT_PRICING_CACHE_VERSION = 1;
+
+/** Wait only for validated canonical rates; durable persistence remains in waitUntil. */
+async function awaitColdPricing<T>(load: Promise<T>): Promise<T> {
+  try {
+    return await load;
+  } catch (error) {
+    // error-policy:J2 the authoritative catalog load itself failed.
+    throw new AiPricingCacheUnavailableError({ cause: error });
+  }
+}
 
 interface CachedTextPricingRates {
   v: typeof TEXT_PRICING_CACHE_VERSION;
@@ -354,8 +357,8 @@ function readLocalTextPricingRates(
 
 /**
  * Resolve canonical token rates while keeping durable persistence off the
- * Worker response. A normal cold miss may consume the coalesced authoritative
- * load under a bounded deadline; stale-but-bounded rates still refresh in the
+ * Worker response. A cold miss or unreadable cache consumes the coalesced
+ * authoritative load inline; stale-but-bounded rates still refresh in the
  * background.
  */
 export async function getCachedTextPricingRates(
@@ -398,14 +401,9 @@ export async function getCachedTextPricingRates(
     throw new AiPricingCacheUnavailableError();
   }
   textPricingFailures.delete(cacheKey);
-  if (outcome.kind === "miss") {
-    // The Worker hot path never joins the Postgres pricing load: the request
-    // is retryable while hydration runs under `waitUntil`.
-    scheduleTextPricingHydration(cacheKey, required, loader, options.executionCtx);
-    throw new AiPricingCacheWarmingError();
-  }
-  scheduleTextPricingHydration(cacheKey, required, loader, options.executionCtx);
-  throw new AiPricingCacheUnavailableError();
+  return await awaitColdPricing(
+    scheduleTextPricingHydration(cacheKey, required, loader, options.executionCtx),
+  );
 }
 
 function isCachedFlatPricingEntry(value: unknown): value is CachedFlatPricingEntry {
@@ -518,8 +516,8 @@ function scheduleFlatPricingHydration(
 
 /**
  * Resolve a fixed-operation pricing entry while keeping durable persistence
- * off the Worker response. Bounded stale values serve immediately; a normal
- * cold miss may consume the coalesced authoritative load under a deadline.
+ * off the Worker response. Bounded stale values serve immediately; a cold miss
+ * or unreadable cache consumes the coalesced authoritative load inline.
  */
 export async function getCachedFlatPricingEntry(
   cacheKey: string,
@@ -556,12 +554,9 @@ export async function getCachedFlatPricingEntry(
     throw new AiPricingCacheUnavailableError();
   }
   flatPricingFailures.delete(cacheKey);
-  if (outcome.kind === "miss") {
-    scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx);
-    throw new AiPricingCacheWarmingError();
-  }
-  scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx);
-  throw new AiPricingCacheUnavailableError();
+  return await awaitColdPricing(
+    scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx),
+  );
 }
 
 /** Test hook: reset all process-local pricing caches between tests. */

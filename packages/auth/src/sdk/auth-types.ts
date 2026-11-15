@@ -473,7 +473,7 @@ export interface LoginProviders {
     enabled?: boolean;
     provider?: "turnstile" | "hcaptcha";
     siteKey?: string;
-    requiredFor?: Array<"email_otp" | "sms_otp">;
+    requiredFor?: Array<"email_otp" | "sms_otp" | "guest">;
   };
   /** List of all enabled OAuth provider names */
   oauth: string[];

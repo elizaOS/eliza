@@ -1,0 +1,69 @@
+{
+  "sources": [
+    "plugins/plugin-inbox/src/mailbox/operation-journal.ts",
+    "plugins/plugin-inbox/test/mailbox/operation-journal.test.ts",
+    "plugins/plugin-inbox/src/mailbox/review-controller.ts",
+    "plugins/plugin-inbox/test/mailbox/review-controller.test.ts",
+    "plugins/plugin-inbox/quint/inbox-receipt-conformance.json",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/scripts/run-vitest.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "bounds": "One verified owner and grant, one exact request and review digest, one durable dispatch reservation and at most one terminal provider response. Journal writes and provider callbacks are atomic steps. After restart the active owner may read the same record but has no send lease. Retiring the owner disables reads and sends. Actual journal tests cover storage conflicts, lost replies and review equality. This case excludes multi-request clearing, malformed receipt identity and changes between non-prepared replies after a terminal response. The complete proposal, including attachment bytes and serialization-sensitive legacy shapes, is projected to two content identities; object identity and string length never stand in for content. A rendered button may remain stale after in-place editing or owner retirement, but confirmation compares the live complete content again before reservation. Dispatch uses the immutable reviewed content captured at approval, even if the composer changes afterward. The host must preserve the internal journal and share view snapshots without mutating them. The model does not prove JavaScript serialization injectivity, arbitrary proxy/getter behavior, unbounded attachments, UI scheduling or provider availability; the complete real controller/journal component suites check canonical and legacy shape handling, five-MiB last-byte mutation, stale activation and actual effect arguments with controlled CAS/provider ports.",
+  "conformance": "plugins/plugin-inbox/quint/check-inbox-receipt.mjs",
+  "cases": [
+    {
+      "name": "exact-mail-receipt",
+      "main": "InboxReceiptMonotonicity",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "AtMostOneDispatch",
+        "PersistBeforeDispatch",
+        "NoReviewAfterReservation",
+        "ObservedReceiptCannotRearm",
+        "OnlyExactLiveContentCanReserve",
+        "ReviewedBytesStayAuthoritative"
+      ],
+      "temporal": ["ReceiptSettlesOrRetires"],
+      "temporalChecks": [
+        {
+          "property": "ReceiptSettlesOrRetires",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of an exact terminal receipt read and successful persistence while the owner stays current and a dispatch remains unsettled. This assumes provider progress and repeated receipt reads. An interrupted or stalled provider can remain pending in the absence of fairness."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 100
+    },
+    {
+      "name": "cached-render-live-content-confirmation",
+      "main": "InboxReceiptMonotonicity_render_binding",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "AtMostOneDispatch",
+        "PersistBeforeDispatch",
+        "NoReviewAfterReservation",
+        "ObservedReceiptCannotRearm",
+        "OnlyExactLiveContentCanReserve",
+        "ReviewedBytesStayAuthoritative"
+      ],
+      "temporal": ["ReceiptSettlesOrRetires"],
+      "temporalChecks": [
+        {
+          "property": "ReceiptSettlesOrRetires",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of an exact terminal receipt read and successful persistence while the owner stays current and a dispatch remains unsettled. This assumes provider progress and repeated receipt reads. An interrupted or stalled provider can remain pending in the absence of fairness."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 100
+    }
+  ]
+}

@@ -33,11 +33,13 @@ async function hydrateAgentEvent(event: AgentEvent): Promise<AgentEvent> {
       storage: event.message_storage,
       key: event.message_key,
       inlineValue: event.message,
+      strict: true,
     }),
     hydrateJsonField<Record<string, unknown>>({
       storage: event.metadata_storage,
       key: event.metadata_key,
       inlineValue: event.metadata,
+      strict: true,
     }),
   ]);
 

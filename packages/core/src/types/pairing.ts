@@ -187,16 +187,6 @@ export interface ApprovePairingParams {
 }
 
 /**
- * Channel-specific pairing adapter for customization
- */
-export interface ChannelPairingAdapter {
-	/** Normalize an allowlist entry (e.g., phone number formatting) */
-	normalizeAllowEntry?: (entry: string) => string;
-	/** Label for the sender ID type (e.g., "userId", "phoneNumber") */
-	idLabel?: string;
-}
-
-/**
  * Pairing configuration for DM access control
  */
 export interface PairingConfig {

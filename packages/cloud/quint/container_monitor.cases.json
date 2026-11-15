@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/containers.ts",
+    "packages/cloud/shared/src/lib/services/containers/hetzner-client/client.ts",
+    "packages/cloud/shared/src/db/migrations/0558_container_placement_revision.sql",
+    "packages/cloud/shared/src/lib/services/__tests__/container-health-observation.pglite.test.ts",
+    "packages/cloud/shared/src/db/migrations/0265_compute_billing_recovery.sql",
+    "packages/cloud/quint/container-conformance.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One logical container, two row incarnations, one restart, one newer deployment, placement metadata A-to-B-to-A and one bookkeeping update.",
+      "The original created_at database text identifies a row; malicious reuse of both its UUID and exact timestamp is excluded.",
+      "Migration0558 advances the canonical lifecycle revision for all typed Hetzner placement fields; funded restart advances it even when already deploying. Full metadata equality alone does not prove absence of ABA.",
+      "Database CAS is atomic. Provider health truth, physical node replacement outside retained identity, transport reliability and TypeScript refinement remain outside this bounded model."
+    ],
+    "progress": "A pending observation completes under weak fairness of its response/error continuation. No eventual healthy status is assumed."
+  },
+  "cases": [
+    {
+      "name": "container-monitor",
+      "main": "container_monitor",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["PendingObservationCompletes"],
+      "maxSteps": 35,
+      "samples": 1000,
+      "deadlock": false,
+      "temporalChecks": [
+        {
+          "property": "PendingObservationCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Every outstanding health request eventually resolves or rejects, and its local completion continuation is weakly fair.",
+            "Unknown/starting statuses and transport errors complete the attempt without changing the row. No provider health or scheduler success is assumed."
+          ]
+        }
+      ]
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs"
+}

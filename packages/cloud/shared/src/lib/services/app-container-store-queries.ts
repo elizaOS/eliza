@@ -19,6 +19,13 @@ export interface ProjectableContainerRow {
   environment_vars: Record<string, string> | null;
   metadata: Record<string, unknown> | null;
   node_id: string | null;
+  createdAtSnapshot: string;
+}
+
+export interface AppContainerPublicationAuthority {
+  organizationId: string;
+  deploymentGeneration: string | null;
+  createdAtSnapshot: string;
 }
 
 const appContainerSelection = {
@@ -32,6 +39,7 @@ const appContainerSelection = {
   environment_vars: containers.environment_vars,
   metadata: containers.metadata,
   node_id: containers.node_id,
+  createdAtSnapshot: sql<string>`to_char(${containers.created_at}, 'YYYY-MM-DD HH24:MI:SS.US')`,
 };
 
 /** Minimum database surface required by app-container ownership reads. */
@@ -174,13 +182,20 @@ export function rollbackAppContainerNodeSlotClaim(
   containerId: string,
   organizationId: string,
   nodeId: string,
+  authority?: AppContainerPublicationAuthority,
 ): Promise<boolean> {
   return database.transaction(async (tx) => {
     const [rolledBack] = await tx
       .update(containers)
       .set({
         node_id: null,
-        metadata: sql`coalesce(${containers.metadata}, '{}'::jsonb) - 'slotClaimedAt'`,
+        metadata: sql`CASE
+          WHEN ${containers.status} IN ('deleting', 'deleted')
+            OR jsonb_exists(coalesce(${containers.metadata}, '{}'::jsonb), 'retirement')
+          THEN jsonb_set(coalesce(${containers.metadata}, '{}'::jsonb) - 'slotClaimedAt',
+            '{slotReleasedAt}', to_jsonb(now()::text))
+          ELSE coalesce(${containers.metadata}, '{}'::jsonb) - 'slotClaimedAt'
+        END`,
         updated_at: new Date(),
       })
       .where(
@@ -190,6 +205,13 @@ export function rollbackAppContainerNodeSlotClaim(
           eq(containers.node_id, nodeId),
           sql`jsonb_exists(coalesce(${containers.metadata}, '{}'::jsonb), 'slotClaimedAt')`,
           sql`NOT jsonb_exists(coalesce(${containers.metadata}, '{}'::jsonb), 'slotReleasedAt')`,
+          ...(authority
+            ? [
+                eq(containers.organization_id, authority.organizationId),
+                sql`to_char(${containers.created_at}, 'YYYY-MM-DD HH24:MI:SS.US') = ${authority.createdAtSnapshot}`,
+                sql`${containers.metadata}->>'deploymentGeneration' IS NOT DISTINCT FROM ${authority.deploymentGeneration}`,
+              ]
+            : []),
         ),
       )
       .returning({ id: containers.id });

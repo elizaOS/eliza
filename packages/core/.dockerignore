@@ -18,7 +18,6 @@ apps/**/node_modules
 eliza/packages/app/deploy/**/node_modules
 apps/app/android
 apps/app/ios
-apps/app/electrobun
 apps/app/screenshots
 apps/app/test-results
 apps/homepage

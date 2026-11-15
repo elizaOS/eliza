@@ -37,7 +37,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: node packages/app/scripts/voice/voice-stage-b-eval.ts [--report path] [--out dir]
+  console.log(`Usage: bun packages/app/scripts/voice/voice-stage-b-eval.ts [--report path] [--out dir]
 
 Validates the Stage-B STT evidence report for issue #9958.
 

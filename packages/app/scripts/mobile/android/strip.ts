@@ -16,7 +16,6 @@ import { rmRecursive, walkFiles } from "../build-tools.ts";
 import { APP, androidDir } from "../context.ts";
 import { escapeRegExp } from "../escape.ts";
 import {
-  ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
   ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_QUERY_PACKAGES,
   ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
@@ -24,15 +23,10 @@ import {
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
   ANDROID_PLAY_DATA_EXTRACTION_RULES,
-  ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS,
-  ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES,
-  ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
-  ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
   applyAndroidPlayManifestHardening,
-  isAndroidFirebaseIndependentRemoteBuild,
+  isAndroidVpsSidecarBuild,
   isCloudBannedAsset,
   isCloudBannedNativeLibrary,
-  resolveAndroidCloudCapacitorConfigPolicy,
   resolveAndroidCloudStripPolicy,
   sanitizeAndroidCloudCapacitorConfig,
 } from "./cloud-policy.ts";
@@ -45,7 +39,7 @@ import { cloudSafePlayVoicePluginJava } from "./templates/play-voice.ts";
 import { cloudSafeSecureCredentialsPluginJava } from "./templates/secure-credentials.ts";
 import { cloudSafeTasksWorkerJava } from "./templates/tasks-worker.ts";
 
-export function sanitizeAndroidCloudPackagedConfig(env = process.env) {
+export function sanitizeAndroidCloudPackagedConfig() {
   const configPath = path.join(
     androidDir,
     "app",
@@ -69,10 +63,7 @@ export function sanitizeAndroidCloudPackagedConfig(env = process.env) {
       }`,
     );
   }
-  const sanitized = sanitizeAndroidCloudCapacitorConfig(
-    parsed,
-    resolveAndroidCloudCapacitorConfigPolicy(env),
-  );
+  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed);
   fs.writeFileSync(configPath, `${JSON.stringify(sanitized, null, "\t")}\n`);
   console.log(
     "[mobile-build] Rewrote capacitor.config.json to the restricted Play runtime contract.",
@@ -82,11 +73,7 @@ export function sanitizeAndroidCloudPackagedConfig(env = process.env) {
 export function rewriteCloudJavaSources(
   javaRoots,
   androidPackage,
-  {
-    launcherKiosk = false,
-    immersiveNavigation = false,
-    safePushNotifications = true,
-  } = {},
+  { safePushNotifications = true } = {},
 ) {
   let touched = 0;
   for (const root of javaRoots) {
@@ -95,11 +82,7 @@ export function rewriteCloudJavaSources(
     if (fs.existsSync(mainActivity)) {
       fs.writeFileSync(
         mainActivity,
-        cloudSafeMainActivityJava(androidPackage, {
-          launcherKiosk,
-          immersiveNavigation,
-          safePushNotifications,
-        }),
+        cloudSafeMainActivityJava(androidPackage, { safePushNotifications }),
         "utf8",
       );
       touched += 1;
@@ -121,6 +104,11 @@ import android.content.Context;
 
 /** This packaging excludes the resident service and its assets. No process is stopped here. */
 final class ElizaCredentialRetirement {
+    static final class RequestObservation {
+        boolean same(RequestObservation other) { return other != null; }
+        <T> T withCurrent(java.util.concurrent.Callable<T> effect) throws Exception { return effect.call(); }
+    }
+    static RequestObservation observeRequests() { return new RequestObservation(); }
     static long reserve() { return 0; }
     static void request(Context context, long request) { }
     static boolean stopped(Context context) { return true; }
@@ -335,7 +323,7 @@ export function stripAndroidNativePlugins(strippedPlugins, label) {
 }
 
 export function stripAndroidCloudNativePlugins(env = process.env) {
-  const strippedPlugins = isAndroidFirebaseIndependentRemoteBuild(env)
+  const strippedPlugins = isAndroidVpsSidecarBuild(env)
     ? [
         ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
         ["@capacitor/push-notifications", "capacitor-push-notifications"],
@@ -512,8 +500,6 @@ export function stripAndroidForCloud({ env = process.env } = {}) {
     );
   }
   rewriteCloudJavaSources([activeJavaRoot], androidPackage, {
-    launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
-    immersiveNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
     safePushNotifications: stripPolicy.safePushNotifications,
   });
 
@@ -585,102 +571,5 @@ export function stripAndroidForCloud({ env = process.env } = {}) {
   //    libeliza_*.so jniLibs disguise.
   removeCloudNativeArtifacts();
   stripAndroidCloudNativePlugins(env);
-  sanitizeAndroidCloudPackagedConfig(env);
-}
-
-export function stripAndroidForSmsGateway() {
-  const androidPackage = APP.appId;
-  const manifestPath = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "AndroidManifest.xml",
-  );
-  if (fs.existsSync(manifestPath)) {
-    let xml = fs.readFileSync(manifestPath, "utf8");
-    const original = xml;
-
-    for (const component of ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS) {
-      xml = removeApplicationComponentBlock(
-        xml,
-        `${androidPackage}.${component}`,
-      );
-      xml = removeApplicationComponentClassBlock(xml, component);
-    }
-
-    xml = removeAndroidPermissionRequests(
-      xml,
-      ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
-    );
-    xml = ensureAndroidPermissionRemovalMarkers(
-      xml,
-      ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter((permission) =>
-        ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS.includes(permission),
-      ),
-    );
-    xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
-
-    if (xml !== original) {
-      fs.writeFileSync(manifestPath, xml, "utf8");
-      console.log(
-        "[mobile-build] Stripped non-SMS local components and permissions from AndroidManifest.xml.",
-      );
-    }
-  }
-
-  const activeJavaRoot = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "java",
-    packageNameToPath(androidPackage),
-  );
-  const javaRoots = [
-    activeJavaRoot,
-    path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
-  ];
-  let removedJavaCount = 0;
-  for (const root of javaRoots) {
-    if (!fs.existsSync(root)) continue;
-    for (const file of ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES) {
-      const target = path.join(root, file);
-      if (fs.existsSync(target)) {
-        fs.rmSync(target);
-        removedJavaCount += 1;
-      }
-    }
-  }
-  if (removedJavaCount > 0) {
-    console.log(
-      `[mobile-build] Removed ${removedJavaCount} non-SMS Java source(s).`,
-    );
-  }
-  const removedJavaRootCount = removeInactiveAndroidJavaSourceRoots(
-    javaRoots,
-    activeJavaRoot,
-  );
-  if (removedJavaRootCount > 0) {
-    console.log(
-      `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
-    );
-  }
-  rewriteCloudJavaSources(javaRoots, androidPackage, {
-    safePushNotifications: false,
-  });
-
-  const resRoot = path.join(androidDir, "app", "src", "main", "res");
-  for (const relPath of ANDROID_CLOUD_STRIPPED_RESOURCE_FILES) {
-    const target = path.join(resRoot, relPath);
-    if (fs.existsSync(target)) {
-      fs.rmSync(target);
-    }
-  }
-
-  removeCloudNativeArtifacts();
-  stripAndroidNativePlugins(
-    ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
-    "sms-gateway-disallowed",
-  );
+  sanitizeAndroidCloudPackagedConfig();
 }

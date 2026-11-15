@@ -37,6 +37,8 @@ export interface RuntimeLocalInferenceLoader extends LocalInferenceLoader {
 		mmprojPath?: string;
 		prompt?: string;
 	}) => Promise<string>;
+	createStreamingTranscriber?(opts: never): unknown;
+	asrStreamSupported?(): Promise<boolean>;
 }
 
 /** Service instance that delegates the runtime lifecycle to one selected backend. */
@@ -54,6 +56,8 @@ export class LocalInferenceLoaderRuntimeService
 	readonly transcribe?: RuntimeLocalInferenceLoader["transcribe"];
 	readonly synthesize?: RuntimeLocalInferenceLoader["synthesize"];
 	readonly describeImage?: RuntimeLocalInferenceLoader["describeImage"];
+	readonly createStreamingTranscriber?: RuntimeLocalInferenceLoader["createStreamingTranscriber"];
+	readonly asrStreamSupported?: RuntimeLocalInferenceLoader["asrStreamSupported"];
 
 	constructor(
 		runtime: IAgentRuntime,
@@ -73,6 +77,14 @@ export class LocalInferenceLoaderRuntimeService
 		if (loader.synthesize) this.synthesize = loader.synthesize.bind(loader);
 		if (loader.describeImage) {
 			this.describeImage = loader.describeImage.bind(loader);
+		}
+		// The live ASR route reads these from the service, not the backend.
+		if (loader.createStreamingTranscriber) {
+			this.createStreamingTranscriber =
+				loader.createStreamingTranscriber.bind(loader);
+		}
+		if (loader.asrStreamSupported) {
+			this.asrStreamSupported = loader.asrStreamSupported.bind(loader);
 		}
 	}
 

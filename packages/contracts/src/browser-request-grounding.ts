@@ -1,5 +1,6 @@
 import { parseBrowserAddressInput } from "./browser-address-input.ts";
 import { IANA_TLDS } from "./iana-tlds.ts";
+import { stripTrailingPunctuation } from "./strip-trailing-punctuation.ts";
 
 // The model decides whether the user wants a site opened now. This module
 // decides which typed address an open may use, so a model can never open an
@@ -35,10 +36,14 @@ const COMMAND = new RegExp(
   String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:please,?\s+)?${OPEN_COMMAND}\s+(\S+)(\s.*)?$`,
   "i",
 );
-// Explicit polite questions are direct requests too, but file-like bare names
-// still need a website signal rather than acquiring authority from the verb.
-const DIRECT_QUESTION = new RegExp(
-  String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:can|could|would|will)\s+you\s+(?:please,?\s+)?${OPEN_COMMAND}\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`,
+// Everyday verbs that ask for a site. Direct requests only: the router never
+// claims them without the model.
+const EVERYDAY_COMMAND = String.raw`(?:take\s+me\s+to|pull\s+up|bring\s+up|show\s+me|head\s+to|browse\s+to)`;
+// Explicit polite questions and whole-message everyday commands are direct
+// requests too, but file-like bare names still need a website signal rather
+// than acquiring authority from the verb.
+const DIRECT_REQUEST = new RegExp(
+  String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`,
   "i",
 );
 const SUFFIX =
@@ -143,19 +148,20 @@ export function authoredBrowserDestination(text: string): string | undefined {
   } else {
     // Closing punctuation after a bare host is prose. It is never removed
     // from a path, query or fragment.
-    const bare = target.replace(/[.,!?]+$/, "");
+    const bare = stripTrailingPunctuation(target, ".,!?");
     if (!/[/?#]/.test(bare.replace(/^https:\/\//i, ""))) target = bare;
   }
   return webAddress(target)?.href;
 }
 
-/** A direct client request must be a whole-message open command or a bare web address.
+/** A direct client request must be a whole-message open command, a polite
+ * question or everyday command for one address, or a bare web address.
  * Merely mentioning a URL grounds a model proposal, but does not authorize automatic navigation. */
 export function directBrowserDestination(text: string): string | undefined {
   if (unreadable(text)) return;
   const strict = authoredBrowserDestination(text);
   if (strict) return strict;
-  const question = DIRECT_QUESTION.exec(text.trim());
+  const question = DIRECT_REQUEST.exec(text.trim());
   if (question) {
     const destination = authoredBrowserDestination(
       `Open ${question[1]}${question[3] ?? ""}`,
@@ -310,7 +316,7 @@ function typedAddresses(
     const lead = word[0].replace(/^[("'“‘«<[]+/u, "");
     const tokens = new Set([
       lead,
-      lead.replace(/[)\]>"'”’».,!?;:]+$/u, "").replace(/['’]s$/u, ""),
+      stripTrailingPunctuation(lead, ")]>\"'”’».,!?;:").replace(/['’]s$/u, ""),
     ]);
     for (const token of tokens) {
       const url = webAddress(token);

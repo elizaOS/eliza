@@ -1,0 +1,80 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+    "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
+    "packages/cloud/shared/src/db/migrations/0261_stripe_checkout_orders.sql",
+    "packages/cloud/shared/src/db/migrations/stripe-checkout-orders.test.ts",
+    "packages/cloud/shared/src/db/migrations/stripe-checkout-provider-started-at.test.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/stripe-checkout-orders.pglite.test.ts",
+    "packages/cloud/api/stripe/create-checkout-session/route.ts",
+    "packages/cloud/api/v1/credits/checkout/route.ts",
+    "packages/cloud/api/src/checkout-reconciliation.ts",
+    "packages/cloud/api/__tests__/checkout-provider-horizon.pglite.test.ts",
+    "packages/cloud/shared/src/db/migrations/0559_stripe_checkout_provider_started_at.sql"
+  ],
+  "bounds": {
+    "domain": "One immutable organization-credit quote, two competing settlement callers, two customer identities, one original Session and PaymentIntent, one conflicting prior ledger intent, credit value 2, six clock values and a three-tick original dispatch window. Fresh quotes, historical ambiguous rows with missing first-dispatch evidence, and failed historical rows have separate initial states. Provider recovery has up to two pages, an accumulated match, separate scan/failure/conflict/completed states and at most two create dispatches.",
+    "assumptions": "Paid/matching is an equivalence class of every immutable receipt check. The provider preserves its request-key contract inside the supported retry window. The primary transaction atomically publishes the order and credit ledger, and uniqueness failure rolls it back. PostgreSQL/PGlite tests independently exercise actual SQL constraints and selected route/service schedules. An empty result authorizes another create only after the complete page traversal; distinct matching Sessions cause a conflict. Each page projects authenticated provider data, not a proof of remote consistency. A second caller may retain an earlier quoted observation and dispatch the same key after the first caller starts; it still must pass the original database time gate, but does not claim a fresh lookup. The lookup invariant applies to an observed recovery state.",
+    "limitations": "This component does not establish full checkout refinement. Legacy custom-amount settlement and pack quarantine, arbitrary monetary values, arbitrary provider pagination, pre-provider membership/role withdrawal, multiple orders, refunds/reversals, external request delivery delay and live Stripe behavior require separate composition. No liveness claim: provider, storage or cache can remain unavailable."
+  },
+  "conformance": "packages/cloud/quint/check-credit-checkout-order.ts",
+  "cases": [
+    {
+      "name": "fresh-quote",
+      "main": "CreditCheckoutOrder",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CreditPublishedOnce",
+        "SettledHasOriginalReceipt",
+        "PaidMatchingReceiptRequired",
+        "FirstDispatchNeverExtended",
+        "RetryInsideOriginalWindow",
+        "ForeignIntentNeverGranted",
+        "UnknownCacheRetainsSettlement",
+        "RetryRequiresCompletedLookup"
+      ],
+      "temporal": [],
+      "maxSteps": 36,
+      "samples": 1000
+    },
+    {
+      "name": "historical-unknown-dispatch",
+      "main": "CreditCheckoutOrder",
+      "init": "initHistoricalUnknown",
+      "step": "step",
+      "invariants": [
+        "CreditPublishedOnce",
+        "SettledHasOriginalReceipt",
+        "PaidMatchingReceiptRequired",
+        "FirstDispatchNeverExtended",
+        "RetryInsideOriginalWindow",
+        "ForeignIntentNeverGranted",
+        "UnknownCacheRetainsSettlement",
+        "RetryRequiresCompletedLookup"
+      ],
+      "temporal": [],
+      "maxSteps": 36,
+      "samples": 1000
+    },
+    {
+      "name": "failed-historical-order",
+      "main": "CreditCheckoutOrder",
+      "init": "initFailed",
+      "step": "step",
+      "invariants": [
+        "CreditPublishedOnce",
+        "SettledHasOriginalReceipt",
+        "PaidMatchingReceiptRequired",
+        "FirstDispatchNeverExtended",
+        "RetryInsideOriginalWindow",
+        "ForeignIntentNeverGranted",
+        "UnknownCacheRetainsSettlement",
+        "RetryRequiresCompletedLookup"
+      ],
+      "temporal": [],
+      "maxSteps": 36,
+      "samples": 1000
+    }
+  ]
+}

@@ -16,7 +16,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../../../src/lib/generative-route-auth";
 
 const PostTweetSchema = z.object({
   text: z.string().max(280).optional(),

@@ -1,0 +1,41 @@
+{
+  "sources": [
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserDownloads.java",
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserDownloadPolicy.java",
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserWebOrigin.java",
+    "plugins/plugin-native-browser-surface/quint/BrowserDownloadPublicationProbe.java.in"
+  ],
+  "conformance": "plugins/plugin-native-browser-surface/quint/check-browser-download-publication.mjs",
+  "bounds": [
+    "One reviewed in-app transfer, one pending row and one browser history entry. One atomic final admission wins against cancellation. History removal after publication admission preserves the file if the provider commits it.",
+    "The JVM probe runs the actual BrowserDownloads final copy, list removal, private removal and destruction methods with an in-memory provider and exact BrowserDownloadPolicy.History. It includes cancellation on a different thread during provider update and a commit followed by a lost acknowledgement.",
+    "The model excludes HTTP, captured files and OS DownloadManager transfers. JVM conformance checks the captured-file path separately. The model distinguishes a committed file with a lost acknowledgement from an acknowledged save. Failures of the conditional deletion operation itself, process death, Android MediaStore behavior and wall-clock limits are outside the model."
+  ],
+  "cases": [
+    {
+      "name": "cancel-and-publication-admission",
+      "main": "BrowserDownloadPublication",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ExclusiveAdmission",
+        "CancellationHasNoReceipt",
+        "SavedRequiresPublication",
+        "FailureHasNoReceipt",
+        "UnconfirmedPreservesFile"
+      ],
+      "temporal": ["DecidedTransferSettles"],
+      "temporalChecks": [
+        {
+          "property": "DecidedTransferSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of pending provider result or cancellation cleanup. Provider update may succeed or fail and owned-row cleanup is acknowledged."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 500
+    }
+  ]
+}

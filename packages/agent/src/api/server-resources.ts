@@ -29,7 +29,11 @@ export function createServerResources(
       resources.push(resource);
     },
     close() {
-      closePromise ??= closeServerResources(resources, reportFailure);
+      // Publish ownership before any disposer can synchronously re-enter close
+      // or try to register another resource.
+      closePromise ??= Promise.resolve().then(() =>
+        closeServerResources(resources, reportFailure),
+      );
       return closePromise;
     },
   };

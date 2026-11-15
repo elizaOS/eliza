@@ -101,6 +101,17 @@ export function canAutoCreateWaifuBridgeOrg(): boolean {
 }
 
 /**
+ * The service token names an account; it does not reactivate one. Refuse a
+ * deactivated user or organization the same way session auth does.
+ */
+function requireActive(user: WaifuBridgeAuthResult["user"]): WaifuBridgeAuthResult["user"] {
+  if (!user.is_active || !user.organization.is_active) {
+    throw new ForbiddenError("Account is deactivated");
+  }
+  return user;
+}
+
+/**
  * Resolve a service JWT userId to an eliza-cloud user with org.
  */
 async function resolveServiceUser(
@@ -112,7 +123,7 @@ async function resolveServiceUser(
   // 1. Try existing user by serviceId
   const user = await usersService.getByStewardId(serviceId);
   if (user?.organization_id && user?.organization) {
-    return user as WaifuBridgeAuthResult["user"];
+    return requireActive(user as WaifuBridgeAuthResult["user"]);
   }
 
   // 2. Try wallet address match
@@ -122,18 +133,11 @@ async function resolveServiceUser(
       walletMatch[1].toLowerCase(),
     );
     if (walletUser?.organization_id && walletUser?.organization) {
-      // Update identity to link the service ID
-      await dbWrite
-        .insert(userIdentities)
-        .values({
-          user_id: walletUser.id,
-          steward_user_id: serviceId,
-        })
-        .onConflictDoUpdate({
-          target: userIdentities.user_id,
-          set: { steward_user_id: serviceId, updated_at: new Date() },
-        });
-      return walletUser as WaifuBridgeAuthResult["user"];
+      // The account already has its own Steward subject (users.steward_user_id
+      // is required). Do not rewrite its identity row to the service id: that
+      // splits the projection from the user row. The wallet lookup resolves
+      // this account on every bridge call instead.
+      return requireActive(walletUser as WaifuBridgeAuthResult["user"]);
     }
   }
 
@@ -182,7 +186,7 @@ async function resolveServiceUser(
       // re-check before falling through to user creation.
       const retryUser = await usersService.getByStewardId(serviceId);
       if (retryUser?.organization_id && retryUser?.organization) {
-        return retryUser as WaifuBridgeAuthResult["user"];
+        return requireActive(retryUser as WaifuBridgeAuthResult["user"]);
       }
 
       // The org exists but the user hasn't been created yet — look up the
@@ -235,13 +239,13 @@ async function resolveServiceUser(
 
     const existing = await usersService.getByStewardId(serviceId);
     if (existing?.organization_id && existing?.organization) {
-      return existing as WaifuBridgeAuthResult["user"];
+      return requireActive(existing as WaifuBridgeAuthResult["user"]);
     }
     // If wallet-based, try that path too
     if (walletAddr) {
       const walletUser = await usersService.getByWalletAddressWithOrganization(walletAddr);
       if (walletUser?.organization_id && walletUser?.organization) {
-        return walletUser as WaifuBridgeAuthResult["user"];
+        return requireActive(walletUser as WaifuBridgeAuthResult["user"]);
       }
     }
     throw new ForbiddenError(
@@ -260,5 +264,5 @@ async function resolveServiceUser(
     throw new ForbiddenError("Failed to provision service account for waifu-core bridge");
   }
 
-  return fullUser as WaifuBridgeAuthResult["user"];
+  return requireActive(fullUser as WaifuBridgeAuthResult["user"]);
 }

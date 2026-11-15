@@ -1,9 +1,9 @@
-import { ElevenLabsError } from "@elevenlabs/elevenlabs-js";
 import {
   CLOUDFLARE_TTS_MAX_CHARACTERS,
   CloudflareSpeechError,
   synthesizeCloudflareAudio,
 } from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 
@@ -19,13 +19,11 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import {
-  getElevenLabsService,
-  hasTtsSynthesisOptions,
-  TtsSynthesisOptions,
-} from "@elizaos/cloud-shared/lib/services/elevenlabs";
-import { isKnownUnacceptedProviderStatus } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+  elevenLabsSdkErrorStatus,
+  isKnownUnacceptedProviderStatus,
+} from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { drainPcm16ToWav } from "@elizaos/cloud-shared/lib/services/pcm16-wav";
 import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import { recordCustomVoiceUsage } from "@elizaos/cloud-shared/lib/services/tts-custom-voice-usage";
@@ -34,6 +32,10 @@ import {
   getCloudFirstLineCacheService,
   shouldBypassCloudFirstLineCache,
 } from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
+import {
+  hasTtsSynthesisOptions,
+  TtsSynthesisOptions,
+} from "@elizaos/cloud-shared/lib/services/tts-synthesis-options";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -50,7 +52,8 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+  timeSpeechPhase,
+} from "../../../src/lib/generative-route-auth";
 import {
   CartesiaRestTtsError,
   synthesizeCartesiaBytes,
@@ -213,7 +216,9 @@ async function __hono_POST(c: AppContext) {
   const requestStart = Date.now();
   const timings: TtsTimings = {};
   try {
-    const decodedRawBody = await decodeRequestJson(request);
+    const decodedRawBody = await timeSpeechPhase(c, "json_decode", () =>
+      decodeRequestJson(request),
+    );
     let pendingResponse: Response | undefined;
     let body: z.infer<typeof TtsBody> | undefined;
     if (!decodedRawBody.ok) {
@@ -291,7 +296,7 @@ async function __hono_POST(c: AppContext) {
       providerSelection?.ok === true &&
       providerSelection.provider !== "kokoro" &&
       providerSelection.provider !== "cloudflare";
-    const { user, apiKeyId, admissionSnapshot, credential } =
+    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
@@ -711,6 +716,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: billingCost,
         admissionSnapshot,
+        refreshAuthEntry,
         credential: credentialGuard.credentialForAdmission(),
         idempotencyKey: ttsIdempotencyKey ?? undefined,
         atomicProviderBoundary: true,
@@ -722,7 +728,11 @@ async function __hono_POST(c: AppContext) {
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
           {
-            error: "Insufficient credits for text-to-speech",
+            // Clients parse `error.code` and `error.resetsAt`.
+            error: inferenceFundingRefusal(error, {
+              insufficientCreditsMessage:
+                "Insufficient credits for text-to-speech",
+            }),
             required: error.required,
           },
           { status: 402 },
@@ -804,6 +814,11 @@ async function __hono_POST(c: AppContext) {
     }
     if (wav === undefined) {
       if (audioStream === undefined) {
+        // Only this lane loads the ElevenLabs SDK, so cold requests on the
+        // other providers do not evaluate its module graph.
+        const { getElevenLabsService } = await import(
+          "@elizaos/cloud-shared/lib/services/elevenlabs"
+        );
         const elevenlabs = getElevenLabsService(env);
         await markPaidTtsProviderDispatch();
         const synthesis = {
@@ -1019,8 +1034,7 @@ async function __hono_POST(c: AppContext) {
     if (reservation) {
       // A clear rejection before any audio proves nothing was synthesized:
       // the Cartesia REST refusal, or an ElevenLabs SDK error with its status.
-      const sdkStatus =
-        error instanceof ElevenLabsError ? error.statusCode : undefined;
+      const sdkStatus = elevenLabsSdkErrorStatus(error);
       const rejected =
         (error instanceof CartesiaRestTtsError &&
           error.beforeAudio &&

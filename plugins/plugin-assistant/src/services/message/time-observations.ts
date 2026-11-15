@@ -23,7 +23,7 @@ import {
 } from "@elizaos/core";
 
 const TIME_QUESTION_PATTERN =
-  /^(?:what(?:['’]s|s| is)?\s+(?:the\s+)?(?:(?:current|local|today['’]s)\s+)?(?:time|day|date)(?:\s+is it)?|what day of the week is it)(?:\s+(?:right now|today|for me|please))*[?.!]*$/i;
+  /^(?:what(?:['’]s|s| is)?\s+(?:the\s+)?(?:(?:current|local|today['’]s)\s+)?(?:time|day|date)(?:\s+is it)?|what day of the week is it)(?:\s+(?:right now|now|today|for me|please))*[?.!]*$/i;
 
 const MONTH_NAMES = [
   "january",

@@ -3,14 +3,12 @@ import z from "zod";
 import type { Character, TemplateType } from "./types/agent";
 import type { JsonValue } from "./types/primitives";
 import { ChannelType, ContentType } from "./types/primitives";
+import { UUID_PATTERN } from "./utils/uuid.js";
 
 // UUID validation schema
 export const uuidSchema = z
 	.string()
-	.regex(
-		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-		"Invalid UUID format",
-	)
+	.regex(UUID_PATTERN, "Invalid UUID format")
 	.describe("Unique identifier for the character in UUID format");
 
 // Media attachment schema matching the Media type

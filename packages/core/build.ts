@@ -70,9 +70,10 @@ async function emitCore(): Promise<void> {
 					Number(b === "index.js" || b === "index.d.ts") || a.localeCompare(b),
 		);
 		const dist = path.join(root, "dist");
-		await mkdir(dist, { recursive: true });
+		for (const directory of new Set(files.map((file) => path.dirname(file)))) {
+			await mkdir(path.join(dist, directory), { recursive: true });
+		}
 		for (const file of files) {
-			await mkdir(path.dirname(path.join(dist, file)), { recursive: true });
 			await rename(path.join(output, file), path.join(dist, file));
 		}
 		const emitted = new Set(files);

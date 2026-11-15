@@ -1,6 +1,10 @@
 /** Runs the hosted agent-server manager boundary for cloud runtime containers. */
 
 import {
+  removeOwnedRedisKeys,
+  requireRedisWriteReceipts,
+} from "@elizaos/cloud-services-common/redis-ownership";
+import {
   AgentRuntime,
   ChannelType,
   createMessageMemory,
@@ -14,6 +18,12 @@ import {
 } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
 import workflowPlugin from "@elizaos/plugin-workflow";
+import {
+  AgentMutationQueue,
+  settleBeforeDeadline,
+  startAndPublishRuntime,
+} from "./agent-lifecycle";
+import { AgentRoutingPublisher } from "./agent-routing";
 import {
   initializeManagedBrowserHost,
   managedBrowserPlugins,
@@ -34,7 +44,7 @@ interface AgentEntryBase {
 
 interface RunningAgentEntry extends AgentEntryBase {
   runtime: IAgentRuntime;
-  state: "running";
+  state: "running" | "stopping";
 }
 
 interface StoppedAgentEntry extends AgentEntryBase {
@@ -210,6 +220,8 @@ const AGENT_ROUTING_TTL_SECONDS = 30 * 24 * 3600;
  */
 export class AgentManager {
   private agents = new Map<string, AgentEntry>();
+  private readonly mutations = new AgentMutationQueue();
+  private readonly routingPublisher = new AgentRoutingPublisher();
   private _draining = false;
   private inFlight = 0;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -222,16 +234,18 @@ export class AgentManager {
   }
 
   /** Publishes server status, URL, and agent→server mappings to Redis with TTLs. */
-  private async refreshRedisState(
-    status = this._draining ? "draining" : "running",
-  ) {
+  private refreshRedisState(status?: string): Promise<void> {
+    return this.routingPublisher.publish(() => this.publishRedisState(status));
+  }
+
+  private async publishRedisState(status?: string) {
     const redis = getRedis();
     const multi = redis.multi();
     const serverName = getRequiredEnv("SERVER_NAME");
 
     multi.set(
       `server:${serverName}:status`,
-      status,
+      status ?? (this._draining ? "draining" : "running"),
       "EX",
       REDIS_STATE_TTL_SECONDS,
     );
@@ -242,6 +256,7 @@ export class AgentManager {
       REDIS_STATE_TTL_SECONDS,
     );
 
+    let expectedReceipts = 2;
     for (const [agentId, entry] of this.agents) {
       if (entry.state === "starting") continue;
       multi.set(
@@ -250,9 +265,14 @@ export class AgentManager {
         "EX",
         AGENT_ROUTING_TTL_SECONDS,
       );
+      expectedReceipts++;
     }
 
-    await multi.exec();
+    requireRedisWriteReceipts(
+      await multi.exec(),
+      expectedReceipts,
+      "agent-server state",
+    );
   }
 
   /** Starts the periodic Redis state refresh timer. */
@@ -319,6 +339,7 @@ export class AgentManager {
    * @throws {Error} "Agent not running" if the agent is in a stopped state
    */
   getRuntime(agentId: string): IAgentRuntime {
+    this.assertAcceptingAllocations();
     const entry = this.agents.get(agentId);
     if (!entry) throw new Error("Agent not found");
     if (entry.state !== "running") throw new Error("Agent not running");
@@ -342,6 +363,14 @@ export class AgentManager {
    */
   async startAgent(agentId: string, characterRef: string) {
     this.assertAcceptingAllocations();
+    if (this.agents.has(agentId)) throw new Error("Agent already exists");
+    return this.mutations.run(agentId, () =>
+      this.startAgentOwned(agentId, characterRef),
+    );
+  }
+
+  private async startAgentOwned(agentId: string, characterRef: string) {
+    this.assertAcceptingAllocations();
     if (this.agents.size >= this.capacity) {
       throw new Error("At capacity");
     }
@@ -356,6 +385,8 @@ export class AgentManager {
       state: "starting",
     });
 
+    let ownedRuntime: IAgentRuntime | undefined;
+    let publicationAttempted = false;
     this.inFlight++;
     try {
       const character = mergeCharacterDefaults({
@@ -396,25 +427,68 @@ export class AgentManager {
 
       this.assertAcceptingAllocations();
       const runtime = new AgentRuntime({ character, plugins });
+      ownedRuntime = runtime;
       const skipMigrations = process.env.SKIP_MIGRATIONS === "true";
-      await runtime.initialize({ skipMigrations });
-      if (!this._draining) await initializeManagedBrowserHost(runtime);
-      // Initialization may finish after drain's bounded wait has expired.
-      // Its owner must stop it instead of publishing a new running agent.
-      if (this._draining) {
-        await runtime.stop();
-        this.assertAcceptingAllocations();
-      }
-
-      this.agents.set(agentId, {
-        agentId,
-        characterRef,
+      await startAndPublishRuntime(
         runtime,
-        state: "running",
-      });
-      await this.refreshRedisState();
+        async () => {
+          await runtime.initialize({ skipMigrations });
+          if (!this._draining) await initializeManagedBrowserHost(runtime);
+          this.assertAcceptingAllocations();
+        },
+        async () => {
+          await this.routingPublisher.publish(async () => {
+            this.assertAcceptingAllocations();
+            publicationAttempted = true;
+            this.agents.set(agentId, {
+              agentId,
+              characterRef,
+              runtime,
+              state: "running",
+            });
+            await this.publishRedisState();
+            // Drain can start while publication is awaiting its receipt.
+            this.assertAcceptingAllocations();
+          });
+        },
+        () => {
+          this.agents.set(agentId, {
+            agentId,
+            characterRef,
+            runtime,
+            state: "stopping",
+          });
+        },
+      );
     } catch (err) {
-      this.agents.delete(agentId);
+      ownedRuntime?.reportError("AgentManager.startAgent", err, { agentId });
+      if (this.agents.get(agentId)?.state !== "stopping") {
+        if (publicationAttempted) {
+          // Runtime cleanup succeeded. Keep a retryable stopped entry until
+          // any partially published routing has also been acknowledged removed.
+          this.agents.set(agentId, { agentId, characterRef, state: "stopped" });
+          try {
+            await this.routingPublisher.retire(
+              () =>
+                removeOwnedRedisKeys(
+                  getRedis(),
+                  getRequiredEnv("SERVER_NAME"),
+                  [`agent:${agentId}:server`],
+                ),
+              () => {
+                this.agents.delete(agentId);
+              },
+            );
+          } catch (cleanupFailure) {
+            throw new AggregateError(
+              [err, cleanupFailure],
+              "Agent startup and routing cleanup failed",
+            );
+          }
+        } else {
+          this.agents.delete(agentId);
+        }
+      }
       throw err;
     } finally {
       this.inFlight--;
@@ -423,6 +497,20 @@ export class AgentManager {
 
   /** Stops a running agent's runtime, transitioning it to "stopped" state. */
   async stopAgent(id: string) {
+    this.rejectStartingMutation(id);
+    return this.mutations.run(id, () => this.stopAgentOwned(id));
+  }
+
+  private rejectStartingMutation(id: string): void {
+    if (this.agents.get(id)?.state === "starting") {
+      throw new ElizaError("Agent is initializing", {
+        code: "AGENT_INITIALIZING",
+        severity: "ephemeral",
+      });
+    }
+  }
+
+  private async stopAgentOwned(id: string) {
     const entry = this.agents.get(id);
     if (!entry) throw new Error("Agent not found");
     if (entry.state === "starting") {
@@ -432,6 +520,7 @@ export class AgentManager {
       });
     }
     if (entry.state === "stopped") return;
+    entry.state = "stopping";
     await entry.runtime.stop();
     this.agents.set(id, {
       agentId: entry.agentId,
@@ -443,6 +532,11 @@ export class AgentManager {
 
   /** Stops and removes an agent, cleaning up its Redis routing key. */
   async deleteAgent(id: string) {
+    this.rejectStartingMutation(id);
+    return this.mutations.run(id, () => this.deleteAgentOwned(id));
+  }
+
+  private async deleteAgentOwned(id: string) {
     const entry = this.agents.get(id);
     if (!entry) throw new Error("Agent not found");
     if (entry.state === "starting") {
@@ -451,9 +545,24 @@ export class AgentManager {
         severity: "ephemeral",
       });
     }
-    if (entry.state === "running") await entry.runtime.stop();
-    this.agents.delete(id);
-    await getRedis().del(`agent:${id}:server`);
+    if (entry.state === "running" || entry.state === "stopping") {
+      entry.state = "stopping";
+      await entry.runtime.stop();
+      this.agents.set(id, {
+        agentId: entry.agentId,
+        characterRef: entry.characterRef,
+        state: "stopped",
+      });
+    }
+    await this.routingPublisher.retire(
+      () =>
+        removeOwnedRedisKeys(getRedis(), getRequiredEnv("SERVER_NAME"), [
+          `agent:${id}:server`,
+        ]),
+      () => {
+        this.agents.delete(id);
+      },
+    );
     await this.refreshRedisState();
   }
 
@@ -623,25 +732,55 @@ export class AgentManager {
    */
   async drain() {
     this._draining = true;
-    await this.refreshRedisState("draining");
     this.stopHeartbeat();
-
-    // Wait for in-flight requests to finish before stopping runtimes
-    const deadline = Date.now() + 50_000;
-    while (this.inFlight > 0 && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 200));
+    const deadline = performance.now() + 50_000;
+    const failures: unknown[] = [];
+    let timedOut = false;
+    try {
+      timedOut = !(await settleBeforeDeadline(
+        this.refreshRedisState("draining"),
+        deadline,
+      ));
+    } catch (error) {
+      failures.push(error);
     }
 
-    for (const [, entry] of this.agents) {
-      if (entry.state === "running") {
-        await entry.runtime.stop();
-        this.agents.set(entry.agentId, {
-          agentId: entry.agentId,
-          characterRef: entry.characterRef,
-          state: "stopped",
-        });
+    while (this.inFlight > 0 && performance.now() < deadline) {
+      await new Promise((r) =>
+        setTimeout(r, Math.min(200, Math.max(0, deadline - performance.now()))),
+      );
+    }
+    if (this.inFlight > 0) timedOut = true;
+
+    const stops: Promise<void>[] = [];
+    for (const [agentId, entry] of this.agents) {
+      if (entry.state === "running" || entry.state === "stopping") {
+        stops.push(
+          this.mutations.run(agentId, async () => {
+            // A preceding successful deletion already fulfilled this cleanup.
+            if (!this.agents.has(agentId)) return;
+            await this.stopAgentOwned(agentId);
+          }),
+        );
       }
     }
+    const settled = Promise.allSettled(stops);
+    if (await settleBeforeDeadline(settled, deadline)) {
+      for (const result of await settled) {
+        if (result.status === "rejected") failures.push(result.reason);
+      }
+    } else {
+      timedOut = true;
+    }
+    if (timedOut)
+      failures.push(
+        new ElizaError("Agent-server drain deadline expired", {
+          code: "AGENT_SERVER_DRAIN_TIMEOUT",
+          severity: "ephemeral",
+        }),
+      );
+    if (failures.length)
+      throw new AggregateError(failures, "Agent-server drain failed");
   }
 
   /** Removes this server's status/url keys from Redis during shutdown. */
@@ -654,6 +793,8 @@ export class AgentManager {
       `server:${process.env.SERVER_NAME}:status`,
       `server:${process.env.SERVER_NAME}:url`,
     ];
-    await redis.del(...keys);
+    await this.routingPublisher.close(async () => {
+      await redis.del(...keys);
+    });
   }
 }

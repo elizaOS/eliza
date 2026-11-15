@@ -16,7 +16,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   NATIVE_CALLBACK_SCRUB_SCRIPT,
+  nativeSignInCallbackFallback,
   onRequest,
+  selectNativeAuthCallback,
 } from "../functions/_middleware";
 
 type Env = "production" | "staging";
@@ -138,13 +140,26 @@ async function fallbackHandOff(pageUrl: string) {
   const response = await onRequest({
     request: new Request(pageUrl),
     env: {
-      ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify(
-        Object.values(fixture.hosts).map((host) => ({
-          redirectUri: `https://${host}${fixture.path}`,
-          androidPackage: fixture.package,
-          appName: "Example Reader",
-        })),
-      ),
+      API_WORKER: {
+        fetch: async (request: Request) => {
+          const url = new URL(
+            new URL(request.url).searchParams.get("url") ?? request.url,
+          );
+          const callback = selectNativeAuthCallback(
+            JSON.stringify(
+              Object.values(fixture.hosts).map((host) => ({
+                redirectUri: `https://${host}${fixture.path}`,
+                androidPackage: fixture.package,
+                appName: "Example Reader",
+              })),
+            ),
+            url,
+          );
+          return callback
+            ? nativeSignInCallbackFallback(url, callback)
+            : new Response("Not Found", { status: 404 });
+        },
+      },
     },
     next: async () => new Response("spa"),
   } as unknown as Parameters<typeof onRequest>[0]);

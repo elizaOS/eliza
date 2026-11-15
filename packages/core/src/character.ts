@@ -1,5 +1,8 @@
 /** Normalizes character input, message examples, knowledge/documents, and content before validation. */
-import { validateCharacter } from "./character-schema";
+import {
+	type CharacterValidationResult,
+	validateCharacter,
+} from "./character-schema";
 import type {
 	Character,
 	CharacterSettings,
@@ -164,6 +167,14 @@ export function createCharacter(
 	return normalizeCharacterInput(input) as Character;
 }
 
+function formatValidationErrors(
+	error: CharacterValidationResult["error"],
+): string[] {
+	return error?.issues
+		? error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+		: [error?.message || "Unknown validation error"];
+}
+
 export function parseCharacter(
 	input: string | object | Character | CharacterInput,
 ): Character {
@@ -181,13 +192,9 @@ export function parseCharacter(
 		const validationResult = validateCharacter(normalized);
 
 		if (!validationResult.success) {
-			const validationError = validationResult.error;
-			const errorDetails = validationError?.issues
-				? validationError.issues
-						.map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-						.join("; ")
-				: validationError?.message || "Unknown validation error";
-			throw new Error(`Character validation failed: ${errorDetails}`);
+			throw new Error(
+				`Character validation failed: ${formatValidationErrors(validationResult.error).join("; ")}`,
+			);
 		}
 
 		return validationResult.data as Character;
@@ -209,16 +216,9 @@ export function validateCharacterConfig(character: Character): {
 		};
 	}
 
-	const validationError = validationResult.error;
-	const errors = validationError?.issues
-		? validationError.issues.map(
-				(issue) => `${issue.path.join(".")}: ${issue.message}`,
-			)
-		: [validationError?.message || "Unknown validation error"];
-
 	return {
 		isValid: false,
-		errors,
+		errors: formatValidationErrors(validationResult.error),
 	};
 }
 

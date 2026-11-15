@@ -50,6 +50,7 @@ import {
 } from "./types/trajectory-export.ts";
 import { createHash } from "./utils/crypto-compat";
 import { isTruthyEnvValue } from "./utils/env.js";
+import { isObjectRecord } from "./utils/type-guards.js";
 
 export type TrajectoryFinalStatus =
 	| "completed"
@@ -238,10 +239,6 @@ export type ContextObjectTrajectoryExportInput = {
 
 type JsonSanitizeResult = JsonValue | undefined;
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-	return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
 function sanitizeJsonValue(
 	value: unknown,
 	seen: WeakSet<object> = new WeakSet<object>(),
@@ -271,7 +268,7 @@ function sanitizeJsonValue(
 		seen.delete(value);
 		return out;
 	}
-	if (isPlainRecord(value)) {
+	if (isObjectRecord(value)) {
 		if (seen.has(value)) return undefined;
 		seen.add(value);
 		const out: Record<string, JsonValue> = {};
@@ -291,45 +288,41 @@ function sanitizeJsonObject(
 	value: unknown,
 ): Record<string, JsonValue> | undefined {
 	const sanitized = sanitizeJsonValue(value);
-	return isPlainRecord(sanitized)
+	return isObjectRecord(sanitized)
 		? (sanitized as Record<string, JsonValue>)
 		: undefined;
 }
 
 function hasContextEvents(
 	value: unknown,
-): value is { events: readonly unknown[] } {
-	return isPlainRecord(value) && Array.isArray(value.events);
+): value is Record<string, unknown> & { events: readonly unknown[] } {
+	return isObjectRecord(value) && Array.isArray(value.events);
 }
 
 function readContextObjectFromUnknown(value: unknown): ContextObject | null {
 	if (!hasContextEvents(value)) {
 		return null;
 	}
-	const record = value as Record<string, unknown> & {
-		events: readonly unknown[];
-	};
-	const version = record.version;
-	const id = record.id;
+	const { id, version } = value;
 	return {
-		...(record as Partial<ContextObject>),
+		...(value as Partial<ContextObject>),
 		id: typeof id === "string" && id.trim() ? id : "context-object",
 		version: typeof version === "string" ? version : "v5",
-		events: [...(record.events as ContextEvent[])],
+		events: [...(value.events as ContextEvent[])],
 	};
 }
 
 export function extractContextObjectFromTrajectory(
 	trajectory: unknown,
 ): ContextObject | null {
-	if (!isPlainRecord(trajectory)) {
+	if (!isObjectRecord(trajectory)) {
 		return null;
 	}
 
 	const direct = readContextObjectFromUnknown(trajectory.contextObject);
 	if (direct) return direct;
 
-	const metadata = isPlainRecord(trajectory.metadata)
+	const metadata = isObjectRecord(trajectory.metadata)
 		? trajectory.metadata
 		: undefined;
 	if (metadata) {
@@ -348,7 +341,7 @@ export function extractContextEventsFromTrajectory(
 		return [...contextObject.events];
 	}
 
-	if (!isPlainRecord(trajectory)) {
+	if (!isObjectRecord(trajectory)) {
 		return null;
 	}
 
@@ -356,18 +349,11 @@ export function extractContextEventsFromTrajectory(
 		return [...(trajectory.events as ContextEvent[])];
 	}
 
-	const metadata = isPlainRecord(trajectory.metadata)
+	const metadata = isObjectRecord(trajectory.metadata)
 		? trajectory.metadata
 		: undefined;
 	if (metadata && Array.isArray(metadata.contextEvents)) {
 		return [...(metadata.contextEvents as ContextEvent[])];
-	}
-
-	if (
-		trajectory.contextObjectVersion === CONTEXT_OBJECT_TRAJECTORY_VERSION &&
-		Array.isArray(trajectory.events)
-	) {
-		return [...(trajectory.events as ContextEvent[])];
 	}
 
 	return null;
@@ -385,7 +371,7 @@ export function buildContextObjectTrajectoryExport(
 		extractContextEventsFromTrajectory(trajectory) ??
 		[];
 	const metadata = sanitizeJsonObject({
-		...(isPlainRecord(trajectory?.metadata) ? trajectory.metadata : {}),
+		...(isObjectRecord(trajectory?.metadata) ? trajectory.metadata : {}),
 		...(input.metadata ?? {}),
 	});
 	const metrics = sanitizeJsonObject(input.metrics ?? trajectory?.metrics);
@@ -402,16 +388,14 @@ export function buildContextObjectTrajectoryExport(
 		input.createdAt ??
 		contextObject?.createdAt ??
 		(typeof metadata?.createdAt === "number" ? metadata.createdAt : undefined);
+	// Sanitizing copies, so `events` itself is never aliased into the export.
 	const sanitizedContextObject = contextObject
-		? sanitizeJsonObject({
-				...contextObject,
-				events: [...events],
-			})
+		? sanitizeJsonObject({ ...contextObject, events })
 		: undefined;
 
 	const exportRecord: ContextObjectTrajectoryExport = {
 		contextObjectVersion: CONTEXT_OBJECT_TRAJECTORY_VERSION,
-		events: sanitizeJsonValue([...events]) as ContextEvent[],
+		events: sanitizeJsonValue(events) as ContextEvent[],
 	};
 
 	const trajectoryId = input.trajectoryId ?? trajectory?.trajectoryId;
@@ -511,7 +495,7 @@ type TrajectoryLoggerLike = {
 	}) => Promise<boolean>;
 	logLlmCall?: (params: { stepId: string } & TrajectoryLlmCallDetails) => void;
 	/**
-	 * Optional. When implemented (DatabaseTrajectoryLogger does), lets a caller
+	 * Optional. When implemented, lets a caller
 	 * extend an existing step row with the new schema fields (kind, script,
 	 * childSteps, usedSkills) without depending directly on @elizaos/agent.
 	 */
@@ -764,18 +748,8 @@ export async function runWithLlmInputSubstringAttestation<T>(
 	};
 }
 
-function isTrajectoryLoggerCandidate(
-	value: unknown,
-): value is TrajectoryLoggerLike {
-	return !!value && typeof value === "object";
-}
-
-function readProcessEnv(name: string): string | undefined {
-	return process.env[name];
-}
-
 export function isTrajectoryStrictModeEnabled(): boolean {
-	return isTruthyEnvValue(readProcessEnv("ELIZA_TRAJECTORY_STRICT"));
+	return isTruthyEnvValue(process.env.ELIZA_TRAJECTORY_STRICT);
 }
 
 export function normalizeTrajectoryLlmPurpose(
@@ -1002,41 +976,40 @@ function createModelCallRecordingStorage(): ModelCallRecordingStorage {
 	};
 }
 
+function scoreTrajectoryLogger(candidate: TrajectoryLoggerLike): number {
+	let score = 0;
+	if (typeof candidate.startTrajectory === "function") score += 100;
+	if (typeof candidate.startStep === "function") score += 10;
+	if (typeof candidate.endTrajectory === "function") score += 10;
+	if (typeof candidate.logLlmCall === "function") score += 10;
+	if (typeof candidate.flushWriteQueue === "function") score += 2;
+	if (typeof candidate.applyReward === "function") score += 20;
+	return score;
+}
+
+/**
+ * The most capable registered trajectory logger. Runs on every model call, so
+ * it scores candidates in place; a candidate seen twice scores the same and
+ * never displaces the first (strictly-greater wins).
+ */
 export function resolveTrajectoryLogger(
 	runtime: IAgentRuntime,
 ): TrajectoryLoggerLike | null {
-	const candidates: TrajectoryLoggerLike[] = [];
-	const seen = new Set<unknown>();
-	const push = (candidate: unknown): void => {
-		if (!isTrajectoryLoggerCandidate(candidate) || seen.has(candidate)) {
-			return;
-		}
-		seen.add(candidate);
-		candidates.push(candidate);
-	};
-
-	push(runtime.getService("trajectories"));
-	for (const candidate of runtime.getServicesByType("trajectories")) {
-		push(candidate);
-	}
-
 	let best: TrajectoryLoggerLike | null = null;
-	let bestScore = -1;
-	for (const candidate of candidates) {
-		let score = 0;
-		if (typeof candidate.startTrajectory === "function") score += 100;
-		if (typeof candidate.startStep === "function") score += 10;
-		if (typeof candidate.endTrajectory === "function") score += 10;
-		if (typeof candidate.logLlmCall === "function") score += 10;
-		if (typeof candidate.flushWriteQueue === "function") score += 2;
-		if (typeof candidate.applyReward === "function") score += 20;
+	let bestScore = 0;
+	const consider = (candidate: unknown): void => {
+		if (!candidate || typeof candidate !== "object") return;
+		const score = scoreTrajectoryLogger(candidate);
 		if (score > bestScore) {
 			best = candidate;
 			bestScore = score;
 		}
+	};
+	consider(runtime.getService("trajectories"));
+	for (const candidate of runtime.getServicesByType("trajectories")) {
+		consider(candidate);
 	}
-
-	return bestScore > 0 ? best : null;
+	return best;
 }
 
 /**
@@ -1297,6 +1270,13 @@ export function logActiveTrajectoryLlmCall(
  * `ELIZA_TRAJECTORY_STRICT=1`, this throws before calling `fn` unless a
  * trajectory step is active.
  */
+function monotonicNow(): number {
+	return typeof performance !== "undefined" &&
+		typeof performance.now === "function"
+		? performance.now()
+		: Date.now();
+}
+
 export async function recordLlmCall<T>(
 	runtime: IAgentRuntime | null | undefined,
 	details: RecordLlmCallDetails,
@@ -1312,10 +1292,7 @@ export async function recordLlmCall<T>(
 	// the last generic boundary before the raw provider callback can spend quota.
 	attestLlmInputSubstring(details);
 
-	const startedAt =
-		typeof performance !== "undefined" && typeof performance.now === "function"
-			? performance.now()
-			: Date.now();
+	const startedAt = monotonicNow();
 	let result: T;
 	try {
 		result = await runInsideRecordedLlmCall(fn);
@@ -1330,15 +1307,7 @@ export async function recordLlmCall<T>(
 					details.response ||
 					`[model call failed] ${composeToolDiagnosticRedactor(runtime ?? undefined)(message)}`,
 				finishReason: "error",
-				latencyMs: Math.max(
-					0,
-					Math.round(
-						(typeof performance !== "undefined" &&
-						typeof performance.now === "function"
-							? performance.now()
-							: Date.now()) - startedAt,
-					),
-				),
+				latencyMs: Math.max(0, Math.round(monotonicNow() - startedAt)),
 			});
 		} catch (recordingError) {
 			// error-policy:J7 Failed-call diagnostics cannot change provider failure semantics.
@@ -1346,10 +1315,7 @@ export async function recordLlmCall<T>(
 		}
 		throw error;
 	}
-	const elapsed =
-		(typeof performance !== "undefined" && typeof performance.now === "function"
-			? performance.now()
-			: Date.now()) - startedAt;
+	const elapsed = monotonicNow() - startedAt;
 
 	const responseText =
 		typeof details.response === "string"
@@ -1358,14 +1324,14 @@ export async function recordLlmCall<T>(
 				? result
 				: result === undefined || result === null
 					? ""
-					: tryStringify(result);
+					: stringifyForDiagnostics({ response: result });
 
 	// Several providers do not surface token counts in the detail they hand to
 	// recordLlmCall even though the SDK result carries them: xAI omits tokens
 	// entirely from its recordLlmCall detail, and plugin-openai's buffered-stream
 	// path records before the buffered usage resolves. Because the generic
-	// useModel fallback is suppressed once this provider record lands
-	//, failing to backfill here would silently lose token/cost
+	// useModel fallback is suppressed once this provider record lands, failing
+	// to backfill here would silently lose token/cost
 	// attribution for those providers. Normalize result.usage into any missing
 	// token field, never overwriting an explicitly provider-supplied value.
 	const tokenFields = normalizeTokenFieldsFromResult(result, details);
@@ -1387,10 +1353,7 @@ export async function recordLlmCall<T>(
  * older shapes use `input`/`output` aliases. Returns only the fields that were
  * missing, so the caller controls what wins.
  */
-function normalizeTokenFieldsFromResult(
-	result: unknown,
-	details: RecordLlmCallDetails,
-): Partial<
+type TokenFields = Partial<
 	Pick<
 		TrajectoryLlmCallDetails,
 		| "promptTokens"
@@ -1398,22 +1361,19 @@ function normalizeTokenFieldsFromResult(
 		| "cacheReadInputTokens"
 		| "cacheCreationInputTokens"
 	>
-> {
+>;
+
+function normalizeTokenFieldsFromResult(
+	result: unknown,
+	details: RecordLlmCallDetails,
+): TokenFields {
 	if (!result || typeof result !== "object") return {};
 	const usage = (result as { usage?: unknown }).usage;
 	if (!usage || typeof usage !== "object") return {};
 	const asNumber = (value: unknown): number | undefined =>
 		typeof value === "number" && Number.isFinite(value) ? value : undefined;
 	const u = usage as Record<string, unknown>;
-	const out: Partial<
-		Pick<
-			TrajectoryLlmCallDetails,
-			| "promptTokens"
-			| "completionTokens"
-			| "cacheReadInputTokens"
-			| "cacheCreationInputTokens"
-		>
-	> = {};
+	const out: TokenFields = {};
 	if (details.promptTokens === undefined) {
 		const prompt =
 			asNumber(u.promptTokens) ?? asNumber(u.inputTokens) ?? asNumber(u.input);
@@ -1438,10 +1398,6 @@ function normalizeTokenFieldsFromResult(
 			out.cacheCreationInputTokens = cacheCreation;
 	}
 	return out;
-}
-
-function tryStringify(value: unknown): string {
-	return stringifyForDiagnostics({ response: value });
 }
 
 async function withChildTrajectoryStep<T>(
@@ -1666,8 +1622,8 @@ function completeActionTrajectoryStep<T extends ActionResult>(
 
 /**
  * Wrap an action handler invocation in a child trajectory step linked to the
- * currently-active parent step. All `useModel` / `useModel` -ish calls inside
- * `fn` will be recorded against the new child step rather than the parent.
+ * currently-active parent step. Model calls inside `fn` are recorded against
+ * the new child step rather than the parent.
  *
  * Transparent: when no trajectory is active, `fn` runs unchanged and no
  * step is created.
@@ -1833,12 +1789,4 @@ export function isExcludedFromTraining(
 	if (typeof sourceName !== "string" || sourceName.trim() === "") return false;
 	const meta = getRegistry().get(sourceName.trim());
 	return Boolean(meta?.excludeFromTraining);
-}
-
-/**
- * Test-only: wipe the source registry. Not exported via the package barrel.
- * @internal
- */
-export function __resetTrajectorySourceRegistryForTests(): void {
-	getRegistry().clear();
 }

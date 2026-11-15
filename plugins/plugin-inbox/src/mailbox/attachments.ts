@@ -40,13 +40,19 @@ export function attachmentBytes(file: { dataBase64: string }): number {
   return Math.max(0, Math.floor((file.dataBase64.length * 3) / 4) - padding);
 }
 
-/** Validates an outgoing list: count, duplicate names and the combined byte cap. */
+/**
+ * Validates an outgoing list: count, duplicate names and the combined byte cap.
+ * `forwarded` are the original attachments a forward carries: Cloud adds them
+ * to the same message, so their names and sizes count too (not their number,
+ * which the composer checks against its own limit).
+ */
 export function checkOutgoingAttachments(
   files: readonly { name: string; dataBase64: string }[],
   policy: { maximumOutgoing: number; maximumTotalBytes: number } = {
     maximumOutgoing: outgoingAttachmentLimits.maximumFiles,
     maximumTotalBytes: outgoingAttachmentLimits.maximumTotalBytes,
   },
+  forwarded: readonly { name: string; size: number }[] = [],
 ): void {
   const maximum = Math.min(
     policy.maximumOutgoing,
@@ -58,11 +64,12 @@ export function checkOutgoingAttachments(
         ? "This account accepts one attachment per email."
         : `Attach at most ${maximum} files.`,
     );
-  if (
-    new Set(files.map((file) => file.name.toLowerCase())).size !== files.length
-  )
+  const names = [...files, ...forwarded].map((file) => file.name.toLowerCase());
+  if (new Set(names).size !== names.length)
     throw new Error("Two attachments have the same name.");
-  const total = files.reduce((sum, file) => sum + attachmentBytes(file), 0);
+  const total =
+    files.reduce((sum, file) => sum + attachmentBytes(file), 0) +
+    forwarded.reduce((sum, file) => sum + file.size, 0);
   const cap = Math.min(
     policy.maximumTotalBytes,
     outgoingAttachmentLimits.maximumTotalBytes,
@@ -116,7 +123,9 @@ export async function reviewOpaqueAttachment(file: {
   } catch {
     throw new AttachmentRefusedError("Invalid attachment name or encoding");
   }
-  if (btoa(raw) !== file.dataBase64 || raw.length > 5 * 1024 * 1024)
+  if (btoa(raw) !== file.dataBase64)
+    throw new AttachmentRefusedError("Invalid attachment name or encoding");
+  if (raw.length > 5 * 1024 * 1024)
     throw new AttachmentRefusedError("Attachment exceeds 5 MiB");
   const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
   const sha256 = hex(await crypto.subtle.digest("SHA-256", bytes));

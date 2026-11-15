@@ -19,7 +19,7 @@ import type {
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import type Stripe from "stripe";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { getAuditDispatcher } from "../../../../../src/services/audit-dispatcher-singleton";
 
 /**
  * Maximum age (seconds) the Stripe `t=` timestamp may be relative to server

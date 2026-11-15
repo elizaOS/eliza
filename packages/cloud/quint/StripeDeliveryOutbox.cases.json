@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "StripeDeliveryOutbox",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "sources": [
+    "packages/cloud/shared/src/lib/services/stripe-delivery-outbox.ts",
+    "packages/cloud/shared/src/db/repositories/webhook-events.ts"
+  ],
+  "bounds": "One row, two workers, four distinct lease tokens, time 0..6, retry budget 3."
+}

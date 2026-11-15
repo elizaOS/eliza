@@ -1,0 +1,111 @@
+{
+  "sources": [
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/EmbeddedRuntimeGroup.java",
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeRuntimeSession.java",
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProcessSupervisor.java",
+    "plugins/plugin-native-agent/test/native-host/EmbeddedRuntimeGroupTest.java",
+    "plugins/plugin-native-agent/test/native-host/NativeRuntimeSessionTest.java",
+    "plugins/plugin-native-agent/src/native-host-primitives.test.ts",
+    "plugins/plugin-native-agent/scripts/test-native-host.mjs",
+    "packages/host/native-host/gateway-bootstrap.mjs",
+    "packages/host/native-host/gateway-bootstrap.test.mjs"
+  ],
+  "bounds": {
+    "domain": "One existing supervisor scope, one agent and gateway, one broker and three private publications. Publication failures, cancellation, child exits, readiness timeouts and explicit cleanup failure are included. A retired scope cannot spawn again. Destruction requests and subsequent observations of child termination are distinct.",
+    "assumptions": "Readiness is an observed authenticated result. Each startup advance either moves the finite host sequence forward or reports failure/timeout. Cleanup records attempted child destruction and broker closure or explicit failure; it does not acknowledge child exit. Physical termination is an independent environmental observation.",
+    "progress": "Startup settles under weak fairness of startup advance, including timeout/failure observation. Retirement returns under weak fairness of cleanup, with explicit failure permitted. Conditional physical-exit progress separately assumes fair observations of each child exit after a destruction request; no unconditional exit acknowledgment is claimed.",
+    "limitations": "Does not prove OS scheduling, elapsed deadlines, JVM/Android refinement, file publication durability, secret redaction or a physical-device speedup. One scope abstracts replacement by permanent retirement; concurrent scopes and account-store custody remain outside the model. The existing real-process JVM and loopback tests check implementation boundaries, not every generated trace."
+  },
+  "conformance": "plugins/plugin-native-agent/scripts/check-parallel-runtime-startup.mjs",
+  "cases": [
+    {
+      "name": "one-supervisor-scope",
+      "main": "ParallelRuntimeStartup",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "PublicationsBeforeChildren",
+        "OwnedGateway",
+        "ReadinessOrder",
+        "RunningNeedsReadiness",
+        "DisposedFencesScope"
+      ],
+      "temporal": [
+        "StartupSettles",
+        "StartupSettlesWithoutFairness",
+        "RetirementSettles",
+        "RetirementSettlesWithoutFairness",
+        "ChildExitSettles",
+        "ChildExitSettlesWithoutFairness",
+        "RetirementMonotone",
+        "ObservedTerminationProgress",
+        "UnconditionalTerminationProgress"
+      ],
+      "temporalChecks": [
+        {
+          "property": "StartupSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance, including the host sequence, authenticated readiness observations and bounded-wait failure/timeout observation. No assumption that either child becomes ready."
+          ]
+        },
+        {
+          "property": "StartupSettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": ["No fairness. A startup phase may stutter forever."]
+        },
+        {
+          "property": "RetirementSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of cleanup. Settlement includes reported cleanup failure; successful broker closure and process reclamation are not assumed."
+          ]
+        },
+        {
+          "property": "RetirementSettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A retired scope may wait forever for its cleanup outcome."
+          ]
+        },
+        {
+          "property": "ChildExitSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance, including startup failure/deadline or the running supervisor's exit observation. No real observation latency is proved."
+          ]
+        },
+        {
+          "property": "ChildExitSettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A stopped child can remain unobserved forever."
+          ]
+        },
+        {
+          "property": "RetirementMonotone",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The modeled scope is never reused after retirement."
+          ]
+        },
+        {
+          "property": "ObservedTerminationProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each post-destruction child-termination observation. This assumes eventual observable OS exit and does not establish that destroyForcibly returns only after termination."
+          ]
+        },
+        {
+          "property": "UnconditionalTerminationProgress",
+          "expect": "counterexample",
+          "assumptions": [
+            "No exit-observation fairness. Scope.close can return after requesting destruction; a child exit may remain unobserved forever. Immediate non-quiescence is also covered by the named kill-request scenario."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}

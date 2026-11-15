@@ -157,6 +157,7 @@ for (const width of [1280, 390]) {
             paused: true,
             destination: null,
             pendingDispatch: null,
+            conflicts: 0,
           },
         }),
       );

@@ -1,0 +1,34 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/auto-top-up-attempts.ts",
+    "packages/cloud/shared/src/db/repositories/auto-top-up-lock-order.postgres.integration.test.ts",
+    "packages/cloud/shared/src/db/repositories/test-support/auto-top-up-test-schema.ts",
+    "packages/cloud/shared/src/db/repositories/auto-top-up-cutover.pglite.test.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Two transactions contend for one organization and one attempt in a consistent row-lock order.",
+      "Models row-lock acquisition and release only; money, provider effects, triggers, fairness and unbounded database executions are excluded."
+    ],
+    "progress": "No fairness or unbounded progress claim. All models include stuttering and rollback or retry paths.",
+    "domain": {
+      "organizations": 1,
+      "attempts": 1,
+      "transactions": 2,
+      "lockOwners": [-1, 0, 1]
+    }
+  },
+  "cases": [
+    {
+      "name": "auto-topup-lock-order",
+      "main": "auto_topup_lock_order",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

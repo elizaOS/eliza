@@ -131,6 +131,41 @@ test("conflicting original and linked phone owners receive no session", async ()
   expect((await response.json()).token).toBeUndefined();
 });
 
+test("refresh rotation keeps the sign-in auth_time while iat moves", async () => {
+  const login = await verifyPhone("+14155550196");
+  expect(login.status).toBe(200);
+  const session = (await login.json()) as {
+    token: string;
+    refreshToken: string;
+  };
+  const { verifyToken } = await import("../auth/jwt");
+  const signedIn = await verifyToken(session.token);
+  expect(typeof signedIn.auth_time).toBe("number");
+  // Cross a JWT second so a re-stamped auth_time would be visible.
+  await new Promise((resolve) =>
+    setTimeout(resolve, 1000 - (Date.now() % 1000) + 10),
+  );
+  const first = await post("/auth/refresh", {
+    refreshToken: session.refreshToken,
+  });
+  expect(first.status).toBe(200);
+  const rotated = (await first.json()) as {
+    token: string;
+    refreshToken: string;
+  };
+  const once = await verifyToken(rotated.token);
+  expect(once.iat).toBeGreaterThan(signedIn.iat as number);
+  expect(once.auth_time).toBe(signedIn.auth_time);
+  const second = await post("/auth/refresh", {
+    refreshToken: rotated.refreshToken,
+  });
+  expect(second.status).toBe(200);
+  const twice = await verifyToken(
+    ((await second.json()) as { token: string }).token,
+  );
+  expect(twice.auth_time).toBe(signedIn.auth_time);
+});
+
 test("a refresh into another tenant applies that tenant's login methods and keeps the session on refusal", async () => {
   const { tenants, tenantConfigs } = await import("../db/schema");
   const { userTenants } = await import("../db/schema-auth");

@@ -1,0 +1,27 @@
+{
+  "sources": [
+    "plugins/plugin-vision/src/vision-context-augmenter.ts",
+    "plugins/plugin-vision/src/ocr-with-coords.ts",
+    "plugins/plugin-vision/src/image/sharp-compat.ts",
+    "plugins/plugin-vision/src/vision-context-augmenter.test.ts"
+  ],
+  "conformance": "plugins/plugin-vision/quint/check-vision-describe-ocr.mjs",
+  "bounds": "Twelve describe images: a PNG, a JPEG or bytes no decoder reads, with or without text, while the image backend loads or fails to load. The implementation check sends each generated scenario through the production FusedVisionContextAugmenter, sharp and RapidOcrCoordAdapter, and checks the bytes the recognizer receives, the fused OCR text and the logged skip reason. The recognizer under the adapter (Apple Vision, doCTR) is recorded, not run; vision-context-augmenter.real.test.ts runs the same JPEG flow through the real Linux tesseract engine. Object and face detection, other image formats, the 100-megapixel input bound and concurrent describes remain outside this model. Safety is unconditional.",
+  "cases": [
+    {
+      "name": "vision-describe-ocr-input",
+      "main": "VisionDescribeOcr",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OcrReceivesOnlyPng",
+        "PngPassesUnchanged",
+        "ReadableImageKeepsText",
+        "FailureKeepsItsReason"
+      ],
+      "temporal": [],
+      "maxSteps": 4,
+      "samples": 300
+    }
+  ]
+}

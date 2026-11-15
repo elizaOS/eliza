@@ -15,8 +15,6 @@ import { logger } from "../utils/logger";
 import { createTimedSpeechStream } from "./timed-speech-stream";
 import { TtsSynthesisOptions } from "./tts-synthesis-options";
 
-export { hasTtsSynthesisOptions, TtsSynthesisOptions } from "./tts-synthesis-options";
-
 /**
  * Configuration for ElevenLabs service.
  */

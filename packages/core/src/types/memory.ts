@@ -7,11 +7,6 @@
 import type { Content, MetadataValue, UUID } from "./primitives.js";
 
 /**
- * Memory type enumeration for built-in memory types
- */
-export type MemoryTypeAlias = string;
-
-/**
  * Enumerates the built-in types of memories that can be stored and retrieved.
  * - `DOCUMENT`: Represents a whole document or a large piece of text.
  * - `FRAGMENT`: A chunk or segment of a `DOCUMENT`, often created for embedding and search.
@@ -95,7 +90,7 @@ export interface ArtifactShareMetadata {
  * Base interface for all memory metadata types.
  */
 export interface BaseMetadata {
-	type: MemoryTypeAlias;
+	type: string;
 	source?: string;
 	sourceId?: string;
 	scope?: MemoryScope;
@@ -228,8 +223,6 @@ export interface SessionOrigin {
 	accountId?: string;
 	threadId?: string | number;
 }
-
-// Session Context - First-class session support for filtering and state
 
 export interface SessionModelOverride {
 	provider?: string;
@@ -471,7 +464,7 @@ export interface DescriptionMetadata {
 export interface CustomMetadata {
 	base?: BaseMetadata;
 	type?: "custom";
-	[key: string]: MetadataValue | MemoryTypeAlias | BaseMetadata | undefined;
+	[key: string]: MetadataValue | BaseMetadata | undefined;
 }
 
 /**
@@ -518,7 +511,7 @@ interface MemoryMetadataBase {
 	doNotPersist?: boolean;
 	skipMemory?: boolean;
 	transient?: boolean;
-	type?: MemoryTypeAlias;
+	type?: string;
 	source?: string;
 	scope?: MemoryScope;
 	timestamp?: number;

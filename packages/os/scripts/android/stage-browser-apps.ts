@@ -71,7 +71,7 @@ export function readBrowserAppPins(vendorDir) {
         !Array.isArray(app.architectures) ||
         app.architectures.length === 0 ||
         !app.architectures.every((arch) =>
-          ["x86_64", "arm64", "riscv64"].includes(arch),
+          ["x86_64", "arm64"].includes(arch),
         ) ||
         !["stable", "development"].includes(app.channel)
       ) {
@@ -221,7 +221,7 @@ export function admitBrowserVendor(
     return null;
   }
   const inferred = brand.productName?.match(
-    /(?:^|_)(x86_64|arm64|riscv64)(?:_|$)/,
+    /(?:^|_)(x86_64|arm64)(?:_|$)/,
   )?.[1];
   if (brand.architecture && inferred && brand.architecture !== inferred)
     throw new Error("Explicit architecture conflicts with the AOSP product.");
@@ -267,11 +267,12 @@ function verifyApk(file, pin, { apksigner, aapt }) {
   const identity = metadata.match(
     /^package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'/m,
   );
+  // A caller descriptor may pin only package, hash and signer; manifest pins always name the version.
   if (
     !identity ||
     identity[1] !== pin.packageName ||
-    identity[2] !== pin.versionCode ||
-    identity[3] !== pin.versionName
+    (pin.versionCode !== undefined && identity[2] !== pin.versionCode) ||
+    (pin.versionName !== undefined && identity[3] !== pin.versionName)
   ) {
     throw new Error(`APK package or version mismatch for ${pin.packageName}.`);
   }
@@ -283,10 +284,12 @@ function verifyApk(file, pin, { apksigner, aapt }) {
   const expectedAbis = {
     arm64: "arm64-v8a",
     x86_64: "x86_64",
-    riscv64: "riscv64",
   };
-  if (pin.architectures.some((arch) => !abis.includes(expectedAbis[arch])))
+  if (
+    (pin.architectures ?? []).some((arch) => !abis.includes(expectedAbis[arch]))
+  )
     throw new Error(`APK native ABI mismatch for ${pin.packageName}.`);
+  return { versionCode: identity[2], versionName: identity[3] };
 }
 
 function validateStagingDestination(vendorDir, destination) {
@@ -327,7 +330,7 @@ export function stageBrowserApps({
   aapt = "aapt",
 }) {
   const pins = readBrowserAppPins(vendorDir);
-  if (!["x86_64", "arm64", "riscv64"].includes(arch))
+  if (!["x86_64", "arm64"].includes(arch))
     throw new Error("An explicit supported APK architecture is required.");
   const selected = Object.fromEntries(
     Object.keys(applications).map((name) => [
@@ -382,6 +385,154 @@ export function stageBrowserApps({
       name,
       ...selected[name],
     })),
+  };
+}
+
+const ANDROID_PACKAGE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/i;
+const WEBVIEW_CONFIG =
+  "overlay/frameworks/base/core/res/res/xml/config_webview_packages.xml";
+
+/**
+ * Checks a caller's browser overlay descriptor. A downstream product pins its own browser,
+ * and optionally a WebView provider, by package, APK SHA-256 and signer SHA-256, and names
+ * its AOSP vendor directory and module-name prefix. No Bitwarden vault is staged.
+ */
+export function validateBrowserOverlayDescriptor(descriptor) {
+  const {
+    vendor,
+    modulePrefix,
+    partition = "product",
+    browser,
+    webview = null,
+  } = descriptor ?? {};
+  if (!/^vendor\/[a-z0-9_]+$/.test(vendor ?? ""))
+    throw new Error("Browser overlay vendor must be vendor/<name>.");
+  if (!/^[A-Z][A-Za-z0-9]*$/.test(modulePrefix ?? ""))
+    throw new Error("Browser overlay module prefix must be a module name.");
+  if (!["product", "system"].includes(partition))
+    throw new Error("Browser overlay partition must be product or system.");
+  for (const [name, app] of Object.entries({ browser, webview })) {
+    if (name === "webview" && app === null) continue;
+    if (
+      !ANDROID_PACKAGE.test(app?.packageName ?? "") ||
+      !/^[a-f0-9]{64}$/.test(app.sha256 ?? "") ||
+      !/^[a-f0-9]{64}$/.test(app.signerSha256 ?? "")
+    )
+      throw new Error(`Invalid pinned ${name} APK identity in the descriptor.`);
+  }
+  if (webview && webview.packageName === browser.packageName)
+    throw new Error("The WebView provider must be another package.");
+  return { vendor, modulePrefix, partition, browser, webview };
+}
+
+/** The Soong modules a browser overlay descriptor stages. */
+export function browserOverlayModules({ modulePrefix, webview }) {
+  return {
+    browser: `${modulePrefix}OwnedChromium`,
+    ...(webview ? { webview: `${modulePrefix}WebViewProvider` } : {}),
+  };
+}
+
+/** The overlay files for a verified descriptor. `versions` are the versionName values read from the APKs. */
+export function renderBrowserOverlay(
+  descriptor,
+  versions: { browser?: string; webview?: string } = {},
+) {
+  const { vendor, modulePrefix, partition, browser, webview } =
+    validateBrowserOverlayDescriptor(descriptor);
+  const names = browserOverlayModules({ modulePrefix, webview });
+  const location =
+    partition === "system" ? "" : "    product_specific: true,\n";
+  const app = (name, apk, extra = "") =>
+    `android_app_import {\n    name: "${name}",\n    apk: "${apk}",\n    presigned: true,\n    preprocessed: true,\n${location}    dex_preopt: { enabled: false },\n${extra}}\n`;
+  const files = {
+    "Android.bp": `// Generated by stage-browser-apps.ts from hash- and signer-checked APKs.\n// The browser ${browser.packageName} ${versions.browser ?? ""}: the product browser on the image.\n${app(names.browser, "OwnedChromium.apk")}`,
+    "browser.mk": `# Generated by stage-browser-apps.ts. Include it from the product makefile.\nPRODUCT_PACKAGES += ${Object.values(names).join(" ")}\n`,
+  };
+  if (!webview) return files;
+  files["Android.bp"] +=
+    `\n// The pinned WebView provider ${webview.packageName} ${versions.webview ?? ""}, in place of the stock prebuilt.\n` +
+    app(
+      names.webview,
+      "WebViewProvider.apk",
+      `    overrides: ["webview"],\n    // The stock module brings the loader and platform support; the replacement must too.\n    required: ["libwebviewchromium_loader", "libwebviewchromium_plat_support"],\n`,
+    );
+  files["browser.mk"] +=
+    `PRODUCT_PACKAGE_OVERLAYS += ${vendor}/browser/overlay\n`;
+  // Only the pinned provider is listed, so the framework never falls back to another one.
+  files[WEBVIEW_CONFIG] =
+    `<?xml version="1.0" encoding="utf-8"?>\n<!-- Generated by stage-browser-apps.ts: the only WebView provider is the pinned one, a system app. -->\n<webviewproviders>\n    <webviewprovider description="Chromium WebView (pinned for ${modulePrefix})" packageName="${webview.packageName}" availableByDefault="true">\n    </webviewprovider>\n</webviewproviders>\n`;
+  return files;
+}
+
+/**
+ * Stages a caller-pinned browser, and optionally its WebView provider, into
+ * `<output>/browser`: the APKs, Android.bp, browser.mk and the WebView framework overlay.
+ * Each APK is copied first, and the copy is checked against the descriptor's hash, signer and
+ * package. The folder appears only when every check and write succeeded.
+ */
+export function stageBrowserOverlay({
+  descriptor,
+  browserApk,
+  webviewApk,
+  output,
+  apksigner = "apksigner",
+  aapt = "aapt",
+}) {
+  const reviewed = validateBrowserOverlayDescriptor(descriptor);
+  if (!browserApk) throw new Error("An explicit browser APK path is required.");
+  if (Boolean(reviewed.webview) !== Boolean(webviewApk))
+    throw new Error(
+      "Supply a WebView provider APK exactly when the descriptor pins one.",
+    );
+  const outputStat = fs.lstatSync(output, { throwIfNoEntry: false });
+  if (!outputStat?.isDirectory() || outputStat.isSymbolicLink())
+    throw new Error("Browser overlay output must be a real directory.");
+  const directory = path.join(output, "browser");
+  if (fs.lstatSync(directory, { throwIfNoEntry: false }))
+    throw new Error("Browser overlay directory already exists.");
+  const sources = {
+    browser: ["OwnedChromium.apk", browserApk],
+    ...(reviewed.webview
+      ? { webview: ["WebViewProvider.apk", webviewApk] }
+      : {}),
+  };
+  const pending = fs.mkdtempSync(path.join(output, ".browser-"));
+  try {
+    const versions: { browser?: string; webview?: string } = {};
+    for (const [name, [file, source]] of Object.entries(sources)) {
+      const input = path.resolve(source);
+      if (fs.lstatSync(input).isSymbolicLink() || !fs.statSync(input).isFile())
+        throw new Error(
+          "Browser APK input must be a regular non-symlink file.",
+        );
+      const copy = path.join(pending, file);
+      fs.copyFileSync(input, copy);
+      versions[name] = verifyApk(copy, reviewed[name], {
+        apksigner,
+        aapt,
+      }).versionName;
+    }
+    for (const [name, text] of Object.entries(
+      renderBrowserOverlay(reviewed, versions),
+    )) {
+      fs.mkdirSync(path.dirname(path.join(pending, name)), {
+        recursive: true,
+      });
+      fs.writeFileSync(path.join(pending, name), text);
+    }
+    fs.renameSync(pending, directory);
+  } catch (error) {
+    fs.rmSync(pending, { recursive: true, force: true });
+    throw error;
+  }
+  return {
+    directory: path.resolve(directory),
+    partition: reviewed.partition,
+    modules: browserOverlayModules(reviewed),
+    browser: reviewed.browser,
+    webview: reviewed.webview,
+    releaseQualified: false,
   };
 }
 

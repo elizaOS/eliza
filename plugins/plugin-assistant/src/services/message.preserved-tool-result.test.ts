@@ -560,6 +560,181 @@ describe("planner-loop death after a completed tool", () => {
   );
 
   it.each([
+    { intentId: "intent:1", execution: "required" },
+    { intentId: "intent:2", execution: "required" },
+    { intentId: "intent:2", execution: "conditional" },
+  ] as const)(
+    "grounds or withholds a Stage-1 answer that lists no intents ($intentId, $execution)",
+    async ({ intentId, execution }) => {
+      // Live tj-6a95e9c522dc6a: one Stage-1 call with contexts [simple],
+      // intents [] and a required intent:1 next_event read. The binding was
+      // dropped and this reply, copied from earlier chat, was delivered.
+      const stale = "Coffee's today, 9 to 10 AM.";
+      const planned = "I'll need to check your calendar for that.";
+      const read = intentId === "intent:1";
+      const h = await createHarness({ actionResult: { success: true } });
+      const world = await h.runtime.getWorld(h.runtime.agentId);
+      if (!world) throw new Error("Missing owner world");
+      await h.runtime.updateWorlds([
+        {
+          ...world,
+          metadata: {
+            ownership: { ownerId: USER_ID },
+            roles: { [USER_ID]: "OWNER" },
+          },
+        },
+      ]);
+      h.runtime.actions.length = 0;
+      const executed: string[] = [];
+      const facts =
+        "No upcoming event was found in Calendar for the next 30 days.";
+      h.runtime.registerAction({
+        name: "CALENDAR_NEXT_EVENT",
+        description: "Read the next Calendar event.",
+        contexts: ["calendar"],
+        validate: async () => true,
+        handler: async () => {
+          executed.push("CALENDAR_NEXT_EVENT");
+          const asOf = Date.now();
+          return {
+            success: true,
+            text: facts,
+            userFacingText: facts,
+            verifiedUserFacing: true,
+            effectReceipts: [
+              {
+                receiptId: "next-event-read",
+                operation: "calendar.event.next.read",
+                resource: {
+                  kind: "calendar.next_event",
+                  id: "next",
+                  version: "current",
+                },
+                artifacts: [],
+                idempotency: { key: null, replayed: false },
+                observedAt: new Date(asOf).toISOString(),
+                outcome: "noop",
+                reason: "Read only",
+              },
+            ],
+            data: {
+              replyContext: {
+                domain: "calendar",
+                scenario: "next_event",
+                userFacingFacts: facts,
+              },
+              timeReference: {
+                asOf: new Date(asOf).toISOString(),
+                timeZone: "UTC",
+              },
+              readScope: {
+                selection: "next_event",
+                timeMin: new Date(asOf - 3_600_000).toISOString(),
+                timeMax: new Date(asOf + 30 * 86_400_000).toISOString(),
+                exhaustive: false,
+              },
+              calendarFeedState: "complete",
+              calendarSources: [{ summary: "Calendar", status: "fresh" }],
+              event: null,
+            },
+          };
+        },
+      });
+      h.runtime.registerResponseHandlerFieldEvaluator(calendarReadBindingField);
+      h.runtime.responseHandlerEvaluators.push(calendarReadBindingEvaluator);
+      let responseCalls = 0;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async () => {
+          if (++responseCalls === 1) {
+            const result = stageOneToolTurn();
+            const args: Record<string, unknown> = result.toolCalls[0].arguments;
+            delete args.requiresTool;
+            delete args.thought;
+            Object.assign(args, {
+              contexts: ["simple"],
+              intents: [],
+              candidateActionNames: [],
+              replyText: stale,
+              calendarReadBindings: [
+                { intentId, operation: "next_event", execution },
+              ],
+            });
+            return result;
+          }
+          // With a bound read the evaluator repeats the stale answer, and only
+          // the read result can replace it.
+          return JSON.stringify({
+            success: true,
+            decision: "FINISH",
+            thought: "The next-event read finished.",
+            requestFullyCovered: true,
+            outcomeCoverage: [
+              {
+                intentId: "intent:1",
+                status: "completed",
+                evidenceStepIds: ["step:1"],
+              },
+            ],
+            messageToUser: read ? stale : planned,
+            replyEffectStatus: "none",
+          });
+        },
+        "no-listed-intents-test",
+        200,
+      );
+      let plannerCalls = 0;
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async (_runtime, params) => {
+          plannerCalls++;
+          if (!read) return { text: planned, completed: true, toolCalls: [] };
+          expect(params.tools?.map((tool) => tool.name)).toContain(
+            "CALENDAR_NEXT_EVENT",
+          );
+          return {
+            text: "",
+            toolCalls: [
+              { id: "next-event", name: "CALENDAR_NEXT_EVENT", arguments: {} },
+            ],
+          };
+        },
+        "no-listed-intents-test",
+        200,
+      );
+      const message = {
+        ...makeMessage(h.runtime, "Um, when am I supposed to have coffee?"),
+        id: "00000000-0000-0000-0000-000000000097" as UUID,
+      };
+      const outcome = await runV5MessageRuntimeStage1({
+        runtime: h.runtime,
+        message,
+        state: await h.runtime.composeState(message),
+        responseId: "00000000-0000-0000-0000-000000000098" as UUID,
+        callback: h.callback,
+      });
+      if (outcome.kind !== "planned_reply" && outcome.kind !== "direct_reply")
+        throw new Error("Missing reply");
+      const text = outcome.result.responseContent?.text;
+      if (execution === "conditional") {
+        // An unbound conditional read keeps the existing direct reply.
+        expect(outcome.kind).toBe("direct_reply");
+        expect(text).toBe(stale);
+        expect(plannerCalls).toBe(0);
+        return;
+      }
+      // A required read never ships the unverified Stage-1 answer.
+      expect(outcome.kind).toBe("planned_reply");
+      expect(plannerCalls).toBeGreaterThan(0);
+      expect(text).not.toContain("Coffee's today");
+      if (read) {
+        expect(executed).toEqual(["CALENDAR_NEXT_EVENT"]);
+        expect(text).toBe(facts);
+      } else expect(executed).toEqual([]);
+    },
+  );
+
+  it.each([
     {
       operation: "next_event",
       reader: "CALENDAR_NEXT_EVENT",

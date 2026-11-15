@@ -12,7 +12,7 @@
  *   - **RAM-class classification** — `ELIZA_INFERENCE_RAM_CLASS` (exported by
  *     `ElizaAgentService` from `ActivityManager.getMemoryInfo().totalMem`)
  *     wins; otherwise `/proc/meminfo` `MemTotal` is read directly so
- *     non-Android AOSP-ish hosts (riscv64 boards) classify themselves.
+ *     non-Android AOSP-ish hosts classify themselves.
  *   - **Idle unload** — `InferenceIdleUnloader` frees the loaded model after a
  *     RAM-class-dependent idle window (`ELIZA_LOCAL_IDLE_UNLOAD_MS` override,
  *     same env the desktop engine honours; `0` disables). The next request

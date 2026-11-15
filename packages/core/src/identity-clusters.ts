@@ -26,21 +26,15 @@ type IdentityClusterResolver = Service & {
 function getIdentityClusterResolver(
 	runtime: IAgentRuntime,
 ): IdentityClusterResolver | null {
-	const service = runtime.getService("relationships");
-	if (!service) {
-		return null;
-	}
+	const service = runtime.getService<IdentityClusterResolver>("relationships");
 	if (
-		typeof (service as IdentityClusterResolver).getMemberEntityIds !==
-			"function" &&
-		typeof (service as IdentityClusterResolver).getVerifiedMemberEntityIds !==
-			"function" &&
-		typeof (service as IdentityClusterResolver).resolvePrimaryEntityId !==
-			"function"
+		typeof service?.getMemberEntityIds !== "function" &&
+		typeof service?.getVerifiedMemberEntityIds !== "function" &&
+		typeof service?.resolvePrimaryEntityId !== "function"
 	) {
 		return null;
 	}
-	return service as IdentityClusterResolver;
+	return service;
 }
 
 function getIdentityAuthority(runtime: IAgentRuntime): PrincipalService | null {
@@ -60,8 +54,7 @@ export async function getRelatedEntityIds(
 	const key = `identity-cluster:${runtime.agentId}:${entityId}`;
 	return memoizeTurnWork(key, async () => {
 		const relatedEntityIds = await getMemberEntityIds(entityId);
-		const deduped = Array.from(new Set([entityId, ...relatedEntityIds]));
-		return deduped.length > 0 ? deduped : [entityId];
+		return Array.from(new Set([entityId, ...relatedEntityIds]));
 	});
 }
 
@@ -126,10 +119,13 @@ export function invalidateRelatedEntityIds(
 ): void {
 	const prefix = `identity-cluster:${runtime.agentId}:`;
 	const verifiedPrefix = `verified-identity-cluster:${runtime.agentId}:`;
-	if (entityId === undefined) invalidateTurnMemoPrefix(prefix);
-	else invalidateTurnMemo(`${prefix}${entityId}`);
-	if (entityId === undefined) invalidateTurnMemoPrefix(verifiedPrefix);
-	else invalidateTurnMemo(`${verifiedPrefix}${entityId}`);
+	if (entityId === undefined) {
+		invalidateTurnMemoPrefix(prefix);
+		invalidateTurnMemoPrefix(verifiedPrefix);
+	} else {
+		invalidateTurnMemo(`${prefix}${entityId}`);
+		invalidateTurnMemo(`${verifiedPrefix}${entityId}`);
+	}
 }
 
 export async function resolvePrimaryEntityId(

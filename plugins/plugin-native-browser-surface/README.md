@@ -64,7 +64,7 @@ and does nothing by itself:
   never accepted.
 - `downloadRequested`: nothing is downloaded. The http(s) address can carry access
   tokens, so keep it out of models and logs.
-- `externalLinkRequested`: a tapped `tel:`, `mailto:`, `market:` or `intent:` link.
+- `externalLinkRequested`: a tapped `tel:`, `mailto:`, `sms:`, `geo:`, `market:` or `intent:` link.
   `openExternalLink` opens only that link with a fresh Intent; `tel:` opens the dialer
   and places no call. Script attempts are dropped.
 - `identityProviderRequested`: Google and Facebook sign-in pages refuse embedded
@@ -73,12 +73,42 @@ and does nothing by itself:
   closes; the host activity keeps running. Recreate the surface to continue.
 - `keyboardChanged`: the on-screen keyboard opened or closed, with its height.
 
+Android `pauseSurface` calls `WebView.onPause()` on one surface and `resumeSurface`
+undoes it. The page stops drawing and its timers slow to about once a second, even while
+it is shown; its state and history stay. A hidden surface is already treated this way, so
+use it for a page that stays shown under host screens. It frees no memory. A paused
+page gets no touches, focus or keyboard, its held dialogs are cancelled, and capture,
+page control, `observeHistory` and `navigateHistory` reject until `resumeSurface`;
+`goBack`, `goForward`, `navigate` and `reloadSurface` still run. `presentSurface` never
+resumes it. iOS rejects both methods with `UNSUPPORTED`.
+
 Isolated surfaces get a fresh storage profile that is cleared when the surface closes
 and deleted once Android releases it. `createSurface({ ..., profileKey })` instead
 selects one persistent profile per owner and key (for example a signed-in account), so
 website sign-ins survive. `purgeProfiles({ profileKey })` removes it at once and closes
 its surfaces (`surfaceClosed`); `purgeProfiles({ idleMs })` removes keyed profiles idle
-for that long. `clearSurfaceStorage` signs one isolated surface out of every website.
+for that long. `purgeProfiles({ all: true })` removes every surface profile of any owner,
+closes their surfaces and resolves `clean` once no purged profile holds a cookie.
+`clearSurfaceStorage` signs one isolated surface out of every website.
+
+Android `createSurface({ ..., layer: "below-host" })` draws the page under the host
+WebView instead of over it, so the host draws its own chrome, rounded corners and
+shadows over the page and nothing is cut out of the website. It improves edges and
+shadows; it saves no memory or CPU, and the transparent host is blended over the page
+each frame, so measure frame time on the device before adopting it. The host makes its
+WebView background, every view between that WebView and its nearest `FrameLayout`
+ancestor, and its page CSS over the page rect transparent. The page is clipped only to
+its outer clip's rectangle. `setOcclusionRects` then lists the host-owned rects: a
+gesture, hover, mouse or drag event that starts on the page outside them goes to the
+website until it ends; any other stays with the host. A finger added during a gesture
+follows the first finger, and a gesture on a page hidden mid-gesture is cancelled. The
+page takes no input until the first `setOcclusionRects` call, and the host awaits that
+call before it shows new interactive chrome over the page. The website gets the whole
+gesture, so its own long-press, text selection and focus (and so the keyboard) work as
+in the default layer. TalkBack reads host chrome first, then the website; host nodes
+over the page must be `aria-hidden`. Captures draw the page alone, so no host pixel is
+in them, and mask the host-owned rects and the area outside the outer clip. iOS rejects
+this layer with `UNSUPPORTED`.
 
 `captureSurface` returns a JPEG of the visible page, about 1024 px on the long edge, for
 a vision fallback. Before the copy it covers password, `cc-*`, `one-time-code` and other
@@ -105,9 +135,19 @@ These are host primitives, not agent authorization: the caller must compose task
 scope, origin approval, preview and durable effect recording. Cross-origin history
 and iOS are not supported by these methods. Form POST resubmission is refused.
 
+Android `stopLoading` stops the current page load where it is (a no-op when nothing is
+loading) and then sends `navigationChanged`, so the host re-reads `progress`.
+
 Script popups never open. `getSurfaceState` also returns `title`, `canGoBack`,
 `canGoForward`, `progress`, `pageError` and `textZoom`; `setTextZoom` sets the page
-text size from 50 to 300 percent.
+text size from 50 to 300 percent. On Android every `navigationChanged` event also
+carries these fields as they were when it was sent. Listeners receive every surface's
+events, so a host uses them only when `exists` is true and `owner`, `session` and
+`epoch` match its own identity, which `getSurfaceState` checks itself. They are a
+snapshot: one sent before a host command settled can predate it, and a later title or
+progress change sends no event. iOS sends only the identity, so a host falls back to
+`getSurfaceState` when the fields are absent. The bundled `packages/ui` shell still
+re-reads `getSurfaceState` after its queued commands settle.
 
 `parseBrowserAddressInput` (also exported as `./address-input` without bridge
 registration) classifies address-bar text as an HTTP(S) URL, search text, or a
@@ -153,8 +193,10 @@ that overlaps the isolated or keyed surface profiles above.
 - A tapped `target=_blank` link or `window.open` from the selected, committed tab
   opens a tab in the opener's profile (`tabOpened`); untapped pop-ups are refused.
   A pop-up may close itself.
-- `tel:`, `mailto:`, `intent:` and `market:` links are handed to Android once per
-  tap, never to the host's own schemes or package.
+- `tel:`, `mailto:`, `sms:`/`smsto:`, `geo:`, `intent:` and `market:` links are handed to
+  Android once per tap. `tel:` opens the dial pad and `sms:` opens a compose screen; no call is
+  placed and nothing is sent. These mail, phone, text and map links also open when the host is
+  the handler. `intent:` and `market:` links never open the host's own schemes or package.
 - `clearBrowsingData` closes normal tabs and clears the persistent profile,
   saved tabs, history, permissions and download history (bookmarks remain);
   `clearSiteData` clears one site of the selected tab. The product confirms first.
@@ -188,7 +230,7 @@ Android device tests exercise ownership, storage isolation, real WebView page
 reads, navigation/back/reload, and visibility after rejected presentation:
 
 ```bash
-node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-browser-surface
+bun packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-browser-surface
 ```
 
 The bridge fixture exports native screenshots and complete page-read results.
@@ -202,14 +244,21 @@ its document ID. Closing, hiding, navigation, or owner reconciliation interrupts
 pending work. Activity pause also fences control and keeps the page for Resume.
 Hiding or pausing requires a fresh snapshot before the next input. A lost effect reply reports an uncertain outcome; observe before
 continuing and never automatically replay the effect. This API currently covers
-the main frame's DOM commands, not child frames or coordinate input.
+the main frame's DOM commands, not child frames or coordinate input. After a task
+effect, `BrowserEffectWatch` applies the Chromium network watch's rule to every
+request `shouldInterceptRequest` sees, from any frame; task snapshots report it as
+`effectViolation` and `effectWatch`. WebView names no request type, so only an
+image or stylesheet load (by its `Accept` header) is a passive cross-site read;
+beacons and other cross-site reads count within the 30-second window. WebView
+never shows it WebSocket, service-worker or WebRTC traffic, so `unseen` names
+those.
 
 `bun run --cwd plugins/plugin-native-browser-surface test:control` uses
 `ELIZA_BROWSER_EXECUTABLE` to test the generated channel in a real Chromium
 isolated world. This checks DOM effects and document/reference isolation, not
 Android installation or the native reply proxy. The generated native asset shares
 the existing browser command implementation; `build` regenerates it and
-`node plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check`
+`bun plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check`
 checks that it is current.
 The same test routes commands through the authenticated native-host HTTP gateway
 and surface client. It checks complete observations, real click/fill readback,
@@ -241,11 +290,35 @@ task authority and wait for a valid action preview before dispatching input.
 
 Android foreground-service hosts can share `ChromiumBrowserConnection`: construct
 it with the service context, call `start()` after entering foreground, and
-`close()` when the service stops. Call its lifecycle methods on the main thread.
+`close()` when the service stops. Its state lives on the main thread: a call
+from another thread is posted there in call order, so call `close()` on the main
+thread (for example in `onDestroy`) when the unbind must happen before it returns.
 It verifies the module's build-pinned package and signing certificate before
 binding and after connection. The priority-preserving Custom Tabs binding keeps
 the browser reachable without opening an activity, tab, URL or debugging port.
 It does not grant task/action authority or claim that a renderer is observable.
+A host that needs the browser only for some work calls `acquire()` instead of
+`start()` and closes the returned lease when that work ends; `stop()` ends a
+`start()`. With no `start()` or open lease, the binding is released after the
+idle delay (the constructor's second argument, 60 s by default), so Android can
+freeze or reclaim the browser. That trades resident memory for latency: the
+next `acquire()` after a release may cold-start Chromium. The memory saving has not been measured on a device yet
+(compare `dumpsys meminfo` and `oom_adj` of the browser with the host idle).
+`lease.whenReady(callback)` is posted to the main thread once the browser
+service is connected, has passed its package and certificate check and was asked
+to warm up; it runs once and is dropped when the lease closes. Warmup is only
+requested (`CustomTabsClient.warmup` is asynchronous), so the first page or
+native-messaging call after a cold start may still wait for Chromium to
+initialise; time that, not only `whenReady`. It never runs when the
+browser refuses the binding or fails its package or certificate check, so a
+host puts its own deadline around it and closes the lease at that deadline.
+A browser that fails verification after connecting closes the connection for
+good: `isClosed()` turns true and `acquire()` returns a lease that is already
+closed (`isOpen()` is false) and binds nothing. The hold, retry, release and
+ready rules live in the plain-JVM `ChromiumBindingDemand`. A host that stages
+`ChromiumBrowserConnection` as a resident helper must also list
+`ChromiumBindingDemand` and `ChromiumBrowserIdentity` in its `helpers`;
+`stageResidentHostSources` refuses the list otherwise.
 
 Android `presentBrowser()` foregrounds the certificate-pinned browser without a
 URL or new website tab. Invoke it from an explicit user interaction before a
@@ -397,7 +470,7 @@ Android helpers for the same hosts (they need AndroidX WebKit with
   `BrowserBlobCapture` copies a page-created `blob:` file through an isolated world. The host
   passes its preference name, its "is this review still current" check and its cookie reader.
 - `BrowserExternalHandoff.intentFor(raw, ownPackage, hostSchemes)` builds the implicit intent for
-  a `mailto:`, `tel:` (dial only), `market:` or `intent:` link with no component, selector, clip
+  a `mailto:`, `tel:` (dial only), `sms:`/`smsto:` (compose only), `geo:`, `market:` or `intent:` link with no component, selector, clip
   data, extras or grant flags; `fallback` reads a safe HTTPS `browser_fallback_url`, and
   `browserProbe`/`genericHttps` find general browsers for an external page handoff.
 - `BrowserBookmarkStore` and `BrowserSessionStore` keep bookmarks, normal-tab history and tabs,

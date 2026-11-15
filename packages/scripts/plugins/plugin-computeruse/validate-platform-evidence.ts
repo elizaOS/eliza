@@ -175,7 +175,7 @@ const PLATFORM_CONTRACTS = {
 
 function usage() {
   return [
-    "Usage: node ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts [--require-complete] [manifest ...]",
+    "Usage: bun ../../packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts [--require-complete] [manifest ...]",
     "",
     "Validates browser/computer-use platform evidence manifests. With no",
     "manifest arguments, validates all default manifests. With --require-complete,",

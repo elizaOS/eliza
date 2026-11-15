@@ -1,6 +1,3 @@
-/** Media kind categories */
-export type MediaKind = "image" | "audio" | "video" | "document" | "unknown";
-
 /** Map common MIME types to preferred file extensions */
 const EXT_BY_MIME: Record<string, string> = {
 	"image/heic": ".heic",
@@ -43,27 +40,12 @@ const MIME_BY_EXT: Record<string, string> = {
 	".jpeg": "image/jpeg",
 };
 
-/** Audio file extensions */
-const AUDIO_FILE_EXTENSIONS = new Set([
-	".aac",
-	".flac",
-	".m4a",
-	".mp3",
-	".oga",
-	".ogg",
-	".opus",
-	".wav",
-]);
-
-/** Voice-compatible audio extensions (Opus/Ogg) */
-const VOICE_AUDIO_EXTENSIONS = new Set([".oga", ".ogg", ".opus"]);
-
 /**
  * Normalize a MIME type from HTTP headers.
  */
 function normalizeHeaderMime(mime?: string | null): string | undefined {
 	if (!mime) return undefined;
-	const cleaned = mime.split(";")[0]?.trim().toLowerCase();
+	const cleaned = mime.split(";")[0].trim().toLowerCase();
 	return cleaned || undefined;
 }
 
@@ -80,7 +62,6 @@ export function getFileExtension(filePath?: string | null): string | undefined {
 	} catch {
 		// error-policy:J3 URL paths are untrusted input; malformed URLs are
 		// treated as plain paths without partial decoding.
-		// fall back to plain path parsing
 	}
 	// Only the last path segment can carry an extension; splitting the whole
 	// path on "." would treat a dot in a directory name (or a dotless URL
@@ -134,85 +115,6 @@ export async function detectMime(opts: {
 export function extensionForMime(mime?: string | null): string | undefined {
 	if (!mime) return undefined;
 	return EXT_BY_MIME[mime.toLowerCase()];
-}
-
-/**
- * Check if a file appears to be an audio file by extension.
- */
-export function isAudioFileName(fileName?: string | null): boolean {
-	const ext = getFileExtension(fileName);
-	return ext ? AUDIO_FILE_EXTENSIONS.has(ext) : false;
-}
-
-/**
- * Check if media is a GIF.
- */
-export function isGifMedia(opts: {
-	contentType?: string | null;
-	fileName?: string | null;
-}): boolean {
-	if (opts.contentType?.toLowerCase() === "image/gif") return true;
-	return getFileExtension(opts.fileName) === ".gif";
-}
-
-/**
- * Check if audio is voice-compatible (Opus/Ogg format).
- */
-export function isVoiceCompatibleAudio(opts: {
-	contentType?: string | null;
-	fileName?: string | null;
-}): boolean {
-	const mime = opts.contentType?.toLowerCase();
-	if (mime && (mime.includes("ogg") || mime.includes("opus"))) return true;
-	const ext = getFileExtension(opts.fileName);
-	return ext ? VOICE_AUDIO_EXTENSIONS.has(ext) : false;
-}
-
-/**
- * Get media kind from MIME type.
- */
-export function mediaKindFromMime(mime?: string | null): MediaKind {
-	if (!mime) return "unknown";
-	const m = mime.toLowerCase();
-	if (m.startsWith("image/")) return "image";
-	if (m.startsWith("audio/")) return "audio";
-	if (m.startsWith("video/")) return "video";
-	if (
-		m.startsWith("application/pdf") ||
-		m.startsWith("application/msword") ||
-		m.startsWith("application/vnd.ms-") ||
-		m.startsWith("application/vnd.openxmlformats") ||
-		m.startsWith("text/")
-	) {
-		return "document";
-	}
-	return "unknown";
-}
-
-/**
- * Get image MIME type from format name.
- */
-export function imageMimeFromFormat(
-	format?: string | null,
-): string | undefined {
-	if (!format) return undefined;
-	switch (format.toLowerCase()) {
-		case "jpg":
-		case "jpeg":
-			return "image/jpeg";
-		case "heic":
-			return "image/heic";
-		case "heif":
-			return "image/heif";
-		case "png":
-			return "image/png";
-		case "webp":
-			return "image/webp";
-		case "gif":
-			return "image/gif";
-		default:
-			return undefined;
-	}
 }
 
 /** Lazily load byte detection only when a media caller supplies bytes. */

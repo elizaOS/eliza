@@ -16,53 +16,119 @@ import type {
   BrowserWorkspaceRuntimeState,
 } from "./browser-workspace-types.js";
 
-export function buildBrowserWorkspaceElementSelector(element: Element): string {
-  const escapeFn = (
-    globalThis as { CSS?: { escape?: (value: string) => string } }
-  ).CSS?.escape;
-  const escapedId =
-    typeof escapeFn === "function"
-      ? escapeFn(element.id)
-      : element.id.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
-
-  if (element.id) {
-    return `#${escapedId}`;
+/**
+ * CSS.escape as specified in CSSOM. JSDOM and Node have no global CSS object,
+ * so ids such as `1-email` or `a:b` need this to form a valid selector.
+ */
+export function escapeBrowserWorkspaceCssIdentifier(value: string): string {
+  let result = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0) {
+      result += "\uFFFD";
+    } else if (
+      (code >= 0x1 && code <= 0x1f) ||
+      code === 0x7f ||
+      (index === 0 && code >= 0x30 && code <= 0x39) ||
+      (index === 1 &&
+        code >= 0x30 &&
+        code <= 0x39 &&
+        value.charCodeAt(0) === 0x2d)
+    ) {
+      result += `\\${code.toString(16)} `;
+    } else if (index === 0 && code === 0x2d && value.length === 1) {
+      result += `\\${value[index]}`;
+    } else if (
+      code >= 0x80 ||
+      code === 0x2d ||
+      code === 0x5f ||
+      (code >= 0x30 && code <= 0x39) ||
+      (code >= 0x41 && code <= 0x5a) ||
+      (code >= 0x61 && code <= 0x7a)
+    ) {
+      result += value[index];
+    } else {
+      result += `\\${value[index]}`;
+    }
   }
+  return result;
+}
+
+function browserWorkspaceSelectorRoot(element: Element): ParentNode {
+  const root = element.getRootNode() as ParentNode;
+  return typeof root.querySelectorAll === "function"
+    ? root
+    : element.ownerDocument;
+}
+
+function isUniqueBrowserWorkspaceSelector(
+  root: ParentNode,
+  selector: string,
+): boolean {
+  try {
+    return root.querySelectorAll(selector).length === 1;
+  } catch {
+    return false;
+  }
+}
+
+function browserWorkspaceNthOfTypeSegment(element: Element): string {
+  const tag = element.tagName.toLowerCase();
+  let index = 1;
+  for (
+    let sibling = element.previousElementSibling;
+    sibling;
+    sibling = sibling.previousElementSibling
+  ) {
+    if (sibling.tagName === element.tagName) index += 1;
+  }
+  return `${tag}:nth-of-type(${index})`;
+}
+
+/**
+ * A selector that matches exactly this element in its document: a unique id,
+ * data-testid or name when there is one, else a tag:nth-of-type path that
+ * grows one ancestor at a time (anchored on a unique ancestor id) until only
+ * this element matches.
+ */
+export function buildBrowserWorkspaceElementSelector(element: Element): string {
+  const root = browserWorkspaceSelectorRoot(element);
+  const tag = element.tagName.toLowerCase();
+  const idSelector = (target: Element) =>
+    target.id ? `#${escapeBrowserWorkspaceCssIdentifier(target.id)}` : null;
 
   const testId = element.getAttribute("data-testid")?.trim();
-  if (testId) {
-    return `[data-testid=${buildBrowserWorkspaceCssStringLiteral(testId)}]`;
-  }
-
   const name = element.getAttribute("name")?.trim();
-  if (name) {
-    return `${element.tagName.toLowerCase()}[name=${buildBrowserWorkspaceCssStringLiteral(name)}]`;
-  }
-
-  const type = element.getAttribute("type")?.trim();
-  if (type) {
-    return `${element.tagName.toLowerCase()}[type=${buildBrowserWorkspaceCssStringLiteral(type)}]`;
-  }
-
-  const parent = element.parentElement;
-  if (!parent) {
-    return element.tagName.toLowerCase();
-  }
-
-  const siblings = parent.children;
-  let index = 1;
-  for (let cursor = 0; cursor < siblings.length; cursor += 1) {
-    const sibling = siblings.item(cursor);
-    if (!sibling || sibling.tagName !== element.tagName) {
-      continue;
+  const candidates = [
+    idSelector(element),
+    testId
+      ? `[data-testid=${buildBrowserWorkspaceCssStringLiteral(testId)}]`
+      : null,
+    name ? `${tag}[name=${buildBrowserWorkspaceCssStringLiteral(name)}]` : null,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && isUniqueBrowserWorkspaceSelector(root, candidate)) {
+      return candidate;
     }
-    if (sibling === element) {
-      break;
-    }
-    index += 1;
   }
 
-  return `${element.tagName.toLowerCase()}:nth-of-type(${index})`;
+  let selector = browserWorkspaceNthOfTypeSegment(element);
+  for (
+    let ancestor = element.parentElement;
+    ancestor && !isUniqueBrowserWorkspaceSelector(root, selector);
+    ancestor = ancestor.parentElement
+  ) {
+    const anchor = idSelector(ancestor);
+    if (anchor && isUniqueBrowserWorkspaceSelector(root, anchor)) {
+      return `${anchor} > ${selector}`;
+    }
+    selector = `${browserWorkspaceNthOfTypeSegment(ancestor)} > ${selector}`;
+  }
+  // `label:nth-of-type(2) > input` would read as a `label:` text lookup when
+  // it is passed back as a selector; mark it as plain CSS.
+  return parseBrowserWorkspaceSemanticSelector(selector)
+    ? `css:${selector}`
+    : selector;
 }
 
 export function createBrowserWorkspaceElementSummary(
@@ -92,30 +158,27 @@ export function createBrowserWorkspaceElementSummary(
   };
 }
 
-export function collectBrowserWorkspaceInspectElements(
-  document: Document,
-): BrowserWorkspaceDomElementSummary[] {
-  const elements = Array.from(
+/** Inspect and snapshot list at most this many elements. */
+export const BROWSER_WORKSPACE_INSPECT_ELEMENT_LIMIT = 40;
+
+export function collectBrowserWorkspaceInspectElements(document: Document): {
+  elements: Element[];
+  summaries: BrowserWorkspaceDomElementSummary[];
+  truncated: boolean;
+} {
+  const all = Array.from(
     document.querySelectorAll(
       "a, button, input, textarea, select, form, [role='button'], [data-testid]",
     ),
   );
-  const summaries: BrowserWorkspaceDomElementSummary[] = [];
-  const seenSelectors = new Set<string>();
-
-  for (const element of elements) {
-    const summary = createBrowserWorkspaceElementSummary(element);
-    if (seenSelectors.has(summary.selector)) {
-      continue;
-    }
-    seenSelectors.add(summary.selector);
-    summaries.push(summary);
-    if (summaries.length >= 40) {
-      break;
-    }
-  }
-
-  return summaries;
+  const elements = all.slice(0, BROWSER_WORKSPACE_INSPECT_ELEMENT_LIMIT);
+  return {
+    elements,
+    summaries: elements.map((element) =>
+      createBrowserWorkspaceElementSummary(element),
+    ),
+    truncated: all.length > elements.length,
+  };
 }
 
 export function resolveBrowserWorkspaceIframeDocument(
@@ -476,9 +539,12 @@ export function mergeBrowserWorkspaceSelectorCommand(
     return null;
   }
 
+  // `css:` names a plain selector: drop any findBy the caller sent so every
+  // path queries it as CSS.
   return {
     ...command,
     ...parsed,
+    findBy: parsed.findBy,
     selector: parsed.selector,
   } as BrowserWorkspaceCommand;
 }
@@ -555,106 +621,24 @@ const BROWSER_WORKSPACE_TEXT_CONTROL_SELECTOR =
 export function findBrowserWorkspaceElementByText(
   document: Document,
   needle: string,
+  exact = false,
 ): Element | null {
-  return findAllBrowserWorkspaceElementsByText(document, needle)[0] ?? null;
+  return (
+    findAllBrowserWorkspaceElementsByText(document, needle, exact)[0] ?? null
+  );
 }
 
 export function resolveBrowserWorkspaceFindElement(
   document: Document,
   command: BrowserWorkspaceCommand,
 ): Element | null {
-  switch (command.findBy) {
-    case "alt":
-      return (
-        Array.from(document.querySelectorAll("[alt]")).find((element) =>
-          browserWorkspaceTextMatches(
-            element.getAttribute("alt") ?? "",
-            command.text ?? "",
-            command.exact,
-          ),
-        ) ?? null
-      );
-    case "first":
-      return command.selector?.trim()
-        ? queryBrowserWorkspaceSelector(document, command.selector)
-        : null;
-    case "label":
-      return command.text?.trim()
-        ? findBrowserWorkspaceElementByLabel(
-            document,
-            command.text,
-            command.exact,
-          )
-        : null;
-    case "last":
-      return command.selector?.trim()
-        ? (queryAllBrowserWorkspaceSelector(document, command.selector).at(
-            -1,
-          ) ?? null)
-        : null;
-    case "nth":
-      if (!command.selector?.trim()) {
-        return null;
-      }
-      if (
-        typeof command.index !== "number" ||
-        !Number.isInteger(command.index)
-      ) {
-        return null;
-      }
-      return (
-        queryAllBrowserWorkspaceSelector(document, command.selector).at(
-          command.index,
-        ) ?? null
-      );
-    case "placeholder":
-      return (
-        Array.from(document.querySelectorAll("[placeholder]")).find((element) =>
-          browserWorkspaceTextMatches(
-            element.getAttribute("placeholder") ?? "",
-            command.text ?? "",
-            command.exact,
-          ),
-        ) ?? null
-      );
-    case "role":
-      return command.role?.trim()
-        ? findBrowserWorkspaceElementByRole(
-            document,
-            command.role,
-            command.name,
-            command.exact,
-          )
-        : null;
-    case "testid":
-      return command.text?.trim()
-        ? document.querySelector(
-            `[data-testid=${buildBrowserWorkspaceCssStringLiteral(command.text)}]`,
-          )
-        : null;
-    case "text":
-      return command.text?.trim()
-        ? findBrowserWorkspaceElementByText(document, command.text)
-        : null;
-    case "title":
-      return (
-        Array.from(document.querySelectorAll("[title]")).find((element) =>
-          browserWorkspaceTextMatches(
-            element.getAttribute("title") ?? "",
-            command.text ?? "",
-            command.exact,
-          ),
-        ) ?? null
-      );
-    default:
-      return null;
-  }
+  return resolveBrowserWorkspaceFindElements(document, command)[0] ?? null;
 }
 
 /**
- * Plural variant of {@link resolveBrowserWorkspaceFindElement}: every element
- * a semantic find command matches, in document order. `get`/`count` uses this
- * so semantic selectors report the true match count instead of capping at one.
+ * Every element a semantic find command matches, in document order, honoring
+ * `exact`. `get`/`count` uses this so semantic selectors report the true match
+ * count; {@link resolveBrowserWorkspaceFindElement} takes the first.
  */
 export function resolveBrowserWorkspaceFindElements(
   document: Document,
@@ -800,10 +784,13 @@ export function resolveBrowserWorkspaceElement(
       command,
       normalizedSelector,
     );
-    if (semanticCommand) {
+    if (semanticCommand?.findBy) {
       return resolveBrowserWorkspaceFindElement(document, semanticCommand);
     }
-    return queryBrowserWorkspaceSelector(document, normalizedSelector);
+    return queryBrowserWorkspaceSelector(
+      document,
+      semanticCommand?.selector ?? normalizedSelector,
+    );
   }
 
   if (command?.findBy) {
@@ -812,7 +799,11 @@ export function resolveBrowserWorkspaceElement(
 
   const normalizedText = text?.trim();
   if (normalizedText) {
-    return findBrowserWorkspaceElementByText(document, normalizedText);
+    return findBrowserWorkspaceElementByText(
+      document,
+      normalizedText,
+      command?.exact,
+    );
   }
 
   return null;

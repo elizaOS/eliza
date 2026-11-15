@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createVoiceTurnTiming,
   VOICE_TIMING_MARKS,
@@ -41,9 +41,20 @@ beforeEach(() => {
   now = 10_000;
 });
 
+// Each fixture owns its deferred writes; settle them before replacing the store.
+afterEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+
 describe("voice turn timing", () => {
-  it("records ordered offsets once and nothing but timing", () => {
+  it("records ordered offsets once and nothing but timing", async () => {
     const timing = make();
+    let reads = 0;
+    const getItem = storage.getItem;
+    storage.getItem = (key) => {
+      reads++;
+      return getItem(key);
+    };
     const id = timing.begin({ route: "on-device", cold: false });
     now += 800;
     expect(timing.mark("transcript-ready")).toBe(true);
@@ -55,6 +66,14 @@ describe("voice turn timing", () => {
     expect(timing.mark("final-reply")).toBe(true);
     now += 600;
     expect(timing.mark("first-audio")).toBe(true);
+    // The turn did no storage work. One deferred write then stores the full record.
+    expect(reads).toBe(0);
+    expect(store.has(KEY)).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    storage.getItem = getItem;
+    expect(reads).toBe(1);
+    const written = JSON.parse(store.get(KEY) ?? "[]");
+    expect(written[0].marks["first-audio"]).toBe(3000);
     const [row] = timing.records();
     expect(row.id).toBe(id);
     expect(row.marks).toEqual({
@@ -310,7 +329,7 @@ describe("voice turn timing", () => {
     expect(timing.nativeTurnId()).toBeUndefined();
   });
 
-  it("survives absent or failing storage and clears its own key", () => {
+  it("survives absent or failing storage and clears its own key", async () => {
     const broken = createVoiceTurnTiming({
       storageKey: KEY,
       format: "f",
@@ -323,7 +342,8 @@ describe("voice turn timing", () => {
       "string",
     );
     expect(broken.records()).toEqual([]);
-    expect(broken.mark("transcript-ready")).toBe(false);
+    // The turn continues without storage.
+    expect(broken.mark("transcript-ready")).toBe(true);
     const timing = make();
     timing.begin({ route: "on-device", cold: false });
     store.set("other", "kept");
@@ -331,5 +351,8 @@ describe("voice turn timing", () => {
     expect(store.has(KEY)).toBe(false);
     expect(store.get("other")).toBe("kept");
     expect(timing.active()).toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.has(KEY)).toBe(false);
+    expect(store.get("other")).toBe("kept");
   });
 });

@@ -9,11 +9,11 @@ import { fileURLToPath } from "node:url";
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
 const passwords = path.join(
   plugin,
-  "android/src/main/java/ai/eliza/plugins/passwords",
+  "android-transfer/src/main/java/ai/eliza/plugins/passwords",
 );
 const custody = path.join(
   plugin,
-  "../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly",
+  "../plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly",
 );
 const bin = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;

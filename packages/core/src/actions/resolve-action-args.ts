@@ -8,8 +8,6 @@ import { runExtractorPipeline } from "./extractor-pipeline";
 import { parseJsonModelRecord } from "./json-model-output";
 import { recentConversationTextsFromState } from "./recent-context";
 
-// ── Public types ──────────────────────────────────────
-
 export interface SubactionSpec<TParams = Record<string, unknown>> {
 	/** Full description (per-subaction; surfaced into LLM prompt). */
 	description: string;
@@ -27,7 +25,7 @@ export type SubactionsMap<TSubaction extends string = string> = {
 	readonly [K in TSubaction]: SubactionSpec;
 };
 
-export interface ResolveActionArgsInput<TSubaction extends string, _TParams> {
+export interface ResolveActionArgsInput<TSubaction extends string> {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state?: State;
@@ -52,8 +50,6 @@ export type ResolveActionArgsResult<TSubaction extends string, TParams> =
 			clarification: string;
 			partial?: Partial<TParams>;
 	  };
-
-// ── Internal helpers ──────────────────────────────────
 
 const MIN_CONFIDENCE = 0.5;
 const FALLBACK_CLARIFICATION =
@@ -104,8 +100,7 @@ function missingRequiredKeys<TSubaction extends string>(
 	subactions: SubactionsMap<TSubaction>,
 	params: Record<string, unknown>,
 ): string[] {
-	const required = subactions[subaction]?.required ?? [];
-	const allowEmptyArrays = subactions[subaction]?.allowEmptyArrays;
+	const { required, allowEmptyArrays } = subactions[subaction];
 	const missing: string[] = [];
 	for (const key of required) {
 		if (!valueIsPresent(params[key], allowEmptyArrays?.includes(key))) {
@@ -121,9 +116,6 @@ function pickKnownParams<TSubaction extends string>(
 	params: Record<string, unknown>,
 ): Record<string, unknown> {
 	const spec = subactions[subaction];
-	if (!spec) {
-		return {};
-	}
 	const allowed = new Set<string>([
 		...(spec.required as readonly string[]),
 		...((spec.optional as readonly string[] | undefined) ?? []),
@@ -247,11 +239,11 @@ function parseExtractionEnvelope<TSubaction extends string>(
 	raw: string,
 	subactions: SubactionsMap<TSubaction>,
 ): ParsedExtraction<TSubaction> | null {
-	if (typeof raw !== "string" || raw.trim().length === 0) {
+	if (raw.trim().length === 0) {
 		return null;
 	}
-	const parsed = parseJsonModelRecord<Record<string, unknown>>(raw);
-	if (!parsed || typeof parsed !== "object") {
+	const parsed = parseJsonModelRecord(raw);
+	if (!parsed) {
 		return null;
 	}
 
@@ -286,8 +278,6 @@ function parseExtractionEnvelope<TSubaction extends string>(
 	return { subaction, params, missing, confidence };
 }
 
-// ── Public entry point ────────────────────────────────
-
 /**
  * Resolve the (subaction, params) pair for an umbrella action.
  *
@@ -300,7 +290,7 @@ export async function resolveActionArgs<
 	TSubaction extends string,
 	TParams = Record<string, unknown>,
 >(
-	input: ResolveActionArgsInput<TSubaction, TParams>,
+	input: ResolveActionArgsInput<TSubaction>,
 ): Promise<ResolveActionArgsResult<TSubaction, TParams>> {
 	const {
 		runtime,
@@ -366,21 +356,13 @@ export async function resolveActionArgs<
 		};
 	}
 
-	// Resolve subaction (with default fallback).
-	let chosen: TSubaction | null = plannerSubaction ?? parsed.subaction;
-	if (!chosen && defaultSubaction) {
-		chosen = defaultSubaction;
-	}
-
+	const chosen = plannerSubaction ?? parsed.subaction ?? defaultSubaction;
 	if (!chosen) {
+		const missing = parsed.missing.length > 0 ? parsed.missing : ["subaction"];
 		return {
 			ok: false,
-			missing: parsed.missing.length > 0 ? parsed.missing : ["subaction"],
-			clarification: buildClarificationMessage(
-				actionName,
-				null,
-				parsed.missing.length > 0 ? parsed.missing : ["subaction"],
-			),
+			missing,
+			clarification: buildClarificationMessage(actionName, null, missing),
 		};
 	}
 
@@ -401,10 +383,9 @@ export async function resolveActionArgs<
 	const finalMissing =
 		missing.length > 0
 			? missing
-			: parsed.missing.filter((key) => {
-					const required = subactions[chosen as TSubaction]?.required ?? [];
-					return (required as readonly string[]).includes(key);
-				});
+			: parsed.missing.filter((key) =>
+					(subactions[chosen].required as readonly string[]).includes(key),
+				);
 
 	if (parsed.confidence < MIN_CONFIDENCE || finalMissing.length > 0) {
 		return {

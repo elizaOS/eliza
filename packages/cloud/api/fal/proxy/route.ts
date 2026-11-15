@@ -36,7 +36,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../src/lib/generative-route-auth";
 
 const falHandler = createRouteHandler({
   allowedUrlPatterns: DEFAULT_ALLOWED_URL_PATTERNS,

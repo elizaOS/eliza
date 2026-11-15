@@ -54,7 +54,7 @@ export async function registerLocalInferenceBoot(
 	});
 	if (isMobilePlatform()) {
 		// Mobile bundle wires the local model handler only when a mobile-safe
-		// backend (device-bridge / AOSP FFI / bionic host / riscv64) is enabled;
+		// backend (device-bridge / AOSP FFI / bionic host) is enabled;
 		// otherwise the runtime serves from a remote/cloud provider.
 		if (shouldEnableMobileLocalInference()) {
 			await ensureLocalInferenceHandler(runtime);

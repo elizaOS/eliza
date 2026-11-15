@@ -24,12 +24,12 @@ import {
   getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
+  isElizaOsAndroidRuntime,
   isLocalOnlyInferenceInConfig,
   isMobilePlatform,
   lifeOpsPassiveConnectorsSetting,
   normalizeFirstRunProviderId,
   type ResolvedElizaCloudTopology,
-  readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
@@ -39,6 +39,10 @@ import {
   createDevCloudConfigAuthorityView,
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
+import {
+  ANDROID_PHONE_PLUGIN_NAME,
+  androidSmsReplyDraftEnabled,
+} from "./android-app-plugin-loaders.ts";
 import {
   CORE_PLUGINS,
   ELIZAOS_ANDROID_CORE_PLUGINS,
@@ -87,7 +91,7 @@ function orchestratorCompatPluginRequested(
   if (typeof fromDefaults === "boolean") {
     return fromDefaults;
   }
-  const raw = readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR")?.toLowerCase();
+  const raw = process.env.ELIZA_AGENT_ORCHESTRATOR?.trim().toLowerCase();
   if (raw === "0" || raw === "false" || raw === "no") {
     return false;
   }
@@ -108,13 +112,6 @@ function orchestratorCompatPluginRequested(
     "ELIZA_AGENT_SELECTION_STRATEGY",
     "ELIZA_MAX_CONCURRENT_SPAWNS",
   ].some((key) => Boolean(process.env[key]?.trim()));
-}
-
-function isElizaOsAndroidRuntime(): boolean {
-  return (
-    isAndroidMobile() &&
-    process.env.ELIZA_LOCAL_LLAMA?.trim().toLowerCase() === "1"
-  );
 }
 
 /**
@@ -345,6 +342,27 @@ export function collectDeniedPluginNames(names: Iterable<string>): Set<string> {
   return denied;
 }
 
+/** ELIZA_SKIP_PLUGINS as a list of names. */
+export function readSkipPluginNames(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  return (env.ELIZA_SKIP_PLUGINS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+/** Every name `config.plugins.deny` and ELIZA_SKIP_PLUGINS deny. */
+export function collectConfiguredDeniedPluginNames(
+  config: Pick<ElizaConfig, "plugins"> | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): Set<string> {
+  return collectDeniedPluginNames([
+    ...(config?.plugins?.deny ?? []),
+    ...readSkipPluginNames(env),
+  ]);
+}
+
 // ---------------------------------------------------------------------------
 // Main function
 // ---------------------------------------------------------------------------
@@ -422,7 +440,7 @@ export function collectPluginNames(
   );
   const isCloudContainer = devCloudSnapshot
     ? devCloudSnapshot.values.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
-    : readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+    : process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1";
   const storeBuild = isStoreBuildVariant();
   const cloudExplicitlyDisabled = config.cloud?.enabled === false;
   // `ELIZA_LOCAL_LLAMA=1` is the AOSP / on-device signal that the in-process
@@ -523,6 +541,7 @@ export function collectPluginNames(
   // unavailable in the app sandbox. Substitute the curated mobile-safe set.
   const onMobile = isMobilePlatform();
   const onElizaOsAndroid = isElizaOsAndroidRuntime();
+  const mobileSmsReplyDraft = androidSmsReplyDraftEnabled();
   // Dedicated chat-only cloud agents opt into a lean plugin set (no shell/
   // coding-tools/browser/orchestrator) to cut cold-boot time (#8434). Mobile keeps
   // its own curated set; lean-chat only applies off-mobile.
@@ -530,12 +549,12 @@ export function collectPluginNames(
     !onMobile &&
     process.env.ELIZA_PLUGIN_SET?.trim().toLowerCase() === "lean-chat";
   const leanWorkflows =
-    readAliasedEnv("ELIZA_LEAN_CHAT_WORKFLOWS") === "1" &&
+    process.env.ELIZA_LEAN_CHAT_WORKFLOWS?.trim() === "1" &&
     (config as ElizaConfig & { workflow?: { enabled?: boolean } }).workflow
       ?.enabled !== false;
   const mobileWorkflows =
     isAndroidMobile() &&
-    readAliasedEnv("ELIZA_MOBILE_WORKFLOWS") === "1" &&
+    process.env.ELIZA_MOBILE_WORKFLOWS?.trim() === "1" &&
     (config as ElizaConfig & { workflow?: { enabled?: boolean } }).workflow
       ?.enabled !== false;
   const seedCorePlugins = onMobile
@@ -568,6 +587,10 @@ export function collectPluginNames(
   for (const viewPlugin of MOBILE_VIEW_PLUGINS) {
     pluginsToLoad.add(viewPlugin);
     track(viewPlugin, "MOBILE_VIEW_PLUGINS (home-tile view)");
+  }
+  if (mobileSmsReplyDraft) {
+    pluginsToLoad.add(ANDROID_PHONE_PLUGIN_NAME);
+    track(ANDROID_PHONE_PLUGIN_NAME, "ELIZA_MOBILE_SMS_REPLY_DRAFT");
   }
   // ElizaOS-only: add the system-surface overlay app plugins (WiFi,
   // Contacts, Phone). These wrap privileged Android system APIs available
@@ -949,6 +972,7 @@ export function collectPluginNames(
       ...MOBILE_CORE_PLUGINS,
       ...(mobileWorkflows ? ["@elizaos/plugin-workflow"] : []),
       ...MOBILE_VIEW_PLUGINS,
+      ...(mobileSmsReplyDraft ? [ANDROID_PHONE_PLUGIN_NAME] : []),
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_CORE_PLUGINS : []),
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_TERMINAL_PLUGINS : []),
       ...MOBILE_MODEL_PROVIDER_PLUGINS,
@@ -983,7 +1007,7 @@ export function collectPluginNames(
     // to yield the slot (ELIZAOS_CLOUD_USE_EMBEDDINGS=false unless the operator
     // explicitly pinned it true) so the two providers don't both register.
     const localEmbeddingsOptIn =
-      readAliasedEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS") === "1" &&
+      process.env.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS?.trim() === "1" &&
       effectiveCloudEnvValue("ELIZAOS_CLOUD_USE_EMBEDDINGS")
         ?.trim()
         .toLowerCase() !== "true";

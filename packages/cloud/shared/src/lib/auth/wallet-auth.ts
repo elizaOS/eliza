@@ -16,8 +16,18 @@ import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { findOrCreateUserByWalletAddress } from "../services/wallet-signup";
 import type { UserWithOrganization } from "../types";
+import { isSingleUseRecordStoreAvailable, putSingleUseRecord } from "./single-use-records";
 
 const MAX_TIMESTAMP_AGE_MS = 5 * 60 * 1000; // WHY: limits replay window while allowing clock skew
+const NONCE_TTL_MARGIN_MS = 60 * 1000;
+
+/** The nonce store is down, so no signature can be checked. Retryable, not an auth failure. */
+export class WalletAuthUnavailableError extends Error {
+  constructor() {
+    super("Service temporarily unavailable");
+    this.name = "WalletAuthUnavailableError";
+  }
+}
 
 /**
  * Canonical query string for the payload hash: decoded `key=value` pairs
@@ -85,10 +95,10 @@ export async function verifyWalletSignature(
   const nonce = `${walletAddress}-${timestamp}-${method}-${path}-${payloadHash}`;
   const nonceKey = `wallet-nonce:${nonce}`;
 
-  // Fail closed if cache unavailable to prevent replay attacks during Redis outages.
-  // SLA: Wallet-header auth is fully unavailable during Redis outages; no fallback.
-  if (!cache.isAvailable()) {
-    throw new Error("Service temporarily unavailable");
+  // Fail closed if the nonce store is unavailable to prevent replays during outages.
+  // SLA: Wallet-header auth is fully unavailable during such outages; no fallback.
+  if (!isSingleUseRecordStoreAvailable()) {
+    throw new WalletAuthUnavailableError();
   }
 
   const message = `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: ${method}\nPath: ${path}\nPayload-SHA256: ${payloadHash}`;
@@ -119,8 +129,11 @@ export async function verifyWalletSignature(
     throw new Error("Invalid wallet signature");
   }
 
-  // Atomic SET NX PX: only one concurrent request can claim this nonce; prevents TOCTOU race
-  const claimed = await cache.setIfNotExists(nonceKey, "used", MAX_TIMESTAMP_AGE_MS);
+  // Single-use record (Redis SET NX, or the authentication state Durable Object
+  // on KV): only one concurrent request can claim this nonce. It must outlive the
+  // signature, which a future-dated timestamp keeps valid until timestamp + max age.
+  const nonceTtlMs = timestamp + MAX_TIMESTAMP_AGE_MS - now + NONCE_TTL_MARGIN_MS;
+  const claimed = await putSingleUseRecord(nonceKey, "used", Math.ceil(nonceTtlMs / 1000));
   if (!claimed) {
     throw new Error("Signature has already been used");
   }

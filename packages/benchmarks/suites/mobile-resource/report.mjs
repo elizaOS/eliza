@@ -5,7 +5,7 @@
  * report under `results/report/`. Run after `run-workbench.mjs` (or in CI, to
  * publish the artifact). Pure read/format — no device needed.
  *
- *   node suites/mobile-resource/report.mjs
+ *   bun suites/mobile-resource/report.mjs
  */
 
 import { existsSync, readdirSync } from "node:fs";

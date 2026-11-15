@@ -63,7 +63,7 @@ function parseArgs(argv) {
     else if (arg === "--require-wav") args.requireWav = true;
     else if (arg === "--help" || arg === "-h") {
       console.log(
-        "Usage: node speaker_imprint_diarization_harness.mjs [--bundle PATH] [--wav PATH] [--report PATH] [--lib PATH] [--json] [--require-wav]",
+        "Usage: bun speaker_imprint_diarization_harness.mjs [--bundle PATH] [--wav PATH] [--report PATH] [--lib PATH] [--json] [--require-wav]",
       );
       process.exit(0);
     }

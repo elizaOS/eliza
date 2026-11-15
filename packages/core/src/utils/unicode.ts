@@ -16,6 +16,28 @@ function isLowSurrogate(code: number): boolean {
 }
 
 /**
+ * UTF-8 encoded length of `text`, identical to
+ * `new TextEncoder().encode(text).byteLength` (lone surrogates count as the
+ * 3-byte replacement character) without allocating the encoded bytes.
+ */
+export function utf8ByteLength(text: string): number {
+	let bytes = 0;
+	for (let index = 0; index < text.length; index += 1) {
+		const code = text.charCodeAt(index);
+		if (code < 0x80) bytes += 1;
+		else if (code < 0x800) bytes += 2;
+		else if (
+			isHighSurrogate(code) &&
+			isLowSurrogate(text.charCodeAt(index + 1))
+		) {
+			bytes += 4;
+			index += 1;
+		} else bytes += 3;
+	}
+	return bytes;
+}
+
+/**
  * Returns `text` with every lone surrogate replaced by U+FFFD. Well-formed
  * input is returned as the same string instance (the native fast path scans
  * without allocating).
@@ -180,26 +202,14 @@ function sanitizeObjectPreservingDescriptors<T>(
 	depth: number,
 	ctx: WalkCtx,
 	ownKeys: readonly (string | symbol)[],
+	descriptors: readonly (PropertyDescriptor | undefined)[],
 ): T {
-	if (value === null || typeof value !== "object") {
-		return value;
-	}
-	if (Array.isArray(value)) {
-		let changed = false;
-		const next = value.map((item) => {
-			const sanitized = walkDeep(item, depth + 1, ctx, true);
-			if (sanitized !== item) {
-				changed = true;
-			}
-			return sanitized;
-		});
-		return (changed ? next : value) as T;
-	}
 	const source = value as Record<PropertyKey, unknown>;
 	const clone = Object.create(null) as Record<PropertyKey, unknown>;
 	let changed = false;
-	for (const key of ownKeys) {
-		const descriptor = Object.getOwnPropertyDescriptor(source, key);
+	for (let index = 0; index < ownKeys.length; index += 1) {
+		const key = ownKeys[index];
+		const descriptor = descriptors[index];
 		if (!descriptor) {
 			continue;
 		}
@@ -216,7 +226,7 @@ function sanitizeObjectPreservingDescriptors<T>(
 		// JSON.stringify would execute an enumerable accessor. Reject it without
 		// observation so a provider request can never run caller-controlled code.
 		if (!("value" in descriptor)) {
-			failUnsafeValue("accessor", undefined, String(key));
+			failUnsafeValue("accessor", undefined, key);
 		}
 		const entry = descriptor.value;
 		const sanitizedValue = walkDeep(entry, depth + 1, ctx, true);
@@ -224,19 +234,9 @@ function sanitizeObjectPreservingDescriptors<T>(
 			changed = true;
 		}
 		if (!Object.hasOwn(clone, sanitizedKey)) {
-			const sanitizedDescriptor: PropertyDescriptor =
-				"value" in descriptor
-					? { ...descriptor, value: sanitizedValue }
-					: sanitizedValue === entry
-						? descriptor
-						: {
-								value: sanitizedValue,
-								writable: true,
-								enumerable: descriptor.enumerable,
-								configurable: descriptor.configurable,
-							};
 			Object.defineProperty(clone, sanitizedKey, {
-				...sanitizedDescriptor,
+				...descriptor,
+				value: sanitizedValue,
 			});
 		}
 	}
@@ -292,8 +292,12 @@ function walkDeep<T>(
 			// Reserve before reading getters or walking children. Descriptor-bearing
 			// objects also copy symbols/non-enumerables, so every own key counts.
 			reserveVisits(ctx, ownKeys.length);
-			const needsDescriptorPreservingClone = ownKeys.some((key) => {
-				const descriptor = Object.getOwnPropertyDescriptor(value, key);
+			// Read each descriptor once; both branches below reuse them.
+			const descriptors = ownKeys.map((key) =>
+				Object.getOwnPropertyDescriptor(value, key),
+			);
+			const needsDescriptorPreservingClone = ownKeys.some((key, index) => {
+				const descriptor = descriptors[index];
 				return (
 					typeof key === "symbol" ||
 					Boolean(descriptor && !("value" in descriptor)) ||
@@ -301,13 +305,20 @@ function walkDeep<T>(
 				);
 			});
 			if (needsDescriptorPreservingClone) {
-				return sanitizeObjectPreservingDescriptors(value, depth, ctx, ownKeys);
+				return sanitizeObjectPreservingDescriptors(
+					value,
+					depth,
+					ctx,
+					ownKeys,
+					descriptors,
+				);
 			}
 			let changed = false;
 			const next = Object.create(null) as Record<string, unknown>;
-			for (const key of ownKeys) {
+			for (let index = 0; index < ownKeys.length; index += 1) {
+				const key = ownKeys[index];
 				if (typeof key !== "string") continue;
-				const descriptor = Object.getOwnPropertyDescriptor(value, key);
+				const descriptor = descriptors[index];
 				if (!descriptor?.enumerable || !("value" in descriptor)) continue;
 				const entry = descriptor.value;
 				const sanitizedKey = toWellFormedUnicode(key);

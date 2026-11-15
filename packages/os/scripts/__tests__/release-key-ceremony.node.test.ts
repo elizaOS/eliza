@@ -85,7 +85,7 @@ test("generic key manifest covers the AOSP image and release-trust keys", () => 
       assert.ok((key.bits ?? 0) >= 4096, `${key.name} must be RSA-4096+`);
   assert.doesNotMatch(
     fs.readFileSync(defaultKeyManifest, "utf8"),
-    /senior|elizaresearch/i,
+    /senior|alphacompute/i,
   );
 });
 

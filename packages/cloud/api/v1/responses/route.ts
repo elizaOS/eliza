@@ -7,49 +7,17 @@ import {
   nativeApplicationInferenceErrorResponse,
   prepareNativeApplicationInference,
 } from "@elizaos/cloud-shared/lib/services/native-application-inference";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { type Context, Hono } from "hono";
 import { handleChatCompletionsPOST } from "../chat/completions/route";
 
-type ResponseInputRole = "system" | "user" | "assistant" | "tool";
-
-interface ResponseInputPart {
-  type?: string;
-  text?: string;
-  input_text?: string;
-  output_text?: string;
-}
-
-interface ResponseInputMessage {
-  role?: ResponseInputRole;
-  content?: string | ResponseInputPart[];
-}
-
-interface ResponsesRequest {
-  model?: string;
-  instructions?: string;
-  input?: string | ResponseInputMessage[];
-  temperature?: number;
-  max_output_tokens?: number;
-  max_tokens?: number;
-  top_p?: number;
-  stream?: boolean;
-}
-
-interface ChatCompletionPayload {
-  id?: string;
-  model?: string;
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
-}
+import {
+  mapChatCompletionToResponse,
+  type ParsedResponsesRequest,
+  parseResponsesRequest,
+  ResponsesInputError,
+} from "./compatibility";
 
 const app = new Hono<AppEnv>();
 
@@ -70,132 +38,54 @@ function jsonError(
   );
 }
 
-function extractPartText(part: ResponseInputPart): string {
-  return part.text ?? part.input_text ?? part.output_text ?? "";
-}
-
-function extractContentText(
-  content: string | ResponseInputPart[] | undefined,
-): string {
-  if (typeof content === "string") {
-    return content.trim();
-  }
-
-  if (!Array.isArray(content)) {
-    return "";
-  }
-
-  return content.map(extractPartText).filter(Boolean).join("\n").trim();
-}
-
-function normalizeRole(role: ResponseInputRole | undefined): ResponseInputRole {
-  if (role === "system" || role === "assistant" || role === "tool") {
-    return role;
-  }
-  return "user";
-}
-
-function toChatMessages(body: ResponsesRequest) {
-  const messages: Array<{ role: ResponseInputRole; content: string }> = [];
-  const instructions = body.instructions?.trim();
-
-  if (instructions) {
-    messages.push({ role: "system", content: instructions });
-  }
-
-  if (typeof body.input === "string") {
-    const content = body.input.trim();
-    if (content) {
-      messages.push({ role: "user", content });
-    }
-    return messages;
-  }
-
-  if (Array.isArray(body.input)) {
-    for (const item of body.input) {
-      const content = extractContentText(item.content);
-      if (content) {
-        messages.push({ role: normalizeRole(item.role), content });
-      }
-    }
-  }
-
-  return messages;
-}
-
-function mapChatCompletionToResponse(
-  payload: ChatCompletionPayload,
-  requestedModel: string,
-) {
-  const text = payload.choices?.[0]?.message?.content?.trim() ?? "";
-  const responseId = payload.id?.startsWith("resp_")
-    ? payload.id
-    : `resp_${crypto.randomUUID()}`;
-  const createdAt = Math.floor(Date.now() / 1000);
-  const promptTokens = payload.usage?.prompt_tokens ?? 0;
-  const completionTokens = payload.usage?.completion_tokens ?? 0;
-  const totalTokens =
-    payload.usage?.total_tokens ?? promptTokens + completionTokens;
-
-  return {
-    id: responseId,
-    object: "response",
-    created_at: createdAt,
-    model: payload.model ?? requestedModel,
-    status: "completed",
-    output: [
-      {
-        id: `msg_${crypto.randomUUID()}`,
-        type: "message",
-        status: "completed",
-        role: "assistant",
-        content: [
-          {
-            type: "output_text",
-            text,
-          },
-        ],
-      },
-    ],
-    output_text: text,
-    usage: {
-      input_tokens: promptTokens,
-      output_tokens: completionTokens,
-      total_tokens: totalTokens,
-    },
-  };
-}
-
-async function parseResponsesRequest(c: Context<AppEnv>) {
-  try {
-    return (await c.req.json()) as ResponsesRequest;
-  } catch {
-    return null;
-  }
-}
-
-function buildChatRequest(
-  original: Request,
-  body: ResponsesRequest,
-  messages: ReturnType<typeof toChatMessages>,
-) {
+function buildChatRequest(original: Request, body: ParsedResponsesRequest) {
   const headers = new Headers(original.headers);
   headers.set("Content-Type", "application/json");
   headers.delete("Content-Length");
-
   return new Request(original.url, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      model: body.model,
-      messages,
-      temperature: body.temperature,
-      max_tokens: body.max_output_tokens ?? body.max_tokens,
-      top_p: body.top_p,
-      stream: false,
-    }),
+    body: JSON.stringify({ ...body, stream: false }),
     signal: original.signal,
   });
+}
+
+const RETRYABLE_GATEWAY_CODES = new Set([
+  "inference_admission_unavailable",
+  "billing_unavailable",
+  "rate_limit_unavailable",
+]);
+
+/** True for the canonical route's typed, retryable 503 refusals. */
+async function isRetryableGatewayRefusal(response: Response): Promise<boolean> {
+  if (response.status !== 503) return false;
+  try {
+    const body = (await response.clone().json()) as {
+      code?: unknown;
+      error?: { code?: unknown } | string;
+    };
+    const code =
+      typeof body.error === "object" && body.error !== null
+        ? body.error.code
+        : body.code;
+    return typeof code === "string" && RETRYABLE_GATEWAY_CODES.has(code);
+  } catch {
+    // error-policy:J3 an unreadable 5xx body is not a typed refusal.
+    return false;
+  }
+}
+
+function providerUnavailable(c: Context<AppEnv>, headers?: Headers) {
+  const response = c.json(
+    {
+      success: false,
+      error: "Responses provider unavailable",
+      code: "internal_error",
+    },
+    503,
+  );
+  if (headers) copyHttpTelemetryHeaders(headers, response.headers);
+  return response;
 }
 
 app.options("/", (c) =>
@@ -204,35 +94,14 @@ app.options("/", (c) =>
 
 app.post("/", async (c) => {
   try {
-    const body = await parseResponsesRequest(c);
-    if (!body) {
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
       return jsonError("Request body must be valid JSON");
     }
-
-    if (!body.model?.trim()) {
-      return jsonError(
-        "Missing required field: model",
-        400,
-        "missing_required_parameter",
-      );
-    }
-
-    if (body.stream === true) {
-      return jsonError(
-        "Streaming is not supported on /api/v1/responses. Use /api/v1/chat/completions for streaming.",
-      );
-    }
-
-    const messages = toChatMessages(body);
-    if (messages.length === 0) {
-      return jsonError(
-        "Missing required field: input",
-        400,
-        "missing_required_parameter",
-      );
-    }
-
-    const chatRequest = buildChatRequest(c.req.raw, body, messages);
+    const body = parseResponsesRequest(raw);
+    const chatRequest = buildChatRequest(c.req.raw, body);
     const native = await prepareNativeApplicationInference(c, chatRequest);
     const chatResponse = await handleChatCompletionsPOST(native.request, {
       appFundingActor: native.actor,
@@ -241,28 +110,32 @@ app.post("/", async (c) => {
     });
 
     if (!chatResponse.ok) {
-      if (chatResponse.status >= 500) {
-        const response = c.json(
-          {
-            success: false,
-            error: "Responses provider unavailable",
-            code: "internal_error",
-          },
-          503,
-        );
-        copyHttpTelemetryHeaders(chatResponse.headers, response.headers);
-        return response;
-      }
+      // A typed transient refusal (admission, billing or rate limiter warming)
+      // keeps its body and Retry-After so clients retry it; only an untyped
+      // 5xx is reported as provider unavailability.
+      if (
+        chatResponse.status >= 500 &&
+        !(await isRetryableGatewayRefusal(chatResponse))
+      )
+        return providerUnavailable(c, chatResponse.headers);
       return chatResponse;
     }
-
-    const payload = (await chatResponse.json()) as ChatCompletionPayload;
-    const response = c.json(
-      mapChatCompletionToResponse(payload, body.model.trim()),
-    );
-    copyHttpTelemetryHeaders(chatResponse.headers, response.headers);
-    return response;
+    try {
+      const response = c.json(
+        mapChatCompletionToResponse(await chatResponse.json()),
+      );
+      copyHttpTelemetryHeaders(chatResponse.headers, response.headers);
+      return response;
+    } catch {
+      logger.error("[Responses] Canonical response could not be represented", {
+        traceId: c.get("traceId"),
+        code: "invalid_canonical_response",
+      });
+      return providerUnavailable(c, chatResponse.headers);
+    }
   } catch (error) {
+    if (error instanceof ResponsesInputError)
+      return jsonError(error.message, 400, error.code);
     // error-policy:J1 Translate explicit native product authority failures at the HTTP boundary.
     const nativeError = nativeApplicationInferenceErrorResponse(error);
     if (nativeError) return nativeError;
@@ -285,7 +158,7 @@ app.post("/", async (c) => {
 export const __responsesRouteTestHooks = {
   buildChatRequest,
   mapChatCompletionToResponse,
-  toChatMessages,
+  toChatMessages: (body: unknown) => parseResponsesRequest(body).messages,
 };
 
 export default app;

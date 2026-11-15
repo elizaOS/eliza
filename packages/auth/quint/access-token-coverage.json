@@ -1,0 +1,46 @@
+[
+  {
+    "id": "auth.AccessTokenResolution",
+    "model": "packages/auth/quint/AccessTokenResolution.qnt",
+    "sources": [
+      "packages/auth/src/auth/credentials.ts",
+      "packages/auth/src/auth/types.ts",
+      "packages/auth/src/auth/refresh-http-error.ts",
+      "packages/auth/src/auth/refresh-mutex.ts",
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/auth/anthropic.ts",
+      "packages/auth/src/auth/openai-codex.ts",
+      "packages/auth/src/auth/vendor/pi-oauth/anthropic-login.ts",
+      "packages/auth/src/auth/vendor/pi-oauth/openai-codex-login.ts",
+      "packages/auth/src/accounts/coding-account-bridge.ts",
+      "packages/auth/src/accounts/account-pool-broker.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "RequestedLifetimeNormalized",
+      "TokenResultMatchesOutcome",
+      "ExplicitPolicyBeforeGrant",
+      "ActiveQueueOwnership",
+      "RefreshedRequiresPublication",
+      "SuccessfulLifetime",
+      "KnownFailureClassification",
+      "FailureDoesNotPublish",
+      "CommitStaysInPolicyRoot",
+      "RemovedRecordNotResurrected",
+      "StaleResponseCannotReplace",
+      "RotatedGrantIsRetained",
+      "QueueRereadsCurrentRecord",
+      "StalePolicyCommitThrows",
+      "ReplacementResultUsesCurrentCredential",
+      "SuccessfulOutcomeOwnsGeneration",
+      "RejectedGrantKeepsCapturedGeneration",
+      "CommitReceiptMatchesDecision"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Finite provider admission, explicit policy authority, FIFO reread, remote grant settlement and conditional storage commit are modeled. The queue, CAS and filesystem fencing rely on their separate source-linked models.",
+      "Two calls, two roots, one replace/delete/reset and bounded logical time. Request deadlines model fair abort of provider/header/body I/O; storage calls still must settle for progress. Real process/HTTP scenarios establish selected paths, not exhaustive refinement.",
+      "Provider enrollment, unbounded retry/restart, pool health/account eviction and external cryptography remain outside this projection. A failed or malformed response may have consumed the remote grant; the API must not fabricate persistence or promise automatic recovery."
+    ]
+  }
+]

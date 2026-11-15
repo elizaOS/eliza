@@ -85,12 +85,11 @@ import {
 import { BrandingContext } from "../../../../../config/branding-react.hooks";
 import { ApiError } from "../../../../lib/api-client";
 import { CloudI18nProvider } from "../../../../shell/CloudI18nProvider";
-import CliLoginPage from "../cli-login-page";
+import CliLoginPage, { cliLoginSignInHref } from "../cli-login-page";
 
 const SESSION_ID = "bbbbbbbb-2222-4333-8444-cccccccccccc";
 const SECOND_SESSION_ID = "aaaaaaaa-1111-4222-8333-dddddddddddd";
 const GUARD_KEY = `eliza-cloud-cli-login-autosignin:${SESSION_ID}`;
-const TRUSTED_APP_LAUNCH_KEY = `eliza-cloud-cli-login-trusted-app-launch:${SESSION_ID}`;
 const APP_RETURN_TO = `http://127.0.0.1:2138/?elizaCloudLogin=complete&elizaCloudLoginSession=${SESSION_ID}`;
 const SIGN_IN_HREF = `/login?returnTo=${encodeURIComponent(
   `/auth/cli-login?session=${SESSION_ID}`,
@@ -277,11 +276,13 @@ describe("CliLoginPage", () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it("finishes a matching localhost Eliza app launch without a second authorization click", async () => {
+  it("requires Authorize for a loopback app launch even with a matching localhost referrer", async () => {
+    const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams({
       session: SESSION_ID,
       returnTo: APP_RETURN_TO,
     });
+    // Any local process can serve this page and set this Referer.
     currentDocumentReferrer = "http://127.0.0.1:2138/";
     authenticate();
     apiFetchMock.mockResolvedValue({
@@ -293,8 +294,15 @@ describe("CliLoginPage", () => {
 
     render(<CliLoginPage />);
 
-    expect(screen.getByText("Returning to Eliza")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Authorize" })).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
+    ).toBeTruthy();
+    expect(screen.getByText(/"127.0.0.1:2138"/)).toBeTruthy();
+    await Promise.resolve();
+    expect(apiFetchMock).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
     await waitFor(() =>
       expect(apiFetchMock).toHaveBeenCalledWith(
         `/api/auth/cli-session/${SESSION_ID}/complete`,
@@ -302,43 +310,9 @@ describe("CliLoginPage", () => {
       ),
     );
     await waitFor(() => expect(replace).toHaveBeenCalledWith(APP_RETURN_TO));
-    expect(testSessionStorage.getItem(TRUSTED_APP_LAUNCH_KEY)).toBeNull();
   });
 
-  it("does not trust a copied app callback link without the matching localhost referrer", async () => {
-    searchParamsRef.current = new URLSearchParams({
-      session: SESSION_ID,
-      returnTo: APP_RETURN_TO,
-    });
-    currentDocumentReferrer = "https://attacker.example/forward";
-    authenticate();
-
-    render(<CliLoginPage />);
-
-    expect(
-      screen.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
-    ).toBeTruthy();
-    expect(apiFetchMock).not.toHaveBeenCalled();
-    expect(testSessionStorage.getItem(TRUSTED_APP_LAUNCH_KEY)).toBeNull();
-  });
-
-  it("does not trust a localhost referrer when the callback names another session", () => {
-    searchParamsRef.current = new URLSearchParams({
-      session: SESSION_ID,
-      returnTo: APP_RETURN_TO.replace(SESSION_ID, SECOND_SESSION_ID),
-    });
-    currentDocumentReferrer = "http://127.0.0.1:2138/";
-    authenticate();
-
-    render(<CliLoginPage />);
-
-    expect(
-      screen.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
-    ).toBeTruthy();
-    expect(apiFetchMock).not.toHaveBeenCalled();
-  });
-
-  it("remembers the trusted local launch across the hosted login round trip", async () => {
+  it("does not skip Authorize after the hosted login round trip of a loopback launch", async () => {
     searchParamsRef.current = new URLSearchParams({
       session: SESSION_ID,
       returnTo: APP_RETURN_TO,
@@ -346,25 +320,16 @@ describe("CliLoginPage", () => {
     currentDocumentReferrer = "http://127.0.0.1:2138/chat";
 
     const first = render(<CliLoginPage />);
-    await waitFor(() =>
-      expect(testSessionStorage.getItem(TRUSTED_APP_LAUNCH_KEY)).toBe("1"),
-    );
     first.unmount();
 
     currentDocumentReferrer = "https://staging.eliza.app/login";
     authenticate();
-    apiFetchMock.mockResolvedValue({
-      json: async () => ({ keyPrefix: "ek_live_abc" }),
-    });
-    delete (window as { opener?: unknown }).opener;
-    const replace = stubLocationReplace();
-    vi.spyOn(window, "close").mockImplementation(() => {});
 
     render(<CliLoginPage />);
 
-    expect(screen.queryByRole("button", { name: "Authorize" })).toBeNull();
-    await waitFor(() => expect(replace).toHaveBeenCalledWith(APP_RETURN_TO));
-    expect(testSessionStorage.getItem(TRUSTED_APP_LAUNCH_KEY)).toBeNull();
+    expect(screen.getByRole("button", { name: "Authorize" })).toBeTruthy();
+    await Promise.resolve();
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("requires fresh confirmation after a session link changes away and back", async () => {
@@ -693,5 +658,33 @@ describe("CliLoginPage short-viewport scroll", () => {
       /min-h-\[100dvh\][^"]*items-center justify-center/.test(SRC),
       "the panel must not use the top-clipping items-center justify-center centering",
     ).toBe(false);
+  });
+});
+
+describe("cliLoginSignInHref", () => {
+  it("keeps the session in returnTo when URLSearchParams.size is missing", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      URLSearchParams.prototype,
+      "size",
+    );
+    delete (URLSearchParams.prototype as { size?: number }).size;
+    try {
+      const href = new URL(
+        cliLoginSignInHref(new URLSearchParams({ session: SESSION_ID })),
+        "https://eliza.app",
+      );
+      expect(href.searchParams.get("returnTo")).toBe(
+        `/auth/cli-login?session=${SESSION_ID}`,
+      );
+      expect(
+        new URL(
+          cliLoginSignInHref(new URLSearchParams()),
+          "https://eliza.app",
+        ).searchParams.get("returnTo"),
+      ).toBe("/auth/cli-login");
+    } finally {
+      if (descriptor)
+        Object.defineProperty(URLSearchParams.prototype, "size", descriptor);
+    }
   });
 });

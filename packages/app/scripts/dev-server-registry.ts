@@ -79,8 +79,6 @@ export function resolveDevServerCloudCredentialIdentity(env) {
       env,
       "ELIZAOS_CLOUD_API_KEY",
       "ELIZA_DEV_CLOUD_API_KEY",
-      "ELIZA_CLOUD_API_KEY",
-      "ELIZACLOUD_API_KEY",
     ),
     serviceKey: firstConfiguredCloudEnvValue(
       env,
@@ -94,11 +92,6 @@ export function resolveDevServerCloudCredentialIdentity(env) {
     sessionToken: firstConfiguredCloudEnvValue(
       env,
       "ELIZA_CLOUD_SESSION_TOKEN",
-    ),
-    cloudToken: firstConfiguredCloudEnvValue(
-      env,
-      "ELIZA_CLOUD_TOKEN",
-      "ELIZACLOUD_TOKEN",
     ),
     authToken: firstConfiguredCloudEnvValue(env, "ELIZA_CLOUD_AUTH_TOKEN"),
     sandboxToken: firstConfiguredCloudEnvValue(

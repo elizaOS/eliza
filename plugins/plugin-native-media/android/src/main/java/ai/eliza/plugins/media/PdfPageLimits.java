@@ -11,8 +11,10 @@ public final class PdfPageLimits {
   public static final int MAX_PIXELS = 1_500_000;
   /** Largest page count the renderer opens. */
   public static final int MAX_PAGES = 500;
-  /** Largest PDF the renderer parses. */
+  /** Largest PDF the renderer parses for a reviewed attachment. */
   public static final long MAX_SOURCE_BYTES = 5L * 1024 * 1024;
+  /** Largest PDF the renderer parses for a document the owner selected in Android's picker. */
+  public static final long MAX_SELECTED_SOURCE_BYTES = 20L * 1024 * 1024;
   /** Rendered width bound (portrait reading width). */
   public static final int MAX_WIDTH = 1024;
   /** Rendered height bound, and the largest edge a viewer accepts in either direction. */
@@ -35,9 +37,19 @@ public final class PdfPageLimits {
     return request != null && request.length() == REQUEST_LENGTH && page >= 0 && page < MAX_PAGES;
   }
 
-  /** Refuses an empty or oversized PDF before it is parsed. */
+  /** The source bound for a request: selected documents get the larger one. */
+  public static long sourceLimit(boolean selected) {
+    return selected ? MAX_SELECTED_SOURCE_BYTES : MAX_SOURCE_BYTES;
+  }
+
+  /** Refuses an empty or oversized reviewed attachment before it is parsed. */
   public static void requireSource(long size) {
-    if (size <= 0 || size > MAX_SOURCE_BYTES)
+    requireSource(size, MAX_SOURCE_BYTES);
+  }
+
+  /** Refuses an empty PDF, or one over {@code limit}, before it is parsed. */
+  public static void requireSource(long size, long limit) {
+    if (size <= 0 || size > Math.min(limit, MAX_SELECTED_SOURCE_BYTES))
       throw new IllegalArgumentException("PDF size outside viewer limits");
   }
 

@@ -16,7 +16,7 @@ import {
   REMOTE_CONTROL_PROTOCOL_VERSION,
 } from "@elizaos/contracts";
 import { Hono } from "hono";
-import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
+import { requirePaidRouteStanding } from "../../../src/lib/paid-route-standing";
 import { enrollManagedNetwork, managedNetworkConfig } from "../managed-network";
 
 const app = new Hono<AppEnv>();

@@ -28,6 +28,9 @@ const RETRY_AFTER_SECONDS = 3;
 const IDLE_EVICT_MS = 10 * 60 * 1000;
 const EVICT_SCAN_INTERVAL_MS = 60 * 1000;
 const WARN_INTERVAL_MS = 60 * 1000;
+// The cap runs before auth, so any peer can mint buckets with random bearers.
+// Hold the map to a fixed size and drop the oldest insert at the ceiling.
+const MAX_BUCKETS = 4096;
 interface Bucket {
   tokens: number;
   updatedAt: number;
@@ -91,6 +94,10 @@ export function maybeCapRequestStorm(
   let bucket = buckets.get(key);
   if (!bucket) {
     bucket = { tokens: BUCKET_CAPACITY, updatedAt: now, lastWarnAt: 0 };
+    if (buckets.size >= MAX_BUCKETS) {
+      const oldest = buckets.keys().next().value;
+      if (oldest !== undefined) buckets.delete(oldest);
+    }
     buckets.set(key, bucket);
   } else {
     const elapsed = (now - bucket.updatedAt) / 1000;

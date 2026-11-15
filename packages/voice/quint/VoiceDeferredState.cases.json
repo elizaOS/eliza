@@ -1,0 +1,84 @@
+{
+  "sources": [
+    "packages/voice/src/live-voice-session.ts",
+    "packages/voice/src/live-voice-session.test.ts",
+    "packages/voice/src/voice-turn-timing.ts",
+    "packages/voice/src/voice-turn-timing.test.ts",
+    "packages/voice/quint/check-deferred-state.ts",
+    "packages/voice/quint/deferred-state-conformance.json",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "packages/voice/quint/check-deferred-state.ts",
+  "bounds": {
+    "domain": "Two queued frames represent the actual 960-frame boundary, batches of one or two frames, two outstanding closed segments, one overflow/cancel and late post completion. One diagnostic turn has recording-end, transcript-ready and send marks, deferred flush, storage failure and explicit clear.",
+    "scope": "Frame accounting includes queued and in-flight batches until their promise settles. Overflow is an explicit terminal TRANSPORT failure with nulls for outstanding closed segments. Marks mutate the active in-memory timing row; deferred or explicit flush performs storage work. Clear removes dirty rows before a stale timer runs.",
+    "assumptions": "Single JavaScript execution context with synchronous host storage calls. A successful storage write persists its value. Frame count is scaled, but the owning implementation test crosses the real 960-frame limit. Tests use real production stream/timing code with controlled transport, storage and clock ports.",
+    "limitations": "Not a proof of all live ASR session state or all timing fields. PCM contents, empty-frame edge floods, transport authentication, provider success, process death, shared-key writers across multiple timing instances, real native callbacks and physical audio are outside these finite projections. Diagnostic storage failure may discard unsaved timing data by design and never establishes persistence. No callback or transport time bound is established.",
+    "progress": "Pending post closures release only under weak fairness of transport promise settlement; a provider that ignores abort can retain them indefinitely. Dirty diagnostic state settles under weak fairness of a flush callback; success is not required in the implementation. No fairness is assumed for negative checks."
+  },
+  "cases": [
+    {
+      "name": "bounded-live-frame-backlog",
+      "main": "LiveFrameBacklog",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "QueueBounded",
+        "OneOverflowFailure",
+        "FailureSettlesSegments",
+        "CancelFencesResults"
+      ],
+      "temporal": ["FairRetainedPostsSettle", "RetainedPostsSettle"],
+      "temporalChecks": [
+        {
+          "property": "FairRetainedPostsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of pending transport promise settlement for queue state, or deferred/explicit flush for timing state. No real provider, device or persistence success is promised."
+          ]
+        },
+        {
+          "property": "RetainedPostsSettle",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A pending provider promise or deferred flush callback can wait forever."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 1000
+    },
+    {
+      "name": "deferred-voice-timing",
+      "main": "DeferredVoiceTiming",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "MarksDoNoStorageWrite",
+        "SendRequiresReady",
+        "StorageDoesNotRetireTurn",
+        "ClearCannotResurrect"
+      ],
+      "temporal": ["FairPendingWriteSettles", "PendingWriteSettles"],
+      "temporalChecks": [
+        {
+          "property": "FairPendingWriteSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of pending transport promise settlement for queue state, or deferred/explicit flush for timing state. No real provider, device or persistence success is promised."
+          ]
+        },
+        {
+          "property": "PendingWriteSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A pending provider promise or deferred flush callback can wait forever."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 1000
+    }
+  ]
+}

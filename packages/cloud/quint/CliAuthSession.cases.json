@@ -1,0 +1,163 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/cli-auth-sessions.ts",
+    "packages/cloud/shared/src/lib/services/cli-auth-session-completion.ts",
+    "packages/cloud/shared/src/db/repositories/cli-auth-sessions.ts",
+    "packages/cloud/shared/src/db/schemas/cli-auth-sessions.ts",
+    "packages/cloud/shared/src/lib/services/cli-session-poll.integration.test.ts",
+    "packages/cloud/shared/src/lib/services/auth-credential-policy.postgres.integration.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-cli-auth.mjs",
+  "cases": [
+    {
+      "name": "pending",
+      "main": "CliAuthSession_pending",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OneMintedCredential",
+        "OnePlaintextReveal",
+        "ExactRevealBinding",
+        "ReaperPreservesConsumedCredential",
+        "NoAbandonedActiveCredential"
+      ],
+      "temporal": ["OperationsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "OperationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in CliAuthSession_pending: OperationsSettle = Fairness implies eventually(always(OperationsIdle))",
+            "Model fairness predicate Fairness = and { Clients.forall(c => Complete(c).weakFair(s)), Clients.forall(p => Decrypt(p).weakFair(s)), Clients.forall(p => BeginClaim(p).weakFair(s)), Clients.forall(p => Claim(p).weakFair(s)), Clients.forall(p => Deliver(p).weakFair(s)), LockExpiredSessions.weakFair(s), StageKeyRevocation.weakFair(s), CommitCleanup.weakFair(s) }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "existing",
+      "main": "CliAuthSession_existing",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OneMintedCredential",
+        "OnePlaintextReveal",
+        "ExactRevealBinding",
+        "ReaperPreservesConsumedCredential",
+        "NoAbandonedActiveCredential"
+      ],
+      "temporal": ["OperationsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "OperationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in CliAuthSession_existing: OperationsSettle = Fairness implies eventually(always(OperationsIdle))",
+            "Model fairness predicate Fairness = and { Clients.forall(c => Complete(c).weakFair(s)), Clients.forall(p => Decrypt(p).weakFair(s)), Clients.forall(p => BeginClaim(p).weakFair(s)), Clients.forall(p => Claim(p).weakFair(s)), Clients.forall(p => Deliver(p).weakFair(s)), LockExpiredSessions.weakFair(s), StageKeyRevocation.weakFair(s), CommitCleanup.weakFair(s) }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "wrong-owner",
+      "main": "CliAuthSession_wrongOwner",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OneMintedCredential",
+        "OnePlaintextReveal",
+        "ExactRevealBinding",
+        "ReaperPreservesConsumedCredential",
+        "NoAbandonedActiveCredential"
+      ],
+      "temporal": ["OperationsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "OperationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in CliAuthSession_wrongOwner: OperationsSettle = Fairness implies eventually(always(OperationsIdle))",
+            "Model fairness predicate Fairness = and { Clients.forall(c => Complete(c).weakFair(s)), Clients.forall(p => Decrypt(p).weakFair(s)), Clients.forall(p => BeginClaim(p).weakFair(s)), Clients.forall(p => Claim(p).weakFair(s)), Clients.forall(p => Deliver(p).weakFair(s)), LockExpiredSessions.weakFair(s), StageKeyRevocation.weakFair(s), CommitCleanup.weakFair(s) }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing-key",
+      "main": "CliAuthSession_missingKey",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OneMintedCredential",
+        "OnePlaintextReveal",
+        "ExactRevealBinding",
+        "ReaperPreservesConsumedCredential",
+        "NoAbandonedActiveCredential"
+      ],
+      "temporal": ["OperationsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "OperationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in CliAuthSession_missingKey: OperationsSettle = Fairness implies eventually(always(OperationsIdle))",
+            "Model fairness predicate Fairness = and { Clients.forall(c => Complete(c).weakFair(s)), Clients.forall(p => Decrypt(p).weakFair(s)), Clients.forall(p => BeginClaim(p).weakFair(s)), Clients.forall(p => Claim(p).weakFair(s)), Clients.forall(p => Deliver(p).weakFair(s)), LockExpiredSessions.weakFair(s), StageKeyRevocation.weakFair(s), CommitCleanup.weakFair(s) }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing-cipher",
+      "main": "CliAuthSession_missingCipher",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OneMintedCredential",
+        "OnePlaintextReveal",
+        "ExactRevealBinding",
+        "ReaperPreservesConsumedCredential",
+        "NoAbandonedActiveCredential"
+      ],
+      "temporal": ["OperationsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "OperationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in CliAuthSession_missingCipher: OperationsSettle = Fairness implies eventually(always(OperationsIdle))",
+            "Model fairness predicate Fairness = and { Clients.forall(c => Complete(c).weakFair(s)), Clients.forall(p => Decrypt(p).weakFair(s)), Clients.forall(p => BeginClaim(p).weakFair(s)), Clients.forall(p => Claim(p).weakFair(s)), Clients.forall(p => Deliver(p).weakFair(s)), LockExpiredSessions.weakFair(s), StageKeyRevocation.weakFair(s), CommitCleanup.weakFair(s) }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ],
+  "bounds": "One session, one persisted credential identity, two completion candidates, two pollers, one cleanup transaction, clock0..3, session expiry1 and credential expiry3. Distinct identities never wrap or reuse.",
+  "fairness": "Started operations settle under fair completion of KMS, database, delivery and cleanup transitions. The model permits request failures and lost replies. It does not require callers to initiate a request or cron to run repeatedly.",
+  "limitations": [
+    "Policy admission and cryptography are abstract external authorities. The real PostgreSQL suite exercises the enrolled policy wrapper and test-only KMS.",
+    "Source request timestamps are captured before asynchronous transaction work. Expiry and the session-first cleanup lock are modeled explicitly; plaintext lost after consumption is not replayed.",
+    "Initial wrong-owner, missing-key and incomplete-cipher records cover reveal refusal. Arbitrary corrupted cross-session key references and automatic integrity repair remain outside this instance.",
+    "External revocation/owner/hash changes are sampled once while decryption is in flight. General API-key mutation and cache/inference authorization protocols require their own models.",
+    "One cleanup call is bounded here. Repeated cron sweeps, post-commit cache invalidation and revocation-service recovery remain outside this model.",
+    "Real conformance requires an isolated loopback PostgreSQL qa_* database; missing configuration is a failure, not a skipped proof."
+  ]
+}

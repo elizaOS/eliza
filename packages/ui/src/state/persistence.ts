@@ -99,13 +99,10 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   const record = asRecord(value);
   if (!record) return { ...DEFAULT_BACKGROUND_CONFIG };
   const color = normalizeHexColor(record.color);
-  const storedImageUrl =
+  const imageUrl =
     typeof record.imageUrl === "string" && record.imageUrl.length > 0
       ? record.imageUrl
       : undefined;
-  // Preserve saved selections after the bundled wallpaper was recompressed.
-  const imageUrl =
-    storedImageUrl === "/bg-sunset.jpg" ? "/bg-sunset.webp" : storedImageUrl;
   // Image mode without a usable source is meaningless — fall back to the shader.
   if (record.mode === "image" && imageUrl) {
     return { mode: "image", color, imageUrl };
@@ -135,33 +132,12 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   }
   return { mode: "shader", color };
 }
-// Early builds eagerly persisted untouched fresh state as the exact black
-// shader shape, making it indistinguishable from an intentional selection.
-// This flag permits one safe normalization of that shape. Wallpaper records
-// are never remapped because they lack selected-vs-default provenance.
-const UI_BACKGROUND_DEFAULT_MIGRATION_KEY = "eliza:ui-background-default-v2";
 export function loadBackgroundConfig(): BackgroundConfig {
   return tryLocalStorage(
     () => {
       const raw = localStorage.getItem(UI_BACKGROUND_STORAGE_KEY);
-      const migrated = localStorage.getItem(
-        UI_BACKGROUND_DEFAULT_MIGRATION_KEY,
-      );
-      if (!migrated) {
-        // Stamping before a future selection preserves deliberate black-shader
-        // choices while keeping the normalization one-shot.
-        shellLocalStorage.setItem(UI_BACKGROUND_DEFAULT_MIGRATION_KEY, "1");
-      }
       if (!raw) return { ...DEFAULT_BACKGROUND_CONFIG };
-      const config = normalizeBackgroundConfig(JSON.parse(raw));
-      if (
-        !migrated &&
-        config.mode === "shader" &&
-        config.color === DEFAULT_BACKGROUND_COLOR
-      ) {
-        return { ...DEFAULT_BACKGROUND_CONFIG };
-      }
-      return config;
+      return normalizeBackgroundConfig(JSON.parse(raw));
     },
     { ...DEFAULT_BACKGROUND_CONFIG },
   );

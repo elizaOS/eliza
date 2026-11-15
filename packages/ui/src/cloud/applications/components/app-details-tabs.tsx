@@ -4,6 +4,7 @@
  * `?tab=monetization` redirect work).
  */
 
+import type { QueryKey } from "@tanstack/react-query";
 import {
   BarChart3,
   DollarSign,
@@ -30,6 +31,9 @@ import { AppUsers } from "./app-users";
 interface AppDetailsTabsProps {
   app: App;
   showApiKey?: string;
+  appsQueryKey: QueryKey;
+  deleting?: boolean;
+  onDeletingChange?: (pending: boolean) => void;
 }
 
 type TabValue =
@@ -42,7 +46,13 @@ type TabValue =
   | "users"
   | "settings";
 
-export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
+export function AppDetailsTabs({
+  app,
+  showApiKey,
+  appsQueryKey,
+  deleting,
+  onDeletingChange,
+}: AppDetailsTabsProps) {
   const t = useCloudT();
   const tabs: {
     value: TabValue;
@@ -92,9 +102,12 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
   ];
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const activeTab = (searchParams.get("tab") || "overview") as TabValue;
+  const activeTab = (
+    deleting ? "settings" : searchParams.get("tab") || "overview"
+  ) as TabValue;
 
   const handleTabChange = (value: TabValue) => {
+    if (deleting) return;
     const params = new URLSearchParams(searchParams.toString());
     params.delete("showApiKey");
     params.set("tab", value);
@@ -116,6 +129,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
               data-state={activeTab === tab.value ? "on" : "off"}
               type="button"
               key={tab.value}
+              disabled={deleting}
               onClick={() => handleTabChange(tab.value)}
               className="min-w-0"
             >
@@ -139,7 +153,13 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
           <AppConnectionsSettings appId={app.id} appName={app.name} />
         )}
         {activeTab === "users" && <AppUsers appId={app.id} />}
-        {activeTab === "settings" && <AppSettings app={app} />}
+        {activeTab === "settings" && (
+          <AppSettings
+            app={app}
+            appsQueryKey={appsQueryKey}
+            onDeletingChange={onDeletingChange}
+          />
+        )}
       </div>
     </div>
   );

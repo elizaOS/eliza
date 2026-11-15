@@ -1,0 +1,40 @@
+{
+  "sources": [
+    "packages/auth/src/auth/account-storage.ts",
+    "packages/auth/src/auth/account-storage-subprocess.test.ts",
+    "packages/auth/test/fixtures/storage-ownership-probe.ts"
+  ],
+  "conformance": "packages/auth/quint/check-account-storage.mjs",
+  "bounds": {
+    "domain": "Three one-shot process attempts and one initially dead owner. Four unique owner tokens, owner publication/failure, delayed stale observations, ordinary/quarantined ownership, release races and process death.",
+    "assumptions": "Same-host process liveness is reliable and token collisions do not occur. Atomic filesystem rename, exclusive file creation and private real directories. Each process tries once in this model; the implementation repeats rejected admission until its finite timeout. Ownerless stale-age expiration is abstracted as an enabled stale observation. Arbitrary malicious same-UID directory mutation and kernel/power-loss fsync behavior are outside the model.",
+    "progress": "Weak fairness of each live process step and dead/unpublished quarantine cleanup. A crashed process ceases its effects. Persistent I/O failure can leave fail-closed ownership and does not promise successful acquisition."
+  },
+  "cases": [
+    {
+      "name": "retained-quarantine-ownership",
+      "main": "AccountStorageLock",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "MutualExclusion",
+        "ActiveOwnership",
+        "LiveQuarantineProtected"
+      ],
+      "temporal": ["AttemptsTerminate"],
+      "maxSteps": 45,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "AttemptsTerminate",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in AccountStorageLock: AttemptsTerminate = FairWork.implies(eventually( processes.forall(p => s.pc.get(p).in(Set(\"done\", \"dead\")))))",
+            "Model fairness predicate FairWork = processes.forall(p => and { claim(p).weakFair(s), publication(p).weakFair(s), inspectAdmission(p).weakFair(s), enter(p).weakFair(s), leave(p).weakFair(s), findRelease(p).weakFair(s), stageRelease(p).weakFair(s), finishRelease(p).weakFair(s), }) and tokens.forall(token => cleanQuarantine(token).weakFair(s))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 Android media and selected-document primitives for Eliza hosts: the host's own published media,
 the full permitted device photo/video library, exact-byte selections and reviewed changes. Nothing
-here uploads media, builds a remote index or rewrites an original; outbound use of any bytes is a
+here uploads media or builds a remote index; an original is rewritten only through reviewed Replace; outbound use of any bytes is a
 separate, explicit host action.
 
 Owned media (items the host package published, `OWNER_PACKAGE_NAME`):
@@ -11,11 +11,15 @@ Owned media (items the host package published, `OWNER_PACKAGE_NAME`):
   file names, and the MediaStore `RELATIVE_PATH` and display-name prefix for photo edit copies and
   kept captures (under `Pictures/` or `DCIM/`) and, optionally, video edit copies (under `Movies/`
   or `DCIM/`). Shared code never chooses product names or folders.
-- `OwnedPhotoEdits` – serial edit sessions over one still photo: quarter-turn rotation, centered
-  crop and filters, previewed at most 1024 px, saved as a new owned PNG copy. Each save has a UUID
+- `OwnedPhotoEdits` – serial edit sessions over one still photo: quarter-turn rotation, a crop
+  (`cropRect` fractions of the rotated photo, or the fixed centered crop for `crop: true`) and filters, previewed at most 1024 px, saved as a new owned PNG copy. Each save has a UUID
   operation identity, a receipt journal and a deterministic display name, so a crash between
   publish and receipt resolves to `saved` or `failed`, never a duplicate. The session aborts if
-  the source changes (MediaStore generation and SHA-256 of the snapshot).
+  the source changes (MediaStore generation and SHA-256 of the snapshot). Explicit Replace keeps
+  the original and encoded edit durably before writing. Recovery requires current access, the same
+  target and unchanged readback; it restores recorded damage or a prefix proven by the encoded edit.
+  An interrupted restore also requires its durable phase record. Unproven bytes and backups remain
+  untouched. A complete edit or original settles the receipt without replaying the edit.
 - `VideoCopyEdits` / `VideoEditSpec` – trim, quarter-turn rotation and centered crop of an admitted
   video with Media3 Transformer, saved as a new owned MP4. The encoder reads a frozen private
   snapshot; publication rechecks the source bytes, access and provider revision; each save has
@@ -52,7 +56,8 @@ Full permitted library (other apps' media, as far as Android grants it):
   version and generation; a changed library or revoked access refuses the read instead of
   returning stale rows. Observation runs only while a host view watches.
 - `PermittedMediaReview` – one-shot native review of favorite, Recently deleted and permanent
-  removal for 1–20 items: a native dialog naming every item, then Android's MediaStore write
+  removal: up to 500 items for favorite, trash and restore, and 20 for permanent removal.
+  A native dialog names every item, then Android's MediaStore write
   request. Changes apply only to the reviewed revisions after the activity resumes; recreation
   discards authority and never replays a write. Hosts inject their launch gate.
 - `SelectedPhotoCopy` – exact provider-readable bytes of one selected still photo (PNG, JPEG,
@@ -61,10 +66,19 @@ Full permitted library (other apps' media, as far as Android grants it):
 
 Capacitor bindings (a host registers a subclass under its own plugin name):
 
-- `PhotosPlugin` – the Photos bridge over the engines above: library access (`libraryAccess`,
+- `PermittedPhotosPlugin` – the read-only Photos bridge: library access (`libraryAccess`,
+  `requestLibraryAccess`, `openLibrarySettings`, `watchLibrary`), permitted listings and reads with
+  bounded previews (`listPermitted`, `readPermitted` with an `edge` of 64–2048 pixels) and `share`
+  of one permitted item. It owns only the permitted catalog: no edits, captures, albums, trash,
+  favorites, playback or WebView client, and the host answers no media names. A host that shows
+  only still photos returns `PhotoLibraryAccess.Profile.IMAGES` from `libraryProfile()` and
+  declares only the `libraryImages` alias: Android 13 and later then ask only for
+  `READ_MEDIA_IMAGES`, earlier levels ask for nothing and read only the photos the app saved
+  (access `owned`), and videos are never read.
+- `PhotosPlugin` – the Photos bridge over the engines above, built on `PermittedPhotosPlugin`: library access (`libraryAccess`,
   `requestLibraryAccess` from an explicit control only, `openLibrarySettings`), permitted and owned
   listings with bounded previews (`list`, `listPermitted`, `read`, `readPermitted`, `summary`),
-  favorite and Recently deleted changes (single and 1–20 item batches, permitted items through the
+  favorite and Recently deleted changes (single and 1–20 owned or 1–500 permitted item batches through the
   native review), two-step permanent removal, custom albums, still-photo and video edit copies,
   explicit capture keeps, single and multi-item share, and same-origin video playback. Every
   permitted read is published only under the catalog ticket it started with; pausing the activity
@@ -76,8 +90,11 @@ Capacitor bindings (a host registers a subclass under its own plugin name):
   one observer, one review at a time): scope (`full`, `partial`, Android 14 `selected` or
   `denied`, per images and videos), bounded pages, item inspection, revision validation of up to
   200 items under one fence, and favorite/unfavorite/Recently deleted through the native review.
-  Permanent deletion stays in the system photos app. The host names its `PhotosPlugin` in
-  `photosPluginName()`.
+  Permanent deletion stays in the system photos app. The scope `version` covers the grant and
+  each volume's MediaStore version only, so pausing or locking keeps it and `scopeChanged` fires
+  on resume only when it or the lock state changed, else `libraryChanged` when rows changed while
+  paused. A `next` cursor from before a pause is refused with `LIBRARY_STALE_CURSOR`; the caller
+  pages again from the first page. The host names its `PhotosPlugin` in `photosPluginName()`.
 - `PhotoLibraryAccess` – the bridge rules both apply: permission aliases per API level, the scope
   answer, listing filters, page and selection bounds and change mapping. Pure Java.
 
@@ -97,14 +114,27 @@ public final class MyPhotosPlugin extends PhotosPlugin {
 }
 ```
 
-Register the `PhotosPlugin` subclass before the `DeviceLibraryPlugin` subclass.
+Register the `PhotosPlugin` subclass before the `DeviceLibraryPlugin` subclass. Listed and read
+items carry `bucket` (the folder Android files them under) and `dateTaken` (0 when unknown).
+
+```java
+@CapacitorPlugin(name = "MyPhotoViewer", permissions = {
+  @Permission(alias = "libraryImages", strings = {Manifest.permission.READ_MEDIA_IMAGES})
+})
+public final class MyPhotoViewerPlugin extends PermittedPhotosPlugin {
+  @Override protected PhotoLibraryAccess.Profile libraryProfile() {
+    return PhotoLibraryAccess.Profile.IMAGES;
+  }
+}
+```
 
 Selected documents:
 
 - `SelectedDocuments` – opaque capabilities for documents chosen in Android's picker. Renderers
   hold random selection IDs, never content URIs. Only grants Android offered are persisted; a
-  revoked grant is forgotten and reported, never repaired. Bounded UTF-8 text reads, local PDF
-  page previews, provider rename, sharing and opening.
+  revoked grant is forgotten and reported, never repaired. Bounded UTF-8 text reads, PDF page
+  previews (up to 20 MiB, rendered only by the host's `IsolatedPdfRenderService`; without one,
+  previews are refused), provider rename, sharing and opening.
 - `SourceReferences` / `SourceReferenceStore` – durable source links for saved items. A link is
   kept while Android holds the document's persisted read grant; a grant stays while any saved or
   restorable item names it and is released with the last one. A link no item names yet (for
@@ -174,7 +204,8 @@ bridge.setWebViewClient(playback);
 SourceReferenceStore links =
     new SourceReferenceStore(context, "myapp-source-references", "myapp-source-reference-times");
 SelectedDocuments documents =
-    new SelectedDocuments(context, "myapp-selected-documents", "myapp-document-", links::retains);
+    new SelectedDocuments(context, "myapp-selected-documents", "myapp-document-", links::retains,
+        MyPdfService.class);
 DocumentFolderTree folders =
     new DocumentFolderTree(context, "myapp-files-tree", uri -> documents.authorize(uri, 0));
 ReviewedFileHandoff handoff = new ReviewedFileHandoff(

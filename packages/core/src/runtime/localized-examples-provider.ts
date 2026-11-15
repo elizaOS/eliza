@@ -74,9 +74,3 @@ export function getLocalizedExamplesProvider(
 ): LocalizedExamplesProvider | null {
 	return providers.get(runtime) ?? null;
 }
-
-export function __resetLocalizedExamplesProviderForTests(
-	runtime: IAgentRuntime,
-): void {
-	providers.delete(runtime);
-}

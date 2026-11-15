@@ -1279,13 +1279,42 @@ async function handleCreate(
   );
   const normalizedInstructions = promptInstructions.toLowerCase();
   const triggerKey = stableTriggerKey(trigger);
-  const idempotencyDuplicate = effectiveIdempotencyKey
-    ? allTasks.find(
+  // A reused key on a task that already ran is a new request, not a retry.
+  // The runner's own key index also returns terminal rows, so the new task
+  // gets a fresh key suffixed with its creation time; a later retry of the
+  // same key matches that suffixed task while it is still live.
+  const keyMatches = effectiveIdempotencyKey
+    ? allTasks.filter(
         (candidate) =>
-          candidate.idempotencyKey === effectiveIdempotencyKey &&
+          (candidate.idempotencyKey === effectiveIdempotencyKey ||
+            (candidate.idempotencyKey?.startsWith(
+              `${effectiveIdempotencyKey}:`,
+            ) === true &&
+              Number.isFinite(
+                Date.parse(
+                  candidate.idempotencyKey.slice(
+                    effectiveIdempotencyKey.length + 1,
+                  ),
+                ),
+              ))) &&
           sameDeliveryBinding(candidate),
       )
-    : undefined;
+    : [];
+  const idempotencyDuplicate = keyMatches.find(
+    (candidate) => !TERMINAL_TASK_STATUSES.has(candidate.state.status),
+  );
+  const previousRun = idempotencyDuplicate
+    ? undefined
+    : keyMatches.find(
+        (candidate) => candidate.idempotencyKey === effectiveIdempotencyKey,
+      );
+  const scheduleIdempotencyKey =
+    previousRun && effectiveIdempotencyKey
+      ? `${effectiveIdempotencyKey}:${new Date().toISOString()}`
+      : effectiveIdempotencyKey;
+  const previousRunNote = previousRun
+    ? `The earlier ${noun} with that key already ran (${previousRun.state.status}). `
+    : "";
   const contentDuplicate = activeSiblings.find(
     (candidate) =>
       sameDeliveryBinding(candidate) &&
@@ -1351,8 +1380,8 @@ async function handleCreate(
       ...(output ? { output } : {}),
       ...(nonEmptyRecord(params.pipeline) ? { pipeline: params.pipeline } : {}),
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-      ...(effectiveIdempotencyKey
-        ? { idempotencyKey: effectiveIdempotencyKey }
+      ...(scheduleIdempotencyKey
+        ? { idempotencyKey: scheduleIdempotencyKey }
         : {}),
       respectsGlobalPause: params.respectsGlobalPause ?? true,
       source: params.source ?? "user_chat",
@@ -1397,7 +1426,7 @@ async function handleCreate(
   ) {
     return {
       success: true,
-      text: `Scheduled the ${noun}. It will be delivered to this ${chatDeliveryBinding.source} chat. An item created from a direct chat is always delivered to that chat, so the requested destination was not applied.`,
+      text: `${previousRunNote}Scheduled the ${noun}. It will be delivered to this ${chatDeliveryBinding.source} chat. An item created from a direct chat is always delivered to that chat, so the requested destination was not applied.`,
       data: {
         subaction: "create",
         task: created,
@@ -1408,8 +1437,12 @@ async function handleCreate(
   }
   return {
     success: true,
-    text: `Scheduled the ${noun}.`,
-    data: { subaction: "create", task: created },
+    text: `${previousRunNote}Scheduled the ${noun}.`,
+    data: {
+      subaction: "create",
+      task: created,
+      ...(previousRun ? { previousRun } : {}),
+    },
   };
 }
 
@@ -1980,9 +2013,6 @@ export const scheduledTaskAction: Action & {
     "COMPLETE_FOLLOW_UP",
     "FOLLOW_UP_LIST",
     "DAYS_SINCE",
-    "LIST_OVERDUE_FOLLOWUPS",
-    "MARK_FOLLOWUP_DONE",
-    "SET_FOLLOWUP_THRESHOLD",
     // PRD action-catalog aliases. The PRD's NotificationIntent and
     // event-decision flows fold onto SCHEDULED_TASKS with escalation policy.
     "EVENT_SET_DECISION_DEADLINE",

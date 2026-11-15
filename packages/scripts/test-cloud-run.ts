@@ -815,25 +815,28 @@ export function runCommandWithWatchdog(
       return terminationPromise;
     };
 
+    // Decode the streams as text, not per chunk: a UTF-8 sequence can straddle
+    // a chunk boundary, and decoding each half alone writes U+FFFD in place of
+    // the character. setEncoding keeps the decoder across chunks.
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
     child.stdout?.on("data", (chunk) => {
-      const text = chunk.toString("utf8");
-      if (stdout.length + text.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
+      if (stdout.length + chunk.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
         outputTruncated = true;
       }
-      stdout = appendClassificationOutput(stdout, text);
-      writeOut(text);
+      stdout = appendClassificationOutput(stdout, chunk);
+      writeOut(chunk);
     });
     child.stdout?.once("end", () => {
       stdoutEnded = true;
       releaseDrainedSupervisor();
     });
     child.stderr?.on("data", (chunk) => {
-      const text = chunk.toString("utf8");
-      if (stderr.length + text.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
+      if (stderr.length + chunk.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
         outputTruncated = true;
       }
-      stderr = appendClassificationOutput(stderr, text);
-      writeErr(text);
+      stderr = appendClassificationOutput(stderr, chunk);
+      writeErr(chunk);
     });
     child.stderr?.once("end", () => {
       stderrEnded = true;

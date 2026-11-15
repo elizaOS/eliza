@@ -75,6 +75,38 @@ function receiptTableEntry(segment: ContextObjectPromptSegment) {
 
 type ReceiptEntry = NonNullable<ReturnType<typeof receiptTableEntry>>;
 
+const NAVIGATION_RECEIPT_FIELDS: ReadonlySet<string> = new Set([
+	"effect",
+	"stepId",
+	"viewId",
+	"status",
+	"reason",
+	"handoffId",
+	"label",
+	"subview",
+	"path",
+]);
+const EFFECT_RECEIPT_FIELDS: ReadonlySet<string> = new Set([
+	"receiptId",
+	"operation",
+	"resource",
+	"artifacts",
+	"idempotency",
+	"observedAt",
+	"outcome",
+	"reason",
+	"commit",
+	"failure",
+	"rollback",
+]);
+const NESTED_RECEIPT_FIELDS: ReadonlySet<string> = new Set([
+	"resource",
+	"idempotency",
+	"commit",
+	"failure",
+	"rollback",
+]);
+
 /** One encoder owns both contiguous tables and position-preserving rows. */
 function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
 	const table = {
@@ -87,40 +119,9 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
 	let content = JSON.stringify({ ...table, rows });
 	const receiptIndex = entry.columns.indexOf("receipt");
 	const navigation = entry.field === "navigation";
-	const allowedFields = new Set(
-		navigation
-			? [
-					"effect",
-					"stepId",
-					"viewId",
-					"status",
-					"reason",
-					"handoffId",
-					"label",
-					"subview",
-					"path",
-				]
-			: [
-					"receiptId",
-					"operation",
-					"resource",
-					"artifacts",
-					"idempotency",
-					"observedAt",
-					"outcome",
-					"reason",
-					"commit",
-					"failure",
-					"rollback",
-				],
-	);
-	const nestedFields = new Set([
-		"resource",
-		"idempotency",
-		"commit",
-		"failure",
-		"rollback",
-	]);
+	const allowedFields = navigation
+		? NAVIGATION_RECEIPT_FIELDS
+		: EFFECT_RECEIPT_FIELDS;
 	// Keep the existing flat encodings as candidates. Nested field-name sharing
 	// wins only when its complete wire, including decoding instructions, is smaller.
 	// Cost: two bounded receipt passes; no I/O, source omission or model calls.
@@ -155,7 +156,7 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
 				}
 				const keys = Object.keys(object).map((key) =>
 					packNested &&
-					nestedFields.has(key) &&
+					NESTED_RECEIPT_FIELDS.has(key) &&
 					isObjectRecord(object[key]) &&
 					Object.keys(object[key]).length > 0
 						? ([key, Object.keys(object[key])] as [string, string[]])

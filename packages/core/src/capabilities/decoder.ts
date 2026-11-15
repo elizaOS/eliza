@@ -8,7 +8,6 @@ import type {
 import {
 	type CapabilityEndpointSelection,
 	CapabilityError,
-	type FileListParams,
 	type FileStat,
 	type GitOperation,
 	type PluginGetProviderResult,
@@ -50,7 +49,7 @@ export function endpointSelection(
 		"endpointId",
 		"capability.endpoint",
 	);
-	validateControlSafeString(
+	validateHeaderSafeString(
 		params.endpointId,
 		"endpointId",
 		"capability.endpoint",
@@ -492,6 +491,14 @@ function optionalPageLayoutManifest(
 	throw decodeError(method, `${key} is not a valid page layout manifest.`);
 }
 
+const SURFACE_CAPABILITIES: ReadonlySet<string> = new Set<SurfaceCapability>([
+	"wallpaper",
+	"background:apply",
+	"navigate",
+	"storage",
+	"agent-surface",
+]);
+
 function optionalSurfaceCapabilities(
 	object: JsonObject,
 	key: string,
@@ -499,16 +506,9 @@ function optionalSurfaceCapabilities(
 ): SurfaceCapability[] | undefined {
 	const values = optionalStringArray(object, key, method);
 	if (values === undefined) return undefined;
-	const allowed = new Set<SurfaceCapability>([
-		"wallpaper",
-		"background:apply",
-		"navigate",
-		"storage",
-		"agent-surface",
-	]);
 	const capabilities: SurfaceCapability[] = [];
 	for (const value of values) {
-		if (!allowed.has(value as SurfaceCapability)) {
+		if (!SURFACE_CAPABILITIES.has(value)) {
 			throw decodeError(method, `${key} contains unsupported capability.`);
 		}
 		capabilities.push(value as SurfaceCapability);
@@ -1508,16 +1508,6 @@ export function validateHeaderSafeString(
 	}
 }
 
-function validateControlSafeString(
-	value: string,
-	key: string,
-	method: string,
-): void {
-	if (!isControlSafeString(value)) {
-		throw decodeError(method, `${key} must not contain control characters.`);
-	}
-}
-
 function isControlSafeString(value: string): boolean {
 	return !/[\r\n\0]/.test(value);
 }
@@ -1528,11 +1518,8 @@ export function validateHeaderRecord(
 	method: string,
 ): void {
 	for (const [headerName, headerValue] of Object.entries(headers)) {
-		if (
-			!headerName ||
-			/[\r\n\0]/.test(headerName) ||
-			!/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(headerName)
-		) {
+		// The token grammar admits no empty name and no control character.
+		if (!/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(headerName)) {
 			throw decodeError(method, `${key} must contain valid header names.`);
 		}
 		validateHeaderSafeString(headerValue, key, method);
@@ -1622,19 +1609,4 @@ export function decodeError(method: string, message: string): CapabilityError {
 		message,
 		method,
 	});
-}
-
-export function paramsToDetails(
-	params: FileListParams | undefined,
-): JsonObject {
-	if (!params) return {};
-	return {
-		...(params.path === undefined ? {} : { path: params.path }),
-		...(params.rootId === undefined ? {} : { rootId: params.rootId }),
-		...(params.limit === undefined ? {} : { limit: params.limit }),
-		...(params.includeHidden === undefined
-			? {}
-			: { includeHidden: params.includeHidden }),
-		...(params.ignore === undefined ? {} : { ignore: params.ignore }),
-	};
 }

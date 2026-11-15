@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -156,6 +157,7 @@ test("invalid names, duplicates and unserializable metadata fail before any comm
     { record: { name: "build-record.txt", metadata: {} } },
     { record: { name: "build-record.json" } },
     { record: { name: "build-record.json", metadata: 1n } },
+    { archive: { name: "production", metadata: {}, files: [] } },
   ]) {
     const f = fixture(t);
     Object.assign(f.options, patch);
@@ -219,12 +221,28 @@ test("lint and androidTest switches and in-run prepare steps shape the one Gradl
     assert.throws(g.build, /Invalid Android admission command/);
     assert.equal(g.calls.length, 0);
   }
-  for (const patch of [{ lint: "false" }, { androidTest: 0 }]) {
+  for (const patch of [{ lint: "false" }, { androidTest: 0 }, { release: 1 }]) {
     const g = fixture(t);
     Object.assign(g.options, patch);
     assert.throws(g.build, /must be booleans/);
     assert.equal(g.calls.length, 0);
   }
+  const debug = fixture(t);
+  debug.options.release = false;
+  debug.options.variants = ["launcher"];
+  assert.throws(debug.build, /debug-only Android build cannot be archived/);
+  assert.equal(debug.calls.length, 0);
+  debug.options.archive = null;
+  const debugResult = debug.build();
+  assert.deepEqual(debug.calls[2].args, [
+    "--no-daemon",
+    ":app:assembleLauncherDebug",
+    ":app:assembleLauncherDebugAndroidTest",
+    ":app:lint",
+  ]);
+  assert.deepEqual(debugResult.files, [
+    path.join(debug.root, "artifacts/launcher-debug.apk"),
+  ]);
 });
 
 test("a prepare function that throws or is async stops the build before Gradle", (t) => {
@@ -424,6 +442,66 @@ test("archive assembly failure preserves the previous verified archive", (t) => 
       .some((name) => name.startsWith(".android-archive-")),
     false,
   );
+});
+
+test("verified companion files enter the archive with the APKs, or the archive is kept", (t) => {
+  const f = fixture(t);
+  const companion = path.join(f.root, "companion/updater-debug.apk");
+  fs.mkdirSync(path.dirname(companion), { recursive: true });
+  fs.writeFileSync(companion, "companion:verified");
+  const sha256 = createHash("sha256")
+    .update("companion:verified")
+    .digest("hex");
+  const run = f.options.run;
+  f.options.run = (command, ...args) => {
+    run(command, ...args);
+    if (command === "verify")
+      fs.writeFileSync(
+        path.join(f.root, "artifacts/apk-manifest.json"),
+        JSON.stringify({ companions: [{ file: companion, sha256 }] }),
+      );
+  };
+  f.options.archive.files = ({ manifest }) =>
+    manifest.companions.map((record) => ({
+      source: record.file,
+      name: `updater/${path.basename(record.file)}`,
+      sha256: record.sha256,
+    }));
+  const first = f.build();
+  assert.equal(
+    fs.readFileSync(
+      path.join(first.archive, "updater/updater-debug.apk"),
+      "utf8",
+    ),
+    "companion:verified",
+  );
+  // A companion changed after verification fails the build; the previous archive stays.
+  f.options.run = (command, ...args) => {
+    run(command, ...args);
+    if (command === "verify") {
+      fs.writeFileSync(
+        path.join(f.root, "artifacts/apk-manifest.json"),
+        JSON.stringify({ companions: [{ file: companion, sha256 }] }),
+      );
+      fs.writeFileSync(companion, "companion:changed");
+    }
+  };
+  assert.throws(
+    f.build,
+    /changed after verification: updater\/updater-debug\.apk/,
+  );
+  assert.equal(
+    fs.readFileSync(
+      path.join(first.archive, "updater/updater-debug.apk"),
+      "utf8",
+    ),
+    "companion:verified",
+  );
+  // A companion cannot take the name of an archived APK or record.
+  f.options.archive.files = () => [
+    { source: companion, name: "standalone-debug.apk", sha256 },
+  ];
+  assert.throws(f.build, /Invalid Android archive file/);
 });
 
 function product(t, { signed = false } = {}) {

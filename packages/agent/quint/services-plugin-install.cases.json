@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "packages/agent/src/services/plugin-installer.ts",
+    "packages/agent/src/services/remote-plugin-adapter.ts",
+    "packages/agent/src/services/self-updater.ts"
+  ],
+  "bounds": {
+    "domain": "One install and two approved/resolved identities.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_plugin_install",
+      "main": "services_plugin_install",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

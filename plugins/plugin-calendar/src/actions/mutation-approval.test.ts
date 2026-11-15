@@ -5,7 +5,8 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const controls = vi.hoisted(() => ({ owner: true, role: vi.fn() }));
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
   hasRoleAccess: (...args: unknown[]) => {
     controls.role(...args);
     return Promise.resolve(controls.owner);

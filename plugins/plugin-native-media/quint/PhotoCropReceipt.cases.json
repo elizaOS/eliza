@@ -1,0 +1,57 @@
+{
+  "sources": [
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotoCrop.java",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedPhotoEdits.java",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/PhotosPlugin.java",
+    "plugins/plugin-native-media/android/src/test/java/ai/eliza/plugins/media/PhotoCropJournalTest.java",
+    "plugins/plugin-native-media/test/native-host/PhotoCropTest.java",
+    "plugins/plugin-native-media/test/native-host/permitted-media.node.mjs",
+    "plugins/plugin-native-media/android/build.gradle",
+    "packages/scripts/quint/check-native-android.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/app/scripts/android-native-plugins-gradle/settings.gradle",
+    "packages/app/scripts/android-native-plugins-gradle/build.gradle",
+    "plugins/plugin-native-media/test/android-consumer/host/src/androidTest/java/example/ownedmedia/MediaConsumerTest.java",
+    "plugins/plugin-native-media/test/android-consumer/host/build.gradle",
+    "plugins/plugin-native-media/test/android-consumer/settings.gradle"
+  ],
+  "conformance": "packages/scripts/quint/check-native-android.ts",
+  "nativeAndroid": {
+    "project": "elizaos-capacitor-owned-media",
+    "directory": "plugins/plugin-native-media/android",
+    "suites": [
+      {
+        "className": "ai.eliza.plugins.media.PhotoCropJournalTest",
+        "required": [
+          "invalidEdgeCropNeverBecomesASelection",
+          "chosenRectangleUsesTheRotatedPixels",
+          "durableCropReceiptBindsTheExactSelectionAndKeepsLegacyFlags",
+          "malformedRectangleCannotFallBackToADifferentLegacyCrop"
+        ]
+      }
+    ]
+  },
+  "bounds": {
+    "domain": "One durable operation, four crop identities (none, legacy centered and two rectangles), invalid input, cancellation, confirmed publication and receipt reload after restart. Save is abstracted after successful current-source admission and durable acknowledgement; no fairness is assumed. A fixed nonzero rotation means crop NONE still produces an edit; the unchanged-operation fast path is outside this projection.",
+    "conformance": "Four exact Android JVM tests execute production native bitmap rotation/cropping, invalid-edge validation, real JSON/SharedPreferences receipt persistence and the production receipt identity functions. The existing plain-JVM rectangle and copy-recovery suites remain separate owning checks.",
+    "limits": "The finite model is receipt identity, not complete photo-session restoration or crash-safe MediaStore refinement. Decode, original-source/permission revisions, failed image encoding, concurrent library changes, original Replace and provider durability remain separate existing owners. Actual consumer instrumentation and controlled Android recordings qualify selected real-byte flows separately."
+  },
+  "cases": [
+    {
+      "name": "bounded-native-owner",
+      "main": "PhotoCropReceipt",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OnePublishedCopy",
+        "SuccessfulReplayKeepsCrop",
+        "InvalidCropNeverReserved"
+      ],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}

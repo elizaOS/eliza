@@ -10,13 +10,14 @@ import { readRequestBodyBuffer } from "@elizaos/host";
  * `Error`/`stack` fields so a route failure never leaks a stack trace to callers.
  */
 
-import crypto from "node:crypto";
 import type http from "node:http";
 import {
 	type AgentRuntime,
+	getProvidedApiToken,
 	isTrustedLocalRequest as isCoreTrustedLocalRequest,
+	tokenMatches,
 } from "@elizaos/core";
-import { readAliasedEnv, resolveApiToken } from "@elizaos/host/protocol";
+import { resolveApiToken } from "@elizaos/host/protocol";
 
 const MAX_BODY_BYTES = 1_048_576;
 
@@ -31,47 +32,12 @@ export interface CompatRuntimeState {
 	pendingRestartReasons?: string[];
 }
 
-function firstHeaderValue(value: string | string[] | undefined): string | null {
-	if (typeof value === "string") return value;
-	if (Array.isArray(value) && typeof value[0] === "string") return value[0];
-	return null;
-}
-
 export function getCompatApiToken(): string | null {
 	return resolveApiToken(process.env);
 }
 
-export function getProvidedApiToken(
-	req: Pick<http.IncomingMessage, "headers">,
-): string | null {
-	const authHeader = firstHeaderValue(req.headers.authorization)
-		?.slice(0, 1024)
-		.trim();
-	if (authHeader) {
-		const match = /^Bearer\s{1,8}(.+)$/i.exec(authHeader);
-		if (match?.[1]) return match[1].trim();
-	}
-	return (
-		(
-			firstHeaderValue(req.headers["x-eliza-token"]) ??
-			firstHeaderValue(req.headers["x-elizaos-token"]) ??
-			firstHeaderValue(req.headers["x-api-key"]) ??
-			firstHeaderValue(req.headers["x-api-token"])
-		)?.trim() || null
-	);
-}
-
-export function tokenMatches(expected: string, provided: string): boolean {
-	const expectedBytes = Buffer.from(expected);
-	const providedBytes = Buffer.from(provided);
-	return (
-		expectedBytes.length === providedBytes.length &&
-		crypto.timingSafeEqual(expectedBytes, providedBytes)
-	);
-}
-
 function isCloudProvisionedByEnv(): boolean {
-	return readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+	return process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1";
 }
 
 function isLocalAuthRequiredByEnv(): boolean {

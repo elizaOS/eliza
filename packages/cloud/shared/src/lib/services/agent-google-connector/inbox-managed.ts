@@ -21,10 +21,14 @@ export const managedInboxProvider = new InboxGoogleProvider({
       status.connectionId !== owner.grantId ||
       typeof status.identity?.email !== "string"
     )
-      throw new InboxContractError(403, "Reconnect the selected owner Google account");
+      throw new InboxContractError(
+        403,
+        "Reconnect the selected owner Google account",
+        "reauth_required",
+      );
     const token = await getGoogleAccessToken(args);
     if (token.connectionId !== owner.grantId)
-      throw new InboxContractError(403, "Google grant changed");
+      throw new InboxContractError(403, "Google grant changed", "reauth_required");
     return {
       token: token.accessToken,
       email: status.identity.email,

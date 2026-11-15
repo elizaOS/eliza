@@ -1,3 +1,4 @@
+import { ElizaError } from "@elizaos/core";
 // Coordinates cloud service oauth intents behavior behind route handlers.
 import type { OAuthIntentRow, OAuthIntentsRepository } from "../../db/repositories/oauth-intents";
 import { logger } from "../utils/logger";
@@ -66,53 +67,51 @@ interface OAuthIntentsServiceDeps {
 
 function validateCreateInput(input: CreateOAuthIntentInput): void {
   if (!input.organizationId) {
-    throw new Error("organizationId is required");
+    throw new ElizaError("organizationId is required", {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   if (!SUPPORTED_PROVIDERS.includes(input.provider)) {
-    throw new Error(`Unsupported provider: ${input.provider}`);
+    throw new ElizaError(`Unsupported provider: ${input.provider}`, {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   if (!Array.isArray(input.scopes)) {
-    throw new Error("scopes must be an array");
+    throw new ElizaError("scopes must be an array", {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   if (!input.stateTokenHash || input.stateTokenHash.length < 16) {
-    throw new Error("stateTokenHash must be a hashed state token");
+    throw new ElizaError("stateTokenHash must be a hashed state token", {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   if (input.expiresInMs !== undefined && input.expiresInMs <= 0) {
-    throw new Error("expiresInMs must be positive");
+    throw new ElizaError("expiresInMs must be positive", {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
-}
-
-function redactIntentPayload(args: {
-  intent: OAuthIntentRow;
-  status: OAuthIntentStatus;
-  reason?: string;
-  connectorIdentityId?: string;
-  scopesGranted?: string[];
-}): Record<string, unknown> {
-  return {
-    oauthIntentId: args.intent.id,
-    organizationId: args.intent.organizationId,
-    provider: args.intent.provider,
-    status: args.status,
-    scopes: args.intent.scopes,
-    connectorIdentityId: args.connectorIdentityId,
-    scopesGranted: args.scopesGranted,
-    reason: args.reason,
-  };
 }
 
 function assertNotTerminal(row: OAuthIntentRow, action: string): void {
   if (TERMINAL_STATUSES.has(row.status)) {
-    throw new Error(
+    throw new ElizaError(
       `Cannot ${action} oauth intent ${row.id}: already in terminal status "${row.status}"`,
+      { code: "AUTHORIZATION_INTENT_INVALID_STATE", severity: "ephemeral" },
     );
   }
 }
 
 function assertCancelable(row: OAuthIntentRow): void {
   if (row.status !== "pending") {
-    throw new Error(
+    throw new ElizaError(
       `Cannot cancel oauth intent ${row.id}: status "${row.status}" is not cancelable`,
+      { code: "AUTHORIZATION_INTENT_INVALID_STATE", severity: "ephemeral" },
     );
   }
 }
@@ -123,7 +122,10 @@ function requireRow(
   context: string,
 ): OAuthIntentRow {
   if (!row) {
-    throw new Error(`OAuth intent ${id} not found (${context})`);
+    throw new ElizaError(`OAuth intent ${id} not found (${context})`, {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   return row;
 }
@@ -154,12 +156,6 @@ class OAuthIntentsServiceImpl implements OAuthIntentsService {
       callbackUrl: input.callbackUrl ?? null,
       expiresAt,
       metadata: input.metadata ?? {},
-    });
-
-    await this.repository.recordOAuthIntentEvent({
-      oauthIntentId: created.id,
-      eventName: "oauth.created",
-      redactedPayload: redactIntentPayload({ intent: created, status: created.status }),
     });
 
     logger.info("[OAuthIntents] Created oauth intent", {
@@ -207,21 +203,15 @@ class OAuthIntentsServiceImpl implements OAuthIntentsService {
     assertNotTerminal(existing, "bind");
 
     const updated = requireRow(
-      await this.repository.updateOAuthIntentStatus(id, "bound"),
+      await this.repository.transitionOAuthIntent(id, "bound", {
+        eventPayload: {
+          connectorIdentityId: details.connectorIdentityId,
+          scopesGranted: details.scopesGranted,
+        },
+      }),
       id,
       "markBound update",
     );
-
-    await this.repository.recordOAuthIntentEvent({
-      oauthIntentId: id,
-      eventName: "oauth.bound",
-      redactedPayload: redactIntentPayload({
-        intent: updated,
-        status: "bound",
-        connectorIdentityId: details.connectorIdentityId,
-        scopesGranted: details.scopesGranted,
-      }),
-    });
 
     logger.info("[OAuthIntents] Bound oauth intent", {
       oauthIntentId: id,
@@ -240,16 +230,10 @@ class OAuthIntentsServiceImpl implements OAuthIntentsService {
     assertNotTerminal(existing, "deny");
 
     const updated = requireRow(
-      await this.repository.updateOAuthIntentStatus(id, "denied"),
+      await this.repository.transitionOAuthIntent(id, "denied", { eventPayload: { reason } }),
       id,
       "markDenied update",
     );
-
-    await this.repository.recordOAuthIntentEvent({
-      oauthIntentId: id,
-      eventName: "oauth.denied",
-      redactedPayload: redactIntentPayload({ intent: updated, status: "denied", reason }),
-    });
 
     logger.warn("[OAuthIntents] Denied oauth intent", {
       oauthIntentId: id,
@@ -263,21 +247,21 @@ class OAuthIntentsServiceImpl implements OAuthIntentsService {
   async cancel(id: string, organizationId: string, reason?: string): Promise<OAuthIntentRow> {
     const existing = requireRow(await this.repository.getOAuthIntent(id), id, "cancel lookup");
     if (existing.organizationId !== organizationId) {
-      throw new Error(`OAuth intent ${id} does not belong to organization ${organizationId}`);
+      throw new ElizaError(`OAuth intent ${id} does not belong to organization ${organizationId}`, {
+        code: "AUTHORIZATION_INTENT_INVALID_STATE",
+        severity: "ephemeral",
+      });
     }
     assertCancelable(existing);
 
     const updated = requireRow(
-      await this.repository.updateOAuthIntentStatus(id, "canceled"),
+      await this.repository.transitionOAuthIntent(id, "canceled", {
+        organizationId,
+        eventPayload: { reason },
+      }),
       id,
       "cancel update",
     );
-
-    await this.repository.recordOAuthIntentEvent({
-      oauthIntentId: id,
-      eventName: "oauth.canceled",
-      redactedPayload: redactIntentPayload({ intent: updated, status: "canceled", reason }),
-    });
 
     logger.info("[OAuthIntents] Canceled oauth intent", {
       oauthIntentId: id,
@@ -290,15 +274,6 @@ class OAuthIntentsServiceImpl implements OAuthIntentsService {
 
   async expirePast(now: Date = new Date()): Promise<string[]> {
     const expiredIds = await this.repository.expirePastOAuthIntents(now);
-    for (const id of expiredIds) {
-      const row = await this.repository.getOAuthIntent(id);
-      if (!row) continue;
-      await this.repository.recordOAuthIntentEvent({
-        oauthIntentId: id,
-        eventName: "oauth.expired",
-        redactedPayload: redactIntentPayload({ intent: row, status: "expired" }),
-      });
-    }
     if (expiredIds.length > 0) {
       logger.info("[OAuthIntents] Expired oauth intents", { count: expiredIds.length });
     }

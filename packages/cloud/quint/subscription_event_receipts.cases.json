@@ -1,0 +1,59 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
+    "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-invoice-event-recovery.ts",
+    "packages/cloud/shared/src/lib/services/stripe-terminal-lifecycle.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-renewal-finalization.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-lifecycle-finalization.pglite.test.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-billing-operations.pglite.test.ts",
+    "packages/cloud/shared/src/db/repositories/primary-database-clock.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-reconciliation-projection.ts",
+    "packages/cloud/quint/check-subscription-event-receipts.ts",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-subscription-event-receipts.ts",
+  "bounds": {
+    "assumptions": [
+      "One immutable platform terminal-event receipt, two invocation tokens and at most two claims; primary clock0..5 and source/projection revisions1..3.",
+      "Provider object validation and complete matching reconciliation evidence are abstract predicates, not a proof of Stripe authenticity, freshness, field-level validation or financial terms.",
+      "Tentative publication becomes visible only when the final live-lease CAS commits. The receipt row remains locked during the transaction, so another claimant waits; expiry may still occur while the lock is held.",
+      "The terminal reconciliation acknowledgement requires matching current immutable source and derived projection; historical receipt replay does not imply that its old source remains current.",
+      "The commit action abstracts the final lease-guarded SQL write and successful atomic transaction under row locks. appliedAt is that decision clock, not a bound on COMMIT or HTTP acknowledgement time; storage and transport may finish later."
+    ],
+    "domain": {
+      "receipts": 1,
+      "actors": 2,
+      "claims": 2,
+      "clock": "0..5",
+      "source_and_projection_revisions": "1..3"
+    },
+    "progress": "No fairness, liveness or real-time bound is claimed.",
+    "conformance": "All47 named PGlite cases must execute and pass without skips."
+  },
+  "limitations": [
+    "Provider payload validation and complete matching reconciliation evidence are abstractions, not proofs of provider authenticity or all field-level validators.",
+    "Generic applyEvent/reconcileEvent/listStuckEvents have no live subscription production call sites in the audited cloud tree; they are excluded from the transactional-publication guarantee.",
+    "Failed/quarantined administrative recovery and app-scoped receipts require separate models.",
+    "Paid-invoice funding, different event IDs for one invoice, fee/amount conservation, command dispatch, deletion owners and global liveness remain unmodeled here.",
+    "PGlite checks are real database regressions but do not establish the full PostgreSQL lock graph.",
+    "The model includes received/processing/applied/ignored transitions used by live platform handlers. Failed/quarantined administrative primitives require a separate model.",
+    "No fairness or temporal progress is assumed. Stuttering and indefinite provider/database failure are allowed; bounded safety does not establish eventual receipt delivery, eventual application or a real-time completion bound.",
+    "The 47-case conformance hook retains 41 receipt/publication checks and six command regressions, including expiry after provisional projection, rollback and response-loss replay. It is not a general refinement proof or a PostgreSQL lock-scheduling proof."
+  ],
+  "cases": [
+    {
+      "name": "platform-terminal-receipt",
+      "main": "subscription_event_receipts",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

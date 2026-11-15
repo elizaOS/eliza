@@ -8,7 +8,13 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core";
 import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { embeddingSpaceCondition } from "../embedding-space";
+import {
+  assertEmbeddingWrite,
+  captureEmbeddingTarget,
+  type EmbeddingWriteContext,
+  embeddingSpaceCondition,
+  readEmbeddingVector,
+} from "../embedding-space";
 import { serializeJsonb } from "../sanitize-json";
 import { embeddingTable } from "../schema/embedding";
 import { memoryTable } from "../schema/memory";
@@ -75,6 +81,7 @@ export class MemoryStore implements Store {
             metadata: memoryTable.metadata,
           },
           embedding: embeddingTable[this.ctx.getEmbeddingDimension()],
+          embeddingSpace: embeddingTable.spaceId,
         })
         .from(memoryTable)
         .leftJoin(
@@ -111,7 +118,7 @@ export class MemoryStore implements Store {
         roomId: row.memory.roomId as UUID,
         unique: row.memory.unique,
         metadata: row.memory.metadata as MemoryMetadata,
-        embedding: row.embedding ? Array.from(row.embedding) : undefined,
+        embedding: readEmbeddingVector(row.embedding, row.embeddingSpace),
       }));
     });
   }
@@ -180,7 +187,7 @@ export class MemoryStore implements Store {
       // than masquerading as a memory with no embedding.
       const embeddingCol = this.ctx.getEmbeddingDimension();
       const embeddingResult = await this.db
-        .select({ embedding: embeddingTable[embeddingCol] })
+        .select({ embedding: embeddingTable[embeddingCol], embeddingSpace: embeddingTable.spaceId })
         .from(embeddingTable)
         .where(
           and(
@@ -190,7 +197,9 @@ export class MemoryStore implements Store {
         )
         .limit(1);
 
-      const embedding: number[] | undefined = embeddingResult[0]?.embedding ?? undefined;
+      const embedding = embeddingResult[0]
+        ? readEmbeddingVector(embeddingResult[0].embedding, embeddingResult[0].embeddingSpace)
+        : undefined;
 
       return {
         id: memory.id as UUID,
@@ -217,6 +226,7 @@ export class MemoryStore implements Store {
         .select({
           memory: memoryTable,
           embedding: embeddingTable[this.ctx.getEmbeddingDimension()],
+          embeddingSpace: embeddingTable.spaceId,
         })
         .from(memoryTable)
         .leftJoin(
@@ -241,7 +251,7 @@ export class MemoryStore implements Store {
         roomId: row.memory.roomId as UUID,
         unique: row.memory.unique,
         metadata: row.memory.metadata as MemoryMetadata,
-        embedding: row.embedding ?? undefined,
+        embedding: readEmbeddingVector(row.embedding, row.embeddingSpace),
       }));
     }, "MemoryStore.getByIds");
   }
@@ -259,16 +269,18 @@ export class MemoryStore implements Store {
     }
   ): Promise<Memory[]> {
     return this.ctx.withRetry(async () => {
+      const { column, spaceId } = captureEmbeddingTarget(
+        embedding,
+        this.ctx.getEmbeddingDimension(),
+        this.ctx.getEmbeddingSpace()
+      );
       const tableName = params.tableName;
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
 
-      const similarity = sql<number>`1 - (${cosineDistance(
-        embeddingTable[this.ctx.getEmbeddingDimension()],
-        cleanVector
-      )})`;
+      const similarity = sql<number>`1 - (${cosineDistance(embeddingTable[column], cleanVector)})`;
 
       const conditions = [
-        embeddingSpaceCondition(this.ctx.getEmbeddingSpace()),
+        embeddingSpaceCondition(spaceId),
         eq(memoryTable.type, tableName),
         eq(memoryTable.agentId, this.ctx.agentId),
       ];
@@ -283,7 +295,8 @@ export class MemoryStore implements Store {
         .select({
           memory: memoryTable,
           similarity,
-          embedding: embeddingTable[this.ctx.getEmbeddingDimension()],
+          embedding: embeddingTable[column],
+          embeddingSpace: embeddingTable.spaceId,
         })
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
@@ -307,7 +320,7 @@ export class MemoryStore implements Store {
         worldId: row.memory.worldId as UUID | undefined,
         unique: row.memory.unique,
         metadata: row.memory.metadata as MemoryMetadata,
-        embedding: row.embedding ?? undefined,
+        embedding: readEmbeddingVector(row.embedding, row.embeddingSpace),
         similarity: row.similarity,
       }));
     }, "MemoryStore.searchByEmbedding");
@@ -315,6 +328,13 @@ export class MemoryStore implements Store {
 
   async create(memory: Memory & { metadata?: MemoryMetadata }, tableName: string): Promise<UUID> {
     const memoryId = memory.id ?? (randomUUID() as UUID);
+    const embeddingWrite = Array.isArray(memory.embedding)
+      ? captureEmbeddingTarget(
+          memory.embedding,
+          this.ctx.getEmbeddingDimension(),
+          this.ctx.getEmbeddingSpace()
+        )
+      : undefined;
 
     if (memory.unique === undefined) {
       memory.unique = true;
@@ -355,8 +375,8 @@ export class MemoryStore implements Store {
         .onConflictDoNothing()
         .returning();
 
-      if (inserted.length > 0 && memory.embedding && Array.isArray(memory.embedding)) {
-        await this.upsertEmbedding(tx, memoryId, memory.embedding);
+      if (inserted.length > 0 && memory.embedding && embeddingWrite) {
+        await this.upsertEmbedding(tx, memoryId, memory.embedding, embeddingWrite);
       }
     });
 
@@ -366,6 +386,13 @@ export class MemoryStore implements Store {
   async update(
     memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
   ): Promise<boolean> {
+    const embeddingWrite = Array.isArray(memory.embedding)
+      ? captureEmbeddingTarget(
+          memory.embedding,
+          this.ctx.getEmbeddingDimension(),
+          this.ctx.getEmbeddingSpace()
+        )
+      : undefined;
     return this.ctx.withRetry(async () => {
       try {
         await this.db.transaction(async (tx) => {
@@ -392,8 +419,8 @@ export class MemoryStore implements Store {
               .where(eq(memoryTable.id, memory.id));
           }
 
-          if (memory.embedding && Array.isArray(memory.embedding)) {
-            await this.upsertEmbedding(tx, memory.id, memory.embedding);
+          if (memory.embedding && embeddingWrite) {
+            await this.upsertEmbedding(tx, memory.id, memory.embedding, embeddingWrite);
           }
         });
 
@@ -490,7 +517,8 @@ export class MemoryStore implements Store {
   private async upsertEmbedding(
     tx: DrizzleDatabase,
     memoryId: UUID,
-    embedding: number[]
+    embedding: number[],
+    embeddingWrite: EmbeddingWriteContext
   ): Promise<void> {
     const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
 
@@ -500,12 +528,17 @@ export class MemoryStore implements Store {
       .where(eq(embeddingTable.memoryId, memoryId))
       .limit(1);
 
+    assertEmbeddingWrite(
+      embeddingWrite,
+      this.ctx.getEmbeddingDimension(),
+      this.ctx.getEmbeddingSpace()
+    );
     if (existingEmbedding.length > 0) {
       const updateValues: Record<string, unknown> = {
-        spaceId: this.ctx.getEmbeddingSpace(),
-        writeNonce: this.ctx.getEmbeddingSpace() === null ? null : randomUUID(),
+        spaceId: embeddingWrite.spaceId,
+        writeNonce: embeddingWrite.spaceId === null ? null : randomUUID(),
       };
-      updateValues[this.ctx.getEmbeddingDimension()] = cleanVector;
+      updateValues[embeddingWrite.column] = cleanVector;
       await tx
         .update(embeddingTable)
         .set(updateValues)
@@ -514,10 +547,10 @@ export class MemoryStore implements Store {
       const embeddingValues: Record<string, unknown> = {
         id: randomUUID(),
         memoryId,
-        spaceId: this.ctx.getEmbeddingSpace(),
-        writeNonce: this.ctx.getEmbeddingSpace() === null ? null : randomUUID(),
+        spaceId: embeddingWrite.spaceId,
+        writeNonce: embeddingWrite.spaceId === null ? null : randomUUID(),
       };
-      embeddingValues[this.ctx.getEmbeddingDimension()] = cleanVector;
+      embeddingValues[embeddingWrite.column] = cleanVector;
       await tx.insert(embeddingTable).values([embeddingValues]);
     }
   }

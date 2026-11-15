@@ -16,7 +16,8 @@ export async function startGatewayLifecycle({
   const releases = [];
   let cleanup;
   let server;
-  let serverClosed = false;
+  let serverClose;
+  let listeningStarted = false;
   let closing;
   const release = () => {
     cleanup ??= (async () => {
@@ -43,9 +44,10 @@ export async function startGatewayLifecycle({
   };
   const close = () => {
     closing ??= (async () => {
-      if (server && !serverClosed && server.listening) {
-        await new Promise((resolve) => server.close(resolve));
-      }
+      const listening = server?.listening;
+      if (listening) server.close();
+      // External close clears listening before admitted requests drain.
+      if (listening || listeningStarted) await serverClose;
       await release();
     })();
     return closing;
@@ -61,9 +63,11 @@ export async function startGatewayLifecycle({
     if (reputation?.stop) releases.push(() => reputation.stop());
     await reputation?.start?.();
     server = await createServer({ taskGateway, reputation });
-    server.once("close", () => {
-      serverClosed = true;
-      reportCleanup();
+    serverClose = new Promise((resolve) => {
+      server.once("close", () => {
+        resolve();
+        reportCleanup();
+      });
     });
     await new Promise((resolve, reject) => {
       const failed = (error) => {
@@ -71,6 +75,7 @@ export async function startGatewayLifecycle({
         reject(error);
       };
       const ready = () => {
+        listeningStarted = true;
         server.off("error", failed);
         resolve();
       };

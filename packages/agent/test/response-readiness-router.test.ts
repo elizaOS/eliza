@@ -10,7 +10,7 @@ import {
   Service,
 } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { installRouterHandler } from "../../../plugins/plugin-local-inference/src/services/router-handler.ts";
 import {
   type CloudModelReadinessView,
@@ -125,3 +125,27 @@ it.each(["custom-provider", "ollama", "openai", "elizaOSCloud"])(
     expect(computeCanRespond(runtime, "stopped", null)).toBe(false);
   },
 );
+
+it("reports an unreadable model registry instead of failing closed silently", () => {
+  // A runtime whose registry cannot be read (torn-down dispatch, partial boot)
+  // throws here, not "returns no registrations". Reporting that as a plain
+  // canRespond:false makes /api/status look like "no model is configured" and
+  // leaves no trace of the actual fault.
+  const runtime = new AgentRuntime({
+    character: { name: "Unreadable registry", bio: [] },
+  });
+  runtime.registerModel(ModelType.TEXT_LARGE, noInference, "openai");
+  const warn = vi.spyOn(runtime.logger, "warn");
+  vi.spyOn(runtime, "getModelRegistrations").mockImplementation(() => {
+    throw new Error("model registry unavailable");
+  });
+
+  expect(computeCanRespond(runtime, "running", null)).toBe(false);
+  expect(warn).toHaveBeenCalledWith(
+    expect.objectContaining({
+      src: "health-routes",
+      error: "model registry unavailable",
+    }),
+    "Text handler registrations unavailable",
+  );
+});

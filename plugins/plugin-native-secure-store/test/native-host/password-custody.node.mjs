@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
 const nativeonly = path.join(
   plugin,
-  "android/src/main/java/ai/eliza/plugins/securestore/nativeonly",
+  "android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly",
 );
 test("password vault frame and binding normalization reject tampering and unsafe origins", (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "password-custody-"));

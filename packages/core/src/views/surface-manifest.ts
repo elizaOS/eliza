@@ -8,18 +8,6 @@ import type {
 	SurfaceManifestBearer,
 } from "../types/surface-manifest.js";
 
-export type {
-	AppShellBackgroundPolicy,
-	PageLayoutManifest,
-	ResolvedSurfaceManifest,
-	SurfaceCapability,
-	SurfaceIsolationLevel,
-	SurfaceLifecyclePolicy,
-	SurfaceManifest,
-	SurfaceManifestBearer,
-	ViewHeaderPolicy,
-} from "../types/surface-manifest.js";
-
 /**
  * How a view is separated from the host realm and from other views. Ordered
  * from least to most isolated. Each view declares its level in its manifest,
@@ -77,14 +65,6 @@ export const SURFACE_CAPABILITIES = [
 	"agent-surface",
 ] as const;
 
-function dedupeCapabilities(
-	caps: readonly SurfaceCapability[] | undefined,
-): ReadonlySet<SurfaceCapability> {
-	// `Set`'s constructor treats a missing iterable as empty, so an absent
-	// capability list yields an empty set without a `?? []` empty-fallback.
-	return new Set(caps);
-}
-
 const DEFAULT_PAGE_LAYOUT_MANIFEST: PageLayoutManifest = Object.freeze({
 	kind: "content",
 	topology: "framed",
@@ -108,7 +88,10 @@ export function resolveSurfaceManifest(
 	decl: SurfaceManifestBearer | null | undefined,
 ): ResolvedSurfaceManifest {
 	const surface = decl?.surface;
-	const capabilities = dedupeCapabilities(surface?.capabilities);
+	// A missing iterable yields an empty set.
+	const capabilities: ReadonlySet<SurfaceCapability> = new Set(
+		surface?.capabilities,
+	);
 
 	const declaredBackground = surface?.background ?? "opaque";
 	// Wallpaper gate: "shared" is only honoured with the explicit grant.

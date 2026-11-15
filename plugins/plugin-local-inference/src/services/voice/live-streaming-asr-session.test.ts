@@ -196,7 +196,28 @@ describe("LiveStreamingAsrSession (unit)", () => {
 		const final = await session.endTurn();
 		expect(final?.text).toBe(SECRET);
 		expect(transcriber.flushes).toBe(1);
-		expect(await session.endTurn()).toEqual(final);
+		expect(await session.endTurn()).toBeNull();
+	});
+
+	it("endTurn() after a delivered failure resolves null instead of replaying it", async () => {
+		const { session, vad, transcriber } = makeSession();
+		vad.push({ type: "speech-start", timestampMs: 0, probability: 1 });
+		vad.push({ type: "speech-end", timestampMs: 0, speechDurationMs: 1 });
+		expect((await session.waitForFinal())?.text).toBe(SECRET);
+		transcriber.failFlush = new Error("segment 2 failed");
+		vad.push({ type: "speech-start", timestampMs: 0, probability: 1 });
+		vad.push({ type: "speech-end", timestampMs: 0, speechDurationMs: 1 });
+		await expect(session.waitForFinal()).rejects.toThrow("segment 2 failed");
+		expect(await session.endTurn()).toBeNull();
+		expect(transcriber.flushes).toBe(2);
+	});
+
+	it("endTurn() returns a final no caller has taken yet", async () => {
+		const { session, vad } = makeSession();
+		vad.push({ type: "speech-start", timestampMs: 0, probability: 1 });
+		vad.push({ type: "speech-end", timestampMs: 0, speechDurationMs: 1 });
+		expect((await session.endTurn())?.text).toBe(SECRET);
+		expect(await session.endTurn()).toBeNull();
 	});
 });
 

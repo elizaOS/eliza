@@ -19,6 +19,10 @@ transaction ledger or a substitute for on-chain spend policies.
 `@elizaos/plugin-wallet/read` exposes read-only EVM balances, NFTs and DEX prices
 without registering routes or loading signing services. Hosts supply resolved RPC
 endpoints and provider credentials; the root barrel exports the same readers.
+Direct RPC reads return a chain error when any requested token balance or its
+decimal precision cannot be read. The reader tries the next configured endpoint
+before reporting an incomplete result. Symbol lookup failure keeps a generic
+label and never changes a known balance.
 
 ## Development
 
@@ -31,6 +35,8 @@ bun run --cwd plugins/plugin-wallet test   # tests
 
 `@elizaos/plugin-wallet/transactions` exposes transaction operations and the shared
 trade quota policy without route registration. The root exports the same symbols.
+`@elizaos/plugin-wallet/lib/trade-safety` exposes only the trade permission and quota
+policy, without `ethers` or the transaction service.
 `@elizaos/plugin-wallet/watcher` owns balance-delta detection and scheduling; hosts
 supply the credential-aware balance source. Trading-profile persistence and
 analytics are also available through `read`; corrupt ledgers reject without

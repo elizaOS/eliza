@@ -35,8 +35,8 @@
  * "origin":"manual" and are NEVER overwritten by this script.
  *
  * Run::
- *   node scripts/eliza-1/derive-fixtures.ts
- *   node scripts/eliza-1/derive-fixtures.ts --dry-run
+ *   bun scripts/eliza-1/derive-fixtures.ts
+ *   bun scripts/eliza-1/derive-fixtures.ts --dry-run
  */
 
 import { readFileSync, writeFileSync } from "node:fs";

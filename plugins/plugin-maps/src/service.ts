@@ -175,6 +175,11 @@ export class MapsService extends Service {
     this.savedPlacesHost = host;
   }
 
+  /** Whether a device host registered its own Maps list. */
+  hasSavedPlacesHost(): boolean {
+    return this.savedPlacesHost !== null;
+  }
+
   /**
    * The entity's saved places, reconciled with the registered host's list only
    * when the caller passes `includeDevice` after an owner-access check. A host

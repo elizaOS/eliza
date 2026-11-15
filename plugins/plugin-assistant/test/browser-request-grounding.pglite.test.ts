@@ -428,7 +428,7 @@ it.each([
           verifiedUserFacing: true,
           userFacingText: typed
             ? "I didn't open that address."
-            : 'I can open a website when you tell me its address, like "open nytimes.com". Nothing was opened.',
+            : 'Tell me the address, like "open nytimes.com".',
           data: {
             code: "DEVICE_BROWSER_NOT_REQUESTED",
             proposalCreated: false,

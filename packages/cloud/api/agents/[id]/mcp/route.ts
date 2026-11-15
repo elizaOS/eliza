@@ -18,6 +18,7 @@ import {
   CORS_ALLOW_HEADERS,
   CORS_ALLOW_METHODS,
 } from "@elizaos/cloud-shared/lib/cors-constants";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   RateLimitPresets,
   rateLimit,
@@ -58,7 +59,7 @@ import {
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 
 const DEFAULT_BILLING_OUTPUT_ESTIMATE_TOKENS = 4096;
 
@@ -172,7 +173,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     return c.json({ error: "MCP not accessible for this agent" }, 403);
   }
 
-  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
   const bioText = Array.isArray(character.bio)
     ? character.bio.join("\n")
     : character.bio;
@@ -235,38 +236,7 @@ app.post("/", async (c) => {
     });
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const characterResolution = executionCtx
-      ? await charactersService.getByIdCacheOnly(id, { executionCtx })
-      : {
-          kind: "ready" as const,
-          character: (await charactersService.getById(id)) ?? null,
-        };
-    if (characterResolution.kind !== "ready") {
-      // Confirm only the negative cold-cache case. Existing agents remain
-      // fail-closed until their cached character is ready for inference.
-      if (!(await charactersService.getById(id))) {
-        return c.json(
-          {
-            jsonrpc: "2.0",
-            error: { code: -32001, message: "Agent not found" },
-            id: null,
-          },
-          404,
-        );
-      }
-      return c.json(
-        {
-          jsonrpc: "2.0",
-          error: {
-            code: -32004,
-            message: "Agent cache is warming; retry shortly",
-          },
-          id: null,
-        },
-        503,
-      );
-    }
-    const character = characterResolution.character;
+    const character = (await charactersService.getById(id)) ?? null;
     if (!character) {
       return c.json(
         {

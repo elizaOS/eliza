@@ -18,7 +18,6 @@ import {
   isWildcardBindHost,
   stripOptionalHostPort,
 } from "@elizaos/core/protocol";
-import { getBootConfigEnvAliases } from "./config/boot-config-store.js";
 
 const DEFAULT_API_BIND_HOST = "127.0.0.1";
 export const DEFAULT_SERVER_ONLY_PORT = 2138;
@@ -117,20 +116,8 @@ function resolveEnvEntry(
   env: RuntimeEnvRecord,
   key: string,
 ): { key: string; value: string } | null {
-  const direct = presentEnvValue(env[key]);
-  if (direct !== undefined) return { key, value: direct };
-
-  const aliases = getBootConfigEnvAliases();
-  if (!aliases) return null;
-
-  for (const [brandKey, elizaKey] of aliases) {
-    const partner =
-      key === brandKey ? elizaKey : key === elizaKey ? brandKey : null;
-    if (!partner) continue;
-    const value = presentEnvValue(env[partner]);
-    if (value !== undefined) return { key: partner, value };
-  }
-  return null;
+  const value = presentEnvValue(env[key]);
+  return value === undefined ? null : { key, value };
 }
 
 function resolveEnvValue(
@@ -465,13 +452,23 @@ export function isAndroidMobile(
   return resolvePlatform(env) === "android";
 }
 
+/**
+ * The ElizaOS Android runtime: Android with in-process native inference
+ * (`ELIZA_LOCAL_LLAMA=1`). Its AOSP-only plugins load only here.
+ */
+export function isElizaOsAndroidRuntime(
+  env: RuntimeEnvRecord = globalThis.process?.env ?? {},
+): boolean {
+  return isAndroidMobile(env) && env.ELIZA_LOCAL_LLAMA?.trim() === "1";
+}
+
 export function isIosMobile(
   env: RuntimeEnvRecord = globalThis.process?.env ?? {},
 ): boolean {
   return resolvePlatform(env) === "ios";
 }
 
-/** Resolve the normalized platform through canonical and branded env aliases. */
+/** Resolve the normalized platform from the environment. */
 export function resolvePlatform(
   env: RuntimeEnvRecord = globalThis.process?.env ?? {},
 ): string | undefined {

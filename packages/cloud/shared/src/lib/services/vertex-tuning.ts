@@ -2,6 +2,15 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import {
+  requireVertexJobName,
+  requireVertexObservation,
+  type TuningJob,
+  vertexObservationError,
+  vertexTunedResources,
+} from "./vertex-tuning-observation";
+
+export type { TuningJob } from "./vertex-tuning-observation";
 
 const execFileAsync = promisify(execFile);
 
@@ -48,21 +57,6 @@ export type VertexTuningSlot =
   | "media_description";
 
 export type VertexTuningScope = "global" | "organization" | "user";
-
-export interface TuningJob {
-  name: string;
-  state:
-    | "JOB_STATE_PENDING"
-    | "JOB_STATE_RUNNING"
-    | "JOB_STATE_SUCCEEDED"
-    | "JOB_STATE_FAILED"
-    | "JOB_STATE_CANCELLED";
-  tunedModelDisplayName: string;
-  tunedModelEndpointName?: string;
-  createTime: string;
-  updateTime: string;
-  error?: { code: number; message: string };
-}
 
 export interface CreatedTuningJobResult {
   job: TuningJob;
@@ -266,7 +260,21 @@ export async function createTuningJob(config: VertexTuningConfig): Promise<Creat
     );
   }
 
-  const job = (await response.json()) as TuningJob;
+  const raw: unknown = await response.json();
+  if (raw === null || typeof raw !== "object" || !("name" in raw) || typeof raw.name !== "string")
+    return vertexObservationError(
+      "VERTEX_OBSERVATION_IDENTITY",
+      "Vertex creation returned no job identity",
+    );
+  const job = requireVertexObservation(raw, raw.name);
+  const identity = requireVertexJobName(job.name);
+  // The authenticated response to this project's POST assigns the canonical
+  // job name. Google can use a project number where configuration used its ID.
+  if (identity.region !== region)
+    return vertexObservationError(
+      "VERTEX_OBSERVATION_IDENTITY",
+      "Created Vertex job differs from the requested region",
+    );
 
   return {
     job,
@@ -281,6 +289,7 @@ export async function getTuningJobStatus(
   jobName: string,
   accessToken?: string,
 ): Promise<TuningJob> {
+  requireVertexJobName(jobName);
   const token = await getAccessToken(accessToken);
   const response = await vertexTuningFetch(`https://aiplatform.googleapis.com/v1/${jobName}`, {
     headers: { authorization: `Bearer ${token}` },
@@ -290,7 +299,7 @@ export async function getTuningJobStatus(
     throw new Error(`Failed to get tuning job status: ${response.status} ${await response.text()}`);
   }
 
-  return (await response.json()) as TuningJob;
+  return requireVertexObservation(await response.json(), jobName);
 }
 
 export async function orchestrateVertexTuning(
@@ -304,8 +313,8 @@ export async function orchestrateVertexTuning(
   });
   const job = createdJob.job;
 
-  const recommendedModelId =
-    job.tunedModelEndpointName?.trim() || job.tunedModelDisplayName?.trim() || config.displayName;
+  const resources = vertexTunedResources(job);
+  const recommendedModelId = resources.endpoint ?? resources.model ?? config.displayName;
 
   return {
     job,

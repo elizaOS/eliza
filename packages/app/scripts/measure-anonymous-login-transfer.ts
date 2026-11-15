@@ -11,7 +11,7 @@
  * - sum PerformanceResourceTiming.transferSize for all resources + scripts
  *
  * Usage:
- *   node scripts/measure-anonymous-login-transfer.ts \
+ *   bun scripts/measure-anonymous-login-transfer.ts \
  *     --url http://127.0.0.1:4173/login \
  *     --out output-login-transfer/report.json
  *
@@ -188,7 +188,7 @@ export function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: node scripts/measure-anonymous-login-transfer.ts [options]
+  console.log(`Usage: bun scripts/measure-anonymous-login-transfer.ts [options]
   --url <url>       Login URL (default with --serve-dist: http://127.0.0.1:<port>/login)
   --serve-dist      Serve packages/app/web-dist and measure /login
   --dist-dir <path> Override dist directory (default: packages/app/web-dist)

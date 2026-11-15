@@ -4,10 +4,10 @@
  * Handles all database operations for memories without spinning up runtime.
  */
 
-import type { Content, ContentValue, Memory } from "@elizaos/core";
+import { type Content, type ContentValue, ElizaError, type Memory } from "@elizaos/core";
 import { memoryTable } from "@elizaos/plugin-sql";
 import { and, desc, eq, type InferSelectModel, inArray, sql } from "drizzle-orm";
-import { dbRead, dbWrite } from "../../helpers";
+import { dbRead, dbWrite, writeTransaction } from "../../helpers";
 
 type MemoryRow = InferSelectModel<typeof memoryTable>;
 type StoredMemory = Memory & { type: string };
@@ -115,6 +115,21 @@ function toMemory(row: MemoryRow): StoredMemory {
     worldId: row.worldId ?? undefined,
     unique: row.unique,
     metadata: readMetadata(row.metadata, row.id),
+  };
+}
+
+function memoryValues(input: CreateMemoryInput, createdAt = new Date()) {
+  return {
+    id: input.id,
+    roomId: input.roomId,
+    entityId: input.entityId,
+    agentId: input.agentId,
+    type: input.type,
+    content: input.content,
+    metadata: input.metadata ?? {},
+    unique: input.unique ?? false,
+    worldId: input.worldId,
+    createdAt,
   };
 }
 
@@ -418,18 +433,7 @@ export class MemoriesRepository {
   async create(input: CreateMemoryInput): Promise<Memory> {
     const memoryResults = (await dbWrite
       .insert(memoryTable)
-      .values({
-        id: input.id,
-        roomId: input.roomId,
-        entityId: input.entityId,
-        agentId: input.agentId,
-        type: input.type,
-        content: input.content,
-        metadata: input.metadata ?? {},
-        unique: input.unique ?? false,
-        worldId: input.worldId,
-        createdAt: new Date(),
-      })
+      .values(memoryValues(input))
       // Drizzle's .returning() infers the insert model type, not InferSelectModel.
       // The DB returns all columns; the cast to MemoryRow is safe.
       .returning()) as MemoryRow[];
@@ -439,6 +443,93 @@ export class MemoriesRepository {
       throw new Error(`Memory not returned after create: ${input.id}`);
     }
     return toMemory(memoryResult);
+  }
+
+  /** Publish a document and its complete fragment index in one transaction. */
+  async createDocumentWithFragments(
+    input: Omit<CreateMemoryInput, "type">,
+    fragments: readonly string[],
+  ): Promise<Memory> {
+    const createdAt = new Date();
+    return writeTransaction(async (tx) => {
+      const [document] = await tx
+        .insert(memoryTable)
+        .values(memoryValues({ ...input, type: "documents" }, createdAt))
+        .returning();
+      if (!document) {
+        throw new ElizaError("Document publication did not return its stored row", {
+          code: "DOCUMENT_PUBLICATION_NOT_PERSISTED",
+          context: { documentId: input.id },
+        });
+      }
+      // Bound statement parameters without limiting the complete document.
+      const batchSize = 256;
+      for (let start = 0; start < fragments.length; start += batchSize) {
+        await tx.insert(memoryTable).values(
+          fragments.slice(start, start + batchSize).map((text, offset) =>
+            memoryValues(
+              {
+                ...input,
+                id: crypto.randomUUID(),
+                type: "document_fragments",
+                unique: false,
+                content: { text },
+                metadata: {
+                  ...input.metadata,
+                  type: "fragment",
+                  documentId: input.id,
+                  position: start + offset,
+                },
+              },
+              createdAt,
+            ),
+          ),
+        );
+      }
+      return toMemory(document);
+    });
+  }
+
+  /** Lock and delete only the document graph owned by the requested scope. */
+  async deleteDocument(
+    documentId: string,
+    scope: { agentId: string; roomId: string },
+  ): Promise<boolean> {
+    return writeTransaction(async (tx) => {
+      const ownedDocument = and(
+        eq(memoryTable.id, documentId),
+        eq(memoryTable.type, "documents"),
+        eq(memoryTable.agentId, scope.agentId),
+        eq(memoryTable.roomId, scope.roomId),
+      );
+      const [document] = await tx
+        .select({ id: memoryTable.id })
+        .from(memoryTable)
+        .where(ownedDocument)
+        .for("update");
+      if (!document) return false;
+      await tx
+        .delete(memoryTable)
+        .where(
+          and(
+            eq(memoryTable.type, "document_fragments"),
+            eq(memoryTable.agentId, scope.agentId),
+            eq(memoryTable.roomId, scope.roomId),
+            sql`${memoryTable.metadata}->>'documentId' = ${documentId}`,
+          ),
+        );
+      const removed = await tx
+        .delete(memoryTable)
+        .where(ownedDocument)
+        .returning({ id: memoryTable.id });
+      if (removed.length !== 1) {
+        throw new ElizaError("Document deletion did not remove its locked row", {
+          code: "DOCUMENT_DELETION_NOT_PERSISTED",
+          context: { documentId },
+        });
+      }
+      return true;
+    });
   }
 
   /**

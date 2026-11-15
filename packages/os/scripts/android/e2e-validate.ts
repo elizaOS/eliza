@@ -7,8 +7,8 @@
 // Brand-aware: derives all brand-coupled identifiers from --brand-config.
 //
 // Usage:
-//   node scripts/android/e2e-validate.ts --out reports/e2e-cuttlefish
-//   node scripts/android/e2e-validate.ts --out reports/e2e-avd \
+//   bun scripts/android/e2e-validate.ts --out reports/e2e-cuttlefish
+//   bun scripts/android/e2e-validate.ts --out reports/e2e-avd \
 //        --skip-boot-validate            # skip system-image checks
 //
 // Flags:
@@ -79,7 +79,7 @@ export function parseSubArgs(argv) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/e2e-validate.ts --out <DIR> [--brand-config PATH] [--serial S] [--adb P] [--timeout-ms N] [--skip-boot-validate] [--steps a,b,c] [--label TEXT]",
+        "Usage: bun scripts/android/e2e-validate.ts --out <DIR> [--brand-config PATH] [--serial S] [--adb P] [--timeout-ms N] [--skip-boot-validate] [--steps a,b,c] [--label TEXT]",
       );
       process.exit(0);
     } else {

@@ -31,6 +31,7 @@ const ORG = "44444444-4444-4444-8444-444444444444";
 const APP = "11111111-1111-4111-8111-111111111111";
 const LIVE = "22222222-2222-4222-8222-222222222222";
 const OLD = "33333333-3333-4333-8333-333333333333";
+const ownerApp = { id: APP, organization_id: ORG };
 
 mock.module("@elizaos/cloud-shared/auth", () => ({
   ...realAuth,
@@ -86,6 +87,14 @@ function afterNextRead(other: () => Promise<unknown>) {
 }
 
 beforeAll(async () => {
+  await dbWrite.execute(
+    sql.raw(
+      "CREATE TABLE apps(id uuid PRIMARY KEY, organization_id uuid NOT NULL, deletion_job_id uuid)",
+    ),
+  );
+  await dbWrite.execute(
+    sql`INSERT INTO apps(id, organization_id) VALUES (${APP}, ${ORG})`,
+  );
   spyOn(appsService, "getById").mockResolvedValue({
     id: APP,
     organization_id: ORG,
@@ -117,7 +126,9 @@ afterAll(async () => {
 });
 
 test("a rollback that lands during a delete keeps the rolled-back deployment live", async () => {
-  const spy = afterNextRead(() => appFrontendHostingService.activate(APP, OLD));
+  const spy = afterNextRead(() =>
+    appFrontendHostingService.activate(ownerApp, OLD),
+  );
   let status = 0;
   try {
     status = (await deleteOld()).status;
@@ -133,7 +144,7 @@ test("a delete that lands during a rollback leaves the current deployment live",
   const spy = afterNextRead(async () => deleteOld());
   let activated: unknown;
   try {
-    activated = await appFrontendHostingService.activate(APP, OLD);
+    activated = await appFrontendHostingService.activate(ownerApp, OLD);
   } finally {
     spy.mockRestore();
   }

@@ -340,10 +340,20 @@ public enum SpecDecodeMode {
 
 public struct LlamaLoadResult {
     public let contextId: Int64?
+    /// Context size llama.cpp created, after any memory-budget shrink.
+    public let contextSize: UInt32?
+    /// Layers offloaded to the GPU (0 = CPU only).
+    public let gpuLayers: Int32?
     public let error: String?
-    public static func success(_ id: Int64) -> LlamaLoadResult { .init(contextId: id, error: nil) }
-    public static func failure(_ id: Int64?, _ msg: String?) -> LlamaLoadResult { .init(contextId: id, error: msg) }
-    public static func failure(_ msg: String) -> LlamaLoadResult { .init(contextId: nil, error: msg) }
+    public static func success(_ id: Int64, contextSize: UInt32, gpuLayers: Int32) -> LlamaLoadResult {
+        .init(contextId: id, contextSize: contextSize, gpuLayers: gpuLayers, error: nil)
+    }
+    public static func failure(_ id: Int64?, _ msg: String?) -> LlamaLoadResult {
+        .init(contextId: id, contextSize: nil, gpuLayers: nil, error: msg)
+    }
+    public static func failure(_ msg: String) -> LlamaLoadResult {
+        .init(contextId: nil, contextSize: nil, gpuLayers: nil, error: msg)
+    }
 }
 
 public struct LlamaGenerateResult {
@@ -451,7 +461,10 @@ private final class LlamaSession {
     let workQueue: DispatchQueue
     let nCtx: UInt32
     let nBatch: UInt32
-    var cancelled: Bool = false
+    // Cancel state is touched from the host-call thread and the session queue.
+    private let cancelLock = NSLock()
+    private var cancelRequested = false
+    private var pendingGenerations = 0
 
     // MTP drafter state. Non-nil iff the user passed a `draftModelPath`
     // at load time AND the slice supports speculative decode (the
@@ -486,6 +499,36 @@ private final class LlamaSession {
         self.workQueue = DispatchQueue(label: "ai.eliza.bun.llama.session.\(id)")
     }
 
+    /// A generation is pending from the moment it is requested until it
+    /// returns, including time spent waiting for the session queue.
+    func beginGeneration() {
+        cancelLock.lock()
+        pendingGenerations += 1
+        cancelLock.unlock()
+    }
+
+    /// The cancel flag lives until the last pending generation ends, so a
+    /// cancel that lands before the run starts is not lost and a stale cancel
+    /// never stops a later request.
+    func endGeneration() {
+        cancelLock.lock()
+        pendingGenerations = max(0, pendingGenerations - 1)
+        if pendingGenerations == 0 { cancelRequested = false }
+        cancelLock.unlock()
+    }
+
+    func requestCancel() {
+        cancelLock.lock()
+        if pendingGenerations > 0 { cancelRequested = true }
+        cancelLock.unlock()
+    }
+
+    var isCancelled: Bool {
+        cancelLock.lock()
+        defer { cancelLock.unlock() }
+        return cancelRequested
+    }
+
     func free() {
         if let drafterCtx = drafterCtx {
             c_llama_free(drafterCtx)
@@ -495,6 +538,48 @@ private final class LlamaSession {
         }
         c_llama_free(ctx)
         c_llama_model_free(model)
+    }
+}
+
+/// Accumulates generated token bytes and hands out only text whose UTF-8
+/// sequences are complete. A character split across tokens is held back until
+/// its last byte arrives instead of being decoded to U+FFFD piecewise.
+private struct Utf8TokenText {
+    private(set) var bytes: [UInt8] = []
+    private var emitted = 0
+
+    /// Appends one token's bytes and returns the text that became complete.
+    mutating func append(_ piece: [UInt8]) -> String {
+        bytes.append(contentsOf: piece)
+        let end = Self.completePrefixEnd(bytes)
+        guard end > emitted else { return "" }
+        let text = String(decoding: bytes[emitted..<end], as: UTF8.self)
+        emitted = end
+        return text
+    }
+
+    /// Every byte decoded, including a trailing incomplete sequence.
+    var text: String { String(decoding: bytes, as: UTF8.self) }
+
+    /// End of the longest prefix that does not stop inside a UTF-8 sequence.
+    static func completePrefixEnd(_ bytes: [UInt8]) -> Int {
+        let count = bytes.count
+        var index = count - 1
+        // A sequence is at most 4 bytes, so look back at most 3 continuations.
+        while index >= 0 && count - index <= 4 {
+            let byte = bytes[index]
+            if byte & 0xC0 != 0x80 {
+                let length: Int
+                if byte & 0x80 == 0 { length = 1 }
+                else if byte & 0xE0 == 0xC0 { length = 2 }
+                else if byte & 0xF0 == 0xE0 { length = 3 }
+                else if byte & 0xF8 == 0xF0 { length = 4 }
+                else { return count } // invalid lead byte; let decoding repair it
+                return count - index < length ? index : count
+            }
+            index -= 1
+        }
+        return count
     }
 }
 
@@ -730,6 +815,9 @@ public final class LlamaBridgeImpl {
             return .failure("llama_load_model: file not found at \(path)")
         }
         SessionRegistry.shared.ensureBackend()
+        // Never load while a voice context has GGML_BACKEND=CPU set.
+        Self.ggmlBackendEnvLock.lock()
+        defer { Self.ggmlBackendEnvLock.unlock() }
 
         // #11612: a load that exceeds the per-process jetsam budget kills the
         // app (and on constrained devices can wedge the OS). Estimate the
@@ -740,8 +828,11 @@ public final class LlamaBridgeImpl {
         // pages, which do not count against the jetsam footprint the way
         // wired Metal buffers do), and only fail when not even a zero-offload
         // load fits. Fit math (iPhone 16 Pro Max, A18, 8 GiB → ~5461 MiB
-        // headroom): weights 4722 + compute ~260 (n_ubatch 256) + KV 36
-        // ≈ 5018 MiB → full offload admitted.
+        // headroom) with this estimate: weights 4722 + compute ~269
+        // (n_ubatch 256 × 1.1 MB) + KV/scratch 256 (64 KiB × 4096) + overhead
+        // 256 ≈ 5503 MiB at ctx 4096, over budget; at ctx 2048 it is ≈ 5375
+        // MiB, so full offload is admitted with the context halved. The result
+        // reports the admitted context and GPU layers to the caller.
         let canUseGPU = useGPU && shim_has_metal() && !Self.isRunningInSimulator
         var resolvedContextSize = contextSize
         var nGpuLayers: Int32 = canUseGPU ? 999 : 0
@@ -897,7 +988,8 @@ public final class LlamaBridgeImpl {
             draftMaxDefault: resolvedDraftMax
         )
         SessionRegistry.shared.add(session)
-        return .success(id)
+        let offloadedLayers = canUseGPU ? min(nGpuLayers, c_llama_model_n_layer(modelPtr)) : 0
+        return .success(id, contextSize: nCtxActual, gpuLayers: offloadedLayers)
     }
 
     /// Streaming generation. Returns the final result after the loop ends.
@@ -930,13 +1022,26 @@ public final class LlamaBridgeImpl {
         draftMin: Int32? = nil,
         draftMax: Int32? = nil,
         tokenTreeTrie: Data? = nil,
+        deadline: DispatchTime? = nil,
         onToken: ((String, Bool) -> Void)? = nil
     ) -> LlamaGenerateResult {
         guard let session = SessionRegistry.shared.get(contextId) else {
             return .failure("llama_generate: unknown context_id \(contextId)")
         }
-        session.cancelled = false
+        session.beginGeneration()
+        defer { session.endGeneration() }
         let start = DispatchTime.now()
+        // Polled between decode steps: an explicit cancel, or the caller's
+        // deadline passing, ends the run with partial output.
+        var timedOut = false
+        func shouldStop() -> Bool {
+            if session.isCancelled { return true }
+            if let deadline, DispatchTime.now() >= deadline {
+                timedOut = true
+                return true
+            }
+            return false
+        }
 
         // 1. Tokenize prompt.
         let promptTokens = LlamaBridgeImpl.tokenize(
@@ -966,6 +1071,17 @@ public final class LlamaBridgeImpl {
         var mutableBatch = batch
         var prefilled = 0
         while prefilled < promptTokens.count {
+            if shouldStop() {
+                onToken?("", true)
+                return .success(
+                    text: "",
+                    promptTokens: promptTokens.count,
+                    outputTokens: 0,
+                    durationMs: Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000.0,
+                    finishReason: timedOut ? "timeout" : "cancelled",
+                    incomplete: true
+                )
+            }
             let chunkEnd = min(prefilled + prefillChunkSize, promptTokens.count)
             withUnsafeMutablePointer(to: &mutableBatch) { ptr in
                 shim_batch_reset(ptr)
@@ -1038,14 +1154,27 @@ public final class LlamaBridgeImpl {
         var draftScratch = [Int32](repeating: 0, count: Int(effectiveDraftMax))
 
         // 4. Generation loop.
+        // Byte-level vocabularies split one character across tokens, so raw
+        // bytes accumulate and only complete UTF-8 text reaches `generated`,
+        // `onToken` and stop-sequence matching.
+        var tokenText = Utf8TokenText()
         var generated = ""
+        func appendToken(_ token: Int32) -> String {
+            let piece = tokenText.append(LlamaBridgeImpl.tokenBytes(vocab: session.vocab, token: token))
+            generated.append(piece)
+            return piece
+        }
         var generatedTokens: Int32 = 0
         var nPast: Int32 = Int32(promptTokens.count)
         var stoppedByStopSeq = false
         var stoppedByEog = false
+        var stoppedByCancel = false
 
         while generatedTokens < maxTokens {
-            if session.cancelled { break }
+            if shouldStop() {
+                stoppedByCancel = true
+                break
+            }
 
             // First, sample one token from the target's current distribution.
             // This is the verified token that the target accepts unconditionally.
@@ -1057,11 +1186,10 @@ public final class LlamaBridgeImpl {
                 break
             }
 
-            let piece = LlamaBridgeImpl.tokenToPiece(vocab: session.vocab, token: newTokenId)
-            generated.append(piece)
+            let piece = appendToken(newTokenId)
             generatedTokens += 1
 
-            onToken?(piece, false)
+            if !piece.isEmpty { onToken?(piece, false) }
             if useSpec {
                 pastTokenBuffer.append(newTokenId)
             }
@@ -1144,21 +1272,19 @@ public final class LlamaBridgeImpl {
                             stoppedByEog = true
                             break
                         }
-                        let p = LlamaBridgeImpl.tokenToPiece(vocab: session.vocab, token: verified)
-                        generated.append(p)
+                        let p = appendToken(verified)
                         generatedTokens += 1
                         pastTokenBuffer.append(verified)
-                        onToken?(p, false)
+                        if !p.isEmpty { onToken?(p, false) }
                         nPast += 1
                         break
                     }
                     // Agree — accept the proposal verbatim.
                     c_llama_sampler_accept(chain, proposed)
-                    let p = LlamaBridgeImpl.tokenToPiece(vocab: session.vocab, token: proposed)
-                    generated.append(p)
+                    let p = appendToken(proposed)
                     generatedTokens += 1
                     pastTokenBuffer.append(proposed)
-                    onToken?(p, false)
+                    if !p.isEmpty { onToken?(p, false) }
                     nPast += 1
                     if c_llama_vocab_is_eog(session.vocab, proposed) {
                         stoppedByEog = true
@@ -1179,8 +1305,10 @@ public final class LlamaBridgeImpl {
 
         onToken?("", true)
 
-        // Strip stop sequence from the bulk text (streaming consumer already saw it).
-        var finalText = generated
+        // Strip stop sequence from the bulk text (streaming consumer already saw
+        // it). Otherwise decode every byte, including a trailing partial
+        // character the stream held back.
+        var finalText = stoppedByStopSeq ? generated : tokenText.text
         if stoppedByStopSeq {
             for stop in stopSequences where !stop.isEmpty && finalText.hasSuffix(stop) {
                 finalText = String(finalText.dropLast(stop.count))
@@ -1191,8 +1319,8 @@ public final class LlamaBridgeImpl {
         let elapsedNs = DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds
         let finishReason: String
         let incomplete: Bool
-        if session.cancelled {
-            finishReason = "cancelled"
+        if stoppedByCancel {
+            finishReason = timedOut ? "timeout" : "cancelled"
             incomplete = true
         } else if generatedTokens >= maxTokens {
             finishReason = "max_tokens"
@@ -1220,10 +1348,21 @@ public final class LlamaBridgeImpl {
         )
     }
 
-    /// Marks the in-flight generation on `contextId` for cancellation. The
-    /// generation loop polls this flag between sampled tokens.
+    /// Marks the pending generations on `contextId` for cancellation. The
+    /// generation loop polls this flag between decode steps. With nothing
+    /// pending this is a no-op, so it cannot stop a later request.
     public func cancel(contextId: Int64) {
-        SessionRegistry.shared.get(contextId)?.cancelled = true
+        SessionRegistry.shared.get(contextId)?.requestCancel()
+    }
+
+    /// Callers that queue a generation on the session's work queue mark it
+    /// pending first, so a cancel sent while it waits is honored.
+    public func beginGeneration(contextId: Int64) {
+        SessionRegistry.shared.get(contextId)?.beginGeneration()
+    }
+
+    public func endGeneration(contextId: Int64) {
+        SessionRegistry.shared.get(contextId)?.endGeneration()
     }
 
     public func synthesizeSpeech(
@@ -1245,19 +1384,15 @@ public final class LlamaBridgeImpl {
             // When CoreML Kokoro is unavailable, route through OmniVoice — the
             // tier DEFAULT voice engine (ELIZA_1_VOICE_BACKENDS) and the validated
             // fused engine. The fork GGUF-Kokoro path is intentionally disabled on
-            // iOS ("not production speech"); OmniVoice is not gated.
-            return Self.withTemporaryEnvironment("ELIZA_TTS_BACKEND", value: "omnivoice") {
-                return Self.withTemporaryEnvironment("ELIZA_TTS_MAX_BACKEND_ALLOC_MB", value: "768") {
-                    return Self.withTemporaryEnvironment("GGML_BACKEND", value: "CPU") {
-                        return synthesizeSpeechAttempt(
-                            bundleDir: bundleDir,
-                            text: text,
-                            speakerPresetId: speakerPresetId,
-                            maxSamples: maxSamples
-                        )
-                    }
-                }
-            }
+            // iOS ("not production speech"); OmniVoice is not gated. The TTS
+            // backend settings are fixed once by `configureVoiceEnvironment`.
+            Self.configureVoiceEnvironment()
+            return synthesizeSpeechAttempt(
+                bundleDir: bundleDir,
+                text: text,
+                speakerPresetId: speakerPresetId,
+                maxSamples: maxSamples
+            )
         }
     }
 
@@ -1272,13 +1407,11 @@ public final class LlamaBridgeImpl {
         sampleRate: Int
     ) -> LlamaAsrTranscribeResult {
         ttsQueue.sync {
-            Self.withTemporaryEnvironment("GGML_BACKEND", value: "CPU") {
-                transcribeSpeechAttempt(
-                    bundleDir: bundleDir,
-                    pcm: pcm,
-                    sampleRate: sampleRate
-                )
-            }
+            transcribeSpeechAttempt(
+                bundleDir: bundleDir,
+                pcm: pcm,
+                sampleRate: sampleRate
+            )
         }
     }
 
@@ -1287,7 +1420,7 @@ public final class LlamaBridgeImpl {
         pcm: [Float],
         sampleRate: Int
     ) -> LlamaAsrTranscribeResult {
-        let attemptBackend = Self.currentBackendEnv()
+        let attemptBackend = Self.voiceGgmlBackend
         NSLog("[LlamaBridgeImpl] ASR attempt start backend=\(attemptBackend) bundle=\(bundleDir) samples=\(pcm.count) sampleRate=\(sampleRate)")
         guard FileManager.default.fileExists(atPath: bundleDir) else {
             NSLog("[LlamaBridgeImpl] ASR attempt failed stage=bundle-check backend=\(attemptBackend) bundle=\(bundleDir)")
@@ -1416,7 +1549,7 @@ public final class LlamaBridgeImpl {
         speakerPresetId: String?,
         maxSamples: Int
     ) -> LlamaTtsSynthesizeResult {
-        let attemptBackend = Self.currentBackendEnv()
+        let attemptBackend = Self.voiceGgmlBackend
         NSLog("[LlamaBridgeImpl] TTS attempt start backend=\(attemptBackend) bundle=\(bundleDir) textBytes=\(text.lengthOfBytes(using: .utf8)) maxSamples=\(maxSamples)")
         guard FileManager.default.fileExists(atPath: bundleDir) else {
             NSLog("[LlamaBridgeImpl] TTS attempt failed stage=bundle-check backend=\(attemptBackend) bundle=\(bundleDir)")
@@ -1531,6 +1664,19 @@ public final class LlamaBridgeImpl {
         }
         clearCachedVoiceContext(region: region)
 
+        // The voice backend is bound when the context loads its weights.
+        Self.ggmlBackendEnvLock.lock()
+        defer { Self.ggmlBackendEnvLock.unlock() }
+        return Self.withTemporaryEnvironment("GGML_BACKEND", value: backend) {
+            createVoiceContext(bundleDir: bundleDir, backend: backend, region: region)
+        }
+    }
+
+    private func createVoiceContext(
+        bundleDir: String,
+        backend: String,
+        region: String
+    ) -> (context: ElizaInferenceContextPtr?, error: String?) {
         var createError: UnsafeMutablePointer<CChar>? = nil
         NSLog("[LlamaBridgeImpl] \(region.uppercased()) stage=create begin backend=\(backend)")
         guard let ctx = bundleDir.withCString({ bundlePtr in
@@ -1648,6 +1794,27 @@ public final class LlamaBridgeImpl {
         return value == "1" || value == "true" || value == "yes" || value == "on"
     }
 
+    /// GGML backend the fused voice library runs on. Its create ABI takes no
+    /// backend argument and reads GGML_BACKEND while a context loads, so the
+    /// value is set only for that load (once per cached context), under
+    /// `ggmlBackendEnvLock`, which text-model loads also hold so they never
+    /// see it. A process-wide value would force text loads onto the CPU too.
+    private static let voiceGgmlBackend = "CPU"
+    private static let ggmlBackendEnvLock = NSLock()
+
+    private static let voiceEnvironment: Void = {
+        setenv("ELIZA_TTS_BACKEND", "omnivoice", 1)
+        setenv("ELIZA_TTS_MAX_BACKEND_ALLOC_MB", "768", 1)
+    }()
+
+    /// Fixes the TTS-only settings the fused voice library reads, once.
+    /// `FullBunEngineHost.start` calls it before Bun starts so this setenv
+    /// does not race other threads; the first voice call repeats it as a
+    /// no-op for hosts that start another way.
+    public static func configureVoiceEnvironment() {
+        _ = voiceEnvironment
+    }
+
     private static func withTemporaryEnvironment<T>(_ name: String, value: String, body: () -> T) -> T {
         let previous = getenv(name).map { String(cString: $0) }
         setenv(name, value, 1)
@@ -1741,7 +1908,13 @@ public final class LlamaBridgeImpl {
         return size.uint64Value
     }
 
+    /// Memory this process can still allocate before jetsam. On device that
+    /// is `os_proc_available_memory`; the simulator reports 0 there, so it
+    /// falls back to physical RAM minus the process footprint.
     private static func availableMemoryGB() -> Double {
+#if !targetEnvironment(simulator)
+        return Double(jetsamHeadroomBytes()) / (1024.0 * 1024.0 * 1024.0)
+#else
         var info = task_vm_info_data_t()
         var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
         let result = withUnsafeMutablePointer(to: &info) { ptr -> kern_return_t in
@@ -1754,6 +1927,7 @@ public final class LlamaBridgeImpl {
         let total = Double(ProcessInfo.processInfo.physicalMemory)
         let avail = max(0, total - used)
         return avail / (1024.0 * 1024.0 * 1024.0)
+#endif
     }
 
     private static func tokenize(vocab: LlamaVocabPtr, text: String, addSpecial: Bool) -> [Int32] {
@@ -1781,7 +1955,7 @@ public final class LlamaBridgeImpl {
         return Array(tokens.prefix(Int(written)))
     }
 
-    private static func tokenToPiece(vocab: LlamaVocabPtr, token: Int32) -> String {
+    private static func tokenBytes(vocab: LlamaVocabPtr, token: Int32) -> [UInt8] {
         var buf = [CChar](repeating: 0, count: 64)
         let n = buf.withUnsafeMutableBufferPointer { bp -> Int32 in
             c_llama_token_to_piece(vocab, token, bp.baseAddress!, Int32(bp.count), 0, false)
@@ -1793,16 +1967,16 @@ public final class LlamaBridgeImpl {
             let n2 = buf.withUnsafeMutableBufferPointer { bp -> Int32 in
                 c_llama_token_to_piece(vocab, token, bp.baseAddress!, Int32(bp.count), 0, false)
             }
-            if n2 <= 0 { return "" }
+            if n2 <= 0 { return [] }
             writtenCount = Int(n2)
         } else if n == 0 {
-            return ""
+            return []
         } else {
             writtenCount = Int(n)
         }
-        // Buffer is not necessarily null-terminated. Decode the byte slice as UTF-8.
-        let bytes = buf.prefix(writtenCount).map { UInt8(bitPattern: $0) }
-        return String(decoding: bytes, as: UTF8.self)
+        // Buffer is not necessarily null-terminated, and one token may hold
+        // only part of a UTF-8 character; `Utf8TokenText` decodes.
+        return buf.prefix(writtenCount).map { UInt8(bitPattern: $0) }
     }
 
     private static func takeInferenceError(
@@ -1860,9 +2034,12 @@ public final class LlamaBridgeImpl {
 
 public struct LlamaLoadResult {
     public let contextId: Int64?
+    public let contextSize: UInt32?
+    public let gpuLayers: Int32?
     public let error: String?
-    public static func success(_ id: Int64) -> LlamaLoadResult { .init(contextId: id, error: nil) }
-    public static func failure(_ msg: String) -> LlamaLoadResult { .init(contextId: nil, error: msg) }
+    public static func failure(_ msg: String) -> LlamaLoadResult {
+        .init(contextId: nil, contextSize: nil, gpuLayers: nil, error: msg)
+    }
 }
 
 public struct LlamaGenerateResult {
@@ -1991,6 +2168,7 @@ public final class LlamaBridgeImpl {
         draftMin: Int32? = nil,
         draftMax: Int32? = nil,
         tokenTreeTrie: Data? = nil,
+        deadline: DispatchTime? = nil,
         onToken: ((String, Bool) -> Void)? = nil
     ) -> LlamaGenerateResult {
         onToken?("", true)
@@ -1998,6 +2176,12 @@ public final class LlamaBridgeImpl {
     }
 
     public func cancel(contextId: Int64) {}
+
+    public func beginGeneration(contextId: Int64) {}
+
+    public func endGeneration(contextId: Int64) {}
+
+    public static func configureVoiceEnvironment() {}
 
     public func synthesizeSpeech(
         bundleDir: String,

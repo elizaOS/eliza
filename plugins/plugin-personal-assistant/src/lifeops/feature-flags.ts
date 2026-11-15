@@ -1,6 +1,6 @@
 /**
  * LifeOps feature-flag service: reads and mutates the owner's feature-flag state
- * over the flag registry, resolving defaults and notifying change listeners.
+ * over the built-in feature keys, resolving defaults and notifying change listeners.
  * Gates optional assistant capabilities on/off per owner.
  */
 import { type IAgentRuntime, logger, type Service } from "@elizaos/core";
@@ -13,11 +13,8 @@ import {
   isLifeOpsFeatureKey,
   type LifeOpsFeatureFlagKey,
   resolveFeatureDefaults,
-} from "./feature-flags.types.js";
-import {
-  getFeatureFlagRegistry,
   UnknownFeatureFlagError,
-} from "./registries/feature-flag-registry.js";
+} from "./feature-flags.types.js";
 import {
   executeRawSql,
   parseJsonRecord,
@@ -87,47 +84,31 @@ interface FeatureFlagDescriptor {
  * Resolve label/description/baseline-enabled/costsMoney for a feature key.
  *
  * Built-in keys (`isLifeOpsFeatureKey`) read from the Cloud-aware
- * `resolveFeatureDefaults`. Registered 3rd-party keys read from the
- * `FeatureFlagRegistry` contribution. Unknown keys throw
- * `UnknownFeatureFlagError`.
+ * `resolveFeatureDefaults`. Unknown keys throw `UnknownFeatureFlagError`.
  */
 function resolveDescriptor(
-  runtime: IAgentRuntime,
   key: LifeOpsFeatureFlagKey,
   cloudLinked: boolean,
 ): FeatureFlagDescriptor {
-  if (isLifeOpsFeatureKey(key)) {
-    const def = resolveFeatureDefaults({ cloudLinked })[key];
-    return {
-      enabled: def.enabled,
-      label: def.label,
-      description: def.description,
-      costsMoney: def.costsMoney,
-    };
+  if (!isLifeOpsFeatureKey(key)) {
+    throw new UnknownFeatureFlagError(key, ALL_FEATURE_KEYS);
   }
-  const registry = getFeatureFlagRegistry(runtime);
-  const contribution = registry?.get(key) ?? null;
-  if (!contribution) {
-    const known = registry?.list().map((c) => c.key) ?? [];
-    throw new UnknownFeatureFlagError(key, known);
-  }
-  const costsMoney = contribution.metadata?.costsMoney === "true";
+  const def = resolveFeatureDefaults({ cloudLinked })[key];
   return {
-    enabled: contribution.defaultEnabled,
-    label: contribution.label,
-    description: contribution.description,
-    costsMoney,
+    enabled: def.enabled,
+    label: def.label,
+    description: def.description,
+    costsMoney: def.costsMoney,
   };
 }
 
 function rowToState(
-  runtime: IAgentRuntime,
   row: Record<string, unknown>,
   fallback: LifeOpsFeatureFlagKey,
   cloudLinked: boolean,
 ): FeatureFlagState {
   const featureKey = toText(row.feature_key);
-  const descriptor = resolveDescriptor(runtime, featureKey, cloudLinked);
+  const descriptor = resolveDescriptor(featureKey, cloudLinked);
   const sourceText = toText(row.source);
   if (!ALLOWED_SOURCES.has(sourceText as FeatureFlagSource)) {
     throw new Error(`[FeatureFlags] unknown source from db: ${sourceText}`);
@@ -160,11 +141,10 @@ function rowToState(
 }
 
 function defaultState(
-  runtime: IAgentRuntime,
   key: LifeOpsFeatureFlagKey,
   cloudLinked: boolean,
 ): FeatureFlagState {
-  const descriptor = resolveDescriptor(runtime, key, cloudLinked);
+  const descriptor = resolveDescriptor(key, cloudLinked);
   return {
     featureKey: key,
     enabled: descriptor.enabled,
@@ -220,9 +200,9 @@ class PgFeatureFlagService implements FeatureFlagService {
         LIMIT 1`;
       const rows = await executeRawSql(this.runtime, sql);
       if (rows.length === 0) {
-        return defaultState(this.runtime, key, cloudLinked);
+        return defaultState(key, cloudLinked);
       }
-      return rowToState(this.runtime, rows[0], key, cloudLinked);
+      return rowToState(rows[0], key, cloudLinked);
     } finally {
       this.clearCloudSnapshot();
     }
@@ -236,22 +216,12 @@ class PgFeatureFlagService implements FeatureFlagService {
       const byKey = new Map<LifeOpsFeatureFlagKey, FeatureFlagState>();
       for (const row of rows) {
         const text = toText(row.feature_key);
-        byKey.set(text, rowToState(this.runtime, row, text, cloudLinked));
+        byKey.set(text, rowToState(row, text, cloudLinked));
       }
-      // The registry is the source of truth for "which flags exist". Built-in
-      // keys are always included (for back-compat with `ALL_FEATURE_KEYS`
-      // callers); 3rd-party registered keys are surfaced too. DB-only rows
-      // for keys the registry doesn't know about are dropped (caller likely
-      // un-registered them).
-      const registry = getFeatureFlagRegistry(this.runtime);
-      const known = new Set<LifeOpsFeatureFlagKey>(ALL_FEATURE_KEYS);
-      if (registry) {
-        for (const contribution of registry.list()) {
-          known.add(contribution.key);
-        }
-      }
-      return Array.from(known).map(
-        (key) => byKey.get(key) ?? defaultState(this.runtime, key, cloudLinked),
+      // `ALL_FEATURE_KEYS` is the set of flags that exist; DB-only rows for
+      // other keys are dropped.
+      return ALL_FEATURE_KEYS.map(
+        (key) => byKey.get(key) ?? defaultState(key, cloudLinked),
       );
     } finally {
       this.clearCloudSnapshot();
@@ -325,7 +295,7 @@ class PgFeatureFlagService implements FeatureFlagService {
       if (rows.length === 0) {
         throw new Error(`[FeatureFlags] upsert returned no rows for ${key}`);
       }
-      const state = rowToState(this.runtime, rows[0], key, cloudLinked);
+      const state = rowToState(rows[0], key, cloudLinked);
       logger.info(
         `[FeatureFlags] ${key} ${enabled ? "enabled" : "disabled"} via ${source}` +
           (enabledBy ? ` by ${enabledBy}` : ""),
@@ -363,7 +333,7 @@ export function createFeatureFlagService(
  *
  * Accepts both built-in `LifeOpsFeatureKey` values (compile-time safety
  * preserved for first-party callers like `requireFeatureEnabled(runtime,
- * "travel.book_flight")`) and any registered 3rd-party `LifeOpsFeatureFlagKey`.
+ * "travel.book_flight")`) and unvalidated `LifeOpsFeatureFlagKey` input.
  */
 export async function requireFeatureEnabled(
   runtime: IAgentRuntime,
@@ -372,14 +342,8 @@ export async function requireFeatureEnabled(
   const service = createFeatureFlagService(runtime);
   if (await service.isEnabled(key)) return;
   const { FeatureNotEnabledError } = await import("./feature-flags.types.js");
-  // Carry costsMoney from the registry contribution so 3rd-party flags get
-  // the same Cloud opt-in suggestion treatment as built-ins.
-  const registry = getFeatureFlagRegistry(runtime);
-  const contribution = registry?.get(key) ?? null;
-  const costsMoney = contribution?.metadata?.costsMoney === "true";
   throw new FeatureNotEnabledError(key, {
     cloudLinked: readCloudLinked(runtime),
-    costsMoney,
   });
 }
 

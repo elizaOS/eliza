@@ -45,6 +45,7 @@ import type { TaskGateRegistry } from "./gate-registry.js";
 import { computeNextFireAt } from "./next-fire-at.js";
 import { createStateLogger, type ScheduledTaskLogStore } from "./state-log.js";
 import { projectMinuteOffsetMs } from "./time-range.js";
+import { resolveTriggerTz } from "./trigger-tz.js";
 import {
   type ActivitySignalBusView,
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
@@ -520,6 +521,8 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
 
 export interface ScheduledTaskDispatchRecord {
   taskId: string;
+  /** The owner's clock used for this scheduled occurrence. */
+  timezone?: string;
   /** Added additively; legacy host dispatchers may omit it. */
   kind?: ScheduledTask["kind"];
   firedAtIso: string;
@@ -1311,15 +1314,28 @@ export function createScheduledTaskRunner(
    * occurrence every tick and fires it at the first tick after the gate opens
    * or the global pause ends. Record the occurrence instant, not the
    * (possibly late) tick, so the schedule keeps its phase.
+   *
+   * `pending` is for an owner's skip or complete on a row that has not fired
+   * the occurrence it waits for: with none due yet, that next occurrence is
+   * the one the owner settles.
    */
-  async function useUpRecurringOccurrence(task: ScheduledTask): Promise<void> {
+  async function useUpRecurringOccurrence(
+    task: ScheduledTask,
+    options?: { pending?: boolean },
+  ): Promise<void> {
     if (!isRecurringTrigger(task.trigger)) return;
-    const skipped = await isScheduledTaskDue(task, {
+    const context = {
       now: now(),
       ownerFacts: await deps.ownerFacts(),
       anchors: deps.anchors,
-    });
-    task.state.firedAt = skipped.occurrenceAtIso ?? now().toISOString();
+    };
+    const skipped = await isScheduledTaskDue(task, context);
+    const pending =
+      skipped.occurrenceAtIso === undefined && options?.pending
+        ? await computeNextFireAt(task, context)
+        : null;
+    task.state.firedAt =
+      skipped.occurrenceAtIso ?? pending ?? now().toISOString();
   }
 
   /**
@@ -1867,10 +1883,15 @@ export function createScheduledTaskRunner(
     };
   }
 
-  function mutateComplete(
+  async function mutateComplete(
     task: ScheduledTask,
     payload: { reason?: string } | undefined,
-  ): LifecycleMutation {
+  ): Promise<LifecycleMutation> {
+    // Completing a recurring task before its occurrence fired settles that
+    // occurrence; without `firedAt` it would still come due and fire.
+    if (task.state.status === "scheduled") {
+      await useUpRecurringOccurrence(task, { pending: true });
+    }
     task.state.status = "completed";
     task.state.completedAt = now().toISOString();
     task.state.lastDecisionLog = payload?.reason ?? "completed";
@@ -1911,6 +1932,11 @@ export function createScheduledTaskRunner(
     task: ScheduledTask,
     payload: { reason?: string } | undefined,
   ): Promise<ScheduledTask> {
+    // Skipping a recurring task before its occurrence fired uses that
+    // occurrence up; without `firedAt` it would still come due and fire.
+    if (task.state.status === "scheduled") {
+      await useUpRecurringOccurrence(task, { pending: true });
+    }
     task.state.status = "skipped";
     task.state.lastDecisionLog = payload?.reason ?? "user skipped";
     await persist(task);
@@ -1925,7 +1951,7 @@ export function createScheduledTaskRunner(
     task: ScheduledTask,
     payload: { reason?: string } | undefined,
   ): Promise<ScheduledTask> {
-    const mutation = mutateComplete(task, payload);
+    const mutation = await mutateComplete(task, payload);
     await persist(mutation.task);
     await logger.log(mutation.task.taskId, mutation.transition, {
       reason: mutation.reason,
@@ -2986,6 +3012,10 @@ export function createScheduledTaskRunner(
     try {
       dispatchResult = await dispatcher.dispatch({
         taskId: claimed.taskId,
+        timezone:
+          claimed.trigger.kind === "cron"
+            ? resolveTriggerTz(claimed.trigger.tz, await deps.ownerFacts())
+            : (await deps.ownerFacts()).timezone,
         kind: claimed.kind,
         firedAtIso: fireAtIso,
         channelKey: dispatchChannelKey,
@@ -3375,12 +3405,17 @@ export function createScheduledTaskRunner(
   ): Promise<ScheduledTask> {
     const task = await deps.store.get(taskId);
     if (!task) throw new Error(`evaluateCompletion: task ${taskId} not found`);
-    if (!task.completionCheck) return task;
+    // A settled row is left alone: the personal-assistant plugin runs two
+    // owner-reply scans per message, and the later one must not settle again.
+    if (!task.completionCheck || isTerminal(task.state.status)) return task;
     const contrib = deps.completionChecks.get(task.completionCheck.kind);
     if (!contrib) return task;
+    // Conditional: when both scans read the row before either commits, only
+    // the first commit runs `pipeline.onComplete`; the other one is raced.
     mutationSnapshots.set(task, {
       previous: structuredClone(task),
       verb: "complete",
+      conditional: true,
     });
     const ownerFacts = await deps.ownerFacts();
     const ctx: CompletionCheckContext = {

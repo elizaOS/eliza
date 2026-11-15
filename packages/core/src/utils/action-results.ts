@@ -7,9 +7,9 @@
 import type { ActionResult, ProviderDataRecord } from "../types/components";
 
 export const ACTION_RESULT_OVERSIZE_WARNING_TOKENS = 10000;
-export const ACTION_RESULT_TOKEN_ESTIMATE_CHARS = 4;
+const ACTION_RESULT_TOKEN_ESTIMATE_CHARS = 4;
 
-export const ACTION_RESULT_FULL_OUTPUT_REFERENCE_KEYS = new Set([
+const ACTION_RESULT_FULL_OUTPUT_REFERENCE_KEYS = new Set([
 	"fullOutputPath",
 	"fullOutputFile",
 	"outputPath",
@@ -23,7 +23,7 @@ export const ACTION_RESULT_FULL_OUTPUT_REFERENCE_KEYS = new Set([
 	"path",
 ]);
 
-export const ACTION_RESULT_FULL_ERROR_REFERENCE_KEYS = new Set([
+const ACTION_RESULT_FULL_ERROR_REFERENCE_KEYS = new Set([
 	"fullErrorPath",
 	"fullErrorFile",
 	"errorPath",
@@ -47,14 +47,6 @@ export interface ActionResultSizeWarning {
 export interface ActionResultReferences {
 	text?: string;
 	error?: string;
-}
-
-/** Serializes complete action data for model context; maxChars does not limit content. */
-export function formatActionResultDataForPrompt(
-	data: ProviderDataRecord,
-	_maxChars?: number,
-): string {
-	return JSON.stringify(data);
 }
 
 export function estimateActionResultTokens(text: string): number {
@@ -88,7 +80,7 @@ export function getActionResultActionName(result: ActionResult): string {
 	return "Unknown Action";
 }
 
-export function stringifyActionResultError(
+function stringifyActionResultError(
 	error: ActionResult["error"],
 ): string | undefined {
 	if (error === undefined || error === null) {
@@ -113,7 +105,7 @@ function getReferenceFromData(
 	return undefined;
 }
 
-export function getActionResultReference(
+function getActionResultReference(
 	result: ActionResult,
 	field: ActionResultTextField,
 ): string | undefined {
@@ -125,9 +117,8 @@ export function getActionResultReference(
 	);
 }
 
-export function formatCompleteActionResultText(
+function formatCompleteActionResultText(
 	text: string,
-	_maxChars: number,
 	reference?: string,
 ): string {
 	const trimmed = text.trim();
@@ -181,13 +172,13 @@ export function trimActionResultForPromptState<T extends ActionResult>(
 
 	const text =
 		typeof result.text === "string"
-			? formatCompleteActionResultText(result.text, 0, textReference)
+			? formatCompleteActionResultText(result.text, textReference)
 			: result.text;
 	const errorText = stringifyActionResultError(result.error);
 	const error =
 		errorText === undefined
 			? result.error
-			: formatCompleteActionResultText(errorText, 0, errorReference);
+			: formatCompleteActionResultText(errorText, errorReference);
 
 	return {
 		...result,
@@ -195,72 +186,4 @@ export function trimActionResultForPromptState<T extends ActionResult>(
 		...(error !== undefined ? { error } : {}),
 		data,
 	} as T;
-}
-
-export function formatActionResultsForPrompt(
-	actionResults: ActionResult[],
-	options: {
-		header?: string;
-		maxResults?: number;
-		preserveAbsoluteIndex?: boolean;
-		includeData?: boolean;
-	} = {},
-): string {
-	const {
-		header = "# Current Chain Action Results",
-		maxResults: _maxResults,
-		preserveAbsoluteIndex: _preserveAbsoluteIndex = true,
-		includeData = false,
-	} = options;
-
-	if (actionResults.length === 0) {
-		return "No action results available.";
-	}
-
-	const rendered = actionResults;
-
-	return [
-		header,
-		...rendered.map((result, index) => {
-			const displayIndex = index + 1;
-			const status = result.success === false ? "failed" : "succeeded";
-			const lines = [
-				`${displayIndex}. ${getActionResultActionName(result)} - ${status}`,
-			];
-			if (typeof result.text === "string") {
-				lines.push(`Output: ${formatCompleteActionResultText(result.text, 0)}`);
-			}
-
-			const errorText = stringifyActionResultError(result.error);
-			if (errorText) {
-				lines.push(`Error: ${formatCompleteActionResultText(errorText, 0)}`);
-			}
-			if (result.replyFailure) {
-				lines.push(`Reply unavailable: ${JSON.stringify(result.replyFailure)}`);
-			}
-
-			const modelData = result.promptData ?? result.data;
-			if (includeData && modelData && Object.keys(modelData).length > 0) {
-				lines.push(`Data: ${formatActionResultDataForPrompt(modelData)}`);
-			}
-
-			const outputReference = getActionResultReference(result, "text");
-			if (
-				outputReference &&
-				!lines.some((line) => line.includes(outputReference))
-			) {
-				lines.push(`Full output: ${outputReference}`);
-			}
-
-			const errorReference = getActionResultReference(result, "error");
-			if (
-				errorReference &&
-				!lines.some((line) => line.includes(errorReference))
-			) {
-				lines.push(`Full error: ${errorReference}`);
-			}
-
-			return lines.join("\n");
-		}),
-	].join("\n\n");
 }

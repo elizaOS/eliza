@@ -2,9 +2,7 @@
  * Shell access prober.
  *
  * Shell execution is app-internal — there's no OS permission for spawning
- * child processes. We honor an in-app toggle (managed by the existing
- * `PermissionManager.setShellEnabled` in
- * `packages/app/platforms/electrobun/src/native/permissions.ts`).
+ * child processes.
  *
  * The default prober reports granted access because shell execution is gated
  * elsewhere by the runtime's shell router and app-internal configuration. A

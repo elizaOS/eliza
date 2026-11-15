@@ -33,7 +33,7 @@ const ALLOWED_STATUSES = new Set([
 
 function usage() {
   return [
-    "Usage: node ../../packages/scripts/plugins/plugin-computeruse/validate-ios-device-evidence.ts [--require-complete] [manifest]",
+    "Usage: bun ../../packages/scripts/plugins/plugin-computeruse/validate-ios-device-evidence.ts [--require-complete] [manifest]",
     "",
     "Validates docs/ios-device-validation.json. With --require-complete, every",
     "check must have passed or be explicitly blocked by platform behavior, and",

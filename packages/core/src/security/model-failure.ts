@@ -13,13 +13,15 @@ import { TrajectoryLimitExceeded } from "../runtime/limits.ts";
 import { readActionFailureProvenance } from "../types/action-failure.ts";
 import { ModelType } from "../types/model.ts";
 import {
+	hasModelErrorCode,
+	isModelCancellationError,
 	isModelFundingAuthorityError,
 	isProviderContextOverflowFailure,
 	modelProviderErrorStatus,
 } from "../utils/model-errors.ts";
 import {
 	findNextCloseTag,
-	REASONING_TAG_NAMES,
+	REASONING_TAG_ALTERNATION,
 	stripPairedTagBlocks,
 	stripUnclosedTagSuffix,
 } from "../utils/reasoning-tags.ts";
@@ -251,6 +253,21 @@ export function isAuthError(error: unknown): boolean {
 	);
 }
 
+/** Socket-level error codes that mean the provider was unreachable, not wrong.
+ * Bun's fetch reports the same failures as ConnectionRefused / ConnectionClosed /
+ * FailedToOpenSocket. */
+const TRANSIENT_NETWORK_ERROR_CODES: ReadonlySet<string> = new Set([
+	"ECONNREFUSED",
+	"ECONNRESET",
+	"ENETUNREACH",
+	"EHOSTUNREACH",
+	"EAI_AGAIN",
+	"ETIMEDOUT",
+	"ConnectionRefused",
+	"ConnectionClosed",
+	"FailedToOpenSocket",
+]);
+
 /**
  * Detect failures where another model provider is worth trying before giving up.
  * This intentionally includes {@link isRateLimitError} so subscription-credit
@@ -277,15 +294,7 @@ export function isModelProviderFallbackError(
 	const unwrapped = unwrapRetryError(error);
 	// Cancellation is authoritative even if an SDK wrapper carries a stale
 	// retryable HTTP status or a message containing "timeout".
-	if (
-		[error, unwrapped].some((value) => {
-			const candidate = asErrorObject(value);
-			return (
-				candidate?.name === "AbortError" || candidate?.code === "ABORT_ERR"
-			);
-		})
-	)
-		return false;
+	if (isModelCancellationError(error)) return false;
 	if (isModelProviderRetryBudgetExhaustedError(unwrapped)) {
 		return true;
 	}
@@ -295,18 +304,9 @@ export function isModelProviderFallbackError(
 	// envelope also carries input/output validation failures, which must remain
 	// terminal even when another provider could return a plausible response.
 	const localFailure = asErrorObject(unwrapped);
-	if (
-		typeof localFailure?.code === "string" &&
-		[
-			"ECONNREFUSED",
-			"ECONNRESET",
-			"ENETUNREACH",
-			"EHOSTUNREACH",
-			"EAI_AGAIN",
-			"ETIMEDOUT",
-		].includes(localFailure.code)
-	)
-		return true;
+	// The AI SDK wraps a refused connection in an APICallError ("Cannot connect
+	// to API") and keeps the socket error, with its code, on `.cause`.
+	if (hasModelErrorCode(unwrapped, TRANSIENT_NETWORK_ERROR_CODES)) return true;
 	if (localFailure?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
 		return (
 			localFailure.reason === "backend_unavailable" ||
@@ -475,8 +475,6 @@ export function buildFailureReplyPrompt(
 		"Reply:",
 	].join("\n");
 }
-
-const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
 
 /**
  * Strips a leading close-only residue prefix — model output can open with a

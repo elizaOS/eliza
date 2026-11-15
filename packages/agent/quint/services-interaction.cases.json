@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "packages/agent/src/services/message-interaction-host.ts",
+    "packages/agent/src/services/message-interaction-session-store.ts",
+    "packages/agent/src/services/sqlite-message-interaction-session-store.ts"
+  ],
+  "bounds": {
+    "domain": "One interaction, two lock owners and one external effect.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_interaction",
+      "main": "services_interaction",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

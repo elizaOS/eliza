@@ -5,7 +5,6 @@
  * at module scope — that pattern previously forced the cloud plugin to load
  * during container boot.
  */
-import { readAliasedEnv } from "@elizaos/host/protocol";
 import { resolveDevCloudAuthorityEnvValue } from "./dev-cloud-env-authority.js";
 import { resolveDevCloudEnvAuthority } from "./dev-cloud-env-authority.js";
 import { type DevCloudEnvAuthority } from "./dev-cloud-env-authority.js";
@@ -15,7 +14,7 @@ function hasValue(value: string | undefined): boolean {
 function readProvisioningEnv(key: string, authority: DevCloudEnvAuthority | null): string | undefined {
     return authority
         ? resolveDevCloudAuthorityEnvValue(key)
-        : readAliasedEnv(key);
+        : process.env[key]?.trim();
 }
 function hasCompatApiToken(authority: DevCloudEnvAuthority | null): boolean {
     return hasValue(readProvisioningEnv("ELIZA_API_TOKEN", authority));

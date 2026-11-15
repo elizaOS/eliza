@@ -15,6 +15,7 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { buildTaskRuntime } from "../test/fixtures/bill-host/runtime.mjs";
 import { createBillOutcomeStore } from "./bill-outcome-store.mjs";
+import { billOwnerKey } from "./bill-owner-key.mjs";
 
 test("outcome insert failure and interrupted completion retry storage only and preserve owner isolation", async () => {
   const directory = mkdtempSync(join(tmpdir(), "bill-outcome-"));
@@ -150,6 +151,23 @@ test("outcome insert failure and interrupted completion retry storage only and p
       }),
       [],
     );
+    // A newer row that fails validation stops the list unless it is skipped;
+    // a limit reads only that many of the newest rows.
+    db.prepare(
+      "INSERT INTO bill_outcomes_v1(task_id,owner_key,document) VALUES (?,?,?)",
+    ).run("damaged", billOwnerKey(owner), "{}");
+    const store = createBillOutcomeStore(db, tasks);
+    assert.throws(() => store.listForOwner(owner), /Invalid outcome record/);
+    assert.deepEqual(
+      store.listForOwner(owner, { skipInvalid: true }).map((row) => row.taskId),
+      [task.id],
+    );
+    assert.deepEqual(
+      store.listForOwner(owner, { limit: 1, skipInvalid: true }),
+      [],
+    );
+    assert.throws(() => store.listForOwner(owner, { limit: 0 }), /limit/);
+    db.prepare("DELETE FROM bill_outcomes_v1 WHERE task_id='damaged'").run();
     assert.throws(
       () =>
         createBillOutcomeStore(db, tasks)

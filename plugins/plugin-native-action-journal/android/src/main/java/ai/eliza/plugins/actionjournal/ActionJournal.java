@@ -111,9 +111,14 @@ public final class ActionJournal {
  public String entrySlot(String scope, String id) { return configuration.namespace + ":" + scope(scope) + ":entry:" + id(id); }
  public String indexSlot(String scope) { return configuration.namespace + ":" + scope(scope) + ":index"; }
 
- private JSONObject readEntry(String scope, String id) throws Exception {
+ private JSONObject storedEntry(String scope, String id) throws Exception {
   String value = storage.read(entrySlot(scope, id));
   return value == null ? null : new JSONObject(value);
+ }
+ /** The live entry; an evicted tombstone reads as absent everywhere except {@link #reserve}. */
+ private JSONObject readEntry(String scope, String id) throws Exception {
+  JSONObject entry = storedEntry(scope, id);
+  return entry == null || "evicted".equals(entry.optString("phase")) ? null : entry;
  }
  private void writeEntry(String scope, String id, JSONObject entry) throws Exception { storage.write(entrySlot(scope, id), entry.toString()); }
 
@@ -122,7 +127,11 @@ public final class ActionJournal {
   scope(scope); id(id); field(operationId, ID); field(operationHash, "[a-f0-9]{64}");
   if (record == null || record.toString().length() > configuration.maxRecordChars) throw new IllegalArgumentException("Invalid journal record");
   synchronized (lock) {
-   JSONObject entry = readEntry(scope, id);
+   JSONObject entry = storedEntry(scope, id);
+   if (entry != null && "evicted".equals(entry.optString("phase"))) {
+    if (operationId.equals(entry.getString("operationId")) && operationHash.equals(entry.getString("operationHash"))) throw new Refused("Proposal already settled");
+    throw new Refused("Proposal is already journaled with a different operation");
+   }
    if (entry != null) {
     if (!operationId.equals(entry.getString("operationId")) || !operationHash.equals(entry.getString("operationHash")) || !sameJson(record, entry.getJSONObject("record"))) throw new Refused("Proposal is already journaled with a different operation");
     return new Reservation(entry, false);
@@ -132,9 +141,13 @@ public final class ActionJournal {
    boolean listed = false;
    for (int i = 0; i < index.length(); i++) if (id.equals(index.getString(i))) listed = true;
    if (!listed) {
+    JSONArray evicted = new JSONArray();
+    if (index.length() >= configuration.maxEntries) index = evictSettled(scope, index, index.length() - configuration.maxEntries + 1, evicted);
     if (index.length() >= configuration.maxEntries) throw new Refused("Action journal is full");
     index.put(id);
     storage.write(indexSlot(scope), index.toString());
+    // A crash before a tombstone lands leaves an unlisted settled entry, which still refuses replay.
+    for (int i = 0; i < evicted.length(); i++) writeEntry(scope, evicted.getJSONObject(i).getString("proposalId"), evicted.getJSONObject(i));
    }
    // Index commits first: a crash can leave a harmless absent entry, never an unlisted effect.
    entry = new JSONObject().put("scope", scope).put("proposalId", id).put("operationId", operationId).put("operationHash", operationHash)
@@ -142,6 +155,24 @@ public final class ActionJournal {
    writeEntry(scope, id, entry);
    return new Reservation(entry, true);
   }
+ }
+
+ /**
+  * Drops up to {@code count} of the oldest settled entries from {@code index}: terminal, not
+  * unknown, and without a native dispatch claim. Each leaves a small tombstone in {@code evicted}
+  * so the proposal can never be reserved again. Reserved, applying and unknown entries stay.
+  */
+ private JSONArray evictSettled(String scope, JSONArray index, int count, JSONArray evicted) throws Exception {
+  JSONArray kept = new JSONArray();
+  for (int i = 0; i < index.length(); i++) {
+   String listedId = index.getString(i);
+   JSONObject entry = evicted.length() < count ? storedEntry(scope, listedId) : null;
+   if (entry != null && "terminal".equals(entry.optString("phase")) && !"unknown".equals(entry.optString("status")) && !entry.has("nativeDispatchClaim")) {
+    evicted.put(new JSONObject().put("proposalId", listedId).put("operationId", entry.getString("operationId")).put("operationHash", entry.getString("operationHash"))
+     .put("phase", "evicted").put("status", entry.getString("status")));
+   } else kept.put(listedId);
+  }
+  return kept;
  }
 
  /** Records the dispatch intent of one attempt. Only a reserved entry may start applying. */
@@ -158,7 +189,8 @@ public final class ActionJournal {
 
  /**
   * Moves an entry to its single terminal state. An identical replay of the terminal state is
-  * returned unchanged; a different one is refused. Success requires a recorded dispatch.
+  * returned unchanged; a different one is refused. Success requires a recorded dispatch. An entry
+  * with a native dispatch claim can only finish as {@code unknown}: its receipt settles it later.
   */
  public JSONObject finish(String scope, String id, String status, String summary, JSONObject result) throws Exception {
   if (!STATUSES.contains(status) || summary == null || summary.length() > configuration.maxSummaryChars) throw new IllegalArgumentException("Invalid terminal status");
@@ -166,6 +198,7 @@ public final class ActionJournal {
    JSONObject entry = readEntry(scope(scope), id(id));
    if (entry == null) throw new Refused("Entry is not journaled");
    policy.check(entry, status, result);
+   if (entry.has("nativeDispatchClaim") && !"terminal".equals(entry.getString("phase")) && !"unknown".equals(status)) throw new Refused("Claimed deletion settles through its receipt");
    if ("terminal".equals(entry.getString("phase"))) {
     if (!status.equals(entry.getString("status")) || !summary.equals(entry.getString("summary")) || !sameJson(result, entry.optJSONObject("result"))) throw new Refused("Entry already finished differently");
     return entry;

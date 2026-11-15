@@ -8,7 +8,7 @@
 import { handleBirdeyeMarketDataProxyGet } from "@elizaos/cloud-shared/lib/services/proxy/birdeye-handler";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { withGuardedPaidProxyAdmission } from "@/api-app/lib/guarded-paid-proxy";
+import { withGuardedPaidProxyAdmission } from "../../../../src/lib/guarded-paid-proxy";
 
 const app = new Hono<AppEnv>();
 

@@ -54,6 +54,7 @@ import {
   startVoiceMicCapture,
   type VoiceMicCapture,
   VoiceMicCaptureError,
+  VoiceMicReleaseError,
 } from "./voice-session-mic-capture";
 import {
   claimVoiceSession,
@@ -145,6 +146,8 @@ export interface VoiceTraceMark {
   atMs: number;
 }
 export interface VoiceSessionClientOptions {
+  /** Require negotiated non-success outcomes; legacy/Cloud callers opt in explicitly. */
+  requireTurnTerminal?: boolean;
   /** Read current renderer state, not the snapshot from session creation. */
   getUiContext?: () => VoiceUiContext;
   agentId: string;
@@ -255,7 +258,12 @@ export interface VoiceSessionClient {
   setMicrophoneMuted(muted: boolean): void;
   /** Unlock playback on a user gesture (iOS autoplay). */
   unlockPlayback(): Promise<void>;
-  /** Send a clean `bye` and tear everything down. */
+  /**
+   * Send a clean `bye` and tear everything down. Resolving proves every
+   * microphone track this client opened has ended. Rejects with
+   * {@link VoiceMicReleaseError} while one has not; calling it again asks that
+   * capture again, and no new capture opens over it.
+   */
   stop(): Promise<void>;
 }
 function nowDefault(): number {
@@ -270,6 +278,9 @@ const NON_RECOVERABLE_SERVER_ERROR_CODES: ReadonlySet<string> = new Set([
   "quota_exhausted",
   "insufficient_credits",
   "revoked",
+  "voice_retirement_unconfirmed",
+  "turn_terminal_unsupported",
+  "hello_bad_capability",
 ]);
 /** Parse the mint `expiresAt` (epoch ms number, epoch seconds, or ISO string). */
 function parseExpiresAtMs(value: number | string | undefined): number | null {
@@ -287,6 +298,15 @@ export function createVoiceSessionClient(
 ): VoiceSessionClient {
   const now = options.now ?? nowDefault;
   const mintPath = options.mintPath ?? "/api/v1/voice/session";
+  const requireTurnTerminal = options.requireTurnTerminal === true;
+  const turnTerminalOffers = new WeakMap<VoiceWebSocketLike, string>();
+  const renewalOffers = new WeakMap<VoiceWebSocketLike, string>();
+  const renewedLeases = new WeakMap<VoiceWebSocketLike, number>();
+  let turnTerminalBinding: {
+    socket: VoiceWebSocketLike;
+    generation: number;
+    sessionId: string;
+  } | null = null;
   const doFetch = options.fetch;
   const wsFactory =
     options.webSocketFactory ??
@@ -315,6 +335,9 @@ export function createVoiceSessionClient(
   let micSocket: VoiceWebSocketLike | null = null;
   let captureRetentionTimer: ReturnType<typeof setTimeout> | null = null;
   let retiringMic: Promise<void> | null = null;
+  // Captures whose tracks have not confirmed ended. They outlive Stop: only
+  // their own tracks can clear them, and no new capture opens over one.
+  const unreleasedMics = new Set<VoiceMicReleaseError>();
   let playback: VoiceSessionPlayback | null = null;
   let reconnectsUsed = 0;
   // Monotonic timestamp of the most recent server `ready`; null while not live
@@ -323,10 +346,21 @@ export function createVoiceSessionClient(
   // Whether THIS lifecycle (since start()) ever reached server `ready` —
   // selects the pre-live vs live reconnect budget.
   let everLiveThisLifecycle = false;
+  let retirementBlocked = false;
   let rotationTimer: ReturnType<typeof setTimeout> | null = null;
   // Epoch expiry of the CURRENT minted token; rotation never fires past it
   // (the server has already severed — the reactive recovery path owns it).
   let rotationDeadlineMs: number | null = null;
+  let rotationPreparation: {
+    socket: VoiceWebSocketLike;
+    pending: boolean;
+    minted?: VoiceSessionMintResponse;
+  } | null = null;
+  let rotationOffer: VoiceSessionMintResponse | null = null;
+  const unsettledTurnTraceIds = new Set<string>();
+  const terminalTurnTraceIds = new Set<string>();
+  const expectedInterruptionTraceIds = new Set<string>();
+  let activePlaybackTraceId: string | null = null;
   let ownership: VoiceSessionLease | null = null;
   let disposed = false;
   let lifecycleGeneration = 0;
@@ -348,12 +382,13 @@ export function createVoiceSessionClient(
     mic?.setMuted(
       microphoneMuted ||
         state.phase === "speaking" ||
+        activePlaybackTraceId !== null ||
         micSocket !== ws ||
         connPhase !== "open",
     );
   };
   const setState = (next: VoiceSessionMachineState): void => {
-    state = next;
+    state = { ...next, playbackTraceId: activePlaybackTraceId };
     syncMicrophoneMute();
     options.onState?.(state, toContinuousStatus(state.phase));
   };
@@ -428,6 +463,7 @@ export function createVoiceSessionClient(
   };
   async function mintOnce(
     generation: number,
+    predecessorSessionId?: string,
   ): Promise<VoiceSessionMintResponse> {
     let consentNonce: string | null;
     try {
@@ -455,7 +491,9 @@ export function createVoiceSessionClient(
           agentId: options.agentId,
           conversationId: options.conversationId,
           transport: "websocket",
+          ...(requireTurnTerminal ? { turnTerminal: true } : {}),
           consentNonce,
+          ...(predecessorSessionId ? { predecessorSessionId } : {}),
         }),
       });
     } catch (cause) {
@@ -491,6 +529,13 @@ export function createVoiceSessionClient(
       // error-policy:J7 onMinted is correlation telemetry; a throwing listener must never turn a valid mint into a failed start.
       void ignoredError;
     }
+    if (requireTurnTerminal && json.turnTerminal !== true) {
+      throw new VoiceSessionMintError(
+        409,
+        "Voice host does not support turn settlement",
+        "turn_terminal_unsupported",
+      );
+    }
     return json;
   }
   async function mint(generation: number): Promise<VoiceSessionMintResponse> {
@@ -512,13 +557,17 @@ export function createVoiceSessionClient(
     }
     throw lastError ?? new Error("voice session mint failed");
   }
-  function sendControl(frame: Parameters<typeof encodeClientControl>[0]): void {
-    if (!ws || connPhase !== "open") return;
+  function sendControl(
+    frame: Parameters<typeof encodeClientControl>[0],
+  ): boolean {
+    if (!ws || connPhase !== "open") return false;
     try {
       ws.send(encodeClientControl(frame));
+      return true;
     } catch (ignoredError) {
       // error-policy:J5 a send race with a closing socket is observed by the close handler, which drives reconnect/teardown.
       void ignoredError;
+      return false;
     }
   }
   function sendUplinkAudio(bytes: Uint8Array): void {
@@ -610,6 +659,106 @@ export function createVoiceSessionClient(
       mark("not_reached(unparseable_control)", state.traceId);
       return;
     }
+    if (event.t === "lease_extended") {
+      const previous = renewedLeases.get(socket);
+      if (
+        renewalOffers.get(socket) !== event.sessionId ||
+        previous === undefined ||
+        event.expiresAt <= previous ||
+        event.expiresAt > previous + 60_000
+      )
+        return;
+      renewedLeases.set(socket, event.expiresAt);
+      scheduleRotation({ expiresAt: event.expiresAt }, generation);
+      return;
+    }
+    if (event.t === "turn_terminal") {
+      const binding = turnTerminalBinding;
+      if (
+        !binding ||
+        binding.socket !== socket ||
+        binding.generation !== generation ||
+        binding.sessionId !== turnTerminalOffers.get(socket) ||
+        !unsettledTurnTraceIds.delete(event.traceId)
+      )
+        return;
+      // Consume and tombstone before any reducer or callback can re-enter.
+      terminalTurnTraceIds.add(event.traceId);
+    }
+    if (event.t === "stt_final" && terminalTurnTraceIds.has(event.traceId))
+      return;
+    if (
+      event.t === "interrupted" &&
+      turnTerminalBinding?.socket === socket &&
+      turnTerminalBinding.generation === generation
+    ) {
+      // Server interruption cancels the whole voice session's pending work,
+      // but only an owned pending/audio trace or expected local ACK can confirm it.
+      if (
+        typeof event.traceId !== "string" ||
+        !event.traceId ||
+        event.traceId.length > 256 ||
+        (event.reason !== "acoustic" && event.reason !== "explicit") ||
+        (activePlaybackTraceId !== event.traceId &&
+          !unsettledTurnTraceIds.has(event.traceId) &&
+          !expectedInterruptionTraceIds.has(event.traceId))
+      )
+        return;
+      for (const traceId of unsettledTurnTraceIds)
+        terminalTurnTraceIds.add(traceId);
+      terminalTurnTraceIds.add(event.traceId);
+      unsettledTurnTraceIds.clear();
+      expectedInterruptionTraceIds.clear();
+    }
+    if (
+      event.t === "stt_final" &&
+      !expectedInterruptionTraceIds.has(event.traceId)
+    ) {
+      // A newly admitted utterance on this ordered socket follows the sent
+      // global barge-in. Retire only that older local-cancel generation so a
+      // delayed ACK cannot cancel this future turn.
+      for (const traceId of expectedInterruptionTraceIds) {
+        unsettledTurnTraceIds.delete(traceId);
+        terminalTurnTraceIds.add(traceId);
+      }
+      expectedInterruptionTraceIds.clear();
+    }
+    if (
+      event.t === "ready" &&
+      requireTurnTerminal &&
+      (event.turnTerminal !== true ||
+        turnTerminalOffers.get(socket) !== event.sessionId)
+    ) {
+      const released = stop();
+      emitError(new Error("Voice host does not support turn settlement"));
+      void released.catch(() => {});
+      return;
+    }
+    if (
+      event.t === "ready" &&
+      turnTerminalBinding?.socket === socket &&
+      turnTerminalBinding.generation === generation
+    )
+      return;
+    if (event.t === "ready") {
+      if (
+        renewalOffers.get(socket) === event.sessionId &&
+        typeof event.leaseExpiresAt === "number" &&
+        event.leaseExpiresAt > epochNow()
+      ) {
+        renewedLeases.set(socket, event.leaseExpiresAt);
+        scheduleRotation({ expiresAt: event.leaseExpiresAt }, generation);
+      }
+      turnTerminalBinding =
+        turnTerminalOffers.has(socket) &&
+        turnTerminalOffers.get(socket) === event.sessionId &&
+        event.turnTerminal === true
+          ? { socket, generation, sessionId: event.sessionId }
+          : null;
+      unsettledTurnTraceIds.clear();
+      terminalTurnTraceIds.clear();
+      expectedInterruptionTraceIds.clear();
+    }
     // Local interruption must reject queued speech before server acknowledgement.
     // Settlement/history frames remain available; a new STT turn has its own ID.
     if (
@@ -620,6 +769,13 @@ export function createVoiceSessionClient(
     )
       return;
 
+    if (event.t === "speaking_start") activePlaybackTraceId = event.traceId;
+    if (event.t === "interrupted") {
+      // Flush owned audio before observer callbacks or state can reopen input.
+      activePlaybackTraceId = null;
+      playbackEnd = null;
+      playback?.flush();
+    }
     // End-of-generation is not end-of-playback: keep the mic closed and the
     // speaking state visible until the device consumes the last audio frame.
     if (event.t !== "speaking_end") setState(applyServerEvent(state, event));
@@ -628,6 +784,7 @@ export function createVoiceSessionClient(
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
     switch (event.t) {
       case "ready":
+        retirementBlocked = false;
         uiContextSupported = event.uiContext === true;
         playbackCompletionSupported = event.playbackCompletion === true;
         lastUiContext = undefined;
@@ -641,6 +798,7 @@ export function createVoiceSessionClient(
         break;
       case "stt_final":
         mark("stt_final", event.traceId);
+        if (event.text.trim()) unsettledTurnTraceIds.add(event.traceId);
         // An empty final never dispatches the LLM leg server-side, so no
         // speaking_end will follow — the machine parked at 'complete' and the
         // loop must happen HERE or the turn never returns to listening
@@ -685,25 +843,40 @@ export function createVoiceSessionClient(
         // Reconcile: the server confirms the interruption. Ensure local audio is
         // silenced (idempotent with an optimistic local flush) and loop to
         // listening.
-        playbackEnd = null;
-        playback?.flush();
         mark("interrupted", event.traceId);
+        unsettledTurnTraceIds.delete(event.traceId);
         setState(loopToListening(state));
         break;
       case "error":
         if (!event.retryable) {
+          if (
+            event.code === "voice_retirement_unconfirmed" &&
+            everLiveThisLifecycle
+          ) {
+            // Recovery and rotation can retry the same cleanup barrier without
+            // opening providers until it confirms. Retain the live budget.
+            retirementBlocked = true;
+            requestRecovery("retirement_unconfirmed", generation, socket);
+            break;
+          }
           if (NON_RECOVERABLE_SERVER_ERROR_CODES.has(event.code)) {
             // Re-minting cannot help (quota) or would defeat the server's
             // intent (revoke). Surface the terminal cause and stop cleanly.
             mark(`not_reached(server_terminal:${event.code})`, state.traceId);
+            // Notify immediately to cancel the UI's fallback watchdog. The
+            // typed refusal carries teardown completion so idle is not handed
+            // back to the caller while the old capture is still retiring.
+            const captureReleased = stop();
             emitError(
-              new Error(
-                event.code === "insufficient_credits"
-                  ? "Voice needs more Eliza Cloud credits. Add credits, then try again."
-                  : `voice session ended: ${event.code}`,
-              ),
+              event.code === "voice_retirement_unconfirmed"
+                ? new VoiceSessionRefusedError(event.code, captureReleased)
+                : new Error(
+                    event.code === "insufficient_credits"
+                      ? "Voice needs more Eliza Cloud credits. Add credits, then try again."
+                      : `voice session ended: ${event.code}`,
+                  ),
             );
-            void stop();
+            void captureReleased.catch(() => {});
             break;
           }
           // Fatal server error: tear down and (unless intentional) re-mint.
@@ -711,7 +884,14 @@ export function createVoiceSessionClient(
           requestRecovery("server_error", generation, socket);
         }
         break;
+      case "turn_terminal":
+        mark(`not_reached(turn_${event.outcome})`, event.traceId);
+        // No playback flush, capture stop, recovery or success notification.
+        if (state.phase === "complete" && activePlaybackTraceId === null)
+          setState(loopToListening(state));
+        break;
       case "usage":
+        unsettledTurnTraceIds.delete(event.traceId);
         // A deliberate silent turn has no playback completion callback.
         if (state.phase === "complete") setState(loopToListening(state));
         break;
@@ -726,7 +906,10 @@ export function createVoiceSessionClient(
     generation: number,
     socket: VoiceWebSocketLike,
   ): Promise<void> {
-    if (retiringMic) await retiringMic;
+    if (retiringMic || unreleasedMics.size > 0) {
+      await Promise.all([...unreleasedMics].map(retryMicRelease));
+      await retiringMic;
+    }
     // A ready frame may race Stop/ownership change while the prior device releases.
     if (
       captureSocket === socket ||
@@ -752,6 +935,7 @@ export function createVoiceSessionClient(
         ? mic === capturedMic
         : captureSocket === socket && ws === socket);
     try {
+      for (const unreleased of unreleasedMics) throw unreleased;
       const createdMic = await startVoiceMicCapture({
         onFrame: (bytes) => {
           if (currentCapture() && micSocket !== null && ws === micSocket) {
@@ -783,8 +967,7 @@ export function createVoiceSessionClient(
       });
       capturedMic = createdMic;
       if (!isLifecycleCurrent(generation) || ws !== socket || mic) {
-        // error-policy:J6 best-effort release of a mic whose session was superseded before it attached.
-        await createdMic.stop().catch(() => {});
+        await releaseMic(() => createdMic.stop());
         return;
       }
       mic = createdMic;
@@ -794,6 +977,7 @@ export function createVoiceSessionClient(
       // Now genuinely listening.
       setState(beginListening(state));
     } catch (err) {
+      if (err instanceof VoiceMicReleaseError) unreleasedMics.add(err);
       if (!isLifecycleCurrent(generation) || ws !== socket) return;
       const error =
         err instanceof VoiceMicCaptureError
@@ -811,12 +995,24 @@ export function createVoiceSessionClient(
     minted: VoiceSessionMintResponse,
     generation: number,
   ): Promise<void> {
+    turnTerminalBinding = null;
+    // Recovery may use an already prepared offer instead of mintOnce. Recheck
+    // the exact ticket before constructing a socket, without minting a fallback.
+    if (requireTurnTerminal && minted.turnTerminal !== true) {
+      throw new VoiceSessionMintError(
+        409,
+        "Voice host does not support turn settlement",
+        "turn_terminal_unsupported",
+      );
+    }
     assertLifecycleCurrent(generation);
     const uplink = negotiateCodec(preferredUplink, minted.uplink?.codecs);
     const downlink = negotiateCodec(preferredDownlink, minted.downlink?.codecs);
     if (!uplink || !downlink) {
       throw new VoiceSessionMintError(-1, "no compatible codec offered");
     }
+    rotationOffer = minted;
+    rotationPreparation = null;
     const acceptedExpiryMs = parseExpiresAtMs(minted.expiresAt);
     if (
       captureRetentionTimer !== null &&
@@ -844,6 +1040,10 @@ export function createVoiceSessionClient(
         return;
       }
       connPhase = "open";
+      if (minted.turnTerminal === true)
+        turnTerminalOffers.set(socket, minted.sessionId);
+      if (minted.leaseRenewal === true)
+        renewalOffers.set(socket, minted.sessionId);
       // FIRST frame MUST be the hello with the token — never a header.
       try {
         socket.send(
@@ -851,6 +1051,12 @@ export function createVoiceSessionClient(
             t: "hello",
             token: minted.token,
             protocol: VOICE_SESSION_PROTOCOL_VERSION,
+            ...(minted.turnTerminal === true
+              ? { turnTerminal: true as const }
+              : {}),
+            ...(minted.leaseRenewal === true
+              ? { leaseRenewal: true as const }
+              : {}),
             uplinkCodec: uplink,
             downlinkCodec: downlink,
             sampleRate: VOICE_SESSION_SAMPLE_RATE,
@@ -893,7 +1099,7 @@ export function createVoiceSessionClient(
    * idle boundary — keeps that sever from ever cutting audible speech.
    */
   function scheduleRotation(
-    minted: VoiceSessionMintResponse,
+    minted: Pick<VoiceSessionMintResponse, "expiresAt">,
     generation: number,
   ): void {
     clearRotationTimer();
@@ -902,6 +1108,9 @@ export function createVoiceSessionClient(
     const expiresAtMs = parseExpiresAtMs(minted.expiresAt);
     if (expiresAtMs === null) return;
     rotationDeadlineMs = expiresAtMs;
+    // An acknowledged renewable host owns the paid deadline and closes on
+    // refusal or expiry. A second client renewal loop would race that owner.
+    if (ws && renewedLeases.has(ws)) return;
     const delayMs = Math.max(0, expiresAtMs - epochNow() - rotationLeadMs);
     rotationTimer = setTimeout(() => {
       rotationTimer = null;
@@ -918,7 +1127,46 @@ export function createVoiceSessionClient(
     }
     const socket = ws;
     if (!socket || connPhase !== "open") return;
-    if (state.phase !== "listening") {
+    if (rotationOffer?.rotationPreparation === "retire-before-open-v1") {
+      if (!rotationPreparation || rotationPreparation.socket !== socket) {
+        const preparation = { socket, pending: true } as NonNullable<
+          typeof rotationPreparation
+        >;
+        rotationPreparation = preparation;
+        // Mint only. Do not open a second socket or start a provider in advance.
+        void mintOnce(generation, rotationOffer.sessionId)
+          .then((minted) => {
+            if (
+              !isLifecycleCurrent(generation) ||
+              intentionalClose ||
+              ws !== socket ||
+              recoveryPromise ||
+              rotationPreparation !== preparation
+            )
+              return;
+            preparation.pending = false;
+            preparation.minted = minted;
+            attemptRotation(generation);
+          })
+          .catch(() => {
+            if (
+              !isLifecycleCurrent(generation) ||
+              ws !== socket ||
+              rotationPreparation !== preparation
+            )
+              return;
+            // Keep the paid current session. Do not repeatedly mint on this lease;
+            // its unchanged hard deadline and existing recovery still apply.
+            preparation.pending = false;
+            mark("token_rotation_prepare_failed", state.traceId);
+          });
+        return;
+      }
+      if (rotationPreparation.pending || !rotationPreparation.minted) return;
+      const expiry = parseExpiresAtMs(rotationPreparation.minted.expiresAt);
+      if (expiry === null || expiry <= epochNow()) return;
+    }
+    if (state.phase !== "listening" || unsettledTurnTraceIds.size > 0) {
       // Mid-turn: never cut audible speech or an in-flight transcription.
       // Re-check until the turn completes or the deadline passes.
       mark("token_rotation_deferred", state.traceId);
@@ -932,6 +1180,7 @@ export function createVoiceSessionClient(
     requestRecovery("token_rotation", generation, socket, {
       budgeted: false,
       cleanBye: true,
+      preparedMint: rotationPreparation?.minted,
     });
   }
   function requestRecovery(
@@ -941,9 +1190,20 @@ export function createVoiceSessionClient(
     recoveryOptions?: {
       budgeted?: boolean;
       cleanBye?: boolean;
+      preparedMint?: VoiceSessionMintResponse;
     },
   ): void {
     if (!isLifecycleCurrent(generation) || intentionalClose || ws !== socket) {
+      return;
+    }
+    if (recoveryPromise) {
+      // A new socket can refuse before the previous recovery task unwinds.
+      // Keep its identity and retry after that task; do not drop the refusal.
+      const pending = recoveryPromise;
+      void pending.then(() => {
+        if (recoveryPromise === pending) recoveryPromise = null;
+        requestRecovery(reason, generation, socket, recoveryOptions);
+      });
       return;
     }
     // Detach first. A fatal server frame commonly causes the same socket to
@@ -954,7 +1214,27 @@ export function createVoiceSessionClient(
     clearRotationTimer();
     if (recoveryOptions?.cleanBye) {
       try {
-        socket.send(encodeClientControl({ t: "bye" }));
+        socket.send(
+          encodeClientControl({
+            t: "bye",
+            ...(rotationOffer?.stopIntentVersion === 1 &&
+            rotationOffer.stopIntentGeneration === rotationOffer.sessionId
+              ? {
+                  intent: {
+                    version: 1 as const,
+                    kind: "budget_rotation" as const,
+                    generation: rotationOffer.stopIntentGeneration,
+                    ...(recoveryOptions?.preparedMint
+                      ? {
+                          successorSessionId:
+                            recoveryOptions.preparedMint.sessionId,
+                        }
+                      : {}),
+                  },
+                }
+              : {}),
+          }),
+        );
       } catch (ignoredError) {
         // error-policy:J6 the bye frame is a courtesy on a socket being rotated away.
         void ignoredError;
@@ -974,6 +1254,7 @@ export function createVoiceSessionClient(
       reason,
       generation,
       recoveryOptions?.budgeted ?? true,
+      recoveryOptions?.preparedMint,
     );
     recoveryPromise = pending;
     void pending.finally(() => {
@@ -984,9 +1265,15 @@ export function createVoiceSessionClient(
     reason: string,
     generation: number,
     budgetedInitial: boolean,
+    preparedMint?: VoiceSessionMintResponse,
   ): Promise<void> {
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
     clearRotationTimer();
+    turnTerminalBinding = null;
+    expectedInterruptionTraceIds.clear();
+    for (const traceId of unsettledTurnTraceIds)
+      mark(`not_reached(turn_terminal_unknown:${reason})`, traceId);
+    unsettledTurnTraceIds.clear();
     // The transport is already gone, so publish that fact before a browser
     // driver is allowed to delay microphone teardown. Later retry attempts
     // re-arm the caller's connect watchdog from inside the loop.
@@ -998,6 +1285,7 @@ export function createVoiceSessionClient(
       reason === "token_rotation" && !budgetedInitial && mic?.active;
     // Keep the playback context so an autoplay unlock survives reconnect.
     playbackEnd = null;
+    activePlaybackTraceId = null;
     playback?.flush();
     if (!retainCapture) await teardownMic();
     else if (rotationDeadlineMs !== null)
@@ -1027,8 +1315,16 @@ export function createVoiceSessionClient(
           `not_reached(reconnect_exhausted:${currentReason})`,
           state.traceId,
         );
-        emitError(new Error(`voice session lost: ${currentReason}`));
-        await stop();
+        const captureReleased = stop();
+        emitError(
+          retirementBlocked
+            ? new VoiceSessionRefusedError(
+                "voice_retirement_unconfirmed",
+                captureReleased,
+              )
+            : new Error(`voice session lost: ${currentReason}`),
+        );
+        await captureReleased;
         return;
       }
       if (budgeted) reconnectsUsed += 1;
@@ -1043,7 +1339,9 @@ export function createVoiceSessionClient(
         if (attempt > 1) await waitForReconnectBackoff(attempt, generation);
         // Reconnect ALWAYS re-mints; the old token is revoked/expired and
         // cannot reconnect (contract §7.1).
-        const minted = await mint(generation);
+        const offered = preparedMint;
+        preparedMint = undefined;
+        const minted = offered ?? (await mint(generation));
         assertLifecycleCurrent(generation);
         await openConnection(minted, generation);
         return;
@@ -1072,13 +1370,40 @@ export function createVoiceSessionClient(
         // Give-up on the recovery path is always transport-shaped: the session
         // was live, so the caller's mic control must stay armed for retry
         // rather than latching realtime off on a mint/consent error subtype.
+        const captureReleased = stop();
         emitError(
-          new Error(`voice session lost: ${currentReason}`, { cause: err }),
+          retirementBlocked
+            ? new VoiceSessionRefusedError(
+                "voice_retirement_unconfirmed",
+                captureReleased,
+              )
+            : new Error(`voice session lost: ${currentReason}`, { cause: err }),
         );
-        await stop();
+        await captureReleased;
         return;
       }
     }
+  }
+  /** Never rejects: a refused release stays in unreleasedMics until its own tracks end. */
+  function releaseMic(release: () => Promise<void>): Promise<void> {
+    const pending: Promise<void> = Promise.all([
+      retiringMic,
+      release().catch((failure: unknown) => {
+        unreleasedMics.add(
+          failure instanceof VoiceMicReleaseError
+            ? failure
+            : new VoiceMicReleaseError(release),
+        );
+      }),
+    ]).then(() => {
+      if (retiringMic === pending) retiringMic = null;
+    });
+    retiringMic = pending;
+    return pending;
+  }
+  function retryMicRelease(unreleased: VoiceMicReleaseError): Promise<void> {
+    unreleasedMics.delete(unreleased);
+    return releaseMic(unreleased.retryRelease);
   }
   async function teardownMic(): Promise<void> {
     clearCaptureRetentionTimer();
@@ -1089,33 +1414,30 @@ export function createVoiceSessionClient(
     pendingCapture?.abort();
     const currentMic = mic;
     mic = null;
-    if (!currentMic) {
-      await retiringMic;
-      return;
-    }
     // Keep a release fence after detaching ownership so a late ready cannot
     // acquire another physical capture before the retiring one actually stops.
-    // error-policy:J6 best-effort mic release after ownership is detached.
-    const release = currentMic.stop().catch(() => {});
-    retiringMic = release;
-    try {
-      await release;
-    } finally {
-      if (retiringMic === release) retiringMic = null;
-    }
+    await (currentMic ? releaseMic(() => currentMic.stop()) : retiringMic);
   }
   async function stop(): Promise<void> {
     disposed = true;
     intentionalClose = true;
     microphoneMuted = false;
     playbackEnd = null;
+    activePlaybackTraceId = null;
+    terminalTurnTraceIds.clear();
+    expectedInterruptionTraceIds.clear();
+    turnTerminalBinding = null;
     const stoppedOwnership = ownership;
     ownership = null;
     const stoppedGeneration = ++lifecycleGeneration;
     lifecycleAbort?.abort();
     lifecycleAbort = null;
     clearRotationTimer();
+    const stoppedOffer = rotationOffer;
     rotationDeadlineMs = null;
+    rotationPreparation = null;
+    rotationOffer = null;
+    unsettledTurnTraceIds.clear();
     lastLiveAtMs = null;
     // Detach playback before the first await. If a caller reuses this client
     // after the transport reaches `closed`, this stop owns only the old sink
@@ -1129,7 +1451,21 @@ export function createVoiceSessionClient(
     if (socket && connPhase === "open") {
       // Send directly after detaching the socket from asynchronous callbacks.
       try {
-        socket.send(encodeClientControl({ t: "bye" }));
+        socket.send(
+          encodeClientControl({
+            t: "bye",
+            ...(stoppedOffer?.stopIntentVersion === 1 &&
+            stoppedOffer.stopIntentGeneration === stoppedOffer.sessionId
+              ? {
+                  intent: {
+                    version: 1 as const,
+                    kind: "user_stop" as const,
+                    generation: stoppedOffer.stopIntentGeneration,
+                  },
+                }
+              : {}),
+          }),
+        );
       } catch (ignoredError) {
         // error-policy:J6 the bye frame is a courtesy on a socket being torn down.
         void ignoredError;
@@ -1177,6 +1513,7 @@ export function createVoiceSessionClient(
       reconnectsUsed = 0;
       lastLiveAtMs = null;
       everLiveThisLifecycle = false;
+      retirementBlocked = false;
       microphoneMuted = false;
       setState({ ...INITIAL_VOICE_SESSION_STATE, phase: "connecting" });
       // Create playback up front so an early user-gesture unlock is possible and
@@ -1198,14 +1535,13 @@ export function createVoiceSessionClient(
           },
           onDrained: () => {
             if (isLifecycleCurrent(generation)) {
-              mark("playback_drained", state.traceId);
               const ended = playbackEnd;
+              mark(
+                "playback_drained",
+                ended?.traceId ?? activePlaybackTraceId ?? state.traceId,
+              );
               playbackEnd = null;
-              if (
-                ended &&
-                state.phase === "speaking" &&
-                state.traceId === ended.traceId
-              ) {
+              if (ended && activePlaybackTraceId === ended.traceId) {
                 // Ordered before resumed audio on this same socket. Older servers
                 // retain their conservative estimate until they advertise support.
                 if (playbackCompletionSupported && ws && connPhase === "open")
@@ -1215,7 +1551,15 @@ export function createVoiceSessionClient(
                       traceId: ended.traceId,
                     }),
                   );
-                setState(loopToListening(applyServerEvent(state, ended)));
+                activePlaybackTraceId = null;
+                if (
+                  !unsettledTurnTraceIds.has(state.traceId ?? "") ||
+                  state.traceId === ended.traceId
+                ) {
+                  setState(loopToListening(applyServerEvent(state, ended)));
+                } else {
+                  setState({ ...state, phase: "thinking" });
+                }
               }
             }
           },
@@ -1269,13 +1613,23 @@ export function createVoiceSessionClient(
     },
     bargeIn() {
       if (disposed) return;
+      expectedInterruptionTraceIds.clear();
+      for (const traceId of unsettledTurnTraceIds)
+        expectedInterruptionTraceIds.add(traceId);
+      if (activePlaybackTraceId)
+        expectedInterruptionTraceIds.add(activePlaybackTraceId);
       // Flush local audible output IMMEDIATELY — do NOT wait for the server
-      // `interrupted` event. Then optimistically fold state and notify server.
+      // `interrupted` event. Send before UI callbacks can admit a later turn.
       playbackEnd = null;
+      activePlaybackTraceId = null;
       playback?.flush();
-      setState(applyClientAction(state, { type: "client/local_barge_in" }));
-      sendControl({ t: "barge_in" });
-      mark("barge_in_sent", state.traceId);
+      const beforeSend = state;
+      const traceId = state.traceId;
+      const sent = sendControl({ t: "barge_in" });
+      if (!sent) expectedInterruptionTraceIds.clear();
+      if (state === beforeSend)
+        setState(applyClientAction(state, { type: "client/local_barge_in" }));
+      if (sent) mark("barge_in_sent", traceId);
     },
     get microphoneMuted() {
       return microphoneMuted;
@@ -1301,7 +1655,12 @@ export function createVoiceSessionClient(
         state.traceId,
       );
     },
-    stop,
+    async stop() {
+      const refused = [...unreleasedMics];
+      await stop();
+      await Promise.all(refused.map(retryMicRelease));
+      for (const unreleased of unreleasedMics) throw unreleased;
+    },
   };
 }
 class VoiceSessionLifecycleCancelledError extends Error {
@@ -1340,5 +1699,23 @@ export class VoiceSessionMintError extends Error {
     return (
       this.status === 0 || this.status >= 500 || this.code === "agent_not_found"
     );
+  }
+}
+
+/** A server admission refusal cannot be recovered by starting another capture. */
+export class VoiceSessionRefusedError extends Error {
+  constructor(
+    readonly code: string,
+    readonly captureReleased: Promise<void> = Promise.resolve(),
+  ) {
+    super(
+      code === "insufficient_credits"
+        ? "Voice needs more Eliza Cloud credits. Add credits, then try again."
+        : `voice session ended: ${code}`,
+    );
+    this.name = "VoiceSessionRefusedError";
+  }
+  get quiet(): boolean {
+    return this.code === "voice_retirement_unconfirmed";
   }
 }

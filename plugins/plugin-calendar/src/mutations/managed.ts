@@ -194,6 +194,14 @@ export function createManagedCalendarMutationPort(
           !["not_accepted", "precondition_failed"].includes(String(f.outcome))
         )
           throw Error("Invalid Calendar rejection receipt");
+        // A failed precondition will fail the same way on retry, so it ends
+        // the approval; only a plain non-acceptance stays retryable.
+        if (f.outcome === "precondition_failed")
+          throw new CalendarMutationPreflightError(
+            f.code,
+            "The Calendar event changed or needs review in Calendar. Nothing was changed.",
+            { retryable: false },
+          );
         throw new CalendarMutationNotAcceptedError(
           f.code,
           "Calendar change was refused before acceptance.",

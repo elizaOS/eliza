@@ -84,7 +84,8 @@ public final class BrowserSitePromptTest {
 
     // External page handoff admission.
     String own = "https://localhost/";
-    for (String page : new String[] {"https://accounts.example/signin?continue=x#step", "https://example.com:8443/"})
+    for (String page : new String[] {"https://accounts.example/signin?continue=x#step", "https://example.com:8443/",
+        "https://example.com/?sub=auth0|123"})
       check(BrowserExternalPage.allowed(page, own), "allowed " + page);
     for (String page : new String[] {"http://example.com/", "javascript:alert(1)", "file:///x", "content://x/y",
         "intent://x", "https://user:secret@example.com/", "https://localhost/", "https://LOCALHOST:443/",

@@ -1,0 +1,34 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/direct-wallet-payments.ts",
+    "packages/cloud/shared/src/lib/services/evm-sweep-deletion.postgres.integration.test.ts",
+    "packages/cloud/shared/src/db/migrations/0561_evm_sweep_nonce_authority.sql"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Two PostgreSQL transactions, one payment and one sweep outbox. Receipt publication and deletion take the payment lock before its child outbox lock.",
+      "Deletion retains unconfirmed signed authority. Transaction completion or rollback releases both row locks. A matching receipt is already available; provider receipt validity is covered by the nonce model.",
+      "The model checks this finite lock order and includes the reversed-order deadlock witness. It does not establish fairness, database implementation refinement or freedom from unrelated lock cycles."
+    ],
+    "progress": "No additional progress guarantee; safety only."
+  },
+  "limitations": [
+    "Two PostgreSQL transactions, one payment and one sweep outbox. Receipt publication and deletion take the payment lock before its child outbox lock.",
+    "Deletion retains unconfirmed signed authority. Transaction completion or rollback releases both row locks. A matching receipt is already available; provider receipt validity is covered by the nonce model.",
+    "The model checks this finite lock order and includes the reversed-order deadlock witness. It does not establish fairness, database implementation refinement or freedom from unrelated lock cycles.",
+    "Existing SQL/provider tests are independent evidence; this port does not establish executable refinement or live provider acceptance."
+  ],
+  "cases": [
+    {
+      "name": "evm-sweep-receipt-locks",
+      "main": "evm_sweep_receipt_locks",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

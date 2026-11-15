@@ -26,9 +26,26 @@ function exitFromResult(result) {
 }
 
 const env = buildTestRuntimeEnv(process.env, { repoRoot });
-const nodePath = isCodexBundledNode()
-  ? resolveExternalNode({ env, repoRoot }) || process.execPath
-  : process.execPath;
+// Vitest is a Node.js lane. On Bun 1.4.2 sampled suites fail (uppercase `DATA:`
+// URLs in fetch, http.Server.closeAllConnections, child Node ESM probes), so a
+// launcher started by Bun hands Vitest to real Node and never falls back to Bun.
+const launchedByBun = Boolean(process.versions.bun);
+const nodePath = launchedByBun
+  ? resolveExternalNode({ env, repoRoot, rejectBun: true })
+  : isCodexBundledNode()
+    ? resolveExternalNode({ env, repoRoot }) || process.execPath
+    : process.execPath;
+
+if (!nodePath) {
+  console.error(
+    [
+      "[eliza-test] Vitest needs the Node.js version pinned in package.json engines.node.",
+      "No Node.js executable was found on PATH, in nvm, or in Homebrew.",
+      "Install it or set ELIZA_VITEST_NODE=/absolute/path/to/node.",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
 
 if (isCodexBundledNode() && nodePath === process.execPath) {
   console.error(

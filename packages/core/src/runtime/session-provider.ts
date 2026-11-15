@@ -6,8 +6,6 @@ import type { IAgentRuntime } from "../types/runtime.js";
 import type { SessionEntry } from "../types/session.js";
 import type { State } from "../types/state.js";
 
-// Session Context Extraction
-
 /**
  * Extract session context from a memory object.
  *
@@ -15,9 +13,6 @@ import type { State } from "../types/state.js";
  * 1. memory.sessionId / memory.sessionKey
  * 2. memory.metadata.session
  * 3. memory.metadata.sessionId / memory.metadata.sessionKey
- *
- * @param memory - Memory to extract session from
- * @returns Session context or null
  */
 export function extractSessionContext(memory: Memory): {
 	sessionId?: string;
@@ -28,7 +23,6 @@ export function extractSessionContext(memory: Memory): {
 	const directSessionId = memory.sessionId || undefined;
 	const directSessionKey = memory.sessionKey || undefined;
 
-	// Metadata-based session info
 	const metadata = memory.metadata as
 		| (MemoryMetadata & Record<string, unknown>)
 		| undefined;
@@ -50,14 +44,7 @@ export function extractSessionContext(memory: Memory): {
 	};
 }
 
-// Session Provider
-
-/**
- * Create a session provider that exposes session context.
- *
- * @param options - Provider options
- * @returns Provider instance
- */
+/** Create a session provider that exposes session context. */
 export function createSessionProvider(options?: {
 	/** Path to session store (defaults to runtime's configured store) */
 	storePath?: string;
@@ -88,12 +75,8 @@ export function createSessionProvider(options?: {
 				};
 			}
 
-			// Use session entry directly from context
 			const entry = context.entry;
-
-			// Build text representation
-			const lines: string[] = [];
-			lines.push(`Session ID: ${context.sessionId ?? "unknown"}`);
+			const lines = [`Session ID: ${context.sessionId ?? "unknown"}`];
 
 			if (context.sessionKey) {
 				lines.push(`Session Key: ${context.sessionKey}`);
@@ -116,8 +99,10 @@ export function createSessionProvider(options?: {
 					lines.push(`Thinking Level: ${entry.thinkingLevel}`);
 				}
 				if (entry.sendPolicy === "deny") {
-					lines.push("");
-					lines.push("⚠️ SEND POLICY: DENY - Do not send messages externally.");
+					lines.push(
+						"",
+						"⚠️ SEND POLICY: DENY - Do not send messages externally.",
+					);
 				}
 				if (entry.totalTokens) {
 					lines.push(`Total Tokens Used: ${entry.totalTokens}`);
@@ -142,14 +127,7 @@ export function createSessionProvider(options?: {
 	};
 }
 
-// Session Skills Provider
-
-/**
- * Create a provider that exposes session skills.
- *
- * @param options - Provider options
- * @returns Provider instance
- */
+/** Create a provider that exposes session skills. */
 export function createSessionSkillsProvider(options?: {
 	storePath?: string;
 	name?: string;
@@ -177,9 +155,7 @@ export function createSessionSkillsProvider(options?: {
 				};
 			}
 
-			const entry = context.entry;
-
-			const snapshot = entry?.skillsSnapshot;
+			const snapshot = context.entry?.skillsSnapshot;
 			if (!snapshot?.skills.length) {
 				return {
 					text: "",
@@ -187,7 +163,7 @@ export function createSessionSkillsProvider(options?: {
 				};
 			}
 
-			const skillNames = snapshot.skills.map((s: { name: string }) => s.name);
+			const skillNames = snapshot.skills.map((s) => s.name);
 			const lines = [
 				`Active Skills: ${skillNames.join(", ")}`,
 				"",
@@ -210,16 +186,10 @@ export function createSessionSkillsProvider(options?: {
 	};
 }
 
-// Send Policy Provider
-
 /**
- * Create a provider that enforces session send policy.
- *
- * When sendPolicy is "deny", adds strong guidance to prevent
- * the agent from sending external messages.
- *
- * @param options - Provider options
- * @returns Provider instance
+ * Create a provider that enforces session send policy: when sendPolicy is
+ * "deny", adds strong guidance to prevent the agent from sending external
+ * messages.
  */
 export function createSendPolicyProvider(options?: {
 	storePath?: string;
@@ -250,9 +220,7 @@ export function createSendPolicyProvider(options?: {
 				};
 			}
 
-			const entry = context.entry;
-
-			const sendPolicy = entry?.sendPolicy ?? "allow";
+			const sendPolicy = context.entry?.sendPolicy ?? "allow";
 
 			if (sendPolicy === "deny") {
 				return {
@@ -290,14 +258,7 @@ export function createSendPolicyProvider(options?: {
 	};
 }
 
-// Default Session Providers
-
-/**
- * Get all default session providers.
- *
- * @param options - Provider options
- * @returns Array of session providers
- */
+/** All default session providers. */
 export function getSessionProviders(options?: {
 	storePath?: string;
 }): Provider[] {

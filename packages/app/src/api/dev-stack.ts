@@ -1,17 +1,14 @@
 /**
  * Dev stack snapshot for tools and agents (Cursor, scripts).
  *
- * **Why this module:** IDEs do not auto-discover localhost or the Electrobun window. A single JSON
- * shape from `GET /api/dev/stack` gives ports, renderer URL, and which optional hooks (screenshot,
- * console tail) are configured — without scraping terminal output or launcher logs.
+ * **Why this module:** IDEs do not auto-discover localhost. A single JSON shape from
+ * `GET /api/dev/stack` gives ports, renderer URL, and which optional hooks (console tail) are
+ * configured — without scraping terminal output or launcher logs.
  *
- * Env is set by `eliza/packages/app/scripts/dev-platform.ts` when using `dev:desktop` / `dev:desktop:watch`; the API
- * handler may override `api.listenPort` / `api.baseUrl` from the bound socket so the JSON matches
- * the **accepted** TCP port (WHY: env can lag or describe intent; the socket is authoritative when
- * the request hits this server). Orchestrator-side `allocate-loopback-port` reduces mismatch for
- * desktop dev; embedded Electrobun also syncs env after bind.
+ * The API handler may override `api.listenPort` / `api.baseUrl` from the bound socket so the JSON
+ * matches the **accepted** TCP port (WHY: env can lag or describe intent; the socket is
+ * authoritative when the request hits this server).
  */
-
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
@@ -30,18 +27,10 @@ export type DevStackPayload = {
     rendererUrl: string | null;
     /** Dashboard UI port when ELIZA_PORT is set (desktop / Vite). */
     uiPort: number | null;
-    /** Same base the Electrobun shell uses for API calls, when set. */
+    /** API base named by ELIZA_DESKTOP_API_BASE, when set. */
     desktopApiBase: string | null;
   };
-  /**
-   * When desktop dev enables ELIZA_DESKTOP_SCREENSHOT_SERVER, the API proxies
-   * a PNG from Electrobun (`GET …/api/dev/cursor-screenshot`, loopback only).
-   */
-  cursorScreenshot: {
-    available: boolean;
-    path: string | null;
-  };
-  /** Aggregated desktop dev child logs when dev-platform writes ELIZA_DESKTOP_DEV_LOG_PATH. */
+  /** Aggregated dev child logs when ELIZA_DESKTOP_DEV_LOG_PATH names a log file. */
   desktopDevLog: {
     filePath: string | null;
     apiTailPath: string | null;
@@ -61,8 +50,6 @@ export function resolveDevStackFromEnv(
   const uiPort = resolveDesktopUiPort(env);
   const rendererUrl = env.ELIZA_RENDERER_URL?.trim() || null;
   const desktopApiBase = env.ELIZA_DESKTOP_API_BASE?.trim() || null;
-  const screenshotUpstream =
-    env.ELIZA_ELECTROBUN_SCREENSHOT_URL?.trim() || null;
   const configuredDevLogPath = env.ELIZA_DESKTOP_DEV_LOG_PATH?.trim() || null;
   const devLogPathAllowed =
     configuredDevLogPath !== null &&
@@ -78,19 +65,12 @@ export function resolveDevStackFromEnv(
       uiPort,
       desktopApiBase,
     },
-    cursorScreenshot: {
-      available: Boolean(screenshotUpstream),
-      path: screenshotUpstream ? "/api/dev/cursor-screenshot" : null,
-    },
     desktopDevLog: {
       filePath: configuredDevLogPath,
       apiTailPath: devLogPathAllowed ? "/api/dev/console-log" : null,
     },
     hints: [
-      'Electrobun also binds an ephemeral localhost port for its own RPC (see launcher logs: "Server started at http://localhost:…"). That channel is not this API.',
-      "With dev:desktop:watch, open desktop.rendererUrl in a browser or Browser MCP for UI parity when native-only bridges are not required.",
-      "Full-screen PNG for agents: with desktop dev (screenshot server on by default), GET /api/dev/cursor-screenshot on the API (loopback). Capture uses OS screen APIs, not webview-only pixels.",
-      "Aggregated vite/api/electrobun lines: GET /api/dev/console-log?maxLines=400&maxBytes=256000 (loopback) or read desktopDevLog.filePath.",
+      "Aggregated dev log lines: GET /api/dev/console-log?maxLines=400&maxBytes=256000 (loopback) or read desktopDevLog.filePath.",
       "Voice-loop latency traces + per-stage p50/p90/p99 histograms: GET /api/dev/voice-latency?limit=50 (loopback), or `bun run --cwd packages/app voice:latency-report` for a printed table.",
       "Boot phase timings, memory growth, and the exact error for any plugin that failed to load: GET /api/dev/boot-history (loopback). latestBoot:null = boot has not completed since process start (restart storm/crash); watch:true = API is running under an active dev watcher.",
     ],

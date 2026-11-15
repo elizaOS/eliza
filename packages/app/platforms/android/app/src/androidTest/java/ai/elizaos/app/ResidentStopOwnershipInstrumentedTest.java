@@ -142,6 +142,34 @@ public final class ResidentStopOwnershipInstrumentedTest {
         });
     }
 
+    @Test public void pendingWatchdogRestartSurvivesDuplicateStartsAndEndsOnShutdown() throws Exception {
+        assumeFixture();
+        withOwnedRuntime((service, root) -> {
+            Method schedule = ElizaAgentService.class.getDeclaredMethod("scheduleRestart", boolean.class);
+            schedule.setAccessible(true);
+            Method request = ElizaAgentService.class.getDeclaredMethod("requestAgentStart", boolean.class);
+            request.setAccessible(true);
+            Field pending = field("restartWorker");
+            field("restartAttempts").setInt(service, 10);
+            schedule.invoke(service, true);
+            Thread retry = (Thread) pending.get(service);
+            assertNotNull("Repeated failures must still schedule a restart", retry);
+            try {
+                request.invoke(service, false);
+                schedule.invoke(service, true);
+                assertSame("Duplicate requests must keep the scheduled restart", retry, pending.get(service));
+                assertEquals(11, field("restartAttempts").getInt(service));
+                assertEquals("restarting", field("currentStatus").get(service));
+                assertNull("An ordinary start must wait for backoff", field("startWorker").get(service));
+            } finally {
+                service.onDestroy();
+                retry.join(5_000L);
+            }
+            assertFalse("Service shutdown must cancel the delayed restart", retry.isAlive());
+            assertNull(field("startWorker").get(service));
+        });
+    }
+
     @Test public void refusedStopBeforeRestartDoesNotEscapeOrStartASecondRuntime() throws Exception {
         assumeFixture();
         Thread.UncaughtExceptionHandler prior = Thread.getDefaultUncaughtExceptionHandler();

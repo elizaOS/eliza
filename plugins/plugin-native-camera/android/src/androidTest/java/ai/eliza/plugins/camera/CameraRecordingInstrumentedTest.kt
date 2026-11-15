@@ -226,6 +226,26 @@ class CameraRecordingInstrumentedTest {
         }
     }
 
+    @Test fun defaultPhotoUsesBoundCaptureSize_notPreviewSize() {
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            val started = call(scenario, "startPreview", JSObject().apply {
+                put("direction", "back")
+                put("resolution", JSObject().apply { put("width", 640); put("height", 480) })
+            }).await()
+            try {
+                val previewSize = requireNotNull(started.getJSObject("previewSize")) { "Bound preview size is required" }
+                val captureSize = requireNotNull(started.getJSObject("captureSize")) { "Bound capture size is required" }
+                val photo = call(scenario, "capturePhoto", JSObject().put("format", "jpeg")).await()
+                val photoPixels = photo.getInt("width").toLong() * photo.getInt("height")
+                assertEquals(captureSize.getInt("width").toLong() * captureSize.getInt("height"), photoPixels)
+                assertTrue("A default photo must exceed the preview size",
+                    photoPixels > previewSize.getInt("width").toLong() * previewSize.getInt("height"))
+            } finally {
+                call(scenario, "stopPreview").await()
+            }
+        }
+    }
+
     @Test fun stopDuringPreviewStartupCancelsAdmission_andDoesNotResurrectCamera() {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             val starting = Reply("startPreview")

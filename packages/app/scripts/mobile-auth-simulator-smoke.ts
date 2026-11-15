@@ -115,7 +115,7 @@ export function parseArgs(argv) {
 }
 
 function printUsageAndExit() {
-  console.log(`usage: node mobile-auth-simulator-smoke.ts [options]
+  console.log(`usage: bun mobile-auth-simulator-smoke.ts [options]
 
 Fires a synthetic <scheme>://auth/callback deep link at the installed app and
 asserts the in-app handler's END STATE (callback rejected + classified +

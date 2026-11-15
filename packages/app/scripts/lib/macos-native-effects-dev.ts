@@ -1,8 +1,8 @@
 /**
- * Resolves the generated macOS EventKit/effects bridge used by source-checkout
- * dev servers. The plan stays pure so bootstrap can distinguish an existing
- * explicit override from a missing or stale local artifact before spawning the
- * API process that consumes it.
+ * Resolves the generated macOS permissions/EventKit/Contacts bridge used by
+ * source-checkout dev servers. The plan stays pure so bootstrap can
+ * distinguish an existing explicit override from a missing or stale local
+ * artifact before spawning the API process that consumes it.
  */
 import path from "node:path";
 
@@ -12,22 +12,13 @@ import path from "node:path";
 // hosts, where `path.join` would otherwise emit backslash separators.
 const { join } = path.posix;
 
+const NATIVE_DIR = ["packages", "app", "native", "macos"];
+
 function sourceCheckoutRoot(cwd, exists) {
   const roots = [cwd, join(cwd, "eliza")];
   return (
     roots.find((root) =>
-      exists(
-        join(
-          root,
-          "packages",
-          "app",
-          "platforms",
-          "electrobun",
-          "native",
-          "macos",
-          "window-effects.mm",
-        ),
-      ),
+      exists(join(root, ...NATIVE_DIR, "native-permissions.mm")),
     ) ?? null
   );
 }
@@ -51,13 +42,20 @@ export function resolveMacNativeEffectsDevPlan({
   const root = sourceCheckoutRoot(cwd, exists);
   if (!root) return { kind: "skip" };
 
-  const packageDir = join(root, "packages", "app", "platforms", "electrobun");
-  const sourcePath = join(packageDir, "native", "macos", "window-effects.mm");
-  const dylibPath = join(packageDir, "src", "libMacWindowEffects.dylib");
+  const nativeDir = join(root, ...NATIVE_DIR);
+  const sourcePath = join(nativeDir, "native-permissions.mm");
+  const dylibPath = join(nativeDir, "libMacWindowEffects.dylib");
+  const buildScript = join(
+    root,
+    "packages",
+    "app",
+    "scripts",
+    "build-macos-native-permissions.sh",
+  );
 
   if (exists(dylibPath) && modifiedAt(dylibPath) >= modifiedAt(sourcePath)) {
     return { kind: "use", dylibPath };
   }
 
-  return { kind: "build", packageDir, dylibPath };
+  return { kind: "build", buildScript, dylibPath };
 }

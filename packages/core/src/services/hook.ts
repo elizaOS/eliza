@@ -76,16 +76,6 @@ function hasBinary(bin: string): boolean {
 	return false;
 }
 
-/**
- * Get the current platform name
- */
-function getCurrentPlatform(): string {
-	return process.platform;
-}
-
-/**
- * HookService implementation
- */
 /** Normalizes hook priorities to finite values so sequential dispatch has a deterministic order. */
 function normalizeHookPriority(
 	priority: HookPriority | undefined,
@@ -115,6 +105,21 @@ export class HookService extends Service implements IHookService {
 	private hookConfig: Record<string, unknown> = {};
 
 	/**
+	 * Binary names {@link hasBinary} found: the PATH scan is synchronous
+	 * filesystem work, and eligibility is checked on every hook dispatch. Only
+	 * hits are kept, so a binary installed later is found on the next check.
+	 * Valid for {@link binaryCachePath}; a PATH change or stop clears it.
+	 */
+	private readonly binaryCache = new Set<string>();
+	private binaryCachePath: string | undefined;
+
+	/** Runtime event handlers installed by {@link setupEventInterceptors}, removed on stop. */
+	private readonly interceptors: Array<{
+		eventType: EventType;
+		handler: (payload: EventPayload) => Promise<void>;
+	}> = [];
+
+	/**
 	 * Start the hook service
 	 */
 	static async start(runtime: IAgentRuntime): Promise<HookService> {
@@ -131,8 +136,24 @@ export class HookService extends Service implements IHookService {
 	 * Stop the hook service
 	 */
 	async stop(): Promise<void> {
+		for (const { eventType, handler } of this.interceptors) {
+			this.runtime.unregisterEvent(eventType, handler);
+		}
+		this.interceptors.length = 0;
 		this.registry.clear();
 		this.eventIndex.clear();
+		this.binaryCache.clear();
+	}
+
+	private hasCachedBinary(bin: string): boolean {
+		if (this.binaryCachePath !== process.env.PATH) {
+			this.binaryCache.clear();
+			this.binaryCachePath = process.env.PATH;
+		}
+		if (this.binaryCache.has(bin)) return true;
+		const found = hasBinary(bin);
+		if (found) this.binaryCache.add(bin);
+		return found;
 	}
 
 	/**
@@ -145,9 +166,10 @@ export class HookService extends Service implements IHookService {
 		) as EventType[];
 
 		for (const eventType of hookEventTypes) {
-			this.runtime.registerEvent(eventType, async (payload: EventPayload) => {
-				await this.dispatchToHooks(eventType, payload);
-			});
+			const handler = (payload: EventPayload) =>
+				this.dispatchToHooks(eventType, payload);
+			this.runtime.registerEvent(eventType, handler);
+			this.interceptors.push({ eventType, handler });
 		}
 	}
 
@@ -164,20 +186,18 @@ export class HookService extends Service implements IHookService {
 		}
 
 		// Get registrations and sort by priority (descending), then registration time (ascending)
-		const registrations = Array.from(hookIds)
-			.map((id) => this.registry.get(id))
-			.filter((reg): reg is HookRegistration => reg !== undefined)
-			.filter((reg) => reg.metadata.enabled)
-			.filter((reg) => {
-				const eligibility = this.checkEligibilityInternal(reg);
-				return eligibility.eligible;
-			})
-			.sort((a, b) => {
-				if (b.metadata.priority !== a.metadata.priority) {
-					return b.metadata.priority - a.metadata.priority;
-				}
-				return a.registeredAt - b.registeredAt;
-			});
+		const registrations: HookRegistration[] = [];
+		for (const id of hookIds) {
+			const reg = this.registry.get(id);
+			if (reg?.metadata.enabled && this.checkEligibilityInternal(reg).eligible)
+				registrations.push(reg);
+		}
+		registrations.sort((a, b) => {
+			if (b.metadata.priority !== a.metadata.priority) {
+				return b.metadata.priority - a.metadata.priority;
+			}
+			return a.registeredAt - b.registeredAt;
+		});
 
 		// Execute hooks sequentially (allows payload modification, maintains order)
 		for (const registration of registrations) {
@@ -390,7 +410,7 @@ export class HookService extends Service implements IHookService {
 
 		// Check OS requirements
 		if (requirements.os && requirements.os.length > 0) {
-			const currentPlatform = getCurrentPlatform();
+			const currentPlatform = process.platform;
 			if (!requirements.os.includes(currentPlatform)) {
 				reasons.push(
 					`OS '${currentPlatform}' not in allowed list: ${requirements.os.join(", ")}`,
@@ -401,7 +421,7 @@ export class HookService extends Service implements IHookService {
 		// Check required binaries (all must be present)
 		if (requirements.bins && requirements.bins.length > 0) {
 			for (const bin of requirements.bins) {
-				if (!hasBinary(bin)) {
+				if (!this.hasCachedBinary(bin)) {
 					reasons.push(`Required binary '${bin}' not found`);
 				}
 			}
@@ -409,7 +429,9 @@ export class HookService extends Service implements IHookService {
 
 		// Check anyBins (at least one must be present)
 		if (requirements.anyBins && requirements.anyBins.length > 0) {
-			const hasAny = requirements.anyBins.some((bin) => hasBinary(bin));
+			const hasAny = requirements.anyBins.some((bin) =>
+				this.hasCachedBinary(bin),
+			);
 			if (!hasAny) {
 				reasons.push(
 					`None of required binaries found: ${requirements.anyBins.join(", ")}`,
@@ -481,8 +503,3 @@ export class HookService extends Service implements IHookService {
 		return true;
 	}
 }
-
-/**
- * Create and return the HookService class for registration
- */
-export const HookServiceClass = HookService;

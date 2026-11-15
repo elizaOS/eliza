@@ -22,7 +22,9 @@ import type { AccessContext } from "../types/access-context.js";
 import type { Memory, MemoryScope, MessageChatType } from "../types/memory.js";
 import type { UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
+import { asObjectRecordOrUndefined } from "../utils/type-guards.ts";
 import { actorFromAccessContext, canReadScope } from "./filter";
+import { isMemoryScope, scopedEntityIdFromMetadata } from "./memory-scope.js";
 
 /**
  * How strongly the stored memory's sender identity is attested.
@@ -83,12 +85,6 @@ export type RecallDenyCode =
 	 */
 	| "cross_room_denied";
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-	return typeof value === "object" && value !== null && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: undefined;
-}
-
 function readString(
 	record: Record<string, unknown> | undefined,
 	key: string,
@@ -105,36 +101,12 @@ function readString(
 	return undefined;
 }
 
-const VALID_MEMORY_SCOPES: ReadonlySet<MemoryScope> = new Set<MemoryScope>([
-	"shared",
-	"private",
-	"room",
-	"global",
-	"owner-private",
-	"user-private",
-	"agent-private",
-]);
-
 function readScope(value: unknown): MemoryScope | undefined {
-	return typeof value === "string" &&
-		VALID_MEMORY_SCOPES.has(value as MemoryScope)
-		? (value as MemoryScope)
-		: undefined;
+	return isMemoryScope(value) ? value : undefined;
 }
 
 function isValidSourceKey(source: string): boolean {
 	return /^[a-z0-9][a-z0-9_-]*$/.test(source);
-}
-
-function scopedEntityIdForMemory(memory: Memory): UUID {
-	const meta = asRecord(memory.metadata);
-	const scopedTo = meta?.scopedToEntityId;
-	const addedBy = meta?.addedBy;
-	return typeof scopedTo === "string"
-		? (scopedTo as UUID)
-		: typeof addedBy === "string"
-			? (addedBy as UUID)
-			: memory.entityId;
 }
 
 export type CanonicalProvenanceResult =
@@ -161,8 +133,8 @@ export function deriveCanonicalProvenance(
 	memory: Memory,
 	agentId: UUID,
 ): CanonicalProvenanceResult {
-	const metadata = asRecord(memory.metadata);
-	const content = asRecord(memory.content);
+	const metadata = asObjectRecordOrUndefined(memory.metadata);
+	const content = asObjectRecordOrUndefined(memory.content);
 
 	// Source must come from exactly one path. Connectors stamp
 	// `metadata.provider`; the raw content `source` field and the nested
@@ -171,7 +143,10 @@ export function deriveCanonicalProvenance(
 	// first one.
 	const providerSource = readString(metadata, "provider");
 	const contentSource = readString(content, "source");
-	const baseSource = readString(asRecord(metadata?.base), "source");
+	const baseSource = readString(
+		asObjectRecordOrUndefined(metadata?.base),
+		"source",
+	);
 	const sourceCandidates = [providerSource, contentSource, baseSource].filter(
 		(value): value is string => value !== undefined,
 	);
@@ -200,13 +175,13 @@ export function deriveCanonicalProvenance(
 	// resolution is willing to trust. Look it up under both the raw and the
 	// canonical source key, since connectors stamp the raw one.
 	const nested =
-		asRecord(rawSource ? metadata?.[rawSource] : undefined) ??
-		asRecord(source ? metadata?.[source] : undefined);
+		asObjectRecordOrUndefined(rawSource ? metadata?.[rawSource] : undefined) ??
+		asObjectRecordOrUndefined(source ? metadata?.[source] : undefined);
 
 	const senderPlatformId =
 		readString(nested, "userId") ?? readString(nested, "id");
 
-	const sender = asRecord(metadata?.sender);
+	const sender = asObjectRecordOrUndefined(metadata?.sender);
 	const senderDisplayName =
 		readString(sender, "name") ??
 		readString(sender, "username") ??
@@ -302,7 +277,7 @@ export function deriveCanonicalProvenance(
 	// Scope must be consistent across paths. When both metadata.base.scope
 	// and metadata.scope are present and differ, the record is contradictory
 	// — reject instead of first-wins.
-	const baseScope = readScope(asRecord(metadata?.base)?.scope);
+	const baseScope = readScope(asObjectRecordOrUndefined(metadata?.base)?.scope);
 	const metadataScope = readScope(metadata?.scope);
 	if (baseScope && metadataScope && baseScope !== metadataScope) {
 		return {
@@ -510,7 +485,14 @@ function evaluateCanonicalRecall(
 		const dedupeKey = canonicalDedupeKey(provenance);
 
 		if (
-			!canReadScope(provenance.scope, scopedEntityIdForMemory(memory), actor)
+			!canReadScope(
+				provenance.scope,
+				scopedEntityIdFromMetadata(
+					asObjectRecordOrUndefined(memory.metadata),
+					memory.entityId,
+				),
+				actor,
+			)
 		) {
 			recordDenial(
 				"scope_denied",
@@ -593,10 +575,8 @@ interface CanonicalMemorySearchBaseInput {
  * `unavailable` availability — an error is an error, never an empty
  * "complete" result.
  */
-export type CanonicalMemorySearchInput = CanonicalMemorySearchBaseInput & {
-	/** Exact in-memory delivery turn the recalled context will render into. */
-	deliveryMessage: Memory;
-};
+export type CanonicalMemorySearchInput = CanonicalMemorySearchBaseInput &
+	CanonicalMemorySearchDeliveryInput;
 
 export interface CanonicalMemorySearchDeliveryInput {
 	/** Exact in-memory delivery turn the recalled context will render into. */
@@ -748,7 +728,7 @@ export async function searchCanonicalConversationMemories(
 		: undefined;
 	let allCandidates: Memory[] = [];
 	const excludedRooms = new Set(input.excludeRoomIds);
-	let candidateWindowComplete = true;
+	let candidateWindowComplete: boolean;
 	let roundCount = initialCount;
 
 	for (;;) {
@@ -785,12 +765,6 @@ export async function searchCanonicalConversationMemories(
 				availability: "unavailable",
 				candidateWindowComplete: false,
 			};
-		}
-
-		// Track whether the adapter returned a full window (possible
-		// truncation) or fewer rows (exhaustion of eligible set).
-		if (roundCandidates.length >= roundCount) {
-			candidateWindowComplete = false;
 		}
 
 		// A wider round re-ranks its whole window (the SQL adapter reranks each
@@ -831,12 +805,11 @@ export async function searchCanonicalConversationMemories(
 			hasEnoughEligible = accumulatedEligible >= explicitCount;
 		}
 
-		if (hasEnoughEligible || roundCandidates.length < roundCount) {
-			// Either we have enough valid items, or the adapter returned
-			// fewer than requested — it exhausted the eligible set.
-			if (roundCandidates.length < roundCount) {
-				candidateWindowComplete = true;
-			}
+		// A full window may be truncated; fewer rows than requested means the
+		// adapter exhausted the eligible set.
+		const exhausted = roundCandidates.length < roundCount;
+		if (hasEnoughEligible || exhausted) {
+			candidateWindowComplete = exhausted;
 			break;
 		}
 		if (roundCount === Number.MAX_SAFE_INTEGER) {
@@ -852,10 +825,8 @@ export async function searchCanonicalConversationMemories(
 		roundCount = Math.min(Number.MAX_SAFE_INTEGER, roundCount * 2);
 	}
 
-	const candidates = allCandidates;
-
 	const evaluated = evaluateCanonicalRecall({
-		candidates,
+		candidates: allCandidates,
 		agentId: input.runtime.agentId,
 		requester,
 		destinationRoomId,
@@ -874,25 +845,20 @@ export async function searchCanonicalConversationMemories(
 			? eligibleItems
 			: selectBestRankedRecallItems(eligibleItems, explicitCount);
 
-	if (
-		deliveryMessage &&
-		items.some((item) => item.provenance.roomId !== deliveryMessage.roomId)
-	) {
+	if (items.some((item) => item.provenance.roomId !== destinationRoomId)) {
 		markOwnerExclusiveDisclosureUsed(deliveryMessage);
 	}
 
 	const withheld = evaluated.withheld;
-	let availability: RecallAvailability;
-	if (withheld.length > 0) {
-		availability = items.length > 0 ? "partial" : "unavailable";
-	} else if (!candidateWindowComplete) {
-		// No item was individually withheld, but the candidate window was
-		// truncated: closer ineligible rows may have starved eligible results,
-		// so the answer is honestly partial.
-		availability = items.length > 0 ? "partial" : "unavailable";
-	} else {
-		availability = "complete";
-	}
+	// A truncated candidate window is honestly partial even when no item was
+	// individually withheld: closer ineligible rows may have starved eligible
+	// results.
+	const availability: RecallAvailability =
+		withheld.length === 0 && candidateWindowComplete
+			? "complete"
+			: items.length > 0
+				? "partial"
+				: "unavailable";
 
 	return {
 		items,

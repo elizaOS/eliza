@@ -1075,42 +1075,6 @@ export function patchCodexFolderApprovalPromptCompat(root, log = console.log) {
   return patched;
 }
 
-/**
- * Electrobun's CLI download script passes Windows backslash paths to `tar -xzf`.
- * GNU tar (Git Bash / MSYS2) interprets `A:\...` as a remote host prefix, so
- * extraction fails. Replace the absolute tarballPath with a relative filename
- * since cwd is already the cache directory.
- *
- * findPackageFilePaths covers both root node_modules/ and Bun's hoisted
- * .bun/electrobun@* / cache. The workspace-aware createRequire resolution in
- * build-patched-electrobun-cli.ts resolves from a specific workspace, but here
- * we want to patch every copy found — the simpler lookup is appropriate.
- */
-export function patchElectrobunWindowsTar(root, log = console.log) {
-  const tarballPathPlaceholder = "$" + "{tarballPath}";
-  const platformPlaceholder = "$" + "{platform}";
-  const archPlaceholder = "$" + "{arch}";
-  const candidates = findPackageFilePaths(
-    root,
-    "electrobun",
-    "bin/electrobun.cjs",
-  );
-  let patched = false;
-  const needle = `execSync(\`tar -xzf "${tarballPathPlaceholder}"\`, { cwd: cacheDir, stdio: 'pipe' });`;
-  const replacement = `execSync(\`tar -xzf electrobun-${platformPlaceholder}-${archPlaceholder}.tar.gz\`, { cwd: cacheDir, stdio: 'pipe' });`;
-  for (const filePath of candidates) {
-    if (!existsSync(filePath)) continue;
-    const source = readFileSync(filePath, "utf8");
-    if (!source.includes(needle)) continue;
-    writeFileSync(filePath, source.replace(needle, replacement), "utf8");
-    patched = true;
-    log(
-      "[patch-deps] Patched electrobun: tar extraction uses forward slashes on Windows.",
-    );
-  }
-  return patched;
-}
-
 export function patchAutonomousTypeError(root, log = console.log) {
   const candidates = findPackageFilePaths(
     root,

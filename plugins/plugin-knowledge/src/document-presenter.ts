@@ -325,16 +325,25 @@ export function isDocumentTextBacked(memory: Memory): boolean {
   return !looksLikeBase64(contentText);
 }
 
-export function getDocumentPreviewText(memory: Memory): string | undefined {
+/**
+ * Exact stored text for a document detail read. The edit view initializes its
+ * draft from this value and sends it back on save, so it must keep the stored
+ * leading and trailing whitespace: a trimmed value would rewrite the document
+ * on the first save. Read-only documents can also expose stored preview text;
+ * editability is checked separately and must not narrow this read contract.
+ */
+function getDocumentText(memory: Memory): string | undefined {
   const contentText = memory.content.text;
-  if (typeof contentText !== "string") return undefined;
-  const trimmed = contentText.trim();
-  if (trimmed.length === 0) return undefined;
-  // Text that ingestion recorded as the document itself is shown as is; the
-  // base64 guess is only for records that do not say what their text is.
-  if (asRecord(memory.metadata)?.textBacked === true) return trimmed;
-  if (looksLikeBase64(trimmed)) return undefined;
-  return trimmed;
+  if (typeof contentText !== "string" || contentText.trim().length === 0) {
+    return undefined;
+  }
+  if (
+    asRecord(memory.metadata)?.textBacked !== true &&
+    looksLikeBase64(contentText)
+  ) {
+    return undefined;
+  }
+  return contentText;
 }
 
 export function getDocumentEditability(memory: Memory): {
@@ -398,8 +407,8 @@ export function presentDocument(
   const metadata = asRecord(memory.metadata);
   const provenance = getDocumentProvenance(metadata);
   const contentType = getDocumentContentType(metadata);
-  const previewText = options?.includeContent
-    ? getDocumentPreviewText(memory)
+  const contentText = options?.includeContent
+    ? getDocumentText(memory)
     : undefined;
   const editability = getDocumentEditability(memory);
   const deleteability = getDocumentDeleteability(memory);
@@ -429,7 +438,7 @@ export function presentDocument(
     editabilityReason: editability.reason,
     canDelete: deleteability.canDelete,
     deleteabilityReason: deleteability.reason,
-    ...(previewText ? { content: { text: previewText } } : {}),
+    ...(contentText ? { content: { text: contentText } } : {}),
     ...(asString(metadata?.transcriptId)
       ? { transcriptId: asString(metadata?.transcriptId) }
       : {}),

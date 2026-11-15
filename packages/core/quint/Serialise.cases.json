@@ -1,0 +1,39 @@
+{
+  "sources": ["packages/core/src/utils/task-scheduling.ts"],
+  "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+  "cases": [
+    {
+      "name": "calls",
+      "main": "Serialise",
+      "init": "init",
+      "step": "step",
+      "invariants": ["TypeOK", "MutualExclusion", "CallOrder"],
+      "temporal": ["DeadlockFree", "CallFinishes"],
+      "maxSteps": 100,
+      "samples": 1000,
+      "constants": {
+        "Calls": ["a", "b", "c", "d"]
+      },
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in Serialise: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "CallFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in Serialise: CallFinishes = Fairness.implies(Calls.forall(c => (s.pc.get(c) == \"queued\").leadsTo(s.pc.get(c) == \"done\")))",
+            "Model fairness predicate Fairness = Calls.forall(c => Start(c).weakFair(s) and Finish(c).weakFair(s))",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

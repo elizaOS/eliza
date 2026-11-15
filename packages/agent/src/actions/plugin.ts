@@ -17,9 +17,11 @@ import {
 import {
   createSelfApiRequestHeaders,
   requireRestartHandler,
-  resolveSelfApiBaseUrl,
 } from "@elizaos/host/protocol";
-
+import {
+  resolveSelfApiTcpBaseUrl,
+  SELF_API_UNREACHABLE_TEXT,
+} from "../api/self-api-endpoint.ts";
 import {
   isPluginManagerLike,
   type PluginManagerLike,
@@ -149,8 +151,8 @@ const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
   "discord-local": "/api/setup/discord/cancel",
 };
 
-function getApiBase(): string {
-  return resolveSelfApiBaseUrl(process.env);
+function getApiBase(): string | null {
+  return resolveSelfApiTcpBaseUrl(process.env);
 }
 
 function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
@@ -404,6 +406,8 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
   }
 
   const base = getApiBase();
+  if (base === null)
+    return fail(SELF_API_UNREACHABLE_TEXT, "PLUGIN_CONFIGURE_FAILED");
   const resp = await fetch(
     `${base}/api/plugins/${encodeURIComponent(pluginId)}`,
     {
@@ -505,6 +509,8 @@ async function doReadConfig(params: PluginParams): Promise<ActionResult> {
   if (!pluginId) return fail("Missing pluginId.", "PLUGIN_READ_CONFIG_FAILED");
 
   const base = getApiBase();
+  if (base === null)
+    return fail(SELF_API_UNREACHABLE_TEXT, "PLUGIN_READ_CONFIG_FAILED");
   const resp = await fetch(`${base}/api/plugins`, {
     headers: createSelfApiRequestHeaders(),
     signal: AbortSignal.timeout(15_000),
@@ -599,6 +605,8 @@ async function doToggle(params: PluginParams): Promise<ActionResult> {
   }
 
   const base = getApiBase();
+  if (base === null)
+    return fail(SELF_API_UNREACHABLE_TEXT, "PLUGIN_TOGGLE_FAILED");
   const resp = await fetch(
     `${base}/api/plugins/${encodeURIComponent(pluginId)}`,
     {
@@ -700,6 +708,8 @@ function describeListFilter(filter: ListFilter): string {
 
 async function doList(params: PluginParams): Promise<ActionResult> {
   const base = getApiBase();
+  if (base === null)
+    return fail(SELF_API_UNREACHABLE_TEXT, "PLUGIN_LIST_FAILED");
   const filter = resolveListFilter(params);
   const type: PluginType = params.type ?? "connector";
 
@@ -783,6 +793,8 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
     return fail("Missing connector id.", "PLUGIN_DISCONNECT_FAILED");
 
   const base = getApiBase();
+  if (base === null)
+    return fail(SELF_API_UNREACHABLE_TEXT, "PLUGIN_DISCONNECT_FAILED");
   const dedicatedPath = CONNECTOR_DISCONNECT_PATHS[connectorId.toLowerCase()];
 
   if (dedicatedPath) {

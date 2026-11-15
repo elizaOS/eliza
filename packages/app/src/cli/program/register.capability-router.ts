@@ -11,13 +11,13 @@
  * options and parse capability-invoke responses.
  */
 
-import { readAliasedEnv, resolveDesktopApiPort } from "@elizaos/host/protocol";
+import { resolveDesktopApiPort } from "@elizaos/host/protocol";
 import type { Command } from "commander";
 import { theme } from "../terminal.ts";
 
 function resolveDefaultAgentApiBase(): string {
   return (
-    readAliasedEnv("ELIZA_AGENT_API_BASE") ??
+    process.env.ELIZA_AGENT_API_BASE?.trim() ||
     `http://127.0.0.1:${resolveDesktopApiPort(process.env)}`
   );
 }

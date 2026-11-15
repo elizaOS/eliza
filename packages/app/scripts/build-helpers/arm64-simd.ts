@@ -44,8 +44,7 @@
 //   (ELIZA_ANDROID_ARM64_I8MM=1) for controlled perf runs on devices known to
 //   support it. Devices below armv8.2-a (pre-2017 SoCs) are not a target; if
 //   that changes, switch to the GGML_CPU_ALL_VARIANTS=ON + GGML_BACKEND_DL=ON
-//   runtime-dispatch route (as the riscv64 build already does) instead of
-//   lowering this floor.
+//   runtime-dispatch route instead of lowering this floor.
 
 /**
  * The fixed Android arm64-v8a SIMD architecture string passed to
@@ -60,10 +59,10 @@ export const ANDROID_ARM64_CPU_ARCH_I8MM = "armv8.2-a+dotprod+fp16+i8mm";
  * QJL NEON-dotprod dispatch define.
  *
  * Returns an empty array for any non-arm64 ABI so callers can splat it
- * unconditionally (mirrors the x86_64BuildFlags / riscv64BuildFlags pattern
- * in compile-libllama.ts).
+ * unconditionally (mirrors the x86_64BuildFlags pattern in
+ * compile-libllama.ts).
  *
- * @param {string} abi - Android ABI directory name ("arm64-v8a", "x86_64", "riscv64").
+ * @param {string} abi - Android ABI directory name ("arm64-v8a", "x86_64").
  * @returns {string[]}
  */
 export function androidArm64SimdCmakeFlags(abi) {

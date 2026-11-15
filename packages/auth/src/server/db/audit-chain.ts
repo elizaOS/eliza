@@ -33,7 +33,12 @@ import {
 import { logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { observeSecurityAuditEvent } from "../shared/index.ts";
-import { DatabaseDeadlineExceededError, getDb } from "./client";
+import {
+  DatabaseDeadlineExceededError,
+  getDb,
+  hasTenantTransactionDatabase,
+  isEmbeddedDatabase,
+} from "./client";
 
 const ZERO_HASH = new Uint8Array(32);
 
@@ -152,9 +157,28 @@ function isAuditSequenceConflict(err: unknown): boolean {
 const tenantAuditQueues = new Map<string, Promise<void>>();
 
 /**
+ * Inside a request-bound tenant transaction on real Postgres, the advisory lock
+ * an append takes is held until the OUTER transaction commits. Holding the
+ * in-process queue while waiting for that lock lets two same-tenant requests
+ * wait on each other through a JS promise Postgres cannot see, which wedges
+ * both requests and their pool connections forever. The advisory lock already
+ * serializes the chain there and is re-entrant for its holder, and Postgres
+ * detects real lock cycles, so the queue is skipped there. PGLite (no advisory
+ * lock) and standalone Postgres appends still use it.
+ */
+function auditQueueBypassed(): boolean {
+  return (
+    !isPGLiteRuntime() &&
+    !isEmbeddedDatabase() &&
+    hasTenantTransactionDatabase()
+  );
+}
+
+/**
  * Serialize `fn` per tenant in-process. This is the PGLite chain-serialization
- * guarantee and also gates the real-Postgres advisory-lock acquisition so
- * concurrent appends within one process cannot interleave the seq read/insert.
+ * guarantee. On real Postgres outside a request-bound tenant transaction it
+ * also gates the advisory-lock acquisition; inside one it is bypassed (see
+ * `auditQueueBypassed`).
  */
 export async function withTenantAuditQueue<T>(
   tenantId: string,
@@ -350,6 +374,7 @@ export async function appendAuditEvent(ev: AuditEventInput): Promise<void> {
  * operations (auth, signing, policy mutations).
  */
 export async function writeAuditEvent(ev: AuditEventInput): Promise<void> {
+  if (auditQueueBypassed()) return appendAuditEvent(ev);
   return withTenantAuditQueue(ev.tenantId, () => appendAuditEvent(ev));
 }
 
@@ -465,5 +490,6 @@ export async function withTenantAuditedTransactionOnDb<T>(
     throw new Error("withTenantAuditedTransaction: exhausted retries");
   };
 
+  if (auditQueueBypassed()) return execute();
   return withTenantAuditQueue(tenantId, execute, deadlineAt);
 }

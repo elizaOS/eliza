@@ -1,7 +1,12 @@
 import { ModelType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { embeddingsPlugin } from "../../plugin-embeddings/src/index.ts";
-import { elizaOSCloudPlugin, registerCloudEmbeddingModels } from "../src/index.ts";
+import { registerMediaModels } from "../../plugin-openai/index.ts";
+import {
+  elizaOSCloudPlugin,
+  registerCloudEmbeddingModels,
+  registerCloudMediaModels,
+} from "../src/index.ts";
 
 type RegisteredModel = {
   modelType: string;
@@ -42,6 +47,12 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_USE_EMBEDDINGS",
   "EMBEDDING_BASE_URL",
   "EMBEDDING_API_KEY",
+  "ELIZAOS_CLOUD_USE_MEDIA",
+  "ELIZAOS_CLOUD_USE_TTS",
+  "ELIZAOS_CLOUD_USE_STT",
+  "ELIZA_PROVIDER",
+  "CEREBRAS_API_KEY",
+  "OPENAI_IMAGE_DESCRIPTION_BASE_URL",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -74,16 +85,31 @@ describe("Eliza Cloud embedding routing", () => {
     expect(runtime.registered.some((entry) => entry.provider === elizaOSCloudPlugin.name)).toBe(
       false
     );
+    registerCloudMediaModels(runtime as never);
+    expect(topProvider(runtime, ModelType.IMAGE_DESCRIPTION)).toBe(elizaOSCloudPlugin.name);
+    expect(topProvider(runtime, ModelType.TEXT_TO_SPEECH)).toBe(elizaOSCloudPlugin.name);
+    expect(topProvider(runtime, ModelType.TRANSCRIPTION)).toBe(elizaOSCloudPlugin.name);
   });
 
-  it("keeps cloud embeddings as the priority winner when explicitly enabled", () => {
+  it("keeps Cloud embeddings separate from Direct media", () => {
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "true";
+    process.env.ELIZAOS_CLOUD_USE_MEDIA = "false";
+    process.env.ELIZAOS_CLOUD_USE_TTS = "false";
+    process.env.ELIZAOS_CLOUD_USE_STT = "false";
+    process.env.ELIZA_PROVIDER = "cerebras";
+    process.env.CEREBRAS_API_KEY = "fixture-direct-key";
+    process.env.OPENAI_IMAGE_DESCRIPTION_BASE_URL = "https://api.cerebras.ai/v1";
 
     const runtime = createRuntime();
     registerCloudEmbeddingModels(runtime as never);
+    registerCloudMediaModels(runtime as never);
     registerByoEmbeddingModels(runtime);
+    registerMediaModels(runtime as never);
 
     expect(topProvider(runtime, ModelType.TEXT_EMBEDDING)).toBe(elizaOSCloudPlugin.name);
     expect(topProvider(runtime, ModelType.TEXT_EMBEDDING_BATCH)).toBe(elizaOSCloudPlugin.name);
+    expect(topProvider(runtime, ModelType.IMAGE_DESCRIPTION)).toBe("openai");
+    expect(topProvider(runtime, ModelType.TEXT_TO_SPEECH)).toBeUndefined();
+    expect(topProvider(runtime, ModelType.TRANSCRIPTION)).toBeUndefined();
   });
 });

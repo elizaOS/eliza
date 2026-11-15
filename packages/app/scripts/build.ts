@@ -8,7 +8,6 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { normalizeEnvPrefix } from "../src/env-prefix.js";
 import { removePublicBuildStamp, shouldSkipBuildStamp } from "./build-stamp.ts";
 import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.ts";
 
@@ -34,30 +33,7 @@ const bunExecutable = path
   ? process.execPath
   : "bun";
 
-function readAppEnvPrefix() {
-  const appConfigPath = path.join(appDir, "app.config.ts");
-  const fallback = "ELIZA";
-  if (!fs.existsSync(appConfigPath)) {
-    return fallback;
-  }
-
-  const content = fs.readFileSync(appConfigPath, "utf8");
-  const match = content.match(/envPrefix\s*:\s*["']([^"']+)["']/);
-  const raw = match?.[1]?.trim() || fallback;
-  try {
-    return normalizeEnvPrefix(raw || fallback);
-  } catch {
-    return normalizeEnvPrefix(fallback);
-  }
-}
-
-const APP_ENV_PREFIX = readAppEnvPrefix();
-const BRANDED_BUILD_FULL_SETUP = `${APP_ENV_PREFIX}_BUILD_FULL_SETUP`;
-const BRANDED_ASSET_BASE_URL = `${APP_ENV_PREFIX}_ASSET_BASE_URL`;
-
-const fullSetup =
-  process.env.ELIZA_BUILD_FULL_SETUP === "1" ||
-  process.env[BRANDED_BUILD_FULL_SETUP] === "1";
+const fullSetup = process.env.ELIZA_BUILD_FULL_SETUP === "1";
 
 function run(command, args, cwd) {
   const { appAssetBaseUrl } = resolveElizaAssetBaseUrls();
@@ -68,7 +44,6 @@ function run(command, args, cwd) {
           VITE_ASSET_BASE_URL:
             process.env.VITE_ASSET_BASE_URL ??
             process.env.ELIZA_ASSET_BASE_URL ??
-            process.env[BRANDED_ASSET_BASE_URL] ??
             appAssetBaseUrl,
         }
       : {}),

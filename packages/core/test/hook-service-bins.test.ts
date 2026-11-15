@@ -114,6 +114,20 @@ describe.skipIf(process.platform === "win32")(
 			).toEqual({ eligible: true, reasons: undefined });
 		});
 
+		it("caches PATH lookups until stop", async () => {
+			expect(eligibilityFor({ bins: ["hook-test-present"] }).eligible).toBe(
+				true,
+			);
+			rmSync(join(binDir, "hook-test-present"));
+			expect(eligibilityFor({ bins: ["hook-test-present"] }).eligible).toBe(
+				true,
+			);
+			await service.stop();
+			expect(eligibilityFor({ bins: ["hook-test-present"] }).eligible).toBe(
+				false,
+			);
+		});
+
 		it("rejects anyBins when no entry is an executable on PATH", () => {
 			expect(
 				eligibilityFor({ anyBins: ["hook-test-missing", "hook-test-noexec"] }),

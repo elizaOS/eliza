@@ -8,10 +8,12 @@ import android.os.Build
 import android.os.BatteryManager
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import android.os.RemoteException
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Base64
 import android.view.WindowManager
+import androidx.health.connect.client.HealthConnectClient
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -20,6 +22,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
@@ -63,15 +66,82 @@ class SignalEventsInstrumentedTest {
         JSONTokener(evaluate(scenario, "JSON.stringify($expression)")).nextValue() as String
 
     private fun call(scenario: ActivityScenario<SignalEventsTestActivity>, expression: String): JSONObject {
+        val result = settle(scenario, expression)
+        assertFalse("Native promise failed: $result", result.has("error"))
+        return result
+    }
+
+    /** Awaits a promise and returns `{value}` or `{error}`; the value stays in `window.signalResult`. */
+    private fun settle(scenario: ActivityScenario<SignalEventsTestActivity>, expression: String): JSONObject {
         evaluate(scenario, """
             window.signalResult = null;
             (async () => { try { window.signalResult = {value: await ($expression)}; }
             catch(error) { window.signalResult = {error: String(error.message ?? error)}; } })();
         """.trimIndent())
         awaitState("Native promise did not settle: $expression") { evaluate(scenario, "window.signalResult !== null") == "true" }
-        val result = JSONObject(json(scenario, "window.signalResult"))
-        assertFalse("Native promise failed: $result", result.has("error"))
-        return result
+        return JSONObject(json(scenario, "window.signalResult"))
+    }
+
+    private fun launchBridge(): ActivityScenario<SignalEventsTestActivity> {
+        val scenario = ActivityScenario.launch(SignalEventsTestActivity::class.java)
+        awaitState("MobileSignals bridge did not register") {
+            evaluate(scenario, "Boolean(window.Capacitor?.isPluginAvailable('MobileSignals'))") == "true"
+        }
+        return scenario
+    }
+
+    // Asserted in JavaScript after the WebView parsed the payload: Android's
+    // org.json writes a raw Kotlin list with toString(), which the JVM one does not.
+    private val payloadChecks = """
+        (() => {
+          const h = window.signalResult.value.healthSnapshot;
+          const nullOrNumber = (o, k) => k in o && (o[k] === null || typeof o[k] === 'number');
+          return {
+            warningsArray: Array.isArray(h.warnings) && h.warnings.every(w => typeof w === 'string'),
+            frameworksArray: Array.isArray(h.screenTime.requirements.frameworks),
+            asleepAt: nullOrNumber(h.sleep, 'asleepAt'),
+            awakeAt: nullOrNumber(h.sleep, 'awakeAt'),
+            durationMinutes: nullOrNumber(h.sleep, 'durationMinutes'),
+            sampleAt: nullOrNumber(h.biometrics, 'sampleAt'),
+            heartRateBpm: nullOrNumber(h.biometrics, 'heartRateBpm'),
+            restingHeartRateBpm: nullOrNumber(h.biometrics, 'restingHeartRateBpm'),
+          };
+        })()
+    """.trimIndent()
+
+    @Test fun snapshotKeepsArraysAndNullsThroughTheWebView() {
+        launchBridge().use { scenario ->
+            call(scenario, "window.Capacitor.nativePromise('MobileSignals', 'getSnapshot', {})")
+            val checks = JSONObject(json(scenario, payloadChecks))
+            for (key in checks.keys()) {
+                assertTrue("healthSnapshot $key: $checks", checks.getBoolean(key))
+            }
+        }
+    }
+
+    @Test fun failedHealthConnectPermissionReadRejectsInsteadOfCrashing() {
+        val context = instrumentation.targetContext
+        assumeTrue(
+            "Health Connect is not available on this device",
+            HealthConnectClient.getSdkStatus(context, "com.google.android.apps.healthdata") ==
+                HealthConnectClient.SDK_AVAILABLE,
+        )
+        launchBridge().use { scenario ->
+            scenario.onActivity {
+                val plugin = it.bridge.getPlugin("MobileSignals").instance as MobileSignalsPlugin
+                plugin.readGrantedPermissions = { throw RemoteException("provider died") }
+            }
+            val rejected = settle(scenario, "window.Capacitor.nativePromise('MobileSignals', 'checkPermissions', {})")
+            assertTrue("checkPermissions must reject: $rejected", rejected.optString("error").contains("provider died"))
+
+            // The host survived, and a snapshot reports the failed read as a warning.
+            call(scenario, "window.Capacitor.nativePromise('MobileSignals', 'getSnapshot', {})")
+            val warnings = JSONArray(json(scenario, "window.signalResult.value.healthSnapshot.warnings"))
+            assertTrue(
+                "warnings: $warnings",
+                (0 until warnings.length()).any { warnings.getString(it) == "Health Connect permission check failed" },
+            )
+        }
     }
 
     private fun events(scenario: ActivityScenario<SignalEventsTestActivity>) = JSONArray(json(scenario, "window.signalEvents"))

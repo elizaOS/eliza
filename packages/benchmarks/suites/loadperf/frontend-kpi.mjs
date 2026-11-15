@@ -9,8 +9,8 @@
  * (history fallback to index.html), then navigates Chromium there. Override the
  * target with LOADPERF_FE_URL or --url=<url> to measure a running deployment.
  *
- *   ELIZA_REPO=<eliza checkout> node suites/loadperf/frontend-kpi.mjs
- *   node suites/loadperf/frontend-kpi.mjs --url=http://127.0.0.1:2138
+ *   ELIZA_REPO=<eliza checkout> bun suites/loadperf/frontend-kpi.mjs
+ *   bun suites/loadperf/frontend-kpi.mjs --url=http://127.0.0.1:2138
  *
  * Requires the optional `playwright` dependency. If it (or a browser binary) is
  * unavailable, records { skipped: true, error } and exits 2.

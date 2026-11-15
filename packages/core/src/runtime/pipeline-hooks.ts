@@ -23,11 +23,34 @@ import {
 	TEXT_GENERATION_MODEL_KEYS,
 } from "./model-policy.js";
 
-export function coerceOutgoingMessageText(text: unknown): string {
-	if (text === null || text === undefined) {
-		return "";
+/** Log label per phase; also the set of phases `applyPipelineHooks` accepts. */
+const PIPELINE_HOOK_LOG_LABELS: Readonly<Record<PipelineHookPhase, string>> = {
+	incoming_before_compose: "Incoming pipeline hook",
+	compose_state_providers: "Compose-state provider pipeline hook",
+	pre_should_respond: "Pre-should-respond pipeline hook",
+	parallel_with_should_respond: "Parallel should-respond pipeline hook",
+	outgoing_before_deliver: "Outgoing pipeline hook",
+	pre_model: "Pre-model pipeline hook",
+	post_model: "Post-model pipeline hook",
+	after_memory_persisted: "After-memory-persisted pipeline hook",
+	model_stream_chunk: "Model stream chunk pipeline hook",
+	model_stream_end: "Model stream end pipeline hook",
+};
+
+/** `content.metadata` flag that skips a phase's hooks for one message or memory. */
+const PIPELINE_HOOK_SKIP_FLAGS: Partial<Record<PipelineHookPhase, string>> = {
+	incoming_before_compose: "skipIncomingMessageHooks",
+	compose_state_providers: "skipComposeStateProviderHooks",
+	pre_should_respond: "skipPreShouldRespondHooks",
+	parallel_with_should_respond: "skipParallelWithShouldRespondHooks",
+	after_memory_persisted: "skipAfterMemoryPersistedHooks",
+};
+
+function skipFlagMetadata(ctx: PipelineHookContext): unknown {
+	if (ctx.phase === "after_memory_persisted") {
+		return ctx.memory.content.metadata;
 	}
-	return String(text);
+	return "message" in ctx ? ctx.message?.content.metadata : undefined;
 }
 
 export class RuntimePipelineHooks {
@@ -121,91 +144,69 @@ export class RuntimePipelineHooks {
 					phase: entry.phase,
 				});
 			}
-			{
-				const durationMs = Math.round(performance.now() - t0);
-				if (!pipelineHookTelemetry) {
-					const baseLite = {
-						src: "pipeline_hook" as const,
+			const durationMs = Math.round(performance.now() - t0);
+			const slow = durationMs >= PIPELINE_HOOK_WARN_MS;
+			const fields = {
+				src: "pipeline_hook" as const,
+				agentId: this.runtime.agentId,
+				hookId: entry.id,
+				phase,
+				roomId,
+				durationMs,
+			};
+			if (pipelineHookTelemetry && durationMs >= PIPELINE_HOOK_DEBUG_LOG_MS) {
+				this.runtime.logger.debug(fields, "Pipeline hook timing");
+			}
+			if (slow) {
+				this.runtime.logger.warn(
+					fields,
+					`PIPELINE HOOK SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+				);
+			}
+			if (durationMs >= PIPELINE_HOOK_ERROR_LOG_MS) {
+				this.runtime.logger.error(
+					fields,
+					`PIPELINE HOOK VERY SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+				);
+			}
+			if (!pipelineHookTelemetry) {
+				return;
+			}
+			try {
+				await this.runtime.emitEvent(EventType.PIPELINE_HOOK_METRIC, {
+					runtime: this.runtime,
+					source: "runtime",
+					phase,
+					hookId: entry.id,
+					durationMs,
+					roomId,
+					slow,
+					...(errorMessage !== undefined ? { error: errorMessage } : {}),
+				});
+			} catch (metricError) {
+				// error-policy:J7 Hook metrics are diagnostics and cannot
+				// interrupt the pipeline they observe.
+				this.runtime.logger.debug(
+					{
+						src: "pipeline_hook",
 						agentId: this.runtime.agentId,
 						hookId: entry.id,
 						phase,
-						roomId,
-						durationMs,
-					};
-					if (durationMs >= PIPELINE_HOOK_WARN_MS) {
-						this.runtime.logger.warn(
-							baseLite,
-							`PIPELINE HOOK SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
-						);
-					}
-					if (durationMs >= PIPELINE_HOOK_ERROR_LOG_MS) {
-						this.runtime.logger.error(
-							baseLite,
-							`PIPELINE HOOK VERY SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
-						);
-					}
-				} else {
-					const slow = durationMs >= PIPELINE_HOOK_WARN_MS;
-					const baseFields = {
-						src: "pipeline_hook" as const,
-						agentId: this.runtime.agentId,
+						error:
+							metricError instanceof Error
+								? metricError.message
+								: String(metricError),
+					},
+					"PIPELINE_HOOK_METRIC listener failed",
+				);
+				this.runtime.reportError(
+					"AgentRuntime.pipelineHookMetric",
+					metricError,
+					{
 						hookId: entry.id,
 						phase,
-						roomId,
-						durationMs,
-					};
-					if (durationMs >= PIPELINE_HOOK_DEBUG_LOG_MS) {
-						this.runtime.logger.debug(baseFields, "Pipeline hook timing");
-					}
-					if (slow) {
-						this.runtime.logger.warn(
-							baseFields,
-							`PIPELINE HOOK SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
-						);
-					}
-					if (durationMs >= PIPELINE_HOOK_ERROR_LOG_MS) {
-						this.runtime.logger.error(
-							baseFields,
-							`PIPELINE HOOK VERY SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
-						);
-					}
-					try {
-						await this.runtime.emitEvent(EventType.PIPELINE_HOOK_METRIC, {
-							runtime: this.runtime,
-							source: "runtime",
-							phase,
-							hookId: entry.id,
-							durationMs,
-							roomId,
-							slow,
-							...(errorMessage !== undefined ? { error: errorMessage } : {}),
-						});
-					} catch (metricError) {
-						// error-policy:J7 Hook metrics are diagnostics and cannot
-						// interrupt the pipeline they observe.
-						this.runtime.logger.debug(
-							{
-								src: "pipeline_hook",
-								agentId: this.runtime.agentId,
-								hookId: entry.id,
-								phase,
-								error:
-									metricError instanceof Error
-										? metricError.message
-										: String(metricError),
-							},
-							"PIPELINE_HOOK_METRIC listener failed",
-						);
-						this.runtime.reportError(
-							"AgentRuntime.pipelineHookMetric",
-							metricError,
-							{
-								hookId: entry.id,
-								phase,
-							},
-						);
-					}
-				}
+					},
+				);
 			}
 		};
 
@@ -213,7 +214,7 @@ export class RuntimePipelineHooks {
 			phase === "parallel_with_should_respond" ||
 			phase === "model_stream_chunk"
 		) {
-			await Promise.all(hooks.map((h) => runOne(h)));
+			await Promise.all(hooks.map(runOne));
 			return;
 		}
 
@@ -231,7 +232,7 @@ export class RuntimePipelineHooks {
 		for (const h of serialReaders) {
 			await runOne(h);
 		}
-		await Promise.all(concurrentReaders.map((h) => runOne(h)));
+		await Promise.all(concurrentReaders.map(runOne));
 	}
 
 	registerPipelineHook(spec: PipelineHookSpec): void {
@@ -269,204 +270,49 @@ export class RuntimePipelineHooks {
 		}
 
 		const hookTelemetry =
-			pipelineHookTelemetry !== undefined
-				? pipelineHookTelemetry
-				: phase !== "model_stream_chunk";
-
+			pipelineHookTelemetry ?? phase !== "model_stream_chunk";
+		if (!Object.hasOwn(PIPELINE_HOOK_LOG_LABELS, phase)) {
+			throw new Error(`Unknown pipeline hook phase: ${String(phase)}`);
+		}
 		const hasHooks = this.hooksForPhase(phase).length > 0;
-
-		switch (phase) {
-			case "incoming_before_compose": {
-				if (!hasHooks) {
+		if (hasHooks) {
+			const skipFlag = PIPELINE_HOOK_SKIP_FLAGS[phase];
+			if (skipFlag) {
+				const metadata = skipFlagMetadata(ctx);
+				if (
+					typeof metadata === "object" &&
+					metadata !== null &&
+					(metadata as Record<string, unknown>)[skipFlag] === true
+				) {
 					return;
 				}
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "incoming_before_compose" }
-				>;
-				const md = c.message.content.metadata;
-				const meta =
-					typeof md === "object" && md !== null
-						? (md as Record<string, unknown>)
-						: null;
-				if (meta?.skipIncomingMessageHooks === true) {
-					return;
-				}
-				const messageId = c.message.id;
-				await this.invokePipelineHooks(
-					phase,
-					c,
-					"Incoming pipeline hook",
-					hookTelemetry,
-				);
-				if (messageId) {
-					this.runtime.stateCache.delete(messageId);
-					this.runtime.stateCache.delete(`${messageId}_action_results`);
-				}
-				return;
 			}
-			case "compose_state_providers": {
-				if (!hasHooks) {
-					return;
-				}
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "compose_state_providers" }
-				>;
-				const md = c.message.content.metadata;
-				const meta =
-					typeof md === "object" && md !== null
-						? (md as Record<string, unknown>)
-						: null;
-				if (meta?.skipComposeStateProviderHooks === true) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					c,
-					"Compose-state provider pipeline hook",
-					hookTelemetry,
-				);
-				return;
+			const messageId =
+				ctx.phase === "incoming_before_compose" ? ctx.message.id : undefined;
+			await this.invokePipelineHooks(
+				phase,
+				ctx,
+				PIPELINE_HOOK_LOG_LABELS[phase],
+				hookTelemetry,
+			);
+			if (messageId) {
+				this.runtime.stateCache.delete(messageId);
+				this.runtime.stateCache.delete(`${messageId}_action_results`);
 			}
-			case "pre_should_respond": {
-				if (!hasHooks) {
-					return;
-				}
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "pre_should_respond" }
-				>;
-				const md = c.message.content.metadata;
-				const meta =
-					typeof md === "object" && md !== null
-						? (md as Record<string, unknown>)
-						: null;
-				if (meta?.skipPreShouldRespondHooks === true) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					c,
-					"Pre-should-respond pipeline hook",
-					hookTelemetry,
-				);
-				return;
-			}
-			case "parallel_with_should_respond": {
-				if (!hasHooks) {
-					return;
-				}
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "parallel_with_should_respond" }
-				>;
-				const md = c.message.content.metadata;
-				const meta =
-					typeof md === "object" && md !== null
-						? (md as Record<string, unknown>)
-						: null;
-				if (meta?.skipParallelWithShouldRespondHooks === true) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					c,
-					"Parallel should-respond pipeline hook",
-					hookTelemetry,
-				);
-				return;
-			}
-			case "outgoing_before_deliver": {
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "outgoing_before_deliver" }
-				>;
-				if (hasHooks) {
-					await this.invokePipelineHooks(
-						phase,
-						c,
-						"Outgoing pipeline hook",
-						hookTelemetry,
-					);
-				}
-				// Mandatory outbound hygiene, hooks or none: strip leaked model
-				// machine syntax, redact secrets, then fail-closed block
-				// any security-envelope echo. Runs before the content is
-				// persisted, so stored outbound memories carry the same text the
-				// connector delivers.
-				c.content.text = guardOutboundEnvelopeText(
-					this.runtime,
-					this.runtime.redactSecrets(
-						sanitizeOutboundText(coerceOutgoingMessageText(c.content.text)),
-					),
-					"outgoing_before_deliver",
-				);
-				return;
-			}
-			case "pre_model":
-			case "post_model": {
-				if (!hasHooks) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					ctx as Extract<
-						PipelineHookContext,
-						{ phase: "pre_model" | "post_model" }
-					>,
-					phase === "pre_model"
-						? "Pre-model pipeline hook"
-						: "Post-model pipeline hook",
-					hookTelemetry,
-				);
-				return;
-			}
-			case "after_memory_persisted": {
-				if (!hasHooks) {
-					return;
-				}
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "after_memory_persisted" }
-				>;
-				const md = c.memory.content.metadata;
-				const meta =
-					typeof md === "object" && md !== null
-						? (md as Record<string, unknown>)
-						: null;
-				if (meta?.skipAfterMemoryPersistedHooks === true) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					c,
-					"After-memory-persisted pipeline hook",
-					hookTelemetry,
-				);
-				return;
-			}
-			case "model_stream_chunk":
-			case "model_stream_end": {
-				if (!hasHooks) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					ctx as Extract<
-						PipelineHookContext,
-						{ phase: "model_stream_chunk" | "model_stream_end" }
-					>,
-					phase === "model_stream_chunk"
-						? "Model stream chunk pipeline hook"
-						: "Model stream end pipeline hook",
-					hookTelemetry,
-				);
-				return;
-			}
-			default: {
-				throw new Error(`Unknown pipeline hook phase: ${String(phase)}`);
-			}
+		}
+		if (ctx.phase === "outgoing_before_deliver") {
+			// Mandatory outbound hygiene, hooks or none: strip leaked model
+			// machine syntax, redact secrets, then fail-closed block
+			// any security-envelope echo. Runs before the content is
+			// persisted, so stored outbound memories carry the same text the
+			// connector delivers.
+			ctx.content.text = guardOutboundEnvelopeText(
+				this.runtime,
+				this.runtime.redactSecrets(
+					sanitizeOutboundText(String(ctx.content.text ?? "")),
+				),
+				"outgoing_before_deliver",
+			);
 		}
 	}
 }

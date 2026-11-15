@@ -13,7 +13,7 @@
  * restore reads the backup's identity columns and never writes those shapes.
  */
 
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
@@ -209,15 +209,25 @@ interface Seed {
  * container_created, sandbox activation restore_pending on the created
  * container, replacement attempt provider_succeeded and its vault seed.
  */
-async function seedContainerCreatedRestore(): Promise<Seed> {
-  const organizationId = fixture.authority.organizationId;
-  const agentId = fixture.authority.agentId;
-  const restoreAttemptId = fixture.authority.restoreAttemptId;
-  const backupId = fixture.authority.backupId;
-  const manifestSha256 = fixture.authority.expectedManifestSha256;
+async function seedContainerCreatedRestore(
+  options: {
+    unresolved?: boolean;
+    observedContainer?: boolean;
+    sourceFixture?: CandidateFixture;
+    namespace?: string;
+  } = {},
+): Promise<Seed> {
+  const sourceFixture = options.sourceFixture ?? fixture;
+  const previousNodeId = options.namespace ? `previous-${options.namespace}` : "previous-node";
+  const targetNodeId = options.namespace ? `restore-${options.namespace}` : "restore-node";
+  const organizationId = sourceFixture.authority.organizationId;
+  const agentId = sourceFixture.authority.agentId;
+  const restoreAttemptId = sourceFixture.authority.restoreAttemptId;
+  const backupId = sourceFixture.authority.backupId;
+  const manifestSha256 = sourceFixture.authority.expectedManifestSha256;
   const operationId = randomUUID();
-  const leaseId = fixture.authority.leaseId;
-  const leaseGeneration = fixture.authority.fencingToken;
+  const leaseId = sourceFixture.authority.leaseId;
+  const leaseGeneration = sourceFixture.authority.fencingToken;
   const replacementAttemptId = randomUUID();
   const containerId = "c".repeat(63) + "1";
   const token = randomBytes(32).toString("base64url");
@@ -234,8 +244,8 @@ async function seedContainerCreatedRestore(): Promise<Seed> {
     .values({ steward_user_id: `steward-${operationId}`, organization_id: organizationId })
     .returning();
   for (const [historyId, recordId, nodeId, incarnation] of [
-    [previousHistoryId, previousNodeRecordId, "previous-node", previousIncarnation],
-    [targetHistoryId, targetNodeRecordId, "restore-node", targetIncarnation],
+    [previousHistoryId, previousNodeRecordId, previousNodeId, previousIncarnation],
+    [targetHistoryId, targetNodeRecordId, targetNodeId, targetIncarnation],
   ] as const) {
     await dbWrite.insert(agentNodeIncarnationHistories).values({
       id: historyId,
@@ -277,11 +287,11 @@ async function seedContainerCreatedRestore(): Promise<Seed> {
     execution_tier: "dedicated-always",
     sandbox_id: `agent-${agentId}`,
     container_name: `agent-${agentId}`,
-    node_id: "previous-node",
+    node_id: previousNodeId,
     bridge_port: 18790,
     web_ui_port: 20000,
-    bridge_url: "http://previous-node.example.internal:18790",
-    health_url: "http://previous-node.example.internal:20000/api",
+    bridge_url: `http://${previousNodeId}.example.internal:18790`,
+    health_url: `http://${previousNodeId}.example.internal:20000/api`,
     docker_image: "ghcr.io/elizaos/eliza:previous",
     image_digest: `sha256:${"a".repeat(64)}`,
   });
@@ -292,9 +302,9 @@ async function seedContainerCreatedRestore(): Promise<Seed> {
     state_data: {} as never,
     catalog_organization_id: organizationId,
     catalog_agent_id: agentId,
-    backup_operation_id: fixture.authority.operationId,
-    lifecycle_generation: fixture.authority.sourceActivationGeneration,
-    lifecycle_revision: BigInt(fixture.authority.sourceLifecycleRevision),
+    backup_operation_id: sourceFixture.authority.operationId,
+    lifecycle_generation: sourceFixture.authority.sourceActivationGeneration,
+    lifecycle_revision: BigInt(sourceFixture.authority.sourceLifecycleRevision),
     manifest_digest: manifestSha256,
     manifest_version: 3,
     catalog_state: "protected",
@@ -311,9 +321,9 @@ async function seedContainerCreatedRestore(): Promise<Seed> {
     generation: leaseGeneration,
     catalog_epoch: 9n,
     copy_role: "primary",
-    operation_id: fixture.authority.operationId,
-    activation_generation: fixture.authority.sourceActivationGeneration,
-    lifecycle_revision: BigInt(fixture.authority.sourceLifecycleRevision),
+    operation_id: sourceFixture.authority.operationId,
+    activation_generation: sourceFixture.authority.sourceActivationGeneration,
+    lifecycle_revision: BigInt(sourceFixture.authority.sourceLifecycleRevision),
     expected_manifest_sha256: manifestSha256,
     expires_at: leaseExpiresAt,
   });
@@ -328,15 +338,15 @@ async function seedContainerCreatedRestore(): Promise<Seed> {
     lease_owner_id: WORKER,
     catalog_epoch: 9n,
     copy_role: "primary",
-    phase: "container_created",
-    expected_operation_id: fixture.authority.operationId,
+    phase: options.unresolved ? "vault_seeded" : "container_created",
+    expected_operation_id: sourceFixture.authority.operationId,
     expected_manifest_sha256: manifestSha256,
-    expected_activation_generation: fixture.authority.sourceActivationGeneration,
-    expected_lifecycle_revision: BigInt(fixture.authority.sourceLifecycleRevision),
+    expected_activation_generation: sourceFixture.authority.sourceActivationGeneration,
+    expected_lifecycle_revision: BigInt(sourceFixture.authority.sourceLifecycleRevision),
     expected_node_record_id: targetNodeRecordId,
     expected_node_incarnation: targetIncarnation,
     expected_node_history_id: targetHistoryId,
-    expected_container_id: containerId,
+    expected_container_id: options.unresolved ? null : containerId,
     expected_image_digest: IMAGE_DIGEST,
     expected_image_platform: "linux/amd64",
     expected_image_reference: IMAGE_REFERENCE,
@@ -347,35 +357,38 @@ async function seedContainerCreatedRestore(): Promise<Seed> {
     .select()
     .from(agentSandboxes)
     .where(eq(agentSandboxes.id, agentId));
-  await dbWrite
-    .update(agentSandboxes)
-    .set({
-      activation_generation: restoreAttemptId,
-      activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
-      activation_purpose: "restore",
-      activation_phase: "restore_pending",
-      activation_backup_id: backupId,
-      activation_backup_hash: manifestSha256,
-      activation_token_hash: tokenSha256,
-      activation_token_ciphertext: `test-cipher:${token}`,
-      activation_container_id: containerId,
-      activation_node_id: "restore-node",
-      activation_image_digest: IMAGE_DIGEST,
-      activation_boot_id: targetIncarnation,
-    })
-    .where(eq(agentSandboxes.id, agentId));
+  if (!options.unresolved)
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_generation: restoreAttemptId,
+        activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+        activation_purpose: "restore",
+        activation_phase: "restore_pending",
+        activation_backup_id: backupId,
+        activation_backup_hash: manifestSha256,
+        activation_token_hash: tokenSha256,
+        activation_token_ciphertext: `test-cipher:${token}`,
+        activation_container_id: containerId,
+        activation_node_id: targetNodeId,
+        activation_image_digest: IMAGE_DIGEST,
+        activation_boot_id: targetIncarnation,
+      })
+      .where(eq(agentSandboxes.id, agentId));
   const [attested] = await dbWrite
     .select()
     .from(agentSandboxes)
     .where(eq(agentSandboxes.id, agentId));
-  expect(attested!.lifecycle_revision).toBe(sandbox!.lifecycle_revision + 1);
+  expect(attested!.lifecycle_revision).toBe(
+    sandbox!.lifecycle_revision + (options.unresolved ? 0 : 1),
+  );
   const now = new Date();
   await dbWrite.insert(agentSandboxReplacementAttempts).values({
     id: replacementAttemptId,
     organization_id: organizationId,
     agent_id: agentId,
     operation_kind: "provision",
-    lifecycle_revision: BigInt(attested!.lifecycle_revision - 1),
+    lifecycle_revision: BigInt(attested!.lifecycle_revision - (options.unresolved ? 0 : 1)),
     activation_generation: restoreAttemptId,
     restore_lease_id: leaseId,
     restore_backup_id: backupId,
@@ -384,30 +397,30 @@ async function seedContainerCreatedRestore(): Promise<Seed> {
     restore_lease_generation: leaseGeneration,
     restore_catalog_epoch: 9n,
     restore_copy_role: "primary",
-    restore_operation_id: fixture.authority.operationId,
-    restore_source_activation_generation: fixture.authority.sourceActivationGeneration,
-    restore_source_lifecycle_revision: BigInt(fixture.authority.sourceLifecycleRevision),
+    restore_operation_id: sourceFixture.authority.operationId,
+    restore_source_activation_generation: sourceFixture.authority.sourceActivationGeneration,
+    restore_source_lifecycle_revision: BigInt(sourceFixture.authority.sourceLifecycleRevision),
     restore_manifest_sha256: manifestSha256,
     restore_lease_expires_at: leaseExpiresAt,
-    state: "provider_succeeded",
+    state: options.unresolved ? "in_flight_unresolved" : "provider_succeeded",
     locator_sandbox_id: containerName,
-    locator_node_id: "restore-node",
+    locator_node_id: targetNodeId,
     locator_container_name: containerName,
     locator_node_record_id: targetNodeRecordId,
     locator_node_incarnation: targetIncarnation,
     locator_node_history_id: targetHistoryId,
-    locator_node_hostname: "restore-node.example.internal",
+    locator_node_hostname: `${targetNodeId}.example.internal`,
     locator_node_ssh_port: 22,
     locator_node_ssh_user: "root",
     locator_node_host_key_fingerprint: HOST_KEY,
     locator_secret_cleanup_version: 1,
     locator_allocation_counted: true,
     locator_recorded_at: now,
-    locator_container_id: containerId,
-    locator_container_recorded_at: now,
+    locator_container_id: options.unresolved && !options.observedContainer ? null : containerId,
+    locator_container_recorded_at: options.unresolved && !options.observedContainer ? null : now,
     provider_started_at: now,
-    provider_succeeded_at: now,
-    provider_receipt_digest: "f".repeat(64),
+    provider_succeeded_at: options.unresolved ? null : now,
+    provider_receipt_digest: options.unresolved ? null : "f".repeat(64),
     // Every locator/provider timestamp must follow creation on one clock.
     created_at: new Date(now.getTime() - 1_000),
     updated_at: now,
@@ -423,9 +436,9 @@ async function seedContainerCreatedRestore(): Promise<Seed> {
     lease_fencing_token: leaseGeneration,
     lease_expires_at: leaseExpiresAt,
     backup_id: backupId,
-    operation_id: fixture.authority.operationId,
-    source_activation_generation: fixture.authority.sourceActivationGeneration,
-    source_lifecycle_revision: BigInt(fixture.authority.sourceLifecycleRevision),
+    operation_id: sourceFixture.authority.operationId,
+    source_activation_generation: sourceFixture.authority.sourceActivationGeneration,
+    source_lifecycle_revision: BigInt(sourceFixture.authority.sourceLifecycleRevision),
     manifest_sha256: manifestSha256,
     vault_key_generation_id: randomUUID(),
     vault_key_authority_receipt_digest: "b".repeat(64),
@@ -448,11 +461,11 @@ async function seedContainerCreatedRestore(): Promise<Seed> {
     previousRuntime: {
       organizationId,
       agentId,
-      nodeId: "previous-node",
+      nodeId: previousNodeId,
       nodeRecordId: previousNodeRecordId,
       nodeIncarnation: previousIncarnation,
       nodeHistoryId: previousHistoryId,
-      hostname: "previous-node.example.internal",
+      hostname: `${previousNodeId}.example.internal`,
       sshPort: 22,
       sshUser: "root",
       hostKeyFingerprint: HOST_KEY,
@@ -907,6 +920,467 @@ test(
       .where(eq(dockerNodes.id, seed.targetNodeRecordId));
     expect(await selectAgentBackupRestoreTargetNode(operation)).toBeNull();
     await clearSeed(seed);
+  },
+  TEST_TIMEOUT,
+);
+
+async function expireUnresolvedRestore(seed: Seed) {
+  const { abandonAgentBackupRestoreWithExpiredLease, listAgentBackupRestoreTerminalCleanups } =
+    await import("../../../db/repositories/agent-backup-restore-serving");
+  await dbWrite.update(agentBackupRestoreLeases).set({
+    created_at: new Date(Date.now() - 120_000),
+    expires_at: new Date(Date.now() - 60_000),
+  });
+  expect((await abandonAgentBackupRestoreWithExpiredLease(seed.operationId))?.phase).toBe(
+    "failed_terminal",
+  );
+  expect(await listAgentBackupRestoreTerminalCleanups({ ownerId: WORKER, limit: 10 })).toEqual([
+    seed.operationId,
+  ]);
+}
+
+/** Only SSH is controlled: the real provider verifies node identity and every
+ * tombstone/inspect/observation/removal receipt over real repository state. */
+async function exactCleanupTransport(seed: Seed) {
+  const { DockerSSHClient } = await import("../docker-ssh");
+  const proof = await import("../docker-sandbox-utils");
+  const containerName = `agent-restore-${seed.agentId}-${seed.restoreAttemptId}`;
+  const state = {
+    live: false,
+    quiescent: false,
+    observed: false,
+    removed: 0,
+    commands: [] as string[],
+    loseVolumeResponse: false,
+  };
+  const dedicated = spyOn(DockerSSHClient, "createDedicated").mockImplementation(
+    () =>
+      ({
+        async exec(command: string) {
+          state.commands.push(command);
+          const volumeReceipt = proof.getExactRestoreStagingVolumeCleanupReceipt(
+            seed.replacementAttemptId,
+            seed.restoreAttemptId,
+          );
+          if (command.includes(volumeReceipt)) {
+            expect(state.live).toBe(false);
+            if (state.loseVolumeResponse) {
+              state.loseVolumeResponse = false;
+              throw new Error("SSH response lost after exact removal");
+            }
+            return volumeReceipt;
+          }
+          const purgeReceipt = proof.getReplacementSecretArtifactsCleanupReceipt(
+            seed.replacementAttemptId,
+          );
+          if (command.includes(purgeReceipt)) {
+            return [
+              purgeReceipt,
+              ...(state.quiescent
+                ? [proof.getReplacementDockerCreateQuiescentReceipt(seed.replacementAttemptId)]
+                : []),
+              ...(state.observed
+                ? [
+                    proof.getReplacementCandidateObservedReceipt(
+                      seed.replacementAttemptId,
+                      seed.containerId,
+                    ),
+                  ]
+                : []),
+            ].join("\n");
+          }
+          const observedReceipt = proof.getReplacementCandidateObservedReceipt(
+            seed.replacementAttemptId,
+            seed.containerId,
+          );
+          if (command.includes(observedReceipt)) {
+            state.observed = true;
+            return observedReceipt;
+          }
+          if (command.includes("docker inspect --format")) {
+            if (!state.live) throw new Error(`Error: No such container: ${containerName}`);
+            return `${seed.containerId}|${seed.replacementAttemptId}|/${containerName}|2026-01-01T00:00:00Z`;
+          }
+          if (command.includes("docker stop -t")) return "";
+          if (command.includes("docker rm -f")) {
+            expect(command).toContain(seed.containerId);
+            state.live = false;
+            state.removed += 1;
+            return "";
+          }
+          throw new Error(`Unexpected exact cleanup command: ${command.slice(0, 120)}`);
+        },
+        async disconnect() {},
+      }) as never,
+  );
+  return { state, restore: () => dedicated.mockRestore() };
+}
+
+async function replacementRow(seed: Seed) {
+  const [row] = await dbWrite
+    .select()
+    .from(agentSandboxReplacementAttempts)
+    .where(eq(agentSandboxReplacementAttempts.id, seed.replacementAttemptId));
+  return row!;
+}
+
+async function allocatedCount(seed: Seed) {
+  const [row] = await dbWrite
+    .select()
+    .from(dockerNodes)
+    .where(eq(dockerNodes.id, seed.targetNodeRecordId));
+  return row!.allocated_count;
+}
+
+test(
+  "terminal unresolved create stays quarantined until the delayed daemon candidate is removed",
+  async () => {
+    const seed = await seedContainerCreatedRestore({ unresolved: true });
+    const ssh = await exactCleanupTransport(seed);
+    const deps = coordinator.createProductionCoordinatorDependencies();
+    try {
+      await expireUnresolvedRestore(seed);
+      const first = await coordinator.cleanupTerminalAgentBackupRestore(deps, seed.operationId);
+      expect(first).toMatchObject({ status: "quarantined", reason: "daemon_outcome_unresolved" });
+      expect((await replacementRow(seed)).state).toBe("cleanup_in_progress");
+      expect(await allocatedCount(seed)).toBe(1);
+
+      // The daemon completes a submitted create AFTER its caller and lease ended.
+      // Both the exact created callback and success callback remain fenced.
+      ssh.state.live = true;
+      const { beginAgentBackupRestoreTerminalCleanup } = await import(
+        "../../../db/repositories/agent-backup-restore-serving"
+      );
+      const fenced = await beginAgentBackupRestoreTerminalCleanup(seed.operationId);
+      const attempt = await replacementRow(seed);
+      const callbacks = await import("../../../db/repositories/agent-sandbox-replacement-attempts");
+      await expect(
+        dbWrite.transaction((tx) =>
+          callbacks.recordAgentSandboxReplacementCreatedInTransaction(
+            tx,
+            { attemptId: attempt.id, organizationId: seed.organizationId, agentId: seed.agentId },
+            { ...fenced.locator, containerId: seed.containerId },
+          ),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        dbWrite.transaction((tx) =>
+          callbacks.recordAgentSandboxExactRestoreProviderSucceededForLockedAuthoritiesInTransaction(
+            tx,
+            {
+              attemptId: attempt.id,
+              organizationId: seed.organizationId,
+              agentId: seed.agentId,
+              lifecycleRevision: attempt.lifecycle_revision.toString(),
+              activationGeneration: seed.restoreAttemptId,
+              lifecycleJobId: attempt.lifecycle_job_id,
+              lifecycleExecutionGeneration: attempt.lifecycle_execution_generation,
+              restoreAuthority: {
+                leaseId: attempt.restore_lease_id!,
+                backupId: attempt.restore_backup_id!,
+                restoreAttemptId: seed.restoreAttemptId,
+                ownerId: attempt.restore_lease_owner_id!,
+                fencingToken: attempt.restore_lease_generation!,
+                catalogEpoch: attempt.restore_catalog_epoch!.toString(),
+                copyRole: attempt.restore_copy_role!,
+                operationId: attempt.restore_operation_id!,
+                sourceActivationGeneration: attempt.restore_source_activation_generation!,
+                sourceLifecycleRevision: attempt.restore_source_lifecycle_revision!.toString(),
+                expectedManifestSha256: attempt.restore_manifest_sha256!,
+                expiresAt: attempt.restore_lease_expires_at!,
+              },
+              locator: { ...fenced.locator, containerId: seed.containerId },
+              databaseNow: new Date(),
+              receiptDigest: "f".repeat(64),
+            },
+          ),
+        ),
+      ).rejects.toThrow();
+      expect((await replacementRow(seed)).locator_container_id).toBeNull();
+
+      // A lost post-removal response leaves the fence; the next pass uses the
+      // durable observed-ID proof and releases capacity once, without another rm.
+      ssh.state.loseVolumeResponse = true;
+      expect(
+        await coordinator.cleanupTerminalAgentBackupRestore(deps, seed.operationId),
+      ).toMatchObject({
+        status: "quarantined",
+        reason: "cleanup_proof_unavailable",
+      });
+      expect(ssh.state.removed).toBe(1);
+      expect(await allocatedCount(seed)).toBe(1);
+      expect(await coordinator.cleanupTerminalAgentBackupRestore(deps, seed.operationId)).toEqual({
+        status: "cleaned",
+      });
+      expect(await coordinator.cleanupTerminalAgentBackupRestore(deps, seed.operationId)).toEqual({
+        status: "settled",
+      });
+      expect(ssh.state.removed).toBe(1);
+      expect(await allocatedCount(seed)).toBe(0);
+      expect((await operationRow(seed.operationId)).phase).toBe("failed_terminal");
+      expect((await replacementRow(seed)).cleanup_receipt_digest).toMatch(/^[0-9a-f]{64}$/);
+    } finally {
+      ssh.restore();
+      await clearSeed(seed);
+    }
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "terminal unresolved create with proven producer quiescence releases its reserved slot",
+  async () => {
+    const seed = await seedContainerCreatedRestore({ unresolved: true });
+    const ssh = await exactCleanupTransport(seed);
+    try {
+      await expireUnresolvedRestore(seed);
+      ssh.state.quiescent = true;
+      const summary = await coordinator.runAgentBackupRestoreCoordinatorCycle({
+        config: CONFIG,
+        dependencies: coordinator.createProductionCoordinatorDependencies(),
+      });
+      expect(summary.terminalCleanups).toBe(1);
+      expect(summary.quarantinedCleanups).toEqual([]);
+      expect(await allocatedCount(seed)).toBe(0);
+      expect((await operationRow(seed.operationId)).phase).toBe("failed_terminal");
+    } finally {
+      ssh.restore();
+      await clearSeed(seed);
+    }
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "terminal cleanup retains exact node authority instead of using its replacement",
+  async () => {
+    const seed = await seedContainerCreatedRestore({ unresolved: true, observedContainer: true });
+    const ssh = await exactCleanupTransport(seed);
+    try {
+      await expireUnresolvedRestore(seed);
+      await dbWrite
+        .update(dockerNodes)
+        .set({ hostname: "replacement.example.internal" })
+        .where(eq(dockerNodes.id, seed.targetNodeRecordId));
+      const summary = await coordinator.runAgentBackupRestoreCoordinatorCycle({
+        config: CONFIG,
+        dependencies: coordinator.createProductionCoordinatorDependencies(),
+      });
+      expect(summary.terminalCleanups).toBe(0);
+      expect(summary.quarantinedCleanups).toMatchObject([{ reason: "node_authority_unavailable" }]);
+      expect(ssh.state.commands).toHaveLength(0);
+      expect(await allocatedCount(seed)).toBe(1);
+      expect((await replacementRow(seed)).state).toBe("cleanup_in_progress");
+    } finally {
+      ssh.restore();
+      await clearSeed(seed);
+    }
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "terminal cleanup selects the active attempt after earlier proven cleanup and releases once across concurrent turns",
+  async () => {
+    const seed = await seedContainerCreatedRestore({ unresolved: true });
+    const ssh = await exactCleanupTransport(seed);
+    try {
+      const active = await replacementRow(seed);
+      const previousAttemptId = randomUUID();
+      await dbWrite.insert(agentSandboxReplacementAttempts).values({
+        ...active,
+        id: previousAttemptId,
+        state: "cleanup_proven",
+        cleanup_proven_at: new Date(),
+        cleanup_receipt_digest: "8".repeat(64),
+        created_at: new Date(active.created_at.getTime() - 60_000),
+      });
+      await expireUnresolvedRestore(seed);
+      ssh.state.quiescent = true;
+      const deps = coordinator.createProductionCoordinatorDependencies();
+      const results = await Promise.all([
+        coordinator.cleanupTerminalAgentBackupRestore(
+          deps,
+          seed.operationId,
+          seed.replacementAttemptId,
+        ),
+        coordinator.cleanupTerminalAgentBackupRestore(
+          deps,
+          seed.operationId,
+          seed.replacementAttemptId,
+        ),
+      ]);
+      expect(results.map((result) => result.status).sort()).toEqual(["cleaned", "settled"]);
+      const serving = await import("../../../db/repositories/agent-backup-restore-serving");
+      await expect(
+        serving.beginAgentBackupRestoreTerminalCleanup(seed.operationId),
+      ).rejects.toThrow("replay requires an exact replacement attempt");
+      await expect(
+        serving.beginAgentBackupRestoreTerminalCleanup(seed.operationId, randomUUID()),
+      ).rejects.toThrow();
+      await expect(
+        serving.finishAgentBackupRestoreTerminalCleanup({
+          operationId: seed.operationId,
+          replacementAttemptId: seed.replacementAttemptId,
+          receiptDigest: "0".repeat(64),
+        }),
+      ).rejects.toThrow("receipt replay mismatch");
+      expect(
+        await coordinator.cleanupTerminalAgentBackupRestore(
+          deps,
+          seed.operationId,
+          seed.replacementAttemptId,
+        ),
+      ).toEqual({ status: "settled" });
+      expect(await allocatedCount(seed)).toBe(0);
+      expect((await replacementRow(seed)).state).toBe("cleanup_proven");
+      const [previous] = await dbWrite
+        .select()
+        .from(agentSandboxReplacementAttempts)
+        .where(eq(agentSandboxReplacementAttempts.id, previousAttemptId));
+      expect(previous!.cleanup_receipt_digest).toBe("8".repeat(64));
+      expect((await operationRow(seed.operationId)).phase).toBe("failed_terminal");
+    } finally {
+      ssh.restore();
+      await clearSeed(seed);
+    }
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a node replacement after remote proof cannot consume the replacement node's capacity",
+  async () => {
+    const seed = await seedContainerCreatedRestore();
+    const ssh = await exactCleanupTransport(seed);
+    try {
+      await expireUnresolvedRestore(seed);
+      ssh.state.quiescent = true;
+      const deps = coordinator.createProductionCoordinatorDependencies();
+      const result = await coordinator.cleanupTerminalAgentBackupRestore(
+        {
+          ...deps,
+          async removeRestoreContainer(cleanup) {
+            await deps.removeRestoreContainer(cleanup);
+            const [oldHistory] = await dbWrite
+              .select()
+              .from(agentNodeIncarnationHistories)
+              .where(eq(agentNodeIncarnationHistories.id, cleanup.locator.nodeHistoryId));
+            const newHistoryId = randomUUID();
+            const newIncarnation = randomUUID();
+            await dbWrite.insert(agentNodeIncarnationHistories).values({
+              ...oldHistory!,
+              id: newHistoryId,
+              node_incarnation: newIncarnation,
+            });
+            await dbWrite
+              .update(dockerNodes)
+              .set({
+                node_incarnation: newIncarnation,
+                current_node_history_id: newHistoryId,
+                allocated_count: 5,
+              })
+              .where(eq(dockerNodes.id, seed.targetNodeRecordId));
+          },
+        },
+        seed.operationId,
+      );
+      expect(await allocatedCount(seed)).toBe(5);
+      expect(result).toMatchObject({
+        status: "quarantined",
+        reason: "node_authority_unavailable",
+        errorCode: "AGENT_BACKUP_RESTORE_CLEANUP_CAPACITY_UNAVAILABLE",
+      });
+      expect(await allocatedCount(seed)).toBe(5);
+      const attempt = await replacementRow(seed);
+      expect(attempt.state).toBe("cleanup_in_progress");
+      expect(attempt.cleanup_receipt_digest).toBeNull();
+      expect((await operationRow(seed.operationId)).phase).toBe("failed_terminal");
+    } finally {
+      ssh.restore();
+      await clearSeed(seed);
+    }
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "terminal cleanup rotates permanent quarantines so later recoverable attempts are not starved",
+  async () => {
+    const { abandonAgentBackupRestoreWithExpiredLease } = await import(
+      "../../../db/repositories/agent-backup-restore-serving"
+    );
+    const { ElizaError } = await import("@elizaos/core");
+    const seeds: Seed[] = [];
+    try {
+      for (let index = 0; index < 11; index += 1) {
+        const sourceFixture: CandidateFixture = {
+          ...fixture,
+          authority: {
+            ...fixture.authority,
+            organizationId: randomUUID(),
+            agentId: randomUUID(),
+            backupId: randomUUID(),
+            restoreAttemptId: randomUUID(),
+            operationId: randomUUID(),
+            leaseId: randomUUID(),
+            fencingToken: randomUUID(),
+          },
+        };
+        const seed = await seedContainerCreatedRestore({
+          unresolved: true,
+          sourceFixture,
+          namespace: `rotation-${index}`,
+        });
+        seeds.push(seed);
+        await dbWrite
+          .update(agentBackupRestoreLeases)
+          .set({
+            created_at: new Date(Date.now() - 120_000),
+            expires_at: new Date(Date.now() - 60_000),
+          })
+          .where(eq(agentBackupRestoreLeases.id, sourceFixture.authority.leaseId));
+        expect((await abandonAgentBackupRestoreWithExpiredLease(seed.operationId))?.phase).toBe(
+          "failed_terminal",
+        );
+      }
+      const recoverable = seeds[10]!;
+      const calls: string[] = [];
+      const deps = {
+        ...coordinator.createProductionCoordinatorDependencies(),
+        async removeRestoreContainer(
+          cleanup: import("../../../db/repositories/agent-backup-restore-serving").AgentBackupRestoreTerminalCleanup,
+        ) {
+          calls.push(cleanup.operationId);
+          if (cleanup.operationId !== recoverable.operationId) {
+            throw new ElizaError("Original node is permanently unavailable", {
+              code: "SANDBOX_REPLACEMENT_NODE_AUTHORITY_MISSING",
+              severity: "ephemeral",
+            });
+          }
+        },
+      };
+      const first = await coordinator.runAgentBackupRestoreCoordinatorCycle({
+        config: CONFIG,
+        dependencies: deps,
+        limit: 10,
+      });
+      expect(first.quarantinedCleanups).toHaveLength(10);
+      expect(first.terminalCleanups).toBe(0);
+      expect(new Set(calls).size).toBe(10);
+      const second = await coordinator.runAgentBackupRestoreCoordinatorCycle({
+        config: CONFIG,
+        dependencies: deps,
+        limit: 10,
+      });
+      expect(second.terminalCleanups).toBe(1);
+      expect(second.quarantinedCleanups).toHaveLength(9);
+      expect(await allocatedCount(recoverable)).toBe(0);
+      for (const seed of seeds.slice(0, 10)) expect(await allocatedCount(seed)).toBe(1);
+      expect((await operationRow(recoverable.operationId)).phase).toBe("failed_terminal");
+    } finally {
+      if (seeds.length) await clearSeed(seeds[0]!);
+    }
   },
   TEST_TIMEOUT,
 );

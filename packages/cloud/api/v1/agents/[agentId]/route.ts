@@ -9,7 +9,7 @@ import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { assertOrgMembership } from "@/api-app/middleware/org-membership";
+import { assertOrgMembership } from "../../../src/middleware/org-membership";
 
 const app = new Hono<AppEnv>();
 

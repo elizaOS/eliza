@@ -1,11 +1,11 @@
 import { type Context, Hono } from "hono";
 import {
-  DefiniteProviderRejection,
   dispatchInboxEffect,
   InboxContractError,
   type InboxEffectKind,
   type InboxOwner,
   type InboxReceipts,
+  inboxErrorResponse,
 } from "./inbox-receipts";
 
 export interface InboxReviewedEffect {
@@ -71,27 +71,20 @@ async function input(context: Context, keys: string[]): Promise<Record<string, u
 /** Mounted below the managed Gmail inbox-v1 namespace. All effects require prepare then a matching explicit dispatch. */
 export function createInboxOperationRoutes(dependencies: InboxOperationRouteDependencies) {
   const app = new Hono();
-  app.onError((error, context) =>
-    error instanceof DefiniteProviderRejection
-      ? context.json(
-          {
-            error:
-              "The selected Google account or message is unavailable. Reconnect Google or refresh the selection.",
-          },
-          error.code === "404" ? 404 : 409,
-        )
-      : error instanceof InboxContractError
-        ? context.json({ error: error.message }, error.status)
-        : dependencies.onError
-          ? dependencies.onError(error, context)
-          : context.json(
-              {
-                error:
-                  "Inbox operation unavailable; inspect the canonical receipt before attempting another action.",
-              },
-              503,
-            ),
-  );
+  app.onError((error, context) => {
+    const known = inboxErrorResponse(error);
+    return known
+      ? context.json(known.body, known.status)
+      : dependencies.onError
+        ? dependencies.onError(error, context)
+        : context.json(
+            {
+              error:
+                "Inbox operation unavailable; inspect the canonical receipt before attempting another action.",
+            },
+            503,
+          );
+  });
   app.post("/operations", async (context) => {
     const identity = await dependencies.authenticate(context),
       body = await input(context, ["grantId", "requestId", "proposal"]),
@@ -120,7 +113,7 @@ export function createInboxOperationRoutes(dependencies: InboxOperationRouteDepe
       throw new InboxContractError(400, "Review digest required");
     const existing = await dependencies.receipts.get(owner, requestId);
     if (existing.reviewDigest !== body.reviewDigest)
-      throw new InboxContractError(409, "Review changed");
+      throw new InboxContractError(409, "Review changed", "stale_revision");
     // Even if authorization has since expired, GET can inspect the caller's own receipt.
     // A repeated dispatch never retrieves new credentials or repeats the provider request.
     if (existing.state !== "prepared")
@@ -131,7 +124,11 @@ export function createInboxOperationRoutes(dependencies: InboxOperationRouteDepe
       });
     const reviewed = await dependencies.review(owner, body.proposal, requestId);
     if (reviewed.digest !== body.reviewDigest || reviewed.kind !== existing.kind)
-      throw new InboxContractError(409, "Reviewed content or provider state changed");
+      throw new InboxContractError(
+        409,
+        "Reviewed content or provider state changed",
+        "stale_revision",
+      );
     const receipt = await dispatchInboxEffect({
       receipts: dependencies.receipts,
       owner,

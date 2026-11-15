@@ -20,8 +20,9 @@ import com.getcapacitor.annotation.ActivityCallback;
  * dialog and Android's credential result can record a reset.
  *
  * <p>Results are {@code {status, message}}: {@code cancelled} or {@code unavailable} when nothing
- * was reset. A confirmed reset never resolves as completed: Android stops the process, and an
- * unfinished reset opens the host's recovery activity instead.
+ * was reset, including when a same-signer listener is installed but cannot acknowledge. A
+ * confirmed reset never resolves as completed: Android stops the process, and an unfinished reset
+ * opens the host's recovery activity instead.
  *
  * <p>Hosts subclass this with their own {@code @CapacitorPlugin(name=...)} (the annotation is not
  * inherited), return their shared {@link DataReset} and, optionally, product copy.
@@ -112,20 +113,27 @@ public abstract class DataResetPlugin extends Plugin {
         authenticationCall = null;
         DataReset reset = reset();
         Context context = getContext().getApplicationContext();
+        final Handler main = new Handler(Looper.getMainLooper());
+        DataReset.Scheduler scheduler = new DataReset.Scheduler() {
+            @Override public void post(Runnable task) { main.post(task); }
+            @Override public void postDelayed(Runnable task, long delayMs) { main.postDelayed(task, delayMs); }
+        };
         try {
-            reset.record(context);
+            // A same-signer listener that is off or ungranted would hold the reset closed in
+            // recovery; refuse now, while nothing has been recorded.
+            if (!reset.recordIfListenerReachable(context)) {
+                result(call, "unavailable", text.listenerOff);
+                return;
+            }
         } catch (Exception failure) {
             result(call, "unavailable", text.prepareFailed);
-            if (reset.pending(context)) reset.dispatchAndExit(context);
+            // The marker landed though a later step failed: the confirmed reset still revokes first.
+            if (reset.pending(context)) reset.dispatchAfterBeforeDispatch(context, DataReset.INTERACTIVE_DEADLINE_MS, scheduler);
             return;
         }
         // Recorded first: whatever happens below, the next launch completes the reset.
         showProgress(text);
-        final Handler main = new Handler(Looper.getMainLooper());
-        reset.dispatchAfterBeforeDispatch(context, DataReset.INTERACTIVE_DEADLINE_MS, new DataReset.Scheduler() {
-            @Override public void post(Runnable task) { main.post(task); }
-            @Override public void postDelayed(Runnable task, long delayMs) { main.postDelayed(task, delayMs); }
-        });
+        reset.dispatchAfterBeforeDispatch(context, DataReset.INTERACTIVE_DEADLINE_MS, scheduler);
     }
 
     /** Keep the confirmed reset visible until Android dispatches it. */

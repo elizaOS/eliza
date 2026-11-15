@@ -16,10 +16,28 @@
  * from a verified entitlement or a Cloud refusal. Nothing here buys,
  * upgrades or retries anything.
  *
- * The module has no imports and touches no storage or network by itself.
- * Hosts supply the transport (`EntitlementSource`) and the product name used
- * in copy (`SubscriptionCopy`).
+ * The module touches no storage or network by itself. Its only import is the
+ * dependency-free `native-host/subscription-grant.mjs`, which code
+ * normalization, redemption refusals and the snapshot grant share with device
+ * hosts. Hosts supply the transport (`EntitlementSource`) and the product name
+ * used in copy (`SubscriptionCopy`).
  */
+
+import {
+  type RedeemFailureCode,
+  redeemFailureCode,
+} from "../native-host/subscription-grant.mjs";
+
+export {
+  normalizeSubscriptionCode,
+  type RedeemedGrant,
+  type RedeemFailureCode,
+  redeemedSubscriptionGrant,
+  type SubscriptionGrantAllowance,
+  type SubscriptionGrantOptions,
+  type SubscriptionGrantState,
+  subscriptionGrantFromSnapshot,
+} from "../native-host/subscription-grant.mjs";
 
 /** Cloud routes, relative to the Cloud API origin. */
 export const ENTITLEMENT_PATH = "/api/v1/subscription/entitlement";
@@ -1318,28 +1336,6 @@ export function serviceLimitMessage(
   return `AI needs an active ${serviceName} plan. Manage your plan in ${serviceName}. Nothing is purchased automatically. ${LOCAL_KEEPS_WORKING}`;
 }
 
-/**
- * Subscription grant codes are 16 Crockford base32 characters (Cloud
- * normalizes the same way): case, spaces and hyphens are ignored, O reads as
- * 0 and I/L as 1. Returns null for text that cannot be a code, which is
- * refused with the same generic copy as an unknown code.
- */
-export function normalizeSubscriptionCode(input: string): string | null {
-  if (typeof input !== "string" || input.length > 128) return null;
-  const normalized = input
-    .trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, "")
-    .replace(/O/g, "0")
-    .replace(/[IL]/g, "1");
-  return /^[A-Z0-9]{16,64}$/.test(normalized) ? normalized : null;
-}
-export type RedeemFailureCode =
-  | "invalid"
-  | "already-redeemed"
-  | "rate-limited"
-  | "unavailable"
-  | "account";
 /** A refused or failed redemption. Never carries the code. */
 export class SubscriptionRedeemError extends Error {
   readonly code: RedeemFailureCode;
@@ -1354,6 +1350,10 @@ export class SubscriptionRedeemError extends Error {
 export interface RedeemResult {
   planEndsAt: number | null;
   replayed: boolean;
+  /** Cloud's plan key for the grant, when it reported one. */
+  planKey: string | null;
+  /** Start of the grant window, when Cloud reported it. */
+  startsAt: number | null;
   grantEndsAt: number | null;
   paidPlanTakesPrecedence: boolean;
   planName: string | null;
@@ -1369,6 +1369,10 @@ export function redeemFailureMessage(
       return "This code could not be redeemed. Check the code and try again.";
     if (error.code === "already-redeemed")
       return "This account has already received this subscription. Check your plan again.";
+    if (error.code === "paid-plan-active")
+      return "This account already has a paid plan, so this code cannot be added to it. Nothing was changed.";
+    if (error.code === "ended")
+      return "The subscription from this code has ended for this account. Check your plan again.";
     if (error.code === "rate-limited")
       return `Too many attempts. Try again in ${retryDuration(error.retryAfterMs ?? 60_000)}.`;
     if (error.code === "account")
@@ -1430,37 +1434,39 @@ export function redeemFailureForStatus(
   body: unknown,
   retryAfter?: string | null,
 ): SubscriptionRedeemError | null {
-  if (status === 401) return null;
-  if (status === 400) return new SubscriptionRedeemError("invalid");
-  if (status === 409)
-    return new SubscriptionRedeemError(
-      bag(body)?.code === "subscription_grant_already_redeemed"
-        ? "already-redeemed"
-        : "invalid",
-    );
-  if (status === 429)
-    return new SubscriptionRedeemError(
-      "rate-limited",
-      readServiceLimit({ status, data: body, retryAfter })?.retryAfterMs ??
-        null,
-    );
-  if (status === 403) return new SubscriptionRedeemError("account");
-  return new SubscriptionRedeemError("unavailable");
+  const code = redeemFailureCode(status, body);
+  if (code === null) return null;
+  return new SubscriptionRedeemError(
+    code,
+    code === "rate-limited"
+      ? (readServiceLimit({ status, data: body, retryAfter })?.retryAfterMs ??
+          null)
+      : null,
+  );
 }
 /**
  * Reads a successful redemption body. The account window uses Cloud's
  * `effectiveUntil`; a grant end is used only when no paid plan takes
- * precedence and Cloud supplies no effective end. A revoked replay is
- * refused, never reported as redeemed.
+ * precedence and Cloud supplies no effective end. A replay of a revoked grant,
+ * or of one whose window ended before `now`, is refused as `ended`, never
+ * reported as redeemed.
  */
-export function redeemResultFromResponse(data: unknown): RedeemResult {
+export function redeemResultFromResponse(
+  data: unknown,
+  now: number = Date.now(),
+): RedeemResult {
   const body = bag(data);
   const grant = bag(body?.grant);
   if (body?.success !== true || !grant || typeof body.replayed !== "boolean")
     throw new SubscriptionRedeemError("unavailable");
-  if (grant.revoked === true) throw new SubscriptionRedeemError("invalid");
   const endsAt =
     typeof grant.endsAt === "string" ? Date.parse(grant.endsAt) : Number.NaN;
+  if (grant.revoked === true || endsAt <= now)
+    throw new SubscriptionRedeemError("ended");
+  const startsAt =
+    typeof grant.startsAt === "string"
+      ? Date.parse(grant.startsAt)
+      : Number.NaN;
   const summary = bag(body.entitlement);
   const planName = displayText(bag(summary?.plan)?.name, 80);
   const until =
@@ -1475,6 +1481,8 @@ export function redeemResultFromResponse(data: unknown): RedeemResult {
         ? null
         : endsAt,
     replayed: body.replayed,
+    planKey: displayText(grant.planKey, 64),
+    startsAt: Number.isFinite(startsAt) ? startsAt : null,
     grantEndsAt: Number.isFinite(endsAt) ? endsAt : null,
     paidPlanTakesPrecedence,
     planName,

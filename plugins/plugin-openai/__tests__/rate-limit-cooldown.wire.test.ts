@@ -51,7 +51,6 @@ beforeEach(() => {
   vi.stubEnv("OPENAI_BASE_URL", baseUrl);
   vi.stubEnv("OPENAI_API_KEY", "loopback-only-key");
   vi.stubEnv("CEREBRAS_API_KEY", undefined);
-  vi.stubEnv("ELIZA_MOCK_OPENAI_BASE", undefined);
   vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", undefined);
   vi.stubEnv("ELIZA_TRAJECTORY_STRICT", undefined);
 });

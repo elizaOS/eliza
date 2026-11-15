@@ -1,0 +1,23 @@
+[
+  {
+    "id": "cloud.RestoreLease",
+    "model": "packages/cloud/quint/RestoreLease.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/agent-backup-restore-lease.ts",
+      "packages/cloud/shared/src/db/repositories/agent-backup-restore-authority.ts"
+    ],
+    "invariants": [
+      "OneUnreleasedLease",
+      "ReleasedLeasesExist",
+      "ReplayPreservesExpiry",
+      "RenewalExtendsLiveLease",
+      "ExactScope"
+    ],
+    "status": "modeled",
+    "limitations": [
+      "Finite state domains and atomic database transactions are declared in the case manifest.",
+      "Existing restore-foundation migration tests exercise database authority constraints. No generated trace replay against the repository transaction functions is implemented.",
+      "Provider effects, attestation, cancellation and route publication require their separate source-linked models."
+    ]
+  }
+]

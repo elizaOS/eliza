@@ -101,6 +101,9 @@ export function CockpitInteractiveTerminal({
   const spawnStartedRef = useRef(false);
   const spawnInFlightRef = useRef(false);
   const activeSessionRef = useRef<string | null>(null);
+  // Set by close() and unmount: a spawn that resolves afterwards must stop
+  // its session itself, since nothing else holds the id.
+  const disposedRef = useRef(false);
   const preResponseExitsRef = useRef(new Map<string, number | null>());
 
   // The cerebras tier only means something to eliza-code; the vendor CLIs
@@ -122,6 +125,11 @@ export function CockpitInteractiveTerminal({
         ...(cwd ? { cwd } : {}),
       });
       spawnInFlightRef.current = false;
+      if (disposedRef.current) {
+        preResponseExitsRef.current.clear();
+        void ptyClient.stopPtySession(id);
+        return;
+      }
       activeSessionRef.current = id;
       setSessionId(id);
       if (preResponseExitsRef.current.has(id)) {
@@ -144,8 +152,10 @@ export function CockpitInteractiveTerminal({
     }
   }, [kind, tier, cwd]);
 
-  // Spawn exactly once on mount.
+  // Spawn exactly once on mount. StrictMode's dev remount runs the unmount
+  // cleanup first, so clear the flag here or the first spawn stops itself.
   useEffect(() => {
+    disposedRef.current = false;
     if (spawnStartedRef.current) return;
     spawnStartedRef.current = true;
     void spawn();
@@ -179,6 +189,7 @@ export function CockpitInteractiveTerminal({
   // won't exit on its own, so an unclosed session would leave an orphan process.
   useEffect(
     () => () => {
+      disposedRef.current = true;
       const id = activeSessionRef.current;
       activeSessionRef.current = null;
       if (id) void ptyClient.stopPtySession(id);
@@ -191,6 +202,7 @@ export function CockpitInteractiveTerminal({
   }, [spawn]);
 
   const close = useCallback(() => {
+    disposedRef.current = true;
     const id = activeSessionRef.current;
     activeSessionRef.current = null;
     if (id) void ptyClient.stopPtySession(id);

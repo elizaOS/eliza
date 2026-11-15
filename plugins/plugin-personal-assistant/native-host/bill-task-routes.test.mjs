@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { createTaskGateway as createGateway } from "@elizaos/host/native-host";
 import { createLocalAgentGateway as createHttpGateway } from "../../../packages/agent/native-host/gateway.mjs";
@@ -214,6 +215,20 @@ test("bill workflow authorization accepts the current request and rejects it aft
     release();
     assert.equal((await pending).status, 401);
     assert.equal(authorized, true);
+    // Nothing was saved for the signed-out account, not even its choice.
+    const db = new DatabaseSync(join(directory, "journal.sqlite"));
+    try {
+      assert.equal(
+        db
+          .prepare(
+            "SELECT count(*) AS n FROM interactive_task_presentation_v1 WHERE task_id = ?",
+          )
+          .get("bill-auth").n,
+        0,
+      );
+    } finally {
+      db.close();
+    }
   } finally {
     release();
     await gateway.close();

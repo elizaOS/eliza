@@ -1146,7 +1146,7 @@ for (const viewport of [
                 protocol: "evm",
                 method: arg.method,
                 params: arg.params,
-                hostname: "wallet-review.invalid",
+                topFrame: true,
               },
             }),
           ),

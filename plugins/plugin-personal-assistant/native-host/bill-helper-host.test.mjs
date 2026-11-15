@@ -5,6 +5,7 @@ import {
   deriveBillDecision,
 } from "../test/fixtures/bill-host/policy.mjs";
 import { createBillHelperHost } from "./bill-helper-host.mjs";
+import { BillWorkflow } from "./bill-workflow.mjs";
 
 test("host rechecks task and account after asynchronous connector resolution", async () => {
   let resolverOptions,
@@ -287,4 +288,101 @@ test("readback binds one saved selection, fences account changes and clears its 
   assert.equal((await host.reconcileTask(input)).status, "succeeded");
   host.close();
   await assert.rejects(host.reconcileTask(input), /account unavailable/);
+});
+
+test("a host composes its own workflow, fill values and action words", async () => {
+  class Actuator {
+    constructor(options) {
+      this.options = options;
+    }
+    async quiesce() {}
+  }
+  const owner = {
+    actorId: "owner",
+    agentId: "agent",
+    connector: { source: "app", accountId: "owner" },
+  };
+  const task = {
+    id: "task",
+    owner,
+    epoch: 1,
+    status: "active",
+    authorization: { state: "active" },
+    allowedOrigins: ["https://provider.example"],
+  };
+  const runtime = { owner, get: () => structuredClone(task) };
+  const base = {
+    deriveBillDecision,
+    controls,
+    runtimeModule: { NativeTaskActuator: Actuator },
+    target: { bindTask() {}, execute() {}, guideTask() {} },
+    credentialGate: async () => "owner",
+    authorizeGoal: async () => ({}),
+    billForTask: () => ({}),
+    policyForTask: () => ({}),
+    verify: async () => {},
+    recordEvidence: async () => {},
+  };
+  // The host's own look; the shared steps that look again use it too.
+  class ProductWorkflow extends BillWorkflow {
+    constructor(options, words) {
+      super(options);
+      this.words = { ...this.words, product: words };
+    }
+    async refresh() {
+      return {
+        kind: "human-review",
+        reasonCode: "product-look",
+        message: this.words.product,
+      };
+    }
+  }
+  const describeAction = () => "I will fill in the bill amount.";
+  const host = createBillHelperHost({
+    ...base,
+    assistantName: "Helper",
+    actuatorOptions: { describeAction, target: null },
+    valueResolver: async (reference, current, resolveCode) =>
+      reference === "host:amount" ? "42.00" : resolveCode(reference, current),
+    createWorkflow: (options, input) =>
+      new ProductWorkflow(options, input.words),
+  });
+  const actuator = host.actuatorFactory({ owner, getTask: () => task });
+  assert.equal(actuator.options.assistantName, "Helper");
+  assert.equal(actuator.options.describeAction, describeAction);
+  assert.notEqual(actuator.options.target, null, "the host's target wins");
+  assert.equal(
+    await actuator.options.resolveValue("host:amount", task),
+    "42.00",
+  );
+  await assert.rejects(
+    actuator.options.resolveValue("code:1", task),
+    /Protected code resolution unavailable/,
+  );
+  const workflow = host.workflowFactory({
+    runtime,
+    task,
+    words: "Check the amount.",
+  });
+  assert.ok(workflow instanceof ProductWorkflow);
+  assert.equal(workflow.assistantName, "Helper");
+  assert.equal((await workflow.fill("no-offer")).reasonCode, "product-look");
+  assert.equal(
+    (await workflow.chooseExistingMethod("review")).message,
+    "Check the amount.",
+  );
+  const other = createBillHelperHost({ ...base, createWorkflow: () => ({}) });
+  other.actuatorFactory({ owner, getTask: () => task });
+  assert.throws(
+    () => other.workflowFactory({ runtime, task }),
+    /Invalid bill workflow/,
+  );
+  assert.throws(
+    () => createBillHelperHost({ ...base, valueResolver: "registry" }),
+    /Invalid bill helper host composition/,
+  );
+  assert.throws(
+    () => createBillHelperHost({ ...base, assistantName: "" }),
+    /Invalid assistant name/,
+  );
 });

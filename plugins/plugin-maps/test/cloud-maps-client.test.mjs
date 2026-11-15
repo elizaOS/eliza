@@ -8,7 +8,10 @@ import {
   describeMapsDisclosure,
   insideCloudCoverage,
 } from "../src/client/cloud-provider.ts";
-import { MapsFailure } from "../src/client/contracts.ts";
+import {
+  MapsFailure,
+  mapsUnavailableMessage,
+} from "../src/client/contracts.ts";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { MapsController } from "../src/client/state.ts";
 
@@ -115,7 +118,46 @@ const memory = () => {
   assert.deepEqual(maps.cloudMapsDiagnostics(), {
     configured: true,
     error: "unauthorized",
+    message: "Sign in to Eliza Cloud to use Maps.",
   });
+  assert.equal(
+    mapsUnavailableMessage(maps.cloudMapsDiagnostics()),
+    "Sign in to Eliza Cloud to use Maps.",
+    "the Cloud failure, not a provider prompt, explains why Maps is off",
+  );
+}
+
+// A capabilities refusal keeps its own message; only a host with no provider is told to connect one.
+{
+  const maps = createCloudMaps(
+    () => async () => {
+      throw cloudError(403, "subscription_required");
+    },
+    () => {},
+  );
+  await maps.initializeCloudMaps();
+  assert.deepEqual(maps.cloudMapsDiagnostics(), {
+    configured: true,
+    error: "unauthorized",
+    message: "Maps needs an active Cloud subscription.",
+  });
+  assert.equal(
+    mapsUnavailableMessage(maps.cloudMapsDiagnostics()),
+    "Maps needs an active Cloud subscription.",
+  );
+  assert.match(
+    mapsUnavailableMessage({ configured: false, error: "" }),
+    /Connect a Maps provider/,
+  );
+  assert.equal(
+    mapsUnavailableMessage({ configured: false, error: "" }, "Sign in."),
+    "Sign in.",
+  );
+  maps.retireCloudMaps();
+  assert.equal(
+    mapsUnavailableMessage(maps.cloudMapsDiagnostics()),
+    "Sign in to Cloud to use Maps.",
+  );
 }
 
 // Signed in: coverage configures the provider and the shared controller plans a validated route.
@@ -184,7 +226,19 @@ const memory = () => {
     calls.map(([path]) => path),
     ["capabilities", "places/search", "places/details", "routes"],
   );
-  assert.deepEqual(calls[1][1], { query: "Port" });
+  assert.deepEqual(
+    calls[1][1],
+    { query: "Port" },
+    "no area unless one is given",
+  );
+  await provider.search("Coffee", new AbortController().signal, {
+    near: CASINO,
+  });
+  assert.deepEqual(calls.at(-1), [
+    "places/search",
+    { query: "Coffee", near: CASINO },
+  ]);
+  calls.pop();
   assert.deepEqual(
     calls[3][1],
     { from: CASINO, to: PORT, mode: "walk", alternatives: true },
@@ -346,6 +400,8 @@ const memory = () => {
 
 // Typed Cloud refusals become device failures; none becomes data.
 for (const [status, code, expected] of [
+  [402, "insufficient_credits", "unauthorized"],
+  [409, "maps_funding_changed", "unavailable"],
   [403, "subscription_required", "unauthorized"],
   [422, "no_route", "unsupported"],
   [422, "unsupported_region", "unsupported"],
@@ -387,6 +443,41 @@ assert.equal(
     .code,
   "cancelled",
 );
+
+// The connection transports reject offline requests with "Connection request failed".
+assert.equal(
+  cloudMapsFailure(new Error("Connection request failed")).code,
+  "offline",
+);
+assert.equal(
+  cloudMapsFailure(new Error("Request cancelled")).code,
+  "unavailable",
+);
+assert.equal(
+  cloudMapsFailure(
+    new Error("socket closed"),
+    undefined,
+    undefined,
+    (error) => error.message === "socket closed",
+  ).code,
+  "offline",
+  "a host classifier decides what is offline",
+);
+{
+  const maps = createCloudMaps(
+    () => async () => {
+      throw new Error("socket closed");
+    },
+    () => {},
+    { isOffline: (error) => error.message === "socket closed" },
+  );
+  await maps.initializeCloudMaps();
+  assert.deepEqual(maps.cloudMapsDiagnostics(), {
+    configured: true,
+    error: "offline",
+    message: "Cloud Maps is unreachable. Check the connection.",
+  });
+}
 
 // Invalid coverage leaves Maps unconfigured.
 {
@@ -471,6 +562,25 @@ console.log(
   };
   let active = first;
   const request = captureMapsSession(() => active);
+  const replacement = {
+    ...first,
+    client: {
+      mapsRequest: async () => {
+        calls++;
+        return { refreshed: true };
+      },
+    },
+  };
+  active = replacement;
+  assert.deepEqual(
+    await request("routes", new AbortController().signal, {
+      from: CASINO,
+      to: PORT,
+    }),
+    { refreshed: true },
+    "the same account can rebuild its client without losing Maps",
+  );
+  active = first;
   const pending = request("routes", new AbortController().signal, {
     from: CASINO,
     to: PORT,
@@ -482,7 +592,7 @@ console.log(
     request("routes", new AbortController().signal, { from: CASINO, to: PORT }),
     (error) => error.code === "unauthorized",
   );
-  assert.equal(calls, 1, "the new account received no retained coordinates");
+  assert.equal(calls, 2, "the new account received no retained coordinates");
 }
 
 assert.equal(
@@ -582,6 +692,24 @@ assert.match(
     1,
     "A retry hint never schedules another provider request",
   );
+  await assert.rejects(provider.search("Port", new AbortController().signal));
+  assert.equal(calls, 1, "The same pause blocks a second request");
+  await maps.initializeCloudMaps();
+  await assert.rejects(provider.search("Port", new AbortController().signal));
+  assert.equal(calls, 1, "Reopening retains the account pause");
+  const originalNow = Date.now;
+  const afterPause = Date.now() + 43000;
+  Date.now = () => afterPause;
+  try {
+    await assert.rejects(provider.search("Port", new AbortController().signal));
+    assert.equal(calls, 2, "Requests resume after the server pause expires");
+  } finally {
+    Date.now = originalNow;
+  }
+  maps.retireCloudMaps();
+  await maps.initializeCloudMaps();
+  await assert.rejects(provider.search("Port", new AbortController().signal));
+  assert.equal(calls, 3, "Retiring the account clears its pause");
 }
 
 assert.equal(
@@ -714,7 +842,7 @@ assert.equal(
   }
   assert.equal(
     describeMapsDisclosure(disclosure),
-    "Searches and route points are sent to Eliza Cloud Maps and Nominatim for search, operated by Acme and GraphHopper for routing, operated by Acme. Cloud keeps only the request type and result, not your searches or locations.",
+    "Searches, search areas and route points are sent to Eliza Cloud Maps and Nominatim for search, operated by Acme and GraphHopper for routing, operated by Acme. Cloud keeps only the request type and result, not your searches or locations.",
   );
   assert.equal(describeMapsDisclosure(undefined), "");
   console.log(

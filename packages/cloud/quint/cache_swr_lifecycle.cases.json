@@ -1,0 +1,46 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/cache/client.ts",
+    "packages/cloud/shared/src/lib/cache/client-swr.test.ts",
+    "packages/cloud/shared/src/lib/cache/adapters/memory-cache-adapter.ts",
+    "packages/cloud/shared/src/lib/cache/adapters/node-redis-adapter.ts",
+    "packages/cloud/shared/src/lib/services/analytics.ts",
+    "packages/cloud/shared/src/lib/services/user-metrics.ts",
+    "packages/cloud/shared/src/lib/services/model-catalog-cache.ts",
+    "packages/cloud/quint/check-cache-swr.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One stale key and at most three sequential background loaders; delivery expiry, loader completion, cache publication and ownership release are separate events.",
+      "A delivery timeout cannot cancel the loader. Permanently hung uncancellable work retains its key and consumes one queue slot; no eventual recovery or provider-success guarantee is claimed.",
+      "Cold misses and cache-read failures join a retained background result. Cold-only loads keep their existing non-coalesced policy and are outside the finite single-owner property.",
+      "Loaders must not recursively await a cold read of the same owned key. In-tree SWR callers delegate to leaf database queries or provider catalog reads.",
+      "Cache writes succeed atomically in the model; real local Redis regression separately delays a write. Cross-process ownership, invalidation races, backend outages and elapsed wall time remain unproved.",
+      "The default conformance hook uses real HTTP and the production MemoryCacheAdapter with a 100 ms test deadline. Optional CACHE_SWR_TEST_REDIS_BINARY and CACHE_SWR_TEST_REAL_DEADLINE=1 run local Redis and the production 30 second timeout."
+    ],
+    "progress": "Safety only; no scheduler or provider liveness claim."
+  },
+  "limitations": [
+    "One stale key and at most three sequential background loaders; delivery expiry, loader completion, cache publication and ownership release are separate events.",
+    "A delivery timeout cannot cancel the loader. Permanently hung uncancellable work retains its key and consumes one queue slot; no eventual recovery or provider-success guarantee is claimed.",
+    "Cold misses and cache-read failures join a retained background result. Cold-only loads keep their existing non-coalesced policy and are outside the finite single-owner property.",
+    "Loaders must not recursively await a cold read of the same owned key. In-tree SWR callers delegate to leaf database queries or provider catalog reads.",
+    "Cache writes succeed atomically in the model; real local Redis regression separately delays a write. Cross-process ownership, invalidation races, backend outages and elapsed wall time remain unproved.",
+    "The default conformance hook uses real HTTP and the production MemoryCacheAdapter with a 100 ms test deadline. Optional CACHE_SWR_TEST_REDIS_BINARY and CACHE_SWR_TEST_REAL_DEADLINE=1 run local Redis and the production 30 second timeout.",
+    "Finite-state checks and runtime regressions do not establish whole-backend or TypeScript refinement."
+  ],
+  "cases": [
+    {
+      "name": "cache-swr-lifecycle",
+      "main": "cache_swr_lifecycle",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-cache-swr.ts"
+}

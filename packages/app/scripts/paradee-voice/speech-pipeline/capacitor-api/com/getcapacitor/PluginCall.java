@@ -8,8 +8,11 @@ public class PluginCall {
  public Boolean getBoolean(String name,Boolean fallback){throw new UnsupportedOperationException();}
  public Integer getInt(String name){throw new UnsupportedOperationException();}
  public Integer getInt(String name,Integer fallback){throw new UnsupportedOperationException();}
+ public Double getDouble(String name,Double fallback){throw new UnsupportedOperationException();}
  public void resolve(){throw new UnsupportedOperationException();}
  public void resolve(JSObject data){throw new UnsupportedOperationException();}
  public void reject(String message){throw new UnsupportedOperationException();}
  public void reject(String message,String code){throw new UnsupportedOperationException();}
+ public void reject(String message,String code,JSObject data){throw new UnsupportedOperationException();}
+ public void reject(String message,String code,Exception error){throw new UnsupportedOperationException();}
 }

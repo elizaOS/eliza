@@ -81,7 +81,7 @@ function writeJson(file, value) {
 
 function printUsage() {
   process.stdout.write(
-    "Usage: node packages/scripts/audit-view-bundle-inventory.ts [--json] [--output <path>]\n",
+    "Usage: bun packages/scripts/audit-view-bundle-inventory.ts [--json] [--output <path>]\n",
   );
 }
 

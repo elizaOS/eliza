@@ -79,7 +79,11 @@ function requireScope(grant: InboxGoogleGrant, kind: "read" | "send" | "draft" |
     !grant.scopes.includes(fullScope) &&
     !allowed.some((scope) => grant.scopes.includes(scopePrefix + scope))
   )
-    throw new InboxContractError(403, "The selected Google grant lacks this capability");
+    throw new InboxContractError(
+      403,
+      "The selected Google grant lacks this capability",
+      "reauth_required",
+    );
 }
 function encodedSubject(subject: string): string {
   const chunks: string[] = [];
@@ -105,13 +109,16 @@ function referenceHeader(value: string): string {
     throw new InboxContractError(409, "Selected message has oversized reply identities");
   return `References: ${identities.join("\r\n ")}`;
 }
-function payloadHeader(payload: Record<string, unknown>, name: string): string | null {
+function matchingHeaders(payload: Record<string, unknown>, name: string): unknown[] {
   const headers = payload.headers;
-  if (!Array.isArray(headers)) return null;
-  const matching = headers.filter((value) => {
+  if (!Array.isArray(headers)) return [];
+  return headers.filter((value) => {
     const row = object(value);
     return typeof row.name === "string" && row.name.toLowerCase() === name.toLowerCase();
   });
+}
+function payloadHeader(payload: Record<string, unknown>, name: string): string | null {
+  const matching = matchingHeaders(payload, name);
   if (matching.length !== 1) return null;
   return text(object(matching[0]).value, 4096, true);
 }
@@ -259,7 +266,11 @@ export class InboxGoogleProvider {
     const current = await this.dependencies.grant(owner);
     requireScope(current, kind);
     if (current.email !== expected.email)
-      throw new InboxContractError(403, "Google account changed; reopen the inbox");
+      throw new InboxContractError(
+        403,
+        "Google account changed; reopen the inbox",
+        "reauth_required",
+      );
   }
   private async request(
     grant: InboxGoogleGrant,
@@ -340,6 +351,7 @@ export class InboxGoogleProvider {
       mailboxMutations: supported("modify"),
       /** Reviewed mark-read/mark-unread operations. Older servers omit this field. */
       readState: supported("modify"),
+      stars: supported("modify"),
       attachments: true,
       // The managed search route lists Trash for an explicit in:trash query.
       searchTrash: supported("read"),
@@ -379,7 +391,11 @@ export class InboxGoogleProvider {
     if (result.id !== id || typeof result.historyId !== "string" || !Array.isArray(result.messages))
       throw new InboxContractError(502, "Incomplete Google thread response");
     if (expectedHistoryId && result.historyId !== expectedHistoryId)
-      throw new InboxContractError(409, "Thread changed during paging; reopen it");
+      throw new InboxContractError(
+        409,
+        "Thread changed during paging; reopen it",
+        "stale_revision",
+      );
     if (result.messages.length > 2000)
       throw new InboxContractError(413, "Thread exceeds the explicit 2000-message support limit");
     const all = result.messages
@@ -472,11 +488,16 @@ export class InboxGoogleProvider {
     const id = providerId(messageId),
       message = await this.request(grant, `/messages/${id}?format=full`);
     if (message.id !== id || message.historyId !== historyId)
-      throw new InboxContractError(409, "Message changed; reopen its attachments");
+      throw new InboxContractError(
+        409,
+        "Message changed; reopen its attachments",
+        "stale_revision",
+      );
     const matching = attachmentParts(object(message.payload)).filter(
       (part) => part.partId === partId,
     );
-    if (matching.length !== 1) throw new InboxContractError(404, "Attachment not found");
+    if (matching.length !== 1)
+      throw new InboxContractError(404, "Attachment not found", "not_found");
     const part = matching[0],
       dataBase64 = await this.partBytes(grant, id, part),
       size = Buffer.from(dataBase64, "base64").length;
@@ -501,11 +522,16 @@ export class InboxGoogleProvider {
     const id = providerId(messageId),
       message = await this.request(grant, `/messages/${id}?format=full`);
     if (message.id !== id || message.historyId !== historyId)
-      throw new InboxContractError(409, "Message changed; reopen its attachments");
+      throw new InboxContractError(
+        409,
+        "Message changed; reopen its attachments",
+        "stale_revision",
+      );
     const matching = attachmentParts(object(message.payload)).filter(
       (part) => part.partId === partId,
     );
-    if (matching.length !== 1) throw new InboxContractError(404, "Attachment not found");
+    if (matching.length !== 1)
+      throw new InboxContractError(404, "Attachment not found", "not_found");
     const part = matching[0],
       body = object(part.body);
     if (
@@ -616,7 +642,11 @@ export class InboxGoogleProvider {
       message = object(full.message),
       payload = message.payload === undefined ? {} : object(message.payload);
     if (full.id !== current.id || message.id !== current.messageId)
-      throw new InboxContractError(409, "Draft changed while it was read; open it again");
+      throw new InboxContractError(
+        409,
+        "Draft changed while it was read; open it again",
+        "stale_revision",
+      );
     const plain = findPart(payload as GmailPayloadPart, "text/plain");
     if (plain?.body?.attachmentId || (plain?.body?.size && typeof plain.body.data !== "string"))
       throw new InboxContractError(400, "Draft body requires the provider editor");
@@ -665,7 +695,9 @@ export class InboxGoogleProvider {
       kind === "trash" ||
       kind === "untrash" ||
       kind === "mark-read" ||
-      kind === "mark-unread"
+      kind === "mark-unread" ||
+      kind === "star" ||
+      kind === "unstar"
     ) {
       fields(value, ["kind", "messageId", "expectedHistoryId"]);
       requireScope(grant, "modify");
@@ -673,14 +705,20 @@ export class InboxGoogleProvider {
         expectedHistoryId = text(value.expectedHistoryId, 100, true),
         current = await this.request(grant, `/messages/${messageId}?format=minimal`);
       if (current.id !== messageId || current.historyId !== expectedHistoryId)
-        throw new InboxContractError(409, "Selected message changed; review its current labels");
+        throw new InboxContractError(
+          409,
+          "Selected message changed; review its current labels",
+          "stale_revision",
+        );
       const readState = kind === "mark-read" || kind === "mark-unread";
       const label = readState
         ? "UNREAD"
         : kind === "archive" || kind === "unarchive"
           ? "INBOX"
-          : null;
-      const add = kind === "unarchive" || kind === "mark-unread";
+          : kind === "star" || kind === "unstar"
+            ? "STARRED"
+            : null;
+      const add = kind === "unarchive" || kind === "mark-unread" || kind === "star";
       const review = { kind, messageId, expectedHistoryId, from: grant.email },
         digest = await inboxDigest(JSON.stringify(review));
       return {
@@ -733,7 +771,7 @@ export class InboxGoogleProvider {
       const draftId = providerId(value.draftId),
         current = await this.draft(owner, draftId);
       if (current.providerDigest !== value.expectedDigest)
-        throw new InboxContractError(409, "Provider draft changed");
+        throw new InboxContractError(409, "Provider draft changed", "stale_revision");
       const review = {
           kind,
           draftId,
@@ -790,18 +828,30 @@ export class InboxGoogleProvider {
       const selected = await this.request(grant, `/messages/${replyMessageId}?format=metadata`),
         payload = object(selected.payload),
         parentId = payloadHeader(payload, "Message-ID"),
-        parentSubject = payloadHeader(payload, "Subject");
+        parentSubject = payloadHeader(payload, "Subject"),
+        // A message with no Subject header, or an empty one, is shown as "(no subject)".
+        untitled =
+          parentSubject === null
+            ? matchingHeaders(payload, "Subject").length === 0
+            : !parentSubject.trim();
       if (
         selected.id !== replyMessageId ||
         !parentId ||
         parentId.length > 254 ||
         !/^<[^<>\s]+@[^<>\s]+>$/.test(parentId) ||
-        parentSubject === null
+        (parentSubject === null && !untitled)
       )
         throw new InboxContractError(409, "Selected message lacks safe reply headers");
-      const expected = /^re:/i.test(parentSubject) ? parentSubject : `Re: ${parentSubject}`;
-      if (subject !== expected)
-        throw new InboxContractError(409, "Reply subject must match the selected message");
+      const matches = untitled
+        ? ["Re:", "Re: (no subject)"].includes(subject.trim())
+        : subject ===
+          (/^re:/i.test(parentSubject as string) ? parentSubject : `Re: ${parentSubject}`);
+      if (!matches)
+        throw new InboxContractError(
+          400,
+          "Reply subject must match the selected message",
+          "reply_subject_mismatch",
+        );
       threadId = providerId(selected.threadId);
       inReplyTo = parentId;
       const chain = payloadHeader(payload, "References");
@@ -853,11 +903,16 @@ export class InboxGoogleProvider {
         throw new InboxContractError(400, "Explicit source attachment parts required");
       const message = await this.request(grant, `/messages/${sourceId}?format=full`);
       if (message.id !== sourceId || message.historyId !== historyId)
-        throw new InboxContractError(409, "Selected message changed; review its attachments again");
+        throw new InboxContractError(
+          409,
+          "Selected message changed; review its attachments again",
+          "stale_revision",
+        );
       const parts = attachmentParts(object(message.payload));
       for (const partId of partIds as string[]) {
         const matching = parts.filter((part) => part.partId === partId);
-        if (matching.length !== 1) throw new InboxContractError(409, "Source attachment not found");
+        if (matching.length !== 1)
+          throw new InboxContractError(409, "Source attachment not found", "stale_revision");
         const dataBase64 = await this.partBytes(grant, sourceId, matching[0]);
         forwarded.push({
           partId,
@@ -947,7 +1002,11 @@ export class InboxGoogleProvider {
       expectedDigest = text(value.expectedDigest, 64, true);
       const current = await this.draft(owner, draftId);
       if (current.providerDigest !== expectedDigest)
-        throw new InboxContractError(409, "Provider draft changed; read it before replacement");
+        throw new InboxContractError(
+          409,
+          "Provider draft changed; read it before replacement",
+          "stale_revision",
+        );
     } else if (
       value.draftId !== undefined ||
       value.expectedDigest !== undefined ||

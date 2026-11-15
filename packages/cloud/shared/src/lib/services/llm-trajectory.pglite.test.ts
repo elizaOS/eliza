@@ -9,6 +9,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { QueryOptions, Results } from "@electric-sql/pglite";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -62,6 +63,7 @@ const ORG_ID = "00000000-0000-4000-8000-00000000c001";
 
 class MemoryBucket {
   readonly objects = new Map<string, string>();
+  readonly deletes: string[] = [];
   puts = 0;
 
   async get(key: string) {
@@ -76,6 +78,7 @@ class MemoryBucket {
   }
 
   async delete(key: string) {
+    this.deletes.push(key);
     this.objects.delete(key);
     return {};
   }
@@ -127,6 +130,9 @@ beforeEach(async () => {
   privateBlob = new MemoryBucket();
   // The Worker always registers the general BLOB bucket; it must stay unused.
   setRuntimeR2Bucket(generalBlob);
+  await getPgliteClientForTests().exec(
+    "DROP TRIGGER IF EXISTS reject_trajectory_insert ON llm_trajectories; DROP FUNCTION IF EXISTS reject_trajectory_insert();",
+  );
   await getPgliteClientForTests().exec("DELETE FROM llm_trajectories");
 });
 
@@ -183,6 +189,63 @@ describe("llmTrajectoryService.logCall", () => {
         { role: "model", content: CALL.responseText },
       ],
     });
+  });
+
+  test("a lost SQL acknowledgement retains the committed payload and complete training export", async () => {
+    const client = getPgliteClientForTests();
+    const originalMethod = client.query;
+    const originalQuery: typeof client.query = originalMethod.bind(client);
+    client.query = async <T>(
+      query: string,
+      params?: unknown[],
+      options?: QueryOptions,
+    ): Promise<Results<T>> => {
+      const result = await originalQuery<T>(query, params, options);
+      if (query.trimStart().startsWith('insert into "llm_trajectories"')) {
+        throw new Error("controlled acknowledgement loss after SQL commit");
+      }
+      return result;
+    };
+    try {
+      await expect(
+        withPrivateStore(() => llmTrajectoryService.logCall(CALL)),
+      ).rejects.toMatchObject({
+        cause: { message: "controlled acknowledgement loss after SQL commit" },
+      });
+    } finally {
+      client.query = originalMethod;
+    }
+    const committed = await rows();
+    expect(committed).toHaveLength(1);
+    const key = committed[0]?.trajectory_payload_key;
+    if (!key) throw new Error("Committed trajectory is missing its payload pointer");
+    expect(privateBlob.objects.has(key)).toBe(true);
+    expect(privateBlob.deletes).toEqual([]);
+    const exported = await withPrivateStore(() =>
+      llmTrajectoryService.exportAsTrainingJSONL(ORG_ID),
+    );
+    expect(JSON.parse(exported)).toEqual({
+      messages: [
+        { role: "system", content: CALL.systemPrompt },
+        { role: "user", content: CALL.userPrompt },
+        { role: "model", content: CALL.responseText },
+      ],
+    });
+  });
+
+  test("a definite insert failure retains its unreferenced object without hiding the SQL error", async () => {
+    await getPgliteClientForTests().exec(`
+      CREATE FUNCTION reject_trajectory_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'controlled trajectory rejection'; END $$;
+      CREATE TRIGGER reject_trajectory_insert BEFORE INSERT ON llm_trajectories
+        FOR EACH ROW EXECUTE FUNCTION reject_trajectory_insert();
+    `);
+    await expect(withPrivateStore(() => llmTrajectoryService.logCall(CALL))).rejects.toMatchObject({
+      cause: { code: "P0001" },
+    });
+    expect(await rows()).toEqual([]);
+    expect(privateBlob.objects.size).toBe(1);
+    expect(privateBlob.deletes).toEqual([]);
   });
 
   test("a private-store row without the private store configured fails loudly", async () => {

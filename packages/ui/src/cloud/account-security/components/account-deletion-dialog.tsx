@@ -14,10 +14,15 @@ import {
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { TextLink } from "../../../components/ui/text-link";
+import { useSessionAuth } from "../../lib/use-session-auth";
 import {
+  AccountDeletionClientError,
+  abandonAccountDeletion,
   endLocalSessionAfterDeletion,
+  finishAccountDeletion,
   submitAccountDeletion,
 } from "../data/account-deletion-client";
+import { needsSignInAgain, signInAgainPath } from "../data/sign-in-again";
 
 export function AccountDeletionDialog({
   triggerLabel = "Delete account",
@@ -31,17 +36,43 @@ export function AccountDeletionDialog({
   const [submitting, setSubmitting] = useState(false);
   const [serverAccepted, setServerAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signInAgain, setSignInAgain] = useState(false);
+  // Set when the request was saved but its activation was not confirmed.
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+  const session = useSessionAuth();
 
   const submit = async () => {
     setSubmitting(true);
     setError(null);
-    let accepted: Awaited<ReturnType<typeof submitAccountDeletion>>;
+    setSignInAgain(false);
+    let request: AccountDeletionStatusDto;
     try {
-      accepted = await submitAccountDeletion();
+      // A saved request whose activation failed is finished, not re-sent.
+      request = pendingRequestId
+        ? await finishAccountDeletion(pendingRequestId)
+        : (
+            await submitAccountDeletion(
+              session.user
+                ? { id: session.user.id, label: session.user.email || null }
+                : null,
+            )
+          ).request;
+      setPendingRequestId(null);
       setServerAccepted(true);
     } catch (cause) {
       // error-policy:J4 request failure remains visibly distinct and leaves
       // the confirmation dialog open for a safe retry.
+      if (needsSignInAgain(cause)) {
+        setSignInAgain(true);
+        setSubmitting(false);
+        return;
+      }
+      if (
+        cause instanceof AccountDeletionClientError &&
+        cause.code === "ACCOUNT_DELETION_ACTIVATION_PENDING"
+      ) {
+        setPendingRequestId(cause.requestId);
+      }
       setError(
         cause instanceof Error
           ? cause.message
@@ -60,7 +91,7 @@ export function AccountDeletionDialog({
         "Deletion is scheduled, but local sign-out is incomplete on this device.",
       );
     }
-    onAccepted?.(accepted.request);
+    onAccepted?.(request);
     if (!onAccepted && typeof window !== "undefined") {
       window.location.assign("/account-deletion");
     }
@@ -86,10 +117,10 @@ export function AccountDeletionDialog({
               After this browser securely saves your recovery access, account
               access is disabled and your Steward identity and associated Eliza
               Cloud data enter a 30-day recovery window before irreversible
-              deletion. You can download the export when it is ready or cancel
-              from the account-deletion page during that window. Limited
-              transaction, fraud, tax, or security records may be retained when
-              legally required.
+              deletion. During that window you can cancel, or download an
+              optional data export, from the account-deletion page. No export is
+              made unless you start one. Limited transaction, fraud, tax, or
+              security records may be retained when legally required.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <label
@@ -105,10 +136,21 @@ export function AccountDeletionDialog({
               disabled={submitting}
             />
           </label>
+          {signInAgain ? (
+            <p
+              className="text-sm text-danger"
+              role="alert"
+              data-testid="delete-account-sign-in-again"
+            >
+              <TextLink href={signInAgainPath()}>
+                Sign in again to continue
+              </TextLink>
+            </p>
+          ) : null}
           {error ? (
             <p className="text-sm text-danger" role="alert">
               {error}{" "}
-              {serverAccepted ? (
+              {serverAccepted || pendingRequestId ? (
                 <TextLink href="/account-deletion">
                   Continue to deletion status
                 </TextLink>
@@ -116,7 +158,20 @@ export function AccountDeletionDialog({
             </p>
           ) : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>
+            <AlertDialogCancel
+              disabled={submitting}
+              onClick={() => {
+                if (!pendingRequestId) return;
+                try {
+                  abandonAccountDeletion(pendingRequestId);
+                  setPendingRequestId(null);
+                  setError(null);
+                } catch {
+                  // error-policy:J6 a request that stays saved is still shown
+                  // on the account-deletion page with Finish and Keep options.
+                }
+              }}
+            >
               Keep account
             </AlertDialogCancel>
             <Button
@@ -129,7 +184,9 @@ export function AccountDeletionDialog({
                 ? "Deletion scheduled"
                 : submitting
                   ? "Scheduling…"
-                  : "Delete account"}
+                  : pendingRequestId
+                    ? "Finish deletion"
+                    : "Delete account"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

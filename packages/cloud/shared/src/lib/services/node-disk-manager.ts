@@ -2,7 +2,7 @@
  * NodeDiskManager — keeps agent-node Docker disk from filling up.
  *
  * THE GAP THIS CLOSES
- * Failed `docker pull`s (e.g. a flaky `ghcr.io/elizaos/eliza:develop` fetch)
+ * Failed `docker pull`s (e.g. a flaky `ghcr.io/elizaos/eliza:staging` fetch)
  * leave half-written layers in containerd's ingest staging dir
  * (`/var/lib/containerd/.../ingest`). Retried every ~5 min by the pre-pull /
  * provision path, those stuck blobs accumulate until the node hits

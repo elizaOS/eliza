@@ -42,6 +42,7 @@ import type {
 	ListConnectorAccountsParams,
 	Log,
 	LogBody,
+	LogInventoryRow,
 	MessageContentPublicationParams,
 	MessageContentPublicationResult,
 	MessageContentRangeReadParams,
@@ -75,34 +76,32 @@ import type {
 import type { JsonValue, Metadata, UUID } from "./types/primitives.js";
 import type { Task } from "./types/task.js";
 
-/** Enforces the shared pagination contract for entity-query boundaries. */
-export function validateQueryEntitiesPagination(params: {
-	limit?: number;
-	offset?: number;
-}): void {
+type PaginationParams = { limit?: number; offset?: number };
+
+function validateNonNegativePagination(
+	operation: string,
+	params: PaginationParams,
+): void {
 	for (const field of ["limit", "offset"] as const) {
 		const value = params[field];
 		if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
 			throw new RangeError(
-				`queryEntities ${field} must be a non-negative safe integer`,
+				`${operation} ${field} must be a non-negative safe integer`,
 			);
 		}
 	}
 }
 
+/** Enforces the shared pagination contract for entity-query boundaries. */
+export function validateQueryEntitiesPagination(
+	params: PaginationParams,
+): void {
+	validateNonNegativePagination("queryEntities", params);
+}
+
 /** Enforces the portable pagination contract for task-query boundaries. */
-export function validateTaskQueryPagination(params: {
-	limit?: number;
-	offset?: number;
-}): void {
-	for (const field of ["limit", "offset"] as const) {
-		const value = params[field];
-		if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
-			throw new RangeError(
-				`getTasks ${field} must be a non-negative safe integer`,
-			);
-		}
-	}
+export function validateTaskQueryPagination(params: PaginationParams): void {
+	validateNonNegativePagination("getTasks", params);
 }
 
 /**
@@ -130,7 +129,7 @@ export function compareTasksForQuery(left: Task, right: Task): number {
 		if (leftCreatedAt < rightCreatedAt) return -1;
 		if (leftCreatedAt > rightCreatedAt) return 1;
 	}
-	return compareMemoryIds(String(left.id ?? ""), String(right.id ?? ""));
+	return compareMemoryIds(left.id ?? "", right.id ?? "");
 }
 
 /**
@@ -484,6 +483,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		limit?: number;
 		offset?: number;
 	}): Promise<Log[]>;
+
+	abstract getLogInventory(params: {
+		excludeTypes?: readonly string[];
+	}): Promise<LogInventoryRow[]>;
 
 	// ── Log CRUD (batch-only) ────────────────────────────────────────────
 	abstract createLogs(

@@ -17,6 +17,10 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
+import {
+  deviceOperationSupportedByCapabilities,
+  getDeviceActionTurn,
+} from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { isOwnerReminderNonCommandContext } from "../lifeops/reminders/direct-routing.js";
 import { runBookTravelHandler } from "./book-travel.js";
@@ -340,22 +344,41 @@ export const ownerRemindersAction: Action = {
   ],
 };
 
+const OWNER_ALARMS_DESCRIPTION =
+  "Owner alarms: create/update/delete/complete/skip/snooze/review in-app LifeOps alarm reminders. Saves a reminder; it does not ring a device alarm.";
+const OWNER_ALARMS_DESCRIPTION_COMPRESSED =
+  "owner in-app alarm reminders (no device ring): action=create|update|delete|complete|skip|snooze|review";
+
+/**
+ * A device turn that negotiated the phone's Clock owns alarms: the reviewed
+ * clock proposal rings, an OWNER_ALARMS reminder does not. Keyed on the
+ * negotiated capability, not the platform.
+ */
+function deviceClockOwnsAlarms(runtime: IAgentRuntime): boolean {
+  const turn = getDeviceActionTurn();
+  if (turn?.runtime !== runtime) return false;
+  const capabilities = turn.credential.capabilities;
+  return (
+    deviceOperationSupportedByCapabilities("clock_handoff", capabilities) ||
+    deviceOperationSupportedByCapabilities("clock_alarm", capabilities)
+  );
+}
+
 export const ownerAlarmsAction: Action = {
   ...makeOwnerLifeAction({
     name: "OWNER_ALARMS",
     similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
-    description:
-      "Owner alarms: create/update/delete/complete/skip/snooze/review alarm reminders.",
-    descriptionCompressed:
-      "owner alarms: action=create|update|delete|complete|skip|snooze|review",
+    description: OWNER_ALARMS_DESCRIPTION,
+    descriptionCompressed: OWNER_ALARMS_DESCRIPTION_COMPRESSED,
     defaultKind: "definition",
   }),
   name: "OWNER_ALARMS",
   similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
-  description:
-    "Owner alarms: create/update/delete/complete/skip/snooze/review alarm reminders.",
-  descriptionCompressed:
-    "owner alarms: action=create|update|delete|complete|skip|snooze|review",
+  description: OWNER_ALARMS_DESCRIPTION,
+  descriptionCompressed: OWNER_ALARMS_DESCRIPTION_COMPRESSED,
+  validate: async (runtime, message) =>
+    !deviceClockOwnsAlarms(runtime) &&
+    OWNER_OPERATION_VALIDATE(runtime, message),
 };
 
 // Primary OWNER_GOALS surface. @elizaos/plugin-goals also declares an action

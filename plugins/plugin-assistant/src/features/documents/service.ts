@@ -2054,6 +2054,9 @@ export class DocumentService extends Service {
       const ingestionAttemptId = this.runtime.createRunId();
       const scopedMetadata = {
         ...metadata,
+        // Only runtime bookkeeping (Maps saved places) may be hidden from the
+        // owner; a caller's metadata never sets that marker.
+        runtimeInternal: undefined,
         textBacked:
           !isPdfFile &&
           !isBinaryContentType(normalizedContentType, originalFilename),
@@ -3489,6 +3492,7 @@ export class DocumentService extends Service {
 
     const documentMetadata = {
       ...(item.metadata ?? {}),
+      runtimeInternal: undefined,
       type: MemoryType.DOCUMENT,
       documentId: item.id,
       source:

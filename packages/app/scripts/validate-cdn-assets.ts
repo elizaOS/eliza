@@ -247,7 +247,7 @@ export async function main({ cwd = repoRoot, env = process.env } = {}) {
   const manifestValidation = validateStaticAssetManifest(cwd);
   if (!manifestValidation.ok) {
     throw new Error(
-      `Static asset manifest is ${manifestValidation.reason}. Run node packages/app/scripts/generate-static-asset-manifest.ts.`,
+      `Static asset manifest is ${manifestValidation.reason}. Run bun packages/app/scripts/generate-static-asset-manifest.ts.`,
     );
   }
 

@@ -103,7 +103,9 @@ import {
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
   assertBrowserWorkspaceUrl,
-  assertBrowserWorkspaceUserScriptAllowed,
+  BROWSER_WORKSPACE_FOLLOW_UNAVAILABLE,
+  BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE,
+  browserWorkspaceGuardedDocumentFetch,
   createBrowserWorkspaceJsdomScriptExecutionError,
   createBrowserWorkspaceNotFoundError,
   DEFAULT_WEB_PARTITION,
@@ -129,8 +131,6 @@ import {
   loadWebBrowserWorkspaceTabDocument,
   pushWebBrowserWorkspaceHistory,
 } from "./browser-workspace-forms.js";
-// ── Re-export network ────────────────────────────────────────────────
-import { browserWorkspaceBoundedPageFetch } from "./browser-workspace-helpers.js";
 // ── Re-export jsdom ──────────────────────────────────────────────────
 import {
   createEmptyWebBrowserWorkspaceDom,
@@ -698,6 +698,53 @@ export async function snapshotBrowserWorkspaceTab(
   return snapshotBrowserWorkspaceTabDesktop(id, env);
 }
 
+/** How long desktop back/forward/reload wait for the tab to report a change. */
+const DESKTOP_HISTORY_SETTLE_MS = 5_000;
+const DESKTOP_HISTORY_POLL_MS = 100;
+
+/**
+ * history.back(), history.forward() and location.reload() finish after the
+ * page script returns, so the page cannot report where it ended up. Read the
+ * tab from the host until its URL or load time changes, for at most 5 s.
+ */
+async function executeDesktopBrowserWorkspaceHistoryCommand(
+  command: BrowserWorkspaceCommand,
+  id: string,
+  env: NodeJS.ProcessEnv,
+): Promise<BrowserWorkspaceCommandResult> {
+  const readTab = async () =>
+    (await listBrowserWorkspaceTabs(env)).find((tab) => tab.id === id) ?? null;
+  const before = await readTab();
+  await executeDesktopBrowserWorkspaceDomCommand({ ...command, id }, env);
+  const deadline = Date.now() + DESKTOP_HISTORY_SETTLE_MS;
+  let after = before;
+  while (Date.now() < deadline) {
+    await sleep(DESKTOP_HISTORY_POLL_MS);
+    after = await readTab();
+    if (
+      !before ||
+      !after ||
+      after.url !== before.url ||
+      after.updatedAt !== before.updatedAt
+    ) {
+      break;
+    }
+  }
+  const changed =
+    Boolean(before && after) &&
+    (after?.url !== before?.url || after?.updatedAt !== before?.updatedAt);
+  return {
+    mode: "desktop",
+    subaction: command.subaction,
+    ...(after ? { tab: after } : {}),
+    value: {
+      url: after?.url ?? null,
+      title: after?.title ?? null,
+      changed,
+    },
+  };
+}
+
 // ────────────────────────────────────────────────────────────────────
 // Main command router
 // ────────────────────────────────────────────────────────────────────
@@ -734,7 +781,7 @@ export async function executeBrowserWorkspaceCommand(
     throw new Error(
       blockedCommand === "eval"
         ? "Generic browser eval is disabled. Use typed browser commands instead."
-        : "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
+        : BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE,
     );
   }
   switch (command.subaction) {
@@ -841,31 +888,6 @@ export async function executeBrowserWorkspaceCommand(
         closed: true,
       };
     }
-    case "eval": {
-      if (!isBrowserWorkspaceBridgeConfigured(env)) {
-        return (await executeWebBrowserWorkspaceUtilityCommand(
-          command,
-        )) as BrowserWorkspaceCommandResult;
-      }
-      assertBrowserWorkspaceUserScriptAllowed(
-        command.script,
-        "eval",
-        "desktop",
-        env,
-      );
-      const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
-      return {
-        mode: "desktop",
-        subaction: command.subaction,
-        value: await evaluateBrowserWorkspaceTab(
-          {
-            id,
-            script: command.script ?? "",
-          },
-          env,
-        ),
-      };
-    }
     case "screenshot": {
       if (!isBrowserWorkspaceBridgeConfigured(env)) {
         return (await executeWebBrowserWorkspaceUtilityCommand(
@@ -938,23 +960,26 @@ export async function executeBrowserWorkspaceCommand(
             "Eliza browser workspace diff url requires secondaryUrl.",
           );
         }
-        // Each hop carries its own deadline, matching the web backend of this
-        // same subaction, which routes both pages through the tracked fetch.
-        const left = await browserWorkspaceBoundedPageFetch(leftUrl);
-        const right = await browserWorkspaceBoundedPageFetch(rightUrl);
+        // Both pages are fetched by the agent process, so both go through the
+        // URL check and domain policy on every redirect hop, each hop under
+        // the page deadline.
+        const left = await browserWorkspaceGuardedDocumentFetch(
+          leftUrl,
+          command.subaction,
+        );
+        const right = await browserWorkspaceGuardedDocumentFetch(
+          rightUrl,
+          command.subaction,
+        );
         return {
           mode: "desktop",
           subaction: command.subaction,
           value: diffBrowserWorkspaceSnapshots(
-            createBrowserWorkspaceSnapshotRecord(
-              leftUrl,
-              left.url || leftUrl,
-              await left.text(),
-            ),
+            createBrowserWorkspaceSnapshotRecord(leftUrl, left.url, left.text),
             createBrowserWorkspaceSnapshotRecord(
               rightUrl,
-              right.url || rightUrl,
-              await right.text(),
+              right.url,
+              right.text,
             ),
           ),
         };
@@ -1183,7 +1208,7 @@ export async function executeBrowserWorkspaceCommand(
           env,
         );
         clearBrowserWorkspaceElementRefs("desktop", id);
-        return executeDesktopBrowserWorkspaceDomCommand(command, env);
+        return executeDesktopBrowserWorkspaceHistoryCommand(command, id, env);
       }
 
       return withWebStateLock(async () => {
@@ -1278,15 +1303,16 @@ export async function executeBrowserWorkspaceCommand(
         return executeDesktopBrowserWorkspaceDomCommand(command, env);
       }
       return executeWebBrowserWorkspaceDomCommand(command);
-    case "follow":
+    case "eval":
+      // Rejected with the other blocked subactions before this switch.
       throw new Error(
-        "Observed-link navigation requires the bound native surface task target.",
+        "Generic browser eval is disabled. Use typed browser commands instead.",
       );
+    case "follow":
+      throw new Error(BROWSER_WORKSPACE_FOLLOW_UNAVAILABLE);
     case "upload":
     case "realistic-upload":
-      throw new Error(
-        "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
-      );
+      throw new Error(BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE);
     default: {
       const exhaustive: never = command.subaction;
       throw new Error(`Unsupported browser workspace subaction: ${exhaustive}`);

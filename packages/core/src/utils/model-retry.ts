@@ -9,6 +9,8 @@
  * graph as the model-error classifiers, and never a message substring.
  */
 
+import { readHttpStatus } from "./model-errors.js";
+
 /**
  * Bounded walk of the wrapped provider-error graph: `.cause`, the AI SDK
  * `RetryError` envelope's `.lastError` / `.errors[]`. Only object nodes are
@@ -68,9 +70,12 @@ export function providerRetryAfterMs(
 		headers as Record<string, unknown>,
 	)) {
 		const raw = Array.isArray(value) ? value[0] : value;
-		if (typeof raw !== "string" || raw.trim().length === 0) continue;
-		if (key.toLowerCase() === "retry-after-ms") milliseconds = raw.trim();
-		if (key.toLowerCase() === "retry-after") secondsOrDate = raw.trim();
+		if (typeof raw !== "string") continue;
+		const trimmed = raw.trim();
+		if (trimmed.length === 0) continue;
+		const name = key.toLowerCase();
+		if (name === "retry-after-ms") milliseconds = trimmed;
+		else if (name === "retry-after") secondsOrDate = trimmed;
 	}
 	const explicitMilliseconds =
 		milliseconds === undefined ? Number.NaN : Number(milliseconds);
@@ -86,17 +91,23 @@ export function providerRetryAfterMs(
 	return Number.isFinite(at) ? Math.max(0, at - now) : undefined;
 }
 
-/** Structural provider HTTP status from one error node, if any. */
-function nodeStatus(node: object): number | undefined {
-	const raw = (node as { statusCode?: unknown; status?: unknown }).statusCode;
-	if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-	if (typeof raw === "string") {
-		const parsed = Number(raw);
-		if (Number.isFinite(parsed) && parsed > 0) return parsed;
-	}
-	const status = (node as { status?: unknown }).status;
-	if (typeof status === "number" && Number.isFinite(status)) return status;
-	return undefined;
+const PERMANENT_QUOTA_CODES = new Set([
+	"insufficient_quota",
+	"credit_balance_exhausted",
+]);
+
+function isQuotaCode(value: unknown): boolean {
+	return typeof value === "string" && PERMANENT_QUOTA_CODES.has(value);
+}
+
+function carriesQuotaCode(value: unknown): boolean {
+	if (typeof value !== "object" || value === null) return false;
+	const record = value as Record<string, unknown>;
+	if (isQuotaCode(record.code) || isQuotaCode(record.type)) return true;
+	const nested = record.error;
+	if (typeof nested !== "object" || nested === null) return false;
+	const nestedRecord = nested as Record<string, unknown>;
+	return isQuotaCode(nestedRecord.code) || isQuotaCode(nestedRecord.type);
 }
 
 /**
@@ -104,27 +115,12 @@ function nodeStatus(node: object): number | undefined {
  * the wrapped provider-error graph may carry the provider's quota codes.
  */
 export function isPermanentQuotaError(error: unknown): boolean {
-	const codes = new Set(["insufficient_quota", "credit_balance_exhausted"]);
-	const inspect = (value: unknown): boolean => {
-		if (typeof value !== "object" || value === null) return false;
-		const record = value as Record<string, unknown>;
-		return (
-			(typeof record.code === "string" && codes.has(record.code)) ||
-			(typeof record.type === "string" && codes.has(record.type)) ||
-			(typeof record.error === "object" &&
-				record.error !== null &&
-				["code", "type"].some((key) => {
-					const field = (record.error as Record<string, unknown>)[key];
-					return typeof field === "string" && codes.has(field);
-				}))
-		);
-	};
 	for (const node of retryEvidenceNodes(error)) {
 		const record = node as Record<string, unknown>;
-		if (inspect(record) || inspect(record.data)) return true;
+		if (carriesQuotaCode(record) || carriesQuotaCode(record.data)) return true;
 		if (typeof record.responseBody !== "string") continue;
 		try {
-			if (inspect(JSON.parse(record.responseBody))) return true;
+			if (carriesQuotaCode(JSON.parse(record.responseBody))) return true;
 		} catch {
 			// error-policy:J3 malformed provider bodies cannot establish permanent quota exhaustion.
 		}
@@ -144,7 +140,7 @@ export function providerRateLimitRetryAt(
 	if (typeof error !== "object" || error === null) return undefined;
 	if (isPermanentQuotaError(error)) return undefined;
 	for (const node of retryEvidenceNodes(error)) {
-		if (nodeStatus(node) !== 429) continue;
+		if (readHttpStatus(node) !== 429) continue;
 		const explicit = (node as { retryAfterMs?: unknown }).retryAfterMs;
 		const delay =
 			typeof explicit === "number" && Number.isFinite(explicit) && explicit >= 0
@@ -273,7 +269,7 @@ export function readProviderRateLimit(
 		);
 		if (!rateLimit) continue;
 		if (rateLimit.scope === "period") return rateLimit;
-		if (!permanentQuota && nodeStatus(node) === 429) return rateLimit;
+		if (!permanentQuota && readHttpStatus(node) === 429) return rateLimit;
 	}
 	return undefined;
 }

@@ -13,7 +13,6 @@ export {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
   ensureRouteMinRole,
-  extractHeaderValue,
   getCompatApiToken,
   getProvidedApiToken,
   getSessionCookieName,
