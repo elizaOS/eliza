@@ -57,8 +57,15 @@ export type { CreateServerInput, CreateVolumeInput, ProvisionedServer } from "./
 
 const DO_API_BASE = process.env.DO_API_BASE_URL ?? "https://api.digitalocean.com/v2";
 const REQUEST_TIMEOUT_MS = 30_000;
-/** DO list endpoints default to per_page=20; pull a generous page to avoid silent truncation. */
+/** DO list endpoints default to per_page=20 and cap a page at 200; read every page. */
 const LIST_PER_PAGE = 200;
+/** Hard stop for a pagination cycle that never reports a last page. */
+const LIST_MAX_PAGES = 100;
+
+/** DO list responses link the following page; `next` is null on the last one. */
+interface DOListLinks {
+  pages?: { next?: string | null } | null;
+}
 
 export type DigitalOceanErrorCode =
   | "missing_token"
@@ -248,17 +255,13 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
     if (firstLabel) {
       params.push(`tag_name=${encodeURIComponent(firstLabel[1])}`);
     }
-    const qs = `?${params.join("&")}`;
-    const data = await this.request<{ droplets: DODroplet[] }>("GET", `/droplets${qs}`);
-    let droplets = data.droplets;
-    if (labelEntries.length > 0) {
-      const required = labelEntries.map(([, v]) => v);
-      droplets = droplets.filter((d) => {
-        const tags = d.tags ?? [];
-        return required.every((v) => tags.includes(v));
-      });
-    }
-    return droplets.map((d) => mapDroplet(d));
+    const droplets = await this.listPages<DODroplet>("/droplets", params, "droplets");
+    const required = labelEntries.map(([, v]) => v);
+    const matching =
+      required.length === 0
+        ? droplets
+        : droplets.filter((d) => required.every((v) => (d.tags ?? []).includes(v)));
+    return matching.map((d) => mapDroplet(d));
   }
 
   async getServer(id: number | string): Promise<DOComputeServer | null> {
@@ -354,17 +357,13 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
   }): Promise<DOComputeVolume[]> {
     const params: string[] = [`per_page=${LIST_PER_PAGE}`];
     if (filter?.location) params.push(`region=${encodeURIComponent(filter.location)}`);
-    const qs = `?${params.join("&")}`;
-    const data = await this.request<{ volumes: DOVolume[] }>("GET", `/volumes${qs}`);
-    let volumes = data.volumes;
-    if (filter?.label) {
-      const required = Object.values(filter.label);
-      volumes = volumes.filter((v) => {
-        const tags = v.tags ?? [];
-        return required.every((t) => tags.includes(t));
-      });
-    }
-    return volumes.map((v) => mapVolume(v));
+    const volumes = await this.listPages<DOVolume>("/volumes", params, "volumes");
+    const required = filter?.label ? Object.values(filter.label) : [];
+    const matching =
+      required.length === 0
+        ? volumes
+        : volumes.filter((v) => required.every((t) => (v.tags ?? []).includes(t)));
+    return matching.map((v) => mapVolume(v));
   }
 
   async getVolume(id: number | string): Promise<DOComputeVolume | null> {
@@ -506,6 +505,58 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
   // ----------------------------------------------------------------------
   // Internal HTTP
   // ----------------------------------------------------------------------
+
+  /**
+   * Read every page of a paginated DO list endpoint. DO answers a page with
+   * `links.pages.next` for the following page and `null` on the last one. A
+   * response without that metadata cannot prove completeness, and a repeated
+   * resource ID means the page chain restarted, so both are typed errors: a
+   * partial list must never be returned as the whole inventory.
+   */
+  private async listPages<T>(
+    path: string,
+    params: readonly string[],
+    collection: string,
+  ): Promise<T[]> {
+    const items: T[] = [];
+    const seen = new Set<string>();
+    for (let page = 1; page <= LIST_MAX_PAGES; page++) {
+      const data = await this.request<Record<string, unknown>>(
+        "GET",
+        `${path}?${[...params, `page=${page}`].join("&")}`,
+      );
+      const rows = data[collection];
+      const pages = (data.links as DOListLinks | undefined)?.pages;
+      if (!Array.isArray(rows)) {
+        throw new DigitalOceanComputeError(
+          "server_error",
+          `DigitalOcean API ${path} response is missing the ${collection} array`,
+        );
+      }
+      if (!pages || typeof pages !== "object") {
+        throw new DigitalOceanComputeError(
+          "server_error",
+          `DigitalOcean API ${path} response is missing pagination metadata`,
+        );
+      }
+      for (const row of rows as T[]) {
+        const key = String((row as { id: string | number }).id);
+        if (seen.has(key)) {
+          throw new DigitalOceanComputeError(
+            "server_error",
+            `DigitalOcean API ${path} pagination repeated ${collection} id ${key}`,
+          );
+        }
+        seen.add(key);
+        items.push(row);
+      }
+      if (pages.next === null || pages.next === undefined) return items;
+    }
+    throw new DigitalOceanComputeError(
+      "server_error",
+      `DigitalOcean API ${path} pagination exceeded ${LIST_MAX_PAGES} pages`,
+    );
+  }
 
   private async request<T>(
     method: "GET" | "POST" | "DELETE" | "PUT",
