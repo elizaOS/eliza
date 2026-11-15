@@ -19,13 +19,13 @@ it.effect("be told what changed and what is due, once, on the chat app", () => e
   }
   provide machine(), Chat = chat {
     const tracker = try Machine
-    effect function quiet() { for (let i = 0; i < debounce; i++) try tracker.send({ type: "tick" }) }
+    effect function quiet() { for (let i = 0; i < debounce; i++) try tracker.send({ type: "tick" }, "clock") }
 
     // spec/tracker.md, "Nothing is sent twice": a name typed twice is told once.
-    try tracker.send({ type: "create", actor: "ben" })
-    try tracker.send({ type: "handAddOwner", id: 1, name: "ana" })
-    try tracker.send({ type: "handAddOwner", id: 1, name: "cal" })
-    const typed = try tracker.send({ type: "handAddOwner", id: 1, name: "ana" })
+    try tracker.send({ type: "create" }, "ben")
+    try tracker.send({ type: "handAddOwner", id: 1, name: "ana" }, "sheet")
+    try tracker.send({ type: "handAddOwner", id: 1, name: "cal" }, "sheet")
+    const typed = try tracker.send({ type: "handAddOwner", id: 1, name: "ana" }, "sheet")
     try quiet()
     // Each post is tried again a second apart, and given up after the third try.
     const first = fork pass(handles)
@@ -41,11 +41,11 @@ it.effect("be told what changed and what is due, once, on the chat app", () => e
     // spec/tracker.md, "A pass sends exactly the notes it records": one message per person, in the order people first
     // appear, with only what this pass recorded; a person without a handle, even one named like what every object has,
     // gets none.
-    try tracker.send({ type: "create", actor: "ana" })
-    for (const owner of ["ana", "ben", "cal"]) try tracker.send({ type: "addOwner", id: 2, owner, actor: "ana" })
-    try tracker.send({ type: "setDue", id: 1, due: 5, actor: "ben" })
-    try tracker.send({ type: "setDue", id: 2, due: 3, actor: "ana" })
-    try tracker.send({ type: "renameOwner", owner: "cal", name: "toString", actor: "ana" })
+    try tracker.send({ type: "create" }, "ana")
+    for (const owner of ["ana", "ben", "cal"]) try tracker.send({ type: "addOwner", id: 2, owner }, "ana")
+    try tracker.send({ type: "setDue", id: 1, due: 5 }, "ben")
+    try tracker.send({ type: "setDue", id: 2, due: 3 }, "ana")
+    try tracker.send({ type: "renameOwner", owner: "cal", name: "toString" }, "ana")
     try quiet()
     const second = fork pass(handles)
     try TestClock.adjust("1 minute")
@@ -70,11 +70,11 @@ it.effect("be told what changed and what is due, once, on the chat app", () => e
   const renamedPosts: [string, string][] = []
   provide machine(), Chat = { effect post(handle: string, text: string) { renamedPosts.push([handle, text]) } } {
     const tracker = try Machine
-    try tracker.send({ type: "create", actor: "ana" })
-    try tracker.send({ type: "addOwner", id: 1, owner: "ben", actor: "ana" })
-    try tracker.send({ type: "deleteOwner", owner: "ana", actor: "cal" })
-    try tracker.send({ type: "renameOwner", owner: "ben", name: "ana", actor: "cal" })
-    for (let i = 0; i < debounce; i++) try tracker.send({ type: "tick" })
+    try tracker.send({ type: "create" }, "ana")
+    try tracker.send({ type: "addOwner", id: 1, owner: "ben" }, "ana")
+    try tracker.send({ type: "deleteOwner", owner: "ana" }, "cal")
+    try tracker.send({ type: "renameOwner", owner: "ben", name: "ana" }, "cal")
+    for (let i = 0; i < debounce; i++) try tracker.send({ type: "tick" }, "clock")
     try pass(handles)
     const notified = try tracker.get()
     try Effect.try(() => assert.deepStrictEqual(
@@ -82,9 +82,9 @@ it.effect("be told what changed and what is due, once, on the chat app", () => e
       [[["@ana", "✎ #1 changed"]], "ana", false]
     ))
     // A spreadsheet edit reaches a member whose name is the spreadsheet editor label.
-    try tracker.send({ type: "renameOwner", owner: "ana", name: "sheet", actor: "cal" })
-    try tracker.send({ type: "handAddOwner", id: 1, name: "sheet" })
-    for (let i = 0; i < debounce; i++) try tracker.send({ type: "tick" })
+    try tracker.send({ type: "renameOwner", owner: "ana", name: "sheet" }, "cal")
+    try tracker.send({ type: "handAddOwner", id: 1, name: "sheet" }, "sheet")
+    for (let i = 0; i < debounce; i++) try tracker.send({ type: "tick" }, "clock")
     try pass({ sheet: "@sheet" })
     try Effect.try(() => assert.deepStrictEqual(renamedPosts, [["@ana", "✎ #1 changed"], ["@sheet", "✎ #1 changed"]]))
   }
