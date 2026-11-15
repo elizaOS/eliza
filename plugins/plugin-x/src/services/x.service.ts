@@ -1355,7 +1355,9 @@ export class XService extends Service {
       // faults are lookup failures, so they must reach the caller instead of
       // reading as "no matching target" and silently dropping the recipient.
       if (
-        !(error instanceof ElizaError && error.code === "X_PROFILE_NOT_FOUND") &&
+        !(
+          error instanceof ElizaError && error.code === "X_PROFILE_NOT_FOUND"
+        ) &&
         getTwitterProviderStatus(error) !== 404
       ) {
         throw error;
