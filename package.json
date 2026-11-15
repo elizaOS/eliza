@@ -68,18 +68,6 @@
     "typescript": "^6.0.3",
     "vibelang-runtime": "0.0.13"
   },
-  "peerDependencies": {
-    "@effect/vitest": "4.1.1",
-    "@vitest/browser-playwright": "catalog:",
-    "vibelang-vite": "0.0.13",
-    "vite": "8.3.5",
-    "vitest": "5.1.0"
-  },
-  "peerDependenciesMeta": {
-    "@vitest/browser-playwright": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@effect/vitest": "4.1.1",
     "@eslint-react/eslint-plugin": "catalog:",
@@ -108,6 +96,7 @@
     "vitest": "5.1.0"
   },
   "peerDependencies": {
+    "@effect/vitest": "4.1.1",
     "@vitest/browser-playwright": "5.1.0",
     "vibelang-vite": "0.0.13",
     "vite": "8.3.5",

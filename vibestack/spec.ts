@@ -26,7 +26,7 @@ export { danglingCitations } from "./util.ts";
 export { scanSpec } from "./scan.ts";
 
 export interface Result { ok: boolean; stage: "model" | "always" | "sometimes" | "replay" | "types" | "proof" | "tests" | "traces" | "review" | "skipped"; summary: string; detail: string; where?: string; /** The rules the result concerns, each by its spec and key. */ rules?: { file: string; key: string }[] }
-/** The Node these tools run on, as .nvmrc and the root's `engines` name it. */
+/** The Node these tools run on: the major release .nvmrc pins, and the root's `engines` floor. */
 export const NODE = 26;
 export const show = ({ ok, stage, summary, detail }: Result) => `${stage === "skipped" ? "-" : ok ? "✓" : "✗"} ${stage.padEnd(9)} ${summary}${detail ? "\n" + detail.trimEnd() : ""}`;
 

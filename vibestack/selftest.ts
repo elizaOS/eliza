@@ -521,8 +521,8 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     const untyped = copyOfProject();
     fs.rmSync(path.join(untyped, "tsconfig.json"));
     assert.ok((await run(untyped)).failed.includes("types"));
-    // One Node floor: what the command refuses below and `init` writes is what .nvmrc and the root's `engines` name.
-    assert.deepEqual([read(".nvmrc").trim(), JSON.parse(read("package.json")).engines.node], [String(NODE), `>=${NODE}`]);
+    // One Node floor: what the command refuses below and `init` writes is the major release .nvmrc pins and the root's `engines` names.
+    assert.deepEqual([read(".nvmrc").trim().split(".")[0], JSON.parse(read("package.json")).engines.node], [String(NODE), `>=${NODE}`]);
   });
 
   test("a test that reaches only generated code, which the spec proves, is caught: a file that imports nothing else, and a test that reaches nothing else through the helpers it calls; two test files of one runner and language are a note", async () => {
