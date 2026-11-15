@@ -106,6 +106,7 @@ function fixture(
   });
   return {
     controller,
+    store,
     slots,
     retainedCopies,
     toasts,
@@ -282,6 +283,43 @@ describe("createMailDraftsController", () => {
     expect(f.controller.chips((label, action) => ({ label, action }))).toEqual(
       [],
     );
+    expect(f.prepared).toEqual([]);
+  });
+
+  it("Back saves partial recipients and the complete local draft without a provider operation", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    await f.controller.newEmail();
+    type(f.controller, "onTo", "unfinished@");
+    type(f.controller, "onSubj", "Keep on Back");
+    type(f.controller, "onBody", "Unsent body");
+    expect(await f.controller.saveAndClose()).toBe(true);
+    expect(f.controller.render().composing).toBe(false);
+    const row = shelfItems(f)[0] as unknown as {
+      draft: { subject: string; body: string };
+      toQ: string;
+    };
+    expect(row.draft.subject).toBe("Keep on Back");
+    expect(row.draft.body).toBe("Unsent body");
+    expect(row.toQ).toBe("unfinished@");
+    expect(f.prepared).toEqual([]);
+  });
+
+  it("a refused Back save keeps the current email and all earlier draft bytes", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    await f.controller.newEmail();
+    type(f.controller, "onBody", "Keep after failure");
+    const prior = [...f.slots];
+    f.store.compareExchange = async () => {
+      throw Error("Storage refused");
+    };
+    expect(await f.controller.saveAndClose()).toBe(false);
+    expect(f.controller.render().composing).toBe(true);
+    expect((f.controller.render().c as { body: string }).body).toBe(
+      "Keep after failure",
+    );
+    expect([...f.slots]).toEqual(prior);
     expect(f.prepared).toEqual([]);
   });
 

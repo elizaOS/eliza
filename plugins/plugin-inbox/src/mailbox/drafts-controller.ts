@@ -1519,6 +1519,7 @@ export function createMailDraftsController(
   }
 
   const controller = {
+    saveAndClose: setAside,
     prepareSelection,
     removeSelection,
     bind,
