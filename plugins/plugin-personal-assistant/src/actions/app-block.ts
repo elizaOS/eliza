@@ -27,6 +27,7 @@ import {
   stopAppBlock,
 } from "@elizaos/plugin-blocker/services/app-blocker/index";
 import { formatPromptSection } from "./lib/prompt-format.js";
+import { extractHeuristicDurationMinutes } from "./website-block.js";
 
 const ACTION_NAME = "BLOCK";
 
@@ -113,8 +114,10 @@ function normalizePackageNames(
 
 function normalizeDurationMinutes(value: unknown): number | null | undefined {
   if (value === null) return null;
+  // A positive duration never rounds to 0: the Android plugin reads 0 as no
+  // end time, so a sub-minute block would never end.
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return Math.round(value);
+    return Math.max(1, Math.round(value));
   }
   if (typeof value === "string") {
     const trimmed = value.trim().toLowerCase();
@@ -128,7 +131,9 @@ function normalizeDurationMinutes(value: unknown): number | null | undefined {
       return null;
     }
     const parsed = Number.parseFloat(trimmed);
-    if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.max(1, Math.round(parsed));
+    }
   }
   return undefined;
 }
@@ -301,6 +306,16 @@ async function handleBlock(
   const explicitDurationMinutes = normalizeDurationMinutes(
     params.durationMinutes,
   );
+  // The action planner can omit durationMinutes, and the planning model below
+  // does not run when the request names the apps, so a duration written in
+  // the message is read here, as the website target does. Only Android reads
+  // it: the iPhone plugin refuses a timed block.
+  const statedDurationMinutes =
+    explicitDurationMinutes === undefined && status.platform === "android"
+      ? extractHeuristicDurationMinutes(
+          [params.intent, getMessageText(message)].filter(Boolean).join("\n"),
+        )
+      : undefined;
 
   let installedApps: InstalledAppEntry[] = [];
   if (status.platform === "android") {
@@ -373,7 +388,9 @@ async function handleBlock(
   const durationMinutes =
     explicitDurationMinutes !== undefined
       ? explicitDurationMinutes
-      : llmPlan?.durationMinutes;
+      : statedDurationMinutes !== undefined
+        ? statedDurationMinutes
+        : llmPlan?.durationMinutes;
 
   if (
     (!packageNames || packageNames.length === 0) &&
