@@ -1,5 +1,7 @@
 // Native bridge review ownership across the journal worker and Android main queue.
 // The radio and journal acknowledgement are abstract ports; no carrier result is inferred.
+// SMS role eligibility is a separate uncached PackageManager boundary. Conformance checks typed
+// MMS filters, enabled host components and package scope; the query grants no role or send authority.
 module NativeSmsReviewOwnership {
   type State = { phase: str, owner: bool, retired: bool, cancelAck: bool,
     composer: bool, approved: bool, dialog: bool, dispatches: int, result: str }

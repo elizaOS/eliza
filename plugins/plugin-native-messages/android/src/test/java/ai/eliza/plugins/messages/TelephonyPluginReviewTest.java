@@ -11,8 +11,11 @@ import android.content.BroadcastReceiver;
 import android.content.ContentProvider;
 import android.content.ContentUris;
 import android.content.ContentValues;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.content.pm.ProviderInfo;
 import android.database.Cursor;
 import android.database.MatrixCursor;
@@ -134,6 +137,50 @@ public final class TelephonyPluginReviewTest {
     assertNull(Shadows.shadowOf(SmsManager.getSmsManagerForSubscriptionId(1)).getLastSentMultimediaMessageParams());
     Field owners = TelephonyPlugin.class.getDeclaredField("pendingReviews"); owners.setAccessible(true);
     assertTrue("settlement releases the pending owner", ((java.util.Set<?>) owners.get(host)).isEmpty());
+  }
+  @Test public void smsEligibilityMatchesTypedMmsReceiverAndEnabledHostComponents() throws Exception {
+    Host host = host("role-eligibility");
+    PackageManager manager = host.getContext().getPackageManager();
+    var packages = Shadows.shadowOf(manager);
+    String self = host.getContext().getPackageName();
+    ComponentName sms = new ComponentName(self, self + ".SmsReceiver");
+    ComponentName mms = new ComponentName(self, self + ".MmsReceiver");
+    ComponentName responder = new ComponentName(self, self + ".MessageResponder");
+    ComponentName composer = new ComponentName(self, self + ".MessageComposer");
+    packages.addReceiverIfNotPresent(sms).enabled = true;
+    packages.addIntentFilterForReceiver(sms, new IntentFilter(Telephony.Sms.Intents.SMS_DELIVER_ACTION));
+    packages.addReceiverIfNotPresent(mms).enabled = true;
+    IntentFilter mmsFilter = new IntentFilter(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION);
+    mmsFilter.addDataType("application/vnd.wap.mms-message");
+    packages.addIntentFilterForReceiver(mms, mmsFilter);
+    packages.addServiceIfNotPresent(responder).enabled = true;
+    IntentFilter respondFilter = new IntentFilter(TelephonyManager.ACTION_RESPOND_VIA_MESSAGE);
+    respondFilter.addDataScheme("smsto");
+    packages.addIntentFilterForService(responder, respondFilter);
+    packages.addActivityIfNotPresent(composer).enabled = true;
+    IntentFilter composeFilter = new IntentFilter(Intent.ACTION_SENDTO);
+    composeFilter.addDataScheme("smsto");
+    packages.addIntentFilterForActivity(composer, composeFilter);
+
+    // Exercise Android IntentFilter resolution, not a preselected ResolveInfo response.
+    assertTrue(manager.queryBroadcastReceivers(new Intent(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION).setPackage(self), 0).isEmpty());
+    assertEquals(1, manager.queryBroadcastReceivers(new Intent(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION)
+      .setType("application/vnd.wap.mms-message").setPackage(self), 0).size());
+    assertTrue("a MIME-qualified enabled host can be offered the SMS role", host.eligibleFor(RoleManager.ROLE_SMS));
+    assertTrue(host.statusObject().getJSONObject("roles").getJSONObject("sms").getBoolean("eligible"));
+    for (ComponentName component : new ComponentName[] {sms, mms, responder, composer}) {
+      manager.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
+      assertFalse("every host component remains required", host.eligibleFor(RoleManager.ROLE_SMS));
+      manager.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+      assertTrue(host.eligibleFor(RoleManager.ROLE_SMS));
+    }
+    ComponentName foreign = new ComponentName("other.messages", "other.messages.MmsReceiver");
+    packages.addReceiverIfNotPresent(foreign).enabled = true;
+    packages.addIntentFilterForReceiver(foreign, mmsFilter);
+    manager.setComponentEnabledSetting(mms, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
+    assertFalse("a foreign receiver cannot qualify this host", host.eligibleFor(RoleManager.ROLE_SMS));
+    assertFalse(host.getContext().getSystemService(RoleManager.class).isRoleHeld(RoleManager.ROLE_SMS));
+    noRadioAndNoRetainedOwner(host);
   }
   @Test public void smsCancellationBeforeJournalReplyMustRetireQueuedReview() throws Exception { queuedCancellation("sendSms", false); }
   @Test public void mmsCancellationBeforeJournalReplyMustRetireQueuedReview() throws Exception { queuedCancellation("sendMms", false); }
