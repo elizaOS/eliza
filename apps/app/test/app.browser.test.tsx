@@ -5,9 +5,9 @@ import { createRoot } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { App } from "../src/App.tsx";
-import { stored } from "../src/greeter.vibe";
+import { greeter } from "../src/greeter.vibe";
 
-const runtime = ManagedRuntime.make(Layer.provide(stored, KeyValueStore.layerStorage(() => localStorage)));
+const runtime = ManagedRuntime.make(Layer.provide(greeter, KeyValueStore.layerStorage(() => localStorage)));
 const root = createRoot(document.body.appendChild(document.createElement("div")));
 const environment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 const previousActEnvironment = environment.IS_REACT_ACT_ENVIRONMENT;
