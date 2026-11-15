@@ -830,7 +830,11 @@ export class BrowserFiles extends WebPlugin {
   private async selected(id: string) {
     const selected = this.selection.get(id),
       row = (await this.storage.entries()).find((e) => e.id === selected?.id);
-    if (!row?.blob || row.revision !== selected?.revision)
+    if (
+      this.selection.get(id) !== selected ||
+      !row?.blob ||
+      row.revision !== selected?.revision
+    )
       throw Error("Select this file again.");
     return { ...row, blob: row.blob };
   }

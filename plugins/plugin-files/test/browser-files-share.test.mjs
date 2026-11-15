@@ -71,6 +71,38 @@ test("selected chat bytes keep the mail bound, exact content and revision fence"
       files.attachment({ ...selected, purpose: "chat" }),
       /Select this file again/,
     );
+    // Revocation can occur while the final selection lookup awaits storage.
+    row.blob = new Blob([new Uint8Array([7])]);
+    let releaseEntries;
+    const entriesGate = new Promise((resolve) => {
+      releaseEntries = resolve;
+    });
+    let enteredEntries;
+    const entriesPending = new Promise((resolve) => {
+      enteredEntries = resolve;
+    });
+    let reads = 0;
+    const revokingFiles = new BrowserFiles(
+      {},
+      {
+        entries: async () => {
+          if (++reads === 3) {
+            enteredEntries();
+            await entriesGate;
+          }
+          return [row];
+        },
+      },
+    );
+    const revokingSelection = await revokingFiles.select({ id: row.id });
+    const attachment = revokingFiles.attachment({
+      ...revokingSelection,
+      purpose: "chat",
+    });
+    await entriesPending;
+    await revokingFiles.forgetSelected(revokingSelection);
+    releaseEntries();
+    await assert.rejects(attachment, /Select this file again/);
   } finally {
     URL.revokeObjectURL(selected.uri);
   }
