@@ -17,7 +17,7 @@ import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofF
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, indent, packageScripts, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
-import { availableDirectory, linkProjectSkills, skillRoot } from "./skill-links.ts";
+import { availableDirectory, generatedSkillIgnores, linkProjectSkills, skillRoot } from "./skill-links.ts";
 
 export { readSpecs, parseSpec, expandListHelpers, type Spec, type Rule, type Story } from "./parse.ts";
 export { pending, pendingKey, pendingContracts, acceptReviews, acceptContracts, dependencies, type Lock, type Pending } from "./review.ts";
@@ -468,10 +468,16 @@ export function init(root: string, warn: (message: string) => void = (message) =
     done.push("AGENTS.md (Vibestack instructions)");
   }
   const claude = path.join(root, "CLAUDE.md");
-  const own = fs.existsSync(claude) ? fs.readFileSync(claude, "utf8") : "";
-  if (!/^@AGENTS\.md\s*$/m.test(own)) {
+  const claudeEntry = fs.lstatSync(claude, { throwIfNoEntry: false });
+  const own = claudeEntry?.isFile() ? fs.readFileSync(claude, "utf8") : undefined;
+  const instruction = own?.trim();
+  if (!claudeEntry || instruction === "" || instruction === "@AGENTS.md") {
+    if (claudeEntry) fs.unlinkSync(claude);
+    fs.symlinkSync("AGENTS.md", claude, "file");
+    done.push("CLAUDE.md (symlink to AGENTS.md)");
+  } else if (own !== undefined && !/^@AGENTS\.md\s*$/m.test(own)) {
     const eol = own.includes("\r\n") ? "\r\n" : "\n";
-    fs.writeFileSync(claude, `${own.trimEnd()}${own.trim() ? eol + eol : ""}@AGENTS.md${eol}`);
+    fs.writeFileSync(claude, `${own.trimEnd()}${eol}${eol}@AGENTS.md${eol}`);
     done.push("CLAUDE.md (imports AGENTS.md)");
   }
   add("tsconfig.json", () => JSON.stringify({
@@ -482,7 +488,7 @@ export function init(root: string, warn: (message: string) => void = (message) =
   add("spec/index.md", () => "");
   const ignore = path.join(root, ".gitignore");
   const ignored = fs.existsSync(ignore) ? fs.readFileSync(ignore, "utf8") : "";
-  const missing = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/"].filter((l) => !ignored.split("\n").includes(l));
+  const missing = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", ...generatedSkillIgnores].filter((l) => !ignored.split("\n").includes(l));
   if (missing.length) { fs.writeFileSync(ignore, ignored + (ignored && !ignored.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n"); done.push(".gitignore"); }
   const manifest = path.join(root, "package.json");
   {
