@@ -2094,19 +2094,35 @@ async function consumeTelegramLoginChallenge(
   const raw = await getNonceBackend().consume(
     telegramLoginChallengeKey(challengeId),
   );
+  // A challenge that was never issued (or was already consumed) is a legitimate
+  // "no record", so it stays null.
   if (!raw) return null;
+  // createTelegramLoginChallenge() writes this record itself, so bytes that do
+  // not decode are a storage fault, not a user mistake. Reporting them as an
+  // invalid challenge would send the user back through the login and hide the
+  // fault from the server.
+  const unreadable = (cause?: unknown) =>
+    new ElizaError("Stored Telegram login challenge cannot be read.", {
+      code: "TELEGRAM_LOGIN_CHALLENGE_UNREADABLE",
+      cause,
+      context: { surface: "telegram-login-challenge" },
+      severity: "ephemeral",
+    });
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as TelegramLoginChallengeRecord;
-    return {
-      tenantId:
-        typeof parsed.tenantId === "string" ? parsed.tenantId : undefined,
-      originHost:
-        typeof parsed.originHost === "string" ? parsed.originHost : undefined,
-      issuedAt: typeof parsed.issuedAt === "number" ? parsed.issuedAt : 0,
-    };
-  } catch {
-    return null;
+    parsed = JSON.parse(raw);
+  } catch (cause) {
+    throw unreadable(cause);
   }
+  if (!parsed || typeof parsed !== "object") throw unreadable();
+  const record = parsed as TelegramLoginChallengeRecord;
+  return {
+    tenantId:
+      typeof record.tenantId === "string" ? record.tenantId : undefined,
+    originHost:
+      typeof record.originHost === "string" ? record.originHost : undefined,
+    issuedAt: typeof record.issuedAt === "number" ? record.issuedAt : 0,
+  };
 }
 
 function validateConsumedTelegramLoginChallenge(
