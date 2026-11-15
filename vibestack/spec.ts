@@ -416,15 +416,35 @@ const VIBELANG = {
 export function init(root: string, warn: (message: string) => void = (message) => console.warn(`note: ${message}`)): string[] {
   const pkg = path.join(import.meta.dirname, "..");
   const done: string[] = [];
-  const add = (file: string, content: () => string) => {
+  const add = (file: string, content: () => string | Buffer) => {
     if (fs.lstatSync(path.join(root, file), { throwIfNoEntry: false })) return;
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     fs.writeFileSync(path.join(root, file), content());
     done.push(file);
   };
-  for (const name of fs.readdirSync(path.join(pkg, ".claude/skills")).sort()) {
-    const source = `.claude/skills/${name}`;
-    add(`${source}/SKILL.md`, () => fs.readFileSync(path.join(pkg, source, "SKILL.md"), "utf8"));
+  const addSkillFiles = (directory: string): void => {
+    const existing = fs.lstatSync(path.join(root, directory), { throwIfNoEntry: false });
+    if (existing && !existing.isDirectory()) return;
+    const source = path.join(pkg, directory);
+    for (const name of fs.readdirSync(source).sort()) {
+      const file = `${directory}/${name}`;
+      const entry = fs.lstatSync(path.join(source, name));
+      if (entry.isDirectory()) addSkillFiles(file);
+      else if (entry.isFile()) add(file, () => fs.readFileSync(path.join(source, name)));
+    }
+  };
+  const skillRoot = ".claude/skills";
+  const license = `${skillRoot}/LICENSE.pstack`;
+  add(license, () => fs.readFileSync(path.join(pkg, license)));
+  const skills = fs.readdirSync(path.join(pkg, skillRoot), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  for (const name of skills) {
+    const source = `${skillRoot}/${name}`;
+    if (!fs.statSync(path.join(pkg, source, "SKILL.md"), { throwIfNoEntry: false })?.isFile()) continue;
+    addSkillFiles(source);
+    const installed = path.join(root, source);
+    if (!fs.statSync(installed, { throwIfNoEntry: false })?.isDirectory() ||
+      !fs.statSync(path.join(installed, "SKILL.md"), { throwIfNoEntry: false })?.isFile()) continue;
     const link = path.join(root, `.agents/skills/${name}`);
     if (!fs.lstatSync(link, { throwIfNoEntry: false })) {
       fs.mkdirSync(path.dirname(link), { recursive: true });
@@ -432,8 +452,12 @@ export function init(root: string, warn: (message: string) => void = (message) =
       done.push(`.agents/skills/${name}`);
     }
   }
-  // AGENTS.md links to it.
   add("SPEC.md", () => fs.readFileSync(path.join(pkg, "SPEC.md"), "utf8"));
+  const referenceDir = "vibestack/reference";
+  if (["vibestack", referenceDir].every((dir) => fs.lstatSync(path.join(root, dir), { throwIfNoEntry: false })?.isDirectory() ?? true)) {
+    const file = `${referenceDir}/typereferences.md`;
+    add(file, () => fs.readFileSync(path.join(pkg, file)));
+  }
   // The repository's own guard for what the tools write; the rules about this repository's tools stay behind.
   add(".claude/settings.json", () => {
     const { permissions } = JSON.parse(fs.readFileSync(path.join(pkg, ".claude/settings.json"), "utf8")) as { permissions: { deny: string[]; ask: string[] } };

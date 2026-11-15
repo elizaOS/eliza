@@ -31,7 +31,7 @@ Help me build a new project from https://github.com/lalalune/vibestack.
 Start by asking what I want to build, who it is for, and its main workflows.
 Then:
 1. Use the template in a new project directory, or use my existing copy.
-   Read AGENTS.md in full and follow the skills it names.
+   Read AGENTS.md and README.md in full and follow their skills.
 2. Check for Node.js 26+ and Dafny 4.11 on PATH, run pnpm install, and follow
    the README's "Set up a new project" section.
 3. Write my stories in spec/app/index.md, with rules and Quint under each.
@@ -44,8 +44,8 @@ Then:
    my request before running pnpm accept.
 ```
 
-[![Start in ChatGPT](https://img.shields.io/badge/Start_in_ChatGPT-212121?style=for-the-badge)](https://chatgpt.com/?q=Help%20me%20build%20a%20new%20project%20from%20https%3A%2F%2Fgithub.com%2Flalalune%2Fvibestack.%0A%0AStart%20by%20asking%20what%20I%20want%20to%20build%2C%20who%20it%20is%20for%2C%20and%20its%20main%20workflows.%0AThen%3A%0A1.%20Use%20the%20template%20in%20a%20new%20project%20directory%2C%20or%20use%20my%20existing%20copy.%0A%20%20%20Read%20AGENTS.md%20in%20full%20and%20follow%20the%20skills%20it%20names.%0A2.%20Check%20for%20Node.js%2026%2B%20and%20Dafny%204.11%20on%20PATH%2C%20run%20pnpm%20install%2C%20and%20follow%0A%20%20%20the%20README's%20%22Set%20up%20a%20new%20project%22%20section.%0A3.%20Write%20my%20stories%20in%20spec%2Fapp%2Findex.md%2C%20with%20rules%20and%20Quint%20under%20each.%0A4.%20Build%20the%20app%20in%20apps%2Fapp%3A%20its%20shell%20in%20VibeLang%20on%20the%20generated%20code%20in%0A%20%20%20gen%2F%2C%20its%20interface%20in%20React.%20Add%20journey%20tests%20through%20the%20real%20UI%2C%0A%20%20%20API%2C%20storage%2C%20or%20other%20services.%0A5.%20Run%20pnpm%20check%20and%20fix%20failures%20until%20only%20my%20review%20remains.%0A%20%20%20Never%20edit%20generated%20files%20or%20weaken%20rules%20to%20pass%20checks.%0A6.%20Show%20me%20how%20to%20run%20the%20app%2C%20summarize%20what%20needs%20review%2C%20and%20wait%20for%0A%20%20%20my%20request%20before%20running%20pnpm%20accept.)
-[![Start in Claude](https://img.shields.io/badge/Start_in_Claude-B54A32?style=for-the-badge)](https://claude.ai/new?q=Help%20me%20build%20a%20new%20project%20from%20https%3A%2F%2Fgithub.com%2Flalalune%2Fvibestack.%0A%0AStart%20by%20asking%20what%20I%20want%20to%20build%2C%20who%20it%20is%20for%2C%20and%20its%20main%20workflows.%0AThen%3A%0A1.%20Use%20the%20template%20in%20a%20new%20project%20directory%2C%20or%20use%20my%20existing%20copy.%0A%20%20%20Read%20AGENTS.md%20in%20full%20and%20follow%20the%20skills%20it%20names.%0A2.%20Check%20for%20Node.js%2026%2B%20and%20Dafny%204.11%20on%20PATH%2C%20run%20pnpm%20install%2C%20and%20follow%0A%20%20%20the%20README's%20%22Set%20up%20a%20new%20project%22%20section.%0A3.%20Write%20my%20stories%20in%20spec%2Fapp%2Findex.md%2C%20with%20rules%20and%20Quint%20under%20each.%0A4.%20Build%20the%20app%20in%20apps%2Fapp%3A%20its%20shell%20in%20VibeLang%20on%20the%20generated%20code%20in%0A%20%20%20gen%2F%2C%20its%20interface%20in%20React.%20Add%20journey%20tests%20through%20the%20real%20UI%2C%0A%20%20%20API%2C%20storage%2C%20or%20other%20services.%0A5.%20Run%20pnpm%20check%20and%20fix%20failures%20until%20only%20my%20review%20remains.%0A%20%20%20Never%20edit%20generated%20files%20or%20weaken%20rules%20to%20pass%20checks.%0A6.%20Show%20me%20how%20to%20run%20the%20app%2C%20summarize%20what%20needs%20review%2C%20and%20wait%20for%0A%20%20%20my%20request%20before%20running%20pnpm%20accept.)
+[![Start in ChatGPT](https://img.shields.io/badge/Start_in_ChatGPT-212121?style=for-the-badge)](https://chatgpt.com/?q=Help%20me%20build%20a%20new%20project%20from%20https%3A%2F%2Fgithub.com%2Flalalune%2Fvibestack.%0A%0AStart%20by%20asking%20what%20I%20want%20to%20build%2C%20who%20it%20is%20for%2C%20and%20its%20main%20workflows.%0AThen%3A%0A1.%20Use%20the%20template%20in%20a%20new%20project%20directory%2C%20or%20use%20my%20existing%20copy.%0A%20%20%20Read%20AGENTS.md%20and%20README.md%20in%20full%20and%20follow%20their%20skills.%0A2.%20Check%20for%20Node.js%2026%2B%20and%20Dafny%204.11%20on%20PATH%2C%20run%20pnpm%20install%2C%20and%20follow%0A%20%20%20the%20README's%20%22Set%20up%20a%20new%20project%22%20section.%0A3.%20Write%20my%20stories%20in%20spec%2Fapp%2Findex.md%2C%20with%20rules%20and%20Quint%20under%20each.%0A4.%20Build%20the%20app%20in%20apps%2Fapp%3A%20its%20shell%20in%20VibeLang%20on%20the%20generated%20code%20in%0A%20%20%20gen%2F%2C%20its%20interface%20in%20React.%20Add%20journey%20tests%20through%20the%20real%20UI%2C%0A%20%20%20API%2C%20storage%2C%20or%20other%20services.%0A5.%20Run%20pnpm%20check%20and%20fix%20failures%20until%20only%20my%20review%20remains.%0A%20%20%20Never%20edit%20generated%20files%20or%20weaken%20rules%20to%20pass%20checks.%0A6.%20Show%20me%20how%20to%20run%20the%20app%2C%20summarize%20what%20needs%20review%2C%20and%20wait%20for%0A%20%20%20my%20request%20before%20running%20pnpm%20accept.)
+[![Start in Claude](https://img.shields.io/badge/Start_in_Claude-B54A32?style=for-the-badge)](https://claude.ai/new?q=Help%20me%20build%20a%20new%20project%20from%20https%3A%2F%2Fgithub.com%2Flalalune%2Fvibestack.%0A%0AStart%20by%20asking%20what%20I%20want%20to%20build%2C%20who%20it%20is%20for%2C%20and%20its%20main%20workflows.%0AThen%3A%0A1.%20Use%20the%20template%20in%20a%20new%20project%20directory%2C%20or%20use%20my%20existing%20copy.%0A%20%20%20Read%20AGENTS.md%20and%20README.md%20in%20full%20and%20follow%20their%20skills.%0A2.%20Check%20for%20Node.js%2026%2B%20and%20Dafny%204.11%20on%20PATH%2C%20run%20pnpm%20install%2C%20and%20follow%0A%20%20%20the%20README's%20%22Set%20up%20a%20new%20project%22%20section.%0A3.%20Write%20my%20stories%20in%20spec%2Fapp%2Findex.md%2C%20with%20rules%20and%20Quint%20under%20each.%0A4.%20Build%20the%20app%20in%20apps%2Fapp%3A%20its%20shell%20in%20VibeLang%20on%20the%20generated%20code%20in%0A%20%20%20gen%2F%2C%20its%20interface%20in%20React.%20Add%20journey%20tests%20through%20the%20real%20UI%2C%0A%20%20%20API%2C%20storage%2C%20or%20other%20services.%0A5.%20Run%20pnpm%20check%20and%20fix%20failures%20until%20only%20my%20review%20remains.%0A%20%20%20Never%20edit%20generated%20files%20or%20weaken%20rules%20to%20pass%20checks.%0A6.%20Show%20me%20how%20to%20run%20the%20app%2C%20summarize%20what%20needs%20review%2C%20and%20wait%20for%0A%20%20%20my%20request%20before%20running%20pnpm%20accept.)
 
 ## Why
 
@@ -128,13 +128,14 @@ means are in [CONTRIBUTING.md](CONTRIBUTING.md#architecture).
    what needs your review.
 5. Read what it reports, run the app, and sign off with `pnpm accept`.
 
-Agents start with [AGENTS.md](AGENTS.md). All four skills (`sync`, `shell`,
-`prove`, `design`) live in [`.claude/skills/`](.claude/skills/), with relative
-links in [`.agents/skills/`](.agents/skills/) for Codex discovery. Keep both
-directories when copying the template. ChatGPT or another client without
-repository skill discovery must read the applicable `SKILL.md` files linked
-from AGENTS.md explicitly; it needs access to those files or their contents
-in the chat. The full instructions are read when the task needs a skill.
+Agents start with [AGENTS.md](AGENTS.md). This checkout owns its skills in
+[`.claude/skills/`](.claude/skills/). `pnpm install` creates missing links in
+[`.agents/skills/`](.agents/skills/) and under `.codex`, `.cursor`, `.grok`,
+`.gemini`, `.factory`, `.t3` and `.droid`, all relative to the checkout root.
+The hook creates missing directories and reports links or copies that
+conflict with the project sources. A client without repository skill
+discovery must read the applicable `SKILL.md` files linked from AGENTS.md
+explicitly.
 
 ## Studio
 
@@ -272,8 +273,9 @@ pnpm check
 
 | `spec init` adds | |
 |---|---|
-| `.claude/skills/` (`sync`, `shell`, `prove`, `design`), `AGENTS.md` | the agent's procedure and its skills; existing AGENTS content is kept around a marked Vibestack section, which a later `init` refreshes |
+| `.claude/skills/`, `AGENTS.md` | the agent's procedure, skills, bundled references and license notice. Later invocations add missing files and refresh the marked Vibestack section in AGENTS.md |
 | `SPEC.md` | the spec reference |
+| `vibestack/reference/typereferences.md` | the TypeScript type reference |
 | `.agents/skills/` | links to the same skills in `.claude/skills/` |
 | `.claude/settings.json` | Claude Code refuses edits to `gen/`, `.spec-cache/`, `.studio/`, `spec/lock.json` and `lemmascript.json`, and asks before `pnpm accept` |
 | `CLAUDE.md` | imports `AGENTS.md`, preserving any existing instructions |
@@ -348,7 +350,7 @@ workspace.
 | `packages/design-system` | Design tokens, built into Tailwind's theme |
 | `packages/ui` | Shared React components, with generated stories |
 | `vibestack/` | The tools: generator, simulator, prover, Studio, testing and design helpers |
-| `.claude/skills/` | What agents read before each kind of work: `sync`, `shell`, `prove`, `design` |
+| `.claude/skills/` | What agents read before each kind of work, with bundled references |
 | `.agents/skills/` | Relative links to the same skills for Codex discovery |
 | [AGENTS.md](AGENTS.md), [SPEC.md](SPEC.md), [CONTRIBUTING.md](CONTRIBUTING.md#architecture) | The procedure, the spec reference, and the map |
 
