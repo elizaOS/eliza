@@ -59,7 +59,11 @@ public final class SmsOutgoingHistoryTest {
    ContentValues stored = new ContentValues(values);
    stored.put(Telephony.Sms.CREATOR, getContext().getPackageName());
    rows.put((long) inserts, stored);
-   if (inserts == revokeRole) Shadows.shadowOf(getContext().getSystemService(RoleManager.class)).removeHeldRole(RoleManager.ROLE_SMS);
+   if (inserts == revokeRole) {
+    RoleManager roles = getContext().getSystemService(RoleManager.class);
+    Shadows.shadowOf(roles).removeHeldRole(RoleManager.ROLE_SMS);
+    Shadows.shadowOf(roles).addAvailableRole(RoleManager.ROLE_SMS);
+   }
    return ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, inserts);
   }
   private ContentValues ownedOutbox(long id, String type, String creator) {
@@ -178,7 +182,7 @@ public final class SmsOutgoingHistoryTest {
  @Test public void unreadableOwnershipCannotBypassProviderPreparation() throws Exception {
   RoleManager roles = app.getSystemService(RoleManager.class);
   Shadows.shadowOf(roles).removeHeldRole(RoleManager.ROLE_SMS);
-  Shadows.shadowOf(roles).removeAvailableRole(RoleManager.ROLE_SMS);
+  assertFalse(roles.isRoleAvailable(RoleManager.ROLE_SMS));
   SmsSendJournal journal = new SmsSendJournal(new ReviewedSmsSendCoreTest.Memory());
   assertEquals("denied", send(journal, "history-owner-unreadable").status());
   assertEquals(0, provider.inserts);
