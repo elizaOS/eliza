@@ -40,7 +40,7 @@ const retries = { times: 2, schedule: Schedule.spaced("1 second") }
 export effect function pass(handles: Record<string, string>): Message[]!Rejected!(Machine | Chat) {
   const tracker = try Machine
   const chat = try Chat
-  const { out } = try tracker.send({ type: "notify" })
+  const { out } = try tracker.send({ type: "notify" }, "notifier")
   const undelivered: Message[] = []
   for (const m of messages(out, handles)) {
     const took = (retry(chat.post(m.handle, m.text), retries) |> as(%, true)) catch (e) => match (e) { when Undelivered: false; }
