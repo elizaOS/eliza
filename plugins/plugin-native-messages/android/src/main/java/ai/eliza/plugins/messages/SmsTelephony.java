@@ -139,8 +139,8 @@ public final class SmsTelephony {
   * recipients may have been submitted, so nothing is attempted again automatically.
   *
   * Android writes the provider row of a send for every app except the default SMS app. While this
-  * host holds the SMS role it therefore stores each recipient's message in the outbox itself, just
-  * before that recipient's platform call, and its sent callbacks settle the row
+  * host holds the SMS role it therefore stores every recipient's message in the outbox before
+  * any platform send, and its sent callbacks settle the rows
   * ({@link #handleCallback}).
   */
  static SmsSendJournal.Record dispatch(Context context, SmsTelephonyConfiguration config, SmsSendJournal journal, String operationId, String[] recipients, String body, int subscriptionId, ArrayList<String> parts, DispatchGuard guard) throws IOException {
@@ -149,23 +149,25 @@ public final class SmsTelephony {
   int[] counts = new int[recipients.length];
   java.util.Arrays.fill(counts, parts.size());
   SmsSendJournal.Record record = journal.beginDispatch(operationId, recipients, body, subscriptionId, counts, System.currentTimeMillis(), boot(context));
-  final boolean ownsRows = MmsStore.isDefaultSmsApp(context);
+  if (!prepareOwnRows(context, journal, record, body)) return record;
   boolean returned = true;
+  int attempted = 0;
   try {
    int index = 0;
    for (int position = 0; position < recipients.length; position++) {
     String recipient = recipients[position];
-    guard.check();
-    if (ownsRows) storeOwnRow(context, journal, record, position, body, subscriptionId);
     ArrayList<PendingIntent> sent = new ArrayList<>(), delivered = new ArrayList<>();
     for (int part = 0; part < parts.size(); part++, index++) { sent.add(callback(context, config, config.sentAction, operationId, index)); delivered.add(callback(context, config, config.deliveredAction, operationId, index)); }
+    guard.check();
+    checkPreparedRole(context, record);
+    attempted++;
     if (parts.size() == 1) manager.sendTextMessage(recipient, null, parts.get(0), sent.get(0), delivered.get(0));
     else manager.sendMultipartTextMessage(recipient, null, parts, sent, delivered);
    }
   } catch (RuntimeException failed) {
    returned = false;
   } finally {
-   journal.endDispatch(operationId, returned);
+   finishDispatch(context, journal, record, attempted, returned);
   }
   return record;
  }
@@ -236,18 +238,43 @@ public final class SmsTelephony {
   } catch (RuntimeException unreadable) { return true; }
  }
 
- /**
-  * The default SMS app's own outbox row for one recipient, recorded in the journal before the platform
-  * call so that recipient's sent callbacks find it. A refused write never stops the reviewed send, and
-  * never ends it as unknown: the journal keeps the receipt either way, and an unrecorded row can still
-  * be attributed later by creator, address, time window and body hash.
-  */
- static void storeOwnRow(Context context, SmsSendJournal journal, SmsSendJournal.Record record, int recipient, String body, int subscriptionId) {
-  long row;
-  try { row = MmsStore.persistOutgoingSms(context, record.recipients[recipient], body, subscriptionId, record.createdAt); }
-  catch (RuntimeException refused) { android.util.Log.w("SmsTelephony", "Outgoing SMS was not stored in the provider"); return; }
-  try { journal.providerRow(record.operationId, recipient, row); }
-  catch (IOException | RuntimeException unrecorded) { android.util.Log.w("SmsTelephony", "Outgoing SMS row was not recorded in the journal"); }
+ /** The default SMS app must save every outbox row and its journal link before any radio call. */
+ static boolean prepareOwnRows(Context context, SmsSendJournal journal, SmsSendJournal.Record record, String body) throws IOException {
+  try {
+   if (!MmsStore.checkedDefaultSmsApp(context)) return true;
+   for (int i = 0; i < record.recipients.length; i++) {
+    long row = MmsStore.persistOutgoingSms(context, record.recipients[i], body, record.subscriptionId, record.createdAt);
+    journal.providerRow(record.operationId, i, row);
+   }
+   return true;
+  } catch (IOException | RuntimeException refused) {
+   android.util.Log.w("SmsTelephony", "Provider history could not be prepared. SMS was not sent.");
+   discardUnattemptedRows(context, record, 0);
+   journal.denyUnstartedDispatch(record.operationId);
+   return false;
+  }
+ }
+
+ /** A role change switches who owns persistence. Refuse to dispatch with the wrong preparation. */
+ static void checkPreparedRole(Context context, SmsSendJournal.Record record) {
+  if (MmsStore.checkedDefaultSmsApp(context) != (record.providerRow[0] > 0))
+   throw new IllegalStateException("SMS role changed after history preparation");
+ }
+
+ static void finishDispatch(Context context, SmsSendJournal journal, SmsSendJournal.Record record, int attempted, boolean allReturned) throws IOException {
+  discardUnattemptedRows(context, record, attempted);
+  if (attempted == 0) journal.denyUnstartedDispatch(record.operationId);
+  else journal.endDispatch(record.operationId, allReturned);
+ }
+
+ /** A throwing platform call may have submitted its recipient. Only later, unattempted rows go away. */
+ private static void discardUnattemptedRows(Context context, SmsSendJournal.Record record, int attempted) {
+  for (int i = attempted; i < record.providerRow.length; i++) {
+   long row = record.providerRow[i];
+   if (row <= 0) continue;
+   try { MmsStore.discardOutgoingSms(context, row); }
+   catch (RuntimeException unavailable) { android.util.Log.w("SmsTelephony", "An unattempted SMS outbox row could not be removed"); }
+  }
  }
 
  /** Moves the default SMS app's own row for this part's recipient out of the outbox once its sent callbacks decide it. */
