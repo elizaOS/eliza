@@ -31,6 +31,9 @@ import type { InboundMessage } from "./types.js";
  */
 const PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD = 15;
 
+/** Raw memories per page when a chat read has no limit and reads everything. */
+const COMPLETE_READ_PAGE_SIZE = 600;
+
 const INTERNAL_URL = new URL("http://127.0.0.1/");
 
 const PHONE_BACKED_SOURCES = new Set([
@@ -295,25 +298,27 @@ function sourceNotWiredStatus(
  * inbox candidates, so the agent's own replies and blank texts must not fill
  * the window: a single capped read can come back empty while older user
  * messages exist. Pages continue until that many candidates are in hand or
- * history ends. A repeated page (a store that ignores offset) stops the scan,
- * as does reaching rows older than the caller's `sinceMs` window: the store
- * returns rows newest-first, so no later page can produce a candidate. No page
- * count caps the scan: every non-final page advances the offset until history
- * ends, so silently returning fewer candidates than requested cannot happen.
+ * history ends. Without a limit the read is complete: pages of
+ * `COMPLETE_READ_PAGE_SIZE` raw memories continue until history ends. A
+ * repeated page (a store that ignores offset) stops the scan, as does reaching
+ * rows older than the caller's `sinceMs` window: the store returns rows
+ * newest-first, so no later page can produce a candidate. No page count caps
+ * the scan: every non-final page advances the offset until history ends, so
+ * silently returning fewer candidates than requested cannot happen.
  */
 async function loadInboxCandidateMemories(
   runtime: IAgentRuntime,
   sourceRoomIds: UUID[],
-  limit: number,
+  limit: number | undefined,
   accept: (memory: Memory) => boolean,
   sinceMs: number,
 ): Promise<Memory[]> {
-  const pageSize = limit * 3;
+  const pageSize = limit === undefined ? COMPLETE_READ_PAGE_SIZE : limit * 3;
   const filtered: Memory[] = [];
   const seenMemoryIds = new Set<string>();
   let previousPageFingerprint: string | null = null;
   let offset = 0;
-  while (filtered.length < limit) {
+  while (limit === undefined || filtered.length < limit) {
     const page = await runtime.getMemoriesByRoomIds({
       roomIds: sourceRoomIds,
       tableName: "messages",
@@ -360,11 +365,11 @@ export async function fetchChatMessages(
     sources?: string[];
     /** Only return messages newer than this ISO timestamp. */
     sinceIso?: string;
-    /** Max messages to return. */
+    /** Max messages to return. When omitted, every match is returned. */
     limit?: number;
   },
 ): Promise<InboundMessage[]> {
-  const limit = opts.limit ?? 200;
+  const limit = opts.limit;
   const sourceTags = buildSourceFilter(opts.sources);
   const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
 
@@ -468,7 +473,9 @@ export async function fetchChatMessages(
   }
 
   const results: InboundMessage[] = [];
-  for (const memory of filtered.slice(0, limit)) {
+  for (const memory of limit === undefined
+    ? filtered
+    : filtered.slice(0, limit)) {
     const memoryId = requireNonEmptyString(memory.id, "chat memory id");
     const roomId = requireNonEmptyString(memory.roomId, "chat memory roomId");
     const createdAt = parseRequiredTimestamp(

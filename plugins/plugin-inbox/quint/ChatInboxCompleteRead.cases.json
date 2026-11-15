@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "plugins/plugin-inbox/src/inbox/message-fetcher.ts",
+    "plugins/plugin-inbox/test/chat-inbox-complete-read.test.ts",
+    "plugins/plugin-inbox/test/chat-inbox-complete-read-model.test.ts",
+    "plugins/plugin-inbox/quint/check-chat-inbox-complete-read.mjs"
+  ],
+  "conformance": "plugins/plugin-inbox/quint/check-chat-inbox-complete-read.mjs",
+  "bounds": "One Discord DM room whose history, newest first, is 0 or 3 agent replies and then 0, 1, 200, 201 or 600 user messages with text; the caller passes no limit, a limit of 1 or a limit of 200. The conformance script replays every generated read through fetchAllMessages on a real PGLite AgentRuntime: each history is stored as memories in its own room, a call-through spy counts the getMemoriesByRoomIds pages, and all 30 history and limit combinations must match the model's page count and returned count, with the newest user messages returned newest first. Blank texts, sinceIso windows, several rooms or sources, a store that ignores offset, an explicit limit of 0, Gmail and X DMs, and the inbox cache are not covered by this model. Under weak fairness of the page read the scan ends. Explicit stuttering lets the read not start, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "chat-inbox-complete-read",
+      "main": "ChatInboxCompleteRead",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CappedByLimit",
+        "Complete",
+        "NothingBeforeDone",
+        "OnlyUserMessages",
+        "PagesBounded",
+        "TypeOK"
+      ],
+      "temporal": ["ReadFinishes", "ReadFinishesWithoutFairness"],
+      "maxSteps": 4,
+      "samples": 3000,
+      "temporalChecks": [
+        {
+          "property": "ReadFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled page read eventually runs (weak fairness). This checks that the scan then ends, not how long a database read takes."
+          ]
+        },
+        {
+          "property": "ReadFinishesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The inbox read may never start, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
