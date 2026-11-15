@@ -1,14 +1,14 @@
 // Proofs that the network, the server and the two tabs keep the system's
-// rules. What each part does to its own rules comes from the laws the server
-// and client specs state (and prove) about themselves; what is left is about
+// rules. What each part does to its own rules is what the server and client
+// units proved of their transitions; what is left is about
 // copies of the list: every copy in a tab or on the network is the list as it
 // was at its version.
 
 // Taking a message off the network leaves only messages that were on it.
-lemma DropAtSubset(net: seq<Msg>, i: int)
-  ensures forall x :: x in dropAt(net, i) ==> x in net
-{
-}
+lemma RemovedSubset(net: seq<Msg>, i: int)
+  requires 0 <= i < |net|
+  ensures forall x :: x in net[0..i] + net[(i + 1)..] ==> x in net
+{ }
 
 // A copy that was the list at its version still is after the history grows.
 lemma PastExtends(h: seq<seq<todo_Todo>>, x: seq<todo_Todo>, v: int, t: seq<todo_Todo>)
@@ -49,7 +49,7 @@ lemma act_ensures(sys: System, who: string, op: todo_Op)
     ActInStep(sys, who, op, "a");
     ActInStep(sys, who, op, "b");
     var after := act(sys, who, op);
-    client_lawQueueingKeepsTheRules_ensures(clientOf(sys, who), op);
+    client_queue_ensures(clientOf(sys, who), op);
     forall j | 0 <= j < |after.net|
       ensures isRequest(after.net[j]) || isPast(after.history, after.net[j].version, after.net[j].todos)
     {
@@ -82,9 +82,9 @@ lemma serve_ensures(sys: System, i: int)
     ServeInStep(sys, i, "a");
     ServeInStep(sys, i, "b");
     var m := msgAt(sys.net, i);
-    var rest := dropAt(sys.net, i);
+    var rest := sys.net[0..i] + sys.net[(i + 1)..];
     WireProperties(sys, m);
-    DropAtSubset(sys.net, i);
+    RemovedSubset(sys.net, i);
     var after := serve(sys, i);
     assert sys.server.version >= 0;
     if server_answered(sys.server, m.client, m.seq_) {
@@ -97,10 +97,9 @@ lemma serve_ensures(sys: System, i: int)
     } else {
       ServeCases(sys, i);
       var s := server_request(sys.server, m.client, m.seq_, m.op);
-      server_lawARequestKeepsTheRules_ensures(sys.server, m.client, m.seq_, m.op);
+      server_request_ensures(sys.server, m.client, m.seq_, m.op);
       if server_allows(sys.server, m.client, m.seq_, m.op) {
         assert after == accepted(m, rest, s, sys);
-        todo_lawAListIsTheSameAsItself_ensures(s.todos);
         assert pastAt(after.history, s.version) == s.todos;
         PastExtends(sys.history, s.todos, sys.a.seen, sys.a.confirmed);
         PastExtends(sys.history, s.todos, sys.b.seen, sys.b.confirmed);
@@ -127,11 +126,12 @@ lemma serve_ensures(sys: System, i: int)
 
 // A new request is the server's own `request`: accepted exactly when its edit makes sense.
 lemma ServeCases(sys: System, i: int)
+  requires 0 <= i < |sys.net|
   requires !server_answered(sys.server, msgAt(sys.net, i).client, msgAt(sys.net, i).seq_)
   ensures var m := msgAt(sys.net, i); var s := server_request(sys.server, m.client, m.seq_, m.op);
     server_acceptedAs(s, m.client, m.seq_, m.op) == server_allows(sys.server, m.client, m.seq_, m.op)
   ensures var m := msgAt(sys.net, i); var s := server_request(sys.server, m.client, m.seq_, m.op);
-    serve(sys, i) == (if server_allows(sys.server, m.client, m.seq_, m.op) then accepted(m, dropAt(sys.net, i), s, sys) else refused(m, dropAt(sys.net, i), s, sys))
+    serve(sys, i) == (if server_allows(sys.server, m.client, m.seq_, m.op) then accepted(m, sys.net[0..i] + sys.net[(i + 1)..], s, sys) else refused(m, sys.net[0..i] + sys.net[(i + 1)..], s, sys))
 {
   var m := msgAt(sys.net, i);
   var s := server_request(sys.server, m.client, m.seq_, m.op);
@@ -175,8 +175,10 @@ lemma deliver_ensures(sys: System, i: int)
     var after := deliver(sys, i);
     assert m == sys.net[i];
     OnTheWire(sys, m);
-    DropAtSubset(sys.net, i);
-    client_lawAnAnswerKeepsTheRules_ensures(c, m.seq_, m.version, m.todos);
+    RemovedSubset(sys.net, i);
+    client_receiveAck_ensures(c, m.seq_, m.version, m.todos);
+    client_receiveRefusal_ensures(c, m.seq_, m.version, m.todos);
+    client_receiveSnapshot_ensures(c, m.version, m.todos);
     forall j | 0 <= j < |after.net|
       ensures isRequest(after.net[j]) || isPast(after.history, after.net[j].version, after.net[j].todos)
     {
@@ -203,8 +205,8 @@ lemma lose_ensures(sys: System, i: int)
 {
   if inv(sys) && canLose(sys, i) {
     var after := lose(sys, i);
-    DropAtSubset(sys.net, i);
-    WireSubset(sys, dropAt(sys.net, i));
+    RemovedSubset(sys.net, i);
+    WireSubset(sys, sys.net[0..i] + sys.net[(i + 1)..]);
     forall j | 0 <= j < |after.net|
       ensures isRequest(after.net[j]) || isPast(after.history, after.net[j].version, after.net[j].todos)
     {
@@ -347,7 +349,7 @@ lemma WireProperties(sys: System, m: Msg)
   ensures (isRequest(m) || isPast(sys.history, m.version, m.todos))
   ensures (!m.kind.Request? || server_answered(sys.server, m.client, m.seq_) || (|clientOf(sys, m.client).pending| > 0 && m.seq_ == oldest(clientOf(sys, m.client)).seq_))
   ensures (!m.kind.Ack? || forall p :: p in clientOf(sys, m.client).pending ==> p.seq_ != m.seq_ || server_acceptedAs(sys.server, m.client, p.seq_, p.op))
-  ensures (!m.kind.Request? || forall p :: p in clientOf(sys, m.client).pending ==> p.seq_ != m.seq_ || todo_sameOp(p.op, m.op))
+  ensures (!m.kind.Request? || forall p :: p in clientOf(sys, m.client).pending ==> p.seq_ != m.seq_ || (p.op == m.op))
   ensures (m.kind.Forged? || m.kind.Push? || (numbered(sys, m.client, m.seq_) && (m.kind.Request? || server_answered(sys.server, m.client, m.seq_))))
   ensures (sys.forged != 0 || !m.kind.Forged?)
   ensures (!m.kind.Push? || clientOf(sys, other(m.client)).made >= 1 || sys.forged >= 1)
@@ -363,7 +365,7 @@ lemma WireAppend(sys: System, m: Msg)
   requires (isRequest(m) || isPast(sys.history, m.version, m.todos))
   requires (!m.kind.Request? || server_answered(sys.server, m.client, m.seq_) || (|clientOf(sys, m.client).pending| > 0 && m.seq_ == oldest(clientOf(sys, m.client)).seq_))
   requires (!m.kind.Ack? || forall p :: p in clientOf(sys, m.client).pending ==> p.seq_ != m.seq_ || server_acceptedAs(sys.server, m.client, p.seq_, p.op))
-  requires (!m.kind.Request? || forall p :: p in clientOf(sys, m.client).pending ==> p.seq_ != m.seq_ || todo_sameOp(p.op, m.op))
+  requires (!m.kind.Request? || forall p :: p in clientOf(sys, m.client).pending ==> p.seq_ != m.seq_ || (p.op == m.op))
   requires (m.kind.Forged? || m.kind.Push? || (numbered(sys, m.client, m.seq_) && (m.kind.Request? || server_answered(sys.server, m.client, m.seq_))))
   requires (sys.forged != 0 || !m.kind.Forged?)
   requires (!m.kind.Push? || clientOf(sys, other(m.client)).made >= 1 || sys.forged >= 1)
@@ -389,7 +391,7 @@ lemma WireAppend(sys: System, m: Msg)
     ensures (isRequest(after.net[j]) || isPast(sys.history, after.net[j].version, after.net[j].todos))
     ensures (!after.net[j].kind.Request? || server_answered(sys.server, after.net[j].client, after.net[j].seq_) || (|clientOf(sys, after.net[j].client).pending| > 0 && after.net[j].seq_ == oldest(clientOf(sys, after.net[j].client)).seq_))
     ensures (!after.net[j].kind.Ack? || forall p :: p in clientOf(sys, after.net[j].client).pending ==> p.seq_ != after.net[j].seq_ || server_acceptedAs(sys.server, after.net[j].client, p.seq_, p.op))
-    ensures (!after.net[j].kind.Request? || forall p :: p in clientOf(sys, after.net[j].client).pending ==> p.seq_ != after.net[j].seq_ || todo_sameOp(p.op, after.net[j].op))
+    ensures (!after.net[j].kind.Request? || forall p :: p in clientOf(sys, after.net[j].client).pending ==> p.seq_ != after.net[j].seq_ || (p.op == after.net[j].op))
     ensures (after.net[j].kind.Forged? || after.net[j].kind.Push? || (numbered(sys, after.net[j].client, after.net[j].seq_) && (after.net[j].kind.Request? || server_answered(sys.server, after.net[j].client, after.net[j].seq_))))
     ensures (sys.forged != 0 || !after.net[j].kind.Forged?)
     ensures (!after.net[j].kind.Push? || clientOf(sys, other(after.net[j].client)).made >= 1 || sys.forged >= 1)
@@ -422,7 +424,7 @@ lemma WireSubset(sys: System, kept: seq<Msg>)
     ensures (isRequest(kept[j]) || isPast(sys.history, kept[j].version, kept[j].todos))
     ensures (!kept[j].kind.Request? || server_answered(sys.server, kept[j].client, kept[j].seq_) || (|clientOf(sys, kept[j].client).pending| > 0 && kept[j].seq_ == oldest(clientOf(sys, kept[j].client)).seq_))
     ensures (!kept[j].kind.Ack? || forall p :: p in clientOf(sys, kept[j].client).pending ==> p.seq_ != kept[j].seq_ || server_acceptedAs(sys.server, kept[j].client, p.seq_, p.op))
-    ensures (!kept[j].kind.Request? || forall p :: p in clientOf(sys, kept[j].client).pending ==> p.seq_ != kept[j].seq_ || todo_sameOp(p.op, kept[j].op))
+    ensures (!kept[j].kind.Request? || forall p :: p in clientOf(sys, kept[j].client).pending ==> p.seq_ != kept[j].seq_ || (p.op == kept[j].op))
     ensures (kept[j].kind.Forged? || kept[j].kind.Push? || (numbered(sys, kept[j].client, kept[j].seq_) && (kept[j].kind.Request? || server_answered(sys.server, kept[j].client, kept[j].seq_))))
     ensures (sys.forged != 0 || !kept[j].kind.Forged?)
     ensures (!kept[j].kind.Push? || clientOf(sys, other(kept[j].client)).made >= 1 || sys.forged >= 1)
@@ -447,10 +449,10 @@ lemma ServeWire(sys: System, i: int)
   ensures alwaysAPushFollowsAnotherEdit(serve(sys, i))
 {
   var m := msgAt(sys.net, i);
-  var rest := dropAt(sys.net, i);
+  var rest := sys.net[0..i] + sys.net[(i + 1)..];
   var after := serve(sys, i);
   WireProperties(sys, m);
-  DropAtSubset(sys.net, i);
+  RemovedSubset(sys.net, i);
   if !server_answered(sys.server, m.client, m.seq_) { ServeCases(sys, i); }
   assert after.a == sys.a && after.b == sys.b;
   assert forall h :: h in sys.server.log ==> h in after.server.log;
@@ -479,7 +481,7 @@ lemma ServeWire(sys: System, i: int)
   forall j | 0 <= j < |after.net|
     ensures !after.net[j].kind.Request? || server_answered(after.server, after.net[j].client, after.net[j].seq_) || (|clientOf(after, after.net[j].client).pending| > 0 && after.net[j].seq_ == oldest(clientOf(after, after.net[j].client)).seq_)
     ensures !after.net[j].kind.Ack? || forall p :: p in clientOf(after, after.net[j].client).pending ==> p.seq_ != after.net[j].seq_ || server_acceptedAs(after.server, after.net[j].client, p.seq_, p.op)
-    ensures !after.net[j].kind.Request? || forall p :: p in clientOf(after, after.net[j].client).pending ==> p.seq_ != after.net[j].seq_ || todo_sameOp(p.op, after.net[j].op)
+    ensures !after.net[j].kind.Request? || forall p :: p in clientOf(after, after.net[j].client).pending ==> p.seq_ != after.net[j].seq_ || (p.op == after.net[j].op)
     ensures after.net[j].kind.Forged? || after.net[j].kind.Push? || (numbered(after, after.net[j].client, after.net[j].seq_) && (after.net[j].kind.Request? || server_answered(after.server, after.net[j].client, after.net[j].seq_)))
     ensures after.forged != 0 || !after.net[j].kind.Forged?
     ensures !after.net[j].kind.Push? || clientOf(after, other(after.net[j].client)).made >= 1 || after.forged >= 1
@@ -495,7 +497,6 @@ lemma ServeWire(sys: System, i: int)
         forall p | p in clientOf(after, x.client).pending && p.seq_ == x.seq_
           ensures server_acceptedAs(after.server, x.client, p.seq_, p.op)
         {
-          assert todo_sameOp(p.op, m.op);
           assert p.op == m.op;
         }
       }
@@ -520,7 +521,7 @@ lemma DeliverWire(sys: System, i: int)
   var m := msgAt(sys.net, i);
   var after := deliver(sys, i);
   WireProperties(sys, m);
-  DropAtSubset(sys.net, i);
+  RemovedSubset(sys.net, i);
   assert after.server == sys.server;
   assert after.a.made == sys.a.made && after.b.made == sys.b.made;
   if !m.kind.Push? {
@@ -554,7 +555,7 @@ lemma DeliverWire(sys: System, i: int)
   forall j | 0 <= j < |after.net|
     ensures !after.net[j].kind.Request? || server_answered(after.server, after.net[j].client, after.net[j].seq_) || (|clientOf(after, after.net[j].client).pending| > 0 && after.net[j].seq_ == oldest(clientOf(after, after.net[j].client)).seq_)
     ensures !after.net[j].kind.Ack? || forall p :: p in clientOf(after, after.net[j].client).pending ==> p.seq_ != after.net[j].seq_ || server_acceptedAs(after.server, after.net[j].client, p.seq_, p.op)
-    ensures !after.net[j].kind.Request? || forall p :: p in clientOf(after, after.net[j].client).pending ==> p.seq_ != after.net[j].seq_ || todo_sameOp(p.op, after.net[j].op)
+    ensures !after.net[j].kind.Request? || forall p :: p in clientOf(after, after.net[j].client).pending ==> p.seq_ != after.net[j].seq_ || (p.op == after.net[j].op)
     ensures after.net[j].kind.Forged? || after.net[j].kind.Push? || (numbered(after, after.net[j].client, after.net[j].seq_) && (after.net[j].kind.Request? || server_answered(after.server, after.net[j].client, after.net[j].seq_)))
     ensures after.forged != 0 || !after.net[j].kind.Forged?
     ensures !after.net[j].kind.Push? || clientOf(after, other(after.net[j].client)).made >= 1 || after.forged >= 1
@@ -622,7 +623,7 @@ lemma AllowedTail(todos: seq<todo_Todo>, ps: seq<client_Pending>)
 lemma ApplyTwice(todos: seq<todo_Todo>, op: todo_Op)
   ensures todo_applyOp(todo_applyOp(todos, op), op) == todo_applyOp(todos, op)
 {
-  if op.kind == "create" {
+  if op.Create? {
     if !todo_has(todos, op.id) {
       assert todo_Todo(op.id, op.title, false, false) in todo_applyOp(todos, op);
     }
@@ -715,7 +716,7 @@ lemma ActInStep(sys: System, who: string, op: todo_Op, owner: string)
   var c := clientOf(sys, who);
   var s := sys.server;
   var item := client_Pending(c.made + 1, op);
-  var queued := client_queue(op, c);
+  var queued := client_queue(c, op);
   if lone(after, owner) {
     assert c.made >= 0;
     assert who == owner;
@@ -783,20 +784,19 @@ lemma ServeInStep(sys: System, i: int, owner: string)
   var after := serve(sys, i);
   if lone(after, owner) {
     var m := msgAt(sys.net, i);
-    var rest := dropAt(sys.net, i);
+    var rest := sys.net[0..i] + sys.net[(i + 1)..];
     var c := clientOf(sys, owner);
     var s := sys.server;
     assert lone(sys, owner) && inStep(sys, owner);
     assert clientOf(after, owner) == c && c.refusals == 0;
     WireProperties(sys, m);
-    DropAtSubset(sys.net, i);
+    RemovedSubset(sys.net, i);
     assert m.kind.Request?;
     assert m.client == owner;
     if !server_answered(s, owner, m.seq_) {
       ServeCases(sys, i);
       assert |c.pending| > 0 && m.seq_ == oldest(c).seq_;
       OldestFacts(sys, owner);
-      assert todo_sameOp(oldest(c).op, m.op);
       assert oldest(c).op == m.op;
       assert !oldestAnswered(sys, owner);
       AllowedTail(s.todos, c.pending);
@@ -810,7 +810,6 @@ lemma ServeInStep(sys: System, i: int, owner: string)
       if client_waiting(c, m.seq_) {
         var p :| p in c.pending && p.seq_ == m.seq_;
         assert server_acceptedAs(s, owner, p.seq_, p.op);
-        assert todo_sameOp(p.op, m.op);
         assert p.op == m.op;
         assert server_acceptedAs(s, owner, m.seq_, m.op);
       }
@@ -849,10 +848,10 @@ lemma DeliverInStep(sys: System, i: int, owner: string)
   requires inv(sys) && canDeliver(sys, i) && isClient(owner)
   ensures lone(deliver(sys, i), owner) ==> (var after := deliver(sys, i); var c := clientOf(after, owner); var s := after.server; !(exists p :: p in c.pending && !(!(server_answered(s, owner, p.seq_)) || server_acceptedAs(s, owner, p.seq_, p.op))))
   ensures lone(deliver(sys, i), owner) ==> (var after := deliver(sys, i); var c := clientOf(after, owner); var s := after.server; !(exists m :: m in after.net && !(((((!m.kind.Ack?) || (m.client != owner)) || (|c.pending| == 0)) || (m.seq_ != oldest(c).seq_)) || (m.version == s.version))))
-  ensures lone(deliver(sys, i), owner) ==> (var after := deliver(sys, i); var c := clientOf(after, owner); var s := after.server; !(oldestAnswered(after, owner)) || todo_sameTodos(todo_applyOp(s.todos, oldest(c).op), s.todos))
+  ensures lone(deliver(sys, i), owner) ==> (var after := deliver(sys, i); var c := clientOf(after, owner); var s := after.server; !(oldestAnswered(after, owner)) || (todo_applyOp(s.todos, oldest(c).op) == s.todos))
   ensures lone(deliver(sys, i), owner) ==> (var after := deliver(sys, i); var c := clientOf(after, owner); var s := after.server; oldestAnswered(after, owner) || (c.seen == s.version))
   ensures lone(deliver(sys, i), owner) ==> (var after := deliver(sys, i); var c := clientOf(after, owner); var s := after.server; !(exists m :: m in after.net && !(((isRequest(m) || (m.client != owner)) || (m.version <= c.seen)) || (m.version == s.version))))
-  ensures lone(deliver(sys, i), owner) ==> (var after := deliver(sys, i); var c := clientOf(after, owner); var s := after.server; todo_sameTodos(client_view(c), replay(s.todos, c.pending)))
+  ensures lone(deliver(sys, i), owner) ==> (var after := deliver(sys, i); var c := clientOf(after, owner); var s := after.server; (client_view(c) == replay(s.todos, c.pending)))
   ensures lone(deliver(sys, i), owner) ==> (var after := deliver(sys, i); var c := clientOf(after, owner); var s := after.server; allowedInTurn(s.todos, unapplied(after, owner)))
   ensures lone(deliver(sys, i), owner) ==> (var after := deliver(sys, i); var c := clientOf(after, owner); var s := after.server; !(exists m :: m in after.net && !(((!m.kind.Refusal?) || (m.client != owner)) || !(client_waiting(c, m.seq_)))))
   ensures lone(deliver(sys, i), owner) ==> (var after := deliver(sys, i); var c := clientOf(after, owner); var s := after.server; c.refusals == 0)
@@ -860,12 +859,12 @@ lemma DeliverInStep(sys: System, i: int, owner: string)
   var after := deliver(sys, i);
   if lone(after, owner) {
     var m := msgAt(sys.net, i);
-    var rest := dropAt(sys.net, i);
+    var rest := sys.net[0..i] + sys.net[(i + 1)..];
     var c := clientOf(sys, owner);
     var s := sys.server;
     assert lone(sys, owner) && inStep(sys, owner);
     WireProperties(sys, m);
-    DropAtSubset(sys.net, i);
+    RemovedSubset(sys.net, i);
     WireSubset(sys, rest);
     if m.client == owner {
       assert !m.kind.Push? && !isRequest(m);

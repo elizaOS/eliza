@@ -35,9 +35,11 @@ own lock file.
 The shell is [VibeLang](https://github.com/smithersai/vibelang): TypeScript
 syntax in which an `effect` function returns an [Effect](https://effect.website),
 `try` runs one and `throw` fails with a typed error. `OrderBook` is a service
-with one layer, `OrderBookMemory`. `dispatch` fails with `NotAnEvent` for input
-that is not an event and `Rejected` for an event the rules refuse, so a caller
-cannot forget either case, and the book takes one event at a time.
+with one layer, `OrderBookMemory`. `dispatch(id, input, by)` takes who sent the
+input, a `Shopper` or `Staff`, from the caller, which knows it from how they
+signed in, never from the input. It fails with `NotAnEvent` for input that is
+not an event and `Rejected` for an event the rules refuse, so a caller cannot
+forget either case, and the book takes one event at a time.
 
 Two things stay TypeScript:
 

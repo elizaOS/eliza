@@ -13,14 +13,13 @@ import raw from "@repo/design-system/tokens.json" with { type: "json" };
 const here = path.dirname(fileURLToPath(import.meta.url));
 const tokens = parseTokens(raw);
 const THEME = path.join(here, "src/page/theme.css");
-const ui = path.dirname(fileURLToPath(import.meta.resolve("@repo/ui")));
 
-/** `virtual:studio-theme.css`: the design system's Tailwind theme and tokens, and the shared components' classes to scan. */
+/** `virtual:studio-theme.css`: the design system's Tailwind theme and tokens, and the shared components' classes (@repo/ui/styles.css). */
 const theme = (): Plugin => ({
   name: "studio-theme",
   enforce: "pre",
   resolveId: (id) => (id === "virtual:studio-theme.css" ? THEME : undefined),
-  load: (id) => (id === THEME ? `${themeCss(tokens).replace('@import "./tokens.css";', "")}\n${tokensCss(tokens)}\n@source "${ui}";\n` : undefined),
+  load: (id) => (id === THEME ? `${themeCss(tokens).replace('@import "./tokens.css";', '@import "@repo/ui/styles.css";')}\n${tokensCss(tokens)}\n` : undefined),
 });
 
 export default defineConfig({

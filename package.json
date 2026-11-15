@@ -15,7 +15,9 @@
     "demo": "pnpm -C vibestack/examples/order demo",
     "selftest": "node --test vibestack/selftest.ts",
     "build": "node vibestack/spec.ts tasks vibestack-studio#build && node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && vibelang -p tsconfig.build.json && node -e \"fs.chmodSync('dist/spec.js', 0o755); fs.mkdirSync('dist/proof', { recursive: true }); fs.copyFileSync('vibestack/proof/lib.dfy', 'dist/proof/lib.dfy'); fs.cpSync('vibestack/studio/dist/page', 'dist/studio/dist/page', { recursive: true }); fs.cpSync('vibestack/std', 'dist/std', { recursive: true }); fs.copyFileSync('vibestack/conformance.ts', 'dist/conformance.ts')\"",
+    "pnpm:devPreinstall": "node vibestack/skill-links.ts",
     "prepare": "node vibestack/spec.ts tasks //#build && node vibestack/spec.ts gen --if-valid",
+    "prepack": "pnpm build",
     "test": "vitest run",
     "test:browser": "node vibestack/spec.ts tasks test:browser",
     "test:models": "node vibestack/spec.ts tasks check //#examples",
@@ -23,7 +25,7 @@
     "lint": "node vibestack/spec.ts tasks //#lint:js //#lint:css",
     "lint:js": "eslint . --max-warnings 0",
     "lint:css": "stylelint \"**/*.css\" --allow-empty-input",
-    "analyze": "knip && madge --circular vibestack packages apps",
+    "analyze": "knip && madge --circular vibestack packages apps && jscpd .",
     "examples": "failed=0; for d in vibestack/examples/*/; do pnpm -C \"$d\" install --frozen-lockfile --ignore-workspace && pnpm -C \"$d\" check || failed=1; done; exit $failed",
     "quick": "node vibestack/spec.ts tasks typecheck test //#lint:js //#lint:css",
     "verify": "node vibestack/spec.ts tasks build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest",
@@ -53,6 +55,8 @@
   "files": [
     "dist",
     ".claude/skills",
+    "vibestack/reference/typereferences.md",
+    ".claude/settings.json",
     "README.md",
     "AGENTS.md",
     "SPEC.md",
@@ -78,6 +82,7 @@
     "eslint-plugin-boundaries": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
     "happy-dom": "catalog:",
+    "jscpd": "catalog:",
     "jsdom": "catalog:",
     "knip": "catalog:",
     "madge": "catalog:",
@@ -93,6 +98,7 @@
     "vitest": "5.1.0"
   },
   "peerDependencies": {
+    "@effect/vitest": "4.1.1",
     "@vitest/browser-playwright": "5.1.0",
     "vibelang-vite": "0.0.13",
     "vite": "8.3.5",

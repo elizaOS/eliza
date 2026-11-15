@@ -5,12 +5,13 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./styles.css": "./styles.css"
   },
   "scripts": {
     "gen": "node ../../vibestack/stories/cli.ts gen --check",
     "storybook": "storybook dev --no-open",
-    "build": "storybook build",
+    "storybook:build": "storybook build",
     "test": "vitest run",
     "test:browser": "vitest run --project browser",
     "typecheck": "tsc --noEmit -p ."

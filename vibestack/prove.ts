@@ -20,6 +20,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { SENDER } from "./gen/classify.ts";
 import { NEEDS_DAFNY, bin, exec, run } from "./run.ts";
+import { plainText } from "./scan.ts";
 
 /** The library of general lemmas that proof files call as ProofLib.<Name>. */
 export const LIB_FILE = path.join(import.meta.dirname, "proof", "lib.dfy");
@@ -108,7 +109,6 @@ const ATTRIBUTES = new Set(["trigger", "induction"]);
 const STRING = /"(?:[^"\\\n]|\\.)*"/y;
 const ATTR = /\{\s*:\s*([A-Za-z_]\w*)?/y;
 const WORD = /[A-Za-z_][\w'?]*/y;
-const BREAK = /[\r\v\f\u0085\u2028\u2029]/;
 const sticky = (re: RegExp, text: string, at: number) => { re.lastIndex = at; return re.exec(text); };
 
 interface Token { t: string; kind: "word" | "open" | "attr" | "close" | "other"; at: number; end: number; line: number }
@@ -123,14 +123,11 @@ function tokenize(text: string, refuse?: (line: number, why: string) => never): 
   let line = 1;
   for (let i = 0; i < text.length; ) {
     const ch = text[i];
-    if (refuse && BREAK.test(ch)) refuse(line, "line breaks other than \\n are not allowed");
     if (ch === "\n") { line++; i++; continue; }
     if (/\s/.test(ch)) { i++; continue; }
     if (text.startsWith("//", i)) {
       const e = text.indexOf("\n", i);
-      const stop = e < 0 ? text.length : e;
-      if (refuse && BREAK.test(text.slice(i, stop))) refuse(line, "line breaks other than \\n are not allowed");
-      i = stop;
+      i = e < 0 ? text.length : e;
       continue;
     }
     if (text.startsWith("/*", i)) {
@@ -190,9 +187,8 @@ const endsHeader = (t: Token | undefined) => !!t && (t.kind === "close" || /^[)\
  * a complete header.
  */
 export function parseProofFile(source: string, file: string): Lemma[] {
-  const text = source.replace(/\r\n/g, "\n");
+  const text = plainText(file, source);
   const refuse = (line: number, why: string): never => { throw new Error(`${file}:${line}: ${why}`); };
-  if (text.includes("\0")) refuse(text.slice(0, text.indexOf("\0")).split("\n").length, "NUL characters are not allowed");
   const toks = tokenize(text, refuse);
   const lemmas: Lemma[] = [];
   for (let p = 0; p < toks.length; ) {
@@ -288,12 +284,39 @@ function declaredNames(dfy: string): Set<string> {
   return names;
 }
 
-/** The generated `<fn>_ensures` lemmas with an empty body: where each one's header ends, and its tokens. */
-function emptyLemmas(gen: string): Map<string, { bodyAt: number; header: string; headerText: string }> {
-  const found = new Map<string, { bodyAt: number; header: string; headerText: string }>();
+/** The generated `<fn>_ensures` lemmas with an empty body: where each one's header ends, its lines and its tokens. */
+function emptyLemmas(gen: string): Map<string, { bodyAt: number; lines: string; header: string; headerText: string }> {
+  const found = new Map<string, { bodyAt: number; lines: string; header: string; headerText: string }>();
   for (const m of gen.matchAll(/^lemma (\w+_ensures)\([^\n]*\n(?:(?!\{\n)[^\n]*\n)*?(?=\{\n\}\n)/gm))
-    found.set(m[1], { bodyAt: m.index + m[0].length, header: tokenize(m[0]).map((t) => t.t).join(" "), headerText: m[0].replace(/\s+/g, " ").trim() });
+    found.set(m[1], { bodyAt: m.index + m[0].length, lines: m[0], header: tokenize(m[0]).map((t) => t.t).join(" "), headerText: m[0].replace(/\s+/g, " ").trim() });
   return found;
+}
+
+/** The names of a parameter list: each is the word before a `:` at the top level; the `>` of an arrow `->` closes nothing. */
+function parameterNames(params: string): string[] {
+  const toks = tokenize(params);
+  let depth = 0;
+  return toks.filter((t, i) => {
+    const arrow = t.t === ">" && toks[i - 1]?.t === "-" && toks[i - 1].end === t.at;
+    if (!arrow) depth += "<([".includes(t.t) ? 1 : ">)]".includes(t.t) ? -1 : 0;
+    return !depth && t.kind === "word" && toks[i + 1]?.t === ":" && (!i || toks[i - 1].t === ",");
+  }).map((t) => t.t);
+}
+
+/**
+ * Where a proof starts (.claude/skills/prove/SKILL.md, "To prove an obligation"): each generated lemma that still has no body and an
+ * obligation not proved, under its exact header. A transition's opens on what its first clause assumes, `inv` and the
+ * guard, with the state after it; any other is empty.
+ */
+function scaffold(dfy: string, failing: ReadonlySet<string>, transitions: string[]): string {
+  return [...emptyLemmas(dfy)].filter(([name]) => failing.has(name)).map(([name, { lines }]) => {
+    const fn = name.replace(/_ensures$/, "");
+    const [first, ...rest] = lines.trimEnd().split("\n");
+    const assumed = (rest.flatMap((l) => ensured(l) ?? [])[0] ?? "").replace(/^\((.*)\)$/, "$1").split(" ==> ").slice(0, -1);
+    const body = transitions.includes(fn) && assumed.length
+      ? `  if ${assumed.join(" && ")} {\n    var after := ${fn}(${parameterNames(first.slice(first.indexOf("(") + 1, first.lastIndexOf(")"))).join(", ")});\n  }\n` : "";
+    return `${lines}{\n${body}}\n`;
+  }).join("\n");
 }
 
 interface Additions {
@@ -333,7 +356,7 @@ function regionsOf(gen: string, prelude: ReadonlySet<string>): Region[] {
  * The library declarations the proof names, with every library declaration they use, each with the comments and
  * blank lines above it. Unknown layouts stay whole.
  */
-function libraryFor(lib: string, proof: string): string | undefined {
+export function libraryFor(lib: string, proof: string): string | undefined {
   const wanted = dottedNames(tokenize(proof)).filter((name) => name.name.startsWith(`${LIB_MODULE}.`)).map((name) => name.name.split(".")[1]);
   if (!wanted.length) return undefined;
   const lines = lib.trimEnd().split("\n");
@@ -448,15 +471,7 @@ function assumedAxioms(gen: string, laws: string[]): Additions["axioms"] {
   return laws.map((law) => {
     const params = gen.match(new RegExp(`^function ${law}\\((.*)\\): bool$`, "m"))?.[1];
     if (params === undefined) throw new Error(`the law ${law} is not a function \`${law}(...): bool\` of the generated Dafny, so ${law}_ensures cannot be stated`);
-    // A parameter's name is the word before a `:` at the top level of the list; the `>` of an arrow `->` closes nothing.
-    const toks = tokenize(params);
-    let depth = 0;
-    const names = toks.filter((t, i) => {
-      const arrow = t.t === ">" && toks[i - 1]?.t === "-" && toks[i - 1].end === t.at;
-      if (!arrow) depth += "<([".includes(t.t) ? 1 : ">)]".includes(t.t) ? -1 : 0;
-      return !depth && t.kind === "word" && toks[i + 1]?.t === ":" && (!i || toks[i - 1].t === ",");
-    }).map((t) => t.t);
-    return { name: `${law}_ensures`, text: `lemma {:axiom} ${law}_ensures(${params})\n  ensures ${law}(${names.join(", ")})` };
+    return { name: `${law}_ensures`, text: `lemma {:axiom} ${law}_ensures(${params})\n  ensures ${law}(${parameterNames(params).join(", ")})` };
   });
 }
 
@@ -697,6 +712,8 @@ export interface Proof {
   log: string;
   /** The final Dafny, as it was verified. */
   dfy: string;
+  /** The generated lemmas with an obligation not proved and no body yet, each with a body to start from (`scaffold`); empty if there is none. */
+  scaffold: string;
 }
 
 export interface Unit {
@@ -765,10 +782,10 @@ function helperNames(root: string): Promise<ReadonlySet<string>> {
   })();
 }
 
-/** Where a unit's proof is written: its directory, Dafny's full output, and the final Dafny. */
+/** Where a unit's proof is written: its directory, Dafny's full output, the final Dafny, and the lemmas left to prove. */
 export function proofPaths(unit: string) {
   const base = unit.replace(/\.ts$/, "");
-  return { dir: `gen/proof/${base}`, log: `gen/proof/${base}.log`, dfy: `gen/proof/${base}/${base}.dfy` };
+  return { dir: `gen/proof/${base}`, log: `gen/proof/${base}.log`, dfy: `gen/proof/${base}/${base}.dfy`, scaffold: `gen/proof/${base}/${base}.scaffold.dfy` };
 }
 
 /** Prove one unit in a directory of its own, so that nothing left over from another run or project can vouch for it. */
@@ -790,7 +807,7 @@ export async function prove(root: string, u: Unit, offered: { proof?: { file: st
   };
   place(dir, u.text);
   let total = 0;
-  const result = (errors: string[], log: string, dfy = ""): Proof => ({ total, unproved: [], exhausted: [], resting: {}, errors, log, dfy });
+  const result = (errors: string[], log: string, dfy = ""): Proof => ({ total, unproved: [], exhausted: [], resting: {}, errors, log, dfy, scaffold: "" });
   // What imported units proved, and the library, are only of use to a proof file. The imported modules are generated
   // again beside the unit, with their obligations, for the lemmas that state them.
   const importing = offered.proof && offered.axioms.length ? path.join(dir, "imported") : undefined;
@@ -861,5 +878,6 @@ export async function prove(root: string, u: Unit, offered: { proof?: { file: st
   const { findings, log: auditLog } = audited;
   log += `\n---- dafny audit ----\n${auditLog}`;
   for (const f of findings) v.errors.add(f);
-  return { total, unproved: [...v.unproved.keys()], exhausted: [...v.exhausted], resting, errors: [...v.errors], log, dfy };
+  return { total, unproved: [...v.unproved.keys()], exhausted: [...v.exhausted], resting, errors: [...v.errors], log, dfy,
+    scaffold: scaffold(dfy, new Set(v.unproved.values()), u.transitions?.map((t) => t.name) ?? []) };
 }

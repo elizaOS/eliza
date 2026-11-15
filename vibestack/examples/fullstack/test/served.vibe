@@ -2,9 +2,8 @@
 // The real server on a free port, serving the page the `test` script built, with an HttpClient that reaches it, as
 // test/app.test.vibe and test/drivers/server.ts reach it.
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import type { Server } from "../gen/server.ts"
-import type { Op } from "../gen/todo.ts"
-import type { Answer, Request } from "../src/protocol.vibe"
+import { type Server, acceptedAs, decodeEvent } from "../gen/server.effect.vibe"
+import type { Answer } from "../src/protocol.vibe"
 import { listening, server } from "../src/server.vibe"
 
 module node {
@@ -64,8 +63,6 @@ export effect function savedIn(file: string) {
   return (try Effect.try(() => JSON.parse(text))) as Server
 }
 
-const sameEdit = (a: Op, b: Op) => a.kind === b.kind && a.id === b.id && a.title === b.title && a.done === b.done
-
 /**
  * What the server did with `raw`, posted over HTTP: "refused" if it is no request (400) or answered from the log,
  * "accepted" if the server saved it in its log. Its verdict must be what the log says: accepted only if the log
@@ -79,9 +76,9 @@ export effect function outcome(file: string, raw: unknown) {
   if (response.status !== 200) return try die(new Error(`POST /api/events answered ${response.status}`))
   const { ok } = (try response.json) as unknown as Answer
   // What the server read: the body as it was sent, whatever a second read of `raw` would give.
-  const { client, seq, op } = (try Effect.try(() => JSON.parse(body))) as Request
-  const { log } = try savedIn(file)
-  const logged = log.some((h) => h.client === client && h.seq === seq && h.ok && sameEdit(h.op, op))
+  const { client, seq, op } = try orDie(decodeEvent(try Effect.try(() => JSON.parse(body))))
+  const saved = try savedIn(file)
+  const logged = acceptedAs(saved, client, seq, op)
   if (ok !== logged) return try die(new Error(`POST /api/events answered ok: ${ok}, but the log says ${logged}`))
-  return log.length > before ? "accepted" as const : "refused" as const
+  return saved.log.length > before ? "accepted" as const : "refused" as const
 }

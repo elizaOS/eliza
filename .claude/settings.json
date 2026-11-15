@@ -3,5 +3,22 @@
     "commit": "",
     "pr": ""
   },
-  "includeCoAuthoredBy": false
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "deny": [
+      "Edit(/gen/**)",
+      "Edit(/apps/*/gen/**)",
+      "Edit(/packages/*/gen/**)",
+      "Edit(/vibestack/studio/gen/**)",
+      "Edit(/vibestack/examples/*/gen/**)",
+      "Edit(/**/spec/lock.json)",
+      "Edit(/**/.spec-cache/**)",
+      "Edit(/**/.studio/**)",
+      "Edit(/**/lemmascript.json)"
+    ],
+    "ask": [
+      "Bash(pnpm accept:*)",
+      "Bash(pnpm exec spec accept:*)"
+    ]
+  }
 }

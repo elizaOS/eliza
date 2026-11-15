@@ -12,7 +12,7 @@ import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import { acceptReviews, readSpecs, type Result } from "../../spec.ts"
 import { manifestOf, nodesOf } from "../src/doc.ts"
 import { NODE, TOOLS, type Snapshot } from "../src/project.ts"
-import type { ComponentIndex } from "../src/catalog.ts"
+import type { ComponentIndex } from "../../stories/emit.ts"
 import { serve, startStudio, type Agent } from "../src/server.vibe"
 
 const services = Layer.merge(NodeServices.layer, NodeHttpClient.layerNodeHttp)
@@ -75,9 +75,20 @@ effect function until<A>(get: () => A!unknown, ok: (a: A) => boolean, show: (a: 
 effect function studioOn(root: string) {
   const { url } = try startStudio({ projects: [{ id: ".", name: "Door", root }], port: 0, agents })
   const page = try client(url.replace("localhost", "127.0.0.1"))
-  /** The project once no job runs. */
-  const settled = () => until(page.project, (p) => p.session.job === "Idle", (p) => ({ session: p.session, jobs: p.jobs }))
+  /** The project once no job runs, after the watcher has heard any change to the specs (../src/server.vibe debounces it). */
+  effect function settled() {
+    try sleep("600 millis")
+    return try until(page.project, (p) => p.session.job === "Idle", (p) => ({ session: p.session, jobs: p.jobs }))
+  }
   return { ...page, url, settled }
+}
+
+/** A browser's page, closed with the scope, and a step on it. */
+effect function browse(url: string) {
+  const browser = try acquireRelease(tryPromise(() => chromium.launch()), (b) => promise(() => b.close()))
+  const page = try tryPromise(() => browser.newPage())
+  try tryPromise(() => page.goto(url))
+  return { page, on: <A>(f: () => Promise<A>) => tryPromise(f) }
 }
 
 /** An app at its boundary: a development server that says where it serves, as Vite does, and answers every request. */
@@ -86,8 +97,15 @@ const APP = `require("node:http").createServer((_, res) => res.end("door app")).
 // spec/index.md, "Story: Edit, then publish"; spec/index.md, "Story: Sync with an agent"; spec/index.md, "Story: Check"; spec/index.md, "Story: Preview the app"
 it.live("a spec is published with its origins, checked, synced by an agent, and refused while a job runs; the app runs beside it", effect () => { provide services { try scoped(effect {
   const fs = try FileSystem.FileSystem
-  const root = try scratch({ "spec/door.md": try fs.readFileString(`${TOOLS}/fixtures/door.md`), "app.js": APP, "package.json": JSON.stringify({ name: "door", scripts: { start: "node app.js", build: "node -e \"require('node:fs').writeFileSync('built.txt', 'door')\"" } }) })
+  const root = try scratch({ "spec/door.md": try fs.readFileString(`${TOOLS}/fixtures/door.md`), "app.js": APP, "package.json": JSON.stringify({ name: "door", scripts: { start: "node app.js", build: "node -e \"require('node:fs').writeFileSync('built.txt', 'door')\"" } }),
+    "packages/kit/package.json": "{}", "packages/kit/design.md": "", "packages/kit/generated/stories/catalog.json": JSON.stringify({ version: 1, components: [
+      { id: "kit-bell", name: "Bell", source: { file: "src/Bell.tsx", line: 1 }, model: { spec: "spec/door.md" }, design: ["design.md#bell"] }] }) })
   const { get, send, post, project, settled } = try studioOn(root)
+
+  // The Components view's catalog names each file from the project root: a package's own, or the root's spec.
+  const components = (try get("/api/components")).body.components
+  try check(() => assert.deepStrictEqual(components, [
+    { id: "kit-bell", name: "Bell", source: { file: "packages/kit/src/Bell.tsx", line: 1 }, model: { spec: "spec/door.md" }, design: ["packages/kit/design.md#bell"] }]))
 
   // The page and what its HTML loads are served; nothing else under the tools is.
   const html = (try get("/")).text
@@ -146,8 +164,17 @@ it.live("a spec is published with its origins, checked, synced by an agent, and 
   // spec/index.md, "Sign-off needs a check that left only review, nothing unpublished and nothing waiting"
   const signOff = try post("accept", {})
   try check(() => assert.deepStrictEqual(
-    { verdict: checked.session.verdict, next: /pnpm accept/.test(checked.check!.next), signOff: signOff.status },
+    { verdict: checked.session.verdict, next: /pnpm accept/.test(checked.check!.next!), signOff: signOff.status },
     { verdict: "Reviewable", next: true, signOff: 409 },
+  ))
+
+  // A publish over a spec that changed on disk since the page loaded it is refused, naming it, unless the page insists.
+  const conflict = try post("publish", body)
+  const forced = (try post("publish", { ...body, force: true })).status
+  const overwritten = try settled()
+  try check(() => assert.deepStrictEqual(
+    { conflict: [conflict.status, conflict.body.conflicts, forced], overwritten: [overwritten.session.waiting, overwritten.session.verdict] },
+    { conflict: [409, [door.file], 200], overwritten: [1, "Reviewable"] },
   ))
 
   // spec/index.md, "A sync that ends well leaves nothing waiting and checks again"
@@ -161,6 +188,22 @@ it.live("a spec is published with its origins, checked, synced by an agent, and 
     prompt: /~ rule spec\/door\.md: .*\(prose\)/.test(prompt),
     manifestLeft,
   }, { started: 200, agent: ["passed", ["synced"], 0, "Reviewable"], prompt: true, manifestLeft: false }))
+
+  // spec/index.md, "A sign-off is checked again when it ends": what waited for review is recorded, and the check is green.
+  const signed = (try post("accept", {})).status
+  const green = try settled()
+  const ledger = try fs.exists(`${root}/spec/lock.json`)
+  // spec/index.md, "A change to the specs on disk makes the last verdict unknown"; spec/index.md, "A change to the specs on disk is checked when no job runs and nothing is unpublished"
+  try fs.writeFileString(`${root}/${door.file}`, text)
+  const touched = try until(project, (p) => p.session.job === "Checking", (p) => p.session)
+  const rechecked = try settled()
+  try check(() => assert.deepStrictEqual(
+    {
+      reviewed: synced.review.length > 0, signed: [signed, green.jobs.accept!.status, green.session.verdict, green.review, ledger],
+      touched: [touched.session.verdict, rechecked.session.verdict, rechecked.check!.finished! > green.check!.finished!],
+    },
+    { reviewed: true, signed: [200, "passed", "Green", [], true], touched: ["Unknown", "Green", true] },
+  ))
 
   // spec/index.md, "The app can be started and stopped whenever, beside any job": the project's start script runs,
   // says where it serves, and keeps serving while a check runs.
@@ -183,6 +226,10 @@ it.live("a spec is published with its origins, checked, synced by an agent, and 
     },
     { app: [200, "start", "door app", 200, 200], beside: [true, "Checking"], gone: false, build: [200, true, "passed", "Idle", "door"] },
   ))
+  // spec/index.md, "A running job can be stopped, and then nothing is known of its result"
+  const stops = [(try post("check", {})).status, (try post("stop", {})).status, (try post("stop", {})).status]
+  const halted = try project()
+  try check(() => assert.deepStrictEqual([stops, halted.session.job, halted.session.verdict, halted.jobs.check!.status], [[200, 200, 409], "Idle", "Unknown", "stopped"]))
 }) } })
 
 // spec/index.md, "Story: Edit, then publish"; spec/outline.md, "Story: Group rules under stories"
@@ -190,10 +237,9 @@ it.live("a rule is edited, a story added and both published from the page", () =
   const fs = try FileSystem.FileSystem
   const root = try scratch({ "spec/door.md": try fs.readFileString(`${TOOLS}/fixtures/door.md`) })
   const { url, settled } = try studioOn(root)
-  const browser = try acquireRelease(tryPromise(() => chromium.launch()), (b) => promise(() => b.close()))
-  const page = try tryPromise(() => browser.newPage())
-  const on = <A>(f: () => Promise<A>) => tryPromise(f)
-  try on(() => page.goto(`${url}/?project=.`))
+  // The watcher may hear the scratch files being written, and check them; publishing waits for no job.
+  try settled()
+  const { page, on } = try browse(`${url}/?project=.`)
   // A story opens to its rules; a rule opens for editing, and its heading changes as it is typed.
   try on(() => page.getByText("Story: Use the door", { exact: true }).click())
   try on(() => page.getByRole("button", { name: "Edit rule" }).first().click())
@@ -251,7 +297,7 @@ it.live("a rule is edited, a story added and both published from the page", () =
 // spec/components.md, "Story: Inspect a component and its stories"
 it.live("component controls follow the selected story and clear overrides when another preview is chosen", effect () => { provide services { try scoped(effect {
   const fs = try FileSystem.FileSystem
-  const catalog: ComponentIndex = { version: 1, storybook: {}, components: ["First", "Second"].map((name, at) => ({
+  const catalog: ComponentIndex = { version: 1, components: ["First", "Second"].map((name, at) => ({
     id: name, name, package: "fixture", title: name, description: "", source: { file: `src/${name}.tsx`, line: 1 },
     props: [{ name: "amount", kind: "number", required: true }], diagnostics: [], design: ["design.md#preview"],
     stories: [
@@ -302,7 +348,7 @@ it.live("new and nested specs are published, deleted specs leave their ledger fo
     "pnpm-workspace.yaml": "packages:\n  - apps/*\n",
     "apps/one/package.json": JSON.stringify({ name: "one", scripts: { build: "node -e \"require('node:fs').writeFileSync('built.txt', 'one')\"" } }),
   })
-  const { post, project, settled } = try studioOn(root)
+  const { url, get, post, project, settled } = try studioOn(root)
 
   // A new spec is a file published with no base; its parent links to it.
   const linked = try post("publish", { files: [
@@ -333,6 +379,9 @@ it.live("new and nested specs are published, deleted specs leave their ledger fo
   const outside = try fs.readFileString(`${root}/outside.md`)
   // The page still loads, and says what is wrong.
   const problem = (try project()).problem
+  const { page, on } = try browse(`${url}/?project=.`)
+  try on(() => page.getByRole("alert").filter({ hasText: "symbolic links" }).waitFor())
+  const noCatalog = (try get("/api/components")).status
   try fs.remove(`${root}/spec/escape.md`)
   // A prose line that would become a heading is refused.
   const index = (try project()).specs[0]
@@ -341,8 +390,9 @@ it.live("new and nested specs are published, deleted specs leave their ledger fo
     escaped: [escaped.status, linkedOut.status, outside],
     elsewhere: [elsewhere, untouched],
     problem: /symbolic links/.test(problem ?? ""),
+    noCatalog,
     stray: /"Not meant as a heading" would be a heading/.test(stray.body?.error ?? ""),
-  }, { escaped: [400, 400, ""], elsewhere: [[400, 400], [true, false]], problem: true, stray: true }))
+  }, { escaped: [400, 400, ""], elsewhere: [[400, 400], [true, false]], problem: true, noCatalog: 404, stray: true }))
 
   // A deleted spec takes its proof file with it and leaves the review ledger, so its removal is reviewed.
   const child = (try Effect.try(() => readSpecs(root))).find((s) => s.file === "spec/nested/child/index.md")!
@@ -371,22 +421,24 @@ it.live("new and nested specs are published, deleted specs leave their ledger fo
   const afterInherited = (try project()).session.job
   const ledgerSync = (try post("agent", { agent: "ledgerEdit" })).status
   const ledgerEdited = try settled()
+  const ledgerPutBack = try fs.readFileString(`${root}/spec/lock.json`)
   const manifestKept = try fs.exists(`${root}/.studio/manifest.json`)
   const manifest = manifestKept ? try fs.readFileString(`${root}/.studio/manifest.json`) : ""
   const stateSync = (try post("agent", { agent: "invalidState" })).status
   const broken = try settled()
+  // Putting the ledger back changes the specs on disk once no job runs, so they are checked again (spec/index.md, "A change to the specs on disk is checked when no job runs and nothing is unpublished").
   try check(() => assert.deepStrictEqual({
     inherited: [inherited, afterInherited],
     started: [ledgerSync, stateSync],
     ledgerEdited: [
       ledgerEdited.jobs.agent!.status, /spec\/lock.json: not marked synced/.test(ledgerEdited.jobs.agent!.log.join("\n")),
-      manifestKept, ledgerEdited.session.waiting, ledgerEdited.session.verdict,
+      ledgerPutBack === ledger, manifestKept, ledgerEdited.session.waiting, ledgerEdited.session.verdict,
     ],
     broken: [broken.jobs.agent!.status, /ENOTDIR/.test(broken.jobs.agent!.log.join("\n"))],
   }, {
     inherited: [400, "Idle"],
     started: [200, 200],
-    ledgerEdited: ["failed", true, true, 2, "Unknown"],
+    ledgerEdited: ["failed", true, true, true, 2, "Reviewable"],
     broken: ["failed", true],
   }))
 

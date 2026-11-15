@@ -11,5 +11,5 @@ export const meta: ComponentMeta<MeterProps> = {
   bounds: { value: [0, full] },
   schema: Schema.Struct({ value: Schema.Int }),
   decorator: (story) => story(),
-  play: { "Half full": () => undefined },
+  play: { "Half full": () => undefined, Loading: () => undefined },
 };

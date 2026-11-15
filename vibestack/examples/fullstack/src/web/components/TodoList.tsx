@@ -1,13 +1,13 @@
 // spec/client.md, "The user sees the queued edits applied over the confirmed copy, in order"
 import { type Client, visible } from "../../../gen/client.ts";
-import type { Edit } from "../sync.vibe";
+import type { Op } from "../../../gen/todo.ts";
 import { TodoRow } from "./TodoRow.tsx";
 
 export interface TodoListProps {
   /** The tab: what it shows, and what its rules allow. */
   client: Client;
   /** An edit the user makes. */
-  onEdit: (edit: Edit) => void;
+  onEdit: (edit: Op) => void;
 }
 
 /**
