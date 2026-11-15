@@ -1975,6 +1975,7 @@
       "name": "@elizaos/plugin-files",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/core": "workspace:*",
         "pdf-lib": "^1.17.1",
       },
       "devDependencies": {
