@@ -385,7 +385,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   if (previous != null && !result.sameMethods(previous)) notifyListeners("signInReadinessChanged", statusOutcome(environment, result).put("environment", environment.name), false);
   if (!result.google && linkPending(environment)) watchLink(environment, 0);
  }
- /** Browser Google is held back only by Android's verification of the return link. Local reads only. */
+ /** Check whether a compatible browser is waiting for Android to verify the return link. */
  private boolean linkPending(CloudSignInEnvironment environment) {
   return "browser".equals(config().googleSignInMode) && (browserPackage() != null || defaultBrowserPackage() != null) && !appLinkVerified(environment);
  }
