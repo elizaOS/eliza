@@ -25,7 +25,7 @@ import com.getcapacitor.*;
 public final class ContactsCatalog {
  private final ContentResolver resolver;
  public ContactsCatalog(Context context){resolver=context.getContentResolver();}
- private static final String[] FIELDS={ContactsContract.Contacts._ID,ContactsContract.Contacts.LOOKUP_KEY,ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP,ContactsContract.Contacts.STARRED};
+ private static final String[] FIELDS={ContactsContract.Contacts._ID,ContactsContract.Contacts.LOOKUP_KEY,ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP,ContactsContract.Contacts.STARRED,ContactsContract.Contacts.PHOTO_THUMBNAIL_URI,ContactsContract.Contacts.PHOTO_URI};
  /** A contact that cannot be read completely; it is listed by ID only and opened in the system Contacts app. */
  static final class Incomplete extends Exception{final String reason;Incomplete(String reason){super(reason,null,false,false);this.reason=reason;}}
  static final String FIELD_TOO_LONG="field-too-long",TOO_MANY_FIELDS="too-many-fields";
@@ -68,6 +68,8 @@ public final class ContactsCatalog {
     try{
      String lookup=text(rows.getString(1)),updated=rows.getString(3);
      row.put("id",id);row.put("lookup",lookup);row.put("name",text(rows.getString(2)));row.put("revision",updated);row.put("starred",rows.getInt(4)!=0);
+     String photo=rows.getString(5);if(photo==null||photo.isEmpty())photo=rows.getString(6);
+     if(photo!=null&&!photo.isEmpty()){Uri photoUri=Uri.parse(text(photo));if("content".equals(photoUri.getScheme()))row.put("photoUri",photo);}
      row.put("phones",details(id,ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE,signal));row.put("emails",details(id,ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE,signal));
     }catch(Incomplete partial){row=new JSObject();row.put("id",id);row.put("incomplete",true);row.put("reason",partial.reason);}
     bytes=admitRecordBytes(bytes,row.toString());records.put(row);lastId=id;

@@ -558,6 +558,17 @@ console.log(
       },
     },
   };
+  const signedOut = captureMapsSession(() => null);
+  await assert.rejects(
+    signedOut("routes", new AbortController().signal, {
+      from: CASINO,
+      to: PORT,
+    }),
+    (error) =>
+      error.code === "unauthorized" &&
+      error.message === "Sign in to use Maps, then search again.",
+  );
+  assert.equal(calls, 0, "an initial sign-in requirement sends no coordinates");
   let active = first;
   const request = captureMapsSession(() => active);
   const replacement = {

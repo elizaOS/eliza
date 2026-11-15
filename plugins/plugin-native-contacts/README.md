@@ -51,7 +51,8 @@ host never skips or repeats a contact. Reads take a CancellationSignal and time
 out after five seconds.
 `reviewed(id, lookup, revision)` rechecks a selected contact before the host
 hands an edit to the system Contacts editor. Hosts gate it behind their own
-image admission and foreground checks.
+image admission and foreground checks. An available contact photo is returned as
+optional read-only `photoUri` metadata; the checked system editor still owns photo edits.
 
 `ai.eliza.plugins.contacts.AddressBookPlugin` is the address book of the AOSP
 telephony profile built on the catalog. A host subclasses it under its own

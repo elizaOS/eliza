@@ -12,9 +12,13 @@ export function captureMapsSession(
 ): CloudMapsRequest {
   const owner = current();
   const assertOwner = () => {
+    if (!owner)
+      throw new MapsFailure(
+        "unauthorized",
+        "Sign in to use Maps, then search again.",
+      );
     const value = current();
     if (
-      !owner ||
       !value ||
       value.sessionId !== owner.sessionId ||
       value.credentialId !== owner.credentialId
