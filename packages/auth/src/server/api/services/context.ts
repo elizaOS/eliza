@@ -11,12 +11,14 @@ import { logger } from "@elizaos/core";
 import bs58 from "bs58";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import type { Context, Next } from "hono";
+import { errors as joseErrors } from "jose";
 import {
   ACCESS_TOKEN_EXPIRY,
   assertTokenNotRevoked,
   getAgentTokenExpiry,
   signAccessToken,
   signAgentToken,
+  TokenRevokedError,
   validateApiKey,
   verifyToken,
 } from "../../auth/index.ts";
@@ -262,9 +264,17 @@ export async function verifySessionToken(token: string) {
       if (payload.tenantId && !user.membership_role) return null;
     }
     return payload;
-  } catch {
-    // error-policy:J1 reject credentials when signature or session authority validation fails.
-    return null;
+  } catch (error) {
+    // error-policy:J3 invalid, expired or revoked credentials are already
+    // unusable; a failing revocation store or session-authority lookup is an
+    // outage, not a credential verdict, so it must reach the error boundary.
+    if (
+      error instanceof TokenRevokedError ||
+      error instanceof joseErrors.JOSEError
+    ) {
+      return null;
+    }
+    throw error;
   }
 }
 
