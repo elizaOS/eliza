@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "plugins/plugin-goals/src/goal-prompt-value.ts",
+    "plugins/plugin-goals/src/goal-prompt-multiline-value-model.test.ts",
+    "plugins/plugin-goals/quint/check-goal-prompt-multiline-value.mjs"
+  ],
+  "conformance": "plugins/plugin-goals/quint/check-goal-prompt-multiline-value.mjs",
+  "bounds": "One text value sits in the goal record that the semantic goal evaluator prints: the goal's description, a field of a nested record one or two levels down (successCriteria.notes, successCriteria.measure.notes), or the only item of a list held by such a field (successCriteria.milestones, successCriteria.measure.milestones). The text has one, two or three lines, and the middle line of a three-line text may be empty. The conformance script replays every generated text through evaluateGoalProgressWithLlm on a SQLite-backed AgentRuntime whose TEXT_LARGE handler records the prompt, and reads the printed lines from the prompt's Goal block: all 20 texts (3 field depths and 2 list depths x 4 text shapes) must match. Keys that contain a line break, text in the evidence record, lists with several items, records inside lists, carriage returns and the repair prompt's layout are not covered by this model (the repair prompt uses the same formatPromptValue call, and the package test checks it). Under weak fairness of the build step the prompt is eventually built. Explicit stuttering lets the review not run, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "goal-prompt-multiline-value",
+      "main": "GoalPromptMultilineValue",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "BlankLineStaysEmpty",
+        "LinesNestedUnderKey",
+        "NothingPrintedBeforeBuild",
+        "OneLineTextInline",
+        "TextKept",
+        "TypeOK"
+      ],
+      "temporal": ["PromptBuilt", "PromptBuiltWithoutFairness"],
+      "maxSteps": 3,
+      "samples": 2000,
+      "temporalChecks": [
+        {
+          "property": "PromptBuilt",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled build step eventually runs (weak fairness). This checks that the prompt is then built, not how long the review takes."
+          ]
+        },
+        {
+          "property": "PromptBuiltWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The review may never run, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
