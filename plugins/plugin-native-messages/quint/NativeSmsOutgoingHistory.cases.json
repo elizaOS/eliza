@@ -1,0 +1,46 @@
+{
+  "sources": [
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsStore.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/ReviewedSmsSend.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsSendJournal.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsTelephony.java",
+    "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/SmsOutgoingHistoryTest.java",
+    "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/ReviewedSmsSendCoreTest.java",
+    "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/SmsSendJournalTest.java",
+    "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/MmsSendJournalTest.java",
+    "plugins/plugin-native-messages/quint/check-native-sms-outgoing-history.ts",
+    "plugins/plugin-native-messages/quint/native-sms-outgoing-history-conformance.json",
+    "plugins/plugin-native-messages/android/build.gradle",
+    "packages/app/scripts/android-native-plugins-gradle/build.gradle",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "bounds": "One reviewed send operation, two recipients, app-owned outbox indices0/1, role changes and ordered platform attempts. Preparation failure and partial dispatch are distinct terminal states.",
+  "limitations": [
+    "The model covers the changed outgoing-history preparation/role/rollback boundary only. The older pin retains its unchanged outer bridge; this is not the newer canonical NativeSmsReviewOwnership model or a claim that all Shaw phone work is integrated.",
+    "Android implementation conformance uses the canonical five outgoing-history regressions plus eight existing journal/core tests under Robolectric29. Fake provider/radio ports do not prove physical carrier delivery, default-role provisioning or agent cellular audio.",
+    "Fair progress assumes provider preparation settles and the dispatch loop returns or throws. No successful delivery is assumed. Process crashes and arbitrary cross-process mutation are outside this bounded model."
+  ],
+  "conformance": "plugins/plugin-native-messages/quint/check-native-sms-outgoing-history.ts",
+  "cases": [
+    {
+      "name": "native-outgoing-sms-history",
+      "main": "NativeSmsOutgoingHistory",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["Settles"],
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of preparation and dispatch settlement, including refusals."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 500
+    }
+  ]
+}

@@ -98,9 +98,9 @@ a redelivered intent never sends twice. Sent receipts are package-private
 one-shot PendingIntents held in process (`SmsSendRequest`). "sent" needs every
 part's RESULT_OK receipt, and a receipt missing after
 `RECEIPT_TIMEOUT_MS`, or lost with the process, reads "unknown" and is never
-retried. Delivery is not requested. While the host is the default SMS app it
-stores each recipient's outbox row before the platform call and the receipts
-settle it; hosts never write sent-box rows themselves. `ReviewedSmsSend.Host`
+retried. Delivery is not requested. The default SMS app saves every recipient's
+outbox row before sending. A provider refusal ends the operation as denied
+without contacting the radio. Sent receipts settle the outbox rows. `ReviewedSmsSend.Host`
 names the host's encrypted journal slot and retired-ID namespace; keep them once
 shipped, and do not share the slot with a `SmsTelephonyConfiguration`. No AOSP
 admission or manifest receiver is needed.
@@ -135,12 +135,12 @@ A host that can hold the SMS role declares thin subclasses of
 - Quick replies from call screens open the compose review; nothing is sent from
   the service. The compose screen is the review: its Send press uses the same
   journal and operation-ID rules as `TelephonyPlugin.sendSms`.
-- Android writes sent texts to the provider for every app except the default
-  SMS app. While the host holds the role, each reviewed send stores its
-  recipient's message in the outbox just before the SmsManager call, and that
-  recipient's sent callbacks move it to sent or failed. A refused write never
-  blocks or repeats the send. Delivery is not claimed for these rows: an
-  immutable delivery callback carries no status report.
+- While the host holds the SMS role, a reviewed send saves all recipient
+  messages in the outbox before any SmsManager calls. If Android refuses an
+  outbox write, the operation is denied and never replayed. The recipient's
+  sent callbacks move its row to sent or failed. Delivery remains unconfirmed
+  for these rows because an immutable delivery callback carries no status
+  report.
 
 Recent calls are optional. A host that declares the `callLog` permission alias
 (and `READ_CALL_LOG` in its own manifest; this library does not declare it)

@@ -3,6 +3,7 @@ package ai.eliza.plugins.messages;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.role.RoleManager;
 import android.app.PendingIntent;
 import android.content.ContentResolver;
 import android.content.ContentUris;
@@ -35,8 +36,21 @@ public final class MmsStore {
  private static final String FILES = "eliza-mms";
 
  public static boolean isDefaultSmsApp(Context context) {
-  try { return context.getPackageName().equals(Telephony.Sms.getDefaultSmsPackage(context)); }
+  try { return checkedDefaultSmsApp(context); }
   catch (RuntimeException unreadable) { return false; }
+ }
+
+ static boolean checkedDefaultSmsApp(Context context) {
+  // The legacy package lookup can return null for the role holder when another SMS AppOp is denied.
+  if (android.os.Build.VERSION.SDK_INT >= 29) {
+   try {
+    RoleManager roles = context.getSystemService(RoleManager.class);
+    if (roles != null && roles.isRoleAvailable(RoleManager.ROLE_SMS)) return roles.isRoleHeld(RoleManager.ROLE_SMS);
+   } catch (RuntimeException unavailable) { /* Try the legacy package lookup. */ }
+  }
+  String smsPackage = Telephony.Sms.getDefaultSmsPackage(context);
+  if (smsPackage == null || smsPackage.isEmpty()) throw new IllegalStateException("Default SMS app could not be verified");
+  return context.getPackageName().equals(smsPackage);
  }
 
  /** Inserts one incoming SMS (parts already joined) into the inbox and returns its row. */
@@ -90,8 +104,20 @@ public final class MmsStore {
   ContentValues values = new ContentValues();
   values.put(Telephony.Sms.TYPE, type);
   return context.getContentResolver().update(ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, row), values,
-    Telephony.Sms.TYPE + " = ? AND " + Telephony.Sms.CREATOR + " = ?",
-    new String[] { Integer.toString(SmsSendJournal.TYPE_OUTBOX), context.getPackageName() }) == 1;
+    OWN_OUTBOX, ownOutboxArgs(context)) == 1;
+ }
+
+ private static final String OWN_OUTBOX = Telephony.Sms.TYPE + " = ? AND " + Telephony.Sms.CREATOR + " = ?";
+ private static String[] ownOutboxArgs(Context context) {
+  return new String[] { Integer.toString(SmsSendJournal.TYPE_OUTBOX), context.getPackageName() };
+ }
+
+ /** Removes a prepared row when its platform send was never attempted. */
+ static void discardOutgoingSms(Context context, long row) {
+  // SmsProvider's single-message delete ignores its selection. The collection applies all three guards.
+  context.getContentResolver().delete(Telephony.Sms.CONTENT_URI,
+    Telephony.Sms._ID + " = ? AND " + OWN_OUTBOX,
+    new String[] { Long.toString(row), Integer.toString(SmsSendJournal.TYPE_OUTBOX), context.getPackageName() });
  }
 
  /**

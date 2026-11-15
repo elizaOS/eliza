@@ -336,6 +336,20 @@ public final class SmsSendJournal {
   return record;
  }
 
+ /** Dispatch stopped before any platform send call. Keep the ID and its reviewed binding. */
+ synchronized void denyUnstartedDispatch(String operationId) throws IOException {
+  Record record = records.get(operationId);
+  if (record == null || record.group || !record.dispatching) throw new IllegalStateException("SMS dispatch was not prepared");
+  record.decision = "denied";
+  record.dispatching = false;
+  record.partsPerRecipient = new int[0];
+  record.sent = new char[0];
+  record.delivery = new char[0];
+  record.reported = new boolean[0];
+  java.util.Arrays.fill(record.providerRow, 0);
+  save();
+ }
+
  /** Every platform send call returned (submitted), or one threw (the outcome cannot be known). */
  synchronized void endDispatch(String operationId, boolean allReturned) throws IOException {
   Record record = records.get(operationId);
