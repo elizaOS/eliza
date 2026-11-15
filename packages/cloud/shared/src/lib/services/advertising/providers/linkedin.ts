@@ -33,6 +33,14 @@ const LINKEDIN_RESPONSE_MAX_BYTES = 1024 * 1024;
 // Defensive work bound, not a provider maximum. The shared media downloader's
 // 25 MiB ceiling needs at most seven of LinkedIn's documented 4 MiB parts.
 const LINKEDIN_VIDEO_MAX_UPLOAD_PARTS = 16;
+/**
+ * LinkedIn caps a Rest.li collection page at 100 elements whatever `pageSize`
+ * asks for, and reports the rest only through `paging`/`metadata.nextPageToken`.
+ * Reading one response as the full list therefore drops every account past the
+ * first page while still reporting success.
+ */
+const LINKEDIN_AD_ACCOUNT_PAGE_SIZE = 100;
+const LINKEDIN_AD_ACCOUNT_MAX_PAGES = 200;
 
 async function bufferLinkedInResponse(response: Response, signal: AbortSignal): Promise<Response> {
   const contentLength = response.headers.get("content-length");
@@ -706,17 +714,50 @@ export const linkedinAdsProvider: AdProvider = {
   async listAdAccounts(
     credentials: AdAccountCredentials,
   ): Promise<Array<{ id: string; name: string }>> {
-    const { body } = await linkedinRequest<LinkedInCollection<LinkedInAdAccount>>(
-      "/adAccounts",
-      credentials,
-      {
-        rawQuery: "q=search&search=(status:(values:List(ACTIVE)))&pageSize=1000",
-      },
-    );
-    return (body.elements ?? []).map((account) => ({
-      id: String(account.id),
-      name: account.name || String(account.id),
-    }));
+    // The caller (`listAvailableAdAccounts`) treats this as the complete set of
+    // accounts the user may attach a campaign to, so every page has to be read.
+    const accounts: Array<{ id: string; name: string }> = [];
+    const seen = new Set<string>();
+    let start = 0;
+    for (let page = 0; page < LINKEDIN_AD_ACCOUNT_MAX_PAGES; page++) {
+      const { body } = await linkedinRequest<LinkedInCollection<LinkedInAdAccount>>(
+        "/adAccounts",
+        credentials,
+        {
+          rawQuery: `q=search&search=(status:(values:List(ACTIVE)))&pageSize=${LINKEDIN_AD_ACCOUNT_PAGE_SIZE}&start=${start}`,
+        },
+      );
+      const elements = body.elements ?? [];
+      for (const account of elements) {
+        const id = String(account.id);
+        if (seen.has(id)) {
+          // A provider that ignores `start` repeats the previous page forever.
+          // Stop with an error rather than returning the repeated slice as if
+          // it were the whole account list.
+          throw new ElizaError("LinkedIn repeated an ad account page", {
+            code: "LINKEDIN_AD_ACCOUNT_PAGINATION_STALLED",
+            context: { page, start, accountId: id },
+          });
+        }
+        seen.add(id);
+        accounts.push({ id, name: account.name || id });
+      }
+      const paging = body.paging;
+      const nextStart =
+        typeof paging?.start === "number" && typeof paging.count === "number"
+          ? paging.start + paging.count
+          : start + elements.length;
+      const mayHaveMore =
+        elements.length >= LINKEDIN_AD_ACCOUNT_PAGE_SIZE || body.metadata?.nextPageToken != null;
+      if (!mayHaveMore || nextStart <= start) {
+        return accounts;
+      }
+      start = nextStart;
+    }
+    throw new ElizaError("LinkedIn ad account listing did not terminate", {
+      code: "LINKEDIN_AD_ACCOUNT_PAGINATION_UNBOUNDED",
+      context: { start, pages: LINKEDIN_AD_ACCOUNT_MAX_PAGES },
+    });
   },
 
   async createCampaign(
