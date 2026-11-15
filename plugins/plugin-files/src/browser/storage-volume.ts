@@ -86,6 +86,12 @@ const trashFlights = new Map<string, Promise<void>>();
 
 class Missing extends Error {}
 class Exists extends Error {}
+/** The stored Trash journal is present but unreadable. Its bytes are kept for recovery. */
+class Damaged extends Error {
+  constructor() {
+    super("The Trash journal in browser storage is unreadable.");
+  }
+}
 
 export class BrowserStorageVolume {
   private library: Library;
@@ -456,17 +462,23 @@ export class BrowserStorageVolume {
     });
   }
 
+  /**
+   * The restore journal. An absent journal is an empty Trash; one that is
+   * present but unparseable is damage and must not be read as "no trash", or
+   * the first listing would write `{}` back and drop every origin.
+   */
   private records(): Record<string, TrashRecord> {
+    const raw = this.store.getItem(this.namespace.trashKey);
+    if (raw === null || raw === "") return {};
+    let value: unknown;
     try {
-      const value = JSON.parse(
-        this.store.getItem(this.namespace.trashKey) || "{}",
-      );
-      return value && typeof value === "object" && !Array.isArray(value)
-        ? value
-        : {};
+      value = JSON.parse(raw);
     } catch {
-      return {};
+      throw new Damaged();
     }
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new Damaged();
+    return value as Record<string, TrashRecord>;
   }
   private save(records: Record<string, TrashRecord>) {
     this.store.setItem(this.namespace.trashKey, JSON.stringify(records));
