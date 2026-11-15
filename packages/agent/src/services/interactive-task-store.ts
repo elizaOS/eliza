@@ -366,12 +366,12 @@ export class SqliteInteractiveTaskStore {
         "SELECT json_group_array(json_object('id', id, 'document', document)) AS rows FROM interactive_task_journal_v1 WHERE owner_key = ? AND id IN (SELECT task_id FROM interactive_task_quarantine_v1 WHERE owner_key = ? AND acknowledged_at IS NULL)",
       )
       .get(key, key) as { rows: string };
+    // A torn document throws here, before its marker is dropped, so corruption
+    // can never be read as "this build understands the record again".
     for (const row of JSON.parse(held.rows) as {
       id: string;
       document: unknown;
     }[])
-      // A torn document throws here, before its marker is dropped, so corruption
-      // can never be read as "this build understands the record again".
       if (unreadableReason(row.document) === null)
         this.db
           .prepare(
