@@ -20,6 +20,9 @@ module NativeSmsReviewOwnership {
   action settleCancelled = all { s.retired,
     Set("posted", "review", "queued").contains(s.phase),
     s' = s.with("phase", "done").with("owner", false).with("result", "cancelled") }
+  // The default SMS app prepares its own provider rows before any platform send.
+  action outboxRefused = all { s.phase == "queued", not(s.retired), s.owner,
+    s' = s.with("phase", "done").with("owner", false).with("result", "denied") }
   action dispatch = all { s.phase == "queued", not(s.retired), s.owner,
     s.dispatches == 0,
     s' = s.with("phase", "dispatched").with("dispatches", 1) }
@@ -27,15 +30,16 @@ module NativeSmsReviewOwnership {
   action reply(result: str): bool = all { s.phase == "dispatched",
     Set("submitted", "failed", "unknown").contains(result),
     s' = s.with("phase", "done").with("owner", false).with("result", result) }
-  action progress = any { lookupReturns, present, approve, settleCancelled,
+  action progress = any { lookupReturns, present, approve, settleCancelled, outboxRefused,
     dispatch, reply("submitted"), reply("failed"), reply("unknown") }
   action step = any { progress, cancel, cancelOtherOperation, background, s' = s }
   val TypeOK = Set("lookup", "posted", "review", "queued", "dispatched", "done").contains(s.phase)
-    and Set("none", "cancelled", "submitted", "failed", "unknown").contains(s.result)
+    and Set("none", "cancelled", "denied", "submitted", "failed", "unknown").contains(s.result)
   val AtMostOneInvocation = s.dispatches >= 0 and s.dispatches <= 1
   val DialogNeedsLiveOwner = s.dialog implies (s.owner and not(s.retired) and s.phase == "review")
   val SettledOwnerReleased = (s.phase == "done") == not(s.owner)
   val CancelledMeansNoInvocation = s.result == "cancelled" implies s.dispatches == 0
+  val ProviderRefusalMeansNoInvocation = s.result == "denied" implies s.dispatches == 0
   temporal CancelAckFencesInvocation = always((s.cancelAck implies
     next(s.dispatches) == s.dispatches).orKeep(s))
   temporal KnownResultStable = always((s.result != "none" implies
@@ -54,4 +58,6 @@ module NativeSmsReviewOwnership {
     .expect(s.result == "submitted" and s.dispatches == 1 and not(s.owner))
   run unrelatedCancellationCannotRetireTest = init.then(cancelOtherOperation)
     .then(lookupReturns).then(present).expect(s.dialog and not(s.retired))
+  run outboxRefusalBeforeRadioTest = init.then(lookupReturns).then(present).then(approve)
+    .then(outboxRefused).expect(s.result == "denied" and ProviderRefusalMeansNoInvocation and not(s.owner))
 }

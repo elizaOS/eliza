@@ -19,6 +19,16 @@
     ]
   },
   {
+    "className": "ai.eliza.plugins.messages.SmsOutgoingHistoryTest",
+    "required": [
+      "roleHolderStoresEveryRecipientBeforeSendingAndSettlesFromReceipts",
+      "providerRefusalKeepsAllRecipientsOffRadioAndPersistsDenial",
+      "quickReplyCannotSendOrReplayAfterProviderRefusal",
+      "roleLossAfterStagingStopsTheSendAndDiscardsItsRows",
+      "unreadableOwnershipCannotBypassProviderPreparation"
+    ]
+  },
+  {
     "className": "ai.eliza.plugins.messages.MmsSendJournalTest",
     "required": ["mmsBindingValidationAndEvidence"]
   }
