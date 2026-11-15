@@ -39,12 +39,20 @@ export class WindowRegionCapture implements AppStateCapture {
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
     const display = displayForBounds(bounds);
     if (!display) return null;
+    const localX = Math.max(0, bounds.x - display.bounds[0]);
+    const localY = Math.max(0, bounds.y - display.bounds[1]);
     const local = {
-      x: Math.max(0, bounds.x - display.bounds[0]),
-      y: Math.max(0, bounds.y - display.bounds[1]),
-      width: Math.min(bounds.width, display.bounds[2]),
-      height: Math.min(bounds.height, display.bounds[3]),
+      x: localX,
+      y: localY,
+      // Clamp to the pixels LEFT on the display, not to its full size: a window
+      // running past the right/bottom edge (dragged partly offscreen, or
+      // spanning two displays) would otherwise ask for a region outside the
+      // display, and the frame carries a band of non-display pixels whose OCR
+      // boxes are then mapped back into global coordinates.
+      width: Math.min(bounds.width, display.bounds[2] - localX),
+      height: Math.min(bounds.height, display.bounds[3] - localY),
     };
+    if (local.width <= 0 || local.height <= 0) return null;
     const capture = await captureDisplayRegion(display.id, local);
     return {
       screenshot: capture.frame.toString("base64"),
