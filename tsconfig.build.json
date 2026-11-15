@@ -15,6 +15,10 @@
       "es2023",
       "dom",
       "dom.iterable"
+    ],
+    "rootDirs": [
+      "vibestack",
+      ".vibe/build"
     ]
   },
   "include": [

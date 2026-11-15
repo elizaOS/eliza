@@ -6,6 +6,7 @@
     "skipLibCheck": true,
     "types": ["node"],
     "rootDir": ".",
+    "rootDirs": [".", ".vibe/declarations"],
     "outDir": "dist",
     "noEmitOnError": true,
     "rewriteRelativeImportExtensions": true
