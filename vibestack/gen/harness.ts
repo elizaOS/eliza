@@ -182,11 +182,12 @@ export function harness(
     ...sometimes.map((w) => `  val never_${w} = inv and not(${opaques.length ? "settled and " : ""}M::${w}(state))`),
     // A guard's witnesses, for the `probe` step: breaking `never_allows_X` shows a reachable state and values for
     // which X allows its event, breaking `never_refuses_X` one for which it refuses it. Each reads the result the
-    // last evaluation recorded, so a state costs the same however many values a parameter could take.
-    ...transitions.flatMap((t) => (t.guard && evals.some((v) => v.name === t.guard) ? [
-      `  val never_allows_${t.guard} = inv and match outcome { | Out_${t.guard}(r) => not(r) | _ => true }`,
-      `  val never_refuses_${t.guard} = inv and match outcome { | Out_${t.guard}(r) => r | _ => true }`,
-    ] : [])),
+    // last evaluation recorded, so a state costs the same however many values a parameter could take. An event fires
+    // only where its guard allows it, so one that fired is a witness too, however rarely its guard is evaluated.
+    ...[...new Set(transitions.flatMap((t) => (t.guard && evals.some((v) => v.name === t.guard) ? [t.guard] : [])))].flatMap((guard) => [
+      `  val never_allows_${guard} = inv and not(Set(${transitions.filter((t) => t.guard === guard).map((t) => JSON.stringify(t.name)).join(", ")}).contains(last)) and match outcome { | Out_${guard}(r) => not(r) | _ => true }`,
+      `  val never_refuses_${guard} = inv and match outcome { | Out_${guard}(r) => r | _ => true }`,
+    ]),
     `}`,
     ``,
   ].join("\n");
