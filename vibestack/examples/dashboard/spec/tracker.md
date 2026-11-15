@@ -402,8 +402,9 @@ pure def deleteOwner(s: Tracker, owner: str, by: str): Tracker =
 
 Any name may be entered as an owner, including one already present, and any
 number as a link. Rows may be removed, leaving references to them dangling,
-and a person may be removed from the team, leaving their name in owners cells.
-Rows are added only through the dashboard. The task number and bookkeeping
+and a person may be removed from the team, leaving their name in owners cells;
+each task they last edited keeps their name as its editor, with
+`authorIsMember` false, as when the dashboard removes them. Rows are added only through the dashboard. The task number and bookkeeping
 columns (last edit, last announcement, reminders sent) are protected from
 direct edits; when a hand edit to a row arrives, the system records the time,
 and `sheet` as the editor, with `authorIsMember` false. Every current owner
@@ -440,16 +441,18 @@ pure def handDeleteOwner(s: Tracker, owner: str): Tracker =
 ### A hand edit can leave a problem behind
 
 ```quint
-pure def sometimesTheDataHasAProblem(s: Tracker): bool = problems(s).length() > 0
+pure def sometimesTheDataHasAProblem(s: Tracker): bool = s.last == Sheet and problems(s).length() > 0
 ```
 
 ### A one-click fix removes a problem and adds none
 
-A fix is picked by its position in the warning list; a position outside the
-list fixes nothing. A loop has no automatic fix, because someone must decide
-which link to remove. Every other problem is fixed by deleting the faulty
-link, except a one-sided related link, which is fixed by adding the missing
-link on the other task. A fix leaves fewer problems than before and adds
+Only a member of the team can apply a fix, and a fix does not change who last
+edited a task. A fix is picked by its position in the warning list; a
+position outside the list is refused, and so is a loop, which has no
+automatic fix because someone must decide which link to remove. An owner who
+is not a member is removed from the owners cell. Every other problem is fixed
+by deleting the faulty link, except a one-sided related link, which is fixed
+by adding the missing link on the other task. A fix leaves fewer problems than before and adds
 none, and sometimes a fix clears the list.
 
 ```quint
