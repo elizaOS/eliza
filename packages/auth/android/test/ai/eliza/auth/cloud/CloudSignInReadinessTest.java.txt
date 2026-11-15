@@ -45,9 +45,10 @@ public class CloudSignInReadinessTest {
  final List<JSObject> changes = new ArrayList<>();
  void notifyListeners(String event, JSObject value, boolean retained) { check("signInReadinessChanged".equals(event) && !retained, "only an unretained readiness change is announced"); changes.add(value); }
  boolean browserMode, appLink, assetLinks;
+ String customTabsBrowser = "synthetic.browser", plainBrowser;
  CloudSignInConfig config() { return browserMode ? TestRegistration.base().environment(TestRegistration.PRODUCTION).googleSignInMode("browser").build() : TestRegistration.PRODUCT; }
- String browserPackage() { return "synthetic.browser"; }
- String defaultBrowserPackage() { return null; }
+ String browserPackage() { return CloudSignInReadiness.browserPackageAllowed(customTabsBrowser, "synthetic.alpha") ? customTabsBrowser : null; }
+ String defaultBrowserPackage() { return CloudSignInReadiness.browserPackageAllowed(plainBrowser, "synthetic.alpha") ? plainBrowser : null; }
  boolean appLinkVerified(CloudSignInEnvironment environment) { return appLink; }
  /** `assetLinksAnswered` false: the statement list got no usable answer. */
  boolean assetLinksAnswered = true;
@@ -313,6 +314,22 @@ public class CloudSignInReadinessTest {
   idleScreen.status(call(false)); idleScreen.prober.drain();
   System.now += CloudSignInReadiness.RESUME_PROBE_WINDOW_MS; idleScreen.handleOnResume();
   check(idleScreen.prober.tasks.isEmpty(), "ten minutes after the last lookup a resume measures nothing");
+
+  // A previously measured Google method cannot survive removal of the compatible browser.
+  System.now = start;
+  CloudSignInReadinessTest shellOnly = new CloudSignInReadinessTest();
+  shellOnly.browserMode = true; shellOnly.appLink = true; shellOnly.assetLinks = true;
+  shellOnly.readiness.put(e.name, CloudSignInReadiness.Result.measured(true, true, true, System.now));
+  shellOnly.customTabsBrowser = null;
+  shellOnly.plainBrowser = "org.chromium.webview_shell";
+  PluginCall withoutBrowser = call(true); shellOnly.status(withoutBrowser);
+  check(withoutBrowser.resolved == 1 && Boolean.FALSE.equals(withoutBrowser.result.values.get("google")) &&
+   Boolean.TRUE.equals(withoutBrowser.result.values.get("email")) && Boolean.TRUE.equals(withoutBrowser.result.values.get("phone")),
+   "cached Google must be unavailable with no compatible browser; email and SMS stay available");
+  check(shellOnly.reads.isEmpty() && shellOnly.prober.tasks.isEmpty(), "reading cached methods needs no provider request");
+  shellOnly.plainBrowser = "synthetic.full.browser";
+  PluginCall withBrowser = call(true); shellOnly.status(withBrowser);
+  check(withBrowser.resolved == 1 && Boolean.TRUE.equals(withBrowser.result.values.get("google")), "a full browser works without Custom Tabs");
 
   // Fresh install in browser mode: Android verifies the return link after the first probe.
   System.now = start;
