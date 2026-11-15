@@ -58,14 +58,17 @@ function decode(row: unknown): InteractiveTask | null {
   return value;
 }
 /** Why a record is valid JSON but not a task this build can read, such as one
- * written by an older or newer build. A torn row is not quarantined: it stays
- * corrupt and fails where it is read. */
+ * written by an older or newer build. Only that version difference comes back as
+ * a reason: a torn document is not a task at all, so `parse` throws
+ * `TASK_STORAGE_CORRUPT` and this rethrows it. Callers can therefore read a null
+ * return as "this build can read the record", never as "something went wrong". */
 function unreadableReason(document: unknown): string | null {
   try {
     validateInteractiveTask(parse(document));
   } catch (error) {
     if (error instanceof ElizaError && error.code === "TASK_INVALID")
       return error.message;
+    throw error;
   }
   return null;
 }
@@ -367,6 +370,8 @@ export class SqliteInteractiveTaskStore {
       id: string;
       document: unknown;
     }[])
+      // A torn document throws here, before its marker is dropped, so corruption
+      // can never be read as "this build understands the record again".
       if (unreadableReason(row.document) === null)
         this.db
           .prepare(

@@ -450,11 +450,13 @@ describe("durable interactive task journal", () => {
     try {
       let store = open();
       const written = store.create(input);
-      // A newer build wrote the record, then this build rolled back and set it
-      // aside as a version difference.
+      // A newer build wrote and finished the record, then this build rolled back
+      // and set it aside as a version difference. A finished record is not the
+      // unfinished row recovery reads next, so only the set-aside marker can
+      // decide what happens to it.
       connections[0]
         .prepare(
-          "UPDATE interactive_task_journal_v1 SET document = ? WHERE id = ?",
+          "UPDATE interactive_task_journal_v1 SET document = ?, unfinished = 0 WHERE id = ?",
         )
         .run(JSON.stringify({ ...written, laterField: true }), input.id);
       store = open();
@@ -462,7 +464,7 @@ describe("durable interactive task journal", () => {
       expect(store.unreadable(owner)).toHaveLength(1);
       // The disk then tears the set-aside document. That is no longer a record
       // from another version: the journal is corrupt and recovery must say so
-      // instead of holding the record as merely unreadable.
+      // instead of quietly dropping the marker and calling the record readable.
       connections[0]
         .prepare(
           "UPDATE interactive_task_journal_v1 SET document = '{' WHERE id = ?",
@@ -471,6 +473,12 @@ describe("durable interactive task journal", () => {
       const reopened = open();
       expect(() => reopened.recoverOwner(owner, 3000)).toThrow(
         expect.objectContaining({ code: "TASK_STORAGE_CORRUPT" }),
+      );
+      // The failed recovery keeps the record set aside, so a build that can read
+      // it still finds it instead of the marker disappearing on a torn document.
+      expect(reopened.unreadable(owner)).toHaveLength(1);
+      expect(() => reopened.get(input.id, owner)).toThrow(
+        expect.objectContaining({ code: "TASK_UNREADABLE" }),
       );
     } finally {
       for (const connection of connections) connection.close();
