@@ -86,18 +86,23 @@ it, `node ../../spec.ts` in an example. In `@repo/ui`: `pnpm gen` (the stories),
   value is reported, with the field to add; it never invents data.
 - **A component that shows a model** says so: `@model spec/index.md` in its
   JSDoc links it to that spec's state and events, and `@design design.md#…`
-  to its design document. Studio's Components view follows both ways.
+  to its design document. Studio's Components view follows both ways. The spec
+  must have state (its generated module exports `initial`); a tag on a stateless
+  dispatcher is reported, so name the spec whose model holds what it shows.
 - **A file named after one of its exports** (`Dialog.tsx`) gives stories to
   that component; its other exports are its parts.
-- **Colors, radii, shadows and fonts are tokens.** Use the utilities named
+- **Colors, radii, shadows and fonts are tokens.** A color may not share a
+  text size's name, since `text-<name>` would set only the color. Use the utilities named
   after them (`bg-primary`, `text-muted-foreground`, `rounded-md`); the lint
-  rules of `vibestack/design/eslint.ts` refuse a palette class, an arbitrary
-  color and a literal color in a style. Merge classes with `cn()`; use CVA
+  rules of `vibestack/design/eslint.ts` refuse a palette class (`white` and
+  `black` too), an arbitrary or named color, a radius, shadow or font the
+  tokens do not define, and a literal or named color in a style. Merge classes with `cn()`; use CVA
   only where a component has real variants.
 - **A design change is a token change.** Describe it in `design.md`, write
   it as `[{ "path": "color.light.primary", "value": "oklch(…)", "reason": "…" }]`,
   and run `spec tokens apply changes.json`: it refuses an
-  unknown path, an invalid value and a contrast below WCAG AA, and prints
+  unknown path, an invalid value and a contrast below WCAG AA (4.5:1 for
+  text, 3:1 for the edge of a control, `input`), and prints
   the diff; `--write` applies it and rebuilds the CSS. Prose is never read
   as tokens.
 

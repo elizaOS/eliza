@@ -1,10 +1,13 @@
 # Preview the component catalog
 
 The catalog is generated from the project's React components and their
-metadata. This model selects a component and one of its stories. Search
-text and temporary prop overrides stay in the page; choosing another
-component or story clears those overrides. Refreshing an unchanged catalog
-keeps the selected preview and its overrides.
+metadata: their props, stories and links to source, model and design
+document. This model selects a component and one of its stories. Search
+text and temporary prop overrides stay in the page, which clears the
+overrides whenever the selection changes. The prop controls show the chosen
+story's arguments, or the component's defaults, until a person overrides
+them. Model links select the spec; source and design links open their files
+in the editor.
 
 ## Story: Inspect a component and its stories
 
@@ -14,9 +17,10 @@ keeps the selected preview and its overrides.
 
 ### A catalog records how many stories each component has
 
-The catalog supplies components, props, stories and document links. Their
-order gives each component and story its position; a position of minus one
-means there is no selection.
+The model keeps, for each component in the catalog's order, how many
+stories it has, and the key of the catalog it holds. A component or story
+is selected by its position; a position of minus one means there is no
+selection.
 
 ```quint
 type Selection = { key: str, counts: List[int], component: int, story: int }
@@ -48,8 +52,9 @@ pure def load(p: Selection, counts: List[int], key: str): Selection =
 
 ### Choosing a component selects its first story and clears prop overrides
 
-Only a component in the catalog can be chosen. Prop overrides are draft
-controls in the page and are cleared alongside this selection.
+Only a component in the catalog can be chosen; its first story is
+selected, or none if it has no stories. The page clears its prop overrides
+with the selection.
 
 ```quint
 pure def canChooseComponent(p: Selection, at: int): bool = hasComponent(p, at)
@@ -59,9 +64,8 @@ pure def chooseComponent(p: Selection, at: int): Selection =
 
 ### Choosing a story stays within its component and clears prop overrides
 
-The prop controls show the chosen story's arguments or the component's
-defaults until a person overrides them. Model links select the spec;
-source and design links open their files in the editor.
+Only a story of the selected component can be chosen, and the component
+stays selected. The page clears its prop overrides with the selection.
 
 ```quint
 pure def canChooseStory(p: Selection, at: int): bool = hasStory(p, at)
@@ -69,6 +73,9 @@ pure def chooseStory(p: Selection, at: int): Selection = { ...p, story: at }
 ```
 
 ### Every selected component and story exists in the loaded catalog
+
+With no components nothing is selected. Otherwise a component is, and a
+story of it unless it has none. Every story count is nonnegative.
 
 ```quint
 pure def alwaysSelectionExists(p: Selection): bool =
@@ -79,6 +86,8 @@ pure def alwaysSelectionExists(p: Selection): bool =
 ```
 
 ### A component without stories and a later story can both be inspected
+
+A later story is one after the first, of a component after the first.
 
 ```quint
 pure def sometimesNoStory(p: Selection): bool = hasComponent(p, p.component) and p.story == -1

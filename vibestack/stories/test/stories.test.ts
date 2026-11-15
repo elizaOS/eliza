@@ -62,6 +62,7 @@ it("caps the stories of a component, taking an option of each prop before a seco
   expect(stories("Many").slice(0, 5)).toEqual(["default kit-many--default", "prop kit-many--shade-100", "prop kit-many--hue-red", "prop kit-many--dense", "prop kit-many--shade-200"]);
   const few = generator({ root, out: join(root, "generated", "few"), cap: 3 })();
   expect(stories("Many", few)).toEqual(["default kit-many--default", "prop kit-many--shade-100", "prop kit-many--hue-red"]);
+  expect(few.diagnostics).toContain('Meter: `play` names "Loading", which is past the cap of 3 stories');
 });
 
 it("reports a required prop it cannot give a value, and writes that component no stories", () => {
@@ -108,7 +109,10 @@ it("plays a disabled or loading story to check that a click, Enter or Space call
   for (const line of [
     'import { expect, fn, isMockFunction, userEvent } from "storybook/test";',
     "const refuses = async ({ args, canvasElement }) => {",
-    "export const Loading = { args: { ...base, loading: true, onClick: fn() }, play: refuses };",
+    // A spy another story of the file called is not this story's doing.
+    "  for (const value of Object.values(args)) if (isMockFunction(value)) value.mockClear();",
+    // A play of its own runs first.
+    'export const Loading = { args: { ...base, loading: true, onClick: fn() }, play: async (context) => { await given.play["Loading"](context); await refuses(context); } };',
   ])
     expect(file).toContain(line);
   expect(read("kit-kinds.stories.tsx")).not.toContain("refuses");
@@ -129,7 +133,7 @@ it("leaves a story to the hand-written file that has one of its name", () => {
 it("writes the catalog Studio reads, and tests that run every generated and manual story in a simulated DOM and in a browser", () => {
   const catalog = JSON.parse(read("catalog.json"));
   expect(catalog).toEqual(JSON.parse(JSON.stringify(first.index)));
-  expect(Object.keys(catalog)).toEqual(["version", "storybook", "components"]);
+  expect(Object.keys(catalog)).toEqual(["version", "components"]);
   expect(Object.keys(catalog.components[4])).toEqual(["id", "name", "package", "title", "description", "source", "props", "stories", "model", "design", "diagnostics"]);
   const files = ["../../src/Chip.stories.tsx", ...["chip", "kinds", "many", "meter", "receipt", "tag"].map((name) => `./kit-${name}.stories.tsx`)]
     .map((file, i) => `import * as s${i} from "${file}";`);
@@ -166,9 +170,13 @@ it("rewrites only what a change touches, and removes what a deleted component le
   edit("src/Table.meta.ts", (text) => text.replace("rows: [{ id: 1 }],", "...{ rows: [{ id: 1 }] },"));
   // A field ComponentMeta does not have, such as the `snapshot` it once had, is reported, not ignored.
   edit("src/Meter.meta.ts", (text) => text.replace("[0, full]", "full").replace("decorator:", 'snapshot: ["Failed"],\n  decorator:'));
+  // A `@model` naming a spec with no state machine, such as a stateless dispatcher, is reported, not dropped.
+  writeFileSync(join(root, "gen/views.ts"), 'export type Event = { type: "open" };\n');
+  edit("src/Tag.tsx", (text) => text.replace("export function Tag", "/** @model spec/views.md */\nexport function Tag"));
   expect(run().diagnostics).toEqual([
     'Meter: `bounds` of "value" must be written out as two numbers, `[least, greatest]`, in Meter.meta.ts',
     "Meter: `snapshot` is no field of ComponentMeta (vibestack/stories/meta.ts) and is not read; remove it from Meter.meta.ts",
+    "Tag: @model spec/views.md has no state to show: views.ts exports no `initial`; name the spec whose model holds what it shows",
   ]);
 
   rmSync(join(root, "src/Chip.tsx"));

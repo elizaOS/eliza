@@ -61,7 +61,7 @@ const TAKEN = new Set([...EMITTED, ...HARNESS, ...`
   eval arguments implements interface package private protected public
 `.split(/\s+/).filter(Boolean)]);
 const RULE_OR_GUARD = new RegExp(`^(${[...ROLES, "can"].join("|")})[A-Z]`);
-const GENERATED = new RegExp(`^(${[...HELPERS, "eval", "Out", "std", "set", "opaque", "table", "else"].join("|")})_|^x\\d+$|__\\d+$`);
+const GENERATED = new RegExp(`^(${[...HELPERS, "eval", "Out", "set", "opaque", "table", "else"].join("|")})_|^x\\d+$|__\\d+$`);
 
 export function generate(ir: Json, name: string, source: string, origin: (def: string) => Origin | undefined, deps: Map<string, Model>): Model {
   const decls: Json[] = (ir.modules.find((m: Json) => m.name === name) ?? fail(`module ${name} not found`)).declarations;
@@ -96,8 +96,6 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
   for (const d of localTypedefs) d.module = name; // so that the harness can name a type by the module that defines it
   const localVariants = localTypedefs.flatMap((t) => (t.type.kind === "sum" ? t.type.fields.fields.map((f: Json) => f.fieldName as string) : []));
   const variants = new Set([...localVariants, ...imported("variants").map(([n]) => n)]);
-  for (const d of decls) if (d.kind === "def" && BUILTIN.test(d.name) && origin(d.name))
-    fail(`${d.name} is reserved for generated collection operations`);
   const defs = decls.filter((d) => d.kind === "def" && !localVariants.includes(d.name) && !BUILTIN.test(d.name));
   for (const d of [...decls.filter((d) => !["def", "typedef", "import", "const"].includes(d.kind)), ...defs.filter((d) => d.qualifier !== "puredef" && d.qualifier !== "pureval")])
     fail(`${d.name ?? d.kind}: only types, imports, \`pure val\` and \`pure def\` belong in a spec, besides the \`const\` of an opaque function (state and actions are generated)`);

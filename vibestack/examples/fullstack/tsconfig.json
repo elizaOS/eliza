@@ -7,7 +7,6 @@
     "types": ["node", "vite/client"],
     "jsx": "react-jsx",
     "rootDir": ".",
-    "rootDirs": [".", ".vibe/declarations"],
     "outDir": "dist",
     "noEmitOnError": true,
     "rewriteRelativeImportExtensions": true

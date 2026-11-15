@@ -1,7 +1,7 @@
 // The selected spec: its title and introduction, its stories and rules, each opened, edited, moved and deleted as
 // outline events (spec/outline.md). A story whose heading does not start with "Story:" is a group of rules.
-import { useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
-import { Button, Input, cn } from "@repo/ui";
+import { useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { Alert, Button, Input, Textarea, cn, focusRing } from "@repo/ui";
 import type { Outline, Rule, Story } from "../../gen/outline.ts";
 import { itemsOf, nodeId, nodesOfOutline, ruleKey, storyKey, textBody, type Item } from "../markdown.ts";
 import {
@@ -10,6 +10,7 @@ import {
   type Working,
 } from "./studio.ts";
 import { Code, Dot, Icon, IconButton, Markdown, Quint, type Mark } from "./text.tsx";
+import type { Result } from "../../../spec.ts";
 
 /** What is being dragged, for the drop targets that accept it. */
 export let dragging: { uid: string; kind: "story" | "rule" } | null = null;
@@ -44,25 +45,25 @@ function useDrag(uid: string, kind: "story" | "rule", accepts: (kind: string) =>
     },
   };
 }
-const DROP: Record<Exclude<Drop, null>, string> = { before: "shadow-[0_-3px_0_var(--primary)]", after: "shadow-[0_3px_0_var(--primary)]", into: "outline-2 outline-dashed outline-primary" };
+const DROP: Record<Exclude<Drop, null>, string> = { before: "border-t-2 border-t-primary", after: "border-b-2 border-b-primary", into: "outline-2 outline-dashed outline-primary" };
 
-/** The keys on a focused story or rule: open, edit, delete, and move up or down. */
+/** The keys on a focused story or rule, beside opening it: move up or down with Alt, delete with Ctrl or ⌘. */
 function keys(e: KeyboardEvent, id: string) {
-  if (e.target !== e.currentTarget) return;
   if (e.altKey && e.key === "ArrowUp") { e.preventDefault(); nudge(id, -1); }
   else if (e.altKey && e.key === "ArrowDown") { e.preventDefault(); nudge(id, 1); }
-  else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(id); focusLater(`[data-uid="${id}"] > [data-row]`); }
-  else if (e.key === "e") { e.preventDefault(); editNode(id); }
-  else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeNode(id); }
+  else if ((e.metaKey || e.ctrlKey) && (e.key === "Delete" || e.key === "Backspace")) { e.preventDefault(); removeNode(id); }
 }
 
-/** A story's or rule's line: grip, chevron, title, marks and actions. */
+/** A story's or rule's line: grip, a button that opens it, marks and actions. */
 function Row({ id, title, unique, open, editing, children, actions }: { id: string; title: string; unique: boolean; open: boolean; editing: boolean; children?: ReactNode; actions: ReactNode }) {
   return (
-    <div data-row tabIndex={0} onKeyDown={(e) => keys(e, id)} className="group flex min-h-9 items-center gap-2 px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+    <div className="group flex min-h-9 items-center gap-2 px-2 py-1">
       <span aria-hidden className="cursor-grab text-muted-foreground"><Icon name="grip" /></span>
-      <span aria-hidden onClick={() => toggle(id)} className={cn("text-muted-foreground transition-transform duration-fast", open && "rotate-90")}><Icon name="chev" /></span>
-      <span onClick={() => toggle(id)} onDoubleClick={() => editNode(id)} className={cn("min-w-0 flex-1 cursor-pointer", !unique && "text-destructive")}>{title.trim() || "Untitled"}</span>
+      <button data-row type="button" aria-expanded={open} onClick={() => toggle(id)} onDoubleClick={() => editNode(id)} onKeyDown={(e) => keys(e, id)}
+        className={cn(focusRing, "flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left", !unique && "text-destructive")}>
+        <Icon name="chev" className={cn("text-muted-foreground transition-transform duration-fast", open && "rotate-90")} />
+        {title.trim() || "Untitled"}
+      </button>
       {children}
       <span className={cn("flex gap-0.5 opacity-0 transition-opacity duration-fast group-hover:opacity-100 group-focus-within:opacity-100", editing && "opacity-100")}>{actions}</span>
     </div>
@@ -85,23 +86,19 @@ function MoveMenu({ id, kind }: { id: string; kind: "story" | "rule" }) {
   );
 }
 
-/** A text box that grows with what it holds. */
-function TextBox({ value, onChange, code = false, placeholder, label }: { value: string; onChange: (v: string) => void; code?: boolean; placeholder?: string; label: string }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  useLayoutEffect(() => { const ta = ref.current!; ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight + 2}px`; }, [value]);
-  return (
-    <textarea ref={ref} value={value} rows={1} spellCheck={!code} placeholder={placeholder} aria-label={label}
-      className={cn("min-h-10 w-full resize-y overflow-hidden rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring", code && "bg-muted font-mono text-xs leading-relaxed")}
-      onChange={(e) => onChange(e.target.value)}
-      onKeyDown={(e) => {
-        if (!code || e.key !== "Tab" || e.shiftKey) return;
-        e.preventDefault();
-        const ta = e.currentTarget;
-        ta.setRangeText("  ", ta.selectionStart, ta.selectionEnd, "end");
-        onChange(ta.value);
-      }} />
-  );
-}
+/** A text box that grows with what it holds; in code, Tab indents. */
+const TextBox = ({ value, onChange, code = false, placeholder, label }: { value: string; onChange: (v: string) => void; code?: boolean; placeholder?: string; label: string }) => (
+  <Textarea value={value} rows={1} spellCheck={!code} placeholder={placeholder} aria-label={label}
+    className={cn("min-h-10", code && "bg-muted font-mono text-xs leading-relaxed")}
+    onChange={(e) => onChange(e.target.value)}
+    onKeyDown={(e) => {
+      if (!code || e.key !== "Tab" || e.shiftKey) return;
+      e.preventDefault();
+      const ta = e.currentTarget;
+      ta.setRangeText("  ", ta.selectionStart, ta.selectionEnd, "end");
+      onChange(ta.value);
+    }} />
+);
 const Heading = ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
   <Input data-heading value={value} aria-label={label} placeholder={label} invalid={!value.trim()} className="font-semibold"
     onChange={(e) => onChange(e.target.value)}
@@ -114,11 +111,19 @@ const Status = ({ mark, children }: { mark: "review" | "bad"; children: ReactNod
   <div className={cn("text-xs", mark === "review" ? "text-warn" : "text-destructive")}>{children}</div>
 );
 
-/** The mark a story or rule carries: failing a check, waiting for review, or unpublished. */
-const markOf = (changed: boolean, fails: string[] | undefined, review: string | undefined): [Mark, string] =>
-  fails?.length ? ["bad", fails.join("\n")] : review ? ["review", review] : changed ? ["dirty", "unpublished change"] : ["", ""];
+/** A failing check result: its stage and summary, and what it found, such as a counterexample trace. */
+const Failure = ({ r }: { r: Result }) => (
+  <div className="flex flex-col gap-1">
+    <Status mark="bad">{r.stage}: {r.summary}</Status>
+    {r.detail && <Code className="max-h-80 whitespace-pre-wrap">{r.detail}</Code>}
+  </div>
+);
 
-function StoryCard({ spec, story, s, byKey }: { spec: Working; story: Story; s: number; byKey: Map<string, string[]> }) {
+/** The mark a story or rule carries: failing a check, waiting for review, or unpublished. */
+const markOf = (changed: boolean, fails: Result[] | undefined, review: string | undefined): [Mark, string] =>
+  fails?.length ? ["bad", fails.map((r) => `${r.stage}: ${r.summary}`).join("\n")] : review ? ["review", review] : changed ? ["dirty", "unpublished change"] : ["", ""];
+
+function StoryCard({ spec, story, s, byKey }: { spec: Working; story: Story; s: number; byKey: Map<string, Result[]> }) {
   const id = ui(spec.file, story.id);
   const review = reviewOf(spec, storyKey(story.title));
   const changed = storyChanged(spec, story, s);
@@ -128,7 +133,7 @@ function StoryCard({ spec, story, s, byKey }: { spec: Working; story: Story; s: 
   const drag = useDrag(id, "story", (k) => k === "story" || k === "rule");
   return (
     <section data-uid={id} aria-label={story.title || "Rules"} {...drag.props}
-      className={cn("mb-3 rounded-lg border border-border bg-card", changed && "shadow-[inset_3px_0_0_var(--primary)]", drag.lifted && "opacity-40", drag.drop && DROP[drag.drop])}>
+      className={cn("mb-3 rounded-lg border border-border bg-card", changed && "border-l-4 border-l-primary", drag.lifted && "opacity-40", drag.drop && DROP[drag.drop])}>
       <div className={cn("font-semibold", !story.title.startsWith("Story:") && "text-muted-foreground")}>
         <Row id={id} title={story.title} unique={soleHeading(spec.outline.stories.map((x) => x.title.trim()), story.title.trim())} open={open} editing={editing}
           actions={<>
@@ -162,7 +167,7 @@ function StoryCard({ spec, story, s, byKey }: { spec: Working; story: Story; s: 
   );
 }
 
-function RuleItem({ spec, story, rule, r, byKey }: { spec: Working; story: Story; rule: Rule; r: number; byKey: Map<string, string[]> }) {
+function RuleItem({ spec, story, rule, r, byKey }: { spec: Working; story: Story; rule: Rule; r: number; byKey: Map<string, Result[]> }) {
   const id = ui(spec.file, rule.id);
   const key = ruleKey(story.title, rule.title);
   const review = reviewOf(spec, key);
@@ -175,7 +180,7 @@ function RuleItem({ spec, story, rule, r, byKey }: { spec: Working; story: Story
   const drag = useDrag(id, "rule", (k) => k === "rule");
   return (
     <li data-uid={id} {...drag.props} onDoubleClick={(e) => { if (!editing && (e.target as Element).closest("[data-body]")) editNode(id); }}
-      className={cn("rounded-md border border-transparent hover:bg-accent/50", open && "border-border bg-card hover:bg-card", changed && "shadow-[inset_3px_0_0_var(--primary)]", drag.lifted && "opacity-40", drag.drop && DROP[drag.drop])}>
+      className={cn("rounded-md border border-transparent hover:bg-accent/50", open && "border-border bg-card hover:bg-card", changed && "border-l-4 border-l-primary", drag.lifted && "opacity-40", drag.drop && DROP[drag.drop])}>
       <Row id={id} title={rule.title} unique={soleHeading(story.rules.map((x) => x.title.trim()), rule.title.trim())} open={open} editing={editing}
         actions={<>
           <IconButton name="edit" label="Edit rule" onClick={() => editNode(id)} />
@@ -189,7 +194,7 @@ function RuleItem({ spec, story, rule, r, byKey }: { spec: Working; story: Story
         <div data-body className="flex flex-col gap-3 px-3 pb-3 pl-13">
           {items.map((i) => (i.quint ? <Quint key={`q${i.text}`} code={i.text} /> : <Markdown key={`p${i.text}`} text={i.text} file={spec.file} />))}
           {review && <Status mark="review">{review}</Status>}
-          {fails?.map((f) => <Status key={f} mark="bad">{f}</Status>)}
+          {fails?.map((r) => <Failure key={`${r.stage} ${r.summary}`} r={r} />)}
         </div>
       ))}
     </li>
@@ -235,28 +240,27 @@ function Conflict({ spec }: { spec: Working }) {
   const now = fresh ? titles(fresh.outline) : new Map<string, string>();
   const there = [...now].filter(([k, v]) => was.get(k) !== v).map(([k]) => k).concat([...was.keys()].filter((k) => !now.has(k)).map((k) => `${k} (removed)`));
   return (
-    <Banner tone="warn">
+    <Alert variant="warn" className={BANNER}>
       <span className="flex-1">{fresh && there.length ? there.map((k) => k.replace(/^## /, "")).join(" · ") : `${spec.file}${fresh ? "" : " (removed)"}`}</span>
       <Button variant="outline" size="sm" onClick={() => keepMine(spec.file)}>Keep mine</Button>
       <Button variant="outline" size="sm" onClick={() => takeTheirs(spec.file)}>Take disk</Button>
-    </Banner>
+    </Alert>
   );
 }
-const Banner = ({ tone, children }: { tone: "warn" | "bad"; children: ReactNode }) => (
-  <div className={cn("mb-4 flex items-center gap-3 rounded-lg border px-4 py-3", tone === "warn" ? "border-warn" : "border-destructive")}>{children}</div>
-);
+/** An `Alert` above the spec, with its actions at the end. */
+const BANNER = "mb-4 flex items-center gap-3";
 
 export function Spec({ spec }: { spec: Working }) {
   const { byKey, bySpec } = failures();
   const o = spec.outline;
   const headId = ui(spec.file, "head");
-  const specFails = bySpec.get(spec.file)?.filter((r) => !/"[^"]+" \(spec\//.test(`${r.summary}\n${r.detail}`));
+  // What concerns a rule is shown under it.
+  const specFails = bySpec.get(spec.file)?.filter((r) => !r.rules?.length);
   return (
     <div className="mx-auto max-w-230">
       {S.conflicts.includes(spec.file) && <Conflict spec={spec} />}
-      {S.snap?.problem && <Code className="mb-4 border-destructive whitespace-pre-wrap text-destructive">{S.snap.problem}</Code>}
-      {!!specFails?.length && <Banner tone="bad"><span className="flex-1 whitespace-pre-wrap">{specFails.map((r) => `${r.stage}: ${r.summary}`).join("\n")}</span></Banner>}
-      {spec.deleted && <Banner tone="bad"><span className="flex-1">Deleted on publish.</span><Button variant="outline" size="sm" onClick={() => deleteSpec(spec, false)}>Keep</Button></Banner>}
+      {!!specFails?.length && <div className="mb-4 flex flex-col gap-2">{specFails.map((r) => <Failure key={`${r.stage} ${r.summary}`} r={r} />)}</div>}
+      {spec.deleted && <Alert variant="destructive" className={BANNER}><span className="flex-1">Deleted on publish.</span><Button variant="outline" size="sm" onClick={() => deleteSpec(spec, false)}>Keep</Button></Alert>}
       <div data-uid={headId} className="mb-6">
         {S.editing.has(headId) ? (
           <div data-edit className="flex flex-col gap-2">

@@ -1,11 +1,12 @@
 import { assert, it, layer } from "@effect/vitest"
+import { type Role } from "../gen/index.effect.vibe"
 import { OrderBook, OrderBookMemory } from "../src/app.vibe"
 
-/** Sends `input` to order A1 of the journey's book. */
-effect function send(input: unknown) { return try (try OrderBook).dispatch("A1", input) }
-/** The failure the book answers `input` with, or "accepted". */
-effect function refusal(input: unknown) {
-  return effect { try send(input); return "accepted" } catch (error) => error._tag
+/** Sends `input` from `by` to order A1 of the journey's book. */
+effect function send(input: unknown, by: Role = "Shopper") { return try (try OrderBook).dispatch("A1", input, by) }
+/** The failure the book answers `input` from `by` with, or "accepted". */
+effect function refusal(input: unknown, by: Role = "Shopper") {
+  return effect { try send(input, by); return "accepted" } catch (error) => error._tag
 }
 effect function owed() { return try (try OrderBook).balance("A1") }
 

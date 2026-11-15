@@ -1,6 +1,5 @@
-// Writes what the analysis found: a CSF file per component, the catalog Studio reads
-// (vibestack/studio/src/components.ts, `ComponentIndex`), and two Vitest files that run every story: one for a
-// simulated DOM and one for a real browser.
+// Writes what the analysis found: a CSF file per component, the catalog Studio reads (`ComponentIndex`), and two
+// Vitest files that run every story: one for a simulated DOM and one for a real browser.
 // A component whose inputs hash as they did last time is not analyzed or written again.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -9,8 +8,10 @@ import ts from "typescript";
 import { type Found, type Prop, analyze, beside, compare, packageOf, programs, sources } from "./analyze.ts";
 import { type Plan, type Story, plan } from "./variants.ts";
 
+export type { Prop, Story };
+
 /** Part of every hash: raise it when the same inputs would be written differently. */
-const VERSION = 6;
+const VERSION = 7;
 
 export interface Component {
   id: string;
@@ -25,7 +26,8 @@ export interface Component {
   design?: string[];
   diagnostics: string[];
 }
-export interface ComponentIndex { version: 1; storybook: { url?: string }; components: Component[] }
+/** `catalog.json`. */
+export interface ComponentIndex { version: 1; components: Component[] }
 export interface Options {
   /** The project: globs and paths in the catalog are relative to it. */
   root: string;
@@ -88,6 +90,8 @@ function story(c: Found, p: Plan, from: (file: string) => string): string {
       ? [
           "/** A disabled or loading story refuses a person: a click, Enter or Space on what it renders calls no spy it was given. */",
           "const refuses = async ({ args, canvasElement }) => {",
+          "  // Spies in `base` are shared by every story of the file: count only what this one does.",
+          "  for (const value of Object.values(args)) if (isMockFunction(value)) value.mockClear();",
           '  const target = canvasElement.querySelector("a, button, input, select, textarea, [role=button], [role=checkbox], [role=switch], [tabindex]");',
           "  if (target) {",
           "    await userEvent.click(target, { pointerEventsCheck: 0 });",
@@ -237,7 +241,6 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
     const sorted = Object.values(entries).flatMap((e) => e.components).sort((a, b) => compare(a.id, b.id));
     const index: ComponentIndex = {
       version: 1,
-      storybook: {},
       components: sorted.map((c, i) => (sorted[i - 1]?.id === c.id ? { ...c, diagnostics: [...c.diagnostics, `${c.name}: ${c.package} has two components of this name, and one's stories replace the other's; rename one`] } : c)),
     };
     const outputs = Object.values(entries).flatMap((e) => e.outputs).sort();

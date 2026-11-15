@@ -1,6 +1,6 @@
 // What the page draws from text: icons, the Markdown specs use, Quint with its keywords marked, and a status dot.
 import type { ReactNode } from "react";
-import { cn } from "@repo/ui";
+import { Button, cn } from "@repo/ui";
 import { S, select } from "./studio.ts";
 
 const ICONS = {
@@ -27,12 +27,11 @@ export const Icon = ({ name, className }: { name: IconName; className?: string }
 );
 
 /** A small button that is only an icon, named by `label`. */
-export const IconButton = ({ name, label, onClick, danger = false, disabled = false }: { name: IconName; label: string; onClick: () => void; danger?: boolean; disabled?: boolean }) => (
-  <button type="button" title={label} aria-label={label} disabled={disabled}
-    className={cn("inline-flex rounded-sm p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50", danger && "hover:text-destructive")}
+export const IconButton = ({ name, label, onClick, danger = false }: { name: IconName; label: string; onClick: () => void; danger?: boolean }) => (
+  <Button variant="ghost" size="icon" title={label} aria-label={label} className={cn("size-6 text-muted-foreground", danger && "hover:text-destructive")}
     onClick={(e) => { e.stopPropagation(); onClick(); }}>
     <Icon name={name} />
-  </button>
+  </Button>
 );
 
 /** Where a spec, story or rule stands: failing a check, waiting for review, unpublished, or in step (no dot). */

@@ -43,6 +43,6 @@ pure def sometimesARowIsFull(h: Hall): bool = h.byRow.getOr(1, 0) == 2 and h.byK
 pure def lawOutsideTheListIsTheDefault(xs: List[int], d: int): bool = xs.nthOr(xs.length(), d) == d and xs.nthOr(-1, d) == d
 pure def lawRemovingShortensByOne(xs: List[int], i: int): bool =
   xs.removeAt(i).length() == (if (0 <= i and i < xs.length()) xs.length() - 1 else xs.length())
-pure def lawMappingAnAppendedList(xs: List[int], x: int): bool = xs.append(x).listMap(y => y * 2).length() == xs.length() + 1
 pure def double(n: int): int = n * 2
+pure def lawMappingAnAppendedList(xs: List[int], x: int): bool = xs.append(x).listMap(double).length() == xs.length() + 1
 ```

@@ -1,21 +1,22 @@
 // The Effect face of a generated module, in VibeLang: gen/<name>.effect.vibe beside gen/<name>.ts. It is read off the
 // generated TypeScript itself, so it cannot say anything that module does not.
 import ts from "typescript";
+import { HELPERS } from "./typescript.ts";
 import { fail } from "./types.ts";
 
 /** Helpers the generated module exports for its own use (typescript.ts), and the proof obligation of `initial`. */
-const INTERNAL = /^(?:exact|equal|quotient|remainder|lookup\d+)_|^initialHolds$/;
+const INTERNAL = new RegExp(`^(?:${HELPERS.join("|")})_|^initialHolds$`);
 /** The adapter's typed failures. */
 const FAILURES = ["Rejected", "NotAnEvent", "NotAState", "NotASender"];
 /** What the adapter itself exports for a state machine; a spec that binds one of these cannot have an adapter. */
-const OWN = [...FAILURES, "Machine", "machine", "apply", "decodeEvent", "decodeState", "decodeSender"];
+const OWN = [...FAILURES, "Machine", "machine", "machineOver", "stored", "apply", "decodeEvent", "decodeState", "decodeSender"];
 
 /**
  * `text` is gen/<name>.ts. Every constant and function comes back under its own name from a TypeScript `module` body,
  * the one place a `.vibe` file states what a function throws: effect code may then call them bare. They throw nothing
  * the program should handle: the one exception generated code raises, a RangeError past 2^53, is a defect.
  * A state machine also gets typed failures for what `parseEvent`, `parseState` and `enabled` refuse, and a `Machine`
- * service that holds the state and applies one event at a time.
+ * service that holds the state and applies one event at a time, in memory (`machine`) or kept in a store (`stored`).
  */
 export function effectAdapter(name: string, source: string, text: string, namespace: string): string {
   const file = ts.createSourceFile(`${name}.ts`, text, ts.ScriptTarget.Latest, true);
@@ -74,6 +75,7 @@ export function effectAdapter(name: string, source: string, text: string, namesp
   const passed = sender ? ", by" : "";
   return [
     ...out,
+    `import * as KeyValueStore from "effect/persistence/KeyValueStore"`,
     `import type * as T from "./${name}.ts"`,
     ``,
     `/** The rules do not allow this event in this state${sender ? " from this sender" : ""}. */`,
@@ -126,23 +128,48 @@ export function effectAdapter(name: string, source: string, text: string, namesp
     `  receive(input: unknown${by}): ${stepped}!(NotAnEvent | Rejected)`,
     `}`,
     ``,
-    `/** A Machine in memory, from \`initial\` or a state \`decodeState\` returned. */`,
-    `export function machine(start: ${state} = initial) {`,
-    `  return Layer.effect(Machine, effect {`,
-    `    const held = try SubscriptionRef.make(${snapshot}(start))`,
-    `    effect function send(event: T.Event${by}): ${stepped}!Rejected {`,
-    `      const input = ${snapshot}({ event${passed} })`,
+    `/**`,
+    ` * A Machine from \`start\` that gives each state an event leads to to \`keep\` before it is the current one: where \`keep\``,
+    ` * dies, \`send\` dies and the state stays as it was. It never shares the state it holds with its callers.`,
+    ` */`,
+    `export effect function machineOver(start: ${state}, keep: (next: ${state}) => void!!): Machine.Shape!! {`,
+    `  const held = try SubscriptionRef.make(${snapshot}(start))`,
+    `  effect function send(event: T.Event${by}): ${stepped}!Rejected {`,
+    `    const input = ${snapshot}({ event${passed} })`,
+    `    uninterruptible {`,
     `      return try SubscriptionRef.modifyEffect(held, effect (current) => {`,
     `        const next = try apply(${snapshot}(current), input.event${sender ? ", input.by" : ""})`,
+    `        try keep(${snapshot}(${emits ? "next.state" : "next"}))`,
     `        return [${snapshot}(next), ${emits ? "next.state" : "next"}] as const`,
     `      })`,
     `    }`,
-    `    return {`,
-    `      changes: Stream.map(SubscriptionRef.changes(held), ${snapshot}),`,
-    `      effect get() { return ${snapshot}(try SubscriptionRef.get(held)) },`,
-    `      send,`,
-    `      effect receive(input: unknown${by}) { return try send(try decodeEvent(input)${passed}) }`,
-    `    }`,
+    `  }`,
+    `  return {`,
+    `    changes: Stream.map(SubscriptionRef.changes(held), ${snapshot}),`,
+    `    effect get() { return ${snapshot}(try SubscriptionRef.get(held)) },`,
+    `    send,`,
+    `    effect receive(input: unknown${by}) { return try send(try decodeEvent(input)${passed}) }`,
+    `  }`,
+    `}`,
+    ``,
+    `/** A Machine in memory, from \`initial\` or a state \`decodeState\` returned. */`,
+    `export function machine(start: ${state} = initial) {`,
+    `  return Layer.effect(Machine, machineOver(start, () => Effect.void))`,
+    `}`,
+    ``,
+    `/**`,
+    ` * A Machine kept in the KeyValueStore under \`key\`, as JSON. It starts from what is stored there, read through`,
+    ` * \`decodeState\`, or from \`start\` where nothing is; what is stored and is not a state fails the layer with NotAState,`,
+    ` * so that it is never written over. Each state an event leads to is stored before it is the current one: where the`,
+    ` * store does not take it, \`send\` dies and the state stays as it was.`,
+    ` */`,
+    `export function stored(key: string, start: ${state} = initial) {`,
+    `  return Layer.effect(Machine, effect {`,
+    `    const store = try KeyValueStore.KeyValueStore`,
+    `    const found = try store.get(key)`,
+    `    const first = found === undefined ? start`,
+    `      : try decodeState(try Effect.try({ try: () => JSON.parse(found) as unknown, catch: () => new NotAState({ input: found }) }))`,
+    `    return try machineOver(first, (next) => orDie(store.set(key, JSON.stringify(next))))`,
     `  })`,
     `}`,
     ``,

@@ -27,7 +27,7 @@ Needs Node 26+ and Dafny on the path.
 | `src/protocol.vibe` | shared shell | Wire format |
 | `src/web/sync.vibe` | frontend shell | The `Tab` service: one client machine and its requests, shared with `test/app.test.vibe` |
 | `test/drivers/client.ts`, `test/drivers/server.ts` | conformance | How `check` reaches a tab and the HTTP server: every journey and random walks, compared with `spec/client.md` and `spec/server.md` |
-| `src/web/` | page | React: `useTab.ts` gives `components/TodoPage.tsx` the tab's `Client` and its effects |
+| `src/web/` | page | React: `main.tsx` gives `components/TodoPage.tsx` the tab's `Client`, through the generated `useMachine` of `gen/client.react.ts`, and the tab's effects |
 | `tokens.json`, `design.md` | design | The page's colors and shapes, as tokens |
 
 ```mermaid
@@ -35,7 +35,7 @@ sequenceDiagram
   participant A as tab a
   participant S as src/server.vibe
   participant B as tab b
-  Note over A: create / setDone / rename / remove<br/>queued with id "a-n"
+  Note over A: Create / SetDone / Rename / Remove<br/>queued with id "a-n"
   A->>S: POST /api/events (oldest queued edit only)
   Note over S: decodeEvent, then Machine.send(request)<br/>verdict read back from the log: a retry is applied once
   S-->>A: Answer → receiveAck / receiveRefusal
@@ -68,17 +68,17 @@ over.
 | Stays TypeScript | Why |
 |---|---|
 | `gen/*.ts` | generated, and what the proofs are about |
-| `src/web/**/*.tsx`, `useTab.ts` | React and the DOM, which a `.vibe` file cannot touch; `useTab.ts` runs the tab's effects through a `ManagedRuntime` |
+| `src/web/**/*.tsx` | React and the DOM, which a `.vibe` file cannot touch; `main.tsx` runs the tab's effects through a `ManagedRuntime` |
 | `vite.config.ts`, `vitest.config.ts`, `eslint.config.js`, `.storybook/` | configuration the tools load themselves |
 
 ## The page
 
-The generated client `Machine`, which `browser()` of `sync.vibe` provides to
-the `Tab`, holds the client's state. `useTab.ts` hands every
-state it publishes to `TodoPage`, whose components take that `Client` and
+The `Tab` of `sync.vibe` runs over the client's `Machine`, and `browser`
+provides both. `main.tsx` hands every state the machine publishes
+(`useMachine`) to `TodoPage`, whose components take that `Client` and
 callbacks as props, offer a control exactly when the generated guard allows
-its event (`canCreate`, `canSetDone`, `canRename`, `canRemove`, `canGoOffline`,
-`canGoOnline`), and keep only text being typed in `useState`.
+its event (`canQueue`, `canGoOffline`, `canGoOnline`), and keep only text
+being typed in `useState`.
 
 | Command | Does |
 |---|---|
@@ -106,25 +106,18 @@ shell's journeys and the mount of every story.
   Dafny and Quint. Convergence is a `sometimes` rule: the model shows it can
   happen, not that it always does.
 
-## Proof structure
+## Left to do
 
-List and record equality use `==`; removing a network position uses
-`removeAt`. Their former hand-written walks and induction proofs are gone.
-
-The system uses the server's request law and laws about the client's generic
-queue and answer helpers. Those helpers preserve every field of an arbitrary
-`Op`, including fields an operation does not use. The named edit transitions
-construct an operation with normalized fields, so their imported proofs cannot
-replace the generic queue law without changing the logged request and retry
-identity.
-
-Agreement remains a reachability property. This network can lose messages
-forever, so convergence on every run would require an additional delivery
-fairness assumption.
+- **Liveness.** "Both tabs eventually agree" is stated as "sometimes they
+  agree". A `leadsTo` rule needs two things first: an event by which a tab
+  asks for the list again, as `goOnline` does in `sync.vibe`, since a lost
+  push is otherwise never made up for; and an answer about loss, since
+  fairness is declared per event, not per message, and a fair run may lose
+  every acknowledgement while it delivers other messages.
 
 ## Limits of the spec language met here
 
 - **A machine cannot be imported with `.*`**; the system spec uses `S::` and `C::`.
-- **Folds with record accumulators need a named type.**
+- **Folds over records need a named type**, hence `Plan`.
 - **A helper that takes the state first and returns it is a transition**, so
-  `commit`, `queue` and `withClient` take it second.
+  `withClient` takes it last.

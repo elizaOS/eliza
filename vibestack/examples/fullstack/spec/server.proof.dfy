@@ -73,7 +73,7 @@ lemma IdsAppend(todos: seq<todo_Todo>, x: todo_Todo)
 
 // An edit other than a creation keeps every id where it was, and every removed to-do removed.
 lemma IdsEdit(todos: seq<todo_Todo>, op: todo_Op)
-  requires op.kind != "create"
+  requires !op.Create?
   requires !(exists t :: t in todos && !(|ProofLib.Filter((u: todo_Todo) => (u.id == t.id), todos)| == 1))
   ensures |todo_applyOp(todos, op)| == |todos|
   ensures forall i :: 0 <= i < |todos| ==> todo_applyOp(todos, op)[i].id == todos[i].id
@@ -90,6 +90,18 @@ lemma IdsEdit(todos: seq<todo_Todo>, op: todo_Op)
     var q := (u: todo_Todo) => (u.id == after[i].id);
     ProofLib.FilterLengthPointwise(p, q, todos, after);
     assert |ProofLib.Filter(p, todos)| == 1;
+  }
+}
+
+lemma request_ensures(s: Server, client: string, seq_: int, op: todo_Op)
+  ensures (inv(s) ==> canRequest(s, client, seq_) ==> alwaysTheVersionCountsTheChanges(request(s, client, seq_, op)))
+  ensures (inv(s) ==> canRequest(s, client, seq_) ==> alwaysNoRequestIsAnsweredTwice(request(s, client, seq_, op)))
+  ensures (inv(s) ==> canRequest(s, client, seq_) ==> alwaysIdsAreUnique(request(s, client, seq_, op)))
+  ensures (inv(s) ==> canRequest(s, client, seq_) ==> stepEachRequestRaisesTheVersionByAtMostOne(s, request(s, client, seq_, op)))
+  ensures (inv(s) ==> canRequest(s, client, seq_) ==> stepNoToDoIsForgotten(s, request(s, client, seq_, op)))
+{
+  if inv(s) && canRequest(s, client, seq_) {
+    if allows(s, client, seq_, op) { CommitKeeps(s, client, seq_, op); } else { RefusalKeeps(s, client, seq_, op); }
   }
 }
 
@@ -110,39 +122,16 @@ lemma CommitKeeps(s: Server, client: string, seq_: int, op: todo_Op)
   OnceAppend(s.log, x);
   IdsBridge(s);
   IdsBridge(after);
-  if op.kind == "create" {
+  if op.Create? {
     var t := todo_Todo(op.id, op.title, false, false);
     IdsAppend(s.todos, t);
     assert after.todos == s.todos + [t];
-    forall i | 0 <= i < |s.todos| ensures exists u :: u in after.todos && u.id == s.todos[i].id && (u.deleted || !s.todos[i].deleted) {
-      assert after.todos[i] in after.todos;
-    }
   } else {
     IdsEdit(s.todos, op);
-    forall i | 0 <= i < |s.todos| ensures exists u :: u in after.todos && u.id == s.todos[i].id && (u.deleted || !s.todos[i].deleted) {
-      assert after.todos[i] in after.todos;
-    }
   }
-}
-
-lemma request_ensures(s: Server, client: string, seq_: int, op: todo_Op)
-  ensures (inv(s) ==> canRequest(s, client, seq_) ==> alwaysTheVersionCountsTheChanges(request(s, client, seq_, op)))
-  ensures (inv(s) ==> canRequest(s, client, seq_) ==> alwaysNoRequestIsAnsweredTwice(request(s, client, seq_, op)))
-  ensures (inv(s) ==> canRequest(s, client, seq_) ==> alwaysIdsAreUnique(request(s, client, seq_, op)))
-  ensures (inv(s) ==> canRequest(s, client, seq_) ==> stepEachRequestRaisesTheVersionByAtMostOne(s, request(s, client, seq_, op)))
-  ensures (inv(s) ==> canRequest(s, client, seq_) ==> stepNoToDoIsForgotten(s, request(s, client, seq_, op)))
-{
-  if inv(s) && canRequest(s, client, seq_) { RequestKeeps(s, client, seq_, op); }
-}
-
-lemma RequestKeeps(s: Server, client: string, seq_: int, op: todo_Op)
-  requires inv(s) && canRequest(s, client, seq_)
-  ensures alwaysTheVersionCountsTheChanges(request(s, client, seq_, op))
-  ensures alwaysNoRequestIsAnsweredTwice(request(s, client, seq_, op))
-  ensures alwaysIdsAreUnique(request(s, client, seq_, op))
-  ensures stepNoToDoIsForgotten(s, request(s, client, seq_, op))
-{
-  if allows(s, client, seq_, op) { CommitKeeps(s, client, seq_, op); } else { RefusalKeeps(s, client, seq_, op); }
+  forall i | 0 <= i < |s.todos| ensures exists u :: u in after.todos && u.id == s.todos[i].id && (u.deleted || !s.todos[i].deleted) {
+    assert after.todos[i] in after.todos;
+  }
 }
 
 lemma RefusalKeeps(s: Server, client: string, seq_: int, op: todo_Op)
@@ -160,14 +149,7 @@ lemma RefusalKeeps(s: Server, client: string, seq_: int, op: todo_Op)
   OnceBridge(s);
   OnceBridge(after);
   OnceAppend(s.log, x);
-  assert after.todos == s.todos;
   forall i | 0 <= i < |s.todos| ensures exists u :: u in after.todos && u.id == s.todos[i].id && (u.deleted || !s.todos[i].deleted) {
     assert after.todos[i] in after.todos;
   }
-}
-
-lemma lawARequestKeepsTheRules_ensures(s: Server, client: string, seq_: int, op: todo_Op)
-  ensures (lawARequestKeepsTheRules(s, client, seq_, op) == true)
-{
-  if rulesHold(s) && canRequest(s, client, seq_) { RequestKeeps(s, client, seq_, op); }
 }
