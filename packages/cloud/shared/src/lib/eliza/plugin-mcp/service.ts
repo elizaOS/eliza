@@ -482,22 +482,33 @@ export class McpService extends Service {
     }
   }
   private async fetchResources(name: string): Promise<Resource[]> {
-    try {
-      return (await this.connections.get(name)?.client.listResources())?.resources || [];
-    } catch (e) {
-      logger.debug({ error: err(e), server: name }, "[MCP] Failed to fetch resources");
-      return [];
-    }
+    const conn = this.connections.get(name);
+    if (!conn) return [];
+    // A resources/list error is a discovery failure, not an empty catalogue:
+    // rethrow it so connect() marks the server disconnected with that error
+    // instead of publishing "connected" with zero resources.
+    const res = await conn.client
+      .listResources()
+      .catch((error: unknown) => this.rethrowDiscoveryFailure(name, error));
+    return res?.resources ?? [];
   }
   private async fetchResourceTemplates(name: string): Promise<ResourceTemplate[]> {
-    try {
-      return (
-        (await this.connections.get(name)?.client.listResourceTemplates())?.resourceTemplates || []
-      );
-    } catch (e) {
-      logger.debug({ error: err(e), server: name }, "[MCP] Failed to fetch resource templates");
-      return [];
-    }
+    const conn = this.connections.get(name);
+    if (!conn) return [];
+    // Same contract as fetchResources: never flatten a failed listing into [].
+    const res = await conn.client
+      .listResourceTemplates()
+      .catch((error: unknown) => this.rethrowDiscoveryFailure(name, error));
+    return res?.resourceTemplates ?? [];
+  }
+  /**
+   * stop() closes the transport while discovery is in flight; that shutdown
+   * keeps its documented MCP_SERVICE_STOPPED outcome. Any other failure is a
+   * real discovery error and must not be read as an empty catalogue.
+   */
+  private rethrowDiscoveryFailure(name: string, error: unknown): never {
+    this.requireRunning(name);
+    throw error;
   }
   // ─── Action Registration ───────────────────────────────────────────────────
   private registerToolsAsActions(serverName: string, tools: Tool[]): void {
