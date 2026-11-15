@@ -185,18 +185,13 @@
       "dependsOn": [
         "//#build",
         "//#typecheck",
-        "//#test",
-        "@repo/app#build",
-        "@repo/app#typecheck",
-        "@repo/app#test",
-        "@repo/app#test:browser"
+        "//#test"
       ],
       "cache": false
     },
     "//#lint:js": {
       "dependsOn": [
-        "@repo/design-system#build",
-        "@repo/app#typecheck"
+        "@repo/design-system#build"
       ],
       "inputs": [
         "apps/**",

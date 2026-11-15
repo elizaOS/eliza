@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/plugin-notes",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Notes, their trash and recorded audio custody.",
+  "license": "MIT"
+}

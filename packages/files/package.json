@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/plugin-files",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Reviewed file operations, local text recognition, archives and document scans.",
+  "license": "MIT"
+}

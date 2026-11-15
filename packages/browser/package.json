@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/plugin-browser",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser automation with grounded requests, remote control and payment-control review.",
+  "license": "MIT"
+}

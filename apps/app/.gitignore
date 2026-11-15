@@ -1,3 +1,0 @@
-# Screenshots and traces Vitest keeps of a failed browser test.
-.vitest/
-test/__traces__/

@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/cloud",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Hosted services a branded cloud deployment runs: accounts, billing, inference, agent hosting, connections and managed mail and calendar.",
+  "license": "MIT"
+}

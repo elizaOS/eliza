@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/agent",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent host: one owner's runtime, its HTTP and native gateways, plugins, conversations, device actions, tasks and services.",
+  "license": "MIT"
+}
