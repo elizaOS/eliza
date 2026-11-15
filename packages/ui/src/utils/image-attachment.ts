@@ -7,6 +7,7 @@ import {
   CHAT_UPLOAD_MIME_TYPE_SET,
   MAX_CHAT_ATTACHMENT_NAME_LENGTH,
   MAX_CHAT_IMAGE_BASE64_BYTES,
+  MAX_CHAT_IMAGE_INTAKE_BYTES,
   MAX_CHAT_MEDIA_RAW_BYTES,
   MAX_CHAT_UPLOAD_ATTACHMENTS,
 } from "@elizaos/core/protocol";
@@ -30,7 +31,7 @@ export const MAX_CHAT_IMAGES = MAX_CHAT_UPLOAD_ATTACHMENTS;
  * capped at the server-derived {@link MAX_CHAT_MEDIA_RAW_BYTES} instead — see
  * {@link perFileByteCap}.
  */
-export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES = MAX_CHAT_IMAGE_INTAKE_BYTES;
 /**
  * Per-file raw-byte intake cap for a candidate file. Images may exceed the
  * server cap at intake because the downscale pass re-encodes them under it;

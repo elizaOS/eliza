@@ -1,4 +1,5 @@
 import { WebPlugin } from "@capacitor/core";
+import { MAX_CHAT_IMAGE_INTAKE_BYTES } from "@elizaos/core/protocol";
 import { type MailAttachment, reviewMailAttachment } from "./attachment.ts";
 import { fileArchive } from "./file-archive.ts";
 export class FilesSourceReadError extends Error {
@@ -931,9 +932,22 @@ export class BrowserFiles extends WebPlugin {
       await task.destroy();
     }
   }
-  async attachment(input: { selectionId: string }) {
+  async attachment(input: { selectionId: string; purpose?: "mail" | "chat" }) {
+    if (
+      input.purpose !== undefined &&
+      input.purpose !== "mail" &&
+      input.purpose !== "chat"
+    )
+      throw Error("Unknown attachment purpose.");
     const row = await this.selected(input.selectionId);
-    if (row.size > 5 * 1024 * 1024) throw Error("Choose a file up to 5 MiB.");
+    const limit =
+      input.purpose === "chat" ? MAX_CHAT_IMAGE_INTAKE_BYTES : 5 * 1024 * 1024;
+    if (row.blob.size > limit)
+      throw Error(
+        input.purpose === "chat"
+          ? "Choose a file up to 20 MiB."
+          : "Choose a file up to 5 MiB.",
+      );
     const bytes = new Uint8Array(await row.blob.arrayBuffer());
     await this.selected(input.selectionId);
     let raw = "";
