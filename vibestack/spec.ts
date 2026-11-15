@@ -17,6 +17,7 @@ import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofF
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, indent, packageScripts, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
+import { availableDirectory, linkProjectSkills, skillRoot } from "./skill-links.ts";
 
 export { readSpecs, parseSpec, expandListHelpers, type Spec, type Rule, type Story } from "./parse.ts";
 export { pending, pendingKey, pendingContracts, acceptReviews, acceptContracts, dependencies, type Lock, type Pending } from "./review.ts";
@@ -427,30 +428,17 @@ export function init(root: string, warn: (message: string) => void = (message) =
     if (existing && !existing.isDirectory()) return;
     const source = path.join(pkg, directory);
     for (const name of fs.readdirSync(source).sort()) {
+      if (name === ".DS_Store") continue;
       const file = `${directory}/${name}`;
       const entry = fs.lstatSync(path.join(source, name));
       if (entry.isDirectory()) addSkillFiles(file);
       else if (entry.isFile()) add(file, () => fs.readFileSync(path.join(source, name)));
     }
   };
-  const skillRoot = ".claude/skills";
-  const license = `${skillRoot}/LICENSE.pstack`;
-  add(license, () => fs.readFileSync(path.join(pkg, license)));
-  const skills = fs.readdirSync(path.join(pkg, skillRoot), { withFileTypes: true })
-    .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  for (const name of skills) {
-    const source = `${skillRoot}/${name}`;
-    if (!fs.statSync(path.join(pkg, source, "SKILL.md"), { throwIfNoEntry: false })?.isFile()) continue;
-    addSkillFiles(source);
-    const installed = path.join(root, source);
-    if (!fs.statSync(installed, { throwIfNoEntry: false })?.isDirectory() ||
-      !fs.statSync(path.join(installed, "SKILL.md"), { throwIfNoEntry: false })?.isFile()) continue;
-    const link = path.join(root, `.agents/skills/${name}`);
-    if (!fs.lstatSync(link, { throwIfNoEntry: false })) {
-      fs.mkdirSync(path.dirname(link), { recursive: true });
-      fs.symlinkSync(path.relative(path.dirname(link), path.join(root, source)), link, "dir");
-      done.push(`.agents/skills/${name}`);
-    }
+  const hasClaudeDirectory = availableDirectory(path.join(root, ".claude"), warn);
+  if (hasClaudeDirectory) {
+    addSkillFiles(skillRoot);
+    done.push(...linkProjectSkills(root, warn));
   }
   add("SPEC.md", () => fs.readFileSync(path.join(pkg, "SPEC.md"), "utf8"));
   const referenceDir = "vibestack/reference";
@@ -459,7 +447,7 @@ export function init(root: string, warn: (message: string) => void = (message) =
     add(file, () => fs.readFileSync(path.join(pkg, file)));
   }
   // The repository's own guard for what the tools write; the rules about this repository's tools stay behind.
-  add(".claude/settings.json", () => {
+  if (hasClaudeDirectory) add(".claude/settings.json", () => {
     const { permissions } = JSON.parse(fs.readFileSync(path.join(pkg, ".claude/settings.json"), "utf8")) as { permissions: { deny: string[]; ask: string[] } };
     return JSON.stringify({ permissions: { ...permissions, deny: permissions.deny.filter((rule) => !rule.includes("/vibestack/")) } }, null, 2) + "\n";
   });

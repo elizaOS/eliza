@@ -41,7 +41,7 @@ The canonical skill files are in `.claude/skills/`, including `sync`,
 `shell`, `prove`, `design`, `architect` and the [principles](#principles).
 Claude Code reads them there. The shared `.agents/skills/` directory has one
 relative link per skill for agents such as Codex. Edit the canonical files
-and give each new skill a matching link in `.agents/skills/`.
+and run `pnpm install` or `spec init` to create missing links in the project.
 
 A skill's name and description are only its discovery metadata. Before
 the work listed in [Where the rest is](#where-the-rest-is), read the matching
