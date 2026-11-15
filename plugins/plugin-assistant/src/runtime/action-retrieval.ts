@@ -6,17 +6,20 @@
  */
 
 import {
+  type Action,
   collectPreparedKeywordTermMatches,
   logger,
   matchActionWildcardParts,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
+  promotedSubactionParent,
 } from "@elizaos/core";
 import {
   type ActionCatalog,
   type ActionCatalogParent,
   normalizeActionName,
 } from "./action-catalog";
+import { nativeOwnedDomains } from "./native-owned-domains.ts";
 export type RetrievalStageName =
   | "exact"
   | "regex"
@@ -144,8 +147,9 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
   RUN_SCRIPT: ["SHELL", "TERMINAL_SHELL"],
   RUN_PYTHON: ["SHELL", "TERMINAL_SHELL"],
   // Todo-shaped candidates hint BOTH todo owners: the personal-assistant
-  // umbrella and plugin-todos' TODO parent. Deployments load one or the
-  // other; the resolver keeps whichever is registered. Without these the
+  // umbrella and plugin-todos' TODO parent. Only one is registered: the host
+  // withholds plugin-todos' TODO action when the personal assistant loads, so
+  // the resolver keeps whichever exists. Without these the
   // names Stage-1 actually emits ("add a todo: buy milk" → CREATE_TODO,
   // "what todos do i have" → USER_TODOS_READ, live trajectories
   // tj-060255231afe39 / tj-06105af841e1c1) resolve to nothing — the
@@ -186,13 +190,15 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
   OWNER_REMINDERS: ["TRIGGER"],
   OWNER_ALARMS: ["TRIGGER"],
   OWNER_ROUTINES: ["TRIGGER"],
-  // Alarm-shaped candidates: same dual hint as reminders/habits — the
-  // owner umbrella plus the always-registered TRIGGER scheduler.
-  ADD_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  SET_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  ALARM_CREATE: ["OWNER_ALARMS", "TRIGGER"],
-  WAKE_ME_UP: ["OWNER_ALARMS", "TRIGGER"],
+  // Alarm-shaped candidates hint the device Clock proposal first: it is the
+  // only path that rings, and it validates only on an authenticated device
+  // turn, so hosts without one keep the owner umbrella plus the
+  // always-registered TRIGGER scheduler.
+  ADD_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  SET_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  CREATE_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  ALARM_CREATE: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  WAKE_ME_UP: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
   // Coding/repo-shaped candidates bind to the TASKS coding umbrella. Stage-1
   // invents CODE_*/PR spellings for repo asks ("add a one-line description to
   // the readme and put up a pr" → CODE_EDIT + CODE_PR_CREATE, live
@@ -347,7 +353,7 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
   OWNER_DELETE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
   OWNER_CREATE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
   OWNER_DELETE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  OWNER_CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+  OWNER_CREATE_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
   OWNER_DELETE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
   OWNER_CREATE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
   // Bare "SEARCH" is a routine Stage-1 invention for open-web asks ("latest
@@ -1215,10 +1221,48 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
   }
   return aliases;
 }
+const DEVICE_REMINDER_TOOLS_BY_OPERATION: ReadonlyArray<
+  [RegExp, readonly string[]]
+> = [
+  [/(?:^|_)(?:CANCEL|DELETE|REMOVE)(?:_|$)/, ["DEVICE_REMINDER_CANCEL"]],
+  [/(?:^|_)(?:COMPLETE|DONE|FINISH)(?:_|$)/, ["DEVICE_REMINDER_COMPLETE"]],
+  [/(?:^|_)SNOOZE(?:_|$)/, ["DEVICE_REMINDER_SNOOZE"]],
+  [
+    /(?:^|_)(?:UPDATE|CHANGE|EDIT|FIX|RESCHEDULE)(?:_|$)/,
+    ["DEVICE_REMINDER_UPDATE"],
+  ],
+  [/(?:^|_)(?:LIST|READ|GET|SHOW)(?:_|$)/, ["DEVICE_REMINDER_READ"]],
+];
+
+/**
+ * A domain the host's native store owns (ELIZA_NATIVE_OWNED_DOMAINS) has its
+ * owner surface withheld, so its hints must not fall back to TRIGGER: alarms
+ * go to the reviewed Clock handoff and reminders (and to-dos, when native) to
+ * the device reminder tools.
+ */
+function nativeOwnedParentAliases(
+  normalized: string,
+  aliases: readonly string[],
+): readonly string[] {
+  const domains = nativeOwnedDomains();
+  if (domains.size === 0) return aliases;
+  const names = (name: string) => normalized === name || aliases.includes(name);
+  if (domains.has("alarms") && names("OWNER_ALARMS"))
+    return ["PROPOSE_DEVICE_ACTION"];
+  if (
+    (domains.has("reminders") && names("OWNER_REMINDERS")) ||
+    (domains.has("todos") && (names("OWNER_TODOS") || names("TODO")))
+  ) {
+    for (const [operation, tools] of DEVICE_REMINDER_TOOLS_BY_OPERATION)
+      if (operation.test(normalized)) return tools;
+    return ["DEVICE_REMINDER_CREATE", "DEVICE_REMINDER_CREATE_AFTER"];
+  }
+  return aliases;
+}
 function explicitParentAliasesForCandidateAction(actionName: string): string[] {
   const normalized = normalizeActionName(actionName);
   const explicit = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
-  if (explicit) return [...explicit];
+  if (explicit) return [...nativeOwnedParentAliases(normalized, explicit)];
   // Arithmetic-shaped inventions (CALC_RESULT, DO_MATH, MULTIPLY_NUMBERS …)
   // are open-ended — Stage 1 produces a fresh spelling per turn — so they
   // hint the deterministic evaluator by family; admission still passes
@@ -1346,15 +1390,13 @@ function hasOnlyOperationTokens(tokens: Set<string>): boolean {
 /** Once-per-process dedupe for the ambiguous-simile warn — the resolver runs
  *  on every retrieval and the catalog is stable within a process. */
 const warnedAmbiguousSimiles = new Set<string>();
-/** Normalized similes claimed by MORE than one catalog parent — routing on
- * one of these steals the intent from the other parent (#16561), so both the
- * simile resolver and the shape-heuristic alias fallback must refuse them. */
-function collectAmbiguousSimiles(
+/** Each normalized simile with the catalog parents that claim it. A simile
+ *  equal to a parent name is left out: it must not hijack that parent. */
+function collectSimileClaims(
   parents: readonly ActionCatalogParent[],
-): Set<string> {
+): Map<string, ActionCatalogParent[]> {
   const parentNames = new Set(parents.map((parent) => parent.normalizedName));
-  const claimed = new Map<string, string>();
-  const ambiguous = new Set<string>();
+  const claims = new Map<string, ActionCatalogParent[]>();
   for (const parent of parents) {
     const ownSimiles = new Set(
       [
@@ -1366,15 +1408,40 @@ function collectAmbiguousSimiles(
       }),
     );
     for (const normalized of ownSimiles) {
-      const claimedBy = claimed.get(normalized);
-      if (claimedBy !== undefined && claimedBy !== parent.normalizedName) {
-        ambiguous.add(normalized);
-        continue;
-      }
-      claimed.set(normalized, parent.normalizedName);
+      const claimers = claims.get(normalized);
+      if (claimers) claimers.push(parent);
+      else claims.set(normalized, [parent]);
     }
   }
-  return ambiguous;
+  return claims;
+}
+/** A simile claimed by MORE than one catalog parent is ambiguous: routing on
+ * it steals the intent from the other parent (#16561, e.g. LIST_FILES on a
+ * file-ops and a stored-media action), so both the simile resolver and the
+ * shape-heuristic alias fallback refuse it. The exception is an umbrella name
+ * that every claimer was promoted from: without the umbrella in the catalog it
+ * hints that family (live 2026-11-01: CALENDAR on CALENDAR_CREATE_EVENT and
+ * CALENDAR_DELETE_EVENT). */
+function isAmbiguousSimileClaim(
+  simile: string,
+  claimers: readonly ActionCatalogParent[],
+): boolean {
+  return (
+    claimers.length > 1 &&
+    !claimers.every((parent) => {
+      const umbrella = promotedSubactionParent(parent.source as Action);
+      return umbrella !== undefined && normalizeActionName(umbrella) === simile;
+    })
+  );
+}
+function collectAmbiguousSimiles(
+  parents: readonly ActionCatalogParent[],
+): Set<string> {
+  return new Set(
+    [...collectSimileClaims(parents)].flatMap(([simile, claimers]) =>
+      isAmbiguousSimileClaim(simile, claimers) ? [simile] : [],
+    ),
+  );
 }
 function resolveSimileParentHints(
   parents: readonly ActionCatalogParent[],
@@ -1383,56 +1450,43 @@ function resolveSimileParentHints(
   if (candidateActions.length === 0) {
     return [];
   }
-  const parentNames = new Set(parents.map((parent) => parent.normalizedName));
-  const parentBySimile = new Map<string, string>();
-  // A simile claimed by MORE than one parent is ambiguous and must not route
-  // at all (#16561): first-writer-wins silently steals the intent from the
-  // other parent (catalog order is alphabetical, not semantic — e.g. a
-  // LIST_FILES simile on both a file-ops action and a stored-media action).
+  const claims = collectSimileClaims(parents);
   // The warn dedupes per process: this resolver runs on every retrieval.
-  const ambiguousSimiles = new Set<string>();
-  for (const parent of parents) {
-    const ownSimiles = new Set(
-      [
-        ...parent.similes,
-        ...parent.children.flatMap((child) => child.similes),
-      ].flatMap((simile) => {
-        const normalized = normalizeActionName(simile);
-        // A simile that collides with a real parent name must not hijack it.
-        return !normalized || parentNames.has(normalized) ? [] : [normalized];
-      }),
+  for (const [simile, claimers] of claims) {
+    if (
+      warnedAmbiguousSimiles.has(simile) ||
+      !isAmbiguousSimileClaim(simile, claimers)
+    )
+      continue;
+    warnedAmbiguousSimiles.add(simile);
+    logger.warn(
+      {
+        src: "action-retrieval",
+        simile,
+        parents: claimers.map((parent) => parent.normalizedName),
+      },
+      "simile claimed by multiple parents — dropped from routing as ambiguous",
     );
-    for (const normalized of ownSimiles) {
-      const claimedBy = parentBySimile.get(normalized);
-      if (claimedBy !== undefined && claimedBy !== parent.normalizedName) {
-        if (!warnedAmbiguousSimiles.has(normalized)) {
-          warnedAmbiguousSimiles.add(normalized);
-          logger.warn(
-            {
-              src: "action-retrieval",
-              simile: normalized,
-              parents: [claimedBy, parent.normalizedName],
-            },
-            "simile claimed by multiple parents — dropped from routing as ambiguous",
-          );
-        }
-        ambiguousSimiles.add(normalized);
-        continue;
-      }
-      parentBySimile.set(normalized, parent.normalizedName);
-    }
   }
-  for (const normalized of ambiguousSimiles) {
-    parentBySimile.delete(normalized);
-  }
-  return candidateActions.flatMap((actionName) => {
+  const resolved = candidateActions.flatMap((actionName) => {
     const normalized = normalizeActionName(actionName);
-    if (!normalized || parentNames.has(normalized)) {
-      return [];
-    }
-    const parent = parentBySimile.get(normalized);
-    return parent ? [parent] : [];
+    const claimers = claims.get(normalized);
+    return claimers && !isAmbiguousSimileClaim(normalized, claimers)
+      ? [claimers.map((parent) => parent.normalizedName)]
+      : [];
   });
+  // An operation named beside its umbrella stays the precise hint; the family
+  // hint would only tie it with every sibling.
+  const parentNames = new Set(parents.map((parent) => parent.normalizedName));
+  const precise = new Set([
+    ...candidateActions
+      .map(normalizeActionName)
+      .filter((name) => parentNames.has(name)),
+    ...resolved.flatMap((names) => (names.length === 1 ? names : [])),
+  ]);
+  return resolved.flatMap((names) =>
+    names.length > 1 && names.some((name) => precise.has(name)) ? [] : names,
+  );
 }
 export function candidateNamespaceParentExists(
   parents: readonly Pick<ActionCatalogParent, "normalizedName">[],

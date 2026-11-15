@@ -4,8 +4,9 @@
  * state — from the local agent API or the runtime's own stores — and formats a
  * compact, agent-readable brief for a given `ConversationScope`.
  *
- * A leaf module by design: it depends only on `@elizaos/core`, `@elizaos/core`,
- * and API-layer types, never on providers or services. Both the page-scoped
+ * A leaf module by design: it depends only on `@elizaos/core`, API-layer types,
+ * the self-API caller and the pure trigger/workbench readers, never on
+ * providers or services. Both the page-scoped
  * context provider (`page-scoped-context.ts`) and the proactive-interaction
  * decider (`../services/proactive-interaction-decider.ts`) consume it, so keeping
  * it a leaf avoids a providers ↔ services import cycle (#13587).
@@ -26,12 +27,12 @@ import {
   type IAgentRuntime,
   logger,
   type RegistryAppInfo,
+  type Task,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import {
-  createSelfApiRequestHeaders,
-  resolveSelfApiBaseUrl,
-} from "@elizaos/host/protocol";
+import { toWorkbenchTask } from "@elizaos/host/protocol";
+import { callSelfApi } from "../api/self-api.ts";
+import { readTriggerConfig } from "../triggers/runtime.ts";
 
 async function renderCharacterLiveState(
   runtime: IAgentRuntime,
@@ -57,23 +58,29 @@ async function renderCharacterLiveState(
   return lines.join("\n");
 }
 async function fetchLocalJson<T>(
+  runtime: IAgentRuntime,
   path: string,
   timeoutMs = 1500,
 ): Promise<T | null> {
-  // The bearer goes only to this process's own listener, never to guessed
-  // candidate ports where an unrelated local process could capture it.
-  const url = `${resolveSelfApiBaseUrl(process.env)}${path}`;
+  // Over HTTP only to this process's own listener; with no listener the
+  // route runs in process, so the bearer never reaches a port another app
+  // could have bound. The page-scoped provider is OWNER-gated and the
+  // proactive judge is internal, which is what the root bearer granted.
   try {
-    const response = await fetch(url, {
-      headers: createSelfApiRequestHeaders(),
-      signal: AbortSignal.timeout(timeoutMs),
+    const response = await callSelfApi({
+      runtime,
+      path,
+      isAuthorized: () => true,
+      timeoutMs,
     });
-    if (response.ok) return (await response.json()) as T;
+    if (response.status >= 200 && response.status < 300) {
+      return response.body as T;
+    }
   } catch (err) {
     // error-policy:J4 local-API unavailability — an unreachable self-API
     // returns null, which every caller renders as an explicit "unavailable
     // from the … API" line (agent-visible, not silence).
-    logger.debug({ err, url }, "[PageScopedLiveState] local API unreachable");
+    logger.debug({ err, path }, "[PageScopedLiveState] local API unreachable");
   }
   return null;
 }
@@ -130,9 +137,13 @@ async function renderBrowserLiveState(
     return null;
   }
 }
-async function renderAppsLiveState(): Promise<string | null> {
-  const catalogApps =
-    await fetchLocalJson<RegistryAppInfo[]>("/api/catalog/apps");
+async function renderAppsLiveState(
+  runtime: IAgentRuntime,
+): Promise<string | null> {
+  const catalogApps = await fetchLocalJson<RegistryAppInfo[]>(
+    runtime,
+    "/api/catalog/apps",
+  );
   if (!catalogApps) {
     return "Live apps state: unavailable from the Apps API.";
   }
@@ -170,11 +181,13 @@ function hasPositiveAmount(value: string | null | undefined): boolean {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) && parsed > 0;
 }
-async function renderWalletLiveState(): Promise<string | null> {
+async function renderWalletLiveState(
+  runtime: IAgentRuntime,
+): Promise<string | null> {
   const [config, balances, nfts] = await Promise.all([
-    fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
-    fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
-    fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
+    fetchLocalJson<WalletConfigStatus>(runtime, "/api/wallet/config"),
+    fetchLocalJson<WalletBalancesResponse>(runtime, "/api/wallet/balances"),
+    fetchLocalJson<WalletNftsResponse>(runtime, "/api/wallet/nfts"),
   ]);
   if (!config && !balances && !nfts) {
     return "Live wallet state: unavailable from the Wallet API.";
@@ -198,8 +211,15 @@ async function renderWalletLiveState(): Promise<string | null> {
     );
   }
   const assetLines: string[] = [];
+  // A chain whose balance read failed is unknown, not empty: name it and drop
+  // the inventory total rather than count it as zero.
+  const unavailableChains: string[] = [];
   if (balances?.evm) {
     for (const chain of balances.evm.chains) {
+      if (chain.error) {
+        unavailableChains.push(chain.chain);
+        continue;
+      }
       if (hasPositiveAmount(chain.nativeBalance)) {
         assetLines.push(`${chain.nativeBalance} ${chain.nativeSymbol}`);
       }
@@ -211,19 +231,31 @@ async function renderWalletLiveState(): Promise<string | null> {
     }
   }
   if (balances?.solana) {
-    if (hasPositiveAmount(balances.solana.solBalance)) {
-      assetLines.push(`${balances.solana.solBalance} SOL`);
-    }
-    for (const token of balances.solana.tokens) {
-      if (hasPositiveAmount(token.balance)) {
-        assetLines.push(`${token.balance} ${token.symbol}`);
+    const solanaError = (balances.solana as { error?: unknown }).error;
+    if (solanaError) {
+      unavailableChains.push("Solana");
+    } else {
+      if (hasPositiveAmount(balances.solana.solBalance)) {
+        assetLines.push(`${balances.solana.solBalance} SOL`);
+      }
+      for (const token of balances.solana.tokens) {
+        if (hasPositiveAmount(token.balance)) {
+          assetLines.push(`${token.balance} ${token.symbol}`);
+        }
       }
     }
   }
+  for (const chain of unavailableChains) {
+    lines.push(`- Balances unavailable for ${toWellFormedUnicode(chain)}.`);
+  }
   if (balances?.evm || balances?.solana) {
-    lines.push(
-      `- Token inventory: ${assetLines.length} asset${assetLines.length === 1 ? "" : "s"}.`,
-    );
+    if (unavailableChains.length === 0) {
+      lines.push(
+        `- Token inventory: ${assetLines.length} asset${assetLines.length === 1 ? "" : "s"}.`,
+      );
+    } else if (assetLines.length > 0) {
+      lines.push("- Token inventory (partial):");
+    }
     for (const asset of assetLines) {
       lines.push(`  - ${asset}`);
     }
@@ -239,24 +271,50 @@ async function renderWalletLiveState(): Promise<string | null> {
   }
   return lines.join("\n");
 }
+function describeTriggerSchedule(
+  trigger: NonNullable<ReturnType<typeof readTriggerConfig>>,
+): string {
+  if (trigger.triggerType === "interval" && trigger.intervalMs) {
+    const mins = Math.round(trigger.intervalMs / 60_000);
+    return mins >= 60 ? `every ${Math.round(mins / 60)}h` : `every ${mins}m`;
+  }
+  if (trigger.triggerType === "cron" && trigger.cronExpression) {
+    return `cron: ${trigger.cronExpression}`;
+  }
+  if (trigger.triggerType === "once") return "one-time";
+  return trigger.triggerType;
+}
+/**
+ * Only user-visible automations: triggers by display name and workbench tasks.
+ * Internal queue rows (TRIGGER_DISPATCH, maintenance) are skipped, matching the
+ * ongoing-tasks provider and the automations feed.
+ */
+function formatAutomationLine(task: Task): string | null {
+  const trigger = readTriggerConfig(task);
+  if (trigger) {
+    const status = trigger.enabled ? "active" : "paused";
+    return `- [${status}] ${toWellFormedUnicode(trigger.displayName)} (${describeTriggerSchedule(trigger)})`;
+  }
+  const workbench = toWorkbenchTask(task);
+  if (!workbench) return null;
+  const status = workbench.isCompleted ? "completed" : "active";
+  return `- [${status}] ${toWellFormedUnicode(workbench.name)}`;
+}
 async function renderAutomationsLiveState(
   runtime: IAgentRuntime,
 ): Promise<string | null> {
   try {
     const tasks = await runtime.getTasks({ agentIds: [runtime.agentId] });
-    if (tasks.length === 0) return "Live automations state: no tasks defined.";
-    const lines: string[] = [
-      `Live automations state: ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`,
-    ];
-    for (const task of tasks) {
-      const name = task.name;
-      const tagList =
-        Array.isArray(task.tags) && task.tags.length > 0
-          ? ` [${task.tags.join(", ")}]`
-          : "";
-      lines.push(`- ${name}${tagList}`);
+    const entries = tasks
+      .map(formatAutomationLine)
+      .filter((line): line is string => line !== null);
+    if (entries.length === 0) {
+      return "Live automations state: no automations defined.";
     }
-    return lines.join("\n");
+    return [
+      `Live automations state: ${entries.length} automation${entries.length === 1 ? "" : "s"}.`,
+      ...entries,
+    ].join("\n");
   } catch (err) {
     // error-policy:J4 explicit user-facing degrade — a failing task read must
     // not blank the whole context; the automations section is omitted and the
@@ -266,6 +324,20 @@ async function renderAutomationsLiveState(
   }
 }
 const KNOWLEDGE_LIVE_STATE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// Newest documents read per render. Counts hitting the cap render as "at least".
+const DOCUMENTS_LIVE_STATE_LIMIT = 500;
+function readRecentDocuments(runtime: IAgentRuntime) {
+  return runtime.getMemories({
+    tableName: "documents",
+    // Scope to THIS agent so a shared/multi-agent adapter does not count
+    // another agent's attachment/transcript records into this page's context.
+    agentId: runtime.agentId,
+    limit: DOCUMENTS_LIVE_STATE_LIMIT,
+    orderBy: "createdAt",
+    orderDirection: "desc",
+    includeEmbedding: false,
+  });
+}
 const ATTACHMENT_DOCUMENT_TAG = "attachment";
 const MEDIA_FORMAT_TAG_PREFIX = "media-format:";
 const TRANSCRIPT_DOCUMENT_TAG = "transcript";
@@ -313,13 +385,10 @@ async function renderKnowledgeLiveState(
   let recentAttachments = 0;
   let recentTranscripts = 0;
   const byFormat = new Map<string, number>();
+  let capped = false;
   try {
-    const batch = await runtime.getMemories({
-      tableName: "documents",
-      // Scope to THIS agent so a shared/multi-agent adapter does not count
-      // another agent's attachment/transcript records into this page's context.
-      agentId: runtime.agentId,
-    });
+    const batch = await readRecentDocuments(runtime);
+    capped = batch.length >= DOCUMENTS_LIVE_STATE_LIMIT;
     for (const memory of batch) {
       if (memory.agentId && memory.agentId !== runtime.agentId) continue;
       const metadata = (memory.metadata ?? undefined) as
@@ -343,8 +412,9 @@ async function renderKnowledgeLiveState(
     runtime.reportError("PageScopedContext.knowledgeLiveState", err);
     return "Live knowledge state: unavailable (documents store unreachable).";
   }
+  const atLeast = capped ? "at least " : "";
   const lines: string[] = [
-    `Live knowledge state (last 7 days): ${recentAttachments} ingested chat attachment${recentAttachments === 1 ? "" : "s"}, ${recentTranscripts} transcript mirror${recentTranscripts === 1 ? "" : "s"}.`,
+    `Live knowledge state (last 7 days): ${atLeast}${recentAttachments} ingested chat attachment${recentAttachments === 1 ? "" : "s"}, ${atLeast}${recentTranscripts} transcript mirror${recentTranscripts === 1 ? "" : "s"}.`,
   ];
   if (byFormat.size > 0) {
     const parts = [...byFormat.entries()]
@@ -369,11 +439,10 @@ async function renderTranscriptsLiveState(
   const windowStart = now - KNOWLEDGE_LIVE_STATE_WINDOW_MS;
   let recentTranscripts = 0;
   let newestAt: number | undefined;
+  let capped = false;
   try {
-    const batch = await runtime.getMemories({
-      tableName: "documents",
-      agentId: runtime.agentId,
-    });
+    const batch = await readRecentDocuments(runtime);
+    capped = batch.length >= DOCUMENTS_LIVE_STATE_LIMIT;
     for (const memory of batch) {
       if (memory.agentId && memory.agentId !== runtime.agentId) continue;
       const metadata = (memory.metadata ?? undefined) as
@@ -393,10 +462,12 @@ async function renderTranscriptsLiveState(
     return "Live transcript state: unavailable (transcript store unreachable).";
   }
   if (recentTranscripts === 0) {
-    return "Live transcript state (last 7 days): no recorded transcripts yet.";
+    return capped
+      ? `Live transcript state (last 7 days): no recorded transcripts among the newest ${DOCUMENTS_LIVE_STATE_LIMIT} documents.`
+      : "Live transcript state (last 7 days): no recorded transcripts yet.";
   }
   const lines: string[] = [
-    `Live transcript state (last 7 days): ${recentTranscripts} recorded transcript${recentTranscripts === 1 ? "" : "s"}.`,
+    `Live transcript state (last 7 days): ${capped ? "at least " : ""}${recentTranscripts} recorded transcript${recentTranscripts === 1 ? "" : "s"}.`,
   ];
   if (typeof newestAt === "number") {
     const minutesAgo = Math.max(0, Math.round((now - newestAt) / 60000));
@@ -426,13 +497,13 @@ export async function renderLiveStateForScope(
     case "automation-draft":
       return renderAutomationsLiveState(runtime);
     case "page-apps":
-      return renderAppsLiveState();
+      return renderAppsLiveState(runtime);
     case "page-connectors":
     case "page-plugins":
     case "page-settings":
       return null;
     case "page-wallet":
-      return renderWalletLiveState();
+      return renderWalletLiveState(runtime);
     default:
       return null;
   }

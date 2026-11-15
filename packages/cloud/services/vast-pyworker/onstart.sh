@@ -266,7 +266,6 @@ LLAMA_ARGS=(
     --ctx-size "$LLAMA_CONTEXT"
     --parallel "$LLAMA_PARALLEL"
     --metrics
-    --log-disable
 )
 if is_truthy "$LLAMA_FLASH_ATTN"; then
   LLAMA_ARGS+=(-fa on)

@@ -3,9 +3,7 @@
  *
  * The default registry contains only Eliza-owned downloads
  * (source: "eliza-download") written on successful completion by the
- * curated bundle downloader. External scans are developer-only diagnostics
- * behind `ELIZA_LOCAL_INFERENCE_ENABLE_EXTERNAL_SCAN=1`; they never enter
- * first-run, setup, or normal Settings surfaces.
+ * curated bundle downloader.
  */
 
 import crypto from "node:crypto";
@@ -20,7 +18,7 @@ import {
 	resolveLocalInferenceStoredPath,
 	toLocalInferenceStoredPath,
 } from "./paths";
-import { type InstalledModel, withRuntimeClass } from "./types";
+import type { InstalledModel } from "./types";
 
 interface RegistryFile {
 	version: 1;
@@ -54,14 +52,6 @@ export class RegistryUnreadableError extends Error {
 		this.filePath = filePath;
 	}
 }
-
-const EXTERNAL_SCAN_CACHE_TTL_MS = 5_000;
-
-let externalScanCache: {
-	expiresAt: number;
-	models: InstalledModel[];
-} | null = null;
-let externalScanPromise: Promise<InstalledModel[]> | null = null;
 
 async function ensureRootDir(): Promise<void> {
 	await fs.mkdir(localInferenceRoot(), { recursive: true });
@@ -289,12 +279,6 @@ function serializeElizaOwnedModel(model: InstalledModel): StoredInstalledModel {
 	};
 }
 
-function externalScanEnabled(): boolean {
-	const value =
-		process.env.ELIZA_LOCAL_INFERENCE_ENABLE_EXTERNAL_SCAN?.trim().toLowerCase();
-	return value === "1" || value === "true" || value === "yes";
-}
-
 function isSubpath(target: string, root: string): boolean {
 	const relative = path.relative(root, target);
 	return (
@@ -332,51 +316,12 @@ async function resolveRemovableElizaPath(
 	}
 }
 
-async function scanExternalModelsCached(): Promise<InstalledModel[]> {
-	const now = Date.now();
-	if (externalScanCache && externalScanCache.expiresAt > now) {
-		return externalScanCache.models;
-	}
-	externalScanPromise ??= scanExternalModels()
-		.then((models) => {
-			externalScanCache = {
-				expiresAt: Date.now() + EXTERNAL_SCAN_CACHE_TTL_MS,
-				models,
-			};
-			return models;
-		})
-		.finally(() => {
-			externalScanPromise = null;
-		});
-	return externalScanPromise;
-}
-
 /**
- * Return models currently usable by the curated local-inference path.
- *
- * Normal product behavior is Eliza-1 only. The external scan remains available
- * only to developers who explicitly opt into the old arbitrary-GGUF diagnostic
- * path with `ELIZA_LOCAL_INFERENCE_ENABLE_EXTERNAL_SCAN=1`. External scans are
- * cached briefly and shared while in flight because model-hub UI refreshes can
- * arrive in bursts during active downloads.
+ * Return models currently usable by the curated local-inference path:
+ * the Eliza-owned downloads only.
  */
 export async function listInstalledModels(): Promise<InstalledModel[]> {
-	const owned = await readElizaOwnedHealed();
-	if (!externalScanEnabled()) return owned;
-
-	// Filter out Eliza-owned files that also survived a reboot of the local
-	// file and got re-detected by the scanner.
-	const external = await scanExternalModelsCached();
-	const ownedPaths = new Set(owned.map((m) => path.resolve(m.path)));
-	const dedupedExternal = external.filter(
-		(m) => !ownedPaths.has(path.resolve(m.path)),
-	);
-
-	// Backfill `runtimeClass` once, at the canonical read boundary: legacy
-	// registry rows and freshly scanned external models predate the field.
-	// Downstream (dispatcher, load-arg resolver, UI) reads the field rather
-	// than re-deriving the class from the id.
-	return [...owned, ...dedupedExternal].map(withRuntimeClass);
+	return readElizaOwnedHealed();
 }
 
 /** Add or update a Eliza-owned entry. External entries are rejected. */

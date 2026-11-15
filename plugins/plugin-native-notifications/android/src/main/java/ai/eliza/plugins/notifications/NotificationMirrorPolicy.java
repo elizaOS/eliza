@@ -1,9 +1,13 @@
 package ai.eliza.plugins.notifications;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.ToLongFunction;
 
 /**
  * Framework-free decisions for the opt-in notification mirror. No notification content is kept
@@ -21,6 +25,28 @@ public final class NotificationMirrorPolicy {
     public Rejected(String message) {
       super(message);
     }
+  }
+  /** Admits one active row: its selected app, or null when the row is not mirrored. */
+  public interface Admit<T, A> {
+    A admit(T row) throws Exception;
+  }
+  /**
+   * The newest MAX_ACTIVE admitted rows with their apps, newest first. Older admitted rows are left
+   * out, so a busy app never makes the whole list unreadable.
+   */
+  public static <T, A> List<Map.Entry<T, A>> newest(
+      T[] rows, ToLongFunction<T> postTime, Admit<T, A> admit) throws Exception {
+    T[] sorted = rows.clone();
+    Arrays.sort(sorted, Comparator.comparingLong(postTime).reversed());
+    List<Map.Entry<T, A>> out = new ArrayList<>();
+    for (T row : sorted) {
+      if (out.size() >= MAX_ACTIVE)
+        break;
+      A app = admit.admit(row);
+      if (app != null)
+        out.add(Map.entry(row, app));
+    }
+    return out;
   }
   /**
    * The listener may observe only while the owner enabled it, did not pause it and Android granted

@@ -1,0 +1,41 @@
+{
+  "name": "@elizaos/cloud-deploy",
+  "version": "2.0.6",
+  "type": "module",
+  "description": "Renders a product's Cloud configuration (API, login, speech and admission Workers, Pages) from a deployment file.",
+  "bin": {
+    "cloud-deploy": "src/cli.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "README.md",
+    "src",
+    "!src/**/*.test.ts",
+    "deployments",
+    "examples"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint:check": "bunx @biomejs/biome check ."
+  },
+  "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
+}

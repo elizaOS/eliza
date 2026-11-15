@@ -31,7 +31,6 @@ import { NAVIGATE_VIEW_EVENT } from "../../events";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { usesAndroidLp3SharedBrowserStorage } from "../../platform/android-runtime";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
@@ -71,6 +70,16 @@ import {
   formatWeiForDisplay,
   truncateMessageForDisplay,
 } from "./browser-wallet-consent-format";
+import {
+  browserWorkspaceWalletGrantKey,
+  parseBrowserWorkspaceInputUrl,
+  resolveBrowserWorkspaceSite,
+  resolveBrowserWorkspaceVaultAutofill,
+} from "./browser-workspace-host-identity";
+import {
+  summarizeEvmTransaction,
+  summarizeSolanaTransaction,
+} from "./browser-workspace-tx-summary";
 import {
   type BrowserWorkspaceWalletState,
   buildBrowserWorkspaceWalletState,
@@ -144,17 +153,7 @@ const BROWSER_NATIVE_SURFACE_PLACEMENT = deriveSurfacePlacement(
 );
 const BROWSER_NATIVE_SURFACE_POLICY =
   BROWSER_NATIVE_SURFACE_PLACEMENT.target === "native-surface"
-    ? {
-        ...BROWSER_NATIVE_SURFACE_PLACEMENT.policy,
-        // LP3's WebView 113 has an out-of-app renderer but no multi-profile
-        // API. The dedicated fallback build therefore explicitly requests the
-        // plugin's supported shared Browser profile. This is not a native
-        // silent downgrade: every other build keeps the manifest-derived
-        // isolated storage policy and still fails closed when unsupported.
-        storage: usesAndroidLp3SharedBrowserStorage()
-          ? ("shared" as const)
-          : BROWSER_NATIVE_SURFACE_PLACEMENT.policy.storage,
-      }
+    ? BROWSER_NATIVE_SURFACE_PLACEMENT.policy
     : (() => {
         throw new Error(
           "Browser surface manifest must declare native-webview isolation to host native mobile tab surfaces",
@@ -183,12 +182,23 @@ const BROWSER_WORKSPACE_TAB_MASK_SELECTORS = [
 // used by this view. Inlined so this file typechecks identically from any
 // package that consumes app source — the full type lives in
 // node_modules/electrobun/dist/api/browser/webviewtag.ts.
+// The tag forwards the tab's committed main-frame URL (event detail is the URL
+// string) on these events. Host messages are page-authored and never name
+// the site.
+const WEBVIEW_TAG_NAVIGATION_EVENTS = [
+  "did-navigate",
+  "did-navigate-in-page",
+  "did-commit-navigation",
+] as const;
+type WebviewTagEventName =
+  | "host-message"
+  | (typeof WEBVIEW_TAG_NAVIGATION_EVENTS)[number];
 type WebviewTagElement = HTMLElement & {
   loadURL(url: string): void;
   reload(): void;
   executeJavascript(js: string): void;
-  on(event: "host-message", handler: (event: CustomEvent) => void): void;
-  off(event: "host-message", handler: (event: CustomEvent) => void): void;
+  on(event: WebviewTagEventName, handler: (event: CustomEvent) => void): void;
+  off(event: WebviewTagEventName, handler: (event: CustomEvent) => void): void;
   /**
    * Synchronizes the OOPIF's frame with the anchor's `getBoundingClientRect()`.
    * The tag auto-syncs on its own resize, but layout changes outside the
@@ -363,29 +373,24 @@ export function normalizeBrowserWorkspaceInputUrl(
       }),
     );
   }
-  const candidate = trimmed.startsWith("/")
-    ? new URL(resolveApiUrl(trimmed), window.location.origin).toString()
-    : /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
-      ? trimmed
-      : `https://${trimmed}`;
-  let parsed: URL;
-  try {
-    parsed = new URL(candidate);
-  } catch {
-    throw new Error(
-      t("browserworkspace.InvalidUrl", {
-        defaultValue: "Enter a valid http or https URL.",
-      }),
-    );
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+  const parsed = parseBrowserWorkspaceInputUrl(
+    trimmed.startsWith("/")
+      ? new URL(resolveApiUrl(trimmed), window.location.origin).toString()
+      : trimmed,
+  );
+  if (parsed.ok) return parsed.url;
+  if (parsed.reason === "unsupported") {
     throw new Error(
       t("browserworkspace.UnsupportedProtocol", {
         defaultValue: "Only http and https URLs are supported.",
       }),
     );
   }
-  return parsed.toString();
+  throw new Error(
+    t("browserworkspace.InvalidUrl", {
+      defaultValue: "Enter a valid http or https URL.",
+    }),
+  );
 }
 function readBrowserWorkspaceQueryParam(name: string): string | null {
   if (typeof window === "undefined") return null;
@@ -662,7 +667,7 @@ function BrowserWorkspaceForAuthority({
   );
   const pendingTabExecsRef = useRef(
     new Map<
-      number,
+      string,
       {
         resolve: (value: {
           ok: boolean;
@@ -673,17 +678,23 @@ function BrowserWorkspaceForAuthority({
       }
     >(),
   );
-  const tabExecCounterRef = useRef(0);
   const tabChainIdRef = useRef(new Map<string, number>());
   const browserWalletStateRef = useRef<BrowserWorkspaceWalletState | null>(
     null,
   );
-  // Per-session "the user already allowed this domain to read accounts"
-  // set. EIP-1193 dApps poll `eth_accounts` after connect; without this
-  // the consent modal would re-prompt on every poll. Cleared when the
-  // workspace unmounts (i.e. app restart). A persistent vault-backed
-  // version is a follow-up — see Phase 2 brief.
-  const walletConnectAllowedDomainsRef = useRef<Set<string>>(new Set());
+  // Per-session "the user already allowed this site to read accounts"
+  // set, keyed `<walletKind>:<origin>`. EIP-1193 dApps poll `eth_accounts`
+  // after connect; without this the consent modal would re-prompt on every
+  // poll. Cleared when the workspace unmounts (i.e. app restart). A
+  // persistent vault-backed version is a follow-up — see Phase 2 brief.
+  const walletConnectGrantsRef = useRef<Set<string>>(new Set());
+  // Committed URL per desktop tab, from the tag's navigation events. Vault
+  // autofill and wallet consent take the site from here, never from the
+  // page's own message.
+  const tabCommittedUrlsRef = useRef(new Map<string, string>());
+  const tabNavigationHandlersRef = useRef(
+    new Map<string, (event: CustomEvent) => void>(),
+  );
   // Ref-mirror of the selected tab id so the register callback (which is
   // memoized on handleTabHostMessage only) can read the current selection
   // without a fresh closure each render.
@@ -1374,7 +1385,7 @@ function BrowserWorkspaceForAuthority({
       protocol: "evm" | "solana";
       method: string;
       params: unknown;
-      hostname: string;
+      topFrame: boolean;
     }): Promise<void> => {
       const tag = electrobunWebviewRefs.current.get(req.tabId);
       const reply = (payload: { result?: unknown; error?: string }): void => {
@@ -1388,7 +1399,24 @@ function BrowserWorkspaceForAuthority({
         reply({ error: "Wallet state not yet loaded." });
         return;
       }
-      const domain = (req.hostname || "this site").trim();
+      // The site is the tab's committed URL, never the page's claim. A
+      // subframe or a tab whose URL cannot be read gets no wallet access.
+      const readSite = () =>
+        resolveBrowserWorkspaceSite(tabCommittedUrlsRef.current.get(req.tabId));
+      const site = req.topFrame ? readSite() : null;
+      if (!site) {
+        reply({ error: "Could not verify this site." });
+        return;
+      }
+      const domain = site.label;
+      const grantKey = browserWorkspaceWalletGrantKey(req.protocol, site);
+      // Consent counts only if the tab is still on the same origin after
+      // the dialog closes.
+      const confirmOnSite = async (
+        options: Parameters<typeof walletActionConfirm>[0],
+      ): Promise<boolean> =>
+        (await walletActionConfirm(options)) &&
+        readSite()?.origin === site.origin;
       try {
         const evmAddress = walletState.evmAddress;
         const solanaAddress = walletState.solanaAddress;
@@ -1402,8 +1430,8 @@ function BrowserWorkspaceForAuthority({
                 return;
               }
               const allowed =
-                walletConnectAllowedDomainsRef.current.has(domain) ||
-                (await walletActionConfirm({
+                walletConnectGrantsRef.current.has(grantKey) ||
+                (await confirmOnSite({
                   title: `Connect Eliza wallet to ${domain}`,
                   message: `${domain} is requesting your wallet address. Allow it to read ${formatAddressForDisplay(evmAddress)}?`,
                   confirmLabel: "Connect",
@@ -1413,7 +1441,7 @@ function BrowserWorkspaceForAuthority({
                 reply({ error: "User rejected wallet connection." });
                 return;
               }
-              walletConnectAllowedDomainsRef.current.add(domain);
+              walletConnectGrantsRef.current.add(grantKey);
               reply({ result: [evmAddress] });
               return;
             }
@@ -1426,7 +1454,7 @@ function BrowserWorkspaceForAuthority({
               // the dApp is already authorized to use; an unauthorized
               // dApp must see [], not a prompt. We honour that here so
               // we don't block silent polls behind a consent dialog.
-              if (!walletConnectAllowedDomainsRef.current.has(domain)) {
+              if (!walletConnectGrantsRef.current.has(grantKey)) {
                 reply({ result: [] });
                 return;
               }
@@ -1487,7 +1515,7 @@ function BrowserWorkspaceForAuthority({
                 });
                 return;
               }
-              const allowed = await walletActionConfirm({
+              const allowed = await confirmOnSite({
                 title: `${domain} wants to sign a message`,
                 message: `Message preview:\n\n${truncateMessageForDisplay(decodeSignableMessage(message))}\n\nAllow signing?`,
                 confirmLabel: "Sign",
@@ -1553,9 +1581,10 @@ function BrowserWorkspaceForAuthority({
                     : tx.value
                   : "0";
               const to = typeof tx.to === "string" ? tx.to : "";
-              const allowed = await walletActionConfirm({
+              const summary = summarizeEvmTransaction({ to, data: tx.data });
+              const allowed = await confirmOnSite({
                 title: `${domain} wants to send a transaction`,
-                message: `From: ${formatAddressForDisplay(evmAddress ?? "")}\nTo: ${formatAddressForDisplay(to)}\nValue: ${formatWeiForDisplay(value)}\nChain: ${chainId}\n\nAllow this transaction?`,
+                message: `From: ${formatAddressForDisplay(evmAddress ?? "")}\nValue: ${formatWeiForDisplay(value)}\nChain: ${chainId}\n${summary.lines.join("\n")}${summary.warning ? `\n\n${summary.warning}` : ""}\n\nAllow this transaction?`,
                 confirmLabel: "Send",
                 cancelLabel: "Reject",
               });
@@ -1594,8 +1623,8 @@ function BrowserWorkspaceForAuthority({
                 return;
               }
               const allowed =
-                walletConnectAllowedDomainsRef.current.has(domain) ||
-                (await walletActionConfirm({
+                walletConnectGrantsRef.current.has(grantKey) ||
+                (await confirmOnSite({
                   title: `Connect Eliza Solana wallet to ${domain}`,
                   message: `${domain} is requesting your Solana address. Allow it to read ${formatAddressForDisplay(solanaAddress)}?`,
                   confirmLabel: "Connect",
@@ -1605,7 +1634,7 @@ function BrowserWorkspaceForAuthority({
                 reply({ error: "User rejected wallet connection." });
                 return;
               }
-              walletConnectAllowedDomainsRef.current.add(domain);
+              walletConnectGrantsRef.current.add(grantKey);
               reply({ result: { publicKey: solanaAddress } });
               return;
             }
@@ -1635,7 +1664,7 @@ function BrowserWorkspaceForAuthority({
                 (messageBase64
                   ? decodeBase64ForPreview(messageBase64)
                   : "(no message preview available)");
-              const allowed = await walletActionConfirm({
+              const allowed = await confirmOnSite({
                 title: `${domain} wants to sign a Solana message`,
                 message: `Message preview:\n\n${truncateMessageForDisplay(previewSource)}\n\nAllow signing?`,
                 confirmLabel: "Sign",
@@ -1708,9 +1737,11 @@ function BrowserWorkspaceForAuthority({
                   ? `Chain: ${chain.trim()}`
                   : null,
               ].filter(Boolean);
-              const allowed = await walletActionConfirm({
+              const summary =
+                await summarizeSolanaTransaction(transactionBase64);
+              const allowed = await confirmOnSite({
                 title: `${domain} wants to ${willBroadcast ? "send" : "sign"} a Solana transaction`,
-                message: `From: ${formatAddressForDisplay(solanaAddress ?? "")}${solanaDetails.length ? `\n${solanaDetails.join("\n")}` : ""}\n${willBroadcast ? "Will broadcast on submit." : "Returns the signed bytes to the dApp; the dApp may broadcast."}\n\nAllow?`,
+                message: `From: ${formatAddressForDisplay(solanaAddress ?? "")}${solanaDetails.length ? `\n${solanaDetails.join("\n")}` : ""}\n${summary.lines.join("\n")}${summary.warning ? `\n\n${summary.warning}` : ""}\n\n${willBroadcast ? "Will broadcast on submit." : "Returns the signed bytes to the dApp; the dApp may broadcast."}\n\nAllow?`,
                 confirmLabel: willBroadcast ? "Send" : "Sign",
                 cancelLabel: "Reject",
               });
@@ -1919,91 +1950,43 @@ function BrowserWorkspaceForAuthority({
   const handleTabVaultAutofillRequest = useCallback(
     async (req: {
       tabId: string;
-      requestId: number;
-      domain: string;
-      url: string;
+      requestId: string;
+      claimedDomain: string | null;
+      topFrame: boolean;
       fieldHints: ReadonlyArray<{
         kind: "username" | "password";
         selector: string;
       }>;
     }): Promise<void> => {
       const tag = electrobunWebviewRefs.current.get(req.tabId);
-      const reply = (payload: {
-        fields?: Record<string, string>;
-        error?: string;
-      }): void => {
+      // `__elizaVaultFill` is pinned by the preload before page scripts
+      // run, so the page cannot swap in its own handler.
+      const fill = (fields: Record<string, string>): void => {
         if (!tag) return;
         tag.executeJavascript(
-          `window.__elizaVaultReply(${JSON.stringify(req.requestId)}, ${JSON.stringify(payload)})`,
+          `window.__elizaVaultFill(${JSON.stringify(req.requestId)}, ${JSON.stringify(fields)})`,
         );
       };
-      const userHint = req.fieldHints.find((h) => h.kind === "username");
-      const passwordHint = req.fieldHints.find((h) => h.kind === "password");
-      if (!passwordHint) {
-        // No password slot — nothing to autofill.
-        reply({ fields: {} });
-        return;
-      }
       try {
-        // Aggregate from every signed-in backend. The manager filters by
-        // domain (case-insensitive); external adapters list everything
-        // and filter client-side because their CLIs don't accept a
-        // domain filter.
-        const { logins } = await client.listSavedLogins(req.domain);
-        // The manager already filters by domain, but we double-check
-        // here against the registrable hostname. External entries with
-        // a missing or non-matching domain are dropped — they aren't
-        // valid candidates for this form.
-        const requestDomain = req.domain.toLowerCase();
-        const candidates = logins.filter(
-          (l) =>
-            typeof l.domain === "string" &&
-            l.domain.toLowerCase() === requestDomain,
+        const outcome = await resolveBrowserWorkspaceVaultAutofill(
+          {
+            topFrame: req.topFrame,
+            claimedDomain: req.claimedDomain,
+            fieldHints: req.fieldHints,
+          },
+          {
+            readTabUrl: () =>
+              tabCommittedUrlsRef.current.get(req.tabId) ?? null,
+            listSavedLogins: (domain) => client.listSavedLogins(domain),
+            getAutofillAllowed: (domain) => client.getAutofillAllowed(domain),
+            confirm: vaultAutofillConfirm,
+            revealSavedLogin: (login) =>
+              client.revealSavedLogin(login.source, login.identifier),
+          },
         );
-        if (candidates.length === 0) {
-          reply({ fields: {} });
-          return;
-        }
-        // Pick the most-recently-modified entry; first-save flows typically
-        // have one entry per domain.
-        const sorted = [...candidates].sort(
-          (a, b) => b.updatedAt - a.updatedAt,
-        );
-        const chosen = sorted[0];
-        if (!chosen) {
-          reply({ fields: {} });
-          return;
-        }
-        const sourceLabel =
-          chosen.source === "1password"
-            ? "1Password"
-            : chosen.source === "bitwarden"
-              ? "Bitwarden"
-              : "local vault";
-        const allowed = await client.getAutofillAllowed(req.domain);
-        const consented =
-          allowed ||
-          (await vaultAutofillConfirm({
-            title: `Autofill ${req.domain}`,
-            message: `Sign in as ${chosen.username || chosen.title} from ${sourceLabel}?\n\nEliza will fill the saved username and password for this site.`,
-            confirmLabel: "Allow",
-            cancelLabel: "Deny",
-          }));
-        if (!consented) {
-          reply({ fields: {} });
-          return;
-        }
-        const reveal = await client.revealSavedLogin(
-          chosen.source,
-          chosen.identifier,
-        );
-        const fields: Record<string, string> = {};
-        if (userHint) fields[userHint.selector] = reveal.username;
-        fields[passwordHint.selector] = reveal.password;
-        reply({ fields });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        reply({ error: message });
+        fill("fields" in outcome ? outcome.fields : {});
+      } catch {
+        fill({});
       }
     },
     [vaultAutofillConfirm],
@@ -2013,17 +1996,15 @@ function BrowserWorkspaceForAuthority({
       const detail = event.detail as
         | {
             type?: string;
-            requestId?: number;
+            requestId?: string | number;
             ok?: boolean;
             result?: unknown;
             error?: string;
             protocol?: "evm" | "solana";
             method?: string;
             params?: unknown;
-            origin?: string;
-            hostname?: string;
+            topFrame?: boolean;
             domain?: string;
-            url?: string;
             fieldHints?: Array<{
               kind?: string;
               selector?: string;
@@ -2034,7 +2015,7 @@ function BrowserWorkspaceForAuthority({
       if (!detail || typeof detail.type !== "string") return;
       if (
         detail.type === "__elizaTabExecResult" &&
-        typeof detail.requestId === "number"
+        typeof detail.requestId === "string"
       ) {
         const pending = pendingTabExecsRef.current.get(detail.requestId);
         if (!pending) return;
@@ -2050,6 +2031,7 @@ function BrowserWorkspaceForAuthority({
       if (
         detail.type === "__elizaWalletRequest" &&
         typeof detail.requestId === "number" &&
+        (detail.protocol === "evm" || detail.protocol === "solana") &&
         typeof detail.protocol === "string" &&
         typeof detail.method === "string"
       ) {
@@ -2059,15 +2041,13 @@ function BrowserWorkspaceForAuthority({
           protocol: detail.protocol,
           method: detail.method,
           params: detail.params,
-          hostname: typeof detail.hostname === "string" ? detail.hostname : "",
+          topFrame: detail.topFrame === true,
         });
         return;
       }
       if (
         detail.type === "__elizaVaultAutofillRequest" &&
-        typeof detail.requestId === "number" &&
-        typeof detail.domain === "string" &&
-        typeof detail.url === "string" &&
+        typeof detail.requestId === "string" &&
         Array.isArray(detail.fieldHints)
       ) {
         const fieldHints: Array<{
@@ -2087,8 +2067,9 @@ function BrowserWorkspaceForAuthority({
         void handleTabVaultAutofillRequest({
           tabId,
           requestId: detail.requestId,
-          domain: detail.domain,
-          url: detail.url,
+          claimedDomain:
+            typeof detail.domain === "string" ? detail.domain : null,
+          topFrame: detail.topFrame === true,
           fieldHints,
         });
       }
@@ -2100,17 +2081,22 @@ function BrowserWorkspaceForAuthority({
       const previous = electrobunWebviewRefs.current.get(tabId);
       const previousHandler =
         electrobunHostMessageHandlersRef.current.get(tabId);
-      if (previous && previous !== element) {
-        if (previousHandler) {
-          previous.off("host-message", previousHandler);
+      const previousNavigationHandler =
+        tabNavigationHandlersRef.current.get(tabId);
+      const detach = (tag: WebviewTagElement): void => {
+        if (previousHandler) tag.off("host-message", previousHandler);
+        if (previousNavigationHandler) {
+          for (const name of WEBVIEW_TAG_NAVIGATION_EVENTS) {
+            tag.off(name, previousNavigationHandler);
+          }
         }
         electrobunHostMessageHandlersRef.current.delete(tabId);
-      }
+        tabNavigationHandlersRef.current.delete(tabId);
+        tabCommittedUrlsRef.current.delete(tabId);
+      };
+      if (previous && previous !== element) detach(previous);
       if (!element) {
-        if (previous && previousHandler) {
-          previous.off("host-message", previousHandler);
-        }
-        electrobunHostMessageHandlersRef.current.delete(tabId);
+        if (previous) detach(previous);
         electrobunWebviewRefs.current.delete(tabId);
         return;
       }
@@ -2119,6 +2105,20 @@ function BrowserWorkspaceForAuthority({
           handleTabHostMessage(tabId, event);
         electrobunHostMessageHandlersRef.current.set(tabId, hostMessageHandler);
         element.on("host-message", hostMessageHandler);
+        // Start from the URL the host loaded, then follow the tag's
+        // navigation events. Until a URL is known the tab gets no vault or
+        // wallet access.
+        const initialSrc = element.getAttribute("src");
+        if (initialSrc) tabCommittedUrlsRef.current.set(tabId, initialSrc);
+        const navigationHandler = (event: CustomEvent) => {
+          if (typeof event.detail === "string" && event.detail) {
+            tabCommittedUrlsRef.current.set(tabId, event.detail);
+          }
+        };
+        tabNavigationHandlersRef.current.set(tabId, navigationHandler);
+        for (const name of WEBVIEW_TAG_NAVIGATION_EVENTS) {
+          element.on(name, navigationHandler);
+        }
         // Poke the OOPIF to read fresh dimensions multiple times — the
         // tag auto-syncs only on its own ResizeObserver firing, and that
         // can miss the initial layout settle if the parent flex chain is
@@ -2222,12 +2222,20 @@ function BrowserWorkspaceForAuthority({
   useEffect(() => {
     const refs = electrobunWebviewRefs;
     const handlers = electrobunHostMessageHandlersRef;
+    const navigationHandlers = tabNavigationHandlersRef;
+    const committedUrls = tabCommittedUrlsRef;
     return () => {
       for (const [tabId, element] of refs.current.entries()) {
         try {
           const handler = handlers.current.get(tabId);
           if (element && handler) {
             element.off("host-message", handler);
+          }
+          const navigationHandler = navigationHandlers.current.get(tabId);
+          if (element && navigationHandler) {
+            for (const name of WEBVIEW_TAG_NAVIGATION_EVENTS) {
+              element.off(name, navigationHandler);
+            }
           }
           element?.toggleHidden(true);
           element?.togglePassthrough(true);
@@ -2236,12 +2244,13 @@ function BrowserWorkspaceForAuthority({
         }
       }
       handlers.current.clear();
+      navigationHandlers.current.clear();
+      committedUrls.current.clear();
     };
   }, []);
   useEffect(() => {
     const tagsRef = electrobunWebviewRefs;
     const pendingsRef = pendingTabExecsRef;
-    const counterRef = tabExecCounterRef;
     setBrowserTabsRendererImpl({
       evaluate: (id, script, timeoutMs) =>
         new Promise((resolve) => {
@@ -2253,8 +2262,9 @@ function BrowserWorkspaceForAuthority({
             });
             return;
           }
-          counterRef.current += 1;
-          const requestId = counterRef.current;
+          // Unguessable, so a page cannot post a forged result for an
+          // eval it did not run.
+          const requestId = crypto.randomUUID();
           const timer = setTimeout(() => {
             if (pendingsRef.current.delete(requestId)) {
               resolve({

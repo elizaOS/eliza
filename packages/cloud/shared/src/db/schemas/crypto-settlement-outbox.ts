@@ -2,6 +2,7 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   index,
   integer,
@@ -45,6 +46,13 @@ export const appChargeCallbackOutbox = pgTable(
   }),
 );
 
+export interface EvmSweepReceipt {
+  transactionHash: string;
+  blockHash: string;
+  blockNumber: string;
+  status: "success";
+}
+
 export const cryptoSweepOutbox = pgTable(
   "crypto_sweep_outbox",
   {
@@ -61,6 +69,11 @@ export const cryptoSweepOutbox = pgTable(
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
     last_error: text("last_error"),
     prepared_transaction: text("prepared_transaction"),
+    evm_sender: text("evm_sender"),
+    evm_chain_id: bigint("evm_chain_id", { mode: "bigint" }),
+    evm_nonce: bigint("evm_nonce", { mode: "bigint" }),
+    evm_confirmed_at: timestamp("evm_confirmed_at", { withTimezone: true }),
+    evm_confirmed_receipt: jsonb("evm_confirmed_receipt").$type<EvmSweepReceipt>(),
     sweep_transaction_hash: text("sweep_transaction_hash"),
     prepared_metadata: jsonb("prepared_metadata").$type<Record<string, unknown>>(),
     delivered_at: timestamp("delivered_at", { withTimezone: true }),
@@ -73,6 +86,29 @@ export const cryptoSweepOutbox = pgTable(
     due_idx: index("crypto_sweep_outbox_due_idx")
       .on(table.next_attempt_at, table.created_at)
       .where(sql`${table.state} IN ('pending', 'processing')`),
+    evm_confirmation_check: check(
+      "crypto_sweep_outbox_evm_confirmation_check",
+      sql`
+      (${table.evm_confirmed_at} IS NULL) = (${table.evm_confirmed_receipt} IS NULL)
+      AND (${table.evm_confirmed_at} IS NULL OR (${table.state}='delivered' AND ${table.evm_sender} IS NOT NULL))`,
+    ),
+    evm_recovery_due_idx: index("crypto_sweep_outbox_evm_recovery_due_idx")
+      .on(table.next_attempt_at, table.created_at)
+      .where(sql`${table.state} IN ('delivered','terminal') AND ${table.evm_confirmed_at} IS NULL
+        AND ${table.prepared_transaction} IS NOT NULL AND ${table.prepared_metadata}->>'network' IN ('base','bsc')`),
+    evm_legacy_idx: index("crypto_sweep_outbox_evm_legacy_idx")
+      .on(sql`(${table.prepared_metadata}->>'network')`, table.id)
+      .where(sql`${table.evm_sender} IS NULL AND ${table.prepared_transaction} IS NOT NULL`),
+    evm_nonce_unique: uniqueIndex("crypto_sweep_outbox_evm_nonce_uidx")
+      .on(table.evm_chain_id, table.evm_sender, table.evm_nonce)
+      .where(sql`${table.evm_sender} IS NOT NULL`),
+    evm_identity_check: check(
+      "crypto_sweep_outbox_evm_identity_check",
+      sql`
+      num_nonnulls(${table.evm_sender},${table.evm_chain_id},${table.evm_nonce})=0
+      OR (num_nonnulls(${table.evm_sender},${table.evm_chain_id},${table.evm_nonce})=3 AND ${table.evm_sender} ~ '^0x[0-9a-f]{40}$' AND ${table.evm_chain_id} > 0
+        AND ${table.evm_nonce} >= 0 AND ${table.prepared_transaction} IS NOT NULL)`,
+    ),
     prepared_pair_check: check(
       "crypto_sweep_outbox_prepared_pair_check",
       sql`(${table.prepared_transaction} IS NULL)

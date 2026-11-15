@@ -12,6 +12,13 @@ project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor
 
 apply from: 'capacitor.settings.gradle'
 
+// The secure-store bridge depends on its native-only module, which Capacitor does not list.
+def secureStore = findProject(':elizaos-capacitor-secure-store')
+if (secureStore) {
+    include ':elizaos-capacitor-secure-store-nativeonly'
+    project(':elizaos-capacitor-secure-store-nativeonly').projectDir = new File(secureStore.projectDir, '../android-nativeonly')
+}
+
 // Explicit image-only companion; neither module is a launcher dependency.
 include ':sense', ':sense-speech'
 

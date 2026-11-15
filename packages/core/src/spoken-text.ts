@@ -144,6 +144,7 @@ function stripResidualBalancedDirections(input: string): string {
  * separate spans (`**a** then **b** …`) is fully consumed by one pass however
  * many spans it holds, so only nesting reaches the fail-close. */
 function stripExcessiveStarDirections(input: string): string {
+	if (!input.includes("*")) return input;
 	return input
 		.split("\n")
 		.map((line) => {
@@ -173,10 +174,15 @@ function stripExcessiveStarDirections(input: string): string {
 }
 
 /** True when one peel pass consumes every star on the line, so the line holds
- * flat emphasis spans instead of nested layers the bounded peel must drop. */
+ * flat emphasis spans instead of nested layers the bounded peel must drop.
+ * Only a span whose text has no space next to its markers counts. Nested
+ * layers (`*a *b* c*`) also pair up across layers in one pass, but each such
+ * pair has a space inside a marker (`*a *`, `* c*`). */
 function starSpansSettleInOnePass(line: string, starCount: number): boolean {
 	let covered = 0;
 	for (const match of line.matchAll(STAR_SPAN_PATTERN)) {
+		const inner = match[1] ?? "";
+		if (inner.trim() !== inner) continue;
 		for (const char of match[0]) if (char === "*") covered += 1;
 	}
 	return covered === starCount;
@@ -210,8 +216,7 @@ function sanitizeSpeechPunctuation(input: string): string {
 	text = text.replace(/[…]/g, "...");
 	text = text.replace(/[–—]/g, ", ");
 	// Collapse repeated punctuation BEFORE the spacing rules separate the
-	// repeats ("Wait!!!" must speak as "Wait!", not "Wait! ! !"). Twin of
-	// The browser and Node hosts now share this implementation.
+	// repeats ("Wait!!!" must speak as "Wait!", not "Wait! ! !").
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
 	// A mark inside a number (`3.14`, `1,299`, `10:30`) is part of one spoken
 	// token: spacing it makes TTS read "3. 14" as a sentence break and two
@@ -228,7 +233,12 @@ function sanitizeSpeechPunctuation(input: string): string {
 	);
 	// U+2116 (numero sign) is speech-semantic, not punctuation: keep it so a
 	// later language-aware stage can read "№4" instead of a stripped "4".
-	text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：\u2116-]/gu, " ");
+	// Currency signs (\p{Sc}: $, €, £, ¥, ₹, …) are speech-semantic too: TTS
+	// reads "€20" as "20 euros", while a stripped sign speaks only "20".
+	text = text.replace(
+		/[^\p{L}\p{N}\p{Sc}\s.,!?'"%/:+，。！？；：\u2116-]/gu,
+		" ",
+	);
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
 	text = text.replace(/^[,;:.!?，。！？；：]+/g, " ");
 	return text;
@@ -244,6 +254,7 @@ function sanitizeSpeechPunctuation(input: string): string {
 const NUMERO_TOKEN_PATTERN = /(\u2116\s*\p{N}+)/u;
 
 function normalizeCompatibilityPreservingNumero(input: string): string {
+	if (!input.includes("\u2116")) return input.normalize("NFKC");
 	return input
 		.split(NUMERO_TOKEN_PATTERN)
 		.map((part, index) => (index % 2 === 1 ? part : part.normalize("NFKC")))

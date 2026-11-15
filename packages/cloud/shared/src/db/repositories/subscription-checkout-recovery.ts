@@ -2,7 +2,7 @@
  * Read-only primary queries for organization Plus/Pro checkout recovery and Customer Portal
  * admission. Every query is restricted to organization-level rows (no app billing scope).
  */
-import { and, asc, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { dbWrite } from "../helpers";
 import { billingSubscriptions } from "../schemas/billing-subscriptions";
 import { organizations } from "../schemas/organizations";
@@ -98,6 +98,49 @@ export class SubscriptionCheckoutRecoveryRepository {
       )
       .orderBy(asc(billingSubscriptionCommands.updated_at))
       .limit(limit);
+  }
+
+  /**
+   * Dispatched org-level checkouts of unfenced organizations, inside the provider retry horizon,
+   * that are due for a read-back so a paid session is settled without its webhook. Fenced and
+   * past-horizon checkouts belong to `listStalePendingCheckouts` and never appear here.
+   *
+   * `rotateCheckoutRecovery` stamps `updated_at` at each inspection, so the wait before the next
+   * one is the checkout's age at its last inspection, clamped to [minAge, maxBackoff]: a checkout
+   * is read at about 2, 4, 8, 16… minutes after dispatch, then every `maxBackoff`. An abandoned
+   * open checkout therefore costs a bounded number of provider reads over its lifetime.
+   */
+  async listDispatchedCheckoutsDueForInspection(input: {
+    now: Date;
+    createdAfter: Date;
+    minAgeMs: number;
+    maxBackoffMs: number;
+    limit: number;
+  }): Promise<BillingSubscriptionCommand[]> {
+    const minAge = sql`make_interval(secs => ${input.minAgeMs / 1000})`;
+    const maxBackoff = sql`make_interval(secs => ${input.maxBackoffMs / 1000})`;
+    const now = sql`${input.now.toISOString()}::timestamptz`;
+    const rows = await dbWrite
+      .select({ command: billingSubscriptionCommands })
+      .from(billingSubscriptionCommands)
+      .innerJoin(organizations, eq(organizations.id, billingSubscriptionCommands.organization_id))
+      .where(
+        and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
+          eq(billingSubscriptionCommands.kind, "checkout"),
+          eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
+          gt(billingSubscriptionCommands.created_at, input.createdAfter),
+          isNull(organizations.paid_work_fenced_at),
+          isNull(organizations.account_deletion_request_id),
+          eq(organizations.is_active, true),
+          sql`${billingSubscriptionCommands.provider_started_at} + ${minAge} <= ${now}`,
+          sql`${billingSubscriptionCommands.updated_at} + GREATEST(${minAge}, LEAST(${maxBackoff}, ${billingSubscriptionCommands.updated_at} - ${billingSubscriptionCommands.provider_started_at})) <= ${now}`,
+        ),
+      )
+      .orderBy(asc(billingSubscriptionCommands.updated_at))
+      .limit(input.limit);
+    return rows.map((row) => row.command);
   }
 
   /**

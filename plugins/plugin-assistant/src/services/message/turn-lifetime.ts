@@ -1,6 +1,7 @@
 /** Owns message-turn admission, preemption, terminal events, and the per-room delivered-reply persistence barrier. Response processing is a typed collaborator and each service instance owns its own pending writes. */
 
 import type {
+  Action,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -20,13 +21,10 @@ import {
   asUUID,
   attestDeliveryAudienceFromCanonicalRoom,
   beginTrustedDeliveryAudienceTurn,
-  ContentType,
-  createFirstSentenceStreamTracker,
   createOutboundEnvelopeStreamLatch,
   ElizaError,
   EventType,
   emitInferenceTiming,
-  extractFirstSentence,
   getInferenceTimer,
   getModelStreamChunkDeliveryDepth,
   getStreamingContext,
@@ -34,13 +32,13 @@ import {
   guardOutboundEnvelopeText,
   InferenceTurnTimer,
   logger,
-  ModelType,
   mergeEffectReceipts,
   modelStreamChunkPipelineHookContext,
   nextInferenceTurnId,
   ownerExclusiveDisclosureWasUsed,
   parseBooleanFromText,
   RunTerminalOwner,
+  resolveActionContexts,
   resolveTraceCorrelationFromEnv,
   revalidateOwnerExclusiveDisclosure,
   runWithInferenceTiming,
@@ -53,13 +51,13 @@ import {
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import { parseCodingActionProfile } from "../../runtime/coding-action-profile.ts";
+import {
+  buildRuntimeActionLookup,
+  resolveRuntimeAction,
+} from "./action-identifiers.ts";
 import { resolveStage1SenderRole } from "./addressing.js";
 import type { ResolvedMessageOptions } from "./contracts.js";
-import {
-  buildTextToSpeechParams,
-  deliverFirstSentenceVoice,
-  wrapSingleTurnVisibleCallback,
-} from "./delivery.js";
+import { wrapSingleTurnVisibleCallback } from "./delivery.js";
 import { persistInferenceTimingSummary } from "./inference-timing.js";
 import type { MessageProcessor } from "./processor.js";
 import { normalizeVisibleTextForDuplicateCheck } from "./reply-policy.js";
@@ -72,6 +70,32 @@ import {
   detachPostDeliverySideEffect,
   latestResponseIds,
 } from "./turn-session.ts";
+
+/**
+ * Content-free activity label from an unambiguous registered category. Catch-all and system contexts name no activity. Publishing without
+ * an owner-only audience check requires every listed category to be public.
+ */
+function activityStatusCategory(
+  runtime: IAgentRuntime,
+  action: Action,
+): { label: string; public: boolean } | undefined {
+  let label: string | undefined;
+  let isPublic = true;
+  const categoryLabels = new Set<string>();
+  for (const context of resolveActionContexts(action)) {
+    if (context === "general" || context === "simple") continue;
+    const definition = runtime.contexts.get(context);
+    if (definition?.sensitivity !== "public") isPublic = false;
+    if (definition?.sensitivity === "system") continue;
+    const contextLabel = definition?.label?.trim();
+    categoryLabels.add(contextLabel || context);
+    if (!label && contextLabel) label = `Using ${contextLabel}`;
+  }
+  // Shared actions such as VIEWS can target several apps. Their first category
+  // is ambiguous even if other declared categories have no registered label.
+  if (label && categoryLabels.size > 1) label = "Working";
+  return label ? { label, public: isPublic } : undefined;
+}
 
 export interface MessageTurnLifetimeHost {
   processMessage(
@@ -358,66 +382,31 @@ export class MessageTurnLifetime {
 
         // Single ID used for tracking, streaming, and the final message (before opts / chunk wrapper).
         const responseId = asUUID(v4());
+        // Transient egress (acknowledgement, activity status) belongs to this
+        // live response only: not after cancellation, preemption or the final
+        // reply's delivery.
+        const transientEgressIsCurrent = (): boolean =>
+          !(getStreamingContext()?.abortSignal ?? options?.abortSignal)
+            ?.aborted &&
+          !finalReplyDelivered &&
+          (opts.keepExistingResponses ||
+            latestResponseIds
+              .get(runtime.agentId)
+              ?.get(message.roomId)
+              ?.at(-1) === responseId);
 
-        // WHY voice detection wraps onStreamChunk here instead of using a
-        // separate AsyncLocalStorage streaming context:
-        //
-        // Previously handleMessage created a second extractor through
-        // runWithStreamingContext. Both extractors received the same raw LLM
-        // tokens in useModel and emitted independently, causing the
-        // dual-extractor garbling bug; consumers saw overlapping deltas that
-        // produced unintelligible TTS.
-        //
-        // The fix: a single structured field extractor in
-        // dynamicPromptExecFromState) now provides `accumulated` — the full
-        // extracted text — via the third StreamChunkCallback argument. Voice
-        // detection wraps the caller's callback to intercept accumulated text
-        // for first-sentence detection, then forwards to the original. This
-        // keeps voice logic in handleMessage (encapsulation) without adding a
-        // second extraction pipeline.
-        //
-        // The `streamTextFallback` path exists for action handlers or other
-        // call sites that don't provide `accumulated` (raw token streams).
+        // The turn's stream text: a structured extractor's authoritative
+        // `accumulated`, or the concatenation of raw deltas from call sites
+        // that do not provide one (action handlers, raw token streams).
+        // Clients synthesize speech from this text stream themselves.
         let planningAcknowledgmentAttempted = false;
         let finalReplyDelivered = false;
-        let firstSentenceSent = false;
-        let firstSentenceChecked = false;
-        let firstSentenceText = "";
-        const firstSentenceTracker = createFirstSentenceStreamTracker();
         let streamTextFallback = "";
         let runTerminalOwner: RunTerminalOwner | undefined;
-        const acceptFirstSentence = (first: string): void => {
-          firstSentenceChecked = true;
-          if (first.length <= 5) return;
-          firstSentenceSent = true;
-          firstSentenceText = first;
-          // Audio does not stall the text stream, but its model capture
-          // remains owned by the run-terminal barrier.
-          const deliverVoice = () =>
-            deliverFirstSentenceVoice(
-              runtime,
-              first,
-              callback,
-              options?.abortSignal,
-            );
-          if (!runTerminalOwner) {
-            throw new ElizaError(
-              "Voice streaming requires a live run terminal owner",
-              {
-                code: "RUN_TERMINAL_OWNER_REQUIRED",
-                context: {
-                  messageId: message.id,
-                  roomId: message.roomId,
-                },
-              },
-            );
-          }
-          runTerminalOwner.track("first-sentence-voice", deliverVoice);
-        };
         // Envelope-echo latch for this turn's stream: once the accumulated
         // text reads as envelope material, every downstream chunk consumer
-        // (model_stream_chunk hook re-emission, first-sentence TTS, the
-        // host's stream callback) is cut off. Chunks forwarded before the
+        // (model_stream_chunk hook re-emission, the host's stream callback)
+        // is cut off. Chunks forwarded before the
         // needle completed are already delivered — that residue is the
         // documented open edge in security/outbound-envelope-guard.ts.
         const streamCarriesEnvelope = createOutboundEnvelopeStreamLatch(
@@ -435,8 +424,8 @@ export class MessageTurnLifetime {
                   return;
                 }
                 let streamText: string;
-                // If we have accumulated text, also sync streamTextFallback so the
-                // fallback path has accurate state if the stream source later changes.
+                // Keep raw-delta accumulation in step with an authoritative
+                // accumulation in case the stream source later changes.
                 if (accumulated !== undefined) {
                   streamTextFallback = accumulated;
                   streamText = accumulated;
@@ -466,25 +455,6 @@ export class MessageTurnLifetime {
                   );
                 }
 
-                // First-sentence cloud-TTS path (deliverFirstSentenceVoice —
-                // the local-inference voice loop is a separate layer, see its
-                // JSDoc). Only run detection when `accumulated` is present:
-                // raw-token streams (no accumulated) may contain partial
-                // structured output that would garble sentence detection and
-                // TTS.
-                if (
-                  !firstSentenceChecked &&
-                  accumulated !== undefined &&
-                  firstSentenceTracker.push(
-                    chunk,
-                    accumulated,
-                    streamRevision,
-                  ) !== undefined
-                ) {
-                  const { first } = extractFirstSentence(streamText);
-                  acceptFirstSentence(first);
-                }
-
                 await userOnStreamChunk(
                   chunk,
                   messageId,
@@ -508,17 +478,7 @@ export class MessageTurnLifetime {
             ? async (text) => {
                 // The existing model-authored acknowledgement remains turn-owned:
                 // await audience revalidation before any irreversible speech.
-                const signal =
-                  getStreamingContext()?.abortSignal ?? options.abortSignal;
-                const isCurrent = () =>
-                  !signal?.aborted &&
-                  !finalReplyDelivered &&
-                  !firstSentenceSent &&
-                  (opts.keepExistingResponses ||
-                    latestResponseIds
-                      .get(runtime.agentId)
-                      ?.get(message.roomId)
-                      ?.at(-1) === responseId);
+                const isCurrent = transientEgressIsCurrent;
                 if (
                   planningAcknowledgmentAttempted ||
                   !text.trim() ||
@@ -595,6 +555,60 @@ export class MessageTurnLifetime {
           recordDeliveredVisibleText,
           async () => opts.prepareReplyRecovery?.(),
         );
+
+        // One content-free status per activity, in order. Its label is the
+        // action's registered category, never arguments or results. Unless the
+        // category is public and nothing owner-exclusive was used or gated, it
+        // is published only after the audience revalidates (fail closed).
+        let activityStatusTail: Promise<void> = Promise.resolve();
+        let lastActivityLabel: string | undefined;
+        const announceActivity = options?.onActivityStatus
+          ? (toolName: string): Promise<void> => {
+              const announced = activityStatusTail.then(async () => {
+                const action = resolveRuntimeAction(
+                  buildRuntimeActionLookup(runtime),
+                  toolName,
+                );
+                const category = action
+                  ? activityStatusCategory(runtime, action)
+                  : undefined;
+                if (
+                  !action ||
+                  !category ||
+                  category.label === lastActivityLabel ||
+                  !transientEgressIsCurrent()
+                )
+                  return;
+                if (
+                  !category.public ||
+                  action.disclosureGate ||
+                  ownerExclusiveDisclosureWasUsed(message)
+                ) {
+                  const audience = await revalidateOwnerExclusiveDisclosure(
+                    runtime,
+                    message,
+                  );
+                  if (!audience.allowed || !transientEgressIsCurrent()) return;
+                }
+                lastActivityLabel = category.label;
+                await options.onActivityStatus?.({
+                  actionName: action.name,
+                  label: category.label,
+                });
+              });
+              activityStatusTail = announced.catch(() => undefined);
+              return announced;
+            }
+          : undefined;
+        const onToolCall = async (
+          payload: StreamingToolCallPayload,
+        ): Promise<void> => {
+          await announceActivity?.(payload.toolCall.name);
+          await opts.onStreamChunk?.(
+            JSON.stringify({ type: "tool_call", ...payload }),
+            responseId,
+          );
+        };
 
         // A host route may open the timer before calling the message service so
         // augmentation and response normalization share this same timeline.
@@ -719,12 +733,7 @@ export class MessageTurnLifetime {
                   ...(opts.abortSignal
                     ? { abortSignal: opts.abortSignal }
                     : {}),
-                  onToolCall: async (payload: StreamingToolCallPayload) => {
-                    await opts.onStreamChunk?.(
-                      JSON.stringify({ type: "tool_call", ...payload }),
-                      responseId,
-                    );
-                  },
+                  onToolCall,
                   onToolResult: async (payload: StreamingToolResultPayload) => {
                     await opts.onStreamChunk?.(
                       JSON.stringify({ type: "tool_result", ...payload }),
@@ -754,6 +763,7 @@ export class MessageTurnLifetime {
                     messageId: responseId,
                     abortSignal: opts.abortSignal,
                     reportError: runtime.reportError.bind(runtime),
+                    ...(announceActivity ? { onToolCall } : {}),
                   }
                 : undefined;
           const processingPromise = runtime.turnControllers.runWith(
@@ -783,6 +793,7 @@ export class MessageTurnLifetime {
                         modelAttemptTurnId: message.id,
                         abortSignal,
                         reportError: runtime.reportError.bind(runtime),
+                        ...(announceActivity ? { onToolCall } : {}),
                       }
                     : undefined;
               return runWithInferenceTiming(inferenceTimer, () =>
@@ -803,79 +814,6 @@ export class MessageTurnLifetime {
 
           const { terminalStatus, terminalFailure, ...result } =
             await processingPromise;
-          if (
-            !firstSentenceChecked &&
-            firstSentenceTracker.finish() !== undefined &&
-            result.responseContent?.text
-          ) {
-            acceptFirstSentence(
-              extractFirstSentence(result.responseContent.text).first,
-            );
-          }
-
-          // Voice: Handle the rest of the message
-          if (firstSentenceSent && result.responseContent?.text) {
-            const fullText = result.responseContent.text;
-            const rest = fullText.replace(firstSentenceText, "").trim();
-            if (rest.length > 0) {
-              // Synthesis remains detached from visible delivery, but its model
-              // capture belongs to this run and must settle before RUN_ENDED.
-              runTerminalOwner.track("remaining-voice", async () => {
-                try {
-                  let audioBuffer: Buffer | null = null;
-                  const params = buildTextToSpeechParams(
-                    runtime,
-                    rest,
-                    opts.abortSignal,
-                  );
-                  const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
-                    ? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
-                    : undefined;
-                  if (
-                    result instanceof ArrayBuffer ||
-                    Object.prototype.toString.call(result) ===
-                      "[object ArrayBuffer]"
-                  ) {
-                    audioBuffer = Buffer.from(result as ArrayBuffer);
-                  } else if (Buffer.isBuffer(result)) {
-                    audioBuffer = result;
-                  } else if (result instanceof Uint8Array) {
-                    audioBuffer = Buffer.from(result);
-                  }
-
-                  if (audioBuffer && instrumentedCallback) {
-                    const audioBase64 = audioBuffer.toString("base64");
-                    await instrumentedCallback({
-                      text: "",
-                      attachments: [
-                        {
-                          id: v4(),
-                          url: `data:audio/wav;base64,${audioBase64}`,
-                          title: "Voice Response",
-                          source: "voice",
-                          description: "Voice response for remaining text",
-                          text: rest,
-                          contentType: ContentType.AUDIO,
-                        },
-                      ],
-                      source: "voice",
-                    });
-                  }
-                } catch (error) {
-                  // error-policy:J4 The text response is complete even
-                  // when its optional trailing voice attachment fails.
-                  runtime.logger.error(
-                    { error },
-                    "Error generating voice for remaining text",
-                  );
-                  runtime.reportError("MessageService.remainingVoice", error, {
-                    roomId: message.roomId,
-                  });
-                }
-              });
-            }
-          }
-
           const effects = mergeEffectReceipts(
             runTerminalOwner.effects,
             ...(result.actionResults ?? []).map(

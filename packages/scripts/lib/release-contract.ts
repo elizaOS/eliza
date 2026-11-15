@@ -334,6 +334,19 @@ function normalizeBins(value, packageName) {
   return bins;
 }
 
+/** Remove workspace-only export conditions without changing runtime condition order. */
+export function publishedExports(value) {
+  if (Array.isArray(value)) return value.map(publishedExports);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([condition]) => condition !== "eliza-source")
+        .map(([condition, target]) => [condition, publishedExports(target)]),
+    );
+  }
+  return normalizeJson(value);
+}
+
 export function collectEntrypointMetadata(packageJson) {
   const packageName = packageJson.name;
   if (typeof packageName !== "string" || packageName.length === 0) {
@@ -352,7 +365,7 @@ export function collectEntrypointMetadata(packageJson) {
   const exportsMetadata =
     packageJson.exports === undefined
       ? null
-      : normalizeJson(packageJson.exports);
+      : publishedExports(packageJson.exports);
   return {
     packageType,
     main: optionalString(packageJson.main, "main", packageName),

@@ -19,7 +19,20 @@ import {
   AgentBackupRestoreV3RootIdentitiesSchema,
   canonicalizeAgentBackupRestoreV3ServingValue,
 } from "@elizaos/contracts/node";
-import { and, asc, eq, isNull, lte, notInArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  exists,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 import { runtimeIdentitySchema } from "../../lib/services/sandbox-runtime-observation";
 import type { DbTransaction } from "../client";
@@ -1232,8 +1245,10 @@ export interface AgentBackupRestoreTerminalCleanup {
 }
 
 /**
- * Terminally failed restores whose provider-settled container still holds
- * the agent's replacement fence and its node slot, oldest first.
+ * Terminally failed restores whose exact attempt still holds the replacement
+ * fence and node slot. A lost provider response may leave the Docker ID null.
+ * Selection rotates the existing updated_at scheduling marker before I/O so
+ * permanently unavailable nodes cannot monopolize a bounded cleanup page.
  */
 export async function listAgentBackupRestoreTerminalCleanups(params: {
   ownerId: string;
@@ -1242,42 +1257,67 @@ export async function listAgentBackupRestoreTerminalCleanups(params: {
   if (!Number.isSafeInteger(params.limit) || params.limit < 1 || params.limit > 100) {
     conflict("limit must be an integer between 1 and 100");
   }
-  const rows = await dbWrite
-    .select({ id: agentBackupRestoreOperations.id })
-    .from(agentBackupRestoreOperations)
-    .innerJoin(
-      agentSandboxReplacementAttempts,
-      and(
-        eq(
-          agentSandboxReplacementAttempts.organization_id,
-          agentBackupRestoreOperations.organization_id,
+  return dbWrite.transaction(async (tx) => {
+    const rows = await tx
+      .select({ id: agentBackupRestoreOperations.id })
+      .from(agentBackupRestoreOperations)
+      .where(
+        and(
+          eq(agentBackupRestoreOperations.phase, "failed_terminal"),
+          eq(agentBackupRestoreOperations.lease_owner_id, params.ownerId),
+          isNull(agentBackupRestoreOperations.route_published_at),
+          exists(
+            tx
+              .select({ id: agentSandboxReplacementAttempts.id })
+              .from(agentSandboxReplacementAttempts)
+              .where(
+                and(
+                  eq(
+                    agentSandboxReplacementAttempts.organization_id,
+                    agentBackupRestoreOperations.organization_id,
+                  ),
+                  eq(
+                    agentSandboxReplacementAttempts.agent_id,
+                    agentBackupRestoreOperations.agent_id,
+                  ),
+                  eq(
+                    agentSandboxReplacementAttempts.restore_attempt_id,
+                    agentBackupRestoreOperations.restore_attempt_id,
+                  ),
+                  eq(
+                    agentSandboxReplacementAttempts.restore_lease_id,
+                    agentBackupRestoreOperations.lease_id,
+                  ),
+                  sql`${agentSandboxReplacementAttempts.state} IN ('in_flight_unresolved', 'provider_succeeded', 'cleanup_in_progress')`,
+                ),
+              ),
+          ),
         ),
-        eq(agentSandboxReplacementAttempts.agent_id, agentBackupRestoreOperations.agent_id),
-        eq(
-          agentSandboxReplacementAttempts.restore_attempt_id,
-          agentBackupRestoreOperations.restore_attempt_id,
-        ),
-        eq(
-          agentSandboxReplacementAttempts.locator_container_id,
-          agentBackupRestoreOperations.expected_container_id,
-        ),
-      ),
-    )
-    .where(
-      and(
-        eq(agentBackupRestoreOperations.phase, "failed_terminal"),
-        eq(agentBackupRestoreOperations.lease_owner_id, params.ownerId),
-        isNull(agentBackupRestoreOperations.route_published_at),
-        sql`${agentSandboxReplacementAttempts.state} IN ('provider_succeeded', 'cleanup_in_progress')`,
-      ),
-    )
-    .orderBy(asc(agentBackupRestoreOperations.updated_at))
-    .limit(params.limit);
-  return Object.freeze(rows.map((row) => row.id));
+      )
+      .orderBy(asc(agentBackupRestoreOperations.updated_at), asc(agentBackupRestoreOperations.id))
+      .limit(params.limit)
+      .for("update", { skipLocked: true });
+    const ids = rows.map((row) => row.id);
+    if (ids.length > 0) {
+      // Rotate selected work before remote I/O, including failed/aborted turns.
+      // This marker is scheduling only: it never settles a proof or releases a
+      // fence. EXISTS above prevents multiple attempts duplicating a page slot.
+      await tx
+        .update(agentBackupRestoreOperations)
+        .set({ updated_at: sql`clock_timestamp()` })
+        .where(inArray(agentBackupRestoreOperations.id, ids));
+    }
+    return Object.freeze(ids);
+  });
 }
 
-async function lockTerminalCleanupAuthority(tx: DbTransaction, operationId: string) {
+async function lockTerminalCleanupAuthority(
+  tx: DbTransaction,
+  operationId: string,
+  replacementAttemptId?: string,
+) {
   requireUuid(operationId, "operationId");
+  if (replacementAttemptId !== undefined) requireUuid(replacementAttemptId, "replacementAttemptId");
   const [operation] = await tx
     .select()
     .from(agentBackupRestoreOperations)
@@ -1288,7 +1328,9 @@ async function lockTerminalCleanupAuthority(tx: DbTransaction, operationId: stri
     !operation ||
     operation.phase !== "failed_terminal" ||
     operation.route_published_at !== null ||
-    !operation.expected_container_id
+    operation.expected_node_record_id === null ||
+    operation.expected_node_incarnation === null ||
+    operation.expected_node_history_id === null
   ) {
     conflict("Restore terminal cleanup requires a failed, never-routed restore container");
   }
@@ -1304,7 +1346,7 @@ async function lockTerminalCleanupAuthority(tx: DbTransaction, operationId: stri
     .for("update")
     .limit(1);
   if (!sandbox) conflict("Restore terminal cleanup sandbox authority is missing");
-  const [attempt] = await tx
+  const attempts = await tx
     .select()
     .from(agentSandboxReplacementAttempts)
     .where(
@@ -1312,11 +1354,40 @@ async function lockTerminalCleanupAuthority(tx: DbTransaction, operationId: stri
         eq(agentSandboxReplacementAttempts.organization_id, operation.organization_id),
         eq(agentSandboxReplacementAttempts.agent_id, operation.agent_id),
         eq(agentSandboxReplacementAttempts.restore_attempt_id, operation.restore_attempt_id),
-        eq(agentSandboxReplacementAttempts.locator_container_id, operation.expected_container_id),
+        eq(agentSandboxReplacementAttempts.restore_lease_id, operation.lease_id),
+        replacementAttemptId === undefined
+          ? undefined
+          : eq(agentSandboxReplacementAttempts.id, replacementAttemptId),
+        operation.expected_container_id === null
+          ? isNull(agentSandboxReplacementAttempts.provider_receipt_digest)
+          : and(
+              isNotNull(agentSandboxReplacementAttempts.provider_receipt_digest),
+              eq(
+                agentSandboxReplacementAttempts.locator_container_id,
+                operation.expected_container_id,
+              ),
+            ),
+        sql`${agentSandboxReplacementAttempts.state} IN ('in_flight_unresolved', 'provider_succeeded', 'cleanup_in_progress', 'cleanup_proven')`,
+      ),
+    )
+    // There is at most one active fence. Historical cleanup attempts may share
+    // the operation, so replay must name its exact attempt rather than infer
+    // authority from timestamps or UUID ordering.
+    .orderBy(
+      asc(
+        sql`CASE WHEN ${agentSandboxReplacementAttempts.state} = 'cleanup_proven' THEN 1 ELSE 0 END`,
       ),
     )
     .for("update")
-    .limit(1);
+    .limit(2);
+  const attempt = attempts[0];
+  if (
+    replacementAttemptId === undefined &&
+    attempt?.state === "cleanup_proven" &&
+    attempts.length > 1
+  ) {
+    conflict("Restore terminal cleanup replay requires an exact replacement attempt");
+  }
   if (
     !attempt ||
     attempt.restore_lease_id === null ||
@@ -1339,7 +1410,21 @@ async function lockTerminalCleanupAuthority(tx: DbTransaction, operationId: stri
     attempt.locator_node_hostname === null ||
     attempt.locator_node_ssh_port === null ||
     attempt.locator_node_ssh_user === null ||
-    attempt.locator_node_host_key_fingerprint === null
+    attempt.locator_node_host_key_fingerprint === null ||
+    attempt.locator_secret_cleanup_version !== 1 ||
+    attempt.locator_allocation_counted !== true ||
+    attempt.restore_backup_id !== operation.backup_id ||
+    attempt.restore_lease_owner_id !== operation.lease_owner_id ||
+    attempt.restore_lease_generation !== operation.lease_generation ||
+    attempt.restore_catalog_epoch !== operation.catalog_epoch ||
+    attempt.restore_copy_role !== operation.copy_role ||
+    attempt.restore_operation_id !== operation.expected_operation_id ||
+    attempt.restore_source_activation_generation !== operation.expected_activation_generation ||
+    attempt.restore_source_lifecycle_revision !== operation.expected_lifecycle_revision ||
+    attempt.restore_manifest_sha256 !== operation.expected_manifest_sha256 ||
+    attempt.locator_node_record_id !== operation.expected_node_record_id ||
+    attempt.locator_node_incarnation !== operation.expected_node_incarnation ||
+    attempt.locator_node_history_id !== operation.expected_node_history_id
   ) {
     conflict("Restore terminal cleanup lacks its exact replacement locator");
   }
@@ -1398,11 +1483,13 @@ async function lockTerminalCleanupAuthority(tx: DbTransaction, operationId: stri
  */
 export async function beginAgentBackupRestoreTerminalCleanup(
   operationId: string,
+  replacementAttemptId?: string,
 ): Promise<AgentBackupRestoreTerminalCleanup> {
   return dbWrite.transaction(async (tx) => {
     const { operation, attempt, locator, boundary } = await lockTerminalCleanupAuthority(
       tx,
       operationId,
+      replacementAttemptId,
     );
     if (attempt.state === "cleanup_proven") {
       return Object.freeze({
@@ -1429,8 +1516,18 @@ export async function beginAgentBackupRestoreTerminalCleanup(
  * releases the agent's replacement fence) and the target node slot reserved
  * for the restore is released exactly once.
  */
+export class AgentBackupRestoreCleanupCapacityError extends AgentBackupCatalogConflictError {
+  readonly code = "AGENT_BACKUP_RESTORE_CLEANUP_CAPACITY_UNAVAILABLE";
+
+  constructor() {
+    super("Restore cleanup lost its exact node occurrence or counted capacity");
+    this.name = "AgentBackupRestoreCleanupCapacityError";
+  }
+}
+
 export async function finishAgentBackupRestoreTerminalCleanup(input: {
   operationId: string;
+  replacementAttemptId: string;
   receiptDigest: string;
 }): Promise<Readonly<{ replayed: boolean }>> {
   requireSha256(input.receiptDigest, "receiptDigest");
@@ -1438,6 +1535,7 @@ export async function finishAgentBackupRestoreTerminalCleanup(input: {
     const { operation, attempt, boundary, databaseNow } = await lockTerminalCleanupAuthority(
       tx,
       input.operationId,
+      input.replacementAttemptId,
     );
     if (attempt.state === "cleanup_proven") {
       if (attempt.cleanup_receipt_digest !== input.receiptDigest) {
@@ -1452,12 +1550,20 @@ export async function finishAgentBackupRestoreTerminalCleanup(input: {
     const [released] = await tx
       .update(dockerNodes)
       .set({
-        allocated_count: sql`GREATEST(${dockerNodes.allocated_count} - 1, 0)`,
+        allocated_count: sql`${dockerNodes.allocated_count} - 1`,
         updated_at: databaseNow,
       })
-      .where(eq(dockerNodes.id, attempt.locator_node_record_id!))
+      .where(
+        and(
+          eq(dockerNodes.id, attempt.locator_node_record_id!),
+          eq(dockerNodes.node_id, attempt.locator_node_id!),
+          eq(dockerNodes.node_incarnation, attempt.locator_node_incarnation!),
+          eq(dockerNodes.current_node_history_id, attempt.locator_node_history_id!),
+          gt(dockerNodes.allocated_count, 0),
+        ),
+      )
       .returning({ id: dockerNodes.id });
-    if (!released) conflict("Restore terminal cleanup target node record is missing");
+    if (!released) throw new AgentBackupRestoreCleanupCapacityError();
     if (operation.id !== input.operationId) conflict("Restore terminal cleanup identity drifted");
     return Object.freeze({ replayed: false });
   });

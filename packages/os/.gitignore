@@ -17,7 +17,6 @@ __pycache__/
 **/.gradle/
 **/Pods/
 **/DerivedData/
-toolchains/bun-riscv64/dist/
 
 # OS image and release build output
 out/

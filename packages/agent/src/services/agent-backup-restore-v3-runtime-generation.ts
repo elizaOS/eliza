@@ -15,10 +15,7 @@ import {
   parseAndValidateCharacter,
   resolveStateDir,
 } from "@elizaos/core";
-import {
-  type ElizaConfig,
-  resolveAliasedEnvValue,
-} from "@elizaos/host/protocol";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import {
   type CandidateFsDirectoryAuthority,
   controlled,
@@ -244,7 +241,7 @@ export class AgentBackupRestoreV3RuntimeGeneration {
       fail("DESTRUCTIVE_MIGRATION_FORBIDDEN");
     if (
       resolveStateDir() !== this.receipt.paths.state ||
-      resolveAliasedEnvValue("ELIZA_STATE_DIR") !== this.receipt.paths.state
+      process.env.ELIZA_STATE_DIR !== this.receipt.paths.state
     )
       fail("STATE_CONFLICT");
     if (

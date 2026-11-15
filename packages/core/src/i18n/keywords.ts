@@ -3718,17 +3718,5 @@ export const VALIDATION_KEYWORD_DOCS = {
 				tl: "gumawa ng app\ngumawa ng aplikasyon\ngawan mo ako ng app\nlumikha ng app\nlumikha ng aplikasyon\ngumawa ng website\ngumawa ng site\ngumawa ng page\ngumawa ng dashboard\ngumawa ng component\ngumawa ng script\nmagsulat ng script\ngumawa ng tool\ngumawa ng api\ngumawa ng endpoint\ngumawa ng bot\ngumawa ng plugin\ni-deploy ang server\ni-deploy ang site\ni-deploy ang bot\ni-deploy ang api\npull request\nmerge conflict\ntypescript error\nayusin ang bug\nayusin ang error\ni-debug ang bug\ni-debug ang error",
 			},
 		},
-		taskIntent: {
-			base: "create task\nadd task\nnew task\nmake task\ncomplete task\nfinish task\ndone with task\nmark task done\ndelete task\nremove task\nupdate task\nedit task\nchange task\nlist tasks\nshow tasks\nmy tasks\nwhat are my tasks\nadd a todo\nadd a to-do\ncreate a to do\ntask list\ncheck off",
-			locales: {
-				es: "crear tarea\ncrea tarea\nagregar tarea\nagrega tarea\nañadir tarea\nanadir tarea\nnueva tarea\nhacer tarea\ncompletar tarea\nterminar tarea\nmarcar tarea hecha\neliminar tarea\nborrar tarea\nquitar tarea\nactualizar tarea\neditar tarea\ncambiar tarea\nlistar tareas\nmostrar tareas\nmis tareas\ncuáles son mis tareas\ncuales son mis tareas\nagregar un pendiente\nagrega un pendiente\nlista de tareas",
-				pt: "criar tarefa\ncria tarefa\nadicionar tarefa\nadiciona tarefa\nnova tarefa\nfazer tarefa\ncompletar tarefa\nconcluir tarefa\nterminar tarefa\nmarcar tarefa feita\nexcluir tarefa\nremover tarefa\napagar tarefa\natualizar tarefa\neditar tarefa\nmudar tarefa\nlistar tarefas\nmostrar tarefas\nminhas tarefas\nquais são minhas tarefas\nquais sao minhas tarefas\nadicionar um afazer\nlista de tarefas",
-				"zh-CN":
-					"创建任务\n新建任务\n添加任务\n完成任务\n标记任务完成\n删除任务\n移除任务\n更新任务\n编辑任务\n修改任务\n列出任务\n显示任务\n我的任务\n我有什么任务\n添加待办\n新增待办\n任务列表\n勾选",
-				ko: "작업 만들기\n작업 추가\n새 작업\n작업 완료\n작업 끝내\n완료 표시\n작업 삭제\n작업 제거\n작업 업데이트\n작업 수정\n작업 변경\n작업 목록\n작업 보여줘\n내 작업\n내 할 일이 뭐야\n할 일 추가\n투두 추가\n할 일 목록\n체크 표시",
-				vi: "tạo tác vụ\ntao tac vu\ntạo nhiệm vụ\ntao nhiem vu\nthêm tác vụ\nthem tac vu\ntác vụ mới\ntac vu moi\nhoàn thành tác vụ\nhoan thanh tac vu\nkết thúc tác vụ\nket thuc tac vu\nđánh dấu hoàn thành\ndanh dau hoan thanh\nxóa tác vụ\nxoa tac vu\ngỡ tác vụ\ngo tac vu\ncập nhật tác vụ\ncap nhat tac vu\nsửa tác vụ\nsua tac vu\nthay đổi tác vụ\nthay doi tac vu\ndanh sách tác vụ\ndanh sach tac vu\nhiển thị tác vụ\nhien thi tac vu\ntác vụ của tôi\ntac vu cua toi\nthêm việc cần làm\nthem viec can lam\ndanh sách việc\ndanh sach viec",
-				tl: "gumawa ng task\nmagdagdag ng task\nbagong task\ntapusin ang task\nkumpletuhin ang task\nmarkahan tapos\nburahin ang task\ntanggalin ang task\nalisin ang task\ni-update ang task\ni-edit ang task\nbaguhin ang task\nipakita ang tasks\nilista ang tasks\nmga task ko\nano ang mga task ko\nmagdagdag ng todo\nlistahan ng task\ni-check off",
-			},
-		},
 	},
 } as const satisfies ValidationKeywordTree;

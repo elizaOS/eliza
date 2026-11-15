@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/src/services/proactive-interaction-gate.ts"],
+  "bounds": {
+    "domain": "Two surfaces, two daily emissions and abstract timer classes.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_proactive",
+      "main": "services_proactive",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

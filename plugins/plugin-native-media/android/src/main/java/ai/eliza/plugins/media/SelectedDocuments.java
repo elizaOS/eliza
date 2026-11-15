@@ -3,9 +3,22 @@ package ai.eliza.plugins.media;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.net.Uri;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.Message;
+import android.os.Messenger;
+import android.os.ParcelFileDescriptor;
+import android.os.Process;
+import android.os.RemoteException;
+import android.os.SharedMemory;
+import android.os.SystemClock;
 import com.getcapacitor.JSObject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,12 +31,17 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
- * Opaque capabilities for documents the owner selected in Android's picker. The renderer holds a
- * random selection ID, never a content URI, and every use resolves it again. Only grants Android
+ * Opaque capabilities for documents the owner selected in Android's picker. Every call names a
+ * random selection ID, resolved again on each use; a URI from the renderer is never accepted. The
+ * renderer does receive the document's content URI, which a host may pass to Capacitor's
+ * convertFileSrc for previews or scan import; it reads only through this app's existing grant, so
+ * grants and selection IDs remain the authority boundary. Only grants Android
  * actually offered are persisted; a revoked grant is forgotten and reported, never repaired. A
  * persisted grant that a saved item's source link still names (see {@link SourceReferences}) is
  * kept when its selection is forgotten or evicted. The registry is device-local and never sent to
@@ -40,14 +58,35 @@ public final class SelectedDocuments {
   private final String preferences;
   private final String previewPrefix;
   private final Predicate<String> referenced;
+  private final Class<? extends IsolatedPdfRenderService> pdfRenderer;
+  private final Handler main = new Handler(Looper.getMainLooper());
+  // One PDF preview at a time; never the registry monitor, so other calls proceed during a render.
+  private final Object rendering = new Object();
+  // Guards the renderer binding; held only briefly, from the plugin thread and the main thread.
+  private final Object binding = new Object();
+  private RendererBinding bound;
+  private int rendersInFlight;
+  private final Runnable idleUnbind = () -> {
+    synchronized (binding) {
+      if (rendersInFlight == 0)
+        unbindRenderer();
+    }
+  };
+  /** Same as the five-argument form with no PDF renderer: PDF previews are refused. */
+  public SelectedDocuments(
+      Context context, String preferencesName, String previewPrefix, Predicate<String> referenced) {
+    this(context, preferencesName, previewPrefix, referenced, null);
+  }
   /**
    * {@code preferencesName}: the host's SharedPreferences name for the selection registry.
    * {@code previewPrefix}: the file-name stem of rendered previews in the host's cache directory.
    * {@code referenced}: whether a saved item's source link still names a document URI; such a grant
    * is never released here.
+   * {@code pdfRenderer}: the host's isolated PDF renderer component, or null to refuse previews.
+   * Selected PDFs are never parsed in this process.
    */
-  public SelectedDocuments(
-      Context context, String preferencesName, String previewPrefix, Predicate<String> referenced) {
+  public SelectedDocuments(Context context, String preferencesName, String previewPrefix,
+      Predicate<String> referenced, Class<? extends IsolatedPdfRenderService> pdfRenderer) {
     if (preferencesName == null || !NAME.matcher(preferencesName).matches() || previewPrefix == null
         || !NAME.matcher(previewPrefix).matches())
       throw new IllegalArgumentException("Invalid selected-document storage name");
@@ -55,6 +94,7 @@ public final class SelectedDocuments {
     preferences = preferencesName;
     this.previewPrefix = previewPrefix;
     this.referenced = referenced == null ? uri -> false : referenced;
+    this.pdfRenderer = pdfRenderer;
     try {
       org.json.JSONArray entries = new org.json.JSONArray(
           owner.getSharedPreferences(preferences, 0).getString("records", "[]"));
@@ -337,71 +377,246 @@ public final class SelectedDocuments {
           "The provider could not confirm the rename. Refresh or reselect before retrying.");
     }
   }
-  /** Renders one page of a selected PDF locally to a private PNG preview. */
-  public synchronized JSObject pdf(String id, int pageIndex) {
+  /**
+   * Renders one page of a selected PDF to a private PNG preview. The page is parsed only by the
+   * host's isolated renderer, from a read-only copy; this process maps the returned pixels after
+   * {@link PdfPageLimits#requireReply} accepts the reply. The registry monitor is held only to
+   * resolve the selection. Call from a plugin worker thread, never the main thread.
+   */
+  public JSObject pdf(String id, int pageIndex) {
+    if (Looper.myLooper() == Looper.getMainLooper())
+      throw new IllegalStateException("PDF preview waits for its renderer");
     Context context = owner;
     Uri uri = resolve(id);
     if (uri == null)
       return result("unavailable", "Select this document again.");
-    java.io.File copy = new java.io.File(context.getCacheDir(), previewPrefix + id + ".pdf"),
-                 image = new java.io.File(context.getCacheDir(), previewPrefix + id + ".png");
-    try {
-      if (!"application/pdf".equals(context.getContentResolver().getType(uri)))
-        return result("unsupported", "This selection is not a PDF.");
-      try (InputStream in = context.getContentResolver().openInputStream(uri);
-          java.io.FileOutputStream out = new java.io.FileOutputStream(copy)) {
-        if (in == null)
-          throw new IOException();
-        byte[] buffer = new byte[8192];
-        int total = 0, count;
-        while ((count = in.read(buffer)) != -1) {
-          if (count > 20 * 1024 * 1024 - total)
+    if (pdfRenderer == null)
+      return result(
+          "unsupported", "PDF preview is unavailable here. Open it in Android to view it.");
+    synchronized (rendering) {
+      java.io.File copy = new java.io.File(context.getCacheDir(), previewPrefix + id + ".pdf"),
+                   image = new java.io.File(context.getCacheDir(), previewPrefix + id + ".png");
+      try {
+        if (!"application/pdf".equals(context.getContentResolver().getType(uri)))
+          return result("unsupported", "This selection is not a PDF.");
+        try (InputStream in = context.getContentResolver().openInputStream(uri);
+            java.io.FileOutputStream out = new java.io.FileOutputStream(copy)) {
+          if (in == null)
             throw new IOException();
-          out.write(buffer, 0, count);
-          total += count;
-        }
-      }
-      try (android.os.ParcelFileDescriptor fd = android.os.ParcelFileDescriptor.open(
-               copy, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
-          android.graphics.pdf.PdfRenderer renderer = new android.graphics.pdf.PdfRenderer(fd)) {
-        int count = renderer.getPageCount();
-        if (pageIndex < 0 || pageIndex >= count)
-          return result("failed", "This PDF page is unavailable.");
-        try (android.graphics.pdf.PdfRenderer.Page page = renderer.openPage(pageIndex)) {
-          if (page.getWidth() < 1 || page.getHeight() < 1)
-            throw new IOException();
-          double scale = Math.min(1200.0 / page.getWidth(), 1600.0 / page.getHeight());
-          android.graphics.Bitmap bitmap =
-              android.graphics.Bitmap.createBitmap(Math.max(1, (int) (page.getWidth() * scale)),
-                  Math.max(1, (int) (page.getHeight() * scale)),
-                  android.graphics.Bitmap.Config.ARGB_8888);
-          try {
-            bitmap.eraseColor(android.graphics.Color.WHITE);
-            page.render(
-                bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
-            try (java.io.FileOutputStream out = new java.io.FileOutputStream(image)) {
-              if (!bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out))
-                throw new IOException();
-            }
-          } finally {
-            bitmap.recycle();
+          byte[] buffer = new byte[8192];
+          long total = 0;
+          int count;
+          while ((count = in.read(buffer)) != -1) {
+            if (count > PdfPageLimits.MAX_SELECTED_SOURCE_BYTES - total)
+              throw new IOException();
+            out.write(buffer, 0, count);
+            total += count;
           }
+          PdfPageLimits.requireSource(total, PdfPageLimits.MAX_SELECTED_SOURCE_BYTES);
         }
+        Bundle reply;
+        try (ParcelFileDescriptor descriptor =
+                 ParcelFileDescriptor.open(copy, ParcelFileDescriptor.MODE_READ_ONLY)) {
+          reply = renderIsolated(descriptor, pageIndex);
+        }
+        if (reply == null)
+          return result("failed", "PDF preview timed out. Try again.");
+        int pages = writePreview(reply, pageIndex, image);
         JSObject value = result("rendered", "PDF rendered on this device. Nothing was uploaded.");
         value.put("page", pageIndex);
-        value.put("pageCount", count);
+        value.put("pageCount", pages);
         value.put("imageUri", Uri.fromFile(image).toString());
         return value;
+      } catch (SecurityException error) {
+        return result("unavailable",
+            "This PDF is encrypted or access expired. Open it in a compatible app or select it "
+            + "again.");
+      } catch (Exception | OutOfMemoryError error) {
+        return result("failed",
+            "PDF preview is unavailable. It may be malformed, encrypted, or larger than 20 MiB.");
+      } finally {
+        copy.delete();
       }
-    } catch (SecurityException error) {
-      return result("unavailable",
-          "This PDF is encrypted or access expired. Open it in a compatible app or select it "
-          + "again.");
-    } catch (Exception error) {
-      return result("failed",
-          "PDF preview is unavailable. It may be malformed, encrypted, or larger than 20 MiB.");
+    }
+  }
+  /** Checks the renderer's reply, then writes its pixels to {@code image}; returns the pages. */
+  private static int writePreview(Bundle reply, int pageIndex, java.io.File image)
+      throws IOException {
+    SharedMemory pixels = null;
+    ByteBuffer mapped = null;
+    android.graphics.Bitmap bitmap = null;
+    try {
+      Object raw = reply.getParcelable("pixels");
+      if (raw != null && !(raw instanceof SharedMemory))
+        throw new IllegalArgumentException();
+      pixels = (SharedMemory) raw;
+      if (reply.containsKey("error") || pixels == null)
+        throw new IOException();
+      int width = reply.getInt("width"), height = reply.getInt("height"),
+          pages = reply.getInt("pages");
+      PdfPageLimits.requireReply(reply.getBoolean("isolated"), reply.getBoolean("internetDenied"),
+          reply.getInt("uid"), Process.myUid(), width, height, pages, reply.getInt("page"),
+          pageIndex, pixels.getSize());
+      mapped = pixels.mapReadOnly();
+      bitmap = android.graphics.Bitmap.createBitmap(
+          width, height, android.graphics.Bitmap.Config.ARGB_8888);
+      bitmap.copyPixelsFromBuffer(mapped);
+      try (java.io.FileOutputStream out = new java.io.FileOutputStream(image)) {
+        if (!bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out))
+          throw new IOException();
+      }
+      return pages;
+    } catch (android.system.ErrnoException error) {
+      throw new IOException(error);
     } finally {
-      copy.delete();
+      if (mapped != null)
+        SharedMemory.unmap(mapped);
+      if (pixels != null)
+        pixels.close();
+      if (bitmap != null)
+        bitmap.recycle();
+    }
+  }
+  /**
+   * Sends one page request to the host's isolated renderer and waits up to
+   * {@link PdfPageLimits#VIEWER_TIMEOUT_MS}. Returns the matching reply, or null on timeout. The
+   * binding is kept between pages and released after a short idle period or when it breaks.
+   */
+  private Bundle renderIsolated(ParcelFileDescriptor descriptor, int pageIndex)
+      throws InterruptedException, RemoteException {
+    long deadline = SystemClock.uptimeMillis() + PdfPageLimits.VIEWER_TIMEOUT_MS;
+    RendererBinding renderer;
+    synchronized (binding) {
+      rendersInFlight++;
+      main.removeCallbacks(idleUnbind);
+      if (bound == null || bound.broken)
+        bindRenderer();
+      renderer = bound;
+    }
+    String request = UUID.randomUUID().toString();
+    PendingReply pending = new PendingReply(request);
+    boolean healthy = false;
+    try {
+      if (renderer == null
+          || !renderer.connected.await(
+              Math.max(0, deadline - SystemClock.uptimeMillis()), TimeUnit.MILLISECONDS)
+          || renderer.remote == null)
+        return null;
+      Bundle data = new Bundle();
+      data.putString("request", request);
+      data.putInt("page", pageIndex);
+      data.putParcelable("descriptor", descriptor);
+      data.putBoolean("selected", true);
+      Message message = Message.obtain(null, IsolatedPdfRenderService.MESSAGE);
+      message.replyTo = new Messenger(new Handler(Looper.getMainLooper(), reply -> {
+        pending.offer(reply.getData());
+        return true;
+      }));
+      message.setData(data);
+      renderer.remote.send(message);
+      Bundle reply = pending.await(Math.max(0, deadline - SystemClock.uptimeMillis()));
+      healthy = reply != null && !renderer.broken;
+      return reply;
+    } finally {
+      pending.abandon();
+      synchronized (binding) {
+        rendersInFlight--;
+        if (!healthy && bound == renderer)
+          unbindRenderer();
+        else if (rendersInFlight == 0)
+          main.postDelayed(idleUnbind, RENDERER_IDLE_MS);
+      }
+    }
+  }
+  private void bindRenderer() {
+    unbindRenderer();
+    RendererBinding next = new RendererBinding();
+    try {
+      if (owner.bindService(new Intent(owner, pdfRenderer), next, Context.BIND_AUTO_CREATE))
+        bound = next;
+      else
+        owner.unbindService(next);
+    } catch (RuntimeException unavailable) {
+      bound = null;
+    }
+  }
+  private void unbindRenderer() {
+    if (bound == null)
+      return;
+    try {
+      owner.unbindService(bound);
+    } catch (IllegalArgumentException ignored) {
+    }
+    bound = null;
+  }
+  /** Idle time after the last page before the isolated renderer is released. */
+  private static final long RENDERER_IDLE_MS = 30000;
+  /** One binding to the isolated renderer; callbacks arrive on the main thread. */
+  private static final class RendererBinding implements ServiceConnection {
+    final CountDownLatch connected = new CountDownLatch(1);
+    volatile Messenger remote;
+    volatile boolean broken;
+    @Override public void onServiceConnected(ComponentName name, IBinder binder) {
+      remote = new Messenger(binder);
+      connected.countDown();
+    }
+    @Override public void onServiceDisconnected(ComponentName name) {
+      stop();
+    }
+    @Override public void onBindingDied(ComponentName name) {
+      stop();
+    }
+    @Override public void onNullBinding(ComponentName name) {
+      stop();
+    }
+    private void stop() {
+      broken = true;
+      remote = null;
+      connected.countDown();
+    }
+  }
+  /** The reply to one request; a reply that arrives after the caller gave up is released. */
+  private static final class PendingReply {
+    private final String request;
+    private Bundle reply;
+    private boolean done;
+    PendingReply(String request) {
+      this.request = request;
+    }
+    synchronized void offer(Bundle data) {
+      if (done || data == null || !request.equals(data.getString("request"))) {
+        release(data);
+        return;
+      }
+      reply = data;
+      done = true;
+      notifyAll();
+    }
+    synchronized Bundle await(long timeoutMs) throws InterruptedException {
+      long end = SystemClock.uptimeMillis() + timeoutMs;
+      while (!done) {
+        long left = end - SystemClock.uptimeMillis();
+        if (left <= 0)
+          return null;
+        wait(left);
+      }
+      Bundle out = reply;
+      reply = null;
+      return out;
+    }
+    /** Ends the wait; a reply that arrived after the caller timed out is released here. */
+    synchronized void abandon() {
+      done = true;
+      release(reply);
+      reply = null;
+    }
+    private static void release(Bundle data) {
+      try {
+        Object pixels = data == null ? null : data.getParcelable("pixels");
+        if (pixels instanceof SharedMemory)
+          ((SharedMemory) pixels).close();
+      } catch (RuntimeException ignored) {
+      }
     }
   }
   /** A copy of the current selection IDs and documents, for host diagnostics and tests. */

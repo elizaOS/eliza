@@ -4,7 +4,12 @@
  * staging only, and offers session renewal in a header, never in the body.
  * Real route; caller auth, the consent store and the session DO are stubbed.
  */
-import { beforeEach, expect, mock, test } from "bun:test";
+import { beforeEach, expect, mock, spyOn, test } from "bun:test";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import {
+  SPEECH_RECOVERY_HEADER,
+  SPEECH_RETIREMENT_HEADER,
+} from "@elizaos/host/voice/speech-relay-wire";
 
 process.env.NODE_ENV = "test";
 
@@ -30,6 +35,7 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   }),
 }));
 mock.module("@elizaos/cloud-shared/lib/voice-session/consent-nonce", () => ({
+  CONSENT_NONCE_TTL_SECONDS: 300,
   issueConsentNonce: async () => ({
     nonce: NONCE,
     expiresAt: new Date(Date.now() + 300_000).toISOString(),
@@ -49,9 +55,13 @@ const { Hono } = await import("hono");
 const { default: speechRoute } = await import("../v1/voice/speech/route");
 const app = new Hono().route("/api/v1/voice/speech", speechRoute);
 
+let touched: { name: string; path: string }[] = [];
 const sessions = {
-  getByName: () => ({
+  getByName: (name: string) => ({
     fetch: async (url: string, init: RequestInit) => {
+      touched.push({ name, path: new URL(url).pathname });
+      if (url === "https://speech-relay.internal/warm")
+        return new Response(null, { status: 200 });
       expect(url).toBe("https://speech-relay.internal/initialize");
       const body = JSON.parse(String(init.body));
       expect(body.caller.user).toEqual({ id: USER, organization_id: ORG });
@@ -96,6 +106,7 @@ async function settle(pending: Promise<Response>) {
 beforeEach(() => {
   consented = true;
   order = [];
+  touched = [];
 });
 
 test("consent consume and the session ledger write overlap, each with its own timing", async () => {
@@ -121,13 +132,90 @@ test("consent consume and the session ledger write overlap, each with its own ti
   expect(response.headers.get("X-Eliza-Speech-Extend")).toBe("1");
 });
 
-test("production reports no phases; a single-window deployment offers no renewal", async () => {
-  const response = await settle(
-    mint({ ENVIRONMENT: "production", VOICE_SPEECH_RELAY_MAX_WINDOWS: "1" }),
-  );
-  expect(response.status).toBe(200);
-  expect(response.headers.get("server-timing")).toBeNull();
-  expect(response.headers.has("X-Eliza-Speech-Extend")).toBe(false);
+test("production logs bootstrap phases while preserving the public response", async () => {
+  const audit = spyOn(logger, "audit").mockImplementation(() => {});
+  try {
+    const response = await settle(
+      mint({ ENVIRONMENT: "production", VOICE_SPEECH_RELAY_MAX_WINDOWS: "1" }),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("server-timing")).toBeNull();
+    expect(response.headers.has("X-Eliza-Speech-Extend")).toBe(false);
+    const reply = (await response.json()) as {
+      token: string;
+      sessionId: string;
+    };
+    const phaseCalls = audit.mock.calls.filter(
+      ([message]) => message === "[CloudSpeech] phase timing",
+    );
+    expect(phaseCalls).toHaveLength(3);
+    for (const phase of [
+      "speech_identity_rate",
+      "speech_consent_consume",
+      "speech_directory_write",
+    ])
+      expect(phaseCalls).toContainEqual([
+        "[CloudSpeech] phase timing",
+        {
+          schema: "cloud_speech_phase_v1",
+          traceId: "unavailable",
+          route: "speech-session",
+          phase,
+          durationMs: expect.any(Number),
+          outcome: "returned",
+        },
+      ]);
+    const recorded = JSON.stringify(phaseCalls);
+    for (const secret of [USER, ORG, NONCE, reply.token, reply.sessionId])
+      expect(recorded).not.toContain(secret);
+  } finally {
+    audit.mockRestore();
+  }
+});
+
+test("production traces the prepared recovery request without exposing identifiers", async () => {
+  const audit = spyOn(logger, "audit").mockImplementation(() => {});
+  try {
+    const prepared = mock(async () => Response.json({ initialized: true }));
+    const result = await app.request(
+      "/api/v1/voice/speech/consent",
+      {
+        method: "POST",
+        headers: {
+          [SPEECH_RETIREMENT_HEADER]: "1",
+          [SPEECH_RECOVERY_HEADER]: "1",
+        },
+      },
+      env({
+        ENVIRONMENT: "production",
+        VOICE_SPEECH_RETIREMENT_PROOF_ENABLED: "true",
+        SPEECH_RELAY_SESSIONS: { getByName: () => ({ fetch: prepared }) },
+      }),
+    );
+    expect(result.status).toBe(200);
+    expect(result.headers.get("server-timing")).toBeNull();
+    expect(prepared).toHaveBeenCalledTimes(1);
+    expect(audit.mock.calls).toContainEqual([
+      "[CloudSpeech] phase timing",
+      {
+        schema: "cloud_speech_phase_v1",
+        traceId: "unavailable",
+        route: "speech-consent",
+        phase: "speech_recovery_prepare",
+        durationMs: expect.any(Number),
+        outcome: "returned",
+      },
+    ]);
+    const { consentNonce, recoverySessionId } = (await result.json()) as {
+      consentNonce: string;
+      recoverySessionId: string;
+    };
+    const recorded = JSON.stringify(audit.mock.calls);
+    for (const value of [USER, ORG, consentNonce, recoverySessionId])
+      expect(recorded).not.toContain(value);
+  } finally {
+    audit.mockRestore();
+  }
 });
 
 test("an invalid window bound disables renewal instead of refusing speech", async () => {
@@ -139,6 +227,29 @@ test("an invalid window bound disables renewal instead of refusing speech", asyn
     expect(response.status).toBe(200);
     expect(response.headers.has("X-Eliza-Speech-Extend")).toBe(false);
   }
+});
+
+test("the hosting probe is staging only and reports each script's first touch", async () => {
+  const stub = { fetch: async () => new Response(null, { status: 404 }) };
+  const namespaces = {
+    INFERENCE_ADMISSION_GATES: { getByName: () => stub },
+    SPEECH_RELAY_SESSIONS: { getByName: () => stub },
+  };
+  const probe = (overrides: Record<string, unknown>) =>
+    app.request(
+      "/api/v1/voice/speech/hosting-probe?first=lean",
+      { method: "POST" },
+      env({ ...namespaces, ...overrides }),
+    );
+  expect((await probe({ ENVIRONMENT: "production" })).status).toBe(404);
+  const staging = await probe({});
+  expect(staging.status).toBe(200);
+  expect(Object.keys((await staging.json()) as object).sort()).toEqual([
+    "apiLiveMs",
+    "apiNewMs",
+    "leanLiveMs",
+    "leanNewMs",
+  ]);
 });
 
 test("a refused consent never returns the capability for the ledger already written", async () => {
@@ -172,4 +283,54 @@ test("the window bound is an integer 1-120 and defaults to 10", async () => {
   expect(resolveSpeechRelayMaxWindows(" 120 ")).toBe(120);
   for (const bound of ["0", "121", "-1", "2.5", "1e1", "0x10", "ten"])
     expect(() => resolveSpeechRelayMaxWindows(bound)).toThrow();
+});
+
+test("consent warms the session object that the mint then initializes", async () => {
+  const consent = await app.request(
+    "/api/v1/voice/speech/consent",
+    { method: "POST", headers: { "Content-Type": "application/json" } },
+    env(),
+  );
+  expect(consent.status).toBe(200);
+  // The warm is not awaited by the route; let it dispatch.
+  for (let n = 0; n < 50 && touched.length < 1; n++)
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  expect(touched).toHaveLength(1);
+  expect(touched[0]!.path).toBe("/warm");
+  const response = await settle(mint());
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { sessionId: string; wsUrl: string };
+  expect(touched[1]).toEqual({ name: touched[0]!.name, path: "/initialize" });
+  expect(body.sessionId).toBe(touched[0]!.name);
+  expect(new URL(body.wsUrl).searchParams.get("sessionId")).toBe(
+    body.sessionId,
+  );
+});
+
+test("a consent session name is a UUID bound to its user and nonce", async () => {
+  const { speechSessionIdForConsent } = await import(
+    "../src/speech-relay-coordinator"
+  );
+  const id = speechSessionIdForConsent(USER, NONCE);
+  expect(id).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+  expect(speechSessionIdForConsent(USER, NONCE)).toBe(id);
+  expect(speechSessionIdForConsent(ORG, NONCE)).not.toBe(id);
+  expect(
+    speechSessionIdForConsent(USER, "44444444-4444-4444-8444-444444444444"),
+  ).not.toBe(id);
+  expect(id).not.toContain(NONCE.slice(0, 8));
+});
+
+test("prepared consent names remain compatible with existing speech clients", async () => {
+  const { preparedSpeechSessionIdForConsent } = await import(
+    "../src/speech-relay-coordinator"
+  );
+  const id = preparedSpeechSessionIdForConsent(USER, NONCE);
+  expect(id).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+  expect(preparedSpeechSessionIdForConsent(USER, NONCE)).toBe(id);
+  expect(preparedSpeechSessionIdForConsent(ORG, NONCE)).not.toBe(id);
 });

@@ -91,8 +91,8 @@ test("Server-Timing durations and refusal bodies are classified without guessing
   );
   assert.equal(classifyResponse(402, {}, null), "billing-refused");
   assert.equal(
-    classifyResponse(503, { error: { code: "rate_limit_cache_warming" } }, "1"),
-    "cache-warming",
+    classifyResponse(503, { error: { code: "rate_limit_unavailable" } }, "1"),
+    "limiter-unavailable",
   );
   assert.equal(classifyResponse(401, {}, null), "unauthorized");
   assert.equal(classifyResponse(502, null, null), "unavailable");

@@ -1,0 +1,218 @@
+import ai.eliza.plugins.browsersurface.BrowserSitePrompt;
+import ai.eliza.plugins.browsersurface.BrowserWebOrigin;
+import java.util.*;
+import java.util.function.Consumer;
+
+public final class BrowserPermissionPresentationProbe {
+  private static final String ORIGIN = "https://a.example";
+  private static final Set<String> CAMERA = Set.of("camera");
+  private final Map<String, Tab> tabs = new HashMap<>();
+  private final Tab a = new Tab("a");
+  private final Tab b = new Tab("b");
+  private final List<Set<String>> results = new ArrayList<>();
+  private final SiteStore sessionStore = new SiteStore();
+  private final RuntimePermissions runtimePermissions = new RuntimePermissions();
+  private Consumer<Map<String, Boolean>> runtimeResult;
+  private AlertDialog siteDialog;
+  private Runnable siteDialogCancel;
+  private String presentedId;
+  private boolean destroyed;
+  private boolean paused;
+  private boolean permissionGranted;
+  private Set<String> deniedKinds = Set.of();
+  private Runnable onNotice = () -> {};
+  private int notices;
+
+  private BrowserPermissionPresentationProbe() {
+    tabs.put(a.id, a);
+    tabs.put(b.id, b);
+    selectPresentation(a.id);
+  }
+
+  private static final class Tab {
+    final String id;
+    final Web web = new Web();
+    long navigation;
+    boolean dead;
+    boolean priv;
+    Tab(String id) { this.id = id; }
+  }
+  private static final class Web {
+    String url = ORIGIN + "/page";
+    String getUrl() { return url; }
+  }
+  private static final class RuntimePermissions {
+    void launch(String[] missing) { check(missing.length > 0, "expected an Android permission"); }
+  }
+  private static final class SiteStore {
+    final Map<String, Boolean> choices = new HashMap<>();
+    int writes;
+    Boolean permission(String origin, String kind) { return choices.get(origin + "/" + kind); }
+    void setPermission(String origin, String kind, boolean allow) {
+      writes++;
+      choices.put(origin + "/" + kind, allow);
+    }
+  }
+  private static final class Uri {
+    final String url;
+    Uri(String url) { this.url = url; }
+    static Uri parse(String url) { return new Uri(url); }
+    String getHost() { return java.net.URI.create(url).getHost(); }
+  }
+  private static final class AlertDialog {
+    private final Callback positive;
+    private final Callback negative;
+    AlertDialog(Callback positive, Callback negative) {
+      this.positive = positive;
+      this.negative = negative;
+    }
+    interface Callback { void click(AlertDialog dialog, int button); }
+    static final class Builder {
+      private Callback positive;
+      private Callback negative;
+      Builder(Object activity) {}
+      Builder setTitle(String title) { return this; }
+      Builder setMessage(String message) { return this; }
+      Builder setPositiveButton(String label, Callback callback) { positive = callback; return this; }
+      Builder setNegativeButton(String label, Callback callback) { negative = callback; return this; }
+      AlertDialog create() { return new AlertDialog(positive, negative); }
+    }
+  }
+
+  private boolean promptable(Tab t) { return !paused && Objects.equals(presentedId, t.id); }
+  private boolean grantable(String kind) { return true; }
+  private boolean androidGranted(String kind) { return permissionGranted && !deniedKinds.contains(kind); }
+  private boolean declared(String permission) { return true; }
+  private static String[] androidPermissions(String kind) { return BrowserSitePrompt.androidPermissions(kind); }
+  private void notice(Tab t, String text) { notices++; onNotice.run(); }
+  private Object getActivity() { return null; }
+  private Config config() { return new Config(); }
+  private static final class Config { String appName = "Synthetic"; }
+  private void showSiteDialog(Tab t, AlertDialog dialog, Runnable cancel) {
+    dismissSiteDialog();
+    siteDialog = dialog;
+    siteDialogCancel = cancel;
+  }
+  private void dismissSiteDialog() {
+    Runnable pending = siteDialogCancel;
+    siteDialog = null;
+    siteDialogCancel = null;
+    if (pending != null) pending.run();
+  }
+
+  // PRODUCTION_SELECTION
+  // PRODUCTION_PERMISSION
+
+  private void ask() { sitePermission(a, ORIGIN, List.of("camera"), results::add); }
+  private void startAndroidRequest() {
+    sessionStore.choices.put(ORIGIN + "/camera", true);
+    ask();
+    check(runtimeResult != null, "stored Allow must reach the Android request");
+  }
+  private void answerAndroid(boolean allowed) {
+    permissionGranted = allowed;
+    Consumer<Map<String, Boolean>> answer = runtimeResult;
+    runtimeResult = null;
+    answer.accept(Map.of("camera", allowed));
+  }
+  private void expectResult(Set<String> expected) {
+    check(results.equals(List.of(expected)), "expected one result " + expected + ", got " + results);
+  }
+  private static void check(boolean condition, String message) {
+    if (!condition) throw new AssertionError(message);
+  }
+  public static void main(String[] args) {
+    BrowserPermissionPresentationProbe h = new BrowserPermissionPresentationProbe();
+    switch (args[0]) {
+      case "same-presentation-os-pause":
+        h.startAndroidRequest();
+        h.paused = true;
+        h.selectPresentation(h.a.id);
+        h.answerAndroid(true);
+        h.expectResult(CAMERA);
+        break;
+      case "tab-switch":
+        h.startAndroidRequest();
+        h.selectPresentation(h.b.id);
+        h.answerAndroid(true);
+        h.expectResult(Set.of());
+        break;
+      case "tab-round-trip":
+        h.startAndroidRequest();
+        h.selectPresentation(h.b.id);
+        h.selectPresentation(h.a.id);
+        h.answerAndroid(true);
+        h.expectResult(Set.of());
+        break;
+      case "hide-and-reopen":
+        h.startAndroidRequest();
+        h.selectPresentation(null);
+        h.selectPresentation(h.a.id);
+        h.answerAndroid(true);
+        h.expectResult(Set.of());
+        break;
+      case "navigate":
+        h.startAndroidRequest();
+        h.a.navigation++;
+        h.answerAndroid(true);
+        h.expectResult(Set.of());
+        break;
+      case "origin-change":
+        h.startAndroidRequest();
+        h.a.web.url = "https://b.example/";
+        h.answerAndroid(true);
+        h.expectResult(Set.of());
+        break;
+      case "same-id-replaced":
+        h.startAndroidRequest();
+        h.tabs.put(h.a.id, new Tab(h.a.id));
+        h.answerAndroid(true);
+        h.expectResult(Set.of());
+        break;
+      case "unselected-denial-is-quiet":
+        h.startAndroidRequest();
+        h.selectPresentation(h.b.id);
+        h.answerAndroid(false);
+        h.expectResult(Set.of());
+        check(h.notices == 0, "a retired presentation must not publish an Android denial notice");
+        break;
+      case "notice-retires-presentation":
+        h.sessionStore.choices.put(ORIGIN + "/camera", true);
+        h.sessionStore.choices.put(ORIGIN + "/microphone", true);
+        h.sitePermission(h.a, ORIGIN, List.of("camera", "microphone"), h.results::add);
+        h.deniedKinds = Set.of("microphone");
+        h.onNotice = () -> h.selectPresentation(h.b.id);
+        h.answerAndroid(true);
+        check(h.notices == 1, "the Android denial notice must retire the selected presentation");
+        h.expectResult(Set.of());
+        break;
+      case "fresh-review":
+        h.permissionGranted = true;
+        h.ask();
+        h.siteDialog.positive.click(h.siteDialog, 0);
+        h.expectResult(CAMERA);
+        check(h.sessionStore.writes == 1, "current Allow must be remembered");
+        break;
+      case "dismissed-dialog-cannot-write":
+        h.ask();
+        AlertDialog old = h.siteDialog;
+        h.dismissSiteDialog();
+        h.ask();
+        Runnable currentCancellation = h.siteDialogCancel;
+        old.negative.click(old, 0);
+        check(h.sessionStore.writes == 0, "retired Don't allow cannot write a decision");
+        check(h.siteDialogCancel == currentCancellation, "retired dialog cannot clear the newer cancellation");
+        h.dismissSiteDialog();
+        check(h.results.equals(List.of(Set.of(), Set.of())), "each retired request must be denied once");
+        break;
+      case "stale-review-cannot-write":
+        h.ask();
+        h.a.navigation++;
+        h.siteDialog.positive.click(h.siteDialog, 0);
+        h.expectResult(Set.of());
+        check(h.sessionStore.writes == 0, "stale Allow cannot write a decision");
+        break;
+      default: throw new AssertionError("unknown schedule " + args[0]);
+    }
+  }
+}

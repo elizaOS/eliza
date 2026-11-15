@@ -13,6 +13,7 @@ process.env.NODE_ENV ||= "test";
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
+import { creditTransactions } from "../../../db/schemas/credit-transactions";
 import { identityLinks } from "../../../db/schemas/identity-links";
 import {
   organizationBalanceRevisionSequence,
@@ -32,7 +33,13 @@ beforeAll(async () => {
   }
   try {
     const { apply } = await pushSchema(
-      { organizationBalanceRevisionSequence, organizations, users, identityLinks } as never,
+      {
+        organizationBalanceRevisionSequence,
+        organizations,
+        users,
+        identityLinks,
+        creditTransactions,
+      } as never,
       dbWrite as never,
     );
     await apply();
@@ -45,6 +52,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   expect(pgliteReady).toBe(true);
   await dbWrite.delete(identityLinks);
+  await dbWrite.delete(creditTransactions);
   await dbWrite.delete(users);
   await dbWrite.delete(organizations);
 });
@@ -125,5 +133,47 @@ describe("X personal identity", () => {
         twitterUserId: "333",
       }),
     ).rejects.toMatchObject({ code: "X_PERSONAL_IDENTITY_CONFLICT" });
+  });
+
+  test("owner OAuth supersedes an unused DM-created account", async () => {
+    const squatted = await findOrCreateXPersonalAccount({ twitterUserId: "444" });
+    const organization = await seedMatureUser(USER_A, "a");
+    await linkVerifiedXOwnerIdentity({
+      organizationId: organization.id,
+      userId: USER_A,
+      twitterUserId: "444",
+    });
+
+    const links = await dbWrite
+      .select()
+      .from(identityLinks)
+      .where(eq(identityLinks.right_entity_id, "x:444"));
+    expect(links).toHaveLength(1);
+    expect(links[0]?.user_id).toBe(USER_A);
+    expect(links[0]?.source).toBe("oauth");
+    const resolved = await findOrCreateXPersonalAccount({ twitterUserId: "444" });
+    expect(resolved.user.id).toBe(USER_A);
+    expect(resolved.user.id).not.toBe(squatted.user.id);
+  });
+
+  test("keeps the conflict when the DM-created account has credit activity", async () => {
+    const created = await findOrCreateXPersonalAccount({ twitterUserId: "555" });
+    await dbWrite.insert(creditTransactions).values({
+      organization_id: created.organization.id,
+      user_id: created.user.id,
+      amount: "5",
+      type: "credit",
+    });
+    const organization = await seedMatureUser(USER_A, "a");
+
+    await expect(
+      linkVerifiedXOwnerIdentity({
+        organizationId: organization.id,
+        userId: USER_A,
+        twitterUserId: "555",
+      }),
+    ).rejects.toMatchObject({ code: "X_PERSONAL_IDENTITY_CONFLICT" });
+    const resolved = await findOrCreateXPersonalAccount({ twitterUserId: "555" });
+    expect(resolved.user.id).toBe(created.user.id);
   });
 });

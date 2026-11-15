@@ -1,0 +1,20 @@
+{
+  "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
+    "packages/ui/src/state/durable-draft.ts"
+  ],
+  "conformance": "packages/ui/quint/check-draft-controller.mjs",
+  "bounds": "One pending consume clear, one retired-to-new binding handoff (same or different key), one rollback with before/after failure, one retry, one replacement edit and two flush calls. Storage CAS races have a separate model. This finite instance checks receipt ownership rather than filesystem durability.",
+  "cases": [
+    {
+      "name": "retired-consume-handoff",
+      "main": "DraftConsumeHandoff",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 8,
+      "samples": 1000
+    }
+  ]
+}

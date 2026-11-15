@@ -1,0 +1,39 @@
+{
+  "sources": [
+    "plugins/plugin-workflow/src/services/workflow-service.ts",
+    "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+    "plugins/plugin-workflow/src/services/workflow-approval-receipts.ts"
+  ],
+  "implementationTests": [
+    "plugins/plugin-workflow/__tests__/integration/approval-receipts-e2e.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "ReviewedApproval",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OneCanonicalDecision",
+        "UnsupportedNeverApproved",
+        "HonestResponse",
+        "CachedHasCanonicalReceipt",
+        "LockOwnership"
+      ],
+      "temporal": ["DecisionReturns"],
+      "maxSteps": 100,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "DecisionReturns",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ReviewedApproval: DecisionReturns = Fairness.implies(Callers.forall(c => (s.phase.get(c) == \"queued\").leadsTo(Set(\"done\", \"failed\").contains(s.phase.get(c)))))",
+            "Model fairness predicate Fairness = Callers.forall(c => and { Acquire(c).weakFair(s), Review(c).weakFair(s), Control(c).weakFair(s), Readback(c).weakFair(s), Persist(c).weakFair(s), Resume(c).weakFair(s) })",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

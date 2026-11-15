@@ -157,7 +157,6 @@ it("round-trips explicit user text format through real HTTP and disk SQLite with
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: join(directory, "config.json"),
     ELIZA_PERSIST_CONFIG_PATH: join(directory, "config.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: "",
     ELIZA_REQUIRE_LOCAL_AUTH: "0",
   }))
@@ -347,7 +346,6 @@ it("rejects an unstored chat attachment and accepts the same request after stora
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: join(directory, "config.json"),
     ELIZA_PERSIST_CONFIG_PATH: join(directory, "config.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: "",
     ELIZA_REQUIRE_LOCAL_AUTH: "0",
   }))

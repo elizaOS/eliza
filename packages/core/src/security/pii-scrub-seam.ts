@@ -319,9 +319,13 @@ export function assertValidScrubResult(
 			if (needle.length === 0) continue;
 			// A required span is covered if some verdict span equals it or contains
 			// it (the model may return a wider span that subsumes the candidate).
-			const covered = [...seenSpans].some(
-				(s) => s === needle || s.includes(needle),
-			);
+			let covered = false;
+			for (const span of seenSpans) {
+				if (span.includes(needle)) {
+					covered = true;
+					break;
+				}
+			}
 			if (!covered) {
 				throw new PiiScrubFabricationError(
 					`escalated candidate ${JSON.stringify(

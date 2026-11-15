@@ -4,11 +4,21 @@
  * Exchange, credential creation, acknowledgement, activation, and expiry
  * cleanup are transactional so a response loss or concurrent request cannot
  * strand an active credential or mint two credentials for one code.
+ *
+ * Key renewal keeps a lineage. Every grant of one sign-in carries the same
+ * session id, and a renewal grant names the credential that asked for it. A
+ * predecessor has at most one live successor, a successor is exchanged and
+ * activated only while its predecessor is still active, and revoking a
+ * credential retires the rest of its session. The one exception is the last
+ * step of a renewal, where the old credential revokes itself and names the
+ * successor it was renewed into (see `MobileSessionRetirementCause`). Writers
+ * that decide on a whole session take that session's advisory lock before any
+ * credential row.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, asc, count, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { withInferencePolicyMutation } from "../../lib/services/inference-policy-fence";
-import { dbWrite } from "../client";
+import { type DbTransaction, dbWrite } from "../client";
 import { buildMobileAppAuthCredentialProvenance } from "../mobile-app-auth-credential-policy";
 import type { ApiKey, NewApiKey } from "../schemas/api-keys";
 import { apiKeys } from "../schemas/api-keys";
@@ -47,6 +57,60 @@ export type MobileAppAuthExchangeClaim =
   | { kind: "created"; state: MobileAppAuthGrantState }
   | { kind: "existing"; state: MobileAppAuthGrantState }
   | { kind: "invalid"; reason: "client_inactive" | "grant_invalid" };
+
+/**
+ * Everything key renewal decides on, read in one primary statement: the
+ * presented credential, the acknowledged grant that activated it, and the
+ * current owner, organization and client app rows.
+ */
+export interface MobileAppAuthRenewalAuthority {
+  credential: ApiKey;
+  grant: MobileAppAuthGrant;
+  owner: { isActive: boolean; organizationId: string | null } | null;
+  organization: {
+    isActive: boolean;
+    lifecycleState: string;
+    deletionRequestId: string | null;
+  } | null;
+  app: { isActive: boolean; isApproved: boolean } | null;
+}
+
+/**
+ * Why a credential is being retired, which decides what goes with it:
+ *  - `owner`: the account owner revoked the device, so the whole sign-in ends;
+ *  - `self`: the credential revoked itself. This is the last step of a
+ *    renewal, and only the credential itself ends, when the request names the
+ *    credential's acknowledged successor (`MobileSelfRevocation`), or names
+ *    nothing and arrives within `MOBILE_RENEWAL_RETIREMENT_GRACE_MS` of that
+ *    successor's acknowledgement. Every other self-revocation is a sign-out
+ *    and the sign-in ends, successors included: a holder that cannot name the
+ *    successor does not hold it, so somebody else renewed this credential;
+ *  - `reuse`: a credential that already has an acknowledged successor asked to
+ *    renew again, so two holders exist and the whole sign-in ends, the
+ *    presenting credential included.
+ */
+export type MobileSessionRetirementCause = "owner" | "self" | "reuse";
+
+/**
+ * How long after a successor's acknowledgement a self-revocation that names
+ * no successor still counts as the last step of that renewal. It covers a
+ * client that revokes the old key right after the acknowledgement without
+ * naming the new one; a later request must name it.
+ */
+export const MOBILE_RENEWAL_RETIREMENT_GRACE_MS = 120_000;
+
+/** What a self-revocation request carried, and when it is decided. */
+export interface MobileSelfRevocation {
+  /** The credential the caller says it was renewed into, or null. */
+  successorCredentialId: string | null;
+  now: Date;
+}
+
+export type MobileAppAuthRenewalClaim =
+  | { kind: "created"; grant: MobileAppAuthGrant }
+  | { kind: "invalid"; reason: "client_inactive" | "credential_invalid" }
+  /** The predecessor already has an acknowledged successor. Nothing was written. */
+  | { kind: "reused" };
 
 export type MobileAppAuthRevealConfirmation =
   | { kind: "confirmed"; state: MobileAppAuthGrantState }
@@ -110,6 +174,131 @@ function assertStateIntegrity(state: MobileAppAuthGrantState): void {
   }
 }
 
+type SessionReader = Pick<DbTransaction, "select">;
+
+/** The session of a grant; a grant from before `session_id` is its own session. */
+function sessionIdOf(grant: Pick<MobileAppAuthGrant, "id" | "session_id">): string {
+  return grant.session_id ?? grant.id;
+}
+
+function inSession(sessionId: string) {
+  return or(eq(mobileAppAuthGrants.session_id, sessionId), eq(mobileAppAuthGrants.id, sessionId));
+}
+
+async function lockSession(tx: DbTransaction, sessionId: string): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`mobile-app-auth-session:${sessionId}`}, 0))`,
+  );
+}
+
+async function findGrantOfCredential(
+  reader: SessionReader,
+  credentialId: string,
+): Promise<MobileAppAuthGrant | null> {
+  const [grant] = await reader
+    .select()
+    .from(mobileAppAuthGrants)
+    .where(eq(mobileAppAuthGrants.credential_id, credentialId))
+    .limit(1);
+  return grant ?? null;
+}
+
+/**
+ * True when this self-revocation is the last step of a renewal: the
+ * credential has an acknowledged successor, and the request either names that
+ * successor or names nothing within the grace period after its
+ * acknowledgement. A request that names any other credential is a sign-out.
+ */
+async function isRenewalLastStep(
+  reader: SessionReader,
+  credentialId: string,
+  request: MobileSelfRevocation,
+): Promise<boolean> {
+  const [successor] = await reader
+    .select({
+      credentialId: mobileAppAuthGrants.credential_id,
+      acknowledgedAt: mobileAppAuthGrants.acknowledged_at,
+    })
+    .from(mobileAppAuthGrants)
+    .where(
+      and(
+        eq(mobileAppAuthGrants.renewed_from_credential_id, credentialId),
+        eq(mobileAppAuthGrants.status, "acknowledged"),
+      ),
+    )
+    .limit(1);
+  if (!successor?.credentialId) return false;
+  if (request.successorCredentialId !== null) {
+    return request.successorCredentialId === successor.credentialId;
+  }
+  return (
+    successor.acknowledgedAt !== null &&
+    request.now.getTime() < successor.acknowledgedAt.getTime() + MOBILE_RENEWAL_RETIREMENT_GRACE_MS
+  );
+}
+
+/**
+ * The credentials that retiring `credentialId` for `cause` takes with it: the
+ * not-yet-tombstoned credentials of its session, active or still awaiting
+ * acknowledgement. The credential itself is included only for `reuse`.
+ */
+async function sessionRetirementCandidates(
+  reader: SessionReader,
+  credentialId: string,
+  cause: MobileSessionRetirementCause,
+  selfRevocation: MobileSelfRevocation,
+): Promise<{ sessionId: string; credentials: ApiKey[] } | null> {
+  const grant = await findGrantOfCredential(reader, credentialId);
+  if (!grant) return null;
+  const sessionId = sessionIdOf(grant);
+  if (cause === "self" && (await isRenewalLastStep(reader, credentialId, selfRevocation))) {
+    return { sessionId, credentials: [] };
+  }
+  const rows = await reader
+    .select({ credential: apiKeys })
+    .from(mobileAppAuthGrants)
+    .innerJoin(apiKeys, eq(mobileAppAuthGrants.credential_id, apiKeys.id))
+    .where(
+      and(
+        inSession(sessionId),
+        eq(apiKeys.user_id, grant.user_id),
+        eq(apiKeys.organization_id, grant.organization_id),
+        eq(apiKeys.source_app_id, grant.app_id),
+        isNull(apiKeys.deleted_at),
+        cause === "reuse" ? undefined : ne(apiKeys.id, credentialId),
+      ),
+    )
+    .orderBy(asc(apiKeys.id));
+  return { sessionId, credentials: rows.map((row) => row.credential) };
+}
+
+/**
+ * True unless this is a renewal grant whose predecessor is no longer an
+ * active, unexpired credential. The predecessor row stays locked for the rest
+ * of the transaction, so a revocation either committed before this read or
+ * waits and then finds the successor this transaction wrote.
+ */
+async function predecessorAdmits(
+  tx: DbTransaction,
+  predecessorCredentialId: string | null,
+  now: Date,
+): Promise<boolean> {
+  if (!predecessorCredentialId) return true;
+  const [predecessor] = await tx
+    .select({ id: apiKeys.id })
+    .from(apiKeys)
+    .where(
+      and(
+        eq(apiKeys.id, predecessorCredentialId),
+        eq(apiKeys.is_active, true),
+        isNull(apiKeys.deleted_at),
+        gt(apiKeys.expires_at, now),
+      ),
+    )
+    .for("update");
+  return Boolean(predecessor);
+}
+
 export class MobileAppAuthGrantsRepository {
   async create(input: NewMobileAppAuthGrant): Promise<MobileAppAuthGrant | null> {
     return await dbWrite.transaction(async (tx) => {
@@ -125,6 +314,189 @@ export class MobileAppAuthGrantsRepository {
     });
   }
 
+  /**
+   * Creates the successor grant of a key renewal. The session is locked and
+   * the predecessor credential row is locked and re-read in the same
+   * transaction, so a revocation that commits first leaves no code behind.
+   * One that commits later does not strand a live successor either: exchange
+   * and acknowledgement re-read the predecessor, and revocation retires the
+   * session's other credentials.
+   *
+   * A predecessor has one live successor. A renewal that is still in flight
+   * (its code not yet acknowledged) is superseded by the newer request; a
+   * predecessor whose successor was already acknowledged is being reused and
+   * gets no code at all.
+   */
+  async createRenewal(
+    input: NewMobileAppAuthGrant,
+    predecessor: { credentialId: string; keyHash: string },
+    now: Date,
+  ): Promise<MobileAppAuthRenewalClaim> {
+    return await dbWrite.transaction(async (tx) => {
+      const [activeApp] = await tx
+        .select({ id: apps.id })
+        .from(apps)
+        .where(and(eq(apps.id, input.app_id), eq(apps.is_active, true), eq(apps.is_approved, true)))
+        .for("update");
+      if (!activeApp) return { kind: "invalid", reason: "client_inactive" };
+      const [origin] = await tx
+        .select()
+        .from(mobileAppAuthGrants)
+        .where(
+          and(
+            eq(mobileAppAuthGrants.credential_id, predecessor.credentialId),
+            eq(mobileAppAuthGrants.status, "acknowledged"),
+          ),
+        )
+        .limit(1);
+      if (!origin) return { kind: "invalid", reason: "credential_invalid" };
+      const sessionId = sessionIdOf(origin);
+      await lockSession(tx, sessionId);
+      const [credential] = await tx
+        .select({ id: apiKeys.id })
+        .from(apiKeys)
+        .where(
+          and(
+            eq(apiKeys.id, predecessor.credentialId),
+            eq(apiKeys.key_hash, predecessor.keyHash),
+            eq(apiKeys.user_id, input.user_id),
+            eq(apiKeys.organization_id, input.organization_id),
+            eq(apiKeys.source_app_id, input.app_id),
+            eq(apiKeys.is_active, true),
+            isNull(apiKeys.deleted_at),
+            gt(apiKeys.expires_at, now),
+          ),
+        )
+        .for("update");
+      if (!credential) return { kind: "invalid", reason: "credential_invalid" };
+
+      const successors = await tx
+        .select()
+        .from(mobileAppAuthGrants)
+        .where(eq(mobileAppAuthGrants.renewed_from_credential_id, predecessor.credentialId))
+        .for("update");
+      if (successors.some((grant) => grant.status === "acknowledged")) return { kind: "reused" };
+      if (successors.length > 0) {
+        // Supersede the renewal still in flight. Its code can no longer be
+        // exchanged or acknowledged, and a credential it already minted is
+        // tombstoned before it could ever be activated. The deadline moves to
+        // the epoch, which is in the past of every request's captured time.
+        const supersededCredentialIds = successors.flatMap((grant) =>
+          grant.credential_id ? [grant.credential_id] : [],
+        );
+        await tx
+          .update(mobileAppAuthGrants)
+          .set({ expires_at: new Date(0), updated_at: now })
+          .where(
+            inArray(
+              mobileAppAuthGrants.id,
+              successors.map((grant) => grant.id),
+            ),
+          );
+        if (supersededCredentialIds.length > 0) {
+          await tx
+            .update(apiKeys)
+            .set({
+              deleted_at: now,
+              updated_at: now,
+              key_ciphertext: null,
+              key_nonce: null,
+              key_auth_tag: null,
+              key_kms_key_id: null,
+              key_kms_key_version: null,
+            })
+            .where(
+              and(
+                inArray(apiKeys.id, supersededCredentialIds),
+                eq(apiKeys.is_active, false),
+                isNull(apiKeys.deleted_at),
+              ),
+            );
+        }
+      }
+      if (!origin.session_id) {
+        // A grant from before the column is its own session from now on.
+        await tx
+          .update(mobileAppAuthGrants)
+          .set({ session_id: sessionId })
+          .where(
+            and(eq(mobileAppAuthGrants.id, origin.id), isNull(mobileAppAuthGrants.session_id)),
+          );
+      }
+      const [created] = await tx
+        .insert(mobileAppAuthGrants)
+        .values({
+          ...input,
+          session_id: sessionId,
+          renewed_from_credential_id: predecessor.credentialId,
+        })
+        .returning();
+      if (!created) throw grantIntegrityError("Failed to create mobile App Auth renewal grant");
+      return { kind: "created", grant: created };
+    });
+  }
+
+  /**
+   * The credentials that retiring this one would take with it, read without
+   * locks so the caller can fence them before the transaction that retires
+   * them. `retireSessionInTransaction` decides again under the session lock.
+   */
+  async planSessionRetirement(
+    credentialId: string,
+    cause: MobileSessionRetirementCause,
+    selfRevocation: MobileSelfRevocation,
+  ): Promise<ApiKey[]> {
+    return (
+      (await sessionRetirementCandidates(dbWrite, credentialId, cause, selfRevocation))
+        ?.credentials ?? []
+    );
+  }
+
+  /**
+   * Tombstones the credentials that retiring this one takes with it and
+   * returns them. Call it before the credential's own tombstone, so the
+   * session lock is taken ahead of any credential row. A credential with no
+   * grant, or a renewal's last step, retires nothing here. `selfRevocation`
+   * carries the time of the decision for every cause; its successor is read
+   * only for `self`.
+   */
+  async retireSessionInTransaction(
+    tx: DbTransaction,
+    credentialId: string,
+    cause: MobileSessionRetirementCause,
+    selfRevocation: MobileSelfRevocation,
+  ): Promise<ApiKey[]> {
+    const now = selfRevocation.now;
+    const origin = await findGrantOfCredential(tx, credentialId);
+    if (!origin) return [];
+    await lockSession(tx, sessionIdOf(origin));
+    const plan = await sessionRetirementCandidates(tx, credentialId, cause, selfRevocation);
+    if (!plan || plan.credentials.length === 0) return [];
+    return await tx
+      .update(apiKeys)
+      .set({
+        is_active: false,
+        deleted_at: now,
+        updated_at: now,
+        key_ciphertext: null,
+        key_nonce: null,
+        key_auth_tag: null,
+        key_kms_key_id: null,
+        key_kms_key_version: null,
+      })
+      .where(
+        and(
+          inArray(
+            apiKeys.id,
+            plan.credentials.map((credential) => credential.id),
+          ),
+          isNull(apiKeys.deleted_at),
+          isNotNull(apiKeys.source_app_id),
+        ),
+      )
+      .returning();
+  }
+
   async findActiveState(
     binding: MobileAppAuthGrantBinding,
     now: Date,
@@ -138,6 +510,83 @@ export class MobileAppAuthGrantsRepository {
     if (!state) return null;
     assertStateIntegrity(state);
     return state;
+  }
+
+  /** The acknowledged grant that activated this credential; null for any other state. */
+  async findAcknowledgedByCredentialId(credentialId: string): Promise<MobileAppAuthGrant | null> {
+    const [grant] = await dbWrite
+      .select()
+      .from(mobileAppAuthGrants)
+      .where(
+        and(
+          eq(mobileAppAuthGrants.credential_id, credentialId),
+          eq(mobileAppAuthGrants.status, "acknowledged"),
+        ),
+      )
+      .limit(1);
+    return grant ?? null;
+  }
+
+  /**
+   * The renewal authority of the credential with this secret hash, or null when
+   * no credential has it or no acknowledged grant activated it. Reads the
+   * primary only; a mobile secret never enters an auth cache.
+   */
+  async findRenewalAuthorityByKeyHash(
+    keyHash: string,
+  ): Promise<MobileAppAuthRenewalAuthority | null> {
+    const [row] = await dbWrite
+      .select({
+        credential: apiKeys,
+        grant: mobileAppAuthGrants,
+        ownerId: users.id,
+        ownerActive: users.is_active,
+        ownerOrganizationId: users.organization_id,
+        organizationId: organizations.id,
+        organizationActive: organizations.is_active,
+        organizationLifecycleState: organizations.account_lifecycle_state,
+        organizationDeletionRequestId: organizations.account_deletion_request_id,
+        appId: apps.id,
+        appActive: apps.is_active,
+        appApproved: apps.is_approved,
+      })
+      .from(apiKeys)
+      .innerJoin(
+        mobileAppAuthGrants,
+        and(
+          eq(mobileAppAuthGrants.credential_id, apiKeys.id),
+          eq(mobileAppAuthGrants.status, "acknowledged"),
+        ),
+      )
+      .leftJoin(users, eq(users.id, apiKeys.user_id))
+      .leftJoin(organizations, eq(organizations.id, apiKeys.organization_id))
+      .leftJoin(apps, eq(apps.id, mobileAppAuthGrants.app_id))
+      .where(eq(apiKeys.key_hash, keyHash))
+      .limit(1);
+    if (!row) return null;
+    return {
+      credential: row.credential,
+      grant: row.grant,
+      owner: row.ownerId
+        ? {
+            isActive: row.ownerActive === true,
+            organizationId: row.ownerOrganizationId,
+          }
+        : null,
+      organization: row.organizationId
+        ? {
+            isActive: row.organizationActive === true,
+            lifecycleState: String(row.organizationLifecycleState),
+            deletionRequestId: row.organizationDeletionRequestId,
+          }
+        : null,
+      app: row.appId
+        ? {
+            isActive: row.appActive === true,
+            isApproved: row.appApproved === true,
+          }
+        : null,
+    };
   }
 
   async findStateByCodeHash(codeHash: string): Promise<MobileAppAuthGrantState | null> {
@@ -205,7 +654,10 @@ export class MobileAppAuthGrantsRepository {
     now: Date,
   ): Promise<MobileAppAuthExchangeClaim> {
     return await withInferencePolicyMutation(
-      { organizationIds: [credential.organization_id], userLockIds: [credential.user_id] },
+      {
+        organizationIds: [credential.organization_id],
+        userLockIds: [credential.user_id],
+      },
       async (tx) => {
         const [activeApp] = await tx
           .select({ id: apps.id })
@@ -215,6 +667,19 @@ export class MobileAppAuthGrantsRepository {
           )
           .for("update");
         if (!activeApp) return { kind: "invalid", reason: "client_inactive" };
+
+        // A renewal code is worth nothing once the credential that asked for
+        // it was revoked or expired: no successor is minted for it.
+        const [lineage] = await tx
+          .select({
+            predecessor: mobileAppAuthGrants.renewed_from_credential_id,
+          })
+          .from(mobileAppAuthGrants)
+          .where(exactBindingConditions(binding, now))
+          .limit(1);
+        if (lineage && !(await predecessorAdmits(tx, lineage.predecessor, now))) {
+          return { kind: "invalid", reason: "grant_invalid" };
+        }
 
         const [claimed] = await tx
           .update(mobileAppAuthGrants)
@@ -287,13 +752,17 @@ export class MobileAppAuthGrantsRepository {
       .select({
         userId: mobileAppAuthGrants.user_id,
         organizationId: mobileAppAuthGrants.organization_id,
+        predecessor: mobileAppAuthGrants.renewed_from_credential_id,
       })
       .from(mobileAppAuthGrants)
       .where(exactBindingConditions(input.binding, input.now))
       .limit(1);
     if (!planned) return null;
     return await withInferencePolicyMutation(
-      { organizationIds: [planned.organizationId], userLockIds: [planned.userId] },
+      {
+        organizationIds: [planned.organizationId],
+        userLockIds: [planned.userId],
+      },
       async (tx) => {
         const [activeApp] = await tx
           .select({ id: apps.id })
@@ -307,6 +776,20 @@ export class MobileAppAuthGrantsRepository {
           )
           .for("update");
         if (!activeApp) return null;
+
+        // A successor is activated only while the credential that asked for
+        // it is still active. Revoking the predecessor between the renewal
+        // request and this acknowledgement leaves the successor inactive, and
+        // an already acknowledged successor is not confirmed again once the
+        // session behind it was revoked.
+        if (!(await predecessorAdmits(tx, planned.predecessor, input.now))) {
+          const [settled] = await tx
+            .select({ status: mobileAppAuthGrants.status })
+            .from(mobileAppAuthGrants)
+            .where(exactBindingConditions(input.binding, input.now))
+            .limit(1);
+          if (settled?.status !== "acknowledged") return null;
+        }
 
         const [claimedGrant] = await tx
           .update(mobileAppAuthGrants)
@@ -322,13 +805,19 @@ export class MobileAppAuthGrantsRepository {
               eq(mobileAppAuthGrants.organization_id, planned.organizationId),
               eq(mobileAppAuthGrants.status, "exchanged"),
               eq(mobileAppAuthGrants.credential_id, input.credentialId),
+              planned.predecessor
+                ? eq(mobileAppAuthGrants.renewed_from_credential_id, planned.predecessor)
+                : isNull(mobileAppAuthGrants.renewed_from_credential_id),
             ),
           )
           .returning();
 
         if (claimedGrant) {
           const [owner] = await tx
-            .select({ organizationId: users.organization_id, isActive: users.is_active })
+            .select({
+              organizationId: users.organization_id,
+              isActive: users.is_active,
+            })
             .from(users)
             .where(eq(users.id, claimedGrant.user_id))
             .for("update");
@@ -484,7 +973,11 @@ export class MobileAppAuthGrantsRepository {
     // starts at the beginning and retries grants still held by another writer.
     const lastPlanned = planned[planned.length - 1];
     const nextCursor: MobileAppAuthCleanupCursor | null = lastPlanned
-      ? { expiresAt: lastPlanned.expiresAt, createdAt: lastPlanned.createdAt, id: lastPlanned.id }
+      ? {
+          expiresAt: lastPlanned.expiresAt,
+          createdAt: lastPlanned.createdAt,
+          id: lastPlanned.id,
+        }
       : null;
     return await withInferencePolicyMutation(
       {
@@ -582,7 +1075,10 @@ export class MobileAppAuthGrantsRepository {
               entry.credentialId ? [[entry.credentialId, Number(entry.value)]] : [],
             ),
           );
-          const inactiveTombstoneCandidates: Array<{ credentialId: string; grantId: string }> = [];
+          const inactiveTombstoneCandidates: Array<{
+            credentialId: string;
+            grantId: string;
+          }> = [];
           const acknowledgedTombstoneCandidates: Array<{
             credentialId: string;
             grantId: string;
@@ -650,7 +1146,10 @@ export class MobileAppAuthGrantsRepository {
                 integrityViolations++;
                 continue;
               }
-              inactiveTombstoneCandidates.push({ credentialId, grantId: grant.id });
+              inactiveTombstoneCandidates.push({
+                credentialId,
+                grantId: grant.id,
+              });
               continue;
             }
 
@@ -662,7 +1161,10 @@ export class MobileAppAuthGrantsRepository {
               integrityViolations++;
               continue;
             }
-            acknowledgedTombstoneCandidates.push({ credentialId, grantId: grant.id });
+            acknowledgedTombstoneCandidates.push({
+              credentialId,
+              grantId: grant.id,
+            });
           }
 
           if (inactiveTombstoneCandidates.length > 0) {

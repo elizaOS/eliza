@@ -6,8 +6,9 @@ directly. Storage, authorization, identity merging and effects remain with their
 runtime or domain owners.
 
 From the repository root, run `bun run --cwd packages/contracts build` and
-`bun run --cwd packages/contracts typecheck`. Integration regressions remain in
-their domain owners.
+`bun run --cwd packages/contracts typecheck`. Run `bun run --cwd packages/contracts test`
+for the contract suites. Node with `tsx` runs the Node tests; the existing Vitest
+launcher runs browser request grounding. Integration regressions remain in their domain owners.
 
 Use `@elizaos/contracts` for browser-safe DTOs and validators. Node signing and verification contracts use `@elizaos/contracts/node`. Persisted backup versions and canonical bytes remain supported.
 
@@ -28,6 +29,11 @@ local-time triggers are data, never execution authority: a local-time schedule
 is armed per reviewed version on the agent's durable scheduler, an occurrence
 that passes while the agent is not running is recorded once as missed and never
 run later, and every phone read or effect still needs its own device approval.
+New relative Calendar proposals require workflow device protocol 5. Each range
+uses the persisted scheduled occurrence or manual run start to resolve exact
+owner-day bounds for both proposal and review. Already queued protocol-4
+proposals keep their original range and review rules. Existing absolute
+Calendar reads keep their protocol and dates.
 
 `@elizaos/contracts/notice-routes` is the renderer side of the native notice
 routes: the owner privacy fence coordinator, tap resolution through

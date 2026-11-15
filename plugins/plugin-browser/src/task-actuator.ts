@@ -6,6 +6,7 @@ import {
   TASK_ACTION_NOT_DISPATCHED,
   type TaskActionProposal,
   type TaskObservation,
+  type TaskOutcome,
   type TaskOwner,
 } from "@elizaos/core/protocol";
 import {
@@ -105,15 +106,64 @@ export interface TaskBrowserPolicy {
   leaseMs: number;
   targets: NativeTaskBinding["targets"];
 }
-function fail(message: string): never {
-  throw new ElizaError(message, { code: "TASK_ACTION_DENIED" });
+/** Host-owned guidance for one observed control (`showGuidance`). */
+export interface TaskGuidanceInput {
+  stepId: string;
+  targetRef: string;
+  text: string;
+  detail?: string;
+  tone?: NativeTaskGuideTone;
+  answers?: NativeTaskGuideAnswer[];
+  restore?: boolean;
+  /** Observed controls the label must not cover. */
+  keepClearRefs?: string[];
 }
-/** The actuator or the browser refused the action before it reached the page. */
-function notDispatched(cause: unknown): never {
-  throw new ElizaError("The browser action was not sent", {
-    code: TASK_ACTION_NOT_DISPATCHED,
-    cause,
+/** Why the runtime cleans up (`InteractiveTaskActuator.quiesce`). */
+export type TaskCleanupReason =
+  | "pause"
+  | "close"
+  | "cancel"
+  | "revoke"
+  | "complete";
+/**
+ * A refusal before the action reached the page. `reason` is a fixed code:
+ * one of the actuator's own (for example `stale-observation`), or the
+ * browser's failure `reason`, else its `kind` (for example `STALE_REF`).
+ * It never carries page text or an error message.
+ */
+export interface TaskActionRefusal {
+  taskId: string;
+  proposalId: string;
+  capability: string;
+  source: "actuator" | "browser";
+  reason: string;
+}
+function denied(message: string, reason?: string): ElizaError {
+  return new ElizaError(message, {
+    code: "TASK_ACTION_DENIED",
+    ...(reason ? { context: { reason } } : {}),
   });
+}
+function fail(message: string, reason?: string): never {
+  throw denied(message, reason);
+}
+/** The fixed source and reason of a refusal; never its message. */
+function refusalOf(
+  error: unknown,
+): Pick<TaskActionRefusal, "source" | "reason"> {
+  const failure = error as { kind?: unknown; reason?: unknown; name?: unknown };
+  if (typeof failure?.kind === "string")
+    return {
+      source: "browser",
+      reason:
+        typeof failure.reason === "string" ? failure.reason : failure.kind,
+    };
+  const reason =
+    error instanceof ElizaError ? error.context?.reason : undefined;
+  if (typeof reason === "string") return { source: "actuator", reason };
+  if (failure?.name === "AbortError" || failure?.name === "TimeoutError")
+    return { source: "actuator", reason: "cancelled" };
+  return { source: "actuator", reason: "host-callback-failed" };
 }
 // The browser extension reports these kinds only before an effect runs.
 const PRE_EFFECT_REFUSALS = new Set(["STALE_REF", "POLICY_BLOCKED"]);
@@ -148,10 +198,24 @@ export class NativeTaskActuator {
       epoch: number;
     }
   >();
+  private cleanupReasons = new Map<string, TaskCleanupReason>();
   constructor(
     private options: {
+      /**
+       * A target that reports its browser's capabilities (`hasCapability`, as
+       * NativeSocketBrowserTarget, or an `advertised` set, as
+       * NativeSurfaceBrowserTarget) is sent only the options that browser
+       * advertised. A target without either gets every option.
+       */
       target: Pick<NativeSocketBrowserTarget, "bindTask" | "execute"> &
-        Partial<Pick<NativeSocketBrowserTarget, "guideTask">>;
+        Partial<
+          Pick<
+            NativeSocketBrowserTarget,
+            "guideTask" | "hasCapability" | "settled"
+          >
+        > & {
+          advertised?: ReadonlySet<string>;
+        };
       getTask: (id: string) => InteractiveTask;
       policy: (task: InteractiveTask) => TaskBrowserPolicy;
       /** Durable and strictly increasing per tab, including after host restart. */
@@ -179,10 +243,7 @@ export class NativeTaskActuator {
         task: InteractiveTask,
         proposal: TaskActionProposal,
         snapshot: TaskBrowserSnapshot,
-      ) => Promise<
-        | { status: "succeeded" | "failed"; evidenceRef: string }
-        | { status: "unknown"; evidenceRef?: string }
-      >;
+      ) => Promise<TaskOutcome>;
       now?: () => number;
       /** Product display name for the browser overlay; host configuration. */
       assistantName?: string;
@@ -196,12 +257,38 @@ export class NativeTaskActuator {
       ) => Promise<void>;
       /**
        * Trusted host wording for the action preview, for example "I will
-       * choose your saved Visa." Without it the browser uses a generic line.
+       * choose your saved Visa." Without it, or when the sentence is not valid
+       * (`validActionText`), the browser uses a generic line.
        */
       describeAction?: (
         task: InteractiveTask,
         proposal: TaskActionProposal,
       ) => string | undefined;
+      /**
+       * Host presentation policy for guidance, for example a default label,
+       * the allowed tones or the controls to keep clear. It returns the
+       * guidance to show; the actuator then checks it as usual.
+       */
+      presentGuidance?: (
+        input: TaskGuidanceInput,
+        context: { task: InteractiveTask; snapshot: TaskBrowserSnapshot },
+      ) => TaskGuidanceInput;
+      /** Told once of each action refused before it reached the page. */
+      onNotDispatched?: (refusal: TaskActionRefusal) => void;
+      /**
+       * Keep the paused, show-only cursor (`pauseGuidance`) when the runtime
+       * cleans up for "pause", and in the actuator's own cleanup while the
+       * task stays paused. Other reasons, "close" included, remove the guide.
+       */
+      pausedCursor?: boolean;
+      /**
+       * A proposal names a reviewed target (`expectedSelector`), but the
+       * browser did not advertise `task-expected-target`. "refuse" (default)
+       * refuses before dispatch. "omit" sends the action without it: the
+       * actuator has checked that it is a reviewed binding target, and the
+       * browser still keeps the action to the binding's targets.
+       */
+      unsupportedExpectedTarget?: "refuse" | "omit";
       /**
        * The host's single-use grant for this exact commit, issued only after
        * it recorded the person's explicit yes to this step, control and value.
@@ -218,6 +305,15 @@ export class NativeTaskActuator {
   private now() {
     return this.options.now?.() ?? Date.now();
   }
+  /** Whether the browser advertised one of these; true when the target does not say. */
+  private supports(...capabilities: string[]) {
+    const { target } = this.options;
+    if (typeof target.hasCapability === "function")
+      return capabilities.some((name) => target.hasCapability?.(name) === true);
+    if (target.advertised instanceof Set)
+      return capabilities.some((name) => target.advertised?.has(name));
+    return true;
+  }
   private task(id: string, owner: TaskOwner) {
     const task = this.options.getTask(id);
     if (
@@ -225,8 +321,27 @@ export class NativeTaskActuator {
       task.authorization.state !== "active" ||
       ["completed", "cancelled", "blocked"].includes(task.status)
     )
-      fail("Task authority ended");
+      fail("Task authority ended", "task-authority-ended");
     return task;
+  }
+  /** The actuator or the browser refused the action before it reached the page. */
+  private notDispatched(proposal: TaskActionProposal, cause: unknown): never {
+    const refusal = {
+      taskId: proposal.taskId,
+      proposalId: proposal.id,
+      capability: proposal.capability,
+      ...refusalOf(cause),
+    };
+    try {
+      this.options.onNotDispatched?.(refusal);
+    } catch {
+      // A reporting hook never changes the refusal.
+    }
+    throw new ElizaError("The browser action was not sent", {
+      code: TASK_ACTION_NOT_DISPATCHED,
+      cause,
+      context: { source: refusal.source, reason: refusal.reason },
+    });
   }
   private async bind(task: InteractiveTask, readOnly = false) {
     const cached = this.bindings.get(task.id);
@@ -274,7 +389,8 @@ export class NativeTaskActuator {
       expiresAt: this.now() + policy.leaseMs,
       targets: policy.targets,
       revoked: false,
-      ...(this.options.assistantName === undefined
+      ...(this.options.assistantName === undefined ||
+      !this.supports("task-guide-label")
         ? {}
         : { assistantName: this.options.assistantName }),
     };
@@ -413,17 +529,7 @@ export class NativeTaskActuator {
   async showGuidance(
     taskId: string,
     owner: TaskOwner,
-    input: {
-      stepId: string;
-      targetRef: string;
-      text: string;
-      detail?: string;
-      tone?: NativeTaskGuideTone;
-      answers?: NativeTaskGuideAnswer[];
-      restore?: boolean;
-      /** Observed controls the label must not cover. */
-      keepClearRefs?: string[];
-    },
+    input: TaskGuidanceInput,
     signal: AbortSignal,
   ): Promise<{
     tabId: string;
@@ -436,8 +542,19 @@ export class NativeTaskActuator {
   }> {
     const task = this.task(taskId, owner);
     const { snapshot } = this.readObservation(taskId, owner);
+    if (this.options.presentGuidance)
+      input = this.options.presentGuidance(structuredClone(input), {
+        task,
+        snapshot,
+      });
     const binding = this.bindings.get(taskId);
     const guide = this.options.target.guideTask;
+    // A browser without labels gets the same words as one text. An offer
+    // needs its answers, so it is sent as it is and that browser refuses it.
+    const labelled =
+      this.supports("task-guide-label") ||
+      input.tone === "offer" ||
+      input.answers !== undefined;
     if (
       task.status !== "active" ||
       !binding ||
@@ -465,12 +582,16 @@ export class NativeTaskActuator {
           revision,
           stepId: input.stepId,
           selector: input.targetRef,
-          text: input.text,
-          detail: input.detail,
-          tone: input.tone,
-          answers: input.answers,
+          text:
+            labelled || !input.detail
+              ? input.text
+              : `${input.text} ${input.detail}`,
+          ...(labelled
+            ? { detail: input.detail, tone: input.tone, answers: input.answers }
+            : {}),
           restore: input.restore,
-          ...(input.keepClearRefs?.length
+          ...(input.keepClearRefs?.length &&
+          this.supports("task-guide-keep-clear")
             ? { keepClear: input.keepClearRefs }
             : {}),
           expiresAt,
@@ -513,7 +634,8 @@ export class NativeTaskActuator {
 
   /**
    * Product Pause: removes the label and its answers and leaves a paused,
-   * show-only cursor. Like `quiesce`, it may run after task revocation.
+   * show-only cursor. A browser without labels removes the guide instead.
+   * Like `quiesce`, it may run after task revocation.
    */
   async pauseGuidance({
     owner,
@@ -523,6 +645,7 @@ export class NativeTaskActuator {
     taskId: string;
   }): Promise<void> {
     if (!this.activeGuidance.has(taskId)) return;
+    if (!this.supports("task-guide-label")) return this.hide(owner, taskId);
     const binding = this.guidanceOwner(owner, taskId);
     const revision = (this.guidanceRevisions.get(taskId) ?? 0) + 1;
     this.guidanceRevisions.set(taskId, revision);
@@ -553,14 +676,49 @@ export class NativeTaskActuator {
     return { guide, context: binding.context, tabId: binding.policy.tabId };
   }
 
-  /** May run after task revocation. It only removes this owner's cached overlay. */
+  /**
+   * May run after task revocation. It only removes this owner's cached
+   * overlay, or with `pausedCursor` pauses it (see that option). It resolves
+   * only once no cancelled browser command can still reach the page, so a
+   * Pause never answers before its fence did. The overlay is removed or
+   * paused first, so an unconfirmed fence never leaves guidance showing on a
+   * stopped task.
+   */
   async quiesce({
     owner,
     taskId,
+    reason,
   }: {
     owner: TaskOwner;
     taskId: string;
+    reason?: TaskCleanupReason;
   }): Promise<void> {
+    try {
+      if (this.options.pausedCursor && this.pausedByPerson(taskId, reason))
+        await this.pauseGuidance({ owner, taskId });
+      else await this.hide(owner, taskId);
+    } finally {
+      await this.options.target.settled?.();
+    }
+  }
+
+  private pausedByPerson(taskId: string, reason?: TaskCleanupReason) {
+    if (reason !== undefined) {
+      if (reason === "pause" || reason === "close")
+        this.cleanupReasons.set(taskId, reason);
+      else this.cleanupReasons.delete(taskId);
+      return reason === "pause";
+    }
+    let status: InteractiveTask["status"] | undefined;
+    try {
+      status = this.options.getTask(taskId).status;
+    } catch {
+      return false;
+    }
+    return status === "paused" && this.cleanupReasons.get(taskId) !== "close";
+  }
+
+  private async hide(owner: TaskOwner, taskId: string): Promise<void> {
     if (!this.activeGuidance.has(taskId)) return;
     const binding = this.guidanceOwner(owner, taskId);
     const revision = (this.guidanceRevisions.get(taskId) ?? 0) + 1;
@@ -575,7 +733,7 @@ export class NativeTaskActuator {
       reply?.visible !== false ||
       this.guidanceRevisions.get(taskId) !== revision
     )
-      fail("Guidance removal was not acknowledged");
+      fail("Guidance removal was not acknowledged", "guidance-not-removed");
     this.activeGuidance.delete(taskId);
   }
 
@@ -587,10 +745,7 @@ export class NativeTaskActuator {
       signal: AbortSignal;
       isCurrent: () => boolean;
     },
-  ): Promise<
-    | { status: "succeeded" | "failed"; evidenceRef: string }
-    | { status: "unknown"; evidenceRef?: string }
-  > {
+  ): Promise<TaskOutcome> {
     const task = this.options.getTask(proposal.taskId);
     const operation = task.operations.find(
       (op) => op.proposal.id === proposal.id,
@@ -639,16 +794,13 @@ export class NativeTaskActuator {
       signal: AbortSignal;
       isCurrent: () => boolean;
     },
-  ): Promise<
-    | { status: "succeeded" | "failed"; evidenceRef: string }
-    | { status: "unknown"; evidenceRef?: string }
-  > {
+  ): Promise<TaskOutcome> {
     let prepared: Awaited<ReturnType<NativeTaskActuator["prepareDispatch"]>>;
     try {
       prepared = await this.prepareDispatch(proposal, context);
     } catch (error) {
       // Nothing reached the browser yet.
-      notDispatched(error);
+      this.notDispatched(proposal, error);
     }
     const {
       task,
@@ -658,6 +810,7 @@ export class NativeTaskActuator {
       command,
       protectedValueKind,
       actionText,
+      expectedSelector,
       commitGrant,
     } = prepared;
     // Preparation awaits host callbacks; authority may end before this continuation.
@@ -666,7 +819,10 @@ export class NativeTaskActuator {
       this.now() >= proposal.expiresAt ||
       binding.expiresAt <= this.now()
     )
-      notDispatched(new Error("Action authority ended before dispatch"));
+      this.notDispatched(
+        proposal,
+        denied("Action authority ended before dispatch", "authority-ended"),
+      );
     let uncertainFollow = false;
     try {
       await this.options.target.execute(command, {
@@ -674,9 +830,7 @@ export class NativeTaskActuator {
         taskExpiresAt: proposal.expiresAt,
         ...(protectedValueKind ? { protectedValueKind } : {}),
         ...(actionText ? { actionText } : {}),
-        ...(proposal.expectedSelector === undefined
-          ? {}
-          : { expectedSelector: proposal.expectedSelector }),
+        ...(expectedSelector === undefined ? {} : { expectedSelector }),
         ...(commitGrant ? { commitGrant } : {}),
         signal: context.signal,
       });
@@ -684,7 +838,7 @@ export class NativeTaskActuator {
       await this.quiesce({ owner: context.owner, taskId: task.id });
       const kind = (error as { kind?: unknown } | null)?.kind;
       if (typeof kind === "string" && PRE_EFFECT_REFUSALS.has(kind))
-        notDispatched(error);
+        this.notDispatched(proposal, error);
       // A same-origin observed follow can destroy its reply channel. Never
       // repeat it. Only this navigation operation may continue to fresh
       // destination readback; other uncertain effects retain explicit recovery.
@@ -803,14 +957,14 @@ export class NativeTaskActuator {
         (item) => item.selector === proposal.targetRef,
       )
     )
-      fail("Action has no current browser observation");
+      fail("Action has no current browser observation", "stale-observation");
     if (
       !task.allowedCapabilities.includes(proposal.capability) ||
       !this.capabilities.includes(
         proposal.capability as (typeof this.capabilities)[number],
       )
     )
-      fail("Browser action is not authorized");
+      fail("Browser action is not authorized", "capability-not-allowed");
     // A host-chosen reviewed target must be one this binding allows for this
     // action. The browser then checks that the node is that target only.
     if (
@@ -823,7 +977,23 @@ export class NativeTaskActuator {
               proposal.capability === "browser.fill")),
       )
     )
-      fail("The expected target is not a reviewed target for this action");
+      fail(
+        "The expected target is not a reviewed target for this action",
+        "target-not-reviewed",
+      );
+    const checksTarget = this.supports("task-expected-target");
+    if (
+      proposal.expectedSelector !== undefined &&
+      !checksTarget &&
+      this.options.unsupportedExpectedTarget !== "omit"
+    )
+      fail(
+        "The browser cannot check the expected target",
+        "expected-target-unsupported",
+      );
+    const expectedSelector = checksTarget
+      ? proposal.expectedSelector
+      : undefined;
     const direction = proposal.capability.split(".")[2] as
       | "up"
       | "down"
@@ -839,7 +1009,10 @@ export class NativeTaskActuator {
     const resolved = ["fill", "select"].includes(subaction)
       ? await this.options.resolveValue(
           proposal.valueRef ||
-            fail("Fill or select requires a held value reference"),
+            fail(
+              "Fill or select requires a held value reference",
+              "value-reference-missing",
+            ),
           task,
         )
       : undefined;
@@ -850,29 +1023,33 @@ export class NativeTaskActuator {
         typeof resolved.text !== "string" ||
         !/^[A-Za-z0-9]{4,12}$/.test(resolved.text))
     )
-      fail("Invalid protected value");
+      fail("Invalid protected value", "invalid-protected-value");
     const protectedValueKind =
       typeof resolved === "object" ? resolved.kind : undefined;
     if (subaction === "select" && protectedValueKind)
-      fail("Select cannot use a protected value");
+      fail("Select cannot use a protected value", "protected-select");
     const text = typeof resolved === "object" ? resolved.text : resolved;
     if (
       !current() ||
       this.now() >= proposal.expiresAt ||
       binding.expiresAt <= this.now()
     )
-      fail("Action expired before dispatch");
-    if (!this.options.target.guideTask) fail("Action feedback is unavailable");
+      fail("Action expired before dispatch", "expired");
+    if (!this.options.target.guideTask)
+      fail("Action feedback is unavailable", "feedback-unavailable");
     // Negotiate acknowledged cleanup before dispatch. The native command owns
     // its pointer, while this marker lets Pause await removal even in flight.
     this.activeGuidance.add(task.id);
     await this.quiesce({ owner: context.owner, taskId: task.id });
-    if (!current()) fail("Action cancelled before feedback");
+    if (!current()) fail("Action cancelled before feedback", "cancelled");
     this.observations.delete(task.id); // Never reuse a consumed target after any dispatch attempt.
     this.activeGuidance.add(task.id);
-    const actionText = this.options.describeAction?.(task, proposal);
-    if (actionText !== undefined && !validActionText(actionText))
-      fail("Invalid action sentence");
+    // An invalid sentence keeps the browser's generic line. Every browser
+    // that advertises `task-expected-target` also reads the preview.
+    const described = checksTarget
+      ? this.options.describeAction?.(task, proposal)
+      : undefined;
+    const actionText = validActionText(described) ? described : undefined;
     const commitGrant = this.options.commitGrant
       ? structuredClone(this.options.commitGrant(task, proposal))
       : undefined;
@@ -883,15 +1060,20 @@ export class NativeTaskActuator {
           taskContext: binding.context,
           subaction,
           targetRef: proposal.targetRef,
-          selector: proposal.expectedSelector,
+          // The selector the browser will check. Under "omit" none is sent,
+          // and a commit is never sent without its reviewed control checked.
+          selector: expectedSelector,
           now: this.now(),
         }) ||
         // The page the person said yes on: for an extended task this is the
         // observed origin, never just the binding's starting origin.
         commitGrant.origin !== cached.observation.origin)
     )
-      fail("The commit grant does not match this action");
-    if (!current()) fail("Action cancelled before dispatch");
+      fail(
+        "The commit grant does not match this action",
+        "commit-grant-mismatch",
+      );
+    if (!current()) fail("Action cancelled before dispatch", "cancelled");
     return {
       task,
       cached,
@@ -899,6 +1081,7 @@ export class NativeTaskActuator {
       current,
       protectedValueKind,
       actionText,
+      expectedSelector,
       commitGrant,
       command: {
         subaction,

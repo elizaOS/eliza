@@ -1,0 +1,82 @@
+{
+  "sources": [
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/TelephonyPlugin.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsTelephony.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsSendJournal.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsStore.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/ReviewedSmsSend.java",
+    "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/TelephonyPluginReviewTest.java",
+    "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/SmsSendJournalTest.java",
+    "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/SmsOutgoingHistoryTest.java",
+    "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/MmsSendJournalTest.java",
+    "plugins/plugin-native-messages/quint/check-native-sms-review.ts",
+    "plugins/plugin-native-messages/quint/native-sms-review-conformance.json",
+    "plugins/plugin-native-messages/android/build.gradle",
+    "packages/app/scripts/android-native-plugins-gradle/build.gradle",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "plugins/plugin-native-messages/quint/check-native-sms-review.ts",
+  "bounds": {
+    "domain": "One exact native SMS or MMS bridge call and its pending owner, one worker journal lookup, one main-queue native dialog, one owner Send tap, one queued dispatch, and one cancellation or foreground retirement. At most one platform invocation and one result; fixed operation and binding identity.",
+    "projection": "The call owner exists before journal work is queued and remains until the call settles. A host-authorized composer or an accepted native dialog can queue one dispatch. Cancellation retires the matching owner before its acknowledgement. A retired owner cannot open a dialog or dispatch. A recorded result survives cancellation. The host's proof of an exact owner action is abstract.",
+    "conformance": "The Android Gradle check runs bridge, journal and outgoing history tests under Robolectric29. The outgoing history tests use a controlled provider and SMS manager to check role ownership, provider refusal and operation replay. Exact testcase names and zero skips are required.",
+    "limits": "The model covers one abstract platform invocation and one pre-dispatch refusal. It does not enumerate multipart or multi-recipient partial sends, database writes, independent hosts or arbitrary Android lifecycle timing. The Android tests exercise these boundaries with controlled provider responses and journal state. Physical SIM, carrier and provider acceptance need device qualification."
+  },
+  "cases": [
+    {
+      "name": "native-review-worker-main-ownership",
+      "main": "NativeSmsReviewOwnership",
+      "init": "initModel",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOneInvocation",
+        "InvocationNeedsOwnerApproval",
+        "DialogNeedsLiveOwner",
+        "SettledOwnerReleased",
+        "CancelledMeansNoInvocation",
+        "ProviderRefusalMeansNoInvocation"
+      ],
+      "temporal": [
+        "CancelAckFencesInvocation",
+        "KnownResultStable",
+        "FairRetirementSettles",
+        "Settles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "CancelAckFencesInvocation",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Cancellation is processed on Main after the pending owner is registered and before its own bridge acknowledgement."
+          ]
+        },
+        {
+          "property": "KnownResultStable",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. A known result already admitted by the exact journal is not rolled back by retirement."
+          ]
+        },
+        {
+          "property": "FairRetirementSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of journal lookup return and cancelled-call journal settlement. A previously dispatched call remains owned by its native completion; no provider completion is assumed."
+          ]
+        },
+        {
+          "property": "Settles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness or owner response. A journal lookup, owner dialog or native callback may remain pending forever."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 500,
+      "deadlock": false
+    }
+  ]
+}

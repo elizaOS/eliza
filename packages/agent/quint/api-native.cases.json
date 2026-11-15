@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/api/native-view-renderer.ts",
+    "packages/agent/src/api/native-inference-timing.ts"
+  ],
+  "bounds": {
+    "domain": "Two hosts/revisions and two overlapping turns.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_native",
+      "main": "api_native",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

@@ -256,6 +256,14 @@ export const windowsWorkflowBackend: WorkflowPlatformBackend = {
         done = true;
         await h.finish('abandon');
       },
+      // The helper's settle is the only release it offers; no task ran yet.
+      async releaseUnstarted() {
+        if (done) return;
+        done = true;
+        h.child.stdin.write('finish\n');
+        if ((await h.next()).finished !== true) throw Error('Lease release unconfirmed');
+        await h.finish();
+      },
     };
   },
 };

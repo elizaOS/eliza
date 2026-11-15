@@ -57,6 +57,9 @@ const { charactersService } = await import(
   "@elizaos/cloud-shared/lib/services/characters"
 );
 const { appsService } = await import("@elizaos/cloud-shared/lib/services/apps");
+const { jobs, generations, usageRecords } = await import(
+  "@elizaos/cloud-shared/db/schemas"
+);
 const { Hono } = await import("hono");
 const { default: appCharactersRoute } = await import(
   "../v1/apps/[id]/characters/route.ts"
@@ -93,6 +96,9 @@ beforeAll(async () => {
     appDeploymentStatusEnum,
     appReviewStatusEnum,
     apps,
+    jobs,
+    generations,
+    usageRecords,
     creditTransactions,
   };
   const { apply } = await pushSchema(schema as never, dbWrite as never);

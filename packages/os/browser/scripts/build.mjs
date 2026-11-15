@@ -32,7 +32,7 @@ await writeFile(
     {
       manifest_version: 3,
       name: "Eliza Browser Control",
-      version: "2.0.33",
+      version: "2.0.34",
       key: identity.chromeDevManifestKey,
       description:
         "Native, authenticated control of this Chromium profile for your Eliza agent.",
@@ -40,11 +40,13 @@ await writeFile(
         "tabs",
         "scripting",
         "webNavigation",
+        "webRequest",
         "storage",
         "nativeMessaging",
         "alarms",
       ],
-      host_permissions: ["http://*/*", "https://*/*"],
+      // ws and wss let webRequest see a page's WebSocket (effect-watch.mjs).
+      host_permissions: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"],
       background: { service_worker: "background.mjs", type: "module" },
     },
     null,

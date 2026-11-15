@@ -1,10 +1,11 @@
 // Wraps the shared PTY console in a full terminal pane.
 import { client } from "@elizaos/ui";
 import { useEffect, useRef } from "react";
+import { streamPtyOutput } from "./pty-output-stream";
 
 /**
  * Renders a single xterm.js terminal for a PTY session.
- * On mount: loads xterm lazily, hydrates buffered output, subscribes to live data.
+ * On mount: loads xterm lazily, then streams buffered and live output.
  * On unmount: unsubscribes and disposes.
  */
 export function PtyTerminalPane({
@@ -24,8 +25,7 @@ export function PtyTerminalPane({
     mountedRef.current = true;
 
     let disposed = false;
-    let unsub: (() => void) | undefined;
-    let unsubReconnect: (() => void) | undefined;
+    let stopStream: (() => void) | undefined;
     let resizeObserver: ResizeObserver | undefined;
 
     (async () => {
@@ -98,37 +98,20 @@ export function PtyTerminalPane({
         });
       });
 
-      try {
-        const buf = await client.getPtyBufferedOutput(sessionId);
-        if (!disposed && buf) {
+      // xterm keeps its own scrollback; a fresh snapshot (first load or after
+      // a reconnect) replaces it.
+      stopStream = streamPtyOutput(sessionId, {
+        onSnapshot: (text) => {
+          term.reset();
           // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape
-          term.write(buf.replace(/\x1b\[3J/g, ""));
+          term.write(text.replace(/\x1b\[3J/g, ""));
           term.scrollToBottom();
-        }
-      } catch {
-        // Session may have ended.
-      }
-
-      client.subscribePtyOutput(sessionId);
-      // A reconnect opens a NEW server-side socket with an empty subscription
-      // map — without re-subscribing, the pane silently stops receiving
-      // output and its keystrokes are rejected as "not subscribed".
-      unsubReconnect = client.onReconnect(() => {
-        if (!disposed) client.subscribePtyOutput(sessionId);
-      });
-      unsub = client.onWsEvent(
-        "pty-output",
-        (data: Record<string, unknown>) => {
-          if (
-            data.sessionId === sessionId &&
-            typeof data.data === "string" &&
-            !disposed
-          ) {
-            // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape
-            term.write(data.data.replace(/\x1b\[3J/g, ""));
-          }
         },
-      );
+        onData: (text) => {
+          // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape
+          term.write(text.replace(/\x1b\[3J/g, ""));
+        },
+      });
 
       term.onData((data: string) => {
         if (!disposed) {
@@ -155,9 +138,7 @@ export function PtyTerminalPane({
 
     return () => {
       disposed = true;
-      unsub?.();
-      unsubReconnect?.();
-      client.unsubscribePtyOutput(sessionId);
+      stopStream?.();
       termRef.current?.dispose();
       termRef.current = null;
       fitRef.current = null;

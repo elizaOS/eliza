@@ -15,7 +15,7 @@ public final class PasswordsConfig {
   public final String alias, tokenScheme, hostPackage;
   public final byte[] aad;
   public final int unlockSeconds;
-  public final boolean biometric, hostIsBrowser;
+  public final boolean biometric, hostIsBrowser, bridgeAcceptsSecrets;
   private final Map<String, String> trustedBrowsers = new HashMap<>();
 
   private PasswordsConfig(Context context) {
@@ -30,6 +30,7 @@ public final class PasswordsConfig {
     if (unlockSeconds < 15 || unlockSeconds > 300) throw new IllegalStateException("Unsupported password unlock window");
     biometric = resources.getBoolean(R.bool.eliza_passwords_allow_biometric);
     hostIsBrowser = resources.getBoolean(R.bool.eliza_passwords_host_is_browser);
+    bridgeAcceptsSecrets = resources.getBoolean(R.bool.eliza_passwords_bridge_accepts_secrets);
     tokenScheme = resources.getString(R.string.eliza_passwords_token_scheme);
     if (!tokenScheme.matches("[a-z][a-z0-9+.-]{0,40}")) throw new IllegalStateException("Invalid password token scheme");
     hostPackage = app.getPackageName();

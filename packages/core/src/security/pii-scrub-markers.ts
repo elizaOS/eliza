@@ -32,7 +32,7 @@
  * failed item is NOT marked done, so it is retried, never silently passed.
  */
 
-import { createHash } from "../utils/crypto-compat.js";
+import { sha256Hex } from "../runtime/trajectory-provider-attribution.js";
 
 /** Prefix for every PII scrub done-marker key. */
 export const PII_SCRUB_MARKER_PREFIX = "pii";
@@ -66,7 +66,7 @@ export interface PiiScrubDoneMarker {
  * the stable idempotency handle.
  */
 export function hashScrubContent(content: string): string {
-	return createHash("sha256").update(content).digest("hex");
+	return sha256Hex(content);
 }
 
 /**

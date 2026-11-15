@@ -1,0 +1,80 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/apps.ts",
+    "packages/cloud/shared/src/db/schemas/apps.ts",
+    "packages/cloud/shared/src/db/schemas/app-frontend-deployments.ts",
+    "packages/cloud/shared/src/lib/services/apps.ts",
+    "packages/cloud/shared/src/lib/services/app-frontend-hosting.ts",
+    "packages/cloud/api/v1/hosted-frontend/serve/[[...path]]/route.ts",
+    "packages/cloud/api/v1/apps/[id]/route.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/app-frontend-deletion.pglite.test.ts",
+    "packages/cloud/quint/check-app-frontend-deletion.mjs",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/app-frontend-deletion.postgres.integration.test.ts",
+    "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts",
+    "packages/cloud/shared/src/db/migrations/0568_app_cleanup_manifest.sql",
+    "packages/cloud/shared/src/db/repositories/app-deletion-cleanup.ts",
+    "packages/cloud/shared/src/lib/services/app-deletion-cleanup.ts",
+    "packages/cloud/shared/src/lib/services/app-deletion-cleanup-plan.ts",
+    "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/route.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.pglite.test.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.postgres.integration.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-app-frontend-deletion.mjs",
+  "bounds": {
+    "domain": "One app, two immutable published deployment identities, reversible app deactivation/reactivation and one final deletion request with rollback, acknowledged commit or lost acknowledgement.",
+    "atomicity": "The final deletion transaction locks the app, rechecks mobile revocation, locks and snapshots every current frontend row, then deletes the app and cascades those rows. Only its acknowledged return authorizes object deletion. The app foreign key serializes inserts with deletion; deployment locks serialize publication with the snapshot. Activation and final deletion acquire the same parent app row lock before deployment rows; a missing parent or nonmatching authorized organization rejects activation.",
+    "conformance": "Twenty-three real PGlite original-job service/repository/public-serving cases retain complete objects across rejected and lost final SQL writes, reject reactivation after the permanent deletion fence, and clean all 1002 retained manifests only after acknowledged cascade, with the v2 job retaining cleanup across unknown outcomes. Two separate PostgreSQL parent-lock cases retain the repository concurrency proof. Provider I/O remains controlled.",
+    "gaps": "Object-retention projection only; the app_teardown_authority model owns the new irreversible lifecycle, provider receipts and pending API contract. Reactivation in this older model is a conservative overapproximation of unfenced same-owner operations, not permission to reactivate a deletion-fenced app. No general refinement, live R2, arbitrary-count proof or orphan GC; older mixed writers require coordinated rollout.",
+    "progress": "A pending SQL operation settles under weak fairness of its continuation; acknowledged cleanup settles under weak fairness of cleanup. No provider availability, successful deletion, orphan cleanup or elapsed deadline guarantee."
+  },
+  "cases": [
+    {
+      "name": "app-deletion-frontend-receipt",
+      "main": "app_frontend_deletion",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "temporal": [
+        "FinalizationSettles",
+        "AcknowledgedCleanupSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "FinalizationSettles",
+          "expect": "holds",
+          "assumptions": [
+            "The pending SQL continuation is weakly fair and eventually returns a commit or error."
+          ]
+        },
+        {
+          "property": "AcknowledgedCleanupSettles",
+          "expect": "holds",
+          "assumptions": [
+            "The acknowledged object cleanup continuation is weakly fair. This does not assume cleanup after lost SQL acknowledgement."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000,
+      "deadlock": false
+    },
+    {
+      "name": "app-deletion-snapshot-lock-order",
+      "main": "app_frontend_deletion_locks",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "maxSteps": 20,
+      "samples": 1000,
+      "deadlock": false,
+      "temporal": []
+    }
+  ]
+}

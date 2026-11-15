@@ -13,7 +13,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-calendar build  # build
 ```
 
-
 ## Android CalendarProvider adapter
 
 Android uses a separate, ESM-only `@elizaos/capacitor-calendar/android` entrypoint.
@@ -32,6 +31,8 @@ The exported Android types distinguish editor timestamps/body from reviewed-agen
 ISO dates/description. Permission-required, conflict, unknown and cancellation are
 results callers must handle. Promise rejection remains possible. A saved creation
 receipt must be acknowledged explicitly; unknown operations must not be replayed.
+The owner can retire an unknown creation with `acknowledgeCreation({ creationId,
+resolution: "dismissed" })`: the provider is read first and nothing is retried.
 
 Android bridge/provider tests do not establish a host's upgrade or physical-device
 acceptance. Preserve existing host storage identities and run migration tests.

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /**
  * Integration tests for the production `processDueScheduledTasks` wrapper.
  *
@@ -24,6 +25,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  createApprovalQueue,
   createGlobalPauseStore,
   resolvePendingPromptsStore,
 } from "@elizaos/plugin-assistant";
@@ -44,6 +46,28 @@ import {
 import { registerLifeOpsScheduledTaskSubjectStore } from "./runtime-wiring.ts";
 import { processDueScheduledTasks } from "./scheduler.ts";
 import { getScheduledTaskRunner } from "./service.ts";
+
+const ownerZoneCases: Array<{
+  ownerZone: number;
+  schedulingZone: number;
+  runtimeZone: number;
+  hostZone: number;
+  selectedZone: number;
+  hostTravel?: boolean;
+  tickTravel?: boolean;
+}> = process.env.ELIZA_OWNER_ZONE_MODEL_CASES
+  ? JSON.parse(readFileSync(process.env.ELIZA_OWNER_ZONE_MODEL_CASES, "utf8"))
+  : [
+      {
+        ownerZone: -1,
+        schedulingZone: -1,
+        runtimeZone: 1,
+        hostZone: 0,
+        selectedZone: 1,
+      },
+    ];
+const ownerZoneName = (zone: number) =>
+  zone === 1 ? "America/Los_Angeles" : "UTC";
 
 interface ScheduledTaskSeed
   extends Omit<ScheduledTask, "taskId" | "state" | "createdBy"> {
@@ -90,10 +114,256 @@ describe("processDueScheduledTasks — production wiring", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     if (runtimeResult) {
       await runtimeResult.cleanup();
       runtimeResult = null;
     }
+  });
+
+  it.each(["scheduled", "fired"] as const)(
+    "retires a resolved approval's %s follow-up before dispatch or escalation",
+    async (status) => {
+      runtimeResult = await createLifeOpsTestRuntime();
+      const { runtime } = runtimeResult;
+      const owner = "approval-owner";
+      const now = new Date("2026-11-11T23:00:00.000Z");
+      const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+      const approval = await queue.enqueue({
+        requestedBy: owner,
+        subjectUserId: owner,
+        action: "send_email",
+        channel: "email",
+        reason: "Synthetic approval, no provider dispatch",
+        expiresAt: new Date("2099-01-01T00:00:00Z"),
+        payload: {
+          action: "send_email",
+          to: ["self@example.test"],
+          cc: [],
+          bcc: [],
+          subject: "Approval follow-up QA",
+          body: "Test only",
+          threadId: null,
+          replyToMessageId: null,
+        },
+      });
+      const task = await seedScheduledTask(runtime, {
+        kind: "approval",
+        promptInstructions: "Approval needed",
+        // A deferred approval must retire before its future retry becomes due.
+        trigger: { kind: "once", atIso: "2026-11-12T21:00:00Z" },
+        priority: "high",
+        respectsGlobalPause: false,
+        source: "plugin",
+        ownerVisible: true,
+        subject: { kind: "self", id: owner },
+        idempotencyKey: `approval:${approval.id}`,
+        metadata: { approvalRequestId: approval.id },
+        completionCheck: {
+          kind: "user_acknowledged",
+          followupAfterMinutes: 60,
+        },
+        state: {
+          status,
+          followupCount: 0,
+          ...(status === "fired" ? { firedAt: "2026-11-11T21:00:00Z" } : {}),
+        },
+      });
+      if (status === "scheduled") {
+        const repo = new LifeOpsRepository(runtime);
+        await repo.upsertScheduledTask(runtime.agentId, task, {
+          nextFireAtIso: "2026-11-12T21:00:00Z",
+        });
+        const due = await repo.listScheduledTasks(runtime.agentId, {
+          status: ["scheduled", "fired"],
+          dueAtOrBeforeIso: now.toISOString(),
+          reevaluateOwnerLocalCron: true,
+        });
+        expect(due.map((candidate) => candidate.taskId)).not.toContain(
+          task.taskId,
+        );
+      }
+      const prompts = resolvePendingPromptsStore(runtime);
+      await prompts.record({
+        roomId: `approval:${approval.id}`,
+        taskId: task.taskId,
+        promptSnippet: "Approval needed",
+        firedAt: "2026-11-11T21:00:00Z",
+      });
+      await queue.approve(approval.id, owner, {
+        resolvedBy: owner,
+        resolutionReason: "Owner approved in the review dialog",
+      });
+      const waiting = await processDueScheduledTasks({
+        runtime,
+        agentId: runtime.agentId,
+        now,
+        limit: 5,
+      });
+      expect(waiting.fires).toEqual([]);
+      expect(waiting.completions).toEqual([]);
+      expect(waiting.completionTimeouts).toEqual([]);
+      expect(
+        (
+          await new LifeOpsRepository(runtime).getScheduledTask(
+            runtime.agentId,
+            task.taskId,
+          )
+        )?.state.status,
+      ).toBe(status);
+      await queue.revertApprovedToPending(approval.id, owner);
+      await queue.reject(approval.id, owner, {
+        resolvedBy: owner,
+        resolutionReason: "Owner declined after preflight returned to review",
+      });
+      const result = await processDueScheduledTasks({
+        runtime,
+        agentId: runtime.agentId,
+        now,
+        limit: 5,
+      });
+      expect(result.errors).toEqual([]);
+      expect(result.fires).toEqual([]);
+      expect(result.completionTimeouts).toEqual([]);
+      expect(result.completions.map((item) => item.taskId)).toContain(
+        task.taskId,
+      );
+      const saved = await new LifeOpsRepository(runtime).getScheduledTask(
+        runtime.agentId,
+        task.taskId,
+      );
+      expect(saved?.state.status).toBe("completed");
+      expect(await prompts.list(`approval:${approval.id}`, { now })).toEqual(
+        [],
+      );
+      expect((await queue.byId(approval.id, owner))?.state).toBe("rejected");
+    },
+  );
+
+  it("limits resolved approval cleanup to one task per tick without delivering deferred approvals", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const owner = "approval-budget-owner";
+    const now = new Date("2026-11-11T23:00:00.000Z");
+    const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+    const prompts = resolvePendingPromptsStore(runtime);
+    const repo = new LifeOpsRepository(runtime);
+    const tasks: { requestId: string; task: ScheduledTask; roomId: string }[] =
+      [];
+    for (const status of ["scheduled", "fired"] as const) {
+      const approval = await queue.enqueue({
+        requestedBy: owner,
+        subjectUserId: owner,
+        action: "send_email",
+        channel: "email",
+        reason: `Synthetic ${status} approval, no provider dispatch`,
+        expiresAt: new Date("2099-01-01T00:00:00Z"),
+        payload: {
+          action: "send_email",
+          to: ["self@example.test"],
+          cc: [],
+          bcc: [],
+          subject: "Approval cleanup budget QA",
+          body: "Test only",
+          threadId: null,
+          replyToMessageId: null,
+        },
+      });
+      const task = await seedScheduledTask(runtime, {
+        kind: "approval",
+        promptInstructions: "Approval needed",
+        trigger: { kind: "once", atIso: "2026-11-11T21:00:00Z" },
+        priority: "high",
+        respectsGlobalPause: false,
+        source: "plugin",
+        ownerVisible: true,
+        subject: { kind: "self", id: owner },
+        idempotencyKey: `approval:${approval.id}`,
+        metadata: { approvalRequestId: approval.id },
+        completionCheck: {
+          kind: "user_acknowledged",
+          followupAfterMinutes: 60,
+        },
+        state: {
+          status,
+          followupCount: 0,
+          ...(status === "fired" ? { firedAt: "2026-11-11T21:00:00Z" } : {}),
+        },
+      });
+      const roomId = `approval:${approval.id}`;
+      await prompts.record({
+        roomId,
+        taskId: task.taskId,
+        promptSnippet: "Approval needed",
+        firedAt: "2026-11-11T21:00:00Z",
+      });
+      await queue.reject(approval.id, owner, {
+        resolvedBy: owner,
+        resolutionReason: "Owner declined in the review dialog",
+      });
+      tasks.push({ requestId: approval.id, task, roomId });
+    }
+    const notificationCount = getRecordedTestNotifications(runtime).length;
+    const first = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now,
+      limit: 1,
+    });
+    expect(first.errors).toEqual([]);
+    expect(first.completions).toHaveLength(1);
+    expect(first.fires).toEqual([]);
+    expect(first.completionTimeouts).toEqual([]);
+    expect(first.pendingPrompts).toEqual([]);
+    const completedId = first.completions[0]?.taskId;
+    expect(tasks.map(({ task }) => task.taskId)).toContain(completedId);
+    for (const item of tasks) {
+      const completed = item.task.taskId === completedId;
+      const saved = await repo.getScheduledTask(
+        runtime.agentId,
+        item.task.taskId,
+      );
+      expect(saved?.state.status).toBe(
+        completed ? "completed" : item.task.state.status,
+      );
+      const pending = await prompts.list(item.roomId, { now });
+      expect(pending).toHaveLength(completed ? 0 : 1);
+      if (!completed) expect(pending[0]?.taskId).toBe(item.task.taskId);
+      expect((await queue.byId(item.requestId, owner))?.state).toBe("rejected");
+    }
+    expect(
+      await repo.listScheduledTasks(runtime.agentId, { kind: "approval" }),
+    ).toHaveLength(2);
+    expect(getRecordedTestNotifications(runtime)).toHaveLength(
+      notificationCount,
+    );
+
+    const second = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date(now.getTime() + 60_000),
+      limit: 1,
+    });
+    expect(second.errors).toEqual([]);
+    expect(second.completions).toHaveLength(1);
+    expect(second.completions[0]?.taskId).not.toBe(completedId);
+    expect(second.fires).toEqual([]);
+    expect(second.completionTimeouts).toEqual([]);
+    expect(second.pendingPrompts).toEqual([]);
+    for (const item of tasks) {
+      expect(
+        (await repo.getScheduledTask(runtime.agentId, item.task.taskId))?.state
+          .status,
+      ).toBe("completed");
+      expect(await prompts.list(item.roomId, { now })).toEqual([]);
+      expect((await queue.byId(item.requestId, owner))?.state).toBe("rejected");
+    }
+    expect(
+      await repo.listScheduledTasks(runtime.agentId, { kind: "approval" }),
+    ).toHaveLength(2);
+    expect(getRecordedTestNotifications(runtime)).toHaveLength(
+      notificationCount,
+    );
   });
 
   it("fires a due one-shot reminder via the real runner wired through LifeOpsRepository", async () => {
@@ -142,13 +412,86 @@ describe("processDueScheduledTasks — production wiring", () => {
     expect(transitions).toContain("fired");
   });
 
+  it.each(ownerZoneCases)(
+    "resolves owner-local cron timezone priority $ownerZone/$schedulingZone/$runtimeZone/$hostZone",
+    async (zones) => {
+      runtimeResult = await createLifeOpsTestRuntime();
+      const { runtime } = runtimeResult;
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const now = new Date("2026-11-12T16:01:00.000Z");
+      vi.setSystemTime(new Date("2026-11-11T16:01:00.000Z"));
+      vi.stubEnv("TZ", ownerZoneName(zones.hostZone));
+      runtime.getSetting = (key) => {
+        const selected =
+          key === "DEFAULT_TIMEZONE"
+            ? zones.schedulingZone
+            : key === "TIMEZONE"
+              ? zones.runtimeZone
+              : -1;
+        return selected >= 0 ? ownerZoneName(selected) : undefined;
+      };
+      const facts = resolveOwnerFactStore(runtime);
+      await facts.clear();
+      if (zones.ownerZone >= 0)
+        await facts.update(
+          { timezone: ownerZoneName(zones.ownerZone) },
+          { source: "profile_save", recordedAt: now.toISOString() },
+        );
+      if (zones.hostTravel || zones.tickTravel) {
+        const travelDay = zones.tickTravel ? "2026-11-12" : "2026-11-11";
+        await facts.setActiveTravel(
+          {
+            startIso: `${travelDay}T15:00:00.000Z`,
+            endIso: `${travelDay}T17:00:00.000Z`,
+            destinationTimezone: "America/Los_Angeles",
+          },
+          { source: "profile_save", recordedAt: "2026-11-10T00:00:00.000Z" },
+        );
+      }
+      expect(
+        (
+          await getScheduledTaskRunner(runtime, {
+            agentId: runtime.agentId,
+            now: () => now,
+          }).resolveOwnerFacts()
+        ).timezone,
+      ).toBe(ownerZoneName(zones.selectedZone));
+      const seed = await seedScheduledTask(runtime, {
+        kind: "reminder",
+        promptInstructions: "Morning timezone regression check.",
+        trigger: { kind: "cron", expression: "0 8 * * *", tz: "owner_local" },
+        priority: "medium",
+        respectsGlobalPause: true,
+        source: "user_chat",
+        ownerVisible: true,
+        state: {
+          status: "fired",
+          followupCount: 0,
+          firedAt: "2026-11-12T12:11:46.968Z",
+        },
+        metadata: { createdAtIso: "2026-11-12T11:47:19.264Z" },
+      });
+      const request = { runtime, agentId: runtime.agentId, now, limit: 5 };
+      const result = await processDueScheduledTasks(request);
+      expect(result.errors).toEqual([]);
+      expect(result.fires.map((fire) => fire.taskId)).toEqual(
+        zones.selectedZone === 1 ? [seed.taskId] : [],
+      );
+      if (zones.selectedZone === 1)
+        expect(result.fires[0]?.occurrenceAtIso).toBe(
+          "2026-11-12T16:00:00.000Z",
+        );
+      expect((await processDueScheduledTasks(request)).fires).toEqual([]);
+    },
+  );
+
   it("fires owner-local cron after travel changes the zone despite a future home-zone index", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
-    // The scheduler preflight and runner must observe the same instant.
-    // Otherwise the runner correctly rechecks the cron against today's clock.
+    // A replayed tick inside travel must use its clock even when the host
+    // clock has advanced beyond that travel window.
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-10-11T00:01:00.000Z"));
+    vi.setSystemTime(new Date("2026-11-12T16:01:00.000Z"));
     const facts = resolveOwnerFactStore(runtime);
     const provenance = {
       source: "profile_save" as const,

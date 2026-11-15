@@ -46,21 +46,35 @@ const MAX_PATTERN_INPUT_LENGTH = 50_000;
  * on match; ok:false with a reason when it doesn't match, the pattern is
  * invalid, or the value is too long to test safely.
  */
+/** Compiled schema patterns. Schemas are a bounded catalog, but `validateSchema` is public, so cap it. */
+const compiledPatterns = new Map<string, RegExp | { invalid: string }>();
+const MAX_COMPILED_PATTERNS = 1024;
+
+function compilePattern(pattern: string): RegExp | { invalid: string } {
+	let compiled = compiledPatterns.get(pattern);
+	if (compiled) return compiled;
+	try {
+		compiled = new RegExp(pattern);
+	} catch (err) {
+		// error-policy:J3 tool schemas are untrusted plugin input; an invalid
+		// pattern becomes a structured validation failure.
+		compiled = { invalid: err instanceof Error ? err.message : String(err) };
+	}
+	if (compiledPatterns.size >= MAX_COMPILED_PATTERNS) compiledPatterns.clear();
+	compiledPatterns.set(pattern, compiled);
+	return compiled;
+}
+
 export function testSchemaPattern(
 	pattern: string,
 	value: string,
 ): { ok: true } | { ok: false; reason: string } {
-	let regex: RegExp;
-	try {
-		regex = new RegExp(pattern);
-	} catch (err) {
-		// error-policy:J3 tool schemas are untrusted plugin input; an invalid
-		// pattern becomes a structured validation failure.
+	// Flagless, so `test` keeps no `lastIndex` state between calls.
+	const regex = compilePattern(pattern);
+	if (!(regex instanceof RegExp)) {
 		return {
 			ok: false,
-			reason: `has an invalid pattern ${pattern}: ${
-				err instanceof Error ? err.message : String(err)
-			}`,
+			reason: `has an invalid pattern ${pattern}: ${regex.invalid}`,
 		};
 	}
 	if (value.length > MAX_PATTERN_INPUT_LENGTH) {
@@ -82,10 +96,6 @@ function describeType(value: unknown): string {
 		return "array";
 	}
 	return typeof value;
-}
-
-function hasOwn(record: Record<string, unknown>, key: string): boolean {
-	return Object.hasOwn(record, key);
 }
 
 function formatPath(path: string): string {
@@ -148,7 +158,7 @@ function validateObject(
 	const output: Record<string, unknown> = {};
 
 	for (const key of schema.required ?? []) {
-		if (!hasOwn(value, key) || value[key] === undefined) {
+		if (!Object.hasOwn(value, key) || value[key] === undefined) {
 			errors.push(
 				`Missing required argument '${path ? `${path}.${key}` : key}'`,
 			);
@@ -156,7 +166,7 @@ function validateObject(
 	}
 
 	for (const key of Object.keys(value)) {
-		if (!hasOwn(properties, key)) {
+		if (!Object.hasOwn(properties, key)) {
 			const childPath = path ? `${path}.${key}` : key;
 			if (schema.additionalProperties === true) {
 				output[key] = value[key];
@@ -183,7 +193,7 @@ function validateObject(
 	}
 
 	for (const [key, childSchema] of Object.entries(properties)) {
-		if (hasOwn(value, key) && value[key] !== undefined) {
+		if (Object.hasOwn(value, key) && value[key] !== undefined) {
 			const childPath = path ? `${path}.${key}` : key;
 			const before = errors.length;
 			const childValue = validateSchema(
@@ -407,15 +417,15 @@ function normalizeModelParameters(
 ): Record<string, unknown> {
 	let normalized = args;
 	for (const parameter of action.parameters ?? []) {
-		if (!hasOwn(args, parameter.name)) continue;
+		if (!Object.hasOwn(args, parameter.name)) continue;
 		const suppliedValue = args[parameter.name];
 		const schema = parameter.schema;
-		const branches = [...(schema.anyOf ?? []), ...(schema.oneOf ?? [])];
 		const requiresObject =
 			schema.type === "object" ||
 			(schema.type === undefined &&
-				branches.length > 0 &&
-				branches.every((branch) => branch.type === "object"));
+				Boolean(schema.anyOf?.length || schema.oneOf?.length) &&
+				(schema.anyOf ?? []).every((branch) => branch.type === "object") &&
+				(schema.oneOf ?? []).every((branch) => branch.type === "object"));
 		// Decode only a declared object parameter's transport representation.
 		// String and mixed unions retain literal text; recursive schema validation
 		// still enforces every discriminator, property and value after decoding.
@@ -463,12 +473,15 @@ function admitLegacyRequiredAlternatives(
 	args: Record<string, unknown>,
 ): ActionParametersJsonSchema {
 	const required = schema.required.filter((name) => {
-		if (hasOwn(args, name)) return true;
+		if (Object.hasOwn(args, name)) return true;
 		const parameter = action.parameters?.find((entry) => entry.name === name);
 		const canonical = schema.properties[name];
 		if (canonical?.type !== "string") return true;
 		return !parameter?.legacyRequiredAlternatives?.some((alternative) => {
-			if (!hasOwn(schema.properties, alternative) || !hasOwn(args, alternative))
+			if (
+				!Object.hasOwn(schema.properties, alternative) ||
+				!Object.hasOwn(args, alternative)
+			)
 				return false;
 			const alternativeSchema = schema.properties[alternative];
 			const value = args[alternative];

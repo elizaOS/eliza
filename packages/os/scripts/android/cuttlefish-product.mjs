@@ -1,8 +1,7 @@
 /**
  * Production descriptor checks for a brand's Cuttlefish validation product.
  *
- * A downstream product (for example Alpha's `alphaphone_cf_x86_64_phone`)
- * names its Cuttlefish target, its brand config (brand-config.ts schema), a
+ * A downstream product names its Cuttlefish target, its brand config (brand-config.ts schema), a
  * source-lock profile (verify-source-lock.ts schema; normally the shared
  * reviewed `cuttlefish` profile in `android/aosp.lock.json`), pinned host
  * packages and its reviewed signer. Every check reads repository files only:

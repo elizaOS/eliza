@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateJournal.java",
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/PackageVerifier.java",
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/VerifiedPayload.java",
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/JournalStore.java",
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/EngineInstaller.java"
+  ],
+  "conformance": "packages/os/quint/check-system-update.mjs",
+  "bounds": "One verified candidate and one boot transition, all durable phases, one apply call. Atomic persistence is a host precondition; Android effects and file durability remain unqualified until the adapter and device campaign exist.",
+  "cases": [
+    {
+      "name": "one-candidate-journal",
+      "main": "SystemUpdateJournal",
+      "init": "init",
+      "step": "step",
+      "invariants": ["AtMostOneApply", "TypeOK"],
+      "temporal": [],
+      "maxSteps": 16,
+      "samples": 200
+    }
+  ]
+}

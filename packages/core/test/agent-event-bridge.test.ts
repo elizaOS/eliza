@@ -23,7 +23,10 @@ import {
 	CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
 } from "../src/services/agent-event-bridge.ts";
 import { NotificationService } from "../src/services/notification.ts";
-import type { AgentEventPayload } from "../src/types/agent-event.ts";
+import type {
+	AgentEventPayload,
+	HeartbeatEventPayload,
+} from "../src/types/agent-event.ts";
 import type {
 	ActionEventPayload,
 	EvaluatorEventPayload,
@@ -130,6 +133,123 @@ function messagePayload(
 }
 
 describe("agent-event-bridge", () => {
+	it("keeps delivering to peers when an event callback detaches itself", async () => {
+		const { runtime } = await createCtx();
+		const service = runtime.getService<AgentEventService>(
+			ServiceType.AGENT_EVENT,
+		);
+		if (!service) throw new Error("Agent event service is missing");
+		const detached: number[] = [];
+		const peer: number[] = [];
+		const detach = service.subscribe((event) => {
+			detached.push(event.seq);
+			detach();
+		});
+		service.subscribe((event) => peer.push(event.seq));
+
+		service.emit({ runId: RUN_ID, stream: "action", data: {} });
+		expect(detached).toEqual([1]);
+		expect(peer).toEqual([1]);
+		service.emit({ runId: RUN_ID, stream: "action", data: {} });
+		expect(detached).toEqual([1]);
+		expect(peer).toEqual([1, 2]);
+	});
+
+	it("delivers the original event before its listener failure diagnostics", async () => {
+		const { runtime } = await createCtx();
+		const service = runtime.getService<AgentEventService>(
+			ServiceType.AGENT_EVENT,
+		);
+		expect(service).toBeInstanceOf(AgentEventService);
+		if (!service) throw new Error("Agent event service is missing");
+		const received: AgentEventPayload[] = [];
+		service.registerRunContext(RUN_ID, { sessionKey: "registered" });
+		service.subscribe((event) => {
+			if (event.stream === "action") throw new Error("Observer failed");
+		});
+		service.subscribe((event) => received.push(event));
+		service.emit({ runId: RUN_ID, stream: "action", data: {} });
+		service.emit({
+			runId: ROOM_ID,
+			stream: "lifecycle",
+			data: {},
+			sessionKey: "explicit",
+		});
+		expect(
+			received.map(({ runId, seq, stream, sessionKey }) => [
+				runId,
+				seq,
+				stream,
+				sessionKey,
+			]),
+		).toEqual([
+			[RUN_ID, 1, "action", "registered"],
+			[RUN_ID, 2, "error", "registered"],
+			[RUN_ID, 3, "error", "registered"],
+			[ROOM_ID, 1, "lifecycle", "explicit"],
+		]);
+		expect(runtime.getRecentReportedErrors()).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ scope: "AgentEventService.listener" }),
+			]),
+		);
+	});
+
+	it("keeps newer registrations when old event and heartbeat handles detach", async () => {
+		const { runtime } = await createCtx();
+		const service = runtime.getService<AgentEventService>(
+			ServiceType.AGENT_EVENT,
+		);
+		expect(service).toBeInstanceOf(AgentEventService);
+		if (!service) throw new Error("Agent event service is missing");
+		const observedEvents: AgentEventPayload[] = [];
+		const observedHeartbeats: HeartbeatEventPayload[] = [];
+		const onEvent = (event: AgentEventPayload) => {
+			observedEvents.push(event);
+		};
+		const onHeartbeat = (event: HeartbeatEventPayload) => {
+			observedHeartbeats.push(event);
+		};
+		const oldEvent = service.subscribe(onEvent);
+		const oldHeartbeat = service.subscribeHeartbeat(onHeartbeat);
+		oldEvent();
+		oldHeartbeat();
+		service.subscribe(onEvent);
+		service.subscribe(onEvent);
+		service.subscribeHeartbeat(onHeartbeat);
+		service.subscribeHeartbeat(() => {
+			throw new Error("Heartbeat observer failed");
+		});
+		oldEvent();
+		oldHeartbeat();
+		service.registerRunContext(RUN_ID, { sessionKey: "registered" });
+		service.emitHeartbeat({ status: "failed" });
+		service.emit({ runId: RUN_ID, stream: "action", data: {} });
+		expect(observedEvents.filter((event) => event.runId === RUN_ID)).toEqual([
+			expect.objectContaining({ seq: 1, sessionKey: "registered" }),
+		]);
+		expect(observedHeartbeats).toEqual([
+			expect.objectContaining({ status: "failed", indicatorType: "error" }),
+		]);
+		expect(service.getLastHeartbeat()).toEqual(observedHeartbeats[0]);
+		expect(runtime.getRecentReportedErrors()).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					scope: "AgentEventService.heartbeatListener",
+				}),
+			]),
+		);
+		await service.stop();
+		expect(service.getRunContext(RUN_ID)).toBeUndefined();
+		expect(service.getCurrentSeq(RUN_ID)).toBe(0);
+		expect(service.getLastHeartbeat()).toBeNull();
+		const eventCount = observedEvents.length;
+		service.emit({ runId: RUN_ID, stream: "action", data: {} });
+		service.emitHeartbeat({ status: "sent" });
+		expect(observedEvents).toHaveLength(eventCount);
+		expect(observedHeartbeats).toHaveLength(1);
+	});
+
 	it("populates the action + lifecycle streams on ACTION_STARTED", async () => {
 		const { runtime, runId, events } = await createCtx();
 		bridgeActionStartedToStreams(
@@ -267,6 +387,43 @@ describe("agent-event-bridge", () => {
 		} as unknown as Parameters<typeof bridgeRunEndedToStreams>[0]);
 		// seq reset to 0 → run context dropped.
 		expect(service.getCurrentSeq(RUN_ID)).toBe(0);
+	});
+
+	it("drops one-shot message sequence state but keeps the current run's", async () => {
+		const { runtime, runId } = await createCtx();
+		const service = runtime.getService(
+			ServiceType.AGENT_EVENT,
+		) as AgentEventService;
+		registerConnectorSourceMetadata("discord", {
+			aliases: ["discord"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
+		await bridgeMessageReceivedToStreams(messagePayload(runtime));
+		expect(service.getCurrentSeq("44444444-4444-4444-4444-444444444444")).toBe(
+			0,
+		);
+
+		await bridgeConnectorMessageReceivedToStreams("TWITCH_MESSAGE_RECEIVED", {
+			runtime,
+			message: {
+				id: "twitch-message-seq",
+				channel: "ops",
+				text: "hi",
+				user: { userId: "twitch-user-1" },
+			},
+		});
+		expect(service.getCurrentSeq("twitch-message-seq")).toBe(0);
+
+		await bridgeMessageReceivedToStreams({
+			runtime,
+			message: {
+				id: "66666666-6666-6666-6666-666666666666",
+				roomId: ROOM_ID,
+				content: { text: "local" },
+			},
+		} as unknown as MessagePayload);
+		expect(service.getCurrentSeq(runId)).toBe(1);
 	});
 
 	it("populates the evaluator stream on EVALUATOR_STARTED / COMPLETED", async () => {

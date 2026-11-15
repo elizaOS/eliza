@@ -1,6 +1,6 @@
 /**
  * Aggregate-width coverage for TrajectoriesService.getStats: the per-agent
- * step, call, and token totals are sums over INTEGER columns, and Postgres returns sum(integer)
+ * call and token totals are sums over INTEGER columns, and Postgres returns sum(integer)
  * as bigint. Narrowing that back to int raises "integer out of range" once an
  * agent's lifetime tokens pass 2^31-1, which turns GET /api/trajectories/stats
  * into a permanent 500. Real PGlite database, real service, real schema.
@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { tryHandleTrajectoryReadRoutes } from "./read-routes";
+import { ensureTrajectoriesTable } from "./store/trajectory-internals.ts";
 import { TrajectoriesService } from "./TrajectoriesService";
 
 const AGENT_ID = "00000000-0000-4000-8000-0000000000aa";
@@ -36,17 +37,19 @@ beforeAll(async () => {
   } as unknown as IAgentRuntime;
   service = new TrajectoriesService(runtime);
   service.setEnabled(true);
-  await service.initialize();
+  await ensureTrajectoriesTable(runtime);
   for (let i = 0; i < 3; i += 1) {
     await db.execute(
       sql.raw(`
         INSERT INTO trajectories (
           id, agent_id, start_time, end_time, duration_ms, step_count, llm_call_count,
           total_prompt_tokens, total_completion_tokens,
-          total_cache_read_input_tokens, total_cache_creation_input_tokens
+          total_cache_read_input_tokens, total_cache_creation_input_tokens,
+          created_at, updated_at
         ) VALUES (
           'traj-${i}', '${AGENT_ID}', 1000, 2000, 1000, ${PER_ROW}, ${PER_ROW},
-          ${PER_ROW}, ${PER_ROW}, ${PER_ROW}, ${PER_ROW}
+          ${PER_ROW}, ${PER_ROW}, ${PER_ROW}, ${PER_ROW},
+          '1970-01-01T00:00:01.000Z', '1970-01-01T00:00:02.000Z'
         )
       `),
     );
@@ -82,7 +85,6 @@ describe("TrajectoriesService.getStats aggregate width", () => {
     const stats = await response.json();
     expect(response.status, JSON.stringify(stats)).toBe(200);
     expect(stats.totalTrajectories).toBe(3);
-    expect(stats.totalSteps).toBe(3 * PER_ROW);
     expect(stats.totalLlmCalls).toBe(3 * PER_ROW);
     expect(stats.totalPromptTokens).toBe(3 * PER_ROW);
     expect(stats.totalCompletionTokens).toBe(3 * PER_ROW);

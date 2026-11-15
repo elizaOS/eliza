@@ -1,0 +1,114 @@
+{
+  "sources": [
+    "packages/cloud/api/src/voice-usage-state.ts",
+    "packages/cloud/shared/src/lib/services/voice-usage-meter.ts",
+    "packages/cloud/api/wrangler.toml",
+    "packages/cloud/api/__tests__/voice-usage-state-workerd.test.ts",
+    "packages/cloud/api/test/fixtures/voice-usage-state-worker.ts",
+    "packages/cloud/api/v1/voice/session/ws/route.ts",
+    "packages/cloud/api/v1/twilio/voice/media/route.ts",
+    "packages/cloud/quint/check-voice-usage.mjs"
+  ],
+  "bounds": "One organization/day owner with two user keys, time 0..3, live write TTL 2 and amounts 1/2, organization limit 3 and user limit 2. The quota case allows repeated transactions. The transfer case permits partial batches over three keys and one first live operation, then checks the closed fence. Import units 1/2 and absolute expiries 1/2 cover both value and expiry conflicts.",
+  "cases": [
+    {
+      "name": "shared-quota",
+      "main": "VoiceUsage",
+      "init": "init",
+      "invariants": ["invariant"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "step": "step",
+      "temporal": [
+        "AtomicQuota",
+        "ExpiryAndReplySafety",
+        "FairSettlement",
+        "EventuallyIdle"
+      ],
+      "temporalChecks": [
+        {
+          "property": "AtomicQuota",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduler fairness. The action property checks every reachable transition in this finite case."
+          ]
+        },
+        {
+          "property": "ExpiryAndReplySafety",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduler fairness. The action property checks every reachable transition in this finite case."
+          ]
+        },
+        {
+          "property": "FairSettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of settleSchedule: if a call remains in scheduling, scheduling succeeds or fails. A restart may also end the call.",
+            "Weak fairness of settleReply: if a call remains in replying, its delivery settles. Completion can mean a lost reply, with no rollback of the committed rows."
+          ]
+        },
+        {
+          "property": "EventuallyIdle",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness an outstanding call can remain in the scheduling or reply phase."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "transfer-fence",
+      "main": "VoiceUsage",
+      "init": "init",
+      "invariants": ["invariant"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "step": "transferStep",
+      "temporal": [
+        "AtomicQuota",
+        "DurableImportFence",
+        "ExpiryAndReplySafety",
+        "FairSettlement"
+      ],
+      "temporalChecks": [
+        {
+          "property": "AtomicQuota",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduler fairness. The action property checks every reachable transition in this finite case."
+          ]
+        },
+        {
+          "property": "DurableImportFence",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduler fairness. The action property checks every reachable transition in this finite case."
+          ]
+        },
+        {
+          "property": "ExpiryAndReplySafety",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduler fairness. The action property checks every reachable transition in this finite case."
+          ]
+        },
+        {
+          "property": "FairSettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of settleSchedule: if a call remains in scheduling, scheduling succeeds or fails. A restart may also end the call.",
+            "Weak fairness of settleReply: if a call remains in replying, its delivery settles. Completion can mean a lost reply, with no rollback of the committed rows."
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "The model assumes the private namespace routes to the correct organization/day owner. The operator must supply a complete, genuinely quiesced snapshot. The object validates the asserted flag, key shape, and values.",
+    "Caller authorization, positive scaled amount and limits, exact day rollover, key encoding and multiple organizations are outside the finite model. The Workerd suite checks rollover, cross-organization behavior and rejection when metering is missing.",
+    "Live reserve and release have no operation identity. A repeated call after an ambiguous reply can apply a second mutation. Release clamps the counters independently and does not prove aggregate conservation or single settlement.",
+    "The model abstracts a SQL transaction as atomic with a single clock sample. It serializes post-commit schedule and reply phases. It does not prove provider usage settlement, storage availability, precise Cloudflare alarm retries, or a delivery deadline."
+  ],
+  "conformance": "packages/cloud/quint/check-voice-usage.mjs"
+}

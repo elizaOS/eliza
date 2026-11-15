@@ -20,8 +20,8 @@ import {
   InferenceAdmissionGateUnavailableError,
 } from "../services/inference-admission-gate";
 import {
-  getInferenceAdmissionSnapshotCacheOnly,
-  InferenceAdmissionSnapshotCacheWarmingError,
+  fillInferenceAdmissionSnapshot,
+  getInferenceAdmissionSnapshotCacheFirst,
   inferenceRateLimitConfig,
   warmInferenceAdmissionSnapshot,
 } from "../services/inference-admission-snapshot";
@@ -33,7 +33,6 @@ import {
   type InferenceBudgetPolicy,
   isRatePolicyAdmissionEnabled,
 } from "../services/inference-funded-budget-admission";
-import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import type { EndpointType, OrgRateLimitConfig } from "../services/org-rate-limits";
 import { type OrgTierCacheExecutionContext, recalculateOrgTier } from "../services/org-rate-limits";
 import { withOrganizationPolicyAdmission } from "../services/organization-policy-admission";
@@ -382,7 +381,7 @@ export async function enforceMcpOrganizationRateLimit(
 
 /**
  * #9899 Tier-3: in-isolate decision lease for the non-Worker Redis
- * compatibility path, gated behind `INFERENCE_HOT_PATH_CACHES`. Cache-only
+ * compatibility path. Cache-only
  * Worker inference returns through the Durable Object branch above and never
  * reaches this structure. The lease serves repeat Node-process decisions for
  * the same (org, endpoint) from memory, bounded by a local budget, and falls
@@ -443,21 +442,18 @@ export function __clearOrgRateLimitLeases(): void {
   orgRateLimitLeases.clear();
 }
 
+/**
+ * The organization rate policy could not be proven for this request: the
+ * primary fill disagreed with itself, a carried API-key decision lacked its
+ * key cap, or a concurrent policy change superseded the observation. It is a
+ * retryable 503; a cold cache never raises it.
+ */
 export class OrgRateLimitCacheNotReadyError extends Error {
-  readonly state: "warming" | "unavailable";
-  readonly cacheRead: "miss" | "invalid" | "unavailable" | "error";
+  readonly cacheRead: "invalid" | "stale";
 
-  constructor(
-    state: "warming" | "unavailable",
-    cacheRead: "miss" | "invalid" | "unavailable" | "error",
-  ) {
-    super(
-      state === "warming"
-        ? "Organization rate-limit policy is warming"
-        : "Organization rate-limit policy cache is unavailable",
-    );
+  constructor(cacheRead: "invalid" | "stale") {
+    super("Organization rate-limit policy is unavailable");
     this.name = "OrgRateLimitCacheNotReadyError";
-    this.state = state;
     this.cacheRead = cacheRead;
   }
 }
@@ -624,54 +620,36 @@ async function consumeDurableRateWindow(
 
 /**
  * Worker hot path: decide from the cached admission snapshot (tier RPM, key
- * cap, funded-budget epoch) and the organization Durable Object only. Never
- * reads Postgres. A policy the cache cannot prove is a cache miss: the request
- * gets a retryable warming error and the projection is regenerated under
- * `waitUntil` by the caller's catch.
+ * cap, funded-budget epoch) and the organization Durable Object only. A warm
+ * request never reads Postgres. A missing snapshot, or a carried policy the
+ * snapshot cannot prove, is filled from the primary once, inline, so a cold
+ * or superseded cache never fails the request.
  */
 async function admitFromCachedPolicy(
   organizationId: string,
   endpointType: EndpointType,
   options: {
-    executionCtx?: OrgTierCacheExecutionContext;
     config?: OrgRateLimitConfig;
     admissionSnapshot?: InferenceAdmissionSnapshot;
     apiKeyId?: string | null;
     apiKeyRateLimit?: number;
-    awaitHydrationMs?: number;
   },
 ): Promise<Response | null> {
-  let snapshot = options.admissionSnapshot;
-  if (!isInferenceAdmissionSnapshot(snapshot)) {
-    if (!options.executionCtx) throw new OrgRateLimitCacheNotReadyError("warming", "miss");
-    // Callers without a combined auth decision read the organization
-    // projection from the cache; a miss hydrates under `waitUntil`. A caller
-    // may join that same authoritative hydration for a bounded time instead
-    // of returning warming and paying a client retry.
-    try {
-      snapshot = await getInferenceAdmissionSnapshotCacheOnly(
-        organizationId,
-        options.executionCtx,
-        options.awaitHydrationMs ? { awaitHydrationMs: options.awaitHydrationMs } : {},
-      );
-    } catch (error) {
-      if (error instanceof InferenceAdmissionSnapshotCacheWarmingError)
-        throw new OrgRateLimitCacheNotReadyError("warming", "miss");
-      throw error;
-    }
+  let snapshot = isInferenceAdmissionSnapshot(options.admissionSnapshot)
+    ? options.admissionSnapshot
+    : await getInferenceAdmissionSnapshotCacheFirst(organizationId);
+  let config = options.config ?? inferenceRateLimitConfig(snapshot, endpointType);
+  if (!cachedRateConfigMatches(config, snapshot, endpointType)) {
+    snapshot = await fillInferenceAdmissionSnapshot(organizationId);
+    config = inferenceRateLimitConfig(snapshot, endpointType);
+    if (!cachedRateConfigMatches(config, snapshot, endpointType))
+      throw new OrgRateLimitCacheNotReadyError("invalid");
   }
-  const config = options.config ?? inferenceRateLimitConfig(snapshot, endpointType);
-  if (
-    !config ||
-    !isOrganizationPolicyStamp(config.authority) ||
-    !sameOrganizationPolicyStamp(config.authority, snapshot.authority) ||
-    config.maxRequests !== snapshot.rateLimits[`${endpointType}Rpm`]
-  )
-    throw new OrgRateLimitCacheNotReadyError("warming", "invalid");
   let apiKeyCap: { id: string; maxRequests: number } | null = null;
   if (options.apiKeyId) {
+    // Every authorized API-key decision carries the key's rate limit.
     const cap = cachedApiKeyRateCap(options.apiKeyId, options.apiKeyRateLimit, snapshot.rateLimits);
-    if (cap === undefined) throw new OrgRateLimitCacheNotReadyError("warming", "invalid");
+    if (cap === undefined) throw new OrgRateLimitCacheNotReadyError("invalid");
     apiKeyCap = cap;
   }
   const { isFundedBudgetAdmissionEnabled } = await import(
@@ -691,8 +669,21 @@ async function admitFromCachedPolicy(
   return await consumeDurableRateWindow(
     organizationId,
     endpointType,
-    config.maxRequests,
+    (config as OrgRateLimitConfig).maxRequests,
     apiKeyCap,
+  );
+}
+
+function cachedRateConfigMatches(
+  config: OrgRateLimitConfig | undefined,
+  snapshot: InferenceAdmissionSnapshot,
+  endpointType: EndpointType,
+): config is OrgRateLimitConfig {
+  return (
+    config !== undefined &&
+    isOrganizationPolicyStamp(config.authority) &&
+    sameOrganizationPolicyStamp(config.authority, snapshot.authority) &&
+    config.maxRequests === snapshot.rateLimits[`${endpointType}Rpm`]
   );
 }
 
@@ -844,12 +835,6 @@ export async function enforceOrgRateLimit(
     apiKeyRateLimit?: number;
     /** Combined auth-cache admission snapshot (tier, key-cap ceiling, budget epoch). */
     admissionSnapshot?: InferenceAdmissionSnapshot;
-    /**
-     * `cacheOnly` without a snapshot: join the scheduled authoritative
-     * hydration of a cold organization projection for up to this long.
-     * Hydration itself is unchanged; past the bound the request stays warming.
-     */
-    awaitHydrationMs?: number;
     /** Authenticated user; with the organization and plan it keys the plan buckets. */
     userId?: string | null;
     /**
@@ -977,7 +962,7 @@ export async function enforceOrgRateLimit(
             );
         }
 
-        const leaseEnabled = !durableRateStateSelected() && isHotPathCachesEnabled();
+        const leaseEnabled = !durableRateStateSelected();
         const leaseKey = `${organizationId}:${endpointType}`;
         const now = Date.now();
         // Read the lease even when the flag is off: a flag flip must still flush any
@@ -1054,11 +1039,12 @@ export async function enforceOrgRateLimit(
       },
     );
   } catch (error) {
-    // error-policy:J4 stale observations trigger keyed regeneration and the transport's retryable warming response.
+    // error-policy:J4 a superseded policy observation triggers keyed
+    // regeneration and a retryable unavailable response.
+    if (error instanceof OrgRateLimitCacheNotReadyError) throw error;
     if (
-      !(error instanceof OrgRateLimitCacheNotReadyError) &&
-      (!(error instanceof ElizaError) ||
-        !["ORGANIZATION_POLICY_STALE", "ORGANIZATION_POLICY_UNAVAILABLE"].includes(error.code))
+      !(error instanceof ElizaError) ||
+      !["ORGANIZATION_POLICY_STALE", "ORGANIZATION_POLICY_UNAVAILABLE"].includes(error.code)
     )
       throw error;
     if (options.executionCtx)
@@ -1074,7 +1060,7 @@ export async function enforceOrgRateLimit(
           });
         }),
       );
-    throw new OrgRateLimitCacheNotReadyError("warming", "invalid");
+    throw new OrgRateLimitCacheNotReadyError("stale");
   }
 }
 

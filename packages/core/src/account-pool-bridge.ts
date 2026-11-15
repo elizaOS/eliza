@@ -18,13 +18,7 @@
  * as `string`; the producer validates/narrows to its provider union on entry.
  */
 
-type GlobalBridgeSlot = Record<symbol, unknown>;
-
-function bridgeSlot(): GlobalBridgeSlot | null {
-	return typeof globalThis === "undefined"
-		? null
-		: (globalThis as GlobalBridgeSlot);
-}
+const bridgeSlot = globalThis as Record<symbol, unknown>;
 
 /* ------------------------- Anthropic subscription ------------------------- */
 
@@ -58,10 +52,8 @@ export interface AnthropicAccountPoolBridge {
 }
 
 export function getAnthropicAccountPoolBridge(): AnthropicAccountPoolBridge | null {
-	const slot = bridgeSlot();
-	if (!slot) return null;
 	return (
-		(slot[ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL] as
+		(bridgeSlot[ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL] as
 			| AnthropicAccountPoolBridge
 			| undefined) ?? null
 	);
@@ -71,12 +63,10 @@ export function getAnthropicAccountPoolBridge(): AnthropicAccountPoolBridge | nu
 export function setAnthropicAccountPoolBridge(
 	bridge: AnthropicAccountPoolBridge | null,
 ): void {
-	const slot = bridgeSlot();
-	if (!slot) return;
 	if (bridge) {
-		slot[ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL] = bridge;
+		bridgeSlot[ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL] = bridge;
 	} else {
-		delete slot[ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL];
+		delete bridgeSlot[ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL];
 	}
 }
 
@@ -182,10 +172,8 @@ export interface CodingAgentSelectorBridge {
 }
 
 export function getCodingAgentSelectorBridge(): CodingAgentSelectorBridge | null {
-	const slot = bridgeSlot();
-	if (!slot) return null;
 	return (
-		(slot[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL] as
+		(bridgeSlot[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL] as
 			| CodingAgentSelectorBridge
 			| undefined) ?? null
 	);
@@ -195,12 +183,10 @@ export function getCodingAgentSelectorBridge(): CodingAgentSelectorBridge | null
 export function setCodingAgentSelectorBridge(
 	bridge: CodingAgentSelectorBridge | null,
 ): void {
-	const slot = bridgeSlot();
-	if (!slot) return;
 	if (bridge) {
-		slot[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL] = bridge;
+		bridgeSlot[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL] = bridge;
 	} else {
-		delete slot[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL];
+		delete bridgeSlot[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL];
 	}
 }
 

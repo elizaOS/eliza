@@ -5,6 +5,7 @@ import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.util.SparseArray;
 import android.view.MotionEvent;
@@ -53,7 +54,9 @@ public final class BrowserLoginFields {
    * The reporter, run at document start in every frame of the isolated world. It tells native code
    * which focused field of its own frame is a username or password field and never reports an
    * origin, URL or frame; fill values arrive only on its own frame's channel and are written only
-   * into a field it registered in its own document.
+   * into a field it registered in its own document. A username it may only read (read-only,
+   * disabled, or the identifier an earlier step of the document submitted) is reported for Save
+   * but never written.
    */
   static final String SCRIPT = """
     (() => {
@@ -68,12 +71,26 @@ public final class BrowserLoginFields {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       const keys = new WeakMap();
       const fields = new Map();
+      // Password fields once registered, so one a show-password toggle turned into text still counts.
+      const passwordFields = new WeakSet();
+      // Shadow roots that already carry the focus listeners.
+      const roots = new WeakSet();
       let nextKey = 1;
       let reported = null;
+      // The identifier a password-less form of this document submitted (identifier-first sign-in),
+      // as an object that only carries the value: it can be saved but never filled.
+      let identifier = null;
+      let lastFocusIn = null, lastFocusOut = null;
 
       const tokens = el => String(el.getAttribute('autocomplete') || '').toLowerCase().split(/\\s+/).filter(Boolean);
-      const textual = el => el instanceof HTMLInputElement && (el.type === 'text' || el.type === 'email' || el.type === 'tel');
+      const named = el => tokens(el).some(t => t === 'username' || t === 'email');
+      const isPassword = el => el instanceof HTMLInputElement && (el.type === 'password' || passwordFields.has(el));
+      const textual = el => el instanceof HTMLInputElement && !passwordFields.has(el) && (el.type === 'text' || el.type === 'email' || el.type === 'tel');
       const usable = el => el instanceof HTMLInputElement && el.isConnected && !el.disabled && !el.readOnly && el.getClientRects().length > 0;
+      // May be read for Save but is never filled: a shown read-only or disabled username, or a
+      // hidden input the page marks as the username.
+      const readable = el => el instanceof HTMLInputElement && el.isConnected && !usable(el)
+        && (textual(el) && el.getClientRects().length > 0 || el.type === 'hidden' && tokens(el).includes('username'));
       const keyOf = el => {
         let key = keys.get(el);
         if (!key) {
@@ -89,19 +106,35 @@ public final class BrowserLoginFields {
         return el && usable(el) ? el : null;
       };
 
-      /** Login fields of the form (or root) that owns {@code target}: exactly one password field. */
+      /** Inputs of the form that owns {@code el}, or of its root that belong to no form. */
+      const scopeOf = el => el.form ? Array.from(el.form.elements)
+        : Array.from(el.getRootNode().querySelectorAll('input')).filter(input => input.form === null);
+      const preceding = (inputs, el, accept) => {
+        for (let i = inputs.indexOf(el) - 1; i >= 0; i--) if (accept(inputs[i])) return inputs[i];
+        return null;
+      };
+
+      /**
+       * Login fields of the form (or the formless inputs of the root) that owns {@code target}:
+       * exactly one password field. When no username can be filled, a read-only one beside it, or
+       * the identifier this document submitted earlier, is still reported so Save keeps it.
+       */
       function login(target) {
         if (!(target instanceof HTMLInputElement)) return null;
-        const scope = target.form ? Array.from(target.form.elements) : Array.from(target.getRootNode().querySelectorAll('input'));
+        const scope = scopeOf(target);
         const inputs = scope.filter(usable);
-        const passwords = inputs.filter(el => el.type === 'password');
+        const passwords = inputs.filter(isPassword);
         if (passwords.length !== 1) return null;
         const password = passwords[0];
-        let username = inputs.find(el => textual(el) && tokens(el).some(t => t === 'username' || t === 'email')) || null;
-        if (!username) {
-          for (let i = inputs.indexOf(password) - 1; i >= 0; i--) if (textual(inputs[i])) { username = inputs[i]; break; }
-        }
+        const pick = target.form
+          ? list => list.find(el => textual(el) && named(el)) || preceding(list, password, textual)
+          : list => preceding(list, password, textual) || list.find(el => textual(el) && named(el));
+        let username = pick(inputs) || null;
         if (target !== password && target !== username) return null;
+        if (!username) {
+          const shown = scope.filter(el => el === password || readable(el));
+          username = shown.find(el => el.type === 'hidden' || named(el)) || preceding(shown, password, textual) || identifier;
+        }
         return { username, password };
       }
 
@@ -126,26 +159,42 @@ public final class BrowserLoginFields {
       const number = n => Math.max(-99999, Math.min(999999, Number.isFinite(n) ? n : 0)).toFixed(3).replace(/\\.?0+$/, '') || '0';
       const send = message => { try { channel.postMessage(message); } catch { /* channel gone with the document */ } };
 
-      document.addEventListener('focusin', event => {
-        if (!event.isTrusted) return;
-        const target = event.composedPath()[0];
+      function onFocusIn(event) {
+        // The same event reaches the document and each shadow root listening on its path.
+        if (!event.isTrusted || event === lastFocusIn) return;
+        lastFocusIn = event;
+        const path = event.composedPath();
+        // Focus moving inside one shadow root never reaches the document: listen in that root too.
+        for (const node of path) {
+          if (node instanceof ShadowRoot && !roots.has(node)) {
+            roots.add(node);
+            node.addEventListener('focusin', onFocusIn, true);
+            node.addEventListener('focusout', onFocusOut, true);
+          }
+        }
+        const target = path[0];
         const found = login(target);
         const where = found && box(target);
         if (!found || !where) { if (reported) { reported = null; send(`blur|${documentId}`); } return; }
         const u = found.username ? keyOf(found.username) : 0, p = keyOf(found.password);
         const focused = target === found.password ? p : u;
         if (!p || !focused) { if (reported) { reported = null; send(`blur|${documentId}`); } return; }
-        const ua = found.username ? (tokens(found.username).find(t => t === 'username' || t === 'email') || '') : '';
+        const ua = found.username instanceof HTMLInputElement ? (tokens(found.username).find(t => t === 'username' || t === 'email') || '') : '';
         const pa = tokens(found.password).find(t => t === 'current-password' || t === 'new-password') || '';
+        passwordFields.add(found.password);
         reported = { u, p };
         send(`focus|${documentId}|${focused}|${u}|${p}|${ua}|${pa}|${where.map(number).join(',')}`);
-      }, true);
+      }
 
-      document.addEventListener('focusout', event => {
-        if (!event.isTrusted || !reported) return;
+      function onFocusOut(event) {
+        if (!event.isTrusted || event === lastFocusOut || !reported) return;
+        lastFocusOut = event;
         reported = null;
         send(`blur|${documentId}`);
-      }, true);
+      }
+
+      document.addEventListener('focusin', onFocusIn, true);
+      document.addEventListener('focusout', onFocusOut, true);
 
       // The document is unloading (a frame navigating on its own included): native ends the binding.
       addEventListener('pagehide', () => { reported = null; send(`gone|${documentId}`); }, true);
@@ -156,12 +205,20 @@ public final class BrowserLoginFields {
         const form = event.target;
         if (!(form instanceof HTMLFormElement)) return;
         const inputs = Array.from(form.elements).filter(usable);
-        const password = inputs.find(el => el.type === 'password' && keys.has(el) && el.value);
-        if (!password) return;
+        const password = inputs.find(el => isPassword(el) && keys.has(el) && el.value);
+        if (!password) {
+          // Step one of an identifier-first sign-in: keep the identifier for the password step.
+          if (inputs.some(isPassword)) return;
+          const marked = inputs.filter(el => textual(el) && named(el));
+          const only = inputs.filter(textual);
+          const el = marked.length === 1 ? marked[0] : only.length === 1 ? only[0] : null;
+          if (el && el.value && el.value.length <= 1024) identifier = { value: el.value };
+          return;
+        }
         const found = login(password);
         if (!found) return;
         const u = found.username && keys.has(found.username) ? keys.get(found.username) : 0;
-        const username = u ? found.username.value : '';
+        const username = u ? String(found.username.value) : '';
         if (password.value.length > 1024 || username.length > 1024) return;
         let encoded;
         try { encoded = [encodeURIComponent(username), encodeURIComponent(password.value)]; } catch { return; }
@@ -221,6 +278,8 @@ public final class BrowserLoginFields {
   private BrowserFieldOrigin.Deferred deferred;
   private JavaScriptReplyProxy deferredProxy;
   private int base = 0;
+  /** When a submit of the bound fields was accepted ({@link SystemClock#elapsedRealtime}), or 0. */
+  private long submittedAt;
 
   private BrowserLoginFields(WebView web, Host host, BrowserAutofillExtras extras) {
     this.web = web;
@@ -292,7 +351,19 @@ public final class BrowserLoginFields {
         if (report.username != 0)
           manager.notifyValueChanged(anchor, base + 1, AutofillValue.forText(report.usernameValue));
         manager.notifyValueChanged(anchor, base + 2, AutofillValue.forText(report.passwordValue));
+        submittedAt = SystemClock.elapsedRealtime();
     }
+  }
+
+  /**
+   * Whether the bound fields were submitted within the last {@code ms} milliseconds. A site that
+   * signs in with script and routes with {@code pushState} never starts a page load, so the host
+   * commits the Save session on that same-document URL change when this holds. Like mainstream
+   * browsers, a failed sign-in that routes to an error page the same way may then offer Save too.
+   */
+  public boolean submittedWithin(long ms) {
+    long at = submittedAt;
+    return !closed && binding != null && at != 0 && SystemClock.elapsedRealtime() - at <= ms;
   }
 
   /** A focus report from the engine-attested frame {@code engine}, judged against the tab {@code now}. */
@@ -389,6 +460,7 @@ public final class BrowserLoginFields {
     binding = null;
     proxy = null;
     focus = null;
+    submittedAt = 0;
     if (old == null)
       return;
     old.revoke();

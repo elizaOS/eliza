@@ -1259,7 +1259,7 @@ export interface FleetUpgradeSummary {
 
 /**
  * Detect when the registry-side digest of the configured agent tag has moved
- * (e.g. a new `:develop` image was pushed) and enqueue blue/green
+ * (e.g. a new `:staging` image was pushed) and enqueue blue/green
  * `agent_upgrade` jobs for every running agent still on the old digest.
  *
  * Rate-limited to at most `MAX_INFLIGHT_UPGRADES` (default 3) upgrade jobs in

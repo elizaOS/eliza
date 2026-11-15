@@ -33,12 +33,6 @@ interface EmbeddingQueueItem {
 	pendingKey?: string;
 }
 
-/**
- * Service responsible for generating embeddings asynchronously
- * This service listens for EMBEDDING_GENERATION_REQUESTED events
- * and processes them in a queue to avoid blocking the main runtime
- */
-
 export class EmbeddingGenerationService extends Service {
 	static serviceType = "embedding-generation";
 	capabilityDescription =
@@ -446,38 +440,40 @@ export class EmbeddingGenerationService extends Service {
 				text: memory.content.text ?? "",
 			},
 		});
-		if (!written) {
+		// A confirmed write or stale-source refusal settles this item. Report
+		// later observation failures without re-running inference or storage.
+		try {
 			await this.runtime.log({
 				entityId: this.runtime.agentId,
-				roomId: memory.roomId,
+				roomId: written ? memory.roomId || this.runtime.agentId : memory.roomId,
 				type: "embedding_event",
 				body: {
 					runId: item.runId,
 					memoryId: memory.id,
-					status: "discarded_stale_source",
+					status: written ? "completed" : "discarded_stale_source",
 					duration: durationMs,
 					source: "embeddingService",
 				},
 			});
-			return;
-		}
-		await this.runtime.log({
-			entityId: this.runtime.agentId,
-			roomId: memory.roomId || this.runtime.agentId,
-			type: "embedding_event",
-			body: {
-				runId: item.runId,
+		} catch (error) {
+			// error-policy:J7 a diagnostic write cannot reverse the adapter result.
+			this.runtime.reportError("EmbeddingService.logOutcome", error, {
 				memoryId: memory.id,
-				status: "completed",
-				duration: durationMs,
+			});
+		}
+		if (!written) return;
+		try {
+			await this.runtime.emitEvent(EventType.EMBEDDING_GENERATION_COMPLETED, {
+				runtime: this.runtime,
+				memory: { ...memory, embedding },
 				source: "embeddingService",
-			},
-		});
-		await this.runtime.emitEvent(EventType.EMBEDDING_GENERATION_COMPLETED, {
-			runtime: this.runtime,
-			memory: { ...memory, embedding },
-			source: "embeddingService",
-		});
+			});
+		} catch (error) {
+			// error-policy:J7 observers can fail after the vector has committed.
+			this.runtime.reportError("EmbeddingService.notifyCompletion", error, {
+				memoryId: memory.id,
+			});
+		}
 	}
 
 	/**
@@ -663,6 +659,9 @@ export class EmbeddingGenerationService extends Service {
 	clearQueue(): void {
 		const size = this.batchQueue?.size ?? 0;
 		this.batchQueue?.clear();
+		// Cleared items never reach onDrainBatchOutcomes; drop their coalescing
+		// keys so an identical snapshot can be requested again.
+		this.pending.clear();
 		this.runtime.logger.info(
 			{
 				src: "plugin:basic-capabilities:service:embedding",

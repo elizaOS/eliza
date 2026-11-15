@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Process entrypoint for the `eliza-autonomous` binary. Before any heavy import
- * it enables Node's persistent V8 compile cache (anchored to the shared state
- * dir) and configures mobile DNS, then pins the mobile/AOSP bundle anchors onto
+ * it enables the persistent compile cache (anchored to the shared state dir)
+ * and configures mobile DNS, then pins the mobile/AOSP bundle anchors onto
  * the bootstrap path so tree-shaking cannot drop the on-device inference and
  * device-bridge plugins, and finally hands off to runAutonomousCli(). A fatal
  * boot error is logged to the Android bin-debug file and exits non-zero.
@@ -11,27 +11,29 @@ import * as _earlyFs from "node:fs";
 import { enableCompileCache } from "node:module";
 import { homedir as _earlyHomedir } from "node:os";
 import { captureHostExecutionBaseline } from "@elizaos/host";
-import { isAndroidMobile, readAliasedEnv } from "@elizaos/host/protocol";
+import {
+  isAndroidMobile,
+  isElizaOsAndroidRuntime,
+} from "@elizaos/host/protocol";
 
 import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
 import { captureProtectedProfile } from "./security/protected-profile-state.ts";
 
-// Resolve a branded `<PREFIX>_STATE_DIR` / `<PREFIX>_PLATFORM` through the
-// boot-config alias table — the reader path, with no process.env mirror
-// (issue #13423). `@elizaos/core` is already a transitive static import via
-// `./cli/index.ts`, so this adds no new module to the boot graph; before the
-// alias table is seeded these fall back to the raw ELIZA_ value.
 // Establish the host executable-search authority before the CLI dynamically
 // imports runtime configuration or any plugin code.
 captureHostExecutionBaseline();
 // Capture the protected profile from the entry environment before any command
 // can load configuration that mutates process.env.
 captureProtectedProfile();
-// Enable Node 22.8+'s persistent V8 compile cache before any heavy import so
-// the 2nd+ cold boot skips recompiling the ~70k LOC of transpiled plugin
-// source. Anchored to <stateDir>/cache/node-compile — the SAME dir the dev
-// orchestrator pins via NODE_COMPILE_CACHE (dev-ui.ts) — so the packaged CLI
-// path and the dev path share one warm cache instead of two.
+// Enable the persistent compile cache (Node 22.8+, and Bun's equivalent)
+// before any heavy import so the 2nd+ cold boot skips recompiling the
+// ~70k LOC of plugin source. Anchored to <stateDir>/cache/node-compile — the
+// SAME dir the dev orchestrator pins via NODE_COMPILE_CACHE (dev-ui.ts) — so
+// the packaged CLI path and the dev path share one warm cache instead of two.
+//
+// Skipped in a mobile bundle: the bundle is one file that is already compiled
+// when this runs, and Bun 1.4.2 does not cache `// @bun` bundles, so the call
+// would only create an empty directory on the device.
 //
 // When NODE_COMPILE_CACHE is already set (dev path), Node enables the cache
 // from the env var before any user code runs, so we skip — calling it again
@@ -41,7 +43,9 @@ captureProtectedProfile();
   try {
     if (
       typeof enableCompileCache !== "function" ||
-      process.env.NODE_COMPILE_CACHE?.trim()
+      process.env.NODE_COMPILE_CACHE?.trim() ||
+      (globalThis as { __ELIZA_MOBILE_BUNDLE__?: unknown })
+        .__ELIZA_MOBILE_BUNDLE__ === true
     ) {
       return;
     }
@@ -51,7 +55,7 @@ captureProtectedProfile();
     // identically to the rest of the codebase (see state-dir.ts).
     const home = process.env.HOME?.trim() || _earlyHomedir();
     const resolvedStateDir =
-      readAliasedEnv("ELIZA_STATE_DIR") ||
+      process.env.ELIZA_STATE_DIR?.trim() ||
       (xdgStateHome
         ? `${xdgStateHome}/eliza`
         : home
@@ -63,7 +67,7 @@ captureProtectedProfile();
       enableCompileCache();
     }
   } catch {
-    // V8 compile cache is a pure boot-time optimization; ignore any failure.
+    // The compile cache is a pure boot-time optimization; ignore any failure.
   }
 })();
 // Early diagnostic logger for Android: captures errors before the fs shim runs.
@@ -74,7 +78,7 @@ const _binDebugLog = isAndroidMobile()
         process.env.XDG_STATE_HOME ??
         `${process.env.HOME ?? "/data/local/tmp"}/.local/state`;
       const stateDir =
-        readAliasedEnv("ELIZA_STATE_DIR") || `${xdgStateHome}/eliza`;
+        process.env.ELIZA_STATE_DIR?.trim() || `${xdgStateHome}/eliza`;
       const logPath = `${stateDir}/bin-debug.log`;
       try {
         _earlyFs.mkdirSync(stateDir, { recursive: true });
@@ -97,7 +101,7 @@ const _binDebugLog = isAndroidMobile()
     })()
   : () => {};
 _binDebugLog(
-  `[bin.ts] started ELIZA_PLATFORM=${readAliasedEnv("ELIZA_PLATFORM") ?? "(unset)"} ELIZA_STATE_DIR=${readAliasedEnv("ELIZA_STATE_DIR") ?? "(unset)"}`,
+  `[bin.ts] started ELIZA_PLATFORM=${process.env.ELIZA_PLATFORM?.trim() || "(unset)"} ELIZA_STATE_DIR=${process.env.ELIZA_STATE_DIR?.trim() || "(unset)"}`,
 );
 // Mobile devices ship no /etc/resolv.conf, so the musl bun agent can't resolve
 // DNS — every outbound fetch (cloud, model catalog, connectors) fails until we
@@ -106,6 +110,16 @@ _binDebugLog(
 configureMobileDnsIfNeeded();
 async function bootstrapMobileEntrypoint(): Promise<void> {
   if (isAndroidMobile()) {
+    // Config can set ELIZA_LOCAL_LLAMA after this point, so register the app
+    // plugins lazily on every Android boot; the collector loads them on demand.
+    const { registerAndroidAppPluginLoaders } = await import(
+      "./runtime/android-app-plugin-loaders.ts"
+    );
+    registerAndroidAppPluginLoaders();
+  }
+  // ElizaOS Android only: other Android hosts never load these plugins, so
+  // they stay bundled but are not evaluated at boot.
+  if (isElizaOsAndroidRuntime()) {
     _binDebugLog("[bin.ts] entering android block");
     try {
       // Bundle anchor: evaluating this literal-specifier import forces
@@ -124,8 +138,8 @@ async function bootstrapMobileEntrypoint(): Promise<void> {
       await import("./runtime/android-app-plugins.ts");
       _binDebugLog("[bin.ts] android-app-plugins loaded ok");
     } catch (e) {
-      // Android-only app plugins not bundled in this build; plugin-resolver.ts
-      // returns null for these IDs and the rest of the runtime is unaffected.
+      // Android-only app plugins not bundled in this build; the lazy loaders
+      // fail the same way and the rest of the runtime is unaffected.
       _binDebugLog(
         `[bin.ts] android-app-plugins init error (ok): ${e instanceof Error ? e.message : String(e)}`,
       );

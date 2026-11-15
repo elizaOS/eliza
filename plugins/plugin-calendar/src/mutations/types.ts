@@ -2,7 +2,8 @@
  * Calendar-mutation execution contracts bind one approved payload to one
  * provider source, one claim, and one durable receipt. The receipt is the only
  * success authority after a restart; an unknown provider outcome remains
- * quarantined until a human reconciles it.
+ * quarantined until the owner or a provider readback reconciles it
+ * (`CalendarMutationLedger.reconcile`).
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
@@ -96,6 +97,24 @@ export interface CalendarMutationAttempt {
   readonly createdAt: string;
   readonly updatedAt: string;
 }
+
+/**
+ * Evidence that settles an ambiguous attempt. A receipt counts only when it
+ * comes from the provider; an owner's word completes the approval but is not
+ * a receipt.
+ */
+export type CalendarMutationReconciliation =
+  | {
+      readonly outcome: "applied";
+      readonly receipt: CalendarMutationReceipt | null;
+      readonly reconciledBy: string;
+      readonly reason: string;
+    }
+  | {
+      readonly outcome: "not_applied";
+      readonly reconciledBy: string;
+      readonly reason: string;
+    };
 
 export interface CalendarMutationPreflight {
   readonly managedAccountId?: string;

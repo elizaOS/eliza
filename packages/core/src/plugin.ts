@@ -201,16 +201,16 @@ export function resolvePluginDependencies(
 		}
 	}
 
-	const finalPlugins = resolutionOrder
-		.map((name) => {
-			for (const plugin of availablePlugins.values()) {
-				if (plugin.name === name) {
-					return plugin;
-				}
-			}
-			return null;
-		})
-		.filter((p): p is Plugin => Boolean(p));
+	// First plugin registered under each canonical name wins.
+	const pluginsByName = new Map<string, Plugin>();
+	for (const plugin of availablePlugins.values()) {
+		if (!pluginsByName.has(plugin.name)) pluginsByName.set(plugin.name, plugin);
+	}
+	const finalPlugins: Plugin[] = [];
+	for (const name of resolutionOrder) {
+		const plugin = pluginsByName.get(name);
+		if (plugin) finalPlugins.push(plugin);
+	}
 
 	logger.debug(
 		{ src: "core:plugin", plugins: finalPlugins.map((p) => p.name) },
@@ -275,27 +275,28 @@ function queueDependency(
 ): void {
 	const normalizedDepName = normalizePluginName(depName);
 
-	const alreadyQueued =
+	if (
 		seenDependencies.has(depName) ||
-		seenDependencies.has(normalizedDepName) ||
-		Array.from(pluginMap.keys()).some(
-			(key) => normalizePluginName(key) === normalizedDepName,
-		) ||
-		Array.from(pluginMap.values()).some(
-			(p) =>
-				normalizePluginName(p.name) === normalizedDepName ||
-				p.name === depName ||
-				p.name === normalizedDepName,
-		);
-
-	if (!alreadyQueued) {
-		seenDependencies.add(depName);
-		seenDependencies.add(normalizedDepName);
-		queue.push(depName);
+		seenDependencies.has(normalizedDepName)
+	) {
+		return;
 	}
+	for (const [key, plugin] of pluginMap) {
+		if (
+			normalizePluginName(key) === normalizedDepName ||
+			normalizePluginName(plugin.name) === normalizedDepName ||
+			plugin.name === depName ||
+			plugin.name === normalizedDepName
+		) {
+			return;
+		}
+	}
+	seenDependencies.add(depName);
+	seenDependencies.add(normalizedDepName);
+	queue.push(depName);
 }
 
-async function resolvePluginsImpl(
+export async function resolvePlugins(
 	plugins: (string | Plugin)[],
 	isTestMode: boolean = false,
 	resolver?: PluginResolver,
@@ -349,12 +350,4 @@ async function resolvePluginsImpl(
 	}
 
 	return resolvePluginDependencies(pluginMap, isTestMode);
-}
-
-export async function resolvePlugins(
-	plugins: (string | Plugin)[],
-	isTestMode: boolean = false,
-	resolver?: PluginResolver,
-): Promise<Plugin[]> {
-	return resolvePluginsImpl(plugins, isTestMode, resolver);
 }

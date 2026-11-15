@@ -613,10 +613,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
     private func fullBunLaunchEnvironment(isSmoke: Bool) -> [String: String] {
         var env: [String: String] = [
             "ELIZA_PLATFORM": "ios",
-            "ELIZA_MOBILE_PLATFORM": "ios",
             "ELIZA_RUNTIME_MODE": IosRuntimePolicy.safeLocalExecutionMode,
-            "RUNTIME_MODE": IosRuntimePolicy.safeLocalExecutionMode,
-            "LOCAL_RUNTIME_MODE": IosRuntimePolicy.safeLocalExecutionMode,
             "ELIZA_IOS_LOCAL_BACKEND": "1",
             "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS": "60000",
             "ELIZA_PGLITE_DISABLE_EXTENSIONS": "0",

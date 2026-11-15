@@ -20,8 +20,22 @@ export const READING_UNSUPPORTED_MESSAGE =
 export const SENSITIVE_READING_MESSAGE =
   "This page may contain credentials or verification codes. Open a different page.";
 
-const sensitive =
-  /(?:api[\s_-]*key|access[\s_-]*token|refresh[\s_-]*token|password|passphrase|passcode|credential|vault|one[\s-]*time[\s-]*(?:password|code)|verification[\s-]*code|security[\s-]*code|authentication[\s-]*code|recovery[\s-]*(?:code|key|phrase)|backup[\s-]*(?:code|key)|seed[\s-]*phrase|secret[\s-]*key|private[\s-]*key|authenticator|two[\s-]*factor|multi[\s-]*factor|sign[\s-]*in|log[\s-]*in|\botp\b|\bmfa\b|\b2fa\b)/i;
+/**
+ * Credential words. Sign-in, log-in and vault stand alone, so "designing",
+ * "blog in" and "dialog-inner" read as prose; `_` and digits still separate
+ * them ("login_form", "btn-login2"). `BrowserPageReading.EXTRACT` holds the
+ * same pattern, which the test checks.
+ */
+export const sensitiveReadingPattern =
+  /(?:api[\s_-]*key|access[\s_-]*token|refresh[\s_-]*token|password|passphrase|passcode|credential|(?<![a-z])vaults?(?![a-z])|one[\s-]*time[\s-]*(?:password|code)|verification[\s-]*code|security[\s-]*code|authentication[\s-]*code|recovery[\s-]*(?:code|key|phrase)|backup[\s-]*(?:code|key)|seed[\s-]*phrase|secret[\s-]*key|private[\s-]*key|authenticator|two[\s-]*factor|multi[\s-]*factor|(?<![a-z])sign[\s-]*in(?![a-z])|(?<![a-z])log[\s-]*in(?![a-z])|\botp\b|\bmfa\b|\b2fa\b)/i;
+/** camelCase as separate words, so `signInButton` reads as "sign In Button". */
+export const readingWords = (value: string) =>
+  value
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2");
+const sensitive = (value: string) =>
+  sensitiveReadingPattern.test(value) ||
+  sensitiveReadingPattern.test(readingWords(value));
 const passwordServices = [
   "pass.proton.me",
   "account.proton.me",
@@ -44,7 +58,7 @@ const normalize = (value: string) =>
 /** Credential prose or an unlabelled six-to-eight digit code. */
 export function sensitiveReadingText(text: string): boolean {
   const value = normalize(text);
-  return sensitive.test(value) || /(?:^|\D)\d{6,8}(?:\D|$)/.test(value);
+  return sensitive(value) || /(?:^|\D)\d{6,8}(?:\D|$)/.test(value);
 }
 
 /**
@@ -77,18 +91,72 @@ export function sensitiveReadingUrl(address: string): boolean {
   }
 }
 
-/** The same whole-document scan as the native extraction, for a parsed document. */
+/** A password, one-time-code or similar credential input, by its type, autocomplete or label. */
+const credentialField =
+  /(?:^|[^a-z0-9])(?:otp|totp|mfa|2fa)(?:$|[^a-z0-9])|password|passcode|one[\s_-]*time|verification[\s_-]*code|security[\s_-]*code|auth(?:entication)?[\s_-]*code/i;
+const SKIPPED = ["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"];
+/** Page chrome and links: their sign-in wording is not page content. */
+const CHROME = ["NAV", "HEADER", "FOOTER", "A"];
+
+/**
+ * The same scan as the native extraction, for a parsed document: the whole
+ * document is searched for credential inputs (password, one-time-code and
+ * similar fields); credential prose, unlabelled short codes and the size
+ * budget apply only to the selected article (`article`, `main`,
+ * `[role="main"]`, else `body`), without nav, header, footer or links.
+ */
 export function sensitiveReadingDocument(root: Node): boolean {
   const pending: Node[] = [root];
   let inspected = 0;
-  let characters = 0;
-  let text = "";
+  let article: Node | undefined;
+  let body: Node | undefined;
   while (pending.length) {
     if (++inspected > 12000) return true;
     const node = pending.pop() as Node;
+    // A document or fragment root is walked into; text has no children.
     if (node.nodeType === 1) {
       const element = node as Element;
-      if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(element.tagName))
+      const tag = element.tagName.toUpperCase();
+      if (SKIPPED.includes(tag)) continue;
+      if (tag === "INPUT") {
+        const type = (element.getAttribute("type") || "").toLowerCase();
+        const labels = [
+          "autocomplete",
+          "id",
+          "name",
+          "aria-label",
+          "placeholder",
+        ]
+          .map((attr) => normalize(element.getAttribute(attr) || ""))
+          .join(" ");
+        if (type === "password" || credentialField.test(labels)) return true;
+      }
+      if (
+        !article &&
+        (tag === "ARTICLE" ||
+          tag === "MAIN" ||
+          element.getAttribute("role") === "main")
+      )
+        article = node;
+      if (!body && tag === "BODY") body = node;
+    }
+    if (node.childNodes.length + pending.length > 12000) return true;
+    for (let i = node.childNodes.length - 1; i >= 0; i--)
+      pending.push(node.childNodes[i]);
+  }
+  pending.push(article ?? body ?? root);
+  let characters = 0;
+  let text = "";
+  while (pending.length) {
+    const node = pending.pop() as Node;
+    if (node.nodeType === 1) {
+      const element = node as Element;
+      const tag = element.tagName.toUpperCase();
+      if (
+        SKIPPED.includes(tag) ||
+        CHROME.includes(tag) ||
+        element.getAttribute("role") === "navigation"
+      )
         continue;
       for (const attr of [
         "type",
@@ -105,7 +173,7 @@ export function sensitiveReadingDocument(root: Node): boolean {
         if (
           value.length > 1024 ||
           characters > 65536 ||
-          sensitive.test(normalize(value))
+          sensitive(normalize(value))
         )
           return true;
       }
@@ -115,7 +183,6 @@ export function sensitiveReadingDocument(root: Node): boolean {
       if (value.length > 20000 || characters > 65536) return true;
       text += ` ${normalize(value)}`;
     }
-    if (node.childNodes.length + pending.length > 12000) return true;
     for (let i = node.childNodes.length - 1; i >= 0; i--)
       pending.push(node.childNodes[i]);
   }

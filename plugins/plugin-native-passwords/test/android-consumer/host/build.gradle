@@ -6,7 +6,8 @@ android {
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 dependencies {
- implementation project(':passwords')
+ implementation project(':elizaos-capacitor-passwords')
+ implementation project(':elizaos-capacitor-passwords-transfer')
  implementation project(':capacitor-android')
  implementation 'androidx.appcompat:appcompat:1.7.1'
  androidTestImplementation 'androidx.test:runner:1.6.2'

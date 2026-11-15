@@ -1,0 +1,24 @@
+[
+  {
+    "id": "ParallelRuntimeStartup",
+    "model": "plugins/plugin-native-agent/quint/ParallelRuntimeStartup.qnt",
+    "sources": [
+      "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/EmbeddedRuntimeGroup.java",
+      "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeRuntimeSession.java",
+      "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProcessSupervisor.java"
+    ],
+    "invariants": [
+      "PublicationsBeforeChildren",
+      "OwnedGateway",
+      "ReadinessOrder",
+      "RunningNeedsReadiness",
+      "DisposedFencesScope"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One scope and two children; replacement is permanent retirement of that scope. No arbitrary interleaving or whole-session refinement claim.",
+      "Readiness, timeout observation and logical cleanup progress require the explicit fairness assumptions. Child-destruction requests do not acknowledge exit; physical quiescence requires independent termination observations and has its own conditional progress property and no-fairness counterexample.",
+      "OS scheduling, real deadline bounds, Android instrumentation, durable private-file publication, secret redaction and physical-device performance are outside the finite proof. Existing JVM and loopback contracts exercise those relevant implementation boundaries within controlled conditions."
+    ]
+  }
+]

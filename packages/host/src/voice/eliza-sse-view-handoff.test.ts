@@ -20,11 +20,12 @@ function action(
     },
   };
 }
-async function bridge(actionResults: unknown[]) {
+async function bridge(actionResults: unknown[], requireTurnTerminal = true) {
   let calls = 0;
   const chunks: string[] = [];
   const result = await streamElizaConversation(
     {
+      requireTurnTerminal,
       endpoint: "https://fixture.invalid",
       authorization: "fixture-only",
       model: "unused",
@@ -263,4 +264,10 @@ test("bounded voice policy survives the actual SSE bridge and loopback adapter",
   } finally {
     await server.close();
   }
+});
+
+test("valid legacy and negotiated success handoffs retain the same navigation", async () => {
+  expect(await bridge([action("VIEWS_SHOW", "notes")], true)).toEqual(
+    await bridge([action("VIEWS_SHOW", "notes")], false),
+  );
 });

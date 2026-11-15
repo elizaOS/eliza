@@ -63,18 +63,15 @@ function isValidDnsHostname(hostname: string): boolean {
 }
 
 /**
- * Return true only for ordinary globally-routable IPv4 unicast space.
+ * IPv4 blocks that are never ordinary globally-routable unicast space.
  *
  * The deny list intentionally includes every IANA special-purpose block that
  * can be interpreted as a local, documentation, benchmarking, relay, multicast,
  * or reserved destination. An identity-provider endpoint has no valid reason to
  * use one of these ranges.
  */
-function isPublicIpv4(address: string): boolean {
-	const value = ipv4ToUint32(address);
-	if (value === null) return false;
-
-	const blocked: ReadonlyArray<readonly [string, number]> = [
+const BLOCKED_IPV4_CIDRS: ReadonlyArray<readonly [number, number]> = (
+	[
 		["0.0.0.0", 8],
 		["10.0.0.0", 8],
 		["100.64.0.0", 10],
@@ -93,12 +90,16 @@ function isPublicIpv4(address: string): boolean {
 		["203.0.113.0", 24],
 		["224.0.0.0", 4],
 		["240.0.0.0", 4],
-	];
+	] as const
+).map(([base, prefix]) => [ipv4ToUint32(base) as number, prefix] as const);
 
-	return !blocked.some(([base, prefix]) => {
-		const baseValue = ipv4ToUint32(base);
-		return baseValue !== null && inIpv4Cidr(value, baseValue, prefix);
-	});
+/** Return true only for ordinary globally-routable IPv4 unicast space. */
+function isPublicIpv4(address: string): boolean {
+	const value = ipv4ToUint32(address);
+	if (value === null) return false;
+	return !BLOCKED_IPV4_CIDRS.some(([base, prefix]) =>
+		inIpv4Cidr(value, base, prefix),
+	);
 }
 
 function expandIpv6Words(address: string): number[] | null {
@@ -201,10 +202,7 @@ export function isPublicInternetAddress(
 	// Zone identifiers are interface-local routing hints, not public Internet
 	// destinations. Resolvers should not return them; fail closed if one does.
 	if (address.includes("%") || address !== address.trim()) return false;
-	const normalized = address
-		.toLowerCase()
-		.replace(/^\[|\]$/g, "")
-		.trim();
+	const normalized = address.toLowerCase().replace(/^\[|\]$/g, "");
 	const detected =
 		ipv4ToUint32(normalized) !== null
 			? 4

@@ -125,6 +125,26 @@ describe.skipIf(!url)("canonical storage deletion", () => {
     expect(await count("org_storage_read_operations", other.organizationId)).toBe(1);
     expect(await reconcile(c, async () => true)).toBe("absent");
   });
+  test("the provider scan holds no subject or phase row lock", async () => {
+    const c = await subject();
+    const lockable = async () => {
+      await db.query("BEGIN");
+      try {
+        for (const [table, id] of [
+          ["organizations", c.organizationId],
+          ["users", c.userId],
+          ["account_deletion_requests", c.requestId],
+          ["account_deletion_phase_receipts", c.phaseReceiptId],
+        ])
+          await db.query(`SELECT id FROM ${table} WHERE id=$1 FOR UPDATE NOWAIT`, [id]);
+      } finally {
+        await db.query("ROLLBACK");
+      }
+      return true;
+    };
+    expect(await reconcile(c, lockable)).toBe("absent");
+    expect(await count("org_storage_objects", c.organizationId)).toBe(0);
+  });
   test("stale generation, foreign phase, and expired lease cannot inspect or delete", async () => {
     const c = await subject(),
       other = await subject();

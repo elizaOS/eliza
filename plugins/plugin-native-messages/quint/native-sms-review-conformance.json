@@ -1,0 +1,39 @@
+[
+  {
+    "className": "ai.eliza.plugins.messages.TelephonyPluginReviewTest",
+    "required": [
+      "smsCancellationBeforeJournalReplyMustRetireQueuedReview",
+      "mmsCancellationBeforeJournalReplyMustRetireQueuedReview",
+      "backgroundBeforeJournalReplyMustRetireQueuedReview",
+      "cancellationAfterSendTapFencesQueuedDispatch",
+      "unrelatedCancellationCannotRetireAnotherReview",
+      "cancellationCannotEraseARecordedSubmission",
+      "ownerApprovedSmsUsesTheSameReceiptWithoutDialogOrReplay",
+      "ownerApprovedMmsUsesTheSameReceiptWithoutDialogOrReplay",
+      "withdrawnComposerApprovalCannotDispatchOrBeReplayed",
+      "mmsRetiredAfterStagingRollsBackOnlyItsOwnRow"
+    ]
+  },
+  {
+    "className": "ai.eliza.plugins.messages.SmsSendJournalTest",
+    "required": [
+      "journalBindingEvidenceDurabilityAndMapping",
+      "ownOutboxRowsSettleFromSentCallbacksOnly",
+      "retiredFilterNamespaceIsMigrationSensitive"
+    ]
+  },
+  {
+    "className": "ai.eliza.plugins.messages.SmsOutgoingHistoryTest",
+    "required": [
+      "roleHolderStoresEveryRecipientBeforeSendingAndSettlesFromReceipts",
+      "providerRefusalKeepsAllRecipientsOffRadioAndPersistsDenial",
+      "quickReplyCannotSendOrReplayAfterProviderRefusal",
+      "roleLossAfterStagingStopsTheSendAndDiscardsItsRows",
+      "unreadableOwnershipCannotBypassProviderPreparation"
+    ]
+  },
+  {
+    "className": "ai.eliza.plugins.messages.MmsSendJournalTest",
+    "required": ["mmsBindingValidationAndEvidence"]
+  }
+]

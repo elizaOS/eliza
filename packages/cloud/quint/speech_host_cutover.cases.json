@@ -1,0 +1,42 @@
+{
+  "sources": [
+    "packages/cloud/speech-worker/wrangler.toml",
+    "packages/cloud/speech-worker/README.md",
+    "packages/cloud/api/wrangler.toml",
+    "packages/cloud/api/v1/voice/speech/route.ts",
+    "packages/cloud/api/src/speech-relay-coordinator.ts",
+    ".github/workflows/cloud-cf-release.yml",
+    "packages/cloud/scripts/speech-host-cutover-admission.mjs",
+    "packages/cloud/scripts/speech-host-cutover-admission.test.ts",
+    "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
+    "packages/cloud/api/__tests__/speech-worker-contract.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-evm-speech-conformance.ts",
+  "bounds": {
+    "assumptions": [
+      "Two namespaces and one old session plus one already-admitted preparation. The real binding switch retains the old namespace but does not route old session IDs to it.",
+      "API-host retention requires the live API namespace and stable identity, without provisioning or draining an unused target; it rejects a reverse cutover from the speech host. Speech-host activation requires an existing target namespace through operator host-only provisioning; missing target blocks activation. The release gate checks live admission freeze, exact source/namespace identity and decision-time attestation expiry twice. Drain is human-trusted evidence, not measured by the gate. The proved step assumes that claim is true, includes all in-flight preparations, and admission remains quiesced until the switch; excluded false-claim and thaw witnesses violate safety.",
+      "Provider closure and terminal accounting are separate abstract acknowledgements. Namespace retention and receipt ordering do not prove eventual retirement, Cloudflare propagation, rollout readiness, live latency or TypeScript refinement. Real Workerd tests demonstrate the old-session routing boundary; metadata and shell tests exercise the release gate."
+    ],
+    "progress": "Safety only; no scheduler or provider liveness claim."
+  },
+  "limitations": [
+    "Two namespaces and one old session plus one already-admitted preparation. The real binding switch retains the old namespace but does not route old session IDs to it.",
+    "API-host retention requires the live API namespace and stable identity, without provisioning or draining an unused target; it rejects a reverse cutover from the speech host. Speech-host activation requires an existing target namespace through operator host-only provisioning; missing target blocks activation. The release gate checks live admission freeze, exact source/namespace identity and decision-time attestation expiry twice. Drain is human-trusted evidence, not measured by the gate. The proved step assumes that claim is true, includes all in-flight preparations, and admission remains quiesced until the switch; excluded false-claim and thaw witnesses violate safety.",
+    "Provider closure and terminal accounting are separate abstract acknowledgements. Namespace retention and receipt ordering do not prove eventual retirement, Cloudflare propagation, rollout readiness, live latency or TypeScript refinement. Real Workerd tests demonstrate the old-session routing boundary; metadata and shell tests exercise the release gate.",
+    "Finite-state checks and runtime regressions do not establish whole-backend or TypeScript refinement."
+  ],
+  "cases": [
+    {
+      "name": "speech-host-cutover",
+      "main": "speech_host_cutover",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

@@ -27,6 +27,7 @@ for (const [label, createStore, wirePrefix] of [
   const unavailable = (error) =>
     error instanceof LocalCredentialBrokerError &&
     error.code === "CREDENTIAL_BROKER_UNAVAILABLE" &&
+    error.status === 503 &&
     error.message === "Local credential storage unavailable";
 
   testStore(
@@ -291,6 +292,51 @@ test("task key client preserves native-selected identity and rejects malformed m
   const before = requests.length;
   await assert.rejects(client.remove("invalid"), TypeError);
   await assert.rejects(client.remove({ toString: () => id }), TypeError);
+  assert.equal(requests.length, before);
+});
+
+test("task key client reads and completes a stranded slot by generation", async (t) => {
+  const { createLocalTaskDataKeyStore } = await import(
+    "../../native-host/local-credential-client.mjs"
+  );
+  const id = "12345678-1234-1234-1234-123456789abc";
+  let response = { value: null };
+  const requests = [];
+  const port = await server(t, async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    requests.push(JSON.parse(Buffer.concat(chunks)));
+    res.end(JSON.stringify(response));
+  });
+  const client = createLocalTaskDataKeyStore({ port, token, timeoutMs: 2000 });
+  assert.equal(await client.readStranded(), null);
+  response = {
+    value: JSON.stringify({
+      version: 1,
+      id,
+      key: Buffer.alloc(32, 9).toString("base64"),
+    }),
+  };
+  const stranded = await client.readStranded();
+  assert.equal(stranded.id, id);
+  assert.deepEqual(stranded.bytes, new Uint8Array(32).fill(9));
+  stranded.bytes.fill(0);
+  response = { removed: true };
+  assert.equal(await client.completeStranded(id), true);
+  assert.deepEqual(requests, [
+    { operation: "task-key-stranded-read" },
+    { operation: "task-key-stranded-read" },
+    { operation: "task-key-stranded-complete", value: id },
+  ]);
+  for (const invalid of [{ value: "{}" }, { removed: "yes" }, {}]) {
+    response = invalid;
+    await assert.rejects(
+      "value" in invalid ? client.readStranded() : client.completeStranded(id),
+      { code: "CREDENTIAL_BROKER_UNAVAILABLE" },
+    );
+  }
+  const before = requests.length;
+  await assert.rejects(client.completeStranded("invalid"), TypeError);
   assert.equal(requests.length, before);
 });
 

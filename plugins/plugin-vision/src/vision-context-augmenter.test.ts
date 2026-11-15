@@ -1,14 +1,20 @@
 /**
  * Vision context augmenter tests for OCR, object, and face prompt enrichment.
+ * The model-case block replays the scenarios that quint/VisionDescribeOcr.qnt
+ * generates (check-vision-describe-ocr.mjs).
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import type {
-  OcrWithCoordsResult,
-  OcrWithCoordsService,
+import { fileURLToPath } from "node:url";
+import sharp from "sharp";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  type OcrWithCoordsResult,
+  type OcrWithCoordsService,
+  RapidOcrCoordAdapter,
+  readPngDimensionsOrNull,
 } from "./ocr-with-coords.js";
 import {
   buildAugmentedPrompt,
@@ -33,7 +39,13 @@ function fakeOcr(blocks: Array<{ text: string }>): OcrWithCoordsService {
   };
 }
 
-const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+/** A real 1x1 PNG: a PNG input reaches the OCR service unchanged. */
+const PNG_BYTES = new Uint8Array(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+);
 const IMAGE = { kind: "bytes" as const, bytes: PNG_BYTES };
 
 describe("buildAugmentedPrompt", () => {
@@ -159,6 +171,79 @@ describe("FusedVisionContextAugmenter", () => {
     expect(twice).toBeNull();
   });
 
+  it("OCRs a JPEG input through the PNG-only coord adapter", async () => {
+    // RapidOcrCoordAdapter is the coord-OCR service on macOS and wherever no
+    // tesseract, Windows or PaddleOCR engine is found. It reads the tile size
+    // from the PNG header and rejects other formats, while camera frames and
+    // uploaded photos arrive as JPEG. Only the recognizer under it is faked.
+    const recognized: Buffer[] = [];
+    const adapter = new RapidOcrCoordAdapter({
+      extractText: async (buffer) => {
+        recognized.push(buffer);
+        return {
+          text: "EXIT 12",
+          fullText: "EXIT 12",
+          blocks: [
+            {
+              text: "EXIT 12",
+              confidence: 0.95,
+              bbox: { x: 10, y: 10, width: 80, height: 20 },
+            },
+          ],
+        };
+      },
+    });
+    const jpeg = await sharp({
+      create: {
+        width: 120,
+        height: 60,
+        channels: 3,
+        background: { r: 240, g: 240, b: 240 },
+      },
+    })
+      .jpeg()
+      .toBuffer();
+    const aug = new FusedVisionContextAugmenter({ getOcr: () => adapter });
+    const out = await aug.augmentImagePrompt({
+      image: {
+        kind: "dataUrl",
+        dataUrl: `data:image/jpeg;base64,${jpeg.toString("base64")}`,
+      },
+    });
+    expect(out?.fused.ocrText).toBe('"EXIT 12"');
+    expect(recognized).toHaveLength(1);
+    expect(readPngDimensionsOrNull(recognized[0])).toEqual({
+      width: 120,
+      height: 60,
+    });
+  });
+
+  it("skips OCR with the decoder's reason when the image cannot become PNG", async () => {
+    const { logger } = await import("@elizaos/core");
+    const debug = vi.spyOn(logger, "debug");
+    let ocrRan = false;
+    const aug = new FusedVisionContextAugmenter({
+      getOcr: () => ({
+        name: "spy-ocr",
+        async describe(): Promise<OcrWithCoordsResult> {
+          ocrRan = true;
+          return { blocks: [] };
+        },
+      }),
+    });
+    const out = await aug.augmentImagePrompt({
+      image: { kind: "bytes", bytes: new TextEncoder().encode("not an image") },
+    });
+    expect(out).toBeNull();
+    expect(ocrRan).toBe(false);
+    expect(debug.mock.calls.map((call) => String(call[0]))).toContainEqual(
+      expect.stringMatching(
+        /^\[vision-augment\] OCR skipped: image could not be converted to PNG: .*unsupported image format/,
+      ),
+    );
+    debug.mockRestore();
+  });
+
   it("decodes a data-URL image input", async () => {
     const b64 = Buffer.from(PNG_BYTES).toString("base64");
     const aug = new FusedVisionContextAugmenter({
@@ -211,4 +296,156 @@ describe("FusedVisionContextAugmenter", () => {
     }
     expect(ocrRan).toBe(false);
   });
+});
+
+// Model encoding (quint/VisionDescribeOcr.qnt): image 0 PNG, 1 JPEG, 2 bytes
+// no decoder reads; backend 0 the image backend loads, 1 it fails to load;
+// ocrInput -1 OCR not called, 0 PNG bytes, 1 JPEG bytes, 2 unreadable bytes;
+// reason 0 none, 1 conversion failed, 2 backend unavailable, 3 the coord
+// adapter rejected the PNG header.
+interface DescribeOcrModelCase {
+  image: number;
+  hasText: boolean;
+  backend: number;
+  ocrInput: number;
+  passThrough: boolean;
+  reason: number;
+  ocrText: boolean;
+}
+const DESCRIBE_OCR_MODEL_CASES: DescribeOcrModelCase[] = process.env
+  .ELIZA_VISION_DESCRIBE_OCR_MODEL_CASES
+  ? JSON.parse(
+      readFileSync(process.env.ELIZA_VISION_DESCRIBE_OCR_MODEL_CASES, "utf8"),
+    )
+  : [0, 1, 2].flatMap((image) =>
+      [false, true].flatMap((hasText) =>
+        [0, 1].map((backend) => {
+          const converted = image === 0 || (image === 1 && backend === 0);
+          return {
+            image,
+            hasText,
+            backend,
+            ocrInput: converted ? 0 : -1,
+            passThrough: image === 0,
+            reason: converted ? 0 : backend === 1 ? 2 : 1,
+            ocrText: converted && hasText,
+          };
+        }),
+      ),
+    );
+const SKIP_REASON_PREFIX: Record<number, string> = {
+  1: "[vision-augment] OCR skipped: image could not be converted to PNG: ",
+  2: "[vision-augment] OCR skipped: image backend unavailable to convert the image to PNG: ",
+  3: "[vision-augment] OCR skipped: readPngDimensions: ",
+};
+const MODEL_FIXTURE_PNG = readFileSync(
+  fileURLToPath(
+    new URL("../test/fixtures/ocr-real-sample.png", import.meta.url),
+  ),
+);
+
+async function describeOcrModelImage(
+  image: number,
+  hasText: boolean,
+): Promise<Buffer> {
+  if (image === 2) return Buffer.from("not an image: truncated upload");
+  const png = hasText
+    ? MODEL_FIXTURE_PNG
+    : await sharp({
+        create: {
+          width: 800,
+          height: 240,
+          channels: 3,
+          background: { r: 255, g: 255, b: 255 },
+        },
+      })
+        .png()
+        .toBuffer();
+  return image === 0 ? png : sharp(png).jpeg({ quality: 90 }).toBuffer();
+}
+
+describe("vision describe OCR model cases", () => {
+  afterEach(() => {
+    vi.doUnmock("./image/sharp-compat.js");
+    vi.resetModules();
+  });
+
+  it.each(DESCRIBE_OCR_MODEL_CASES)(
+    "matches the generated describe OCR outcome (image $image, text $hasText, backend $backend)",
+    async (modelCase) => {
+      vi.resetModules();
+      if (modelCase.backend === 1) {
+        // The image backend fails to load (an app bundle without sharp or
+        // jimp). Only the loader is replaced; the augmenter, adapter and
+        // PNG checks are the production modules.
+        vi.doMock("./image/sharp-compat.js", () => ({
+          getSharp: async () => {
+            throw new Error("no image backend in this bundle");
+          },
+        }));
+      }
+      const { logger } = await import("@elizaos/core");
+      const augmenterModule = await import("./vision-context-augmenter.js");
+      const coordModule = await import("./ocr-with-coords.js");
+      const debug = vi.spyOn(logger, "debug");
+      const input = await describeOcrModelImage(
+        modelCase.image,
+        modelCase.hasText,
+      );
+      // RapidOcrCoordAdapter is the production coord-OCR service on macOS
+      // and wherever no other engine is found; its recognizer (Apple Vision
+      // or doCTR) does not run on Linux CI, so a recorder stands in for it.
+      const recognized: Buffer[] = [];
+      const adapter = new coordModule.RapidOcrCoordAdapter({
+        extractText: async (buffer) => {
+          recognized.push(buffer);
+          const text = modelCase.hasText ? "Eliza OCR" : "";
+          return {
+            text,
+            fullText: text,
+            blocks: modelCase.hasText
+              ? [
+                  {
+                    text,
+                    confidence: 0.9,
+                    bbox: { x: 40, y: 40, width: 200, height: 40 },
+                  },
+                ]
+              : [],
+          };
+        },
+      });
+      try {
+        const out = await new augmenterModule.FusedVisionContextAugmenter({
+          getOcr: () => adapter,
+        }).augmentImagePrompt({
+          image: { kind: "bytes", bytes: new Uint8Array(input) },
+        });
+        const skipped = debug.mock.calls
+          .map((call) => String(call[0]))
+          .filter((message) =>
+            message.startsWith("[vision-augment] OCR skipped: "),
+          );
+        expect(out?.fused.ocrText).toBe(
+          modelCase.ocrText ? '"Eliza OCR"' : undefined,
+        );
+        expect(recognized).toHaveLength(modelCase.ocrInput === 0 ? 1 : 0);
+        if (modelCase.ocrInput === 0) {
+          expect(readPngDimensionsOrNull(recognized[0])).toEqual({
+            width: 800,
+            height: 240,
+          });
+          expect(recognized[0].equals(input)).toBe(modelCase.passThrough);
+        }
+        if (modelCase.reason === 0) {
+          expect(skipped).toEqual([]);
+        } else {
+          expect(skipped).toHaveLength(1);
+          expect(skipped[0]).toContain(SKIP_REASON_PREFIX[modelCase.reason]);
+        }
+      } finally {
+        debug.mockRestore();
+      }
+    },
+  );
 });

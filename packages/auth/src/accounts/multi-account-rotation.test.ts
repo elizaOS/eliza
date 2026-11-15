@@ -1,3 +1,4 @@
+import type { LinkedAccountConfig } from "@elizaos/contracts";
 import { getCodingAgentSelectorBridge } from "@elizaos/core/protocol";
 /**
  * Real-path multi-account E2E — issue #10696.
@@ -23,6 +24,27 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The default pool and the credential helpers read through a runtime storage
+// policy, which resolves the vault master key. Inject one in-memory test key
+// for that, and write this file's fixtures through the same runtime policy.
+vi.mock("../vault/master-key.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../vault/master-key.js")>();
+  const { randomBytes } = await import("node:crypto");
+  const testKey = randomBytes(32);
+  return { ...actual, loadDefaultMasterKeySync: () => Buffer.from(testKey) };
+});
+vi.mock("../auth/account-storage.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../auth/account-storage.js")>();
+  return {
+    ...actual,
+    createIsolatedAccountStoragePolicy:
+      actual.createRuntimeAccountStoragePolicy,
+  };
+});
+
 import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
@@ -82,7 +104,12 @@ function writeAccount(
 async function setMeta(
   providerId: AccountCredentialProvider,
   id: string,
-  patch: { priority?: number; enabled?: boolean },
+  patch: Partial<
+    Pick<
+      LinkedAccountConfig,
+      "priority" | "enabled" | "health" | "healthDetail" | "subscriptionEndsAt"
+    >
+  >,
 ): Promise<void> {
   const pool = getDefaultAccountPool();
   const account = pool.list(providerId as never).find((a) => a.id === id);
@@ -151,6 +178,41 @@ describe("multi-account rotation E2E (#10696)", () => {
     expect(codexSub).toMatchObject({ total: 2, enabled: 2, healthy: 2 });
   });
 
+  it("serves coding credentials from ELIZA_HOME when the state dir is elsewhere", async () => {
+    const stateDir = mkdtempSync(path.join(tmpdir(), "multi-acct-state-"));
+    try {
+      process.env.ELIZA_STATE_DIR = stateDir;
+      resetDefaultAccountPoolAfterCredentialReset();
+      writeAccount("anthropic-subscription", "claude-home", "sk-ant-oat-H");
+      writeAccount("openai-codex", "codex-home", "codex-tok-H", {
+        organizationId: "acct_home",
+        idToken: "id-H",
+      });
+      expect(
+        getDefaultAccountPool()
+          .list("anthropic-subscription")
+          .map((a) => a.id),
+      ).toEqual(["claude-home"]);
+      const bridge = getCodingAgentSelectorBridge();
+      const claude = await bridge?.select("claude", {
+        strategy: "priority",
+        providerId: "anthropic-subscription",
+      });
+      expect(claude?.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat-H");
+      const codex = await bridge?.select("codex", {
+        strategy: "priority",
+        providerId: "openai-codex",
+      });
+      expect(codex?.accountId).toBe("codex-home");
+      expect(readCodexAuth(codex?.envPatch.CODEX_HOME ?? "")).toMatchObject({
+        access_token: "codex-tok-H",
+        account_id: "acct_home",
+      });
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("round-robin alternates across the two Claude accounts (distinct tokens each turn)", async () => {
     writeAccount("anthropic-subscription", "a", "sk-ant-oat-A", {
       createdAt: 1_000,
@@ -199,6 +261,78 @@ describe("multi-account rotation E2E (#10696)", () => {
     const after = await bridge?.select("claude", { strategy: "priority" });
     expect(after?.accountId).toBe("second");
     expect(after?.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat-2");
+  });
+
+  it("priority filters scoped ids before ranking persisted priority and recency", async () => {
+    const providerId = "anthropic-subscription";
+    writeAccount(providerId, "same", "claude-first", { createdAt: 1_000 });
+    writeAccount(providerId, "peer", "claude-peer", { createdAt: 2_000 });
+    writeAccount("openai-codex", "same", "codex-first", { createdAt: 1_000 });
+    await setMeta(providerId, "same", { priority: 0 });
+    await setMeta(providerId, "peer", { priority: 0 });
+    await getDefaultAccountPool().recordCall(
+      "same",
+      { ok: true },
+      { providerId },
+    );
+    resetDefaultAccountPoolAfterCredentialReset();
+    const pool = getDefaultAccountPool();
+
+    expect((await pool.select({ providerId }))?.id).toBe("peer");
+    expect((await pool.select({ providerId, accountIds: [] }))?.id).toBe(
+      "peer",
+    );
+    expect((await pool.select({ providerId, accountIds: ["same"] }))?.id).toBe(
+      "same",
+    );
+    expect(
+      await pool.select({
+        providerId,
+        accountIds: ["same"],
+        exclude: ["same"],
+      }),
+    ).toBeNull();
+    expect(
+      await pool.select({ providerId: "openai-codex", accountIds: ["same"] }),
+    ).toMatchObject({
+      id: "same",
+      providerId: "openai-codex",
+    });
+  });
+
+  it("priority applies the completion clock at cooldown and subscription boundaries", async () => {
+    const providerId = "anthropic-subscription";
+    const at = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(at);
+    try {
+      writeAccount(providerId, "cooling", "claude-cooling", {
+        createdAt: 1_000,
+      });
+      writeAccount(providerId, "expiring", "claude-expiring", {
+        createdAt: 2_000,
+      });
+      await setMeta(providerId, "cooling", {
+        health: "rate-limited",
+        healthDetail: { until: at + 1 },
+      });
+      await setMeta(providerId, "expiring", { subscriptionEndsAt: at + 1 });
+      const pool = getDefaultAccountPool();
+
+      expect((await pool.select({ providerId }))?.id).toBe("expiring");
+      clock.mockReturnValue(at + 1);
+      expect(pool.selectionState(providerId)).toEqual({
+        activeAccountId: null,
+        reason: null,
+      });
+      expect(await pool.select({ providerId })).toBeNull();
+
+      const pending = pool.select({ providerId });
+      clock.mockReturnValue(at + 2);
+      expect((await pending)?.id).toBe("cooling");
+      expect(pool.get("expiring", providerId)?.health).toBe("expired");
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("rate-limiting the active Claude account hands off to its sibling — no dropped request", async () => {

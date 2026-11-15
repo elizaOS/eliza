@@ -233,7 +233,7 @@ describe("pinned mobile voice bundle", () => {
     }
     const asr = files.filter((f) => f.role.startsWith("asr-"));
     expect(asr.map((f) => f.sha256)).toEqual([
-      "c0f6ad42f0a5b481904416077dde0a1a78e5b8642295fdf2356ace822588c3df",
+      "407c02ab24382bc92b181b165dea8e4702e502ded17dafbe7e1222c0b69cc802",
     ]);
     const vad = files.find((f) => f.role === "vad");
     expect(vad?.sha256).toBe(
@@ -442,8 +442,8 @@ describe("pinned mobile voice bundle", () => {
 
   it("makes Phonon-2 the only ASR and drops the Qwen3-ASR rows", () => {
     const bundle = mobileVoiceBundle();
-    expect(bundle.version).toBe("1.4.0");
-    expect(bundle.parentVersion).toBe("1.3.0");
+    expect(bundle.version).toBe("1.4.2");
+    expect(bundle.parentVersion).toBe("1.4.1");
     for (const file of bundle.files) {
       expect(file.id).not.toMatch(/qwen/i);
       expect(file.path).not.toMatch(/qwen|mmproj/i);
@@ -453,14 +453,21 @@ describe("pinned mobile voice bundle", () => {
     const history = VOICE_MODEL_VERSIONS.filter(
       (v) => v.id === "mobile-voice",
     ).map((v) => v.version);
-    expect(history).toEqual(["1.4.0", "1.3.0", "1.2.0", "1.1.0", "1.0.0"]);
+    expect(history).toEqual([
+      "1.4.2",
+      "1.4.1",
+      "1.3.0",
+      "1.2.0",
+      "1.1.0",
+      "1.0.0",
+    ]);
     const phonon = aospVoiceFiles().find((f) => f.role === "asr-parakeet");
     expect(phonon).toMatchObject({
       id: "phonon-2-fv5",
       asrBackend: "parakeet",
       path: "asr/phonon-2-fv5.gguf",
       sha256:
-        "c0f6ad42f0a5b481904416077dde0a1a78e5b8642295fdf2356ace822588c3df",
+        "407c02ab24382bc92b181b165dea8e4702e502ded17dafbe7e1222c0b69cc802",
       bytes: 208932352,
       license: "CC-BY-4.0",
       status: "unpublished",

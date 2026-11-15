@@ -1,0 +1,23 @@
+[
+  {
+    "id": "auth.AuthStorePublication",
+    "model": "packages/auth/quint/AuthStorePublication.qnt",
+    "sources": [
+      "packages/auth/src/server/auth/token-store.ts",
+      "packages/auth/src/server/auth/store-backends.ts"
+    ],
+    "invariants": [
+      "OnePublisher",
+      "PublishedBeforeConsumed",
+      "ConsumedTokenStaysAbsent",
+      "ExpiredOperationRefused",
+      "NamespaceIsolation"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Models the guarded publication, consume and compare-delete contract for one challenge, two publishers and two namespaces. Challenge renewal, transition(), backend selection and arbitrary publication batches need separate models.",
+      "Generated Quint traces replay through the real MemoryBackend, NamespacedStoreBackend and TokenStore. The existing embedded-auth-store integration test checks concurrent publication and expiry against PGlite. Redis atomicity and PostgreSQL serializability remain backend assumptions outside this model.",
+      "Safety does not assert eventual authentication. External completion, request scheduling, restart persistence and clock changes require separate progress and deployment checks."
+    ]
+  }
+]

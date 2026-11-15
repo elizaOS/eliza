@@ -160,9 +160,7 @@ export function createMobileViewRegistry(
     hostKey: (view) => view.hostKey ?? view.id,
     launcherKey: (view) => `${prefix}${view.id}`,
     fromLauncherKey: (key) =>
-      key.startsWith(prefix) && isMobileShellViewId(key.slice(prefix.length))
-        ? byId.get(key.slice(prefix.length) as MobileShellViewId)
-        : undefined,
+      key.startsWith(prefix) ? find(key.slice(prefix.length)) : undefined,
     iconUrl(view) {
       const glyph = product.icons.views[view.id];
       return glyph ? mobileShellIconUrl(product, glyph) : undefined;

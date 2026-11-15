@@ -8,6 +8,7 @@
  */
 import { ElizaError } from "../errors.ts";
 import { textFromChatMessageContent } from "../runtime/system-prompt.ts";
+import { asObjectRecord } from "../utils/type-guards.ts";
 import { parseTrajectorySemanticStages } from "./trajectory-semantic-stage.ts";
 import type {
 	ElizaNativeModelBoundary,
@@ -38,12 +39,6 @@ type TrajectoryArtRow = {
 };
 
 type TrajectoryMetadataPrimitive = string | number | boolean | null;
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: null;
-}
 
 function isTrajectoryMetadataPrimitive(
 	value: unknown,
@@ -90,7 +85,7 @@ function toExactOptionalString(value: unknown): string | undefined {
 function primitiveTrajectoryMetadata(
 	value: unknown,
 ): Record<string, TrajectoryMetadataPrimitive> {
-	const record = asRecord(value);
+	const record = asObjectRecord(value);
 	if (!record) {
 		return {};
 	}
@@ -188,6 +183,18 @@ function listStepLlmCalls(
 export function summarizeTrajectoryUsage(
 	trajectory: TrajectoryDetailRecord,
 ): TrajectoryUsageTotalsRecord {
+	return usageFromSteps(listTrajectorySteps(trajectory));
+}
+
+export function summarizeTrajectoryCache(
+	trajectory: TrajectoryDetailRecord,
+): TrajectoryCacheStatsRecord {
+	return cacheFromSteps(listTrajectorySteps(trajectory));
+}
+
+function usageFromSteps(
+	steps: readonly TrajectoryStepRecord[],
+): TrajectoryUsageTotalsRecord {
 	let llmCallCount = 0;
 	let providerAccessCount = 0;
 	let promptTokens = 0;
@@ -195,7 +202,7 @@ export function summarizeTrajectoryUsage(
 	let cacheReadInputTokens = 0;
 	let cacheCreationInputTokens = 0;
 
-	for (const step of listTrajectorySteps(trajectory)) {
+	for (const step of steps) {
 		providerAccessCount += Array.isArray(step.providerAccesses)
 			? step.providerAccesses.length
 			: 0;
@@ -209,7 +216,7 @@ export function summarizeTrajectoryUsage(
 	}
 
 	return {
-		stepCount: listTrajectorySteps(trajectory).length,
+		stepCount: steps.length,
 		llmCallCount,
 		providerAccessCount,
 		promptTokens,
@@ -219,16 +226,16 @@ export function summarizeTrajectoryUsage(
 	};
 }
 
-export function summarizeTrajectoryCache(
-	trajectory: TrajectoryDetailRecord,
+function cacheFromSteps(
+	steps: readonly TrajectoryStepRecord[],
 ): TrajectoryCacheStatsRecord {
-	const totals = summarizeTrajectoryUsage(trajectory);
+	const totals = usageFromSteps(steps);
 	let cachedCallCount = 0;
 	let cacheReadCallCount = 0;
 	let cacheWriteCallCount = 0;
 	let tokenUsageEstimatedCallCount = 0;
 
-	for (const step of listTrajectorySteps(trajectory)) {
+	for (const step of steps) {
 		for (const call of listStepLlmCalls(step)) {
 			const cacheReadInputTokens = toFiniteNumber(call.cacheReadInputTokens);
 			const cacheCreationInputTokens = toFiniteNumber(
@@ -289,14 +296,20 @@ function resolveTrajectorySource(
 	if (trajectory.source) {
 		return trajectory.source;
 	}
-	return toOptionalString(asRecord(trajectory.metadata)?.source);
+	return toOptionalString(asObjectRecord(trajectory.metadata)?.source);
 }
 
 export function iterateTrajectoryLlmCalls(
 	trajectory: TrajectoryDetailRecord,
 ): TrajectoryFlattenedLlmCallRecord[] {
+	return flattenLlmCalls(trajectory, listTrajectorySteps(trajectory));
+}
+
+function flattenLlmCalls(
+	trajectory: TrajectoryDetailRecord,
+	steps: readonly TrajectoryStepRecord[],
+): TrajectoryFlattenedLlmCallRecord[] {
 	const out: TrajectoryFlattenedLlmCallRecord[] = [];
-	const steps = listTrajectorySteps(trajectory);
 	const trajectoryStatus = resolveTrajectoryStatus(trajectory);
 	const trajectorySource = resolveTrajectorySource(trajectory);
 	for (const [stepIndex, step] of steps.entries()) {
@@ -533,10 +546,11 @@ export function buildElizaNativeTrajectoryRows(
 	const out: ElizaNativeTrajectoryRow[] = [];
 
 	for (const trajectory of trajectories) {
-		const trajectoryTotals =
-			trajectory.totals ?? summarizeTrajectoryUsage(trajectory);
-		const cacheStats = summarizeTrajectoryCache(trajectory);
-		for (const call of iterateTrajectoryLlmCalls(trajectory)) {
+		// Parse and validate persisted steps once per trajectory.
+		const steps = listTrajectorySteps(trajectory);
+		const trajectoryTotals = trajectory.totals ?? usageFromSteps(steps);
+		const cacheStats = cacheFromSteps(steps);
+		for (const call of flattenLlmCalls(trajectory, steps)) {
 			const taskType = inferNativeTaskType(call);
 			out.push({
 				format: ELIZA_NATIVE_TRAJECTORY_FORMAT,
@@ -603,7 +617,7 @@ export function buildElizaNativeTrajectoryRows(
 function filterNumericMetrics(
 	trajectory: TrajectoryDetailRecord,
 ): Record<string, number> {
-	const metrics = asRecord(trajectory.metrics);
+	const metrics = asObjectRecord(trajectory.metrics);
 	if (!metrics) {
 		return {};
 	}
@@ -623,9 +637,10 @@ function buildTrajectoryArtRows(
 ): TrajectoryArtRow[] {
 	const includePrompts = options.includePrompts !== false;
 	return trajectories.map((trajectory) => {
+		const steps = listTrajectorySteps(trajectory);
 		const messages: TrajectoryArtMessage[] = [];
 		let previousSystemPrompt: string | undefined;
-		for (const call of iterateTrajectoryLlmCalls(trajectory)) {
+		for (const call of flattenLlmCalls(trajectory, steps)) {
 			const nativeMessages = includePrompts
 				? buildTrajectoryArtRequestMessages(call.messages)
 				: [];
@@ -677,9 +692,8 @@ function buildTrajectoryArtRows(
 				status: resolveTrajectoryStatus(trajectory),
 				scenarioId: trajectory.scenarioId,
 				batchId: trajectory.batchId,
-				trajectoryTotals:
-					trajectory.totals ?? summarizeTrajectoryUsage(trajectory),
-				cacheStats: summarizeTrajectoryCache(trajectory),
+				trajectoryTotals: trajectory.totals ?? usageFromSteps(steps),
+				cacheStats: cacheFromSteps(steps),
 				metadata: trajectory.metadata ?? {},
 			},
 			metrics: filterNumericMetrics(trajectory),

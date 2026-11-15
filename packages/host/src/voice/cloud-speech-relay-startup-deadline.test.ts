@@ -28,15 +28,32 @@ for (const opens of [false, true])
         calls.push(url.pathname);
         return Response.json(
           url.pathname.endsWith("/consent")
-            ? { consentNonce: crypto.randomUUID(), expiresAt: expiry }
+            ? {
+                consentNonce: crypto.randomUUID(),
+                retirementProofVersion: 1,
+                expiresAt: expiry,
+              }
             : url.pathname.endsWith("/revoke")
-              ? { revoked: true }
+              ? {
+                  revoked: true,
+                  retirement: {
+                    version: 1,
+                    sessionId: id,
+                    state: "confirmed",
+                    mode: "retired",
+                    stt: "gracefully_drained",
+                    tts: "transport_closed",
+                    accounting: "settled_actual",
+                    completedAt: new Date().toISOString(),
+                  },
+                }
               : {
                   sessionId: id,
                   token: "fake-test-token",
                   expiresAt: expiry,
                   wsUrl: `wss://example.invalid/api/v1/voice/speech/ws?sessionId=${id}`,
                   version: 1,
+                  retirementProofVersion: 1,
                 },
         );
       },
@@ -81,8 +98,8 @@ for (const opens of [false, true])
       failure = e;
     }
     const elapsed = performance.now() - start;
-    expect(elapsed).toBeGreaterThanOrEqual(4900);
-    expect(elapsed).toBeLessThan(6500);
+    expect(elapsed).toBeGreaterThanOrEqual(opens ? 4900 : 9900);
+    expect(elapsed).toBeLessThan(opens ? 6500 : 11500);
     expect(calls.filter((x) => x.endsWith("/session"))).toHaveLength(1);
     expect(calls.filter((x) => x.endsWith("/revoke"))).toHaveLength(1);
     expect(
@@ -115,4 +132,4 @@ for (const opens of [false, true])
     expect(JSON.stringify(logs)).not.toContain(id);
     expect(sent.map((frame) => frame.t)).toEqual(opens ? ["hello"] : []);
     expect(JSON.stringify(logs)).not.toContain("fake-test-token");
-  }, 10000);
+  }, 15000);

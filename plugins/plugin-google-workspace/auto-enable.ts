@@ -34,13 +34,16 @@ function hasNonEmptyEnv(
  *
  * Do not enable merely because Calendar is present — Calendar also covers
  * Apple, Microsoft, and ICS feeds without Google.
- * `plugins.entries["google-workspace"].enabled === false` is an unconditional veto.
+ * `plugins.entries["google-workspace"].enabled === false` keeps Workspace out of
+ * the auto-enable set. It does not stop a plugin that depends on Workspace:
+ * plugin-personal-assistant lists it as a hard dependency and registers it in
+ * init whenever personal-assistant loads.
  */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   const entries = (
     ctx.config.plugins as { entries?: Record<string, unknown> } | undefined
   )?.entries;
-  // Explicit disable is authoritative over every other signal.
+  // Explicit disable wins over every other auto-enable signal.
   const workspaceEntry = entries?.["google-workspace"];
   if (
     workspaceEntry &&

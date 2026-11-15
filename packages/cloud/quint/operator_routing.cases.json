@@ -1,0 +1,33 @@
+{
+  "sources": [
+    "packages/cloud/services/operator/capabilities/redis.ts",
+    "packages/cloud/services/operator/capabilities/reconciler.ts",
+    "packages/cloud/services/operator/capabilities/deployment-status.ts",
+    "packages/cloud/services/operator/capabilities/routing-state.ts",
+    "packages/cloud/services/_common/src/redis-ownership.ts",
+    "packages/cloud/services/operator/capabilities/__tests__/routing-state.integration.test.ts",
+    "packages/cloud/services/operator/capabilities/index.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Two server owners and one agent; compare-and-delete is atomic.",
+      "Status writes may fail between Redis and Kubernetes; reconcile and watch writes serialize per server.",
+      "Does not prove Redis availability, Kubernetes watch delivery, or eventual convergence.",
+      "Single controller per server name. Same-name pod/incarnation ownership and process-restart fencing are excluded."
+    ],
+    "progress": "No temporal or fairness claim. Each model permits stuttering and repeated failures."
+  },
+  "cases": [
+    {
+      "name": "operator-routing",
+      "main": "operator_routing",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

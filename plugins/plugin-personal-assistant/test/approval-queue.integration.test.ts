@@ -1508,7 +1508,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
         success: false,
         data: {
           error: "SCHEDULING_DELIVERY_OUTCOME_AMBIGUOUS",
-          state: "executing",
+          state: "reconciliation_required",
           sent: false,
           safeToRetry: false,
         },
@@ -1536,22 +1536,81 @@ describe("ApprovalQueue integration (real PGlite)", () => {
         },
       });
       expect(send).toHaveBeenCalledTimes(1);
-      expect((await queue.byId(request.id, request.subjectUserId))?.state).toBe(
-        "executing",
-      );
-      expect(
-        await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
-          request.id,
-        ),
-      ).toMatchObject({
+      const store = new SchedulingDeliveryStore(runtime);
+      const attempt = await store.byApprovalRequestId(request.id);
+      expect(attempt).toMatchObject({
         state: "ambiguous",
         attemptCount: 1,
         providerMessageId: null,
         receipt: null,
       });
+      expect(await queue.byId(request.id, request.subjectUserId)).toMatchObject(
+        {
+          state: "reconciliation_required",
+          execution: { attemptId: attempt?.id, provider: "email" },
+        },
+      );
+
+      // The owner checks the mailbox and finds nothing: both rows become
+      // retryable together, and the next approval sends once more.
+      await store.reconcile(request.id, {
+        outcome: "not_sent",
+        reconciledBy: String(runtime.agentId),
+        reason: "Owner checked: the message is not in Sent.",
+      });
+      const retryable = await queue.byId(request.id, request.subjectUserId);
+      expect(retryable?.state).toBe("retryable");
+      expect(await store.byApprovalRequestId(request.id)).toMatchObject({
+        state: "failed_retryable",
+      });
+      send.mockImplementationOnce(async (payload?: unknown) =>
+        receiptResult(payload, "gmail-after-reconcile"),
+      );
+      if (!retryable) throw new Error("retryable approval disappeared");
+      await expect(
+        executeApprovedRequest({ runtime, queue, request: retryable }),
+      ).resolves.toMatchObject({ success: true, data: { state: "done" } });
+      expect(send).toHaveBeenCalledTimes(2);
     } finally {
       email.send = originalSend;
     }
+  }, 60_000);
+
+  it("quarantines a send that stopped before its outcome was recorded", async () => {
+    const { request } = await createOpeningApproval({
+      suffix: "interrupted-1004",
+    });
+    const approved = await queue.approve(request.id, request.subjectUserId, {
+      resolvedBy: String(runtime.agentId),
+      resolutionReason: "reviewed exact interrupted draft",
+    });
+    const correlation = readSchedulingApprovalCorrelation(approved.payload);
+    if (!correlation) throw new Error("expected scheduling correlation");
+    const store = new SchedulingDeliveryStore(runtime);
+    const claim = await store.begin(approved, correlation);
+    expect(claim.kind).toBe("claimed");
+    await expect(store.begin(approved, correlation)).resolves.toMatchObject({
+      kind: "blocked",
+      reason: "in_flight",
+    });
+
+    await executeRawSql(
+      runtime,
+      `UPDATE app_lifeops.life_scheduling_delivery_attempts
+          SET last_attempted_at = '${new Date(Date.now() - 11 * 60_000).toISOString()}'
+        WHERE approval_request_id = '${request.id}'`,
+    );
+    await expect(store.begin(approved, correlation)).resolves.toMatchObject({
+      kind: "blocked",
+      reason: "ambiguous",
+      attempt: {
+        state: "ambiguous",
+        lastFailure: { code: "SCHEDULING_DELIVERY_INTERRUPTED" },
+      },
+    });
+    expect(await queue.byId(request.id, request.subjectUserId)).toMatchObject({
+      state: "reconciliation_required",
+    });
   }, 60_000);
 
   it("quarantines a hostile thrown connector value without coercion failure", async () => {

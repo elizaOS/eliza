@@ -55,6 +55,23 @@ public final class CloudSignInFlow {
  public static boolean validVerifier(String value) { return value != null && value.matches("[A-Za-z0-9._~-]{43,128}"); }
  public static boolean validState(String value) { return value != null && value.matches("[A-Za-z0-9_-]{43}"); }
 
+ /** Exact browser authorization request; state and verifier remain owned by the native attempt. */
+ public static String authorizeUrl(CloudSignInEnvironment environment, String challenge, String state) {
+  if (!validState(state) || !validState(challenge)) throw new IllegalArgumentException("Invalid browser proof");
+  return environment.api() + "/steward/auth/oauth/google/authorize?response_type=code&tenant_id=" + percent(environment.tenant)
+   + "&redirect_uri=" + percent(environment.callback())
+   + "&code_challenge=" + challenge + "&code_challenge_method=S256&state=" + state + "&prompt=select_account&mfa=exchange";
+ }
+ private static String percent(String value) {
+  StringBuilder out = new StringBuilder();
+  for (byte valueByte : value.getBytes(StandardCharsets.UTF_8)) {
+   int c = valueByte & 0xff;
+   if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') out.append((char) c);
+   else out.append('%').append(String.format(java.util.Locale.ROOT, "%02X", c));
+  }
+  return out.toString();
+ }
+
  /** What a return to the callback URL carries (shared callback contract). */
  public enum ReturnKind { SUCCESS, ERROR, RETURN }
  /** A return to this environment's callback. SUCCESS sets code and state, ERROR sets error and state, RETURN sets neither. */
@@ -110,11 +127,22 @@ public final class CloudSignInFlow {
   */
  public static final class Pending {
   public final CloudSignInEnvironment environment; public final String state, verifier; public final long expiresAt;
-  public Pending(CloudSignInEnvironment environment, String state, String verifier, long expiresAt) {
-   if (environment == null || !validState(state) || !validVerifier(verifier)) throw new IllegalArgumentException();
-   this.environment = environment; this.state = state; this.verifier = verifier; this.expiresAt = expiresAt;
+  /**
+   * The host's durable credential generation when the record was written, or null when the host keeps
+   * none. Only a record that carries it can be completed by a process that did not start the sign-in.
+   */
+  public final String generation;
+  public Pending(CloudSignInEnvironment environment, String state, String verifier, long expiresAt) { this(environment, state, verifier, expiresAt, null); }
+  public Pending(CloudSignInEnvironment environment, String state, String verifier, long expiresAt, String generation) {
+   if (environment == null || !validState(state) || !validVerifier(verifier) || generation != null && !validGeneration(generation)) throw new IllegalArgumentException();
+   this.environment = environment; this.state = state; this.verifier = verifier; this.expiresAt = expiresAt; this.generation = generation;
   }
-  public static Pending create(CloudSignInEnvironment environment, long now) { return new Pending(environment, newState(), newVerifier(), now + PENDING_TTL_MS); }
+  public static Pending create(CloudSignInEnvironment environment, long now) { return create(environment, now, null); }
+  /** A generation the record format cannot carry is treated as none. */
+  public static Pending create(CloudSignInEnvironment environment, long now, String generation) {
+   return new Pending(environment, newState(), newVerifier(), now + PENDING_TTL_MS, validGeneration(generation) ? generation : null);
+  }
+  public static boolean validGeneration(String value) { return value != null && value.matches("[A-Za-z0-9_-]{1,128}"); }
   public boolean expired(long now) { return now >= expiresAt; }
   /** Constant-time comparison of the returned state with this record's; expiry is checked separately. */
   public boolean sameState(Callback callback) {
@@ -124,13 +152,17 @@ public final class CloudSignInFlow {
   /** Same state and not expired. */
   public boolean matches(Callback callback, long now) { return !expired(now) && sameState(callback); }
   /** Encrypted at rest by the host's credential store. Every field is base64url or a number: '.' cannot occur. */
-  public String serialize() { return "v1." + environment.name + "." + state + "." + verifier + "." + expiresAt; }
+  public String serialize() {
+   String record = environment.name + "." + state + "." + verifier + "." + expiresAt;
+   return generation == null ? "v1." + record : "v2." + record + "." + generation;
+  }
   /** A record for an environment this build does not admit is refused. */
   public static Pending parse(String value, CloudSignInConfig config) {
    if (value == null) return null;
    String[] parts = value.split("\\.", -1);
-   if (parts.length != 5 || !"v1".equals(parts[0])) return null;
-   try { return new Pending(config.environment(parts[1]), parts[2], parts[3], Long.parseLong(parts[4])); }
+   boolean durable = parts.length == 6 && "v2".equals(parts[0]);
+   if (!durable && (parts.length != 5 || !"v1".equals(parts[0]))) return null;
+   try { return new Pending(config.environment(parts[1]), parts[2], parts[3], Long.parseLong(parts[4]), durable ? parts[5] : null); }
    catch (Exception invalid) { return null; }
   }
  }
@@ -195,6 +227,15 @@ public final class CloudSignInFlow {
    + " reason=" + reason + " elapsedMs=" + elapsed + " deadlineRemainingMs=" + remaining;
  }
 
+ /**
+  * A verification answer that says nothing about the code: a timeout, a rate limit or a server
+  * error. The step and its wrong-code budget are kept, as for a request with no answer.
+  */
+ public static boolean verifyRetryable(int status) { return status == 408 || status == 429 || status >= 500; }
+ /** One acknowledgement request: the key is active, the request may be sent again, or Cloud refused it. */
+ public enum Ack { ACKNOWLEDGED, RETRY, REFUSED }
+ /** Delay before background acknowledgement round `round` (0-based): 5 s doubling to one minute. */
+ public static long ackRetryDelayMs(int round) { return round < 0 ? 5000L : Math.min(60000L, 5000L << Math.min(round, 4)); }
  /** Ack is retried only for a transport failure or a retryable server status. */
  public static boolean ackRetryable(int status) { return status == -1 || status == 408 || status == 429 || status >= 500; }
  public static long ackBackoffMs(int attempt) { return attempt <= 0 ? 0 : Math.min(4000L, 1000L << (attempt - 1)); }

@@ -1,0 +1,29 @@
+{
+  "sources": [
+    "packages/cloud/services/agent-server/src/agent-routing.ts",
+    "packages/cloud/services/agent-server/src/agent-manager.ts",
+    "packages/cloud/services/_common/src/redis-ownership.ts",
+    "packages/cloud/services/agent-server/src/agent-routing.integration.test.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One manager serializes snapshots, local retirement and close. Redis writes and ownership-checked cleanup acknowledge separately.",
+      "Replacement ownership appears only after local release; live cross-server stale writers, Redis expiry, actor generations and process crashes are outside this model.",
+      "Does not establish TypeScript refinement or unbounded progress."
+    ],
+    "progress": "No temporal or fairness claim. Each model permits stuttering and repeated failures."
+  },
+  "cases": [
+    {
+      "name": "agent-routing",
+      "main": "agent_routing",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

@@ -27,6 +27,9 @@ Each read verifies the live owner action. Exact-message text reads use MESSAGE's
 existing source identity and integrity contract. They support byte, line, and paragraph ranges with source digests and explicit
 continuation metadata; the host does not silently shorten message text. Inbox
 queries always revalidate the grant instead of returning an older account's cache.
+The aggregate Inbox and check-in summaries use the same live reader. Managed
+aggregate reads require an explicit limit; account overrides and missed-only
+views that would require an exhaustive mailbox read are rejected explicitly.
 It does not enable send, drafts, or mailbox changes. Without the setting the
 existing connector path is unchanged. Android hosts must supply their own
 qualified broker; a browser host test does not qualify Android.
@@ -63,7 +66,8 @@ every host input is injected:
 - `InboxOperation` journals one reviewed effect per owner and grant in host
   compare-and-exchange storage. `dispatching` is saved before the single
   dispatch; a lost reply or an unknown outcome is resolved only by reading the
-  canonical receipt and is never dispatched again.
+  canonical receipt and is never dispatched again. The owner can discard an
+  attempted operation only while the provider still reports it as prepared.
 - `createMailReviewController` reviews sends and provider drafts against the
   exact composer email, archives and trashes with a reviewed Undo, checks saved
   receipts and discards an undispatched review when change access is withdrawn.
@@ -81,3 +85,8 @@ every host input is injected:
 
 Slot names (`inbox-operation:v1:*`, `inbox-drafts:v1:*`) and record layouts
 are installed-data identifiers; keep them stable.
+
+Review rendering compares ordinary attachment fields without re-encoding their
+bytes. Rendered button state never authorizes dispatch: confirmation compares
+the complete live composer with the immutable reviewed proposal again. Hosts
+must treat shared journal snapshots as read-only.

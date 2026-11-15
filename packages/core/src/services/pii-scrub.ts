@@ -6,6 +6,7 @@
  * residue fails.
  */
 
+import { ElizaError } from "../errors.js";
 import {
 	assembleContextPack,
 	entityResolverFromStore,
@@ -19,11 +20,7 @@ import {
 	EncryptedCachePseudonymMapStore,
 	type PseudonymMapStore,
 } from "../security/pii-pseudonym-map-store.js";
-import {
-	getScrubMarker,
-	isScrubDone,
-	markScrubDone,
-} from "../security/pii-scrub-markers.js";
+import { isScrubDone, markScrubDone } from "../security/pii-scrub-markers.js";
 import {
 	PiiScrubFabricationError,
 	scrubWithEscalation,
@@ -59,7 +56,11 @@ export class PiiScrubService extends Service {
 		"Runs the corpus PII scrub asynchronously on the core task queue (content-hash idempotent, non-blocking)";
 
 	private batchQueue: BatchQueue<PiiScrubQueueItem> | null = null;
-	private isDisabled = false;
+	private drainStart: Promise<void> | null = null;
+	private stopping = false;
+	private stopPromise: Promise<void> | null = null;
+	private readonly scrubRequestHandler = (payload: PiiScrubRequestPayload) =>
+		this.handleScrubRequest(payload);
 
 	private static readonly SCRUB_DRAIN_TASK = "PII_SCRUB_DRAIN";
 
@@ -74,18 +75,9 @@ export class PiiScrubService extends Service {
 	}
 
 	async initialize(): Promise<void> {
-		if (this.isDisabled) {
-			return;
-		}
-
 		this.runtime.logger.info(
 			{ src: SRC, agentId: this.runtime.agentId },
 			"Initializing PII scrub service",
-		);
-
-		this.runtime.registerEvent(
-			EventType.PII_SCRUB_REQUESTED,
-			this.handleScrubRequest.bind(this),
 		);
 
 		// Same drain/retry/priority model as the embedding service - the task
@@ -112,18 +104,38 @@ export class PiiScrubService extends Service {
 			},
 		});
 
-		await this.batchQueue.start(this.runtime);
-
-		this.runtime.logger.info(
-			{ src: SRC, agentId: this.runtime.agentId },
-			"Started PII scrub drain task",
+		// The drain task starts on the first request, not here. An agent that
+		// never asks for a scrub then has no PII_SCRUB_DRAIN task, and its idle
+		// drain does not read and write the tasks table every 5 s.
+		this.runtime.registerEvent(
+			EventType.PII_SCRUB_REQUESTED,
+			this.scrubRequestHandler,
 		);
+	}
+
+	/** Starts the drain task once; a failed start is retried by the next request. */
+	private startDrain(queue: BatchQueue<PiiScrubQueueItem>): Promise<void> {
+		this.drainStart ??= queue.start(this.runtime).then(
+			() => {
+				this.runtime.logger.info(
+					{ src: SRC, agentId: this.runtime.agentId },
+					"Started PII scrub drain task",
+				);
+			},
+			(error: unknown) => {
+				// error-policy:J2 withdraw the failed start so a later request can
+				// retry; the item stays queued and the caller receives the failure.
+				this.drainStart = null;
+				throw error;
+			},
+		);
+		return this.drainStart;
 	}
 
 	private async handleScrubRequest(
 		payload: PiiScrubRequestPayload,
 	): Promise<void> {
-		if (this.isDisabled || !this.batchQueue) {
+		if (this.stopping || !this.batchQueue) {
 			return;
 		}
 
@@ -146,10 +158,8 @@ export class PiiScrubService extends Service {
 			return;
 		}
 
-		// Cheap pre-enqueue idempotency: if this exact content+ruleset is already
-		// scrubbed, do not even queue it. The drain re-checks under the hood so a
-		// race (two enqueues of the same content) still no-ops, but this avoids
-		// the queue churn for the common re-scrub case.
+		// Skip work when the exact content and ruleset already have a marker.
+		// The drain rechecks queued work, but simultaneous misses can both proceed.
 		if (await isScrubDone(this.runtime, content, payload.rulesetVersion)) {
 			this.runtime.logger.debug(
 				{ src: SRC, agentId: this.runtime.agentId, itemRef: payload.itemRef },
@@ -173,28 +183,29 @@ export class PiiScrubService extends Service {
 			itemRef: payload.itemRef,
 		};
 
-		this.batchQueue.enqueue(item);
+		// stop() can run while the done-marker check above is pending.
+		const queue = this.batchQueue;
+		if (this.stopping || !queue?.enqueue(item)) return;
 		this.runtime.logger.debug(
 			{
 				src: SRC,
 				agentId: this.runtime.agentId,
-				queueSize: this.batchQueue.size,
+				queueSize: queue.size,
 				itemRef: payload.itemRef,
 			},
 			"Enqueued scrub item",
 		);
+		await this.startDrain(queue);
 	}
 
 	/**
-	 * Process one item: idempotency skip -> seam escalation -> mark-done. Throws
-	 * on any failure so BatchQueue applies retry / `onExhausted`, and CRUCIALLY
-	 * does not write the done-marker on failure (the item is retried, never
-	 * silently marked scrubbed).
+	 * Process one item: idempotency skip, scrub, then confirm the done-marker.
+	 * Failures before confirmation remain with BatchQueue for retry or exhaustion.
+	 * Completion subscribers observe the confirmed result.
 	 */
 	private async scrubItem(item: PiiScrubQueueItem): Promise<void> {
-		// Idempotency re-check inside the drain: covers the race where the same
-		// content was enqueued twice before either drained. A hit means another
-		// drain already completed this exact content+ruleset - nothing to do.
+		// A marker written after admission or during a retry still settles the
+		// exact content and ruleset without another scrub.
 		if (await isScrubDone(this.runtime, item.content, item.rulesetVersion)) {
 			this.runtime.logger.debug(
 				{ src: SRC, agentId: this.runtime.agentId, itemRef: item.itemRef },
@@ -273,22 +284,37 @@ export class PiiScrubService extends Service {
 		// Success: write the content-addressed done-marker so a re-scrub of this
 		// exact content under this ruleset no-ops, and a crash-restart resumes
 		// past it with zero duplicate work.
-		await markScrubDone(this.runtime, item.content, {
+		const confirmed = await markScrubDone(this.runtime, item.content, {
 			rulesetVersion: item.rulesetVersion,
 			modelId,
 			tier0Only: !escalated,
 		});
-
-		await this.runtime.emitEvent(EventType.PII_SCRUB_COMPLETED, {
-			runtime: this.runtime,
-			content: item.content,
-			rulesetVersion: item.rulesetVersion,
-			jobId: item.jobId,
-			itemRef: item.itemRef,
-			tier0Only: !escalated,
-			modelId,
-			source: "piiScrubService",
-		});
+		if (!confirmed) {
+			throw new ElizaError("Scrub completion marker write was refused", {
+				code: "PII_SCRUB_MARKER_WRITE_REFUSED",
+			});
+		}
+		try {
+			await this.runtime.emitEvent(EventType.PII_SCRUB_COMPLETED, {
+				runtime: this.runtime,
+				content: item.content,
+				rulesetVersion: item.rulesetVersion,
+				jobId: item.jobId,
+				itemRef: item.itemRef,
+				tier0Only: !escalated,
+				modelId,
+				source: "piiScrubService",
+			});
+		} catch {
+			// error-policy:J7 completion observers cannot reverse the stored marker.
+			// Subscriber errors can contain scrub content. Report only the failure class.
+			this.runtime.reportError(
+				"PiiScrubService.notifyCompletion",
+				new ElizaError("A scrub completion observer failed", {
+					code: "PII_SCRUB_COMPLETION_OBSERVER_FAILED",
+				}),
+			);
+		}
 	}
 
 	/**
@@ -376,19 +402,49 @@ export class PiiScrubService extends Service {
 	}
 
 	async stop(): Promise<void> {
+		if (this.stopPromise) return this.stopPromise;
+		this.stopping = true;
+		this.stopPromise = this.finishStop();
+		try {
+			await this.stopPromise;
+		} finally {
+			this.stopPromise = null;
+		}
+	}
+
+	private async finishStop(): Promise<void> {
 		this.runtime.logger.info(
 			{ src: SRC, agentId: this.runtime.agentId },
 			"Stopping PII scrub service",
 		);
-		if (this.isDisabled || !this.batchQueue) {
+		this.runtime.unregisterEvent(
+			EventType.PII_SCRUB_REQUESTED,
+			this.scrubRequestHandler,
+		);
+		const queue = this.batchQueue;
+		if (!queue) {
 			return;
 		}
-		const remaining = this.batchQueue.size;
+		try {
+			await this.drainStart;
+		} catch (error) {
+			// error-policy:J6 teardown-only: the request that started the drain
+			// received this failure; dispose below still releases the queue.
+			this.runtime.logger.debug(
+				{
+					src: SRC,
+					agentId: this.runtime.agentId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Drain start failed while stopping",
+			);
+		}
+		const remaining = queue.size;
 		const fastShutdown = process.env.ELIZA_FAST_SHUTDOWN === "1";
 		if (fastShutdown) {
-			this.batchQueue.clear();
+			queue.clear();
 		}
-		await this.batchQueue.dispose(this.runtime, {
+		await queue.dispose(this.runtime, {
 			flushHighPriority: !fastShutdown,
 		});
 		this.runtime.logger.info(
@@ -396,6 +452,7 @@ export class PiiScrubService extends Service {
 			"Stopped",
 		);
 		this.batchQueue = null;
+		this.drainStart = null;
 	}
 
 	getQueueSize(): number {
@@ -416,11 +473,6 @@ export class PiiScrubService extends Service {
 
 	clearQueue(): void {
 		this.batchQueue?.clear();
-	}
-
-	/** Test/audit helper: read the done-marker for a piece of content. */
-	async getMarker(content: string, rulesetVersion: string) {
-		return getScrubMarker(this.runtime, content, rulesetVersion);
 	}
 }
 

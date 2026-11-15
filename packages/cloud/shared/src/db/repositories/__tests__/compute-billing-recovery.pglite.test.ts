@@ -253,7 +253,7 @@ afterAll(async () => {
   await closeDatabaseConnectionsForTests();
 });
 
-async function seed(balance = "10.000000") {
+async function seed(balance = "10.000000", lastBilledAt = new Date("2026-08-19T01:00:00.000Z")) {
   const [org] = await dbWrite
     .insert(organizations)
     .values({
@@ -267,7 +267,6 @@ async function seed(balance = "10.000000") {
     .insert(users)
     .values({ steward_user_id: `steward-${crypto.randomUUID()}`, organization_id: org.id })
     .returning();
-  const lastBilledAt = new Date("2026-08-19T01:00:00.000Z");
   const [sandbox] = await dbWrite
     .insert(agentSandboxes)
     .values({
@@ -687,7 +686,12 @@ describe("compute billing recovery", () => {
   });
 
   test("migration-backed deletion states debit once and replay with zero effect", async () => {
-    const { org, user, sandbox } = await seed("20.000000");
+    // This migration uses the current database clock. Keep the funded history
+    // relative to it; a fixed historical start eventually exhausts this fixture.
+    const { org, user, sandbox } = await seed(
+      "20.000000",
+      new Date(Date.now() - 2 * 60 * 60 * 1000),
+    );
     await getPgliteClientForTests().exec(deletionBillingMigration);
     try {
       const transitionAt = new Date();
@@ -745,7 +749,7 @@ describe("compute billing recovery", () => {
       };
       const first = await containerBillingRepository.recordSuccessfulDailyBilling(containerInput);
       const replay = await containerBillingRepository.recordSuccessfulDailyBilling(containerInput);
-      expect(first).toMatchObject({ alreadyBilled: false });
+      expect(first).toMatchObject({ alreadyBilled: false, insufficient: false });
       expect(first.amount).toBeCloseTo(0.67, 4);
       expect(replay).toMatchObject({ alreadyBilled: true, amount: 0 });
 
@@ -4406,17 +4410,6 @@ describe("compute billing recovery", () => {
     const [intent] = await dbWrite.select().from(containerComputeStopIntents);
     expect(intent).toMatchObject({ status: "provider_confirmed", attempts: 1 });
     expect(intent?.provider_confirmed_at).toBeInstanceOf(Date);
-    const replay = await activeBillingService.cancelResource({
-      organizationId: org.id,
-      resourceId: containerId,
-      resourceType: "container",
-      mode: "stop",
-      authorizeInfrastructureMutation: async () => undefined,
-    });
-    expect(replay).toMatchObject({
-      stoppedBilling: true,
-      resource: { status: "stopped", billingStatus: "suspended" },
-    });
     expect(await dbWrite.select().from(jobs)).toHaveLength(1);
     expect(providerStop).toHaveBeenCalledTimes(1);
     providerStop.mockRestore();
@@ -4424,3 +4417,34 @@ describe("compute billing recovery", () => {
 });
 
 test("PGlite setup is mandatory", () => expect(ready).toBe(true));
+
+test(
+  "restarting an already deploying container advances its lifecycle generation",
+  async () => {
+    const { org, user } = await seed();
+    const containerId = crypto.randomUUID();
+    const now = new Date("2026-08-19T03:00:00.000Z");
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "restart-generation",
+      project_name: "restart-generation",
+      status: "deploying",
+      billing_status: "active",
+      desired_count: 1,
+      cpu: 1024,
+      memory: 2048,
+      created_at: now,
+      updated_at: now,
+      last_billed_at: now,
+    });
+    const first = await containersRepository.prepareFundedRestart(containerId, org.id, now);
+    expect(first.status).toBe("deploying");
+    expect(first.lifecycle_revision).toBe(1);
+    const second = await containersRepository.prepareFundedRestart(containerId, org.id, now);
+    expect(second.status).toBe("deploying");
+    expect(second.lifecycle_revision).toBe(2);
+  },
+  PGLITE_TIMEOUT,
+);

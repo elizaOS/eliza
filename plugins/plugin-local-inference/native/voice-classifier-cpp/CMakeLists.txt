@@ -22,11 +22,11 @@ include_directories(include)
 # mel front-end, diagnostics) stay in their own TUs.
 #
 # Architecture portability: every TU below is plain scalar C with no
-# x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
-# aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
+# x86/ARM intrinsics, so the same source list builds on x86_64 and
+# aarch64 without any CMAKE_SYSTEM_PROCESSOR branching.
 # When the forward graphs land and pull in SIMD, mirror the qjl-cpu
 # pattern (per-arch TUs gated on CMAKE_SYSTEM_PROCESSOR + runtime
-# dispatch via cpuid/hwcap/riscv_hwprobe).
+# dispatch via cpuid/hwcap).
 
 set(VOICE_CLASSIFIER_SRCS
     src/voice_emotion.c

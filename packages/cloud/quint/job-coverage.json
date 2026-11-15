@@ -1,0 +1,34 @@
+[
+  {
+    "id": "cloud-protocol-job-execution-lease",
+    "model": "packages/cloud/quint/JobExecutionLease.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/jobs.ts",
+      "packages/cloud/shared/src/db/repositories/agent-lifecycle-execution-fence.ts",
+      "packages/cloud/shared/src/db/repositories/job-timestamp-fence.ts",
+      "packages/cloud/shared/src/db/schemas/jobs.ts",
+      "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
+      "packages/cloud/shared/src/db/schemas/agent-sandboxes.ts",
+      "packages/cloud/shared/src/lib/services/provisioning-job-types.ts",
+      "packages/cloud/shared/src/db/repositories/job-execution-lease.postgres.integration.test.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "LeaseIdentity",
+      "TerminalHasNoLease",
+      "FenceMatchesGeneration",
+      "ForeignFenceRetained",
+      "StaleGenerationCannotWrite"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One detached job, two process owners, two fresh generations and at most two recovery snapshots. Zero represents a legacy NULL generation and resource3 represents a different job.",
+      "The job is already due. Shared-capacity admission, queue ordering across multiple jobs, tenant authorization before repository calls and worker dispatch are outside this slice. The claim action includes the repository organization filter.",
+      "Lease age partitions preserve live expiry, expired within the30-second takeover grace, and outside grace. Matching owners may renew any age until recovery commits.",
+      "Resource existence is fixed for each case. Current, missing and foreign resource fences are separate cases. Deletion during execution and complete lifecycle revision and stop-intent bookkeeping remain separate protocols.",
+      "Recovery here projects successful retry onto status, generation, quiescence and lease ownership. Attempts, interruption and requeue budgets, canary-specific payload fences, dependent writebacks and object storage contents are not abstracted as proved.",
+      "Claimed payload hydration happens after the claim transaction. Successful response and response failure have the same database projection. The PostgreSQL hook checks both persistence and recoverability.",
+      "Weak fairness of each pending recovery completion establishes bounded call completion. Overall job completion depends on dispatch and external work and is not claimed."
+    ]
+  }
+]

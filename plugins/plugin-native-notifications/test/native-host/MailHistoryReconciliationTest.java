@@ -34,6 +34,25 @@ public class MailHistoryReconciliationTest {
   for(int i=0;i<1100;i++){String start=String.valueOf(100+i),end=String.valueOf(101+i);lifetime.engine.accept(page(start,end,null,event(end,"message-added","m"+i,"INBOX","UNREAD")),i+2);lifetime.engine.publish();}
   check(lifetime.s().getJSONObject("notices").length()==1,"completed notices do not exhaust lifetime ledger");
   Case retain=new Case();retain.seed();retain.mail();retain.engine.accept(page("102","103",null),90000000);check(retain.s().getJSONObject("notices").length()==1,"pending survives pruning");retain.engine.publish();retain.engine.capture(retain.key());retain.poster.active.clear();retain.engine.accept(page("103","104",null),180000000);check(retain.engine.pending().has("token"),"captured expired notice survives pruning");
+  long day=86400000L;
+  Case aged=new Case();aged.seed();aged.poster.listed=false;aged.engine.accept(page("100","104",null,event("101","message-added","old","INBOX","UNREAD"),event("102","message-added","shown","INBOX","UNREAD"),event("103","message-added","tapped","INBOX","UNREAD")),2);
+  for(int i=0;i<3;i++)aged.engine.publish();aged.engine.accept(page("104","105",null,event("105","message-added","young","INBOX","UNREAD")),day);aged.engine.publish();
+  Map<String,String> byMessage=new HashMap<>();for(String k:MailHistoryReconciliation.keys(aged.s().getJSONObject("notices")))byMessage.put(aged.s().getJSONObject("notices").getJSONObject(k).getString("messageId"),k);
+  check(byMessage.values().stream().allMatch(k->{try{return aged.s().getJSONObject("notices").getJSONObject(k).getString("phase").equals("uncertain");}catch(Exception e){throw new RuntimeException(e);}}),"unlisted posts are uncertain");
+  aged.poster.active.add(byMessage.get("shown"));aged.engine.capture(byMessage.get("tapped"));check(aged.engine.pending().has("token"),"uncertain tap captured");
+  aged.engine.accept(page("105","106",null),day+3);JSONObject left=aged.s().getJSONObject("notices");
+  check(!left.has(byMessage.get("old"))&&left.has(byMessage.get("shown"))&&left.has(byMessage.get("tapped"))&&left.has(byMessage.get("young")),"aged uncertain retired, active, captured and young kept");
+  Case flood=new Case();flood.seed();flood.poster.listed=false;
+  for(int i=0;i<1200;i++){String start=String.valueOf(100+i),end=String.valueOf(101+i);flood.engine.accept(page(start,end,null,event(end,"message-added","u"+i,"INBOX","UNREAD")),2+i*3600000L);flood.engine.publish();}
+  check(flood.s().getJSONObject("notices").length()<=25&&flood.poster.posts==1200,"uncertain records never stall at capacity");
+  Case shade=new Case();shade.seed();JSONObject[] twenty=new JSONObject[20];for(int i=0;i<20;i++)twenty[i]=event(String.valueOf(101+i),"message-added","n"+i,"INBOX","UNREAD");
+  shade.engine.accept(page("100","120",null,twenty),2);while(shade.engine.hasPending())shade.engine.publish();
+  JSONObject all=shade.s().getJSONObject("notices");int withdrawn=0;for(String k:MailHistoryReconciliation.keys(all))if(all.getJSONObject(k).getString("phase").equals("withdrawn"))withdrawn++;
+  check(shade.poster.posts==20&&shade.poster.active.size()==5&&withdrawn==15,"at most five shown notices, superseded ones withdrawn");
+  for(String k:shade.poster.active)check(Integer.parseInt(all.getJSONObject(k).getString("messageId").substring(1))>=15,"newest notices stay shown");
+  Case held=new Case();held.seed();held.engine.accept(page("100","106",null,event("101","message-added","h0","INBOX","UNREAD"),event("102","message-added","h1","INBOX","UNREAD"),event("103","message-added","h2","INBOX","UNREAD"),event("104","message-added","h3","INBOX","UNREAD"),event("105","message-added","h4","INBOX","UNREAD"),event("106","message-added","h5","INBOX","UNREAD")),2);
+  for(int i=0;i<5;i++)held.engine.publish();String first=null;for(String k:MailHistoryReconciliation.keys(held.s().getJSONObject("notices")))if(held.s().getJSONObject("notices").getJSONObject(k).getString("messageId").equals("h0"))first=k;
+  held.engine.capture(first);held.engine.publish();check(held.poster.active.contains(first)&&held.poster.active.size()==5&&held.engine.pending().has("token"),"captured tap notice is never withdrawn by the cap");
   System.out.println("PASS mail durable reconciliation, notice uncertainty, owner fences and pagination");
  }
 }

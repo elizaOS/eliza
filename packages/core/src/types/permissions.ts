@@ -5,36 +5,6 @@
  * macOS / win32 / linux / iOS / Android / web.
  */
 
-export type PermissionId =
-	| "screen-recording"
-	| "accessibility"
-	| "reminders"
-	| "calendar"
-	| "health"
-	| "screentime"
-	| "contacts"
-	| "notes"
-	| "microphone"
-	| "camera"
-	| "location"
-	| "shell"
-	| "website-blocking"
-	| "notifications"
-	| "full-disk"
-	| "automation"
-	| "speech-recognition"
-	| "photos"
-	| "phone"
-	| "messages"
-	| "wifi"
-	| "bluetooth"
-	| "app-blocking"
-	| "usage-access"
-	| "overlay"
-	| "write-settings"
-	| "local-network"
-	| "battery-optimization";
-
 /** Dashboard permission subset. */
 export type SystemPermissionId =
 	| "accessibility"
@@ -45,7 +15,7 @@ export type SystemPermissionId =
 	| "website-blocking"
 	| "location";
 
-export const PERMISSION_IDS: readonly PermissionId[] = [
+export const PERMISSION_IDS = [
 	"screen-recording",
 	"accessibility",
 	"reminders",
@@ -75,6 +45,8 @@ export const PERMISSION_IDS: readonly PermissionId[] = [
 	"local-network",
 	"battery-optimization",
 ] as const;
+
+export type PermissionId = (typeof PERMISSION_IDS)[number];
 
 export function isPermissionId(value: unknown): value is PermissionId {
 	return (
@@ -110,13 +82,6 @@ export type Platform = "darwin" | "win32" | "linux" | "ios" | "android" | "web";
 export interface PermissionFeatureRef {
 	app: string;
 	action: string;
-}
-
-export interface PermissionBlockRecord {
-	feature: string;
-	app?: string;
-	action?: string;
-	blockedAt: number;
 }
 
 export interface SystemPermissionDefinition {
@@ -183,7 +148,3 @@ export interface IPermissionsRegistry {
 
 /** Permission-state snapshot keyed by canonical permission ID. Consumers may select the subset they render. */
 export type AllPermissionsState = Record<PermissionId, PermissionState>;
-
-export interface PermissionManagerConfig {
-	cacheTimeoutMs: number;
-}

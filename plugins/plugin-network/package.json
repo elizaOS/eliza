@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/plugin-network",
-  "version": "0.1.0",
-  "private": true,
+  "version": "2.0.6",
   "type": "module",
   "description": "The Network's conversation layer for the shared Eliza agent: member context, availability state (structured routing with authz), post-turn signals, and the signed service-to-service contract with the Network service (turn, deliver, set-state, signals, updates).",
   "main": "src/index.ts",
@@ -35,8 +34,12 @@
   },
   "sideEffects": false,
   "files": [
-    "src"
+    "src",
+    "!src/**/*.test.ts"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@elizaos/cloud-services-common": "workspace:*",
     "@elizaos/core": "workspace:*"
@@ -51,7 +54,7 @@
     "test": "bun test --conditions=eliza-source src/routing/authz.test.ts src/backend/contract-mirror.test.ts src/network-relay-voice.test.ts src/backend/approved-photos.test.ts",
     "check:mirror": "bun scripts/check-contract-mirror.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",

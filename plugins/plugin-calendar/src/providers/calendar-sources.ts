@@ -96,6 +96,9 @@ export function renderCalendarSourcesProviderText(
 
 export const calendarSourcesProvider: Provider = {
   name: "calendarSources",
+  // Source administration is explicit through CALENDAR_SOURCES. Ordinary
+  // agenda reads use the one canonical Calendar, not an account inventory.
+  registerByDefault: false,
   description:
     "Exact owner calendar provider/account/calendar identities, visibility, and feed-selection revisions; feed health is not observed.",
   descriptionCompressed:

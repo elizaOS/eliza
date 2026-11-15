@@ -4,6 +4,8 @@ export interface RegisteredMobileClient {
   appId: string;
   redirectUri: string;
   enabled: boolean;
+  /** Explicit compatibility name for the same app, callback and lifetime. */
+  aliasOf?: string;
   /**
    * Lifetime of the `eliza_mobile_` credential this client receives. Optional;
    * the service default (30 days) applies when absent. Bounded to 90 days so a
@@ -16,7 +18,14 @@ export type MobileClientSelection =
   | { ok: false; code: "invalid_client" | "server_configuration_error" };
 export const MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS = 24 * 60 * 60;
 export const MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS = 90 * 24 * 60 * 60;
-const REGISTRATION_KEYS = ["clientId", "appId", "redirectUri", "enabled", "credentialTtlSeconds"];
+const REGISTRATION_KEYS = [
+  "clientId",
+  "appId",
+  "redirectUri",
+  "enabled",
+  "credentialTtlSeconds",
+  "aliasOf",
+];
 export interface MobileClientReservation {
   clientId: string;
   appId: unknown;
@@ -67,6 +76,8 @@ export function parseRegisteredMobileClients(
       typeof item.redirectUri !== "string" ||
       item.redirectUri.length > 2_000 ||
       typeof item.enabled !== "boolean" ||
+      (item.aliasOf !== undefined &&
+        (typeof item.aliasOf !== "string" || item.aliasOf === item.clientId)) ||
       (item.credentialTtlSeconds !== undefined &&
         (typeof item.credentialTtlSeconds !== "number" ||
           !Number.isInteger(item.credentialTtlSeconds) ||
@@ -90,14 +101,31 @@ export function parseRegisteredMobileClients(
       url.hash ||
       url.href !== item.redirectUri ||
       clients.has(item.clientId) ||
-      apps.has(item.appId.toLowerCase()) ||
-      redirects.has(item.redirectUri)
+      (item.aliasOf === undefined &&
+        (apps.has(item.appId.toLowerCase()) || redirects.has(item.redirectUri)))
     ) {
       return { ok: false, code: "server_configuration_error" };
     }
     clients.add(item.clientId);
-    apps.add(item.appId.toLowerCase());
-    redirects.add(item.redirectUri);
+    if (item.aliasOf === undefined) {
+      apps.add(item.appId.toLowerCase());
+      redirects.add(item.redirectUri);
+    }
+  }
+  for (const entry of value as RegisteredMobileClient[]) {
+    if (entry.aliasOf === undefined) continue;
+    const original = (value as RegisteredMobileClient[]).find(
+      (candidate) => candidate.clientId === entry.aliasOf,
+    );
+    if (
+      !original ||
+      original.aliasOf !== undefined ||
+      original.appId.toLowerCase() !== entry.appId.toLowerCase() ||
+      original.redirectUri !== entry.redirectUri ||
+      original.enabled !== entry.enabled ||
+      original.credentialTtlSeconds !== entry.credentialTtlSeconds
+    )
+      return { ok: false, code: "server_configuration_error" };
   }
   return { ok: true, registrations: value as RegisteredMobileClient[] };
 }

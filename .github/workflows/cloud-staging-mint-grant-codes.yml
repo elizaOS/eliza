@@ -26,7 +26,7 @@ on:
       single_use_label:
         description: Label for the single-use codes
         required: true
-        default: alpha-staging-qa
+        default: staging-qa
         type: string
       shared_max_redemptions:
         description: Redemptions for the one shared code (0 skips it)
@@ -36,16 +36,12 @@ on:
       shared_label:
         description: Label for the shared code
         required: true
-        default: alpha-staging-shared
+        default: staging-shared
         type: string
       family:
         description: Grant family (campaign) the codes belong to
-        required: false
-        default: alpha_phone
-        type: choice
-        options:
-          - alpha_phone
-          - grace_pilot
+        required: true
+        type: string
       plan:
         description: Plan each redemption grants
         required: false
@@ -111,10 +107,7 @@ jobs:
             [[ "$value" =~ ^[0-9]{1,4}$ ]] || { echo "::error::counts must be small integers"; exit 1; }
           done
           (( SINGLE_USE_COUNT <= 100 && SHARED_MAX <= 1000 )) || { echo "::error::staging batch is capped at 100 single-use codes and 1000 shared redemptions"; exit 1; }
-          case "$FAMILY" in
-            alpha_phone | grace_pilot) ;;
-            *) echo "::error::family must be alpha_phone or grace_pilot"; exit 1 ;;
-          esac
+          [[ "$FAMILY" =~ ^[a-z0-9_]{1,64}$ ]] || { echo "::error::family must be an explicit campaign identifier (1-64 lowercase letters, digits or underscores)"; exit 1; }
           case "$PLAN" in
             plus_monthly | pro_monthly) ;;
             *) echo "::error::plan must be plus_monthly or pro_monthly"; exit 1 ;;

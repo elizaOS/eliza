@@ -1,7 +1,8 @@
 /**
  * Trigger scheduling math: parses 5-field cron expressions (with `N/step`,
- * range, list, and the Sunday-as-7 alias), computes the next matching run time
- * in a given timezone (honoring POSIX day-of-month/day-of-week OR-semantics and
+ * range, list, 3-letter month and day names, and the Sunday-as-7 alias),
+ * computes the next matching run time in a given timezone (honoring POSIX
+ * day-of-month/day-of-week OR-semantics and
  * DST fall-back dedupe), and resolves interval/once/cron/event triggers to
  * their next-run timing. Cron parsing returns null on malformed input; interval
  * values are clamped to [MIN, MAX]_TRIGGER_INTERVAL_MS.
@@ -26,6 +27,9 @@ const CRON_FALLBACK_LOOKBACKS_MS = [
 	2 * CRON_HOUR_MS,
 	3 * CRON_HOUR_MS,
 ] as const;
+// A zone's local date can be the previous or next UTC date.
+const ZONED_DAY_OFFSETS = [-1, 0, 1] as const;
+const UTC_DAY_OFFSETS = [0] as const;
 /** Max timestamp a JS Date can represent (±8.64e15 ms); beyond this a Date is Invalid. */
 const MAX_REPRESENTABLE_MS = 8_640_000_000_000_000;
 
@@ -38,6 +42,8 @@ interface CronRange {
 	 * parser accepts `7` (single, range end, or step) and folds it onto `0`.
 	 */
 	sundayIsSeven?: boolean;
+	/** Three-letter cron names for this field, lowercase keys. */
+	names?: Readonly<Record<string, number>>;
 }
 
 interface CronSchedule {
@@ -57,12 +63,36 @@ interface CronSchedule {
 	dayOfWeekRestricted: boolean;
 }
 
+const MONTH_NAMES: Readonly<Record<string, number>> = {
+	jan: 1,
+	feb: 2,
+	mar: 3,
+	apr: 4,
+	may: 5,
+	jun: 6,
+	jul: 7,
+	aug: 8,
+	sep: 9,
+	oct: 10,
+	nov: 11,
+	dec: 12,
+};
+const DAY_NAMES: Readonly<Record<string, number>> = {
+	sun: 0,
+	mon: 1,
+	tue: 2,
+	wed: 3,
+	thu: 4,
+	fri: 5,
+	sat: 6,
+};
+
 const CRON_RANGES: readonly CronRange[] = [
 	{ min: 0, max: 59 },
 	{ min: 0, max: 23 },
 	{ min: 1, max: 31 },
-	{ min: 1, max: 12 },
-	{ min: 0, max: 6, sundayIsSeven: true },
+	{ min: 1, max: 12, names: MONTH_NAMES },
+	{ min: 0, max: 6, sundayIsSeven: true, names: DAY_NAMES },
 ];
 
 function parseInteger(raw: string): number | null {
@@ -70,6 +100,16 @@ function parseInteger(raw: string): number | null {
 	const value = Number(raw);
 	if (!Number.isFinite(value)) return null;
 	return value;
+}
+
+/** A field value is a number or, where the field allows it, a 3-letter name. */
+function resolveCronToken(raw: string, range: CronRange): number | null {
+	const token = raw.trim();
+	if (/^[A-Za-z]{3}$/.test(token)) {
+		const value = range.names?.[token.toLowerCase()];
+		return value === undefined ? null : value;
+	}
+	return parseInteger(token);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -110,7 +150,7 @@ function parseCronPart(part: string, range: CronRange): Set<number> | null {
 
 		const rangeParts = base.split("-");
 		if (rangeParts.length === 1) {
-			const single = parseInteger(rangeParts[0].trim());
+			const single = resolveCronToken(rangeParts[0], range);
 			if (single === null) return null;
 			if (single < range.min || single > upperBound) return null;
 			// `N/step` (e.g. `5/15`) means "from N to the range max, stepping by
@@ -123,8 +163,8 @@ function parseCronPart(part: string, range: CronRange): Set<number> | null {
 		}
 
 		if (rangeParts.length !== 2) return null;
-		const start = parseInteger(rangeParts[0].trim());
-		const end = parseInteger(rangeParts[1].trim());
+		const start = resolveCronToken(rangeParts[0], range);
+		const end = resolveCronToken(rangeParts[1], range);
 		if (start === null || end === null) return null;
 		if (start > end) return null;
 		if (start < range.min || end > upperBound) return null;
@@ -238,20 +278,35 @@ function offsetMsFromFormatter(
 	formatter: Intl.DateTimeFormat,
 	atMs: number,
 ): number {
-	const parts = formatter.formatToParts(new Date(atMs));
-	const get = (type: string): number => {
-		const part = parts.find((p) => p.type === type);
-		return part ? Number(part.value) : 0;
-	};
-	const tzDate = utcDateMs(
-		get("year"),
-		get("month") - 1,
-		get("day"),
-		get("hour"),
-		get("minute"),
-		get("second"),
-	);
-	return tzDate - atMs;
+	let year = 0;
+	let month = 0;
+	let day = 0;
+	let hour = 0;
+	let minute = 0;
+	let second = 0;
+	for (const part of formatter.formatToParts(new Date(atMs))) {
+		switch (part.type) {
+			case "year":
+				year = Number(part.value);
+				break;
+			case "month":
+				month = Number(part.value);
+				break;
+			case "day":
+				day = Number(part.value);
+				break;
+			case "hour":
+				hour = Number(part.value);
+				break;
+			case "minute":
+				minute = Number(part.value);
+				break;
+			case "second":
+				second = Number(part.value);
+				break;
+		}
+	}
+	return utcDateMs(year, month - 1, day, hour, minute, second) - atMs;
 }
 
 function cronMatches(
@@ -335,8 +390,9 @@ export function computeNextCronRunAtMs(
 			checkedDay = day;
 			// A zone's local date can be the previous or next UTC date. Only
 			// skip a whole UTC day when none of those dates can match.
-			dayCanMatch = (formatter ? [-1, 0, 1] : [0]).some((offset) =>
-				cronDateMatchesUTC(schedule, new Date(day + offset * CRON_DAY_MS)),
+			dayCanMatch = (formatter ? ZONED_DAY_OFFSETS : UTC_DAY_OFFSETS).some(
+				(offset) =>
+					cronDateMatchesUTC(schedule, new Date(day + offset * CRON_DAY_MS)),
 			);
 		}
 		if (!dayCanMatch) {

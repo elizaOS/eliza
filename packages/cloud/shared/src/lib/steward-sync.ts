@@ -213,6 +213,54 @@ async function restorePreviousStewardUserIdSafely(
     });
   }
 }
+async function deleteOrganizationSafely(
+  organizationId: string,
+  originalError: unknown,
+): Promise<void> {
+  try {
+    await organizationsService.delete(organizationId);
+  } catch (deleteError) {
+    logger.error(
+      `[StewardSync] Failed to remove organization ${organizationId} after a failed sign-up: ${describeSyncError(deleteError)} (original: ${describeSyncError(originalError)})`,
+    );
+  }
+}
+/**
+ * Whether a sign-in that proves `email` may take over the row holding it.
+ * PATCH /api/v1/user/email stores any address unverified, so only a verified
+ * address, or the synthetic `email:<addr>` subject eliza-app creates for an
+ * iMessage sender, is proof that the row belongs to the address owner.
+ */
+export function canLinkStewardSubjectByEmail(
+  existing: Pick<UserWithOrganization, "email_verified" | "steward_user_id">,
+  email: string,
+): boolean {
+  return existing.email_verified === true || existing.steward_user_id === `email:${email}`;
+}
+/**
+ * Takes an unproven address off another row so the proven sign-in can use it.
+ * Returns false when that row changed meanwhile (for example, it was verified).
+ */
+async function releaseUnprovenEmail(
+  existing: UserWithOrganization,
+  email: string,
+  stewardUserId: string,
+): Promise<boolean> {
+  const cleared = await usersService.clearUnverifiedEmail(existing, email);
+  logger.warn(
+    cleared
+      ? `[StewardSync] Removed unverified email from user ${existing.id} for proven sign-in ${stewardUserId}`
+      : `[StewardSync] Unverified email on user ${existing.id} changed before sign-in ${stewardUserId} could take it`,
+  );
+  return cleared;
+}
+function emailClaimConflict(stewardUserId: string): ElizaError {
+  return new ElizaError("Email is held by another account; retry sign-in", {
+    code: "STEWARD_EMAIL_CLAIM_CONFLICT",
+    context: { stewardUserId },
+    severity: "ephemeral",
+  });
+}
 /**
  * Generates a unique organization slug from an email address.
  */
@@ -782,17 +830,20 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       }
       user = phoneLinkedUser;
     }
-    // Update user fields if anything changed
+    // Update user fields if anything changed. A derived fallback name never
+    // replaces a name the user already has; only a provider-supplied one does.
+    // A missing claim is not a change, so absent email/wallet never trigger it.
+    const nextName = params.name || !user.name ? name : user.name;
     const shouldUpdate =
-      user.name !== name ||
-      user.email !== email ||
-      user.wallet_address !== walletAddress ||
+      user.name !== nextName ||
+      (email && user.email !== email) ||
+      (walletAddress && user.wallet_address !== walletAddress) ||
       (email && !user.email_verified) ||
       (walletAddress && !user.wallet_verified);
     if (shouldUpdate) {
       try {
         await usersService.update(user.id, {
-          name,
+          name: nextName,
           email: email || user.email,
           email_verified: !!email || user.email_verified,
           wallet_address: walletAddress || user.wallet_address,
@@ -843,6 +894,19 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       });
     }
     return user;
+  }
+  // A row that holds this address without proof (self-set via
+  // PATCH /api/v1/user/email) must not capture the proven sign-in: take the
+  // address off it so the invite and new-user paths below can use it.
+  let existingByEmail = email ? await usersService.getByEmailWithOrganization(email) : undefined;
+  if (
+    email &&
+    existingByEmail &&
+    existingByEmail.steward_user_id !== stewardUserId &&
+    !canLinkStewardSubjectByEmail(existingByEmail, email)
+  ) {
+    await releaseUnprovenEmail(existingByEmail, email, stewardUserId);
+    existingByEmail = undefined;
   }
   // ── 2. Pending invite by email ───────────────────────────────────────
   if (email) {
@@ -929,7 +993,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   }
   // ── 3. Email already taken (account linking) ─────────────────────────
   if (email) {
-    const existingByEmail = await usersService.getByEmailWithOrganization(email);
     if (existingByEmail && existingByEmail.steward_user_id !== stewardUserId) {
       logger.info(
         `[StewardSync] Linking Steward account for ${email}: ${existingByEmail.steward_user_id} → ${stewardUserId}`,
@@ -1033,86 +1096,120 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   // Identity creation cannot fund compute or inference.
   const initialCreditsGranted = false;
   const initialFreeCreditsUsd = SIGNUP_CREDIT_POLICY.automaticGrantUsd;
-  // Create user, handle race conditions
+  // Create user, handle race conditions. Every path that ends without a
+  // created or linked user removes the organization made above.
+  const createdOrganizationId = organization.id;
+  let organizationRemoved = false;
+  const removeNewOrganization = async () => {
+    await organizationsService.delete(createdOrganizationId);
+    organizationRemoved = true;
+  };
+  let releasedEmailClaim = false;
   let createdUser:
     | Awaited<ReturnType<typeof usersService.createFreshStewardSignupUser>>
     | undefined;
   try {
-    createdUser = await usersService.createFreshStewardSignupUser({
-      steward_user_id: stewardUserId,
-      email: email || null,
-      email_verified: !!email,
-      wallet_address: walletAddress || null,
-      wallet_chain_type: resolvedWalletChainType || null,
-      wallet_verified: Boolean(walletAddress),
-      phone_number: verifiedPhone || null,
-      phone_verified: Boolean(verifiedPhone),
-      name,
-      avatar: getRandomUserAvatar(),
-      organization_id: organization.id,
-      role: "owner",
-      is_active: true,
-    });
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      let existingUser: UserWithOrganization | undefined;
-      const maxRetries = 3;
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        if (attempt > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 50 * 2 ** (attempt - 1)));
-        }
-        existingUser = await usersService.getByStewardIdForWrite(stewardUserId);
-        if (existingUser) break;
-        if (email) {
-          existingUser = await usersService.getByEmailWithOrganization(email);
-        }
-        if (!existingUser && walletAddress) {
-          existingUser = await findUserByStoredWalletAddress(walletAddress);
-        }
-        if (existingUser) {
-          if (verifiedPhone) {
-            await linkVerifiedPhoneForStewardSync(existingUser.id, verifiedPhone);
+    while (!createdUser) {
+      try {
+        createdUser = await usersService.createFreshStewardSignupUser({
+          steward_user_id: stewardUserId,
+          email: email || null,
+          email_verified: !!email,
+          wallet_address: walletAddress || null,
+          wallet_chain_type: resolvedWalletChainType || null,
+          wallet_verified: Boolean(walletAddress),
+          phone_number: verifiedPhone || null,
+          phone_verified: Boolean(verifiedPhone),
+          name,
+          avatar: getRandomUserAvatar(),
+          organization_id: createdOrganizationId,
+          role: "owner",
+          is_active: true,
+        });
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+        let existingUser: UserWithOrganization | undefined;
+        let retryCreate = false;
+        const maxRetries = 3;
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          if (attempt > 0) {
+            await new Promise((resolve) => setTimeout(resolve, 50 * 2 ** (attempt - 1)));
           }
-          if (existingUser.steward_user_id !== stewardUserId) {
-            // NOTE: This is the Steward identity-link path. The
-            // match-by-email or match-by-wallet branches above find the
-            // existing auth row, and this block writes the
-            // steward_user_id link onto both `users` and `user_identities`.
-            logger.info(
-              `[StewardSync] Linking Steward account for ${email}: ${existingUser.steward_user_id} → ${stewardUserId}`,
-            );
-            const previousStewardUserId = existingUser.steward_user_id;
-            await usersService.update(existingUser.id, {
-              steward_user_id: stewardUserId,
-              updated_at: new Date(),
-            });
-            try {
-              await usersService.upsertStewardIdentity(existingUser.id, stewardUserId);
-            } catch (upsertError) {
+          existingUser = await usersService.getByStewardIdForWrite(stewardUserId);
+          if (existingUser) break;
+          let matchedByEmail = false;
+          if (email) {
+            existingUser = await usersService.getByEmailWithOrganization(email);
+            matchedByEmail = Boolean(existingUser);
+          }
+          if (!existingUser && walletAddress) {
+            existingUser = await findUserByStoredWalletAddress(walletAddress);
+          }
+          if (existingUser) {
+            if (
+              email &&
+              matchedByEmail &&
+              existingUser.steward_user_id !== stewardUserId &&
+              !canLinkStewardSubjectByEmail(existingUser, email)
+            ) {
+              // The address was set without proof after the check above. Take
+              // it off once and retry the insert; never link to that row.
+              if (releasedEmailClaim) throw emailClaimConflict(stewardUserId);
+              releasedEmailClaim = true;
+              await releaseUnprovenEmail(existingUser, email, stewardUserId);
+              existingUser = undefined;
+              retryCreate = true;
+              break;
+            }
+            if (verifiedPhone) {
+              await linkVerifiedPhoneForStewardSync(existingUser.id, verifiedPhone);
+            }
+            if (existingUser.steward_user_id !== stewardUserId) {
+              // NOTE: This is the Steward identity-link path. The
+              // match-by-email or match-by-wallet branches above find the
+              // existing auth row, and this block writes the
+              // steward_user_id link onto both `users` and `user_identities`.
+              logger.info(
+                `[StewardSync] Linking Steward account for ${email}: ${existingUser.steward_user_id} → ${stewardUserId}`,
+              );
+              const previousStewardUserId = existingUser.steward_user_id;
               await usersService.update(existingUser.id, {
-                steward_user_id: previousStewardUserId,
+                steward_user_id: stewardUserId,
                 updated_at: new Date(),
               });
-              throw upsertError;
+              try {
+                await usersService.upsertStewardIdentity(existingUser.id, stewardUserId);
+              } catch (upsertError) {
+                await usersService.update(existingUser.id, {
+                  steward_user_id: previousStewardUserId,
+                  updated_at: new Date(),
+                });
+                throw upsertError;
+              }
+              await removeNewOrganization();
+              const linkedUser = await usersService.getByStewardIdForWrite(stewardUserId);
+              if (!linkedUser) {
+                throw new Error(`Failed to fetch user after Steward account linking for ${email}`);
+              }
+              return linkedUser;
             }
-            await organizationsService.delete(organization.id);
-            const linkedUser = await usersService.getByStewardIdForWrite(stewardUserId);
-            if (!linkedUser) {
-              throw new Error(`Failed to fetch user after Steward account linking for ${email}`);
-            }
-            return linkedUser;
+            break;
           }
-          break;
         }
+        if (retryCreate) continue;
+        if (existingUser) {
+          await removeNewOrganization();
+          return existingUser;
+        }
+        logger.error(
+          `[StewardSync] Duplicate key error but user (steward: ${stewardUserId}) not found after ${maxRetries} retries`,
+        );
+        throw error;
       }
-      if (existingUser) {
-        await organizationsService.delete(organization.id);
-        return existingUser;
-      }
-      logger.error(
-        `[StewardSync] Duplicate key error but user (steward: ${stewardUserId}) not found after ${maxRetries} retries`,
-      );
-      await organizationsService.delete(organization.id);
+    }
+  } catch (error) {
+    if (!organizationRemoved) {
+      await deleteOrganizationSafely(createdOrganizationId, error);
     }
     logger.error(
       `[StewardSync] Failed to create user for ${stewardUserId}: ${describeSyncError(error)}`,

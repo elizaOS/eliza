@@ -3,7 +3,7 @@
  * holds titles and unrelated calendars. No device calendar, permission dialog or
  * agent is exercised.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   type AvailabilityProvider,
   type AvailabilityReview,
@@ -206,6 +206,36 @@ describe("executeCalendarAvailability", () => {
     const outcome = await run(cancelled.provider, reviews(null).review);
     expect(outcome.summary).toMatch(/cancelled\. No calendar was read/);
     expect(cancelled.state.reads).toBe(0);
+  });
+
+  it("compares a zero-offset device zone in the normalized form the context uses", async () => {
+    const spy = vi
+      .spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions")
+      .mockReturnValue({
+        ...new Intl.DateTimeFormat().resolvedOptions(),
+        timeZone: "+00:00",
+      });
+    try {
+      const { provider } = fixture();
+      const outcome = await executeCalendarAvailability(
+        provider,
+        {
+          ...day,
+          start: "2026-10-13T00:00:00.000Z",
+          end: "2026-10-14T00:00:00.000Z",
+          timeZone: "UTC",
+        },
+        "UTC",
+        new AbortController().signal,
+        () => {},
+        reviews(["1"]).review,
+        undefined,
+        async () => {},
+      );
+      expect(outcome.status).toBe("succeeded");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("rejects provider rows that carry event content and malformed sources", async () => {

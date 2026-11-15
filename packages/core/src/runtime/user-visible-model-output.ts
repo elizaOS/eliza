@@ -21,15 +21,6 @@ const REPLY_FIELDS = [
 	"response",
 	"text",
 ] as const;
-const RESPONSE_ENVELOPE_MARKERS = new Set([
-	"shouldRespond",
-	"contexts",
-	"intents",
-	"candidateActionNames",
-	"facts",
-	"relationships",
-	"thought",
-]);
 const RESPONSE_ROUTING_MARKERS = [
 	"shouldRespond",
 	"contexts",
@@ -38,6 +29,7 @@ const RESPONSE_ROUTING_MARKERS = [
 	"facts",
 	"relationships",
 ] as const;
+const RESPONSE_ENVELOPE_MARKERS = [...RESPONSE_ROUTING_MARKERS, "thought"];
 const RESPONSE_ENVELOPE_KEYS = new Set([
 	...REPLY_FIELDS,
 	...RESPONSE_ENVELOPE_MARKERS,
@@ -46,6 +38,24 @@ const RESPONSE_ENVELOPE_KEYS = new Set([
 	"metadata",
 	"usage",
 ]);
+const TOOL_ARGUMENT_KEYS = [
+	"input",
+	"args",
+	"arguments",
+	"params",
+	"parameters",
+] as const;
+const NESTED_FUNCTION_ARGUMENT_KEYS = [
+	"arguments",
+	"args",
+	"input",
+	"parameters",
+] as const;
+const jsonKeyPattern = (key: string) => new RegExp(`"${key}"\\s*:`);
+const SPAWN_DISCRIMINATOR_PATTERNS =
+	SPAWN_ARG_DISCRIMINATORS.map(jsonKeyPattern);
+const RESPONSE_ENVELOPE_MARKER_PATTERNS =
+	RESPONSE_ENVELOPE_MARKERS.map(jsonKeyPattern);
 
 export type UserVisibleReplyField = (typeof REPLY_FIELDS)[number];
 export type UserVisibleControlEnvelope =
@@ -335,16 +345,12 @@ function classifyControlRecord(
 		typeof record.function === "string" ? record.function : undefined,
 		record.type,
 	].find((value): value is string => typeof value === "string");
-	const carriesTopLevelToolArguments = [
-		"input",
-		"args",
-		"arguments",
-		"params",
-		"parameters",
-	].some((key) => Object.hasOwn(record, key));
+	const carriesTopLevelToolArguments = TOOL_ARGUMENT_KEYS.some((key) =>
+		Object.hasOwn(record, key),
+	);
 	const carriesNestedFunctionArguments =
 		nestedFunction !== undefined &&
-		["arguments", "args", "input", "parameters"].some((key) =>
+		NESTED_FUNCTION_ARGUMENT_KEYS.some((key) =>
 			Object.hasOwn(nestedFunction, key),
 		);
 	if (
@@ -355,10 +361,10 @@ function classifyControlRecord(
 		return { envelope: "planner", malformed: false };
 	}
 
-	const spawnDiscriminators = SPAWN_ARG_DISCRIMINATORS.filter((key) =>
-		Object.hasOwn(record, key),
-	);
-	if (spawnDiscriminators.length >= 2) {
+	if (
+		SPAWN_ARG_DISCRIMINATORS.filter((key) => Object.hasOwn(record, key))
+			.length >= 2
+	) {
 		return { envelope: "spawn", malformed: false };
 	}
 	return undefined;
@@ -386,45 +392,41 @@ function classifyMalformedControl(
 	text: string,
 ): UserVisibleControlEnvelope | undefined {
 	if (!text.startsWith("{")) return undefined;
-	const candidate = text;
-	if (/"action"\s*:\s*"messageToUser"/.test(candidate)) return "planner";
-	const action = candidate.match(
+	if (/"action"\s*:\s*"messageToUser"/.test(text)) return "planner";
+	const action = text.match(
 		/"action"\s*:\s*"((?:functions\.)?[A-Z][A-Z0-9_.:-]*)"/,
 	)?.[1];
 	if (action) return "action";
-	if (/"toolCalls"\s*:/.test(candidate)) return "planner";
+	if (/"toolCalls"\s*:/.test(text)) return "planner";
 	if (
-		/"plannerCompleted"\s*:\s*(?:true|false)/.test(candidate) &&
-		/"turnScope"\s*:\s*"(?:final|more_work_pending)"/.test(candidate)
+		/"plannerCompleted"\s*:\s*(?:true|false)/.test(text) &&
+		/"turnScope"\s*:\s*"(?:final|more_work_pending)"/.test(text)
 	)
 		return "planner";
 	const evaluatorDecision =
 		/"(?:decision|route)"\s*:\s*"(?:FINISH|CONTINUE|NEXT_RECOMMENDED)"/i.test(
-			candidate,
+			text,
 		);
 	if (
 		evaluatorDecision &&
-		(/"success"\s*:/.test(candidate) ||
-			/"thought"\s*:/.test(candidate) ||
-			/"nextTool"\s*:/.test(candidate) ||
-			/"recommendedToolCallId"\s*:/.test(candidate))
+		(/"success"\s*:/.test(text) ||
+			/"thought"\s*:/.test(text) ||
+			/"nextTool"\s*:/.test(text) ||
+			/"recommendedToolCallId"\s*:/.test(text))
 	) {
 		return "evaluator";
 	}
-	const spawnDiscriminators = SPAWN_ARG_DISCRIMINATORS.filter((key) =>
-		new RegExp(`"${key}"\\s*:`).test(candidate),
-	);
-	return spawnDiscriminators.length >= 2 ? "spawn" : undefined;
+	return SPAWN_DISCRIMINATOR_PATTERNS.filter((pattern) => pattern.test(text))
+		.length >= 2
+		? "spawn"
+		: undefined;
 }
 
 function looksLikeMalformedReplyEnvelope(text: string): boolean {
 	if (!text.startsWith("{")) return false;
-	const candidate = text;
 	return (
-		/"(?:messageToUser|replyText)"\s*:/.test(candidate) ||
-		(/"(?:response|text)"\s*:/.test(candidate) &&
-			[...RESPONSE_ENVELOPE_MARKERS].some((key) =>
-				new RegExp(`"${key}"\\s*:`).test(candidate),
-			))
+		/"(?:messageToUser|replyText)"\s*:/.test(text) ||
+		(/"(?:response|text)"\s*:/.test(text) &&
+			RESPONSE_ENVELOPE_MARKER_PATTERNS.some((pattern) => pattern.test(text)))
 	);
 }

@@ -1,0 +1,35 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/maps/google-provider.ts",
+    "packages/cloud/shared/src/lib/services/maps/contract.ts",
+    "packages/cloud/shared/src/lib/services/maps/backends.ts",
+    "packages/cloud/api/__tests__/maps-google-provider.test.ts",
+    "packages/cloud/quint/check-maps-tile-cache.mjs"
+  ],
+  "bounds": {
+    "domain": "One already admitted reverse lookup. Two preference values, two initial cancellation values, four nearby outcomes and four geocode outcomes form 64 input configurations. Each upstream is invoked at most once.",
+    "limitations": "The actual provider is exercised through loopback HTTP for all 64 configurations. Google availability, in-flight cancellation timing, route admission, organization quotas, mobile panel lifetime and concurrent requests are outside this projection. Existing owners retain those responsibilities."
+  },
+  "conformance": "packages/cloud/quint/check-maps-tile-cache.mjs",
+  "cases": [
+    {
+      "name": "finite-provider-outcomes",
+      "main": "MapsPlaceLookup",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["Settles"],
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance assumes each admitted upstream request settles with success, empty data, an invalid response or an outage. It does not assume provider success."
+          ]
+        }
+      ],
+      "maxSteps": 16,
+      "samples": 512
+    }
+  ]
+}

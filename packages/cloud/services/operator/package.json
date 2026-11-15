@@ -1,6 +1,7 @@
 {
   "name": "@elizaos/operator",
   "version": "0.0.1",
+  "private": true,
   "description": "elizaOS Server Operator",
   "type": "module",
   "engines": {
@@ -38,17 +39,18 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit",
-    "build": "node ../../scripts/operator/build.ts",
+    "build": "bun ../../scripts/operator/build.ts",
     "clean": "rm -rf dist",
     "dev": "bunx pepr dev"
   },
   "dependencies": {
     "ioredis": "^5.10.1",
     "kubernetes-fluent-client": "^3.11.11",
-    "pepr": "^2.0.0"
+    "pepr": "^2.0.0",
+    "@elizaos/cloud-services-common": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "2.6.6",
     "@types/bun": "1.4.2",
     "esbuild": "0.28.1",
     "ioredis-mock": "^8.13.1",

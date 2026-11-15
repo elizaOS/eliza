@@ -61,11 +61,6 @@ export interface CreateVoiceCancellationTokenOptions {
 	linkSignal?: AbortSignal;
 }
 
-interface InternalState {
-	aborted: boolean;
-	reason: VoiceCancellationReason | null;
-}
-
 /**
  * Construct a fresh voice cancellation token.
  *
@@ -84,18 +79,20 @@ export function createVoiceCancellationToken(
 ): VoiceCancellationToken {
 	const controller = new AbortController();
 	const listeners = new Set<VoiceCancellationListener>();
-	const state: InternalState = { aborted: false, reason: null };
+	/** Null while active; the first abort reason afterwards. */
+	let abortReason: VoiceCancellationReason | null = null;
 	let unlinkSignal: (() => void) | null = null;
 
 	const trip = (reason: VoiceCancellationReason): void => {
-		if (state.aborted) return;
-		state.aborted = true;
-		state.reason = reason;
+		if (abortReason !== null) return;
+		abortReason = reason;
 		unlinkSignal?.();
 		unlinkSignal = null;
 		// Call listeners BEFORE aborting the controller so a listener that
 		// itself awaits the signal sees the same reason this token recorded
 		// (otherwise listeners that observe `signal.aborted` could race).
+		// The snapshot keeps a listener that unsubscribes another mid-fan-out
+		// from skipping it.
 		for (const listener of Array.from(listeners)) {
 			try {
 				listener(reason);
@@ -104,40 +101,39 @@ export function createVoiceCancellationToken(
 				// cancellation propagation.
 			}
 		}
+		// Every listener has fired exactly once; release their closures.
+		listeners.clear();
 		controller.abort();
 	};
 
-	if (opts.linkSignal) {
-		if (opts.linkSignal.aborted) {
+	const linkSignal = opts.linkSignal;
+	if (linkSignal) {
+		if (linkSignal.aborted) {
 			trip("external");
 		} else {
 			const onLinkAbort = () => trip("external");
-			opts.linkSignal.addEventListener("abort", onLinkAbort, { once: true });
-			unlinkSignal = () =>
-				opts.linkSignal?.removeEventListener("abort", onLinkAbort);
+			linkSignal.addEventListener("abort", onLinkAbort, { once: true });
+			unlinkSignal = () => linkSignal.removeEventListener("abort", onLinkAbort);
 		}
 	}
 
-	const token: VoiceCancellationToken = {
+	return {
 		runId: opts.runId,
 		...(opts.slot !== undefined ? { slot: opts.slot } : {}),
 		get aborted() {
-			return state.aborted;
+			return abortReason !== null;
 		},
 		get reason() {
-			return state.reason;
+			return abortReason;
 		},
 		signal: controller.signal,
-		abort(reason: VoiceCancellationReason) {
-			trip(reason);
-		},
+		abort: trip,
 		onAbort(listener: VoiceCancellationListener) {
-			if (state.aborted) {
+			if (abortReason !== null) {
 				// Synchronous after-abort fan-out. Caller may still want the
 				// hook even though the token already aborted — fire once.
-				const reason = state.reason ?? "external";
 				try {
-					listener(reason);
+					listener(abortReason);
 				} catch {
 					// see above
 				}
@@ -149,21 +145,6 @@ export function createVoiceCancellationToken(
 			};
 		},
 	};
-	return token;
-}
-
-/**
- * Already-aborted token. Useful as a zero-cost default for code paths that
- * have no live voice session but still want to type-thread a token through.
- * The `runId` is the empty string — callers that depend on a stable id must
- * pass their own.
- */
-export function createAbortedVoiceCancellationToken(
-	reason: VoiceCancellationReason = "external",
-): VoiceCancellationToken {
-	const t = createVoiceCancellationToken({ runId: "" });
-	t.abort(reason);
-	return t;
 }
 
 /**
@@ -217,11 +198,7 @@ export class VoiceCancellationRegistry {
 		return true;
 	}
 
-	/**
-	 * Abort every active token. Used by lifecycle shutdown (the runtime's
-	 * `abortInflightInference` hook fires this so the voice loop drops in
-	 * sync with the runtime).
-	 */
+	/** Abort every active token and return the affected room ids. */
 	abortAll(reason: VoiceCancellationReason): string[] {
 		const aborted: string[] = [];
 		for (const [roomId, token] of Array.from(this.byRoom.entries())) {

@@ -3,7 +3,7 @@
  * signals into `ScreenTimeAggregateRow`s and derives the mobile data-source
  * status. Re-exports the setup helpers from `./mobile-signal-setup.js`.
  */
-import type { LifeOpsSocialHabitDataSource } from "../contracts/lifeops.js";
+import type { LifeOpsSocialHabitDataSource } from "@elizaos/contracts";
 import type { ScreenTimeAggregateRow } from "./builders.js";
 
 export * from "./mobile-signal-setup.js";

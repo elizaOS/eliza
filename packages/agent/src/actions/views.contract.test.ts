@@ -8,10 +8,11 @@ import type { Memory } from "../../../core/src/types/memory.ts";
 import type { IAgentRuntime } from "../../../core/src/types/runtime.ts";
 import {
   resolveViewNavigationTargets,
+  viewEnabledByProfile,
   viewNavigationAvailable,
 } from "../runtime/view-navigation-targets.ts";
 
-function fixture() {
+function fixture(overrides: Record<string, unknown> = {}) {
   const source = readFileSync(new URL("./views.ts", import.meta.url), "utf8");
   const js = ts.transpileModule(
     source.replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, ""),
@@ -26,7 +27,9 @@ function fixture() {
   let owner = true;
   const ports = {
     resolveViewNavigationTargets,
+    viewEnabledByProfile,
     viewNavigationAvailable,
+    getDeviceActionTurn: () => undefined,
     randomUUID: () => "step",
     checkSenderRole: async () => ({ isOwner: owner, role: "OWNER" }),
     getStreamingContext: () => undefined,
@@ -46,6 +49,7 @@ function fixture() {
       { id: "chat", label: "Home", path: "/chat" },
     ],
     getViewClientScope: () => undefined,
+    ...overrides,
   };
   const action = new Function(
     ...Object.keys(ports),
@@ -133,4 +137,93 @@ test("navigation owner and exact registered destination checks still fail closed
     data: { navigation: { status: "forbidden" } },
   });
   expect(f.dispatches).toBe(0);
+});
+
+test("an enrolled phone's view profile narrows list and show to enabled screens", async () => {
+  const runtime = {} as IAgentRuntime;
+  const registry = [
+    { id: "chat", label: "Home", path: "/chat", installationId: "i" },
+    {
+      id: "calendar",
+      label: "Calendar",
+      path: "/calendar",
+      installationId: "i",
+    },
+    { id: "wallet", label: "Wallet", path: "/wallet", installationId: "i" },
+    { id: "todos", label: "Todos", path: "/todos", available: false },
+  ];
+  let routes = 0;
+  const device = (views?: string[]) =>
+    fixture({
+      listViews: () => registry,
+      readViewInteractionClientId: () => "client",
+      getViewClientScope: () => ({ request: {}, hostKey: {} }),
+      getDeviceActionTurn: () =>
+        views ? { runtime, viewProfile: { views } } : undefined,
+      dispatchApiRoute: async (input: { path: string }) => {
+        routes++;
+        const viewId = decodeURIComponent(input.path.split("/")[3]);
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            viewId,
+            status: "prepared",
+            completedActionHandoffId: "step",
+            navigationBinding: {
+              requestId: "step",
+              clientId: "client",
+              viewId,
+              viewType: "gui",
+              installationId: "i",
+            },
+          },
+        };
+      },
+    }).action;
+  const message = {
+    id: "message",
+    roomId: "room",
+    entityId: "actor",
+    content: { metadata: { viewDelivery: "completed-action" } },
+  } as unknown as Memory;
+  const run = (action: Action, parameters: Record<string, string>) =>
+    action.handler(runtime, message, undefined, { parameters });
+  const ids = (result: unknown) =>
+    (result as { data: { views: Array<{ id: string }> } }).data.views.map(
+      (v) => v.id,
+    );
+
+  // "home" is the phone's id for the registry's chat view.
+  const phone = device(["home", "calendar"]);
+  expect(ids(await run(phone, { action: "list" }))).toEqual([
+    "chat",
+    "calendar",
+  ]);
+  expect(await run(phone, { action: "show", view: "wallet" })).toMatchObject({
+    success: false,
+    data: { navigation: { status: "not-found" } },
+  });
+  expect(routes).toBe(0);
+  expect(await run(phone, { action: "show", view: "calendar" })).toMatchObject({
+    success: true,
+    values: { navigationPrepared: true, viewId: "calendar" },
+  });
+  expect(routes).toBe(1);
+  // A profile listing the registry id itself also enables that view.
+  expect(
+    ids(await run(device(["chat", "calendar"]), { action: "list" })),
+  ).toEqual(["chat", "calendar"]);
+
+  // Off-device every role-permitted view remains; list still omits the
+  // unavailable view that show would refuse.
+  const desktop = device();
+  expect(ids(await run(desktop, { action: "list" }))).toEqual([
+    "chat",
+    "calendar",
+    "wallet",
+  ]);
+  expect(await run(desktop, { action: "show", view: "todos" })).toMatchObject({
+    data: { navigation: { status: "unavailable" } },
+  });
 });

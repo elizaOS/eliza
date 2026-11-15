@@ -1,7 +1,20 @@
 /** View declaration types carried by plugins; host presentation policies live in shared. */
 
+/**
+ * How the app shell treats the screen background while a view is active.
+ * - `opaque` (default): the host paints a full-window theme background behind
+ * the view so the shared wallpaper cannot leak through safe areas.
+ * - `shared`: the view sits on the same unified background as Home/Launcher.
+ */
 export type AppShellBackgroundPolicy = "opaque" | "shared";
 
+/**
+ * How the app shell frames a view's top bar.
+ * - `normal` (default): the shell requires the shared `ViewHeader`.
+ * - `fullscreen`: the view owns its window and supplies its own chrome.
+ * - `modal`: a modal/sheet with its own dismiss affordance.
+ * - `immersive`: a chrome-free surface (e.g. launcher/background).
+ */
 export type ViewHeaderPolicy = "normal" | "fullscreen" | "modal" | "immersive";
 
 /** A view's isolation level. See {@link SURFACE_ISOLATION_LEVELS}. */

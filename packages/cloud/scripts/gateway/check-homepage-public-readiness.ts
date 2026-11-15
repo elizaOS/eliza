@@ -31,7 +31,7 @@ const defaultEvidencePath = path.join(
 
 function usage() {
   return [
-    "Usage: node packages/cloud/scripts/gateway/check-homepage-public-readiness.ts [options]",
+    "Usage: bun packages/cloud/scripts/gateway/check-homepage-public-readiness.ts [options]",
     "",
     "Options:",
     "  --origin <url>     Public origin. Defaults to https://eliza.app.",

@@ -1,0 +1,53 @@
+{
+  "sources": [
+    "plugins/plugin-files/src/browser/files-agent-contract.ts",
+    "plugins/plugin-files/src/browser/files-browser-adapter.ts",
+    "plugins/plugin-files/test/browser-agent-filter.test.mjs"
+  ],
+  "conformance": "plugins/plugin-files/test/browser-agent-filter.test.mjs",
+  "bounds": {
+    "domain": "One direct file open, one native grant, and at most two Files visits.",
+    "abstraction": "View commit, access and selection are independent receipts. The actual host and storage decide when each settles.",
+    "limits": "Native permissions, concurrent agent operations, filtering, mutations, storage bytes, renderer layout and recovery are outside this model.",
+    "conformance": "Actual shared runner exercises cold commit, a held first reload and cancellation with a delayed grant over controlled host and storage ports."
+  },
+  "cases": [
+    {
+      "name": "cold-files-open-and-retired-selection",
+      "main": "FilesDirectAdmission",
+      "init": "init",
+      "step": "step",
+      "invariants": ["OneGrantOutcome", "CancelledNeverOpened"],
+      "temporal": [
+        "ReloadDoesNotRetireAction",
+        "RetiredGrantIsReleased",
+        "FairCompletion"
+      ],
+      "temporalChecks": [
+        {
+          "property": "ReloadDoesNotRetireAction",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The renderer and the open action do not share a storage-read ticket."
+          ]
+        },
+        {
+          "property": "RetiredGrantIsReleased",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. If a retired selection returns a grant, the runner sends a release request."
+          ]
+        },
+        {
+          "property": "FairCompletion",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the outstanding view or storage receipt. The receipt can fail. There is no wall-clock completion guarantee."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 250
+    }
+  ]
+}

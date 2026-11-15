@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { stripTypeScriptTypes } from "node:module";
+import ts from "typescript";
 import { expect, test } from "vitest";
 import {
   actionResultToPlannerToolResult,
@@ -7,20 +7,29 @@ import {
 } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import {
   resolveViewNavigationTargets,
+  viewEnabledByProfile,
   viewNavigationAvailable,
 } from "../runtime/view-navigation-targets.ts";
 
 function fixture({ prepared = true, owner = true, badBinding = false } = {}) {
   const source = readFileSync(new URL("./views.ts", import.meta.url), "utf8");
-  const code = stripTypeScriptTypes(
+  // Node 26 removed stripTypeScriptTypes' transform mode.
+  const code = ts.transpileModule(
     source.replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, ""),
-    { mode: "transform" },
-  );
+    {
+      compilerOptions: {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.ESNext,
+      },
+    },
+  ).outputText;
   const id = "11111111-1111-4111-8111-111111111111";
   let dispatches = 0;
   const ports = {
     resolveViewNavigationTargets,
+    viewEnabledByProfile,
     viewNavigationAvailable,
+    getDeviceActionTurn: () => undefined,
     randomUUID: () => id,
     checkSenderRole: async () => ({
       isOwner: owner,

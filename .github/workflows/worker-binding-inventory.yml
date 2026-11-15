@@ -47,7 +47,7 @@ jobs:
                   raise ValueError("missing authority")
               if not re.fullmatch(r"[a-f0-9]{32}", account):
                   raise ValueError("invalid account")
-              worker = "eliza-cloud-api-staging" if environment == "staging" else "eliza-cloud-api"
+              worker = "eliza-cloud-api-staging" if environment == "staging" else "eliza-cloud-api-prod"
               request = urllib.request.Request(
                   "https://api.cloudflare.com/client/v4/accounts/" + account
                   + "/workers/scripts/" + worker + "/settings",

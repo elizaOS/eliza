@@ -31,12 +31,7 @@ export const REQUIRED_OPENWAKEWORD_CASES = [
   },
 ];
 
-const ALLOWED_PLATFORMS = new Set([
-  "android",
-  "linux",
-  "macos",
-  "macos-electrobun",
-]);
+const ALLOWED_PLATFORMS = new Set(["android", "linux", "macos"]);
 const AUDIO_SOURCES = new Set([
   "device-mic",
   "speaker-to-mic",

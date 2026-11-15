@@ -18,8 +18,8 @@
  * a wave of changes locally.
  *
  * Usage:
- *   node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts                  # CI-fail mode (default)
- *   node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts --allow-warnings # warnings-only
+ *   bun ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts                  # CI-fail mode (default)
+ *   bun ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts --allow-warnings # warnings-only
  *
  * The script reads each `src/default-packs/*.ts` file as text and runs the
  * same regex corpus the runtime `lintPromptText` uses. Reading the source

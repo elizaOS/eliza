@@ -1,0 +1,29 @@
+[
+  {
+    "id": "UpdateJournal",
+    "model": "plugins/plugin-native-agent/quint/UpdateJournal.qnt",
+    "sources": [
+      "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/updater/UpdateJournal.java",
+      "plugins/plugin-native-agent/test/native-host/UpdateJournalConformanceTest.java",
+      "plugins/plugin-native-agent/test/native-host/UpdateJournalTest.java",
+      "plugins/plugin-native-agent/scripts/test-native-host.mjs"
+    ],
+    "invariants": [
+      "TypeInvariant",
+      "ActivePlan",
+      "ReleasedCandidate",
+      "RetryBudget",
+      "RecoveryOwnership",
+      "QuarantineAuthority"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two plans with canonical numeric identities. Candidate identity is 2p and recovery identity is 2p+1. Baselines are 1 or 2, installed identities are 1/2/3/4/5/9, and sessions are 1/2/5/6/7.",
+      "Channel generations are 0..2 and the source retry budget is three releases per candidate. Observations abstract below-threshold, timeout and regressed monotonic readings.",
+      "This is the current Java reference projection. Revision, channel and distribution strings, raw timing counters, probation samples, journal version migration, filesystem durability and trust hooks remain outside this finite model.",
+      "The conformance hook compares the real journal and codec against the Quint step for all 37 reference states and 313 events, including refusals. Portable package tests separately exercise crash recovery and durability.",
+      "Wrong-plan, wrong-session and stale-generation calls leave the modeled persistent state unchanged. The explicit stutter represents them in state exploration; the conformance table checks their refusal observations.",
+      "No fairness or eventual provider outcome is assumed. Temporal properties check monotone quarantine/generation and durable candidate-rejection evidence."
+    ]
+  }
+]

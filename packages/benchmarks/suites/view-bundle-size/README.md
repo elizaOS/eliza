@@ -12,4 +12,4 @@ Test from the repository root:
 node --test packages/benchmarks/lib/kpi-reporting.test.mjs
 ```
 
-This command checks the shared report writer. Run `node packages/benchmarks/suites/view-bundle-size/run-all.mjs` with `ELIZA_REPO_DIR` set to a checkout with built view bundles to measure sizes.
+This command checks the shared report writer. Run `bun packages/benchmarks/suites/view-bundle-size/run-all.mjs` with `ELIZA_REPO_DIR` set to a checkout with built view bundles to measure sizes.

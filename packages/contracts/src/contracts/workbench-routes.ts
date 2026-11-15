@@ -85,6 +85,17 @@ export const PostWorkbenchVfsProjectRequestSchema = z
     projectId: value.projectId.trim(),
   }));
 
+const STANDARD_BASE64 =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+/**
+ * True when `value` is padded standard base64. Buffer.from(value, "base64")
+ * silently skips characters outside the alphabet, so callers must check first.
+ */
+export function isStandardBase64(value: string): boolean {
+  return STANDARD_BASE64.test(value);
+}
+
 export const PutWorkbenchVfsFileRequestSchema = z
   .object({
     path: z.string().regex(/\S/, "path is required"),
@@ -92,6 +103,10 @@ export const PutWorkbenchVfsFileRequestSchema = z
     encoding: z.enum(["utf-8", "base64"]).optional(),
   })
   .strict()
+  .refine(
+    (value) => value.encoding !== "base64" || isStandardBase64(value.content),
+    { message: "content is not valid base64", path: ["content"] },
+  )
   .transform((value) => ({
     ...value,
     path: value.path.trim(),

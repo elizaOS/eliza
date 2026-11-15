@@ -30,7 +30,7 @@ set -Eeuo pipefail
 #   DOCKER_BUILD_EXTRA_ARGS
 #                        Newline-separated extra `docker build` arguments, e.g.
 #                        --platform, --build-arg NODE_VERSION=... or digest-pinned
-#                        --build-context overrides (deploy/dstack-alpha).
+#                        --build-context overrides (deploy/dstack).
 #   BOOT_VERIFY_ONLY     If "true", skip the build and only boot-verify
 #                        DOCKER_IMAGE (must be set). Equivalent to
 #                        --boot-verify-only.

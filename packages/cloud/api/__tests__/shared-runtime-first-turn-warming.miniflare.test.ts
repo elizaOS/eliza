@@ -2,9 +2,9 @@
  * Runs the production Shared conversation coordinator in Workerd and proves the
  * first turn on a cold room joins in-flight history hydration for a bounded
  * time instead of failing with the retryable warming 503 (#22552), that slower
- * hydration still fails closed, and that a canonical Personal Shared turn
- * records its verified owner so keep-warm prewarm can report the organization
- * whose rate-limit gate it warms.
+ * hydration still fails closed, and that deferred prewarm bodies observe the
+ * room's shared warmup without holding its request queue. A canonical Personal
+ * Shared turn records the verified owner for the keep-warm rate-limit gate.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -139,7 +139,10 @@ const RUNTIME_STUBS = {
   `,
   sharedElizaRuntime: `
     export async function prewarmSharedElizaRuntime() {}
-    export async function prewarmSharedElizaStreamingContext() {}
+    export async function prewarmSharedElizaStreamingContext() {
+      const response = await fetch("https://prewarm-gate.test/");
+      if (!response.ok) throw new Error("Runtime module warmup failed");
+    }
   `,
   sharedRuntimeChat: `
     export const sharedRuntimeChatService = {
@@ -168,6 +171,34 @@ describe("Shared first-turn warming in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
   const historyReads: string[] = [];
+  let moduleWarmups = 0;
+  let moduleGate:
+    | {
+        entered: () => void;
+        result: Promise<number>;
+        release: (status?: number) => void;
+      }
+    | undefined;
+  let releaseSlowHistory!: () => void;
+  const slowHistory = new Promise<void>((resolve) => {
+    releaseSlowHistory = resolve;
+  });
+
+  function holdModuleWarmup() {
+    if (moduleGate) throw new Error("Another module warmup is held");
+    const entered = Promise.withResolvers<void>();
+    const result = Promise.withResolvers<number>();
+    const gate = {
+      entered: entered.resolve,
+      result: result.promise,
+      release(status = 204) {
+        if (moduleGate === gate) moduleGate = undefined;
+        result.resolve(status);
+      },
+    };
+    moduleGate = gate;
+    return { entered: entered.promise, release: gate.release };
+  }
 
   beforeAll(async () => {
     const apiDirectory = fileURLToPath(new URL("../", import.meta.url));
@@ -356,16 +387,22 @@ describe("Shared first-turn warming in Workerd", () => {
       script: await readFile(outputPath, "utf8"),
       outboundService: async (request: Request) => {
         const url = new URL(request.url);
+        if (url.hostname === "prewarm-gate.test") {
+          moduleWarmups++;
+          const gate = moduleGate;
+          gate?.entered();
+          return new Response(null, { status: gate ? await gate.result : 204 });
+        }
         if (url.hostname !== "history-gate.test") {
           return Response.json({ error: "unexpected egress" }, { status: 500 });
         }
         const agentId = decodeURIComponent(url.pathname.slice(1));
+        const first = !historyReads.includes(agentId);
         historyReads.push(agentId);
-        // Authoritative history lands well inside the turn's bound, except
-        // for the agent that models a hydration slower than the bound.
-        await new Promise((resolve) =>
-          setTimeout(resolve, agentId.includes("slow") ? 6_000 : 200),
-        );
+        if (agentId.includes("failed-once") && first)
+          return new Response("History dependency failed", { status: 503 });
+        if (agentId.includes("slow")) await slowHistory;
+        else await new Promise((resolve) => setTimeout(resolve, 200));
         return Response.json([
           {
             id: `${agentId}-prior-user`,
@@ -391,6 +428,8 @@ describe("Shared first-turn warming in Workerd", () => {
   }, 120_000);
 
   afterAll(async () => {
+    releaseSlowHistory();
+    moduleGate?.release();
     await miniflare?.dispose();
     if (buildDirectory) await rm(buildDirectory, { recursive: true });
   });
@@ -408,6 +447,52 @@ describe("Shared first-turn warming in Workerd", () => {
       },
       body: JSON.stringify(body),
     });
+  }
+
+  function prewarm(agentId: string) {
+    return post(`${agentId}:${agentId}`, "/prewarm", {
+      operation: "prewarm",
+      agentId,
+      roomId: agentId,
+    });
+  }
+
+  async function openPrewarmBody(agentId: string) {
+    const response = await prewarm(agentId);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/json");
+    expect(response.headers.has("X-Eliza-Release-Coordinator-Queue")).toBe(
+      false,
+    );
+    if (!response.body) throw new Error("Missing prewarm response body");
+    return response.body.getReader();
+  }
+
+  function observePrewarmRead(
+    reader: Awaited<ReturnType<typeof openPrewarmBody>>,
+  ) {
+    let pending = true;
+    const result = (async () => {
+      const decoder = new TextDecoder();
+      let body = "";
+      for (
+        let chunk = await reader.read();
+        !chunk.done;
+        chunk = await reader.read()
+      )
+        body += decoder.decode(chunk.value, { stream: true });
+      return body + decoder.decode();
+    })().finally(() => {
+      pending = false;
+    });
+    // Keep an early failure observable through result while checking the room.
+    void result.catch(() => {});
+    return {
+      result,
+      get pending() {
+        return pending;
+      },
+    };
   }
 
   test("a cold room's first history read joins in-flight hydration instead of returning warming", async () => {
@@ -435,8 +520,8 @@ describe("Shared first-turn warming in Workerd", () => {
     });
     expect(cold.status).toBe(503);
     expect(await cold.text()).toContain("conversation_cache_warming");
-    // The same in-flight hydration completes and serves the retry.
-    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    // Release the original read only after the caller has timed out.
+    releaseSlowHistory();
     const retried = await post(room, "/history", {
       operation: "history",
       agentId,
@@ -446,6 +531,115 @@ describe("Shared first-turn warming in Workerd", () => {
     expect(retried.status, body).toBe(200);
     expect(body).toContain(`${agentId}-prior-user`);
     expect(historyReads.filter((read) => read === agentId)).toHaveLength(1);
+  }, 60_000);
+
+  test("a failed history load returns warming and starts a fresh read on retry", async () => {
+    const agentId = "agent-failed-once-first-turn-warming";
+    const room = `${agentId}:${agentId}`;
+    const body = { operation: "history", agentId, roomId: agentId };
+    const failed = await post(room, "/history", body);
+    expect(failed.status).toBe(503);
+    expect(await failed.json()).toMatchObject({
+      code: "conversation_cache_warming",
+      retryable: true,
+    });
+    expect(historyReads.filter((read) => read === agentId)).toHaveLength(1);
+
+    for (let i = 0; i < 2; i++) {
+      const retry = await post(room, "/history", body);
+      expect(retry.status).toBe(200);
+      expect(await retry.json()).toMatchObject({
+        history: [
+          { id: `${agentId}-prior-user`, content: "earlier question" },
+          { id: `${agentId}-prior-assistant`, content: "earlier answer" },
+        ],
+      });
+    }
+    expect(historyReads.filter((read) => read === agentId)).toHaveLength(2);
+  }, 60_000);
+
+  test("deferred prewarm joins one warmup and a cancelled body leaves the room and peer live", async () => {
+    const agentId = "agent-deferred-prewarm";
+    const before = moduleWarmups;
+    const gate = holdModuleWarmup();
+    try {
+      const first = await openPrewarmBody(agentId);
+      await gate.entered;
+      const second = await openPrewarmBody(agentId);
+      const firstRead = observePrewarmRead(first);
+      const secondRead = observePrewarmRead(second);
+
+      const history = await post(`${agentId}:${agentId}`, "/history", {
+        operation: "history",
+        agentId,
+        roomId: agentId,
+      });
+      expect(history.status).toBe(200);
+      expect(await history.json()).toMatchObject({
+        history: [
+          { id: `${agentId}-prior-user`, content: "earlier question" },
+          { id: `${agentId}-prior-assistant`, content: "earlier answer" },
+        ],
+      });
+      expect(firstRead.pending).toBe(true);
+      expect(secondRead.pending).toBe(true);
+      expect(moduleWarmups).toBe(before + 1);
+      expect(historyReads.filter((read) => read === agentId)).toHaveLength(1);
+
+      await first.cancel("caller left");
+      const canceled = await firstRead.result;
+      expect(() => JSON.parse(canceled)).toThrow();
+      expect(secondRead.pending).toBe(true);
+      expect(moduleWarmups).toBe(before + 1);
+
+      gate.release();
+      expect(JSON.parse(await secondRead.result)).toEqual({ success: true });
+      expect(moduleWarmups).toBe(before + 1);
+    } finally {
+      gate.release();
+    }
+  }, 60_000);
+
+  test("a deferred module failure fails both bodies and a later prewarm starts a fresh attempt", async () => {
+    const agentId = "agent-prewarm-module-failure";
+    const before = moduleWarmups;
+    const failed = holdModuleWarmup();
+    try {
+      const first = await openPrewarmBody(agentId);
+      await failed.entered;
+      const second = await openPrewarmBody(agentId);
+      const firstRead = observePrewarmRead(first);
+      const secondRead = observePrewarmRead(second);
+      expect(moduleWarmups).toBe(before + 1);
+      failed.release(503);
+      const outcomes = await Promise.allSettled([
+        firstRead.result,
+        secondRead.result,
+      ]);
+      expect(outcomes.map(({ status }) => status)).toEqual([
+        "rejected",
+        "rejected",
+      ]);
+    } finally {
+      failed.release();
+    }
+
+    const retried = holdModuleWarmup();
+    try {
+      const response = await openPrewarmBody(agentId);
+      await retried.entered;
+      const retryRead = observePrewarmRead(response);
+      expect(moduleWarmups).toBe(before + 2);
+      expect(historyReads.filter((read) => read === agentId)).toHaveLength(1);
+      retried.release();
+      expect(JSON.parse(await retryRead.result)).toEqual({ success: true });
+      const warm = await prewarm(agentId);
+      expect(warm.status).toBe(200);
+      expect(await warm.json()).toEqual({ success: true });
+      expect(moduleWarmups).toBe(before + 2);
+    } finally {
+      retried.release();
+    }
   }, 60_000);
 
   test("a canonical Personal Shared turn lets keep-warm prewarm report its owning organization", async () => {

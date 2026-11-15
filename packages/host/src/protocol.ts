@@ -4,7 +4,6 @@ export * from "./api/http-plugin.js";
 export * from "./api/http-plugin-runtime.js";
 export * from "./api/route-helpers.js";
 export * from "./api/runtime-route-context.js";
-export * from "./boot-env.js";
 export * from "./character-presets.characters.js";
 
 export {
@@ -34,15 +33,12 @@ export {
   type ClientMiddleware,
   DEFAULT_BOOT_CONFIG,
   getBootConfig,
-  getBootConfigEnvAliases as getAppBootConfigEnvAliases,
   type InjectedCharacterEntry,
   type ResolvedCharacterAsset,
   type ResolvedInjectedCharacter,
-  resolveAliasedEnvValue as resolveAppAliasedEnvValue,
   resolveCharacterCatalog,
   setBootConfig,
 } from "./config/boot-config-store.js";
-export * from "./config/brand-env-aliases.js";
 export * from "./config/branding.js";
 export * from "./config/cloud-only.js";
 export * from "./config/config-catalog.js";
@@ -275,6 +271,7 @@ export {
   firstWinningEnvString,
   isAndroidMobile,
   isDevApiWatchEnabled,
+  isElizaOsAndroidRuntime,
   isIosMobile,
   isMobilePlatform,
   isNullOriginAllowed,
@@ -310,6 +307,5 @@ export {
 } from "./runtime-env.js";
 export * from "./settings-debug.js";
 export * from "./utils/eliza-globals.js";
-export * from "./utils/env.js";
 export * from "./voice.js";
 export * from "./workbench.js";

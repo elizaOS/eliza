@@ -90,15 +90,19 @@ export function bindTaskExtractionContext(
 					),
 				}
 			: original;
-		if (hashStableJson(expected) !== hashStableJson(projected)) return;
+		// Any other view (e.g. background history that also defers settled
+		// effects) extracts from the full original. It never drops the current
+		// decision binding: its request issuer gates Notes writes.
+		const exact = hashStableJson(expected) === hashStableJson(projected);
+		const view = exact ? projected : original;
 		bindings().set(state.data, {
 			original,
-			projected,
+			projected: view,
 			sourceHash: hashStableJson(original),
-			projectionHash: hashStableJson(projected),
+			projectionHash: hashStableJson(view),
 			requestHash: hashStableJson(message),
 			stateHash: stateFingerprint(state),
-			extractionProjectionAuthorized,
+			extractionProjectionAuthorized: exact && extractionProjectionAuthorized,
 			...(runtime && issuer && validIssuer(issuer, runtime, message)
 				? { issuer }
 				: {}),
@@ -509,18 +513,13 @@ function canonicalDispatch(
 ): CanonicalDispatch | undefined {
 	const actual = promotedSubactionDescription(registration.action);
 	if (actual && actual.subaction !== operation) return;
-	const children =
-		runtime.actions?.filter((action) => {
-			const promoted = promotedSubactionDescription(action);
-			return (
-				promoted?.parent === registration.family.name &&
-				promoted.subaction === operation
-			);
-		}) ?? [];
-	const child =
-		children.find(
-			(action) => promotedSubactionDescription(action)?.subaction === operation,
-		) ?? children[0];
+	const child = runtime.actions?.find((action) => {
+		const promoted = promotedSubactionDescription(action);
+		return (
+			promoted?.parent === registration.family.name &&
+			promoted.subaction === operation
+		);
+	});
 	return child
 		? pinnedDiscriminatorForPromotedChild(
 				registration.family,
@@ -749,22 +748,34 @@ function unclassifiedEffects(
 		)
 	);
 }
+type CompletionShape = ReturnType<typeof completionShape>;
+type CompletionRow = CompletionShape["top"];
+function awaitsPrerequisite(row: CompletionRow): boolean {
+	return (
+		row.requiresInput === true ||
+		row.awaitingUserInput === true ||
+		row.requiresConfirmation === true ||
+		row.approvalRequired === true ||
+		row.awaitingDeviceExecution === true ||
+		row.lifeDraftPresent === true ||
+		(typeof row.missingField === "string" && row.missingField.trim().length > 0)
+	);
+}
+function hasUnknownOutcome(shape: CompletionShape): boolean {
+	return [shape.top, shape.data, shape.values, shape.nestedValues].some(
+		(row) =>
+			(row.outcomeUnknown !== undefined && row.outcomeUnknown !== false) ||
+			(row.reconciliationRequired !== undefined &&
+				row.reconciliationRequired !== false),
+	);
+}
 function rejectedBeforeExecution(
 	shape: ReturnType<typeof completionShape>,
 ): boolean {
 	const provenance = shape.failureProvenance as
 		| { retryable?: unknown }
 		| undefined;
-	const unknown = [
-		shape.top.outcomeUnknown,
-		shape.top.reconciliationRequired,
-		shape.data.outcomeUnknown,
-		shape.data.reconciliationRequired,
-		shape.values.outcomeUnknown,
-		shape.values.reconciliationRequired,
-		shape.nestedValues.outcomeUnknown,
-		shape.nestedValues.reconciliationRequired,
-	].some((value) => value !== undefined && value !== false);
+	const unknown = hasUnknownOutcome(shape);
 	const evidence = [shape.top, shape.data, shape.values, shape.nestedValues];
 	const contradiction = evidence.some(
 		(row) =>
@@ -773,17 +784,7 @@ function rejectedBeforeExecution(
 				row.executionStatus !== "not_started") ||
 			(row.acceptance !== undefined && row.acceptance !== "rejected"),
 	);
-	const prerequisite = evidence.some(
-		(row) =>
-			row.requiresInput === true ||
-			row.awaitingUserInput === true ||
-			row.requiresConfirmation === true ||
-			row.approvalRequired === true ||
-			row.awaitingDeviceExecution === true ||
-			row.lifeDraftPresent === true ||
-			(typeof row.missingField === "string" &&
-				row.missingField.trim().length > 0),
-	);
+	const prerequisite = evidence.some(awaitsPrerequisite);
 	return (
 		shape.success === false &&
 		provenance?.retryable === true &&
@@ -1062,7 +1063,7 @@ export function checkBoundNotesOperation(
 	// An observation never fixes or changes the mutation identity of this host
 	// action. A compound view action may read before its one resolved mutation,
 	// and a later read cannot erase a settled denied mutation.
-	if (recognized && (operation === "get" || operation === "list"))
+	if (operation === "get" || operation === "list")
 		return { allowed: true, addsAuthority: false };
 	const attempt = currentAttempt(token),
 		binding = readBinding(state, message);
@@ -1214,7 +1215,6 @@ export function bindRequestOperationResult(
 	try {
 		if (
 			value.classification === "mutation_requested" &&
-			attempt.resolved &&
 			attempt.registeredOperation &&
 			attempt.resolved !== "get" &&
 			attempt.resolved !== "list" &&
@@ -1237,6 +1237,18 @@ export function bindRequestOperationResult(
 						row.op === attempt.registeredOperation ||
 						row.op === attempt.resolved,
 				);
+			// The Notes owner resolves its registered patch action to update before
+			// checking permission. An explicit edit may be fulfilled by that patch;
+			// keep its raw dispatch identity for matching and freshness checks.
+			const requested =
+				value.interpretation?.status === "explicit"
+					? value.interpretation.operations.includes(
+							attempt.registeredOperation,
+						) ||
+						(attempt.registeredOperation === "patch" &&
+							attempt.resolved === "update" &&
+							value.interpretation.operations.includes("update"))
+					: undefined;
 			if (dispatch && canonicalChild)
 				completion = Object.freeze({
 					issuer: attempt.issuer,
@@ -1247,24 +1259,9 @@ export function bindRequestOperationResult(
 					dispatch: Object.freeze(dispatch),
 					canonicalChild,
 					childDefinition: definition(canonicalChild),
-					requested:
-						value.interpretation?.status === "explicit"
-							? value.interpretation.operations.includes(
-									attempt.registeredOperation,
-								)
-							: undefined,
-					rejected:
-						value.interpretation?.status === "explicit" &&
-						value.interpretation.operations.includes(
-							attempt.registeredOperation,
-						) &&
-						noEffectRejection,
-					outsideRequestRejection:
-						value.interpretation?.status === "explicit" &&
-						!value.interpretation.operations.includes(
-							attempt.registeredOperation,
-						) &&
-						noEffectRejection,
+					requested,
+					rejected: requested === true && noEffectRejection,
+					outsideRequestRejection: requested === false && noEffectRejection,
 					ambiguousRejection:
 						value.interpretation?.status !== "explicit" && noEffectRejection,
 				});
@@ -1380,25 +1377,20 @@ export function readNotesMutationCompletion(
 		association.changed = true;
 	if (association.changed && originalAttempt)
 		originalAttempt.completionInvalidated = "changed";
+	const outcome = (status: NotesMutationCompletion["status"]) => ({
+		rejected: fact.rejected,
+		requested: fact.requested,
+		outsideRequestRejection: fact.outsideRequestRejection,
+		ambiguousRejection: fact.ambiguousRejection,
+		status,
+	});
 	if (
 		association.changed ||
 		originalAttempt?.completionInvalidated === "changed"
 	)
-		return {
-			rejected: fact.rejected,
-			requested: fact.requested,
-			outsideRequestRejection: fact.outsideRequestRejection,
-			ambiguousRejection: fact.ambiguousRejection,
-			status: "changed",
-		};
+		return outcome("changed");
 	if (originalAttempt?.completionInvalidated === "stale")
-		return {
-			rejected: fact.rejected,
-			requested: fact.requested,
-			outsideRequestRejection: fact.outsideRequestRejection,
-			ambiguousRejection: fact.ambiguousRejection,
-			status: "stale",
-		};
+		return outcome("stale");
 	const attempt = currentAttempt(association.attempt),
 		value = validIssuer(consumer);
 	let current = false;
@@ -1420,14 +1412,9 @@ export function readNotesMutationCompletion(
 	}
 	if (!current && originalAttempt)
 		originalAttempt.completionInvalidated = "stale";
-	return {
-		rejected: fact.rejected,
-		requested: fact.requested,
-		outsideRequestRejection: fact.outsideRequestRejection,
-		ambiguousRejection: fact.ambiguousRejection,
-		status: current ? "current" : "stale",
-		...(current ? { dispatch: fact.dispatch } : {}),
-	};
+	return current
+		? { ...outcome("current"), dispatch: fact.dispatch }
+		: outcome("stale");
 }
 export function isMatchingNotesMutationCompletion(
 	rejected: object,
@@ -1457,17 +1444,7 @@ export function isMatchingNotesMutationCompletion(
 	const shape = second.shape;
 	const operation = shape.data.op;
 	const evidence = [shape.top, shape.data, shape.values, shape.nestedValues];
-	const prerequisite = evidence.some(
-		(row) =>
-			row.requiresInput === true ||
-			row.awaitingUserInput === true ||
-			row.requiresConfirmation === true ||
-			row.approvalRequired === true ||
-			row.awaitingDeviceExecution === true ||
-			row.lifeDraftPresent === true ||
-			(typeof row.missingField === "string" &&
-				row.missingField.trim().length > 0),
-	);
+	const prerequisite = evidence.some(awaitsPrerequisite);
 	if (
 		shape.success !== true ||
 		shape.errorPresent ||
@@ -1488,16 +1465,7 @@ export function isMatchingNotesMutationCompletion(
 		shape.data.coachingFailure === true ||
 		typeof shape.data.noteId !== "string" ||
 		!Array.isArray(shape.effectReceipts) ||
-		[
-			shape.top.outcomeUnknown,
-			shape.top.reconciliationRequired,
-			shape.data.outcomeUnknown,
-			shape.data.reconciliationRequired,
-			shape.values.outcomeUnknown,
-			shape.values.reconciliationRequired,
-			shape.nestedValues.outcomeUnknown,
-			shape.nestedValues.reconciliationRequired,
-		].some((value) => value !== undefined && value !== false)
+		hasUnknownOutcome(shape)
 	)
 		return false;
 	// The real Notes owner reports the completed operation and its normalized

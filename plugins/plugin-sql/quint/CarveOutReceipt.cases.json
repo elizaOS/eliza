@@ -1,0 +1,24 @@
+{
+  "sources": ["plugins/plugin-sql/src/database-utils/carve-out-migration.ts"],
+  "implementationTests": [
+    "plugins/plugin-sql/src/carve-out-migration.pglite.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "CarveOutReceipt",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ReceiptPreventsResurrection",
+        "SingleTransactionOwner",
+        "NoUncommittedCopy",
+        "PriorClaimRespected",
+        "VerifiedCompletion"
+      ],
+      "temporal": [],
+      "maxSteps": 100,
+      "samples": 1000
+    }
+  ]
+}

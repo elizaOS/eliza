@@ -135,7 +135,7 @@ test("shipped requirements are generic, valid and fully implemented", () => {
     );
   assert.doesNotMatch(
     fs.readFileSync(defaultRequirementsPath, "utf8"),
-    /senior|elizaresearch/i,
+    /senior|alphacompute/i,
   );
   const productChecks = ["ramGiB", "dataGiB", "camera", "wifi5GHz", "codec"];
   assert.ok(all.every((r) => !productChecks.includes(r.check)));

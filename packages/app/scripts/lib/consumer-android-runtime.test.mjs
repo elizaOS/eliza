@@ -26,11 +26,11 @@ for (const [targetAbi, bunTarget] of [
       put(".gitignore", "packages/agent/dist-mobile/\n");
       put(
         "packages/agent/scripts/build-mobile-bundle.ts",
-        `import fs from 'node:fs';fs.mkdirSync('packages/agent/dist-mobile',{recursive:true});fs.writeFileSync('packages/agent/dist-mobile/agent-bundle.js','fixture bundle');`,
+        `import fs from 'node:fs';fs.mkdirSync('packages/agent/dist-mobile',{recursive:true});fs.writeFileSync('packages/agent/dist-mobile/agent-bundle.js','fixture bundle');fs.writeFileSync('packages/agent/dist-mobile/stubs.txt',process.env.ELIZA_MOBILE_STUB_PLUGINS ?? '');`,
       );
       put(
         "packages/app/scripts/lib/stage-android-agent.ts",
-        `import fs from 'node:fs';import path from 'node:path';import {createHash} from 'node:crypto';export function stageAndroidAgentRuntime({androidDir}){const main=path.join(androidDir,'app/src/main');const files=[];const abi=process.env.ELIZA_ANDROID_TARGET_ABIS;const arch=abi==='x86_64'?'x86_64':'aarch64';const b=Buffer.alloc(64);b.writeUInt32BE(0x7f454c46);b[4]=2;b[5]=1;b.writeUInt16LE(abi==='x86_64'?62:183,18);for(const n of (process.env.ELIZA_ANDROID_BUN_TARGET==='android'?['libeliza_bun.so']:['libeliza_bun.so','libeliza_ld_musl_'+arch+'.so','libeliza_ld_musl_'+arch+'_real.so','libeliza_stdcpp.so','libeliza_gcc_s.so','libsigsys-handler.so'])){const p=path.join(main,'jniLibs',abi,n);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,b);files.push({path:'lib/'+abi+'/'+n,size_bytes:b.length,sha256:createHash('sha256').update(b).digest('hex')});}const dest=path.join(main,'assets/agent');fs.mkdirSync(dest,{recursive:true});fs.writeFileSync(path.join(dest,'android-agent-runtime-provenance.json'),JSON.stringify({schema:'eliza.android_agent_runtime_provenance.v1',bun:{target:process.env.ELIZA_ANDROID_BUN_TARGET},files}));}`,
+        `import fs from 'node:fs';import path from 'node:path';import {createHash} from 'node:crypto';export function stageAndroidAgentRuntime({androidDir,embeddingModel}){const main=path.join(androidDir,'app/src/main');const files=[];if(embeddingModel){const m=path.join(main,'assets/agent/models/bge.gguf');fs.mkdirSync(path.dirname(m),{recursive:true});fs.writeFileSync(m,'model');files.push({path:'assets/agent/models/bge.gguf',size_bytes:5,sha256:createHash('sha256').update('model').digest('hex')});}const abi=process.env.ELIZA_ANDROID_TARGET_ABIS;const arch=abi==='x86_64'?'x86_64':'aarch64';const b=Buffer.alloc(64);b.writeUInt32BE(0x7f454c46);b[4]=2;b[5]=1;b.writeUInt16LE(abi==='x86_64'?62:183,18);for(const n of (process.env.ELIZA_ANDROID_BUN_TARGET==='android'?['libeliza_bun.so']:['libeliza_bun.so','libeliza_ld_musl_'+arch+'.so','libeliza_ld_musl_'+arch+'_real.so','libeliza_stdcpp.so','libeliza_gcc_s.so','libsigsys-handler.so'])){const p=path.join(main,'jniLibs',abi,n);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,b);files.push({path:'lib/'+abi+'/'+n,size_bytes:b.length,sha256:createHash('sha256').update(b).digest('hex')});}const dest=path.join(main,'assets/agent');fs.mkdirSync(dest,{recursive:true});fs.writeFileSync(path.join(dest,'android-agent-runtime-provenance.json'),JSON.stringify({schema:'eliza.android_agent_runtime_provenance.v1',bun:{target:process.env.ELIZA_ANDROID_BUN_TARGET},files}));}`,
       );
       const git = (...args) =>
         execFileSync("git", ["-C", source, ...args], {
@@ -58,6 +58,7 @@ for (const [targetAbi, bunTarget] of [
         skillsDirectory,
         targetAbi,
         bunTarget,
+        stubPlugins: ["googleapis", "@elizaos/plugin-discord", "googleapis"],
       };
       const link = path.join(root, "output-link");
       fs.symlinkSync(root, link, "dir");
@@ -72,6 +73,40 @@ for (const [targetAbi, bunTarget] of [
       assert.equal(provenance.commit, expectedCommit);
       assert.deepEqual(provenance.gatewayHashes, { host: "fixture" });
       assert.equal(provenance.target, targetAbi);
+      assert.deepEqual(provenance.stubPlugins, [
+        "@elizaos/plugin-discord",
+        "googleapis",
+      ]);
+      assert.equal(
+        fs.readFileSync(
+          path.join(source, "packages/agent/dist-mobile/stubs.txt"),
+          "utf8",
+        ),
+        "@elizaos/plugin-discord,googleapis",
+      );
+      assert.equal(provenance.embeddingModel, true);
+      assert.ok(
+        fs.existsSync(
+          path.join(
+            link,
+            "good/android/app/src/main/assets/agent/models/bge.gguf",
+          ),
+        ),
+      );
+      // A host whose agent never loads the embedding model stages none.
+      const lean = buildConsumerAndroidRuntime({
+        ...options,
+        embeddingModel: false,
+        output: path.join(root, "lean"),
+        stageGateway: () => ({}),
+      });
+      assert.equal(lean.provenance.embeddingModel, false);
+      assert.equal(
+        fs.existsSync(
+          path.join(root, "lean/android/app/src/main/assets/agent/models"),
+        ),
+        false,
+      );
       assert.throws(
         () =>
           buildConsumerAndroidRuntime({
@@ -159,9 +194,37 @@ for (const [targetAbi, bunTarget] of [
     }
   });
 
+test("stub plugins must be package names", () => {
+  for (const stubPlugins of [
+    "googleapis",
+    ["googleapis,three"],
+    ["three "],
+    ["./x"],
+    ["pkg/../other"],
+    [""],
+    [1],
+  ])
+    assert.throws(
+      // No source or output: the check runs before either is touched.
+      () => buildConsumerAndroidRuntime({ stubPlugins }),
+      /stub plugins must be a list/,
+      JSON.stringify(stubPlugins),
+    );
+});
+
 test("unsupported runtime ABI fails before reading source or creating output", () => {
   assert.throws(
     () => buildConsumerAndroidRuntime({ targetAbi: "riscv64" }),
     /ABI must be/,
   );
+});
+
+test("stub plugin rule matches the mobile build's parser", () => {
+  const rule = (file) =>
+    fs
+      .readFileSync(new URL(file, import.meta.url), "utf8")
+      .match(/const BARE_SPECIFIER =\s*(\/.+\/i);/)?.[1];
+  const here = rule("./consumer-android-runtime.mjs");
+  assert.ok(here);
+  assert.equal(here, rule("../../../agent/scripts/mobile-stub-plugins.ts"));
 });

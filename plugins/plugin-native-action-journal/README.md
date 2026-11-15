@@ -17,7 +17,7 @@ crash, a lost bridge callback or a dropped connection without repeating an effec
 wait ten seconds after a foreground review (Calendar events, reminders):
 
 - `DeletionDeadline` - the persisted monotonic deadline (`WINDOW_MS` = 10 s). A reboot or an
-  unprovable clock reads as `CLOCK_CHANGED`: the row needs review and is never dispatched.
+  unprovable clock reads as `clock-changed`: the row needs review and is never dispatched.
 - `DeferredDeletionJournal` - durable staging, Undo, expiry and bounded history. Undo and
   expiry have one winner; a dispatching write reads back as `unknown` and is never replayed;
   a settled deletion is never reported as a successful Undo.
@@ -28,8 +28,9 @@ wait ten seconds after a foreground review (Calendar events, reminders):
 - `DeferredDeletionCoordinator` - main-process admission over host ports: storage slots,
   monotonic clock, authenticated owner identity and review fence, the reminder engine
   (which suspends delivery at stage), Calendar provider writes and a wake-up scheduler.
-  Owner network reads never run under its lock; an owner that changed or cannot be confirmed
-  pauses the row instead of deleting.
+  Owner network reads never run under its lock. A known changed owner pauses without a stale
+  review-fence call; an equal owner still needs the final fence. Unavailable owners retry
+  within the existing bound. A final-fence failure never permits a deletion.
 
 Hosts keep the foreground review dialogs, the WorkManager (or equivalent) worker that calls
 `reconcile()`, and their installed slot names. A provider that recreates an item (for example a

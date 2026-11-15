@@ -12,6 +12,7 @@
  */
 
 import type http from "node:http";
+import { getProvidedApiToken, tokenMatches } from "@elizaos/core";
 import {
 	CandidateModelActivationError,
 	type KvOffloadMode,
@@ -46,11 +47,9 @@ import {
 	ensureCompatSensitiveRouteAuthorized,
 	ensureRouteAuthorized,
 	getCompatApiToken,
-	getProvidedApiToken,
 	readCompatJsonBody,
 	sendJsonError as sendJsonErrorResponse,
 	sendJson as sendJsonResponse,
-	tokenMatches,
 } from "./compat-helpers";
 
 function isStreamAuthorized(

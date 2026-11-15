@@ -57,6 +57,29 @@ export const mobileAppAuthGrants = pgTable(
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     exchanged_at: timestamp("exchanged_at", { withTimezone: true }),
     acknowledged_at: timestamp("acknowledged_at", { withTimezone: true }),
+    /**
+     * When the owner's interactive sign-in that this grant descends from was
+     * approved. Set on a sign-in grant and copied forward by key renewal. No
+     * renewal code is issued after this time plus the absolute renewal cap,
+     * and no credential of the sign-in expires later than that: a successor's
+     * expiry is clamped to it. A grant without it (issued before the column
+     * existed) counts from `created_at`.
+     */
+    session_started_at: timestamp("session_started_at", { withTimezone: true }),
+    /**
+     * The sign-in this grant belongs to. A sign-in grant gets a fresh id and
+     * every renewal grant copies its predecessor's, so revoking a device can
+     * retire every credential renewed from it. A grant without it (issued
+     * before the column existed) is its own session; its first renewal stamps
+     * the grant's own `id` here.
+     */
+    session_id: uuid("session_id"),
+    /**
+     * Renewal grants only: the credential that asked for this successor. Not
+     * a foreign key, so the link never silently clears: exchange and
+     * acknowledgement re-read that row and refuse unless it is still active.
+     */
+    renewed_from_credential_id: uuid("renewed_from_credential_id"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -69,6 +92,12 @@ export const mobileAppAuthGrants = pgTable(
     credentialIdx: index("idx_mobile_app_auth_grants_credential")
       .on(table.credential_id)
       .where(sql`${table.credential_id} IS NOT NULL`),
+    sessionIdx: index("idx_mobile_app_auth_grants_session")
+      .on(table.session_id)
+      .where(sql`${table.session_id} IS NOT NULL`),
+    renewedFromIdx: index("idx_mobile_app_auth_grants_renewed_from")
+      .on(table.renewed_from_credential_id)
+      .where(sql`${table.renewed_from_credential_id} IS NOT NULL`),
     environmentCheck: check(
       "mobile_app_auth_grants_environment_check",
       sql`${table.environment} IN ('staging','production')`,

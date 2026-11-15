@@ -23,14 +23,17 @@ public final class DataResetCopy {
     public final String authenticationUnavailable;
     public final String authenticationCancelled;
     public final String prepareFailed;
+    public final String listenerOff;
     public final String recoveryTitle;
     public final String recoveryIntro;
     public final String reasonAndroid;
+    public final String reasonUnknown;
     public final String reasonListenerPending;
     public final String reasonListenerUnreachable;
     public final String closedNote;
     public final String listenerHint;
     public final String availableNote;
+    public final String settingsAvailableNote;
     public final String retryLabel;
     public final String listenerSettingsLabel;
     public final String phoneLabel;
@@ -63,16 +66,19 @@ public final class DataResetCopy {
         authenticationUnavailable = "Device authentication is unavailable. Nothing reset.";
         authenticationCancelled = "Reset cancelled. Nothing reset.";
         prepareFailed = "Reset could not be prepared. Close and reopen " + p + " before trying again.";
+        listenerOff = "The listener is off or can't be reached, so nothing was reset. Turn it on in Android Settings and try again.";
         recoveryTitle = "Reset could not finish";
         recoveryIntro = "You confirmed Reset " + p + " data, but the reset has not finished. " + p + "'s local data has not been deleted yet."
                 + (b.recoveryRemoteNote != null ? " " + b.recoveryRemoteNote : "") + "\n\n";
         reasonAndroid = "Android has not accepted " + p + "'s request to delete its data. ";
+        reasonUnknown = "Why the last attempt stopped was not recorded. ";
         reasonListenerPending = p + " deletes its data only after the phone's always-on listener confirms that its consent has been withdrawn, and that confirmation has not arrived. ";
         reasonListenerUnreachable = p + " deletes its data only after the phone's always-on listener confirms that its consent has been withdrawn. "
                 + p + " cannot reach the listener's controls on this phone, so it cannot get that confirmation, and trying again will not finish the reset until the listener is repaired. ";
         closedNote = "Until the reset finishes, " + p + " stays closed: its agent, notifications and scheduled work do not run.\n\n";
         listenerHint = "Try again, or open the listener's settings to turn it off first. ";
         availableNote = "Phone and Android Settings remain available.";
+        settingsAvailableNote = "Android Settings remains available.";
         retryLabel = "Try reset again";
         listenerSettingsLabel = "Open listener settings";
         phoneLabel = "Phone";
@@ -87,20 +93,24 @@ public final class DataResetCopy {
 
     /**
      * The recovery explanation; never claims deletion happened. The reason is the last failed
-     * attempt's outcome ({@link DataReset#lastFailure}); only when none is recorded is it inferred
-     * from the listener state.
+     * attempt's outcome ({@link DataReset#lastFailure} or a retry's result); without one the cause
+     * is unknown, never inferred from the listener's current state.
+     *
+     * @param phoneAvailable recovery found a dialer outside this app to offer
      */
-    public String recoveryBody(DataReset.Outcome lastFailure, boolean listenerInstalled, boolean listenerControllable) {
-        boolean listenerReason = lastFailure == DataReset.Outcome.LISTENER_UNACKNOWLEDGED
-                || (lastFailure != DataReset.Outcome.ANDROID_REFUSED && listenerInstalled);
-        return recoveryIntro
-                + (!listenerReason ? reasonAndroid : listenerControllable ? reasonListenerPending : reasonListenerUnreachable)
-                + closedNote + (listenerReason && listenerControllable ? listenerHint : "") + availableNote;
+    public String recoveryBody(DataReset.Outcome lastFailure, boolean listenerControllable, boolean phoneAvailable) {
+        String reason;
+        if (lastFailure == DataReset.Outcome.LISTENER_UNACKNOWLEDGED) reason = listenerControllable ? reasonListenerPending : reasonListenerUnreachable;
+        else if (lastFailure == DataReset.Outcome.ANDROID_REFUSED) reason = reasonAndroid;
+        else reason = reasonUnknown;
+        boolean hint = lastFailure == DataReset.Outcome.LISTENER_UNACKNOWLEDGED && listenerControllable;
+        return recoveryIntro + reason + closedNote + (hint ? listenerHint : "") + (phoneAvailable ? availableNote : settingsAvailableNote);
     }
 
     /** Status after a recovery retry that Android did not dispatch. */
     public String retryResult(DataReset.Outcome outcome, boolean listenerControllable) {
         if (outcome == DataReset.Outcome.DISPATCHED) return dispatched;
+        if (outcome == DataReset.Outcome.DEFERRED) return "Reset preparation is unavailable. Try again after the current attempt finishes or storage is available.";
         if (outcome != DataReset.Outcome.LISTENER_UNACKNOWLEDGED) return androidRefused;
         return listenerControllable ? listenerPending : listenerUnreachable;
     }

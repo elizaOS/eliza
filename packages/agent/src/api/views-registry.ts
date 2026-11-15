@@ -394,20 +394,23 @@ export async function registerPluginViews(
         // host's exact GUI delivery route. Retain the native OWNER boundary;
         // this does not supply a hosted bundle or alter its availability.
         const nativeCounterpart =
-          viewType === "gui" &&
-          view.roleGate?.minRole === "OWNER" &&
-          nativeViews.some(
-            (native) =>
-              native.id === view.id &&
-              native.path === view.path &&
-              native.fallbackFor === (plugin.packageName ?? plugin.name),
-          );
+          viewType === "gui" && view.roleGate?.minRole === "OWNER"
+            ? nativeViews.find(
+                (native) =>
+                  native.id === view.id &&
+                  native.path === view.path &&
+                  native.fallbackFor === (plugin.packageName ?? plugin.name),
+              )
+            : undefined;
         registered.push(
           await buildEntry(
             {
               ...view,
               viewType,
               ...(nativeCounterpart ? { nativeOs: true } : {}),
+              ...(nativeCounterpart?.navigationAliases
+                ? { navigationAliases: nativeCounterpart.navigationAliases }
+                : {}),
             },
             plugin.name,
             resolvedDir,

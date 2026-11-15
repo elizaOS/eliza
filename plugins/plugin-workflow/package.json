@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-workflow",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.6",
   "description": "ElizaOS plugin for generating and running workflows in-process",
   "type": "module",
   "main": "dist/index.js",
@@ -46,10 +46,11 @@
     }
   },
   "scripts": {
-    "build": "node ../../packages/scripts/rm-path-recursive.ts dist && tsc6 --noCheck -p tsconfig.json",
+    "build": "bun ../../packages/scripts/rm-path-recursive.ts dist && tsc6 --noCheck -p tsconfig.json",
     "dev": "tsc6 --watch",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "test": "node ../../packages/scripts/run-with-flake-retry.ts 'EEXIST[^\\n]*epoll_ctl|error: Failed to connect' -- node ../../packages/scripts/run-with-deadline.ts 1500000 -- node ../../packages/scripts/plugins/plugin-workflow/run-isolated-tests.ts",
+    "check:lease-generated": "bun scripts/build-windows-lease-resource.ts --check && bun scripts/build-worker-lease-prelude.ts --check",
+    "test": "bun run check:lease-generated && bun ../../packages/scripts/run-with-flake-retry.ts 'EEXIST[^\\n]*epoll_ctl|error: Failed to connect' -- bun ../../packages/scripts/run-with-deadline.ts 1500000 -- bun ../../packages/scripts/plugins/plugin-workflow/run-isolated-tests.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -77,7 +78,7 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "2.6.6",
     "@electric-sql/pglite": "^0.2.17",
     "@elizaos/core": "workspace:*",
     "@elizaos/testing": "workspace:*",

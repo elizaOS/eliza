@@ -24,6 +24,7 @@ import {
 } from "react";
 import type { ImageAttachment } from "../api/client-types-chat";
 import { shellLocalStorage } from "../surface-realm-channel";
+import { isLiveChatTurn } from "./live-chat-turns";
 import {
   clearPendingChatTurn,
   listPendingChatTurns,
@@ -293,7 +294,13 @@ export function useChatComposerDraftPersistence({
     if (receipts.length === 0) return;
     const receipt = receipts[0];
     if (!receipt) return;
+    let timer = 0;
     const restore = (): void => {
+      // A slow reply this renderer is still streaming is not an unsent draft.
+      if (isLiveChatTurn(receipt.clientMessageId)) {
+        timer = window.setTimeout(restore, PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS);
+        return;
+      }
       const stillPending = listPendingChatTurns(activeConversationId).some(
         (pending) => pending.clientMessageId === receipt.clientMessageId,
       );
@@ -329,7 +336,7 @@ export function useChatComposerDraftPersistence({
       PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS,
       receipt.restoreAt - Date.now(),
     );
-    const timer = window.setTimeout(restore, delay);
+    timer = window.setTimeout(restore, delay);
     return () => window.clearTimeout(timer);
   }, [activeConversationId, setChatInput]);
 

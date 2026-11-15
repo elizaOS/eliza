@@ -317,6 +317,25 @@ describe("Log Integration Tests", () => {
       expect(all.map((log) => log.body)).toEqual([{ who: "this agent" }]);
     });
 
+    it("lists the getLogs rows and order without bodies for retention", async () => {
+      await adapter.log({
+        body: { who: "this agent, audit" },
+        entityId: testEntityId,
+        roomId: testRoomId,
+        type: "role_audit",
+      });
+      const all = await adapter.getLogs({ limit: Number.MAX_SAFE_INTEGER });
+
+      expect(await adapter.getLogInventory({})).toEqual(
+        all.map(({ id, roomId, createdAt }) => ({ id, roomId, createdAt }))
+      );
+      expect(await adapter.getLogInventory({ excludeTypes: ["role_audit"] })).toEqual(
+        all
+          .filter((log) => log.type !== "role_audit")
+          .map(({ id, roomId, createdAt }) => ({ id, roomId, createdAt }))
+      );
+    });
+
     it("does not delete or update another agent's log by id", async () => {
       const [foreign] = await (adapter.getDatabase() as DrizzleDatabase)
         .select()

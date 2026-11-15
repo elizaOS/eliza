@@ -126,7 +126,7 @@ public final class PasswordConsumerTest {
   assertTrue("Dialog layout settled", laidOut.await(5, java.util.concurrent.TimeUnit.SECONDS));
   InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> captureView(selected.get(), name));
  }
- private static boolean containsText(android.view.View view, String message) {
+ static boolean containsText(android.view.View view, String message) {
   if (view instanceof android.widget.TextView && String.valueOf(((android.widget.TextView)view).getText()).contains(message)) return true;
   if (view instanceof android.view.ViewGroup) {
    android.view.ViewGroup group = (android.view.ViewGroup)view;

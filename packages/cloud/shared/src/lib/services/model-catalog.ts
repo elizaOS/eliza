@@ -19,7 +19,6 @@ import {
 import { expandBitRouterModelIdCandidates } from "../providers/model-id-translation";
 import type { OpenAIModelsResponse } from "../providers/types";
 import { logger } from "../utils/logger";
-import { isHotPathCachesEnabled } from "./inference-hot-path-caches";
 import { ModelCatalogCache, type ModelCatalogRefreshFailure } from "./model-catalog-cache";
 
 async function fetchConfiguredBitRouterModelCatalog(): Promise<CatalogModel[]> {
@@ -121,79 +120,13 @@ export function findBitRouterCatalogModelById(
   return null;
 }
 
-interface StoredModelCatalog {
-  data: CatalogModel[];
-  cachedAt: number;
-  staleAt: number;
-}
-
-export interface ModelCatalogCacheExecutionContext {
-  waitUntil(promise: Promise<unknown>): void;
-}
-
-export type GatewayModelCacheResolution =
-  | { kind: "ready"; model: CatalogModel | null; stale: boolean }
-  | {
-      kind: "warming" | "unavailable";
-      cacheRead: "miss" | "invalid" | "unavailable" | "error";
-    };
-
-const modelCatalogHotPathRefreshes = new Map<string, Promise<void>>();
-
-function isCatalogModelArray(value: unknown): value is CatalogModel[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (model) =>
-        typeof model === "object" &&
-        model !== null &&
-        typeof (model as { id?: unknown }).id === "string",
-    )
-  );
-}
-
-function isStoredModelCatalog(value: unknown): value is StoredModelCatalog {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<StoredModelCatalog>;
-  return (
-    isCatalogModelArray(candidate.data) &&
-    typeof candidate.cachedAt === "number" &&
-    Number.isFinite(candidate.cachedAt) &&
-    typeof candidate.staleAt === "number" &&
-    Number.isFinite(candidate.staleAt)
-  );
-}
-
-function scheduleModelCatalogRefresh(executionCtx: ModelCatalogCacheExecutionContext): void {
-  const key = CacheKeys.models.bitrouterCatalog();
-  let refresh = modelCatalogHotPathRefreshes.get(key);
-  if (!refresh) {
-    refresh = refreshBitRouterModelCatalog()
-      .then(() => undefined)
-      .catch((error) => {
-        // error-policy:J7 stale data stays available and cold requests retain
-        // an explicit warming state; the detached provider failure is logged.
-        logger.warn("[Model Catalog] Hot-path refresh failed", {
-          error: refreshErrorMessage(error),
-        });
-      })
-      .finally(() => {
-        modelCatalogHotPathRefreshes.delete(key);
-      });
-    modelCatalogHotPathRefreshes.set(key, refresh);
-  }
-  executionCtx.waitUntil(refresh);
-}
-
 export async function getCachedBitRouterModelById(modelId: string): Promise<CatalogModel | null> {
   const bitRouterModels = await getCachedBitRouterModelCatalog();
   return findBitRouterCatalogModelById(bitRouterModels, modelId);
 }
 
 /**
- * #9899 Tier-3: in-isolate memo of the per-model gateway lookup, gated behind
- * `INFERENCE_HOT_PATH_CACHES` (default OFF — flag off is byte-identical to the
- * un-memoized lookup, so "rollback = flip the flag" holds). The lookup
+ * #9899 Tier-3: in-isolate memo of the per-model gateway lookup. The lookup
  * runs on the inference pre-forward path (reasoning-parameter detection) and,
  * warm, still costs a shared-cache read of the FULL catalog per request. The
  * result only ever ADDS reasoning capability (modelUsesReasoningTokens ORs it
@@ -208,84 +141,18 @@ const gatewayModelMemo = new InMemoryLRUCache<{
   stale?: boolean;
 }>(512, GATEWAY_MODEL_MEMO_TTL_MS);
 
-/** Test hook: reset the per-model memo between tests. */
-export function __clearGatewayModelMemo(): void {
-  gatewayModelMemo.deleteByPrefix("");
-  modelCatalogHotPathRefreshes.clear();
-}
-
-/**
- * Resolve gateway metadata without letting a cold catalog fetch join the LLM
- * request promise. Static/native models are local, fresh or stale shared-cache
- * data is served immediately, and an upstream refresh runs only under
- * `waitUntil`.
- */
-export async function getGatewayModelByIdCacheOnly(
-  modelId: string,
-  options: { executionCtx?: ModelCatalogCacheExecutionContext } = {},
-): Promise<GatewayModelCacheResolution> {
-  const memoized = gatewayModelMemo.get(modelId);
-  if (memoized) {
-    return {
-      kind: "ready",
-      model: memoized.model,
-      stale: memoized.stale ?? false,
-    };
-  }
-
-  if (isGroqNativeModel(modelId)) {
-    const model = getGroqCatalogModel(modelId);
-    gatewayModelMemo.set(modelId, { model });
-    return { kind: "ready", model, stale: false };
-  }
-
-  const staticModel = findBitRouterCatalogModelById(STATIC_TEXT_CATALOG_MODELS, modelId);
-  if (staticModel) {
-    gatewayModelMemo.set(modelId, { model: staticModel });
-    return { kind: "ready", model: staticModel, stale: false };
-  }
-
-  if (!hasOpenRouterProviderConfigured()) {
-    gatewayModelMemo.set(modelId, { model: null });
-    return { kind: "ready", model: null, stale: false };
-  }
-
-  const outcome = await cache.getWithOutcome<unknown>(CacheKeys.models.bitrouterCatalog());
-  if (outcome.kind === "hit" && isStoredModelCatalog(outcome.value)) {
-    const model = findBitRouterCatalogModelById(outcome.value.data, modelId);
-    const stale = Date.now() > outcome.value.staleAt;
-    gatewayModelMemo.set(modelId, { model, stale });
-    if (stale && options.executionCtx) {
-      scheduleModelCatalogRefresh(options.executionCtx);
-    }
-    return { kind: "ready", model, stale };
-  }
-
-  const cacheRead = outcome.kind === "hit" ? ("invalid" as const) : outcome.kind;
-  if (options.executionCtx) {
-    scheduleModelCatalogRefresh(options.executionCtx);
-  }
-  return {
-    kind: cacheRead === "unavailable" || cacheRead === "error" ? "unavailable" : "warming",
-    cacheRead,
-  };
-}
-
 export async function getCachedGatewayModelById(modelId: string): Promise<CatalogModel | null> {
-  const memoEnabled = isHotPathCachesEnabled();
-  if (memoEnabled) {
-    const memoized = gatewayModelMemo.get(modelId);
-    if (memoized) return memoized.model;
-  }
+  const memoized = gatewayModelMemo.get(modelId);
+  if (memoized) return memoized.model;
 
   if (isGroqNativeModel(modelId)) {
     const groqModel = getGroqCatalogModel(modelId);
-    if (memoEnabled) gatewayModelMemo.set(modelId, { model: groqModel });
+    gatewayModelMemo.set(modelId, { model: groqModel });
     return groqModel;
   }
 
   const models = await getCachedMergedModelCatalog();
   const model = findBitRouterCatalogModelById(models, modelId);
-  if (memoEnabled) gatewayModelMemo.set(modelId, { model });
+  gatewayModelMemo.set(modelId, { model });
   return model;
 }

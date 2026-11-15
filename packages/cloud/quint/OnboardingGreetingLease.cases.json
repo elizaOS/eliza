@@ -1,0 +1,65 @@
+{
+  "sources": [
+    "packages/cloud/api/src/onboarding-session-coordinator.ts",
+    "packages/cloud/shared/src/lib/services/eliza-app/onboarding-proactive-greeting.ts",
+    "packages/cloud/api/__tests__/onboarding-coordinator-errors.miniflare.test.ts",
+    "packages/cloud/api/test/fixtures/onboarding-route-worker.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-onboarding-coordinator.mjs",
+  "bounds": "One platform queue and one session key. Two enqueues after removal, four unique lease identities, and time 0..6. TTL 3 and lease 1 preserve the relevant expiry ordering. The action projection assumes serialized coordinator calls and a durable entry write or deletion. A lost response and coordinator restart retain committed writes. Batch scanning, Redis compatibility, external provider delivery and session transcript authority are separate.",
+  "cases": [
+    {
+      "name": "durable-greeting-lease",
+      "main": "OnboardingGreetingLease",
+      "init": "init",
+      "step": "step",
+      "invariants": ["TypeOK"],
+      "maxSteps": 35,
+      "samples": 1000,
+      "temporal": [
+        "ExactAcknowledgement",
+        "ClaimsOnlyFreshEntries",
+        "RetainsDurableOwnership",
+        "FairCleanup",
+        "StaleEntriesRetire"
+      ],
+      "temporalChecks": [
+        {
+          "property": "ExactAcknowledgement",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduling fairness. Only the exact current lease can remove the stored entry."
+          ]
+        },
+        {
+          "property": "ClaimsOnlyFreshEntries",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduling fairness. Lease identities are unique and the coordinator serializes requests."
+          ]
+        },
+        {
+          "property": "RetainsDurableOwnership",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduling fairness. A committed entry and lease survive a lost reply or restart."
+          ]
+        },
+        {
+          "property": "FairCleanup",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of dropStale. A stale entry eventually appears in a drain scan and its deletion succeeds. Acknowledgement may retire the entry first."
+          ]
+        },
+        {
+          "property": "StaleEntriesRetire",
+          "expect": "counterexample",
+          "assumptions": [
+            "No scheduling fairness. A stale entry can persist without a successful drain or acknowledgement."
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -365,19 +365,6 @@ function plannerDefaultMaxTokens(
 }
 
 /**
- * Optional coding-mode domain-call ceiling: the max number of tool calls a
- * coding build may make before the loop terminates. Overridable via
- * `ELIZA_CODING_MAX_TOOL_CALLS`; a set-but-malformed value throws.
- */
-export function resolveCodingMaxToolCalls(): number {
-  return resolvePositivePlannerInt(
-    "ELIZA_CODING_MAX_TOOL_CALLS",
-    process.env.ELIZA_CODING_MAX_TOOL_CALLS,
-    Number.POSITIVE_INFINITY,
-  );
-}
-
-/**
  * Coding-mode required-tool miss budget (default 8): how many times a coding
  * build may answer with a terminal REPLY instead of acting before the loop
  * gives up. Overridable via `ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES`; a
@@ -625,6 +612,43 @@ function enforcePlannerFinishClaimGrounding(
   };
 }
 
+/** A confirmed single Notes write can still need a conversational reply. */
+function canRecoverSettledNoteReply(trajectory: PlannerTrajectory): boolean {
+  if (
+    trajectory.outcomeIntents?.length !== 1 ||
+    trajectory.plannedQueue.length > 0 ||
+    trajectory.archivedSteps.length > 0
+  )
+    return false;
+  const operations = trajectory.steps.filter(
+    (step) => step.toolCall !== undefined || step.result !== undefined,
+  );
+  const step = operations.length === 1 ? operations[0] : undefined;
+  const result = step?.result;
+  if (
+    step?.toolCall?.name !== "NOTES_CREATE" ||
+    !isSettledInternalSuccess(result) ||
+    result.modelReplyRequired !== true ||
+    result.replyFailure ||
+    result.error != null
+  )
+    return false;
+  const proof = readNotesMutationCompletion(
+    result,
+    trajectoryRequestIssuer(trajectory),
+  );
+  if (proof?.status !== "current" || proof.requested !== true || proof.rejected)
+    return false;
+  const receipts = result.effectReceipts ?? [];
+  const receipt = receipts.length === 1 ? receipts[0] : undefined;
+  return (
+    receipt?.operation === "notes.note.create" &&
+    receipt.outcome === "applied" &&
+    receipt.commit.kind === "durable" &&
+    activeCommittedEffectReceipts(receipts).length === 1
+  );
+}
+
 export async function runPlannerLoop(
   params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
@@ -826,6 +850,23 @@ export async function runPlannerLoop(
         modelUsage: usage,
       });
     }
+    if (
+      params.deferInternalReplyRecoveryToCaller === true &&
+      params.codingMode !== true &&
+      liveTrajectory &&
+      error instanceof TrajectoryLimitExceeded &&
+      error.kind === "terminal_only_continuations" &&
+      canRecoverSettledNoteReply(liveTrajectory)
+    ) {
+      // The message host already owns a no-tools, receipt-checked reply path.
+      // Keep evaluator coverage unverified and never rerun the settled write.
+      return {
+        status: "finished",
+        trajectory: liveTrajectory,
+        replyRecoveryRequired: true,
+        modelUsage: usage,
+      };
+    }
     const timeout =
       error instanceof ElizaError && error.code === PLANNER_MODEL_CALL_TIMEOUT;
     const budget =
@@ -886,7 +927,6 @@ async function runPlannerLoopIterations(
   const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
   // Explicit operator ceilings override the shared progress-based defaults.
   const codingMode = params.codingMode === true;
-  const codingMaxToolCalls = resolveCodingMaxToolCalls();
   // Weak coding models (e.g. Cerebras glm-4.7) sometimes answer a trivial build
   // with a terminal REPLY ("Creating the app now…") instead of calling FILE.
   // The action-first gate below re-prompts that, but the chat default of 3
@@ -899,7 +939,8 @@ async function runPlannerLoopIterations(
     return codingMode
       ? {
           ...merged,
-          maxToolCalls: params.config?.maxToolCalls ?? codingMaxToolCalls,
+          // Coding builds have no domain-call ceiling unless the caller sets one.
+          maxToolCalls: params.config?.maxToolCalls ?? Number.POSITIVE_INFINITY,
           maxRequiredToolMisses: Math.max(
             merged.maxRequiredToolMisses,
             codingMaxRequiredToolMisses,

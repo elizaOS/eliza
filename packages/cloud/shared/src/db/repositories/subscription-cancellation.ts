@@ -2,7 +2,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { observeConfiguredCancellation } from "../../lib/services/configured-schedule-cancellation";
 import { validatePeriodEndCancellationObservation } from "../../lib/services/stripe-period-end-cancellation";
 import { resolveSubscriptionLifecycleBinding } from "../../lib/services/subscription-lifecycle-provider-binding";
@@ -12,7 +12,10 @@ import {
 } from "../../lib/services/subscription-renewal-review-contract";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
-import { organizationSubscriptionAuthorities } from "../schemas/billing-subscriptions";
+import {
+  billingSubscriptions,
+  organizationSubscriptionAuthorities,
+} from "../schemas/billing-subscriptions";
 import { organizationEntitlements } from "../schemas/organization-entitlements";
 import { organizations } from "../schemas/organizations";
 import {
@@ -20,6 +23,7 @@ import {
   billingSubscriptionCommands,
   billingSubscriptionRenewalReviews,
 } from "../schemas/subscription-billing-operations";
+import { webhookEvents } from "../schemas/webhook-events";
 import { readConfiguredCancellationAuthority } from "./configured-schedule-cancellation-authority";
 import {
   lockCurrentOrganizationSubscription,
@@ -29,6 +33,16 @@ import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
 import { readLatestSubscriptionScheduleCommand } from "./subscription-schedule-lineage";
+
+/** How long one claim owns a command. The dispatch fence must commit inside it. */
+const CANCELLATION_LEASE_MS = 60_000;
+/**
+ * How long after the dispatch fence a provider request may still take effect.
+ * The request is sent once, with no SDK retry, and far inside this window. Once
+ * it has passed, an observation that shows no effect is final: the request was
+ * refused or lost, and nothing can still apply it.
+ */
+export const CANCELLATION_DISPATCH_SETTLE_MS = 5 * 60 * 1000;
 
 export interface CancellationIdentity {
   organizationId: string;
@@ -110,6 +124,89 @@ async function supersedeStalePreparedCancellation(
         eq(billingSubscriptionCommands.status, "PREPARED"),
       ),
     );
+}
+/**
+ * An uncertain command whose subscription moved on can never be claimed again.
+ * Once its settle window has passed nothing can still apply the request, so it
+ * is resolved against the subscription as it stands: FAILED ("not in effect
+ * now") when the target schedule is absent. It stays uncertain inside the
+ * window, for a configured schedule whose effect the row cannot show, and when
+ * the target is in effect: an unattributed effect is never recorded as this
+ * command's result. Runs under the actor lock with the command row locked.
+ */
+async function settleStrandedCancellation(
+  tx: DbTransaction,
+  organizationId: string,
+  command: BillingSubscriptionCommand,
+  now: Date,
+) {
+  const windowStart =
+    command.cancellation_dispatch_state === "started"
+      ? command.cancellation_dispatched_at
+      : command.provider_started_at;
+  if (
+    command.subscription_id === null ||
+    windowStart === null ||
+    windowStart.getTime() + CANCELLATION_DISPATCH_SETTLE_MS > now.getTime()
+  )
+    return false;
+  const [subscription] = await tx
+    .select({
+      cancelAtPeriodEnd: billingSubscriptions.cancel_at_period_end,
+      pendingPlanKey: billingSubscriptions.pending_plan_key,
+      stripeSubscriptionId: billingSubscriptions.stripe_subscription_id,
+    })
+    .from(billingSubscriptions)
+    .where(
+      and(
+        isNull(billingSubscriptions.billing_scope_id),
+        eq(billingSubscriptions.organization_id, organizationId),
+        eq(billingSubscriptions.id, command.subscription_id),
+      ),
+    )
+    .for("update");
+  if (!subscription || subscription.pendingPlanKey !== null) return false;
+  if (subscription.cancelAtPeriodEnd === (command.kind === "cancel")) return false;
+  // The row is a mirror: a Stripe event for this subscription still waiting in
+  // the delivery outbox may carry the effect, so the command stays uncertain.
+  const [undelivered] = await tx
+    .select({ id: webhookEvents.id })
+    .from(webhookEvents)
+    .where(
+      and(
+        eq(webhookEvents.provider, "stripe"),
+        isNotNull(webhookEvents.delivery_payload),
+        isNull(webhookEvents.delivery_completed_at),
+        isNull(webhookEvents.delivery_dead_lettered_at),
+        sql`${webhookEvents.delivery_payload} #>> '{event,data,object,id}' = ${subscription.stripeSubscriptionId}`,
+      ),
+    )
+    .limit(1);
+  if (undelivered) return false;
+  const [settled] = await tx
+    .update(billingSubscriptionCommands)
+    .set({
+      status: "FAILED",
+      error_code: "SUBSCRIPTION_CHANGED_EFFECT_ABSENT_AFTER_SETTLE",
+      state_revision: sql`${billingSubscriptionCommands.state_revision} + 1`,
+      lease_token: null,
+      lease_expires_at: null,
+      completed_at: now,
+      updated_at: now,
+    })
+    .where(
+      and(
+        isNull(billingSubscriptionCommands.billing_scope_id),
+        isNull(billingSubscriptionCommands.app_id),
+        eq(billingSubscriptionCommands.organization_id, organizationId),
+        eq(billingSubscriptionCommands.id, command.id),
+        eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
+        eq(billingSubscriptionCommands.execution_generation, command.execution_generation),
+        sql`(${billingSubscriptionCommands.lease_expires_at} IS NULL OR ${billingSubscriptionCommands.lease_expires_at} <= ${now})`,
+      ),
+    )
+    .returning({ id: billingSubscriptionCommands.id });
+  return Boolean(settled);
 }
 /**
  * Live organization commands split into those that block a new schedule
@@ -350,6 +447,21 @@ export async function claimCancellation(
     if (command.status !== "PREPARED" && command.status !== "OUTCOME_UNKNOWN") return null;
     const now = await readPostLockDatabaseNow(tx);
     if (command.lease_expires_at !== null && command.lease_expires_at > now) return null;
+    // A command fenced by an isolate older than 0554 has no dispatch time, after
+    // that migration's backfill. Its request was sent inside an earlier lease,
+    // and every earlier lease has ended by now, so its settle window starts here:
+    // later than the real dispatch and so never too early.
+    const stampedDispatch =
+      command.status === "OUTCOME_UNKNOWN" &&
+      command.cancellation_dispatch_state === "started" &&
+      command.cancellation_dispatched_at === null;
+    if (stampedDispatch) {
+      await tx
+        .update(billingSubscriptionCommands)
+        .set({ cancellation_dispatched_at: now, updated_at: now })
+        .where(eq(billingSubscriptionCommands.id, command.id));
+      command.cancellation_dispatched_at = now;
+    }
     let source: Awaited<ReturnType<typeof currentSource>>;
     try {
       source = await currentSource(
@@ -363,10 +475,16 @@ export async function claimCancellation(
       );
       await validatePredecessor(tx, source, command);
     } catch (error) {
-      if (command.status !== "PREPARED" || !isStaleSourceRejection(error)) throw error;
-      // Nothing was sent to the provider; settle it so the organization can retry.
-      await supersedeStalePreparedCancellation(tx, input.organizationId, command.id, now);
-      return null;
+      if (!isStaleSourceRejection(error)) throw error;
+      if (command.status === "PREPARED") {
+        // Nothing was sent to the provider; settle it so the organization can retry.
+        await supersedeStalePreparedCancellation(tx, input.organizationId, command.id, now);
+        return null;
+      }
+      if (await settleStrandedCancellation(tx, input.organizationId, command, now)) return null;
+      // Keep the window start just recorded instead of rolling it back.
+      if (stampedDispatch) return null;
+      throw error;
     }
     const [projection] = await tx
       .select()
@@ -393,7 +511,7 @@ export async function claimCancellation(
         execution_generation: command.execution_generation + 1,
         attempt_count: command.attempt_count + 1,
         lease_token: leaseToken,
-        lease_expires_at: new Date(now.getTime() + 60_000),
+        lease_expires_at: new Date(now.getTime() + CANCELLATION_LEASE_MS),
         provider_started_at: command.provider_started_at ?? now,
         updated_at: now,
       })
@@ -429,6 +547,53 @@ export async function releaseCancellation(input: CancellationIdentity, claim: Ca
           eq(billingSubscriptionCommands.execution_generation, claim.command.execution_generation),
         ),
       );
+  });
+}
+/**
+ * Settles an uncertain command whose effect the provider does not show once the
+ * settle window has passed: a dispatched request was refused or lost, or the
+ * dispatch fence never committed. FAILED here means "not in effect now", so the
+ * organization can submit a new intent. The window is measured to this claim's
+ * start, which precedes the observation that found no effect. Returns false,
+ * changing nothing, while the window is still open or the lease was lost.
+ */
+export async function failUnsettledCancellation(
+  input: CancellationIdentity,
+  claim: CancellationClaim,
+): Promise<boolean> {
+  return writeTransaction(async (tx) => {
+    await lockActor(tx, input);
+    const dispatched = sql`${billingSubscriptionCommands.cancellation_dispatch_state} = 'started'`;
+    const [failed] = await tx
+      .update(billingSubscriptionCommands)
+      .set({
+        status: "FAILED",
+        // A command from before dispatch tracking has no state, so whether it was
+        // sent is unknown: its code must not claim that nothing was dispatched.
+        error_code: sql`CASE WHEN ${dispatched} THEN 'PROVIDER_EFFECT_ABSENT_AFTER_SETTLE' WHEN ${billingSubscriptionCommands.cancellation_dispatch_state} IS NULL THEN 'DISPATCH_UNKNOWN_EFFECT_ABSENT_AFTER_SETTLE' ELSE 'NOT_DISPATCHED_BEFORE_SETTLE' END`,
+        state_revision: sql`${billingSubscriptionCommands.state_revision} + 1`,
+        lease_token: null,
+        lease_expires_at: null,
+        completed_at: sql`clock_timestamp()`,
+        updated_at: sql`clock_timestamp()`,
+      })
+      .where(
+        and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
+          eq(billingSubscriptionCommands.organization_id, input.organizationId),
+          eq(billingSubscriptionCommands.id, claim.command.id),
+          eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
+          eq(billingSubscriptionCommands.lease_token, claim.command.lease_token!),
+          eq(billingSubscriptionCommands.execution_generation, claim.command.execution_generation),
+          gt(billingSubscriptionCommands.lease_expires_at, sql`clock_timestamp()`),
+          sql`(CASE WHEN ${dispatched} THEN ${billingSubscriptionCommands.cancellation_dispatched_at} ELSE ${billingSubscriptionCommands.provider_started_at} END)
+            + make_interval(secs => ${CANCELLATION_DISPATCH_SETTLE_MS / 1000})
+            <= ${billingSubscriptionCommands.lease_expires_at} - make_interval(secs => ${CANCELLATION_LEASE_MS / 1000})`,
+        ),
+      )
+      .returning({ id: billingSubscriptionCommands.id });
+    return Boolean(failed);
   });
 }
 export async function finalizeCancellation(
@@ -648,6 +813,7 @@ export async function assertCancellationClaimCurrent(
         .update(billingSubscriptionCommands)
         .set({
           cancellation_dispatch_state: "started",
+          cancellation_dispatched_at: sql`clock_timestamp()`,
           state_revision: command.state_revision + 1,
           updated_at: sql`clock_timestamp()`,
         })

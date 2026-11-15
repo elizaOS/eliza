@@ -33,7 +33,6 @@ else { const chunks = []; process.stdin.on('data', chunk => chunks.push(chunk));
       }
       process.env.PATH = `${directory}:${originalEnv.PATH}`;
       process.env.TEST_CLIPBOARD_FILE = clipboardFile;
-      process.env.ELIZA_TEST_PASSWORD_MANAGER_BACKEND = "0";
       delete process.env.WAYLAND_DISPLAY;
       clearPasswordManagerBackendCache();
     });

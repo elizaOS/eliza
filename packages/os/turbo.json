@@ -3,7 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["setup/dist/**", "usb-installer/dist/**"],
+      "outputs": [],
       "inputs": [
         "$TURBO_DEFAULT$",
         "package.json",
@@ -11,14 +11,7 @@
         "tsconfig.json",
         "tsconfig.base.json"
       ],
-      "passThroughEnv": [
-        "ELIZAOS_ELIZA_ROOT",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
-        "ELIZAOS_GRIZZLY_EGL",
-        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
-        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
-      ]
+      "passThroughEnv": ["ELIZAOS_ELIZA_ROOT"]
     },
     "typecheck": {
       "dependsOn": ["^build"],
@@ -30,14 +23,7 @@
         "tsconfig.json",
         "tsconfig.base.json"
       ],
-      "passThroughEnv": [
-        "ELIZAOS_ELIZA_ROOT",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
-        "ELIZAOS_GRIZZLY_EGL",
-        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
-        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
-      ]
+      "passThroughEnv": ["ELIZAOS_ELIZA_ROOT"]
     },
     "test": {
       "dependsOn": ["^build"],
@@ -49,14 +35,7 @@
         "tsconfig.json",
         "tsconfig.base.json"
       ],
-      "passThroughEnv": [
-        "ELIZAOS_ELIZA_ROOT",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
-        "ELIZAOS_GRIZZLY_EGL",
-        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
-        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
-      ]
+      "passThroughEnv": ["ELIZAOS_ELIZA_ROOT"]
     },
     "lint": {
       "outputs": [],
@@ -67,14 +46,7 @@
         "tsconfig.json",
         "tsconfig.base.json"
       ],
-      "passThroughEnv": [
-        "ELIZAOS_ELIZA_ROOT",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
-        "ELIZAOS_GRIZZLY_EGL",
-        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
-        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
-      ]
+      "passThroughEnv": ["ELIZAOS_ELIZA_ROOT"]
     },
     "lint:check": {
       "outputs": [],
@@ -85,14 +57,7 @@
         "tsconfig.json",
         "tsconfig.base.json"
       ],
-      "passThroughEnv": [
-        "ELIZAOS_ELIZA_ROOT",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
-        "ELIZAOS_GRIZZLY_EGL",
-        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
-        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
-      ]
+      "passThroughEnv": ["ELIZAOS_ELIZA_ROOT"]
     },
     "format": {
       "cache": false,
@@ -104,14 +69,7 @@
         "tsconfig.json",
         "tsconfig.base.json"
       ],
-      "passThroughEnv": [
-        "ELIZAOS_ELIZA_ROOT",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
-        "ELIZAOS_GRIZZLY_EGL",
-        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
-        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
-      ]
+      "passThroughEnv": ["ELIZAOS_ELIZA_ROOT"]
     },
     "format:check": {
       "outputs": [],
@@ -122,14 +80,7 @@
         "tsconfig.json",
         "tsconfig.base.json"
       ],
-      "passThroughEnv": [
-        "ELIZAOS_ELIZA_ROOT",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
-        "ELIZAOS_GRIZZLY_EGL",
-        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
-        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
-      ]
+      "passThroughEnv": ["ELIZAOS_ELIZA_ROOT"]
     },
     "clean": {
       "cache": false,
@@ -140,14 +91,7 @@
         "tsconfig.json",
         "tsconfig.base.json"
       ],
-      "passThroughEnv": [
-        "ELIZAOS_ELIZA_ROOT",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
-        "ELIZAOS_GRIZZLY_EGL",
-        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
-        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
-      ]
+      "passThroughEnv": ["ELIZAOS_ELIZA_ROOT"]
     },
     "dev": {
       "cache": false,
@@ -159,14 +103,7 @@
         "tsconfig.json",
         "tsconfig.base.json"
       ],
-      "passThroughEnv": [
-        "ELIZAOS_ELIZA_ROOT",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
-        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
-        "ELIZAOS_GRIZZLY_EGL",
-        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
-        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
-      ]
+      "passThroughEnv": ["ELIZAOS_ELIZA_ROOT"]
     }
   },
   "extends": ["//"]

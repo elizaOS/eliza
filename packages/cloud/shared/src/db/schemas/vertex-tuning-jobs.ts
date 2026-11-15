@@ -2,6 +2,7 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   index,
   integer,
@@ -13,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { VERTEX_TUNING_JOB_STATES } from "../../types/vertex-tuning";
 import { organizations } from "./organizations";
 import { users } from "./users";
 
@@ -31,13 +33,7 @@ export const vertexTuningSlotEnum = pgEnum("vertex_tuning_slot", [
   "media_description",
 ]);
 
-export const vertexTuningJobStateEnum = pgEnum("vertex_tuning_job_state", [
-  "JOB_STATE_PENDING",
-  "JOB_STATE_RUNNING",
-  "JOB_STATE_SUCCEEDED",
-  "JOB_STATE_FAILED",
-  "JOB_STATE_CANCELLED",
-]);
+export const vertexTuningJobStateEnum = pgEnum("vertex_tuning_job_state", VERTEX_TUNING_JOB_STATES);
 
 export const vertexTuningJobs = pgTable(
   "vertex_tuning_jobs",
@@ -79,6 +75,10 @@ export const vertexTuningJobs = pgTable(
       .default({}),
     last_remote_payload_storage: text("last_remote_payload_storage").notNull().default("inline"),
     last_remote_payload_key: text("last_remote_payload_key"),
+    provider_update_time: text("provider_update_time"),
+    provider_payload_digest: text("provider_payload_digest"),
+    completed_provider_time: text("completed_provider_time"),
+    observation_revision: bigint("observation_revision", { mode: "number" }).notNull().default(0),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -107,6 +107,10 @@ export const vertexTuningJobs = pgTable(
         (${table.scope} = 'organization' and ${table.organization_id} is not null and ${table.user_id} is null) or
         (${table.scope} = 'user' and ${table.organization_id} is not null and ${table.user_id} is not null)
       )`,
+    ),
+    observation_check: check(
+      "vertex_tuning_jobs_observation_check",
+      sql`${table.observation_revision} >= 0 AND (${table.completed_provider_time} IS NULL OR ${table.completed_provider_time} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{9}Z$') AND ((${table.provider_update_time} IS NULL AND ${table.provider_payload_digest} IS NULL) OR (${table.provider_update_time} IS NOT NULL AND ${table.provider_payload_digest} IS NOT NULL AND ${table.provider_update_time} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{9}Z$' AND ${table.provider_payload_digest} ~ '^[0-9a-f]{64}$'))`,
     ),
   }),
 );

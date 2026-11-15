@@ -20,9 +20,9 @@
  * budget — "did not build" never reads as "0 bytes, under budget".
  *
  * Run:
- *   node suites/view-bundle-size/bundle-size-kpi.mjs
- *   node suites/view-bundle-size/bundle-size-kpi.mjs --json
- *   node suites/view-bundle-size/bundle-size-kpi.mjs --no-build   # measure an existing dist
+ *   bun suites/view-bundle-size/bundle-size-kpi.mjs
+ *   bun suites/view-bundle-size/bundle-size-kpi.mjs --json
+ *   bun suites/view-bundle-size/bundle-size-kpi.mjs --no-build   # measure an existing dist
  */
 
 import { spawnSync } from "node:child_process";

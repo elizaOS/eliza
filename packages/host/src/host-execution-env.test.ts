@@ -55,8 +55,13 @@ describe("host execution boot baseline", () => {
       encoding: "utf8",
       env: childEnv,
     });
+    // A Windows Path keeps its directories and loses only empty entries.
+    const expectedPath =
+      process.platform === "win32"
+        ? (bootPath ?? "").split(";").filter(Boolean).join(";")
+        : bootPath;
     expect(JSON.parse(stdout)).toMatchObject({
-      path: bootPath,
+      path: expectedPath,
       goPath: expect.stringMatching(/[/\\]go$/),
       goModCache: expect.stringMatching(/[/\\]go[/\\]pkg[/\\]mod$/),
       goCache: expect.stringMatching(/[/\\]go-build$/),
@@ -77,8 +82,30 @@ describe("host execution boot baseline", () => {
   it("fails closed for absent, relative, empty-entry, and NUL paths", () => {
     expect(validateHostExecutionPath(undefined)).toBeUndefined();
     expect(validateHostExecutionPath("relative/bin")).toBeUndefined();
-    expect(validateHostExecutionPath(`/bin${path.delimiter}`)).toBeUndefined();
+    expect(validateHostExecutionPath("/bin:", "linux")).toBeUndefined();
+    expect(
+      validateHostExecutionPath("/usr/bin::/bin", "darwin"),
+    ).toBeUndefined();
     expect(validateHostExecutionPath("/bin\0/tmp")).toBeUndefined();
+  });
+
+  it("drops empty Windows Path entries but still rejects relative ones", () => {
+    expect(
+      validateHostExecutionPath(
+        "C:\\Windows\\system32;;C:\\Program Files\\Git\\cmd;",
+        "win32",
+      ),
+    ).toBe("C:\\Windows\\system32;C:\\Program Files\\Git\\cmd");
+    expect(
+      createHostExecutionBaseline(
+        { Path: ";C:\\Windows\\System32;;C:\\Tools;" },
+        "win32",
+      ).path,
+    ).toBe("C:\\Windows\\System32;C:\\Tools");
+    expect(validateHostExecutionPath(";;", "win32")).toBeUndefined();
+    expect(
+      validateHostExecutionPath("C:\\Windows;;%SystemRoot%\\bin", "win32"),
+    ).toBeUndefined();
   });
 
   it("accepts the Windows Path casing but rejects ambiguous case variants", () => {

@@ -36,7 +36,7 @@ public class BionicEmbeddingInstrumentedTest {
         String name = "eliza-bge-proof-" + android.os.Process.myPid();
         ElizaBionicInferenceServer host = new ElizaBionicInferenceServer(name,
             "/intentionally-unavailable-chat-bundle", InferenceMemoryPolicy.RamClass.CONSTRAINED,
-            0L, null, null);
+            0L, null, null, app.getDataDir());
         host.start();
         expectedTokens.clear();
         try {

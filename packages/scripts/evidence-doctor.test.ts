@@ -457,14 +457,14 @@ describe("evidence toolchain doctor", () => {
     assert.equal(cli.stdout, "");
   });
 
-  it("loads the documented node entry point with type stripping alone", () => {
+  it("loads the entry point on real Node with type stripping alone", () => {
     // `package.json` scripts this command as
-    // `node packages/scripts/evidence-doctor.ts`, and the help text repeats
-    // that runner. This lane executes its files under Bun, so the
-    // `process.execPath` spawn above is Bun, not the documented runner. Plain
-    // `node` only strips types: one module in the imported graph that needs a
-    // real transform (a parameter property, an enum) kills the command before
-    // it prints anything. Spawn the documented runner so that stays covered.
+    // `bun packages/scripts/evidence-doctor.ts`, and this lane runs under Bun,
+    // so the `process.execPath` spawn above covers that runner. Workflow jobs
+    // that never install Bun still run `packages/scripts` entry points on plain
+    // `node`, which only strips types: one module in the imported graph that
+    // needs a real transform (a parameter property, an enum) kills the command
+    // before it prints anything. Spawn real Node so that stays covered.
     const cli = spawnSync(
       "node",
       [
@@ -480,7 +480,7 @@ describe("evidence toolchain doctor", () => {
     );
     assert.match(
       cli.stdout,
-      /^Usage: node packages\/scripts\/evidence-doctor\.ts/,
+      /^Usage: bun packages\/scripts\/evidence-doctor\.ts/,
     );
   });
 

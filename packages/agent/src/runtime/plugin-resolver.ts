@@ -63,12 +63,17 @@ import {
   selectDatabasePluginNames,
 } from "./database-selection.ts";
 import {
+  nativeOwnedSurfacePolicy,
+  withholdNativeOwnedSurfaces,
+} from "./native-owned-surfaces.ts";
+import {
   CHANNEL_PLUGIN_MAP,
-  collectDeniedPluginNames,
+  collectConfiguredDeniedPluginNames,
   collectPluginNames,
   MODEL_PROVIDER_PLUGIN_NAMES,
   OPTIONAL_PLUGIN_MAP,
   type PluginLoadReasons,
+  readSkipPluginNames,
 } from "./plugin-collector.ts";
 import {
   collectStagedDirectoryLinks,
@@ -2673,14 +2678,8 @@ export async function resolvePlugins(
     ...(config.plugins?.installs ?? {}),
   };
 
-  const envSkipPlugins = (process.env.ELIZA_SKIP_PLUGINS ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const denyList = collectDeniedPluginNames([
-    ...(config.plugins?.deny ?? []),
-    ...envSkipPlugins,
-  ]);
+  const envSkipPlugins = readSkipPluginNames();
+  const denyList = collectConfiguredDeniedPluginNames(config);
   if (envSkipPlugins.length > 0) {
     logger.info(
       `[eliza] Skipping ${envSkipPlugins.length} plugin(s) via ELIZA_SKIP_PLUGINS: ${envSkipPlugins.join(", ")}`,
@@ -2770,6 +2769,9 @@ export async function resolvePlugins(
       { code: "SQLITE_SELECTION_REQUIRED" },
     );
   }
+  // Decided on the full load set: the phase filter below may defer the
+  // personal assistant while plugin-todos loads in this pass.
+  const nativeOwnedPolicy = nativeOwnedSurfacePolicy(pluginsToLoad);
   if (phase !== "all") {
     const beforePhaseFilter = pluginsToLoad.size;
     // Model-provider plugins in the load set are blocking alongside
@@ -3042,9 +3044,12 @@ export async function resolvePlugins(
         const compatiblePlugin =
           preparePluginForSelectedDatabase(pluginInstance);
         const routingOnly = routingOnlyPluginNames.has(pluginName);
-        const pluginForRegistration = routingOnly
-          ? projectRoutingOnlyPlugin(pluginInstance)
-          : compatiblePlugin;
+        const pluginForRegistration = withholdNativeOwnedSurfaces(
+          routingOnly
+            ? projectRoutingOnlyPlugin(pluginInstance)
+            : compatiblePlugin,
+          nativeOwnedPolicy,
+        );
         // Generic pre-init hook: a plugin owning a load-time dependency (e.g.
         // plugin-browser's optional stagehand-server) prepares it here, before
         // its services start. Runs for every plugin that declares `preflight`,

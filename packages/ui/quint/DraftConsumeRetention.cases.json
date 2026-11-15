@@ -1,0 +1,20 @@
+{
+  "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
+    "packages/ui/src/state/durable-draft.ts"
+  ],
+  "conformance": "packages/ui/quint/check-draft-controller.mjs",
+  "bounds": "One consume host rejection after applying a clear, rollback failure before/after writing or an external CAS winner, successful/failed readback, and two explicit review choices. Three symbolic text values and at most four storage mutations. Later review host updates complete synchronously in this instance. Async ownership has a separate model.",
+  "cases": [
+    {
+      "name": "composed-consume-retention",
+      "main": "DraftConsumeRetention",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 4,
+      "samples": 1000
+    }
+  ]
+}

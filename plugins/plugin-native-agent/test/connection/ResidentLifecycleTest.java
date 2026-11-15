@@ -156,13 +156,125 @@ public final class ResidentLifecycleTest {
     slot.current = () -> {};
     refused(() -> NativeProviderSlot.bindDirectProvider(slot, KEY, "bad model!"), "malformed model refused");
 
-    // Clearing reads back; a slot that stays present is a failure.
+    // Unbinding reads back the retired selection and preserves separately owned keys.
     JSONObject cleared = NativeProviderSlot.clearProviderSlot(slot, false);
-    check(slot.value == null && !cleared.getBoolean("configured"), "cleared and read back");
+    JSONObject clearedSelection = new JSONObject(slot.value);
+    check(clearedSelection.getBoolean("unbound") && KEY.equals(clearedSelection.getString("key")), "unbound selection retains its owned key");
+    check(!cleared.getBoolean("configured") && !cleared.getBoolean("selected") && !cleared.toString().contains(KEY), "unbound readback admits no provider or key disclosure");
+    String retired = slot.value;
+    check(!NativeProviderSlot.clearProviderSlot(slot, true).getBoolean("configured") && retired.equals(slot.value), "repeated unbind preserves the retired selection");
+    slot.value = null;
     check(!NativeProviderSlot.clearProviderSlot(slot, true).getBoolean("configured"), "clearing an empty slot");
     slot.value = before;
+    slot.conflict = true;
+    refused(() -> NativeProviderSlot.clearProviderSlot(slot, false), "unconfirmed retirement fails");
+    check(before.equals(slot.value), "failed retirement retains the original selection");
+    slot.conflict = false;
+    slot.value = new JSONObject().put("provider", "elizacloud").put("credentialId", ID).put("model", NativeProviderAdmission.CLOUD_PROVIDER_MODEL).toString();
     slot.removeIgnored = true;
-    refused(() -> NativeProviderSlot.clearProviderSlot(slot, false), "unconfirmed removal fails");
+    refused(() -> NativeProviderSlot.clearProviderSlot(slot, false), "unconfirmed keyless legacy removal fails");
+    slot.removeIgnored = false;
+    check(!NativeProviderSlot.clearProviderSlot(slot, false).getBoolean("configured") && slot.value == null, "keyless legacy selection is removed and read back");
+
+    // An unbound start clears only a present binding: an already-empty or already-retired slot is a
+    // no-op that reserves no credential intent, so it cannot supersede a pending sign-in or ack retry.
+    CredentialIntentFence intents = new CredentialIntentFence();
+    Slot observed = new Slot();
+    AtomicInteger reservations = new AtomicInteger();
+    long[] clearing = {0};
+    NativeProviderSlot.FencedStore fenced = () -> {
+      reservations.incrementAndGet();
+      clearing[0] = intents.reserve();
+      NativeProviderSlot.Store fencedSlot = new NativeProviderSlot.Store() {
+        public String readProvider() throws Exception { return observed.readProvider(); }
+        public void assertCurrent() { intents.require(clearing[0]); }
+        public String compareExchangeProvider(String previous, String selection) throws Exception {
+          intents.require(clearing[0]);
+          return observed.compareExchangeProvider(previous, selection);
+        }
+        public void removeProvider(boolean onlyIfPresent) { intents.require(clearing[0]); observed.removeProvider(onlyIfPresent); }
+      };
+      return fencedSlot;
+    };
+    check(NativeProviderSlot.providerSlotRetired(null), "an empty slot has nothing to retire");
+    long signIn = intents.reserve();
+    NativeProviderSlot.ClearOutcome empty = NativeProviderSlot.clearProviderSlotIfBound(observed, fenced, true);
+    check(!empty.cleared && reservations.get() == 0 && observed.writes == 0 && observed.value == null, "clearing an empty slot writes nothing");
+    check(!empty.identity.getBoolean("configured") && !empty.identity.getBoolean("selected"), "empty clear reports the unbound identity");
+    check(intents.current() == signIn && intents.isCurrent(signIn), "clearing an empty slot reserves no credential intent");
+    // The pending sign-in still commits under its own, unsuperseded intent.
+    NativeProviderSlot.Store signInSlot = new NativeProviderSlot.Store() {
+      public String readProvider() throws Exception { return observed.readProvider(); }
+      public void assertCurrent() { intents.require(signIn); }
+      public String compareExchangeProvider(String previous, String selection) throws Exception {
+        intents.require(signIn);
+        return observed.compareExchangeProvider(previous, selection);
+      }
+      public void removeProvider(boolean onlyIfPresent) { observed.removeProvider(onlyIfPresent); }
+    };
+    NativeProviderSlot.bindDirectProvider(signInSlot, KEY, MODEL);
+    check(observed.writes == 1 && NativeProviderAdmission.providerIdentity(observed.value).getBoolean("configured"), "the pending sign-in binds after an empty clear");
+    // A request lease (an in-flight acknowledgement retry) survives an empty clear as well.
+    observed.value = null;
+    ai.eliza.plugins.agent.runtime.CredentialRequestFence leases = new ai.eliza.plugins.agent.runtime.CredentialRequestFence(new Object(), intents);
+    String lease = leases.reserve();
+    check(!NativeProviderSlot.clearProviderSlotIfBound(observed, fenced, true).cleared && reservations.get() == 0, "empty clear during a leased request is a no-op");
+    long leased = leases.begin(lease);
+    leases.require(lease, leased);
+    leases.finish(lease, leased);
+    // A present binding keeps today's fencing: the clear reserves, supersedes older work, and retires it.
+    observed.value = before;
+    check(!NativeProviderSlot.providerSlotRetired(before), "a bound slot is not retired");
+    long older = intents.reserve();
+    int writesBefore = observed.writes;
+    NativeProviderSlot.ClearOutcome bound = NativeProviderSlot.clearProviderSlotIfBound(observed, fenced, true);
+    check(bound.cleared && reservations.get() == 1 && observed.writes == writesBefore + 1, "a bound slot is cleared once under one new intent");
+    check(intents.current() == clearing[0] && clearing[0] > older && !intents.isCurrent(older), "clearing a bound slot supersedes older credential intents");
+    refused(() -> intents.require(older), "work older than a real clear cannot commit");
+    check(new JSONObject(observed.value).getBoolean("unbound") && KEY.equals(new JSONObject(observed.value).getString("key")) && !bound.identity.getBoolean("configured") && !bound.identity.toString().contains(KEY), "bound clear retires routing, keeps the owned key and discloses nothing");
+    // The retired record is itself "nothing to clear": repeating the unbound start reserves nothing more.
+    String retiredRecord = observed.value;
+    long afterClear = intents.current();
+    check(NativeProviderSlot.providerSlotRetired(retiredRecord), "an unbound record with saved keys is already retired");
+    NativeProviderSlot.ClearOutcome again = NativeProviderSlot.clearProviderSlotIfBound(observed, fenced, true);
+    check(!again.cleared && reservations.get() == 1 && intents.current() == afterClear && retiredRecord.equals(observed.value) && !again.identity.getBoolean("configured"), "repeating the clear is a no-op");
+    // A keyless legacy record and an unreadable record are present: both take the fenced path.
+    String legacy = new JSONObject().put("provider", "elizacloud").put("credentialId", ID).put("model", NativeProviderAdmission.CLOUD_PROVIDER_MODEL).toString();
+    check(!NativeProviderSlot.providerSlotRetired(legacy) && !NativeProviderSlot.providerSlotRetired("{not json"), "legacy and unreadable records are not retired");
+    observed.value = legacy;
+    check(NativeProviderSlot.clearProviderSlotIfBound(observed, fenced, false).cleared && observed.value == null && reservations.get() == 2, "keyless legacy record is removed under a new intent");
+    observed.value = "{not json";
+    refused(() -> NativeProviderSlot.clearProviderSlotIfBound(observed, fenced, true), "an unreadable record fails the fenced clear");
+    check(reservations.get() == 3 && "{not json".equals(observed.value), "unreadable record reserved an intent and was left in place");
+    // A clear superseded after it reserved cannot write, exactly as before.
+    observed.value = before;
+    int reservedBefore = reservations.get();
+    int writesAtRace = observed.writes;
+    observed.beforeRead = () -> { if (reservations.get() > reservedBefore) intents.reserve(); };
+    refused(() -> NativeProviderSlot.clearProviderSlotIfBound(observed, fenced, true), "a clear superseded after reserving cannot retire the binding");
+    check(before.equals(observed.value) && observed.writes == writesAtRace, "superseded clear wrote nothing");
+    observed.beforeRead = () -> {};
+    // A sign-out that retires the binding between the observation and the reservation: the intent is
+    // reserved (it cannot be avoided without the credential lock) but nothing is written, and the
+    // outcome says so instead of claiming a clear.
+    observed.value = before;
+    String retiredByOther = NativeProviderAdmission.unbindProvider(before);
+    int reservedAtOvertake = reservations.get(), writesAtOvertake = observed.writes;
+    long beforeOvertake = intents.current();
+    int[] reads = {0};
+    observed.beforeRead = () -> { if (++reads[0] == 2) observed.value = retiredByOther; };
+    NativeProviderSlot.ClearOutcome overtaken = NativeProviderSlot.clearProviderSlotIfBound(observed, fenced, true);
+    observed.beforeRead = () -> {};
+    check(!overtaken.cleared && overtaken.reserved, "a clear overtaken by another clear reports that it retired nothing");
+    check(reservations.get() == reservedAtOvertake + 1 && intents.current() > beforeOvertake && observed.writes == writesAtOvertake && retiredByOther.equals(observed.value) && !overtaken.identity.getBoolean("configured"), "overtaken clear reserved once and wrote nothing");
+    check(!empty.reserved && bound.reserved && bound.cleared && !again.reserved, "reserved tracks the credential intent, cleared tracks the write");
+    // The observer's bridge-lifetime check still applies to the no-op path.
+    observed.value = null;
+    observed.current = () -> { throw new IllegalStateException("Local agent bridge closed"); };
+    int reservedAtClose = reservations.get();
+    refused(() -> NativeProviderSlot.clearProviderSlotIfBound(observed, fenced, true), "a closed bridge refuses even an empty clear");
+    check(reservations.get() == reservedAtClose, "a closed bridge reserves nothing");
+    observed.current = () -> {};
 
     // Provider check interpretation never echoes the key or body.
     String listed = "{\"data\":[{\"id\":\"" + MODEL + "\"}]}";
@@ -200,6 +312,19 @@ public final class ResidentLifecycleTest {
       check("true".equals(env.get("ELIZAOS_CLOUD_USE_INFERENCE")) && NativeProviderAdmission.CLOUD_PROVIDER_BASE.equals(env.get("ELIZAOS_CLOUD_BASE_URL")), "Cloud inference under " + profile);
       check("false".equals(env.get("ELIZAOS_CLOUD_USE_EMBEDDINGS")) && !env.containsKey("ELIZAOS_CLOUD_EMBEDDING_MODEL"), "no Cloud embeddings under " + profile);
       check("1".equals(env.get("ELIZA_LOCAL_EMBEDDING_ENABLED")) && model.getAbsolutePath().equals(env.get("ELIZA_LOCAL_EMBEDDING_MODEL_PATH")) && NativeRuntimeEmbeddings.LOCAL_DIMENSIONS.equals(env.get("ELIZA_LOCAL_EMBEDDING_DIMENSIONS")), "local BGE embeddings under " + profile);
+    }
+    // A product that runs its own Cloud sends the credential to its own base, never the default one.
+    String productBase = "https://api.cloud.example.org/api/v1";
+    Map<String, String> product = new HashMap<>();
+    check(NativeProviderSlot.applyLaunchEnvironment("native", cloudSelection, cloudCredential, libs, files, product, NOW, productBase)
+        && productBase.equals(product.get("ELIZAOS_CLOUD_BASE_URL")) && "true".equals(product.get("ELIZAOS_CLOUD_USE_INFERENCE")), "product Cloud base reaches the launch");
+    check(!product.containsValue(NativeProviderAdmission.CLOUD_PROVIDER_BASE), "product launch carries no default Cloud base");
+    for (String loose : new String[] {null, "", "http://api.cloud.example.org/api/v1", "https://api.cloud.example.org", "https://api.cloud.example.org/api/v1/",
+        "https://api.cloud.example.org:8443/api/v1", "https://user@api.cloud.example.org/api/v1", "https://api.cloud.example.org/api/v1?x=1", "https://API.cloud.example.org/api/v1"}) {
+      boolean refused = false;
+      try { NativeProviderSlot.applyLaunchEnvironment("native", cloudSelection, cloudCredential, libs, files, new HashMap<>(), NOW, loose); }
+      catch (IllegalArgumentException expected) { refused = true; }
+      check(refused, "loose Cloud provider base refused: " + loose);
     }
     // The cloud QA profile keeps admission's Cloud embeddings, and admits only elizacloud.
     Map<String, String> qa = new HashMap<>();

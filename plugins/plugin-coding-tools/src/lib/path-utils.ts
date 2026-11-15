@@ -10,6 +10,7 @@
  * nor dangling links can smuggle a write outside the workspace.
  */
 import * as fs from "node:fs/promises";
+import { homedir } from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime, Service } from "@elizaos/core";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
@@ -19,6 +20,14 @@ import {
   success,
   type ToolResult,
 } from "../types.js";
+
+/** Resolve trusted configuration's leading home token before path validation. */
+export function expandHome(value: string): string {
+  if (value === "~" || value === "$HOME") return homedir();
+  if (value.startsWith("~/")) return path.join(homedir(), value.slice(2));
+  if (value.startsWith("$HOME/")) return path.join(homedir(), value.slice(6));
+  return value;
+}
 
 const BLOCKED_PATHS = new Set([
   "/dev/zero",

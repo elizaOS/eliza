@@ -1,0 +1,66 @@
+{
+	"sources": [
+		"packages/core/src/services/notification.ts",
+		"packages/core/src/types/notification.ts",
+		"packages/core/test/notification.test.ts",
+		"plugins/plugin-sqlite/record-codec.ts"
+	],
+	"conformance": "packages/core/scripts/quint-notification-conformance.mjs",
+	"bounds": "One service startup at a time, zero or two retained abstract row IDs, sequence values 0..4 and old/fresh epoch identities. Representative coordinate classes select one semantic failure at a time. The concrete SQLite suite exercises real primitive types, numeric boundaries, a reserved key, valid gaps, empty watermarks, repair and ambiguous migration acknowledgement.",
+	"limitations": [
+		"Header validity abstracts version, epoch syntax, container types and safe watermark numbers. Row coordinate safety abstracts non-integer and non-finite primitive values. The model does not enumerate arbitrary JavaScript syntax or payload values.",
+		"Legacy rows are projected after the existing eligibility filter. The model checks duplicate identity and insertion order. SQLite rejects its reserved coordinate key before persistence, and the concrete regression requires original legacy history to remain intact.",
+		"A failed startup may be retried and its cache may be repaired externally. Runtime registration deduplication and cooldown remain modeled by NotificationRecovery.",
+		"One serial owner is assumed. Concurrent migrations by independent processes and external cache writes during an active load remain outside this model."
+	],
+	"cases": [
+		{
+			"name": "startup-and-coordinate-validation",
+			"main": "NotificationHydration",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"ReadyHasDurableCoordinates",
+				"MigrationPreservesInsertionOrder"
+			],
+			"temporal": [
+				"InvalidV2IsNeverOverwritten",
+				"AttemptsSettle",
+				"RepairedStoreBecomesReady",
+				"StartupFinishesWithoutFairness"
+			],
+			"temporalChecks": [
+				{
+					"property": "InvalidV2IsNeverOverwritten",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness. A malformed version-2 input is rejected before migration or mutation. An explicit repair is allowed after a failed attempt."
+					]
+				},
+				{
+					"property": "AttemptsSettle",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of the read, validation and persistence actions. Every admitted cache operation eventually returns or throws."
+					]
+				},
+				{
+					"property": "RepairedStoreBecomesReady",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of retry and validation, and strong fairness of successful reads. After valid state is available, repeated read failures eventually permit a successful read."
+					]
+				},
+				{
+					"property": "StartupFinishesWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. An admitted cache read may remain pending forever, so startup completion is not guaranteed."
+					]
+				}
+			],
+			"maxSteps": 35,
+			"samples": 500
+		}
+	]
+}

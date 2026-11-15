@@ -82,14 +82,14 @@ function makeBaseRuntime() {
 const savedEnv: Record<string, string | undefined> = {};
 beforeEach(() => {
   savedEnv.autoVerify = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
-  savedEnv.traj = process.env.ELIZA_TRAJECTORY_RECORDING;
+  savedEnv.traj = process.env.ELIZA_TRAJECTORY_LOGGING;
   process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "1";
-  process.env.ELIZA_TRAJECTORY_RECORDING = "0";
+  process.env.ELIZA_TRAJECTORY_LOGGING = "0";
 });
 afterEach(() => {
   for (const [k, v] of [
     ["ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY", savedEnv.autoVerify],
-    ["ELIZA_TRAJECTORY_RECORDING", savedEnv.traj],
+    ["ELIZA_TRAJECTORY_LOGGING", savedEnv.traj],
   ] as const) {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;

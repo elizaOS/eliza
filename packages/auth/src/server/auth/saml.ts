@@ -157,7 +157,7 @@ export async function verifySamlAcsResponse(
     throw new Error("SAML assertion ID is required for replay protection");
 
   const emailAttribute = input.emailAttribute || "email";
-  const email = firstString(profile[emailAttribute]);
+  const email = firstString(profile[emailAttribute])?.trim().toLowerCase();
   if (!email)
     throw new Error(
       "SAML assertion did not include a verified email attribute",

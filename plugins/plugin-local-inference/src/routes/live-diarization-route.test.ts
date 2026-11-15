@@ -68,11 +68,10 @@ function makeReq(opts: {
 	return req;
 }
 
-const runtimeState = (): CompatRuntimeState => ({
-	current: {
-		emitEvent: async () => {},
-	} as never,
-});
+// One runtime for the whole process, as on device; the route rebuilds its
+// session when the runtime object changes.
+const runtime = { emitEvent: async () => {} };
+const runtimeState = (): CompatRuntimeState => ({ current: runtime as never });
 
 /** A well-formed AudioFrameEvent (20 ms silence frame). */
 function silentFrame(frameIndex: number) {
@@ -214,6 +213,26 @@ describe("handleLiveDiarizationRoute", () => {
 		// expected on this path.
 		expect(status.aec.echoReferenceWired).toBe(true);
 		expect(status.aec.playbackFramesReceived).toBe(0);
+	});
+
+	it("rebuilds the session for a replaced runtime", async () => {
+		const status = async (state: CompatRuntimeState) => {
+			const res = new FakeRes();
+			await handleLiveDiarizationRoute(
+				makeReq({ method: "GET", url: "/api/voice/audio-frames/status" }),
+				res as unknown as http.ServerResponse,
+				state,
+			);
+			return res.json() as { aec: { echoReferenceWired: boolean } };
+		};
+		const state = runtimeState();
+		expect((await status(state)).aec.echoReferenceWired).toBe(false);
+		// Same state object, new runtime: the old session must not be reused.
+		state.current = {
+			emitEvent: async () => {},
+			voiceEchoReferenceProvider: () => new Float32Array(320),
+		} as never;
+		expect((await status(state)).aec.echoReferenceWired).toBe(true);
 	});
 
 	it("reports echoReferenceWired only after playback frames are actually delivered (#9583)", async () => {

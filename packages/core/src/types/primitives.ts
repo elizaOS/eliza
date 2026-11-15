@@ -4,9 +4,10 @@
  * enums. The leaf dependency most other `types/*` modules build on; keep it
  * independent of runtime initialization.
  */
-import type { InteractionBlock } from "./interactions.js";
 
-import type { JsonObject, JsonValue } from "./json.js";
+import { validateUuid } from "../utils/uuid.js";
+import type { InteractionBlock } from "./interactions.js";
+import type { JsonValue } from "./json.js";
 
 export type { JsonObject, JsonPrimitive, JsonValue } from "./json.js";
 
@@ -17,7 +18,7 @@ export type { JsonObject, JsonPrimitive, JsonValue } from "./json.js";
 export type ProcessEnvLike = Record<string, string | undefined>;
 
 /**
- * Defines a UUID as a string for protobuf interoperability.
+ * A UUID string; validate untrusted values with {@link asUUID}.
  */
 export type UUID = string;
 
@@ -48,16 +49,11 @@ export type ChannelType = (typeof ChannelType)[keyof typeof ChannelType];
 export const DEFAULT_UUID: UUID = "00000000-0000-0000-0000-000000000000";
 
 /**
- * Helper function to safely cast a string to strongly typed UUID
- * @param id The string UUID to validate and cast
- * @returns The same UUID with branded type information
+ * Validate that a string is a UUID.
  * @throws Error if the id is not a valid UUID format
  */
 export function asUUID(id: string): UUID {
-	if (
-		!id ||
-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-	) {
+	if (!validateUuid(id)) {
 		throw new Error(`Invalid UUID format: ${id}`);
 	}
 	return id as UUID;
@@ -318,8 +314,8 @@ export interface Media {
 
 	/**
 	 * Served URL of this attachment's PII-scrubbed variant — a SEPARATE
-	 * content-addressed media object under its own sha256 (; per
-	 * redacted variants are new bytes, never an edit of the original). When a
+	 * content-addressed media object under its own sha256 (redacted variants
+	 * are new bytes, never an edit of the original). When a
 	 * viewer's disclosure resolves to `redacted`, the DTO layer emits this URL
 	 * in place of `url` and withholds the original. Never a file id — the URL
 	 * itself is the reference the media GC scans.
@@ -340,21 +336,14 @@ export type ContentType = (typeof ContentType)[keyof typeof ContentType];
 /**
  * Allowed value types for metadata (JSON-serializable).
  *
- * This type is intentionally broad to accept:
- * - Primitive JSON values (string, number, boolean, null)
- * - Arrays of metadata values
- * - Complex domain objects with UUID fields (template literal strings)
- *
- * The Record<string, unknown> union member ensures that domain types like
- * ContactInfo, RelationshipData, etc. are accepted without requiring
- * unsafe double assertions.
+ * Accepts JSON values, `undefined`, arrays of metadata values, and readonly
+ * records of metadata values (so domain objects need no double assertions).
  */
 export type MetadataValue =
 	| JsonValue
 	| undefined
 	| MetadataValue[]
-	| { readonly [key: string]: MetadataValue | undefined }
-	| JsonObject;
+	| { readonly [key: string]: MetadataValue | undefined };
 
 /**
  * A type for metadata objects with JSON-serializable values.

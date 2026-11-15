@@ -58,6 +58,7 @@ import {
 import {
   type AccessTokenOutcome,
   getAccessToken,
+  getAccessTokenCredentialReceipt,
   saveCredentials,
 } from "../auth/credentials.js";
 import { accountRefreshMutex } from "../auth/refresh-mutex.js";
@@ -583,8 +584,8 @@ async function reconcileCodexTokensLocked(
  */
 export async function adoptRotatedCodexTokens(
   accountId: string,
+  storagePolicy: AccountStoragePolicy = accountStoragePolicy(),
 ): Promise<boolean> {
-  const storagePolicy = accountStoragePolicy();
   return accountRefreshMutex.acquire(`openai-codex:${accountId}`, async () => {
     const reconciled = await reconcileCodexTokensLocked(
       accountId,
@@ -776,8 +777,10 @@ function publishActiveCodexHome(
  * be refreshing one in another process, so only Codex writes an already-
  * published generation. A newer canonical login gets a new generation path.
  */
-async function materializeCodexHome(accountId: string): Promise<string> {
-  const storagePolicy = accountStoragePolicy();
+async function materializeCodexHome(
+  accountId: string,
+  storagePolicy: AccountStoragePolicy,
+): Promise<string> {
   return accountRefreshMutex.acquire(`openai-codex:${accountId}`, async () => {
     const reconciled = await reconcileCodexTokensLocked(
       accountId,
@@ -816,7 +819,10 @@ async function buildEnvPatch(
     }
   }
 }
-function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
+function makeBridge(
+  pool: AccountPool,
+  storagePolicy: AccountStoragePolicy,
+): CodingAgentSelectorBridge {
   return {
     describe() {
       const out: Record<string, CodingProviderAvailability[]> = {};
@@ -884,7 +890,9 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           // CODEX_HOME is the refresh authority for a running Codex process.
           // Reconcile and select its immutable generation before any canonical
           // refresh can present an already-consumed one-time token.
-          envPatch = { CODEX_HOME: await materializeCodexHome(account.id) };
+          envPatch = {
+            CODEX_HOME: await materializeCodexHome(account.id, storagePolicy),
+          };
         } else {
           // Claude coding spawns get a bare token the third-party adapter reads
           // once and cannot refresh, so widen the freshness window to the
@@ -904,7 +912,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             resolveOutcome = await getAccessToken(providerId, account.id, {
               ...resolveOpts,
               outcome: true,
-              storagePolicy: accountStoragePolicy(),
+              storagePolicy,
             });
             accessToken = resolveOutcome.ok ? resolveOutcome.accessToken : null;
             // A widened Claude resolve is only a freshness preference. The
@@ -919,7 +927,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             ) {
               const stillValid = await getAccessToken(providerId, account.id, {
                 outcome: true,
-                storagePolicy: accountStoragePolicy(),
+                storagePolicy,
               });
               resolveOutcome = stillValid;
               if (stillValid.ok) {
@@ -939,11 +947,19 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             // Only flag for re-auth on a genuine auth failure; a transient
             // network/5xx blip must not pull a healthy account out of rotation.
             if (accessTokenFailureIsAuth(resolveOutcome, resolveError)) {
-              await pool.markNeedsReauth(
-                account.id,
-                "No valid credential / token refresh failed",
-                { providerId },
-              );
+              const receipt = resolveOutcome
+                ? getAccessTokenCredentialReceipt(resolveOutcome)
+                : undefined;
+              if (receipt) {
+                await pool.markNeedsReauth(
+                  account.id,
+                  "No valid credential / token refresh failed",
+                  {
+                    providerId,
+                    expectedCredentialGeneration: receipt.credentialGeneration,
+                  },
+                );
+              }
             }
             continue;
           }
@@ -989,21 +1005,24 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       // Session-level auth failures can come from an injected token aging out.
       // Verify the stored credential before evicting the account from rotation.
       if (providerId === "openai-codex") {
-        await adoptRotatedCodexTokens(accountId);
+        await adoptRotatedCodexTokens(accountId, storagePolicy);
       }
+      let expectedCredentialGeneration: string | undefined;
       try {
         const tokenOutcome = await getAccessToken(providerId, accountId, {
           outcome: true,
-          storagePolicy: accountStoragePolicy(),
+          storagePolicy,
         });
+        const receipt = getAccessTokenCredentialReceipt(tokenOutcome);
+        expectedCredentialGeneration = receipt?.credentialGeneration;
         if (tokenOutcome.ok) {
           const token = tokenOutcome.accessToken;
           if (isSubscriptionProvider(providerId)) {
-            const record = pool.get(accountId, providerId);
             await pool.refreshUsage(accountId, token, {
               providerId,
-              ...(record?.organizationId
-                ? { codexAccountId: record.organizationId }
+              expectedCredentialGeneration,
+              ...(receipt?.organizationId
+                ? { codexAccountId: receipt.organizationId }
                 : {}),
             });
           } else if (isDirectAccountProvider(providerId)) {
@@ -1018,7 +1037,13 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             const probe = await probeDirectApiKey(providerId, token);
             if (!probe.ok) {
               if (probe.status === 401 || probe.status === 403) {
-                return pool.markNeedsReauth(accountId, detail, { providerId });
+                if (expectedCredentialGeneration) {
+                  await pool.markNeedsReauth(accountId, detail, {
+                    providerId,
+                    expectedCredentialGeneration,
+                  });
+                }
+                return;
               }
               logger.info(
                 `[coding-account-bridge] ${providerId}/${accountId} auth-failure verify was inconclusive (probe status ${probe.status}${probe.error ? `: ${probe.error}` : ""}) — leaving rotation state to the keep-alive sweep`,
@@ -1045,14 +1070,19 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           return;
         }
       }
-      return pool.markNeedsReauth(accountId, detail, { providerId });
+      if (expectedCredentialGeneration) {
+        await pool.markNeedsReauth(accountId, detail, {
+          providerId,
+          expectedCredentialGeneration,
+        });
+      }
     },
     async recordUsage(providerId: LinkedAccountProviderId, accountId, result) {
       // Session end is the natural sync point for tokens a Codex CLI rotated
       // mid-run — heal the canonical record before the next sweep refreshes
       // against the consumed one.
       if (providerId === "openai-codex") {
-        await adoptRotatedCodexTokens(accountId);
+        await adoptRotatedCodexTokens(accountId, storagePolicy);
       }
       return pool.recordCall(accountId, result, { providerId });
     },
@@ -1064,6 +1094,9 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
  * symbol + accessors live in `@elizaos/core` so producer and plugin consumers
  * share one contract.
  */
-export function installCodingAgentSelectorBridge(pool: AccountPool): void {
-  setCodingAgentSelectorBridge(makeBridge(pool));
+export function installCodingAgentSelectorBridge(
+  pool: AccountPool,
+  storagePolicy: AccountStoragePolicy = accountStoragePolicy(),
+): void {
+  setCodingAgentSelectorBridge(makeBridge(pool, storagePolicy));
 }

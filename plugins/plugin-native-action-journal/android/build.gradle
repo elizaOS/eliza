@@ -14,7 +14,7 @@ dependencies {
 // Test the real encrypted host store without adding a production storage dependency.
 def credentialFixture = layout.buildDirectory.dir('generated/credential-slots-fixture')
 def prepareCredentialFixture = tasks.register('prepareCredentialSlotsFixture', Copy) {
- from file('../../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java')
+ from file('../../plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java')
  into credentialFixture
 }
 android.sourceSets.androidTest.java.srcDir(credentialFixture)

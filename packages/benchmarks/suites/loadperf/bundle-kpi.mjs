@@ -11,7 +11,7 @@
  * Runs entirely off the on-disk build — no server needed. Build first with:
  *   bun run --cwd packages/app build      (or the repo `bun run build`)
  *
- * Usage: ELIZA_REPO=<eliza checkout> node suites/loadperf/bundle-kpi.mjs [--json]
+ * Usage: ELIZA_REPO=<eliza checkout> bun suites/loadperf/bundle-kpi.mjs [--json]
  */
 
 import { createHash } from "node:crypto";

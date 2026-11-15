@@ -12,7 +12,7 @@ arguments, and no ordinary SQLite fallback or migration exists.
 Build on Linux with Node 24.15.0 headers, C compiler, Perl, Make and tar:
 
 ```
-node packages/host/native-host/task-sqlcipher/build.mjs /absolute/fresh-output /absolute/node/include/node linux-x64 /usr/bin/cc
+bun packages/host/native-host/task-sqlcipher/build.mjs /absolute/fresh-output /absolute/node/include/node linux-x64 /usr/bin/cc
 ELIZA_TASK_SQLCIPHER_BUILD=/absolute/fresh-output/build.json node --test packages/host/native-host/task-sqlcipher/integration.mjs
 ELIZA_TASK_SQLCIPHER_BUILD=/absolute/fresh-output/build.json bun test --timeout 60000 ./packages/host/native-host/task-sqlcipher/integration.mjs
 ```
@@ -25,7 +25,10 @@ The build manifest records compiler/header/source hashes and the actual ELF.
 It does not assert runtime qualification.
 
 For Android Bun, use `x86_64-linux-musl` or `aarch64-linux-musl` and an explicit
-compiler executable targeting that triple. Bionic/NDK addons are not compatible
+compiler executable targeting that triple, or an absolute `zig` binary: the build then
+writes `zig cc -target`, `zig ar` and `zig ranlib` drivers into the output, and links
+without `--exclude-libs` (the version script and the export check keep the same
+symbols local). Bionic/NDK addons are not compatible
 with the embedded musl runtime. A consumer must package the exact library and
 licenses with a reviewed artifact manifest, then test it inside the installed
 app UID/SELinux domain. Host tests do not establish either Android ABI's readiness.

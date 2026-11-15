@@ -1,3 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:networkSecurityConfig="@xml/native_browser_fixture_network"></application>
+    <!-- BelowHostWebViewInstrumentedTest shows real WebViews in an overlay window. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <application android:networkSecurityConfig="@xml/native_browser_fixture_network">
+        <!-- SurfaceBridgeInstrumentedTest runs the plugin in a real Capacitor bridge. -->
+        <activity
+            android:name="ai.eliza.plugins.browsersurface.SurfaceBridgeInstrumentedTest$Host"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
+    </application>
 </manifest>

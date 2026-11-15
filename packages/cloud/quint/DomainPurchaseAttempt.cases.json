@@ -1,0 +1,56 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/domain-purchase-attempts.ts",
+    "packages/cloud/api/cron/reconcile-domain-purchases/route.ts",
+    "packages/cloud/api/v1/apps/[id]/domains/buy/route.ts",
+    "packages/cloud/shared/src/db/schemas/domain-purchase-idempotency.ts",
+    "packages/cloud/shared/src/db/migrations/0260_domain_purchase_authority.sql",
+    "packages/cloud/shared/src/db/repositories/__tests__/domain-purchase-attempts.pglite.test.ts",
+    "packages/cloud/quint/check-domain-purchase-attempt.mjs"
+  ],
+  "bounds": "One retained attempt and one registrar-start permit, two abstract quote prices, one exact debit/refund/managed-domain identity each, three nonreused lease tokens and time 0..4. Lease and retry delay are one tick. Unissued tokens never carry an observation.",
+  "cases": [
+    {
+      "name": "registrar-lease-and-settlement",
+      "main": "DomainPurchaseAttempt",
+      "init": "init",
+      "step": "step",
+      "invariants": ["Safety"],
+      "temporal": ["DurableAuthority", "FairRecovery", "LocalSettlement"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "DurableAuthority",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduler fairness. Each transition retains its pinned quote and attached charge, grants one registrar-start permit and fences stale registrar observations."
+          ]
+        },
+        {
+          "property": "FairRecovery",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of persistManagedDomain and complete represents retries of successful local writes after registration is durably observed.",
+            "Weak fairness of ensureRefund and attachRefund represents retries with the same validated refund ledger identity after a durable refund decision. No registrar success or eventual status response is assumed."
+          ]
+        },
+        {
+          "property": "LocalSettlement",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness a confirmed registration or refund decision can wait indefinitely for local settlement."
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "One already created nonlegacy attempt retains a fixed organization, app, domain, request digest and registration term. Quote values and exact receipt bindings are projected. The SQL suite checks the real tenant, term and amount constraints.",
+    "The model checks one retained row from quote through registrar authorization, read-only reconciliation and refund or local assignment. It covers one registrar-start permit. Physical dispatch timing, identity validation of Cloudflare responses, and provider settlement semantics remain external.",
+    "The start result may record an accepted registration response. A recovery read requires active registration or definitive failure to settle. Ambiguous responses, a stalled worker and lookup errors keep the attached charge and allow a later status-only claim.",
+    "Debit creation before charge attachment, legacy orphaned debits, new attempt creation after erasure, and existing same-tenant managed domain recovery are outside this projection. The charged pre-start refund transition assumes a verified foreign domain conflict.",
+    "Refund ledger creation and its attachment are separate steps. Managed domain persistence and terminal publication are also separate steps. Their exact SQL bindings are tested against PGlite. Real Cloudflare calls, DNS verification, renewal, zone setup, and cron batch scheduling are separate coverage."
+  ],
+  "conformance": "packages/cloud/quint/check-domain-purchase-attempt.mjs"
+}

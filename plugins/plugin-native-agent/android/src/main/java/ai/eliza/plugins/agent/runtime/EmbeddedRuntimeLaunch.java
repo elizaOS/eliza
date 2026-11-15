@@ -60,7 +60,7 @@ public final class EmbeddedRuntimeLaunch {
     Map<String,String> env = builder.environment(); env.putAll(policy); env.putAll(base);
     env.put("ELIZA_STATE_DIR", state.toString()); env.put("ELIZA_CONFIG_PATH", config.toAbsolutePath().toString());
     env.put("ELIZA_ANDROID_APP_DATA_DIR", dataDirectory);
-    env.put("ELIZA_PLATFORM", "android"); env.put("ELIZA_MOBILE_PLATFORM", "android");
+    env.put("ELIZA_PLATFORM", "android");
     env.put("ELIZA_BROWSER_ANDROID_APPLICATION", application);
     env.put("ELIZA_API_BIND", "127.0.0.1"); env.put("ELIZA_API_PORT", String.valueOf(port));
     env.put("ELIZA_API_STRICT_PORT", "true"); env.put("ELIZA_REQUIRE_LOCAL_AUTH", "1"); env.put("ELIZA_API_TOKEN", token);

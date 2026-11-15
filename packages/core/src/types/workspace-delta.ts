@@ -50,14 +50,40 @@ export interface WorkspaceDeltaReceipt {
 	reasonCode?: WorkspaceDeltaIndeterminateReasonCode;
 }
 
-const BASE_KEYS = ["version", "kind", "scope", "outcome", "observedAt"];
+type WorkspaceDeltaOperation = NonNullable<WorkspaceDeltaReceipt["operation"]>;
+
+const RECEIPT_KEYS: ReadonlySet<string> = new Set([
+	"version",
+	"kind",
+	"scope",
+	"outcome",
+	"observedAt",
+	"operation",
+	"beforeFingerprint",
+	"afterFingerprint",
+	"reasonCode",
+]);
+const SCOPE_KEYS: ReadonlySet<string> = new Set([
+	"kind",
+	"root",
+	"rootId",
+	"executionDomainId",
+	"coverage",
+]);
+const OPERATION_KEYS: ReadonlySet<string> = new Set([
+	"kind",
+	"handle",
+	"status",
+]);
+const OPERATION_STATUSES: ReadonlySet<unknown> = new Set<
+	WorkspaceDeltaOperation["status"]
+>(["running", "terminating", "exited", "killed", "error"]);
 
 function assertExactKeys(
 	value: Record<string, unknown>,
-	allowed: readonly string[],
+	allowedKeys: ReadonlySet<string>,
 	label: string,
 ): void {
-	const allowedKeys = new Set(allowed);
 	const unexpected = Object.keys(value).filter((key) => !allowedKeys.has(key));
 	if (unexpected.length > 0) {
 		throw new TypeError(
@@ -88,24 +114,10 @@ export function normalizeWorkspaceDeltaReceipt(
 	const raw = record(value);
 	const scope = record(raw?.scope);
 	if (raw) {
-		assertExactKeys(
-			raw,
-			[
-				...BASE_KEYS,
-				"operation",
-				"beforeFingerprint",
-				"afterFingerprint",
-				"reasonCode",
-			],
-			"WorkspaceDeltaReceipt",
-		);
+		assertExactKeys(raw, RECEIPT_KEYS, "WorkspaceDeltaReceipt");
 	}
 	if (scope) {
-		assertExactKeys(
-			scope,
-			["kind", "root", "rootId", "executionDomainId", "coverage"],
-			"WorkspaceDeltaReceipt.scope",
-		);
+		assertExactKeys(scope, SCOPE_KEYS, "WorkspaceDeltaReceipt.scope");
 	}
 	if (
 		raw?.version !== 1 ||
@@ -122,15 +134,21 @@ export function normalizeWorkspaceDeltaReceipt(
 		);
 	}
 	const rootId = fingerprint(scope.rootId, "scope.rootId");
-	const executionDomainId = fingerprint(
-		scope.executionDomainId,
-		"scope.executionDomainId",
-	);
+	const normalizedScope: WorkspaceDeltaReceipt["scope"] = {
+		kind: "git_worktree",
+		root: scope.root,
+		rootId,
+		executionDomainId: fingerprint(
+			scope.executionDomainId,
+			"scope.executionDomainId",
+		),
+		coverage: "tracked_and_untracked_nonignored",
+	};
 	const operation = record(raw.operation);
 	if (operation) {
 		assertExactKeys(
 			operation,
-			["kind", "handle", "status"],
+			OPERATION_KEYS,
 			"WorkspaceDeltaReceipt.operation",
 		);
 		if (
@@ -140,15 +158,22 @@ export function normalizeWorkspaceDeltaReceipt(
 			operation.handle.length > 200 ||
 			operation.handle.trim() !== operation.handle ||
 			/[\0\r\n]/.test(operation.handle) ||
-			!["running", "terminating", "exited", "killed", "error"].includes(
-				String(operation.status),
-			)
+			!OPERATION_STATUSES.has(operation.status)
 		) {
 			throw new TypeError("WorkspaceDeltaReceipt has an invalid operation.");
 		}
 	} else if (raw.operation !== undefined) {
 		throw new TypeError("WorkspaceDeltaReceipt has an invalid operation.");
 	}
+	const operationField: { operation?: WorkspaceDeltaOperation } = operation
+		? {
+				operation: {
+					kind: "background_shell",
+					handle: operation.handle as string,
+					status: operation.status as WorkspaceDeltaOperation["status"],
+				},
+			}
+		: {};
 	if (
 		raw.outcome !== "changed" &&
 		raw.outcome !== "unchanged" &&
@@ -205,27 +230,8 @@ export function normalizeWorkspaceDeltaReceipt(
 		return {
 			version: 1,
 			kind: "workspace_delta",
-			scope: {
-				kind: "git_worktree",
-				root: scope.root,
-				rootId,
-				executionDomainId,
-				coverage: "tracked_and_untracked_nonignored",
-			},
-			...(operation
-				? {
-						operation: {
-							kind: "background_shell" as const,
-							handle: operation.handle as string,
-							status: operation.status as
-								| "running"
-								| "terminating"
-								| "exited"
-								| "killed"
-								| "error",
-						},
-					}
-				: {}),
+			scope: normalizedScope,
+			...operationField,
 			outcome: "indeterminate",
 			...(raw.beforeFingerprint === undefined
 				? {}
@@ -274,27 +280,8 @@ export function normalizeWorkspaceDeltaReceipt(
 	return {
 		version: 1,
 		kind: "workspace_delta",
-		scope: {
-			kind: "git_worktree",
-			root: scope.root,
-			rootId,
-			executionDomainId,
-			coverage: "tracked_and_untracked_nonignored",
-		},
-		...(operation
-			? {
-					operation: {
-						kind: "background_shell" as const,
-						handle: operation.handle as string,
-						status: operation.status as
-							| "running"
-							| "terminating"
-							| "exited"
-							| "killed"
-							| "error",
-					},
-				}
-			: {}),
+		scope: normalizedScope,
+		...operationField,
 		outcome: raw.outcome,
 		beforeFingerprint,
 		afterFingerprint,

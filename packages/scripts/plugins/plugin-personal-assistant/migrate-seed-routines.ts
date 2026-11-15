@@ -2,7 +2,7 @@
 /**
  * Wave-2 W2-A driver for the seed-routine migrator.
  *
- *   node packages/scripts/plugins/plugin-personal-assistant/migrate-seed-routines.ts --agent <id>
+ *   bun packages/scripts/plugins/plugin-personal-assistant/migrate-seed-routines.ts --agent <id>
  *     [--apply] [--out <path>]
  *
  * Defaults to dry-run; emits a JSON manual-review report to stdout (or

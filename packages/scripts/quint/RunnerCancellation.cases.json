@@ -1,0 +1,64 @@
+{
+  "sources": [
+    "packages/scripts/check-quint.ts",
+    "packages/scripts/lib/quint-shards.ts",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/scripts/check-quint.node.test.ts",
+    "packages/scripts/quint-cancellation.node.test.ts"
+  ],
+  "conformance": "packages/scripts/quint/check-runner-cancellation.mjs",
+  "bounds": "One CLI controller, one synchronous worker, one checker process, two sequential cases, one graceful or forced cancellation. SIGINT and SIGTERM share the cancellation transition.",
+  "fairness": "CleanupProgress assumes fair signal forwarding, expiry of the finite grace timer, kernel delivery of forced termination and process reaping. Uncatchable termination of the supervisor is outside the model.",
+  "limitations": [
+    "The model projects a process group to one checker. Independently daemonized process groups are outside this ownership boundary.",
+    "The implementation conformance runs all 28 runner checks on Linux, including real Node parent/child/grandchild cancellation, inventory receipt retention, source-change rejection and scenario selection through parameterized imports. Other platforms run 26 checks and explicitly skip the two Linux process-group schedules. Compiler semantic correctness remains in each source model.",
+    "Operating-system process and Job Object semantics are platform assumptions. Linux conformance is exercised in this repository's Quint CI job.",
+    "Nested cancellation models one managed worker group, a pending child spawn, and a worker exiting before its checker. The Linux real-process tests delay the owned controller group by 500 ms and exercise SIGINT/SIGTERM for both existing and late checker descendants."
+  ],
+  "cases": [
+    {
+      "name": "owned-process-group",
+      "main": "RunnerCancellation",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "NoCheckerAfterClose",
+        "CancelledNeverPasses",
+        "NoLaterCaseAfterCancellation",
+        "ActiveEvidenceIsIncomplete"
+      ],
+      "temporal": ["CleanupProgress"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CleanupProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in RunnerCancellation: CleanupProgress = (forward.weakFair(s) and force.weakFair(s) and reap.weakFair(s)).implies( s.cancelled.leadsTo(s.phase == \"done\"))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "nested-owner-and-late-spawn",
+      "main": "NestedRunnerCancellation",
+      "init": "initNested",
+      "step": "nestedStep",
+      "invariants": ["NoChildAfterControllerClose", "NestedBounds"],
+      "temporal": ["NestedCleanup"],
+      "temporalChecks": [
+        {
+          "property": "NestedCleanup",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of cleanup-clock ticks and reaping. The direct controller dispatches its three-second cleanup before the enclosing ten-second grace. Arbitrary external suspension of the controller beyond that allowance and uncatchable controller termination are excluded."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000
+    }
+  ]
+}

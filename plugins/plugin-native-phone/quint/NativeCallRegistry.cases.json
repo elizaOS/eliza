@@ -1,0 +1,98 @@
+{
+  "cases": [
+    {
+      "name": "two-calls-and-late-callbacks",
+      "main": "NativeCallRegistry",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "CallbacksMatchRegistry",
+        "NotificationsHaveCurrentOwner",
+        "DestroyedOwnerHasNoPublishedCalls"
+      ],
+      "temporal": [
+        "RetiredCallsStayAbsent",
+        "FairRetiredCallbacksSettle",
+        "RetiredCallbacksSettle"
+      ],
+      "temporalChecks": [
+        {
+          "property": "RetiredCallsStayAbsent",
+          "expect": "holds",
+          "assumptions": [
+            "Unique ids are not reused during this one service lifetime."
+          ]
+        },
+        {
+          "property": "FairRetiredCallbacksSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Each continuously enabled posted callback dispatcher is weakly fair. Android notification and unregister calls return normally."
+          ]
+        },
+        {
+          "property": "RetiredCallbacksSettle",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed for Android Main callback dispatch."
+          ]
+        }
+      ],
+      "maxSteps": 16,
+      "samples": 1000
+    },
+    {
+      "name": "contact-lookup-lifetime",
+      "main": "NativeCallContactLookup",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "PublicationHasCurrentAdmission",
+        "RetiredOwnerDoesNotPublish"
+      ],
+      "temporal": ["FairLookupSettles", "LookupSettles"],
+      "maxSteps": 20,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "FairLookupSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the contact query returning and dispatch of its posted Main continuation. This assumes finite I/O; publication can still be refused after ownership or grant changes."
+          ]
+        },
+        {
+          "property": "LookupSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An admitted worker, external query or posted Main continuation can remain stalled indefinitely."
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/TelecomCallService.java",
+    "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/TelecomCallActivity.java",
+    "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/TelecomCallConfiguration.java",
+    "plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/TelecomCallPresentation.java",
+    "plugins/plugin-native-phone/android/src/test/java/ai/eliza/plugins/phone/TelecomCallPresentationTest.java",
+    "plugins/plugin-native-phone/android/src/test/java/ai/eliza/plugins/phone/TelecomCallToneTest.java",
+    "plugins/plugin-native-phone/android/build.gradle",
+    "plugins/plugin-native-phone/quint/check-native-call-registry.ts",
+    "plugins/plugin-native-phone/quint/native-call-conformance.json",
+    "packages/app/scripts/android-native-plugins-gradle/build.gradle",
+    "packages/app/scripts/android-native-plugins-gradle/settings.gradle"
+  ],
+  "bounds": {
+    "domain": "One successful Android InCallService lifetime on the Main thread, two unique call ids and at most one posted callback per call. UUID collision, overlapping host service components and process restart are outside the finite domain. Each id is admitted at most once.",
+    "projection": "Native call state and details callbacks use the same registry-identity guard. The contact-name refresh of a call notification posts to Main behind the same guard (current owner and registered call id). The model groups their notification effect and retains an already posted callback after unregister or destroy. A disconnected call can remain registered without a notification until Android removes it.",
+    "failures": "Safety assumes native registration, notification operations and the lifecycle callback itself return normally. Android permission/channel/startActivity exceptions, notification delivery, physical calls, carrier/SIM state, VVM, foreground/lock-screen policy and user controls are separate qualification. This is a bounded projection, not a machine-checked refinement of Android.",
+    "fairness": "Progress of a retired posted callback requires weak fairness for that callback dispatcher. Without that assumption a queued runnable can remain pending; an expected counterexample records the gap.",
+    "conformance": "Mandatory tests execute the production service and actual Android Call asynchronous callback dispatcher under Robolectric API 35, with real Android notification shadows. They verify state and details callbacks after removal, queued work after destroy, preservation of another call and current-call publication. Existing presentation and keypad ownership tests also run. No device or carrier success is inferred.",
+    "contacts": "One lookup and one later Main refresh for one unique call, one service lifetime, permission withdrawal, cached-name refresh, call removal and destruction. No fairness or guaranteed lookup completion. This models admission for a new publication; it does not retract an already delivered notification on permission changes. Telecom-provided display names are separate authority."
+  },
+  "conformance": "plugins/plugin-native-phone/quint/check-native-call-registry.ts"
+}

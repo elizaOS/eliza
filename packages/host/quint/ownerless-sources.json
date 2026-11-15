@@ -1,0 +1,17 @@
+[
+  {
+    "source": "packages/host/src/api/route-helpers.ts",
+    "sha256": "6768ab1101c55e77d2083296352e48779ef6bc87d847cc7aec07d50dc9d00bf0",
+    "reason": "Declares HTTP request contexts and body options. The host HTTP helpers read the stream and send responses, and the agent dispatcher selects the route."
+  },
+  {
+    "source": "packages/host/src/config/types.eliza.ts",
+    "sha256": "d97046698739ce48c590a4ec4f202f595d63a10dbbc28ef0a2b1be2c2fa95ccc",
+    "reason": "Declares host configuration and snapshot shapes. The agent configuration loader and writer apply defaults, validate input and persist changes."
+  },
+  {
+    "source": "packages/host/src/config/ui-spec.ts",
+    "sha256": "40fe7a34591aae0a0caa5f21bc0f88076eb4898201cfb6ec56296ef061f18d1d",
+    "reason": "Declares the UI spec, action, validation and stream payload shapes. The config UI renderer and its callers own runtime input and action state."
+  }
+]

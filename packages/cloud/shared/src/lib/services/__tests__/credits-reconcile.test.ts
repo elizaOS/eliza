@@ -1287,6 +1287,94 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
   );
 
   test(
+    "sweep isolates corrupt amounts and retries the repaired reservation on the next run",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("20");
+      const corrupt = await insertReservation(1.0, 26 * 60 * 60 * 1000, true, {
+        estimated_cost: 0.4,
+      });
+      const healthy = await insertReservation(1.0, 25 * 60 * 60 * 1000, true, {
+        estimated_cost: 0.4,
+      });
+      // PostgreSQL NUMERIC supports NaN, including in historical ledger rows.
+      // The row must remain unsettled without aborting unrelated recovery.
+      await dbWrite.execute(
+        `UPDATE credit_transactions SET amount = 'NaN' WHERE id = '${corrupt}'`,
+      );
+
+      const first = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 1,
+        maxBatches: 4,
+      });
+
+      expect(first.scanned).toBe(2);
+      expect(first.skipped).toBe(1);
+      expect(first.settled).toBe(1);
+      expect(first.capHit).toBe(false);
+      expect(await getReservationSettledAt(corrupt)).toBeNull();
+      expect(await settlementRowsForReservation(corrupt)).toEqual([]);
+      expect(await getReservationSettledAt(healthy)).toBeTruthy();
+      expect(await getBalance()).toBeCloseTo(20.6, 6);
+
+      await dbWrite.execute(`UPDATE credit_transactions SET amount = -1 WHERE id = '${corrupt}'`);
+      const retry = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 1,
+        maxBatches: 4,
+      });
+      expect(retry.scanned).toBe(1);
+      expect(retry.settled).toBe(1);
+      expect(await getReservationSettledAt(corrupt)).toBeTruthy();
+      expect(await getBalance()).toBeCloseTo(21.2, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "sweep visits failed timestamp ties only once and reaches later rows at full database precision",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("20");
+      const ids = [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+      ];
+      for (const [index, id] of ids.entries()) {
+        const inserted = await insertReservation(1.0, 26 * 60 * 60 * 1000, true, {
+          estimated_cost: index < 2 ? -1 : 0.4,
+        });
+        // Identical timestamps require the ID tie-breaker. Retaining fractional
+        // microseconds catches a cursor accidentally round-tripped via Date.
+        await dbWrite.execute(`
+          UPDATE credit_transactions
+          SET id = '${id}', created_at = TIMESTAMP '2020-01-01 00:00:00.123456'
+          WHERE id = '${inserted}'
+        `);
+      }
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 2,
+        maxBatches: 4,
+      });
+      expect(stats.scanned).toBe(4);
+      expect(stats.skipped).toBe(2);
+      expect(stats.settled).toBe(2);
+      expect(stats.capHit).toBe(false);
+      expect(await getReservationSettledAt(ids[0])).toBeNull();
+      expect(await getReservationSettledAt(ids[1])).toBeNull();
+      expect(await getReservationSettledAt(ids[2])).toBeTruthy();
+      expect(await getReservationSettledAt(ids[3])).toBeTruthy();
+      expect(await getBalance()).toBeCloseTo(21.2, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "sweep skips an app-chat hold without a usable base pair instead of guessing",
     async () => {
       if (!pgliteReady) return;

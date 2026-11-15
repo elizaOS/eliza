@@ -164,7 +164,7 @@ if (import.meta.main) {
     if (response.status !== 200 && observedCodes.length === 0)
       process.exitCode = 1;
   } catch {
-    console.error("subscription_catalog_diagnostic_failed");
+    console.error("subscription_diagnostic_failed");
     process.exitCode = 1;
   } finally {
     if (tail && tail.exitCode === null) {

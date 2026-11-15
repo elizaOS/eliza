@@ -1,0 +1,24 @@
+[
+	{
+		"id": "core-TaskRetirement",
+		"model": "packages/core/quint/TaskRetirement.qnt",
+		"sources": [
+			"packages/core/src/services/task.ts",
+			"packages/core/src/services/task-scheduler.ts",
+			"packages/core/test/task-scheduler-model.test.ts"
+		],
+		"invariants": [
+			"PendingCoversEveryOperation",
+			"DrainedHasNoWork",
+			"OneShotHasOneOwner",
+			"ClaimsRemainOwned"
+		],
+		"status": "partial",
+		"limitations": [
+			"Three calls and one task row. Finite pending operation stages retain the drain owner through preflight, reads, worker completion and bookkeeping. TaskService owns the cadence, pause and wake revision model.",
+			"Read failures and absent rows settle their admission. Detailed metadata values, orphan quarantine, read-only status calls and manual pause operations remain outside this execution retirement model.",
+			"The model assumes admitted operations eventually return or throw. Workers that never settle or await their own service stop do not satisfy this progress assumption.",
+			"The PGlite suite exercises the maintained daemon, timer and explicit execution entry points with real workers and stored tasks. Deferred reads inject an ordering boundary before invoking the real storage call."
+		]
+	}
+]

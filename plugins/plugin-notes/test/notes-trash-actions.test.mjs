@@ -52,6 +52,7 @@ function world({ notes = [note("a"), note("b")], maxEntries = 10 } = {}) {
     async edit(update) {
       assert.ok(state.locked > 0, "Trash edits happen under the lock");
       state.trash = update(structuredClone(state.trash));
+      state.afterEdit?.();
       return state.trash;
     },
     savedNotes: async () => structuredClone(state.saved),
@@ -134,6 +135,36 @@ test("a stale view or a Trash change deletes nothing", async () => {
   assert.deepEqual(
     await third.actions.moveToTrash(third.collection, note("a"), 0),
     { status: "unavailable" },
+  );
+});
+
+test("an edit that lands during the row write leaves no stale Trash copy", async () => {
+  const user = world();
+  user.state.afterEdit = () => {
+    user.state.afterEdit = undefined;
+    user.state.visible[0] = note("a", { body: "typed meanwhile" });
+  };
+  assert.deepEqual(
+    await user.actions.moveToTrash(user.collection, note("a"), 0),
+    {
+      status: "changed",
+    },
+  );
+  assert.equal(user.state.trash.entries.length, 0);
+  assert.equal(user.state.commits.length, 0);
+  const agent = world();
+  agent.state.afterEdit = () => {
+    agent.state.afterEdit = undefined;
+    agent.state.saved[0] = note("a", { body: "agent update" });
+  };
+  assert.deepEqual(
+    await agent.actions.moveToTrash(agent.collection, note("a"), 0),
+    { status: "changed" },
+  );
+  assert.equal(agent.state.trash.entries.length, 0);
+  assert.deepEqual(
+    agent.state.saved.map((n) => n.body),
+    ["agent update", undefined],
   );
 });
 

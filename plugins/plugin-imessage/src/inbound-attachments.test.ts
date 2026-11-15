@@ -94,6 +94,7 @@ describe("native Messages inbound attachments", () => {
         contactsLoadAttempted: boolean;
         settings: IMessageSettings;
         pollForNewMessagesInner(): Promise<void>;
+        pollForNewMessages(): Promise<void>;
       };
       internal.chatDb = chatDb;
       internal.lastRowId = 0;
@@ -187,6 +188,7 @@ describe("native Messages inbound attachments", () => {
       contactsLoadAttempted: boolean;
       settings: IMessageSettings;
       pollForNewMessagesInner(): Promise<void>;
+      pollForNewMessages(): Promise<void>;
     };
     internal.chatDb = { fetchNewMessages };
     internal.lastRowId = 0;
@@ -226,6 +228,24 @@ describe("native Messages inbound attachments", () => {
     expect(createMemory).toHaveBeenCalledTimes(2);
     expect(internal.lastRowId).toBe(44);
     expect(emitted.filter((type) => type === "MESSAGE_RECEIVED")).toHaveLength(1);
+  });
+
+  it("reports a failed chat.db read instead of ending the tick as a quiet inbox", async () => {
+    const readFailure = new ElizaError("iMessage chat.db new messages could not be read", {
+      code: "IMESSAGE_CHATDB_READ_FAILED",
+      severity: "ephemeral",
+    });
+    const fetchNewMessages = vi.fn((): ChatDbMessage[] => {
+      throw readFailure;
+    });
+    const { internal, reportError } = pollHarness([], vi.fn(), fetchNewMessages);
+
+    await internal.pollForNewMessages();
+
+    expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+    expect(reportError).toHaveBeenCalledWith("IMessageService.poll", readFailure);
+    // The cursor stays put so the next tick reads the same rows again.
+    expect(internal.lastRowId).toBe(0);
   });
 
   it("does not stall the cursor on a fatal persistence rejection", async () => {

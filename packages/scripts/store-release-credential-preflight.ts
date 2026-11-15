@@ -6,7 +6,7 @@
  *
  * Default operation is offline: it prints the authored credential contract and
  * verifies it still matches the names the shipped workflows reference, which is
- * the drift guard for `.github/workflows/{snap,store-mobile,store-windows}`.
+ * the drift guard for `.github/workflows/store-mobile-publish.yml`.
  * `--audit` additionally reads the live environment through `gh api`: the name
  * inventory an owner still has to provision, the resolved required-reviewer
  * principals, `prevent_self_review`, and the custom deployment branch/tag

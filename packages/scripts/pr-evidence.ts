@@ -9,10 +9,10 @@
  * (upload → copy URLs → hand-edit eight rows → wait for CI) is exactly the
  * friction that made agents skip evidence.
  *
- *   node packages/scripts/pr-evidence.ts attach <pr> <files...>        upload + print URLs
- *   node packages/scripts/pr-evidence.ts rows <pr> --row id=<file|url|"N/A - reason"> …
+ *   bun packages/scripts/pr-evidence.ts attach <pr> <files...>        upload + print URLs
+ *   bun packages/scripts/pr-evidence.ts rows <pr> --row id=<file|url|"N/A - reason"> …
  *                                                              patch body rows + verify
- *   node packages/scripts/pr-evidence.ts verify <pr>                   run the gate locally
+ *   bun packages/scripts/pr-evidence.ts verify <pr>                   run the gate locally
  *
  * `attach` prefixes every asset `<pr>-` so one release serves all PRs, and
  * skips re-uploading an asset that already exists on ANY pr-evidence release.
@@ -82,19 +82,19 @@ function fail(message) {
 
 function usage() {
   console.log(`Usage:
-  node packages/scripts/pr-evidence.ts attach <pr> <files...>
+  bun packages/scripts/pr-evidence.ts attach <pr> <files...>
       Upload files to the '${PRIMARY_RELEASE_TAG}' release as <pr>-<name> and
       print the asset URLs ready to paste into evidence rows. Once the primary
       release is full, uploads roll into '${PRIMARY_RELEASE_TAG}-2', '-3', … and
       the printed URLs point at whichever release holds the asset.
 
-  node packages/scripts/pr-evidence.ts rows <pr> [--dry-run] --row <id>=<value> [...]
+  bun packages/scripts/pr-evidence.ts rows <pr> [--dry-run] --row <id>=<value> [...]
       Patch the PR body's evidence rows and verify the gate locally.
       <id>    one of: ${ROW_IDS.join(", ")}
       <value> a local file path (auto-uploaded), an https URL, or an
               'N/A - <reason>' string.
 
-  node packages/scripts/pr-evidence.ts verify <pr>
+  bun packages/scripts/pr-evidence.ts verify <pr>
       Fetch the PR body/labels/files and run the local evidence gate exactly
       as CI does.
 

@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.health.connect.HealthConnectManager
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
@@ -33,9 +34,12 @@ import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant
@@ -45,6 +49,36 @@ private const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
 private const val FAMILY_CONTROLS_ENTITLEMENT = "com.apple.developer.family-controls"
 private const val PACKAGE_USAGE_STATS_PERMISSION = "android.permission.PACKAGE_USAGE_STATS"
 private const val NOTIFICATION_PERMISSION_ALIAS = "notifications"
+private const val USAGE_SUMMARY_TTL_MS = 60_000L
+private val SCREEN_ACTIONS = setOf(
+    Intent.ACTION_SCREEN_ON,
+    Intent.ACTION_SCREEN_OFF,
+    Intent.ACTION_USER_PRESENT,
+)
+
+/**
+ * Lets an ACTION_BATTERY_CHANGED broadcast through only when the level or the
+ * plug state moved. Android repeats the broadcast for voltage and temperature
+ * changes, which nothing here reports.
+ */
+internal class BatteryChangeFilter {
+    private var level: Int? = null
+    private var plugged: Int? = null
+
+    @Synchronized
+    fun changed(level: Int, plugged: Int): Boolean {
+        if (level == this.level && plugged == this.plugged) return false
+        this.level = level
+        this.plugged = plugged
+        return true
+    }
+
+    @Synchronized
+    fun reset() {
+        level = null
+        plugged = null
+    }
+}
 
 @CapacitorPlugin(
     name = "MobileSignals",
@@ -57,10 +91,29 @@ private const val NOTIFICATION_PERMISSION_ALIAS = "notifications"
 )
 class MobileSignalsPlugin : Plugin() {
     private val tag = "MobileSignalsPlugin"
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // A failure that escapes a launch is logged here instead of reaching the
+    // thread's uncaught handler, which would kill the host process.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, error ->
+            Log.e("MobileSignalsPlugin", "Mobile signals task failed", error)
+        },
+    )
+    // Broadcasts are handled off the main thread, one at a time and in order.
+    private val signalDispatcher = Dispatchers.IO.limitedParallelism(1)
     private val permissionRequest = PermissionController.createRequestPermissionResultContract()
+    // Read from the broadcast coroutines as well as the plugin thread.
+    @Volatile
     private var monitoring = false
     private var receiver: BroadcastReceiver? = null
+    private val batteryFilter = BatteryChangeFilter()
+    @Volatile
+    private var usageCache: Pair<Long, UsageStatsReader.UsageSummary>? = null
+
+    // Reads the granted Health Connect permissions. A field so the instrumented
+    // test can make the binder call fail.
+    internal var readGrantedPermissions: suspend (HealthConnectClient) -> Set<String> = {
+        it.permissionController.getGrantedPermissions()
+    }
 
     // The PACKAGE_USAGE_STATS reads (AppOps access check + UsageStatsManager query)
     // live in UsageStatsReader so they are exercisable by an instrumented
@@ -78,13 +131,18 @@ class MobileSignalsPlugin : Plugin() {
             override fun onReceive(context: Context, intent: Intent) {
                 val action = intent.action ?: return
                 if (!monitoring) return
-                emitSignal("broadcast:$action")
-                if (
-                    action == Intent.ACTION_SCREEN_ON ||
-                    action == Intent.ACTION_SCREEN_OFF ||
-                    action == Intent.ACTION_USER_PRESENT
+                if (action == Intent.ACTION_BATTERY_CHANGED && !batteryFilter.changed(
+                        intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1),
+                        intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0),
+                    )
                 ) {
-                    emitHealthSignal(action)
+                    return
+                }
+                val screenEvent = action in SCREEN_ACTIONS
+                scope.launch(signalDispatcher) {
+                    if (screenEvent) usageCache = null
+                    emitSignal("broadcast:$action")
+                    if (screenEvent) emitHealthSignal(action)
                 }
             }
         }
@@ -101,7 +159,14 @@ class MobileSignalsPlugin : Plugin() {
         }
 
         try {
-            context.registerReceiver(receiver, filter)
+            // The sticky battery intent comes back here and is also delivered to
+            // the receiver; seeding the filter keeps it from emitting twice.
+            context.registerReceiver(receiver, filter)?.let { battery ->
+                batteryFilter.changed(
+                    battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1),
+                    battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0),
+                )
+            }
             monitoring = true
             call.resolve(buildStartResult())
             if (call.getBoolean("emitInitial") ?: true) {
@@ -111,6 +176,21 @@ class MobileSignalsPlugin : Plugin() {
         } catch (error: Throwable) {
             Log.e(tag, "Failed to start monitoring", error)
             call.reject("Failed to start monitoring: ${error.message}")
+        }
+    }
+
+    // Settles the call when the work throws, so a Health Connect binder failure
+    // rejects the promise instead of leaving it pending.
+    private fun launchSettling(call: PluginCall, block: suspend () -> Unit) {
+        scope.launch {
+            try {
+                block()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.e(tag, "Mobile signals call failed", error)
+                call.reject("Mobile signals call failed: ${error.message}")
+            }
         }
     }
 
@@ -124,7 +204,7 @@ class MobileSignalsPlugin : Plugin() {
 
     @PluginMethod
     override fun checkPermissions(call: PluginCall) {
-        scope.launch {
+        launchSettling(call) {
             call.resolve(resolvePermissionResult())
         }
     }
@@ -138,7 +218,7 @@ class MobileSignalsPlugin : Plugin() {
         }
         if (target == "screenTime") {
             if (!isUsageStatsPermissionDeclared()) {
-                scope.launch {
+                launchSettling(call) {
                     call.resolve(resolvePermissionResult("PACKAGE_USAGE_STATS is missing from the Android manifest."))
                 }
                 return
@@ -151,11 +231,11 @@ class MobileSignalsPlugin : Plugin() {
                 } else {
                     context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
-                scope.launch {
+                launchSettling(call) {
                     call.resolve(resolvePermissionResult("Opened Android Usage Access settings."))
                 }
             } catch (error: Throwable) {
-                scope.launch {
+                launchSettling(call) {
                     call.resolve(resolvePermissionResult("Failed to open Android Usage Access settings: ${error.message}"))
                 }
             }
@@ -188,7 +268,7 @@ class MobileSignalsPlugin : Plugin() {
         }
         val current = notificationPermissionStatus()
         if (current.status == "granted") {
-            scope.launch {
+            launchSettling(call) {
                 call.resolve(resolvePermissionResult())
             }
             return
@@ -213,11 +293,11 @@ class MobileSignalsPlugin : Plugin() {
             } else {
                 context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
-            scope.launch {
+            launchSettling(call) {
                 call.resolve(resolvePermissionResult("Opened Android notification settings."))
             }
         } catch (error: Throwable) {
-            scope.launch {
+            launchSettling(call) {
                 call.resolve(resolvePermissionResult("Failed to open Android notification settings: ${error.message}"))
             }
         }
@@ -225,7 +305,7 @@ class MobileSignalsPlugin : Plugin() {
 
     @PermissionCallback
     private fun handleNotificationsPermissionResult(call: PluginCall) {
-        scope.launch {
+        launchSettling(call) {
             call.resolve(resolvePermissionResult())
         }
     }
@@ -268,9 +348,12 @@ class MobileSignalsPlugin : Plugin() {
 
     @PluginMethod
     fun getSnapshot(call: PluginCall) {
-        val device = buildSnapshot("snapshot")
-        scope.launch {
-            val health = buildHealthSnapshot("snapshot")
+        launchSettling(call) {
+            usageCache = null
+            val device = buildSnapshot("snapshot")
+            // An explicit read returns the snapshot even when a Health Connect
+            // read failed; its warnings say which part is missing.
+            val (health, _) = buildHealthSnapshot("snapshot")
             call.resolve(JSObject().apply {
                 put("supported", true)
                 put("snapshot", device)
@@ -305,6 +388,8 @@ class MobileSignalsPlugin : Plugin() {
         }
         receiver = null
         monitoring = false
+        batteryFilter.reset()
+        usageCache = null
     }
 
     private fun buildStartResult(): JSObject {
@@ -334,7 +419,7 @@ class MobileSignalsPlugin : Plugin() {
             buildPermissionResult(sdkStatus, reason = reason)
         } else {
             val client = HealthConnectClient.getOrCreate(context)
-            val granted = client.permissionController.getGrantedPermissions()
+            val granted = readGrantedPermissions(client)
             buildPermissionResult(sdkStatus, granted, reason)
         }
     }
@@ -405,7 +490,21 @@ class MobileSignalsPlugin : Plugin() {
     // Idle time = seconds since the last foreground app interaction (the best
     // available proxy for input idle from UsageStats). The earlier locked/
     // interactive branch was dead — both arms returned the same value.
-    private fun computeIdleTimeSeconds(): Long? = usageReader.idleSeconds()
+    private fun computeIdleTimeSeconds(): Long? {
+        if (!hasUsageStatsAccess()) return null
+        return cachedUsageSummary().idleSeconds(System.currentTimeMillis())
+    }
+
+    // Battery and power broadcasts can arrive in bursts; one usage query serves
+    // them for a minute. Screen events and explicit snapshots clear the cache.
+    // Callers check hasUsageStatsAccess first, so only granted reads are kept.
+    private fun cachedUsageSummary(): UsageStatsReader.UsageSummary {
+        val now = System.currentTimeMillis()
+        usageCache?.let { (at, summary) ->
+            if (now - at in 0 until USAGE_SUMMARY_TTL_MS) return summary
+        }
+        return usageReader.collectLastDay(now).also { usageCache = now to it }
+    }
 
     private fun buildSnapshot(reason: String): JSObject {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -476,7 +575,7 @@ class MobileSignalsPlugin : Plugin() {
                 put("isPowerSaveMode", powerSaveMode)
                 put("isDeviceIdleMode", deviceIdle)
                 put("isCharging", isCharging)
-                put("batteryLevel", batteryLevel)
+                put("batteryLevel", batteryLevel ?: JSONObject.NULL)
                 put("screenTime", buildUsageStatsSummary())
             })
         }
@@ -490,14 +589,22 @@ class MobileSignalsPlugin : Plugin() {
     private fun emitHealthSignal(reason: String) {
         if (!monitoring) return
         scope.launch {
-            val healthSnapshot = buildHealthSnapshot(reason)
+            val (healthSnapshot, readFailed) = buildHealthSnapshot(reason)
+            // Health Connect refuses reads while the host is in the background,
+            // and screen events often arrive then. A failed read must not replace
+            // a good earlier snapshot with one that looks like an empty week.
+            if (readFailed) {
+                Log.w(tag, "Skipped health signal after a failed Health Connect read ($reason)")
+                return@launch
+            }
             if (monitoring) {
                 notifyListeners("signal", healthSnapshot)
             }
         }
     }
 
-    private suspend fun buildHealthSnapshot(reason: String): JSObject {
+    /** Returns the snapshot and whether any Health Connect read failed. */
+    private suspend fun buildHealthSnapshot(reason: String): Pair<JSObject, Boolean> {
         val now = Instant.now()
         val sdkStatus = HealthConnectClient.getSdkStatus(context, HEALTH_CONNECT_PACKAGE)
         if (sdkStatus != HealthConnectClient.SDK_AVAILABLE) {
@@ -508,7 +615,7 @@ class MobileSignalsPlugin : Plugin() {
                 sleep = sleepSnapshot(false, false, null, null, null, null),
                 biometrics = biometricsSnapshot(null, null, null, null, null, null),
                 warnings = listOf("Health Connect provider unavailable or requires update"),
-            )
+            ) to false
         }
 
         val client = HealthConnectClient.getOrCreate(context)
@@ -516,18 +623,32 @@ class MobileSignalsPlugin : Plugin() {
         val range = TimeRangeFilter.between(start, now)
         val warnings = mutableListOf<String>()
 
-        val sleepSessions = runCatching {
+        val granted = runCatching { readGrantedPermissions(client) }.getOrElse {
+            warnings.add("Health Connect permission check failed")
+            emptySet()
+        }
+        val sleepGranted = granted.contains(HealthPermission.getReadPermission(SleepSessionRecord::class))
+        val heartRateGranted = granted.contains(HealthPermission.getReadPermission(HeartRateRecord::class))
+        val hrvGranted = granted.contains(HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class))
+
+        // Only granted record types are read, so a missing grant reads as no
+        // data rather than as a failed read. Each read asks for the newest
+        // records first; the default ascending page of 1000 would hold the
+        // oldest records of the week.
+        val latestSleep = if (!sleepGranted) null else runCatching {
             client.readRecords(
-                ReadRecordsRequest<SleepSessionRecord>(
+                ReadRecordsRequest(
+                    recordType = SleepSessionRecord::class,
                     timeRangeFilter = range,
+                    ascendingOrder = false,
+                    pageSize = 1,
                 )
-            ).records
+            ).records.maxByOrNull { it.startTime }
         }.getOrElse {
             warnings.add("Sleep Connect query failed")
-            emptyList()
+            null
         }
 
-        val latestSleep = sleepSessions.maxByOrNull { it.startTime }
         val sleepIsAvailable = latestSleep != null
         // Treat a sleep session as still in progress only when it ends in the
         // future or very recently. Older sessions describe a completed sleep
@@ -544,31 +665,36 @@ class MobileSignalsPlugin : Plugin() {
         }
         val sleepStage = if (sleepIsSleeping) "sleeping" else "awake"
 
-        val heartRateSamples = runCatching {
+        // A heart rate record holds a series of samples; several sources can
+        // write overlapping records, so take the newest few and the newest sample.
+        val latestHeartRate = if (!heartRateGranted) null else runCatching {
             client.readRecords(
                 ReadRecordsRequest(
                     recordType = HeartRateRecord::class,
                     timeRangeFilter = range,
+                    ascendingOrder = false,
+                    pageSize = 10,
                 )
-            ).records.flatMap { it.samples }
+            ).records.flatMap { it.samples }.maxByOrNull { it.time }
         }.getOrElse {
             warnings.add("Heart rate Connect query failed")
-            emptyList()
+            null
         }
 
-        val hrvRecords = runCatching {
+        val latestHrv = if (!hrvGranted) null else runCatching {
             client.readRecords(
-                ReadRecordsRequest<HeartRateVariabilityRmssdRecord>(
+                ReadRecordsRequest(
+                    recordType = HeartRateVariabilityRmssdRecord::class,
                     timeRangeFilter = range,
+                    ascendingOrder = false,
+                    pageSize = 1,
                 )
-            ).records
+            ).records.maxByOrNull { it.time }
         }.getOrElse {
             warnings.add("HRV Connect query failed")
-            emptyList()
+            null
         }
 
-        val latestHeartRate = heartRateSamples.maxByOrNull { it.time }
-        val latestHrv = hrvRecords.maxByOrNull { it.time }
         val sampleAt = listOfNotNull(
             latestHeartRate?.time,
             latestHrv?.time,
@@ -578,8 +704,8 @@ class MobileSignalsPlugin : Plugin() {
             reason = reason,
             source = "health_connect",
             permissions = permissions(
-                sleep = sleepIsAvailable,
-                biometrics = latestHeartRate != null || latestHrv != null,
+                sleep = sleepGranted,
+                biometrics = heartRateGranted || hrvGranted,
             ),
             sleep = sleepSnapshot(
                 available = sleepIsAvailable,
@@ -598,7 +724,7 @@ class MobileSignalsPlugin : Plugin() {
                 bloodOxygenPercent = null,
             ),
             warnings = warnings,
-        )
+        ) to warnings.isNotEmpty()
     }
 
     private fun permissions(sleep: Boolean, biometrics: Boolean): JSObject {
@@ -608,6 +734,8 @@ class MobileSignalsPlugin : Plugin() {
         }
     }
 
+    // Nullable fields are written as JSONObject.NULL: JSObject.put drops a key
+    // for a Kotlin null, and the TypeScript contract is number | null.
     private fun sleepSnapshot(
         available: Boolean,
         isSleeping: Boolean,
@@ -619,10 +747,10 @@ class MobileSignalsPlugin : Plugin() {
         return JSObject().apply {
             put("available", available)
             put("isSleeping", isSleeping)
-            put("asleepAt", asleepAt)
-            put("awakeAt", awakeAt)
-            put("durationMinutes", durationMinutes)
-            put("stage", stage)
+            put("asleepAt", asleepAt ?: JSONObject.NULL)
+            put("awakeAt", awakeAt ?: JSONObject.NULL)
+            put("durationMinutes", durationMinutes ?: JSONObject.NULL)
+            put("stage", stage ?: JSONObject.NULL)
         }
     }
 
@@ -635,12 +763,12 @@ class MobileSignalsPlugin : Plugin() {
         bloodOxygenPercent: Double?,
     ): JSObject {
         return JSObject().apply {
-            put("sampleAt", sampleAt)
-            put("heartRateBpm", heartRateBpm)
-            put("restingHeartRateBpm", restingHeartRateBpm)
-            put("heartRateVariabilityMs", heartRateVariabilityMs)
-            put("respiratoryRate", respiratoryRate)
-            put("bloodOxygenPercent", bloodOxygenPercent)
+            put("sampleAt", sampleAt ?: JSONObject.NULL)
+            put("heartRateBpm", heartRateBpm ?: JSONObject.NULL)
+            put("restingHeartRateBpm", restingHeartRateBpm ?: JSONObject.NULL)
+            put("heartRateVariabilityMs", heartRateVariabilityMs ?: JSONObject.NULL)
+            put("respiratoryRate", respiratoryRate ?: JSONObject.NULL)
+            put("bloodOxygenPercent", bloodOxygenPercent ?: JSONObject.NULL)
         }
     }
 
@@ -667,7 +795,7 @@ class MobileSignalsPlugin : Plugin() {
             put("permissions", permissions)
             put("sleep", sleep)
             put("biometrics", biometrics)
-            put("warnings", warnings)
+            put("warnings", JSArray(warnings))
             put("metadata", JSObject().apply {
                 put("reason", reason)
                 put("healthSource", source)
@@ -710,7 +838,7 @@ class MobileSignalsPlugin : Plugin() {
                 put("entitlements", JSObject().apply {
                     put("familyControls", FAMILY_CONTROLS_ENTITLEMENT)
                 })
-                put("frameworks", listOf("FamilyControls", "DeviceActivity"))
+                put("frameworks", JSArray(listOf("FamilyControls", "DeviceActivity")))
                 put("deviceActivityReportExtension", false)
                 put("deviceActivityMonitorExtension", false)
                 put("android", JSObject().apply {
@@ -857,14 +985,23 @@ class MobileSignalsPlugin : Plugin() {
             put("settingsTarget", "notification")
             put("reason", notifications.reason ?: JSONObject.NULL)
         })
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val batteryExempt = powerManager.isIgnoringBatteryOptimizations(context.packageName)
         actions.add(JSObject().apply {
             put("id", "battery_optimization")
             put("label", "Battery optimization")
-            put("status", "needs-action")
+            put("status", if (batteryExempt) "ready" else "needs-action")
             put("canRequest", false)
             put("canOpenSettings", true)
             put("settingsTarget", "batteryOptimization")
-            put("reason", "Disable aggressive battery optimization if background sync stops.")
+            put(
+                "reason",
+                if (batteryExempt) {
+                    JSONObject.NULL
+                } else {
+                    "Disable aggressive battery optimization if background sync stops."
+                },
+            )
         })
         return JSArray(actions)
     }
@@ -876,10 +1013,7 @@ class MobileSignalsPlugin : Plugin() {
         )
         val intent = when (target) {
             "usageAccess", "screenTime" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-            "health", "healthConnect" -> Intent(
-                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.parse("package:$HEALTH_CONNECT_PACKAGE"),
-            )
+            "health", "healthConnect" -> healthConnectSettingsIntent() ?: appDetailsIntent
             "notification" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(
                     Settings.EXTRA_APP_PACKAGE,
@@ -894,7 +1028,7 @@ class MobileSignalsPlugin : Plugin() {
         }
         val actualTarget = when (target) {
             "usageAccess", "screenTime" -> "usageAccess"
-            "health", "healthConnect" -> "healthConnect"
+            "health", "healthConnect" -> if (intent === appDetailsIntent) "app" else "healthConnect"
             "notification" -> "notification"
             "batteryOptimization" -> "batteryOptimization"
             "deviceSettings" -> "deviceSettings"
@@ -903,10 +1037,29 @@ class MobileSignalsPlugin : Plugin() {
         return Pair(actualTarget, intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
+    // Health Connect is a platform module from Android 14, where the old
+    // com.google.android.apps.healthdata app page no longer exists. Returns
+    // null when no activity on this device handles either screen.
+    private fun healthConnectSettingsIntent(): Intent? {
+        val candidates = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                add(
+                    Intent(HealthConnectManager.ACTION_MANAGE_HEALTH_PERMISSIONS)
+                        .putExtra(Intent.EXTRA_PACKAGE_NAME, context.packageName),
+                )
+            }
+            add(Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS))
+        }
+        return candidates.firstOrNull { it.resolveActivity(context.packageManager) != null }
+    }
+
     private fun hasUsageStatsAccess(): Boolean = usageReader.hasUsageStatsAccess()
 
-    private fun isUsageStatsPermissionDeclared(): Boolean {
-        return try {
+    private fun isUsageStatsPermissionDeclared(): Boolean = usageStatsPermissionDeclared
+
+    // The manifest cannot change while the app runs.
+    private val usageStatsPermissionDeclared: Boolean by lazy {
+        try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 context.packageManager.getPackageInfo(
                     context.packageName,
@@ -931,7 +1084,7 @@ class MobileSignalsPlugin : Plugin() {
     )
 
     private fun collectUsageStatsSummary(): UsageStatsSummary {
-        val summary = usageReader.collectLastDay()
+        val summary = cachedUsageSummary()
         val topApps = summary.topApps.map { usage ->
             JSObject().apply {
                 put("packageName", usage.packageName)
@@ -960,12 +1113,13 @@ class MobileSignalsPlugin : Plugin() {
 
     private fun handleOnDestroyInternal() {
         stopInternal()
+        scope.cancel()
         super.handleOnDestroy()
     }
 
     @ActivityCallback
     private fun handleHealthConnectPermissionResult(call: PluginCall, result: ActivityResult) {
-        scope.launch {
+        launchSettling(call) {
             val reason = if (result.resultCode != android.app.Activity.RESULT_OK) {
                 "Health Connect permissions were not granted."
             } else {

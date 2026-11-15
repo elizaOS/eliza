@@ -16,7 +16,7 @@ import type { RoleName } from "../roles";
 import type { AccessContext } from "../types/access-context.js";
 import type { MemoryScope } from "../types/memory.js";
 import type { UUID } from "../types/primitives.js";
-import { isMemoryScope } from "./memory-scope.js";
+import { isMemoryScope, scopedEntityIdFromMetadata } from "./memory-scope.js";
 
 interface AccessScopedRecord {
 	agentId?: UUID;
@@ -129,16 +129,11 @@ export function filterByAccessContext<T extends AccessScopedRecord>(
 		// Unstamped messages default to author-private so the author and agent can recall them
 		// without exposing them to other requesters.
 		const scope = rawScope ?? "private";
-		const meta = memory.metadata;
-		const scopedTo = meta?.scopedToEntityId;
-		const addedBy = meta?.addedBy;
-		const scopedEntityId =
-			typeof scopedTo === "string"
-				? (scopedTo as UUID)
-				: typeof addedBy === "string"
-					? (addedBy as UUID)
-					: memory.entityId;
-		return canReadScope(scope, scopedEntityId, actor);
+		return canReadScope(
+			scope,
+			scopedEntityIdFromMetadata(memory.metadata, memory.entityId),
+			actor,
+		);
 	});
 }
 

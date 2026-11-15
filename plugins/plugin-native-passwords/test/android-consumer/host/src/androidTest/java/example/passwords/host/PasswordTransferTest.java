@@ -1,5 +1,6 @@
 package example.passwords.host;
 
+import ai.eliza.plugins.passwords.PasswordSurfaces;
 import ai.eliza.plugins.passwords.PasswordVaultAccess;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.KeyguardManager;
@@ -74,6 +75,93 @@ public final class PasswordTransferTest {
   assertNotNull("OS lock-screen control remains available: " + id, node);
   assertTrue("OS lock-screen control accepts one input: " + id,
     node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));
+ }
+ /** A readable, authentication-bound vault is destroyed with no prompt and no grant, and page script cannot do it.
+  * The same vault checks the host's admission rule and the secret-surface signal. */
+ @Test public void hostDestroysReadableVaultWithoutPromptOrBridge() throws Exception {
+  assertEquals("1", InstrumentationRegistry.getArguments().getString("disposablePasswordFixture"));
+  assertTrue(ui.shell("getprop ro.hardware").matches("ranchu|goldfish|cutf_cvm"));
+  String user = ui.shell("am get-current-user"); assertTrue(user.matches("[0-9]+")); assertNotEquals("0", user);
+  Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+  KeyguardManager keyguard = context.getSystemService(KeyguardManager.class); assertFalse(keyguard.isDeviceSecure());
+  UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+  AccessibilityServiceInfo info = automation.getServiceInfo(); info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS; automation.setServiceInfo(info);
+  String pin = "7" + (100000 + new java.security.SecureRandom().nextInt(800000));
+  String token = UUID.randomUUID().toString().substring(0, 8);
+  boolean ownPin = false;
+  java.util.List<String> surfaces = new java.util.concurrent.CopyOnWriteArrayList<>();
+  // Records whether the editor had drawn when the signal changed. It must not have.
+  PasswordSurfaces.Listener listener = visible -> {
+   boolean drawn = false;
+   for (android.view.View root : android.view.inspector.WindowInspector.getGlobalWindowViews()) drawn |= root.isShown() && PasswordConsumerTest.containsText(root, "Add a password");
+   surfaces.add(visible + (drawn ? " drawn" : ""));
+  };
+  try {
+   ui.shell("locksettings set-pin --user " + user + " " + pin); ownPin = true;
+   ui.await(keyguard::isDeviceSecure, "Synthetic screen lock ready");
+   scenario = ActivityScenario.launch(TransferActivity.class);
+   ui.await(() -> "true".equals(js("Boolean(window.Capacitor?.nativePromise && window.invoke)")), "Real Capacitor bridge ready");
+   unlock(pin);
+   invoke("save", "ElizaPasswords", "save", new JSONObject().put("label", "Synthetic destroy").put("username", "synthetic-" + token)
+     .put("websites", new org.json.JSONArray().put("https://destroy.example")).put("password", "Synthetic-destroy-" + token));
+   value("save", "true");
+   PasswordVaultAccess access = PasswordVaultAccess.get(context);
+   java.io.File frame = new java.io.File(access.config.directory, "vault.enc");
+   assertTrue(frame.isFile());
+   java.security.KeyStore keys = java.security.KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
+   assertTrue(keys.containsAlias(access.config.alias));
+
+   // Page script cannot call it (Capacitor never settles an unknown method), and reset still refuses a readable vault.
+   invoke("script", "ElizaPasswords", "destroyVault", new JSONObject());
+   invoke("reset", "ElizaPasswords", "reset", new JSONObject());
+   ui.await(() -> "true".equals(js("results.reset?.error==='invalid'")), "Readable vault refuses JavaScript reset");
+   assertEquals("Unknown bridge method returned nothing", "true", js("results.script.value===undefined"));
+   assertTrue("Readable vault survives both", frame.isFile() && keys.containsAlias(access.config.alias));
+   assertTrue("Host reads that records exist without a prompt", access.exists() && !access.unrecoverable());
+
+   // The host's admission rule refuses a vault entry with one fixed code.
+   PasswordVaultAccess.setAdmission(refused -> false);
+   invoke("refused", "ElizaPasswords", "list", new JSONObject());
+   ui.await(() -> "true".equals(js("results.refused?.error==='not-admitted'")), "Host admission refuses the bridge");
+   PasswordVaultAccess.setAdmission(admitted -> true);
+
+   // An open draft closes, and no grant is needed. The surface signal rises before the editor draws and falls when it closes.
+   PasswordSurfaces.addListener(listener);
+   invoke("draft", "ElizaPasswords", "openEditor", new JSONObject());
+   ui.await(() -> ui.find(node -> "Add a password".contentEquals(node.getText() == null ? "" : node.getText())) != null, "Draft open");
+   assertEquals(java.util.List.of("true"), surfaces);
+   assertTrue(PasswordSurfaces.visible());
+   access.lock();
+   ui.await(() -> !access.unlocked(), "No grant remains");
+   access.destroyVault();
+   value("draft", "results.draft.value.status==='cancelled'");
+   assertEquals(java.util.List.of("true", "false"), surfaces);
+   assertFalse(PasswordSurfaces.visible() || access.exists());
+   assertNull("No device prompt opened", ui.find(node -> node.isPassword() && node.isEditable()));
+   for (String name : new String[]{"vault.enc", "vault.enc.bak", "vault.enc.new"}) assertFalse(name, new java.io.File(access.config.directory, name).exists());
+   keys.load(null);
+   assertFalse("Key is gone", keys.containsAlias(access.config.alias));
+   access.destroyVault(); // An absent vault is a success.
+
+   // A new vault works after a new device authentication.
+   unlock(pin);
+   assertEquals("New vault starts empty", 0, (int) access.use(store -> store.entries().length()));
+   invoke("fresh", "ElizaPasswords", "save", new JSONObject().put("label", "Fresh").put("username", "fresh-" + token)
+     .put("websites", new org.json.JSONArray().put("https://destroy.example")).put("password", "Synthetic-fresh-" + token));
+   value("fresh", "true");
+
+   // A host lock also closes an open draft.
+   invoke("closed", "ElizaPasswords", "openEditor", new JSONObject());
+   ui.await(() -> ui.find(node -> "Add a password".contentEquals(node.getText() == null ? "" : node.getText())) != null, "Second draft open");
+   access.lockAndClose();
+   value("closed", "results.closed.value.status==='cancelled'");
+   assertFalse(access.unlocked() || PasswordSurfaces.visible());
+  } finally {
+   PasswordSurfaces.removeListener(listener);
+   PasswordVaultAccess.setAdmission(admitted -> true);
+   if (scenario != null) scenario.close();
+   if (ownPin) { PasswordConsumerTest.clearSyntheticVault(context); ui.shell("locksettings clear --user " + user + " --old " + pin); }
+  }
  }
  @Test public void transferUsesRealPickerFreshUnlockAndCountsOnly() throws Exception {
   assertEquals("1", InstrumentationRegistry.getArguments().getString("disposablePasswordFixture"));
@@ -164,12 +252,76 @@ public final class PasswordTransferTest {
     assertEquals("Obscured Save does not resolve the bridge", "true", js("results.editor.pending===true"));
    }
    ui.press("Save");
-   value("editor", "results.editor.value.status==='saved' && Object.keys(results.editor.value).length===2");
+   value("editor", "results.editor.value.status==='saved' && results.editor.value.revision===1 && Object.keys(results.editor.value).length===3");
    String editorId = new org.json.JSONTokener(js("results.editor.value.id")).nextValue().toString();
    assertFalse("Secret never returned through bridge", js("JSON.stringify(results)").contains(editorPassword));
    assertTrue("Native entry bytes are exact", PasswordVaultAccess.get(context).use(store ->
      editorPassword.equals(store.get(editorId).getString("password"))));
-   invoke("editorDelete", "ElizaPasswords", "remove", new JSONObject().put("id", editorId)); value("editorDelete", "true");
+   PasswordVaultAccess vault = PasswordVaultAccess.get(context);
+
+   // No bridge input can carry a draft, and an edit must name an entry at a revision.
+   invoke("draftField", "ElizaPasswords", "openEditor", new JSONObject().put("password", "must-not-cross"));
+   ui.await(() -> "true".equals(js("results.draftField?.error==='invalid'")), "Draft field is refused");
+   invoke("noRevision", "ElizaPasswords", "openEditor", new JSONObject().put("entryId", editorId));
+   ui.await(() -> "true".equals(js("results.noRevision?.error==='invalid'")), "Edit without a revision is refused");
+
+   // A metadata edit with an empty password field cannot replace the secret.
+   invoke("rename", "ElizaPasswords", "openEditor", new JSONObject().put("entryId", editorId).put("expectedRevision", 1));
+   ui.await(() -> ui.find(node -> "Edit password".contentEquals(node.getText() == null ? "" : node.getText())) != null, "Native edit form shown");
+   ui.captureDialog("Edit password", "password-editor-edit.png");
+   editorField("Name", "Editor renamed");
+   ui.press("Save");
+   value("rename", "results.rename.value.status==='saved' && results.rename.value.revision===2 && Object.keys(results.rename.value).length===3");
+   assertTrue("Metadata edit keeps the exact secret", vault.use(store -> editorPassword.equals(store.get(editorId).getString("password")) && "Editor renamed".equals(store.get(editorId).getString("label"))));
+
+   // A typed value replaces it natively and never returns through the bridge.
+   String replacement = "Native-replacement-" + token;
+   invoke("replace", "ElizaPasswords", "openEditor", new JSONObject().put("entryId", editorId).put("expectedRevision", 2));
+   editorField("Password", replacement);
+   ui.press("Save");
+   value("replace", "results.replace.value.revision===3");
+   assertTrue("Native edit replaced the secret", vault.use(store -> replacement.equals(store.get(editorId).getString("password"))));
+   assertFalse("Replacement never returned through bridge", js("JSON.stringify(results)").contains(replacement));
+
+   // A stale revision is refused before the form opens.
+   invoke("staleOpen", "ElizaPasswords", "openEditor", new JSONObject().put("entryId", editorId).put("expectedRevision", 2));
+   ui.await(() -> "true".equals(js("results.staleOpen?.error==='conflict'")), "Stale revision rejects with conflict");
+
+   // A write during the edit blocks Save. Reload shows the latest record and discards the draft.
+   invoke("raced", "ElizaPasswords", "openEditor", new JSONObject().put("entryId", editorId).put("expectedRevision", 3));
+   ui.await(() -> ui.find(node -> "Edit password".contentEquals(node.getText() == null ? "" : node.getText())) != null, "Edit form shown for race");
+   String lost = "Must-not-overwrite-" + token;
+   editorField("Password", lost);
+   vault.use(store -> store.saveEntry(editorId, "Changed elsewhere", "editor-" + token, java.util.Collections.singletonList("https://editor.example"), null));
+   ui.press("Save");
+   ui.press("Reload");
+   assertTrue("Stale Save wrote nothing", vault.use(store -> replacement.equals(store.get(editorId).getString("password"))));
+   ui.await(() -> ui.find(node -> "Changed elsewhere".contentEquals(node.getText() == null ? "" : node.getText())) != null, "Reload shows the latest record");
+   ui.press("Save");
+   value("raced", "results.raced.value.revision===5");
+   assertTrue("Reload discarded the draft", vault.use(store -> replacement.equals(store.get(editorId).getString("password"))));
+
+   // The same sign-in always asks. Keep separate adds an entry; Update existing changes one password.
+   String rebound = "Same-login-" + token;
+   for (String choice : new String[]{"Keep separate", "Update existing"}) {
+    invoke(choice, "ElizaPasswords", "openEditor", new JSONObject());
+    editorField("Name", choice);
+    editorField("HTTPS website origin", "https://editor.example");
+    editorField("Username", "editor-" + token);
+    editorField("Password", rebound);
+    ui.press("Save");
+    ui.await(() -> ui.find(node -> "This sign-in is already saved".contentEquals(node.getText() == null ? "" : node.getText())) != null, "Same sign-in asks before saving");
+    ui.press(choice);
+    value(choice, "results[" + JSONObject.quote(choice) + "].value.status==='saved'");
+   }
+   String updated = new org.json.JSONTokener(js("results['Update existing'].value.id")).nextValue().toString();
+   String separate = new org.json.JSONTokener(js("results['Keep separate'].value.id")).nextValue().toString();
+   assertEquals("Keep separate added one entry; Update existing added none", 3, (int) vault.use(store -> store.entries().length()));
+   assertTrue("Update existing changed a saved entry and kept its name", vault.use(store -> rebound.equals(store.get(updated).getString("password")) && !"Update existing".equals(store.get(updated).getString("label"))));
+   if (!updated.equals(separate)) { invoke("separateDelete", "ElizaPasswords", "remove", new JSONObject().put("id", separate)); value("separateDelete", "true"); }
+
+   invoke("editorDelete", "ElizaPasswords", "remove", new JSONObject().put("id", updated.equals(separate) ? editorId : updated)); value("editorDelete", "true");
+   if (!updated.equals(editorId) && !updated.equals(separate)) { invoke("editorDeleteLast", "ElizaPasswords", "remove", new JSONObject().put("id", editorId)); value("editorDeleteLast", "true"); }
    invoke("cancelEditor", "ElizaPasswords", "openEditor", new JSONObject());
    ui.press("Cancel"); value("cancelEditor", "results.cancelEditor.value.status==='cancelled' && Object.keys(results.cancelEditor.value).length===1");
 

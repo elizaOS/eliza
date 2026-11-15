@@ -1,0 +1,58 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/subscription-funding-reservations.ts",
+    "packages/cloud/shared/src/db/schemas/billing-funding-reservations.ts",
+    "packages/cloud/shared/src/lib/services/subscription-funding.ts",
+    "packages/cloud/shared/src/lib/services/subscription-funding-policy.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-allowance.ts",
+    "packages/cloud/shared/src/db/schemas/subscription-allowance-periods.ts",
+    "packages/cloud/shared/src/lib/services/credits.ts",
+    "packages/cloud/shared/src/db/helpers.ts",
+    "packages/cloud/shared/src/lib/services/subscription-funding-transaction.pglite.test.ts",
+    "packages/cloud/shared/src/db/repositories/account-billing-snapshot-test-fixture.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/cloud/quint/check-funding-reservations.ts",
+    "packages/cloud/shared/src/db/migrations/0000_last_reavers.sql",
+    "packages/cloud/shared/src/db/migrations/0265_compute_billing_recovery.sql",
+    "packages/cloud/shared/src/db/migrations/0274_agent_billing_run_receipts.sql",
+    "packages/cloud/shared/src/db/migrations/0387_agent_compute_funding.sql",
+    "packages/cloud/shared/src/db/migrations/0388_agent_compute_funded_receipts.sql",
+    "packages/cloud/shared/src/db/migrations/0389_agent_compute_stop_receipts.sql",
+    "packages/cloud/shared/src/db/migrations/0390_agent_compute_runtime_readiness.sql",
+    "packages/cloud/shared/src/db/migrations/0391_agent_compute_subjects.sql",
+    "packages/cloud/shared/src/db/migrations/0392_agent_compute_retirement_backup.sql",
+    "packages/cloud/shared/src/db/migrations/0393_agent_compute_activation_minimum.sql",
+    "packages/cloud/shared/src/db/migrations/0394_agent_billing_activation_minimum.sql",
+    "packages/cloud/shared/src/db/migrations/0484_agent_billing_funding_reservations.sql",
+    "packages/cloud/shared/src/lib/services/subscription-allowance-lifecycle.pglite.test.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Positive createPrerequisite protocol projected onto one organization/logical-operation key, two transaction callers, two scope/merchant pairs, one owned allowance-period identity, opaque digests/keys 0..1 and integer currency inputs 0..2. References 0/1 belong to the projected owner; reference 2 is foreign. The model uses one field for requested_amount/reserved_amount, whose equality is enforced by the writer and schema.",
+      "Every distinct valid bounded record is enumerated. Invalid arguments collapse to unchanged transaction abort, and terminal replay payloads collapse to unchanged replay or rejection; general actions retain all guards and negative scenarios.",
+      "The caller has locked the organization and supplies the reservation/allocations from the same transaction. Repository calls stage complete results; any failure aborts the whole owning transaction, and commit publishes all staged writes atomically.",
+      "Canonical fixed-six money is abstracted as integer units; parsing, precision, numeric overflow, cryptographic digest binding and SQL isolation are not proved.",
+      "Expiry labels represent valid caller-supplied deadlines. Actual time, expiry validation and clock progression are not represented.",
+      "The repository neither owns purchased balances nor validates economic meaning of referenced ledger rows. Caller-owned debit/refund and allowance eligibility/expiry decisions are assumptions; no repository-level overspend or provider-effect proof is claimed.",
+      "The caller-supplied allowanceExpired flag controls unused allowance classification. Expired allowance is not a purchased-credit refund; purchased releases remain purchased credit. Actual clocks, grace windows and cross-operation reference uniqueness are outside this model.",
+      "Reference IDs are owned alpha representatives per field role. persistCurrent reuses reserveRef symbolically; it does not assert that real reservation, settlement and refund ledger rows share identity. Independent reference-identity and uniqueness coverage remain excluded.",
+      "The strict conformance hook runs four ordered transaction cases and two independently seeded cancellation/expiry cases on PGlite and fresh dedicated_compute_test_* PostgreSQL databases. It verifies committed allocation conservation and excludes unrelated skipped/filtered cases from selected coverage."
+    ],
+    "progress": "No fairness or temporal progress claim. Safety covers only the declared finite row protocol."
+  },
+  "cases": [
+    {
+      "name": "subscription-funding-reservations",
+      "main": "subscription_funding_reservations",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-funding-reservations.ts"
+}

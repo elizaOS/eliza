@@ -47,7 +47,7 @@ function timestamp() {
 
 function usage() {
   return [
-    "Usage: node packages/inference/verify/two_agent_voice_demo.mjs [options]",
+    "Usage: bun packages/inference/verify/two_agent_voice_demo.mjs [options]",
     "",
     "Options:",
     "  --backend synthetic|real   Backend to exercise (default: synthetic)",

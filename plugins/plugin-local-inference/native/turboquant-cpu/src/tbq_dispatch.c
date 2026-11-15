@@ -1,15 +1,14 @@
 /* tbq_dispatch.c - runtime dispatch to the best available SIMD path.
  *
  * The CMake build still compiles each SIMD TU only for arches whose
- * intrinsics exist (AVX2 on x86_64, NEON on AArch64, RVV 1.0 on
- * riscv64) and sets TBQ_HAVE_* so the dispatcher knows which symbols
- * were linked. Within a build, the actual choice is made at runtime
- * from cpuid / hwcap / hwprobe (see tbq_cpu_features.h).
+ * intrinsics exist (AVX2 on x86_64, NEON on AArch64) and sets
+ * TBQ_HAVE_* so the dispatcher knows which symbols were linked. Within
+ * a build, the actual choice is made at runtime from cpuid / hwcap
+ * (see tbq_cpu_features.h).
  *
- * Today only the scalar reference and the riscv64 RVV intrinsic
- * kernels exist. The dispatch table is wired with all four lanes so
- * NEON / AVX2 sister implementations can slot in later without any
- * change to call sites.
+ * Today only the scalar reference kernels exist. The dispatch table is
+ * wired with the NEON / AVX2 lanes so those implementations can slot
+ * in later without any change to call sites.
  */
 
 #include "turboquant/turboquant.h"
@@ -24,13 +23,6 @@ typedef void (*tbq_d3_fn)(const tbq_block_tbq3_0 * src, float dst[32]);
 typedef void (*tbq_d4_fn)(const tbq_block_tbq4_0 * src, float dst[32]);
 
 static tbq_simd_t tbq_pick(void) {
-#if defined(TBQ_HAVE_RVV) && TBQ_HAVE_RVV
-    {
-        tbq_cpu_features_t f;
-        tbq_detect_cpu(&f);
-        if (f.has_rvv) return TBQ_SIMD_RVV;
-    }
-#endif
     /* NEON / AVX2 lanes will be added when those TUs land. */
     return TBQ_SIMD_REF;
 }
@@ -47,7 +39,6 @@ static tbq_simd_t tbq_simd(void) {
             if (!strcmp(env, "ref"))      cached = TBQ_SIMD_REF;
             else if (!strcmp(env, "neon")) cached = TBQ_SIMD_NEON;
             else if (!strcmp(env, "avx2")) cached = TBQ_SIMD_AVX2;
-            else if (!strcmp(env, "rvv"))  cached = TBQ_SIMD_RVV;
             else cached = tbq_pick();
         } else {
             cached = tbq_pick();
@@ -62,7 +53,6 @@ void tbq_force_simd(int lane) {
 
 const char * tbq_active_simd(void) {
     switch (tbq_simd()) {
-        case TBQ_SIMD_RVV:  return "rvv";
         case TBQ_SIMD_NEON: return "neon";
         case TBQ_SIMD_AVX2: return "avx2";
         default:            return "ref";
@@ -71,36 +61,24 @@ const char * tbq_active_simd(void) {
 
 void tbq_quantize_tbq3_block(const float src[32], tbq_block_tbq3_0 * dst) {
     switch (tbq_simd()) {
-#if defined(TBQ_HAVE_RVV) && TBQ_HAVE_RVV
-        case TBQ_SIMD_RVV: tbq_quantize_tbq3_block_rvv(src, dst); return;
-#endif
         default: tbq_quantize_tbq3_block_ref(src, dst); return;
     }
 }
 
 void tbq_quantize_tbq4_block(const float src[32], tbq_block_tbq4_0 * dst) {
     switch (tbq_simd()) {
-#if defined(TBQ_HAVE_RVV) && TBQ_HAVE_RVV
-        case TBQ_SIMD_RVV: tbq_quantize_tbq4_block_rvv(src, dst); return;
-#endif
         default: tbq_quantize_tbq4_block_ref(src, dst); return;
     }
 }
 
 void tbq_decode_tbq3_block(const tbq_block_tbq3_0 * src, float dst[32]) {
     switch (tbq_simd()) {
-#if defined(TBQ_HAVE_RVV) && TBQ_HAVE_RVV
-        case TBQ_SIMD_RVV: tbq_decode_tbq3_block_rvv(src, dst); return;
-#endif
         default: tbq_decode_tbq3_block_ref(src, dst); return;
     }
 }
 
 void tbq_decode_tbq4_block(const tbq_block_tbq4_0 * src, float dst[32]) {
     switch (tbq_simd()) {
-#if defined(TBQ_HAVE_RVV) && TBQ_HAVE_RVV
-        case TBQ_SIMD_RVV: tbq_decode_tbq4_block_rvv(src, dst); return;
-#endif
         default: tbq_decode_tbq4_block_ref(src, dst); return;
     }
 }

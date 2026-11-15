@@ -10,6 +10,8 @@ import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import { decideAppBillingDeletionScope } from "../../db/repositories/app-billing-deletion-dispositions";
 import { readAppBillingDeletionObligations } from "../../db/repositories/app-billing-deletion-inventory";
+import { hasUnconfirmedAppCleanup } from "../../db/repositories/app-deletion-cleanup";
+import { secretsRepository } from "../../db/repositories/secrets";
 import { subscriptionAuthorityRepository } from "../../db/repositories/subscription-authority";
 import {
   agentBackupGcOutbox,
@@ -37,10 +39,13 @@ import { apps } from "../../db/schemas/apps";
 import { llmTrajectories } from "../../db/schemas/llm-trajectories";
 import { managedDomains } from "../../db/schemas/managed-domains";
 import { organizations } from "../../db/schemas/organizations";
+import { platformCredentials } from "../../db/schemas/platform-credentials";
 import { billingSubscriptionCommands } from "../../db/schemas/subscription-billing-operations";
 import { userVoices } from "../../db/schemas/user-voices";
+import { ObjectNamespaces } from "../storage/object-namespace";
 import type { RuntimeR2Bucket, RuntimeR2ObjectMetadata } from "../storage/r2-runtime-binding";
 import { getStripe } from "../stripe";
+import { countUnconfirmedAccountEvmSweeps } from "./account-deletion-crypto-sweeps";
 import type {
   AccountDeletionProviderAdapter,
   AccountDeletionProviderAdapters,
@@ -62,6 +67,8 @@ import { deleteAppWithCleanup } from "./app-cleanup";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { prepareInferencePolicyForAccountDeletion } from "./inference-policy-fence";
 import { oauthService } from "./oauth";
+import { getAdapter } from "./oauth/connection-adapters";
+import { secretsService } from "./secrets";
 import {
   deactivateStewardPlatformUser,
   deleteStewardPlatformUser,
@@ -100,9 +107,36 @@ function belongsToOrganization(object: RuntimeR2ObjectMetadata, organizationId: 
   );
 }
 
+/**
+ * Prefixes the Cloud writes tenant objects under. Catalogued storage objects
+ * and their put/delete operations live under `org/` and the storage authority
+ * prefix; legacy model-call payloads under `{organizationId}/`. Pending
+ * document uploads are keyed by user and carry the organization in metadata.
+ * A new writer of tenant objects must add its prefix here.
+ */
+function organizationObjectPrefixes(organizationId: string, userId: string): string[] {
+  return [
+    `documents-pre-upload/${userId}/`,
+    `cloud-files/${organizationId}/`,
+    `org/${organizationId}/`,
+    `__eliza_storage_authority/v2/org/${organizationId}/`,
+    `${organizationId}/`,
+    `generations/images/${organizationId}/`,
+    `generations/music/${organizationId}/`,
+    `generations/sfx/${organizationId}/`,
+    `avatars/characters/${organizationId}/`,
+    `avatars/users/${organizationId}/`,
+    `voice-samples/${organizationId}/`,
+    `${ObjectNamespaces.AgentSandboxBackups}/v2/${organizationId}/`,
+    ...Object.values(ObjectNamespaces).map((namespace) => `${namespace}/${organizationId}/`),
+  ];
+}
+
+/** Lists only the tenant's own prefixes, so cost follows this tenant, not the shared bucket. */
 async function listOrganizationObjectKeys(
   bucket: RuntimeR2Bucket,
   organizationId: string,
+  userId: string,
 ): Promise<string[]> {
   if (!bucket.list) {
     throw new ElizaError("Account deletion object storage cannot be inspected", {
@@ -110,29 +144,34 @@ async function listOrganizationObjectKeys(
       severity: "fatal",
     });
   }
-  const keys: string[] = [];
-  const seenCursors = new Set<string>();
-  let cursor: string | undefined;
-  let truncated = true;
-  while (truncated) {
-    const page = await bucket.list({ cursor, include: ["customMetadata"], limit: 1_000 });
-    keys.push(
-      ...page.objects.flatMap((object) =>
-        belongsToOrganization(object, organizationId) && object.key ? [object.key] : [],
-      ),
-    );
-    truncated = page.truncated;
-    if (!truncated) break;
-    if (!page.cursor || seenCursors.has(page.cursor)) {
-      throw new ElizaError("Account deletion object listing did not advance", {
-        code: "ACCOUNT_DELETION_OBJECT_CURSOR_INVALID",
-        severity: "fatal",
+  const keys = new Set<string>();
+  for (const prefix of new Set(organizationObjectPrefixes(organizationId, userId))) {
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+    let truncated = true;
+    while (truncated) {
+      const page = await bucket.list({
+        prefix,
+        cursor,
+        include: ["customMetadata"],
+        limit: 1_000,
       });
+      for (const object of page.objects) {
+        if (object.key && belongsToOrganization(object, organizationId)) keys.add(object.key);
+      }
+      truncated = page.truncated;
+      if (!truncated) break;
+      if (!page.cursor || seenCursors.has(page.cursor)) {
+        throw new ElizaError("Account deletion object listing did not advance", {
+          code: "ACCOUNT_DELETION_OBJECT_CURSOR_INVALID",
+          severity: "fatal",
+        });
+      }
+      seenCursors.add(page.cursor);
+      cursor = page.cursor;
     }
-    seenCursors.add(page.cursor);
-    cursor = page.cursor;
   }
-  return keys.sort();
+  return [...keys].sort();
 }
 
 function isMissingStripeResource(error: unknown): boolean {
@@ -492,6 +531,29 @@ async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContex
   });
 }
 
+/**
+ * Deletes a connector secret or proves it is already gone. Revocation deletes
+ * tokens best-effort; erasure must not drop the row while a secret survives.
+ */
+async function deleteConnectorSecret(secretId: string, organizationId: string): Promise<void> {
+  const existing = await secretsRepository.findById(secretId);
+  if (!existing || existing.organization_id !== organizationId) return;
+  try {
+    await secretsService.delete(secretId, organizationId, {
+      actorType: "system",
+      actorId: "account-deletion",
+      source: "account-deletion-connector-credentials",
+    });
+  } catch (error) {
+    if (!(await secretsRepository.findById(secretId))) return;
+    throw new ElizaError("Connector secret could not be deleted", {
+      code: "ACCOUNT_DELETION_CONNECTOR_SECRET_DELETE_FAILED",
+      severity: "ephemeral",
+      cause: error,
+    });
+  }
+}
+
 /** Creates the production adapter set; tests may inject exact provider doubles. */
 export function createAccountDeletionProviderAdapters(
   dependencies: AccountDeletionProviderAdapterDependencies = {},
@@ -734,13 +796,21 @@ export function createAccountDeletionProviderAdapters(
           .from(apps)
           .where(eq(apps.organization_id, context.organizationId))
           .limit(1);
-        return row ? { state: "needs_execution" } : complete(context, "github_repositories");
+        return row || (await hasUnconfirmedAppCleanup(context.organizationId))
+          ? { state: "needs_execution" }
+          : complete(context, "github_repositories");
       },
       async execute(context) {
         const rows = await dbWrite
           .select({ id: apps.id })
           .from(apps)
           .where(eq(apps.organization_id, context.organizationId));
+        if (rows.length === 0 && (await hasUnconfirmedAppCleanup(context.organizationId))) {
+          throw new ElizaError("Original app artifact cleanup is pending", {
+            code: "ACCOUNT_DELETION_APP_CLEANUP_PENDING",
+            severity: "ephemeral",
+          });
+        }
         for (const row of rows) {
           const deleted = await deleteAppWithCleanup(row.id, {
             continueOnError: false,
@@ -766,10 +836,48 @@ export function createAccountDeletionProviderAdapters(
           : { state: "needs_execution" };
       },
       async execute(context) {
+        const rows = await dbWrite
+          .select({
+            id: platformCredentials.id,
+            platform: platformCredentials.platform,
+            status: platformCredentials.status,
+            accessTokenSecretId: platformCredentials.access_token_secret_id,
+            refreshTokenSecretId: platformCredentials.refresh_token_secret_id,
+            apiKeySecretId: platformCredentials.api_key_secret_id,
+          })
+          .from(platformCredentials)
+          .where(eq(platformCredentials.organization_id, context.organizationId));
+        for (const row of rows) {
+          // Revocation bumps the token cache and clears Google consent, which
+          // needs the row to read 'revoked'. Platforms without an adapter
+          // (Discord, Telegram, ...) have nothing to revoke.
+          if (row.status !== "revoked" && getAdapter(row.platform)) {
+            await oauthService.revokeConnection({
+              organizationId: context.organizationId,
+              connectionId: row.id,
+            });
+          }
+          for (const secretId of [
+            row.accessTokenSecretId,
+            row.refreshTokenSecretId,
+            row.apiKeySecretId,
+          ]) {
+            if (secretId) await deleteConnectorSecret(secretId, context.organizationId);
+          }
+          await dbWrite
+            .delete(platformCredentials)
+            .where(
+              and(
+                eq(platformCredentials.id, row.id),
+                eq(platformCredentials.organization_id, context.organizationId),
+              ),
+            );
+        }
         const connections = await oauthService.listConnections({
           organizationId: context.organizationId,
         });
         for (const connection of connections) {
+          if (connection.source === "platform_credentials") continue;
           await oauthService.revokeConnection({
             organizationId: context.organizationId,
             connectionId: connection.id,
@@ -817,7 +925,8 @@ export function createAccountDeletionProviderAdapters(
         const result = await reconcileAccountDeletionStorage(
           context,
           async () =>
-            (await listOrganizationObjectKeys(context.blob, context.organizationId)).length === 0 &&
+            (await listOrganizationObjectKeys(context.blob, context.organizationId, context.userId))
+              .length === 0 &&
             (await trajectoryStore.listOrganizationKeys(context.organizationId)).length === 0,
         );
         if (result === "provider_present") return { state: "needs_execution" };
@@ -835,7 +944,11 @@ export function createAccountDeletionProviderAdapters(
             severity: "fatal",
           });
         }
-        for (const key of await listOrganizationObjectKeys(context.blob, context.organizationId)) {
+        for (const key of await listOrganizationObjectKeys(
+          context.blob,
+          context.organizationId,
+          context.userId,
+        )) {
           await context.blob.delete(key);
         }
         // Enumerated by prefix, so payloads whose rows were already removed go too.
@@ -856,6 +969,8 @@ export function createAccountDeletionProviderAdapters(
     },
     other_grants: {
       async inspect(context) {
+        if (await countUnconfirmedAccountEvmSweeps(context.userId, context.organizationId))
+          return { state: "action_required", errorCode: "ACCOUNT_DELETION_EVM_SWEEP_UNCONFIRMED" };
         const count = await countLocalRestrictiveRows(context);
         return count === 0 ? complete(context, "other_grants") : { state: "needs_execution" };
       },

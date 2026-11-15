@@ -1,0 +1,26 @@
+{
+  "sources": [
+    "packages/app/src/api/self-hosted-voice.ts",
+    "packages/host/src/voice/cloud-speech-relay-client.ts",
+    "packages/app/src/api/self-hosted-voice.test.ts",
+    "packages/host/src/voice/cloud-speech-retirement-recovery.test.ts"
+  ],
+  "bounds": {
+    "scope": "One owner, one exact predecessor and at most one current successor; explicit retry after cancellation or preparation failure; permanent configuration and identity loss; known and unknown consent and retirement outcomes.",
+    "progress": "Safety only. Provider or network completion is not assumed fair; failed retirement can remain blocked indefinitely.",
+    "limitations": "Abstract source-linked model, not automatic TypeScript refinement. No live provider, latency, fleet, storage durability or cryptographic proof. Unknown consent cannot mint; its server ledger expires under the existing contract. Existing local transport and authenticated-host tests cover concrete admission ordering."
+  },
+  "cases": [
+    {
+      "name": "successor-consent-fence",
+      "main": "CloudSpeechSuccessor",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

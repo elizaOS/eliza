@@ -51,6 +51,10 @@ export interface NativeLiveCapturePort {
   startLiveCapture(input: {
     captureId: string;
     echoCancel: boolean;
+    /** Silence (ms) that closes a VAD segment; the bridge clamps it and older bridges ignore it. */
+    endHangoverMs?: number;
+    /** An automatic reopen: refused, never prompted, after a call, pause or permission loss. */
+    reopen?: true;
     nativeAsr?: true;
     ownerId?: string;
     roomId?: string;
@@ -126,8 +130,22 @@ const level = (value: unknown) =>
     : undefined;
 const sessionChanged = () =>
   Object.assign(Error("The agent session changed."), { status: 409 });
+const fellBehind = () =>
+  Object.assign(Error("Native transcription fell behind."), {
+    code: "live-asr",
+    reason: "backlog",
+  });
+/** What an open rejects with when its capture refused to stop: `cancel` asks it again. */
+const unreleased = (cancel: () => Promise<void>) =>
+  Object.assign(Error("The microphone did not confirm it was off."), {
+    code: "capture",
+    cancel,
+  });
 
-/** Most finals a native capture may hold undelivered, and finished turn ids it remembers. */
+/**
+ * Most finals a native capture may hold undelivered (more ends it as fallen behind), and finished
+ * turn ids it remembers to drop duplicate finals and stale partials (the oldest is evicted).
+ */
 export const NATIVE_PENDING_FINALS = 8;
 export const NATIVE_FINISHED_TURNS = 512;
 
@@ -166,6 +184,7 @@ export async function openNativeResidentCapture(
   const pending: Array<ReturnType<typeof parseLiveFinal> | null> = [];
   const detach = async () => {
     unsubscribe?.();
+    unsubscribe = undefined;
     input.signal.removeEventListener("abort", abort);
     await Promise.all(
       handles.splice(0).map((handle) => handle.remove().catch(() => {})),
@@ -187,7 +206,7 @@ export async function openNativeResidentCapture(
       return stopped;
     }
     stopping = true;
-    stopped = (async () => {
+    const asked = (async () => {
       try {
         const ack = await port.stopLiveCapture({
           captureId,
@@ -201,7 +220,12 @@ export async function openNativeResidentCapture(
         await detach();
       }
     })();
-    return stopped;
+    stopped = asked;
+    // Only a confirmed stop stays answered: a refused one is asked again.
+    asked.catch(() => {
+      stopped = undefined;
+    });
+    return asked;
   };
   const abort = () => {
     void stop(true).catch(() => {});
@@ -270,22 +294,33 @@ export async function openNativeResidentCapture(
         if (event.error) {
           if (event.error === "ASR_FAILED") {
             if (pending.length >= NATIVE_PENDING_FINALS) {
-              lose(Error("Native transcription session limit reached."));
+              lose(fellBehind());
               return;
             }
             pending.push(null);
             drain();
-          } else lose(Error("Native transcription unavailable."));
+          } else
+            lose(
+              Object.assign(Error("Native transcription unavailable."), {
+                code: "live-asr",
+                ...(typeof event.error === "string"
+                  ? { reason: event.error }
+                  : {}),
+              }),
+            );
           return;
         }
         const final = parseLiveFinal(event.final);
         if (!final || finished.has(final.turnId)) return;
-        if (
-          finished.size >= NATIVE_FINISHED_TURNS ||
-          pending.length >= NATIVE_PENDING_FINALS
-        ) {
-          lose(Error("Native transcription session limit reached."));
+        if (pending.length >= NATIVE_PENDING_FINALS) {
+          lose(fellBehind());
           return;
+        }
+        // Finals arrive in VAD order, so dropping the oldest id keeps the
+        // duplicate check for recent turns without capping the conversation.
+        if (finished.size >= NATIVE_FINISHED_TURNS) {
+          const oldest = finished.values().next().value;
+          if (oldest !== undefined) finished.delete(oldest);
         }
         finished.add(final.turnId);
         if (partialTurn === final.turnId) {
@@ -333,6 +368,10 @@ export async function openNativeResidentCapture(
     const result = await port.startLiveCapture({
       captureId,
       echoCancel: input.echoCancel,
+      ...(input.endHangoverMs !== undefined
+        ? { endHangoverMs: input.endHangoverMs }
+        : {}),
+      ...(input.reopen ? { reopen: true } : {}),
       nativeAsr: true,
       ownerId: input.ownerId,
       ...(input.roomId ? { roomId: input.roomId } : {}),
@@ -367,7 +406,9 @@ export async function openNativeResidentCapture(
       },
     };
   } catch (error) {
-    await stop(true).catch(() => {});
+    await stop(true).catch(() => {
+      throw unreleased(() => stop(true));
+    });
     throw error;
   }
 }
@@ -410,8 +451,12 @@ export async function openNativeSegmentCapture(
   const captureId = input.captureId ?? crypto.randomUUID();
   const handles: NativeListenerHandle[] = [];
   let ended!: () => void;
+  let hasEnded = false;
   const endedPromise = new Promise<void>((resolve) => {
-    ended = resolve;
+    ended = () => {
+      hasEnded = true;
+      resolve();
+    };
   });
   const detach = () =>
     Promise.all(
@@ -454,12 +499,14 @@ export async function openNativeSegmentCapture(
   }
   let stopped: Promise<void> | undefined;
   const stopNative = () => {
-    stopped ??= (async () => {
+    if (stopped) return stopped;
+    const asked = (async () => {
       stopping = true;
       try {
         await port.stopLiveCapture({ captureId });
-      } catch {
-        /* Already stopped. */
+      } catch (error) {
+        // Only the capture's own end excuses a refusal: it may still be on.
+        if (!hasEnded) throw error;
       }
       // The bridge flushes its last frames before it reports the end (its stop waits up to 1.5 s).
       await Promise.race([
@@ -471,11 +518,16 @@ export async function openNativeSegmentCapture(
       accepting = false;
       await detach();
     })();
-    return stopped;
+    stopped = asked;
+    // Only a confirmed stop stays answered: a refused one is asked again.
+    asked.catch(() => {
+      stopped = undefined;
+    });
+    return asked;
   };
   const abort = () => {
     stream.cancel();
-    void stopNative();
+    void stopNative().catch(() => {});
   };
   let echoCancelled = false;
   try {
@@ -484,6 +536,10 @@ export async function openNativeSegmentCapture(
     const result = await port.startLiveCapture({
       captureId,
       echoCancel: input.echoCancel,
+      ...(input.endHangoverMs !== undefined
+        ? { endHangoverMs: input.endHangoverMs }
+        : {}),
+      ...(input.reopen ? { reopen: true } : {}),
     });
     if (result?.captureId !== captureId || result.sampleRate !== 16000)
       throw Error("Live capture identity changed.");
@@ -492,7 +548,9 @@ export async function openNativeSegmentCapture(
   } catch (error) {
     input.signal.removeEventListener("abort", abort);
     stream.cancel();
-    await stopNative();
+    await stopNative().catch(() => {
+      throw unreleased(stopNative);
+    });
     throw error;
   }
   const startedAt = Date.now();
@@ -608,6 +666,7 @@ export function createNativeLiveVoice(options: NativeLiveVoiceOptions) {
         roomId?: string;
         onInterim?: (text: string) => void;
         onLatency?: (latency: LiveVoiceLatency) => void;
+        endHangoverMs?: number;
       } = {},
     ) {
       return liveAssistantListener(open, listen);

@@ -32,6 +32,7 @@ export const assetNames = [
   "command-handler.mjs",
   "task-bindings.mjs",
   "commands.mjs",
+  "effect-watch.mjs",
   "page-command.mjs",
   "figtree-OFL.txt",
   "guide-font.mjs",
@@ -69,6 +70,7 @@ const resourceIds = {
   "command-handler.mjs": "IDR_ELIZA_BROWSER_COMMAND_HANDLER",
   "task-bindings.mjs": "IDR_ELIZA_BROWSER_TASK_BINDINGS",
   "commands.mjs": "IDR_ELIZA_BROWSER_COMMANDS",
+  "effect-watch.mjs": "IDR_ELIZA_BROWSER_EFFECT_WATCH",
   "page-command.mjs": "IDR_ELIZA_BROWSER_PAGE_COMMAND",
   "figtree-OFL.txt": "IDR_ELIZA_BROWSER_GUIDE_FONT_LICENSE",
   "guide-font.mjs": "IDR_ELIZA_BROWSER_GUIDE_FONT",
@@ -155,9 +157,10 @@ export function validateAssets(
         "storage",
         "tabs",
         "webNavigation",
+        "webRequest",
       ]) ||
     JSON.stringify(manifest.host_permissions) !==
-      JSON.stringify(["http://*/*", "https://*/*"])
+      JSON.stringify(["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"])
   )
     throw new Error(
       "Extension identity or reviewed manifest capabilities changed",
@@ -253,7 +256,7 @@ export async function generateComponentOverlay({
     replaceOnce(
       source,
       '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2460],',
-      '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2472],',
+      '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2474],',
       "component resource allocation",
     ),
   );

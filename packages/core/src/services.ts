@@ -11,9 +11,6 @@ import type { IAgentRuntime } from "./types/runtime.js";
 import type { ServiceTypeName } from "./types/service.js";
 import { Service } from "./types/service.js";
 
-// ServiceClass is exported from./types/plugin.ts - don't re-define here
-// to avoid duplicate export errors. The generic version is defined below.
-
 /**
  * Type for the service class returned by the builder.
  * This provides the expected interface for dynamically created service classes.
@@ -31,7 +28,7 @@ export interface TypedServiceBuilder<TService extends Service = Service> {
  */
 export class ServiceBuilder<TService extends Service = Service> {
 	protected serviceType: ServiceTypeName | string;
-	protected startFn!: (runtime: IAgentRuntime) => Promise<TService>;
+	protected startFn?: (runtime: IAgentRuntime) => Promise<TService>;
 	protected stopFn?: () => Promise<void>;
 	protected description: string;
 
@@ -74,8 +71,6 @@ export class ServiceBuilder<TService extends Service = Service> {
 		const startFn = this.startFn;
 		const stopFn = this.stopFn;
 
-		// Build the service class using Object.assign to properly set static properties
-		// This avoids double assertions by structuring the class correctly
 		const ServiceClassImpl = class extends Service {
 			capabilityDescription = description;
 
@@ -86,7 +81,6 @@ export class ServiceBuilder<TService extends Service = Service> {
 			}
 		};
 
-		// Define static properties on the class
 		Object.defineProperty(ServiceClassImpl, "serviceType", {
 			value: serviceType,
 			writable: false,
@@ -94,7 +88,6 @@ export class ServiceBuilder<TService extends Service = Service> {
 			configurable: false,
 		});
 
-		// Define the static start method that returns the correct type
 		const startMethod = async (runtime: IAgentRuntime): Promise<TService> => {
 			if (!startFn) {
 				throw new Error(
@@ -111,9 +104,7 @@ export class ServiceBuilder<TService extends Service = Service> {
 			configurable: false,
 		});
 
-		// The class now conforms to TypedServiceBuilder<TService> interface
-		// We use a type assertion here that is safe because we've explicitly
-		// set up the class to match the interface requirements
+		// Safe: the static `serviceType` and `start` members were defined above.
 		return ServiceClassImpl as TypedServiceBuilder<TService>;
 	}
 }
@@ -146,9 +137,9 @@ export interface ServiceDefinition<T extends Service = Service> {
 export function defineService<T extends Service = Service>(
 	definition: ServiceDefinition<T>,
 ): TypedServiceBuilder<T> {
-	return createService<T>(definition.serviceType)
+	const builder = createService<T>(definition.serviceType)
 		.withDescription(definition.description)
-		.withStart(definition.start)
-		.withStop(definition.stop || (() => Promise.resolve()))
-		.build();
+		.withStart(definition.start);
+	if (definition.stop) builder.withStop(definition.stop);
+	return builder.build();
 }

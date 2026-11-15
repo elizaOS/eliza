@@ -15,3 +15,5 @@ No standalone build script is defined; this package is consumed or executed from
 Run the harness with `bun run --cwd packages/benchmarks/suites/entity-voice-bench bench`. Live runs require the suite’s configured models, credentials, or hardware; offline tests do not establish a benchmark score.
 
 No standalone `test` script is defined in this package.
+
+Recorded library, model and ASR bundle paths use `~/` relative to the producer’s home. Audio filenames remain relative to their manifest.

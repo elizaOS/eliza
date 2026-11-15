@@ -1,7 +1,6 @@
 package ai.eliza.plugins.browsersurface;
 
 import java.net.URI;
-import java.util.Locale;
 
 /**
  * The exact origin a browser HTTP authentication prompt may be filled or saved for.
@@ -12,7 +11,7 @@ import java.util.Locale;
  * validated. The host never builds that report from navigation history, page script or the
  * top-level URL. Android's standard WebView supplies only a host and realm ({@code
  * WebViewClient#onReceivedHttpAuthRequest}), so {@link #STANDARD_WEBVIEW} reports nothing and
- * every prompt is refused with a stated reason; manual entry stays available. Anything this class
+ * every prompt is refused with a reason code; manual entry stays available. Anything this class
  * cannot parse fails closed. Pure JVM; no Android types.
  */
 public final class BrowserHttpAuthOrigin {
@@ -56,13 +55,17 @@ public final class BrowserHttpAuthOrigin {
     public long navigation;
   }
 
-  /** Fill/save is allowed for {@code origin}, or refused with a user-readable {@code refusal}. */
+  /**
+   * Fill/save is allowed for {@code origin}, or refused: {@code code} names the reason for logs and
+   * tests, and {@code refusal} is the one sentence the sign-in dialog shows for every reason.
+   */
   public static final class Decision {
-    public final String origin, refusal;
+    public final String origin, code, refusal;
 
-    private Decision(String origin, String refusal) {
+    private Decision(String origin, String code) {
       this.origin = origin;
-      this.refusal = refusal;
+      this.code = code;
+      this.refusal = code == null ? null : REFUSAL;
     }
 
     public boolean fillable() {
@@ -70,23 +73,27 @@ public final class BrowserHttpAuthOrigin {
     }
   }
 
-  public static final String NO_ENGINE_ORIGIN =
-      "Password manager fill is off for this sign-in: the browser engine does not report the exact site address for sign-in prompts. Type the password yourself.";
-  public static final String FRAME =
-      "Password manager fill is off for this sign-in: it was requested by a frame or resource inside the page, not the page itself.";
-  public static final String INSECURE =
-      "Password manager fill is off for this sign-in: the connection is not verified HTTPS.";
-  public static final String MISMATCH =
-      "Password manager fill is off for this sign-in: the browser engine's report does not match this prompt.";
-  public static final String REDIRECTED =
-      "Password manager fill is off for this sign-in: the page moved to another address after the request.";
-  public static final String STALE =
-      "Password manager fill is off for this sign-in: it belongs to an earlier page load.";
-  public static final String HIDDEN =
-      "Password manager fill is off for this sign-in: the tab is not the one shown.";
+  /** What the sign-in dialog says whenever fill is off, whatever the reason. */
+  public static final String REFUSAL =
+      "Your password manager can't fill this sign-in. Type the password yourself.";
 
-  private static Decision refuse(String why) {
-    return new Decision(null, why);
+  /** The engine does not report the exact site address for sign-in prompts (standard WebView). */
+  public static final String NO_ENGINE_ORIGIN = "no-engine-origin";
+  /** Requested by a frame or resource inside the page, not the page itself. */
+  public static final String FRAME = "frame";
+  /** The connection is not verified HTTPS. */
+  public static final String INSECURE = "insecure";
+  /** The engine's report does not match this prompt. */
+  public static final String MISMATCH = "mismatch";
+  /** The page moved to another address after the request. */
+  public static final String REDIRECTED = "redirected";
+  /** The challenge belongs to an earlier page load. */
+  public static final String STALE = "stale";
+  /** The tab is not the one shown. */
+  public static final String HIDDEN = "hidden";
+
+  private static Decision refuse(String code) {
+    return new Decision(null, code);
   }
 
   /**
@@ -183,22 +190,6 @@ public final class BrowserHttpAuthOrigin {
 
   /** Exact {@code scheme://host[:port]} of an http(s) URL without user info, default port omitted, or null. */
   public static String requestOrigin(String url) {
-    if (url == null || url.isEmpty() || url.length() > 4096)
-      return null;
-    URI uri;
-    try {
-      uri = new URI(url);
-    } catch (Exception invalid) {
-      return null;
-    }
-    String scheme = uri.getScheme() == null ? null : uri.getScheme().toLowerCase(Locale.ROOT);
-    String host = uri.getHost();
-    if (!("https".equals(scheme) || "http".equals(scheme)) || host == null || host.isEmpty()
-        || uri.getRawUserInfo() != null)
-      return null;
-    int port = uri.getPort();
-    boolean defaultPort = port == -1 || ("https".equals(scheme) && port == 443)
-        || ("http".equals(scheme) && port == 80);
-    return scheme + "://" + host.toLowerCase(Locale.ROOT) + (defaultPort ? "" : ":" + port);
+    return url == null || url.length() > 4096 ? null : BrowserWebOrigin.of(url);
   }
 }

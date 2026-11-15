@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { verifyMessage } from "viem";
 import { db } from "../../db/client";
 import { type AgentServerWallet, agentServerWallets } from "../../db/schemas/agent-server-wallets";
-import { cache } from "../cache/client";
+import { isSingleUseRecordStoreAvailable, putSingleUseRecord } from "../auth/single-use-records";
 import { logger } from "../utils/logger";
 import { createStewardClient } from "./steward-client";
 import { ensureStewardTenant } from "./steward-tenant-config";
@@ -24,7 +24,7 @@ class WalletAlreadyExistsError extends Error {
 
 class RpcRequestExpiredError extends Error {
   constructor() {
-    super("RPC request expired: Timestamp must be within the last 5 minutes");
+    super("RPC request expired: Timestamp must be within 5 minutes of server time");
     this.name = "RpcRequestExpiredError";
   }
 }
@@ -133,6 +133,17 @@ function isStewardConflictError(error: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 const PROVISION_PROOF_WINDOW_MS = 5 * 60 * 1000;
+const RPC_TIMESTAMP_WINDOW_MS = 5 * 60 * 1000;
+const NONCE_TTL_MARGIN_MS = 60 * 1000;
+
+/**
+ * Seconds a replay nonce must be kept: a signature stays acceptable until its
+ * timestamp + window, which for a future-dated timestamp is later than
+ * now + window.
+ */
+function nonceTtlSeconds(timestamp: number, windowMs: number): number {
+  return Math.ceil((timestamp + windowMs - Date.now() + NONCE_TTL_MARGIN_MS) / 1000);
+}
 
 /**
  * Proves the caller controls the `clientAddress` private key before a wallet is
@@ -146,10 +157,10 @@ const PROVISION_PROOF_WINDOW_MS = 5 * 60 * 1000;
  * key; we rebuild the identical message, verify the signature, enforce a
  * freshness window, and reject nonce replays.
  *
- * Nonce replay is enforced only while the cache is reachable. Unlike RPC —
+ * Nonce replay is enforced only while the nonce store is reachable. Unlike RPC —
  * where a replayed payload re-executes a transaction and so must fail closed —
  * re-running a provision is idempotent (same org + clientAddress returns the
- * existing wallet), so degrading to signature + freshness during a cache outage
+ * existing wallet), so degrading to signature + freshness during a store outage
  * costs no real safety and keeps provisioning available.
  */
 async function assertProvisionControlProof(params: {
@@ -185,9 +196,13 @@ async function assertProvisionControlProof(params: {
     throw new ProvisionProofInvalidError();
   }
 
-  if (cache.isAvailable()) {
+  if (isSingleUseRecordStoreAvailable()) {
     const nonceKey = `wallet-provision-nonce:${clientAddress.toLowerCase()}:${proof.nonce}`;
-    const nonceClaimed = await cache.setIfNotExists(nonceKey, "1", PROVISION_PROOF_WINDOW_MS);
+    const nonceClaimed = await putSingleUseRecord(
+      nonceKey,
+      "1",
+      nonceTtlSeconds(proof.timestamp, PROVISION_PROOF_WINDOW_MS),
+    );
     if (!nonceClaimed) {
       throw new ProvisionProofReplayError();
     }
@@ -299,9 +314,8 @@ async function provisionStewardWallet({
 export async function executeServerWalletRpc({ clientAddress, payload, signature }: ExecuteParams) {
   const normalizedClientAddress = clientAddress.toLowerCase();
   // Timestamp check
-  const now = Date.now();
-  const RPC_TIMESTAMP_WINDOW_MS = 5 * 60 * 1000;
-  if (!payload.timestamp || now - payload.timestamp > RPC_TIMESTAMP_WINDOW_MS) {
+  // Symmetric window: an unbounded future timestamp would need an unbounded nonce TTL.
+  if (!payload.timestamp || Math.abs(Date.now() - payload.timestamp) > RPC_TIMESTAMP_WINDOW_MS) {
     throw new RpcRequestExpiredError();
   }
 
@@ -315,10 +329,14 @@ export async function executeServerWalletRpc({ clientAddress, payload, signature
     throw new InvalidRpcSignatureError();
   }
 
-  // Nonce replay protection — TTL matches the timestamp window since older
-  // payloads are already rejected by the timestamp check above.
+  // Nonce replay protection (single-use record, atomic on KV hosts too). The
+  // nonce is kept until the payload's own timestamp window closes.
   const nonceKey = `rpc-nonce:${normalizedClientAddress}:${payload.nonce}`;
-  const nonceSet = await cache.setIfNotExists(nonceKey, "1", RPC_TIMESTAMP_WINDOW_MS);
+  const nonceSet = await putSingleUseRecord(
+    nonceKey,
+    "1",
+    nonceTtlSeconds(payload.timestamp, RPC_TIMESTAMP_WINDOW_MS),
+  );
   if (!nonceSet) {
     throw new RpcReplayError();
   }

@@ -1,4 +1,4 @@
-/** Encrypts secret settings with AES-256-GCM and authenticated versioned envelopes; decrypts supported CBC envelopes. Production requires an explicit salt unless the operator enables the default-salt exception. Development without a salt uses a warned, process-local random key. Decryption errors fail explicitly; non-string settings pass through. */
+/** Encrypts secret settings with AES-256-GCM and authenticated versioned envelopes; decrypts supported CBC envelopes. Production requires an explicit, non-default salt. Development without a salt uses a warned, process-local random key. Decryption errors fail explicitly; non-string settings pass through. */
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
@@ -44,8 +44,8 @@ let saltCache: SaltCache | null = null;
 let saltErrorLogged = false;
 const SALT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
 
-/** The historical hardcoded fallback — a publicly known key input. */
-const LEGACY_DEFAULT_SECRET_SALT = "secretsalt";
+/** The historical hardcoded fallback, publicly known and therefore rejected. */
+const PUBLICLY_KNOWN_SECRET_SALT = "secretsalt";
 
 /**
  * Random per-process salt for the unset-outside-production case. Deliberately
@@ -60,7 +60,13 @@ function getEphemeralSalt(): string {
 	return ephemeralSalt;
 }
 
+/** Additional authenticated data bound into every v2 ciphertext. */
+const SETTINGS_V2_AAD = new TextEncoder().encode("elizaos:settings:v2");
+
 function isEncryptedV1(value: string): boolean {
+	// Plain settings dominate reads; a v1 envelope always has its only colon
+	// right after the 32-hex IV, so reject before allocating a split.
+	if (value.charCodeAt(32) !== 58) return false;
 	const parts = value.split(":");
 	if (parts.length !== 2) return false;
 	// v1 was AES-256-CBC: a 16-byte IV (32 hex chars) and a ciphertext that is a
@@ -78,6 +84,7 @@ function isEncryptedV1(value: string): boolean {
 }
 
 function isEncryptedV2(value: string): boolean {
+	if (!value.startsWith("v2:")) return false;
 	const parts = value.split(":");
 	if (parts.length !== 4) return false;
 	if (parts[0] !== "v2") return false;
@@ -115,22 +122,17 @@ export function getSalt(): string {
 	const envSalt = getEnv("SECRET_SALT", "") || "";
 	const nodeEnv = (getEnv("NODE_ENV", "") || "").toLowerCase();
 	const isProduction = nodeEnv === "production";
-	const allowDefaultSaltRaw =
-		getEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "") || "";
-	const allowDefaultSalt = allowDefaultSaltRaw.toLowerCase() === "true";
+	const isKnownOrUnset =
+		envSalt === "" || envSalt === PUBLICLY_KNOWN_SECRET_SALT;
 
-	const isDefaultOrUnset =
-		envSalt === "" || envSalt === LEGACY_DEFAULT_SECRET_SALT;
-
-	if (isProduction && isDefaultOrUnset && !allowDefaultSalt) {
+	if (isProduction && isKnownOrUnset) {
 		throw new Error(
-			"SECRET_SALT must be set to a non-default value in production. " +
-				"Set ELIZA_ALLOW_DEFAULT_SECRET_SALT=true to override (not recommended).",
+			"SECRET_SALT must be set to a non-default value in production.",
 		);
 	}
 
-	let value: string;
-	if (isDefaultOrUnset && !allowDefaultSalt) {
+	let value = envSalt;
+	if (isKnownOrUnset) {
 		// Never key ciphertext by the publicly known constant: derive an
 		// ephemeral random salt instead. The loud trade-off is that settings
 		// encrypted under it are not decryptable after a process restart —
@@ -143,16 +145,6 @@ export function getSalt(): string {
 				"SECRET_SALT is not set — generated an EPHEMERAL random salt for this process. " +
 					"Settings encrypted now will NOT be decryptable after restart. " +
 					"Set SECRET_SALT to a stable random value to persist encrypted settings.",
-			);
-			saltErrorLogged = true;
-		}
-	} else {
-		// Use the explicit salt or the default constant under operator opt-in.
-		value = isDefaultOrUnset ? LEGACY_DEFAULT_SECRET_SALT : envSalt;
-		if (isDefaultOrUnset && !saltErrorLogged) {
-			logger.warn(
-				{ src: "core:settings", event: "core.settings.default_secret_salt" },
-				"SECRET_SALT is not set or using default value",
 			);
 			saltErrorLogged = true;
 		}
@@ -181,18 +173,6 @@ export function clearSaltCache(): void {
  * @returns {string} - The encrypted value in 'iv:encrypted' format
  */
 export function encryptStringValue(value: string, salt: string): string {
-	if (value === undefined || value === null) {
-		return value;
-	}
-
-	if (typeof value === "boolean" || typeof value === "number") {
-		return value;
-	}
-
-	if (typeof value !== "string") {
-		return value;
-	}
-
 	// If already encrypted, return as-is.
 	if (isEncryptedV1(value) || isEncryptedV2(value)) {
 		return value;
@@ -206,13 +186,12 @@ export function encryptStringValue(value: string, salt: string): string {
 		.slice(0, 32);
 	const iv = BufferUtils.randomBytes(12);
 
-	const aad = new TextEncoder().encode("elizaos:settings:v2");
 	const plaintextBytes = BufferUtils.fromString(value, "utf8");
 	const { ciphertext, tag } = cryptoUtils.encryptAes256Gcm(
 		key,
 		iv,
 		plaintextBytes,
-		aad,
+		SETTINGS_V2_AAD,
 	);
 
 	// Store version + IV + ciphertext + tag so we can decrypt and authenticate later
@@ -248,13 +227,12 @@ export function decryptStringValue(value: string, salt: string): string {
 			const iv = BufferUtils.fromHex(parts[1]);
 			const ciphertext = BufferUtils.fromHex(parts[2]);
 			const tag = BufferUtils.fromHex(parts[3]);
-			const aad = new TextEncoder().encode("elizaos:settings:v2");
 			const plaintextBytes = cryptoUtils.decryptAes256Gcm(
 				key,
 				iv,
 				ciphertext,
 				tag,
-				aad,
+				SETTINGS_V2_AAD,
 			);
 			return BufferUtils.bufferToString(plaintextBytes, "utf8");
 		}

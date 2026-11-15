@@ -7,8 +7,8 @@
  * `results/searchbench/latest.json` and writes a consolidated dashboard under
  * `results/summary/`.
  *
- *   node suites/searchbench/run-all.mjs
- *   node suites/searchbench/run-all.mjs --json
+ *   bun suites/searchbench/run-all.mjs
+ *   bun suites/searchbench/run-all.mjs --json
  *
  * Exit codes mirror the harness:
  *   0  measured gold set present, all budgets pass

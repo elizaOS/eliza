@@ -109,7 +109,7 @@ export function importPath(filePath) {
 export const HONO_IMPORT_RE =
   /^\s*(?:import|export)\b[^;]*\bfrom\s*['"]hono['"]/m;
 export const HONO_APP_FACTORY_RE =
-  /^\s*import\b[^;]*\bcreateMcpsTransportApp\b[^;]*\bfrom\s*['"]@\/api-app\/lib\/mcp\/mcps-transport-gateway['"]/m;
+  /^\s*import\b[^;]*\bcreateMcpsTransportApp\b[^;]*\bfrom\s*['"](?:@\/api-app|(?:\.\.\/)+src)\/lib\/mcp\/mcps-transport-gateway['"]/m;
 
 export function isHonoRouteSource(code) {
   return HONO_IMPORT_RE.test(code) || HONO_APP_FACTORY_RE.test(code);

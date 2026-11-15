@@ -74,7 +74,7 @@ describe("@elizaos/plugin-coding-tools — plugin admission", () => {
     ).toBe(true);
     expect(
       shouldEnable(
-        { ANDROID_ROOT: "/system", RUNTIME_MODE: "remote" },
+        { ANDROID_ROOT: "/system", ELIZA_RUNTIME_MODE: "remote" },
         { features: { codingTools: { enabled: false } } },
       ),
     ).toBe(false);

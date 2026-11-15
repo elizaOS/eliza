@@ -104,8 +104,10 @@ function BudgetSummary({ data }: { data: ContextInspectorResponse }) {
           limit: acc.limit + budget.limitTokens,
           reserved: acc.reserved + budget.reservedTokens,
           rejected: acc.rejected + (budget.state === "rejected" ? 1 : 0),
+          byteBound:
+            acc.byteBound || budget.estimationMode === "utf8-upper-bound",
         }),
-        { used: 0, limit: 0, reserved: 0, rejected: 0 },
+        { used: 0, limit: 0, reserved: 0, rejected: 0, byteBound: false },
       ),
     [data.tokenBudgets],
   );
@@ -121,7 +123,9 @@ function BudgetSummary({ data }: { data: ContextInspectorResponse }) {
         </h2>
       </div>
       <div>
-        <div className="text-xs uppercase tracking-wide text-muted">Used</div>
+        <div className="text-xs uppercase tracking-wide text-muted">
+          {summary.byteBound ? "Used (byte upper bound)" : "Used"}
+        </div>
         <div className="mt-1 text-lg font-semibold text-txt">
           {summary.used}
         </div>

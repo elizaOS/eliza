@@ -158,8 +158,8 @@ export async function handleAgentAdminRoutes(
       return true;
     }
 
-    if (state.agentState === "restarting") {
-      error(res, "A restart is already in progress", 409);
+    if (state.agentState === "starting" || state.agentState === "restarting") {
+      error(res, "An agent start or restart is already in progress", 409);
       return true;
     }
 

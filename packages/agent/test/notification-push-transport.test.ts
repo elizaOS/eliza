@@ -121,6 +121,11 @@ it("boots push before its lazy event bus and carries persisted reminder urgency 
           registry,
           providers: { android, ios: new ApnsProvider({}) },
         });
+        const attaching = Promise.all([service.attach(), service.attach()]);
+        await service.stop();
+        await attaching;
+        // A pending lazy-bus attachment cannot outlive stop or leak a listener.
+        expect(service.isDeliveryEnabled("android")).toBe(false);
         await service.attach();
         return service;
       }

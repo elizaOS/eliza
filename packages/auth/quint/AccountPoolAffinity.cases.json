@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "packages/auth/src/accounts/account-pool.ts",
+    "packages/auth/src/accounts/account-selection.ts"
+  ],
+  "conformance": "packages/auth/quint/check-account-pool-affinity.mjs",
+  "bounds": {
+    "domain": "Round-robin, two providers, two sessions, three accounts, two concurrent slots four total calls and one eligibility update. Provider2 shares an account id with provider1. Enabled flags represent the eligibility predicate while health and time remain fixed.",
+    "assumptions": "Each call captures its inventory before awaiting an expiry metadata write. Eligibility is evaluated on that captured inventory. The caller must separately validate fresh credentials before effects. Requests have no cancellation input; external caller cancellation is a separate owner. Process restart is modeled only while no selection is pending.",
+    "progress": "A weakly fair successful finish for each pending slot ensures settlement. Permanent storage outage and process termination are outside that progress assumption.",
+    "gaps": "Other selection strategies, health/cooldown/expiry classifiers, usage refresh, repeated eligibility changes, live credentials, 10,000-entry eviction, mutable callback objects and disk metadata concurrency require separate models."
+  },
+  "cases": [
+    {
+      "name": "concurrent-round-robin-affinity",
+      "main": "AccountPoolAffinity",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "SelectedFromCapturedEligibility",
+        "ProviderMembership",
+        "IndependentAffinity",
+        "AffinityReuseKeepsCursor",
+        "FailedSelectionHasNoCacheEffects",
+        "EmptySelectionKeepsState",
+        "CacheEntriesStayInProvider"
+      ],
+      "temporal": ["CallsFinish"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CallsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in AccountPoolAffinity: CallsFinish = slots.forall(slot => finish(slot).weakFair(s).implies(always( (s.calls.get(slot).stage == \"waiting\").implies(eventually( s.calls.get(slot).stage != \"waiting\")))))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -9,6 +9,7 @@ import type { MapsOperation } from "@elizaos/cloud-shared/lib/services/maps/cont
 import { OsmMapsProvider } from "@elizaos/cloud-shared/lib/services/maps/osm-provider";
 import { resetPlanRequestLimiterForTests } from "@elizaos/cloud-shared/lib/services/plan-request-limiter";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { MapsAdmissionError } from "../src/lib/maps-request-admission";
 import {
   admitMapsByPlanBuckets,
   createMapsRoute,
@@ -566,6 +567,85 @@ describe("Eliza Cloud Maps routes", () => {
       route.steps.map((step: { maneuver?: string }) => step.maneuver),
     ).toEqual(["depart", "left", "arrive"]);
     expect(route.geometry[1]).toEqual({ latitude: 43.737, longitude: 7.424 });
+  });
+
+  test("a 50,000-point router shape is bounded and keeps its endpoints and steps", async () => {
+    // A sawtooth every 8 m with fixed 11-120 m teeth: every point is shape
+    // at 5 m, so the tolerance must grow before the route fits the cap.
+    const count = 50_000;
+    let seed = 1;
+    const tooth = () => {
+      seed = (seed * 48_271) % 2_147_483_647;
+      return 0.0001 + 0.001 * (seed / 2_147_483_647);
+    };
+    const coordinates = Array.from({ length: count }, (_, i) => [
+      CASINO.longitude + 0.0001 * i,
+      CASINO.latitude + (i % 2 ? 1 : -1) * tooth(),
+    ]);
+    const stepStarts = [0, 1_234, 25_001, 49_998];
+    const res = await call(
+      "routes",
+      deps({
+        provider: () =>
+          provider(() =>
+            Response.json({
+              paths: [
+                {
+                  distance: 1_000,
+                  time: 600_000,
+                  points: { coordinates },
+                  instructions: stepStarts.map((start, i) => ({
+                    text: `Step ${i}`,
+                    distance: 250,
+                    interval: [start, stepStarts[i + 1] ?? count - 1],
+                    sign: 0,
+                  })),
+                },
+              ],
+            }),
+          ),
+      }),
+      { from: CASINO, to: PORT, mode: "walk" },
+    );
+    expect(res.status).toBe(200);
+    const [route] = (await json(res)).routes;
+    expect(route.geometry.length).toBeGreaterThan(stepStarts.length);
+    expect(route.geometry.length).toBeLessThanOrEqual(10_000);
+    const [firstLongitude, firstLatitude] = coordinates[0];
+    const [lastLongitude, lastLatitude] = coordinates[count - 1];
+    expect(route.geometry[0]).toEqual({
+      latitude: firstLatitude,
+      longitude: firstLongitude,
+    });
+    expect(route.geometry.at(-1)).toEqual({
+      latitude: lastLatitude,
+      longitude: lastLongitude,
+    });
+    for (const step of route.steps)
+      expect(route.geometry).toContainEqual(step.coordinate);
+  });
+
+  test("an allowance refusal carries Retry-After", async () => {
+    const res = await call(
+      "routes",
+      deps({
+        admitRequest: async () => {
+          throw new MapsAdmissionError(
+            429,
+            "allowance_exhausted",
+            "The Maps request allowance is exhausted.",
+            { retryAfterSeconds: 120 },
+          );
+        },
+      }),
+      { from: CASINO, to: PORT, mode: "walk" },
+    );
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("120");
+    expect(await json(res)).toMatchObject({
+      code: "allowance_exhausted",
+      retryAfterSeconds: 120,
+    });
   });
 
   test("unsupported regions and modes are refused without a provider call", async () => {

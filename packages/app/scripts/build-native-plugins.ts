@@ -5,7 +5,7 @@
  * matches the current build host (or omits an OS allowlist entirely).
  *
  * Designed to be invoked from any elizaOS-based fork:
- *   node eliza/packages/app/scripts/build-native-plugins.ts
+ *   bun eliza/packages/app/scripts/build-native-plugins.ts
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";

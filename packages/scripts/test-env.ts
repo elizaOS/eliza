@@ -6,10 +6,10 @@
  * live model-provider aliases to Cerebras `gpt-oss-120b`.
  *
  * Usage:
- *   node packages/scripts/test-env.ts              # PR lane (default, no keys)
- *   node packages/scripts/test-env.ts --lane=post-merge
+ *   bun packages/scripts/test-env.ts              # PR lane (default, no keys)
+ *   bun packages/scripts/test-env.ts --lane=post-merge
  *
- * Then `eval "$(node packages/scripts/test-env.ts)"` in your shell, or pipe to
+ * Then `eval "$(bun packages/scripts/test-env.ts)"` in your shell, or pipe to
  * `bun run test`-driving scripts that source the result.
  */
 

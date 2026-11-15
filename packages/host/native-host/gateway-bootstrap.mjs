@@ -4,7 +4,10 @@ import { startGatewayLifecycle } from "./gateway-lifecycle.mjs";
 
 const validPort = (port) =>
   Number.isInteger(port) && port >= 1024 && port <= 65535;
-/** Explicit local/native bootstrap. Hosts select paths, factories and authority policy. */
+/** Explicit local/native bootstrap. Hosts select paths, factories and authority policy.
+ * Starting needs no live agent: only the agent token the host published beforehand is read,
+ * so a host may start the gateway beside a booting agent. Until the agent answers, proxied
+ * routes (including /health) answer "unavailable" and the host's readiness probe retries. */
 export async function startLocalGateway({
   configuration: config,
   ports,
@@ -59,8 +62,8 @@ export async function startLocalGateway({
     credentialGate,
   });
   const inferenceConfigured = config.native
-    ? async () => {
-        await credentialGate();
+    ? async ({ credentialGate: checkAccount = credentialGate } = {}) => {
+        await checkAccount();
         const binding = JSON.parse(await readFile(config.bindingPath, "utf8"));
         return binding.inferenceConfigured === true;
       }

@@ -1,4 +1,4 @@
-// Browser-process origin transport; preserve the existing versioned consumer wire keys.
+// Browser-process origin transport; keep the versioned keys aligned with PasswordAutofillPolicy.
 export function applyAutofillFullOrigin(edit, replaceOnce) {
   edit(
     "components/android_autofill/browser/java/src/org/chromium/components/autofill/FormData.java",
@@ -26,7 +26,7 @@ export function applyAutofillFullOrigin(edit, replaceOnce) {
       replaceOnce(
         source,
         '     */\n    public void fillViewStructure(ViewStructure structure, short focusFieldIndex) {\n        structure.setWebDomain(mHost);\n        structure.setHtmlInfo(\n                structure.newHtmlInfoBuilder("form").addAttribute("name", mName).build());\n        int index = structure.addChildCount(mFields.size());\n',
-        '     */\n    public void fillViewStructure(ViewStructure structure, short focusFieldIndex) {\n        structure.setWebDomain(mHost);\n        // Browser-process origins survive Android\'s scheme/host-only setWebDomain.\n        // Never derive these values from DOM attributes or the form action URL.\n        structure.getExtras().putInt("ai.elizaresearch.autofill.version", 1);\n        structure.getExtras().putString("ai.elizaresearch.autofill.origin", mHost);\n        structure.getExtras().putString("ai.elizaresearch.autofill.topOrigin", mMainFrameOrigin);\n        structure.setHtmlInfo(\n                structure.newHtmlInfoBuilder("form").addAttribute("name", mName).build());\n        int index = structure.addChildCount(mFields.size());\n',
+        '     */\n    public void fillViewStructure(ViewStructure structure, short focusFieldIndex) {\n        structure.setWebDomain(mHost);\n        // Browser-process origins survive Android\'s scheme/host-only setWebDomain.\n        // Never derive these values from DOM attributes or the form action URL.\n        structure.getExtras().putInt("ai.alphacompute.autofill.version", 1);\n        structure.getExtras().putString("ai.alphacompute.autofill.origin", mHost);\n        structure.getExtras().putString("ai.alphacompute.autofill.topOrigin", mMainFrameOrigin);\n        structure.setHtmlInfo(\n                structure.newHtmlInfoBuilder("form").addAttribute("name", mName).build());\n        int index = structure.addChildCount(mFields.size());\n',
         "Autofill full origin 3",
       ),
   );
@@ -36,7 +36,7 @@ export function applyAutofillFullOrigin(edit, replaceOnce) {
       replaceOnce(
         source,
         "            }\n            child.setHint(field.mPlaceholder);\n            child.setWebDomain(field.mOrigin);\n\n            RectF bounds = field.getBoundsInContainerViewCoordinates();\n            // Field has no scroll.\n",
-        '            }\n            child.setHint(field.mPlaceholder);\n            child.setWebDomain(field.mOrigin);\n            child.getExtras().putString("ai.elizaresearch.autofill.fieldOrigin", field.mOrigin);\n\n            RectF bounds = field.getBoundsInContainerViewCoordinates();\n            // Field has no scroll.\n',
+        '            }\n            child.setHint(field.mPlaceholder);\n            child.setWebDomain(field.mOrigin);\n            child.getExtras().putString("ai.alphacompute.autofill.fieldOrigin", field.mOrigin);\n\n            RectF bounds = field.getBoundsInContainerViewCoordinates();\n            // Field has no scroll.\n',
         "Autofill full origin 4",
       ),
   );

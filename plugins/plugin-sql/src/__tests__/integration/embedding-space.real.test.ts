@@ -3,6 +3,7 @@ import {
   BGE_SMALL_VECTOR_SPACE,
   ChannelType,
   type Entity,
+  identifyEmbeddingVector,
   type Memory,
   type Room,
   type UUID,
@@ -56,6 +57,8 @@ const legacyEmbeddingTable = pgTable(
 
 const vector = (axis: number) =>
   Array.from({ length: 384 }, (_, index) => (index === axis ? 1 : 0));
+
+const namedVector = (axis: number) => identifyEmbeddingVector(vector(axis), BGE_SMALL_VECTOR_SPACE);
 
 test("retains source memories while replacing only explicitly identified embeddings", async () => {
   const { adapter, cleanup, testAgentId } =
@@ -151,7 +154,7 @@ test("retains source memories while replacing only explicitly identified embeddi
     activeSpace = BGE_SMALL_VECTOR_SPACE;
     expect((await roomMemories()).map((row) => row.content.text)).toEqual([source]);
     expect(
-      await store.searchByEmbedding(vector(0), {
+      await store.searchByEmbedding(namedVector(0), {
         tableName: "embedding_migration",
         match_threshold: 0.9,
       })
@@ -163,7 +166,7 @@ test("retains source memories while replacing only explicitly identified embeddi
     expect(
       await adapter.searchMemories({
         tableName: "embedding_migration",
-        embedding: vector(0),
+        embedding: namedVector(0),
         count: 10,
       })
     ).toEqual([]);
@@ -173,7 +176,7 @@ test("retains source memories while replacing only explicitly identified embeddi
       await adapter.updateMemoryEmbedding({
         id: memoryId,
         expected: { ...expected, text: "A stale source" },
-        embedding: vector(1),
+        embedding: namedVector(1),
       })
     ).toBe(false);
     expect((await adapter.getMemoryById(memoryId))?.embedding).toBeUndefined();
@@ -181,7 +184,7 @@ test("retains source memories while replacing only explicitly identified embeddi
       await adapter.updateMemoryEmbedding({
         id: memoryId,
         expected,
-        embedding: vector(1),
+        embedding: namedVector(1),
       })
     ).toBe(true);
     expect((await adapter.getMemoryById(memoryId))?.embedding).toEqual(vector(1));
@@ -190,7 +193,7 @@ test("retains source memories while replacing only explicitly identified embeddi
       (
         await adapter.searchMemories({
           tableName: "embedding_migration",
-          embedding: vector(1),
+          embedding: namedVector(1),
           count: 10,
         })
       ).map((row) => row.id)
@@ -246,7 +249,7 @@ test("retains source memories while replacing only explicitly identified embeddi
     );
     expect(
       (
-        await store.searchByEmbedding(vector(1), {
+        await store.searchByEmbedding(namedVector(1), {
           tableName: "embedding_migration",
           match_threshold: 0.9,
         })
@@ -256,7 +259,7 @@ test("retains source memories while replacing only explicitly identified embeddi
       await adapter.updateMemoryEmbedding({
         id: memoryId,
         expected,
-        embedding: vector(2),
+        embedding: namedVector(2),
       })
     ).toBe(true);
     expect((await adapter.getMemoryById(memoryId))?.embedding).toEqual(vector(2));
@@ -289,7 +292,7 @@ test("retains source memories while replacing only explicitly identified embeddi
     expect((await adapter.getMemoryById(previousBgeMemory))?.content.text).toBe(previousSource);
     expect(
       (
-        await store.searchByEmbedding(vector(3), {
+        await store.searchByEmbedding(namedVector(3), {
           tableName: "embedding_migration",
           match_threshold: 0.9,
         })
@@ -300,13 +303,13 @@ test("retains source memories while replacing only explicitly identified embeddi
       await adapter.updateMemoryEmbedding({
         id: previousBgeMemory,
         expected: { agentId: testAgentId, entityId, roomId, text: previousSource },
-        embedding: vector(4),
+        embedding: namedVector(4),
       })
     ).toBe(true);
     expect((await previousCache()).map((row) => row.embedding)).toEqual([vector(4)]);
     expect(
       (
-        await store.searchByEmbedding(vector(4), {
+        await store.searchByEmbedding(namedVector(4), {
           tableName: "embedding_migration",
           match_threshold: 0.9,
         })

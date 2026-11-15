@@ -209,7 +209,8 @@ export async function handleWorkbenchTodosRoutes(
       sendJsonError(res, parsedComp.error.issues[0]?.message ?? 'Invalid request body', 400);
       return true;
     }
-    const isCompleted = parsedComp.data.isCompleted === true;
+    // An empty body completes the todo; an explicit false reopens it.
+    const isCompleted = parsedComp.data.isCompleted !== false;
     const todoTask = await runtime.getTask(decodedTodoId as UUID);
     if (!todoTask?.id || !toWorkbenchTodo(todoTask)) {
       sendJsonError(res, 'Todo not found', 404);

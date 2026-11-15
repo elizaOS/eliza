@@ -202,8 +202,6 @@ const ELIZACLOUD_PROVIDER: ProviderDefinition = {
 		// Linking Eliza Cloud stores its key in ELIZAOS_CLOUD_API_KEY.
 		const token =
 			process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
-			process.env.ELIZA_CLOUD_TOKEN?.trim() ||
-			process.env.ELIZACLOUD_TOKEN?.trim() ||
 			process.env.ELIZAOS_API_KEY?.trim();
 		return token
 			? { enabled: true, reason: "Cloud token set" }

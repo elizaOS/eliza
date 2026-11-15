@@ -1,0 +1,46 @@
+{
+  "sources": [
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRenewal.java",
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRevocation.java",
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudCredentialSlots.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaResidentCredentials.java",
+    "packages/auth/android/test/native-sign-in.test.mjs",
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest.java.txt",
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudKeyRenewalResidentTest.java.txt",
+    "packages/auth/android/test/ai/eliza/auth/cloud/ResidentCredentialMutationTest.java.txt"
+  ],
+  "bounds": {
+    "domain": "One Android deployment, one predecessor and successor, two same-generation claim contenders (the second may hold a stale predecessor read), one durable encrypted request/receipt slot, one newer credential action, one partial selected-slot publication, two restarts and six total exact ACK requests. Request claims cannot be stolen. A dispatched pre-secret claim survives uncertain replies; a full successor receipt preserves secret, proof and stable proposed identity across restart.",
+    "assumptions": "Slot CAS and authoritative durable readback are atomic under the original durable credential generation. A newer user action fences old recovery. Server ACK200 with the exact credential ID activates the successor and erases its recoverable ciphertext; exact committed ACK replay remains available after the original deadline. PKCE, secrets, IDs, generation and JSON validation are opaque identities exercised by the JVM conformance fixtures. A request dispatch rechecks the selected predecessor after its claim.",
+    "limitations": "This is a finite safety projection, not a liveness or device proof. Time is represented by a deadline event; request expiry warnings, actual backoff durations and daily preference persistence are covered by the JVM fixtures. The request-only recovery outcome abstracts the recent deferred/24-hour sign-in-required distinction, and never frees the claim. Revocation delivery is modeled as immediate success with the successor header; durable retry timing and optional best-effort host notification are checked in JVM fixtures. Permanent storage/network failure, cryptography, Android scheduling, arbitrary processes and Cloud routes themselves remain separate. Partial publication represents a host metadata/token write gap; recovery can repair it only with the original generation and a confirmed receipt."
+  },
+  "conformance": "packages/auth/quint/check-native-android-sign-in.mjs",
+  "cases": [
+    {
+      "name": "silent-key-renewal",
+      "main": "NativeAndroidKeyRenewal",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "AckRequiresDurableCustody",
+        "ActiveSuccessorRecoverable",
+        "PublicationRequiresConfirmedReceipt",
+        "PartialPublicationRecoverable",
+        "OldKeyRevokedOnlyAfterInstall",
+        "WorkingKeyKept",
+        "NewerActionWins",
+        "NewerJournalPreserved",
+        "NoBareSuccessorRevocation",
+        "SavedKeyAcceptedOrReportedRefused",
+        "NeverRenewsAfterConfirmedSuccessor",
+        "OnePredecessorDispatch",
+        "AnnouncedOnlyWhenRenewed",
+        "RetryBudget"
+      ],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000
+    }
+  ]
+}

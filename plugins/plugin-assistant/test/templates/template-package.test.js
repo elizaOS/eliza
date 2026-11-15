@@ -10,11 +10,11 @@ it("runs published browser contracts without Node globals or runtime shims", asy
   const result = await build({
     stdin: {
       contents: `import { replaceNameTokens } from '@elizaos/core/protocol';
-        import { resolveEnvAlias } from '@elizaos/core/protocol';
+        import { isTruthyEnvValue } from '@elizaos/core/protocol';
         import { ElizaError } from '@elizaos/core/protocol';
         globalThis.result = {
           text: replaceNameTokens('{{name}} and {{ agentName }}', 'M$&M'),
-          alias: resolveEnvAlias('ELIZA_KEY', [['ELIZA_KEY', 'HOST_KEY']], {HOST_KEY: 'configured'}),
+          truthy: isTruthyEnvValue('yes'),
           code: new ElizaError('invalid input', {code: 'INPUT_INVALID'}).code
         };`,
       resolveDir: fileURLToPath(new URL("..", import.meta.url)),
@@ -29,7 +29,7 @@ it("runs published browser contracts without Node globals or runtime shims", asy
   const sandbox = {};
   runInNewContext(result.outputFiles[0].text, sandbox);
   assert.equal(sandbox.result.text, "M$&M and M$&M");
-  assert.equal(sandbox.result.alias, "configured");
+  assert.equal(sandbox.result.truthy, true);
   assert.equal(sandbox.result.code, "INPUT_INVALID");
 });
 it("preserves runtime error classification through protocol leaves in Node", () => {

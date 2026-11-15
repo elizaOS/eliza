@@ -11,7 +11,10 @@ import java.util.*;
 import org.json.JSONObject;
 import org.json.JSONException;
 
-/** Exclusive startup recovery. Never signals another process or deletes IPC evidence. */
+/**
+ * Exclusive startup recovery. Never signals another process. IPC evidence is quarantined,
+ * then rotated into a bounded reviewed archive, so retained evidence never blocks a start.
+ */
 final class IpcStartupRecovery implements Closeable {
     private final File home, lockFile;
     private final RandomAccessFile file;
@@ -22,6 +25,9 @@ final class IpcStartupRecovery implements Closeable {
     private SortedMap<String,String> reviewed;
     private static final String ARCHIVE_PENDING = "ipc-reviewed-pending-";
     private static final String ARCHIVE_COMPLETE = "ipc-reviewed-";
+    private static final String ARCHIVE_AUTO = "ipc-reviewed-auto-";
+    private static final String RECORD = "ipc-recovery-[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}";
+    static final int RETAINED_LIMIT = 8, REVIEWED_LIMIT = 16;
 
     static final String RETENTION_LIMIT = "ipc-recovery-retention-limit";
     private static IOException refused(String why) { return new IOException("IPC recovery required: " + why); }
@@ -99,13 +105,12 @@ final class IpcStartupRecovery implements Closeable {
             File[] entries=ipc.listFiles();if(entries==null)throw refused("unreadable IPC directory");
             if(workerBun==null||workerExecutable==null)requireSoleUidProcess();else WorkflowSurvivorInventory.requireClassified(home,new File(home,".eliza/smthrs"),workerBun,workerExecutable,android.os.SystemClock.elapsedRealtime()+10000);
             File[] homeEntries=home.listFiles();if(homeEntries==null)throw refused("unreadable app directory");
-            // A crash during explicit archival must not silently free admission slots.
+            // A crash during explicit archival requires review; it is never resumed or rotated.
             // Refuse even when the live IPC directory is empty or fewer than eight remain.
             for(File value:homeEntries)if(value.getName().startsWith(ARCHIVE_PENDING))
                 throw refused("interrupted evidence archive requires review");
             if(entries.length==0)return;
             int quarantines=0;for(File value:homeEntries)if(value.getName().startsWith("ipc-recovery-"))quarantines++;
-            if(quarantines>=8)throw refused(RETENTION_LIMIT + ": eight recovery evidence directories are retained; explicit evidence review is required, waiting will not free a slot");
             Map<String,String> observed=new TreeMap<>();
             for(File entry:entries){String name=entry.getName();int kind;
                 if(name.equals("a.sock"))kind=OsConstants.S_IFSOCK;
@@ -114,6 +119,9 @@ final class IpcStartupRecovery implements Closeable {
                 StructStat stat=owned(entry,kind,0600);if(kind==OsConstants.S_IFREG && stat.st_size>4096)throw refused("oversized IPC metadata");observed.put(name,stat.st_dev+":"+stat.st_ino);
             }
             if(workerBun==null||workerExecutable==null)requireSoleUidProcess();else WorkflowSurvivorInventory.requireClassified(home,new File(home,".eliza/smthrs"),workerBun,workerExecutable,android.os.SystemClock.elapsedRealtime()+10000); // live detached child, launcher or unrelated same-UID process blocks recovery
+            // After every process gate, the oldest well-formed records move to a bounded reviewed archive.
+            // A malformed or changing record set still refuses; the newest record is never touched.
+            for(;quarantines>=RETAINED_LIMIT;quarantines--)rotateOldestRetained();
             for(File entry:entries){StructStat stat=Os.lstat(entry.getPath());if(!observed.get(entry.getName()).equals(stat.st_dev+":"+stat.st_ino))throw refused("IPC entry replaced");}
             File[] again=ipc.listFiles();if(again==null || again.length!=entries.length)throw refused("IPC entries changed");
             StructStat current=owned(ipc,OsConstants.S_IFDIR,0700);if(current.st_dev!=directory.st_dev || current.st_ino!=directory.st_ino)throw refused("IPC directory replaced");
@@ -147,7 +155,7 @@ final class IpcStartupRecovery implements Closeable {
             String name=child.getName();
             if(name.startsWith(ARCHIVE_PENDING))throw refused("interrupted archive");
             if(!name.startsWith("ipc-recovery-"))continue;
-            if(!name.matches("ipc-recovery-[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}") || ++count>64)
+            if(!name.matches(RECORD) || ++count>64)
                 throw refused("unexpected retained directory");
             StructStat directory=owned(child,OsConstants.S_IFDIR,0700);
             if(!child.getCanonicalPath().equals(child.getPath()))throw refused("retained alias");
@@ -167,6 +175,84 @@ final class IpcStartupRecovery implements Closeable {
                 throw refused("retained directory changed");
         }
         return result;
+    }
+    private static int compareChange(StructStat a,StructStat b) {
+        int order=Long.compare(a.st_ctim.tv_sec,b.st_ctim.tv_sec);
+        return order!=0 ? order : Long.compare(a.st_ctim.tv_nsec,b.st_ctim.tv_nsec);
+    }
+    /** Moves the oldest retained record aside without reading contents or trusting a recorded PID. */
+    private void rotateOldestRetained() throws Exception {
+        try {
+            SortedMap<String,String> expected=retainedSnapshot();
+            String oldest=null;StructStat oldestStat=null;
+            for(String name:expected.keySet()) {
+                if(name.indexOf('/')>=0)continue;
+                StructStat stat=Os.lstat(new File(home,name).getPath());
+                if(oldest==null || compareChange(stat,oldestStat)<0){oldest=name;oldestStat=stat;}
+            }
+            if(oldest==null || !expected.equals(retainedSnapshot()))throw refused("retained records changed");
+            File source=new File(home,oldest);verifyRetainedDirectory(source,oldest,expected,false);
+            File archive=new File(home,ARCHIVE_AUTO+UUID.randomUUID()),target=new File(archive,oldest);
+            Os.mkdir(archive.getPath(),0700);owned(archive,OsConstants.S_IFDIR,0700);
+            Os.rename(source.getPath(),target.getPath());syncDirectory(archive);syncDirectory(home);
+            verifyRetainedDirectory(target,oldest,expected,true);
+        } catch(Exception error) {
+            IOException refusal=refused(RETENTION_LIMIT+": the oldest recovery evidence directory could not be rotated");
+            refusal.addSuppressed(error);throw refusal;
+        }
+        pruneReviewed();
+    }
+    /** Keeps at most sixteen reviewed archives. Unrecognized archives are left in place. */
+    private void pruneReviewed() throws Exception {
+        requireLease();
+        File[] children=home.listFiles();if(children==null)throw refused("unreadable home");
+        List<File> archives=new ArrayList<>();Map<File,StructStat> stats=new HashMap<>();
+        for(File child:children) {
+            String name=child.getName();
+            if(!name.startsWith(ARCHIVE_COMPLETE) || name.startsWith(ARCHIVE_PENDING))continue;
+            archives.add(child);stats.put(child,Os.lstat(child.getPath()));
+        }
+        archives.sort((a,b)->{int order=compareChange(stats.get(a),stats.get(b));return order!=0 ? order : a.getName().compareTo(b.getName());});
+        int excess=archives.size()-REVIEWED_LIMIT;
+        for(File archive:archives) {
+            if(excess<=0)break;
+            if(removeReviewed(archive,stats.get(archive)))excess--;
+        }
+    }
+    /** Unlinks one archive only when every entry is opaque transport metadata or a review manifest. */
+    private boolean removeReviewed(File archive,StructStat seen) throws Exception {
+        List<File> files=new ArrayList<>(),records=new ArrayList<>();
+        try {
+            StructStat directory=owned(archive,OsConstants.S_IFDIR,0700);
+            if(directory.st_dev!=seen.st_dev || directory.st_ino!=seen.st_ino)return false;
+            if(!archive.getCanonicalPath().equals(archive.getPath()))return false;
+            File[] entries=archive.listFiles();if(entries==null || entries.length>65)return false;
+            for(File entry:entries) {
+                String name=entry.getName();
+                if(name.equals("review.json")) {
+                    if(owned(entry,OsConstants.S_IFREG,0600).st_size>65536)return false;files.add(entry);continue;
+                }
+                if(!name.matches(RECORD))return false;
+                owned(entry,OsConstants.S_IFDIR,0700);records.add(entry);
+                File[] leaves=entry.listFiles();if(leaves==null || leaves.length>3)return false;
+                for(File leaf:leaves) {
+                    String value=leaf.getName();int kind;
+                    if(value.equals("a.sock"))kind=OsConstants.S_IFSOCK;
+                    else if(value.equals("a.sock.lock") || value.equals("a.sock.generation"))kind=OsConstants.S_IFREG;
+                    else return false;
+                    StructStat stat=owned(leaf,kind,0600);
+                    if(stat.st_nlink!=1 || (kind==OsConstants.S_IFREG && stat.st_size>4096))return false;
+                    files.add(leaf);
+                }
+            }
+        } catch(IOException|android.system.ErrnoException untrusted) {
+            return false;
+        }
+        requireLease();
+        for(File value:files)Os.remove(value.getPath());
+        for(File record:records)Os.remove(record.getPath());
+        Os.remove(archive.getPath());syncDirectory(home);
+        return true;
     }
     private static int directoryCount(Map<String,String> snapshot) {
         int count=0;for(String name:snapshot.keySet())if(name.indexOf('/')<0)count++;return count;

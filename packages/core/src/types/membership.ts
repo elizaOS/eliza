@@ -132,37 +132,23 @@ export interface SetMembershipHealthCommand extends MembershipCommandBase {
 	reason: string;
 }
 
-export type MembershipMutationReceipt =
-	| {
-			contractVersion: 1;
-			operation: "publisher";
-			idempotentReplay: boolean;
-			committedGeneration: number;
-			health: MembershipScopeHealth;
-	  }
-	| {
-			contractVersion: 1;
-			operation: "snapshot";
-			idempotentReplay: boolean;
-			committedGeneration: number;
-			health: MembershipScopeHealth;
-			memberships: readonly MembershipRecord[];
-			revokedPrincipalIds: readonly UUID[];
-	  }
-	| {
-			contractVersion: 1;
-			operation: "membership";
-			idempotentReplay: boolean;
-			committedGeneration: number;
-			membership: MembershipRecord;
-	  }
-	| {
-			contractVersion: 1;
-			operation: "health";
-			idempotentReplay: boolean;
-			committedGeneration: number;
-			health: MembershipScopeHealth;
-	  };
+interface MembershipReceiptBase {
+	contractVersion: typeof MEMBERSHIP_AUTHORITY_CONTRACT_VERSION;
+	idempotentReplay: boolean;
+	committedGeneration: number;
+}
+export type MembershipMutationReceipt = MembershipReceiptBase &
+	(
+		| { operation: "publisher"; health: MembershipScopeHealth }
+		| {
+				operation: "snapshot";
+				health: MembershipScopeHealth;
+				memberships: readonly MembershipRecord[];
+				revokedPrincipalIds: readonly UUID[];
+		  }
+		| { operation: "membership"; membership: MembershipRecord }
+		| { operation: "health"; health: MembershipScopeHealth }
+	);
 export type MembershipAuthorityInvalidator = (
 	scope: MembershipScope,
 	receipt: MembershipMutationReceipt,

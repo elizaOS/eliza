@@ -4,9 +4,9 @@
     "platform": "linux",
     "arch": "x64"
   },
-  "libPath": "/home/shaw/.local/state/eliza/local-inference/lib/libelizainference.so",
+  "libPath": "~/.local/state/eliza/local-inference/lib/libelizainference.so",
   "asrBundle": {
-    "dir": "/home/shaw/.local/state/eliza/asr-bundle",
+    "dir": "~/.local/state/eliza/asr-bundle",
     "model": 804749248,
     "mmproj": 214392480
   },

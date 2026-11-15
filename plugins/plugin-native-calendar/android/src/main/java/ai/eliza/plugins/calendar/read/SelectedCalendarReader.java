@@ -5,9 +5,14 @@ import android.content.ContentUris;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.CalendarContract;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 
 /** Selected provider-query boundary. Caller owns authorization and permission checks. */
 public final class SelectedCalendarReader {
+ private static final long DAY_MILLIS = 86_400_000L;
  private SelectedCalendarReader() {}
  /** A selected calendar is gone, or its account, name, owner or access level changed since review. */
  public static final class SourceChanged extends IllegalStateException {SourceChanged(){super("Selected calendar account changed");}}
@@ -16,7 +21,12 @@ public final class SelectedCalendarReader {
  /** Bounds of one availability read: calendars offered, calendars selected and intervals returned. */
  public static final int AVAILABILITY_SOURCES=64,AVAILABILITY_SELECTED=16,AVAILABILITY_EVENTS=200;
  public static org.json.JSONArray read(ContentResolver resolver,org.json.JSONArray selected,String start,String finish,Integer maximum)throws Exception {
-  return read(resolver,selected,start,finish,maximum,null,null);
+  return read(resolver,selected,start,finish,maximum,null,null,null);
+ }
+ /** A reviewed workflow range measures its bound in the approved zone. */
+ public static org.json.JSONArray readWorkflowRange(ContentResolver resolver,org.json.JSONArray selected,
+     String start,String finish,Integer maximum,String timeZone)throws Exception {
+  return read(resolver,selected,start,finish,maximum,null,null,timeZone==null?null:ZoneId.of(timeZone));
  }
  /** Owner-day all-day membership follows civil dates, while timed events retain instant overlap. */
  public static org.json.JSONArray readOwnerDay(ContentResolver resolver,org.json.JSONArray selected,String start,String finish,Integer maximum,String startDate,String endDateExclusive)throws Exception {
@@ -24,7 +34,7 @@ public final class SelectedCalendarReader {
   assertSourceIdentities(resolver,identities);
   java.time.LocalDate a=java.time.LocalDate.parse(startDate),b=java.time.LocalDate.parse(endDateExclusive);
   if(!a.toString().equals(startDate)||!b.toString().equals(endDateExclusive)||!b.isAfter(a)||java.time.temporal.ChronoUnit.DAYS.between(a,b)>7)throw new IllegalArgumentException();
-  org.json.JSONArray result=read(resolver,ids,start,finish,maximum,a.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(),b.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli());
+  org.json.JSONArray result=read(resolver,ids,start,finish,maximum,a.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(),b.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(),null);
   assertSourceIdentities(resolver,identities);return result;
  }
  /** Fixed foreground discovery: caller captures native time/zone and reviews the resulting single record. */
@@ -127,12 +137,29 @@ public final class SelectedCalendarReader {
  }
  /** Strict overlap: an instant (zero-length) event occupies no time. */
  private static String busyOverlap(long begin,long end){return CalendarContract.Instances.BEGIN+"<"+end+" AND "+CalendarContract.Instances.END+">"+begin;}
- private static org.json.JSONArray read(ContentResolver resolver,org.json.JSONArray selected,String start,String finish,Integer maximum,Long civilBegin,Long civilEnd)throws Exception {
-
+ private static LocalDate workflowDayAt(Instant instant, ZoneId zone) {
+  LocalDate day=instant.atZone(zone).toLocalDate();
+  // After a midnight rollback, the next date can already have had its first instant.
+  while(!day.plusDays(1).atStartOfDay(zone).toInstant().isAfter(instant)) day=day.plusDays(1);
+  return day;
+ }
+ private static org.json.JSONArray read(ContentResolver resolver,org.json.JSONArray selected,
+     String start,String finish,Integer maximum,Long civilBegin,Long civilEnd,ZoneId workflowZone)throws Exception {
    if(selected==null||selected.length()<1||selected.length()>16||maximum==null||maximum<1||maximum>200||start==null||finish==null)throw new IllegalArgumentException();
-   long begin=java.time.Instant.parse(start).toEpochMilli(),end=java.time.Instant.parse(finish).toEpochMilli();
+   Instant first=Instant.parse(start),last=Instant.parse(finish);
+   long begin=first.toEpochMilli(),end=last.toEpochMilli();
    java.time.format.DateTimeFormatter format=new java.time.format.DateTimeFormatterBuilder().appendInstant(3).toFormatter();
-   if(!format.format(java.time.Instant.ofEpochMilli(begin)).equals(start)||!format.format(java.time.Instant.ofEpochMilli(end)).equals(finish)||end<=begin||end-begin>7L*86400000)throw new IllegalArgumentException();
+   if(!format.format(first).equals(start)||!format.format(last).equals(finish)||!last.isAfter(first)
+     ||Duration.between(first,last).compareTo(Duration.ofDays(workflowZone==null?7:8))>0)throw new IllegalArgumentException();
+   if(workflowZone!=null){
+    if(last.atZone(workflowZone).toLocalDateTime().isAfter(first.atZone(workflowZone).toLocalDateTime().plusDays(7)))
+     throw new IllegalArgumentException("Workflow Calendar range exceeds seven local days");
+    LocalDate firstDay=workflowDayAt(first,workflowZone);
+    // A skipped date may resolve to the first instant of the next civil date.
+    while(firstDay.minusDays(1).atStartOfDay(workflowZone).toInstant().equals(first)) firstDay=firstDay.minusDays(1);
+    civilBegin=Math.multiplyExact(firstDay.toEpochDay(),DAY_MILLIS);
+    civilEnd=Math.multiplyExact(workflowDayAt(last.minusMillis(1),workflowZone).plusDays(1).toEpochDay(),DAY_MILLIS);
+   }
    java.util.LinkedHashSet<String> ids=new java.util.LinkedHashSet<>();for(int i=0;i<selected.length();i++){String id=selected.getString(i);if(!id.matches("[1-9][0-9]{0,18}")||Long.parseLong(id)<=0||!ids.add(id))throw new IllegalArgumentException();}
    String[] arguments=ids.toArray(new String[0]);String placeholders=String.join(",",java.util.Collections.nCopies(ids.size(),"?"));
    java.util.Set<String> found=new java.util.HashSet<>();try(Cursor rows=resolver.query(CalendarContract.Calendars.CONTENT_URI,new String[]{CalendarContract.Calendars._ID},CalendarContract.Calendars._ID+" IN ("+placeholders+")",arguments,null)){if(rows==null)throw new IllegalStateException();while(rows.moveToNext())found.add(Long.toString(rows.getLong(0)));}if(!found.equals(ids))throw new IllegalStateException();
@@ -146,7 +173,18 @@ public final class SelectedCalendarReader {
    String[] projection={CalendarContract.Instances.EVENT_ID,CalendarContract.Instances.CALENDAR_ID,CalendarContract.Instances.TITLE,CalendarContract.Instances.BEGIN,CalendarContract.Instances.END,CalendarContract.Instances.ALL_DAY};
    org.json.JSONArray events=new org.json.JSONArray();try(Cursor rows=resolver.query(uri.build(),projection,selection,arguments,CalendarContract.Instances.BEGIN+" ASC, "+CalendarContract.Instances.EVENT_ID+" ASC")){
     if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){
-     long a=rows.getLong(3),b=rows.getLong(4);boolean allDay=rows.getInt(5)!=0;long rangeBegin=allDay&&civilBegin!=null?civilBegin:begin,rangeEnd=allDay&&civilEnd!=null?civilEnd:end;if(b<a)throw new IllegalStateException();if(a>=rangeEnd||(a==b?a<rangeBegin:b<=rangeBegin))continue;
+     long a=rows.getLong(3),b=rows.getLong(4);
+     boolean allDay=rows.getInt(5)!=0;
+     if(b<a)throw new IllegalStateException();
+     long rowBegin=a,rowEnd=b,rangeBegin=begin,rangeEnd=end;
+     if(allDay&&workflowZone!=null){
+      if(a%DAY_MILLIS!=0||b%DAY_MILLIS!=0||b==a)throw new IllegalStateException("Invalid all-day civil interval");
+      rowBegin=LocalDate.ofEpochDay(a/DAY_MILLIS).atStartOfDay(workflowZone).toInstant().toEpochMilli();
+      rowEnd=LocalDate.ofEpochDay(b/DAY_MILLIS).atStartOfDay(workflowZone).toInstant().toEpochMilli();
+     }else if(allDay&&civilBegin!=null){
+      rangeBegin=civilBegin;rangeEnd=civilEnd;
+     }
+     if(rowBegin>=rangeEnd||(rowBegin==rowEnd?rowBegin<rangeBegin:rowEnd<=rangeBegin))continue;
      if(events.length()>=maximum)throw new TooMany("Range exceeds reviewed count");String title=rows.getString(2);if(title==null)title="";if(title.length()>1000||title.indexOf(0)>=0)throw new IllegalStateException();String calendarId=Long.toString(rows.getLong(1));if(!ids.contains(calendarId))throw new IllegalStateException();
      org.json.JSONObject row=new org.json.JSONObject();row.put("id",Long.toString(rows.getLong(0)));row.put("calendarId",calendarId);row.put("title",title);row.put("start",format.format(java.time.Instant.ofEpochMilli(a)));row.put("end",format.format(java.time.Instant.ofEpochMilli(b)));row.put("allDay",rows.getInt(5)!=0);events.put(row);
      if(events.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>65536)throw new IllegalStateException("Range exceeds byte bound");

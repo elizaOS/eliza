@@ -36,7 +36,11 @@ export interface AppDbDeprovisionOutcome {
 
 /** The node-side deprovisioner the daemon runs for APP_DB_DEPROVISION jobs. */
 export interface AppDbDeprovisioner {
-  deprovisionForApp(appId: string, dsn: string): Promise<AppDbDeprovisionOutcome>;
+  deprovisionForApp(
+    appId: string,
+    dsn: string,
+    authority?: { originalClusterId: string; retainPlacement: true },
+  ): Promise<AppDbDeprovisionOutcome>;
 }
 
 // ── runtime-injected executor (daemon side) ─────────────────────────────────

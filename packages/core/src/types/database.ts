@@ -6,6 +6,7 @@
  */
 import type { AccessContext } from "./access-context";
 import type { Agent } from "./agent";
+import type { ReadRangeUnit } from "./content";
 import type {
 	Component,
 	Entity,
@@ -23,7 +24,13 @@ import type {
 	PairingRequest,
 	PairingRequestQuery,
 } from "./pairing";
-import type { Content, JsonValue, Metadata, UUID } from "./primitives";
+import type {
+	Content,
+	JsonObject,
+	JsonValue,
+	Metadata,
+	UUID,
+} from "./primitives";
 import type { Task, TaskMetadataPatch } from "./task";
 
 /** A vector is valid only for this exact persisted source snapshot. */
@@ -194,16 +201,13 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
 	documentId: UUID;
 }
 
-/** Exact unit used by an authorized bounded document read. */
-export type DocumentRangeUnit = "line" | "fragment" | "byte";
-
 /**
  * Authorized bounded document read. Offsets and limits count exact retained
  * line or paragraph-like fragment units, never JavaScript string code units.
  */
 export interface DocumentRangeReadParams extends DocumentRequesterContext {
 	documentId: UUID;
-	unit: DocumentRangeUnit;
+	unit: ReadRangeUnit;
 	offset: number;
 	limit: number;
 }
@@ -214,7 +218,7 @@ export interface DocumentRangeReadParams extends DocumentRequesterContext {
  * opaque public revision before it leaves DocumentService.
  */
 export interface DocumentRangeReadResult {
-	unit: DocumentRangeUnit;
+	unit: ReadRangeUnit;
 	text: string;
 	start: number;
 	end: number;
@@ -259,6 +263,12 @@ export interface DocumentMutationSnapshot {
 	revision: number;
 	ingestionAttemptId?: UUID;
 	ingestionState?: "pending" | "ready" | "failed";
+	/**
+	 * Runtime bookkeeping stored as a document (`metadata.runtimeInternal`).
+	 * Only AGENT/RUNTIME requesters may read or mutate it; it never appears in
+	 * owner or user document listings.
+	 */
+	runtimeInternal?: true;
 }
 
 /** Compare-and-swap document replacement under canonical mutation policy. */
@@ -518,6 +528,9 @@ export interface Log {
 	createdAt: Date;
 }
 
+/** The fields of a log that retention planning reads; no body. */
+export type LogInventoryRow = Pick<Log, "id" | "roomId" | "createdAt">;
+
 export type RunStatus = "started" | "completed" | "timeout" | "error";
 
 /**
@@ -593,7 +606,7 @@ export type PairingAllowlistsResult = Array<{
 	pageInfo?: PairingPageInfo;
 }>;
 
-export type ConnectorAccountJsonObject = { [key: string]: JsonValue };
+export type ConnectorAccountJsonObject = JsonObject;
 
 export type ConnectorAccountStorageStatus = string;
 
@@ -1121,11 +1134,6 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * filter for ACCOUNT components → extract wallet data". Collapses 3+ queries into one
 	 * database-optimized query with JSONB containment filtering.
 	 *
-	 * This is the highest-impact API addition, replacing patterns like:
-	 * - int_accounts.ts: "get accounts by pubkey" (240 lines → 10 lines)
-	 * - int_users.ts: "get users by type" (chained ID resolution)
-	 * - int_spartan.ts: master registry becomes unnecessary
-	 *
 	 * TWO-QUERY APPROACH (critical for correctness):
 	 * 1. Query 1: SELECT DISTINCT entity_id FROM components WHERE... LIMIT N
 	 * 2. Query 2: SELECT entities.*, components.* WHERE entity_id IN (...)
@@ -1423,6 +1431,19 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		offset?: number;
 	}): Promise<Log[]>;
 
+	/**
+	 * Lists every log this agent can read with only its id, room and creation
+	 * time, in getLogs order (newest first, then id descending).
+	 *
+	 * WHY: Retention plans over the whole logs table. Reading full rows held
+	 * every prompt and response in memory at once on each sweep.
+	 *
+	 * @param params.excludeTypes Log types left out of the inventory.
+	 */
+	getLogInventory(params: {
+		excludeTypes?: readonly string[];
+	}): Promise<LogInventoryRow[]>;
+
 	// ── Log CRUD (batch-only) ────────────────────────────────────────────
 	// WHY batch-only: a single agent turn can produce multiple log entries
 	// (model call, action execution, evaluator run). Batching avoids N
@@ -1511,7 +1532,6 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 *
 	 * WHY UUID[] return: Returns the IDs of created memories, enabling immediate
 	 * follow-up operations (e.g., linking to external systems, creating relationships).
-	 * Changed from boolean return which was ambiguous (false = failed OR already exists?).
 	 *
 	 * @returns Array of created memory IDs (in same order as input)
 	 */
@@ -1527,8 +1547,6 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * Batch update memories
 	 *
 	 * WHY void return: Updates should throw on failure (fail-fast principle).
-	 * Changed from boolean[] which created ambiguity about whether to continue
-	 * processing after a failed update. Now failures are exceptional, not expected.
 	 *
 	 * WHY batch: SQL adapters use CASE expressions for single UPDATE statement:
 	 * UPDATE memories SET content = CASE
@@ -1713,14 +1731,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 *
 	 * WHY: Participants have fields beyond roomState (e.g., lastSeenAt, metadata).
 	 * This method provides general-purpose participant updates, while
-	 * updateParticipantUserState is a specialized convenience for the common
+	 * updateParticipantUserStates is a specialized convenience for the common
 	 * case of updating notification preferences.
 	 *
 	 * WHY composite key: Participant table's primary key is (entityId, roomId, agentId).
 	 * Updates must specify all key fields, not just a single UUID.
 	 *
 	 * USAGE NOTE: For updating notification state (FOLLOWED/MUTED), prefer
-	 * updateParticipantUserState() which has simpler signature.
+	 * updateParticipantUserStates() which has a simpler signature.
 	 *
 	 * @param participants Array of participant updates with composite keys
 	 */
@@ -1817,14 +1835,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	getTasksByIds(taskIds: UUID[]): Promise<Task[]>;
 	/** Atomically updates a queued task only while status is pending or absent. Storage evaluates the queue tag and lifecycle predicate in the same mutation. */
 	updatePendingTask?(id: UUID, task: Partial<Task>): Promise<boolean>;
+	/** True only for atomic earliest wake + revision-conditional consumption. */
+	supportsAtomicTaskWake?: boolean;
 	/**
 	 * Atomically merges `patch.set` into the task's metadata and removes
 	 * `patch.unset` keys in the same storage mutation. Returns false when no
 	 * task matched. Adapters without an atomic merge leave this undefined and
 	 * callers fall back to a whole-metadata update.
 	 */
-	/** True only for atomic earliest wake + revision-conditional consumption. */
-	supportsAtomicTaskWake?: boolean;
 	patchTaskMetadata?(id: UUID, patch: TaskMetadataPatch): Promise<boolean>;
 	updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
 	deleteTasks(taskIds: UUID[]): Promise<void>;
@@ -1988,122 +2006,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	): import("./plugin-store").IPluginStore | null;
 }
 
-/**
- * Result interface for embedding similarity searches
- */
-export interface EmbeddingSearchResult {
-	embedding: number[];
-	levenshtein_score?: number;
-}
-
-/** Base shape for memory retrieval options (string IDs before UUID substitution) */
-interface MemoryRetrievalOptionsBase {
-	roomId?: string;
-	agentId?: string;
-	start?: number;
-	end?: number;
-	limit?: number;
-	unique?: boolean;
-	tableName?: string;
-}
-
-/**
- * Options for memory retrieval operations
- */
-export interface MemoryRetrievalOptions
-	extends Omit<
-		MemoryRetrievalOptionsBase,
-		"roomId" | "agentId" | "start" | "end"
-	> {
-	roomId: UUID;
-	agentId?: UUID;
-	start?: number | bigint;
-	end?: number | bigint;
-}
-
-/** Base shape for memory search options */
-interface MemorySearchOptionsBase {
-	roomId?: string;
-	agentId?: string;
-	metadata?: unknown;
-	matchThreshold?: number;
-	limit?: number;
-	tableName?: string;
-}
-
-/**
- * Options for memory search operations
- */
-export interface MemorySearchOptions
-	extends Omit<
-		MemorySearchOptionsBase,
-		"roomId" | "agentId" | "metadata" | "matchThreshold"
-	> {
-	roomId: UUID;
-	agentId?: UUID;
-	metadata?: Partial<MemoryMetadata>;
-	match_threshold?: number;
-}
-
-/** Base shape for multi-room memory options */
-interface MultiRoomMemoryOptionsBase {
-	roomIds?: string[];
-	agentId?: string;
-	limit?: number;
-	tableName?: string;
-}
-
-/**
- * Options for multi-room memory retrieval
- */
-export interface MultiRoomMemoryOptions
-	extends Omit<MultiRoomMemoryOptionsBase, "roomIds" | "agentId"> {
-	roomIds: UUID[];
-	agentId?: UUID;
-}
-
-/**
- * Standard options pattern for memory operations
- * Provides a simpler, more consistent interface
- */
-export interface StandardMemoryOptions {
-	roomId: UUID;
-	limit?: number; // Standard naming (replacing 'count')
-	agentId?: UUID; // Common optional parameter
-	unique?: boolean; // Common flag for duplication control
-	start?: number; // Pagination start
-	end?: number; // Pagination end
-}
-
-/**
- * Specialized memory search options
- */
-export interface MemorySearchParams extends StandardMemoryOptions {
-	embedding: number[];
-	similarity?: number; // Clearer name than 'match_threshold'
-}
-
-/**
- * Base interface for database connection objects.
- * Specific adapters should extend this with their connection type.
- *
- * @example
- * ```typescript
- * // In a PostgreSQL adapter:
- * interface PgConnection extends DbConnection {
- * pool: Pool;
- * query: <T>(sql: string, params?: unknown[]) => Promise<T>;
- * }
- * ```
- */
-export interface DbConnection {
-	/** Whether the connection is currently active */
-	isConnected?: boolean;
-	/** Close the connection */
-	close?: () => Promise<void>;
-}
-
-// Allowable vector dimensions
+/** Allowable vector dimensions. */
 export const VECTOR_DIMS = {
 	SMALL: 384,
 	MEDIUM: 512,

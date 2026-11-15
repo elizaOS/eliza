@@ -127,9 +127,8 @@ export function indexEntries(entries: RegistryEntry[]): LoadedRegistry {
 		}
 	}
 
-	for (const [group, bucket] of byGroup) {
+	for (const bucket of byGroup.values()) {
 		bucket.sort(compareEntriesForDisplay);
-		byGroup.set(group, bucket);
 	}
 
 	return { byId, byKind, byGroup, byNpmName, all: entries };

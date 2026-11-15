@@ -43,14 +43,9 @@ export type LifeOpsFeatureKey =
   | "cloud.duffel";
 
 /**
- * Open-key sibling of `LifeOpsFeatureKey`. The closed union remains the
- * compile-time authority for the built-in 10 flags (Cloud-default policy,
- * `BASE_FEATURE_DEFAULTS`, typed gate calls). The runtime
- * `FeatureFlagRegistry` is the source of truth for what flags exist —
- * including 3rd-party plugin contributions — so anywhere that ingests a
- * key from outside (chat input, REST routes, dev-registries view) uses
- * `LifeOpsFeatureFlagKey`. Parallel to
- * `LifeOpsBusFamily = LifeOpsTelemetryFamily | string`.
+ * Unvalidated feature key as it arrives from outside (chat input, REST
+ * routes, DB rows). Anything that is not a `LifeOpsFeatureKey` is rejected
+ * with `UnknownFeatureFlagError`.
  */
 export type LifeOpsFeatureFlagKey = LifeOpsFeatureKey | string;
 
@@ -280,6 +275,28 @@ export interface FeatureFlagService {
 }
 
 /**
+ * Thrown when a caller tries to toggle / inspect a feature key that is not a
+ * `LifeOpsFeatureKey`. Carries enough context for action handlers to surface
+ * a clean error to the planner / owner.
+ */
+export class UnknownFeatureFlagError extends Error {
+  readonly code = "UNKNOWN_FEATURE_FLAG" as const;
+  readonly featureKey: string;
+  readonly registeredKeys: readonly string[];
+
+  constructor(featureKey: string, registeredKeys: readonly string[]) {
+    super(
+      `Unknown feature flag '${featureKey}'. Registered keys: ${
+        registeredKeys.length > 0 ? registeredKeys.join(", ") : "(none)"
+      }.`,
+    );
+    this.name = "UnknownFeatureFlagError";
+    this.featureKey = featureKey;
+    this.registeredKeys = [...registeredKeys];
+  }
+}
+
+/**
  * Thrown by gated actions before they perform any side effect when the
  * required feature key is disabled. Carries enough context for the LLM
  * planner to surface a useful "enable this" message back to the owner —
@@ -295,9 +312,8 @@ export class FeatureNotEnabledError extends Error {
     featureKey: LifeOpsFeatureFlagKey,
     args?: { cloudLinked?: boolean; message?: string; costsMoney?: boolean },
   ) {
-    // Built-in: pull `costsMoney` from `BASE_FEATURE_DEFAULTS`. Otherwise the
-    // caller supplies it from the registry contribution metadata so the
-    // Cloud opt-in suggestion stays accurate for 3rd-party flags.
+    // Built-in: pull `costsMoney` from `BASE_FEATURE_DEFAULTS`; otherwise the
+    // caller supplies it.
     const builtinCostsMoney = isLifeOpsFeatureKey(featureKey)
       ? BASE_FEATURE_DEFAULTS[featureKey].costsMoney
       : null;

@@ -13,12 +13,13 @@ import java.util.Set;
  *
  * <p>Every link handoff is an implicit, browsable request with no component, selector, clip data,
  * extras or permission-granting flags, so a page cannot address a specific private activity or
- * grant URI access. The host's own package and the URI schemes of its own routes are refused.
+ * grant URI access. The host's own package and the URI schemes of its own routes are refused,
+ * except that a mail, phone, text or map link may resolve to the host's own handler.
  */
 public final class BrowserExternalHandoff {
   private BrowserExternalHandoff() {}
 
-  /** Whether {@code raw} is a link another app handles (mailto, tel, market, intent). */
+  /** Whether {@code raw} is a link another app handles (mailto, tel, sms, geo, market, intent). */
   public static boolean external(String raw) {
     return BrowserExternalLinkPolicy.external(raw);
   }
@@ -42,12 +43,16 @@ public final class BrowserExternalHandoff {
     Intent intent;
     switch (scheme) {
       case "mailto":
+      case "sms":
+      case "smsto":
+        // SENDTO only opens a compose screen with the address; it never sends.
         intent = new Intent(Intent.ACTION_SENDTO, uri);
         break;
       case "tel":
         // DIAL only opens the dialer with the number; it never places a call.
         intent = new Intent(Intent.ACTION_DIAL, uri);
         break;
+      case "geo":
       case "market":
         intent = new Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE);
         break;

@@ -24,6 +24,11 @@ export default defineConfig({
       "src/kms/**/*.test.ts",
       "src/providers/**/*.test.ts",
       "test/*.test.ts",
+      // SDK session-expiry rotation guard: needs the login tsconfig's
+      // DOM/allow-importing-ts-extensions program (test/login/** stays
+      // out of the vault tsconfig, which has no DOM lib), so it runs here
+      // as a single-file entry exactly like the app-real-e2e lane entries.
+      "test/login/sdk-session-expiry.test.ts",
     ],
     hookTimeout: 60_000,
     environment: "node",

@@ -16,8 +16,8 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { assertOrgMembership } from "@/api-app/middleware/org-membership";
-import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
+import { assertOrgMembership } from "../../../src/middleware/org-membership";
+import { createTransactionalAudit } from "../../../src/services/audit-transactional";
 import { assertCanManageApiKey } from "../_lib/key-access";
 
 import { updateApiKeySchema } from "../schemas";

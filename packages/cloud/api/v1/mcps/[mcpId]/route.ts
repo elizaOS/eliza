@@ -1,5 +1,6 @@
 // Handles v1 cloud API v1 mcps mcpid route traffic with route-local auth expectations.
 
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -126,7 +127,8 @@ async function __hono_GET(
   }
 
   // Get endpoint URL
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
   const endpointUrl = isOwner
     ? userMcpsService.getEndpointUrl(mcp, baseUrl)
     : userMcpsService.getPublicProxyUrl(mcp, baseUrl);

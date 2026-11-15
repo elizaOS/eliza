@@ -1,6 +1,6 @@
 /** Packed server loader regression. Native media/providers and personal stores are not used. */
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
@@ -28,9 +28,17 @@ it("packs the cold trigger API with its real paused-prompt handler and retains o
       "type BrowserWorkspaceCommand",
     );
   const scratch = await mkdtemp(path.join(tmpdir(), "eliza-packed-trigger-"));
-  const output = testOutputPath("mobile-trigger-route-loader");
+  const outputRoot = testOutputPath("mobile-trigger-route-loader");
   const { mkdir } = await import("node:fs/promises");
-  await mkdir(output, { recursive: true });
+  await mkdir(outputRoot, { recursive: true });
+  const output = await mkdtemp(path.join(outputRoot, "run-"));
+  // The generated probe lives outside the package. Resolve its imports against
+  // the agent's declared dependencies, including isolated workspace installs.
+  await symlink(
+    path.join(root, "packages/agent/node_modules"),
+    path.join(output, "node_modules"),
+    "dir",
+  );
   const corePort = path.join(output, "core-port.ts"),
     entry = path.join(output, "probe.ts"),
     builder = path.join(output, "build.ts");
@@ -38,6 +46,7 @@ it("packs the cold trigger API with its real paused-prompt handler and retains o
     corePort,
     [
       `export * from ${JSON.stringify(path.join(root, "packages/core/src/utils/string-to-uuid.ts"))};`,
+      `export {hashStableJson} from ${JSON.stringify(path.join(root, "packages/core/src/runtime/context-hash.ts"))};`,
       `export * from ${JSON.stringify(path.join(root, "packages/core/src/services/trigger-scheduling.ts"))};`,
       `export * from ${JSON.stringify(path.join(root, "packages/core/src/types/trigger.ts"))};`,
       `export const logger={debug(message){if(message.includes('Cannot find package')&&message.includes('@elizaos/plugin-workflow'))globalThis.workflowModuleMissing=true;},warn(message){if(message.includes('Cannot find package')&&message.includes('@elizaos/plugin-workflow'))globalThis.workflowModuleMissing=true;}};`,
@@ -57,7 +66,7 @@ const runtime={agentId:'00000000-0000-4000-8000-000000000003',getService:()=>nul
 const valid={kind:'prompt',displayName:'Packed paused prompt',instructions:'Synthetic instructions; never execute',triggerType:'once',scheduledAtIso:'2099-01-01T00:00:00.000Z',timezone:'UTC',wakeMode:'inject_now',enabled:false};
 async function request(body,options={}){
  let result={status:404,body:{error:'Not found'}};
- const handled=await api.handleTriggerRoutes({req:{},res:{},method:'POST',pathname:'/api/triggers',runtime,ownerEntityId:owner,localOwnerEntityId:owner,readJsonBody:async()=>body,json:(_res,data,status=200)=>{result={status,body:data};},error:(_res,error,status)=>{result={status,body:{error}};},resolvePromptDeliveryRoom:async()=>room,executeTriggerTask:async()=>{executions++;throw Error('Execution forbidden');},getTriggerHealthSnapshot:async()=>({}),getTriggerLimit:()=>100,listTriggerTasks:async()=>[...tasks.values()],readTriggerConfig:task=>task.metadata?.trigger,readTriggerRuns:()=>[],taskToTriggerSummary:task=>({...task.metadata.trigger,id:task.metadata.trigger.triggerId,taskId:task.id}),triggersFeatureEnabled:()=>features,normalizeTriggerDraft,buildTriggerConfig,buildTriggerMetadata,DISABLED_TRIGGER_INTERVAL_MS,TRIGGER_TASK_NAME:'TRIGGER_DISPATCH',TRIGGER_TASK_TAGS:['queue','repeat','trigger'],...options});
+ const handled=await api.handleTriggerRoutes({req:{},res:{},method:'POST',pathname:'/api/triggers',runtime,assertCurrentRuntime:()=>{},ownerEntityId:owner,localOwnerEntityId:owner,readJsonBody:async()=>body,json:(_res,data,status=200)=>{result={status,body:data};},error:(_res,error,status)=>{result={status,body:{error}};},resolvePromptDeliveryRoom:async()=>room,executeTriggerTask:async()=>{executions++;throw Error('Execution forbidden');},getTriggerHealthSnapshot:async()=>({}),getTriggerLimit:()=>100,listTriggerTasks:async()=>[...tasks.values()],readTriggerConfig:task=>task.metadata?.trigger,readTriggerRuns:()=>[],taskToTriggerSummary:task=>({...task.metadata.trigger,id:task.metadata.trigger.triggerId,taskId:task.id}),triggersFeatureEnabled:()=>features,normalizeTriggerDraft,buildTriggerConfig,buildTriggerMetadata,DISABLED_TRIGGER_INTERVAL_MS,TRIGGER_TASK_NAME:'TRIGGER_DISPATCH',TRIGGER_TASK_TAGS:['queue','repeat','trigger'],...options});
  return {...result,handled};
 }
 // This POST is the first trigger route: no feed read, warmup, or direct-handler import.

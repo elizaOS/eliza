@@ -39,6 +39,11 @@ export const LIVE_ASR_STATUS_PATH = "/api/asr/local-inference/live/status";
 export const LIVE_SAMPLE_RATE = 16000;
 const MAX_TEXT = 16000;
 const MAX_FRAMES_PER_POST = 64;
+/**
+ * Most frames a segment stream holds while they wait for their post: about 30 s of the capture's
+ * 32 ms frames. More means the agent does not keep up, and the stream fails as `TRANSPORT`.
+ */
+export const LIVE_MAX_UNPOSTED_FRAMES = 960;
 
 export type LiveAudioFrame = {
   pcm16: string;
@@ -526,6 +531,10 @@ export interface LiveSegmentHandlers {
  *
  * Interim text (`onInterim`) needs a transport with an event stream (`subscribe`). A request-only
  * transport delivers finals only; nothing is synthesized in place of a partial.
+ *
+ * Posts go one at a time. When more than `LIVE_MAX_UNPOSTED_FRAMES` frames wait for a post, the
+ * stream stops: it drops the waiting audio, gives null for each outstanding segment and calls
+ * `onFatal("TRANSPORT")` once.
  */
 export function createLiveSegmentStream(
   input: {
@@ -539,6 +548,13 @@ export function createLiveSegmentStream(
   let finished = false;
   let discarded = false;
   let expected = 0;
+  let unposted = 0;
+  const fatal = (code: "LIVE_ASR_UNAVAILABLE" | "TRANSPORT") => {
+    const outstanding = expected;
+    expected = 0;
+    for (let index = 0; index < outstanding; index++) input.onSegment(null);
+    input.onFatal?.(code);
+  };
   const session = createLiveVoiceSession({
     transport: input.transport,
     ...(input.roomId ? { roomId: input.roomId } : {}),
@@ -561,10 +577,7 @@ export function createLiveSegmentStream(
         }
         return;
       }
-      const outstanding = expected;
-      expected = 0;
-      for (let index = 0; index < outstanding; index++) input.onSegment(null);
-      input.onFatal?.(code);
+      fatal(code);
     },
   });
   const closeSegment = (at: number) => {
@@ -597,7 +610,18 @@ export function createLiveSegmentStream(
         } else if (closeSegment(edge.timestampMs)) edges.push(edge);
       }
       if (!kept.length && !edges.length) return Promise.resolve();
-      return session.push(kept, edges);
+      if (unposted + kept.length > LIVE_MAX_UNPOSTED_FRAMES) {
+        // The agent does not keep up. Drop the waiting audio and stop.
+        finished = true;
+        open = false;
+        session.dispose();
+        fatal("TRANSPORT");
+        return Promise.resolve();
+      }
+      unposted += kept.length;
+      return session.push(kept, edges).finally(() => {
+        unposted -= kept.length;
+      });
     },
     /** The user stopped at `at` (epoch ms, the frames' clock). Later audio is never forwarded. */
     cutoff(at: number) {
@@ -641,13 +665,20 @@ export interface LiveCaptureStream {
   speaking(): boolean;
   /** Stop at `at` and finalize: results for audio up to `at` arrive before this resolves. */
   close(at?: number): Promise<{ durationMs: number }>;
-  /** Stop now and discard. */
+  /** Stop now and discard. Rejects while unconfirmed; calling it again asks the capture again. */
   cancel(): Promise<void>;
 }
 export interface LiveCaptureOpenOptions {
   signal: AbortSignal;
   /** Platform echo cancellation for full-duplex use (the assistant listens while it speaks). */
   echoCancel: boolean;
+  /**
+   * Silence that closes a VAD segment, when the host's gate can set it. A short value turns a
+   * pause into a segment end early (for speculative turns); the host clamps it.
+   */
+  endHangoverMs?: number;
+  /** An automatic reopen after a busy hold: refused, never prompted, after a call, pause or permission loss. */
+  reopen?: true;
   roomId?: string;
   onSpeechStart?(atMs: number): void;
   onSpeechEnd?(atMs: number): void;
@@ -657,6 +688,7 @@ export interface LiveCaptureOpenOptions {
   /** The capture or the agent route failed or stopped without being asked to. */
   onLost(error: unknown): void;
 }
+/** A rejection that carries `cancel` left a capture unconfirmed: `cancel` asks it again. */
 export type LiveCaptureOpener = (
   input: LiveCaptureOpenOptions,
 ) => Promise<LiveCaptureStream>;
@@ -671,6 +703,7 @@ export function liveAssistantListener(
     roomId?: string;
     onInterim?: (text: string) => void;
     onLatency?: (latency: LiveVoiceLatency) => void;
+    endHangoverMs?: number;
   } = {},
 ) {
   return async (
@@ -679,6 +712,10 @@ export function liveAssistantListener(
     const capture = await open({
       signal: handlers.signal,
       echoCancel: true,
+      ...(options.endHangoverMs !== undefined
+        ? { endHangoverMs: options.endHangoverMs }
+        : {}),
+      ...(handlers.reopen ? { reopen: true } : {}),
       ...(options.roomId ? { roomId: options.roomId } : {}),
       onSpeechStart: handlers.onSpeechStart,
       onSpeechEnd: handlers.onSpeechEnd,
@@ -722,7 +759,7 @@ export function createLiveDictation(
   );
   type Recording = {
     id: string;
-    capture?: LiveCaptureStream;
+    capture?: Pick<LiveCaptureStream, "cancel">;
     controller: AbortController;
     texts: string[];
     clip?: LiveDictationClip;
@@ -734,6 +771,14 @@ export function createLiveDictation(
   const emit = (clip: LiveDictationClip) => {
     for (const listener of [...listeners]) listener(clip);
   };
+  /** Only the capture's own answer frees the recording: a refusal keeps it to be asked again. */
+  const release = async (current: Recording) => {
+    if (current.timer) clearTimeout(current.timer);
+    current.controller.abort();
+    current.texts.length = 0;
+    await current.capture?.cancel();
+    if (recording === current) recording = undefined;
+  };
   const finish = (current: Recording, at?: number) => {
     current.stopping ??= (async () => {
       if (current.timer) clearTimeout(current.timer);
@@ -742,11 +787,9 @@ export function createLiveDictation(
       try {
         result = await capture.close(at);
       } catch (error) {
-        // An unconfirmed finalize leaves no transcript to trust: release the recording so
-        // Transcribe can start again, and discard whatever the host still holds.
-        if (recording === current) recording = undefined;
-        current.texts.length = 0;
-        await capture.cancel().catch(() => {});
+        // An unconfirmed finalize leaves no transcript to trust: discard whatever the host still
+        // holds, and release the recording so Transcribe can start again.
+        await release(current).catch(() => {});
         throw error;
       }
       const clip = { recordingId: current.id, durationMs: result.durationMs };
@@ -761,6 +804,7 @@ export function createLiveDictation(
       recordingId: string;
       maxDurationMs: number;
     }> {
+      if (recording?.controller.signal.aborted) await release(recording);
       if (recording && !recording.clip)
         throw Error("A transcription is already recording.");
       const current: Recording = {
@@ -769,7 +813,8 @@ export function createLiveDictation(
         texts: [],
       };
       recording = current;
-      const owned = () => recording === current;
+      const owned = () =>
+        recording === current && !current.controller.signal.aborted;
       let capture: LiveCaptureStream;
       try {
         capture = await open({
@@ -788,19 +833,24 @@ export function createLiveDictation(
             if (!owned() || current.stopping) return;
             if (current.timer) clearTimeout(current.timer);
             current.controller.abort();
-            // A lost capture leaves nothing to stop or transcribe; Transcribe can start again.
-            recording = undefined;
+            // A lost capture leaves nothing to transcribe. The next cancel or start asks it to
+            // confirm it is off, and Transcribe can start again.
             current.texts.length = 0;
             emit({ recordingId: current.id, durationMs: Number.NaN });
           },
         });
       } catch (error) {
-        if (owned()) recording = undefined;
+        if (typeof (error as { cancel?: unknown })?.cancel === "function") {
+          recording ??= current;
+          current.capture = error as Recording["capture"];
+          current.controller.abort();
+        } else if (recording === current) recording = undefined;
         throw error;
       }
       current.capture = capture;
       if (!owned()) {
-        await capture.cancel();
+        recording ??= current;
+        await release(current);
         throw new DOMException("Transcription cancelled", "AbortError");
       }
       current.timer = setTimeout(() => {
@@ -815,7 +865,8 @@ export function createLiveDictation(
     async stopRecording(): Promise<LiveDictationClip> {
       const current = recording;
       const at = Date.now();
-      if (!current?.capture) throw Error("No transcription is recording.");
+      if (!current?.capture || current.controller.signal.aborted)
+        throw Error("No transcription is recording.");
       return finish(current, at);
     },
     /** The transcript of a stopped recording ('' is reported as no speech). */
@@ -839,13 +890,7 @@ export function createLiveDictation(
       return { text, local: true };
     },
     async cancelRecording() {
-      const current = recording;
-      recording = undefined;
-      if (!current) return;
-      if (current.timer) clearTimeout(current.timer);
-      current.controller.abort();
-      current.texts.length = 0;
-      await current.capture?.cancel();
+      if (recording) await release(recording);
     },
     /** Transcription completes with Stop; nothing is pending. */
     async cancel(_input: { requestId: string }) {},

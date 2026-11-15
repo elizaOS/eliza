@@ -28,7 +28,7 @@ const REPO_ROOT = path.resolve(
 const SIGNING_KEY_ENV_VAR = "ELIZA_CERT_SIGNING_KEY";
 const TIERS = ["cpu", "gpu", "full"];
 
-const USAGE = `Usage: node packages/scripts/vast/local-certify.ts [--tier cpu|gpu|full] [options]
+const USAGE = `Usage: bun packages/scripts/vast/local-certify.ts [--tier cpu|gpu|full] [options]
 
 Options:
   --tier <cpu|gpu|full>   Certification tier (default: full)

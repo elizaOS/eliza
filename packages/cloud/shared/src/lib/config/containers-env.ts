@@ -272,12 +272,7 @@ export const containersEnv = {
 
   /** Image used by coding-container requests that need the remote runner HTTP contract. */
   codingRemoteRunnerImage(): string | undefined {
-    const env = getCloudAwareEnv();
-    return pick(
-      env.ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE,
-      env.ELIZA_CODING_REMOTE_RUNNER_IMAGE,
-      env.CONTAINERS_CODING_REMOTE_RUNNER_IMAGE,
-    );
+    return pick(getCloudAwareEnv().ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE);
   },
 
   /**

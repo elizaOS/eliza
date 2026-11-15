@@ -1,6 +1,7 @@
 package ai.eliza.plugins.mobilesignals
 
 import android.app.AppOpsManager
+import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.os.Build
@@ -35,7 +36,15 @@ class UsageStatsReader(context: Context) {
     data class UsageSummary(
         val totalTimeForegroundMs: Long,
         val topApps: List<AppUsage>,
-    )
+        /** Time of the newest foreground or background event, or `null` when none. */
+        val lastEventAt: Long? = null,
+    ) {
+        /** Seconds since [lastEventAt], or `null` if no event was recorded. */
+        fun idleSeconds(now: Long): Long? {
+            val last = lastEventAt ?: return null
+            return ((now - last) / 1_000L).coerceAtLeast(0L)
+        }
+    }
 
     /** Whether this app holds `PACKAGE_USAGE_STATS` (AppOps `GET_USAGE_STATS`). */
     fun hasUsageStatsAccess(): Boolean {
@@ -60,26 +69,80 @@ class UsageStatsReader(context: Context) {
     /**
      * Last-24h foreground usage: top-10 apps by foreground time + the total.
      * Empty when access is not granted (the plugin's non-throwing contract).
+     *
+     * Built from the raw foreground/background events over the exact window,
+     * merged by package. `queryUsageStats(INTERVAL_DAILY, ...)` returns one row
+     * per package per daily bucket, so a 24 h window that spans two buckets
+     * listed apps twice and counted most of the previous day as well.
      */
     fun collectLastDay(now: Long = System.currentTimeMillis()): UsageSummary {
         if (!hasUsageStatsAccess()) {
             return UsageSummary(0, emptyList())
         }
+        val windowStart = now - WINDOW_MS
         val usageStatsManager =
             appContext.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val stats = usageStatsManager.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY,
-            now - Duration.ofDays(1).toMillis(),
-            now,
-        )
-        val topApps = stats
-            .asSequence()
-            .filter { it.totalTimeInForeground > 0 }
-            .sortedByDescending { it.totalTimeInForeground }
+        val events = usageStatsManager.queryEvents(windowStart, now)
+        val event = UsageEvents.Event()
+        // Resumed activities per package, and when the package came to the front.
+        val resumed = mutableMapOf<String, MutableSet<String>>()
+        val since = mutableMapOf<String, Long>()
+        val seen = mutableSetOf<String>()
+        val foregroundMs = mutableMapOf<String, Long>()
+        val lastUsed = mutableMapOf<String, Long>()
+        var lastEventAt: Long? = null
+
+        fun close(pkg: String, at: Long) {
+            val from = since.remove(pkg) ?: return
+            foregroundMs[pkg] = (foregroundMs[pkg] ?: 0L) + (at - from).coerceAtLeast(0L)
+        }
+
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            val pkg = event.packageName ?: continue
+            val at = event.timeStamp.coerceIn(windowStart, now)
+            when (event.eventType) {
+                @Suppress("DEPRECATION") UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                    val activities = resumed.getOrPut(pkg) { mutableSetOf() }
+                    if (activities.isEmpty()) since[pkg] = at
+                    activities.add(event.className ?: "")
+                    seen.add(pkg)
+                    lastUsed[pkg] = at
+                    lastEventAt = at
+                }
+                @Suppress("DEPRECATION") UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                    val activities = resumed[pkg]
+                    if (activities.isNullOrEmpty()) {
+                        // The app was already in front when the window opened.
+                        if (pkg !in seen) {
+                            foregroundMs[pkg] = (foregroundMs[pkg] ?: 0L) + (at - windowStart)
+                        }
+                    } else {
+                        activities.remove(event.className ?: "")
+                        if (activities.isEmpty()) close(pkg, at)
+                    }
+                    seen.add(pkg)
+                    lastUsed[pkg] = at
+                    lastEventAt = at
+                }
+                UsageEvents.Event.DEVICE_SHUTDOWN, UsageEvents.Event.DEVICE_STARTUP -> {
+                    // No background events are written across a reboot.
+                    for (open in since.keys.toList()) close(open, at)
+                    resumed.clear()
+                }
+            }
+        }
+        for (open in since.keys.toList()) close(open, now)
+
+        val merged = foregroundMs.filterValues { it > 0 }
+        val topApps = merged.entries
+            .sortedByDescending { it.value }
             .take(10)
-            .map { AppUsage(it.packageName, it.totalTimeInForeground, it.lastTimeUsed) }
-            .toList()
-        return UsageSummary(stats.sumOf { it.totalTimeInForeground }, topApps)
+            .map { AppUsage(it.key, it.value, lastUsed[it.key] ?: now) }
+        // Split screen can keep two packages in front at once; the summary
+        // still describes a 24 h window.
+        val total = merged.values.sum().coerceAtMost(WINDOW_MS)
+        return UsageSummary(total, topApps, lastEventAt)
     }
 
     /** Seconds since the last foreground interaction, or `null` if unavailable. */
@@ -87,17 +150,10 @@ class UsageStatsReader(context: Context) {
         if (!hasUsageStatsAccess()) {
             return null
         }
-        val usageStatsManager =
-            appContext.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val stats = usageStatsManager.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY,
-            now - Duration.ofDays(1).toMillis(),
-            now,
-        )
-        val lastInteractionMs = stats.maxOfOrNull { it.lastTimeUsed } ?: 0L
-        if (lastInteractionMs <= 0) {
-            return null
-        }
-        return ((now - lastInteractionMs) / 1_000L).coerceAtLeast(0L)
+        return collectLastDay(now).idleSeconds(now)
+    }
+
+    companion object {
+        val WINDOW_MS: Long = Duration.ofDays(1).toMillis()
     }
 }

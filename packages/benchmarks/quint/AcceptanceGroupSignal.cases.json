@@ -1,0 +1,33 @@
+{
+  "sources": [
+    "packages/benchmarks/scripts/acceptance_gate.py",
+    "packages/benchmarks/tests/test_acceptance_process_groups.py",
+    "packages/benchmarks/quint/check-acceptance-group-signal.mjs"
+  ],
+  "bounds": {
+    "domain": "One already-owned process group, one signal result, and one fresh inspection with six possible classifications.",
+    "scope": "Darwin EPERM is ignored only after fresh inspection finds no live member. Live, failed, malformed, and empty inspections retain explicit failure. Group discovery, PID reuse, whole-tree reaping, Windows and non-Darwin signal semantics remain outside this projection."
+  },
+  "conformance": "packages/benchmarks/quint/check-acceptance-group-signal.mjs",
+  "cases": [
+    {
+      "name": "darwin-group-signal",
+      "main": "AcceptanceGroupSignal",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["SettlesWithFairness"],
+      "temporalChecks": [
+        {
+          "property": "SettlesWithFairness",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of settle assumes that the OS signal and process-table inspection eventually return success or failure. No wall-clock deadline or eventual process exit is proved."
+          ]
+        }
+      ],
+      "maxSteps": 8,
+      "samples": 100
+    }
+  ]
+}

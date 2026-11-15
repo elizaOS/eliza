@@ -35,7 +35,8 @@ it.each([
     const dom = new JSDOM(html, { runScripts: "outside-only" });
     try {
       expect(
-        dom.window.eval(createDesktopBrowserWorkspaceCommandScript(command)),
+        dom.window.eval(createDesktopBrowserWorkspaceCommandScript(command))
+          .value,
       ).toEqual({ value: count });
     } finally {
       dom.window.close();
@@ -76,7 +77,7 @@ it("targets the link inside a matching wrapper in both backends", async () => {
           getMode: "count",
           selector: "text:View Details",
         }),
-      ),
+      ).value,
     ).toEqual({ value: 1 });
   } finally {
     dom.window.close();

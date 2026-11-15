@@ -23,6 +23,7 @@ const SEARCH = {
   maxResults: 2,
 };
 
+let authenticationHeaders: Array<{ name: string; value: string }> = [];
 let mailboxHistoryId: unknown;
 let requests: string[];
 let connectionStatus = "active",
@@ -42,7 +43,7 @@ function message(id: string) {
     internalDate: "1767225600000",
     payload: {
       mimeType: "text/html",
-      headers: [{ name: "Subject", value: `Subject ${id}` }],
+      headers: [{ name: "Subject", value: `Subject ${id}` }, ...authenticationHeaders],
       body: { data: Buffer.from("<p>Owned HTML body</p>").toString("base64url") },
     },
   };
@@ -96,6 +97,7 @@ function installGmail(pages: Record<string, { ids: string[]; next?: string }>) {
 }
 
 beforeEach(() => {
+  authenticationHeaders = [];
   requests = [];
   connectionStatus = "active";
   connectionId = "conn-1";
@@ -313,5 +315,20 @@ describe("Gmail label payload authority", () => {
     finishFullRead?.();
     const result = await pending;
     expect(result.bodyHtml).toBe("<p>Owned HTML body</p>");
+    expect(result.authenticationResults).toEqual([]);
+  });
+  test("read returns every Authentication-Results value, unparsed and in header order", async () => {
+    // The sender-written value is on top, and it would sort after the other value.
+    authenticationHeaders = [
+      { name: "Authentication-Results", value: "  z.example; dkim=pass header.d=forged.test " },
+      { name: "Received", value: "from mx.google.com" },
+      { name: "authentication-results", value: "mx.google.com; dkim=fail" },
+    ];
+    installGmail({ "": { ids: [] } });
+    const result = await readManagedGoogleGmailMessage({ ...SEARCH, messageId: "m1" });
+    expect(result.authenticationResults).toEqual([
+      "  z.example; dkim=pass header.d=forged.test ",
+      "mx.google.com; dkim=fail",
+    ]);
   });
 });

@@ -10,6 +10,7 @@
 
 import type { MeetingPlatform } from "./meetings.js";
 import type { TranscriptSegment } from "./transcripts.js";
+import { isObjectRecord } from "./utils/type-guards.ts";
 
 export const MEETING_ARTIFACT_SCHEMA_VERSION =
 	"eliza.meeting_artifact.v1" as const;
@@ -241,10 +242,6 @@ export interface MeetingArtifactValidation {
 	errors: string[];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function isNonEmptyString(value: unknown): value is string {
 	return typeof value === "string" && value.trim().length > 0;
 }
@@ -260,7 +257,7 @@ function collectIds(
 ): Set<string> {
 	const ids = new Set<string>();
 	rows.forEach((row, index) => {
-		if (!isRecord(row)) {
+		if (!isObjectRecord(row)) {
 			errors.push(`${path}[${index}] must be an object`);
 			return;
 		}
@@ -326,7 +323,7 @@ export function validateMeetingArtifact(
 	value: unknown,
 ): MeetingArtifactValidation {
 	const errors: string[] = [];
-	if (!isRecord(value))
+	if (!isObjectRecord(value))
 		return { valid: false, errors: ["artifact must be an object"] };
 	if (value.schemaVersion !== MEETING_ARTIFACT_SCHEMA_VERSION) {
 		errors.push(`schemaVersion must be ${MEETING_ARTIFACT_SCHEMA_VERSION}`);
@@ -335,7 +332,7 @@ export function validateMeetingArtifact(
 		errors.push("artifactId is required");
 
 	const meeting = value.meeting;
-	if (!isRecord(meeting)) {
+	if (!isObjectRecord(meeting)) {
 		errors.push("meeting must be an object");
 	} else {
 		if (!isNonEmptyString(meeting.id)) errors.push("meeting.id is required");
@@ -348,7 +345,7 @@ export function validateMeetingArtifact(
 		if (!isNonEmptyString(meeting.platform))
 			errors.push("meeting.platform is required");
 		const consent = meeting.consent;
-		if (!isRecord(consent)) {
+		if (!isObjectRecord(consent)) {
 			errors.push("meeting.consent must be an object");
 		} else {
 			requireEnum(
@@ -359,7 +356,7 @@ export function validateMeetingArtifact(
 			);
 		}
 		const retentionPolicy = meeting.retentionPolicy;
-		if (!isRecord(retentionPolicy)) {
+		if (!isObjectRecord(retentionPolicy)) {
 			errors.push("meeting.retentionPolicy must be an object");
 		} else {
 			if (typeof retentionPolicy.retainAudio !== "boolean") {
@@ -429,7 +426,7 @@ export function validateMeetingArtifact(
 	);
 
 	media.forEach((row, index) => {
-		if (!isRecord(row)) return;
+		if (!isObjectRecord(row)) return;
 		if ("fileId" in row) {
 			errors.push(`media[${index}] must not define fileId; use Media.id/url`);
 		}
@@ -443,7 +440,7 @@ export function validateMeetingArtifact(
 	});
 
 	streams.forEach((row, index) => {
-		if (!isRecord(row)) return;
+		if (!isObjectRecord(row)) return;
 		requireEnum(
 			row.kind,
 			MEETING_ARTIFACT_SOURCE_STREAM_KINDS,
@@ -467,7 +464,7 @@ export function validateMeetingArtifact(
 	});
 
 	speakers.forEach((row, index) => {
-		if (!isRecord(row)) return;
+		if (!isObjectRecord(row)) return;
 		requireRefs(
 			row.sourceStreamIds,
 			streamIds,
@@ -493,7 +490,7 @@ export function validateMeetingArtifact(
 		}
 		const name = row.name;
 		if (name !== undefined) {
-			if (!isRecord(name)) {
+			if (!isObjectRecord(name)) {
 				errors.push(`diarizedSpeakers[${index}].name must be an object`);
 			} else {
 				requireEnum(
@@ -516,7 +513,7 @@ export function validateMeetingArtifact(
 	});
 
 	bindings.forEach((row, index) => {
-		if (!isRecord(row)) return;
+		if (!isObjectRecord(row)) return;
 		if (
 			!isNonEmptyString(row.diarizedSpeakerId) ||
 			!speakerIds.has(row.diarizedSpeakerId)
@@ -543,7 +540,7 @@ export function validateMeetingArtifact(
 	});
 
 	spans.forEach((row, index) => {
-		if (!isRecord(row)) return;
+		if (!isObjectRecord(row)) return;
 		requireTimeRange(row, `transcriptSpans[${index}]`, errors);
 		if (
 			!isNonEmptyString(row.sourceStreamId) ||
@@ -574,7 +571,7 @@ export function validateMeetingArtifact(
 		if (!Array.isArray(row.words))
 			errors.push(`transcriptSpans[${index}].words must be an array`);
 		words.forEach((word, wordIndex) => {
-			if (!isRecord(word)) {
+			if (!isObjectRecord(word)) {
 				errors.push(
 					`transcriptSpans[${index}].words[${wordIndex}] must be an object`,
 				);
@@ -596,7 +593,7 @@ export function validateMeetingArtifact(
 	for (const key of ["notes", "actionItems", "decisions"] as const) {
 		const rows = Array.isArray(value[key]) ? value[key] : [];
 		rows.forEach((row, index) => {
-			if (!isRecord(row)) return;
+			if (!isObjectRecord(row)) return;
 			requireRefs(
 				row.transcriptSpanIds,
 				spanIds,
@@ -610,7 +607,7 @@ export function validateMeetingArtifact(
 		? value.evidenceArtifacts
 		: [];
 	evidenceRows.forEach((row, index) => {
-		if (!isRecord(row)) return;
+		if (!isObjectRecord(row)) return;
 		if (
 			row.mediaRefId !== undefined &&
 			(!isNonEmptyString(row.mediaRefId) || !mediaIds.has(row.mediaRefId))
@@ -643,20 +640,30 @@ export function assertValidMeetingArtifact(
 	}
 }
 
+/** Index rows by id; the first row wins, as a linear `find` would. */
+function firstById<T extends { id: string }>(
+	rows: readonly T[],
+): Map<string, T> {
+	const byId = new Map<string, T>();
+	for (const row of rows) if (!byId.has(row.id)) byId.set(row.id, row);
+	return byId;
+}
+
 export function meetingArtifactToTranscriptSegments(
 	artifact: MeetingArtifact,
 ): TranscriptSegment[] {
+	const speakersById = firstById(artifact.diarizedSpeakers);
+	const bindingsById = firstById(artifact.entityBindings);
 	return artifact.transcriptSpans.map((span) => {
-		const speaker = artifact.diarizedSpeakers.find(
-			(candidate) => candidate.id === span.speakerId,
-		);
+		const speaker =
+			span.speakerId === undefined
+				? undefined
+				: speakersById.get(span.speakerId);
 		return {
 			id: span.id,
 			speakerLabel: speaker?.name?.displayName ?? span.speakerId,
 			speakerEntityId: speaker?.entityBindingId
-				? (artifact.entityBindings.find(
-						(binding) => binding.id === speaker.entityBindingId,
-					)?.entityId ?? undefined)
+				? (bindingsById.get(speaker.entityBindingId)?.entityId ?? undefined)
 				: undefined,
 			startMs: span.startMs,
 			endMs: span.endMs,

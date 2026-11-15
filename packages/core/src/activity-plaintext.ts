@@ -19,6 +19,7 @@ import type {
 	TrajectoryStepRecord,
 	TrajectorySummaryRecord,
 } from "./services/trajectory-types.js";
+import { isObjectRecord as isRecord } from "./utils/type-guards.js";
 import { toWellFormedUnicode, truncateWellFormed } from "./utils/unicode.js";
 
 export interface ActivityPlaintextSummary {
@@ -75,16 +76,8 @@ const DEFAULT_ACTIVITY_MAX_LENGTH = 120;
 const DEFAULT_TRAJECTORY_MAX_ITEMS = 6;
 const DEFAULT_TRAJECTORY_FIELD_LENGTH = 180;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readString(
-	value: unknown,
-	options: { trim?: boolean } = { trim: true },
-): string | undefined {
-	if (typeof value !== "string") return undefined;
-	return options.trim === false ? value : value.trim();
+function readString(value: unknown): string | undefined {
+	return typeof value === "string" ? value.trim() : undefined;
 }
 
 function readFiniteNumber(value: unknown): number | undefined {
@@ -625,7 +618,7 @@ function summarizeAgentEvent(
 	if (stream === "notification") {
 		const notification =
 			payload && isRecord(payload.notification)
-				? (payload.notification as Record<string, unknown>)
+				? payload.notification
 				: payload;
 		const title = firstString(notification, [
 			"title",
@@ -833,9 +826,7 @@ function trajectoryRecordFromInput(
 		| TrajectoryDetailRecord,
 ): Record<string, unknown> {
 	const record = input as Record<string, unknown>;
-	return isRecord(record.trajectory)
-		? (record.trajectory as Record<string, unknown>)
-		: record;
+	return isRecord(record.trajectory) ? record.trajectory : record;
 }
 
 function parseTrajectoryStepsJson(value: unknown): {
@@ -857,52 +848,50 @@ function parseTrajectoryStepsJson(value: unknown): {
 	}
 }
 
+/** Direct, nested and (already parsed) `stepsJson` steps, in that order. */
 function collectTrajectorySteps(
-	input: TrajectoryPlaintextInput | TrajectoryDetailRecord,
+	input: Record<string, unknown>,
+	record: Record<string, unknown>,
+	jsonSteps: readonly TrajectoryStepRecord[],
 ): TrajectoryStepRecord[] {
-	const record = trajectoryRecordFromInput(input);
-	const directSteps =
-		isRecord(input) && Array.isArray(input.steps)
-			? (input.steps as TrajectoryStepRecord[])
-			: [];
+	const directSteps = Array.isArray(input.steps)
+		? (input.steps as TrajectoryStepRecord[])
+		: [];
 	const nestedSteps =
 		record !== input && Array.isArray(record.steps)
 			? (record.steps as TrajectoryStepRecord[])
 			: [];
-	const jsonSteps = parseTrajectoryStepsJson(record.stepsJson).steps;
 	return [...directSteps, ...nestedSteps, ...jsonSteps];
 }
 
 function collectLlmCalls(
-	input: TrajectoryPlaintextInput | TrajectoryDetailRecord,
+	input: Record<string, unknown>,
+	steps: readonly TrajectoryStepRecord[],
 ): TrajectoryLlmCallRecord[] {
-	const direct =
-		isRecord(input) && Array.isArray(input.llmCalls) ? input.llmCalls : [];
+	const direct = Array.isArray(input.llmCalls) ? input.llmCalls : [];
 	return [
 		...(direct as TrajectoryLlmCallRecord[]),
-		...collectTrajectorySteps(input).flatMap((step) => step.llmCalls ?? []),
+		...steps.flatMap((step) => step.llmCalls ?? []),
 	];
 }
 
 function collectProviderAccesses(
-	input: TrajectoryPlaintextInput | TrajectoryDetailRecord,
+	input: Record<string, unknown>,
+	steps: readonly TrajectoryStepRecord[],
 ): TrajectoryProviderAccessRecord[] {
-	const direct =
-		isRecord(input) && Array.isArray(input.providerAccesses)
-			? input.providerAccesses
-			: [];
+	const direct = Array.isArray(input.providerAccesses)
+		? input.providerAccesses
+		: [];
 	return [
 		...(direct as TrajectoryProviderAccessRecord[]),
-		...collectTrajectorySteps(input).flatMap(
-			(step) => step.providerAccesses ?? [],
-		),
+		...steps.flatMap((step) => step.providerAccesses ?? []),
 	];
 }
 
 function collectTrajectoryEvents(
-	input: TrajectoryPlaintextInput,
+	input: Record<string, unknown>,
 ): TrajectoryPlaintextEvent[] {
-	return isRecord(input) && Array.isArray(input.events)
+	return Array.isArray(input.events)
 		? (input.events as TrajectoryPlaintextEvent[])
 		: [];
 }
@@ -992,11 +981,12 @@ export function trajectoryToPlaintext(
 				: undefined,
 		);
 
-	const llmCalls = collectLlmCalls(input as TrajectoryPlaintextInput);
-	const providerAccesses = collectProviderAccesses(
-		input as TrajectoryPlaintextInput,
-	);
-	const events = collectTrajectoryEvents(input as TrajectoryPlaintextInput);
+	// Parsed once: the steps feed both call lists and the malformed-data notice.
+	const parsedSteps = parseTrajectoryStepsJson(trajectory.stepsJson);
+	const steps = collectTrajectorySteps(input, trajectory, parsedSteps.steps);
+	const llmCalls = collectLlmCalls(input, steps);
+	const providerAccesses = collectProviderAccesses(input, steps);
+	const events = collectTrajectoryEvents(input);
 	const llmCallCount =
 		readFiniteNumber(trajectory.llmCallCount) ?? llmCalls.length;
 	const providerAccessCount =
@@ -1005,7 +995,7 @@ export function trajectoryToPlaintext(
 	const completionTokens = readFiniteNumber(trajectory.totalCompletionTokens);
 
 	const lines = [`Trajectory ${id} (${status})`];
-	if (parseTrajectoryStepsJson(trajectory.stepsJson).invalid) {
+	if (parsedSteps.invalid) {
 		lines.push("Trajectory steps unavailable: persisted data is malformed.");
 	}
 	const meta: string[] = [];

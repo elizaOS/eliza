@@ -1180,7 +1180,8 @@ export function createAgentBackupCaptureV3SpoolCleanupJanitor(
             summary.pending += 1;
           }
         } catch {
-          throwIfAborted();
+          // Release any acquired lock before propagating cancellation. The
+          // durable intent is still needed when cleanup did not finish.
           if (spool) await spool.close().catch(() => undefined);
           throwIfAborted();
           summary.pending += 1;
@@ -1242,7 +1243,8 @@ export function createAgentBackupCaptureV3SpoolCleanupJanitor(
             summary.pending += 1;
           }
         } catch {
-          throwIfAborted();
+          // Release any acquired lock before propagating cancellation. The
+          // durable intent is still needed when cleanup did not finish.
           if (spool) await spool.close().catch(() => undefined);
           throwIfAborted();
           summary.pending += 1;

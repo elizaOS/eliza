@@ -9,7 +9,11 @@ const CAPTCHA_PROVIDERS = new Set<TenantCaptchaProvider>([
   "turnstile",
   "hcaptcha",
 ]);
-const CAPTCHA_ACTIONS = new Set<TenantCaptchaAction>(["email_otp", "sms_otp"]);
+const CAPTCHA_ACTIONS = new Set<TenantCaptchaAction>([
+  "email_otp",
+  "sms_otp",
+  "guest",
+]);
 const LOGIN_METHODS = new Set([
   "passkey",
   "email",
@@ -20,6 +24,7 @@ const LOGIN_METHODS = new Set([
   "siws",
   "telegram",
   "farcaster",
+  "guest",
 ] as const);
 type ScalarLoginMethod =
   typeof LOGIN_METHODS extends Set<infer Method> ? Method : never;

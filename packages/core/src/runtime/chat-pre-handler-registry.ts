@@ -19,10 +19,6 @@ export class ChatPreHandlerRegistry {
 		this.byId.set(handler.id, handler);
 	}
 
-	registerMany(handlers: readonly ChatPreHandler[]): void {
-		for (const handler of handlers) this.register(handler);
-	}
-
 	has(id: string): boolean {
 		return this.byId.has(id);
 	}
@@ -31,19 +27,11 @@ export class ChatPreHandlerRegistry {
 		this.byId.delete(id);
 	}
 
-	clear(): void {
-		this.byId.clear();
-	}
-
 	/** Handlers sorted by descending priority (ties keep insertion order). */
 	list(): ChatPreHandler[] {
 		return [...this.byId.values()].sort(
 			(a, b) => (b.priority ?? 0) - (a.priority ?? 0),
 		);
-	}
-
-	get size(): number {
-		return this.byId.size;
 	}
 
 	/** Run handlers by priority; the first non-null result wins. */

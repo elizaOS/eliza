@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/api/maps-navigation-relay.ts",
+    "packages/agent/src/api/device-action-routes.ts"
+  ],
+  "bounds": {
+    "domain": "One offer, one device scope and one delivery.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_device_relay",
+      "main": "api_device_relay",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

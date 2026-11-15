@@ -1,0 +1,51 @@
+{
+  "sources": [
+    "packages/ui/src/state/app-update-gate.ts",
+    "packages/ui/src/state/__e2e__/app-update-gate.test.ts"
+  ],
+  "bounds": {
+    "domain": "One scheduler and at most one host operation in flight. Foreground/disposed/busy state and current-owner validity are explicit. Runtime durations must fit the platform's positive signed 32-bit timer range. Monotonic time ranges from 0 to 20; retry base is 1 and interval is 4. Failure count saturates at 20 and the latest possible wake deadline is 24. Owner generations are abstracted to validity, not numerically wrapped.",
+    "progress": "Weak fairness is required separately for a continuously enabled due timer and for completion of the current host operation. Success is not required: failures settle and schedule bounded retry. Ownership changes and disposal invalidate the old operation without permitting an overlapping one. No unconditional progress claim is made for a permanently pending bridge.",
+    "limitations": "The model covers timer and bridge-call ownership, not native APK validation, background scheduling, network availability or device acceptance. The source conformance suite also checks the existing mounted update gate with real DOM focus changes and controlled native receipt ports; those modal/activation paths are outside this timer model. Conformance is scenario-based and is not generated trace refinement."
+  },
+  "conformance": "packages/ui/quint/check-app-update-schedule.mjs",
+  "cases": [
+    {
+      "name": "foreground-ownership-retry-and-retirement",
+      "main": "AutomaticAppUpdateSchedule",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [
+        "FairCompletionSettles",
+        "FairDueTimerStarts",
+        "UnconditionalCompletion"
+      ],
+      "temporalChecks": [
+        {
+          "property": "FairCompletionSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the pending host operation's completion, including failure. The bridge operation eventually settles; permanent provider or native-call hangs remain outside this conditional progress claim."
+          ]
+        },
+        {
+          "property": "FairDueTimerStarts",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of timer delivery while the scheduler is active, due and not busy. The owner may instead background or dispose, which retires the timer. No fairness of foreground ownership, time advancement or network success is assumed."
+          ]
+        },
+        {
+          "property": "UnconditionalCompletion",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A pending bridge can never settle; the scheduler intentionally keeps its single-operation fence rather than start an overlapping update."
+          ]
+        }
+      ],
+      "maxSteps": 40,
+      "samples": 1000
+    }
+  ]
+}

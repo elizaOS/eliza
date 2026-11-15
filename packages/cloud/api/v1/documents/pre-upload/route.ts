@@ -51,6 +51,7 @@ app.post("/", async (c) => {
     for (const file of files) {
       const filename = sanitizeFilename(file.name || "document.txt");
       const key = `documents-pre-upload/${user.id}/${Date.now()}-${crypto.randomUUID()}-${filename}`;
+      const blobUrl = publicBlobUrl(c, key);
       await c.env.BLOB.put(key, await file.arrayBuffer(), {
         httpMetadata: { contentType: file.type || "application/octet-stream" },
         // Account deletion finds an organization's objects by this field.
@@ -64,7 +65,7 @@ app.post("/", async (c) => {
       uploaded.push({
         id: crypto.randomUUID(),
         filename,
-        blobUrl: publicBlobUrl(c, key),
+        blobUrl,
         contentType: file.type || "application/octet-stream",
         size: file.size,
         uploadedAt: Date.now(),

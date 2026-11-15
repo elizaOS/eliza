@@ -21,21 +21,32 @@ import { isDeepStrictEqual } from "node:util";
 import { deserialize as deserializeLegacy } from "node:v8";
 import { ElizaError, logger, type UUID } from "@elizaos/core";
 import { decodeRecord, encodeRecord, RECORD_CODEC } from "./record-codec";
-import type { SQLiteDriver, SqlDatabase } from "./sqlite-driver-types";
+import type { SQLiteDriver, SqlDatabase, SqlRow } from "./sqlite-driver-types";
 import type { IStorage } from "./types";
 
 type Owner = { active: boolean; child?: Promise<void> };
 
-/** Persist the published name and any ancestors created for a new backup directory. */
-function syncDirectoryChain(directory: string): void {
+/** Records decoded per page by mapAll. */
+const MAP_PAGE_ROWS = 256;
+
+/**
+ * Persist the published name and any ancestors created for a new backup directory.
+ *
+ * Flush through the pre-existing ancestor of the first directory created for
+ * this backup. Directories above it contain no new entry from this operation.
+ * Windows requires writable handles for fsync; every required flush must pass.
+ */
+function syncDirectoryChain(directory: string, existingAncestor: string): void {
+  const windows = process.platform === "win32";
   let current = directory;
   for (;;) {
-    const fd = openSync(current, "r");
+    const fd = openSync(current, windows ? "r+" : "r");
     try {
       fsyncSync(fd);
     } finally {
       closeSync(fd);
     }
+    if (current === existingAncestor) return;
     const parent = dirname(current);
     if (parent === current) return;
     current = parent;
@@ -354,6 +365,42 @@ export class SQLiteStorageBase implements IStorage {
     );
   }
 
+  async mapAll<T, R>(
+    collection: string,
+    select: (item: T) => R | undefined,
+  ): Promise<R[]> {
+    return this.exclusive(async () => {
+      // Keyset pages over the primary key: only one page of blobs and decoded
+      // records is held at a time, and the queue keeps the read consistent.
+      const db = this.connection();
+      const first = db.prepare(
+        "SELECT id,data FROM records WHERE collection=? ORDER BY id LIMIT ?",
+      );
+      const next = db.prepare(
+        "SELECT id,data FROM records WHERE collection=? AND id>? ORDER BY id LIMIT ?",
+      );
+      const result: R[] = [];
+      let after: string | null = null;
+      for (;;) {
+        const rows: SqlRow[] =
+          after === null
+            ? first.all(collection, MAP_PAGE_ROWS)
+            : next.all(collection, after, MAP_PAGE_ROWS);
+        for (const row of rows) {
+          if (typeof row.id !== "string" || !(row.data instanceof Uint8Array))
+            throw this.failure(
+              "RECORD_INVALID",
+              "SQLite record has invalid storage fields",
+            );
+          const value = select(decodeRecord(row.data) as T);
+          if (value !== undefined) result.push(value);
+          after = row.id;
+        }
+        if (rows.length < MAP_PAGE_ROWS) return result;
+      }
+    });
+  }
+
   async getWhere<T>(
     collection: string,
     predicate: (item: T) => boolean,
@@ -458,7 +505,9 @@ export class SQLiteStorageBase implements IStorage {
         "Backup requires a new absolute path",
       );
     await this.exclusive(async () => {
-      mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+      const parent = dirname(destination);
+      const firstCreated = mkdirSync(parent, { recursive: true, mode: 0o700 });
+      const existingAncestor = firstCreated ? dirname(firstCreated) : parent;
       // Some SQLite builds require a nonexistent VACUUM destination. A private
       // sibling directory protects the new file until exclusive publication.
       const staging = mkdtempSync(
@@ -469,14 +518,15 @@ export class SQLiteStorageBase implements IStorage {
         const snapshot = join(staging, "snapshot.sqlite");
         this.connection().prepare("VACUUM INTO ?").run(snapshot);
         chmodSync(snapshot, 0o600);
-        const snapshotFd = openSync(snapshot, "r");
+        // Windows flushes only handles opened for writing; "r" fails with EPERM.
+        const snapshotFd = openSync(snapshot, "r+");
         try {
           fsyncSync(snapshotFd);
         } finally {
           closeSync(snapshotFd);
         }
         linkSync(snapshot, destination);
-        syncDirectoryChain(dirname(destination));
+        syncDirectoryChain(parent, existingAncestor);
       } catch (cause) {
         // error-policy:J2 Unsupported publication or directory durability must not report a completed backup.
         throw this.failure(

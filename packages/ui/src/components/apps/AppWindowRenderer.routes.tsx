@@ -39,6 +39,10 @@ import { Card } from "../ui/card";
 import { Spinner } from "../ui/spinner";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { resolveDeclaredAppWindowRoute } from "./AppWindowRenderer.route-resolution";
+import {
+  APP_RUN_API_UNSUPPORTED_MESSAGE,
+  useAppRunApiSupport,
+} from "./app-run-api";
 import { EmbeddedAppViewer } from "./EmbeddedAppViewer";
 import { findAppBySlug } from "./helpers";
 import { useRegistryCatalog } from "./useRegistryCatalog";
@@ -182,6 +186,7 @@ interface RegistryRunState {
 export function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
   const { t } = useApp();
   const { catalog, error: catalogError } = useRegistryCatalog();
+  const runApi = useAppRunApiSupport();
   const [runState, setRunState] = useState<RegistryRunState>({
     status: "loading",
     run: null,
@@ -200,9 +205,10 @@ export function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
     return findAppBySlug(catalog, slug) ?? null;
   }, [catalog, slug]);
   const displayName = resolvedApp?.displayName ?? slug;
-  // Launch the app once we know the package name.
+  // Launch the app once we know the package name and the agent serves the
+  // run API; without it the launch would post to a route nothing handles.
   useEffect(() => {
-    if (!resolvedApp) return;
+    if (!resolvedApp || runApi !== "supported") return;
     let cancelled = false;
     setRunState({
       status: "loading",
@@ -297,7 +303,7 @@ export function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [resolvedApp, retryCounter, t]);
+  }, [resolvedApp, retryCounter, runApi, t]);
   if (catalogError) {
     return <AppWindowError message={catalogError} />;
   }
@@ -310,6 +316,9 @@ export function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
         message={`No installed or catalog app matches "/apps/${slug}".`}
       />
     );
+  }
+  if (runApi === "unsupported") {
+    return <AppWindowError message={APP_RUN_API_UNSUPPORTED_MESSAGE} />;
   }
   if (runState.status === "loading") {
     return <AppWindowSpinner label={displayName} />;

@@ -1,0 +1,48 @@
+{
+  "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
+    "packages/ui/src/state/durable-draft.ts",
+    "packages/ui/quint/check-draft-controller.mjs"
+  ],
+  "conformance": "packages/ui/quint/check-draft-controller.mjs",
+  "bounds": "One binding, one admitted marked send, one pending non-dispatch release, one duplicate release and one competing dispatched, unknown or abandon call. One host application and acknowledgement with success or failure, and one successful terminal write. Two symbolic editor values and two durable revisions after admission. Same-binding storage writes succeed. No new send, edit, store failure, binding change, delivery proof or crash recovery.",
+  "cases": [
+    {
+      "name": "competing-terminal-settlement",
+      "main": "DraftTerminalSettlement",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [
+        "LateHostApplyCannotRestore",
+        "FairSettlement",
+        "ReleaseSettles"
+      ],
+      "maxSteps": 8,
+      "samples": 500,
+      "temporalChecks": [
+        {
+          "property": "LateHostApplyCannotRestore",
+          "expect": "holds",
+          "assumptions": [
+            "The host checks the supplied current predicate before applying a deferred editor update."
+          ]
+        },
+        {
+          "property": "FairSettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of release acknowledgement and the pending commit write. Storage writes succeed in this instance. No progress is assumed for a host that never settles its restore."
+          ]
+        },
+        {
+          "property": "ReleaseSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness, an already revoked release can remain pending while its host has not acknowledged."
+          ]
+        }
+      ]
+    }
+  ]
+}

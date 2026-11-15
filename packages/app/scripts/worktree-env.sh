@@ -7,7 +7,7 @@
 # slot: integer offset (default 1). Slot 0 = default ports, slot 1 = +100,
 #       slot 2 = +200, etc. Each slot gets its own state directory too.
 #
-# The generated .env.worktree is auto-loaded by dev-ui.ts, dev-platform.ts,
+# The generated .env.worktree is auto-loaded by dev-ui.ts
 # and run-node.ts before port resolution, so `bun run dev` Just Works.
 
 set -euo pipefail

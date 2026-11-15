@@ -149,20 +149,17 @@ export function observeOwnerToolExecution(
 		dispatch(event);
 	} catch {
 		// Never rethrow, report raw values, await an observer, or alter execution.
-		try {
-			dispatch(
-				Object.freeze({
-					phase: "omitted",
-					gate: "execution",
-					gateOutcome: "unknown",
-					actionName: "unknown",
-					redactedFields: 0,
-					redactedStrings: 0,
-					omittedFields: 1,
-				}),
-			);
-		} catch {
-			/* A broken private observer cannot change canonical execution. */
-		}
+		// dispatch() isolates observer failures itself.
+		dispatch(
+			Object.freeze({
+				phase: "omitted",
+				gate: "execution",
+				gateOutcome: "unknown",
+				actionName: "unknown",
+				redactedFields: 0,
+				redactedStrings: 0,
+				omittedFields: 1,
+			}),
+		);
 	}
 }

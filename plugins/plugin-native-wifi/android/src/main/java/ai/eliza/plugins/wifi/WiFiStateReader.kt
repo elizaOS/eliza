@@ -126,9 +126,12 @@ class WiFiStateReader(private val context: Context) {
         /** `WifiManager.UNKNOWN_SSID` (API 30), returned while Android hides the name. */
         private const val UNKNOWN_SSID = "<unknown ssid>"
 
-        /** [raw] without quotes, or null when it is empty or Android's placeholder for a hidden name. */
+        /**
+         * [raw] without quotes, or null when it is empty, only NUL bytes (a hidden network in a
+         * scan) or Android's placeholder for a hidden name.
+         */
         fun disclosedSsid(raw: String?): String? =
-            trimQuotes(raw).takeUnless { it.isEmpty() || it == UNKNOWN_SSID }
+            trimQuotes(raw).takeUnless { it.isEmpty() || it == UNKNOWN_SSID || it.all { c -> c == '\u0000' } }
 
         /**
          * `WifiInfo.getSsid()` / some scan results wrap the SSID in quotes
@@ -141,6 +144,37 @@ class WiFiStateReader(private val context: Context) {
             }
             return ssid
         }
+
+        /** Security of a network that [WiFiConnectionRequests] can join. */
+        const val SECURITY_OPEN = "open"
+        const val SECURITY_OWE = "owe"
+        const val SECURITY_WPA2 = "wpa2"
+        const val SECURITY_WPA3 = "wpa3"
+
+        /** Security an app cannot join through a suggestion; the system settings can. */
+        const val SECURITY_EAP = "eap"
+        const val SECURITY_WEP = "wep"
+
+        /**
+         * The security a scan result's [capabilities] advertise. A WPA2/WPA3 transition network
+         * (both PSK and SAE) is `wpa2`, so a WPA2-only device can still join it. The open side of
+         * an Enhanced Open transition network (`OWE_TRANSITION`) is `open`: Android upgrades the
+         * saved open network itself.
+         */
+        fun securityType(capabilities: String): String {
+            val upper = capabilities.uppercase()
+            return when {
+                upper.contains("EAP") || upper.contains("802.1X") -> SECURITY_EAP
+                upper.contains("WEP") -> SECURITY_WEP
+                upper.contains("PSK") -> SECURITY_WPA2
+                upper.contains("SAE") -> SECURITY_WPA3
+                upper.contains("OWE") && !upper.contains("OWE_TRANSITION") -> SECURITY_OWE
+                else -> SECURITY_OPEN
+            }
+        }
+
+        /** Whether a suggestion can join a network with [security] (EAP and WEP cannot). */
+        fun joinable(security: String): Boolean = security != SECURITY_EAP && security != SECURITY_WEP
 
         /**
          * Treat any capability string mentioning a security suite as "secured".

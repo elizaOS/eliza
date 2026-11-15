@@ -9,6 +9,11 @@ export interface IStorage {
     collection: string,
     predicate: (item: T) => boolean,
   ): Promise<T[]>;
+  /** Maps each record in id order, keeping the results that are not undefined. */
+  mapAll<T, R>(
+    collection: string,
+    select: (item: T) => R | undefined,
+  ): Promise<R[]>;
   set<T>(collection: string, id: string, data: T): Promise<void>;
   delete(collection: string, id: string): Promise<boolean>;
   deleteMany(collection: string, ids: string[]): Promise<void>;

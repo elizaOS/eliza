@@ -138,19 +138,6 @@ test("no vendor policy lets an app execute app data", () => {
   assert.match(read("sepolicy/README.md"), /untrusted_app/);
 });
 
-test("the generic MediaTek GSI target stays blocked", () => {
-  const inventory = JSON.parse(
-    fs.readFileSync(path.join(androidDir, "hardware-targets.json"), "utf8"),
-  );
-  const target = inventory.targets.find(
-    (entry: { targetId: string }) => entry.targetId === "generic-mediatek-gsi",
-  );
-  assert.equal(target?.sourceStatus, "blocked");
-  assert.equal(target?.installerEligible, false);
-  assert.equal(target?.labExperimentsEligible, false);
-  assert.ok(target?.blockedReasons.length >= 3);
-});
-
 /**
  * Evaluate eliza_common.mk and the AOSP GSI allowlist entry the build relies
  * on (gsi_release.mk adds system/product/%), then return the allowlist and

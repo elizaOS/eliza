@@ -26,8 +26,8 @@ const DEFAULT_DEVICE_DIR = "vsoc_x86_64_only";
 
 // The Cuttlefish product output lives at out/target/product/<deviceDir>, where
 // deviceDir is the `vsoc_*` segment of the brand's AOSP device tree path (e.g.
-// "device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk" -> "vsoc_riscv64").
-// Deriving it from the brand keeps arm64/riscv64 from falling back to the
+// "device/google/cuttlefish/vsoc_arm64/phone/aosp_cf.mk" -> "vsoc_arm64").
+// Deriving it from the brand keeps arm64 from falling back to the
 // x86_64 default and pointing at the wrong (or missing) system.img.
 function deriveDeviceDir(brand) {
   for (const treePath of brand.aospDeviceTreePaths ?? []) {
@@ -84,7 +84,7 @@ export function parseSubArgs(argv, brand) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/sim.ts [--brand-config PATH] [--aosp-root DIR] [--out DIR] [--no-launch] [--stop-after] [--wait-for-build]",
+        "Usage: bun scripts/android/sim.ts [--brand-config PATH] [--aosp-root DIR] [--out DIR] [--no-launch] [--stop-after] [--wait-for-build]",
       );
       process.exit(0);
     } else {

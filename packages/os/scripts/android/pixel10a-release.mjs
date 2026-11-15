@@ -1,6 +1,6 @@
 /**
  * Release inputs for a Pixel 10a (stallion) Android 17 product composed from
- * android/products/pixel10a-<brand>.json.
+ * a validated consumer-owned composition or Eliza's own product catalog.
  *
  * Every brand keeps its own release descriptor, update channel and qualification
  * record: they carry its signing identity (certificate and AVB key digests), its one
@@ -125,6 +125,10 @@ function readJson(root, rel) {
  * the application release certificate; otherwise the descriptor carries
  * `signer.applicationCertificateSha256` itself. `productName`, when given, is the
  * brand's own composition: a descriptor naming another brand's product is refused.
+ * `composition` supplies the consumer's product data; it must validate and name the
+ * descriptor's product. Omitting it selects only a product in Eliza's own catalog.
+ * Composition data grants no signer or release authority; all descriptor, source
+ * lock and signing checks below remain mandatory.
  * An empty list admits staging inputs only; it is never an image build, signed
  * image, boot or qualification.
  */
@@ -136,6 +140,7 @@ export function releaseDescriptorProblems(
     sourceLockPath,
     applicationSignerFile = null,
     productName = null,
+    composition: suppliedComposition = null,
   },
 ) {
   if (!descriptor || typeof descriptor !== "object")
@@ -150,15 +155,24 @@ export function releaseDescriptorProblems(
     problems.push(`${file}: ${field} is unset or a placeholder`);
   let composition = null;
   try {
-    composition = pixel10aComposition(descriptor.product);
+    composition =
+      suppliedComposition === null
+        ? pixel10aComposition(descriptor.product)
+        : validatePixel10aProduct(suppliedComposition);
+    if (composition && composition.productName !== descriptor.product) {
+      problems.push(
+        `${file}: composition.productName must match the release descriptor's product`,
+      );
+      composition = null;
+    }
   } catch (error) {
     problems.push(
-      `${file}: the shared composition is invalid: ${error.message}`,
+      `${file}: the Pixel 10a composition is invalid: ${error.message}`,
     );
   }
   if (!composition)
     problems.push(
-      `${file}: product ${JSON.stringify(descriptor.product)} is not a shared Pixel 10a composition (android/products/pixel10a-*.json)`,
+      `${file}: product ${JSON.stringify(descriptor.product)} needs a validated consumer composition or an entry in Eliza's own product catalog`,
     );
   if (descriptor.target !== "pixel10a")
     problems.push(`${file}: target must be pixel10a`);

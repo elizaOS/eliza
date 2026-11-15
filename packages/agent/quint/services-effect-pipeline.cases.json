@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "packages/agent/src/services/shell-execution-router.ts",
+    "packages/agent/src/services/media-generation.ts",
+    "packages/agent/src/services/audio-redaction-service.ts"
+  ],
+  "bounds": {
+    "domain": "One validated dispatch and one result/persistence cycle.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_effect_pipeline",
+      "main": "services_effect_pipeline",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

@@ -27,6 +27,7 @@ public final class NoticeTapInboxTest {
   public void postApproval(String id,String title,String body,long timeout){active.put(id,title+"\n"+body);}
   public void cancel(String id){active.remove(id);}
   public boolean matches(String id,String title,String body){return Objects.equals(active.get(id),title+"\n"+body);}
+  public String[] shownText(String id){String shown=active.get(id);return shown==null?null:shown.split("\n",2);}
  }
  static final String OPEN="example.OPEN_NOTICE",ASK="example.ASK_NOTICE",PREFIX="example-notice:";
  static final NoticeDelivery.Config DELIVERY=new NoticeDelivery.Config("host-notices:v1","host-approvals:v1","Step waiting for approval","Open the app to review it.",7L*86400000);
@@ -97,6 +98,39 @@ public final class NoticeTapInboxTest {
   for(int i=0;i<512;i++){last=new Intent(OPEN,PREFIX+t1);check(bounded.retain(last,INTENTS)!=null);}
   Intent overflow=new Intent(OPEN,PREFIX+t1);check(bounded.retain(overflow,INTENTS)==null);
   bounded.release(last,t1);check(bounded.retain(overflow,INTENTS)!=null);
+  // A tap on a shown notice whose receipt stayed unknown (the post was not seen listed in time) rechecks the
+  // shown notice and opens; without the recheck, or when the shown notice differs, the tap is dropped.
+  String third=routes.prepare("step-3",binding,route("run-4"));check("succeeded".equals(delivery.publish("step-3",binding,"Third","Body")));
+  JSONObject receipts=new JSONObject(store.values.get("host-notices:v1"));receipts.getJSONObject("step-3").put("status","unknown");store.values.put("host-notices:v1",receipts.toString());
+  NoticeTapInbox<Intent> plain=new NoticeTapInbox<>(routes,OPEN,ASK,PREFIX);Intent uncertain=new Intent(OPEN,PREFIX+third);
+  check(plain.offer(plain.retain(uncertain,INTENTS),uncertain,(intent,captured)->{})==0&&plain.pending((intent,captured)->{},none).length()==0);
+  NoticeTapInbox<Intent> rechecking=new NoticeTapInbox<>(routes,OPEN,ASK,PREFIX,captured->{String id=routes.operation(captured);if(id!=null)delivery.recheck(id);});
+  poster.active.put("step-3","Third\nOther body");Intent changed=new Intent(OPEN,PREFIX+third);
+  check(rechecking.offer(rechecking.retain(changed,INTENTS),changed,(intent,captured)->{})==0&&"unknown".equals(delivery.recheck("step-3")));
+  poster.active.put("step-3","Third\nBody");Intent shown=new Intent(OPEN,PREFIX+third);
+  check(rechecking.offer(rechecking.retain(shown,INTENTS),shown,(intent,captured)->{})==0);
+  check(new JSONObject(store.values.get("host-notices:v1")).getJSONObject("step-3").getString("status").equals("succeeded"));
+  JSONObject opened=rechecking.pending((intent,captured)->{},none);check(third.equals(opened.getString("token"))&&opened.getBoolean("retained"));
+  check("step-3".equals(rechecking.discard(third))&&routes.pending().length()==0);
+  // A tap refused for another owner's route or an expired approval Ask is released, so it never blocks
+  // pending(); later taps still open.
+  String fourth=routes.prepare("step-4",binding,route("run-5"));check("succeeded".equals(delivery.publish("step-4",binding,"Fourth","Body")));
+  routes.owner(new JSONObject().put("origin","https://agent.invalid").put("ownerId","other").put("agentId","agent"));
+  List<String> released=new ArrayList<>();NoticeTapInbox.Captured<Intent> releasing=(intent,captured)->{released.add(captured);plain.release(intent,captured);};
+  Intent foreign=new Intent(OPEN,PREFIX+fourth);check(plain.offer(plain.retain(foreign,INTENTS),foreign,releasing)==0&&released.contains(fourth));
+  check(plain.pending(releasing,none).length()==0);
+  routes.owner(new JSONObject().put("origin","https://agent.invalid").put("ownerId","owner").put("agentId","agent"));
+  String expired="approval-"+"4".repeat(64);check("succeeded".equals(coordinator.postApproval(expired,binding,route("run-6"),now+600000,now)));
+  String expiredToken=routes.token(expired);JSONObject approvals=new JSONObject(store.values.get("host-approvals:v1"));approvals.getJSONObject(expired).put("expiresAt",now-1);store.values.put("host-approvals:v1",approvals.toString());
+  Intent lateAsk=new Intent(ASK,PREFIX+expiredToken);check(plain.offer(plain.retain(lateAsk,INTENTS),lateAsk,releasing)==0&&released.contains(expiredToken));
+  Intent later=new Intent(OPEN,PREFIX+fourth);check(plain.offer(plain.retain(later,INTENTS),later,releasing)==0);
+  check(fourth.equals(plain.pending(releasing,none).getString("token")));
+  // A storage failure is not a refusal: the tap stays retained for the next drain.
+  check("step-4".equals(plain.consume(fourth,false,null,none,()->{})));
+  String fifth=routes.prepare("step-5",binding,route("run-7"));check("succeeded".equals(delivery.publish("step-5",binding,"Fifth","Body")));
+  Intent stored=new Intent(OPEN,PREFIX+fifth);String storedKey=plain.retain(stored,INTENTS);store.fail=true;
+  check(plain.offer(storedKey,stored,releasing)==1&&!released.contains(fifth));rejects(()->plain.pending(releasing,none));
+  store.fail=false;check(plain.drain(releasing)==0&&fifth.equals(plain.pending(releasing,none).getString("token")));
   System.out.println(checks+" assertions passed");
  }
 }
