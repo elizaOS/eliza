@@ -85,7 +85,11 @@ pure val weight_failStart = 24
 pure val weight_settleAcquire = 24
 pure val weight_observeAcquire = 24
 pure val weight_wakeEager = 24
-pure val weight_advanceClock = 4
+pure val weight_advanceClock = 16
+pure val weight_registerClass = 8
+pure val weight_returnInstance = 8
+pure val weight_invokeObjectStop = 8
+pure val weight_settleObjectStop = 8
 pure def sometimesSecondAttemptAfterDelay(s: EagerServices): bool = s.jobs.some(j => j.attempts == 2 and s.now >= 2000)
 pure def sometimesStoppedDuringBackoff(s: EagerServices): bool = s.services.stopped and s.jobs.some(j => j.phase == EagerBackoff)
 pure def sometimesFourFailuresTerminate(s: EagerServices): bool = s.jobs.some(j => j.phase == EagerDone and j.failures == 4)

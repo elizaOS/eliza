@@ -328,4 +328,6 @@ pure val weight_finishNextPluginDisposal = 3
 pure val weight_finishNextRegistration = 3
 pure val weight_requestOwnedStops = 2
 pure val weight_skipMissingStop = 2
+pure val weight_claimInstanceStop = 20
+pure val weight_observeInstanceStop = 20
 ```
