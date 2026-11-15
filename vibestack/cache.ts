@@ -126,7 +126,10 @@ export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined 
     return undefined;
   }
   try {
-    return JSON.parse(text) as T;
+    const value = JSON.parse(text) as T;
+    // Entries are deleted when unused for a while (see collectGarbage), so a hit says the entry is in use.
+    try { const now = new Date(); fs.utimesSync(file, now, now); } catch { /* still a hit */ }
+    return value;
   } catch {
     fs.rmSync(file, { force: true });
     return undefined;
