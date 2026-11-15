@@ -733,10 +733,13 @@ public abstract class TelephonyPlugin extends Plugin {
  private final java.util.Set<ReviewCall> pendingReviews = java.util.concurrent.ConcurrentHashMap.newKeySet();
  private final class ReviewCall extends PluginCall {
   private final PluginCall original;
+  private final SmsTelephony.DispatchGuard ownerGuard;
   private volatile boolean cancelled;
-  ReviewCall(PluginCall original) {
+  ReviewCall(PluginCall original) { this(original, null); }
+  ReviewCall(PluginCall original, SmsTelephony.DispatchGuard ownerGuard) {
    super(null, original.getPluginId(), original.getCallbackId(), original.getMethodName(), original.getData());
    this.original = original;
+   this.ownerGuard = ownerGuard;
    pendingReviews.add(this);
   }
   @Override public void resolve() { pendingReviews.remove(this); original.resolve(); }
@@ -763,6 +766,17 @@ public abstract class TelephonyPlugin extends Plugin {
   if (active != null) for (SubscriptionInfo info : active) if (info != null && info.getSubscriptionId() == id && info.getSimSlotIndex() >= 0) return info;
   return null;
  }
+ private SmsTelephony.DispatchGuard sendGuard(ReviewCall call, int sub, SubscriptionInfo reviewed,
+   java.util.function.BooleanSupplier blocked) {
+  final int slot = reviewed.getSimSlotIndex(), carrier = reviewed.getCarrierId();
+  return () -> {
+   SubscriptionInfo current = activeSubscription(sub);
+   if (call.cancelled || !admitted() || !unlockedForeground() || blocked.getAsBoolean()
+     || current == null || current.getSimSlotIndex() != slot || current.getCarrierId() != carrier)
+    throw new IllegalStateException("Reviewed SIM or access changed");
+   if (call.ownerGuard != null) call.ownerGuard.check();
+  };
+ }
  private static String[] numbers(JSArray recipients) {
   if (recipients == null) return null;
   String[] out = new String[recipients.length()];
@@ -781,6 +795,15 @@ public abstract class TelephonyPlugin extends Plugin {
  @PluginMethod public void sendSms(PluginCall call) {
   if (refused(call)) return;
   startSms(new ReviewCall(call));
+ }
+ /**
+  * Host-native entry point for a composer where the owner already approved this exact operation.
+  * Only the host can establish that authorization. Its guard must throw if the same owner approval
+  * is no longer valid and must be safe to call on the send worker, including for multipart sends.
+  */
+ protected final void sendOwnerApprovedSms(PluginCall call, SmsTelephony.DispatchGuard ownerGuard) {
+  java.util.Objects.requireNonNull(ownerGuard);
+  if (!refused(call)) startSms(new ReviewCall(call, ownerGuard));
  }
  private void startSms(ReviewCall call) {
   String operationId = call.getString("operationId"), body = call.getString("body");
@@ -818,16 +841,36 @@ public abstract class TelephonyPlugin extends Plugin {
   if (parts == null || parts.isEmpty() || parts.size() > SmsSendJournal.MAX_PARTS_PER_RECIPIENT) { decide(call, journal, operationId, recipients, body, subscriptionId, "denied", now, boot); return; }
   SubscriptionInfo sim = activeSubscription(subscriptionId);
   if (sim == null) { decide(call, journal, operationId, recipients, body, subscriptionId, "denied", now, boot); return; }
+  final int sub = subscriptionId;
+  final java.util.function.BooleanSupplier blockedNow = () -> sendBlocker(sub) != null;
+  final SmsTelephony.DispatchGuard guard = sendGuard(call, sub, sim, blockedNow);
+  final Runnable dispatch = () -> {
+   if (!admitted() || !unlockedForeground() || blockedNow.getAsBoolean()) {
+    decide(call, journal, operationId, recipients, body, sub, "denied", now, boot);
+    return;
+   }
+   SmsTelephony.WORK.execute(() -> {
+    try { call.resolve(SmsTelephony.result(SmsTelephony.dispatch(getContext(), config, journal, operationId, recipients, body, sub, parts, guard))); }
+    catch (Exception unrecorded) {
+     final SmsSendJournal.Record record;
+     try { record = journal.existing(operationId, binding); }
+     catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
+     catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
+     // If nothing reached Android, close the ID against later dispatch.
+     if (record != null) call.resolve(SmsTelephony.result(record));
+     else decide(call, journal, operationId, recipients, body, sub, call.cancelled ? "cancelled" : "denied", now, boot);
+    }
+   });
+  };
+  if (call.ownerGuard != null) { dispatch.run(); return; }
   StringBuilder message = new StringBuilder();
   message.append("To: ").append(String.join(", ", recipients)).append('\n');
   message.append("From: SIM ").append(sim.getSimSlotIndex() + 1).append(" · ").append(clip(sim.getDisplayName())).append(" (").append(clip(sim.getCarrierName())).append(")\n");
   if (recipients.length > 1) message.append("Each recipient gets a separate text, not a group message.\n");
   if (parts.size() > 1) message.append("Sent as ").append(parts.size()).append(" linked texts per recipient.\n");
   message.append("Carrier charges may apply.\n\n").append(body);
-  final String[] to = recipients; final int sub = subscriptionId;
-  final int reviewedSlot = sim.getSimSlotIndex(), reviewedCarrier = sim.getCarrierId();
   reviewCall = call;
-  reviewCancelled = () -> decide(call, journal, operationId, to, body, sub, "cancelled", now, boot);
+  reviewCancelled = () -> decide(call, journal, operationId, recipients, body, sub, "cancelled", now, boot);
   try {
    review = new android.app.AlertDialog.Builder(getActivity())
     .setTitle(recipients.length > 1 ? "Send " + recipients.length + " text messages?" : "Send text message?")
@@ -836,24 +879,7 @@ public abstract class TelephonyPlugin extends Plugin {
     .setPositiveButton("Send", (dialog, which) -> {
      if (reviewCall != call) return;
      review = null; reviewCall = null; reviewCancelled = null;
-     // Recheck everything at the moment of the owner's decision.
-     if (!admitted() || !unlockedForeground() || sendBlocker(sub) != null) { decide(call, journal, operationId, to, body, sub, "denied", now, boot); return; }
-     SmsTelephony.WORK.execute(() -> {
-      try { call.resolve(SmsTelephony.result(SmsTelephony.dispatch(getContext(), config, journal, operationId, to, body, sub, parts, () -> {
-       SubscriptionInfo current = activeSubscription(sub);
-       if (call.cancelled || !admitted() || !unlockedForeground() || sendBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
-      }))); }
-      catch (Exception unrecorded) {
-       final SmsSendJournal.Record record;
-       try { record = journal.existing(operationId, binding); }
-       catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
-       catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
-       if (record != null) call.resolve(SmsTelephony.result(record));
-       // Nothing reached Android (access or the reviewed SIM changed, or the journal refused it):
-       // close the ID as denied so it is never sent later; decide() rejects if even that cannot be recorded.
-       else decide(call, journal, operationId, to, body, sub, call.cancelled ? "cancelled" : "denied", now, boot);
-      }
-     });
+     dispatch.run();
     })
     .create();
    review.setOnDismissListener(dialog -> { if (reviewCall == call) cancelReview(); });
@@ -972,6 +998,11 @@ public abstract class TelephonyPlugin extends Plugin {
   if (refused(call)) return;
   startMms(new ReviewCall(call));
  }
+ /** Host-native entry point for an already approved, exact composer operation. See {@link #sendOwnerApprovedSms}. */
+ protected final void sendOwnerApprovedMms(PluginCall call, SmsTelephony.DispatchGuard ownerGuard) {
+  java.util.Objects.requireNonNull(ownerGuard);
+  if (!refused(call)) startMms(new ReviewCall(call, ownerGuard));
+ }
  private void startMms(ReviewCall call) {
   String operationId = call.getString("operationId"), body = call.getString("body");
   String[] recipients = numbers(call.getArray("recipients"));
@@ -1013,6 +1044,28 @@ public abstract class TelephonyPlugin extends Plugin {
   if (pdu.length > mmsMaxBytes(sub)) { call.reject("This message is larger than the carrier allows. Remove or shrink an attachment and review again.", "too-large"); return; }
   SubscriptionInfo sim = activeSubscription(sub);
   if (sim == null) { decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot); return; }
+  final java.util.function.BooleanSupplier blockedNow = () -> mmsBlocker(sub) != null;
+  final SmsTelephony.DispatchGuard guard = sendGuard(call, sub, sim, blockedNow);
+  final Runnable dispatch = () -> {
+   if (!admitted() || !unlockedForeground() || blockedNow.getAsBoolean()) {
+    decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot);
+    return;
+   }
+   SmsTelephony.WORK.execute(() -> {
+    try { call.resolve(SmsTelephony.result(SmsTelephony.dispatchMms(getContext(), config, journal, operationId, to, body, attachments, pdu, parts, sub, guard))); }
+    catch (Exception unrecorded) {
+     final SmsSendJournal.Record record;
+     try {
+      record = journal.existing(operationId, binding);
+      if (record != null && !record.group) throw new IllegalStateException("operation reused");
+     } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
+     catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
+     if (record != null) call.resolve(SmsTelephony.result(record));
+     else decideMms(call, journal, operationId, to, body, attachments, sub, call.cancelled ? "cancelled" : "denied", now, boot);
+    }
+   });
+  };
+  if (call.ownerGuard != null) { dispatch.run(); return; }
   StringBuilder message = new StringBuilder();
   message.append("To: ").append(String.join(", ", recipients)).append('\n');
   message.append("From: SIM ").append(sim.getSimSlotIndex() + 1).append(" · ").append(clip(sim.getDisplayName())).append(" (").append(clip(sim.getCarrierName())).append(")\n");
@@ -1020,7 +1073,6 @@ public abstract class TelephonyPlugin extends Plugin {
   for (SmsSendJournal.Attachment a : attachments) message.append("Attachment: ").append(a.name).append(" (").append((a.size + 1023) / 1024).append(" KB)\n");
   message.append("Sent as MMS. Carrier and data charges may apply.");
   if (!body.isEmpty()) message.append("\n\n").append(body);
-  final int reviewedSlot = sim.getSimSlotIndex(), reviewedCarrier = sim.getCarrierId();
   reviewCall = call;
   reviewCancelled = () -> decideMms(call, journal, operationId, to, body, attachments, sub, "cancelled", now, boot);
   try {
@@ -1050,24 +1102,7 @@ public abstract class TelephonyPlugin extends Plugin {
     .setPositiveButton("Send", (dialog, which) -> {
      if (reviewCall != call) return;
      review = null; reviewCall = null; reviewCancelled = null;
-     if (!admitted() || !unlockedForeground() || mmsBlocker(sub) != null) { decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot); return; }
-     final SmsTelephony.DispatchGuard guard = () -> {
-      SubscriptionInfo current = activeSubscription(sub);
-      if (call.cancelled || !admitted() || !unlockedForeground() || mmsBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
-     };
-     SmsTelephony.WORK.execute(() -> {
-      try { call.resolve(SmsTelephony.result(SmsTelephony.dispatchMms(getContext(), config, journal, operationId, to, body, attachments, pdu, parts, sub, guard))); }
-      catch (Exception unrecorded) {
-       final SmsSendJournal.Record record;
-       try {
-        record = journal.existing(operationId, binding);
-        if (record != null && !record.group) throw new IllegalStateException("operation reused");
-       } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
-       catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
-       if (record != null) call.resolve(SmsTelephony.result(record));
-       else decideMms(call, journal, operationId, to, body, attachments, sub, call.cancelled ? "cancelled" : "denied", now, boot);
-      }
-     });
+     dispatch.run();
     });
    if (previews.getChildCount() > 0) builder.setView(previews);
    review = builder.create();

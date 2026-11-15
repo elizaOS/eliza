@@ -203,11 +203,16 @@ public final class SmsTelephony {
   SmsSendJournal.Record record;
   try { record = journal.beginMmsDispatch(operationId, recipients, body, attachments, subscriptionId, System.currentTimeMillis(), boot(context)); }
   catch (IOException | RuntimeException refused) { MmsStore.delete(context, name); throw refused; }
-  boolean returned = true, handed = false;
+  final String transaction = mmsTransaction(operationId);
+  long ownRow = 0;
+  boolean attempted = false, handed = false;
   try {
    guard.check();
    if (MmsStore.isDefaultSmsApp(context)) {
-    try { journal.providerRow(operationId, 0, MmsStore.persistOutgoingMms(context, recipients, parts, mmsTransaction(operationId), subscriptionId, record.createdAt)); }
+    try {
+     ownRow = MmsStore.persistOutgoingMms(context, recipients, parts, transaction, subscriptionId, record.createdAt);
+     journal.providerRow(operationId, 0, ownRow);
+    }
     catch (IOException | RuntimeException refused) { android.util.Log.w("SmsTelephony", "Outgoing MMS was not stored in the provider"); }
    }
    Intent intent = new Intent(config.sentAction).setClass(context, config.receiverClass).setPackage(context.getPackageName())
@@ -218,13 +223,21 @@ public final class SmsTelephony {
    // component or the data URI; the callback accepts the operation only when it matches that URI.
    int mutable = android.os.Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0;
    PendingIntent sent = PendingIntent.getBroadcast(context, 0, intent, mutable | PendingIntent.FLAG_ONE_SHOT);
-   manager.sendMultimediaMessage(context, MmsStore.fileUri(config.mmsFileAuthority, name), null, null, sent);
+   Uri fileUri = MmsStore.fileUri(config.mmsFileAuthority, name);
+   guard.check();
+   attempted = true;
+   manager.sendMultimediaMessage(context, fileUri, null, null, sent);
    handed = true;
   } catch (RuntimeException failed) {
-   returned = false;
+   // Before the platform call, refusal proves no send. A throwing platform call is uncertain.
   } finally {
-   if (!handed) MmsStore.delete(context, name);
-   journal.endDispatch(operationId, returned);
+   try {
+    if (attempted) journal.endDispatch(operationId, handed);
+    else {
+     if (ownRow > 0) MmsStore.discardOutgoingMms(context, ownRow, transaction);
+     journal.denyUnstartedDispatch(operationId);
+    }
+   } finally { if (!handed) MmsStore.delete(context, name); }
   }
   return record;
  }

@@ -7,7 +7,11 @@
       "backgroundBeforeJournalReplyMustRetireQueuedReview",
       "cancellationAfterSendTapFencesQueuedDispatch",
       "unrelatedCancellationCannotRetireAnotherReview",
-      "cancellationCannotEraseARecordedSubmission"
+      "cancellationCannotEraseARecordedSubmission",
+      "ownerApprovedSmsUsesTheSameReceiptWithoutDialogOrReplay",
+      "ownerApprovedMmsUsesTheSameReceiptWithoutDialogOrReplay",
+      "withdrawnComposerApprovalCannotDispatchOrBeReplayed",
+      "mmsRetiredAfterStagingRollsBackOnlyItsOwnRow"
     ]
   },
   {
