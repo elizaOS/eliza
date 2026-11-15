@@ -1,0 +1,35 @@
+{
+  "sources": [
+    "packages/app/src/runtime/native-runtime-profile.ts",
+    "packages/app/src/runtime/native-runtime-profile.test.ts",
+    "plugins/plugin-native-inference/src/model-catalog/routing-preferences.ts",
+    "packages/host/src/contracts/cloud-topology.ts",
+    "plugins/plugin-elizacloud/src/index.ts",
+    "plugins/plugin-elizacloud/__tests__/image-native-funding.http.test.ts"
+  ],
+  "bounds": "One model-free native profile, two selected payers and one preserved owner-data token. State represents completed configuration projections.",
+  "limitations": [
+    "No concurrent boot, partial disk writes or process crash model. Default native local-model profile keeps its existing owner preferences and is checked separately by existing tests.",
+    "Weak fairness assumes a valid Cloud binding is eventually admitted and applied; it does not assume provider availability or image recognition. Actual handler HTTP is synthetic and local. Real phone vision remains a separate acceptance gate."
+  ],
+  "conformance": "packages/app/quint/check-native-media-routing.mjs",
+  "cases": [
+    {
+      "name": "native-media-routing",
+      "main": "NativeMediaRouting",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["CanBind"],
+      "temporalChecks": [
+        {
+          "property": "CanBind",
+          "expect": "holds",
+          "assumptions": ["Weak fairness of applying a valid Cloud binding."]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 1000
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "sources": [
+    "plugins/plugin-elizacloud/src/models/image.ts",
+    "plugins/plugin-elizacloud/src/utils/config.ts",
+    "plugins/plugin-elizacloud/src/utils/native-funding.ts",
+    "packages/cloud/sdk/src/native-application-inference.ts",
+    "plugins/plugin-elizacloud/__tests__/image-native-funding.http.test.ts"
+  ],
+  "bounds": "One image call, native or ordinary prepaid funding, one immutable logical operation identity, up to four transport attempts. Existing warming and rate-limit branches are abstracted as retry.",
+  "limitations": [
+    "Weak fairness of settling assumes a provider completion, timeout, or caller cancellation is eventually observed. It does not assume provider success.",
+    "The actual handler and SDK HTTP regression checks headers and body reuse, prepaid compatibility, and typed native failure. Provider image recognition, ledger debits, process-crash recovery, concurrent calls, and physical-device acceptance remain separate."
+  ],
+  "conformance": "plugins/plugin-elizacloud/quint/check-native-image-operation.mjs",
+  "cases": [
+    {
+      "name": "native-image-operation",
+      "main": "NativeImageOperation",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["Settles"],
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of provider completion, timeout or cancellation observation."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 1000
+    }
+  ]
+}
