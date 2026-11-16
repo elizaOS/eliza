@@ -13,10 +13,10 @@ import { ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type 
 import { bin, run } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { cacheCredentials, dafnyVersion, entry, remembered, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
+import { cacheCredentials, dafnyVersion, entry, recall, remembered, store, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
-import { sha, indent, packageScripts, pruneSidecars, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, type Reported, type SrcFile } from "./util.ts";
+import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
 import { availableDirectory, generatedSkillIgnores, linkProjectSkills, skillRoot } from "./skill-links.ts";
 
@@ -127,7 +127,7 @@ async function* generating(memory: Memory, specs: Spec[]): AsyncGenerator<{ spec
  * proved; either way nothing remembered from an earlier run is used. Only one
  * check or accept runs in a project at a time; another is refused.
  */
-export async function check(root: string, accept: false | "reviews" | "unproved" = false, log: (result: Result) => void = () => {}, mode: TestProfile = "normal"): Promise<{ ok: boolean; results: Result[]; next: string }> {
+export async function check(root: string, accept: false | "reviews" | "unproved" = false, log: (result: Result) => void = () => {}, mode: TestProfile = "normal"): Promise<{ ok: boolean; results: Result[]; next: string; wrote: Map<string, string> }> {
   // The tests stage names the project that is checking: checking it again from its tests, or from an owner's, which are
   // below it, would wait on its lock or rewrite the gen/ those tests read.
   const fromTests = process.env.SPEC_TESTS ? path.relative(process.env.SPEC_TESTS, fs.realpathSync(root)) : undefined;
@@ -137,8 +137,9 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
   const loaded = path.join(root, "gen", `run-${Date.now()}`);
   try {
     const results: Result[] = [];
-    await checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode);
-    return { ok: results.every((r) => r.ok), results, next: nextStep(results) };
+    const wrote = new Map<string, string>();
+    await checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote);
+    return { ok: results.every((r) => r.ok), results, next: nextStep(results), wrote };
   } finally {
     fs.rmSync(loaded, { recursive: true, force: true });
     release();
@@ -246,7 +247,27 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
   }
 }
 
-async function checkLocked(root: string, accept: false | "reviews" | "unproved", loaded: string, log: (result: Result) => void, mode: TestProfile) {
+/**
+ * VibeLang's typecheck of one of `codeDirs`, remembered after a pass until what it read changes: the package's inputs
+ * but its prose (util.ts, `testInputs`), its tsconfig.json, the configurations it extends and the files they include,
+ * and each file outside node_modules that the passing compile read. Installed packages are the lock file's, and the
+ * compiler and its library are the stage's toolchain (cache.ts).
+ */
+async function typecheck(memory: Memory, root: string, dir: string): Promise<{ ok: boolean; out: string }> {
+  const at = path.join(root, dir);
+  pruneSidecars(at);
+  const contents = (files: string[]) => files.map((file): [string, string] => [path.relative(root, file), fs.existsSync(file) ? digest(fs.readFileSync(file, "utf8")) : ""]);
+  const kept = await entry(root, "types", [dir, testInputs(at, "normal", "types"), JSON.stringify(contents(configured(at)))]);
+  const passed = recall<{ read: [string, string][] }>(memory, kept);
+  if (passed && JSON.stringify(contents(passed.read.map(([file]) => path.join(root, file)))) === JSON.stringify(passed.read)) return { ok: true, out: "" };
+  const r = await run("vibelang", ["--noEmit", "--listFiles", "-p", "."], at);
+  const lines = r.out.split("\n");
+  const local = (line: string) => path.isAbsolute(line) && fs.existsSync(line);
+  if (r.ok) store(memory, kept, { read: contents(lines.filter((line) => local(line) && !line.split(/[\\/]/).includes("node_modules"))) });
+  return { ok: r.ok, out: lines.filter((line) => !line.startsWith("bundled:///") && !local(line)).join("\n") };
+}
+
+async function checkLocked(root: string, accept: false | "reviews" | "unproved", loaded: string, log: (result: Result) => void, mode: TestProfile, wrote: Map<string, string>) {
   const { seed } = profile(mode);
   let allOk = true;
   const report = (r: Result) => { allOk &&= r.ok; log(r); };
@@ -322,11 +343,7 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     // The typecheck runs while the proofs do; it is reported first.
     // VibeLang's compiler checks `.vibe`, `.ts` and `.tsx` as one program.
     // Each of the root and the owners is a program of its own, checked against its own gen/.
-    const typechecks = dirs.map(async (dir) => {
-      if (!fs.existsSync(path.join(root, dir, "tsconfig.json"))) return undefined;
-      pruneSidecars(path.join(root, dir));
-      return run("vibelang", ["--noEmit", "-p", "."], path.join(root, dir));
-    });
+    const typechecks = dirs.map(async (dir) => fs.existsSync(path.join(root, dir, "tsconfig.json")) ? typecheck(memory, root, dir) : undefined);
     const proving = proofStage(root, memory, specs, models, srcFiles, lock.unproved, accept);
     // A missing or unexecutable compiler must not release the project lock while proofs still write into gen/.
     const typesResults = await Promise.allSettled(typechecks);
@@ -346,7 +363,7 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     if (!allOk) skip("tests, traces and explore", restates);
     else {
       for (const dir of dirs) for (const r of await tests(root, dir, specs, (key, ran, keep) => remembered(memory, entry(root, "tests", [dir, key]), ran, keep), mode, memory.fresh)) report(within(dir, result(r)));
-      for (const dir of dirs) for (const r of await conformance(path.join(root, dir), machines, scripts.get(dir)!, mode)) report(within(dir, result(r)));
+      for (const dir of dirs) for (const r of await conformance(path.join(root, dir), machines, scripts.get(dir)!, (key, ran, keep) => remembered(memory, entry(root, "traces", [dir, key]), ran, keep), wrote, mode)) report(within(dir, result(r)));
       for (const dir of dirs) for (const r of await explore(path.join(root, dir), (key, ran, keep) => remembered(memory, entry(root, "explore", [dir, key]), ran, keep), mode, root)) report(within(dir, result(r)));
       // Every stage ran, so every entry still in use was read or written.
       collectGarbage(memory);
@@ -628,28 +645,35 @@ const USAGE = `usage: spec <command>\n\n${COMMANDS.map(([name, args, does]) => `
  */
 async function watch(root: string) {
   let running = false;
-  let again = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  /** What changed since the last run began, by path, or undefined where a watcher could not say; and what that run wrote itself. */
+  const pending = new Set<string | undefined>([undefined]);
+  let wrote = new Map<string, string>();
+  const text = (file: string) => { try { return fs.readFileSync(file, "utf8"); } catch { return undefined; } };
   const once = async () => {
-    if (running) { again = true; return; }
+    if (running) return;
     running = true;
-    do {
-      again = false;
+    while ([...pending].some((file) => file === undefined || wrote.get(file) !== text(file))) {
+      pending.clear();
       const started = Date.now();
       console.log(`\n--- ${new Date().toLocaleTimeString()} ---`);
       attach(); // a package that came to own part of the spec tree is watched from the next run
       try {
-        const { next } = await check(root, false, (r) => console.log(show(r)));
-        console.log(`\nnext: ${next}\n(${((Date.now() - started) / 1000).toFixed(1)}s; watching spec/, src/ and test/, here and in the packages the spec names, and package.json and tsconfig.json; Ctrl-C to stop)`);
+        const checked = await check(root, false, (r) => console.log(show(r)));
+        wrote = checked.wrote;
+        console.log(`\nnext: ${checked.next}\n(${((Date.now() - started) / 1000).toFixed(1)}s; watching spec/, src/ and test/, here and in the packages the spec names, and package.json and tsconfig.json; Ctrl-C to stop)`);
       } catch (e) {
+        wrote = new Map();
         console.error((e as Error).message);
       }
-    } while (again);
+    }
+    pending.clear();
     running = false;
   };
-  const changed = (file?: string | null) => {
+  const changed = (file?: string) => {
     // Editors write temporary files beside the real one; only sources matter.
     if (file && !/\.(md|tsx?|vibex?|dfy|json)$/.test(file)) return;
+    pending.add(file);
     clearTimeout(timer);
     timer = setTimeout(once, 200);
   };
@@ -670,12 +694,12 @@ async function watch(root: string) {
       if (ino === undefined) continue;
       try {
         const watcher = fs.watch(path.join(root, dir), { recursive: dirs.get(dir) }, (_, file) => {
-          if (dirs.get(dir)) changed(file);
+          if (dirs.get(dir)) changed(file ? path.join(root, dir, file) : undefined);
           else if (dir === "apps" || dir === "packages") {
             const child = file && `${dir}/${file}`;
             if (child && inode(child) !== watched.get(child)?.ino) { attach(); changed(); }
           } else if (file === "apps" || file === "packages" || file === "spec" || file === "src" || file === "test") { attach(); changed(); }
-          else if (file === "package.json" || file === "tsconfig.json") changed(file);
+          else if (file === "package.json" || file === "tsconfig.json") changed(path.join(root, dir, file));
         });
         watcher.on("error", () => { watcher.close(); if (watched.get(dir)?.watcher === watcher) watched.delete(dir); });
         watched.set(dir, { watcher, ino });

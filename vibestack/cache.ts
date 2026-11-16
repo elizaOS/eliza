@@ -182,7 +182,7 @@ const closure = (...roots: string[]) => {
 const unsure = ["", "gen", ...tools.keys()].some((f) => fs.statSync(path.join(import.meta.dirname, f)).ctimeMs >= performance.timeOrigin);
 
 /** The stages whose results are remembered, and the runs of an outside tool any of them asks for (action.ts). */
-const STAGES = ["simulate", "prove", "tests", "explore", "action"] as const;
+const STAGES = ["simulate", "prove", "types", "tests", "traces", "explore", "action"] as const;
 type Stage = (typeof STAGES)[number];
 
 /**
@@ -190,7 +190,8 @@ type Stage = (typeof STAGES)[number];
  * programs beneath. A simulation depends on Quint, Node and the code that simulates and generates the model it
  * simulates; a proof on Node, LemmaScript, Dafny, Z3 and the prover's code, since its unit's key holds all the unit
  * says, whichever code generated it. The part of the proof library a proof file calls (prove.ts, `libraryFor`) is part
- * of that key too. Tests and an exploration may run any of these tools, as Studio's do, so they depend on all of them.
+ * of that key too. A typecheck, tests, a driver's run and an exploration run VibeLang's compiler, and may run any of
+ * these tools, as Studio's do, so they depend on all of them.
  * An action depends only on the code that runs a tool and keeps what it said: its key names the tool and all the tool reads.
  */
 const toolchains = new Map<string, Promise<string>>();
@@ -205,7 +206,9 @@ function toolchainId(stage: Stage): Promise<string> {
       const z3 = await solver();
       return [stage, node, code(closure("prove")), packageVersion("lemmascript"), `dafny@${JSON.stringify(await dafnyIdentity())}`, `z3@${z3.version}:${executableDigest(z3.path)}`].join(" ");
     }
-    return [stage, packageVersion("@informalsystems/quint"), node, code(stage === "simulate" ? closure("simulate", "units") : [...tools.keys()])].join(" ");
+    if (stage === "simulate") return [stage, packageVersion("@informalsystems/quint"), node, code(closure("simulate", "units"))].join(" ");
+    const { findBinary } = await import("vibelang/binary");
+    return [stage, packageVersion("@informalsystems/quint"), node, code([...tools.keys()]), packageVersion("typescript"), `${packageVersion("vibelang")}:${executableDigest(findBinary())}`].join(" ");
   })()));
   // A failed probe is not remembered: the next check probes again.
   id.catch(() => toolchains.delete(stage));

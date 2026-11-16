@@ -136,8 +136,14 @@ simulation; Node, LemmaScript, Dafny and Z3 for a proof, whose key holds the
 whole unit) and the code of only the tools that stage runs: `simulate.ts`,
 `units.ts` and what they import, or `prove.ts` and what it imports. A test run
 or an exploration may run any tool, as Studio's do, so it is keyed by all of
-them. It also remembers a package's passing test run under a hash of what its
-tests read.
+them, and with a typecheck and a driver's run by VibeLang's version and bytes.
+It also remembers a package's passing test run under a hash of what its tests
+read; a driver's passing run under the same hash and the events the simulator
+found; and a passing typecheck under the package's files without its Markdown,
+Quint and Dafny, its `tsconfig.json` chain and included files, and each file outside
+`node_modules` that the compiler listed as read. `watch` does not check again
+for a file the last check wrote itself, such as a driver to fill in or a saved
+counterexample, while the file still holds what it wrote.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
@@ -147,8 +153,8 @@ installed file, and Dafny's version, is remembered across processes in
 device, inode, size and modification and change times stay the same, so an
 unchanged toolchain is not read again. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
-are restored with their owning task. `check` is never skipped whole: it runs
-the real application in `traces`. Standalone examples install and check
+are restored with their owning task. `check` is never skipped whole: its
+`driver:` programs run the real application in `traces` every time. Standalone examples install and check
 separately, outside the workspace cache.
 
 A complete passing Vitest run records its input fingerprint. `check` reuses

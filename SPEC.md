@@ -574,7 +574,12 @@ under `src/`.
   proof result is kept beside them, under a fingerprint of the spec's Quint
   without its comments, everything it imports and the versions of the tools
   that compute it, so a change to the tools reruns only the stages that run
-  the changed code.
+  the changed code. A passing typecheck is kept under what the compiler read:
+  the package's files but its Markdown and Quint, its `tsconfig.json` and the
+  configurations it extends, every file outside `node_modules` the compile
+  read, the lock file and the compiler's bytes. A driver's passing run is kept
+  under the files its tests read and the events the simulator found; a
+  failure, and a `driver:` program, run every time.
   The specs are simulated at once.
 - **The spec covers the rules, not the plumbing.** Chat, HTTP and storage stay
   hand-written around the generated core, as `vibestack/examples/dashboard/src/notify.vibe`

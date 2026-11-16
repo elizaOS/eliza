@@ -165,6 +165,23 @@ async function genAll(root: string): Promise<string[]> {
 }
 /** Run a fresh CLI process so toolchain fingerprints cannot carry over from another invocation. */
 const runCli = (script: string, root: string, ...args: string[]) => exec(process.execPath, [script, ...args], root);
+/** `spec watch` of a project: what it has printed, a wait for what it prints next while it runs, and a stop. */
+function watching(root: string, cwd = root) {
+  const watcher = spawn(process.execPath, [path.join(project, "vibestack/spec.ts"), "watch", root], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+  const said = { output: "" };
+  for (const stream of [watcher.stdout, watcher.stderr]) stream.on("data", (chunk) => { said.output += chunk; });
+  return {
+    said,
+    checks: () => said.output.match(/watching spec\//g)?.length ?? 0,
+    waitFor: (ready: () => boolean) => until(() => { assert.equal(watcher.exitCode, null, said.output); return ready(); }, () => said.output),
+    stop: async () => {
+      if (watcher.exitCode !== null || watcher.signalCode !== null) return;
+      const closed = new Promise((resolve) => watcher.once("close", resolve));
+      watcher.kill("SIGTERM");
+      await closed;
+    },
+  };
+}
 /** What `check --json` ends with: the whole answer, after a line for each result. */
 const answer = (stdout: string) => JSON.parse(stdout.trimEnd().split("\n").at(-1)!);
 const unguarded = (s: string) => s.replace("o.status == Draft and o.units > 0", "o.status == Draft");
@@ -313,7 +330,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     fs.writeFileSync(path.join(root, "driver.mjs"), 'import fs from "node:fs"; import readline from "node:readline"; let n=0; for await (const line of readline.createInterface({input:process.stdin})) { const request=JSON.parse(line), {offset,limit}=JSON.parse(fs.readFileSync("driver.json","utf8")); if (!request.event) n=0; else if (n<limit) n++; console.log(JSON.stringify({state:n+offset})); }');
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({type:"module",scripts:{"driver:counter":`${JSON.stringify(process.execPath)} driver.mjs`}}));
     const machines = new Map([["counter", { domain, model, found }]]);
-    const departs = async () => (await checkTraces(root, machines, packageScripts(root))).filter(([ok]) => !ok).map(([, , summary, detail]) => `${summary}\n${detail}`);
+    const departs = async () => (await checkTraces(root, machines, packageScripts(root), (_, ran) => ran(), new Map())).filter(([ok]) => !ok).map(([, , summary, detail]) => `${summary}\n${detail}`);
     assert.deepEqual(await departs(), []);
     // A driver that starts elsewhere, or takes the event the spec refuses in the last state of a trace, departs.
     fs.writeFileSync(path.join(root, "driver.json"), '{"offset":1,"limit":2}');
@@ -649,52 +666,63 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.deepEqual(headed.failed, [], headed.text);
   });
 
-  test("a test pass is remembered for what the tests read, and an exploration for what the page serves; runner receipts allow reuse but a forged Turbo environment does not; unchecked specs are noted", async () => {
+  test("a test pass is remembered for what the tests read, a typecheck's for what the compiler read, and an exploration for what the page serves; runner receipts allow reuse but a forged Turbo environment does not; unchecked specs are noted", async () => {
     const ran = path.join(scratch({}), "ran");
     const root = fixtures(["door"], (f) => Object.assign(f, {
       "package.json": JSON.stringify({ scripts: { test: `echo x >> ${JSON.stringify(ran)}` } }),
-      "src/door.ts": "export const door = 1;\n",
+      "src/door.ts": 'import { one } from "../.shared/one.ts";\nexport const door: number = one;\n',
+      ".shared/one.ts": "export const one = 1;\n",
     }));
     const runs = () => fs.readFileSync(ran, "utf8").length / 2;
+    const typed = () => fs.readdirSync(path.join(root, ".spec-cache")).filter((f) => f.startsWith("types-")).map((f) => `${f} ${fs.statSync(path.join(root, ".spec-cache", f)).ino}`);
     const first = await run(root);
     assert.ok(first.said("tests", /^pass\n$/) && first.said("tests", /^note: no test or driver checks spec\/door\.md;/), first.text);
+    const compiled = typed();
     await run(root);
     assert.equal(runs(), 1);
+    fs.appendFileSync(path.join(root, "spec/door.md"), "\nProse that no compiler reads.\n");
+    await run(root);
+    assert.deepEqual([runs(), typed()], [2, compiled], "the tests read the prose, and the compiler does not");
+    fs.writeFileSync(path.join(root, ".shared/one.ts"), 'export const one = "1";\n');
+    const mistyped = await run(root);
+    assert.equal(mistyped.said("types", /./)?.ok, false, `a file the compiler read changed, outside what the package's inputs cover\n${mistyped.text}`);
     fs.writeFileSync(path.join(root, "src/door.ts"), "export const door = 2;\n");
     await run(root);
-    assert.equal(runs(), 2);
+    assert.equal(runs(), 3);
     fs.mkdirSync(path.join(root, "test"));
     fs.writeFileSync(path.join(root, "test/door.test.ts"), 'import { test } from "node:test";\nimport { door } from "../src/door.ts";\ntest("uncited", () => { void door; });\n');
     const turbo = await exec(process.execPath, [path.join(project, "vibestack/spec.ts"), "check", "--json"], root, { ...process.env, TURBO_HASH: "1", npm_lifecycle_event: "check" });
     const said = answer(turbo.stdout).results.filter((r: Result) => r.stage === "tests").map((r: Result) => [r.ok, r.summary]);
     assert.deepEqual(said, [[false, "1 tests cite no story or rule: cite the one each serves, fold it into the journey that does, or propose deleting it"],
       [true, "note: no test or driver checks spec/door.md; a story that leaves the verified core needs a journey that cites it"], [true, "pass"]]);
-    assert.equal(runs(), 3, "a Turbo environment value cannot claim that the test script ran");
+    assert.equal(runs(), 4, "a Turbo environment value cannot claim that the test script ran");
     const receipt = testReceipt(root);
     fs.mkdirSync(path.dirname(receipt), { recursive: true });
     fs.writeFileSync(receipt, JSON.stringify({ fingerprint: testInputs(root) }));
     const reused = await run(root);
     assert.ok(reused.said("tests", /^pass: the test runner recorded success for these inputs\n$/), reused.text);
-    assert.equal(runs(), 3);
+    assert.equal(runs(), 4);
     fs.writeFileSync(path.join(root, "src/door.ts"), "export const door = 3;\n");
     await run(root);
-    assert.equal(runs(), 4, "a receipt for older source cannot suppress the tests");
+    assert.equal(runs(), 5, "a receipt for older source cannot suppress the tests");
     const workspace = scratch({ "tsconfig.json": "{}", "package.json": JSON.stringify({ devDependencies: { kit: "workspace:*" } }),
       ...Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts", "test/fixtures/p/package.json",
-        "test/fixtures/p/a.ts", "apps/other/package.json", "apps/other/a.ts", "kit/package.json", "kit/a.ts", "kit/spec/a.md", "kit/nested/package.json", "kit/nested/a.ts"].map((f) => [f, "{}"])) });
+        "test/fixtures/p/a.ts", "apps/other/package.json", "apps/other/a.ts", "kit/package.json", "kit/a.ts", "kit/spec/a.md", "kit/nested/package.json", "kit/nested/a.ts", "notes.md", "gen/a.qnt"].map((f) => [f, "{}"])) });
     fs.mkdirSync(path.join(workspace, "node_modules"));
     fs.symlinkSync("../kit", path.join(workspace, "node_modules/kit"), "dir");
+    const inputs = () => (["tests", "page", "types"] as const).map((read) => testInputs(workspace, "normal", read));
     const changed = (file: string) => {
-      const before = [testInputs(workspace), testInputs(workspace, "normal", "page")];
+      const before = inputs();
       fs.appendFileSync(path.join(workspace, file), " ");
-      return [testInputs(workspace) !== before[0], testInputs(workspace, "normal", "page") !== before[1]];
+      return inputs().map((after, i) => after !== before[i]);
     };
     assert.deepEqual(Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts",
-      "test/fixtures/p/a.ts", "apps/other/a.ts", "kit/a.ts", "kit/package.json", "kit/spec/a.md", "kit/nested/a.ts", ".DS_Store"].map((f) => [f, changed(f)])), {
-      "src/a.ts": [true, true], "test/a.test.ts": [true, false], "test/drivers/a.ts": [true, false], "test/traces/a.jsonl": [true, false],
-      "test/counterexamples/a.json": [true, false], "test/bombadil.ts": [true, true], "test/fixtures/p/a.ts": [true, true], "apps/other/a.ts": [false, false],
-      "kit/a.ts": [true, true], "kit/package.json": [true, true], "kit/spec/a.md": [false, false], "kit/nested/a.ts": [false, false], ".DS_Store": [false, false],
-    }, "the tests read the package, its test fixtures and what its workspace dependencies ship; the page leaves out the tests, drivers, traces and counterexamples");
+      "test/fixtures/p/a.ts", "apps/other/a.ts", "kit/a.ts", "kit/package.json", "kit/spec/a.md", "kit/nested/a.ts", ".DS_Store", "notes.md", "gen/a.qnt"].map((f) => [f, changed(f)])), {
+      "src/a.ts": [true, true, true], "test/a.test.ts": [true, false, true], "test/drivers/a.ts": [true, false, true], "test/traces/a.jsonl": [true, false, true],
+      "test/counterexamples/a.json": [true, false, true], "test/bombadil.ts": [true, true, true], "test/fixtures/p/a.ts": [true, true, true], "apps/other/a.ts": [false, false, false],
+      "kit/a.ts": [true, true, true], "kit/package.json": [true, true, true], "kit/spec/a.md": [false, false, false], "kit/nested/a.ts": [false, false, false], ".DS_Store": [false, false, false],
+      "notes.md": [true, true, false], "gen/a.qnt": [true, true, false],
+    }, "the tests read the package, its test fixtures and what its workspace dependencies ship; the page leaves out the tests, drivers, traces and counterexamples; the typecheck leaves out Markdown and Quint");
   });
 
   test("a rule whose prose or model changed names the code that cites it, for a person to read again", () => {
@@ -1687,7 +1715,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(said("tests", /^pass\n$/), text);
   });
 
-  test("a driver reaches the application: it imports gen/ only as types, it is sent malformed input where it can receive it, and a shell without one is given one to fill in", async () => {
+  test("a driver reaches the application: it imports gen/ only as types, it is sent malformed input where it can receive it, and a shell without one is given one to fill in, which starts no second check in watch; a pass is remembered until what the run reads changes, and a failure runs again", async () => {
     const typed = 'import type { Driver } from "../../gen/index.conformance.ts";\n';
     const oracleRoot = copyOfProject("test/drivers/index.ts", (s) => s.replace(typed, `${typed}import { initial as start } from "../../gen/index.ts";\nimport { type Event, step as advance } from "../../gen/index.effect.vibe";\nexport type { Order } from "../../gen/index.effect.vibe";\nexport { step } from "../../gen/index.ts";\nimport {} from "../../gen/index.ts";\nexport {} from "../../gen/index.ts";\nconst folder = "../../gen";\nconst literal = import(\`../../gen/index.ts\`);\nconst interpolated = import(\`\${folder}/index.ts\`);\nconst target = "../../gen/" + "index.ts";\nconst indirect = import((target as string)!);\nimport { initial as aliased } from "#oracle";\nconst outside = import("../../src/app.vibe");\nfunction unknown(folder: string) { return import(folder); }\nconst observe = () => start;\nconst named = { observe };\nvoid [named, advance, literal, interpolated, indirect, aliased, outside, unknown];\n`));
     const pkg = JSON.parse(read("package.json", oracleRoot));
@@ -1714,6 +1742,24 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const kept = await run(missing);
     assert.deepEqual(kept.failed, ["traces"], kept.text);
     assert.match(read("test/drivers/index.ts", missing), /^\/\/ The driver of spec\/index\.md[\s\S]*import type \{ Driver \} from "\.\.\/\.\.\/gen\/index\.conformance\.ts";[\s\S]*\/\/ begun\n$/);
+    const unwatched = copyOfProject();
+    fs.rmSync(path.join(unwatched, "test/drivers/index.ts"));
+    const watch = watching(unwatched);
+    try {
+      await watch.waitFor(() => watch.checks() === 1);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      assert.equal(watch.checks(), 1, "the driver the check wrote is no change to check again");
+      fs.appendFileSync(path.join(unwatched, "test/drivers/index.ts"), "// begun\n");
+      await watch.waitFor(() => watch.checks() === 2);
+    } finally {
+      await watch.stop();
+    }
+    const ran = path.join(scratch({}), "ran");
+    const counted = copyOfProject("test/drivers/index.ts", (s) => `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(ran)}, "x");\n${s}`);
+    const driverRuns = async () => { await run(counted); return fs.readFileSync(ran, "utf8").length; };
+    assert.deepEqual([await driverRuns(), await driverRuns()], [1, 1]);
+    fs.writeFileSync(path.join(counted, "src/app.vibe"), read("src/app.vibe", counted).replace("{ type Order,", "{ type Event, type Order,").replace("const event = try decodeEvent(input)", "const event = input as Event"));
+    assert.deepEqual([await driverRuns(), await driverRuns()], [2, 3]);
   });
 
   test("nothing stale survives in gen/ or hides a renamed source", async () => {
@@ -2272,36 +2318,28 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const watchedRoot = path.join(parent, "watched project");
     fs.mkdirSync(watchedRoot);
     assert.equal((await cli(parent, "init", watchedRoot)).status, 0);
-    const watcher = spawn(process.execPath, [script, "watch", watchedRoot], { cwd: parent, stdio: ["ignore", "pipe", "pipe"] });
-    let output = "";
-    watcher.stdout.on("data", (chunk) => { output += chunk; });
-    watcher.stderr.on("data", (chunk) => { output += chunk; });
-    const waitFor = (ready: () => boolean) => until(() => { assert.equal(watcher.exitCode, null, output); return ready(); }, () => output);
+    const { said, checks, waitFor, stop } = watching(watchedRoot, parent);
     try {
-      await waitFor(() => output.includes("watching spec/"));
+      await waitFor(() => checks() >= 1);
       fs.writeFileSync(path.join(watchedRoot, "spec/index.md"), ruleSpec("pure val watchedValue = 1", "Value", "Watched"));
       const generated = path.join(watchedRoot, "gen/index.ts");
       await waitFor(() => fs.existsSync(generated) && fs.readFileSync(generated, "utf8").includes("export const watchedValue"));
-      await waitFor(() => (output.match(/watching spec\//g)?.length ?? 0) >= 2);
+      await waitFor(() => checks() >= 2);
       assert.equal((await import(generated)).watchedValue, 1);
       assert.ok(!fs.existsSync(path.join(parent, "gen")));
-      const runs = output.match(/watching spec\//g)?.length ?? 0;
+      const runs = checks();
       fs.mkdirSync(path.join(watchedRoot, "spec/app"));
       fs.writeFileSync(path.join(watchedRoot, "spec/app/index.md"), "");
-      await waitFor(() => (output.match(/watching spec\//g)?.length ?? 0) > runs);
+      await waitFor(() => checks() > runs);
       fs.mkdirSync(path.join(watchedRoot, "apps/app"), { recursive: true });
       fs.writeFileSync(path.join(watchedRoot, "apps/app/package.json"), '{"name":"watched-app","type":"module"}');
-      await waitFor(() => output.includes("apps/app: skipped: there is no tsconfig.json"));
-      output = "";
+      await waitFor(() => said.output.includes("apps/app: skipped: there is no tsconfig.json"));
+      said.output = "";
       fs.writeFileSync(path.join(watchedRoot, "apps/app/tsconfig.json"), '{"compilerOptions":{"unknownOption":true}}');
-      await waitFor(() => output.includes("apps/app: application does not fit the generated contract"));
-      assert.match(output, /Unknown compiler option 'unknownOption'/);
+      await waitFor(() => said.output.includes("apps/app: application does not fit the generated contract"));
+      assert.match(said.output, /Unknown compiler option 'unknownOption'/);
     } finally {
-      if (watcher.exitCode === null && watcher.signalCode === null) {
-        const closed = new Promise((resolve) => watcher.once("close", resolve));
-        watcher.kill("SIGTERM");
-        await closed;
-      }
+      await stop();
     }
   });
 

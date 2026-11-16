@@ -56,6 +56,15 @@ export function pruneSidecars(dir: string) {
   }
 }
 
+/** What a package's tsconfig.json names: itself, the configurations it extends and the files it includes, VibeLang's among them. */
+export function configured(dir: string): string[] {
+  const config = path.resolve(dir, "tsconfig.json");
+  const source = ts.readJsonConfigFile(config, ts.sys.readFile);
+  const { fileNames } = ts.parseJsonSourceFileConfigFileContent(source, ts.sys, path.dirname(config), undefined, config, undefined,
+    [".vibe", ".vibex"].map((extension) => ({ extension, isMixedContent: false, scriptKind: ts.ScriptKind.Deferred })));
+  return [config, ...source.extendedSourceFiles ?? [], ...fileNames];
+}
+
 /** Resolve a project folder before a command reads or writes its files. */
 export function projectRoot(directory: string, base = process.cwd()): string {
   const root = path.resolve(base, directory);
@@ -189,11 +198,15 @@ function addVitest(root: string): string {
   return `test/ had nothing to run it: added "test": "vitest run" to package.json${config ? ", and vitest.config.ts" : ""}, as \`spec init\` does`;
 }
 
-/** What a fingerprint covers: what a package's tests read, or what its page serves, which leaves out the tests, drivers, traces and counterexamples. */
-export type Inputs = "tests" | "page";
+/**
+ * What a fingerprint covers: what a package's tests read; what its page serves, which leaves out the tests, drivers,
+ * traces and counterexamples; or what its typecheck may read, which leaves out the Markdown, Quint and Dafny no
+ * TypeScript compiler reads.
+ */
+export type Inputs = "tests" | "page" | "types";
 
 /**
- * A fingerprint of what a package's tests, or its page, read: its files and the top of its gen/ (an owner's is
+ * A fingerprint of what a package's tests, its page or its typecheck read: its files and the top of its gen/ (an owner's is
  * mirrored from the root's), the fixtures nested under its test/, the workspace packages it depends on without their
  * spec/ or the packages nested in them, the lock file and the fuzzing budget.
  */
@@ -215,8 +228,8 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
     const own = name === ".";
     const gen = path.join(from, "gen");
     const top = fs.existsSync(gen) ? fs.readdirSync(gen, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `gen/${e.name}`) : [];
-    const keep = (file: string) => (own || !file.startsWith("spec/")) && (read === "tests" || served(file));
-    for (const file of [...packageFiles(from, keep, "", own), ...top]) {
+    const keep = (file: string) => (own || !file.startsWith("spec/")) && ({ tests: true, page: served(file), types: !/\.(?:md|qnt|dfy)$/.test(file) } satisfies Record<Inputs, boolean>)[read];
+    for (const file of [...packageFiles(from, keep, "", own), ...top.filter(keep)]) {
       const bytes = fs.readFileSync(path.join(from, file));
       hash.update(`${file}\0${bytes.length}\0`).update(bytes);
     }
