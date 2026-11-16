@@ -117,6 +117,8 @@ public abstract class CloudSignInPlugin extends Plugin {
   volatile HttpURLConnection connection;
   volatile android.os.CancellationSignal googleCancellation;
   String googleVerifier, googleChallengeId;
+  volatile String gmailCode;
+  volatile JSObject gmail;
   PluginCall waiting;
   volatile CountDownLatch authorizationDecision;
   volatile boolean authorized;
@@ -678,29 +680,16 @@ public abstract class CloudSignInPlugin extends Plugin {
      if (attempt != next || next.cancelled) throw new SignInFailure("cancelled");
      next.googleChallengeId = challengeId; next.expiresAt = expiresAt;
     }
+    final String gmailClientId = gmailClientId(next);
     getActivity().runOnUiThread(() -> {
      synchronized (lock) { if (attempt != next || next.cancelled) return; }
      NativeGoogleCredential.request(getActivity(), clientId, nonce, next.googleCancellation, new NativeGoogleCredential.Callback() {
       @Override public void failure(String code) { end(next, code, false); }
-      @Override public void token(String idToken) {
-       run(() -> {
-        try {
-         synchronized (lock) { if (attempt != next || next.cancelled) throw new SignInFailure("cancelled"); }
-         if (System.currentTimeMillis() >= next.expiresAt) {
-          CloudSignInFlow.GoogleFailure expired = CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.LOCAL_DEADLINE, 0, null, null);
-          logGoogleOutcome(next, CloudSignInFlow.GoogleStage.LOCAL_DEADLINE, 0, expired);
-          throw new SignInFailure(expired.code);
-         }
-         Response verified = post(next, "/steward/auth/oauth/google/native/verify", new JSONObject()
-           .put("tenantId", environment.tenant).put("clientId", config().googleClientId)
-           .put("challengeId", next.googleChallengeId).put("idToken", idToken).put("codeVerifier", next.googleVerifier), null);
-         next.googleVerifier = null; next.googleChallengeId = null; next.googleCancellation = null;
-         CloudSignInFlow.GoogleFailure verifyOutcome = observeGoogleResponse(next, CloudSignInFlow.GoogleStage.VERIFY, verified);
-         if (verified.status != 200) throw new SignInFailure(verifyOutcome.code);
-         JSONObject session = verified.data.optJSONObject("data") != null && !verified.data.has("token") ? verified.data.optJSONObject("data") : verified.data;
-         completeOrRequireMfa(next, session);
-        } catch (SignInFailure failure) { end(next, failure.code, false); }
-        catch (Exception unavailable) { end(next, "unavailable", false); }
+      @Override public void token(String idToken, String account) {
+       if (gmailClientId == null) { run(() -> signInWithGoogle(next, idToken)); return; }
+       NativeGoogleCredential.authorize(getActivity(), gmailClientId, account, config().googleScopes, next.googleCancellation, new NativeGoogleCredential.Authorization() {
+        @Override public void code(String serverAuthCode) { next.gmailCode = serverAuthCode; run(() -> signInWithGoogle(next, idToken)); }
+        @Override public void failure(String reason) { next.gmail = gmailRefused(reason); run(() -> signInWithGoogle(next, idToken)); }
        });
       }
      });
@@ -708,6 +697,46 @@ public abstract class CloudSignInPlugin extends Plugin {
    } catch (SignInFailure failure) { end(next, failure.code, false); }
    catch (Exception unavailable) { end(next, "unavailable", false); }
   });
+ }
+ private String gmailClientId(Attempt next) {
+  if (config().googleScopes.isEmpty()) return null;
+  try {
+   Response answer = get(next.environment.api() + "/api/v1/app-auth/mobile/google");
+   String clientId = answer.data.optString("serverClientId", "");
+   if (answer.status == 200 && Boolean.TRUE.equals(answer.data.opt("configured")) && clientId.matches("[0-9]+-[A-Za-z0-9_-]+\\.apps\\.googleusercontent\\.com")) return clientId;
+   next.gmail = gmailRefused("google_not_configured");
+  } catch (Exception unavailable) { next.gmail = gmailRefused("google_unavailable"); }
+  return null;
+ }
+ private void signInWithGoogle(Attempt next, String idToken) {
+  try {
+   synchronized (lock) { if (attempt != next || next.cancelled) throw new SignInFailure("cancelled"); }
+   if (System.currentTimeMillis() >= next.expiresAt) {
+    CloudSignInFlow.GoogleFailure expired = CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.LOCAL_DEADLINE, 0, null, null);
+    logGoogleOutcome(next, CloudSignInFlow.GoogleStage.LOCAL_DEADLINE, 0, expired);
+    throw new SignInFailure(expired.code);
+   }
+   requireAuthorization(next);
+   CloudSignInEnvironment environment = next.environment;
+   String state = CloudSignInFlow.newState(), verifier = CloudSignInFlow.newVerifier(), gmailCode = next.gmailCode;
+   JSONObject binding = new JSONObject().put("clientId", config().clientId).put("environment", environment.name).put("redirectUri", environment.callback());
+   JSONObject body = new JSONObject(binding.toString()).put("state", state).put("codeVerifier", verifier).put("deviceName", config().deviceName)
+     .put("steward", new JSONObject().put("clientId", config().googleClientId).put("challengeId", next.googleChallengeId).put("idToken", idToken).put("codeVerifier", next.googleVerifier));
+   if (gmailCode != null) body.put("serverAuthCode", gmailCode);
+   Response signedIn = post(next, "/api/v1/app-auth/mobile/google", body, null);
+   next.googleVerifier = null; next.googleChallengeId = null; next.googleCancellation = null;
+   CloudSignInFlow.GoogleFailure outcome = observeGoogleResponse(next, CloudSignInFlow.GoogleStage.VERIFY, signedIn);
+   if (signedIn.status != 200) throw new SignInFailure(outcome.code);
+   if ("mfa_required".equals(signedIn.data.optString("status"))) {
+    completeOrRequireMfa(next, new JSONObject().put("mfaRequired", true).put("mfa", signedIn.data.optJSONObject("mfa")));
+    return;
+   }
+   String code = signedIn.data.optString("code", "");
+   if (!"signed_in".equals(signedIn.data.optString("status")) || !code.matches("emac_[0-9a-f]{64}")) throw new SignInFailure("unavailable");
+   if (gmailCode != null) { next.gmailCode = null; next.gmail = gmailOutcome(signedIn.data.optJSONObject("google")); }
+   commit(next, new JSONObject(binding.toString()).put("code", code).put("state", state).put("codeVerifier", verifier), signedIn.data, signedIn.data.opt("accountCreated"));
+  } catch (SignInFailure failure) { end(next, failure.code, false); }
+  catch (Exception unavailable) { end(next, "unavailable", false); }
  }
  /** Observe only the already received native Google response; never persist provider text. */
  private CloudSignInFlow.GoogleFailure observeGoogleResponse(Attempt current, CloudSignInFlow.GoogleStage stage, Response response) {
@@ -1084,6 +1113,37 @@ public abstract class CloudSignInPlugin extends Plugin {
  @PluginMethod public void clearCredentialState(PluginCall call) {
   getActivity().runOnUiThread(() -> NativeGoogleCredential.clear(getActivity(), () -> call.resolve()));
  }
+ @PluginMethod public void signOut(PluginCall call) {
+  final CloudSignInEnvironment environment;
+  try { environment = config().environment(call.getString("environment")); }
+  catch (Exception invalid) { call.reject("Unsupported Cloud environment", "invalid-request"); return; }
+  final Runnable guard = reserveCredentialCommit();
+  final Attempt current;
+  synchronized (lock) {
+   current = attempt; attempt = null; pendingRetirementUnconfirmed = true;
+   if (current != null && current.google) cancelledBrowserState = current.browserState;
+  }
+  if (current != null) { current.cancel(); PluginCall waiting; synchronized (lock) { waiting = current.waiting; current.waiting = null; } if (waiting != null) waiting.reject("cancelled", "cancelled"); }
+  run(() -> {
+   final String token;
+   try {
+    CloudCredentialSlots owned = credentials(() -> { if (destroyed) throw new IllegalStateException("Sign-in closed"); guard.run(); });
+    String saved = owned.read(config().credentialSlot(environment));
+    token = saved == null ? null : new JSONObject(saved).optString("token", null);
+    owned.remove(config().credentialSlot(environment));
+    owned.remove(config().receiptSlot(environment));
+    owned.remove(config().pendingSlot);
+    synchronized (lock) { activating.remove(environment.name); if (attempt == null) pendingRetirementUnconfirmed = false; }
+   } catch (Exception storage) { call.reject("Sign-out was not saved", "storage"); return; }
+   JSObject outcome = new JSObject().put("environment", environment.name).put("status", "signed-out");
+   if (token != null) {
+    boolean revoked = CloudKeyRevocation.revoke(config(), environment, token);
+    if (!revoked) retryRevocation(() -> {}, environment, token, 0);
+    outcome.put("revocation", revoked ? "revoked" : "unconfirmed");
+   }
+   getActivity().runOnUiThread(() -> NativeGoogleCredential.clear(getActivity(), () -> call.resolve(outcome)));
+  });
+ }
 
  @PluginMethod public void cancel(PluginCall call) {
   final String requestId;
@@ -1127,6 +1187,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   final AlertDialog[] shown = new AlertDialog[1];
   synchronized (lock) {
    if (attempt != current || current.cancelled || destroyed) throw new SignInFailure("cancelled");
+   if (current.authorized && System.currentTimeMillis() < current.expiresAt) return;
    current.authorized = false;
    current.authorizationDecision = decision;
   }
@@ -1224,59 +1285,82 @@ public abstract class CloudSignInPlugin extends Plugin {
    if (connected.status != 200) throw new SignInFailure(CloudSignInFlow.failureForStatus("connect", connected.status));
    String code = connected.data.optString("code", "");
    if (!"mobile_app_auth_code".equals(connected.data.optString("codeType")) || !code.matches("emac_[0-9a-f]{64}")) throw new SignInFailure("unavailable");
-   Object created = connected.data.opt("accountCreated");
    JSONObject proof = new JSONObject(binding.toString()).put("code", code).put("state", state).put("codeVerifier", verifier);
    Response minted = post(current, "/api/v1/app-auth/mobile/token", new JSONObject(proof.toString()).put("grantType", "authorization_code"), null);
    if (minted.status != 200) throw new SignInFailure(CloudSignInFlow.failureForStatus("token", minted.status));
-   String secret = minted.data.optString("secret", null), credentialId = minted.data.optString("credentialId", null);
-   long expiresAt = instant(minted.data.opt("expiresAt")), acknowledgeBy = instant(minted.data.opt("acknowledgeBy"));
-   if (!Boolean.TRUE.equals(minted.data.opt("acknowledgementRequired")) || !"Bearer".equals(minted.data.optString("tokenType"))
-    || !CloudSignInFlow.validMobileSecret(secret) || !CloudSignInFlow.validUuid(credentialId) || expiresAt <= System.currentTimeMillis() || acknowledgeBy <= System.currentTimeMillis())
-    throw new SignInFailure("unavailable");
-   synchronized (lock) { if (current.cancelled || attempt != current) throw new SignInFailure("cancelled"); }
-   // Durable receipt first (no secret: the key is read back from its slot), then the key itself.
-   CloudCredentialSlots receipts = credentials(() -> {
-    if (destroyed || current.cancelled) throw new IllegalStateException("Sign-in closed");
-    current.credentialGuard.run();
-   });
-   receipts.write(config().receiptSlot(environment), new JSONObject(proof.toString()).put("credentialId", credentialId).put("acknowledgeBy", acknowledgeBy).toString());
-   // The key this sign-in replaces, if any, is revoked after the acknowledgement of the new one was tried.
-   String previous = previousToken(receipts, config().credentialSlot(environment), secret);
-   CloudCredentialSlots credentials = credentials(() -> { if (destroyed || current.cancelled) throw new IllegalStateException("Sign-in closed"); current.credentialGuard.run(); });
-   JSONObject saved = new JSONObject().put("credentialId", UUID.randomUUID().toString()).put("token", secret).put("expiresAt", expiresAt).put("serverCredentialId", credentialId);
-   credentials.write(config().credentialSlot(environment), saved.toString());
-   // Commit point: the key is stored. Cancelling now cannot unstore it; activation proceeds.
-   storeRenewalRecord(environment, new CloudKeyRenewal.Record(saved.getString("credentialId"), System.currentTimeMillis(), 0, CloudKeyRenewal.Record.NONE));
-   CloudSignInFlow.Ack acknowledged = acknowledge(current, proof, credentialId, secret);
-   if (acknowledged == CloudSignInFlow.Ack.ACKNOWLEDGED) try { receipts.remove(config().receiptSlot(environment)); } catch (Exception kept) { /* Retried on next start. */ }
-   JSObject outcome = new JSObject().put("status", "authenticated").put("environment", environment.name).put("expiresAt", expiresAt)
-    .put("attemptId", current.id).put("credentialId", saved.getString("credentialId"))
-    .put("accountCreated", created instanceof Boolean ? created : JSONObject.NULL);
-   if (current.requestId != null) outcome.put("requestId", current.requestId);
-   if (previous != null) {
-    // The saved slot no longer holds the replaced key, so revoke it with or without the acknowledgement.
-    // One short inline try so completion is not held up; an unconfirmed revocation is retried later.
-    boolean revoked = CloudKeyRevocation.revoke(config(), environment, previous);
-    if (!revoked) retryRevocation(current.credentialGuard, environment, previous, 0);
-    outcome.put("previousSignIn", revoked ? "revoked" : "unconfirmed");
-   }
-   if (acknowledged != CloudSignInFlow.Ack.ACKNOWLEDGED) {
-    // The key is stored but not active. With no answer yet it is asked again in the background
-    // until Cloud's deadline (signInCompleted follows); a key Cloud refused can never work.
-    if (acknowledged == CloudSignInFlow.Ack.RETRY && System.currentTimeMillis() < acknowledgeBy) {
-     synchronized (lock) { activating.add(environment.name); }
-     retryAcknowledgement(current.credentialGuard, environment, proof, credentialId, secret, outcome, acknowledgeBy, 0);
-     throw new SignInFailure("activation-pending");
-    }
-    expireActivation(current.credentialGuard, environment, credentialId, secret);
-    throw new SignInFailure("activation-expired");
-   }
-   finish(current, outcome);
+   commit(current, proof, minted.data, connected.data.opt("accountCreated"));
   } finally {
    // The Steward session is not needed past this point: revoke it, best effort, never stored.
    try { JSONObject body = new JSONObject(); if (refresh != null && refresh.length() <= 16384) body.put("refreshToken", refresh); post(null, environment, "/steward/auth/logout", body, token); }
    catch (Exception ignored) { /* Best effort; the session expires on its own. */ }
   }
+ }
+ private void commit(Attempt current, JSONObject proof, JSONObject minted, Object created) throws Exception {
+  CloudSignInEnvironment environment = current.environment;
+  String secret = minted.optString("secret", null), credentialId = minted.optString("credentialId", null);
+  long expiresAt = instant(minted.opt("expiresAt")), acknowledgeBy = instant(minted.opt("acknowledgeBy"));
+  if (!Boolean.TRUE.equals(minted.opt("acknowledgementRequired")) || !"Bearer".equals(minted.optString("tokenType"))
+   || !CloudSignInFlow.validMobileSecret(secret) || !CloudSignInFlow.validUuid(credentialId) || expiresAt <= System.currentTimeMillis() || acknowledgeBy <= System.currentTimeMillis())
+   throw new SignInFailure("unavailable");
+  synchronized (lock) { if (current.cancelled || attempt != current) throw new SignInFailure("cancelled"); }
+  // Durable receipt first (no secret: the key is read back from its slot), then the key itself.
+  CloudCredentialSlots receipts = credentials(() -> {
+   if (destroyed || current.cancelled) throw new IllegalStateException("Sign-in closed");
+   current.credentialGuard.run();
+  });
+  receipts.write(config().receiptSlot(environment), new JSONObject(proof.toString()).put("credentialId", credentialId).put("acknowledgeBy", acknowledgeBy).toString());
+  // The key this sign-in replaces, if any, is revoked after the acknowledgement of the new one was tried.
+  String previous = previousToken(receipts, config().credentialSlot(environment), secret);
+  CloudCredentialSlots credentials = credentials(() -> { if (destroyed || current.cancelled) throw new IllegalStateException("Sign-in closed"); current.credentialGuard.run(); });
+  JSONObject saved = new JSONObject().put("credentialId", UUID.randomUUID().toString()).put("token", secret).put("expiresAt", expiresAt).put("serverCredentialId", credentialId);
+  credentials.write(config().credentialSlot(environment), saved.toString());
+  // Commit point: the key is stored. Cancelling now cannot unstore it; activation proceeds.
+  storeRenewalRecord(environment, new CloudKeyRenewal.Record(saved.getString("credentialId"), System.currentTimeMillis(), 0, CloudKeyRenewal.Record.NONE));
+  CloudSignInFlow.Ack acknowledged = acknowledge(current, proof, credentialId, secret);
+  if (acknowledged == CloudSignInFlow.Ack.ACKNOWLEDGED) try { receipts.remove(config().receiptSlot(environment)); } catch (Exception kept) { /* Retried on next start. */ }
+  if (acknowledged == CloudSignInFlow.Ack.ACKNOWLEDGED && current.gmailCode != null) connectGmail(current, secret);
+  JSObject outcome = new JSObject().put("status", "authenticated").put("environment", environment.name).put("expiresAt", expiresAt)
+   .put("attemptId", current.id).put("credentialId", saved.getString("credentialId"))
+   .put("accountCreated", created instanceof Boolean ? created : JSONObject.NULL);
+  if (current.requestId != null) outcome.put("requestId", current.requestId);
+  if (current.gmail != null) outcome.put("google", current.gmail);
+  if (previous != null) {
+   // The saved slot no longer holds the replaced key, so revoke it with or without the acknowledgement.
+   // One short inline try so completion is not held up; an unconfirmed revocation is retried later.
+   boolean revoked = CloudKeyRevocation.revoke(config(), environment, previous);
+   if (!revoked) retryRevocation(current.credentialGuard, environment, previous, 0);
+   outcome.put("previousSignIn", revoked ? "revoked" : "unconfirmed");
+  }
+  if (acknowledged != CloudSignInFlow.Ack.ACKNOWLEDGED) {
+   // The key is stored but not active. With no answer yet it is asked again in the background
+   // until Cloud's deadline (signInCompleted follows); a key Cloud refused can never work.
+   if (acknowledged == CloudSignInFlow.Ack.RETRY && System.currentTimeMillis() < acknowledgeBy) {
+    synchronized (lock) { activating.add(environment.name); }
+    retryAcknowledgement(current.credentialGuard, environment, proof, credentialId, secret, outcome, acknowledgeBy, 0);
+    throw new SignInFailure("activation-pending");
+   }
+   expireActivation(current.credentialGuard, environment, credentialId, secret);
+   throw new SignInFailure("activation-expired");
+  }
+  finish(current, outcome);
+ }
+ private void connectGmail(Attempt current, String secret) {
+  String code = current.gmailCode;
+  current.gmailCode = null;
+  try {
+   Response connected = post(current, "/api/v1/eliza/google/connect/native", new JSONObject().put("serverAuthCode", code), secret);
+   current.gmail = connected.status == 200 ? gmailOutcome(connected.data) : gmailRefused(connected.data.optString("code", null));
+  } catch (Exception unavailable) { current.gmail = gmailRefused("google_unavailable"); }
+ }
+ private static JSObject gmailOutcome(JSONObject google) {
+  if (google == null || !Boolean.TRUE.equals(google.opt("connected"))) return gmailRefused(google == null ? null : google.optString("code", null));
+  JSONArray granted = google.optJSONArray("scopes"), scopes = new JSONArray();
+  for (int i = 0; granted != null && i < granted.length(); i++) if (granted.optString(i, "").matches(CloudSignInConfig.GOOGLE_SCOPE)) scopes.put(granted.optString(i));
+  String email = google.optString("email", "");
+  return new JSObject().put("connected", true).put("email", CloudSignInFlow.validEmail(email) ? email : JSONObject.NULL).put("scopes", scopes);
+ }
+ private static JSObject gmailRefused(String reason) {
+  return new JSObject().put("connected", false).put("reason", reason != null && reason.matches("[a-z][a-z_]{1,63}") ? reason : "google_unavailable");
  }
  /** The replaced key is held only in this closure, never stored. Closing the plugin or a newer
   * credential action (sign-in, sign-out, reset) drops the remaining retries. */

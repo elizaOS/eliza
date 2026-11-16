@@ -11,6 +11,7 @@ import java.util.List;
  * Existing installed names are compatibility identifiers: changing one abandons saved state.
  */
 public final class CloudSignInConfig {
+ static final String GOOGLE_SCOPE = "openid|email|profile|https://www\\.googleapis\\.com/auth/[a-z][a-z0-9._]{0,63}";
  /** Registered mobile App Auth client id, normally the Android package name. */
  public final String clientId;
  /** Device label recorded on the minted credential. */
@@ -21,6 +22,7 @@ public final class CloudSignInConfig {
  public final String googleClientId;
  /** Explicit host selection. Native is the default; browser requires verified App Links and an external browser. */
  public final String googleSignInMode;
+ public final List<String> googleScopes;
  /** Tag of the one bounded Google diagnostic line. */
  public final String logTag;
  /** Plain preferences file that caches non-secret readiness. */
@@ -44,6 +46,13 @@ public final class CloudSignInConfig {
   productName = label(builder.productName, "product name");
   googleClientId = required(builder.googleClientId, "[a-z0-9][a-z0-9_-]{2,63}", "Google client id");
   googleSignInMode = required(builder.googleSignInMode, "native|browser", "Google sign-in mode");
+  List<String> scopes = new ArrayList<>();
+  for (String scope : builder.googleScopes) {
+   required(scope, GOOGLE_SCOPE, "Google scope");
+   if (scopes.contains(scope)) throw new IllegalArgumentException("Duplicate Google scope");
+   scopes.add(scope);
+  }
+  googleScopes = Collections.unmodifiableList(scopes);
   logTag = required(builder.logTag, "[A-Za-z][A-Za-z0-9_]{0,22}", "log tag");
   readinessPreferences = required(builder.readinessPreferences, "[A-Za-z0-9._:-]{1,200}", "readiness preferences");
   pendingSlot = required(builder.pendingSlot, "[A-Za-z0-9._:-]{1,128}", "pending slot");
@@ -86,12 +95,14 @@ public final class CloudSignInConfig {
   private String readinessPreferences = "eliza-cloud-signin-readiness", pendingSlot = "cloud-signin:v1:pending";
   private String receiptSlotPrefix = "cloud-signin:v1:ack:", retiringSlotPrefix = "cloud-signin:v1:retire:", credentialSlotPrefix = "cloud:";
   private final List<CloudSignInEnvironment> environments = new ArrayList<>();
+  private final List<String> googleScopes = new ArrayList<>();
   private Builder() {}
   public Builder clientId(String value) { clientId = value; return this; }
   public Builder deviceName(String value) { deviceName = value; return this; }
   public Builder productName(String value) { productName = value; return this; }
   public Builder googleClientId(String value) { googleClientId = value; return this; }
   public Builder googleSignInMode(String value) { googleSignInMode = value; return this; }
+  public Builder googleScope(String value) { googleScopes.add(value); return this; }
   public Builder logTag(String value) { logTag = value; return this; }
   public Builder readinessPreferences(String value) { readinessPreferences = value; return this; }
   public Builder pendingSlot(String value) { pendingSlot = value; return this; }
