@@ -81,6 +81,18 @@ export const specTexts = trusted(function specTexts(root: string): Record<string
   return Object.fromEntries(specFiles(root).map((file) => [file, fs.readFileSync(path.join(root, file), "utf8")]));
 }, [Error]);
 
+/** @throws {never} */
+export function specStamp(root: string): string | undefined {
+  try {
+    return short(filesUnder(root, "spec").map((file) => {
+      const stat = fs.lstatSync(path.join(root, file), { bigint: true, throwIfNoEntry: false });
+      return `${file} ${stat?.ino} ${stat?.ctimeNs} ${stat?.size}`;
+    }).join("\n"));
+  } catch {
+    return undefined;
+  }
+}
+
 /** The command a person or agent runs in a project to check it: its own script if it can, else the tools of this repository. A trusted call. */
 export const checkCommand = trusted(function checkCommand(root: string): string {
   const scripts = packageScripts(root);
@@ -188,6 +200,7 @@ export interface Check { results: Result[]; ok?: boolean; next?: string; finishe
 export interface Snapshot {
   project: { id: string; name: string; root: string };
   session: Session;
+  heard: boolean;
   specs: SpecView[];
   review: ReviewItem[];
   problem?: string;
