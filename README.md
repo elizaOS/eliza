@@ -251,8 +251,9 @@ Before committing your application's starting point:
    `spec/app/index.md`. Update the package name, description and
    repository links for your project.
 2. **Keep the toolchain guide with the toolchain.** Move this README to
-   `vibestack/README.md`, update its relative links, and keep the template
-   license in `vibestack/LICENSE` alongside the Vibestack code.
+   `vibestack/README.md`, update its relative links and the links to it in
+   `AGENTS.md` and `CONTRIBUTING.md`, and keep the template license in
+   `vibestack/LICENSE` alongside the Vibestack code.
 3. **Write your project's documentation.** Create a root `README.md` with
    the project's purpose and install, run and check commands. Set the root
    `LICENSE` to the project's chosen terms and copyright holder.
