@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   AddressBookUnavailable,
   CONTACT_EMAIL_TYPES,
+  CONTACT_MAX_NOTES,
   CONTACT_PHONE_TYPES,
   type ContactDraft,
   contactDraftProblem,
@@ -367,4 +368,72 @@ test("removal names the version; refusals are typed and old hosts are unavailabl
     createAddressBookClient(null).status(),
     AddressBookUnavailable,
   );
+});
+
+test("structured names and multiline notes round-trip without guessing or truncation", async () => {
+  const record = detail({
+    givenName: "Ada",
+    familyName: "Lovelace",
+    notes: "  private\nsecond\tline\r\n",
+  });
+  assert.deepEqual(parseContactDetail(record, "101"), record);
+  // Old hosts still return the original shape; a missing component is not invented from the label.
+  assert.deepEqual(parseContactDetail(detail(), "101"), detail());
+  for (const patch of [
+    { givenName: null },
+    { familyName: 4 },
+    { givenName: "x".repeat(257) },
+    { notes: null },
+    { notes: "x".repeat(CONTACT_MAX_NOTES + 1) },
+    { notes: "bad\u0000note" },
+  ])
+    assert.throws(() => parseContactDetail(detail(patch), "101"), /invalid/);
+  assert.equal(
+    contactDraftProblem(draft({ notes: "x".repeat(CONTACT_MAX_NOTES) })),
+    null,
+  );
+  assert.equal(
+    contactDraftProblem(draft({ notes: "x".repeat(CONTACT_MAX_NOTES + 1) })),
+    "invalid-notes",
+  );
+  assert.equal(contactDraftProblem(draft({ givenName: "\n" })), "invalid-name");
+  assert.equal(
+    contactDraftProblem(
+      draft({
+        displayName: "",
+        phoneNumbers: [],
+        givenName: "Ada",
+        familyName: "Lovelace",
+      }),
+    ),
+    null,
+  );
+});
+
+test("owner saves preserve scalar omission and transmit explicit clears verbatim", async () => {
+  const { plugin, calls } = stub({
+    save: { status: "saved", id: "101", version: NEXT },
+  });
+  const client = createAddressBookClient(plugin);
+  await client.updateContact("101", VERSION, draft());
+  assert.equal(Object.hasOwn(calls[0][1] as object, "givenName"), false);
+  assert.equal(Object.hasOwn(calls[0][1] as object, "familyName"), false);
+  assert.equal(Object.hasOwn(calls[0][1] as object, "notes"), false);
+  await client.updateContact(
+    "101",
+    VERSION,
+    draft({ givenName: "", notes: "" }),
+  );
+  assert.deepEqual(calls[1], [
+    "save",
+    { id: "101", version: VERSION, ...draft(), givenName: "", notes: "" },
+  ]);
+  const creating = draft({
+    displayName: "",
+    givenName: " Ada ",
+    familyName: "Lovelace",
+    notes: "one\ntwo\t ",
+  });
+  await client.createContact(creating);
+  assert.deepEqual(calls[2], ["save", creating]);
 });
