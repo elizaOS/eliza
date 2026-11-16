@@ -17,7 +17,7 @@ import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofF
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
-import { availableDirectory, generatedSkillIgnores, linkProjectSkills, skillRoot } from "./skill-links.ts";
+import { setupProjectAgents } from "./skill-links.ts";
 
 export { readSpecs, parseSpec, expandListHelpers, type Spec, type Rule, type Story } from "./parse.ts";
 export { pending, pendingKey, pendingContracts, acceptReviews, acceptContracts, dependencies, type Lock, type Pending } from "./review.ts";
@@ -454,34 +454,12 @@ export function init(root: string, warn: (message: string) => void = (message) =
     fs.writeFileSync(path.join(root, file), content());
     done.push(file);
   };
-  const addSkillFiles = (directory: string): void => {
-    const existing = fs.lstatSync(path.join(root, directory), { throwIfNoEntry: false });
-    if (existing && !existing.isDirectory()) return;
-    const source = path.join(pkg, directory);
-    for (const name of fs.readdirSync(source).sort()) {
-      if (name === ".DS_Store") continue;
-      const file = `${directory}/${name}`;
-      const entry = fs.lstatSync(path.join(source, name));
-      if (entry.isDirectory()) addSkillFiles(file);
-      else if (entry.isFile()) add(file, () => fs.readFileSync(path.join(source, name)));
-    }
-  };
-  const hasClaudeDirectory = availableDirectory(path.join(root, ".claude"), warn);
-  if (hasClaudeDirectory) {
-    addSkillFiles(skillRoot);
-    done.push(...linkProjectSkills(root, warn));
-  }
   add("SPEC.md", () => fs.readFileSync(path.join(pkg, "SPEC.md"), "utf8"));
   const referenceDir = "vibestack/reference";
   if (["vibestack", referenceDir].every((dir) => fs.lstatSync(path.join(root, dir), { throwIfNoEntry: false })?.isDirectory() ?? true)) {
     const file = `${referenceDir}/typereferences.md`;
     add(file, () => fs.readFileSync(path.join(pkg, file)));
   }
-  // The repository's own guard for what the tools write; the rules about this repository's tools stay behind.
-  if (hasClaudeDirectory) add(".claude/settings.json", () => {
-    const { permissions } = JSON.parse(fs.readFileSync(path.join(pkg, ".claude/settings.json"), "utf8")) as { permissions: { deny: string[]; ask: string[] } };
-    return JSON.stringify({ permissions: { ...permissions, deny: permissions.deny.filter((rule) => !rule.includes("/vibestack/")) } }, null, 2) + "\n";
-  });
   const agents = path.join(root, "AGENTS.md");
   const procedure = fs.readFileSync(path.join(pkg, "AGENTS.md"), "utf8").trim();
   const previous = fs.existsSync(agents) ? fs.readFileSync(agents, "utf8") : "";
@@ -498,35 +476,21 @@ export function init(root: string, warn: (message: string) => void = (message) =
     fs.writeFileSync(agents, updated);
     done.push("AGENTS.md (Vibestack instructions)");
   }
-  const claude = path.join(root, "CLAUDE.md");
-  const claudeEntry = fs.lstatSync(claude, { throwIfNoEntry: false });
-  const own = claudeEntry?.isFile() ? fs.readFileSync(claude, "utf8") : undefined;
-  const instruction = own?.trim();
-  if (!claudeEntry || instruction === "" || instruction === "@AGENTS.md") {
-    if (claudeEntry) fs.unlinkSync(claude);
-    fs.symlinkSync("AGENTS.md", claude, "file");
-    done.push("CLAUDE.md (symlink to AGENTS.md)");
-  } else if (own !== undefined && !/^@AGENTS\.md\s*$/m.test(own)) {
-    const eol = own.includes("\r\n") ? "\r\n" : "\n";
-    fs.writeFileSync(claude, `${own.trimEnd()}${eol}${eol}@AGENTS.md${eol}`);
-    done.push("CLAUDE.md (imports AGENTS.md)");
-  }
+  done.push(...setupProjectAgents(root, warn));
   add("tsconfig.json", () => JSON.stringify({
     compilerOptions: { target: "es2023", module: "nodenext", strict: true, skipLibCheck: true, types: ["node"], rootDir: ".", rootDirs: [".", ".vibe/declarations"], outDir: "dist", noEmitOnError: true, rewriteRelativeImportExtensions: true },
     include: ["src", "test", "gen/*.ts", "gen/*.vibe"], vibe: { sidecarDir: ".vibe/declarations" },
   }, null, 2) + "\n");
   add("vitest.config.ts", () => VITEST_CONFIG);
   add("spec/index.md", () => "");
-  const ignore = path.join(root, ".gitignore");
-  const ignored = fs.existsSync(ignore) ? fs.readFileSync(ignore, "utf8") : "";
-  const missing = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", "test/__traces__/", ...generatedSkillIgnores].filter((l) => !ignored.split("\n").includes(l));
-  if (missing.length) { fs.writeFileSync(ignore, ignored + (ignored && !ignored.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n"); done.push(".gitignore"); }
   const manifest = path.join(root, "package.json");
   {
     const json = fs.existsSync(manifest) ? JSON.parse(fs.readFileSync(manifest, "utf8")) : {};
     const scripts = { dev: "spec studio", check: "spec check", gen: "spec gen", accept: "spec accept", build: "vibelang", test: "vitest run" };
     const added = Object.entries(scripts).filter(([name]) => !json.scripts?.[name] || (name === "test" && /no test specified/.test(json.scripts.test)));
     if (added.length) json.scripts = { ...json.scripts, ...Object.fromEntries(added) };
+    const installHook = json.scripts?.["pnpm:devPreinstall"] !== "node vibestack/skill-links.ts" && !/^spec init(?:$| && )/.test(json.scripts?.postinstall ?? "");
+    if (installHook) json.scripts = { ...json.scripts, postinstall: `spec init${json.scripts?.postinstall ? ` && ${json.scripts.postinstall}` : ""}` };
     // The VibeLang toolchain at the versions these tools are tested with: its packages move together, and with one Effect.
     const own = JSON.parse(fs.readFileSync(path.join(pkg, "package.json"), "utf8"));
     const pins: Record<string, string> = { ...own.dependencies, ...own.devDependencies };
@@ -548,9 +512,10 @@ export function init(root: string, warn: (message: string) => void = (message) =
     const typed = json.type === undefined;
     if (typed) json.type = "module";
     else if (json.type !== "module") warn(`package.json: "type" is ${JSON.stringify(json.type)}, so Node runs src/ and test/ as CommonJS, where an import statement fails; set "type": "module" if those files use ES imports (gen/ has its own package.json)`);
-    if (added.length || typed || needs.length || managed || runtimeDefault) {
+    if (added.length || installHook || typed || needs.length || managed || runtimeDefault) {
       fs.writeFileSync(manifest, JSON.stringify(json, null, 2) + "\n");
       if (added.length) done.push(`package.json scripts: ${added.map(([n]) => n).join(", ")}`);
+      if (installHook) done.push("package.json postinstall: spec init");
       if (needs.length) done.push(`package.json VibeLang toolchain: ${needs.join(", ")} (run your package manager's install)`);
       if (managed) done.push("package.json packageManager: pnpm@10.24.0");
       if (runtimeDefault) done.push(`package.json engines.node: >=${NODE}`);

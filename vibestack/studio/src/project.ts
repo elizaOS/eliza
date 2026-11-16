@@ -103,9 +103,9 @@ export const checkCommand = trusted(function checkCommand(root: string): string 
 /** The sync skill, as a path from the project root: its own copy, or the nearest one above it. @throws {never} */
 export function skillPath(root: string): string {
   for (let dir = root; ; dir = path.dirname(dir)) {
-    const file = path.join(dir, ".claude/skills/sync/SKILL.md");
+    const file = path.join(dir, ".agents/skills/sync/SKILL.md");
     if (fs.existsSync(file)) return path.relative(root, file);
-    if (dir === path.dirname(dir)) return ".claude/skills/sync/SKILL.md";
+    if (dir === path.dirname(dir)) return ".agents/skills/sync/SKILL.md";
   }
 }
 

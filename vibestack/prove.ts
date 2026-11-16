@@ -260,7 +260,7 @@ function parameterNames(params: string): string[] {
 }
 
 /**
- * Where a proof starts (.claude/skills/prove/SKILL.md, "To prove an obligation"): each generated lemma that still has no body and an
+ * Where a proof starts (.agents/skills/prove/SKILL.md, "To prove an obligation"): each generated lemma that still has no body and an
  * obligation not proved, under its exact header. A transition's opens on what its first clause assumes, `inv` and the
  * guard, with the state after it; any other is empty.
  */

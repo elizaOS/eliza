@@ -68,7 +68,7 @@ would call true or false.
   tokens, journeys in Vitest against real services. Lint rules hold every
   package to it.
 - **Agents follow one procedure.** [AGENTS.md](AGENTS.md) and the skills in
-  [`.claude/skills/`](.claude/skills/) tell any agent what to write where,
+  [`.agents/skills/`](.agents/skills/) tell any agent what to write where,
   and `pnpm check` tells it what is still wrong, ending with a `next:` line.
 - **You sign off.** Every changed rule is shown with its sentence and its
   Quint side by side; nothing is done until you accept it.
@@ -128,16 +128,16 @@ means are in [CONTRIBUTING.md](CONTRIBUTING.md#architecture).
    what needs your review.
 5. Read what it reports, run the app, and sign off with `pnpm accept`.
 
-Agents start with [AGENTS.md](AGENTS.md), which Claude Code reads through the
-relative `CLAUDE.md` symlink. Skills and their bundled references
-live in [`.claude/skills/`](.claude/skills/). `pnpm install` and
-`spec init` create missing project-relative links in `.agents/skills/` and
-under `.codex`, `.cursor`, `.grok`, `.gemini`, `.factory`, `.t3` and `.droid`.
-Git tracks the shared `.agents/skills/` links and ignores the harness aliases
-created during setup. Both commands preserve occupied paths and report
-conflicts with project skill sources. A client without repository skill
-discovery must read the applicable `SKILL.md` files linked from AGENTS.md
-explicitly.
+Agents start with [AGENTS.md](AGENTS.md). Skills and their bundled references
+are committed in [`.agents/skills/`](.agents/skills/). `pnpm install` and
+`spec init` create project-relative skill links under `.claude`, `.codex`,
+`.cursor`, `.droid`, `.factory`, `.gemini`, `.grok`, `.grokbot`, `.muse` and
+`.t3`, plus `CLAUDE.md` pointing to `AGENTS.md` and Claude settings from
+`.agents/claude-settings.json`. Git ignores `.claude/`, `CLAUDE.md` and the
+other generated skill aliases. Running setup again recreates missing paths.
+Both commands preserve occupied paths and report conflicts with project
+skill sources. A client without repository skill discovery must read the
+applicable `SKILL.md` files linked from AGENTS.md explicitly.
 
 ## Studio
 
@@ -185,7 +185,7 @@ The format is in the [spec reference](SPEC.md#writing-a-spec).
 
 ### 2. Sync and check
 
-Ask the agent to sync: it follows the [`sync` skill](.claude/skills/sync/SKILL.md).
+Ask the agent to sync: it follows the [`sync` skill](.agents/skills/sync/SKILL.md).
 
 ```mermaid
 flowchart LR
@@ -214,13 +214,13 @@ in place of `machine()`, over a `KeyValueStore` layer (`layerFileSystem`,
 `layerStorage` or `layerMemory`). A React component reads and drives a
 `Machine` with `useMachine` from `gen/<name>.react.ts`. If the spec uses a
 sender parameter named `by`, authenticate that sender in your shell and pass
-it separately ([`shell` skill](.claude/skills/shell/SKILL.md)).
+it separately ([`shell` skill](.agents/skills/shell/SKILL.md)).
 
 | Write | In | Following |
 |---|---|---|
-| HTTP, storage and other I/O | `src/*.vibe` | the [`shell` skill](.claude/skills/shell/SKILL.md) |
-| The interface: components that read the state and send events through hooks over `Machine` | `src/*.tsx`, on `@repo/ui` and the design tokens | the [`design` skill](.claude/skills/design/SKILL.md) |
-| Logic Quint cannot express, such as a loop | `src/*.ts` with `//@` contracts | the [`prove` skill](.claude/skills/prove/SKILL.md) |
+| HTTP, storage and other I/O | `src/*.vibe` | the [`shell` skill](.agents/skills/shell/SKILL.md) |
+| The interface: components that read the state and send events through hooks over `Machine` | `src/*.tsx`, on `@repo/ui` and the design tokens | the [`design` skill](.agents/skills/design/SKILL.md) |
+| Logic Quint cannot express, such as a loop | `src/*.ts` with `//@` contracts | the [`prove` skill](.agents/skills/prove/SKILL.md) |
 | Whole-journey tests | `test/*.test.{vibe,tsx}` | [AGENTS.md, "Tests"](AGENTS.md#tests) |
 | A driver, when the shell keeps the machine's state itself, through which `check` compares the application with the spec | `test/drivers/<name>.ts` | [SPEC.md, "Conformance"](SPEC.md#conformance) |
 
@@ -276,17 +276,17 @@ pnpm check
 
 | `spec init` adds | |
 |---|---|
-| `.claude/skills/`, `AGENTS.md` | the agent's procedure, skills, bundled references and license notice. Later invocations add missing files and refresh the marked Vibestack section in AGENTS.md |
+| `.agents/skills/`, `AGENTS.md` | the agent's procedure, skills, bundled references and license notice. Later invocations add missing files and refresh the marked Vibestack section in AGENTS.md |
 | `SPEC.md` | the spec reference |
 | `vibestack/reference/typereferences.md` | the TypeScript type reference |
-| `.agents/skills/` and the other project agent skill directories | links to the same skills in `.claude/skills/` |
-| `.claude/settings.json` | Claude Code refuses edits to `gen/`, `.spec-cache/`, `.studio/`, `spec/lock.json` and `lemmascript.json`, and asks before `pnpm accept` |
-| `CLAUDE.md` | relative symlink to `AGENTS.md`. A standalone `@AGENTS.md` import is converted to the link. Custom Claude instructions are preserved and import `AGENTS.md` |
+| `.claude/skills/` and the other project agent skill directories | ignored links to the committed skills in `.agents/skills/` |
+| `.agents/claude-settings.json`, `.claude/settings.json` | the committed settings source and its ignored relative symlink for Claude. Claude Code refuses edits to `gen/`, `.spec-cache/`, `.studio/`, `spec/lock.json` and `lemmascript.json`, and asks before `pnpm accept` |
+| `CLAUDE.md` | ignored relative symlink to `AGENTS.md`. A standalone `@AGENTS.md` import is converted to the link. Custom Claude instructions are preserved and import `AGENTS.md` |
 | an empty `spec/index.md` | |
 | `tsconfig.json` | for the VibeLang compiler: `src`, `test`, `gen/*.ts` and `gen/*.vibe`, emitting to `dist/`, with the compiler's declarations in `.vibe/declarations` |
 | `vitest.config.ts` | the one Vitest configuration, `project()` from `vibestack/testing/vitest.ts` ([AGENTS.md, "Tests"](AGENTS.md#tests)) |
-| `.gitignore` | `gen/`, `.spec-cache/`, `.studio/`, `dist/`, `.vibe/`, `test/__traces__/` and the generated harness skill paths |
-| `package.json` | scripts `dev`, `check`, `gen`, `accept`, `build` (`vibelang`) and `test` (`vitest run`); the VibeLang toolchain it lacks, at its pins, with the `@effect/platform-node-shared` override that keeps one Effect; `packageManager` (`pnpm@10.24.0`), `engines.node` (`>=26`, the Node `spec` refuses to run below) and `"type": "module"` if unset |
+| `.gitignore` | `gen/`, `.spec-cache/`, `.studio/`, `dist/`, `.vibe/`, `test/__traces__/`, `.claude/`, `CLAUDE.md` and the generated harness skill paths |
+| `package.json` | scripts `dev`, `check`, `gen`, `accept`, `build` (`vibelang`) and `test` (`vitest run`); `postinstall: spec init` to recreate generated agent paths on install, before any existing postinstall commands, unless the project already has Vibestack’s setup hook; the VibeLang toolchain it lacks, at its pins, with the `@effect/platform-node-shared` override that keeps one Effect; `packageManager` (`pnpm@10.24.0`), `engines.node` (`>=26`, the Node `spec` refuses to run below) and `"type": "module"` if unset |
 
 It preserves project-authored content, scripts, and dependencies.
 It writes no tests: `check` adds a `test` script on the one Vitest
@@ -352,8 +352,8 @@ workspace.
 | `packages/design-system` | Design tokens, built into Tailwind's theme |
 | `packages/ui` | Shared React components, with generated stories |
 | `vibestack/` | The tools: generator, simulator, prover, Studio, testing and design helpers |
-| `.claude/skills/` | What agents read before each kind of work, with bundled references |
-| `.agents/skills/` | Relative links to the same skills for Codex discovery |
+| `.agents/skills/` | What agents read before each kind of work, with bundled references |
+| `.agents/claude-settings.json` | The committed template for generated Claude settings |
 | [AGENTS.md](AGENTS.md), [SPEC.md](SPEC.md), [CONTRIBUTING.md](CONTRIBUTING.md#architecture) | The procedure, the spec reference, and the map |
 
 ## Contributing
