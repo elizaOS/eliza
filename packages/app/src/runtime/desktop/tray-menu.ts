@@ -26,11 +26,11 @@ interface DesktopTrayMenuItem {
 /**
  * Curated desktop-eligible view windows for the tray "Windows" submenu (#10716).
  *
- * Mirror of the `desktopTabEnabled: true` entries in
- * `packages/agent/src/api/builtin-views.ts` (`BUILTIN_VIEWS`) that also run on
- * desktop (i.e. `camera` is android-only and excluded). Duplicated here — the
- * same reason `application-menu.ts` duplicates `APP_MENU_ENTRIES`: this module
- * is consumed by the renderer/browser bundle and the tray is built
+ * Mirror of the entries in `packages/agent/src/api/builtin-views.ts`
+ * (`BUILTIN_VIEWS`) that run on desktop (i.e. `camera` is android-only and
+ * excluded). Duplicated here — the same reason `application-menu.ts`
+ * duplicates `APP_MENU_ENTRIES`: this module is consumed by the
+ * renderer/browser bundle and the tray is built
  * synchronously at desktop boot, so it must not pull `@elizaos/agent` (the view
  * catalog owner) into the browser graph or wait on a `/api/views` round-trip.
  * `desktop-view-windows.test.ts` (standard app lane, which can import the

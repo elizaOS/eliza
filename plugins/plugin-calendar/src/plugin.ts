@@ -156,7 +156,6 @@ export const calendarPlugin: Plugin = {
         },
       ],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
 };

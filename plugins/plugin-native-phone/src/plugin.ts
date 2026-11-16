@@ -53,7 +53,6 @@ export const appPhonePlugin: HttpPlugin = {
       tags: ["phone", "calls", "android"],
       responseContext: { primaryContext: "phone" },
       visibleInManager: true,
-      desktopTabEnabled: true,
       nativeOs: true,
     },
   ],

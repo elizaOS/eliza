@@ -158,7 +158,6 @@ export const notesPlugin: Plugin = {
       beforeAgentInteract: assertNotesAgentViewOperation,
       serverInteract,
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
   async dispose(runtime) {

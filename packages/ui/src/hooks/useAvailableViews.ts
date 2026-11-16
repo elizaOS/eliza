@@ -101,7 +101,10 @@ export interface ViewRegistryEntry {
    * rather than a dynamically loaded plugin view.
    */
   builtin?: boolean;
-  /** When true, the view can be pinned as a native desktop tab in the Electrobun shell. */
+  /**
+   * @deprecated Ignored. Accepted so agents that still send it keep decoding;
+   * removed with `ViewDeclaration.desktopTabEnabled` in v2.0.7.
+   */
   desktopTabEnabled?: boolean;
   /**
    * True when this view is a native device-OS surface that only exists on the
@@ -458,7 +461,6 @@ const BUILTIN_SHELL_VIEW_ENTRIES: ViewRegistryEntry[] = Object.entries(
   order: BUILTIN_TAB_ORDER[id as BuiltinTab],
   builtin: true,
   visibleInManager: false,
-  desktopTabEnabled: true,
 }));
 
 /**
