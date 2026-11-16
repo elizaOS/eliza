@@ -1786,6 +1786,19 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(!fs.existsSync(path.join(root, ".spec-cache/lock")));
   });
 
+  test("a check whose tools change under it remembers nothing more", async () => {
+    const root = toolchain(scratch({}));
+    const script = `const fs = await import("node:fs"); const { entry, store } = await import(${JSON.stringify(path.join(root, "vibestack/cache.ts"))});
+      const memory = { root: ".", fresh: false, used: new Set() };
+      const before = await entry(".", "simulate", ["before"]); store(memory, before, 1);
+      fs.appendFileSync(${JSON.stringify(path.join(root, "vibestack/parse.ts"))}, "\\n");
+      const after = await entry(".", "simulate", ["after"]); store(memory, after, 1);
+      console.log(JSON.stringify([before, after].map((e) => fs.existsSync(e.file))));`;
+    const result = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), [true, false], "an entry computed by code other than what its key names is not stored");
+  });
+
   test("proof and task cache identity follows verifier and compiler bytes rather than installation directories", { skip: process.platform === "win32" }, async () => {
     const credentials = { apiUrl: "https://trusted-cache.example", writeToken: "test-only-publisher" };
     const trusted = { TURBO_API: credentials.apiUrl, TURBO_TOKEN: credentials.writeToken };

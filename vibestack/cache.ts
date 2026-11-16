@@ -76,6 +76,20 @@ export async function toolchainFingerprint() {
   };
 }
 
+const ext = path.extname(import.meta.filename);
+/**
+ * The tools' own scripts, as source or as built: this directory and gen/, never the projects below it (examples,
+ * Studio), whose checks rewrite their gen/ while this one reads.
+ */
+const toolFiles = () => ["", "gen"].flatMap((dir) => fs.readdirSync(path.join(import.meta.dirname, dir)).map((f) => path.join(dir, f)))
+  .filter((f) => f.endsWith(ext) && f !== `selftest${ext}`).sort();
+
+/**
+ * Whether a tool, or the set of them, changed since this process started, so that the code it runs may not be the code
+ * a key names. The change time, which a copy or an archive cannot set back, never the modification time.
+ */
+const toolsChanged = () => ["", "gen", ...toolFiles()].some((f) => fs.statSync(path.join(import.meta.dirname, f)).ctimeMs >= performance.timeOrigin);
+
 /**
  * What a remembered result of one stage was produced by: a different Quint, Node or version of these tools must not
  * reuse a model or a simulation, and a proof also depends on LemmaScript, Dafny and the prover's own code. Each stage
@@ -87,12 +101,8 @@ function toolchainId(stage: "model" | "simulate" | "prove" | "tests" | "explore"
   let id = toolchains.get(stage);
   if (id) return id;
   toolchains.set(stage, (id = (async () => {
-    // The tools' own scripts, as source or as built: this directory and gen/, never the projects below it (examples,
-    // Studio), whose checks rewrite their gen/ while this one reads. Only the prover's own file is left out of what a
-    // model or simulation depends on: anything else may be used by both.
-    const ext = path.extname(import.meta.filename);
-    const own = (f: string) => f.endsWith(ext) && f !== `selftest${ext}` && (stage === "prove" || f !== `prove${ext}`);
-    const tools = ["", "gen"].flatMap((dir) => fs.readdirSync(path.join(import.meta.dirname, dir)).map((f) => path.join(dir, f))).filter(own).sort()
+    // Only the prover's own file is left out of what a model or simulation depends on: anything else may be used by both.
+    const tools = toolFiles().filter((f) => stage === "prove" || f !== `prove${ext}`)
       .map((f) => `${f}\0${fs.readFileSync(path.join(import.meta.dirname, f), "utf8")}`);
     const parts = [stage, packageVersion("@informalsystems/quint"), `node@${process.versions.node}:${process.platform}:${process.arch}`, sha(...tools).slice(0, 12)];
     if (stage === "prove") {
@@ -135,9 +145,10 @@ export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined 
     return undefined;
   }
 }
+/** Remember `value` under an entry, unless the tools changed under this check: then the next check computes it again. */
 export function store(memory: Memory, { name, file }: Entry, value: unknown) {
   memory.used.add(name);
-  writeWhole(file, JSON.stringify(value));
+  if (!toolsChanged()) writeWhole(file, JSON.stringify(value));
 }
 
 /**
