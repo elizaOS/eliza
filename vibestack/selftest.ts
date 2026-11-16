@@ -578,6 +578,20 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.equal(result.broken, true, result.again);
     assert.match(result.again, /--max-samples 32 --max-steps 40\b/);
     assert.equal(result.traces[0]?.at(-1)?.state, 38);
+
+    const rare = oneRule("rare", "Find a rare choice after counting", [
+      "pure val initial: int = 0",
+      "pure def up(n: int): int = n + 1",
+      "pure val tokenValues = 1.to(300)",
+      "pure def canMark(n: int, token: int): bool = n == 38 and token == 1",
+      "pure def mark(n: int, token: int): int = -1",
+      "pure def sometimesMarked(n: int): bool = n == -1",
+    ].join("\n"));
+    const rareModel = await gen(rare, readSpecs(rare)[0]);
+    const found = await search(rare, rareModel, "never_sometimesMarked", "step", [20, 40], 4096);
+    assert.equal(found.broken, true, found.again);
+    assert.match(found.again, /--max-samples 1024 --max-steps 40\b/);
+    assert.equal(found.traces[0]?.at(-1)?.state, -1);
   });
 
   test("hand-written code that changes what it is checked against is refused or flagged", async () => {

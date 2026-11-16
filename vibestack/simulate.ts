@@ -15,7 +15,7 @@ import { allDone, digest, indent } from "./util.ts";
 
 const SAMPLES = 10000;
 const WITNESS_SAMPLES = 20 * SAMPLES;
-const WITNESS_PREFLIGHT_SAMPLES = 32;
+const WITNESS_PREFLIGHT_SAMPLES = [32, 1024];
 const COMPARED_SAMPLES = 2000;
 const REPLAYED = 200;
 /** Traces of the first simulation kept, for a spec with `leadsTo` rules, to look for runs that break one (`lasso`). */
@@ -148,10 +148,12 @@ export async function simulate(root: string, model: Model, invariant: string, tr
 export async function search(root: string, model: Model, invariant: string, step = "step", depths = DEPTHS, samples = WITNESS_SAMPLES, seed = 1): ReturnType<typeof simulate> {
   const searches = depths.map((steps) => ({ steps, budget: Math.ceil(samples * STEPS / steps) }));
   if (searches.length > 1) {
-    for (const { steps, budget } of searches) {
-      if (budget <= WITNESS_PREFLIGHT_SAMPLES) continue;
-      const run = await simulate(root, model, invariant, 1, budget, step, false, steps, seed, WITNESS_PREFLIGHT_SAMPLES);
-      if (run.broken) return run;
+    for (const limit of WITNESS_PREFLIGHT_SAMPLES) {
+      for (const { steps, budget } of searches) {
+        if (budget <= limit) continue;
+        const run = await simulate(root, model, invariant, 1, budget, step, false, steps, seed, limit);
+        if (run.broken) return run;
+      }
     }
   }
   let run!: Awaited<ReturnType<typeof simulate>>;
