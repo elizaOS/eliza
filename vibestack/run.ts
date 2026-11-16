@@ -97,3 +97,49 @@ export async function run(cmd: string, args: string[], cwd: string, input?: stri
   });
   return { ok: r.status === 0 && !r.stopped, out: `${r.stdout}${r.stderr}${r.stopped ? `\n${r.stopped}\n` : ""}`, status: r.status, stderr: r.stderr };
 }
+
+/** The solver selected by Dafny's installation, pinned for every proof and recorded in its cache key. */
+let selected: Promise<{ path: string; version: string }> | undefined;
+export function solver(): Promise<{ path: string; version: string }> {
+  return selected ??= (async () => {
+    const extensions = process.platform === "win32" ? [".exe", ".cmd", ""] : [""];
+    const onPath = (name: string) => (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
+      .flatMap((dir) => extensions.map((ext) => path.join(dir, name + ext))).find((file) => {
+        try { return fs.statSync(file).isFile(); } catch { return false; }
+      });
+    const candidates: string[] = [];
+    const dafny = onPath("dafny");
+    if (dafny) {
+      const real = fs.realpathSync(dafny);
+      for (const dir of [path.dirname(real), path.join(path.dirname(real), "..", "libexec")]) {
+        const bundled = path.join(dir, "z3", "bin");
+        if (!fs.existsSync(bundled)) continue;
+        const preferred = (name: string) => name.includes("4.12.1") ? 0 : name.includes("4.8.5") ? 1 : 2;
+        candidates.push(...fs.readdirSync(bundled).filter((name) => /^z3(-\d+(\.\d+)*)?(\.exe)?$/.test(name))
+          .sort((a, b) => preferred(a) - preferred(b) || a.localeCompare(b)).map((name) => path.join(bundled, name)));
+      }
+    }
+    const executable = onPath("z3");
+    if (executable) candidates.push(executable);
+    for (const candidate of candidates) {
+      try {
+        const result = await exec(candidate, ["--version"], path.dirname(candidate));
+        const version = result.status === 0 && result.stdout.match(/Z3 version (\d+\.\d+\.\d+)/)?.[1];
+        if (version) return { path: fs.realpathSync(candidate), version };
+      } catch { /* try the next solver supplied by this installation */ }
+    }
+    throw new Error("the proof stage needs the Z3 solver bundled with Dafny or on the PATH");
+  })().catch((e) => { selected = undefined; throw e; });
+}
+
+/** The version of Dafny on the PATH, read once it is read without a problem, or why it could not be read. */
+let dafny: Promise<{ version?: string; problem?: string }> | undefined;
+export function dafnyVersion(): Promise<{ version?: string; problem?: string }> {
+  return (dafny ??= exec("dafny", ["--version"], process.cwd()).then((r) => {
+    const version = r.status === 0 ? r.stdout.match(/\d+\.\d+\.\d+/)?.[0] : undefined;
+    const problem = !version ? `Dafny could not be run (${`${r.stdout}${r.stderr}`.trim().split("\n")[0] || "it printed no version"})`
+      : !version.startsWith("4.11.") ? `this is Dafny ${version}, and LemmaScript targets Dafny 4.11.x` : undefined;
+    return { version, problem: r.stopped ?? (problem && `${problem}: ${NEEDS_DAFNY} (see README, "Getting started")`) };
+  }, (e: Error) => ({ problem: `Dafny could not be run (${e.message}): ${NEEDS_DAFNY} (see README, "Getting started")` }))
+    .then((r) => { if (r.problem) dafny = undefined; return r; }));
+}

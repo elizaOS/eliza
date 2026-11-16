@@ -128,9 +128,12 @@ imports `gen/` only as types, so it does not compare the model with itself.
 Core generation produces deterministic code and rebuilds `gen/` to remove
 stale modules. Story and property-test generators write files only when their
 bytes change and remove outputs whose sources have gone. `.spec-cache/`
-fingerprints a spec and its imports together with Quint, Dafny, Z3,
-LemmaScript, Node and tool versions. It also remembers a package's passing
-test run under a hash of what its tests read.
+remembers each run of Quint, and of Dafny on a proof, under the program as installed, its arguments and
+the files it reads, without their prose, comments and layout (`vibestack/action.ts`),
+and each simulation and proof result under a fingerprint of a spec and its
+imports together with Quint, Dafny, Z3, LemmaScript, Node and tool versions.
+It also remembers a package's passing test run under a hash of what its tests
+read.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3

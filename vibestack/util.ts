@@ -22,7 +22,7 @@ export async function allDone<T>(promises: Promise<T>[]): Promise<T[]> {
 }
 
 /** Write a file whole or not at all: to a file of its own beside it, then renamed into place. */
-export function writeWhole(file: string, text: string) {
+export function writeWhole(file: string, text: string | Uint8Array) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   try {

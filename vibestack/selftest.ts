@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, describe, test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
+import { gunzipSync } from "node:zlib";
 import { Miniflare } from "miniflare";
 import { cacheCredentials, collectGarbage } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
@@ -23,7 +24,7 @@ import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
 import { mirrorGen } from "./units.ts";
 import { conformance as checkTraces, conformanceFound } from "./conform.ts";
 import { explore, explored } from "./explore.ts";
-import { search } from "./simulate.ts";
+import { harnessFiles, search } from "./simulate.ts";
 import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./spec.ts";
 
 const project = path.join(import.meta.dirname, "..");
@@ -574,7 +575,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     const root = oneRule("t", "Counting", quint);
     const spec = readSpecs(root)[0];
     const model = await gen(root, spec);
-    const result = await search(root, model, "never_sometimesLate", "step", [20, 40], 180);
+    const result = await search({ memory: { root, fresh: true, used: new Set() }, model, files: harnessFiles(spec, [spec], model) }, "never_sometimesLate", "step", [20, 40], 180);
     assert.equal(result.broken, true, result.again);
     assert.match(result.again, /--max-samples 32 --max-steps 40\b/);
     assert.equal(result.traces[0]?.at(-1)?.state, 38);
@@ -1722,12 +1723,12 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const before = await run(root);
     assert.deepEqual(before.failed, ["review"], before.text);
     const cache = path.join(root, ".spec-cache");
-    const entries = fs.readdirSync(cache).filter((f) => f.endsWith(".json"));
+    const entries = fs.readdirSync(cache).filter((f) => f.endsWith(".json.gz"));
     assert.ok(entries.length > 0);
     for (const entry of entries) fs.writeFileSync(path.join(cache, entry), "{");
     const after = await run(root);
     assert.deepEqual(after.failed, ["review"], after.text);
-    for (const entry of fs.readdirSync(cache).filter((f) => f.endsWith(".json"))) assert.doesNotThrow(() => JSON.parse(fs.readFileSync(path.join(cache, entry), "utf8")));
+    for (const entry of fs.readdirSync(cache).filter((f) => f.endsWith(".json.gz"))) assert.doesNotThrow(() => JSON.parse(gunzipSync(fs.readFileSync(path.join(cache, entry))).toString("utf8")));
   });
 
   test("changing an imported definition invalidates model and simulation results", async () => {
@@ -1744,12 +1745,17 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.match(JSON.stringify(renamed.said("always", /the law .* is false/)), /The price is one/, renamed.text);
   });
 
-  test("proof caching follows library changes and compiler failure waits for proof completion", async () => {
+  test("proof caching follows library changes, verifies nothing again for a change to the tools that leaves the Dafny alone, and compiler failure waits for proof completion", async () => {
     const root = toolchain(fixtures(["highest"], (f) => { f["package.json"] = '{"type":"module"}'; }), "quint", "lsc");
     const script = path.join(root, "vibestack/spec.ts");
     const first = await runCli(script, root, "check", "--json");
     const checked = answer(first.stdout);
     assert.ok(checked.results.some((r: Result) => r.stage === "proof" && r.ok), first.stdout + first.stderr);
+    assert.ok(fs.existsSync(path.join(root, "gen/proof/highest/verify")), "Dafny verified the unit");
+    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\n// A change to the tools that leaves the proof alone.\n");
+    const tooled = await runCli(script, root, "check", "--json");
+    assert.ok(answer(tooled.stdout).results.some((r: Result) => r.stage === "proof" && r.ok), tooled.stdout + tooled.stderr);
+    assert.ok(!["verify", "audit"].some((run) => fs.existsSync(path.join(root, "gen/proof/highest", run))), "a remembered run of Dafny is not run again");
     const remembered = () => fs.readdirSync(path.join(root, ".spec-cache")).filter((f) => f.startsWith("prove-")).join();
     const before = remembered();
     const marker = "// A distinct proof-library version for this scratch project.";
@@ -1784,6 +1790,56 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(result.results.some((r: Result) => r.stage === "types" && !r.ok), failed.stdout);
     assert.ok(result.results.some((r: Result) => r.stage === "proof" && r.ok), failed.stdout);
     assert.ok(!fs.existsSync(path.join(root, ".spec-cache/lock")));
+  });
+
+  test("a check remembers its results under the tools it loaded, and nothing when they changed as it loaded them", async () => {
+    const root = toolchain(scratch({}));
+    const touch = `fs.appendFileSync(${JSON.stringify(path.join(root, "vibestack/parse.ts"))}, "\\n");`;
+    const load = `const { entry, store } = await import(${JSON.stringify(path.join(root, "vibestack/cache.ts"))});`;
+    const remember = 'const at = await entry(".", "simulate", ["same"]); store({ root: ".", fresh: false, used: new Set() }, at, 1); console.log(JSON.stringify({ name: at.name, kept: fs.existsSync(at.file) }));';
+    const checked = async (...steps: string[]) => {
+      const r = await exec(process.execPath, ["--input-type=module", "--eval", ['const fs = await import("node:fs");', ...steps].join("\n")], root);
+      assert.equal(r.status, 0, r.stderr);
+      return JSON.parse(r.stdout);
+    };
+    const loaded = await checked(load, touch, remember);
+    assert.equal(loaded.kept, true, "a tool changed after a check loaded it leaves that check's results remembered");
+    assert.notEqual((await checked(load, remember)).name, loaded.name, "under the code that computed them, not the code there now");
+    assert.equal((await checked(touch, load, remember)).kept, false, "a tool changed while a check loaded it leaves nothing remembered");
+  });
+
+  test("a change to the tools or the prose that leaves the Quint alone runs no Quint again, and its results cite the rules where they now are", { skip: process.platform === "win32" }, async () => {
+    const root = toolchain(oneRule("index", "Small", "pure val initial: int = 0\npure def up(n: int): int = n + 1\npure def alwaysSmall(n: int): bool = n < 3"), "quint");
+    const log = path.join(root, "quint.log");
+    const shim = path.join(root, "node_modules/.bin/quint");
+    fs.unlinkSync(shim);
+    fs.writeFileSync(shim, `#!/bin/sh\necho "$1" >> '${log}'\nexec '${path.join(nodeModules, ".bin/quint")}' "$@"\n`, { mode: 0o755 });
+    const checked = async () => {
+      fs.rmSync(log, { force: true });
+      const { stdout } = await runCli(path.join(root, "vibestack/spec.ts"), root, "check", "--json");
+      return { broken: answer(stdout).results.find((r: Result) => r.stage === "always"), ran: fs.existsSync(log) ? read("quint.log", root).trim().split("\n") : [] };
+    };
+    const first = await checked();
+    assert.match(first.broken?.summary ?? "", /"Story \/ Small" \(spec\/index\.md:5\)/, JSON.stringify(first.broken));
+    assert.deepEqual([...new Set(first.ran)].sort(), ["run", "typecheck"]);
+    assert.deepEqual((await checked()).ran, []);
+    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\n// A change to the tools that leaves the Quint alone.\n");
+    const tooled = await checked();
+    assert.deepEqual(tooled, { broken: first.broken, ran: [] });
+    fs.writeFileSync(path.join(root, "spec/index.md"), read("spec/index.md", root).replace("### Small\n", "Prose above the rule.\n\n### Small\n"));
+    const moved = await checked();
+    assert.deepEqual(moved.ran, []);
+    assert.match(moved.broken?.summary ?? "", /"Story \/ Small" \(spec\/index\.md:7\)/, JSON.stringify(moved.broken));
+  });
+
+  test("a Quint string ends at its next quote, as Quint reads it, and a change inside one is simulated again", async () => {
+    const quint = (b: string) => `pure val b: str = if (1 == 2) "p\\" else "${b}"\npure val initial: int = 0\npure def up(n: int): int = n + 1\npure def alwaysSame(n: int): bool = b == "x // y"`;
+    const root = oneRule("index", "Same", quint("x // y"));
+    const first = await run(root);
+    assert.ok(!first.failed.includes("always"), first.text);
+    fs.writeFileSync(path.join(root, "spec/index.md"), ruleSpec(quint("x // z"), "Same"));
+    const changed = await run(root);
+    assert.equal(changed.said("always", /alwaysSame|"Story \/ Same"/)?.ok, false, changed.text);
   });
 
   test("proof and task cache identity follows verifier and compiler bytes rather than installation directories", { skip: process.platform === "win32" }, async () => {
@@ -1983,8 +2039,8 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     fs.writeFileSync(lock, `${spawnSync(process.execPath, ["-e", ""]).pid}\n`);
     const unused = path.join(root, ".spec-cache/000000000000000000000000.json");
     fs.writeFileSync(unused, "{}");
-    const recent = path.join(root, `.spec-cache/prove-${"1".repeat(24)}.json`);
-    const expired = path.join(root, `.spec-cache/prove-${"2".repeat(24)}.json`);
+    const recent = path.join(root, `.spec-cache/prove-${"1".repeat(24)}.json.gz`);
+    const expired = path.join(root, `.spec-cache/prove-${"2".repeat(24)}.json.gz`);
     fs.writeFileSync(recent, "{}");
     fs.writeFileSync(expired, "{}");
     const old = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
@@ -1996,7 +2052,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(!fs.existsSync(expired), "an unused entry past retention is deleted");
     assert.ok(fs.existsSync(recent), "a recent entry from another branch remains reusable");
     assert.ok(fs.readdirSync(path.dirname(lock)).length > 0, "the entries it used are kept");
-    const newer = path.join(root, `.spec-cache/prove-${"3".repeat(24)}.json`);
+    const newer = path.join(root, `.spec-cache/prove-${"3".repeat(24)}.json.gz`);
     fs.writeFileSync(newer, "{}");
     const file = fs.openSync(recent, "r+");
     fs.ftruncateSync(file, 256 * 2 ** 20);

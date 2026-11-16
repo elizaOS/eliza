@@ -1,5 +1,12 @@
 name: setup
 description: Node 26, pnpm from packageManager, Dafny, Chromium, and the caches of pnpm, Turborepo and spec.
+outputs:
+  spec-cache-path:
+    description: What the spec cache holds, for the step that saves it at the end of a job.
+    value: ${{ steps.spec-cache.outputs.path }}
+  spec-cache-key:
+    description: The key to save the spec cache under, unique to this run attempt.
+    value: ${{ steps.spec-cache.outputs.key }}
 runs:
   using: composite
   steps:
@@ -14,15 +21,24 @@ runs:
         cache: pnpm
     # Turborepo skips a task whose inputs it has seen; spec skips a simulation or proof it has seen.
     # Quint downloads its evaluator to ~/.quint from GitHub's rate-limited API: once per cache, not per run.
-    - uses: actions/cache@v6
+    # Only restored here: a job saves it at its end whatever the outcome (ci.yml), since a failed or cancelled run
+    # still checked most of what the next one would.
+    - id: spec-cache
+      shell: bash
+      run: |
+        prefix='spec-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}-'
+        {
+          echo "prefix=$prefix"
+          echo "key=$prefix${{ github.sha }}-${{ github.run_attempt }}"
+          echo "path<<EOF"
+          printf '%s\n' '**/.spec-cache' '~/.quint' '!**/node_modules/**'
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+    - uses: actions/cache/restore@v6
       with:
-        path: |
-          **/.spec-cache
-          ~/.quint
-          !**/node_modules/**
-        key: spec-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}-${{ github.sha }}
-        restore-keys: |
-          spec-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'pnpm-lock.yaml') }}-
+        path: ${{ steps.spec-cache.outputs.path }}
+        key: ${{ steps.spec-cache.outputs.key }}
+        restore-keys: ${{ steps.spec-cache.outputs.prefix }}
     - run: pnpm install --frozen-lockfile
       shell: bash
     # Quint's first-run downloader uses the unauthenticated GitHub API.

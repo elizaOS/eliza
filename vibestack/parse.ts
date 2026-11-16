@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { BUILTINS, LIST_HELPERS } from "./gen/print.ts";
 import { plainText, scanSpec } from "./scan.ts";
+import type { Input } from "./action.ts";
 
 /** `defs` are the rule's top-level definitions and types; `locals` the names it binds inside a definition (`val x = …` in a body). */
 export interface Rule { key: string; story: string; line: number; prose: string; code: string; defs: string[]; locals: string[] }
@@ -18,13 +19,17 @@ export interface SpecReference { target: string; line: number }
 interface SpecImport extends Import { target?: string; line: number; column: number; pathLine?: number; pathColumn?: number; pathLength?: number }
 const importSources = new WeakMap<Spec, SpecImport[]>();
 /**
- * `meaning` is the Quint as written, with every comment, prose included, reduced to a space: what a cache key may
- * depend on. `tangled` is `qnt` before the list helpers were expanded, to map Quint's columns back.
+ * `tangled` is `qnt` before the list helpers were expanded, to map Quint's columns back. `code` is `qnt` as Quint reads
+ * it (`codeOf`): what decides a run of Quint on `qnt`, whatever its prose, comments and layout.
  */
-export interface Spec { name: string; file: string; preamble: string; references: SpecReference[]; links: string[]; rules: Rule[]; stories: Story[]; imports: string[]; uses: Import[]; qnt: string; tangled: string; meaning: string; builtins: string[] }
-/** The Quint of a spec's imports, theirs first, as far as a cache key may depend on it. */
-export const importedMeanings = (spec: Spec, specs: Spec[]): string =>
-  spec.imports.map((n) => { const dep = specs.find((x) => x.name === n)!; return importedMeanings(dep, specs) + dep.meaning; }).join("");
+export interface Spec { name: string; file: string; preamble: string; references: SpecReference[]; links: string[]; rules: Rule[]; stories: Story[]; imports: string[]; uses: Import[]; qnt: string; tangled: string; code: string; builtins: string[] }
+/** The Quint a spec's module reads, its own and that of each module it imports, by the name each has in gen/. */
+export function modules(spec: Spec, specs: Spec[], into: Record<string, Input> = {}): Record<string, Input> {
+  if (Object.hasOwn(into, `${spec.name}.qnt`)) return into;
+  into[`${spec.name}.qnt`] = { text: spec.qnt, key: spec.code };
+  for (const name of spec.imports) modules(specs.find((s) => s.name === name)!, specs, into);
+  return into;
+}
 
 /** The specs that ship with the tools (std/net.md); a spec imports one as it would one of its own. */
 const PACKAGE = import.meta.dirname;
@@ -144,7 +149,7 @@ export function parseSpec(root: string, file: string, text = fs.readFileSync(loc
   if (forged >= 0) throw new Error(`${file}:${forged + 1}: a name beginning std_ is reserved for generated collection operations`);
   try {
     const sources = importsOf(tangled);
-    const spec: Spec = { name, file, preamble, references, links: [], rules, stories, imports: sources.map((i) => i.module), uses: sources, qnt: "", tangled, meaning: "", builtins: [] };
+    const spec: Spec = { name, file, preamble, references, links: [], rules, stories, imports: sources.map((i) => i.module), uses: sources, qnt: "", tangled, code: "", builtins: [] };
     finish(spec, tangled);
     importSources.set(spec, sources);
     return spec;
@@ -153,34 +158,54 @@ export function parseSpec(root: string, file: string, text = fs.readFileSync(loc
   }
 }
 
-/** Set what follows from a spec's final Quint: the text Quint reads, the definitions added for builtins, and its meaning. */
+/** Set what follows from a spec's final Quint: the text Quint reads, the definitions added for builtins, and its code. */
 function finish(spec: Spec, text: string) {
   const expanded = expandBuiltins(expandListHelpers(text), spec.name);
   spec.qnt = expanded.text + "\n}\n";
   spec.builtins = expanded.names;
-  spec.meaning = codeOnly(text);
+  spec.code = codeOf(spec.qnt);
 }
 
-/** Which characters of Quint are code, as opposed to part of a string or a comment, which are comments, and what is still open at the end. */
-function scan(text: string): { code: boolean[]; comment: boolean[]; strings: Set<number>; mode: "" | '"' | "//" | "/*" } {
+/**
+ * Which characters of Quint are code, as opposed to part of a string or a comment, which are comments, which are in a
+ * string, its quotes included, and what is still open at the end. A string ends at its next quote: Quint's have no escapes.
+ */
+function scan(text: string): { code: boolean[]; comment: boolean[]; quoted: boolean[]; strings: Set<number>; mode: "" | '"' | "//" | "/*" } {
   const code: boolean[] = [];
   const comment: boolean[] = [];
+  const quoted: boolean[] = [];
   const strings = new Set<number>();
   let mode: "" | '"' | "//" | "/*" = "";
   for (let i = 0; i < text.length; i++) {
     const two = text.slice(i, i + 2);
-    if (mode === "" && text[i] === '"') { strings.add(i); mode = '"'; }
+    if (mode === "" && text[i] === '"') { strings.add(i); quoted[i] = true; mode = '"'; }
     else if (mode === "" && two === "//") { comment[i] = comment[i + 1] = true; i++; mode = "//"; }
     else if (mode === "" && two === "/*") { comment[i] = comment[i + 1] = true; i++; mode = "/*"; }
     else if (mode === "") code[i] = true;
-    else if (mode === '"' && text[i] === "\\") i++;
-    else if (mode === '"' && text[i] === '"') mode = "";
+    else if (mode === '"') { quoted[i] = true; if (text[i] === '"') mode = ""; }
     else if (mode === "//" && text[i] === "\n") mode = "";
     else if (mode === "//") comment[i] = true;
     else if (mode === "/*" && two === "*/") { comment[i] = comment[i + 1] = true; i++; mode = ""; }
     else if (mode === "/*") comment[i] = true;
   }
-  return { code, comment, strings, mode: mode === "//" ? "" : mode };
+  return { code, comment, quoted, strings, mode: mode === "//" ? "" : mode };
+}
+
+/**
+ * Quint as Quint reads it: every comment it skips, prose included, and every run of space outside a string, as one
+ * space, so that prose, comments and layout leave it the same; strings whole, and a `///` doc comment, which Quint reads.
+ */
+export function codeOf(text: string): string {
+  const { comment, quoted } = scan(text);
+  let out = "";
+  let gap = false;
+  let doc = false;
+  for (let i = 0; i < text.length; i++) {
+    if (comment[i] && !comment[i - 1]) doc = text.startsWith("///", i);
+    if (quoted[i] || (comment[i] ? doc : !/\s/.test(text[i]))) { out += (gap && out ? " " : "") + text[i]; gap = false; }
+    else gap = true;
+  }
+  return out;
 }
 
 /** Imports keep their positions even when whitespace or comments split the declaration. */
@@ -215,20 +240,6 @@ function importsOf(text: string): SpecImport[] {
     return [{ module: name.text, alias, star: selector === "*", names: selector && selector !== "*" ? [selector] : [], ...position(name.index),
       ...(target && point ? { target: JSON.parse(target.text) as string, pathLine: point.line, pathColumn: point.column, pathLength: target.text.length } : {}) }];
   });
-}
-
-/**
- * Quint with every comment reduced to one space, line breaks kept and no space at the end of a line: what it means,
- * whatever the comments say. Strings are kept whole, and a comment still separates the tokens around it.
- */
-function codeOnly(text: string): string {
-  const { comment } = scan(text);
-  let out = "";
-  for (let i = 0; i < text.length; i++) {
-    if (!comment[i] || text[i] === "\n") out += text[i];
-    else if (!comment[i - 1] || text[i - 1] === "\n") out += " ";
-  }
-  return out.replace(/[ \t]+$/gm, "");
 }
 
 /**
