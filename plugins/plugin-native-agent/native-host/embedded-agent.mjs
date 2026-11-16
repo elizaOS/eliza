@@ -1,8 +1,9 @@
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 export const EMBEDDED_AGENT_PREFIX = "/__eliza-embedded-agent";
 
@@ -33,6 +34,8 @@ const LAUNCH_SETTINGS = new Set([
   "ELIZA_BROWSER_ANDROID_APPLICATION",
   "ELIZA_MOBILE_DNS_SERVERS",
 ]);
+const CLOUD_ORIGIN =
+  /^https:\/\/[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?(\/[A-Za-z0-9._~-]+)*\/?$/;
 const text = (words, key) => {
   const value = typeof words?.[key] === "string" ? words[key].trim() : "";
   if (!value || value.length > 200)
@@ -55,14 +58,10 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
     title: text(host.notification, "title"),
     text: text(host.notification, "text"),
   };
-  let cloud;
-  try {
-    cloud = new URL(host.cloud?.baseUrl);
-  } catch {
+  const baseUrl = host.cloud?.baseUrl;
+  if (typeof baseUrl !== "string" || !CLOUD_ORIGIN.test(baseUrl))
     fail("The Eliza Cloud address must be an https origin");
-  }
-  if (cloud.protocol !== "https:" || cloud.search || cloud.username)
-    fail("The Eliza Cloud address must be an https origin");
+  const cloud = baseUrl.replace(/\/+$/, "");
   const { smallModel = "", largeModel = "" } = host.cloud;
   if (!Array.isArray(host.routes) || host.routes.length === 0)
     fail("The embedded agent admits no route");
@@ -88,6 +87,10 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
       path: new RegExp(`^/${pattern}$`),
     };
   });
+  const record = (value) =>
+    value !== null && typeof value === "object" && !Array.isArray(value);
+  if (host.environment !== undefined && !record(host.environment))
+    fail("The embedded agent environment must be an object");
   const environment = {};
   for (const [key, value] of Object.entries(host.environment ?? {})) {
     if (
@@ -103,12 +106,16 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
   const name = typeof character?.name === "string" ? character.name.trim() : "";
   if (!name || name.length > 50 || !character.system?.trim?.())
     fail("Invalid embedded agent character");
-  const allowed = Object.keys(policy.actions?.allowed ?? {}).sort();
+  const allowed = record(policy.actions?.allowed)
+    ? Object.keys(policy.actions.allowed).sort()
+    : [];
   if (!allowed.length) fail("The embedded agent policy allows no action");
   for (const action of allowed)
     if (Object.hasOwn(policy.actions.refused ?? {}, action))
       fail(`Action ${action} is both allowed and refused`);
-  const denied = (policy.plugins?.denied ?? []).map(String);
+  const denied = policy.plugins?.denied ?? [];
+  if (!Array.isArray(denied) || denied.some((name) => typeof name !== "string"))
+    fail("The embedded agent policy denies plugins by name");
   return {
     service: host.service,
     notification,
@@ -153,7 +160,7 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
         ELIZA_PROVIDER: "elizacloud",
         ELIZAOS_CLOUD_USE_INFERENCE: "true",
         ELIZAOS_CLOUD_API_KEY: credential,
-        ELIZAOS_CLOUD_BASE_URL: cloud.href.replace(/\/+$/, ""),
+        ELIZAOS_CLOUD_BASE_URL: cloud,
         ...(smallModel ? { ELIZAOS_CLOUD_SMALL_MODEL: smallModel } : {}),
         ...(largeModel ? { ELIZAOS_CLOUD_LARGE_MODEL: largeModel } : {}),
         ELIZA_CONFIG_EXTERNAL_SECRET_ENV_VARS: "ELIZAOS_CLOUD_API_KEY",
@@ -195,10 +202,13 @@ const readBody = async (req) => {
 /**
  * The development counterpart of the Android embedded agent, as a Vite plugin:
  * it starts the agent from the Eliza checkout at `source` with the same data
- * files, restarts it after a crash within the same budget, and serves
- * the bridge's calls under EMBEDDED_AGENT_PREFIX on the dev server, so the page's
- * web fallback of EmbeddedAgent reaches the same routes without a token. The agent
- * token and the cloud credential stay in this process.
+ * files and the checkout's own private-runtime launch, and serves the bridge's
+ * calls under EMBEDDED_AGENT_PREFIX on the dev server, so the page's web
+ * fallback of EmbeddedAgent reaches the same routes without a token. As on the
+ * device, a child that exits before it is ready fails the start with `agent`,
+ * and a running child that exits is restarted within `maxRestarts`, then
+ * fails with `crashed`. The agent token and the cloud credential stay in this
+ * process.
  */
 export function embeddedAgentDevelopment({
   source,
@@ -221,10 +231,14 @@ export function embeddedAgentDevelopment({
   maxRestarts = 2,
 }) {
   const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
+  const launcher = path.join(
+    source,
+    "packages/agent/native-host/private-runtime-launch.mjs",
+  );
   let status = { available: true, state: "stopped" };
-  let child = null;
+  let admission = null;
+  let running = null;
   let endpoint = null;
-  let restarts = 0;
   let generation = 0;
   const watchers = new Set();
   const publish = (next) => {
@@ -237,98 +251,131 @@ export function embeddedAgentDevelopment({
   const stop = () => {
     generation++;
     endpoint = null;
-    child?.kill("SIGTERM");
-    child = null;
+    void running?.stop();
+    running = null;
   };
-  const start = async (fresh) => {
+  const start = async (attempt) => {
     stop();
     const launch = generation;
-    if (fresh) restarts = 0;
+    const current = () => launch === generation;
     publish({ state: "starting" });
-    let parsed;
     try {
-      parsed = parseEmbeddedAgentData({
+      admission = parseEmbeddedAgentData({
         host: read(data.host),
         character: read(data.character),
         policy: read(data.policy),
       });
     } catch (error) {
+      admission = null;
       return failed("config", error.message);
     }
-    let key;
+    let environment;
     try {
-      key = await credential();
+      const key = await credential();
+      if (!current()) return;
+      if (!key)
+        return failed("credential", "No Eliza Cloud account is signed in");
+      environment = admission.agentEnvironment(key);
     } catch {
-      return failed(
-        "credential",
-        "The Eliza Cloud credential could not be read",
+      return (
+        current() &&
+        failed("credential", "The Eliza Cloud credential could not be read")
       );
     }
-    if (!key)
-      return failed("credential", "No Eliza Cloud account is signed in");
-    fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
-    const config = path.join(stateDirectory, "config.json");
-    fs.writeFileSync(config, JSON.stringify(parsed.agentConfig()), {
-      mode: 0o600,
-    });
+    let child;
     const token = randomBytes(48).toString("base64url");
     const port = await freePort();
-    const spawned = spawn(command.executable, command.args, {
-      cwd: command.cwd,
-      stdio: ["ignore", "inherit", "inherit"],
-      env: {
-        PATH: process.env.PATH,
-        HOME: process.env.HOME,
-        TMPDIR: process.env.TMPDIR ?? "",
-        ...parsed.agentEnvironment(key),
-        ELIZA_STATE_DIR: stateDirectory,
-        ELIZA_CONFIG_PATH: config,
-        ELIZA_API_BIND: "127.0.0.1",
-        ELIZA_API_PORT: String(port),
-        ELIZA_API_STRICT_PORT: "true",
-        ELIZA_REQUIRE_LOCAL_AUTH: "1",
-        ELIZA_API_TOKEN: token,
-      },
-    });
-    child = spawned;
-    spawned.once("exit", () => {
-      if (launch !== generation) return;
+    try {
+      const {
+        runtimeEnvironment,
+        startPrivateRuntimeProcess,
+        writePrivateRuntimeJson,
+      } = await import(pathToFileURL(launcher).href);
+      fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
+      const config = path.join(stateDirectory, "config.json");
+      await writePrivateRuntimeJson(config, admission.agentConfig());
+      if (!current()) return;
+      child = await startPrivateRuntimeProcess({
+        command: command.executable,
+        args: command.args,
+        cwd: command.cwd,
+        stdio: ["ignore", "inherit", "inherit"],
+        signalSource: new EventEmitter(),
+        env: runtimeEnvironment({
+          inherited: process.env,
+          allow: ["PATH", "HOME", "TMPDIR"],
+          settings: environment,
+          owned: {
+            ELIZA_STATE_DIR: stateDirectory,
+            ELIZA_CONFIG_PATH: config,
+            ELIZA_API_BIND: "127.0.0.1",
+            ELIZA_API_PORT: String(port),
+            ELIZA_API_STRICT_PORT: "true",
+            ELIZA_REQUIRE_LOCAL_AUTH: "1",
+            ELIZA_API_TOKEN: token,
+          },
+        }),
+      });
+    } catch {
+      return current() && failed("agent", "The agent could not be started");
+    }
+    if (!current()) return void child.stop();
+    running = child;
+    let ready = false;
+    let exited = false;
+    void child.completion.then(() => {
+      exited = true;
+      if (!current() || !ready) return;
       endpoint = null;
-      child = null;
-      if (restarts >= maxRestarts)
-        return failed("crashed", "Native child stopped unexpectedly");
-      restarts++;
+      running = null;
+      if (attempt >= maxRestarts)
+        return failed("crashed", "The agent stopped too often");
       publish({ state: "starting" });
-      setTimeout(() => {
-        if (launch === generation) void start(false);
-      }, restartDelayMs * restarts).unref();
+      setTimeout(
+        () => {
+          if (current()) void start(attempt + 1);
+        },
+        restartDelayMs * (attempt + 1),
+      ).unref();
     });
     const deadline = Date.now() + readyMs;
-    while (launch === generation && Date.now() < deadline) {
+    while (current() && !exited && Date.now() < deadline) {
       try {
         const answer = await fetch(`http://127.0.0.1:${port}/api/status`, {
           headers: { Authorization: `Bearer ${token}` },
           signal: AbortSignal.timeout(1000),
         });
-        if (answer.ok) {
-          endpoint = { port, token, parsed };
+        if (answer.ok && current() && !exited) {
+          ready = true;
+          endpoint = { port, token };
           return publish({ state: "running" });
         }
       } catch {}
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    if (launch === generation) {
-      stop();
-      failed("agent", "Native child readiness timed out");
-    }
+    if (!current()) return;
+    stop();
+    failed(
+      "agent",
+      exited
+        ? "The agent exited before it was ready"
+        : "The agent did not answer in time",
+    );
   };
 
   const forward = async (req, res, stream) => {
     const input = await readBody(req);
-    const route = endpoint?.parsed.admit(input.method, input.path);
-    if (!endpoint) return json(res, 503, { code: "RUNTIME_NOT_READY" });
+    const route = admission?.admit(input.method, input.path);
     if (!route || route.stream !== stream)
-      return json(res, 403, { code: "ROUTE_REFUSED" });
+      return json(res, 403, {
+        code: "ROUTE_REFUSED",
+        error: "This agent route is not available",
+      });
+    if (!endpoint)
+      return json(res, 503, {
+        code: "RUNTIME_NOT_READY",
+        error: "The agent is not ready",
+      });
     const controller = new AbortController();
     res.on("close", () => controller.abort());
     const answer = await fetch(
@@ -371,11 +418,11 @@ export function embeddedAgentDevelopment({
     }
     if (req.method !== "POST") return json(res, 404, {});
     if (url.pathname === "/start") {
-      if (!["starting", "running"].includes(status.state)) void start(true);
+      if (!["starting", "running"].includes(status.state)) void start(0);
       return json(res, 200, status);
     }
     if (url.pathname === "/restart") {
-      void start(true);
+      void start(0);
       return json(res, 200, status);
     }
     if (url.pathname === "/stop") {
@@ -401,7 +448,7 @@ export function embeddedAgentDevelopment({
         });
       });
       server.httpServer?.once("close", stop);
-      void start(true);
+      void start(0);
     },
   };
 }
