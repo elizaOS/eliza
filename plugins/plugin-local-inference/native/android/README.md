@@ -126,6 +126,28 @@ Product-only methods (for example credential-bound network speech) use the prote
 admission, cancellation drain and playback with the on-device methods. The renderer side is
 `@elizaos/voice/native-live` (packages/voice).
 
+### Cloud speech bridge
+
+`speech-bridge/src/main/java/ai/eliza/voice/SpeechStreamBridgePlugin.java` is the abstract
+Capacitor bridge to the Eliza Cloud speech-only relay (Cartesia recognition and speech). A host
+that speaks only through the cloud adds the `cloud-speech-bridge` directory as its own Gradle
+module, next to `:capacitor-android`. It compiles this bridge with the playback, audio focus and
+output classes only: no inference session, JNI bridge, native library or model asset.
+
+- `startCloudSpeech` with `muted: true` asks for no microphone permission and opens no
+  microphone. The session resolves when recognition is connected, so replies can be spoken.
+  `setCloudSpeechMuted` with `muted: false` then opens the microphone. Without the permission it
+  rejects with `permission-required` and the session stays open and muted; the host asks for the
+  permission (which pauses the activity and ends the session) and starts a new session.
+- `speakCloudSpeech` takes `pace` (0.5 to 2, default 1). The speech plays at that speed with the
+  same pitch on the device; the relay is unchanged.
+- While speech plays, `progress` events give `playedMs` (audio heard so far, at the synthesized
+  pace) and `receivedMs` (audio received so far). `audio-end` and the `cancelCloudSpeech` result
+  give `playedMs` too, so the host can find the word that was reached.
+- The session holds transient, duckable audio focus while it speaks or its microphone is open,
+  and releases it when it does neither. Speech plays with the assistant usage, which Android
+  controls with the media volume.
+
 `node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs`
 runs the host-JVM contracts and compiles the library against Android 36. Its pinned
 compile dependencies download from Maven Central into ignored test output, with byte-size
