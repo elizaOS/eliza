@@ -1339,9 +1339,9 @@
       "source": "packages/core/src/connectors/account-manager.ts",
       "spec": "spec/core/connectorStorage.md",
       "rules": [
-        "Account upsert replaces its exact provider and id while owner bindings remain separately scoped",
-        "Only a pending unexpired unconsumed flow can be consumed",
-        "The selected backend cannot be used until the captured fallback state transfers",
+        "Account replacement preserves identity ordering and complete values",
+        "Pending flow consumption retains both aliases until terminal update",
+        "The snapshot contains exact accounts and pending unexpired flows",
         "A runtime cache preserves its manager while a compatible registered service takes precedence",
         "Stored disable and revoke decisions win over provider readiness",
         "Backend replacement preserves facade identity and memoizes each current adapter",
@@ -1364,7 +1364,8 @@
         "spec/core/connectorQueues.md",
         "spec/core/oauthSecrets.md",
         "spec/core/oauthStart.md",
-        "spec/core/oauthLifecycle.md"
+        "spec/core/oauthLifecycle.md",
+        "spec/core/connectorHandoff.md"
       ]
     },
     {
@@ -1741,10 +1742,8 @@
       "source": "packages/core/src/inference-trace.ts",
       "spec": "spec/core/traces.md",
       "rules": [
-        "Trace identity and insertion order are unique",
-        "Expiration removes traces only after the TTL boundary",
-        "Stale traces eventually retire under fair purge",
-        "One enrichment request affects only one run"
+        "Recording preserves the insertion position of a replacement in its run",
+        "Expired trace progress follows the observed wall clock"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "5f3326087b4a95e4737c7cb15edbd36ca8d0de060c53c2987e65ec5ea6d072fd",
@@ -2167,10 +2166,9 @@
         "Replay is idempotent and histories reject conflicting duplicates or gaps",
         "A generation owns its pending read and every publish boundary rechecks it",
         "Original fanout precedes its diagnostic reports",
-        "Each callback has one current generation per channel",
-        "Heartbeat status determines its indicator and stop clears subscriptions",
-        "An admitted event eventually finishes its listeners and diagnostics",
-        "Stopping clears run and subscription indexes together"
+        "Fanout visits the live listener map in insertion order",
+        "Heartbeat snapshots use an explicit indicator before the default",
+        "Finite synchronous callback work lets the emission finish"
       ],
       "classification": "source-reviewed-domain-model-with-explicit-boundaries",
       "sourceSha256": "2f3dea209d7b518a1fe34c66a77b80e8585ec8b64562ebeba76aafa1f7bb18b1",
@@ -2424,13 +2422,13 @@
       "spec": "spec/core/memo.md",
       "rules": [
         "A rejection affects only its captured key and promise identity",
-        "A selected in-flight caller eventually receives a settled promise"
+        "Entries retain insertion order and each put installs its own rejection observer"
       ],
-      "classification": "exact-declaration-or-data-contract",
+      "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "23ae192fbb5b2823cf45576f0580b54406cb0665896a52724102f844c9f215d0",
-      "sourceContractKind": "type-and-import-contract",
+      "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/read-memo.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
+      "implementationProofBoundary": "The adapter must return the resident promise and metadata by identity. The promise producer owns eventual settlement. Rejection observation, invalidation and expiry cannot settle a promise."
     },
     {
       "source": "packages/core/src/recent-messages-state.ts",
@@ -4874,7 +4872,7 @@
       "source": "packages/core/src/speech.ts",
       "spec": "spec/core/voice.md",
       "rules": [
-        "The first abort reason remains authoritative and listeners settle once"
+        "Reason ownership precedes unlinking and signal abortion follows callbacks"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "fbff14fd592e7c33d7b0615833e0eb8a632503b0dd259b5600e23c7bdebad6cb",
@@ -4942,10 +4940,8 @@
       "source": "packages/core/src/trajectory-context.ts",
       "spec": "spec/core/traces.md",
       "rules": [
-        "Trace identity and insertion order are unique",
-        "Expiration removes traces only after the TTL boundary",
-        "Stale traces eventually retire under fair purge",
-        "One enrichment request affects only one run"
+        "Recording preserves the insertion position of a replacement in its run",
+        "Expired trace progress follows the observed wall clock"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "d71106b730c6d434b62691c56f52a19767652d1ae36e7d0a2b9c9e1abddaa829",
@@ -4960,10 +4956,8 @@
       "source": "packages/core/src/trajectory-utils.ts",
       "spec": "spec/core/traces.md",
       "rules": [
-        "Trace identity and insertion order are unique",
-        "Expiration removes traces only after the TTL boundary",
-        "Stale traces eventually retire under fair purge",
-        "One enrichment request affects only one run"
+        "Recording preserves the insertion position of a replacement in its run",
+        "Expired trace progress follows the observed wall clock"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "60e94a14a70ac41fb2104a47f52de7ec0e244755e3702bf8e6fbcc6f972503e8",
@@ -6618,8 +6612,8 @@
       "spec": "spec/core/streamMarkable.md",
       "rules": [
         "Bare push echoes its input and the context gates completed delivery",
-        "Field completion and stream flush control callback delivery",
-        "A gate decides once and a held attempt emits no later text",
+        "Field pointers, emitted prefixes and first done values remain independent",
+        "Buffer and gate ownership survive chunk boundaries",
         "Allocation increments and wraps the maximum safe integer to one"
       ],
       "classification": "source-reviewed-domain-model-with-explicit-boundaries",
@@ -6631,7 +6625,9 @@
         "spec/core/streamMarkable.md",
         "spec/core/streamStructured.md",
         "spec/core/streamSkeleton.md",
-        "spec/core/streamRevisions.md"
+        "spec/core/streamRevisions.md",
+        "spec/core/structuredStreamState.md",
+        "spec/core/skeletonStreamState.md"
       ]
     },
     {
@@ -6891,7 +6887,7 @@
       "source": "packages/core/src/voice-cancellation-token.ts",
       "spec": "spec/core/voice.md",
       "rules": [
-        "The first abort reason remains authoritative and listeners settle once"
+        "Reason ownership precedes unlinking and signal abortion follows callbacks"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "a0509f7ae23e663e8150f8ec11d0dc00a95526ba146ec9c05ba61fc3d7c87750",
