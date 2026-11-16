@@ -1,4 +1,6 @@
-import { performance } from "node:perf_hooks"
+// spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/modelDiagnostics.md, "Promise identity governs membership independently of the final outcome"; spec/core/runtimeExtensions.md, "Each registry preserves its own normalization and replacement policy"
+import { Machine, machine } from "../../gen/core__runtimeExtensions.effect.vibe"
+import { asLegacy, Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
 import { copyEmbeddingVectorSpace } from "../embedding-vector-space.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
@@ -20,9 +22,14 @@ import {
   isModelProviderFallbackError,
   isModelProviderRetryBudgetExhaustedError,
 } from "../security/model-failure.vibe"
-import { collectPiiPromptText, type PseudonymSession } from "../security/pii-pseudonymizer.vibe"
+import {
+  collectPiiPromptText,
+  learnPseudonyms,
+  type PseudonymSession,
+  substitutePseudonymsInValue,
+} from "../security/pii-pseudonymizer.vibe"
 import { admitProcessing, type ProcessingPolicy } from "../security/processing-policy.vibe"
-import type { SecretSwapSession } from "../security/secret-swap.vibe"
+import { type SecretSwapSession, substituteSecretsInValue, substituteSecretText } from "../security/secret-swap.vibe"
 import { getModelAttemptLease, getStreamingContext, runInsideModelStreamChunkDelivery } from "../streaming-context.vibe"
 import { getTrajectoryContext } from "../trajectory-context.vibe"
 import {
@@ -43,7 +50,6 @@ import {
   type ModelProviderAttempt,
   type ModelRegistrationInfo,
   type ModelRegistrationMetadata,
-  type ModelResultMap,
   ModelType,
   type ModelTypeName,
   type ResponseSkeleton,
@@ -111,23 +117,26 @@ import {
   omitUnvalidatedProviderSpans,
 } from "./trajectory-provider-attribution.vibe"
 
-function reboundProviderAttributions(
-  trajCtx: NonNullable<ReturnType<typeof getTrajectoryContext>>,
-  messages: unknown[] | undefined,
-  prompt: string,
-) {
-  const rebound = trajCtx.providerAttributionState
-    ? buildProviderAttributionsFromState({
-      state: trajCtx.providerAttributionState,
-      prompt: canonicalPromptForModelCall({ messages, prompt }),
-    })
-    : undefined
-  return {
-    providerOrder: rebound?.providerOrder ?? trajCtx.providerOrder,
-    providerAttributions: rebound?.providerAttributions
-      ?? omitUnvalidatedProviderSpans(trajCtx.providerAttributions),
+module node {
+  import { performance } from "node:perf_hooks"
+
+  /** @throws {never} */
+  export function monotonicNow(): number {
+    return performance.now()
+  }
+
+  /** @throws {never} */
+  export function binaryInputSize(value: unknown): string {
+    if (Buffer.isBuffer(value)) return `${value.length} bytes`
+    if (typeof Blob !== "undefined" && value instanceof Blob) return `${value.size} bytes`
+    if (typeof value === "object" && value !== null && "audio" in value) {
+      if (Buffer.isBuffer(value.audio)) return `${value.audio.length} bytes`
+      if (typeof Blob !== "undefined" && value.audio instanceof Blob) return `${value.audio.size} bytes`
+    }
+    return "unknown size"
   }
 }
+import { binaryInputSize, monotonicNow } from node
 
 export interface RuntimeModelDispatchHost {
   confidentialInference(): ConfidentialInferenceAuthority | undefined
@@ -157,6 +166,94 @@ export interface RuntimeModelDispatchHost {
   _ensureServiceStarted(
     serviceType: ServiceTypeName | string,
   ): Promise<Service | null>
+}
+
+export type ModelCallHandler = (
+  runtime: IAgentRuntime,
+  params: Record<string, JsonValue | object>,
+) => Promise<JsonValue | object>
+
+export interface DispatchCore {
+  readonly runtime: IAgentRuntime
+  readonly host: RuntimeModelDispatchHost
+  readonly resolvedProviders: Machine.Shape
+  readonly diagnostics: FiberSet.FiberSet<void, never>
+}
+
+export interface UseModelTrajectory {
+  modelType: string
+  resolvedModelKey: string
+  provider?: string
+  modelParams: unknown
+  promptContent: string | null | undefined
+  result?: unknown
+  response: string
+  elapsedTime: number
+  providerRecorded: boolean
+}
+
+export interface FailedModelTrajectory {
+  modelType: string
+  resolvedModelKey: string
+  provider?: string
+  modelParams: unknown
+  promptContent: string | null | undefined
+  error: unknown
+  elapsedTime: number
+}
+
+error NoModelHandler { message: string }
+
+function thrownValue(failure: unknown): unknown {
+  return failure instanceof Foreign ? failure.cause : failure
+}
+
+function abortCheck(signal: AbortSignal | undefined) {
+  return foreignSync(() => signal?.throwIfAborted())
+}
+
+function isEmbeddingModel(modelType: string): boolean {
+  return modelType === ModelType.TEXT_EMBEDDING || modelType === ModelType.TEXT_EMBEDDING_BATCH
+}
+
+function trajectoryRoomId(core: DispatchCore): UUID {
+  return (getTrajectoryContext()?.roomId as UUID | undefined)
+    ?? core.host.currentRoomId()
+    ?? core.runtime.agentId
+}
+
+export effect function makeDispatchCore(runtime: IAgentRuntime, host: RuntimeModelDispatchHost) {
+  const diagnostics = try Scope.provide(FiberSet.make<void, never>(), Scope.makeUnsafe())
+  provide machine() {
+    const core: DispatchCore = { runtime, host, resolvedProviders: try Machine, diagnostics }
+    return core
+  }
+}
+
+function trackDiagnostic(core: DispatchCore, write: void!!): void {
+  FiberSet.addUnsafe(core.diagnostics, runFork(write))
+}
+
+export effect function drainDiagnostics(core: DispatchCore) {
+  try FiberSet.awaitEmpty(core.diagnostics)
+}
+
+function reboundProviderAttributions(
+  trajCtx: NonNullable<ReturnType<typeof getTrajectoryContext>>,
+  messages: unknown[] | undefined,
+  prompt: string,
+) {
+  const rebound = trajCtx.providerAttributionState
+    ? buildProviderAttributionsFromState({
+      state: trajCtx.providerAttributionState,
+      prompt: canonicalPromptForModelCall({ messages, prompt }),
+    })
+    : undefined
+  return {
+    providerOrder: rebound?.providerOrder ?? trajCtx.providerOrder,
+    providerAttributions: rebound?.providerAttributions
+      ?? omitUnvalidatedProviderSpans(trajCtx.providerAttributions),
+  }
 }
 
 function getFirstUserPromptFromMessages(messages: unknown): string | undefined {
@@ -215,1990 +312,1865 @@ function trajectoryRequestFields(
   }
 }
 
-export class RuntimeModelDispatch {
-  private readonly pendingDiagnostics = new Set<Promise<void>>()
+export function buildRuntimeSystemPrompt(core: DispatchCore): string | undefined {
+  return (
+    buildCanonicalSystemPrompt({
+      character: core.runtime.character,
+      userRole: getTrajectoryContext()?.userRole,
+    }) || undefined
+  )
+}
 
-  private trackDiagnostic(write: Promise<void>): void {
-    this.pendingDiagnostics.add(write)
-    void write.then(
-      () => this.pendingDiagnostics.delete(write),
-      () => this.pendingDiagnostics.delete(write),
-    )
+function attachEffectiveSystemPrompt(
+  core: DispatchCore,
+  modelKey: string,
+  params: unknown,
+): string | undefined {
+  if (!isTextGenerationModelKey(modelKey) || !isPlainObject(params)) {
+    return undefined
   }
-
-  async drainDiagnostics(): Promise<void> {
-    while (this.pendingDiagnostics.size > 0) {
-      await Promise.allSettled(this.pendingDiagnostics)
-    }
+  const systemPrompt = resolveEffectiveSystemPrompt({
+    params,
+    fallback: buildRuntimeSystemPrompt(core),
+  })
+  if (systemPrompt !== undefined && !Object.hasOwn(params, "system")) {
+    ;(params as Record<string, unknown>).system = systemPrompt
   }
+  return systemPrompt
+}
 
-  constructor(
-    private readonly runtime: IAgentRuntime,
-    private readonly host: RuntimeModelDispatchHost,
-  ) {}
-
-  private readonly lastResolvedModelProviderByType = new Map<string, string>()
-
-  buildRuntimeSystemPrompt(): string | undefined {
-    return (
-      buildCanonicalSystemPrompt({
-        character: this.runtime.character,
-        userRole: getTrajectoryContext()?.userRole,
-      }) || undefined
-    )
-  }
-
-  private attachEffectiveSystemPrompt(
-    modelKey: string,
-    params: unknown,
-  ): string | undefined {
-    if (!isTextGenerationModelKey(modelKey) || !isPlainObject(params)) {
-      return undefined
-    }
-    const systemPrompt = resolveEffectiveSystemPrompt({
-      params,
-      fallback: this.buildRuntimeSystemPrompt(),
-    })
-    if (systemPrompt !== undefined && !Object.hasOwn(params, "system")) {
-      ;(params as Record<string, unknown>).system = systemPrompt
-    }
-    return systemPrompt
-  }
-
-  registerModel(
-    modelType: ModelTypeName | string,
-    handler: (
-      runtime: IAgentRuntime,
-      params: Record<string, JsonValue | object>,
-    ) => Promise<JsonValue | object>,
-    provider: string,
-    priority?: number,
-    metadata?: ModelRegistrationMetadata,
-  ): void {
-    const modelKey = String(modelType)
-    if (this.isCanonicalModelCapabilityDisabled(modelKey)) {
-      this.runtime.logger.debug(
-        {
-          src: "agent",
-          agentId: this.runtime.agentId,
-          modelType: modelKey,
-          provider,
-        },
-        "Ignoring model registration for a capability omitted from canonical service routing",
-      )
-      return
-    }
-    const models = this.host.models()
-    let modelsArray = models.get(modelKey)
-    if (!modelsArray) {
-      modelsArray = []
-      models.set(modelKey, modelsArray)
-    }
-    modelsArray.push({
-      handler,
-      metadata,
-      provider,
-      priority: priority || 0,
-      registrationOrder: Date.now(),
-    })
-    modelsArray.sort(
-      (a, b) =>
-        (b.priority || 0) - (a.priority || 0)
-        || (a.registrationOrder || 0) - (b.registrationOrder || 0),
-    )
-
-    void this.runtime
-      .emitEvent(EventType.MODEL_REGISTERED, {
-        runtime: this.runtime,
-        source: "runtime",
-        modelType: modelKey,
-        metadata,
-        provider,
-        priority: priority || 0,
-      })
-      .catch((error: unknown) => {
-        this.runtime.reportError("AgentRuntime.registerModel", error, {
-          agentId: this.runtime.agentId,
-          modelType: modelKey,
-          provider,
-        })
-      })
-  }
-
-  getModelRegistrations(): ModelRegistrationInfo[] {
-    const out: ModelRegistrationInfo[] = []
-    for (const [modelType, handlers] of this.host.models()) {
-      for (const h of handlers) {
-        out.push({
-          modelType,
-          metadata: h.metadata,
-          provider: h.provider,
-          priority: h.priority || 0,
-          registrationOrder: h.registrationOrder || 0,
-        })
-      }
-    }
-    return out
-  }
-
-  noteResolvedModelProvider(
-    modelTypeKey: string,
-    provider: string | undefined,
-  ): void {
-    if (typeof provider === "string" && provider.trim().length > 0) {
-      this.lastResolvedModelProviderByType.set(modelTypeKey, provider)
-    }
-  }
-
-  getLastResolvedModelProvider(
-    modelType: ModelTypeName | string,
-  ): string | undefined {
-    return this.lastResolvedModelProviderByType.get(String(modelType))
-  }
-
-  resolveTextProviderOverride(): string | undefined {
-    const raw = this.runtime.getSetting("ELIZA_BRAIN_PROVIDER")
-    return (typeof raw === "string" ? raw.trim() : "") || undefined
-  }
-
-  isCanonicalModelCapabilityDisabled(modelType: string): boolean {
-    return isCanonicalModelCapabilityDisabled(this.runtime, modelType)
-  }
-
-  assertCanonicalModelCapabilityEnabled(modelType: string): void {
-    if (!this.isCanonicalModelCapabilityDisabled(modelType)) return
-    const capability = isTextGenerationModelKey(modelType)
-      ? "llmText"
-      : "embeddings"
-    throw new NoModelProviderConfiguredError(
-      `Canonical service routing does not configure the ${capability} capability. Add serviceRouting.${capability} before requesting ${modelType}.`,
-      "capability-disabled",
-    )
-  }
-
-  resolveModelRegistration(
-    modelType: ModelTypeName | string,
-    provider?: string,
-  ): ResolvedModelRegistration | undefined {
-    return this.resolveModelRegistrations(modelType, provider)[0]
-  }
-
-  resolveModelRegistrations(
-    modelType: ModelTypeName | string,
-    provider?: string,
-  ): ResolvedModelRegistration[] {
-    const requestedModelKey = String(modelType)
-    if (this.isCanonicalModelCapabilityDisabled(requestedModelKey)) {
-      return []
-    }
-    const resolvedModels: ResolvedModelRegistration[] = []
-
-    for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
-      const models = this.host.models().get(candidateKey)
-      if (!models?.length) {
-        continue
-      }
-
-      const modelWithProvider = provider && models.find((model) => model.provider === provider)
-      const candidateModels = provider
-        ? modelWithProvider
-          ? [modelWithProvider]
-          : []
-        : models
-
-      for (const resolvedModel of candidateModels) {
-        if (candidateKey !== requestedModelKey) {
-          this.runtime.logger.debug(
-            {
-              src: "agent",
-              agentId: this.runtime.agentId,
-              requestedModel: requestedModelKey,
-              resolvedModel: candidateKey,
-              provider: resolvedModel.provider,
-            },
-            "Model fallback applied",
-          )
-        }
-
-        resolvedModels.push({
-          handler: resolvedModel.handler,
-          metadata: resolvedModel.metadata,
-          modelKey: candidateKey,
-          provider: resolvedModel.provider,
-        })
-      }
-
-      if (provider && candidateModels.length > 0) {
-        break
-      }
-    }
-
-    return resolvedModels
-  }
-
-  logModelProviderFailover(args: {
-    requestedModelKey: string
-    failedModel: ResolvedModelRegistration
-    nextModel: ResolvedModelRegistration
-    error: unknown
-  }): void {
-    this.runtime.logger.warn(
+export function registerModel(
+  core: DispatchCore,
+  modelType: ModelTypeName | string,
+  handler: ModelCallHandler,
+  provider: string,
+  priority?: number,
+  metadata?: ModelRegistrationMetadata,
+): void {
+  const modelKey = String(modelType)
+  if (isCanonicalModelCapabilityDisabled(core.runtime, modelKey)) {
+    core.runtime.logger.debug(
       {
         src: "agent",
-        agentId: this.runtime.agentId,
-        requestedModel: args.requestedModelKey,
-        failedModel: args.failedModel.modelKey,
-        failedProvider: args.failedModel.provider,
-        nextModel: args.nextModel.modelKey,
-        nextProvider: args.nextModel.provider,
-        error: args.error instanceof Error ? args.error.message : String(args.error),
+        agentId: core.runtime.agentId,
+        modelType: modelKey,
+        provider,
       },
-      "Model provider failed; trying next registered provider",
+      "Ignoring model registration for a capability omitted from canonical service routing",
     )
+    return
   }
-
-  shouldFailOverModelProvider(error: unknown, modelType: string): boolean {
-    return isModelProviderFallbackError(error, modelType)
+  const models = core.host.models()
+  let modelsArray = models.get(modelKey)
+  if (!modelsArray) {
+    modelsArray = []
+    models.set(modelKey, modelsArray)
   }
+  modelsArray.push({
+    handler,
+    metadata,
+    provider,
+    priority: priority || 0,
+    registrationOrder: Date.now(),
+  })
+  modelsArray.sort(
+    (a, b) =>
+      (b.priority || 0) - (a.priority || 0)
+      || (a.registrationOrder || 0) - (b.registrationOrder || 0),
+  )
+  const pending = core.runtime.emitEvent(EventType.MODEL_REGISTERED, {
+    runtime: core.runtime,
+    source: "runtime",
+    modelType: modelKey,
+    metadata,
+    provider,
+    priority: priority || 0,
+  })
+  runFork(announceModel(core, pending, modelKey, provider))
+}
 
-  throwNoModelHandler(
-    requestedModelKey: string,
-    pinnedProvider?: string,
-  ): never {
-    if (isTextGenerationModelKey(requestedModelKey)) {
-      const hasAnyTextHandler = TEXT_GENERATION_MODEL_KEYS.some((key) => {
-        const handlers = this.host.models().get(key)
-        return Array.isArray(handlers) && handlers.length > 0
+effect function announceModel(core: DispatchCore, pending: Promise<void>, modelKey: string, provider: string) {
+  foreign(() => pending) catch (failure) => {
+    core.runtime.reportError("AgentRuntime.registerModel", failure.cause, {
+      agentId: core.runtime.agentId,
+      modelType: modelKey,
+      provider,
+    })
+  }
+}
+
+export function getModelRegistrations(core: DispatchCore): ModelRegistrationInfo[] {
+  const out: ModelRegistrationInfo[] = []
+  for (const [modelType, handlers] of core.host.models()) {
+    for (const h of handlers) {
+      out.push({
+        modelType,
+        metadata: h.metadata,
+        provider: h.provider,
+        priority: h.priority || 0,
+        registrationOrder: h.registrationOrder || 0,
       })
-      if (!hasAnyTextHandler) {
-        throw new NoModelProviderConfiguredError()
-      }
     }
-    if (pinnedProvider !== undefined) {
-      throw new ElizaError(
-        `The selected model provider "${pinnedProvider}" has no ${requestedModelKey} handler. Load its plugin or clear ELIZA_BRAIN_PROVIDER.`,
-        {
-          code: "MODEL_PROVIDER_PIN_UNAVAILABLE",
-          context: {
-            provider: pinnedProvider,
-            modelType: requestedModelKey,
-            setting: "ELIZA_BRAIN_PROVIDER",
+  }
+  return out
+}
+
+export effect function noteResolvedModelProvider(
+  core: DispatchCore,
+  modelTypeKey: string,
+  provider: string | undefined,
+) {
+  if (typeof provider !== "string" || provider.trim().length === 0) return
+  try orDie(core.resolvedProviders.send({
+    type: "noteResolvedProvider",
+    modelType: modelTypeKey,
+    provider,
+    nonblank: true,
+  }))
+}
+
+export effect function getLastResolvedModelProvider(core: DispatchCore, modelType: ModelTypeName | string) {
+  const modelKey = String(modelType)
+  return (try core.resolvedProviders.get()).providers.find((entry) => entry.modelType === modelKey)?.name
+}
+
+export function resolveTextProviderOverride(core: DispatchCore): string | undefined {
+  const raw = core.runtime.getSetting("ELIZA_BRAIN_PROVIDER")
+  return (typeof raw === "string" ? raw.trim() : "") || undefined
+}
+
+export effect function assertCanonicalModelCapabilityEnabled(core: DispatchCore, modelType: string) {
+  if (!isCanonicalModelCapabilityDisabled(core.runtime, modelType)) return
+  const capability = isTextGenerationModelKey(modelType)
+    ? "llmText"
+    : "embeddings"
+  throw new NoModelProviderConfiguredError(
+    `Canonical service routing does not configure the ${capability} capability. Add serviceRouting.${capability} before requesting ${modelType}.`,
+    "capability-disabled",
+  )
+}
+
+export function resolveModelRegistrations(
+  core: DispatchCore,
+  modelType: ModelTypeName | string,
+  provider?: string,
+): ResolvedModelRegistration[] {
+  const requestedModelKey = String(modelType)
+  if (isCanonicalModelCapabilityDisabled(core.runtime, requestedModelKey)) {
+    return []
+  }
+  const resolvedModels: ResolvedModelRegistration[] = []
+  for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
+    const models = core.host.models().get(candidateKey)
+    if (!models?.length) {
+      continue
+    }
+    const modelWithProvider = provider && models.find((model) => model.provider === provider)
+    const candidateModels = provider
+      ? modelWithProvider
+        ? [modelWithProvider]
+        : []
+      : models
+    for (const resolvedModel of candidateModels) {
+      if (candidateKey !== requestedModelKey) {
+        core.runtime.logger.debug(
+          {
+            src: "agent",
+            agentId: core.runtime.agentId,
+            requestedModel: requestedModelKey,
+            resolvedModel: candidateKey,
+            provider: resolvedModel.provider,
           },
-        },
-      )
+          "Model fallback applied",
+        )
+      }
+      resolvedModels.push({
+        handler: resolvedModel.handler,
+        metadata: resolvedModel.metadata,
+        modelKey: candidateKey,
+        provider: resolvedModel.provider,
+      })
     }
-    throw new Error(`No handler found for delegate type: ${requestedModelKey}`)
+    if (provider && candidateModels.length > 0) {
+      break
+    }
   }
+  return resolvedModels
+}
 
-  rethrowModelFailoverError(
-    error: unknown,
-    failed?: { modelKey: string; provider: string },
-  ): never {
-    if (error instanceof Error && error.message.trim().length > 0) {
-      throw error
-    }
-    const detail = describeModelCallError(error)
-    const provider = failed?.provider ?? "unknown"
-    throw new ElizaError(`Model provider "${provider}" failed: ${detail}`, {
-      code: "MODEL_PROVIDER_FAILED",
-      cause: error,
-      context: { provider: failed?.provider, modelKey: failed?.modelKey },
-      severity: "ephemeral",
+export function logModelProviderFailover(core: DispatchCore, args: {
+  requestedModelKey: string
+  failedModel: ResolvedModelRegistration
+  nextModel: ResolvedModelRegistration
+  error: unknown
+}): void {
+  core.runtime.logger.warn(
+    {
+      src: "agent",
+      agentId: core.runtime.agentId,
+      requestedModel: args.requestedModelKey,
+      failedModel: args.failedModel.modelKey,
+      failedProvider: args.failedModel.provider,
+      nextModel: args.nextModel.modelKey,
+      nextProvider: args.nextModel.provider,
+      error: args.error instanceof Error ? args.error.message : String(args.error),
+    },
+    "Model provider failed; trying next registered provider",
+  )
+}
+
+effect function noModelHandler(requestedModelKey: string): never!Error {
+  return try asLegacy(Error, fail(new NoModelHandler({ message: `No handler found for delegate type: ${requestedModelKey}` })))
+}
+
+export effect function throwNoModelHandler(
+  core: DispatchCore,
+  requestedModelKey: string,
+  pinnedProvider?: string,
+): never!(Error | ElizaError) {
+  if (isTextGenerationModelKey(requestedModelKey)) {
+    const hasAnyTextHandler = TEXT_GENERATION_MODEL_KEYS.some((key) => {
+      const handlers = core.host.models().get(key)
+      return Array.isArray(handlers) && handlers.length > 0
     })
+    if (!hasAnyTextHandler) {
+      throw new NoModelProviderConfiguredError()
+    }
   }
-
-  getModel(
-    modelType: ModelTypeName | string,
-  ):
-    | ((
-      runtime: IAgentRuntime,
-      params: Record<string, JsonValue | object>,
-    ) => Promise<JsonValue | object>)
-    | undefined
-  {
-    const requestedModelKey = String(modelType)
-
-    const requestedProvider = (requestedModelKey === ModelType.TEXT_EMBEDDING
-        || requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH)
-        && this.host.pinnedEmbeddingProvider() !== undefined
-      ? this.host.pinnedEmbeddingProvider()
-      : undefined
-    const resolvedModel = this.resolveModelRegistration(
-      requestedModelKey,
-      requestedProvider,
-    )
-    if (!resolvedModel) {
-      return undefined
-    }
-
-    return resolvedModel.handler
-  }
-
-  getModelSettings(modelType?: ModelTypeName): Record<string, number> | null {
-    const modelSettings: Record<string, number> = {}
-
-    const getSettingWithFallback = (
-      param:
-        | "MAX_TOKENS"
-        | "TEMPERATURE"
-        | "TOP_P"
-        | "TOP_K"
-        | "MIN_P"
-        | "SEED"
-        | "REPETITION_PENALTY"
-        | "FREQUENCY_PENALTY"
-        | "PRESENCE_PENALTY",
-    ): number | null => {
-      if (modelType) {
-        const modelSpecificKey = `${modelType}_${param}`
-        const modelValue = this.runtime.getSetting(modelSpecificKey)
-        if (modelValue !== null && modelValue !== undefined) {
-          const numValue = Number(modelValue)
-          if (!Number.isNaN(numValue)) {
-            return numValue
-          }
-        }
-      }
-
-      const defaultKey = `DEFAULT_${param}`
-      const defaultValue = this.runtime.getSetting(defaultKey)
-      if (defaultValue !== null && defaultValue !== undefined) {
-        const numValue = Number(defaultValue)
-        if (!Number.isNaN(numValue)) {
-          return numValue
-        }
-      }
-
-      return null
-    }
-
-    const maxTokens = getSettingWithFallback("MAX_TOKENS")
-    const temperature = getSettingWithFallback("TEMPERATURE")
-    const topP = getSettingWithFallback("TOP_P")
-    const topK = getSettingWithFallback("TOP_K")
-    const minP = getSettingWithFallback("MIN_P")
-    const seed = getSettingWithFallback("SEED")
-    const repetitionPenalty = getSettingWithFallback("REPETITION_PENALTY")
-    const frequencyPenalty = getSettingWithFallback("FREQUENCY_PENALTY")
-    const presencePenalty = getSettingWithFallback("PRESENCE_PENALTY")
-
-    if (maxTokens !== null) modelSettings.maxTokens = maxTokens
-    if (temperature !== null) modelSettings.temperature = temperature
-    if (topP !== null) modelSettings.topP = topP
-    if (topK !== null) modelSettings.topK = topK
-    if (minP !== null) modelSettings.minP = minP
-    if (seed !== null) modelSettings.seed = seed
-    if (repetitionPenalty !== null) {
-      modelSettings.repetitionPenalty = repetitionPenalty
-    }
-    if (frequencyPenalty !== null) {
-      modelSettings.frequencyPenalty = frequencyPenalty
-    }
-    if (presencePenalty !== null) {
-      modelSettings.presencePenalty = presencePenalty
-    }
-
-    return Object.keys(modelSettings).length > 0 ? modelSettings : null
-  }
-
-  resolveRegistrationModelName(
-    metadata: ModelRegistrationMetadata | undefined,
-  ): string | undefined {
-    if (!metadata) return undefined
-    if (
-      typeof metadata.displayModel === "string"
-      && metadata.displayModel.trim()
-    ) {
-      return metadata.displayModel.trim()
-    }
-    for (
-      const setting of [
-        ...(metadata.displayModelSettings ?? []),
-        metadata.displayModelSetting,
-      ]
-    ) {
-      if (!setting) continue
-      const value = resolveSetting(
-        { getSetting: (key: string) => this.runtime.getSetting(key) },
-        setting,
-      )
-      if (value?.trim()) return value.trim()
-    }
-    if (
-      typeof metadata.displayModelDefault === "string"
-      && metadata.displayModelDefault.trim()
-    ) {
-      return metadata.displayModelDefault.trim()
-    }
-    return undefined
-  }
-
-  buildFinalModelInputBudget(
-    params: unknown,
-    metadata: ModelRegistrationMetadata | undefined,
-  ) {
-    const record = isPlainObject(params)
-      ? (params as Record<string, unknown>)
-      : {}
-    const requestedModelName = typeof record.model === "string" && record.model.trim()
-      ? record.model.trim()
-      : undefined
-
-    const limitsMatchModel = requestedModelName === undefined
-      || requestedModelName === this.resolveRegistrationModelName(metadata)
-    const contextWindowTokens = limitsMatchModel
-        && typeof metadata?.contextWindowTokens === "number"
-        && Number.isFinite(metadata.contextWindowTokens)
-      ? Math.max(1, Math.floor(metadata.contextWindowTokens))
-      : undefined
-    const requestedOutputTokens = typeof record.maxTokens === "number"
-        && Number.isFinite(record.maxTokens)
-        && record.maxTokens > 0
-      ? Math.floor(record.maxTokens)
-      : limitsMatchModel
-          && typeof metadata?.maxOutputTokens === "number"
-          && Number.isFinite(metadata.maxOutputTokens)
-          && metadata.maxOutputTokens > 0
-      ? Math.floor(metadata.maxOutputTokens)
-      : 0
-    return buildModelInputBudget({
-      completeRequest: params,
-      messages: Array.isArray(record.messages)
-        ? (record.messages as GenerateTextParams["messages"])
-        : undefined,
-      promptSegments: Array.isArray(record.promptSegments)
-        ? (record.promptSegments as GenerateTextParams["promptSegments"])
-        : undefined,
-      tools: Array.isArray(record.tools)
-        ? (record.tools as GenerateTextParams["tools"])
-        : undefined,
-      system: record.system,
-      prompt: record.prompt,
-      input: record.input,
-      responseSchema: record.responseSchema,
-      responseFormat: record.responseFormat,
-      grammar: record.grammar,
-      responseSkeleton: record.responseSkeleton,
-      prefill: record.prefill,
-      modelName: requestedModelName
-        ?? (contextWindowTokens === undefined
-          ? this.resolveRegistrationModelName(metadata)
-          : undefined),
-      ...(contextWindowTokens ? { contextWindowTokens } : {}),
-      reserveTokens: Math.max(
-        DEFAULT_INPUT_RESERVE_TOKENS,
-        requestedOutputTokens,
-      ),
-      estimationMode: "utf8-upper-bound",
-    })
-  }
-
-  attachFinalModelInputBudget(
-    record: Record<string, unknown>,
-    metadata: ModelRegistrationMetadata | undefined,
-  ): ModelInputBudget {
-    const providerOptions = isPlainObject(record.providerOptions)
-      ? (record.providerOptions as Record<string, unknown>)
-      : {}
-    const attach = (budget: ModelInputBudget) => {
-      Object.assign(
-        providerOptions,
-        withModelInputBudgetProviderOptions(providerOptions, budget),
-      )
-      record.providerOptions = providerOptions
-    }
-    const placeholder: ModelInputBudget = {
-      estimatedInputTokens: 0,
-      contextWindowTokens: 0,
-      reserveTokens: 0,
-      dispatchThresholdTokens: 0,
-      estimationMode: "utf8-upper-bound",
-    }
-    attach(placeholder)
-    const measured = this.buildFinalModelInputBudget(record, metadata)
-    const utf8Length = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
-    const base = measured.estimatedInputTokens - utf8Length(placeholder)
-    let budget = measured
-    for (let pass = 0; pass < 4; pass += 1) {
-      const next = base + utf8Length(budget)
-      if (next === budget.estimatedInputTokens) {
-        attach(budget)
-        return budget
-      }
-      budget = { ...measured, estimatedInputTokens: next }
-    }
+  if (pinnedProvider !== undefined) {
     throw new ElizaError(
-      "Final model-input budget metadata did not stabilize",
-      { code: "MODEL_INPUT_BUDGET_UNSTABLE" },
+      `The selected model provider "${pinnedProvider}" has no ${requestedModelKey} handler. Load its plugin or clear ELIZA_BRAIN_PROVIDER.`,
+      {
+        code: "MODEL_PROVIDER_PIN_UNAVAILABLE",
+        context: {
+          provider: pinnedProvider,
+          modelType: requestedModelKey,
+          setting: "ELIZA_BRAIN_PROVIDER",
+        },
+      },
     )
   }
+  return try noModelHandler(requestedModelKey)
+}
 
-  cloneModelRequestGraph<T>(value: T): T {
-    const seen = new WeakMap<object, unknown>()
-    const clone = (candidate: unknown): unknown => {
-      if (candidate === null || typeof candidate !== "object") return candidate
-      const existing = seen.get(candidate)
-      if (existing !== undefined) return existing
-      if (Array.isArray(candidate)) {
-        const result: unknown[] = []
-        seen.set(candidate, result)
-        for (const item of candidate) result.push(clone(item))
-        return result
-      }
+export effect function rethrowModelFailoverError(
+  error: unknown,
+  failed?: { modelKey: string; provider: string },
+): never!(Foreign | ElizaError) {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    throw new Foreign({ cause: error })
+  }
+  const detail = describeModelCallError(error)
+  const provider = failed?.provider ?? "unknown"
+  throw new ElizaError(`Model provider "${provider}" failed: ${detail}`, {
+    code: "MODEL_PROVIDER_FAILED",
+    cause: error,
+    context: { provider: failed?.provider, modelKey: failed?.modelKey },
+    severity: "ephemeral",
+  })
+}
 
-      try {
-        if (!isPlainObject(candidate)) return candidate
-      } catch {
-        return candidate
-      }
-      const result: Record<string, unknown> = {}
+export function getModel(core: DispatchCore, modelType: ModelTypeName | string): ModelCallHandler | undefined {
+  const requestedModelKey = String(modelType)
+  const requestedProvider = isEmbeddingModel(requestedModelKey) && core.host.pinnedEmbeddingProvider() !== undefined
+    ? core.host.pinnedEmbeddingProvider()
+    : undefined
+  return resolveModelRegistrations(core, requestedModelKey, requestedProvider)[0]?.handler
+}
+
+const MODEL_SETTING_FIELDS = [
+  ["MAX_TOKENS", "maxTokens"],
+  ["TEMPERATURE", "temperature"],
+  ["TOP_P", "topP"],
+  ["TOP_K", "topK"],
+  ["MIN_P", "minP"],
+  ["SEED", "seed"],
+  ["REPETITION_PENALTY", "repetitionPenalty"],
+  ["FREQUENCY_PENALTY", "frequencyPenalty"],
+  ["PRESENCE_PENALTY", "presencePenalty"],
+] as const
+
+function numericSetting(core: DispatchCore, key: string): number | null {
+  const value = core.runtime.getSetting(key)
+  if (value === null || value === undefined) return null
+  const numValue = Number(value)
+  return Number.isNaN(numValue) ? null : numValue
+}
+
+export function getModelSettings(core: DispatchCore, modelType?: string): Record<string, number> | null {
+  const modelSettings: Record<string, number> = {}
+  for (const [param, field] of MODEL_SETTING_FIELDS) {
+    const value = (modelType ? numericSetting(core, `${modelType}_${param}`) : null)
+      ?? numericSetting(core, `DEFAULT_${param}`)
+    if (value !== null) modelSettings[field] = value
+  }
+  return Object.keys(modelSettings).length > 0 ? modelSettings : null
+}
+
+export function resolveRegistrationModelName(
+  core: DispatchCore,
+  metadata: ModelRegistrationMetadata | undefined,
+): string | undefined {
+  if (!metadata) return undefined
+  if (
+    typeof metadata.displayModel === "string"
+    && metadata.displayModel.trim()
+  ) {
+    return metadata.displayModel.trim()
+  }
+  for (
+    const setting of [
+      ...(metadata.displayModelSettings ?? []),
+      metadata.displayModelSetting,
+    ]
+  ) {
+    if (!setting) continue
+    const value = resolveSetting(
+      { getSetting: (key: string) => core.runtime.getSetting(key) },
+      setting,
+    )
+    if (value?.trim()) return value.trim()
+  }
+  if (
+    typeof metadata.displayModelDefault === "string"
+    && metadata.displayModelDefault.trim()
+  ) {
+    return metadata.displayModelDefault.trim()
+  }
+  return undefined
+}
+
+export effect function buildFinalModelInputBudget(
+  core: DispatchCore,
+  params: unknown,
+  metadata: ModelRegistrationMetadata | undefined,
+) {
+  const record = isPlainObject(params)
+    ? (params as Record<string, unknown>)
+    : {}
+  const requestedModelName = typeof record.model === "string" && record.model.trim()
+    ? record.model.trim()
+    : undefined
+  const limitsMatchModel = requestedModelName === undefined
+    || requestedModelName === resolveRegistrationModelName(core, metadata)
+  const contextWindowTokens = limitsMatchModel
+      && typeof metadata?.contextWindowTokens === "number"
+      && Number.isFinite(metadata.contextWindowTokens)
+    ? Math.max(1, Math.floor(metadata.contextWindowTokens))
+    : undefined
+  const requestedOutputTokens = typeof record.maxTokens === "number"
+      && Number.isFinite(record.maxTokens)
+      && record.maxTokens > 0
+    ? Math.floor(record.maxTokens)
+    : limitsMatchModel
+        && typeof metadata?.maxOutputTokens === "number"
+        && Number.isFinite(metadata.maxOutputTokens)
+        && metadata.maxOutputTokens > 0
+    ? Math.floor(metadata.maxOutputTokens)
+    : 0
+  return try buildModelInputBudget({
+    completeRequest: params,
+    messages: Array.isArray(record.messages)
+      ? (record.messages as GenerateTextParams["messages"])
+      : undefined,
+    promptSegments: Array.isArray(record.promptSegments)
+      ? (record.promptSegments as GenerateTextParams["promptSegments"])
+      : undefined,
+    tools: Array.isArray(record.tools)
+      ? (record.tools as GenerateTextParams["tools"])
+      : undefined,
+    system: record.system,
+    prompt: record.prompt,
+    input: record.input,
+    responseSchema: record.responseSchema,
+    responseFormat: record.responseFormat,
+    grammar: record.grammar,
+    responseSkeleton: record.responseSkeleton,
+    prefill: record.prefill,
+    modelName: requestedModelName
+      ?? (contextWindowTokens === undefined
+        ? resolveRegistrationModelName(core, metadata)
+        : undefined),
+    ...(contextWindowTokens ? { contextWindowTokens } : {}),
+    reserveTokens: Math.max(
+      DEFAULT_INPUT_RESERVE_TOKENS,
+      requestedOutputTokens,
+    ),
+    estimationMode: "utf8-upper-bound",
+  })
+}
+
+export effect function attachFinalModelInputBudget(
+  core: DispatchCore,
+  record: Record<string, unknown>,
+  metadata: ModelRegistrationMetadata | undefined,
+) {
+  const providerOptions = isPlainObject(record.providerOptions)
+    ? (record.providerOptions as Record<string, unknown>)
+    : {}
+  const attach = (budget: ModelInputBudget) => {
+    Object.assign(
+      providerOptions,
+      withModelInputBudgetProviderOptions(providerOptions, budget),
+    )
+    record.providerOptions = providerOptions
+  }
+  const utf8Length = (value: unknown) => Effect.try({ try: () => new TextEncoder().encode(JSON.stringify(value)).byteLength, catch: (cause) => new Foreign({ cause }) })
+  const placeholder: ModelInputBudget = {
+    estimatedInputTokens: 0,
+    contextWindowTokens: 0,
+    reserveTokens: 0,
+    dispatchThresholdTokens: 0,
+    estimationMode: "utf8-upper-bound",
+  }
+  attach(placeholder)
+  const measured = try buildFinalModelInputBudget(core, record, metadata)
+  const base = measured.estimatedInputTokens - (try utf8Length(placeholder))
+  let budget = measured
+  for (let pass = 0; pass < 4; pass += 1) {
+    const next = base + (try utf8Length(budget))
+    if (next === budget.estimatedInputTokens) {
+      attach(budget)
+      return budget
+    }
+    budget = { ...measured, estimatedInputTokens: next }
+  }
+  throw new ElizaError(
+    "Final model-input budget metadata did not stabilize",
+    { code: "MODEL_INPUT_BUDGET_UNSTABLE" },
+  )
+}
+
+export function cloneModelRequestGraph<T>(value: T): T {
+  const seen = new WeakMap<object, unknown>()
+  const clone = (candidate: unknown): unknown => {
+    if (candidate === null || typeof candidate !== "object") return candidate
+    const existing = seen.get(candidate)
+    if (existing !== undefined) return existing
+    if (Array.isArray(candidate)) {
+      const result: unknown[] = []
       seen.set(candidate, result)
-      for (const [key, nested] of Object.entries(candidate)) {
-        result[key] = clone(nested)
-      }
+      for (const item of candidate) result.push(clone(item))
       return result
     }
-    return clone(value) as T
-  }
-
-  freezeAdmittedModelRequest(value: unknown): void {
-    const seen = new WeakSet<object>()
-    const visit = (candidate: unknown): void => {
-      if (
-        candidate === null
-        || (typeof candidate !== "object" && typeof candidate !== "function")
-        || seen.has(candidate as object)
-      ) {
-        return
-      }
-      if (!Array.isArray(candidate) && !isPlainObject(candidate)) return
-      seen.add(candidate as object)
-      for (
-        const nested of Object.values(
-          candidate as Record<string, unknown>,
-        )
-      ) {
-        visit(nested)
-      }
-      Object.freeze(candidate)
-    }
-    visit(value)
-  }
-
-  logModelCall(
-    modelType: string,
-    modelKey: string,
-    promptContent: string | null,
-    systemPrompt: string | undefined,
-    elapsedTime: number,
-    provider: string | undefined,
-    response: unknown,
-  ): void {
-    const resolvedProvider = provider || this.host.models().get(modelKey)?.[0]?.provider || "unknown"
-
-    const spanMeta: InferenceTimingMeta = {
-      modelKey,
-      provider: resolvedProvider,
-      outcome: "success",
-    }
-    const reasoningTokens = readReasoningTokensFromResponse(response)
-    if (reasoningTokens !== undefined) {
-      spanMeta.reasoningTokens = reasoningTokens
-    }
-    recordInferenceSpan(`model:${modelType}`, elapsedTime, spanMeta)
-    if (modelType !== ModelType.TEXT_EMBEDDING) {
-      setInferenceModelProvider(resolvedProvider)
-    }
-
-    const responseValue = Array.isArray(response) && response.every((x) => typeof x === "number")
-      ? "[array]"
-      : typeof response === "string"
-      ? response
-      : undefined
-    const trajectoryContext = getTrajectoryContext()
-    const logRoomId = (trajectoryContext?.roomId as UUID | undefined)
-      ?? this.host.currentRoomId()
-      ?? this.runtime.agentId
-    this.trackDiagnostic(
-      this.runtime.adapter
-        .createLogs([
-          {
-            entityId: this.runtime.agentId,
-            roomId: logRoomId,
-            body: {
-              modelType,
-              modelKey,
-              prompt: promptContent ?? undefined,
-              systemPrompt,
-              runId: this.runtime.getCurrentRunId(),
-              timestamp: Date.now(),
-              executionTime: elapsedTime,
-              provider: resolvedProvider,
-              response: responseValue,
-            },
-            type: `useModel:${modelKey}`,
-          },
-        ])
-        .catch((error) => {
-          this.runtime.logger.debug(
-            {
-              src: "agent",
-              agentId: this.runtime.agentId,
-              model: modelKey,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Model call log write failed",
-          )
-          this.runtime.reportError("AgentRuntime.modelCallLog", error, {
-            model: modelKey,
-            diagnosticOnly: true,
-          })
-        }),
-    )
-  }
-
-  private resolveDispatchRegistrations(
-    modelType: keyof ModelParamsMap,
-    provider?: string,
-  ) {
-    const callerModelKey = String(modelType)
-    let requestedModelKey = callerModelKey
-
-    const llmMode = this.runtime.getLLMMode()
-    if (llmMode !== "DEFAULT") {
-      if (LLM_MODE_OVERRIDE_MODEL_TYPES.has(requestedModelKey)) {
-        const overrideModelKey = llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE
-        if (requestedModelKey !== overrideModelKey) {
-          this.runtime.logger.debug(
-            {
-              src: "agent",
-              agentId: this.runtime.agentId,
-              originalModel: requestedModelKey,
-              overrideModel: overrideModelKey,
-              llmMode,
-            },
-            "LLM mode override applied",
-          )
-          requestedModelKey = overrideModelKey as typeof requestedModelKey
-        }
-      }
-    }
-
-    const requestedProvider = provider === undefined
-        && (requestedModelKey === ModelType.TEXT_EMBEDDING
-          || requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH)
-        && this.host.pinnedEmbeddingProvider() !== undefined
-      ? this.host.pinnedEmbeddingProvider()
-      : provider
-
-    const providerOverride = provider === undefined && isTextGenerationModelKey(requestedModelKey)
-      ? this.resolveTextProviderOverride()
-      : undefined
-    const resolvedModels = this.resolveModelRegistrations(
-      requestedModelKey,
-      providerOverride ?? requestedProvider,
-    )
-    if (resolvedModels.length === 0) {
-      this.throwNoModelHandler(requestedModelKey, providerOverride)
-    }
-
-    return {
-      callerModelKey,
-      requestedModelKey,
-      requestedProvider,
-      resolvedModels,
-    }
-  }
-
-  private routeActionModel<T extends keyof ModelParamsMap, R>(
-    modelType: T,
-    params: ModelParamsMap[T],
-    provider: string | undefined,
-  ): Promise<R> | undefined {
-    const actionRoutingCtx = getActionRoutingContext()
-    if (actionRoutingCtx?.modelClass !== undefined && provider === undefined) {
-      const strategy = maybeReroute(
-        actionRoutingCtx.modelClass,
-        String(modelType),
-      )
-      if (strategy) {
-        const resolvedChain = resolveChain(strategy, (key) => this.host.models().get(key))
-        if (resolvedChain.length > 0) {
-          this.runtime.logger.debug(
-            {
-              src: "agent",
-              agentId: this.runtime.agentId,
-              action: actionRoutingCtx.actionName,
-              modelClass: actionRoutingCtx.modelClass,
-              requestedModelType: String(modelType),
-              chain: resolvedChain.map((r) => ({
-                modelType: r.modelType,
-                provider: r.provider,
-              })),
-            },
-            "Per-action model routing applied",
-          )
-
-          const nestedCtx = { ...actionRoutingCtx, modelClass: undefined }
-          return executeChainWithFallback(
-            resolvedChain,
-            strategy.confidenceThreshold,
-            async (resolved) =>
-              runWithActionRoutingContext(nestedCtx, () =>
-                this.useModel<T, R>(
-                  resolved.modelType as T,
-                  params,
-                  resolved.provider,
-                )),
-          )
-        }
-        if (strategy.requireChainMatch) {
-          return Promise.reject(
-            new ElizaError(
-              `No ${actionRoutingCtx.modelClass} model handler is registered for action ${actionRoutingCtx.actionName}`,
-              { code: "ACTION_MODEL_CLASS_UNAVAILABLE" },
-            ),
-          )
-        }
-        this.runtime.logger.debug(
-          {
-            src: "agent",
-            agentId: this.runtime.agentId,
-            action: actionRoutingCtx.actionName,
-            modelClass: actionRoutingCtx.modelClass,
-            requestedModelType: String(modelType),
-          },
-          "Per-action model routing requested but no handlers in chain — falling back to default",
-        )
-      }
-    }
-
-    return undefined
-  }
-
-  async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
-    modelType: T,
-    params: ModelParamsMap[T],
-    provider?: string,
-  ): Promise<R> {
-    const explicitSignal = isPlainObject(params)
-      ? (params as { signal?: AbortSignal }).signal
-      : undefined
-    const contextSignal = getStreamingContext()?.abortSignal
-
-    const dispatchSignal = explicitSignal && contextSignal && explicitSignal !== contextSignal
-      ? AbortSignal.any([explicitSignal, contextSignal])
-      : (explicitSignal ?? contextSignal)
-    const throwIfAborted = () => {
-      dispatchSignal?.throwIfAborted()
-    }
-    throwIfAborted()
-    const useModelStartedAt = Date.now()
-    this.assertCanonicalModelCapabilityEnabled(String(modelType))
-    const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
-      ? captureModelLookupCaller()
-      : undefined
-    const routed = this.routeActionModel<T, R>(modelType, params, provider)
-    if (routed) return routed
-
-    const {
-      callerModelKey,
-      requestedModelKey,
-      requestedProvider,
-      resolvedModels,
-    } = this.resolveDispatchRegistrations(modelType, provider)
-
-    let lastModelError: unknown
-    let lastFailedModel: ResolvedModelRegistration | undefined
-    let providerAttemptStartedOutput = false
-    const providersWithExhaustedRetryBudget = new Set<string>()
-    const providerAttempts: ModelProviderAttempt[] = []
-    const confidentialOperation = new ConfidentialInferenceOperation()
-    const registrationAttempted = (
-      candidate: ResolvedModelRegistration,
-    ): boolean =>
-      providerAttempts.some(
-        (attempt) =>
-          attempt.modelType === candidate.modelKey
-          && attempt.provider === candidate.provider
-          && attempt.handler === candidate.handler,
-      )
-    for (
-      let resolvedIndex = 0;
-      resolvedIndex < resolvedModels.length;
-      resolvedIndex++
-    ) {
-      const resolvedModel = resolvedModels[resolvedIndex]
-      if (!resolvedModel) {
-        continue
-      }
-      if (
-        providersWithExhaustedRetryBudget.has(resolvedModel.provider)
-        || registrationAttempted(resolvedModel)
-      ) {
-        continue
-      }
-      const resolvedModelKey = resolvedModel.modelKey
-      const handler = resolvedModel.handler
-      if (
-        getModelAttemptLease()
-        && (!isTextGenerationModelKey(String(resolvedModelKey))
-          || resolvedModel.provider !== "openai")
-      ) {
-        throw new ElizaError("Model provider has no qualified attempt guard", {
-          code: "MODEL_ATTEMPT_POLICY_ROUTE",
-        })
-      }
-
-      await admitProcessing(
-        this.host.processingPolicy(),
-        this.runtime.agentId,
-        {
-          kind: "model_attempt",
-          model: {
-            modelType: String(resolvedModelKey),
-            requestedModelType: callerModelKey,
-            modality: modalityForModelType(String(resolvedModelKey)),
-            provider: resolvedModel.provider,
-            handler,
-            attempt: providerAttempts.length + 1,
-            reason: providerAttempts.length > 0 ? "failover" : "primary",
-          },
-        },
-        lastModelError,
-      )
-      throwIfAborted()
-      providerAttemptStartedOutput = false
-      const attemptMeta = {
-        modelKey: String(resolvedModelKey),
-        provider: resolvedModel.provider ?? "unknown",
-        attempt: resolvedIndex + 1,
-      }
-      const preprocessingStartedAt = Date.now()
-      let handlerStartedAt: number | null = null
-      let providerAttempt: ModelProviderAttempt | undefined
-      if (resolvedIndex === 0) {
-        recordInferenceSpan(
-          `model-routing:${String(modelType)}`,
-          preprocessingStartedAt - useModelStartedAt,
-          attemptMeta,
-        )
-      }
-
-      let modelParamsRef: unknown = params
-      let promptContentRef: string | null | undefined
-
-      const recordingState = { recorded: false }
-      let attemptPreparationFailed = false
-      let drainStructuredStreamCallbacks: (() => Promise<void>) | undefined
-
-      try {
-        throwIfAborted()
-        const shouldSubstituteSecrets = this.host.isSecretSwapEnabled()
-          && !SECRET_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey)
-
-        const secretSwapPromptOnly = resolvedModelKey === ModelType.IMAGE
-        const substituteSecrets = (
-          session: SecretSwapSession,
-          value: ModelParamsMap[T],
-        ): ModelParamsMap[T] => {
-          if (!secretSwapPromptOnly) return session.substituteInValue(value)
-          if (!isPlainObject(value)) return value
-          const record = value as Record<string, unknown>
-          if (typeof record.prompt === "string") {
-            record.prompt = session.substituteText(record.prompt)
-          }
-          return value
-        }
-        const shouldSubstitutePii = this.host.isPiiSwapEnabled()
-          && !PII_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey)
-
-        if (shouldSubstitutePii) {
-          collectPiiPromptText(params)
-        }
-        let modelParams: ModelParamsMap[T]
-        const paramsClone = isPlainObject(params)
-          ? shouldSubstituteSecrets && !secretSwapPromptOnly
-            ? { ...(params as Record<string, unknown>) }
-            : this.cloneModelRequestGraph(params)
-          : params
-        if (
-          params === null
-          || params === undefined
-          || typeof params !== "object"
-          || Array.isArray(params)
-          || BufferUtils.isBuffer(params)
-        ) {
-          modelParams = paramsClone as ModelParamsMap[T]
-        } else {
-          const modelSettings = this.getModelSettings(requestedModelKey)
-
-          if (modelSettings) {
-            const merged: object = {
-              ...modelSettings,
-              ...(paramsClone as Record<string, JsonValue | object>),
-            }
-            modelParams = merged as ModelParamsMap[T]
-          } else {
-            modelParams = paramsClone as ModelParamsMap[T]
-          }
-
-          if (
-            isTextGenerationModelKey(requestedModelKey)
-            && isPlainObject(modelParams)
-            && this.runtime.character.name
-          ) {
-            const modelParamsRecord = modelParams as Record<
-              string,
-              JsonValue | object
-            >
-            if (modelParamsRecord.user === undefined) {
-              modelParamsRecord.user = this.runtime.character.name
-            }
-          }
-        }
-        const prepareModelAttempt = isPlainObject(modelParams)
-            && typeof (modelParams as GenerateTextParams).prepareModelAttempt
-              === "function"
-          ? (modelParams as GenerateTextParams).prepareModelAttempt
-          : undefined
-        if (prepareModelAttempt) {
-          const attempt: ModelAttemptContext = {
-            modelType: String(resolvedModelKey),
-            provider: resolvedModel.provider ?? "unknown",
-            ...(resolvedModel.metadata
-              ? { metadata: resolvedModel.metadata }
-              : {}),
-          }
-          try {
-            await prepareModelAttempt(
-              attempt,
-              modelParams as GenerateTextParams,
-            )
-          } catch (error) {
-            attemptPreparationFailed = true
-            throw error
-          }
-          delete (modelParams as GenerateTextParams).prepareModelAttempt
-        }
-        let startTime = performance.now()
-
-        interface StreamingParams {
-          stream?: boolean
-          onStreamChunk?: StreamChunkCallback
-          signal?: AbortSignal
-          streamStructured?: boolean
-          responseSkeleton?: ResponseSkeleton
-          streamFields?: readonly StructuredStreamField[]
-          streamFieldGate?: StructuredStreamGate
-        }
-        const streamingCtx = getStreamingContext()
-        const paramsAsStreaming = isPlainObject(modelParams)
-          ? (modelParams as StreamingParams)
-          : undefined
-        const paramsChunk = paramsAsStreaming?.onStreamChunk
-        const ctxChunk = streamingCtx?.onStreamChunk
-        const msgId = streamingCtx?.messageId
-        const abortSignal = dispatchSignal
-        const explicitStream = paramsAsStreaming?.stream
-        const resolvedProviderName = resolvedModel.provider
-
-        const requiresExplicitStreaming = requestedModelKey === ModelType.IMAGE_DESCRIPTION
-        const shouldStream = explicitStream === false
-          ? false
-          : requiresExplicitStreaming
-          ? explicitStream === true
-          : !!(paramsChunk || ctxChunk || explicitStream)
-
-        const structuredStream = shouldStream && paramsAsStreaming?.streamStructured === true
-          ? resolveStructuredStreamFields(
-            paramsAsStreaming.responseSkeleton,
-            paramsAsStreaming.streamFields,
-          )
-          : { fields: [], parts: {} }
-        const structuredStreamGate = paramsAsStreaming?.streamFieldGate
-        if (paramsAsStreaming) {
-          delete paramsAsStreaming.streamFields
-          delete paramsAsStreaming.streamFieldGate
-        }
-        const suppressStructuredStream = shouldStream
-          && paramsAsStreaming?.streamStructured === true
-          && structuredStream.fields.length === 0
-        let downstreamDelivery = Promise.resolve()
-        let downstreamDeliveryError: unknown
-        let downstreamDeliveryFailed = false
-        const downstreamChunk = (
-          chunk: string,
-          accumulated?: string,
-          streamRevision?: number,
-        ): void => {
-          downstreamDelivery = downstreamDelivery
-            .then(async () => {
-              if (downstreamDeliveryFailed) return
-              if (paramsChunk) {
-                await paramsChunk(chunk, msgId, accumulated, streamRevision)
-              }
-              if (ctxChunk) {
-                await ctxChunk(chunk, msgId, accumulated, streamRevision)
-              }
-            })
-            .then(undefined, (error: unknown) => {
-              downstreamDeliveryFailed = true
-              downstreamDeliveryError = error
-            })
-        }
-        const drainDownstreamDelivery = async () => {
-          await downstreamDelivery
-          if (downstreamDeliveryFailed) throw downstreamDeliveryError
-        }
-        drainStructuredStreamCallbacks = drainDownstreamDelivery
-        const structuredExtractor = structuredStream.fields.length > 0
-            && paramsAsStreaming?.responseSkeleton
-          ? new ResponseSkeletonStreamExtractor({
-            skeleton: paramsAsStreaming.responseSkeleton,
-            streamFields: structuredStream.fields,
-            streamParts: structuredStream.parts,
-            ...(structuredStreamGate ? { gate: structuredStreamGate } : {}),
-            unordered: true,
-            onChunk: (chunk, _field, accumulated, streamRevision) =>
-              downstreamChunk(chunk, accumulated, streamRevision),
-            ...(abortSignal ? { abortSignal } : {}),
-          })
-          : undefined
-        let handlerDeliveredStream = false
-        let streamedText = ""
-        let secretSwapSession: SecretSwapSession | null = null
-        let guardScanner: GuardedStreamScanner | null = null
-        let piiSwapSession: PseudonymSession | null = null
-        const emitModelStreamChunk = async (
-          safeChunk: string,
-          visibleChunk = safeChunk,
-        ): Promise<void> => {
-          if (abortSignal?.aborted) return
-          if (safeChunk.length > 0) {
-            providerAttemptStartedOutput = true
-          }
-          if (streamedText === "" && safeChunk.length > 0) {
-            markInference(INFERENCE_MARKS.firstToken)
-            const firstTokenAt = performance.now()
-            recordInferenceSpan(
-              `model-ttft:${String(modelType)}`,
-              firstTokenAt - startTime,
-              attemptMeta,
-            )
-          }
-          streamedText += safeChunk
-
-          if (this.host.hooksForPhase("model_stream_chunk").length > 0) {
-            const trajStream = getTrajectoryContext()
-            await this.host.invokePipelineHooks(
-              "model_stream_chunk",
-              modelStreamChunkPipelineHookContext({
-                source: "use_model",
-                chunk: safeChunk,
-                messageId: msgId,
-                roomId: (trajStream?.roomId as UUID | undefined)
-                  ?? this.host.currentRoomId()
-                  ?? this.runtime.agentId,
-                runId: this.runtime.getCurrentRunId(),
-                ...(trajStream?.messageId
-                  ? { responseId: trajStream.messageId as UUID }
-                  : {}),
-                accumulated: streamedText,
-              }),
-              "Model stream chunk (useModel)",
-              false,
-            )
-          }
-          await runInsideModelStreamChunkDelivery(async () => {
-            if (structuredExtractor) {
-              structuredExtractor.push(visibleChunk)
-              return
-            }
-
-            if (suppressStructuredStream) return
-            if (paramsChunk) await paramsChunk(visibleChunk, msgId, undefined)
-            if (ctxChunk) await ctxChunk(visibleChunk, msgId, undefined)
-          })
-        }
-
-        const deliverModelStreamChunk = async (
-          chunk: string,
-        ): Promise<void> => {
-          if (abortSignal?.aborted) return
-          if (secretSwapSession || piiSwapSession) {
-            guardScanner ??= new GuardedStreamScanner({
-              secretSession: secretSwapSession,
-              piiSession: piiSwapSession,
-            })
-            const { safe, visible } = guardScanner.push(chunk)
-            if (safe.length > 0) await emitModelStreamChunk(safe, visible)
-            return
-          }
-          await emitModelStreamChunk(chunk)
-        }
-        const flushGuardedStream = async (): Promise<void> => {
-          if (abortSignal?.aborted || !guardScanner) return
-          const { safe, visible } = guardScanner.flush()
-          if (safe.length > 0) await emitModelStreamChunk(safe, visible)
-        }
-
-        const finishDeliveredStream = async (): Promise<void> => {
-          await flushGuardedStream()
-          structuredExtractor?.flush()
-          await drainDownstreamDelivery()
-          const trajStreamEnd = getTrajectoryContext()
-          await this.host.invokePipelineHooks(
-            "model_stream_end",
-            modelStreamEndPipelineHookContext({
-              source: "use_model",
-              roomId: (trajStreamEnd?.roomId as UUID | undefined)
-                ?? this.host.currentRoomId()
-                ?? this.runtime.agentId,
-              runId: this.runtime.getCurrentRunId(),
-              messageId: msgId ?? trajStreamEnd?.messageId,
-              text: streamedText,
-            }),
-            "Model stream end (useModel)",
-            true,
-          )
-          getStreamingContext()?.onStreamEnd?.()
-        }
-
-        const declaredStreamable = resolvedModel.metadata?.streamable
-        const resolvedAcceptsHandlerStream = resolvedProviderName === "eliza-router"
-          || (typeof declaredStreamable === "boolean"
-            ? declaredStreamable
-            : !!resolvedProviderName
-              && isLocalHandler({
-                provider: resolvedProviderName,
-                metadata: resolvedModel.metadata,
-              }))
-        const handlerStreamChunk: StreamChunkCallback | undefined = shouldStream
-            && resolvedAcceptsHandlerStream
-            && (paramsChunk || ctxChunk || structuredExtractor)
-          ? async (chunk) => {
-            handlerDeliveredStream = true
-            await deliverModelStreamChunk(chunk)
-          }
-          : undefined
-
-        if (isPlainObject(modelParams) && paramsAsStreaming) {
-          paramsAsStreaming.stream = shouldStream
-          if (handlerStreamChunk) {
-            paramsAsStreaming.onStreamChunk = handlerStreamChunk
-          } else {
-            delete paramsAsStreaming.onStreamChunk
-          }
-
-          if (
-            abortSignal
-            && (paramsAsStreaming.signal === undefined
-              || paramsAsStreaming.signal === explicitSignal)
-          ) {
-            paramsAsStreaming.signal = abortSignal
-          }
-        }
-
-        const textModelKey = isTextGenerationModelKey(String(resolvedModelKey))
-          ? String(resolvedModelKey)
-          : requestedModelKey
-        let effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
-          textModelKey,
-          modelParams,
-        )
-
-        if (shouldSubstituteSecrets) {
-          const trajectoryCtx = getTrajectoryContext()
-          secretSwapSession = trajectoryCtx?.secretSwapSession
-            ?? this.host.createSecretSwapSession()
-          if (trajectoryCtx && !trajectoryCtx.secretSwapSession) {
-            trajectoryCtx.secretSwapSession = secretSwapSession
-          }
-          modelParams = substituteSecrets(secretSwapSession, modelParams)
-          effectiveSystemPrompt = effectiveSystemPrompt === undefined
-            ? undefined
-            : secretSwapSession.substituteText(effectiveSystemPrompt)
-        }
-
-        let piiSubstitutedText = ""
-        if (shouldSubstitutePii) {
-          const trajectoryCtx = getTrajectoryContext()
-          piiSwapSession = trajectoryCtx?.piiSwapSession ?? this.host.createPiiSwapSession()
-          if (trajectoryCtx && !trajectoryCtx.piiSwapSession) {
-            trajectoryCtx.piiSwapSession = piiSwapSession
-          }
-
-          await piiSwapSession.learn(
-            collectPiiPromptText(modelParams, effectiveSystemPrompt),
-          )
-          modelParams = piiSwapSession.substituteInValue(modelParams)
-          effectiveSystemPrompt = effectiveSystemPrompt === undefined
-            ? undefined
-            : piiSwapSession.substituteText(effectiveSystemPrompt)
-          piiSubstitutedText = collectPiiPromptText(
-            modelParams,
-            effectiveSystemPrompt,
-          )
-        }
-
-        await this.host.invokePipelineHooks(
-          "pre_model",
-          preModelPipelineHookContext({
-            requestedModelType: String(modelType),
-            resolvedModelKey,
-            provider: resolvedModel.provider,
-            roomId: getTrajectoryContext()?.roomId,
-            params: modelParams,
-          }),
-          "Pre-model pipeline hook",
-        )
-        if (secretSwapSession) {
-          modelParams = substituteSecrets(secretSwapSession, modelParams)
-          const postHookSystemPrompt = resolveEffectiveSystemPrompt({
-            params: modelParams,
-            fallback: effectiveSystemPrompt,
-          })
-          effectiveSystemPrompt = postHookSystemPrompt === undefined
-            ? undefined
-            : secretSwapSession.substituteText(postHookSystemPrompt)
-        }
-        if (piiSwapSession) {
-          const postHookText = collectPiiPromptText(
-            modelParams,
-            effectiveSystemPrompt,
-          )
-          if (postHookText !== piiSubstitutedText) {
-            await piiSwapSession.learn(postHookText)
-          }
-          modelParams = piiSwapSession.substituteInValue(modelParams)
-          const postHookSystemPrompt = resolveEffectiveSystemPrompt({
-            params: modelParams,
-            fallback: effectiveSystemPrompt,
-          })
-          effectiveSystemPrompt = postHookSystemPrompt === undefined
-            ? undefined
-            : piiSwapSession.substituteText(postHookSystemPrompt)
-        }
-
-        if (
-          secretSwapSession?.entries.some((entry) => entry.placeholder.startsWith("__ELIZA_CONTACT_"))
-          && isTextGenerationModelKey(String(resolvedModelKey))
-          && isPlainObject(modelParams)
-        ) {
-          const guidance =
-            "Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements."
-          const record = modelParams as Record<string, unknown>
-
-          if (Array.isArray(record.messages)) {
-            record.messages = dropDuplicateLeadingSystemMessage(
-              record.messages,
-              effectiveSystemPrompt,
-            )
-          }
-          effectiveSystemPrompt = `${effectiveSystemPrompt ?? ""}\n\n${guidance}`
-          ;(modelParams as Record<string, unknown>).system = effectiveSystemPrompt
-        }
-
-        const attemptLease = getModelAttemptLease()
-        if (
-          attemptLease
-          && isTextGenerationModelKey(String(resolvedModelKey))
-        ) {
-          if (!isPlainObject(modelParams)) {
-            throw new ElizaError("Bounded text request must be structured", {
-              code: "MODEL_ATTEMPT_POLICY_INVALID",
-            })
-          }
-          const record = modelParams as Record<string, unknown>
-          record.maxTokens = typeof record.maxTokens === "number"
-              && Number.isSafeInteger(record.maxTokens)
-              && record.maxTokens > 0
-            ? Math.min(record.maxTokens, attemptLease.maxOutputTokens)
-            : attemptLease.maxOutputTokens
-          record.omitMaxTokens = false
-        }
-
-        const hookedParamsObj = modelParams
-            && typeof modelParams === "object"
-            && !Array.isArray(modelParams)
-          ? (modelParams as Record<string, JsonValue | object>)
-          : null
-        const promptContent = (hookedParamsObj
-            && "prompt" in hookedParamsObj
-            && typeof hookedParamsObj.prompt === "string"
-          ? hookedParamsObj.prompt
-          : null)
-          || (hookedParamsObj
-              && "input" in hookedParamsObj
-              && typeof hookedParamsObj.input === "string"
-            ? hookedParamsObj.input
-            : null)
-          || (hookedParamsObj
-              && "messages" in hookedParamsObj
-              && Array.isArray(hookedParamsObj.messages)
-            ? stringifyForModel({
-              messages: hookedParamsObj.messages,
-            })
-            : null)
-          || (typeof modelParams === "string" ? modelParams : null)
-
-        modelParamsRef = modelParams
-        promptContentRef = promptContent
-
-        if (isPlainObject(modelParams)) {
-          Object.defineProperty(modelParams, MODEL_PROVIDER_ATTEMPTS, {
-            value: providerAttempts,
-            enumerable: false,
-          })
-        }
-
-        if (isTextGenerationModelKey(String(resolvedModelKey))) {
-          if (isPlainObject(modelParams)) {
-            this.attachFinalModelInputBudget(
-              modelParams as Record<string, unknown>,
-              resolvedModel.metadata,
-            )
-          } else {
-            this.buildFinalModelInputBudget(
-              modelParams,
-              resolvedModel.metadata,
-            )
-          }
-          this.freezeAdmittedModelRequest(modelParams)
-        }
-
-        if (
-          !SECRET_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey)
-          && resolvedModelKey !== ModelType.IMAGE
-        ) {
-          this.runtime.logger.trace(
-            {
-              src: "agent",
-              agentId: this.runtime.agentId,
-              model: resolvedModelKey,
-              params: modelParams,
-            },
-            "Model input",
-          )
-        } else {
-          let sizeInfo = "unknown size"
-          if (Buffer.isBuffer(modelParams)) {
-            sizeInfo = `${modelParams.length} bytes`
-          } else if (
-            typeof Blob !== "undefined"
-            && modelParams instanceof Blob
-          ) {
-            sizeInfo = `${modelParams.size} bytes`
-          } else if (typeof modelParams === "object" && modelParams !== null) {
-            if ("audio" in modelParams && Buffer.isBuffer(modelParams.audio)) {
-              sizeInfo = `${(modelParams.audio as Buffer).length} bytes`
-            } else if (
-              "audio" in modelParams
-              && typeof Blob !== "undefined"
-              && modelParams.audio instanceof Blob
-            ) {
-              sizeInfo = `${(modelParams.audio as Blob).size} bytes`
-            }
-          }
-          this.runtime.logger.trace(
-            {
-              src: "agent",
-              agentId: this.runtime.agentId,
-              model: resolvedModelKey,
-              size: sizeInfo,
-            },
-            "Model input (binary)",
-          )
-        }
-
-        this.runtime.logger.debug(
-          {
-            src: "agent",
-            agentId: this.runtime.agentId,
-            model: resolvedModelKey,
-            provider: resolvedModel.provider,
-            ...(lookupCaller?.caller ? { caller: lookupCaller.caller } : {}),
-            ...(lookupCaller?.callerStack.length
-              ? { callerStack: lookupCaller.callerStack }
-              : {}),
-          },
-          "Using model",
-        )
-
-        startTime = performance.now()
-        recordInferenceSpan(
-          `model-preprocess:${String(modelType)}`,
-          Date.now() - preprocessingStartedAt,
-          attemptMeta,
-        )
-        throwIfAborted()
-
-        if (
-          modelType !== ModelType.TEXT_EMBEDDING
-          && modelType !== ModelType.TEXT_EMBEDDING_BATCH
-          && !String(modelType).startsWith("TEXT_TOKENIZER")
-        ) {
-          await ensureTaskTrajectory()
-        }
-        throwIfAborted()
-        handlerStartedAt = Date.now()
-        providerAttempt = {
-          modelType: resolvedModelKey,
-          provider: resolvedModel.provider,
-          handler,
-        }
-        providerAttempts.push(providerAttempt)
-        const handlerResult = await runInModelCallRecordingScope(
-          recordingState,
-          () =>
-            runWithConfidentialInference(
-              this.host.confidentialInference(),
-              {
-                agentId: this.runtime.agentId,
-                modelType: String(resolvedModelKey),
-                handler,
-                operation: confidentialOperation,
-              },
-              () =>
-                handler(
-                  this.runtime,
-                  modelParams as Record<string, JsonValue | object>,
-                ),
-            ),
-        )
-
-        throwIfAborted()
-        assertModelResultPresent(handlerResult, String(modelType))
-        const rawResponse = handlerResult
-        let embeddingProviderOutput: unknown = rawResponse
-        if (
-          modelType === ModelType.TEXT_EMBEDDING
-          || modelType === ModelType.TEXT_EMBEDDING_BATCH
-        ) {
-          const snapshot = (vector: unknown): unknown => {
-            if (!Array.isArray(vector)) return vector
-            const copy = [...vector]
-            copyEmbeddingVectorSpace(vector, copy)
-            return copy
-          }
-          embeddingProviderOutput = modelType === ModelType.TEXT_EMBEDDING_BATCH
-              && Array.isArray(rawResponse)
-            ? rawResponse.map(snapshot)
-            : snapshot(rawResponse)
-        }
-
-        let safeRawResponse: unknown = secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse
-        safeRawResponse = piiSwapSession?.substituteInValue(safeRawResponse) ?? safeRawResponse
-        const resultRef: { current: unknown } = { current: safeRawResponse }
-        const modelOutToTrajectoryString = (v: unknown) =>
-          typeof v === "string" ? v : stringifyForModel({ response: v })
-
-        if (
-          shouldStream
-          && (paramsChunk || ctxChunk)
-          && isTextStreamResult(rawResponse)
-        ) {
-          const streamIter = rawResponse.textStream[Symbol.asyncIterator]()
-          try {
-            while (true) {
-              const { done, value } = await runInModelCallRecordingScope(
-                recordingState,
-                () => streamIter.next(),
-              )
-              if (done) break
-
-              throwIfAborted()
-              await deliverModelStreamChunk(value)
-            }
-          } finally {
-            await runInModelCallRecordingScope(recordingState, async () => {
-              await streamIter.return?.()
-            })
-          }
-          throwIfAborted()
-          await finishDeliveredStream()
-
-          const streamRaw = rawResponse as {
-            toolCalls?: unknown
-            finishReason?: unknown
-            usage?: unknown
-            providerMetadata?: unknown
-          }
-          const hasToolCallsField = "toolCalls" in streamRaw
-          const resolvedToolCalls = hasToolCallsField
-            ? await Promise.resolve(streamRaw.toolCalls)
-            : []
-          const resolvedFinishReason = "finishReason" in streamRaw
-            ? await Promise.resolve(streamRaw.finishReason)
-            : undefined
-          assertModelOutputComplete({
-            finishReason: resolvedFinishReason,
-            provider: resolvedModel.provider,
-            model: resolvedModelKey,
-          })
-
-          if (hasToolCallsField) {
-            const resolvedUsage = "usage" in streamRaw
-              ? await Promise.resolve(streamRaw.usage)
-              : undefined
-            resultRef.current = {
-              text: streamedText,
-              toolCalls: resolvedToolCalls,
-              finishReason: resolvedFinishReason,
-              usage: resolvedUsage,
-              providerMetadata: streamRaw.providerMetadata,
-            }
-          } else {
-            resultRef.current = streamedText
-          }
-
-          const elapsedTime = performance.now() - startTime
-          const postprocessingStartedAt = Date.now()
-
-          await this.host.invokePipelineHooks(
-            "post_model",
-            postModelPipelineHookContext({
-              requestedModelType: String(modelType),
-              resolvedModelKey,
-              provider: resolvedModel.provider,
-              roomId: getTrajectoryContext()?.roomId,
-              durationMs: Math.round(elapsedTime),
-              params: modelParams,
-              result: resultRef,
-              streaming: true,
-            }),
-            "Post-model pipeline hook",
-          )
-          resultRef.current = secretSwapSession?.substituteInValue(resultRef.current)
-            ?? resultRef.current
-          resultRef.current = piiSwapSession?.substituteInValue(resultRef.current)
-            ?? resultRef.current
-
-          this.noteResolvedModelProvider(
-            requestedModelKey,
-            resolvedModel.provider,
-          )
-
-          this.runtime.logger.trace(
-            {
-              src: "agent",
-              agentId: this.runtime.agentId,
-              model: resolvedModelKey,
-              duration: Number(elapsedTime.toFixed(2)),
-              streaming: true,
-            },
-            "Model output (stream with callback complete)",
-          )
-
-          this.logModelCall(
-            String(modelType),
-            resolvedModelKey,
-            promptContent,
-            effectiveSystemPrompt,
-            elapsedTime,
-            resolvedModel.provider,
-            resultRef.current,
-          )
-
-          if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
-            await this.recordUseModelTrajectory({
-              modelType: String(modelType),
-              resolvedModelKey: String(resolvedModelKey),
-              provider: resolvedModel.provider,
-              modelParams,
-              promptContent,
-              result: resultRef.current,
-              response: modelOutToTrajectoryString(resultRef.current),
-              elapsedTime,
-              providerRecorded: recordingState.recorded,
-            })
-          }
-          recordInferenceSpan(
-            `model-postprocess:${String(modelType)}`,
-            Date.now() - postprocessingStartedAt,
-            { ...attemptMeta, streaming: true },
-          )
-
-          return resultRef.current as R
-        }
-
-        if (handlerDeliveredStream) {
-          await finishDeliveredStream()
-        }
-
-        if (!isTextStreamResult(resultRef.current as JsonValue | object)) {
-          await assertRuntimeModelOutputComplete({
-            result: resultRef.current,
-            provider: resolvedModel.provider,
-            model: resolvedModelKey,
-          })
-        }
-
-        const elapsedTime = performance.now() - startTime
-        const postprocessingStartedAt = Date.now()
-
-        await this.host.invokePipelineHooks(
-          "post_model",
-          postModelPipelineHookContext({
-            requestedModelType: String(modelType),
-            resolvedModelKey,
-            provider: resolvedModel.provider,
-            roomId: getTrajectoryContext()?.roomId,
-            durationMs: Math.round(elapsedTime),
-            params: modelParams,
-            result: resultRef,
-            streaming: handlerDeliveredStream,
-          }),
-          "Post-model pipeline hook",
-        )
-        resultRef.current = secretSwapSession?.substituteInValue(resultRef.current)
-          ?? resultRef.current
-        resultRef.current = piiSwapSession?.substituteInValue(resultRef.current)
-          ?? resultRef.current
-
-        this.noteResolvedModelProvider(
-          requestedModelKey,
-          resolvedModel.provider,
-        )
-
-        this.runtime.logger.trace(
-          {
-            src: "agent",
-            agentId: this.runtime.agentId,
-            model: resolvedModelKey,
-            duration: Number(elapsedTime.toFixed(2)),
-          },
-          "Model output",
-        )
-
-        this.logModelCall(
-          String(modelType),
-          resolvedModelKey,
-          promptContent,
-          effectiveSystemPrompt,
-          elapsedTime,
-          resolvedModel.provider,
-          resultRef.current,
-        )
-
-        if (
-          String(modelType) !== ModelType.TEXT_EMBEDDING
-          && !(
-            shouldStream
-            && !handlerDeliveredStream
-            && isTextStreamResult(resultRef.current as object)
-          )
-        ) {
-          await this.recordUseModelTrajectory({
-            modelType: String(modelType),
-            resolvedModelKey: String(resolvedModelKey),
-            provider: resolvedModel.provider,
-            modelParams,
-            promptContent,
-            result: resultRef.current,
-            response: modelOutToTrajectoryString(resultRef.current),
-            elapsedTime,
-            providerRecorded: recordingState.recorded,
-          })
-        }
-
-        if (
-          shouldStream
-          && !handlerDeliveredStream
-          && isTextStreamResult(resultRef.current as object)
-        ) {
-          const streamResult = resultRef.current as TextStreamResult
-          const checkedFinishReason = Promise.resolve(
-            streamResult.finishReason,
-          ).then((finishReason) => {
-            assertModelOutputComplete({
-              finishReason,
-              provider: resolvedModel.provider,
-              model: resolvedModelKey,
-            })
-            return finishReason
-          })
-          const trajArgs = {
-            modelType: String(modelType),
-            resolvedModelKey: String(resolvedModelKey),
-            provider: resolvedModel.provider,
-            modelParams,
-            promptContent,
-            elapsedTime,
-          }
-          let didRecord = false
-          const accumulatedChunks: string[] = []
-          const recordOnce = async () => {
-            if (didRecord) return
-            didRecord = true
-            const finalText = accumulatedChunks.join("")
-            await this.recordUseModelTrajectory({
-              ...trajArgs,
-              result: finalText,
-              response: finalText,
-              providerRecorded: recordingState.recorded,
-            })
-          }
-
-          Promise.all([streamResult.text, checkedFinishReason]).then(
-            ([resolvedText]) => {
-              if (accumulatedChunks.length === 0 && resolvedText) {
-                accumulatedChunks.push(resolvedText)
-              }
-              void recordOnce()
-            },
-            () => void recordOnce(),
-          )
-          resultRef.current = {
-            ...streamResult,
-            finishReason: checkedFinishReason,
-            textStream: (async function*() {
-              const innerIter = streamResult.textStream[Symbol.asyncIterator]()
-              try {
-                while (true) {
-                  const { done, value } = await runInModelCallRecordingScope(
-                    recordingState,
-                    () => innerIter.next(),
-                  )
-                  throwIfAborted()
-                  if (done) {
-                    await checkedFinishReason
-                    break
-                  }
-                  accumulatedChunks.push(value)
-                  yield value
-                }
-              } finally {
-                await runInModelCallRecordingScope(recordingState, async () => {
-                  await innerIter.return?.()
-                })
-
-                try {
-                  await recordOnce()
-                } catch {
-                }
-              }
-            })(),
-
-            get text() {
-              return Promise.resolve(
-                runInModelCallRecordingScope(recordingState, async () => {
-                  throwIfAborted()
-                  const t = await streamResult.text
-                  throwIfAborted()
-                  await checkedFinishReason
-                  accumulatedChunks.length = 0
-                  accumulatedChunks.push(t)
-                  await recordOnce()
-                  throwIfAborted()
-                  return t
-                }),
-              )
-            },
-          } satisfies TextStreamResult
-        }
-        recordInferenceSpan(
-          `model-postprocess:${String(modelType)}`,
-          Date.now() - postprocessingStartedAt,
-          { ...attemptMeta, streaming: handlerDeliveredStream },
-        )
-        if (
-          modelType === ModelType.TEXT_EMBEDDING
-          || modelType === ModelType.TEXT_EMBEDDING_BATCH
-        ) {
-          const writable = (value: unknown): unknown => {
-            if (!Array.isArray(value) || Object.isExtensible(value)) {
-              return value
-            }
-            const copy = [...value]
-            copyEmbeddingVectorSpace(value, copy)
-            return copy
-          }
-          resultRef.current = modelType === ModelType.TEXT_EMBEDDING_BATCH
-              && Array.isArray(resultRef.current)
-            ? resultRef.current.map(writable)
-            : writable(resultRef.current)
-          await this.host.validateEmbeddingOutput(
-            String(modelType),
-            params,
-            embeddingProviderOutput,
-            resultRef.current,
-            resolvedModel.provider,
-            abortSignal,
-          )
-        }
-        return resultRef.current as R
-      } catch (error) {
-        const streamCallbackResult = await drainStructuredStreamCallbacks?.().then(
-          () => ({ failed: false as const }),
-          (deliveryError: unknown) => ({
-            failed: true as const,
-            error: deliveryError,
-          }),
-        )
-        if (
-          streamCallbackResult?.failed === true
-          && streamCallbackResult.error !== error
-        ) {
-          throw streamCallbackResult.error
-        }
-        if (handlerStartedAt === null) throwIfAborted()
-        const unavailableLocalText = isTextGenerationModelKey(requestedModelKey)
-          && isUnavailableLocalModel(error)
-        const rejectedLocalAdmission = handlerStartedAt === null && unavailableLocalText
-        if (attemptPreparationFailed || rejectedLocalAdmission) {
-          recordInferenceSpan(
-            `model-preprocess:${String(modelType)}`,
-            Date.now() - preprocessingStartedAt,
-            { ...attemptMeta, outcome: "error" },
-          )
-          if (
-            !rejectedLocalAdmission
-            && !(
-              error instanceof ElizaError
-              && error.code === "EVALUATOR_INPUT_OVER_BUDGET"
-            )
-          ) {
-            throw error
-          }
-
-          if (!rejectedLocalAdmission || lastModelError === undefined) {
-            lastModelError = error
-            lastFailedModel = resolvedModel
-          }
-          const nextAfterPreparation = resolvedModels[resolvedIndex + 1]
-          if (requestedProvider !== undefined) throw error
-          if (!nextAfterPreparation) {
-            if (rejectedLocalAdmission) {
-              this.rethrowModelFailoverError(lastModelError, lastFailedModel)
-            }
-            throw error
-          }
-          this.logModelProviderFailover({
-            requestedModelKey,
-            failedModel: resolvedModel,
-            nextModel: nextAfterPreparation,
-            error,
-          })
-          continue
-        }
-
-        if (handlerStartedAt === null) {
-          recordInferenceSpan(
-            `model-preprocess:${String(modelType)}`,
-            Date.now() - preprocessingStartedAt,
-            { ...attemptMeta, outcome: "error" },
-          )
-        } else {
-          recordInferenceSpan(
-            `model:${String(modelType)}`,
-            Date.now() - handlerStartedAt,
-            { ...attemptMeta, outcome: "error" },
-          )
-        }
-
-        if (!recordingState.recorded) {
-          this.trackDiagnostic(
-            this.recordFailedModelTrajectory({
-              modelType: String(modelType),
-              resolvedModelKey: String(resolvedModelKey),
-              provider: resolvedModel.provider,
-              modelParams: modelParamsRef,
-              promptContent: promptContentRef,
-              error,
-              elapsedTime: handlerStartedAt === null
-                ? Date.now() - preprocessingStartedAt
-                : Date.now() - handlerStartedAt,
-            }),
-          )
-        }
-        throwIfAborted()
-
-        if (
-          !unavailableLocalText
-          || lastModelError === undefined
-          || providerAttemptStartedOutput
-          || requestedProvider !== undefined
-        ) {
-          lastModelError = error
-          lastFailedModel = resolvedModel
-        }
-        if (providerAttempt) providerAttempt.error = error
-        if (isModelProviderRetryBudgetExhaustedError(error)) {
-          providersWithExhaustedRetryBudget.add(resolvedModel.provider)
-        }
-        const nextModelIndex = resolvedModels.findIndex(
-          (candidate, candidateIndex) =>
-            candidateIndex > resolvedIndex
-            && !providersWithExhaustedRetryBudget.has(candidate.provider)
-            && !registrationAttempted(candidate),
-        )
-        const nextModel = nextModelIndex >= 0 ? resolvedModels[nextModelIndex] : undefined
-        if (
-          requestedProvider !== undefined
-          || !nextModel
-          || providerAttemptStartedOutput
-          || !this.shouldFailOverModelProvider(error, requestedModelKey)
-        ) {
-          this.rethrowModelFailoverError(lastModelError, lastFailedModel)
-        }
-        this.logModelProviderFailover({
-          requestedModelKey,
-          failedModel: resolvedModel,
-          nextModel,
-          error,
-        })
-
-        resolvedIndex = nextModelIndex - 1
-      }
-    }
-    this.rethrowModelFailoverError(
-      lastModelError
-        ?? new Error(`No handler found for delegate type: ${requestedModelKey}`),
-      lastFailedModel,
-    )
-  }
-
-  async recordUseModelTrajectory(args: {
-    modelType: string
-    resolvedModelKey: string
-    provider?: string
-    modelParams: unknown
-    promptContent: string | null | undefined
-    result?: unknown
-    response: string
-    elapsedTime: number
-    providerRecorded: boolean
-  }): Promise<void> {
-    if (this.host.initResolver()) return
-
-    if (args.providerRecorded) return
-
     try {
-      activateDeferredChildStep()
-      const trajCtx = getTrajectoryContext()
-      const stepId = trajCtx?.trajectoryStepId
-      const trajLogger = (await this.host._ensureServiceStarted(
-        "trajectories",
-      )) as (Service & TrajectoryRuntimeLlmCallLogger) | null
-      if (!stepId || !trajLogger) return
+      if (!isPlainObject(candidate)) return candidate
+    } catch {
+      return candidate
+    }
+    const result: Record<string, unknown> = {}
+    seen.set(candidate, result)
+    for (const [key, nested] of Object.entries(candidate)) {
+      result[key] = clone(nested)
+    }
+    return result
+  }
+  return clone(value) as T
+}
 
-      const {
-        paramsRecord,
-        temperature,
-        maxTokens,
+export function freezeAdmittedModelRequest(value: unknown): void {
+  const seen = new WeakSet<object>()
+  const visit = (candidate: unknown): void => {
+    if (
+      candidate === null
+      || (typeof candidate !== "object" && typeof candidate !== "function")
+      || seen.has(candidate as object)
+    ) {
+      return
+    }
+    if (!Array.isArray(candidate) && !isPlainObject(candidate)) return
+    seen.add(candidate as object)
+    for (const nested of Object.values(candidate as Record<string, unknown>)) {
+      visit(nested)
+    }
+    Object.freeze(candidate)
+  }
+  visit(value)
+}
+
+export function logModelCall(
+  core: DispatchCore,
+  modelType: string,
+  modelKey: string,
+  promptContent: string | null,
+  systemPrompt: string | undefined,
+  elapsedTime: number,
+  provider: string | undefined,
+  response: unknown,
+): void {
+  const resolvedProvider = provider || core.host.models().get(modelKey)?.[0]?.provider || "unknown"
+  const spanMeta: InferenceTimingMeta = {
+    modelKey,
+    provider: resolvedProvider,
+    outcome: "success",
+  }
+  const reasoningTokens = readReasoningTokensFromResponse(response)
+  if (reasoningTokens !== undefined) {
+    spanMeta.reasoningTokens = reasoningTokens
+  }
+  recordInferenceSpan(`model:${modelType}`, elapsedTime, spanMeta)
+  if (modelType !== ModelType.TEXT_EMBEDDING) {
+    setInferenceModelProvider(resolvedProvider)
+  }
+  const responseValue = Array.isArray(response) && response.every((x) => typeof x === "number")
+    ? "[array]"
+    : typeof response === "string"
+    ? response
+    : undefined
+  const logRoomId = trajectoryRoomId(core)
+  const pending = core.runtime.adapter.createLogs([
+    {
+      entityId: core.runtime.agentId,
+      roomId: logRoomId,
+      body: {
+        modelType,
+        modelKey,
+        prompt: promptContent ?? undefined,
         systemPrompt,
-        userPrompt,
-        messages,
-        prompt,
-        providerOrder,
-        providerAttributions,
-      } = trajectoryRequestFields(
+        runId: core.runtime.getCurrentRunId(),
+        timestamp: Date.now(),
+        executionTime: elapsedTime,
+        provider: resolvedProvider,
+        response: responseValue,
+      },
+      type: `useModel:${modelKey}`,
+    },
+  ])
+  trackDiagnostic(core, writeModelCallLog(core, modelKey, pending))
+}
+
+effect function writeModelCallLog(core: DispatchCore, modelKey: string, pending: Promise<void>) {
+  foreign(() => pending) catch (failure) => {
+    core.runtime.logger.debug(
+      {
+        src: "agent",
+        agentId: core.runtime.agentId,
+        model: modelKey,
+        error: failure.cause instanceof Error ? failure.cause.message : String(failure.cause),
+      },
+      "Model call log write failed",
+    )
+    core.runtime.reportError("AgentRuntime.modelCallLog", failure.cause, {
+      model: modelKey,
+      diagnosticOnly: true,
+    })
+  }
+}
+
+effect function resolveDispatchRegistrations(
+  core: DispatchCore,
+  modelType: keyof ModelParamsMap,
+  provider?: string,
+) {
+  const callerModelKey = String(modelType)
+  let requestedModelKey = callerModelKey
+  const llmMode = core.runtime.getLLMMode()
+  if (llmMode !== "DEFAULT" && LLM_MODE_OVERRIDE_MODEL_TYPES.has(requestedModelKey)) {
+    const overrideModelKey = llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE
+    if (requestedModelKey !== overrideModelKey) {
+      core.runtime.logger.debug(
+        {
+          src: "agent",
+          agentId: core.runtime.agentId,
+          originalModel: requestedModelKey,
+          overrideModel: overrideModelKey,
+          llmMode,
+        },
+        "LLM mode override applied",
+      )
+      requestedModelKey = overrideModelKey
+    }
+  }
+  const requestedProvider = provider === undefined
+      && isEmbeddingModel(requestedModelKey)
+      && core.host.pinnedEmbeddingProvider() !== undefined
+    ? core.host.pinnedEmbeddingProvider()
+    : provider
+  const providerOverride = provider === undefined && isTextGenerationModelKey(requestedModelKey)
+    ? resolveTextProviderOverride(core)
+    : undefined
+  const resolvedModels = resolveModelRegistrations(
+    core,
+    requestedModelKey,
+    providerOverride ?? requestedProvider,
+  )
+  if (resolvedModels.length === 0) {
+    try throwNoModelHandler(core, requestedModelKey, providerOverride)
+  }
+  return {
+    callerModelKey,
+    requestedModelKey,
+    requestedProvider,
+    resolvedModels,
+  }
+}
+
+effect function routeActionModel(
+  core: DispatchCore,
+  modelType: keyof ModelParamsMap,
+  params: unknown,
+  provider: string | undefined,
+) {
+  const actionRoutingCtx = getActionRoutingContext()
+  if (actionRoutingCtx?.modelClass === undefined || provider !== undefined) return undefined
+  const strategy = maybeReroute(actionRoutingCtx.modelClass, String(modelType))
+  if (!strategy) return undefined
+  const resolvedChain = resolveChain(strategy, (key) => core.host.models().get(key))
+  if (resolvedChain.length > 0) {
+    core.runtime.logger.debug(
+      {
+        src: "agent",
+        agentId: core.runtime.agentId,
+        action: actionRoutingCtx.actionName,
+        modelClass: actionRoutingCtx.modelClass,
+        requestedModelType: String(modelType),
+        chain: resolvedChain.map((r) => ({
+          modelType: r.modelType,
+          provider: r.provider,
+        })),
+      },
+      "Per-action model routing applied",
+    )
+    const nestedCtx = { ...actionRoutingCtx, modelClass: undefined }
+    const value: unknown = try asLegacy(
+      Error,
+      executeChainWithFallback(
+        resolvedChain,
+        strategy.confidenceThreshold,
+        (resolved) =>
+          Promise.resolve(runWithActionRoutingContext(nestedCtx, () =>
+            runDetached(dispatchModel(core, resolved.modelType as keyof ModelParamsMap, params, resolved.provider))
+          )),
+      ),
+    )
+    return { value }
+  }
+  if (strategy.requireChainMatch) {
+    throw new ElizaError(
+      `No ${actionRoutingCtx.modelClass} model handler is registered for action ${actionRoutingCtx.actionName}`,
+      { code: "ACTION_MODEL_CLASS_UNAVAILABLE" },
+    )
+  }
+  core.runtime.logger.debug(
+    {
+      src: "agent",
+      agentId: core.runtime.agentId,
+      action: actionRoutingCtx.actionName,
+      modelClass: actionRoutingCtx.modelClass,
+      requestedModelType: String(modelType),
+    },
+    "Per-action model routing requested but no handlers in chain — falling back to default",
+  )
+  return undefined
+}
+
+interface DispatchRun {
+  readonly core: DispatchCore
+  readonly modelType: keyof ModelParamsMap
+  readonly params: unknown
+  readonly explicitSignal: AbortSignal | undefined
+  readonly signal: AbortSignal | undefined
+  readonly startedAt: number
+  readonly lookupCaller: ReturnType<typeof captureModelLookupCaller> | undefined
+  readonly callerModelKey: string
+  readonly requestedModelKey: string
+  readonly requestedProvider: string | undefined
+  readonly resolvedModels: ResolvedModelRegistration[]
+  readonly providerAttempts: ModelProviderAttempt[]
+  readonly exhaustedProviders: Set<string>
+  readonly confidentialOperation: ConfidentialInferenceOperation
+  startedOutput: boolean
+  lastError: unknown
+  lastFailed: ResolvedModelRegistration | undefined
+}
+
+interface Attempt {
+  readonly model: ResolvedModelRegistration
+  readonly index: number
+  readonly meta: { modelKey: string; provider: string; attempt: number }
+  readonly preprocessingStartedAt: number
+  readonly recording: { recorded: boolean }
+  handlerStartedAt: number | null
+  providerAttempt: ModelProviderAttempt | undefined
+  modelParams: unknown
+  promptContent: string | null | undefined
+  preparationFailed: boolean
+  stream: StreamDelivery | undefined
+}
+
+interface StreamDelivery {
+  readonly paramsChunk: StreamChunkCallback | undefined
+  readonly ctxChunk: StreamChunkCallback | undefined
+  readonly messageId: string | undefined
+  readonly signal: AbortSignal | undefined
+  readonly shouldStream: boolean
+  readonly suppressStructured: boolean
+  extractor: ResponseSkeletonStreamExtractor | undefined
+  startTime: number
+  text: string
+  handlerDelivered: boolean
+  secret: SecretSwapSession | null
+  pii: PseudonymSession | null
+  scanner: GuardedStreamScanner | null
+  downstream: Fiber.Fiber<void> | undefined
+  downstreamFailure: { error: unknown } | undefined
+}
+
+interface StreamingParams {
+  stream?: boolean
+  onStreamChunk?: StreamChunkCallback
+  signal?: AbortSignal
+  streamStructured?: boolean
+  responseSkeleton?: ResponseSkeleton
+  streamFields?: readonly StructuredStreamField[]
+  streamFieldGate?: StructuredStreamGate
+}
+
+function registrationAttempted(run: DispatchRun, candidate: ResolvedModelRegistration): boolean {
+  return run.providerAttempts.some(
+    (attempt) =>
+      attempt.modelType === candidate.modelKey
+      && attempt.provider === candidate.provider
+      && attempt.handler === candidate.handler,
+  )
+}
+
+export effect function useModel<T extends keyof ModelParamsMap, R>(
+  core: DispatchCore,
+  modelType: T,
+  params: ModelParamsMap[T],
+  provider?: string,
+) {
+  return (try dispatchModel(core, modelType, params, provider)) as R
+}
+
+effect function dispatchModel(
+  core: DispatchCore,
+  modelType: keyof ModelParamsMap,
+  params: unknown,
+  provider: string | undefined,
+): unknown!(Error | Foreign) {
+  const explicitSignal = isPlainObject(params)
+    ? (params as { signal?: AbortSignal }).signal
+    : undefined
+  const contextSignal = getStreamingContext()?.abortSignal
+  const signal = explicitSignal && contextSignal && explicitSignal !== contextSignal
+    ? AbortSignal.any([explicitSignal, contextSignal])
+    : (explicitSignal ?? contextSignal)
+  try abortCheck(signal)
+  const startedAt = Date.now()
+  try assertCanonicalModelCapabilityEnabled(core, String(modelType))
+  const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
+    ? captureModelLookupCaller()
+    : undefined
+  const routed = try routeActionModel(core, modelType, params, provider)
+  if (routed) return routed.value
+  const registrations = try resolveDispatchRegistrations(core, modelType, provider)
+  const run: DispatchRun = {
+    core,
+    modelType,
+    params,
+    explicitSignal,
+    signal,
+    startedAt,
+    lookupCaller,
+    ...registrations,
+    providerAttempts: [],
+    exhaustedProviders: new Set(),
+    confidentialOperation: new ConfidentialInferenceOperation(),
+    startedOutput: false,
+    lastError: undefined,
+    lastFailed: undefined,
+  }
+  for (let index = 0; index < run.resolvedModels.length; index++) {
+    const resolvedModel = run.resolvedModels[index]
+    if (!resolvedModel) continue
+    if (run.exhaustedProviders.has(resolvedModel.provider) || registrationAttempted(run, resolvedModel)) continue
+    const attempt = try startAttempt(run, resolvedModel, index)
+    const outcome = try exit(runAttempt(run, attempt))
+    if (Exit.isSuccess(outcome)) return outcome.value
+    if (Cause.hasInterruptsOnly(outcome.cause)) return try failCause(outcome.cause)
+    index = try afterFailedAttempt(run, attempt, thrownValue(Cause.squash(outcome.cause)))
+  }
+  if (run.lastError === undefined || run.lastError === null) return try noModelHandler(run.requestedModelKey)
+  return try rethrowModelFailoverError(run.lastError, run.lastFailed)
+}
+
+effect function startAttempt(run: DispatchRun, model: ResolvedModelRegistration, index: number) {
+  const { core } = run
+  const modelKey = String(model.modelKey)
+  if (
+    (try getModelAttemptLease())
+    && (!isTextGenerationModelKey(modelKey) || model.provider !== "openai")
+  ) {
+    throw new ElizaError("Model provider has no qualified attempt guard", {
+      code: "MODEL_ATTEMPT_POLICY_ROUTE",
+    })
+  }
+  try admitProcessing(
+    core.host.processingPolicy(),
+    core.runtime.agentId,
+    {
+      kind: "model_attempt",
+      model: {
+        modelType: modelKey,
+        requestedModelType: run.callerModelKey,
+        modality: modalityForModelType(modelKey),
+        provider: model.provider,
+        handler: model.handler,
+        attempt: run.providerAttempts.length + 1,
+        reason: run.providerAttempts.length > 0 ? "failover" : "primary",
+      },
+    },
+    run.lastError,
+  )
+  try abortCheck(run.signal)
+  run.startedOutput = false
+  const attempt: Attempt = {
+    model,
+    index,
+    meta: { modelKey, provider: model.provider ?? "unknown", attempt: index + 1 },
+    preprocessingStartedAt: Date.now(),
+    recording: { recorded: false },
+    handlerStartedAt: null,
+    providerAttempt: undefined,
+    modelParams: run.params,
+    promptContent: undefined,
+    preparationFailed: false,
+    stream: undefined,
+  }
+  if (index === 0) {
+    recordInferenceSpan(
+      `model-routing:${String(run.modelType)}`,
+      attempt.preprocessingStartedAt - run.startedAt,
+      attempt.meta,
+    )
+  }
+  return attempt
+}
+
+effect function prepareModelParams(run: DispatchRun, attempt: Attempt) {
+  const { core, params } = run
+  const resolvedModelKey = attempt.model.modelKey
+  const substituteSecrets = core.host.isSecretSwapEnabled()
+    && !SECRET_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey)
+  const secretsInPromptOnly = resolvedModelKey === ModelType.IMAGE
+  const substitutePii = core.host.isPiiSwapEnabled()
+    && !PII_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey)
+  if (substitutePii) {
+    try collectPiiPromptText(params)
+  }
+  let modelParams: unknown
+  const paramsClone = isPlainObject(params)
+    ? substituteSecrets && !secretsInPromptOnly
+      ? { ...(params as Record<string, unknown>) }
+      : cloneModelRequestGraph(params)
+    : params
+  if (
+    params === null
+    || params === undefined
+    || typeof params !== "object"
+    || Array.isArray(params)
+    || BufferUtils.isBuffer(params)
+  ) {
+    modelParams = paramsClone
+  } else {
+    const modelSettings = getModelSettings(core, run.requestedModelKey)
+    modelParams = modelSettings
+      ? { ...modelSettings, ...(paramsClone as Record<string, JsonValue | object>) }
+      : paramsClone
+    if (
+      isTextGenerationModelKey(run.requestedModelKey)
+      && isPlainObject(modelParams)
+      && core.runtime.character.name
+      && modelParams.user === undefined
+    ) {
+      modelParams.user = core.runtime.character.name
+    }
+  }
+  const prepareModelAttempt = isPlainObject(modelParams)
+      && typeof (modelParams as GenerateTextParams).prepareModelAttempt === "function"
+    ? (modelParams as GenerateTextParams).prepareModelAttempt
+    : undefined
+  if (prepareModelAttempt) {
+    const context: ModelAttemptContext = {
+      modelType: String(resolvedModelKey),
+      provider: attempt.model.provider ?? "unknown",
+      ...(attempt.model.metadata ? { metadata: attempt.model.metadata } : {}),
+    }
+    const prepared = modelParams as GenerateTextParams
+    foreign(() => prepareModelAttempt(context, prepared)) catch effect (failure) => {
+      attempt.preparationFailed = true
+      throw failure
+    }
+    delete prepared.prepareModelAttempt
+  }
+  return { modelParams, substituteSecrets, secretsInPromptOnly, substitutePii }
+}
+
+effect function substituteSecretsFor(session: SecretSwapSession, value: unknown, promptOnly: boolean) {
+  if (!promptOnly) return try substituteSecretsInValue(session, value)
+  if (!isPlainObject(value)) return value
+  if (typeof value.prompt === "string") {
+    value.prompt = try substituteSecretText(session, value.prompt)
+  }
+  return value
+}
+
+effect function maskValue(stream: StreamDelivery, value: unknown) {
+  const secretMasked = stream.secret ? (try substituteSecretsInValue(stream.secret, value)) ?? value : value
+  return stream.pii ? (try substitutePseudonymsInValue(stream.pii, secretMasked)) ?? secretMasked : secretMasked
+}
+
+effect function deliverDownstream(stream: StreamDelivery, chunk: string, accumulated?: string, streamRevision?: number) {
+  const { paramsChunk, ctxChunk, messageId } = stream
+  if (paramsChunk) try foreign(() => paramsChunk(chunk, messageId, accumulated, streamRevision))
+  if (ctxChunk) try foreign(() => ctxChunk(chunk, messageId, accumulated, streamRevision))
+}
+
+function queueDownstreamChunk(stream: StreamDelivery, chunk: string, accumulated?: string, streamRevision?: number): void {
+  const previous = stream.downstream
+  stream.downstream = runFork(effect {
+    try yieldNow
+    if (previous) try Fiber.await(previous)
+    if (stream.downstreamFailure) return
+    deliverDownstream(stream, chunk, accumulated, streamRevision) catch (failure) => {
+      stream.downstreamFailure = { error: failure.cause }
+    }
+  })
+}
+
+effect function drainDownstream(stream: StreamDelivery) {
+  if (stream.downstream) try Fiber.await(stream.downstream)
+  if (stream.downstreamFailure) throw new Foreign({ cause: stream.downstreamFailure.error })
+}
+
+function openStream(run: DispatchRun, attempt: Attempt, modelParams: unknown, startTime: number): StreamDelivery {
+  const model = attempt.model
+  const streamingCtx = getStreamingContext()
+  const paramsAsStreaming = isPlainObject(modelParams)
+    ? (modelParams as StreamingParams)
+    : undefined
+  const paramsChunk = paramsAsStreaming?.onStreamChunk
+  const ctxChunk = streamingCtx?.onStreamChunk
+  const explicitStream = paramsAsStreaming?.stream
+  const shouldStream = explicitStream === false
+    ? false
+    : run.requestedModelKey === ModelType.IMAGE_DESCRIPTION
+    ? explicitStream === true
+    : !!(paramsChunk || ctxChunk || explicitStream)
+  const structuredStream = shouldStream && paramsAsStreaming?.streamStructured === true
+    ? resolveStructuredStreamFields(
+      paramsAsStreaming.responseSkeleton,
+      paramsAsStreaming.streamFields,
+    )
+    : { fields: [], parts: {} }
+  const structuredStreamGate = paramsAsStreaming?.streamFieldGate
+  if (paramsAsStreaming) {
+    delete paramsAsStreaming.streamFields
+    delete paramsAsStreaming.streamFieldGate
+  }
+  const stream: StreamDelivery = {
+    paramsChunk,
+    ctxChunk,
+    messageId: streamingCtx?.messageId,
+    signal: run.signal,
+    shouldStream,
+    suppressStructured: shouldStream
+      && paramsAsStreaming?.streamStructured === true
+      && structuredStream.fields.length === 0,
+    extractor: undefined,
+    startTime,
+    text: "",
+    handlerDelivered: false,
+    secret: null,
+    pii: null,
+    scanner: null,
+    downstream: undefined,
+    downstreamFailure: undefined,
+  }
+  attempt.stream = stream
+  const signal = run.signal
+  stream.extractor = structuredStream.fields.length > 0 && paramsAsStreaming?.responseSkeleton
+    ? new ResponseSkeletonStreamExtractor({
+      skeleton: paramsAsStreaming.responseSkeleton,
+      streamFields: structuredStream.fields,
+      streamParts: structuredStream.parts,
+      ...(structuredStreamGate ? { gate: structuredStreamGate } : {}),
+      unordered: true,
+      onChunk: (chunk, _field, accumulated, streamRevision) =>
+        queueDownstreamChunk(stream, chunk, accumulated, streamRevision),
+      ...(signal ? { abortSignal: signal } : {}),
+    })
+    : undefined
+  const declaredStreamable = model.metadata?.streamable
+  const acceptsHandlerStream = model.provider === "eliza-router"
+    || (typeof declaredStreamable === "boolean"
+      ? declaredStreamable
+      : !!model.provider
+        && isLocalHandler({ provider: model.provider, metadata: model.metadata }))
+  const handlerStreamChunk: StreamChunkCallback | undefined = shouldStream
+      && acceptsHandlerStream
+      && (paramsChunk || ctxChunk || stream.extractor)
+    ? (chunk) => {
+      stream.handlerDelivered = true
+      return runDetached(deliverModelStreamChunk(run, attempt, stream, chunk))
+    }
+    : undefined
+  if (isPlainObject(modelParams) && paramsAsStreaming) {
+    paramsAsStreaming.stream = shouldStream
+    if (handlerStreamChunk) {
+      paramsAsStreaming.onStreamChunk = handlerStreamChunk
+    } else {
+      delete paramsAsStreaming.onStreamChunk
+    }
+    if (
+      signal
+      && (paramsAsStreaming.signal === undefined
+        || paramsAsStreaming.signal === run.explicitSignal)
+    ) {
+      paramsAsStreaming.signal = signal
+    }
+  }
+  return stream
+}
+
+effect function deliverVisibleChunk(stream: StreamDelivery, visibleChunk: string) {
+  const { extractor, paramsChunk, ctxChunk, messageId } = stream
+  if (extractor) {
+    try foreignSync(() => extractor.push(visibleChunk))
+    return
+  }
+  if (stream.suppressStructured) return
+  if (paramsChunk) try foreign(() => paramsChunk(visibleChunk, messageId, undefined))
+  if (ctxChunk) try foreign(() => ctxChunk(visibleChunk, messageId, undefined))
+}
+
+effect function emitModelStreamChunk(
+  run: DispatchRun,
+  attempt: Attempt,
+  stream: StreamDelivery,
+  safeChunk: string,
+  visibleChunk = safeChunk,
+) {
+  const { core } = run
+  if (stream.signal?.aborted) return
+  if (safeChunk.length > 0) {
+    run.startedOutput = true
+  }
+  if (stream.text === "" && safeChunk.length > 0) {
+    markInference(INFERENCE_MARKS.firstToken)
+    recordInferenceSpan(
+      `model-ttft:${String(run.modelType)}`,
+      monotonicNow() - stream.startTime,
+      attempt.meta,
+    )
+  }
+  stream.text += safeChunk
+  if (core.host.hooksForPhase("model_stream_chunk").length > 0) {
+    const trajStream = getTrajectoryContext()
+    try foreign(() =>
+      core.host.invokePipelineHooks(
+        "model_stream_chunk",
+        modelStreamChunkPipelineHookContext({
+          source: "use_model",
+          chunk: safeChunk,
+          messageId: stream.messageId,
+          roomId: trajectoryRoomId(core),
+          runId: core.runtime.getCurrentRunId(),
+          ...(trajStream?.messageId
+            ? { responseId: trajStream.messageId as UUID }
+            : {}),
+          accumulated: stream.text,
+        }),
+        "Model stream chunk (useModel)",
+        false,
+      )
+    )
+  }
+  try foreign(() => runInsideModelStreamChunkDelivery(() => runDetached(deliverVisibleChunk(stream, visibleChunk))))
+}
+
+effect function deliverModelStreamChunk(run: DispatchRun, attempt: Attempt, stream: StreamDelivery, chunk: string) {
+  if (stream.signal?.aborted) return
+  if (stream.secret || stream.pii) {
+    const scanner = stream.scanner ??= new GuardedStreamScanner({
+      secretSession: stream.secret,
+      piiSession: stream.pii,
+    })
+    const { safe, visible } = try Effect.try({ try: () => scanner.push(chunk), catch: (cause) => new Foreign({ cause }) })
+    if (safe.length > 0) try emitModelStreamChunk(run, attempt, stream, safe, visible)
+    return
+  }
+  try emitModelStreamChunk(run, attempt, stream, chunk)
+}
+
+effect function finishDeliveredStream(run: DispatchRun, attempt: Attempt, stream: StreamDelivery) {
+  const { core } = run
+  const scanner = stream.scanner
+  if (!stream.signal?.aborted && scanner) {
+    const { safe, visible } = try Effect.try({ try: () => scanner.flush(), catch: (cause) => new Foreign({ cause }) })
+    if (safe.length > 0) try emitModelStreamChunk(run, attempt, stream, safe, visible)
+  }
+  const extractor = stream.extractor
+  if (extractor) try foreignSync(() => extractor.flush())
+  try drainDownstream(stream)
+  const trajStreamEnd = getTrajectoryContext()
+  try foreign(() =>
+    core.host.invokePipelineHooks(
+      "model_stream_end",
+      modelStreamEndPipelineHookContext({
+        source: "use_model",
+        roomId: trajectoryRoomId(core),
+        runId: core.runtime.getCurrentRunId(),
+        messageId: stream.messageId ?? trajStreamEnd?.messageId,
+        text: stream.text,
+      }),
+      "Model stream end (useModel)",
+      true,
+    )
+  )
+  try foreignSync(() => getStreamingContext()?.onStreamEnd?.())
+}
+
+const CONTACT_REFERENCE_GUIDANCE =
+  "Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements."
+
+effect function protectModelParams(
+  run: DispatchRun,
+  attempt: Attempt,
+  stream: StreamDelivery,
+  prepared: { modelParams: unknown; substituteSecrets: boolean; secretsInPromptOnly: boolean; substitutePii: boolean },
+) {
+  const { core } = run
+  const model = attempt.model
+  let { modelParams } = prepared
+  const textModelKey = isTextGenerationModelKey(String(model.modelKey))
+    ? String(model.modelKey)
+    : run.requestedModelKey
+  let systemPrompt = attachEffectiveSystemPrompt(core, textModelKey, modelParams)
+  if (prepared.substituteSecrets) {
+    const trajectoryCtx = getTrajectoryContext()
+    const session = trajectoryCtx?.secretSwapSession ?? core.host.createSecretSwapSession()
+    stream.secret = session
+    if (trajectoryCtx && !trajectoryCtx.secretSwapSession) {
+      trajectoryCtx.secretSwapSession = session
+    }
+    modelParams = try substituteSecretsFor(session, modelParams, prepared.secretsInPromptOnly)
+    systemPrompt = systemPrompt === undefined ? undefined : try substituteSecretText(session, systemPrompt)
+  }
+  let piiSubstitutedText = ""
+  if (prepared.substitutePii) {
+    const trajectoryCtx = getTrajectoryContext()
+    const session = trajectoryCtx?.piiSwapSession ?? core.host.createPiiSwapSession()
+    stream.pii = session
+    if (trajectoryCtx && !trajectoryCtx.piiSwapSession) {
+      trajectoryCtx.piiSwapSession = session
+    }
+    try learnPseudonyms(session, try collectPiiPromptText(modelParams, systemPrompt))
+    modelParams = try substitutePseudonymsInValue(session, modelParams)
+    systemPrompt = systemPrompt === undefined ? undefined : session.substituteText(systemPrompt)
+    piiSubstitutedText = try collectPiiPromptText(modelParams, systemPrompt)
+  }
+  const hookedParams = modelParams
+  try foreign(() =>
+    core.host.invokePipelineHooks(
+      "pre_model",
+      preModelPipelineHookContext({
+        requestedModelType: String(run.modelType),
+        resolvedModelKey: model.modelKey,
+        provider: model.provider,
+        roomId: getTrajectoryContext()?.roomId,
+        params: hookedParams,
+      }),
+      "Pre-model pipeline hook",
+    )
+  )
+  if (stream.secret) {
+    modelParams = try substituteSecretsFor(stream.secret, modelParams, prepared.secretsInPromptOnly)
+    const postHookSystemPrompt = resolveEffectiveSystemPrompt({ params: modelParams, fallback: systemPrompt })
+    systemPrompt = postHookSystemPrompt === undefined
+      ? undefined
+      : try substituteSecretText(stream.secret, postHookSystemPrompt)
+  }
+  if (stream.pii) {
+    const postHookText = try collectPiiPromptText(modelParams, systemPrompt)
+    if (postHookText !== piiSubstitutedText) {
+      try learnPseudonyms(stream.pii, postHookText)
+    }
+    modelParams = try substitutePseudonymsInValue(stream.pii, modelParams)
+    const postHookSystemPrompt = resolveEffectiveSystemPrompt({ params: modelParams, fallback: systemPrompt })
+    systemPrompt = postHookSystemPrompt === undefined ? undefined : stream.pii.substituteText(postHookSystemPrompt)
+  }
+  if (
+    stream.secret?.entries.some((entry) => entry.placeholder.startsWith("__ELIZA_CONTACT_"))
+    && isTextGenerationModelKey(String(model.modelKey))
+    && isPlainObject(modelParams)
+  ) {
+    if (Array.isArray(modelParams.messages)) {
+      modelParams.messages = dropDuplicateLeadingSystemMessage(modelParams.messages, systemPrompt)
+    }
+    systemPrompt = `${systemPrompt ?? ""}\n\n${CONTACT_REFERENCE_GUIDANCE}`
+    modelParams.system = systemPrompt
+  }
+  return { modelParams, systemPrompt }
+}
+
+effect function promptContentOf(modelParams: unknown) {
+  const record = modelParams && typeof modelParams === "object" && !Array.isArray(modelParams)
+    ? (modelParams as Record<string, JsonValue | object>)
+    : null
+  return (record && "prompt" in record && typeof record.prompt === "string" ? record.prompt : null)
+    || (record && "input" in record && typeof record.input === "string" ? record.input : null)
+    || (record && "messages" in record && Array.isArray(record.messages)
+      ? try asLegacy(TypeError, stringifyForModel({ messages: record.messages }))
+      : null)
+    || (typeof modelParams === "string" ? modelParams : null)
+}
+
+effect function admitModelParams(run: DispatchRun, attempt: Attempt, modelParams: unknown) {
+  const { core } = run
+  const model = attempt.model
+  const resolvedModelKey = model.modelKey
+  const attemptLease = try getModelAttemptLease()
+  if (attemptLease && isTextGenerationModelKey(String(resolvedModelKey))) {
+    if (!isPlainObject(modelParams)) {
+      throw new ElizaError("Bounded text request must be structured", {
+        code: "MODEL_ATTEMPT_POLICY_INVALID",
+      })
+    }
+    modelParams.maxTokens = typeof modelParams.maxTokens === "number"
+        && Number.isSafeInteger(modelParams.maxTokens)
+        && modelParams.maxTokens > 0
+      ? Math.min(modelParams.maxTokens, attemptLease.maxOutputTokens)
+      : attemptLease.maxOutputTokens
+    modelParams.omitMaxTokens = false
+  }
+  const promptContent = try promptContentOf(modelParams)
+  attempt.modelParams = modelParams
+  attempt.promptContent = promptContent
+  if (isPlainObject(modelParams)) {
+    Object.defineProperty(modelParams, MODEL_PROVIDER_ATTEMPTS, {
+      value: run.providerAttempts,
+      enumerable: false,
+    })
+  }
+  if (isTextGenerationModelKey(String(resolvedModelKey))) {
+    if (isPlainObject(modelParams)) {
+      try attachFinalModelInputBudget(core, modelParams, model.metadata)
+    } else {
+      try buildFinalModelInputBudget(core, modelParams, model.metadata)
+    }
+    freezeAdmittedModelRequest(modelParams)
+  }
+  if (!SECRET_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey) && resolvedModelKey !== ModelType.IMAGE) {
+    core.runtime.logger.trace(
+      {
+        src: "agent",
+        agentId: core.runtime.agentId,
+        model: resolvedModelKey,
+        params: modelParams,
+      },
+      "Model input",
+    )
+  } else {
+    core.runtime.logger.trace(
+      {
+        src: "agent",
+        agentId: core.runtime.agentId,
+        model: resolvedModelKey,
+        size: binaryInputSize(modelParams),
+      },
+      "Model input (binary)",
+    )
+  }
+  core.runtime.logger.debug(
+    {
+      src: "agent",
+      agentId: core.runtime.agentId,
+      model: resolvedModelKey,
+      provider: model.provider,
+      ...(run.lookupCaller?.caller ? { caller: run.lookupCaller.caller } : {}),
+      ...(run.lookupCaller?.callerStack.length
+        ? { callerStack: run.lookupCaller.callerStack }
+        : {}),
+    },
+    "Using model",
+  )
+  return promptContent
+}
+
+effect function runAttempt(run: DispatchRun, attempt: Attempt) {
+  const { core, modelType } = run
+  const model = attempt.model
+  try abortCheck(run.signal)
+  const prepared = try prepareModelParams(run, attempt)
+  const stream = openStream(run, attempt, prepared.modelParams, monotonicNow())
+  const { modelParams, systemPrompt } = try protectModelParams(run, attempt, stream, prepared)
+  const promptContent = try admitModelParams(run, attempt, modelParams)
+  stream.startTime = monotonicNow()
+  recordInferenceSpan(
+    `model-preprocess:${String(modelType)}`,
+    Date.now() - attempt.preprocessingStartedAt,
+    attempt.meta,
+  )
+  try abortCheck(run.signal)
+  if (!isEmbeddingModel(modelType) && !String(modelType).startsWith("TEXT_TOKENIZER")) {
+    try ensureTaskTrajectory()
+  }
+  try abortCheck(run.signal)
+  attempt.handlerStartedAt = Date.now()
+  attempt.providerAttempt = {
+    modelType: model.modelKey,
+    provider: model.provider,
+    handler: model.handler,
+  }
+  run.providerAttempts.push(attempt.providerAttempt)
+  const handler = model.handler
+  const rawResponse: JsonValue | object = try foreign(() =>
+    runInModelCallRecordingScope(attempt.recording, () =>
+      runDetached(runWithConfidentialInference(
+        core.host.confidentialInference(),
+        {
+          agentId: core.runtime.agentId,
+          modelType: String(model.modelKey),
+          handler,
+          operation: run.confidentialOperation,
+        },
+        () => handler(core.runtime, modelParams as Record<string, JsonValue | object>),
+      ))
+    )
+  )
+  try abortCheck(run.signal)
+  try asLegacy(TypeError, assertModelResultPresent(rawResponse, String(modelType)))
+  let embeddingProviderOutput: unknown = rawResponse
+  if (isEmbeddingModel(modelType)) {
+    const snapshot = effect (vector: unknown) => {
+      if (!Array.isArray(vector)) return vector
+      const copy = [...vector]
+      try copyEmbeddingVectorSpace(vector, copy)
+      return copy
+    }
+    embeddingProviderOutput = modelType === ModelType.TEXT_EMBEDDING_BATCH && Array.isArray(rawResponse)
+      ? try forEach(rawResponse, snapshot)
+      : try snapshot(rawResponse)
+  }
+  const result = { current: try maskValue(stream, rawResponse) }
+  const request = { modelParams, systemPrompt, promptContent }
+  if (stream.shouldStream && (stream.paramsChunk || stream.ctxChunk) && isTextStreamResult(rawResponse)) {
+    return try finishCallbackStream(run, attempt, stream, request, rawResponse, result)
+  }
+  return try finishResult(run, attempt, stream, request, result, embeddingProviderOutput)
+}
+
+interface AdmittedRequest {
+  readonly modelParams: unknown
+  readonly systemPrompt: string | undefined
+  readonly promptContent: string | null
+}
+
+effect function settleModelOutput(
+  run: DispatchRun,
+  attempt: Attempt,
+  stream: StreamDelivery,
+  request: AdmittedRequest,
+  result: { current: unknown },
+  streaming: boolean,
+) {
+  const { core, modelType } = run
+  const model = attempt.model
+  const elapsedTime = monotonicNow() - stream.startTime
+  const postprocessingStartedAt = Date.now()
+  try foreign(() =>
+    core.host.invokePipelineHooks(
+      "post_model",
+      postModelPipelineHookContext({
+        requestedModelType: String(modelType),
+        resolvedModelKey: model.modelKey,
+        provider: model.provider,
+        roomId: getTrajectoryContext()?.roomId,
+        durationMs: Math.round(elapsedTime),
+        params: request.modelParams,
+        result,
+        streaming,
+      }),
+      "Post-model pipeline hook",
+    )
+  )
+  result.current = try maskValue(stream, result.current)
+  try noteResolvedModelProvider(core, run.requestedModelKey, model.provider)
+  return { elapsedTime, postprocessingStartedAt }
+}
+
+function trajectoryOf(run: DispatchRun, attempt: Attempt, request: AdmittedRequest, elapsedTime: number) {
+  return {
+    modelType: String(run.modelType),
+    resolvedModelKey: String(attempt.model.modelKey),
+    provider: attempt.model.provider,
+    modelParams: request.modelParams,
+    promptContent: request.promptContent,
+    elapsedTime,
+  }
+}
+
+effect function finishCallbackStream(
+  run: DispatchRun,
+  attempt: Attempt,
+  stream: StreamDelivery,
+  request: AdmittedRequest,
+  rawResponse: TextStreamResult,
+  result: { current: unknown },
+) {
+  const { core, modelType } = run
+  const model = attempt.model
+  const streamIter = try foreignSync(() => rawResponse.textStream[Symbol.asyncIterator]())
+  const iterated = try exit(effect {
+    while (true) {
+      const step = try foreign(() => runInModelCallRecordingScope(attempt.recording, () => streamIter.next()))
+      if (step.done) break
+      try abortCheck(run.signal)
+      try deliverModelStreamChunk(run, attempt, stream, step.value)
+    }
+  })
+  try foreign(() => runInModelCallRecordingScope(attempt.recording, () => streamIter.return?.()))
+  try iterated
+  try abortCheck(run.signal)
+  try finishDeliveredStream(run, attempt, stream)
+  const streamRaw = rawResponse as {
+    toolCalls?: unknown
+    finishReason?: unknown
+    usage?: unknown
+    providerMetadata?: unknown
+  }
+  const hasToolCallsField = "toolCalls" in streamRaw
+  const resolvedToolCalls = hasToolCallsField ? try foreign(() => streamRaw.toolCalls) : []
+  const resolvedFinishReason = "finishReason" in streamRaw
+    ? try foreign(() => streamRaw.finishReason)
+    : undefined
+  try assertModelOutputComplete({
+    finishReason: resolvedFinishReason,
+    provider: model.provider,
+    model: model.modelKey,
+  })
+  if (hasToolCallsField) {
+    const resolvedUsage = "usage" in streamRaw ? try foreign(() => streamRaw.usage) : undefined
+    result.current = {
+      text: stream.text,
+      toolCalls: resolvedToolCalls,
+      finishReason: resolvedFinishReason,
+      usage: resolvedUsage,
+      providerMetadata: streamRaw.providerMetadata,
+    }
+  } else {
+    result.current = stream.text
+  }
+  const { elapsedTime, postprocessingStartedAt } = try settleModelOutput(run, attempt, stream, request, result, true)
+  core.runtime.logger.trace(
+    {
+      src: "agent",
+      agentId: core.runtime.agentId,
+      model: model.modelKey,
+      duration: Number(elapsedTime.toFixed(2)),
+      streaming: true,
+    },
+    "Model output (stream with callback complete)",
+  )
+  logModelCall(
+    core,
+    String(modelType),
+    model.modelKey,
+    request.promptContent,
+    request.systemPrompt,
+    elapsedTime,
+    model.provider,
+    result.current,
+  )
+  if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
+    try recordUseModelTrajectory(core, {
+      ...trajectoryOf(run, attempt, request, elapsedTime),
+      result: result.current,
+      response: try trajectoryResponse(result.current),
+      providerRecorded: attempt.recording.recorded,
+    })
+  }
+  recordInferenceSpan(
+    `model-postprocess:${String(modelType)}`,
+    Date.now() - postprocessingStartedAt,
+    { ...attempt.meta, streaming: true },
+  )
+  return result.current
+}
+
+effect function trajectoryResponse(value: unknown) {
+  return typeof value === "string" ? value : try asLegacy(TypeError, stringifyForModel({ response: value }))
+}
+
+effect function finishResult(
+  run: DispatchRun,
+  attempt: Attempt,
+  stream: StreamDelivery,
+  request: AdmittedRequest,
+  result: { current: unknown },
+  embeddingProviderOutput: unknown,
+) {
+  const { core, modelType } = run
+  const model = attempt.model
+  if (stream.handlerDelivered) {
+    try finishDeliveredStream(run, attempt, stream)
+  }
+  if (!isTextStreamResult(result.current as JsonValue | object)) {
+    try assertRuntimeModelOutputComplete({
+      result: result.current,
+      provider: model.provider,
+      model: model.modelKey,
+    })
+  }
+  const { elapsedTime, postprocessingStartedAt } = try settleModelOutput(
+    run,
+    attempt,
+    stream,
+    request,
+    result,
+    stream.handlerDelivered,
+  )
+  core.runtime.logger.trace(
+    {
+      src: "agent",
+      agentId: core.runtime.agentId,
+      model: model.modelKey,
+      duration: Number(elapsedTime.toFixed(2)),
+    },
+    "Model output",
+  )
+  logModelCall(
+    core,
+    String(modelType),
+    model.modelKey,
+    request.promptContent,
+    request.systemPrompt,
+    elapsedTime,
+    model.provider,
+    result.current,
+  )
+  const undeliveredStream = stream.shouldStream
+    && !stream.handlerDelivered
+    && isTextStreamResult(result.current as object)
+  if (String(modelType) !== ModelType.TEXT_EMBEDDING && !undeliveredStream) {
+    try recordUseModelTrajectory(core, {
+      ...trajectoryOf(run, attempt, request, elapsedTime),
+      result: result.current,
+      response: try trajectoryResponse(result.current),
+      providerRecorded: attempt.recording.recorded,
+    })
+  }
+  if (
+    stream.shouldStream
+    && !stream.handlerDelivered
+    && isTextStreamResult(result.current as object)
+  ) {
+    result.current = wrapUndeliveredStream(run, attempt, {
+      ...trajectoryOf(run, attempt, request, elapsedTime),
+      providerRecorded: false,
+    }, result.current as TextStreamResult)
+  }
+  recordInferenceSpan(
+    `model-postprocess:${String(modelType)}`,
+    Date.now() - postprocessingStartedAt,
+    { ...attempt.meta, streaming: stream.handlerDelivered },
+  )
+  if (isEmbeddingModel(modelType)) {
+    const writable = effect (value: unknown) => {
+      if (!Array.isArray(value) || Object.isExtensible(value)) {
+        return value
+      }
+      const copy = [...value]
+      try copyEmbeddingVectorSpace(value, copy)
+      return copy
+    }
+    const current = result.current
+    result.current = modelType === ModelType.TEXT_EMBEDDING_BATCH && Array.isArray(current)
+      ? try forEach(current, writable)
+      : try writable(current)
+    const validated = result.current
+    try foreign(() =>
+      core.host.validateEmbeddingOutput(
+        String(modelType),
+        run.params,
+        embeddingProviderOutput,
+        validated,
+        model.provider,
+        stream.signal,
+      )
+    )
+  }
+  return result.current
+}
+
+interface StreamRecord {
+  readonly core: DispatchCore
+  readonly args: Omit<UseModelTrajectory, "result" | "response">
+  readonly recording: { recorded: boolean }
+  readonly chunks: string[]
+  done: boolean
+}
+
+effect function recordStreamOnce(record: StreamRecord) {
+  if (record.done) return
+  record.done = true
+  const finalText = record.chunks.join("")
+  try recordUseModelTrajectory(record.core, {
+    ...record.args,
+    result: finalText,
+    response: finalText,
+    providerRecorded: record.recording.recorded,
+  })
+}
+
+interface StreamIteration {
+  phase: "fresh" | "open" | "closed"
+  inner: AsyncIterator<string> | undefined
+}
+
+effect function closeStreamIteration(record: StreamRecord, iteration: StreamIteration) {
+  const inner = iteration.inner
+  iteration.phase = "closed"
+  try foreign(() => runInModelCallRecordingScope(record.recording, () => inner?.return?.()))
+  try recordStreamOnce(record)
+}
+
+effect function nextStreamChunk(
+  run: DispatchRun,
+  source: TextStreamResult,
+  checkedFinishReason: Promise<string | undefined>,
+  record: StreamRecord,
+  iteration: StreamIteration,
+): IteratorResult<string>!(Foreign | Error) {
+  if (iteration.phase === "closed") return { done: true, value: undefined }
+  if (iteration.phase === "fresh") {
+    iteration.phase = "closed"
+    iteration.inner = try foreignSync(() => source.textStream[Symbol.asyncIterator]())
+    iteration.phase = "open"
+  }
+  const inner = iteration.inner
+  const pulled = try exit(effect {
+    const step = try foreign(() => runInModelCallRecordingScope(record.recording, () => inner!.next()))
+    try abortCheck(run.signal)
+    if (step.done) {
+      try foreign(() => checkedFinishReason)
+      return undefined
+    }
+    record.chunks.push(step.value)
+    return { chunk: step.value }
+  })
+  if (Exit.isSuccess(pulled) && pulled.value) return { done: false, value: pulled.value.chunk }
+  try closeStreamIteration(record, iteration)
+  try pulled
+  return { done: true, value: undefined }
+}
+
+effect function endStreamIteration(
+  record: StreamRecord,
+  iteration: StreamIteration,
+  ending: { returned: unknown } | { thrown: unknown },
+): IteratorResult<string>!(Foreign | Error) {
+  if (iteration.phase === "open") try closeStreamIteration(record, iteration)
+  iteration.phase = "closed"
+  if ("thrown" in ending) throw new Foreign({ cause: ending.thrown })
+  return { done: true, value: ending.returned }
+}
+
+effect function streamText(
+  run: DispatchRun,
+  source: TextStreamResult,
+  checkedFinishReason: Promise<string | undefined>,
+  record: StreamRecord,
+) {
+  try abortCheck(run.signal)
+  const text = try foreign(() => source.text)
+  try abortCheck(run.signal)
+  try foreign(() => checkedFinishReason)
+  record.chunks.length = 0
+  record.chunks.push(text)
+  try recordStreamOnce(record)
+  try abortCheck(run.signal)
+  return text
+}
+
+function wrapUndeliveredStream(
+  run: DispatchRun,
+  attempt: Attempt,
+  args: StreamRecord["args"],
+  source: TextStreamResult,
+): TextStreamResult {
+  const model = attempt.model
+  const checkedFinishReason = runDetached(effect {
+    const finishReason = try foreign(() => source.finishReason)
+    try assertModelOutputComplete({ finishReason, provider: model.provider, model: model.modelKey })
+    return finishReason
+  })
+  const record: StreamRecord = { core: run.core, args, recording: attempt.recording, chunks: [], done: false }
+  runFork(effect {
+    const settled = map(
+      all([foreign(() => source.text), foreign(() => checkedFinishReason)], { concurrency: "unbounded" }),
+      ([text]) => ({ text }),
+    ) catch () => undefined
+    if (settled && record.chunks.length === 0 && settled.text) {
+      record.chunks.push(settled.text)
+    }
+    try recordStreamOnce(record)
+  })
+  const iteration: StreamIteration = { phase: "fresh", inner: undefined }
+  const serial = Semaphore.makeUnsafe(1).withPermits(1)
+  const textStream: AsyncIterableIterator<string> = {
+    [Symbol.asyncIterator]: () => textStream,
+    next: () => runDetached(serial(nextStreamChunk(run, source, checkedFinishReason, record, iteration))),
+    return: (returned?: unknown) => runDetached(serial(endStreamIteration(record, iteration, { returned }))),
+    throw: (thrown?: unknown) => runDetached(serial(endStreamIteration(record, iteration, { thrown }))),
+  }
+  return {
+    ...source,
+    finishReason: checkedFinishReason,
+    textStream,
+    get text() {
+      return Promise.resolve(
+        runInModelCallRecordingScope(attempt.recording, () =>
+          runDetached(streamText(run, source, checkedFinishReason, record))),
+      )
+    },
+  } satisfies TextStreamResult
+}
+
+effect function afterFailedAttempt(run: DispatchRun, attempt: Attempt, error: unknown) {
+  const { core, modelType } = run
+  const model = attempt.model
+  const delivery = attempt.stream
+    ? map(drainDownstream(attempt.stream), () => undefined) catch (failure) => ({ error: failure.cause })
+    : undefined
+  if (delivery && delivery.error !== error) {
+    throw new Foreign({ cause: delivery.error })
+  }
+  if (attempt.handlerStartedAt === null) try abortCheck(run.signal)
+  const unavailableLocalText = isTextGenerationModelKey(run.requestedModelKey)
+    && isUnavailableLocalModel(error)
+  const rejectedLocalAdmission = attempt.handlerStartedAt === null && unavailableLocalText
+  if (attempt.preparationFailed || rejectedLocalAdmission) {
+    recordInferenceSpan(
+      `model-preprocess:${String(modelType)}`,
+      Date.now() - attempt.preprocessingStartedAt,
+      { ...attempt.meta, outcome: "error" },
+    )
+    if (
+      !rejectedLocalAdmission
+      && !(error instanceof ElizaError && error.code === "EVALUATOR_INPUT_OVER_BUDGET")
+    ) {
+      throw new Foreign({ cause: error })
+    }
+    if (!rejectedLocalAdmission || run.lastError === undefined) {
+      run.lastError = error
+      run.lastFailed = model
+    }
+    const nextAfterPreparation = run.resolvedModels[attempt.index + 1]
+    if (run.requestedProvider !== undefined) throw new Foreign({ cause: error })
+    if (!nextAfterPreparation) {
+      if (rejectedLocalAdmission) {
+        try rethrowModelFailoverError(run.lastError, run.lastFailed)
+      }
+      throw new Foreign({ cause: error })
+    }
+    logModelProviderFailover(core, {
+      requestedModelKey: run.requestedModelKey,
+      failedModel: model,
+      nextModel: nextAfterPreparation,
+      error,
+    })
+    return attempt.index
+  }
+  const handlerStartedAt = attempt.handlerStartedAt
+  if (handlerStartedAt === null) {
+    recordInferenceSpan(
+      `model-preprocess:${String(modelType)}`,
+      Date.now() - attempt.preprocessingStartedAt,
+      { ...attempt.meta, outcome: "error" },
+    )
+  } else {
+    recordInferenceSpan(
+      `model:${String(modelType)}`,
+      Date.now() - handlerStartedAt,
+      { ...attempt.meta, outcome: "error" },
+    )
+  }
+  if (!attempt.recording.recorded) {
+    trackDiagnostic(core, recordFailedModelTrajectory(core, {
+      modelType: String(modelType),
+      resolvedModelKey: String(model.modelKey),
+      provider: model.provider,
+      modelParams: attempt.modelParams,
+      promptContent: attempt.promptContent,
+      error,
+      elapsedTime: handlerStartedAt === null
+        ? Date.now() - attempt.preprocessingStartedAt
+        : Date.now() - handlerStartedAt,
+    }))
+  }
+  try abortCheck(run.signal)
+  if (
+    !unavailableLocalText
+    || run.lastError === undefined
+    || run.startedOutput
+    || run.requestedProvider !== undefined
+  ) {
+    run.lastError = error
+    run.lastFailed = model
+  }
+  if (attempt.providerAttempt) attempt.providerAttempt.error = error
+  if (isModelProviderRetryBudgetExhaustedError(error)) {
+    run.exhaustedProviders.add(model.provider)
+  }
+  const nextModelIndex = run.resolvedModels.findIndex(
+    (candidate, candidateIndex) =>
+      candidateIndex > attempt.index
+      && !run.exhaustedProviders.has(candidate.provider)
+      && !registrationAttempted(run, candidate),
+  )
+  const nextModel = nextModelIndex >= 0 ? run.resolvedModels[nextModelIndex] : undefined
+  if (
+    run.requestedProvider !== undefined
+    || !nextModel
+    || run.startedOutput
+    || !isModelProviderFallbackError(error, run.requestedModelKey)
+  ) {
+    return try rethrowModelFailoverError(run.lastError, run.lastFailed)
+  }
+  logModelProviderFailover(core, {
+    requestedModelKey: run.requestedModelKey,
+    failedModel: model,
+    nextModel,
+    error,
+  })
+  return nextModelIndex - 1
+}
+
+effect function trajectoryLogger(core: DispatchCore) {
+  return (try foreign(() => core.host._ensureServiceStarted("trajectories"))) as
+    | (Service & TrajectoryRuntimeLlmCallLogger)
+    | null
+}
+
+export effect function recordUseModelTrajectory(core: DispatchCore, args: UseModelTrajectory) {
+  if (core.host.initResolver()) return
+  if (args.providerRecorded) return
+  effect {
+    activateDeferredChildStep()
+    const trajCtx = getTrajectoryContext()
+    const stepId = trajCtx?.trajectoryStepId
+    const trajLogger = try trajectoryLogger(core)
+    if (!stepId || !trajLogger) return
+    try foreignSync(() => {
+      const fields = trajectoryRequestFields(
         trajCtx,
         args.modelParams,
         args.promptContent,
-        this.buildRuntimeSystemPrompt(),
+        buildRuntimeSystemPrompt(core),
       )
       const resultRecord = isPlainObject(args.result) ? args.result : {}
       const usageRecord = isPlainObject(resultRecord.usage)
@@ -2206,22 +2178,20 @@ export class RuntimeModelDispatch {
         : {}
       const asNumber = (value: unknown): number | undefined =>
         typeof value === "number" && Number.isFinite(value) ? value : undefined
-      const activeTrace = this.runtime.getActiveTrace(
-        this.runtime.getCurrentRunId(),
-      )
+      const activeTrace = core.runtime.getActiveTrace(core.runtime.getCurrentRunId())
       trajLogger.logLlmCall({
         stepId,
         model: args.resolvedModelKey,
         modelType: args.modelType,
         provider: args.provider,
-        systemPrompt,
-        userPrompt,
-        prompt,
-        messages,
-        tools: paramsRecord.tools,
-        toolChoice: paramsRecord.toolChoice,
-        responseSchema: paramsRecord.responseSchema,
-        providerOptions: paramsRecord.providerOptions,
+        systemPrompt: fields.systemPrompt,
+        userPrompt: fields.userPrompt,
+        prompt: fields.prompt,
+        messages: fields.messages,
+        tools: fields.paramsRecord.tools,
+        toolChoice: fields.paramsRecord.toolChoice,
+        responseSchema: fields.paramsRecord.responseSchema,
+        providerOptions: fields.paramsRecord.providerOptions,
         response: args.response,
         toolCalls: Array.isArray(resultRecord.toolCalls)
           ? resultRecord.toolCalls
@@ -2230,116 +2200,92 @@ export class RuntimeModelDispatch {
           ? resultRecord.finishReason
           : undefined,
         providerMetadata: resultRecord.providerMetadata,
-        ...(temperature !== undefined ? { temperature } : {}),
-        ...(maxTokens !== undefined ? { maxTokens } : {}),
+        ...(fields.temperature !== undefined ? { temperature: fields.temperature } : {}),
+        ...(fields.maxTokens !== undefined ? { maxTokens: fields.maxTokens } : {}),
         purpose: trajCtx.purpose ?? "action",
         actionType: "runtime.useModel",
         latencyMs: Math.max(0, Math.round(args.elapsedTime)),
         promptTokens: asNumber(usageRecord.promptTokens),
         completionTokens: asNumber(usageRecord.completionTokens),
         cacheReadInputTokens: asNumber(usageRecord.cacheReadInputTokens),
-        cacheCreationInputTokens: asNumber(
-          usageRecord.cacheCreationInputTokens,
-        ),
+        cacheCreationInputTokens: asNumber(usageRecord.cacheCreationInputTokens),
         reasoningTokens: asNumber(usageRecord.reasoningTokens),
         modelSlot: args.modelType,
         runId: trajCtx.runId,
         roomId: trajCtx.roomId,
         messageId: trajCtx.messageId,
         executionTraceId: activeTrace?.id,
-        providerOrder,
-        providerAttributions,
+        providerOrder: fields.providerOrder,
+        providerAttributions: fields.providerAttributions,
       })
-    } catch (error) {
-      this.runtime.logger.warn(
-        { error, modelType: args.modelType },
-        "Failed to record model-call trajectory",
-      )
-      this.runtime.reportError("AgentRuntime.recordUseModelTrajectory", error, {
-        modelType: args.modelType,
-        resolvedModelKey: args.resolvedModelKey,
-        provider: args.provider,
-      })
-    }
+    })
+  } catch (failure) => {
+    core.runtime.logger.warn(
+      { error: failure.cause, modelType: args.modelType },
+      "Failed to record model-call trajectory",
+    )
+    core.runtime.reportError("AgentRuntime.recordUseModelTrajectory", failure.cause, {
+      modelType: args.modelType,
+      resolvedModelKey: args.resolvedModelKey,
+      provider: args.provider,
+    })
   }
+}
 
-  async recordFailedModelTrajectory(args: {
-    modelType: string
-    resolvedModelKey: string
-    provider?: string
-    modelParams: unknown
-    promptContent: string | null | undefined
-    error: unknown
-    elapsedTime: number
-  }): Promise<void> {
-    if (this.host.initResolver()) return
+function failedCallMessage(core: DispatchCore, error: unknown): string {
+  const errorMessage = error instanceof Error
+    ? error.message
+    : typeof error === "string"
+    ? error
+    : "unknown model error"
+  const providerDetail = modelProviderErrorDetail(error)
+  const detailSuffix = providerDetail
+    ? `${
+      providerDetail.providerMessage
+        && !errorMessage.includes(providerDetail.providerMessage)
+        ? ` | provider: ${providerDetail.providerMessage}`
+        : ""
+    }${
+      providerDetail.status !== undefined
+        ? ` | status: ${providerDetail.status}`
+        : ""
+    }`
+    : ""
+  return core.runtime.redactSecrets(`${errorMessage}${detailSuffix}`)
+}
 
-    try {
-      activateDeferredChildStep()
-      const trajCtx = getTrajectoryContext()
-      const stepId = trajCtx?.trajectoryStepId
-      if (!stepId) return
-      const trajLogger = (await this.host._ensureServiceStarted(
-        "trajectories",
-      )) as (Service & TrajectoryRuntimeLlmCallLogger) | null
-      if (!trajLogger) return
-
-      const {
-        paramsRecord,
-        temperature,
-        maxTokens,
-        systemPrompt,
-        userPrompt,
-        messages,
-        prompt,
-        providerOrder,
-        providerAttributions,
-      } = trajectoryRequestFields(
+export effect function recordFailedModelTrajectory(core: DispatchCore, args: FailedModelTrajectory) {
+  if (core.host.initResolver()) return
+  effect {
+    activateDeferredChildStep()
+    const trajCtx = getTrajectoryContext()
+    const stepId = trajCtx?.trajectoryStepId
+    if (!stepId) return
+    const trajLogger = try trajectoryLogger(core)
+    if (!trajLogger) return
+    try foreignSync(() => {
+      const fields = trajectoryRequestFields(
         trajCtx,
         args.modelParams,
         args.promptContent,
-        this.buildRuntimeSystemPrompt(),
+        buildRuntimeSystemPrompt(core),
       )
-      const errorMessage = args.error instanceof Error
-        ? args.error.message
-        : typeof args.error === "string"
-        ? args.error
-        : "unknown model error"
-
-      const providerDetail = modelProviderErrorDetail(args.error)
-      const detailSuffix = providerDetail
-        ? `${
-          providerDetail.providerMessage
-            && !errorMessage.includes(providerDetail.providerMessage)
-            ? ` | provider: ${providerDetail.providerMessage}`
-            : ""
-        }${
-          providerDetail.status !== undefined
-            ? ` | status: ${providerDetail.status}`
-            : ""
-        }`
-        : ""
-      const sanitizedMessage = this.runtime.redactSecrets(
-        `${errorMessage}${detailSuffix}`,
-      )
+      const sanitizedMessage = failedCallMessage(core, args.error)
       const failureEvidence = modelOutputIncompleteEvidence(args.error)
-      const activeTrace = this.runtime.getActiveTrace(
-        this.runtime.getCurrentRunId(),
-      )
+      const activeTrace = core.runtime.getActiveTrace(core.runtime.getCurrentRunId())
       trajLogger.logLlmCall({
         stepId,
         model: args.resolvedModelKey,
         modelType: args.modelType,
         provider: args.provider,
-        systemPrompt,
-        userPrompt,
-        prompt,
-
-        messages,
-        tools: paramsRecord.tools,
-        toolChoice: paramsRecord.toolChoice,
-        responseSchema: paramsRecord.responseSchema,
-        providerOptions: paramsRecord.providerOptions,
+        systemPrompt: fields.systemPrompt,
+        userPrompt: fields.userPrompt,
+        prompt: fields.prompt,
+        messages: fields.messages,
+        tools: fields.paramsRecord.tools,
+        toolChoice: fields.paramsRecord.toolChoice,
+        responseSchema: fields.paramsRecord.responseSchema,
+        providerOptions: fields.paramsRecord.providerOptions,
         response: `[model call failed] ${sanitizedMessage}`,
         finishReason: failureEvidence?.finishReason ?? "error",
         ...(failureEvidence
@@ -2357,10 +2303,10 @@ export class RuntimeModelDispatch {
           ? { maxTokensOmitted: true }
           : typeof failureEvidence?.maxTokens === "number"
           ? { maxTokens: failureEvidence.maxTokens }
-          : maxTokens !== undefined
-          ? { maxTokens }
+          : fields.maxTokens !== undefined
+          ? { maxTokens: fields.maxTokens }
           : {}),
-        ...(temperature !== undefined ? { temperature } : {}),
+        ...(fields.temperature !== undefined ? { temperature: fields.temperature } : {}),
         purpose: trajCtx.purpose ?? "action",
         actionType: "runtime.useModel",
         latencyMs: Math.max(0, Math.round(args.elapsedTime)),
@@ -2369,18 +2315,228 @@ export class RuntimeModelDispatch {
         roomId: trajCtx.roomId,
         messageId: trajCtx.messageId,
         executionTraceId: activeTrace?.id,
-        providerOrder,
-        providerAttributions,
+        providerOrder: fields.providerOrder,
+        providerAttributions: fields.providerAttributions,
       })
-    } catch (trajectoryError) {
-      this.runtime.reportError(
-        "TrajectoryFailedAttemptRecord",
-        trajectoryError,
-        {
-          modelKey: args.resolvedModelKey,
-          provider: args.provider,
-        },
-      )
+    })
+  } catch (failure) => {
+    core.runtime.reportError("TrajectoryFailedAttemptRecord", failure.cause, {
+      modelKey: args.resolvedModelKey,
+      provider: args.provider,
+    })
+  }
+}
+
+module edge {
+  import { runDetached, runDetachedSync } from "../edge.vibe"
+  import type { ElizaError } from "../errors.vibe"
+  import { isModelProviderFallbackError } from "../security/model-failure.vibe"
+  import type { ModelParamsMap, ModelRegistrationInfo, ModelRegistrationMetadata, ModelResultMap, ModelTypeName } from "../types/model.vibe"
+  import type { IAgentRuntime } from "../types/runtime.vibe"
+  import type { ModelInputBudget } from "./model-input-budget.vibe"
+  import { isCanonicalModelCapabilityDisabled, type ResolvedModelRegistration } from "./model-policy.vibe"
+  import {
+    assertCanonicalModelCapabilityEnabled,
+    attachFinalModelInputBudget,
+    buildFinalModelInputBudget,
+    buildRuntimeSystemPrompt,
+    cloneModelRequestGraph,
+    type DispatchCore,
+    drainDiagnostics,
+    type FailedModelTrajectory,
+    freezeAdmittedModelRequest,
+    getLastResolvedModelProvider,
+    getModel,
+    getModelRegistrations,
+    getModelSettings,
+    logModelCall,
+    logModelProviderFailover,
+    makeDispatchCore,
+    type ModelCallHandler,
+    noteResolvedModelProvider,
+    recordFailedModelTrajectory,
+    recordUseModelTrajectory,
+    registerModel,
+    resolveModelRegistrations,
+    resolveRegistrationModelName,
+    resolveTextProviderOverride,
+    rethrowModelFailoverError,
+    type RuntimeModelDispatchHost,
+    throwNoModelHandler,
+    type UseModelTrajectory,
+    useModel,
+  } from "./model-dispatch.vibe"
+
+  export class RuntimeModelDispatch {
+    readonly #core: DispatchCore
+
+    /** @throws {never} */
+    constructor(runtime: IAgentRuntime, host: RuntimeModelDispatchHost) {
+      this.#core = runDetachedSync(makeDispatchCore(runtime, host))
+    }
+
+    /** @throws {never} */
+    drainDiagnostics(): Promise<void> {
+      return runDetached(drainDiagnostics(this.#core))
+    }
+
+    /** @throws {never} */
+    buildRuntimeSystemPrompt(): string | undefined {
+      return buildRuntimeSystemPrompt(this.#core)
+    }
+
+    /** @throws {never} */
+    registerModel(
+      modelType: ModelTypeName | string,
+      handler: ModelCallHandler,
+      provider: string,
+      priority?: number,
+      metadata?: ModelRegistrationMetadata,
+    ): void {
+      registerModel(this.#core, modelType, handler, provider, priority, metadata)
+    }
+
+    /** @throws {never} */
+    getModelRegistrations(): ModelRegistrationInfo[] {
+      return getModelRegistrations(this.#core)
+    }
+
+    /** @throws {never} */
+    noteResolvedModelProvider(modelTypeKey: string, provider: string | undefined): void {
+      runDetachedSync(noteResolvedModelProvider(this.#core, modelTypeKey, provider))
+    }
+
+    /** @throws {never} */
+    getLastResolvedModelProvider(modelType: ModelTypeName | string): string | undefined {
+      return runDetachedSync(getLastResolvedModelProvider(this.#core, modelType))
+    }
+
+    /** @throws {never} */
+    resolveTextProviderOverride(): string | undefined {
+      return resolveTextProviderOverride(this.#core)
+    }
+
+    /** @throws {never} */
+    isCanonicalModelCapabilityDisabled(modelType: string): boolean {
+      return isCanonicalModelCapabilityDisabled(this.#core.runtime, modelType)
+    }
+
+    /** @throws {ElizaError} */
+    assertCanonicalModelCapabilityEnabled(modelType: string): void {
+      runDetachedSync(assertCanonicalModelCapabilityEnabled(this.#core, modelType))
+    }
+
+    /** @throws {never} */
+    resolveModelRegistration(
+      modelType: ModelTypeName | string,
+      provider?: string,
+    ): ResolvedModelRegistration | undefined {
+      return resolveModelRegistrations(this.#core, modelType, provider)[0]
+    }
+
+    /** @throws {never} */
+    resolveModelRegistrations(
+      modelType: ModelTypeName | string,
+      provider?: string,
+    ): ResolvedModelRegistration[] {
+      return resolveModelRegistrations(this.#core, modelType, provider)
+    }
+
+    /** @throws {never} */
+    logModelProviderFailover(args: {
+      requestedModelKey: string
+      failedModel: ResolvedModelRegistration
+      nextModel: ResolvedModelRegistration
+      error: unknown
+    }): void {
+      logModelProviderFailover(this.#core, args)
+    }
+
+    /** @throws {never} */
+    shouldFailOverModelProvider(error: unknown, modelType: string): boolean {
+      return isModelProviderFallbackError(error, modelType)
+    }
+
+    /** @throws {Error} */
+    throwNoModelHandler(requestedModelKey: string, pinnedProvider?: string): never {
+      return runDetachedSync(throwNoModelHandler(this.#core, requestedModelKey, pinnedProvider))
+    }
+
+    /** @throws {unknown} */
+    rethrowModelFailoverError(error: unknown, failed?: { modelKey: string; provider: string }): never {
+      return runDetachedSync(rethrowModelFailoverError(error, failed))
+    }
+
+    /** @throws {never} */
+    getModel(modelType: ModelTypeName | string): ModelCallHandler | undefined {
+      return getModel(this.#core, modelType)
+    }
+
+    /** @throws {never} */
+    getModelSettings(modelType?: ModelTypeName): Record<string, number> | null {
+      return getModelSettings(this.#core, modelType)
+    }
+
+    /** @throws {never} */
+    resolveRegistrationModelName(metadata: ModelRegistrationMetadata | undefined): string | undefined {
+      return resolveRegistrationModelName(this.#core, metadata)
+    }
+
+    /** @throws {ElizaError} */
+    buildFinalModelInputBudget(params: unknown, metadata: ModelRegistrationMetadata | undefined): ModelInputBudget {
+      return runDetachedSync(buildFinalModelInputBudget(this.#core, params, metadata))
+    }
+
+    /** @throws {unknown} */
+    attachFinalModelInputBudget(
+      record: Record<string, unknown>,
+      metadata: ModelRegistrationMetadata | undefined,
+    ): ModelInputBudget {
+      return runDetachedSync(attachFinalModelInputBudget(this.#core, record, metadata))
+    }
+
+    /** @throws {never} */
+    cloneModelRequestGraph<T>(value: T): T {
+      return cloneModelRequestGraph(value)
+    }
+
+    /** @throws {never} */
+    freezeAdmittedModelRequest(value: unknown): void {
+      freezeAdmittedModelRequest(value)
+    }
+
+    /** @throws {never} */
+    logModelCall(
+      modelType: string,
+      modelKey: string,
+      promptContent: string | null,
+      systemPrompt: string | undefined,
+      elapsedTime: number,
+      provider: string | undefined,
+      response: unknown,
+    ): void {
+      logModelCall(this.#core, modelType, modelKey, promptContent, systemPrompt, elapsedTime, provider, response)
+    }
+
+    /** @throws {never} */
+    useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
+      modelType: T,
+      params: ModelParamsMap[T],
+      provider?: string,
+    ): Promise<R> {
+      return runDetached(useModel<T, R>(this.#core, modelType, params, provider))
+    }
+
+    /** @throws {never} */
+    recordUseModelTrajectory(args: UseModelTrajectory): Promise<void> {
+      return runDetached(recordUseModelTrajectory(this.#core, args))
+    }
+
+    /** @throws {never} */
+    recordFailedModelTrajectory(args: FailedModelTrajectory): Promise<void> {
+      return runDetached(recordFailedModelTrajectory(this.#core, args))
     }
   }
 }
+import { RuntimeModelDispatch } from edge
+export { RuntimeModelDispatch }

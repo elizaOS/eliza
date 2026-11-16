@@ -1,15 +1,20 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/execution.md, "Callbacks wait for a valid admitted result"
 import {
   beginRequestOperationAttempt,
+  type BoundRequestOperationAttempt,
   bindRequestOperationResult,
   getBoundOperationDenialAttempt,
   getBoundOperationDenialOperation,
 } from "../actions/task-extraction-context.vibe"
 import { copyBoundOperationDenial } from "./operation-restriction-projection.vibe"
 
-import { validateToolArgs } from "../actions/validate-tool-args.vibe"
+import { type ValidateToolArgsResult, validateToolArgs } from "../actions/validate-tool-args.vibe"
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager.vibe"
+import { failingAs, Foreign, foreign, foreignSync, promised, runDetached, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
+import { restorePseudonymsInValue } from "../security/pii-pseudonymizer.vibe"
 import { isSensitiveKeyName } from "../security/redact.vibe"
+import { restoreSecretsInValue } from "../security/secret-swap.vibe"
 import {
   composeToolDiagnosticRedactor,
   projectToolDiagnosticArgs,
@@ -29,6 +34,7 @@ import type {
   Action,
   ActionParameters,
   ActionResult,
+  HandlerCallback,
   HandlerOptions,
   StreamChunkCallback,
 } from "../types/components.vibe"
@@ -36,8 +42,7 @@ import type { AgentContext, RoleGateRole } from "../types/contexts.vibe"
 import { EventType } from "../types/events.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { ToolCall } from "../types/model.vibe"
-import type { UUID } from "../types/primitives.vibe"
-import type { ContentValue } from "../types/primitives.vibe"
+import type { ContentValue, UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import type { State } from "../types/state.vibe"
 import { withActiveRoutingContexts } from "../utils/context-routing.vibe"
@@ -54,6 +59,14 @@ import { runWithActionRoutingContext } from "./action-routing-context.vibe"
 import { observeOwnerToolExecution } from "./owner-tool-execution-observer.vibe"
 import type { PlannerToolCall } from "./planner-types.vibe"
 import { buildTurnEntityAliases, type EntityAliasCapabilityMap, resolveEntityAliasRefs } from "./tool-arg-aliases.vibe"
+
+module node {
+  /** @throws {never} */
+  export function randomUuid(): string {
+    return crypto.randomUUID()
+  }
+}
+import { randomUuid } from node
 
 export interface ExecutePlannedToolCallContext {
   message: Memory
@@ -295,11 +308,11 @@ export function shouldSuppressActionResultClipboard(
   )
 }
 
-export function projectActionResultForClipboard(
+export effect function projectActionResultForClipboard(
   action: Pick<Action, "name" | "suppressActionResultClipboard"> | undefined,
   result: ActionResult,
   actionName = action?.name,
-): ActionResult {
+) {
   if (!shouldSuppressActionResultClipboard(action, result)) {
     return result
   }
@@ -322,7 +335,6 @@ export function projectActionResultForClipboard(
     ...(result.data?.reconciliationRequired === true
       ? { reconciliationRequired: true }
       : {}),
-
     ...(result.data?.suppressPlannerReply === true
       ? { suppressPlannerReply: true }
       : {}),
@@ -371,21 +383,19 @@ export function projectActionResultForClipboard(
   }
   const projectionAttempt = getBoundOperationDenialAttempt(result)
   if (projectionAttempt) {
-    bindRequestOperationResult(projected, projectionAttempt)
+    try bindRequestOperationResult(projected, projectionAttempt)
   }
   copyBoundOperationDenial(result, projected, projectionAttempt)
   return projected
 }
 
-function projectSettledResultForObserver(
+export const projectActionResultForClipboardOrThrow = thrown(failingAs(TypeError, projectActionResultForClipboard))
+
+effect function projectSettledResultForObserver(
   action: Action,
   result: ActionResult,
-): ActionResult {
-  const projected = projectActionResultForClipboard(
-    action,
-    result,
-    action.name,
-  )
+) {
+  const projected = try projectActionResultForClipboard(action, result, action.name)
   if (action.disclosureGate?.require !== "owner_exclusive") return projected
   const controlData = {
     actionName: action.name,
@@ -394,7 +404,6 @@ function projectSettledResultForObserver(
     ...(result.data?.reconciliationRequired === true
       ? { reconciliationRequired: true }
       : {}),
-
     ...(result.data?.suppressPlannerReply === true
       ? { suppressPlannerReply: true }
       : {}),
@@ -424,34 +433,37 @@ function projectSettledResultForObserver(
     ...(projected.continueChain !== undefined
       ? { continueChain: projected.continueChain }
       : {}),
-  }
+  } satisfies ActionResult
 }
 
-function publishSettledResult(
+effect function publishSettledResult(
   runtime: IAgentRuntime,
   action: Action,
   result: ActionResult,
   observer: ((result: ActionResult) => void) | undefined,
-): void {
+) {
   if (!observer) return
+  effect {
+    const projected = try projectSettledResultForObserver(action, result)
+    try foreignSync(() => observer(projected))
+  } catch (failure) => reportObserverFailure(runtime, action, thrownValue(failure))
+}
+
+function reportObserverFailure(runtime: IAgentRuntime, action: Action, error: unknown): void {
   try {
-    observer(projectSettledResultForObserver(action, result))
-  } catch (error) {
-    try {
-      runtime.reportError("ActionSettlementObserver", error, {
-        actionName: action.name,
-      })
-    } catch (reportingError) {
-      runtime.logger.error(
-        {
-          src: "execute-planned-tool-call",
-          action: action.name,
-          error: stringifyError(error),
-          reportingError: stringifyError(reportingError),
-        },
-        "Action settlement observer and error reporting both failed",
-      )
-    }
+    runtime.reportError("ActionSettlementObserver", error, {
+      actionName: action.name,
+    })
+  } catch (reportingError) {
+    runtime.logger.error(
+      {
+        src: "execute-planned-tool-call",
+        action: action.name,
+        error: stringifyError(error),
+        reportingError: stringifyError(reportingError),
+      },
+      "Action settlement observer and error reporting both failed",
+    )
   }
 }
 
@@ -516,66 +528,100 @@ function runWithMessageTrajectoryContext<T>(
   )
 }
 
-export async function executePlannedToolCall(
-  runtime: IAgentRuntime,
-  ctx: ExecutePlannedToolCallContext,
-  toolCall: PlannerToolCall,
-  options: ExecutePlannedToolCallOptions = {},
-): Promise<ActionResult> {
-  options.abortSignal?.throwIfAborted()
-  const ownerExecutionId = runtime.ownerToolExecutionObserver
-    ? crypto.randomUUID()
+interface PerfProbe {
+  mark(label: string): void
+  report(runtime: IAgentRuntime, actionName: string): void
+}
+
+function startPerfProbe(): PerfProbe {
+  const startedAt = Date.now()
+  const marks: [string, number][] = []
+  let previous = startedAt
+  return {
+    mark(label) {
+      const now = Date.now()
+      marks.push([label, now - previous])
+      previous = now
+    },
+    report(runtime, actionName) {
+      const total = Date.now() - startedAt
+      if (total <= 400) return
+      runtime.logger.info(
+        { src: "execute-planned-tool-call" },
+        `[perf-probe] tool=${actionName} total=${total}ms ${
+          marks
+            .filter(([, ms]) => ms >= 5)
+            .map(([label, ms]) => `${label}=${ms}ms`)
+            .join(" ")
+        }`,
+      )
+    },
+  }
+}
+
+interface PlannedRun {
+  readonly runtime: IAgentRuntime
+  readonly toolCall: PlannerToolCall
+  readonly options: ExecutePlannedToolCallOptions
+  readonly action: Action
+  readonly redactDiagnosticText: ToolDiagnosticTextRedactor
+  readonly ownerExecutionId: string | undefined
+  readonly perf: PerfProbe
+}
+
+interface EarlyResult {
+  readonly kind: "early"
+  readonly result: ActionResult
+  readonly ownerCapture?: OwnerCapture
+}
+
+interface AdmittedArguments {
+  readonly kind: "admitted"
+  readonly requestOperationAttempt: BoundRequestOperationAttempt | undefined
+  readonly validation: ValidateToolArgsResult
+}
+
+interface AdmittedHandler {
+  readonly kind: "admitted"
+  readonly handlerOptions: HandlerOptions
+  readonly onSettledResult: ExecutePlannedToolCallOptions["onSettledResult"]
+  readonly onBeforeCallbacks: ExecutePlannedToolCallOptions["onBeforeCallbacks"]
+}
+
+interface ActionRun {
+  readonly result: ActionResult
+  readonly worldId: UUID!Foreign
+  readonly startedDispatch: Fiber.Fiber<void, Foreign> | undefined
+}
+
+function thrownValue(failure: unknown): unknown {
+  return failure instanceof Foreign ? failure.cause : failure
+}
+
+function early(result: ActionResult, ownerCapture?: OwnerCapture): EarlyResult {
+  return { kind: "early", result, ownerCapture }
+}
+
+function gateCapture(
+  run: Pick<PlannedRun, "runtime" | "ownerExecutionId">,
+  gate: OwnerCapture["gate"],
+  gateOutcome: OwnerCapture["gateOutcome"],
+): OwnerCapture | undefined {
+  return run.runtime.ownerToolExecutionObserver
+    ? {
+      runtime: run.runtime,
+      executionId: run.ownerExecutionId,
+      phase: "gate",
+      gate,
+      gateOutcome,
+    }
     : undefined
-  const gateCapture = (
-    gate: OwnerCapture["gate"],
-    gateOutcome: OwnerCapture["gateOutcome"],
-  ): OwnerCapture | undefined =>
-    runtime.ownerToolExecutionObserver
-      ? {
-        runtime,
-        executionId: ownerExecutionId,
-        phase: "gate",
-        gate,
-        gateOutcome,
-      }
-      : undefined
+}
 
-  const perfT0 = Date.now()
-  const perfMarks: [string, number][] = []
-  let perfPrev = perfT0
-  const perfMark = (label: string) => {
-    const now = Date.now()
-    perfMarks.push([label, now - perfPrev])
-    perfPrev = now
-  }
-
-  const redactDiagnosticText = composeToolDiagnosticRedactor(runtime)
-  const action = (options.actions ?? runtime.actions).find(
-    (candidate) => candidate.name === toolCall.name,
-  )
-  if (!action) {
-    return emitToolResult(
-      toolCall,
-      redactDiagnosticText,
-      failureResult(
-        toolCall.name,
-        `Action not found: ${toolCall.name}`,
-        {},
-        {
-          kind: "missing_capability",
-          boundary: "capability",
-          code: "ACTION_NOT_FOUND",
-          retryable: false,
-        },
-      ),
-      {
-        ownerCapture: gateCapture("lookup", "denied"),
-      },
-    )
-  }
-
-  const resolvedCtx = await withResolvedUserRoles(runtime, ctx)
-
+effect function admitCaller(run: PlannedRun, ctx: ExecutePlannedToolCallContext) {
+  const { runtime, action } = run
+  try foreign(() => Promise.resolve())
+  const resolvedCtx = try withResolvedUserRoles(runtime, ctx)
   const executorCtx = resolvedCtx.state
     ? {
       ...resolvedCtx,
@@ -586,51 +632,35 @@ export async function executePlannedToolCall(
       ),
     }
     : resolvedCtx
-  perfMark("roles")
+  run.perf.mark("roles")
   if (action.disclosureGate?.require === "owner_exclusive") {
-    await renewExpiredTrustedDeliveryAudience(runtime, executorCtx.message)
+    try renewExpiredTrustedDeliveryAudience(runtime, executorCtx.message)
   }
-  const gateFailure = actionGateFailure(action, executorCtx)
+  const gateFailure = try actionGateFailure(action, executorCtx)
   if (gateFailure) {
-    return emitToolResult(
-      toolCall,
-      redactDiagnosticText,
-      failureResult(action.name, gateFailure),
-      {
-        ownerCapture: gateCapture("role-context", "denied"),
-      },
-    )
+    return early(failureResult(action.name, gateFailure), gateCapture(run, "role-context", "denied"))
   }
   if (action.disclosureGate?.require === "owner_exclusive") {
-    const disclosure = await authorizeOwnerExclusiveDisclosure(
-      runtime,
-      executorCtx.message,
-    )
+    const disclosure = try authorizeOwnerExclusiveDisclosure(runtime, executorCtx.message)
     if (!disclosure.allowed) {
-      return emitToolResult(
-        toolCall,
-        redactDiagnosticText,
-        failureResult(
-          action.name,
-          `Owner-private disclosure denied: ${disclosure.reason}`,
-        ),
-        {
-          ownerCapture: gateCapture("disclosure", "denied"),
-        },
+      return early(
+        failureResult(action.name, `Owner-private disclosure denied: ${disclosure.reason}`),
+        gateCapture(run, "disclosure", "denied"),
       )
     }
   }
+  return { kind: "admitted" as const, executorCtx }
+}
 
-  const requestOperationAttempt = executorCtx.state
-    ? beginRequestOperationAttempt({
-      runtime,
-      state: executorCtx.state,
-      message: executorCtx.message,
-      action,
-    })
-    : undefined
-  if (action.restrictRequestOperation) {
-    const restriction: unknown = runWithActionRoutingContext(
+effect function admitRequestRestriction(
+  run: PlannedRun,
+  executorCtx: ExecutePlannedToolCallContext,
+  requestOperationAttempt: BoundRequestOperationAttempt | undefined,
+) {
+  const { runtime, action, toolCall } = run
+  if (!action.restrictRequestOperation) return undefined
+  const restriction: unknown = try foreignSync(() =>
+    runWithActionRoutingContext(
       {
         actionName: action.name,
         modelClass: action.modelClass,
@@ -638,7 +668,7 @@ export async function executePlannedToolCall(
         requestMessage: executorCtx.message,
         requestState: executorCtx.state,
         requestRuntime: runtime,
-        hostAttemptId: ownerExecutionId,
+        hostAttemptId: run.ownerExecutionId,
         requestOperationAttempt,
       },
       () =>
@@ -650,57 +680,56 @@ export async function executePlannedToolCall(
           params: toolCall.params,
         }),
     )
-    if (restriction !== undefined) {
-      if (
-        !isObjectRecord(restriction)
-        || restriction.success !== false
-        || !getBoundOperationDenialOperation(restriction)
-        || !requestOperationAttempt
-        || getBoundOperationDenialAttempt(restriction) !== requestOperationAttempt
-      ) {
-        return emitToolResult(
-          toolCall,
-          redactDiagnosticText,
-          failureResult(
-            action.name,
-            "Invalid request-operation restriction result",
-            {
-              code: "ACTION_REQUEST_RESTRICTION_INVALID",
-              acceptance: "rejected",
-              executionStatus: "not_started",
-              executed: false,
-              retryable: false,
-            },
-            {
-              kind: "handler_error",
-              boundary: "handler",
-              code: "ACTION_REQUEST_RESTRICTION_INVALID",
-              retryable: false,
-            },
-          ),
-        )
-      }
-      return emitToolResult(
-        toolCall,
-        redactDiagnosticText,
-        normalizeActionResult(
-          action.name,
-          restriction,
-          requestOperationAttempt,
-        ),
-      )
-    }
+  )
+  if (restriction === undefined) return undefined
+  if (
+    !isObjectRecord(restriction)
+    || restriction.success !== false
+    || !getBoundOperationDenialOperation(restriction)
+    || !requestOperationAttempt
+    || getBoundOperationDenialAttempt(restriction) !== requestOperationAttempt
+  ) {
+    return early(failureResult(
+      action.name,
+      "Invalid request-operation restriction result",
+      {
+        code: "ACTION_REQUEST_RESTRICTION_INVALID",
+        acceptance: "rejected",
+        executionStatus: "not_started",
+        executed: false,
+        retryable: false,
+      },
+      {
+        kind: "handler_error",
+        boundary: "handler",
+        code: "ACTION_REQUEST_RESTRICTION_INVALID",
+        retryable: false,
+      },
+    ))
   }
+  return early(try normalizeActionResult(action.name, restriction, requestOperationAttempt))
+}
+
+effect function admitArguments(run: PlannedRun, executorCtx: ExecutePlannedToolCallContext) {
+  const { runtime, action, toolCall } = run
+  const requestOperationAttempt = executorCtx.state
+    ? beginRequestOperationAttempt({
+      runtime,
+      state: executorCtx.state,
+      message: executorCtx.message,
+      action,
+    })
+    : undefined
+  const restricted = try admitRequestRestriction(run, executorCtx, requestOperationAttempt)
+  if (restricted) return restricted
 
   if (
     "args" in toolCall
     || "arguments" in toolCall
     || (toolCall.params !== undefined && !isPlainObject(toolCall.params))
   ) {
-    return emitToolResult(
-      toolCall,
-      redactDiagnosticText,
-      normalizeActionResult(
+    return early(
+      try normalizeActionResult(
         action.name,
         failureResult(
           action.name,
@@ -715,38 +744,25 @@ export async function executePlannedToolCall(
         ),
         requestOperationAttempt,
       ),
-      {
-        ownerCapture: gateCapture("schema", "denied"),
-      },
+      gateCapture(run, "schema", "denied"),
     )
   }
-  const argsForValidation = dropEmptyOptionalArgs(
-    action,
-    toolCall.params ?? {},
-  )
-
+  const argsForValidation = dropEmptyOptionalArgs(action, toolCall.params ?? {})
   const entityAliases = executorCtx.entityAliases
-    ?? (await buildTurnEntityAliases(
+    ?? (try buildTurnEntityAliases(
       runtime,
       executorCtx.message,
       executorCtx.state,
       executorCtx.userRoles,
     ))
-  perfMark("aliases")
-  const resolvedArgs = resolveEntityAliasRefs(entityAliases, argsForValidation)
-  let validation: ReturnType<typeof validateToolArgs>
-  try {
-    validation = validateToolArgs(action, resolvedArgs)
-  } catch (error) {
-    if (
-      !(error instanceof ElizaError)
-      || error.code !== "ACTION_DEFINITION_INVALID"
-    ) {
-      throw error
+  run.perf.mark("aliases")
+  const checked = try result(validateToolArgs(action, resolveEntityAliasRefs(entityAliases, argsForValidation)))
+  if (Result.isFailure(checked)) {
+    const error = thrownValue(checked.failure)
+    if (!(error instanceof ElizaError) || error.code !== "ACTION_DEFINITION_INVALID") {
+      throw checked.failure
     }
-    return emitToolResult(
-      toolCall,
-      redactDiagnosticText,
+    return early(
       failureResult(
         action.name,
         error.message,
@@ -758,17 +774,14 @@ export async function executePlannedToolCall(
           retryable: false,
         },
       ),
-      {
-        ownerCapture: gateCapture("schema", "failed"),
-      },
+      gateCapture(run, "schema", "failed"),
     )
   }
+  const validation = checked.success
   if (!validation.valid) {
     const invalidParameterNames = validation.invalidParameterNames ?? []
-    return emitToolResult(
-      toolCall,
-      redactDiagnosticText,
-      normalizeActionResult(
+    return early(
+      try normalizeActionResult(
         action.name,
         failureResult(
           action.name,
@@ -791,11 +804,18 @@ export async function executePlannedToolCall(
         ),
         requestOperationAttempt,
       ),
-      {
-        ownerCapture: gateCapture("schema", "denied"),
-      },
+      gateCapture(run, "schema", "denied"),
     )
   }
+  return { kind: "admitted", requestOperationAttempt, validation } satisfies AdmittedArguments
+}
+
+effect function admitHandler(
+  run: PlannedRun,
+  executorCtx: ExecutePlannedToolCallContext,
+  validation: ValidateToolArgsResult,
+) {
+  const { runtime, action, options } = run
   const previousResults = [...(executorCtx.previousResults ?? [])]
   const parameters = action.parameters && action.parameters.length > 0
     ? (validation.args as ActionParameters | undefined)
@@ -820,18 +840,12 @@ export async function executePlannedToolCall(
   }
 
   if (action.validate) {
-    let valid = false
-    try {
-      valid = await action.validate(
-        runtime,
-        executorCtx.message,
-        executorCtx.state,
-        handlerOptions,
-      )
-    } catch (error) {
-      return emitToolResult(
-        toolCall,
-        redactDiagnosticText,
+    const checked = try result(foreign(() =>
+      action.validate!(runtime, executorCtx.message, executorCtx.state, handlerOptions)
+    ))
+    if (Result.isFailure(checked)) {
+      const error = thrownValue(checked.failure)
+      return early(
         failureResult(
           action.name,
           stringifyError(error),
@@ -843,15 +857,11 @@ export async function executePlannedToolCall(
             retryable: true,
           },
         ),
-        {
-          ownerCapture: gateCapture("action-validation", "failed"),
-        },
+        gateCapture(run, "action-validation", "failed"),
       )
     }
-    if (!valid) {
-      return emitToolResult(
-        toolCall,
-        redactDiagnosticText,
+    if (!checked.success) {
+      return early(
         failureResult(
           action.name,
           `Action ${action.name} is not available for the current state`,
@@ -863,228 +873,252 @@ export async function executePlannedToolCall(
             retryable: false,
           },
         ),
-        {
-          ownerCapture: gateCapture("action-validation", "denied"),
-        },
+        gateCapture(run, "action-validation", "denied"),
       )
     }
   }
 
-  perfMark("validate")
-  const accountPolicy = await evaluateConnectorAccountPolicies(
-    runtime,
-    action,
-    {
-      message: executorCtx.message,
-      parameters: validation.args as Record<string, unknown>,
-    },
-  )
+  run.perf.mark("validate")
+  const accountPolicy = try evaluateConnectorAccountPolicies(runtime, action, {
+    message: executorCtx.message,
+    parameters: validation.args as Record<string, unknown>,
+  })
   if (!accountPolicy.allowed) {
-    return emitToolResult(
-      toolCall,
-      redactDiagnosticText,
+    return early(
       failureResult(
         action.name,
         accountPolicy.reason
           ?? `Action ${action.name} is not allowed for the selected connector account`,
       ),
-      {
-        ownerCapture: gateCapture("connector-account", "denied"),
-      },
+      gateCapture(run, "connector-account", "denied"),
     )
   }
-  perfMark("accountPolicy")
-  options.abortSignal?.throwIfAborted()
+  run.perf.mark("accountPolicy")
+  try foreignSync(() => options.abortSignal?.throwIfAborted())
+  return { kind: "admitted", handlerOptions, onSettledResult, onBeforeCallbacks } satisfies AdmittedHandler
+}
 
+function reportEmitEventFailure(
+  runtime: IAgentRuntime,
+  action: Action,
+  eventType: EventType,
+  err: unknown,
+): void {
+  runtime.reportError("ExecutePlannedToolCall.emitEvent", err, {
+    action: action.name,
+    eventType,
+  })
+  runtime.logger.warn(
+    {
+      src: "execute-planned-tool-call",
+      action: action.name,
+      eventType,
+      err: err instanceof Error ? err.message : String(err),
+    },
+    "emitEvent failed",
+  )
+}
+
+effect function deliverOwnerExclusiveCallback(
+  runtime: IAgentRuntime,
+  executorCtx: ExecutePlannedToolCallContext,
+  callbackArgs: Parameters<HandlerCallback>,
+) {
+  const disclosure = try revalidateOwnerExclusiveDisclosure(runtime, executorCtx.message)
+  if (disclosure.allowed) {
+    return try foreign(() => executorCtx.callback?.(...callbackArgs) ?? [])
+  }
+  return try foreign(() =>
+    executorCtx.callback?.(
+      {
+        text: PRIVACY_DENIED_TEXT,
+        actions: ["PRIVACY_DENIED"],
+        data: {
+          privacyDenied: true,
+          privacyReason: disclosure.reason,
+        },
+      },
+      "PRIVACY_DENIED",
+    ) ?? []
+  )
+}
+
+effect function invokePlannedAction(
+  run: PlannedRun,
+  executorCtx: ExecutePlannedToolCallContext,
+  handlerOptions: HandlerOptions,
+  requestOperationAttempt: BoundRequestOperationAttempt | undefined,
+  actionCallback: HandlerCallback | undefined,
+) {
+  const { runtime, action } = run
+  const currentGateFailure = try actionGateFailure(action, {
+    ...executorCtx,
+    userRoles: (try actionGateNeedsCallerRoles(action))
+      ? try resolveActionCallerRoles(runtime, executorCtx.message)
+      : executorCtx.userRoles,
+  })
+  if (currentGateFailure) {
+    return failureResult(action.name, currentGateFailure)
+  }
+  try foreignSync(() => run.options.abortSignal?.throwIfAborted())
+
+  const secretSwapSession = getTrajectoryContext()?.secretSwapSession
+  if (secretSwapSession && handlerOptions.parameters !== undefined) {
+    handlerOptions.parameters = try restoreSecretsInValue(
+      secretSwapSession,
+      handlerOptions.parameters,
+      { failOnUnresolved: true },
+    )
+  }
+  const piiSwapSession = getTrajectoryContext()?.piiSwapSession
+  if (piiSwapSession && handlerOptions.parameters !== undefined) {
+    handlerOptions.parameters = try restorePseudonymsInValue(piiSwapSession, handlerOptions.parameters)
+  }
+  observeOwnerToolExecution(runtime, () => ({
+    phase: "started",
+    gate: "execution",
+    gateOutcome: "executed",
+    actionName: action.name,
+    executionId: run.ownerExecutionId,
+    toolCallId: run.toolCall.id,
+    args: handlerOptions.parameters,
+  }))
+  const routingContext = {
+    actionName: action.name,
+    modelClass: action.modelClass,
+    replyOwner: action.suppressActionResultClipboard
+      ? undefined
+      : executorCtx.replyOwner,
+    messageId: executorCtx.message.id,
+    requestMessage: executorCtx.message,
+    requestState: executorCtx.state,
+    requestRuntime: runtime,
+    hostAttemptId: run.ownerExecutionId,
+    requestOperationAttempt,
+  }
+  return try ensuring(
+    foreign(() =>
+      runWithActionRoutingContext(routingContext, () =>
+        action.handler(
+          runtime,
+          executorCtx.message,
+          executorCtx.state,
+          handlerOptions,
+          actionCallback,
+          executorCtx.responses,
+        ))
+    ),
+    sync(() => {
+      routingContext.replyOwner = undefined
+    }),
+  )
+}
+
+effect function runPlannedAction(
+  run: PlannedRun,
+  executorCtx: ExecutePlannedToolCallContext,
+  admittedArguments: AdmittedArguments,
+  admittedHandler: AdmittedHandler,
+) {
+  const { runtime, action } = run
+  const { requestOperationAttempt, validation } = admittedArguments
   const messageId = executorCtx.message.id
   const roomId = executorCtx.message.roomId
-  let actionEventWorldId: Promise<UUID> | undefined
-  const getActionEventWorldId = () => {
-    actionEventWorldId ??= resolveActionEventWorldId(
-      runtime,
-      executorCtx.message,
-      "ExecutePlannedToolCall.resolveActionEventWorldId",
-    )
-    return actionEventWorldId
-  }
-  const actionStartContent = {
-    text: `Executing action: ${action.name}`,
-    actions: [action.name],
-    actionStatus: "executing" as const,
-    source: executorCtx.message.content.source,
-  }
-
-  let actionStartedDispatch: Promise<void> = Promise.resolve()
-  if (typeof runtime.emitEvent === "function") {
-    const worldId = await getActionEventWorldId()
-    actionStartedDispatch = runtime
-      .emitEvent(EventType.ACTION_STARTED, {
-        runtime,
-        ...(messageId ? { messageId } : {}),
-        roomId,
-        world: worldId,
-        content: actionStartContent,
-      })
-      .catch((err) => {
-        runtime.reportError("ExecutePlannedToolCall.emitEvent", err, {
-          action: action.name,
-          eventType: EventType.ACTION_STARTED,
-        })
-        runtime.logger.warn(
-          {
-            src: "execute-planned-tool-call",
-            action: action.name,
-            eventType: EventType.ACTION_STARTED,
-            err: err instanceof Error ? err.message : String(err),
-          },
-          "emitEvent failed",
-        )
-      })
-  }
-
-  const ownerExclusive = action.disclosureGate?.require === "owner_exclusive"
-  const protectedCallback = ownerExclusive && executorCtx.callback
-    ? async (
-      ...callbackArgs: Parameters<NonNullable<typeof executorCtx.callback>>
-    ) => {
-      const disclosure = await revalidateOwnerExclusiveDisclosure(
-        runtime,
-        executorCtx.message,
-      )
-      if (disclosure.allowed) {
-        return executorCtx.callback?.(...callbackArgs) ?? []
-      }
-      return (
-        executorCtx.callback?.(
-          {
-            text: PRIVACY_DENIED_TEXT,
-            actions: ["PRIVACY_DENIED"],
-            data: {
-              privacyDenied: true,
-              privacyReason: disclosure.reason,
-            },
-          },
-          "PRIVACY_DENIED",
-        ) ?? []
-      )
-    }
-    : executorCtx.callback
-  perfMark("startedEvent")
-  let resultForEvent = await runWithMessageTrajectoryContext(
+  const worldId = try cached(resolveActionEventWorldId(
     runtime,
     executorCtx.message,
-    () =>
-      withActionStep(
-        runtime,
-        action.name,
-        () =>
-          settleActionHandler({
-            runtime,
-            action,
-            operationAttempt: requestOperationAttempt,
-            callback: protectedCallback,
-            beforeCallbacks: (result) => publishSettledResult(runtime, action, result, onBeforeCallbacks),
-            invoke: async (actionCallback) => {
-              const currentGateFailure = actionGateFailure(action, {
-                ...executorCtx,
-                userRoles: actionGateNeedsCallerRoles(action)
-                  ? await resolveActionCallerRoles(runtime, executorCtx.message)
-                  : executorCtx.userRoles,
-              })
-              if (currentGateFailure) {
-                return failureResult(action.name, currentGateFailure)
-              }
-              options.abortSignal?.throwIfAborted()
+    "ExecutePlannedToolCall.resolveActionEventWorldId",
+  ))
 
-              const secretSwapSession = getTrajectoryContext()?.secretSwapSession
-              if (
-                secretSwapSession
-                && handlerOptions.parameters !== undefined
-              ) {
-                handlerOptions.parameters = secretSwapSession.restoreInValue(
-                  handlerOptions.parameters,
-                  { failOnUnresolved: true },
-                )
-              }
-
-              const piiSwapSession = getTrajectoryContext()?.piiSwapSession
-              if (piiSwapSession && handlerOptions.parameters !== undefined) {
-                handlerOptions.parameters = piiSwapSession.restoreInValue(
-                  handlerOptions.parameters,
-                )
-              }
-              observeOwnerToolExecution(runtime, () => ({
-                phase: "started",
-                gate: "execution",
-                gateOutcome: "executed",
-                actionName: action.name,
-                executionId: ownerExecutionId,
-                toolCallId: toolCall.id,
-                args: handlerOptions.parameters,
-              }))
-              const routingContext = {
-                actionName: action.name,
-                modelClass: action.modelClass,
-                replyOwner: action.suppressActionResultClipboard
-                  ? undefined
-                  : executorCtx.replyOwner,
-                messageId: executorCtx.message.id,
-                requestMessage: executorCtx.message,
-                requestState: executorCtx.state,
-                requestRuntime: runtime,
-                hostAttemptId: ownerExecutionId,
-                requestOperationAttempt,
-              }
-              try {
-                return await runWithActionRoutingContext(routingContext, () =>
-                  action.handler(
-                    runtime,
-                    executorCtx.message,
-                    executorCtx.state,
-                    handlerOptions,
-                    actionCallback,
-                    executorCtx.responses,
-                  ))
-              } finally {
-                routingContext.replyOwner = undefined
-              }
-            },
-          }),
-        {
-          parameters: isObjectRecord(validation.args) ? validation.args : {},
-          projectResult: (result) => projectSettledResultForObserver(action, result),
-        },
-      ),
-  )
-
-  perfMark("handler")
-  publishSettledResult(runtime, action, resultForEvent, onSettledResult)
-  if (ownerExclusive) {
-    const disclosure = await revalidateOwnerExclusiveDisclosure(
-      runtime,
-      executorCtx.message,
-    )
-    if (!disclosure.allowed) {
-      resultForEvent = failureResult(action.name, PRIVACY_DENIED_TEXT, {
-        privacyDenied: true,
-        privacyReason: disclosure.reason,
-      })
-    }
-  }
-  const suppressActionResult = shouldSuppressActionResultClipboard(
-    action,
-    resultForEvent,
-  )
-
+  let startedDispatch: Fiber.Fiber<void, Foreign> | undefined
   if (typeof runtime.emitEvent === "function") {
-    const worldId = await getActionEventWorldId()
-    await actionStartedDispatch
-    await runtime
-      .emitEvent(EventType.ACTION_COMPLETED, {
+    const world = try worldId
+    const dispatch = try foreignSync(() =>
+      runtime.emitEvent(EventType.ACTION_STARTED, {
         runtime,
         ...(messageId ? { messageId } : {}),
         roomId,
-        world: worldId,
+        world,
+        content: {
+          text: `Executing action: ${action.name}`,
+          actions: [action.name],
+          actionStatus: "executing" as const,
+          source: executorCtx.message.content.source,
+        },
+      }).catch((err: unknown) => reportEmitEventFailure(runtime, action, EventType.ACTION_STARTED, err))
+    )
+    startedDispatch = try Effect.forkDetach(foreign(() => dispatch), { startImmediately: true })
+  }
+
+  const callback = action.disclosureGate?.require === "owner_exclusive" && executorCtx.callback
+    ? (...callbackArgs: Parameters<HandlerCallback>) =>
+      runDetached(deliverOwnerExclusiveCallback(runtime, executorCtx, callbackArgs))
+    : executorCtx.callback
+  run.perf.mark("startedEvent")
+  const settle = () =>
+    runDetached(settleActionHandler({
+      runtime,
+      action,
+      operationAttempt: requestOperationAttempt,
+      callback,
+      beforeCallbacks: thrown((result: ActionResult) =>
+        publishSettledResult(runtime, action, result, admittedHandler.onBeforeCallbacks)
+      ),
+      invoke: (actionCallback) =>
+        runDetached(invokePlannedAction(
+          run,
+          executorCtx,
+          admittedHandler.handlerOptions,
+          requestOperationAttempt,
+          actionCallback,
+        )),
+    }))
+  const result = try foreign(() =>
+    runWithMessageTrajectoryContext(runtime, executorCtx.message, () =>
+      runDetached(withActionStep(runtime, action.name, settle, {
+        parameters: isObjectRecord(validation.args) ? validation.args : {},
+        projectResult: thrown((settled: ActionResult) => projectSettledResultForObserver(action, settled)),
+      })))
+  )
+  return { result, worldId, startedDispatch } satisfies ActionRun
+}
+
+effect function withOwnerDisclosure(
+  run: PlannedRun,
+  message: Memory,
+  result: ActionResult,
+) {
+  if (run.action.disclosureGate?.require !== "owner_exclusive") return result
+  const disclosure = try revalidateOwnerExclusiveDisclosure(run.runtime, message)
+  if (disclosure.allowed) return result
+  return failureResult(run.action.name, PRIVACY_DENIED_TEXT, {
+    privacyDenied: true,
+    privacyReason: disclosure.reason,
+  })
+}
+
+effect function completePlannedToolCall(
+  run: PlannedRun,
+  executorCtx: ExecutePlannedToolCallContext,
+  actionRun: ActionRun,
+  onSettledResult: AdmittedHandler["onSettledResult"],
+) {
+  const { runtime, action, redactDiagnosticText } = run
+  run.perf.mark("handler")
+  try publishSettledResult(runtime, action, actionRun.result, onSettledResult)
+  let resultForEvent = try withOwnerDisclosure(run, executorCtx.message, actionRun.result)
+  const suppressActionResult = shouldSuppressActionResultClipboard(action, resultForEvent)
+
+  if (typeof runtime.emitEvent === "function") {
+    const world = try actionRun.worldId
+    if (actionRun.startedDispatch) try join actionRun.startedDispatch
+    const messageId = executorCtx.message.id
+    try foreign(() =>
+      runtime.emitEvent(EventType.ACTION_COMPLETED, {
+        runtime,
+        ...(messageId ? { messageId } : {}),
+        roomId: executorCtx.message.roomId,
+        world,
         content: {
           text: redactDiagnosticText(
             resultForEvent.text ?? `Action ${action.name} completed`,
@@ -1103,56 +1137,18 @@ export async function executePlannedToolCall(
             ? redactDiagnosticText(resultForEvent.error)
             : undefined,
         },
-      })
-      .catch((err) => {
-        runtime.reportError("ExecutePlannedToolCall.emitEvent", err, {
-          action: action.name,
-          eventType: EventType.ACTION_COMPLETED,
-        })
-        runtime.logger.warn(
-          {
-            src: "execute-planned-tool-call",
-            action: action.name,
-            eventType: EventType.ACTION_COMPLETED,
-            err: err instanceof Error ? err.message : String(err),
-          },
-          "emitEvent failed",
-        )
-      })
-  }
-  if (ownerExclusive) {
-    const disclosure = await revalidateOwnerExclusiveDisclosure(
-      runtime,
-      executorCtx.message,
+      }).catch((err: unknown) => reportEmitEventFailure(runtime, action, EventType.ACTION_COMPLETED, err))
     )
-    if (!disclosure.allowed) {
-      resultForEvent = failureResult(action.name, PRIVACY_DENIED_TEXT, {
-        privacyDenied: true,
-        privacyReason: disclosure.reason,
-      })
-    }
   }
-  perfMark("post")
-  {
-    const perfTotal = Date.now() - perfT0
-    if (perfTotal > 400) {
-      runtime.logger.info(
-        { src: "execute-planned-tool-call" },
-        `[perf-probe] tool=${action.name} total=${perfTotal}ms ${
-          perfMarks
-            .filter(([, ms]) => ms >= 5)
-            .map(([label, ms]) => `${label}=${ms}ms`)
-            .join(" ")
-        }`,
-      )
-    }
-  }
-  return emitToolResult(toolCall, redactDiagnosticText, resultForEvent, {
+  resultForEvent = try withOwnerDisclosure(run, executorCtx.message, resultForEvent)
+  run.perf.mark("post")
+  run.perf.report(runtime, action.name)
+  return try emitToolResult(run.toolCall, redactDiagnosticText, resultForEvent, {
     suppressData: suppressActionResult,
     ownerCapture: runtime.ownerToolExecutionObserver
       ? {
         runtime,
-        executionId: ownerExecutionId,
+        executionId: run.ownerExecutionId,
         phase: "settled",
         gate: "execution",
         gateOutcome: resultForEvent.success ? "executed" : "failed",
@@ -1160,6 +1156,61 @@ export async function executePlannedToolCall(
       : undefined,
   })
 }
+
+effect function emitEarlyResult(run: PlannedRun, outcome: EarlyResult) {
+  return try emitToolResult(run.toolCall, run.redactDiagnosticText, outcome.result, {
+    ownerCapture: outcome.ownerCapture,
+  })
+}
+
+export effect function executePlannedToolCall(
+  runtime: IAgentRuntime,
+  ctx: ExecutePlannedToolCallContext,
+  toolCall: PlannerToolCall,
+  options: ExecutePlannedToolCallOptions = {},
+) {
+  try foreignSync(() => options.abortSignal?.throwIfAborted())
+  const ownerExecutionId = runtime.ownerToolExecutionObserver
+    ? randomUuid()
+    : undefined
+  const perf = startPerfProbe()
+  const redactDiagnosticText = composeToolDiagnosticRedactor(runtime)
+  const action = (options.actions ?? runtime.actions).find(
+    (candidate) => candidate.name === toolCall.name,
+  )
+  if (!action) {
+    return try emitToolResult(
+      toolCall,
+      redactDiagnosticText,
+      failureResult(
+        toolCall.name,
+        `Action not found: ${toolCall.name}`,
+        {},
+        {
+          kind: "missing_capability",
+          boundary: "capability",
+          code: "ACTION_NOT_FOUND",
+          retryable: false,
+        },
+      ),
+      {
+        ownerCapture: gateCapture({ runtime, ownerExecutionId }, "lookup", "denied"),
+      },
+    )
+  }
+  const run: PlannedRun = { runtime, toolCall, options, action, redactDiagnosticText, ownerExecutionId, perf }
+  const caller = try admitCaller(run, ctx)
+  if (caller.kind === "early") return try emitEarlyResult(run, caller)
+  const executorCtx = caller.executorCtx
+  const admittedArguments = try admitArguments(run, executorCtx)
+  if (admittedArguments.kind === "early") return try emitEarlyResult(run, admittedArguments)
+  const admittedHandler = try admitHandler(run, executorCtx, admittedArguments.validation)
+  if (admittedHandler.kind === "early") return try emitEarlyResult(run, admittedHandler)
+  const actionRun = try runPlannedAction(run, executorCtx, admittedArguments, admittedHandler)
+  return try completePlannedToolCall(run, executorCtx, actionRun, admittedHandler.onSettledResult)
+}
+
+export const executePlannedToolCallPromise = promised(failingAs(TypeError, executePlannedToolCall, ElizaError))
 
 interface OwnerCapture {
   runtime: IAgentRuntime
@@ -1176,12 +1227,12 @@ interface OwnerCapture {
   gateOutcome: "denied" | "failed" | "executed"
 }
 
-async function emitToolResult(
+effect function emitToolResult(
   toolCall: PlannerToolCall,
   redactDiagnosticText: ToolDiagnosticTextRedactor,
   result: ActionResult,
   options: { suppressData?: boolean; ownerCapture?: OwnerCapture } = {},
-): Promise<ActionResult> {
+) {
   if (options.ownerCapture) {
     const observation = options.ownerCapture
     observeOwnerToolExecution(observation.runtime, () => ({
@@ -1207,7 +1258,7 @@ async function emitToolResult(
     redactDiagnosticText,
     options,
   )
-  await emitStreamingHook(streamingContext, "onToolResult", {
+  try emitStreamingHook(streamingContext, "onToolResult", {
     toolCall: streamingToolCall,
     toolCallId: streamingToolCall.id,
     result: streamingToolCall.result,
@@ -1219,16 +1270,16 @@ async function emitToolResult(
   return result
 }
 
-async function withResolvedUserRoles(
+effect function withResolvedUserRoles(
   runtime: IAgentRuntime,
   ctx: ExecutePlannedToolCallContext,
-): Promise<ExecutePlannedToolCallContext> {
+) {
   if (ctx.userRoles?.length) {
     return ctx
   }
   return {
     ...ctx,
-    userRoles: await resolveActionCallerRoles(runtime, ctx.message),
+    userRoles: try resolveActionCallerRoles(runtime, ctx.message),
   }
 }
 

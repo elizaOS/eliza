@@ -1,4 +1,6 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
 import { type JsonSchema, validateSchema } from "../actions/validate-tool-args.vibe"
+import { type Foreign, foreign, promised } from "../edge.vibe"
 import type { GenerateTextParams, ModelHandler, ModelTypeName, TextGenerationModelType } from "../types/model.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { isLocalProvider } from "./action-model-routing.vibe"
@@ -10,9 +12,7 @@ export interface ParseAndValidateResult {
   valid: boolean
   parsed: Record<string, unknown> | null
   parseError?: string
-
   errors: string[]
-
   failedSchemaPath?: string
 }
 
@@ -45,19 +45,15 @@ export function parseAndValidate(
   }
 }
 
-export class SchemaValidationFailedError extends Error {
+export class SchemaValidationFailedError extends Data.TaggedError("SchemaValidationFailedError")<{
   readonly lastRawResponse: string
-
   readonly lastParsedResponse: Record<string, unknown> | null
-
   readonly errors: readonly string[]
-
   readonly schemaPath: string | undefined
-
   readonly attempts: number
-
   readonly maxAttempts: number
-
+  readonly name: string
+}> {
   constructor(args: {
     lastRawResponse: string
     lastParsedResponse: Record<string, unknown> | null
@@ -66,17 +62,16 @@ export class SchemaValidationFailedError extends Error {
     attempts: number
     maxAttempts: number
   }) {
-    const summary = args.errors[0] ?? "no specific validation error"
-    super(
-      `Remote model output failed schema validation after ${args.attempts} attempts (max ${args.maxAttempts}): ${summary}`,
-    )
-    this.name = "SchemaValidationFailedError"
-    this.lastRawResponse = args.lastRawResponse
-    this.lastParsedResponse = args.lastParsedResponse
-    this.errors = args.errors
-    this.schemaPath = args.schemaPath
-    this.attempts = args.attempts
-    this.maxAttempts = args.maxAttempts
+    super({
+      lastRawResponse: args.lastRawResponse,
+      lastParsedResponse: args.lastParsedResponse,
+      errors: args.errors,
+      schemaPath: args.schemaPath,
+      attempts: args.attempts,
+      maxAttempts: args.maxAttempts,
+      name: "SchemaValidationFailedError",
+    })
+    this.message = `Remote model output failed schema validation after ${args.attempts} attempts (max ${args.maxAttempts}): ${args.errors[0] ?? "no specific validation error"}`
   }
 }
 
@@ -124,30 +119,23 @@ export function rerollBudgetCeilingFromSetting(
 
 export interface CallModelWithValidationOptions {
   modelType: TextGenerationModelType | ModelTypeName | string
-
   params: GenerateTextParams
-
   provider?: string
-
   schema: JsonSchema
-
   validateBeforeReturn?: boolean
-
   maxRerolls?: number
 }
 
 export interface CallModelWithValidationResult {
   rawResponse: string
-
   parsed: Record<string, unknown>
-
   attempts: number
 }
 
-export async function callModelWithValidation(
+export effect function callModelWithValidation(
   runtime: IAgentRuntime,
   options: CallModelWithValidationOptions,
-): Promise<CallModelWithValidationResult> {
+): CallModelWithValidationResult!(SchemaValidationFailedError | Foreign) {
   const validate = shouldValidate(
     runtime,
     options.modelType,
@@ -169,13 +157,15 @@ export async function callModelWithValidation(
   while (attempts < maxAttempts) {
     attempts++
 
-    const result = await (
-      runtime.useModel as (
-        modelType: string,
-        params: GenerateTextParams,
-        provider?: string,
-      ) => Promise<unknown>
-    )(String(options.modelType), options.params, options.provider)
+    const result = try foreign(() =>
+      (
+        runtime.useModel as (
+          modelType: string,
+          params: GenerateTextParams,
+          provider?: string,
+        ) => Promise<unknown>
+      )(String(options.modelType), options.params, options.provider)
+    )
     lastRaw = typeof result === "string" ? result : String(result ?? "")
 
     if (!validate) {
@@ -210,6 +200,8 @@ export async function callModelWithValidation(
     maxAttempts,
   })
 }
+
+export const callModelWithValidationPromise = promised(callModelWithValidation)
 
 function extractFirstPath(error: string | undefined): string | undefined {
   if (!error) return undefined

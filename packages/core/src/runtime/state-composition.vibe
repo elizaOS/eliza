@@ -1,7 +1,10 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/providerExecutions.md, "Story: Share exactly equivalent provider requests"; spec/core/providerExecutions.md, "Structural key equality includes every coalescing dimension"; spec/core/providerExecutions.md, "Work cancellation and cleanup use the exact captured execution identity"; spec/core/providers.md, "Story: Share provider work without sharing cancellation"; spec/core/providers.md, "Cleanup never clears a newer keyed execution"
+import { Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { recordInferenceSpan } from "../inference-timing.vibe"
 import {
   authorizeOwnerExclusiveDisclosure,
+  type OwnerExclusiveDisclosureDecision,
   ownerExclusiveSuppressionNote,
   PRIVACY_DENIED_TEXT,
   revalidateOwnerExclusiveDisclosure,
@@ -12,7 +15,7 @@ import {
   getStreamingContextManager,
   runWithSuppressedModelStream,
 } from "../streaming-context.vibe"
-import { getTrajectoryContext } from "../trajectory-context.vibe"
+import { getTrajectoryContext, type TrajectoryContext } from "../trajectory-context.vibe"
 import { type TrajectoryProviderAccessLogger, withProviderStep } from "../trajectory-utils.vibe"
 import type { Provider } from "../types/components.vibe"
 import type { Memory } from "../types/memory.vibe"
@@ -35,14 +38,31 @@ import {
   runProviderExecution,
   throwIfProviderCompositionAborted,
 } from "./provider-execution.vibe"
-import { buildProviderAttributionsFromState } from "./trajectory-provider-attribution.vibe"
+import { buildProviderAttributionsFromState, type TrajectoryProviderAttribution } from "./trajectory-provider-attribution.vibe"
+import type { TurnAbortedError } from "./turn-aborted-error.vibe"
+
+module node {
+  /** @throws {never} */
+  export function monotonicNow(): number {
+    return performance.now()
+  }
+}
+import { monotonicNow } from node
 
 export const STATE_CACHE_LIMIT = 512
 
+type TrajectoryLogger = Service & TrajectoryProviderAccessLogger
+
 export class ProviderStateComposer {
+  readonly publicProviderStateByMessage = new WeakMap<Memory, { text: unknown; state: State }>()
+
+  readonly providerExecutionsInFlight = new Map<string, InFlightProviderExecution>()
+
+  readonly providerExecutionsActive = new Set<InFlightProviderExecution>()
+
   constructor(
-    private readonly runtime: IAgentRuntime,
-    private readonly lifecycle: {
+    readonly runtime: IAgentRuntime,
+    readonly lifecycle: {
       hasProviderSelectionHooks: () => boolean
       ensureServiceStarted: (
         serviceType: ServiceTypeName | string,
@@ -51,17 +71,6 @@ export class ProviderStateComposer {
     },
   ) {}
 
-  private readonly publicProviderStateByMessage = new WeakMap<
-    Memory,
-    { text: unknown; state: State }
-  >()
-
-  private providerExecutionsInFlight = new Map<
-    string,
-    InFlightProviderExecution
-  >()
-
-  private providerExecutionsActive = new Set<InFlightProviderExecution>()
   stop(): void {
     for (const execution of this.providerExecutionsActive) {
       execution.controller.abort(new Error("Runtime stopped"))
@@ -70,7 +79,7 @@ export class ProviderStateComposer {
     this.providerExecutionsInFlight.clear()
   }
 
-  async composeState(
+  composeState(
     message: Memory,
     includeList: string[] | null = null,
     onlyInclude = false,
@@ -78,758 +87,803 @@ export class ProviderStateComposer {
     refreshProviders: string[] | null = null,
     options: { deferredReferenceProviders?: readonly string[] } = {},
   ): Promise<State> {
-    const trajectoryStepIdFromMessage = typeof message.metadata === "object"
-        && message.metadata !== null
-        && "trajectoryStepId" in message.metadata
-      ? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
-      : undefined
-    const trajectoryStepId = typeof trajectoryStepIdFromMessage === "string"
-        && trajectoryStepIdFromMessage.trim() !== ""
-      ? trajectoryStepIdFromMessage
-      : getTrajectoryContext()?.trajectoryStepId
+    return runDetached(composeState(this, message, includeList, onlyInclude, skipCache, refreshProviders, options))
+  }
+}
 
-    const emptyObj = {
-      values: {},
-      data: {},
-      text: "",
-    } as State
-    const audienceCacheKey = trustedDeliveryAudienceCacheKey(message)
-    const publicProviderCache = this.publicProviderStateByMessage.get(message)
-    const cachedPublicState = publicProviderCache !== undefined
-        && publicProviderCache.text === message.content.text
-      ? publicProviderCache.state
-      : undefined
-    const cachedCandidate = skipCache || !message.id
-      ? emptyObj
-      : (this.runtime.stateCache.get(message.id)
-        ?? cachedPublicState
-        ?? emptyObj)
-    const cachedState = cachedCandidate === emptyObj
-        || (cachedCandidate.data.__trustedDeliveryAudienceCacheKey
-            === audienceCacheKey
-          && (cachedCandidate.data as Record<string, unknown>).__roomId
-            === message.roomId)
-      ? cachedCandidate
-      : emptyObj
-    const providerNames = await this.selectProviderNames(
-      message,
-      cachedState,
-      includeList,
-      onlyInclude,
-    )
+interface ProviderTurn {
+  message: Memory
+  cachedState: State
+  selectedProviderNames: string[]
+  providerSelectionKey: string
+  refreshSet: Set<string> | null
+  providerSignal: AbortSignal | undefined
+  deferredReferenceProviders: readonly string[] | undefined
+}
 
-    const providersToGet: Provider[] = []
-    const deniedSensitiveProviderNames = new Set<string>()
-    let ownerDisclosureDecision:
-      | Awaited<ReturnType<typeof authorizeOwnerExclusiveDisclosure>>
-      | undefined
-    let containsSensitiveProvider = false
-    for (const provider of this.runtime.providers) {
-      if (!providerNames.has(provider.name)) {
+interface ProviderAdmission {
+  providersToGet: Provider[]
+  deniedSensitiveProviderNames: Set<string>
+  containsSensitiveProvider: boolean
+}
+
+interface ProviderAccessLog {
+  runtime: IAgentRuntime
+  message: Memory
+  stepId: string
+  logger: TrajectoryLogger
+  trajectory: TrajectoryContext | undefined
+  providerData: ProviderExecutionRecord[]
+  reusedProviders: Provider[]
+  currentProviderResults: Record<string, CachedProviderResult>
+  attributionByName: Map<string, TrajectoryProviderAttribution>
+  composeStartedAt: number
+}
+
+function isOwnerExclusive(provider: Provider): boolean {
+  return provider.disclosureGate?.require === "owner_exclusive"
+}
+
+function trajectoryStepIdFor(message: Memory): string | undefined {
+  const trajectoryStepIdFromMessage = typeof message.metadata === "object"
+      && message.metadata !== null
+      && "trajectoryStepId" in message.metadata
+    ? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
+    : undefined
+  return typeof trajectoryStepIdFromMessage === "string"
+      && trajectoryStepIdFromMessage.trim() !== ""
+    ? trajectoryStepIdFromMessage
+    : getTrajectoryContext()?.trajectoryStepId
+}
+
+function reusableState(
+  composer: ProviderStateComposer,
+  message: Memory,
+  skipCache: boolean,
+  audienceCacheKey: string,
+): State {
+  const emptyObj = {
+    values: {},
+    data: {},
+    text: "",
+  } as State
+  const publicProviderCache = composer.publicProviderStateByMessage.get(message)
+  const cachedPublicState = publicProviderCache !== undefined
+      && publicProviderCache.text === message.content.text
+    ? publicProviderCache.state
+    : undefined
+  const cachedCandidate = skipCache || !message.id
+    ? emptyObj
+    : (composer.runtime.stateCache.get(message.id)
+      ?? cachedPublicState
+      ?? emptyObj)
+  return cachedCandidate === emptyObj
+      || (cachedCandidate.data.__trustedDeliveryAudienceCacheKey === audienceCacheKey
+        && (cachedCandidate.data as Record<string, unknown>).__roomId === message.roomId)
+    ? cachedCandidate
+    : emptyObj
+}
+
+effect function selectProviderNames(
+  composer: ProviderStateComposer,
+  message: Memory,
+  cachedState: State,
+  includeList: string[] | null,
+  onlyInclude: boolean,
+): Set<string>!Foreign {
+  const runtime = composer.runtime
+  const filterList = onlyInclude ? includeList : null
+  const activeContexts = getActiveRoutingContextsForTurn(cachedState, message)
+  const providerNames = new Set<string>()
+  if (filterList) {
+    for (const name of filterList) {
+      providerNames.add(name)
+    }
+  } else {
+    for (const p of runtime.providers.filter((p) => !p.private && !p.dynamic)) {
+      if (
+        activeContexts.length > 0
+        && !shouldIncludeByContext(resolveProviderContexts(p), activeContexts)
+      ) {
         continue
       }
-      if (provider.disclosureGate?.require === "owner_exclusive") {
-        ownerDisclosureDecision ??= await authorizeOwnerExclusiveDisclosure(
-          this.runtime,
-          message,
-        )
-        if (!ownerDisclosureDecision.allowed) {
-          deniedSensitiveProviderNames.add(provider.name)
-          this.runtime.logger.info(
-            {
-              src: "agent",
-              agentId: this.runtime.agentId,
-              provider: provider.name,
-              reason: ownerDisclosureDecision.reason,
-            },
-            "Owner-private provider denied for untrusted delivery audience",
-          )
-          continue
+      providerNames.add(p.name)
+    }
+  }
+  if (!filterList && includeList && includeList.length > 0) {
+    for (const name of includeList) {
+      providerNames.add(name)
+    }
+  }
+
+  if (composer.lifecycle.hasProviderSelectionHooks()) {
+    const selection = composeStateProvidersPipelineHookContext({
+      message,
+      providers: { current: [...providerNames] },
+      activeContexts,
+      onlyInclude,
+      includeList,
+    })
+    try foreign(() => runtime.applyPipelineHooks("compose_state_providers", selection))
+
+    const selected = selection.providers.current
+    if (Array.isArray(selected)) {
+      providerNames.clear()
+      for (const name of selected) {
+        if (typeof name === "string" && name.length > 0) {
+          providerNames.add(name)
         }
-        containsSensitiveProvider = true
       }
-      providersToGet.push(provider)
-    }
-    providersToGet.sort(
-      (a, b) => (a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
-    )
-
-    const selectedProviderNames = providersToGet.map(
-      (provider) => provider.name,
-    )
-    const providerSelectionKey = JSON.stringify(
-      [...selectedProviderNames].sort(),
-    )
-    const selectionChanged = cachedState.data.__providerSelectionKey !== providerSelectionKey
-
-    const refreshSet = refreshProviders !== null ? new Set(refreshProviders) : null
-    const cachedProviderNames = refreshSet
-      ? new Set(
-        Object.keys(
-          (cachedState.data.providers as
-            | Record<string, unknown>
-            | undefined) ?? {},
-        ),
-      )
-      : null
-    const providersToRun = refreshSet
-      ? providersToGet.filter(
-        (p) =>
-          selectionChanged
-          || p.disclosureGate?.require === "owner_exclusive"
-          || refreshSet.has(p.name)
-          || !cachedProviderNames?.has(p.name),
-      )
-      : providersToGet
-    const providersToRunNames = new Set(providersToRun.map((p) => p.name))
-    const reusedProviders = providersToGet.filter(
-      (provider) => !providersToRunNames.has(provider.name),
-    )
-
-    let trajLogger: (Service & TrajectoryProviderAccessLogger) | null
-    try {
-      trajLogger = (await this.lifecycle.ensureServiceStarted(
-        "trajectories",
-      )) as (Service & TrajectoryProviderAccessLogger) | null
-    } catch (error) {
-      this.runtime.reportError(
-        "AgentRuntime.composeState.trajectories",
-        error,
+    } else {
+      runtime.logger.warn(
         {
-          serviceType: "trajectories",
+          src: "agent",
+          agentId: runtime.agentId,
+          phase: "compose_state_providers",
         },
+        "compose_state_providers hook left providers.current non-array; keeping pre-hook selection",
       )
-      trajLogger = null
     }
-    const composeStartedAt = Date.now()
+  }
+  if (filterList) {
+    const allowed = new Set(filterList)
+    for (const name of providerNames) {
+      if (!allowed.has(name)) providerNames.delete(name)
+    }
+  }
 
-    const providerSignal = getStreamingContext()?.abortSignal
-      ?? this.runtime.turnControllers.signalFor(message.roomId)
-      ?? undefined
-    const providerData: ProviderExecutionRecord[] = await Promise.all(
-      providersToRun.map(async (provider) => {
-        const providerRuntime: IAgentRuntime = this.runtime
+  return providerNames
+}
 
-        const referenceBodyDeferred = provider.disclosureGate?.require === "owner_exclusive"
-          && options.deferredReferenceProviders?.includes(provider.name) === true
-        const inFlightKey = message.id && !refreshSet?.has(provider.name)
-          ? `${message.id}\u0000${message.roomId}\u0000${providerSelectionKey}\u0000${provider.name}\u0000${
-            provider.disclosureGate?.require === "owner_exclusive"
-              ? trustedDeliveryAudienceCacheKey(message)
-              : "public"
-          }\u0000${referenceBodyDeferred ? "deferred" : "complete"}`
-          : null
-        let execution = inFlightKey !== null
-          ? this.providerExecutionsInFlight.get(inFlightKey)
-          : undefined
-        const providerCoalesced = execution !== undefined
-        if (!execution) {
-          const startedAt = Date.now()
-          const startedAtMonotonic = performance.now()
-          const callerStreamingContext = getStreamingContext()
+effect function admitProviders(
+  runtime: IAgentRuntime,
+  message: Memory,
+  providerNames: Set<string>,
+): ProviderAdmission!! {
+  const providersToGet: Provider[] = []
+  const deniedSensitiveProviderNames = new Set<string>()
+  let ownerDisclosureDecision: OwnerExclusiveDisclosureDecision | undefined
+  let containsSensitiveProvider = false
+  for (const provider of runtime.providers) {
+    if (!providerNames.has(provider.name)) {
+      continue
+    }
+    if (isOwnerExclusive(provider)) {
+      if (ownerDisclosureDecision === undefined) {
+        ownerDisclosureDecision = try authorizeOwnerExclusiveDisclosure(runtime, message)
+      }
+      if (!ownerDisclosureDecision.allowed) {
+        deniedSensitiveProviderNames.add(provider.name)
+        runtime.logger.info(
+          {
+            src: "agent",
+            agentId: runtime.agentId,
+            provider: provider.name,
+            reason: ownerDisclosureDecision.reason,
+          },
+          "Owner-private provider denied for untrusted delivery audience",
+        )
+        continue
+      }
+      containsSensitiveProvider = true
+    }
+    providersToGet.push(provider)
+  }
+  providersToGet.sort(
+    (a, b) => (a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
+  )
+  return { providersToGet, deniedSensitiveProviderNames, containsSensitiveProvider }
+}
 
-          const workController = new AbortController()
-          const promise = runProviderExecution(
-            () =>
-              getStreamingContextManager().run(
-                {
-                  ...callerStreamingContext,
+effect function startTrajectoryLogger(composer: ProviderStateComposer): (TrajectoryLogger | null)!! {
+  const logger = foreign(() => composer.lifecycle.ensureServiceStarted("trajectories")) catch (error) => {
+    composer.runtime.reportError("AgentRuntime.composeState.trajectories", error.cause, {
+      serviceType: "trajectories",
+    })
+    return null
+  }
+  return logger as TrajectoryLogger | null
+}
 
-                  abortSignal: workController.signal,
-                },
-                () =>
-                  runWithSuppressedModelStream(() =>
-                    withProviderStep(
-                      providerRuntime,
-                      provider.name,
-                      () =>
-                        provider.get(providerRuntime, message, cachedState, {
-                          signal: workController.signal,
-                          selectedProviderNames,
-                          ...(referenceBodyDeferred
-                            ? { referenceBodyDeferred: true }
-                            : {}),
-                        }),
-                    )
-                  ),
-              ),
-            workController.signal,
-          )
-          execution = {
-            promise,
-            controller: workController,
-            waiters: 0,
-            startedAt,
-            startedAtMonotonic,
-          }
-          this.providerExecutionsActive.add(execution)
-          if (this.lifecycle.isStopping()) {
-            workController.abort(new Error("Runtime stopped"))
-          }
-          if (inFlightKey !== null) {
-            this.providerExecutionsInFlight.set(inFlightKey, execution)
-          }
-        }
+function evictProviderExecution(
+  composer: ProviderStateComposer,
+  inFlightKey: string | null,
+  execution: InFlightProviderExecution,
+): void {
+  if (inFlightKey !== null && composer.providerExecutionsInFlight.get(inFlightKey) === execution) {
+    composer.providerExecutionsInFlight.delete(inFlightKey)
+  }
+}
 
-        const attachedExecution = execution
-        const evict = inFlightKey !== null
-          ? () => {
-            if (
-              this.providerExecutionsInFlight.get(inFlightKey)
-              === attachedExecution
-            ) {
-              this.providerExecutionsInFlight.delete(inFlightKey)
-            }
-          }
-          : () => {}
-        if (!providerCoalesced) {
-          const releaseExecution = () => {
-            this.providerExecutionsActive.delete(attachedExecution)
-            evict()
-          }
-          void attachedExecution.promise.then(
-            releaseExecution,
-            releaseExecution,
-          )
-        }
-        try {
-          const result = await awaitProviderExecution(
-            execution,
-            providerSignal,
-            evict,
-          )
-          const endedAt = Date.now()
-          const duration = performance.now() - execution.startedAtMonotonic
-          recordInferenceSpan(`provider:${provider.name}`, duration, {
-            outcome: "success",
-            coalesced: providerCoalesced,
-          })
+effect function startProviderExecution(
+  composer: ProviderStateComposer,
+  provider: Provider,
+  turn: ProviderTurn,
+  inFlightKey: string | null,
+  referenceBodyDeferred: boolean,
+): InFlightProviderExecution!! {
+  const runtime = composer.runtime
+  const startedAt = Date.now()
+  const startedAtMonotonic = monotonicNow()
+  const callerStreamingContext = getStreamingContext()
+  const controller = new AbortController()
+  const invoke = () =>
+    getStreamingContextManager().run({ ...callerStreamingContext, abortSignal: controller.signal }, () =>
+      runDetached(effect {
+        const pending = try runWithSuppressedModelStream(() =>
+          runDetached(withProviderStep(runtime, provider.name, () =>
+            provider.get(runtime, turn.message, turn.cachedState, {
+              signal: controller.signal,
+              selectedProviderNames: turn.selectedProviderNames,
+              ...(referenceBodyDeferred ? { referenceBodyDeferred: true } : {}),
+            })))
+        )
+        return try foreign(() => pending)
+      }))
+  const release = () => {
+    composer.providerExecutionsActive.delete(execution)
+    evictProviderExecution(composer, inFlightKey, execution)
+  }
+  const execution: InFlightProviderExecution = {
+    work: fork.detached ensuring(runProviderExecution(invoke, controller.signal), sync(release)),
+    controller,
+    waiters: 0,
+    startedAt,
+    startedAtMonotonic,
+  }
+  composer.providerExecutionsActive.add(execution)
+  if (inFlightKey !== null) {
+    composer.providerExecutionsInFlight.set(inFlightKey, execution)
+  }
+  if (composer.lifecycle.isStopping()) {
+    controller.abort(new Error("Runtime stopped"))
+  }
+  return execution
+}
 
-          return {
-            ...result,
-            providerName: provider.name,
-            providerStartedAt: execution.startedAt,
-            providerEndedAt: endedAt,
-            providerDurationMs: duration,
-            providerOutcome: "success",
-            providerCoalesced,
-          }
-        } catch (cause) {
-          const endedAt = Date.now()
-          const duration = performance.now() - execution.startedAtMonotonic
-          const outcome: ProviderExecutionOutcome = providerCancellationReason(
-              providerSignal,
-              execution.controller.signal,
-              cause,
-            )
-            ? "aborted"
-            : "error"
-          const code = outcome === "aborted"
-            ? "PROVIDER_COMPOSITION_ABORTED"
-            : "PROVIDER_COMPOSITION_FAILED"
-          const error = new ElizaError(
-            `Provider "${provider.name}" ${outcome === "aborted" ? "was aborted" : "failed"} during state composition`,
-            {
-              code,
-              cause,
-              severity: "ephemeral",
-              context: {
-                provider: provider.name,
-                durationMs: duration,
-                roomId: message.roomId,
-                messageId: message.id,
-                outcome,
-              },
-            },
-          )
-          recordInferenceSpan(`provider:${provider.name}`, duration, {
-            outcome,
-            errorCode: code,
-            coalesced: providerCoalesced,
-          })
-          this.runtime.reportError("AgentRuntime.composeState.provider", error)
-          return {
-            providerName: provider.name,
-            providerStartedAt: execution.startedAt,
-            providerEndedAt: endedAt,
-            providerDurationMs: duration,
-            providerOutcome: outcome,
-            providerCoalesced,
-            providerError: error,
-          }
-        }
-      }),
+function providerFailureRecord(
+  runtime: IAgentRuntime,
+  provider: Provider,
+  turn: ProviderTurn,
+  execution: InFlightProviderExecution,
+  providerCoalesced: boolean,
+  cause: unknown,
+): ProviderExecutionRecord {
+  const endedAt = Date.now()
+  const duration = monotonicNow() - execution.startedAtMonotonic
+  const outcome: ProviderExecutionOutcome = providerCancellationReason(
+      turn.providerSignal,
+      execution.controller.signal,
+      cause,
     )
-    const providerOverlaps = calculateProviderOverlaps(providerData)
-    const failedProviderData = providerData.filter(
-      (record) => record.providerError !== undefined,
+    ? "aborted"
+    : "error"
+  const code = outcome === "aborted"
+    ? "PROVIDER_COMPOSITION_ABORTED"
+    : "PROVIDER_COMPOSITION_FAILED"
+  const error = new ElizaError(
+    `Provider "${provider.name}" ${outcome === "aborted" ? "was aborted" : "failed"} during state composition`,
+    {
+      code,
+      cause,
+      severity: "ephemeral",
+      context: {
+        provider: provider.name,
+        durationMs: duration,
+        roomId: turn.message.roomId,
+        messageId: turn.message.id,
+        outcome,
+      },
+    },
+  )
+  recordInferenceSpan(`provider:${provider.name}`, duration, {
+    outcome,
+    errorCode: code,
+    coalesced: providerCoalesced,
+  })
+  runtime.reportError("AgentRuntime.composeState.provider", error)
+  return {
+    providerName: provider.name,
+    providerStartedAt: execution.startedAt,
+    providerEndedAt: endedAt,
+    providerDurationMs: duration,
+    providerOutcome: outcome,
+    providerCoalesced,
+    providerError: error,
+  }
+}
+
+effect function executeProvider(
+  composer: ProviderStateComposer,
+  provider: Provider,
+  turn: ProviderTurn,
+): ProviderExecutionRecord!! {
+  const message = turn.message
+  const referenceBodyDeferred = isOwnerExclusive(provider)
+    && turn.deferredReferenceProviders?.includes(provider.name) === true
+  const inFlightKey = message.id && !turn.refreshSet?.has(provider.name)
+    ? `${message.id}\u0000${message.roomId}\u0000${turn.providerSelectionKey}\u0000${provider.name}\u0000${
+      isOwnerExclusive(provider) ? trustedDeliveryAudienceCacheKey(message) : "public"
+    }\u0000${referenceBodyDeferred ? "deferred" : "complete"}`
+    : null
+  const shared = inFlightKey !== null ? composer.providerExecutionsInFlight.get(inFlightKey) : undefined
+  const providerCoalesced = shared !== undefined
+  const execution = shared
+    ?? try startProviderExecution(composer, provider, turn, inFlightKey, referenceBodyDeferred)
+  const evict = () => evictProviderExecution(composer, inFlightKey, execution)
+  return effect {
+    const result = try awaitProviderExecution(execution, turn.providerSignal, evict)
+    return try Effect.try({
+      try: (): ProviderExecutionRecord => {
+        const endedAt = Date.now()
+        const duration = monotonicNow() - execution.startedAtMonotonic
+        recordInferenceSpan(`provider:${provider.name}`, duration, {
+          outcome: "success",
+          coalesced: providerCoalesced,
+        })
+        return {
+          ...result,
+          providerName: provider.name,
+          providerStartedAt: execution.startedAt,
+          providerEndedAt: endedAt,
+          providerDurationMs: duration,
+          providerOutcome: "success",
+          providerCoalesced,
+        }
+      },
+      catch: (cause) => new Foreign({ cause }),
+    })
+  } catch (failure) => providerFailureRecord(composer.runtime, provider, turn, execution, providerCoalesced, failure.cause)
+}
+
+function cachedProviders(state: State): Record<string, CachedProviderResult> | undefined {
+  return state.data.providers as Record<string, CachedProviderResult> | undefined
+}
+
+function mergeProviderResults(
+  runtime: IAgentRuntime,
+  cachedState: State,
+  deniedSensitiveProviderNames: Set<string>,
+  providerData: ProviderExecutionRecord[],
+): Record<string, CachedProviderResult> {
+  const currentProviderResults: Record<string, CachedProviderResult> = {
+    ...cachedProviders(cachedState),
+  }
+  for (const provider of runtime.providers) {
+    if (isOwnerExclusive(provider) || deniedSensitiveProviderNames.has(provider.name)) {
+      delete currentProviderResults[provider.name]
+    }
+  }
+  for (const freshResult of providerData) {
+    if (freshResult.providerError) continue
+
+    const redactedText = freshResult.text
+      ? runtime.redactSecrets(freshResult.text)
+      : freshResult.text
+    currentProviderResults[freshResult.providerName] = {
+      ...freshResult,
+      text: redactedText,
+      discoveryText: freshResult.discoveryText
+        ? runtime.redactSecrets(freshResult.discoveryText)
+        : freshResult.discoveryText,
+      values: freshResult.values && typeof freshResult.values === "object"
+        ? Object.fromEntries(
+          Object.entries(freshResult.values).filter(
+            ([, value]) => value !== undefined,
+          ),
+        )
+        : undefined,
+    }
+  }
+  return currentProviderResults
+}
+
+function logProviderAccess(
+  log: ProviderAccessLog,
+  context: string,
+  providerName: string,
+  access: () => void,
+): void {
+  try {
+    access()
+  } catch (error) {
+    log.runtime.reportError(context, error, {
+      provider: providerName,
+      messageId: log.message.id,
+    })
+  }
+}
+
+function recordProviderAccesses(log: ProviderAccessLog, includeText: boolean): void {
+  const query = {
+    message: toWellFormedUnicode(
+      typeof log.message.content.text === "string"
+        ? log.message.content.text
+        : "",
+    ),
+  }
+  const trajCtx = log.trajectory
+  const providerTraceId = log.runtime.getActiveTrace(log.runtime.getCurrentRunId())?.id
+  const providerOverlaps = calculateProviderOverlaps(log.providerData)
+  for (const [providerIndex, r] of log.providerData.entries()) {
+    const context = "AgentRuntime.composeState.providerTrajectory"
+    logProviderAccess(log, context, r.providerName, () => {
+      const overlapsWith = providerOverlaps[providerIndex]
+      if (!overlapsWith) {
+        log.runtime.reportError(context, new Error(`Missing provider overlap row at index ${providerIndex}`), {
+          provider: r.providerName,
+          messageId: log.message.id,
+        })
+        return
+      }
+      const redactedText = log.currentProviderResults[r.providerName]?.text ?? ""
+      const attribution = log.attributionByName.get(r.providerName)
+      log.logger.logProviderAccess({
+        stepId: log.stepId,
+        providerName: r.providerName,
+        startedAt: r.providerStartedAt,
+        endedAt: r.providerEndedAt,
+        durationMs: r.providerDurationMs,
+        overlapsWith,
+        data: {
+          ...(includeText && !r.providerError ? { text: redactedText } : {}),
+          textLength: redactedText.length,
+          outcome: r.providerOutcome,
+          coalesced: r.providerCoalesced,
+          cacheHit: false,
+          ...(r.providerError ? { errorCode: r.providerError.code } : {}),
+        },
+        sha256: attribution?.sha256,
+        tokenCount: attribution?.tokenCount,
+        position: attribution?.position,
+        purpose: "compose_state",
+        query,
+        runId: trajCtx?.runId,
+        roomId: trajCtx?.roomId,
+        messageId: trajCtx?.messageId,
+        executionTraceId: providerTraceId,
+      })
+    })
+  }
+  for (const provider of log.reusedProviders) {
+    logProviderAccess(log, "AgentRuntime.composeState.cachedProviderTrajectory", provider.name, () => {
+      const cached = log.currentProviderResults[provider.name]
+      const attribution = log.attributionByName.get(provider.name)
+      log.logger.logProviderAccess({
+        stepId: log.stepId,
+        providerName: provider.name,
+        startedAt: log.composeStartedAt,
+        endedAt: log.composeStartedAt,
+        durationMs: 0,
+        overlapsWith: [],
+        data: {
+          ...(includeText && cached ? { text: cached.text ?? "" } : {}),
+          textLength: typeof cached?.text === "string" ? cached.text.length : 0,
+          outcome: cached?.providerOutcome ?? "success",
+          coalesced: false,
+          cacheHit: true,
+          ...(typeof cached?.providerDurationMs === "number"
+            ? { sourceDurationMs: cached.providerDurationMs }
+            : {}),
+        },
+        sha256: attribution?.sha256,
+        tokenCount: attribution?.tokenCount,
+        position: attribution?.position,
+        purpose: "compose_state",
+        query,
+        runId: trajCtx?.runId,
+        roomId: trajCtx?.roomId,
+        messageId: trajCtx?.messageId,
+        executionTraceId: providerTraceId,
+      })
+    })
+  }
+}
+
+effect function assertComposable(
+  composer: ProviderStateComposer,
+  message: Memory,
+  providerSignal: AbortSignal | undefined,
+  failedProviderData: ProviderExecutionRecord[],
+  containsSensitiveProvider: boolean,
+): void!(ElizaError | TurnAbortedError) {
+  try throwIfProviderCompositionAborted(providerSignal, composer.lifecycle.isStopping())
+  if (failedProviderData.length === 1) {
+    const failedProvider = failedProviderData[0]
+    if (failedProvider?.providerError) {
+      throw failedProvider.providerError
+    }
+  }
+  if (failedProviderData.length > 1) {
+    throw new ElizaError(
+      `State composition failed in ${failedProviderData.length} providers`,
+      {
+        code: "STATE_COMPOSITION_PROVIDER_FAILURES",
+        cause: new AggregateError(
+          failedProviderData.flatMap((record) => record.providerError ? [record.providerError] : []),
+        ),
+        severity: "ephemeral",
+        context: {
+          providers: failedProviderData.map((record) => record.providerName),
+          messageId: message.id,
+          roomId: message.roomId,
+        },
+      },
     )
-    for (const provider of reusedProviders) {
-      const cached = (
-        cachedState.data.providers as
-          | Record<string, CachedProviderResult>
-          | undefined
-      )?.[provider.name]
-      recordInferenceSpan(`provider-cache:${provider.name}`, 0, {
-        cacheHit: true,
-        ...(typeof cached?.providerDurationMs === "number"
-          ? { sourceDurationMs: cached.providerDurationMs }
-          : {}),
+  }
+  if (containsSensitiveProvider) {
+    const disclosure = try revalidateOwnerExclusiveDisclosure(composer.runtime, message)
+    if (!disclosure.allowed) {
+      throw new ElizaError(PRIVACY_DENIED_TEXT, {
+        code: "OWNER_PRIVATE_AUDIENCE_CHANGED",
+        severity: "ephemeral",
+        context: {
+          messageId: message.id,
+          roomId: message.roomId,
+          reason: disclosure.reason,
+        },
       })
     }
-    recordInferenceSpan("composeState", Date.now() - composeStartedAt, {
-      providers: providersToRun.length,
-      reused: providersToGet.length - providersToRun.length,
-      failed: failedProviderData.length,
-    })
+  }
+  try throwIfProviderCompositionAborted(providerSignal, composer.lifecycle.isStopping())
+}
 
-    const currentProviderResults: Record<string, CachedProviderResult> = {
-      ...(cachedState.data.providers as
-        | Record<string, CachedProviderResult>
-        | undefined),
+function aggregateStateValues(
+  cachedState: State,
+  providerOrderNames: string[],
+  currentProviderResults: Record<string, CachedProviderResult>,
+): Record<string, StateValue> {
+  const aggregatedStateValues: Record<string, StateValue> = {
+    ...cachedState.values,
+  }
+  for (const providerName of providerOrderNames) {
+    const providerResult = currentProviderResults[providerName]
+    if (providerResult?.values && typeof providerResult.values === "object") {
+      Object.assign(aggregatedStateValues, providerResult.values)
     }
-    for (const provider of this.runtime.providers) {
-      if (
-        provider.disclosureGate?.require === "owner_exclusive"
-        || deniedSensitiveProviderNames.has(provider.name)
-      ) {
-        delete currentProviderResults[provider.name]
-      }
-    }
-    for (const freshResult of providerData) {
-      if (freshResult.providerError) continue
-
-      const redactedText = freshResult.text
-        ? this.runtime.redactSecrets(freshResult.text)
-        : freshResult.text
-      currentProviderResults[freshResult.providerName] = {
-        ...freshResult,
-        text: redactedText,
-        discoveryText: freshResult.discoveryText
-          ? this.runtime.redactSecrets(freshResult.discoveryText)
-          : freshResult.discoveryText,
-        values: freshResult.values && typeof freshResult.values === "object"
-          ? Object.fromEntries(
-            Object.entries(freshResult.values).filter(
-              ([, value]) => value !== undefined,
-            ),
-          )
-          : undefined,
-      }
-    }
-    const orderedTexts: string[] = []
-    for (const provider of providersToGet) {
-      const result = currentProviderResults[provider.name]
-      if (
-        result?.text
-        && typeof result.text === "string"
-        && result.text.trim() !== ""
-      ) {
-        orderedTexts.push(result.text)
-      }
-    }
-
-    const suppressionNote = ownerExclusiveSuppressionNote(message)
-    if (suppressionNote) {
-      orderedTexts.push(suppressionNote)
-    }
-
-    const rawProvidersText = orderedTexts.join("\n")
-    const providersText = this.runtime.redactSecrets(rawProvidersText)
-    const providerOrderNames = providersToGet.map((provider) => provider.name)
-    const attributionState = {
-      values: {},
-      data: {
-        providerOrder: providerOrderNames,
-        providers: currentProviderResults,
-      },
-      text: providersText,
-    } as State
-
-    const providerAttribution = buildProviderAttributionsFromState({
-      state: attributionState,
-      prompt: providersText,
-    })
-    const providerAttributionByName = new Map(
-      providerAttribution.providerAttributions.map((entry) => [
-        entry.providerName,
-        entry,
-      ]),
-    )
-    const activeTrajectoryContext = getTrajectoryContext()
-    if (activeTrajectoryContext) {
-      activeTrajectoryContext.providerOrder = providerAttribution.providerOrder
-      activeTrajectoryContext.providerAttributions = providerAttribution.providerAttributions
-      activeTrajectoryContext.providerAttributionState = attributionState
-    }
-    const recordProviderAccesses = (includeText: boolean) => {
-      if (trajectoryStepId && trajLogger) {
-        const query = {
-          message: toWellFormedUnicode(
-            typeof message.content.text === "string"
-              ? message.content.text
-              : "",
-          ),
-        }
-        const trajCtx = activeTrajectoryContext
-        const providerTraceId = this.runtime.getActiveTrace(
-          this.runtime.getCurrentRunId(),
-        )?.id
-        for (const [providerIndex, r] of providerData.entries()) {
-          try {
-            const overlapsWith = providerOverlaps[providerIndex]
-            if (!overlapsWith) {
-              throw new Error(
-                `Missing provider overlap row at index ${providerIndex}`,
-              )
-            }
-            const redactedText = currentProviderResults[r.providerName]?.text ?? ""
-            const attribution = providerAttributionByName.get(r.providerName)
-            trajLogger.logProviderAccess({
-              stepId: trajectoryStepId,
-              providerName: r.providerName,
-              startedAt: r.providerStartedAt,
-              endedAt: r.providerEndedAt,
-              durationMs: r.providerDurationMs,
-              overlapsWith,
-              data: {
-                ...(includeText && !r.providerError
-                  ? { text: redactedText }
-                  : {}),
-                textLength: redactedText.length,
-                outcome: r.providerOutcome,
-                coalesced: r.providerCoalesced,
-                cacheHit: false,
-                ...(r.providerError ? { errorCode: r.providerError.code } : {}),
-              },
-              sha256: attribution?.sha256,
-              tokenCount: attribution?.tokenCount,
-              position: attribution?.position,
-
-              purpose: "compose_state",
-              query,
-              runId: trajCtx?.runId,
-              roomId: trajCtx?.roomId,
-              messageId: trajCtx?.messageId,
-              executionTraceId: providerTraceId,
-            })
-          } catch (error) {
-            this.runtime.reportError(
-              "AgentRuntime.composeState.providerTrajectory",
-              error,
-              {
-                provider: r.providerName,
-                messageId: message.id,
-              },
-            )
-          }
-        }
-        for (const provider of reusedProviders) {
-          try {
-            const cached = currentProviderResults[provider.name]
-            const attribution = providerAttributionByName.get(provider.name)
-            trajLogger.logProviderAccess({
-              stepId: trajectoryStepId,
-              providerName: provider.name,
-              startedAt: composeStartedAt,
-              endedAt: composeStartedAt,
-              durationMs: 0,
-              overlapsWith: [],
-              data: {
-                ...(includeText && cached ? { text: cached.text ?? "" } : {}),
-                textLength: typeof cached?.text === "string" ? cached.text.length : 0,
-                outcome: cached?.providerOutcome ?? "success",
-                coalesced: false,
-                cacheHit: true,
-                ...(typeof cached?.providerDurationMs === "number"
-                  ? { sourceDurationMs: cached.providerDurationMs }
-                  : {}),
-              },
-              sha256: attribution?.sha256,
-              tokenCount: attribution?.tokenCount,
-              position: attribution?.position,
-              purpose: "compose_state",
-              query,
-              runId: trajCtx?.runId,
-              roomId: trajCtx?.roomId,
-              messageId: trajCtx?.messageId,
-              executionTraceId: providerTraceId,
-            })
-          } catch (error) {
-            this.runtime.reportError(
-              "AgentRuntime.composeState.cachedProviderTrajectory",
-              error,
-              {
-                provider: provider.name,
-                messageId: message.id,
-              },
-            )
-          }
-        }
-      }
-    }
-    let includeProviderText = false
-    try {
-      throwIfProviderCompositionAborted(
-        providerSignal,
-        this.lifecycle.isStopping(),
-      )
-      if (failedProviderData.length === 1) {
-        const failedProvider = failedProviderData[0]
-        if (failedProvider?.providerError) {
-          throw failedProvider.providerError
-        }
-      }
-      if (failedProviderData.length > 1) {
-        throw new ElizaError(
-          `State composition failed in ${failedProviderData.length} providers`,
-          {
-            code: "STATE_COMPOSITION_PROVIDER_FAILURES",
-            cause: new AggregateError(
-              failedProviderData.flatMap((record) => record.providerError ? [record.providerError] : []),
-            ),
-            severity: "ephemeral",
-            context: {
-              providers: failedProviderData.map(
-                (record) => record.providerName,
-              ),
-              messageId: message.id,
-              roomId: message.roomId,
-            },
-          },
-        )
-      }
-      if (containsSensitiveProvider) {
-        const disclosure = await revalidateOwnerExclusiveDisclosure(
-          this.runtime,
-          message,
-        )
-        if (!disclosure.allowed) {
-          throw new ElizaError(PRIVACY_DENIED_TEXT, {
-            code: "OWNER_PRIVATE_AUDIENCE_CHANGED",
-            severity: "ephemeral",
-            context: {
-              messageId: message.id,
-              roomId: message.roomId,
-              reason: disclosure.reason,
-            },
-          })
-        }
-      }
-      throwIfProviderCompositionAborted(
-        providerSignal,
-        this.lifecycle.isStopping(),
-      )
-      includeProviderText = true
-    } finally {
-      recordProviderAccesses(includeProviderText)
-    }
-    const conversationSeed = buildDeterministicSeed(
-      this.runtime.agentId,
-      message.roomId,
-      "conversation",
-    )
-    const aggregatedStateValues: Record<string, StateValue> = {
-      ...cachedState.values,
-    }
-    for (const provider of providersToGet) {
-      const providerResult = currentProviderResults[provider.name]
+  }
+  const providersToGetNames = new Set(providerOrderNames)
+  for (const providerName in currentProviderResults) {
+    if (!providersToGetNames.has(providerName)) {
+      const providerResult = currentProviderResults[providerName]
       if (providerResult?.values && typeof providerResult.values === "object") {
         Object.assign(aggregatedStateValues, providerResult.values)
       }
     }
-    const providersToGetNames = new Set(providerOrderNames)
-    for (const providerName in currentProviderResults) {
-      if (!providersToGetNames.has(providerName)) {
-        const providerResult = currentProviderResults[providerName]
-        if (
-          providerResult?.values
-          && typeof providerResult.values === "object"
-        ) {
-          Object.assign(aggregatedStateValues, providerResult.values)
-        }
-      }
+  }
+  return aggregatedStateValues
+}
+
+export effect function composeState(
+  composer: ProviderStateComposer,
+  message: Memory,
+  includeList: string[] | null = null,
+  onlyInclude = false,
+  skipCache = false,
+  refreshProviders: string[] | null = null,
+  options: { deferredReferenceProviders?: readonly string[] } = {},
+): State!(ElizaError | TurnAbortedError | Foreign) {
+  const runtime = composer.runtime
+  const trajectoryStepId = trajectoryStepIdFor(message)
+  const audienceCacheKey = trustedDeliveryAudienceCacheKey(message)
+  const cachedState = reusableState(composer, message, skipCache, audienceCacheKey)
+  const providerNames = try selectProviderNames(composer, message, cachedState, includeList, onlyInclude)
+  const { providersToGet, deniedSensitiveProviderNames, containsSensitiveProvider } = try admitProviders(
+    runtime,
+    message,
+    providerNames,
+  )
+
+  const selectedProviderNames = providersToGet.map((provider) => provider.name)
+  const providerSelectionKey = JSON.stringify([...selectedProviderNames].sort())
+  const selectionChanged = cachedState.data.__providerSelectionKey !== providerSelectionKey
+
+  const refreshSet = refreshProviders !== null ? new Set(refreshProviders) : null
+  const cachedProviderNames = refreshSet
+    ? new Set(Object.keys(cachedProviders(cachedState) ?? {}))
+    : null
+  const providersToRun = refreshSet
+    ? providersToGet.filter(
+      (p) =>
+        selectionChanged
+        || isOwnerExclusive(p)
+        || refreshSet.has(p.name)
+        || !cachedProviderNames?.has(p.name),
+    )
+    : providersToGet
+  const providersToRunNames = new Set(providersToRun.map((p) => p.name))
+  const reusedProviders = providersToGet.filter(
+    (provider) => !providersToRunNames.has(provider.name),
+  )
+
+  const trajLogger = try startTrajectoryLogger(composer)
+  const composeStartedAt = Date.now()
+
+  const providerSignal = getStreamingContext()?.abortSignal
+    ?? runtime.turnControllers.signalFor(message.roomId)
+    ?? undefined
+  const turn: ProviderTurn = {
+    message,
+    cachedState,
+    selectedProviderNames,
+    providerSelectionKey,
+    refreshSet,
+    providerSignal,
+    deferredReferenceProviders: options.deferredReferenceProviders,
+  }
+  const providerData = try forEach(
+    providersToRun,
+    (provider) => executeProvider(composer, provider, turn),
+    { concurrency: "unbounded" },
+  )
+  const failedProviderData = providerData.filter(
+    (record) => record.providerError !== undefined,
+  )
+  for (const provider of reusedProviders) {
+    const cached = cachedProviders(cachedState)?.[provider.name]
+    recordInferenceSpan(`provider-cache:${provider.name}`, 0, {
+      cacheHit: true,
+      ...(typeof cached?.providerDurationMs === "number"
+        ? { sourceDurationMs: cached.providerDurationMs }
+        : {}),
+    })
+  }
+  recordInferenceSpan("composeState", Date.now() - composeStartedAt, {
+    providers: providersToRun.length,
+    reused: providersToGet.length - providersToRun.length,
+    failed: failedProviderData.length,
+  })
+
+  const currentProviderResults = mergeProviderResults(
+    runtime,
+    cachedState,
+    deniedSensitiveProviderNames,
+    providerData,
+  )
+  const orderedTexts: string[] = []
+  for (const provider of providersToGet) {
+    const result = currentProviderResults[provider.name]
+    if (result?.text && typeof result.text === "string" && result.text.trim() !== "") {
+      orderedTexts.push(result.text)
     }
-    const newState = {
-      values: {
-        ...aggregatedStateValues,
-        __conversationSeed: conversationSeed,
-        providers: providersText,
-      },
-      data: {
-        ...cachedState.data,
-        __roomId: message.roomId,
-        __providerSelectionKey: providerSelectionKey,
-        __conversationSeed: conversationSeed,
-        __trustedDeliveryAudienceCacheKey: audienceCacheKey,
-        providerOrder: providerOrderNames,
-        providers: currentProviderResults,
-      },
-      text: providersText,
-    } as State
-    this.publishState(
+  }
+
+  const suppressionNote = ownerExclusiveSuppressionNote(message)
+  if (suppressionNote) {
+    orderedTexts.push(suppressionNote)
+  }
+
+  const providersText = runtime.redactSecrets(orderedTexts.join("\n"))
+  const providerOrderNames = providersToGet.map((provider) => provider.name)
+  const attributionState = {
+    values: {},
+    data: {
+      providerOrder: providerOrderNames,
+      providers: currentProviderResults,
+    },
+    text: providersText,
+  } as State
+
+  const providerAttribution = buildProviderAttributionsFromState({
+    state: attributionState,
+    prompt: providersText,
+  })
+  const activeTrajectoryContext = getTrajectoryContext()
+  if (activeTrajectoryContext) {
+    activeTrajectoryContext.providerOrder = providerAttribution.providerOrder
+    activeTrajectoryContext.providerAttributions = providerAttribution.providerAttributions
+    activeTrajectoryContext.providerAttributionState = attributionState
+  }
+  const checked = try exit(assertComposable(composer, message, providerSignal, failedProviderData, containsSensitiveProvider))
+  if (trajectoryStepId && trajLogger) {
+    try foreignSync(() => recordProviderAccesses({
+      runtime,
       message,
-      newState,
-      providersToGet,
+      stepId: trajectoryStepId,
+      logger: trajLogger,
+      trajectory: activeTrajectoryContext,
+      providerData,
+      reusedProviders,
       currentProviderResults,
-      containsSensitiveProvider,
-      providerSelectionKey,
-      audienceCacheKey,
-      conversationSeed,
-      providerSignal,
-    )
-    return newState
+      attributionByName: new Map(
+        providerAttribution.providerAttributions.map((entry) => [entry.providerName, entry]),
+      ),
+      composeStartedAt,
+    }, Exit.isSuccess(checked)))
   }
+  try checked
+  const conversationSeed = buildDeterministicSeed(runtime.agentId, message.roomId, "conversation")
+  const newState = {
+    values: {
+      ...aggregateStateValues(cachedState, providerOrderNames, currentProviderResults),
+      __conversationSeed: conversationSeed,
+      providers: providersText,
+    },
+    data: {
+      ...cachedState.data,
+      __roomId: message.roomId,
+      __providerSelectionKey: providerSelectionKey,
+      __conversationSeed: conversationSeed,
+      __trustedDeliveryAudienceCacheKey: audienceCacheKey,
+      providerOrder: providerOrderNames,
+      providers: currentProviderResults,
+    },
+    text: providersText,
+  } as State
+  try publishState(composer, message, newState, providersToGet, currentProviderResults, containsSensitiveProvider, {
+    providerSelectionKey,
+    audienceCacheKey,
+    conversationSeed,
+    providerSignal,
+  })
+  return newState
+}
 
-  private async selectProviderNames(
-    message: Memory,
-    cachedState: State,
-    includeList: string[] | null,
-    onlyInclude: boolean,
-  ): Promise<Set<string>> {
-    const filterList = onlyInclude ? includeList : null
-    const activeContexts = getActiveRoutingContextsForTurn(
-      cachedState,
-      message,
-    )
-    const providerNames = new Set<string>()
-    if (filterList) {
-      for (const name of filterList) {
-        providerNames.add(name)
+effect function publishState(
+  composer: ProviderStateComposer,
+  message: Memory,
+  newState: State,
+  providersToGet: Provider[],
+  currentProviderResults: Record<string, CachedProviderResult>,
+  containsSensitiveProvider: boolean,
+  publication: {
+    providerSelectionKey: string
+    audienceCacheKey: string
+    conversationSeed: string
+    providerSignal: AbortSignal | undefined
+  },
+): void!TurnAbortedError {
+  const runtime = composer.runtime
+  try throwIfProviderCompositionAborted(publication.providerSignal, composer.lifecycle.isStopping())
+  if (message.id && !containsSensitiveProvider) {
+    composer.publicProviderStateByMessage.delete(message)
+    runtime.stateCache.set(message.id, newState)
+
+    while (runtime.stateCache.size > STATE_CACHE_LIMIT) {
+      const oldest = runtime.stateCache.keys().next().value
+      if (oldest === undefined) {
+        break
       }
-    } else {
-      for (
-        const p of this.runtime.providers.filter(
-          (p) => !p.private && !p.dynamic,
-        )
-      ) {
-        if (
-          activeContexts.length > 0
-          && !shouldIncludeByContext(resolveProviderContexts(p), activeContexts)
-        ) {
-          continue
-        }
-        providerNames.add(p.name)
+      runtime.stateCache.delete(oldest)
+    }
+  } else if (message.id) {
+    const publicProviders = providersToGet.filter((provider) => !isOwnerExclusive(provider))
+    const publicProviderResults = Object.fromEntries(
+      publicProviders.flatMap((provider) => {
+        const result = currentProviderResults[provider.name]
+        return result ? [[provider.name, result]] : []
+      }),
+    ) as Record<string, CachedProviderResult>
+    const publicValues: Record<string, StateValue> = {
+      __conversationSeed: publication.conversationSeed,
+    }
+    const publicTexts: string[] = []
+    for (const provider of publicProviders) {
+      const result = publicProviderResults[provider.name]
+      if (result?.values && typeof result.values === "object") {
+        Object.assign(publicValues, result.values)
+      }
+      if (typeof result?.text === "string" && result.text.trim() !== "") {
+        publicTexts.push(result.text)
       }
     }
-    if (!filterList && includeList && includeList.length > 0) {
-      for (const name of includeList) {
-        providerNames.add(name)
-      }
-    }
+    const publicText = runtime.redactSecrets(publicTexts.join("\n"))
 
-    if (this.lifecycle.hasProviderSelectionHooks()) {
-      const selection = composeStateProvidersPipelineHookContext({
-        message,
-        providers: { current: [...providerNames] },
-        activeContexts,
-        onlyInclude,
-        includeList,
-      })
-      await this.runtime.applyPipelineHooks(
-        "compose_state_providers",
-        selection,
-      )
-
-      const selected = selection.providers.current
-      if (Array.isArray(selected)) {
-        providerNames.clear()
-        for (const name of selected) {
-          if (typeof name === "string" && name.length > 0) {
-            providerNames.add(name)
-          }
-        }
-      } else {
-        this.runtime.logger.warn(
-          {
-            src: "agent",
-            agentId: this.runtime.agentId,
-            phase: "compose_state_providers",
-          },
-          "compose_state_providers hook left providers.current non-array; keeping pre-hook selection",
-        )
-      }
-    }
-    if (filterList) {
-      const allowed = new Set(filterList)
-      for (const name of providerNames) {
-        if (!allowed.has(name)) providerNames.delete(name)
-      }
-    }
-
-    return providerNames
-  }
-
-  private publishState(
-    message: Memory,
-    newState: State,
-    providersToGet: Provider[],
-    currentProviderResults: Record<string, CachedProviderResult>,
-    containsSensitiveProvider: boolean,
-    providerSelectionKey: string,
-    audienceCacheKey: string,
-    conversationSeed: string,
-    providerSignal: AbortSignal | undefined,
-  ): void {
-    throwIfProviderCompositionAborted(
-      providerSignal,
-      this.lifecycle.isStopping(),
-    )
-    if (message.id && !containsSensitiveProvider) {
-      this.publicProviderStateByMessage.delete(message)
-      this.runtime.stateCache.set(message.id, newState)
-
-      while (this.runtime.stateCache.size > STATE_CACHE_LIMIT) {
-        const oldest = this.runtime.stateCache.keys().next().value
-        if (oldest === undefined) {
-          break
-        }
-        this.runtime.stateCache.delete(oldest)
-      }
-    } else if (message.id) {
-      const publicProviders = providersToGet.filter(
-        (provider) => provider.disclosureGate?.require !== "owner_exclusive",
-      )
-      const publicProviderResults = Object.fromEntries(
-        publicProviders.flatMap((provider) => {
-          const result = currentProviderResults[provider.name]
-          return result ? [[provider.name, result]] : []
-        }),
-      ) as Record<string, CachedProviderResult>
-      const publicValues: Record<string, StateValue> = {
-        __conversationSeed: conversationSeed,
-      }
-      const publicTexts: string[] = []
-      for (const provider of publicProviders) {
-        const result = publicProviderResults[provider.name]
-        if (result?.values && typeof result.values === "object") {
-          Object.assign(publicValues, result.values)
-        }
-        if (typeof result?.text === "string" && result.text.trim() !== "") {
-          publicTexts.push(result.text)
-        }
-      }
-      const publicText = this.runtime.redactSecrets(publicTexts.join("\n"))
-
-      throwIfProviderCompositionAborted(
-        providerSignal,
-        this.lifecycle.isStopping(),
-      )
-      this.publicProviderStateByMessage.set(message, {
-        text: message.content.text,
-        state: {
-          values: { ...publicValues, providers: publicText },
-          data: {
-            __roomId: message.roomId,
-            __providerSelectionKey: providerSelectionKey,
-            __conversationSeed: conversationSeed,
-            __trustedDeliveryAudienceCacheKey: audienceCacheKey,
-            providerOrder: publicProviders.map((provider) => provider.name),
-            providers: publicProviderResults,
-          },
-          text: publicText,
+    try throwIfProviderCompositionAborted(publication.providerSignal, composer.lifecycle.isStopping())
+    composer.publicProviderStateByMessage.set(message, {
+      text: message.content.text,
+      state: {
+        values: { ...publicValues, providers: publicText },
+        data: {
+          __roomId: message.roomId,
+          __providerSelectionKey: publication.providerSelectionKey,
+          __conversationSeed: publication.conversationSeed,
+          __trustedDeliveryAudienceCacheKey: publication.audienceCacheKey,
+          providerOrder: publicProviders.map((provider) => provider.name),
+          providers: publicProviderResults,
         },
-      })
-    }
+        text: publicText,
+      },
+    })
   }
 }
