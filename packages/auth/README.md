@@ -246,15 +246,14 @@ same outcomes as the in-process retries (below).
   dialog each appear once, in that order.
 - `signOut({environment})` reserves a credential intent and ends a sign-in in
   progress. It stores the duty to revoke the saved key in the retiring slot, removes
-  the key, its receipt and the pending browser record, and asks Cloud to end the
+  the key's receipt, then the key and the pending browser record, and asks Cloud to end the
   key. An unanswered request is retried twice in memory and on later starts until
   Cloud answers 2xx or 401; the duty lapses with the key. A duty still owed from an
   earlier sign-out or renewal is kept beneath the new one (`earlier`), and later
   starts settle them newest first. While such a duty waits, a renewal of a newer
   key stays `deferred` after Cloud confirmed its successor, until Cloud answers for
   the older key or that key lapses. A damaged saved record is removed with nothing
-  owed. It clears
-  the Google picker state and answers `{environment, status: "signed-out",
+  owed. It clears the Google picker state and answers `{environment, status: "signed-out",
   revocation?: "revoked" | "unconfirmed"}`. The renderer parses the answer with
   `nativeSignOut`.
 
