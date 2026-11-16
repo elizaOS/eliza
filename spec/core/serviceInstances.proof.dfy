@@ -601,12 +601,18 @@ lemma ServiceClearUpdatesOnlyTypeMetadata(s: ServiceInstances, callId: int)
     clearTypeAggregate(s, callId).typeEntries[i] ==
       (if s.typeEntries[i].latestAggregate == callId then s.typeEntries[i].(latestAggregate := 0) else s.typeEntries[i])
   ensures alwaysClassAndObjectIdentities(s) ==> alwaysClassAndObjectIdentities(clearTypeAggregate(s, callId))
+  ensures alwaysAggregateAndLoadIdsUnique(s) ==> alwaysAggregateAndLoadIdsUnique(clearTypeAggregate(s, callId))
 {
+  var after := clearTypeAggregate(s, callId);
   if alwaysClassAndObjectIdentities(s) {
-    var after := clearTypeAggregate(s, callId);
     assert after.classes == s.classes && after.objects == s.objects;
     ServiceObjectIdentityFilters(s);
     ServiceObjectIdentityFilters(after);
+  }
+  if alwaysAggregateAndLoadIdsUnique(s) {
+    assert after.aggregates == s.aggregates && after.loadPromises == s.loadPromises && after.nextLoad == s.nextLoad;
+    ServicePromiseIdentityFilters(s);
+    ServicePromiseIdentityFilters(after);
   }
 }
 
