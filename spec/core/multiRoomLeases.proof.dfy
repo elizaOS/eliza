@@ -574,3 +574,184 @@ lemma RoomBatchProgress(s: MultiRoomLeases)
     }
   }
 }
+
+lemma openBatch_ensures(s: MultiRoomLeases, caller: int, requestedRooms: seq<int>, ambient: int, explicitOwner: int)
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysNestedReuseExact(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysQueueInvariant(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysBatchIdentitiesUnique(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysBatchesHaveValidPosition(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysStoredResultFollowsPhase(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysQueueConfiguredForCalls(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysLeasesBelongToBatch(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysWaiterHasOwner(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysHeldPrefixMatchesRequests(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysInvocationHoldsAllRooms(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysWaiterMatchesNextRoom(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysWaitsAboveHeldRooms(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysDoneHasNoLease(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysAcquiringQueueAuthority(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysReverseReleaseRank(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> alwaysBatchProgressOrTerminal(openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> stepNestedDoesNotAcquire(s, "openBatch", openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> stepClosedAdmissionCannotGrow(s, openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+  ensures (inv(s) ==> canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) ==> stepReleasedAfterWriteSettlement(s, openBatch(s, caller, requestedRooms, ambient, explicitOwner)))
+{
+  if inv(s) && canOpenBatch(s, caller, requestedRooms, ambient, explicitOwner) {
+    var after := openBatch(s, caller, requestedRooms, ambient, explicitOwner);
+    OpenBatchFrame(s, caller, requestedRooms, ambient, explicitOwner);
+    OpenBatchPreservesIdentities(s, caller, requestedRooms, ambient, explicitOwner);
+    OpenBatchPreservesRoomFacts(s, caller, requestedRooms, ambient, explicitOwner);
+    OpenBatchPreservesWaiters(s, caller, requestedRooms, ambient, explicitOwner);
+    RoomBatchProgress(after);
+  }
+}
+
+lemma OpenBatchFrame(s: MultiRoomLeases, caller: int, rooms: seq<int>, ambient: int, owner: int)
+  ensures var after := openBatch(s, caller, rooms, ambient, owner);
+    after.queue == s.queue && after.nested == s.nested && after.closeCause == s.closeCause &&
+    |after.calls| == |s.calls| + 1 &&
+    (var added := after.calls[|s.calls|];
+      after.calls == s.calls + [added] && added.id == caller && added.position == 0 &&
+      added.wanted == orderedRooms(rooms) &&
+      (if |rooms| == 0 then added.phase.BatchInvoking? else added.phase.BatchAcquiring?))
+{
+  reveal openBatch();
+}
+
+lemma OrderedBatchRoomsArePositive(rooms: seq<int>)
+  requires forall room | room in rooms :: room > 0
+  ensures forall room | room in orderedRooms(rooms) :: room > 0
+  ensures |orderedRooms(rooms)| == 0 <==> |rooms| == 0
+  decreases |rooms|
+{
+  reveal orderedRooms();
+  if |rooms| > 0 {
+    var prefix := rooms[..|rooms|-1];
+    var last := rooms[|rooms|-1];
+    var order := (ordered: seq<int>, room: int) => insertRoom(ordered, room);
+    assert rooms == prefix + [last];
+    OrderedBatchRoomsArePositive(prefix);
+    ProofLib.FoldLeftAppend(order, [], prefix, last);
+    var earlier := orderedRooms(prefix);
+    var sorted := orderedRooms(rooms);
+    assert sorted == insertRoom(earlier, last);
+    if last !in earlier {
+      reveal insertRoom(), ProofLib.Filter();
+      var smaller := (r: int) => r < last;
+      var larger := (r: int) => r > last;
+      ProofLib.FilterSubset(smaller, earlier);
+      ProofLib.FilterSubset(larger, earlier);
+      assert sorted == ProofLib.Filter(smaller, earlier) + [last] + ProofLib.Filter(larger, earlier);
+    }
+    assert last in sorted;
+  }
+}
+
+lemma FreshBatchHasNoQueueHistory(s: MultiRoomLeases, caller: int, rooms: seq<int>, ambient: int, owner: int)
+  requires inv(s) && canOpenBatch(s, caller, rooms, ambient, owner)
+  ensures forall c | c in s.calls :: c.id != caller
+  ensures caller !in s.queue.cancelled
+  ensures heldRooms(s, caller) == []
+{
+  reveal canOpenBatch();
+  forall c | c in s.calls
+    ensures c.id != caller
+  {
+    if c.id == caller {
+      RoomBatchIdentityLookup(s, c);
+    }
+  }
+  assert forall lease | lease in s.queue.leases :: lease.caller != caller;
+  RoomBatchHeldProjection(s, caller);
+  var sameCaller := (l: core__concurrency_Lease) => (l.caller == caller);
+  ProofLib.FilterNone(sameCaller, s.queue.leases);
+}
+
+lemma OpenBatchPreservesIdentities(s: MultiRoomLeases, caller: int, rooms: seq<int>, ambient: int, owner: int)
+  requires inv(s) && canOpenBatch(s, caller, rooms, ambient, owner)
+  ensures alwaysBatchIdentitiesUnique(openBatch(s, caller, rooms, ambient, owner))
+{
+  var after := openBatch(s, caller, rooms, ambient, owner);
+  OpenBatchFrame(s, caller, rooms, ambient, owner);
+  FreshBatchHasNoQueueHistory(s, caller, rooms, ambient, owner);
+  RoomBatchIdentityProjection(s);
+  RoomBatchIdentityProjection(after);
+  reveal canOpenBatch();
+  var added := after.calls[|s.calls|];
+  forall c | c in after.calls
+    ensures c.id > 0 && |ProofLib.Filter((other: BatchLeaseCall) => other.id == c.id, after.calls)| == 1
+  {
+    var sameId := (other: BatchLeaseCall) => other.id == c.id;
+    ProofLib.FilterAppend(sameId, s.calls, added);
+    if c == added {
+      ProofLib.FilterNone(sameId, s.calls);
+    } else {
+      assert c in s.calls;
+      assert c.id != added.id;
+    }
+  }
+}
+
+lemma OpenBatchPreservesRoomFacts(s: MultiRoomLeases, caller: int, rooms: seq<int>, ambient: int, owner: int)
+  requires inv(s) && canOpenBatch(s, caller, rooms, ambient, owner)
+  ensures alwaysBatchesHaveValidPosition(openBatch(s, caller, rooms, ambient, owner))
+  ensures alwaysHeldPrefixMatchesRequests(openBatch(s, caller, rooms, ambient, owner))
+  ensures alwaysInvocationHoldsAllRooms(openBatch(s, caller, rooms, ambient, owner))
+  ensures alwaysWaitsAboveHeldRooms(openBatch(s, caller, rooms, ambient, owner))
+  ensures alwaysAcquiringQueueAuthority(openBatch(s, caller, rooms, ambient, owner))
+{
+  var after := openBatch(s, caller, rooms, ambient, owner);
+  OpenBatchFrame(s, caller, rooms, ambient, owner);
+  FreshBatchHasNoQueueHistory(s, caller, rooms, ambient, owner);
+  reveal canOpenBatch();
+  OrderedBatchRoomsArePositive(rooms);
+  var added := after.calls[|s.calls|];
+  assert heldRooms(after, caller) == [];
+  if |rooms| > 0 {
+    assert |added.wanted| > 0;
+    assert added.wanted[0] in orderedRooms(rooms);
+    assert added.wanted[0] > 0;
+    reveal wantedRoom();
+    assert wantedRoom(added) == added.wanted[0];
+  }
+  forall c | c in after.calls
+    ensures 0 <= c.position <= |c.wanted| &&
+      (c.phase.BatchAcquiring? || c.phase.BatchWaiting? ==> c.position < |c.wanted|)
+    ensures c.phase.BatchAcquiring? || c.phase.BatchWaiting? ==>
+      |heldRooms(after, c.id)| == c.position && (forall room | room in heldRooms(after, c.id) :: room in c.wanted)
+    ensures c.phase.BatchInvoking? ==> heldRooms(after, c.id) == c.wanted && c.position == |c.wanted|
+    ensures c.phase.BatchAcquiring? || c.phase.BatchWaiting? ==>
+      wantedRoom(c) > 0 && (forall room | room in heldRooms(after, c.id) :: room < wantedRoom(c))
+    ensures c.phase.BatchAcquiring? ==> c.id !in after.queue.cancelled
+  {
+    if c != added {
+      assert c in s.calls;
+      assert heldRooms(s, c.id) == heldRooms(after, c.id);
+    }
+  }
+}
+
+lemma OpenBatchPreservesWaiters(s: MultiRoomLeases, caller: int, rooms: seq<int>, ambient: int, owner: int)
+  requires inv(s) && canOpenBatch(s, caller, rooms, ambient, owner)
+  requires alwaysBatchIdentitiesUnique(openBatch(s, caller, rooms, ambient, owner))
+  ensures alwaysWaiterMatchesNextRoom(openBatch(s, caller, rooms, ambient, owner))
+{
+  var after := openBatch(s, caller, rooms, ambient, owner);
+  OpenBatchFrame(s, caller, rooms, ambient, owner);
+  var added := after.calls[|s.calls|];
+  forall waiter | waiter in after.queue.waiting
+    ensures batchAt(after, waiter.caller).phase.BatchWaiting? &&
+      wantedRoom(batchAt(after, waiter.caller)) == waiter.room
+  {
+    var prior := batchAt(s, waiter.caller);
+    assert prior.phase.BatchWaiting?;
+    var byId := (c: BatchLeaseCall) => (c.id == waiter.caller);
+    var matching := ProofLib.Filter(byId, s.calls);
+    reveal batchAt(), ProofLib.Filter();
+    assert |matching| > 0 && prior == matching[0];
+    ProofLib.FilterMember(byId, s.calls, prior);
+    assert prior in after.calls && prior.id == waiter.caller;
+    RoomBatchIdentityLookup(after, prior);
+  }
+  assert forall c | c in after.calls && c.phase.BatchWaiting? :: c in s.calls && c != added;
+}
