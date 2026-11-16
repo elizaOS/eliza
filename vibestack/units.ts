@@ -10,7 +10,7 @@ import { fail } from "./gen/types.ts";
 import type { Unit } from "./prove.ts";
 import { modules, originalColumn, type Spec } from "./parse.ts";
 import { defines } from "./review.ts";
-import { quint } from "./action.ts";
+import { act } from "./action.ts";
 import type { Memory } from "./cache.ts";
 import { plainText } from "./scan.ts";
 import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, type SrcFile } from "./util.ts";
@@ -124,7 +124,7 @@ export function typecheckAll(memory: Memory, specs: Spec[]): Map<string, Promise
   return new Map(specs.map((spec) => {
     const ir = (async () => {
       const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-typecheck-"));
-      const typed = await quint(memory, ["typecheck", "--out", "ir.json", `${spec.name}.qnt`], scratch, modules(spec, specs))
+      const typed = await act(memory, "quint", ["typecheck", "--out", "ir.json", `${spec.name}.qnt`], scratch, modules(spec, specs))
         .finally(() => fs.rmSync(scratch, { recursive: true, force: true }));
       let ir: any;
       try { ir = JSON.parse(typed.files["ir.json"]); } catch { ir = undefined; }

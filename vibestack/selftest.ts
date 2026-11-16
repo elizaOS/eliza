@@ -1745,12 +1745,17 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.match(JSON.stringify(renamed.said("always", /the law .* is false/)), /The price is one/, renamed.text);
   });
 
-  test("proof caching follows library changes and compiler failure waits for proof completion", async () => {
+  test("proof caching follows library changes, verifies nothing again for a change to the tools that leaves the Dafny alone, and compiler failure waits for proof completion", async () => {
     const root = toolchain(fixtures(["highest"], (f) => { f["package.json"] = '{"type":"module"}'; }), "quint", "lsc");
     const script = path.join(root, "vibestack/spec.ts");
     const first = await runCli(script, root, "check", "--json");
     const checked = answer(first.stdout);
     assert.ok(checked.results.some((r: Result) => r.stage === "proof" && r.ok), first.stdout + first.stderr);
+    assert.ok(fs.existsSync(path.join(root, "gen/proof/highest/verify")), "Dafny verified the unit");
+    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\n// A change to the tools that leaves the proof alone.\n");
+    const tooled = await runCli(script, root, "check", "--json");
+    assert.ok(answer(tooled.stdout).results.some((r: Result) => r.stage === "proof" && r.ok), tooled.stdout + tooled.stderr);
+    assert.ok(!["verify", "audit"].some((run) => fs.existsSync(path.join(root, "gen/proof/highest", run))), "a remembered run of Dafny is not run again");
     const remembered = () => fs.readdirSync(path.join(root, ".spec-cache")).filter((f) => f.startsWith("prove-")).join();
     const before = remembered();
     const marker = "// A distinct proof-library version for this scratch project.";

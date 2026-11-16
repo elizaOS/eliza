@@ -566,7 +566,8 @@ under `src/`.
   `.spec-cache/` under what it reads, the Quint of the spec and of everything
   it imports without its prose, comments and layout, and the Quint installed,
   so a change to the prose or to the tools that leaves the Quint alone runs no
-  Quint again. Each
+  Quint again; each run of Dafny on a proof, likewise, under the Dafny it
+  checks and the Dafny and Z3 installed. Each
   simulation result, a failing one too (its seed is fixed), and each passing
   proof result is kept beside them, under a fingerprint of the spec's Quint
   without its comments, everything it imports and the versions of the tools.

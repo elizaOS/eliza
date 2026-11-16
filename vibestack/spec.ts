@@ -9,8 +9,8 @@ import { pathToFileURL } from "node:url";
 import type { Model } from "./gen.ts";
 import { conformance, type Machine } from "./conform.ts";
 import { explore } from "./explore.ts";
-import { ensuresOf, LIB_FILE, dafnyVersion, libraryFor, proofPaths, prove, type Offered, type Proof } from "./prove.ts";
-import { bin, run } from "./run.ts";
+import { ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type Proof } from "./prove.ts";
+import { bin, dafnyVersion, run } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
 import { cacheCredentials, entry, remembered, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
@@ -172,7 +172,7 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
       const proofText = fs.existsSync(proofPath) ? fs.readFileSync(proofPath, "utf8") : undefined;
       proofTexts.set(u.unit, proofText);
       const proving = (axioms: Offered[]) => remembered(memory, entry(root, "prove", [u.unit, u.meaning, proofText ?? "", proofText === undefined ? "" : libraryFor(lib, proofText) ?? "", JSON.stringify(axioms)]),
-        () => prove(root, u, { proof: proofText === undefined ? undefined : { file: u.proofFile, text: proofText }, lib, axioms }), (p) => !p.errors.length);
+        (memory) => prove(memory, u, { proof: proofText === undefined ? undefined : { file: u.proofFile, text: proofText }, lib, axioms }), (p) => !p.errors.length);
       running.set(u.unit, (async () => {
         const offered = proofText === undefined ? [] : u.imports.lemmas.map(({ fn }) => ({ fn }));
         const first = proving(offered);

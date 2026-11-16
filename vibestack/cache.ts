@@ -2,8 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { filesUnder, sha, writeWhole } from "./util.ts";
-import { dafnyVersion, solver } from "./prove.ts";
-import { executableDigest } from "./run.ts";
+import { dafnyVersion, executableDigest, solver } from "./run.ts";
 
 /** Load an operator's publishing credential only for the exact cache endpoint it belongs to. */
 export function cacheCredentials(env: NodeJS.ProcessEnv, args: string[], declared: string | undefined, credentials: { apiUrl: string; writeToken: string }): NodeJS.ProcessEnv {
@@ -30,8 +29,10 @@ const packageVersion = (dep: string) => {
 const treeDigest = (directory: string) => sha(...filesUnder(directory, ".").filter((file) => fs.statSync(path.join(directory, file)).isFile())
   .map((file) => `${file}\0${executableDigest(path.join(directory, file))}`));
 
-/** The verifier's launcher, managed assemblies, and any separately installed .NET host. */
-async function dafnyIdentity() {
+/** The verifier's launcher, managed assemblies, and any separately installed .NET host: read once, being 142 MB. */
+let verifier: ReturnType<typeof readDafnyIdentity> | undefined;
+export const dafnyIdentity = () => (verifier ??= readDafnyIdentity().catch((e) => { verifier = undefined; throw e; }));
+async function readDafnyIdentity() {
   const extensions = process.platform === "win32" ? [".exe", ".cmd", ""] : [""];
   const launcher = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
     .flatMap((dir) => extensions.map((ext) => path.join(dir, `dafny${ext}`)))

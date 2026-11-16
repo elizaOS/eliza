@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import type { Model } from "./gen.ts";
 import { SENDER } from "./gen/classify.ts";
-import { quint, violated, type Input } from "./action.ts";
+import { act, violated, type Input } from "./action.ts";
 import { entry, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { simulated } from "./gen/harness.ts";
@@ -134,7 +134,7 @@ export async function simulate({ memory, model, files }: Harness, invariant: str
     const main = `${model.name}.run.qnt`;
     const args = ["--main", `${model.name}_run`, "--step", step, "--invariant", invariant,
       "--max-samples", String(Math.ceil(sampleLimit / shards)), "--max-steps", String(steps), "--mbt", "--seed", derivedSeed, "--n-threads", "1"];
-    const r = await simulating(memory.root, () => quint(memory, ["run", main, ...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", "{seq}.itf.json"], shards === 1 ? dir : `${dir}/${k}`, files));
+    const r = await simulating(memory.root, () => act(memory, "quint", ["run", main, ...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", "{seq}.itf.json"], shards === 1 ? dir : `${dir}/${k}`, files));
     const broken = violated(r);
     // In the order Quint wrote them, so that the same simulation always gives the traces in the same order.
     const written = Object.keys(r.files).filter((f) => f.endsWith(".itf.json")).sort((x, y) => parseInt(x, 10) - parseInt(y, 10) || x.localeCompare(y));
