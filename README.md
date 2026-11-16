@@ -11,7 +11,7 @@ The source baseline is Eliza commit
 `72fed7e4069ecd35d61d886ab6eec5c02c137517`. The orphan `vibestack` branch
 starts from elizaOS/eliza-vibestack commit
 `71d7b30f404b91d7ec48741ac288d6c8d911f3e2`; its toolchain is merged from
-lalalune/vibestack commit `aa4b4f7fdc4109dfde48151e96a0c2d654363109`.
+lalalune/vibestack commit `caeea4fe365b8aabb0f19d5e7883685f6987cdfd`.
 
 ## Setup and verification
 
