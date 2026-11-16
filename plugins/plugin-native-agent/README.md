@@ -94,6 +94,38 @@ using the same bounded, non-redirecting, non-retrying loopback transport. Pendin
 operations address only the separate enrollment journal; the host retains token,
 encrypted-store identity and revocation policy.
 
+## Embedded cloud agent
+
+`EmbeddedAgentService` runs the embedded agent with Eliza Cloud inference only, and
+`EmbeddedAgentPlugin` (`EmbeddedAgent` in `src/embedded.ts`) is the page's bridge to
+it. Both are Java. A consumer supplies three data files, packaged as assets by the
+consumer host's `embeddedAgent` profile entry:
+
+- `host`: `schema` 1, the `service` class, `notification` words (`channel`,
+  `title`, `text`), `cloud` (`baseUrl`, an https origin, and optional
+  `smallModel` and `largeModel`), the `routes` the page may call (`method`, a
+  `path` whose `{name}` segments match one id, and `stream` for server-sent
+  events), extra agent `environment`, and `persistMemory` (default false: the
+  agent's database is in memory).
+- `character`: the agent's character, with `name` and `system`.
+- `policy`: `schema` 1, `actions.allowed` and `actions.refused` (name to reason),
+  and `plugins.denied`.
+
+The service runs the agent alone; the bridge is its only client. The bridge
+refuses a route that is not listed before any I/O and talks to the agent over its
+loopback socket, so the page needs no cleartext access and never holds a token.
+`requestStream` sends each event's data as `streamData` and ends with `streamEnd`;
+`abort` closes the request, which ends the agent's turn. `status` events follow
+each lifecycle change. A failed status names its `failure`: `payload`, `storage`,
+`config`, `credential`, `agent`, `crashed` or `runtime`. The supervisor restarts a
+crashed agent twice, 3 and 6 seconds apart, and Android restarts the service after
+its process is killed. A host binds the signed-in Cloud credential by overriding
+`cloudCredential()` in a subclass named as `service`.
+
+`native-host/embedded-agent.mjs` exports `embeddedAgentDevelopment`, a Vite plugin
+that starts the agent from an Eliza checkout with the same data files and serves
+the bridge's web fallback under `/__eliza-embedded-agent`.
+
 `LocalRuntimeHttp` supplies bounded JSON HTTP exchange with an absolute socket
 deadline and injected monotonic clock. It only connects to loopback; the host
 must authorize its route and provide its private token and response-size limit.
@@ -106,7 +138,8 @@ The transport's own headers (`Host`, `Authorization`, `Content-Type`,
 rejected header fails before any connection. The instrumented contract
 also covers this client with real fixed-length, chunked, close-delimited,
 oversized, truncated and delayed responses, and with accepted and rejected
-request headers.
+request headers. `stream` reads a server-sent event response over a socket the caller
+owns, so closing that socket aborts the request.
 
 `AndroidRuntimeDirectories` supplies the Android durability adapter for runtime
 bundle publication and secures an app-owned parent directory to mode 0700.

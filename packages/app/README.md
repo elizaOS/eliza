@@ -387,6 +387,13 @@ declare, as data:
   for product configuration after the generated policy.
 - `generationInputs`: files whose digests the host records; a changed input makes
   the generated host refuse to configure until it is regenerated.
+- `embeddedAgent`: the `host`, `character` and `policy` data files of the
+  cloud-only embedded agent (see the `@elizaos/capacitor-agent` README). The
+  generator checks them with the device service's rules, packages them as assets,
+  and adds the `eliza-embedded-agent` module. That module compiles the agent's Java
+  closure (no Kotlin, no local inference or voice class) and its manifest declares
+  the named service with type `specialUse` and its permissions. It needs
+  `runtimeDirectory` and the `capacitor-android` module.
 - dependencies may name a `module` with a `toolchainVersion` key to take the
   reviewed toolchain version. A `path` of `.` names a declared root itself.
 
