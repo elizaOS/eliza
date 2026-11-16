@@ -50,12 +50,12 @@ public class RuntimeBundleStore {
     }
   }
 
-  /** A prepared bundle. When the launch used a seal, verify() still owes the full hash. */
   /** The device has too little free space to unpack a complete runtime. */
   public static final class InsufficientSpace extends IOException {
     InsufficientSpace() { super("Insufficient space for a complete runtime"); }
   }
 
+  /** A prepared bundle. When the launch used a seal, verify() still owes the full hash. */
   public static final class Prepared {
     public final Path bundle;
     /** True when the hash was skipped; the host must call verify() and stop the runtime if it throws. */

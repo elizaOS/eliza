@@ -40,7 +40,8 @@ import org.json.JSONObject;
  * is the agent's only client and admits the configured routes itself. Android restarts the
  * service after its process is killed; the supervisor restarts a crashed agent within its
  * budget, and the status names which part failed to start. A host binds the Eliza Cloud
- * credential by overriding {@link #cloudCredential()}; nothing else needs code. */
+ * credential by overriding {@link #cloudCredential()} and registers {@link EmbeddedAgentPlugin}
+ * with its Capacitor bridge. */
 public class EmbeddedAgentService extends EmbeddedRuntimeService {
   private static final String CHANNEL = "eliza-embedded-agent";
   private static final int NOTIFICATION = 7301;
