@@ -2204,7 +2204,23 @@
       ],
       "priority": "priority-consumer-path",
       "relatedSpec": "spec/downstream/alpha/permissions.md",
-      "coverage": "related-contract"
+      "coverage": "related-contract",
+      "scope": "Permission-step tap custody plus stored progress version/cursor/optional-choice validation, pending adoption, completed retention and exact Alpha durable-versus-legacy session fallback; raw JSON/key/integer/vocabulary decoding and platform grants remain host boundaries.",
+      "sourceRefinement": {
+        "sharedPin": "c518127a025ab173874af9c7d304f26b25213b0d",
+        "sharedOwner": "packages/ui/src/components/permissions/permission-walkthrough.ts:297-350",
+        "consumerPin": "8d44dfe52b0a6e2f3462b5da85dd3f8037518f43",
+        "consumerOwner": "apps/app/src/startup-permissions.tsx:38-50",
+        "validatedDomain": "Known integer durable versions and separately decoded legacy session versions; optional versus supplied choice histories remain distinct. Only validated observed records become durable snapshots.",
+        "hostFallback": "The pinned Alpha host silently starts fresh on malformed/unreadable restore and sets its visible storage error only after a write/readback failure.",
+        "presenceRead": "Alpha captures shared progress, then independently rereads durable-key presence before consulting legacy session storage. A selected valid legacy record can override captured pending progress if another context removed the durable key between reads; suppression or absent legacy retains the capture, and presence/session read failure starts fresh.",
+        "rawVersionDecision": {
+          "status": "proposed-compatibility-correction-review-pending",
+          "observed": "The pinned ordinary-object versions lookup accepts coercible keys such as string 1 and inherited __proto__/constructor names; an inherited pending version with step 8 reaches Alpha savedProgress even beyond the installed 4/7 step count.",
+          "replacement": "Reject noninteger or unsupported-own-entry raw versions before producing a typed progress observation. Do not treat the pinned malformed-key behavior as an admitted known-version snapshot.",
+          "qualification": "Controlled pinned source replay records this decoder defect separately. Passing typed model proofs or ordinary-record comparison does not establish universal raw parser parity, implementation correction or device acceptance."
+        }
+      }
     },
     {
       "source": "packages/ui/src/components/settings/cloud-subscription-summary.tsx",

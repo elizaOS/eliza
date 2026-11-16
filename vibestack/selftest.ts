@@ -2455,6 +2455,15 @@ describe("the command line and what a failed proof leaves to start from", { conc
     const lines = (await runCli(script, root, "check", "--json")).stdout.trimEnd().split("\n").map((line) => JSON.parse(line));
     assert.deepEqual(Object.keys(lines.at(-1)), ["ok", "results", "next"]);
     assert.deepEqual(lines.slice(0, -1), lines.at(-1).results);
+    const contracts = scratch({
+      "package.json": JSON.stringify({ type: "module" }),
+      "src/point.vibe": read("vibestack/testing/test/fixture/good/src/point.schema.vibe"),
+      "src/point.schema.ts": 'export { Point } from "./point.vibe";\n',
+    });
+    const derived = await runCli(script, contracts, "tests");
+    assert.equal(derived.status, 0, derived.stderr);
+    const manifest = JSON.parse(read(".cache/generated/tests/manifest.json", contracts));
+    assert.deepEqual([Object.keys(manifest.files), manifest.files["src/point.schema.test.ts"].tests, manifest.skipped], [["src/point.schema.test.ts"], 2, []]);
     // A manifest that is not JSON is a result like any other, not an exception on the way to the scripts it names.
     fs.writeFileSync(path.join(root, "package.json"), "{");
     const broken = await runCli(script, root, "check", "--json");

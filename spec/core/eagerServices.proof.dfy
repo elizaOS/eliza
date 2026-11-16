@@ -200,6 +200,11 @@ lemma wakeEager_ensures(s: EagerServices, jobId: int)
 {
   if inv(s) && canWakeEager(s, jobId) {
     EagerWakeFollowsBackoff(s, jobId);
+    if !s.services.stopped {
+      EagerServiceInvariantUsesImportedRules(s);
+      core__serviceInstances_acquireServices_ensures(s.services, s.nextCall, eagerJob(s, jobId).serviceType);
+      EagerServiceInvariantUsesImportedRules(wakeEager(s, jobId));
+    }
   }
 }
 
@@ -270,13 +275,13 @@ lemma EagerAcquireAdvancesAttempt(s: EagerServices, jobId: int)
   ensures alwaysEagerAttemptLimit(acquireEager(s, jobId))
   ensures alwaysEagerJobsUnique(acquireEager(s, jobId))
 {
-  reveal canAcquireEager(), acquireEager();
+  reveal canAcquireEager(), acquireEager(), recordEagerAttempt();
   var after := acquireEager(s, jobId);
   EagerMappedJobIdsStayUnique(s, after);
   forall job | job in after.jobs
     ensures 0 <= job.attempts <= 4 && 0 <= job.failures <= job.attempts
     ensures job.phase.EagerBackoff? ==> 0 < job.attempts < 4
-    ensures job.phase.EagerReady? ==> job.attempts < 4
+    ensures job.phase.EagerReady? ==> job.attempts == 0 && job.callId == 0 && job.failures == 0
     ensures job.phase.EagerWaiting? ==> job.failures < job.attempts
   {
     var i :| 0 <= i < |after.jobs| && after.jobs[i] == job;
@@ -300,7 +305,7 @@ lemma EagerObservationRetainsAttemptBounds(s: EagerServices, jobId: int)
   forall job | job in after.jobs
     ensures 0 <= job.attempts <= 4 && 0 <= job.failures <= job.attempts
     ensures job.phase.EagerBackoff? ==> 0 < job.attempts < 4
-    ensures job.phase.EagerReady? ==> job.attempts < 4
+    ensures job.phase.EagerReady? ==> job.attempts == 0 && job.callId == 0 && job.failures == 0
     ensures job.phase.EagerWaiting? ==> job.failures < job.attempts
   {
     var i :| 0 <= i < |after.jobs| && after.jobs[i] == job;
@@ -319,13 +324,13 @@ lemma EagerWakeFollowsBackoff(s: EagerServices, jobId: int)
   ensures alwaysEagerJobsUnique(wakeEager(s, jobId))
   ensures stepNoEarlyWake(s, "wakeEager", wakeEager(s, jobId))
 {
-  reveal canWakeEager(), wakeEager();
+  reveal canWakeEager(), wakeEager(), recordEagerAttempt();
   var after := wakeEager(s, jobId);
   EagerMappedJobIdsStayUnique(s, after);
   forall job | job in after.jobs
     ensures 0 <= job.attempts <= 4 && 0 <= job.failures <= job.attempts
     ensures job.phase.EagerBackoff? ==> 0 < job.attempts < 4
-    ensures job.phase.EagerReady? ==> job.attempts < 4
+    ensures job.phase.EagerReady? ==> job.attempts == 0 && job.callId == 0 && job.failures == 0
     ensures job.phase.EagerWaiting? ==> job.failures < job.attempts
   {
     var i :| 0 <= i < |after.jobs| && after.jobs[i] == job;

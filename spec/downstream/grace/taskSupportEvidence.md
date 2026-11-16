@@ -109,15 +109,49 @@ pure def addSupport(summary: SupportSummary, report: ReportedSupport): SupportSu
   else if (report.kind == "setup-help") { ...summary, setupRoles: recordSupportRole(summary.setupRoles,report.value) }
   else if (report.kind == "support-report" and summary.humanRoles.length() == 0) { ...summary, mode: report.value, source: "participant-reported" }
   else summary
-pure def summarizeSupport(reports: List[ReportedSupport]): SupportSummary = reports.foldl(emptySummary, addSupport)
 pure def orderedSupportRoles(recordedRoles: List[str]): List[str] =
   List("caregiver", "engineer", "other", "researcher").select(role => recordedRoles.includes(role))
+pure def summarizeSupport(reports: List[ReportedSupport]): SupportSummary = {
+  val summary = reports.foldl(emptySummary, addSupport)
+  { ...summary, humanRoles: orderedSupportRoles(summary.humanRoles), requestedRoles: orderedSupportRoles(summary.requestedRoles), setupRoles: orderedSupportRoles(summary.setupRoles) }
+}
+pure def distinctSupportRoles(recordedRoles: List[str]): bool =
+  recordedRoles.every(role => recordedRoles.select(other => other == role).length() == 1)
+pure def lawOrderedSupportRolesAreIdempotent(recordedRoles: List[str]): bool =
+  orderedSupportRoles(orderedSupportRoles(recordedRoles)) == orderedSupportRoles(recordedRoles)
+pure def lawOrderedSupportRolesAreUnique(recordedRoles: List[str]): bool =
+  distinctSupportRoles(orderedSupportRoles(recordedRoles))
+pure def lawOrderedSupportRolesKeepKnownMembership(recordedRoles: List[str], role: str): bool =
+  supportRole(role) implies orderedSupportRoles(recordedRoles).includes(role) == recordedRoles.includes(role)
+pure def lawSummaryRolesAreCanonical(reports: List[ReportedSupport]): bool = {
+  val summary = summarizeSupport(reports)
+  summary.humanRoles == orderedSupportRoles(summary.humanRoles) and summary.requestedRoles == orderedSupportRoles(summary.requestedRoles) and summary.setupRoles == orderedSupportRoles(summary.setupRoles) and
+  summary.humanRoles.every(supportRole) and summary.requestedRoles.every(supportRole) and summary.setupRoles.every(supportRole)
+}
+pure def lawSummaryRolesAreUnique(reports: List[ReportedSupport]): bool = {
+  val summary = summarizeSupport(reports)
+  distinctSupportRoles(summary.humanRoles) and distinctSupportRoles(summary.requestedRoles) and distinctSupportRoles(summary.setupRoles)
+}
+pure def lawSummaryKeepsKnownRoleMembership(reports: List[ReportedSupport], role: str): bool = {
+  val summary = summarizeSupport(reports)
+  val recorded = reports.foldl(emptySummary, addSupport)
+  supportRole(role) implies summary.humanRoles.includes(role) == recorded.humanRoles.includes(role) and summary.requestedRoles.includes(role) == recorded.requestedRoles.includes(role) and summary.setupRoles.includes(role) == recorded.setupRoles.includes(role)
+}
+pure def lawSummaryKeepsModeAndSource(reports: List[ReportedSupport]): bool = {
+  val summary = summarizeSupport(reports)
+  val recorded = reports.foldl(emptySummary, addSupport)
+  summary.mode == recorded.mode and summary.source == recorded.source
+}
 pure def lawReportedHelperTakesPrecedence(summary: SupportSummary, report: ReportedSupport): bool =
   report.kind == "help-received" implies addSupport(summary, report).mode == "human" and addSupport(summary, report).humanRoles.includes(report.value)
 pure def lawSetupAndRequestedHelpDoNotChangeMode(summary: SupportSummary, report: ReportedSupport): bool =
   report.kind == "help-requested" or report.kind == "setup-help" implies addSupport(summary, report).mode == summary.mode and addSupport(summary, report).source == summary.source
 pure val reportValues = Set({ kind: "support-report", value: "alone" }, { kind: "support-report", value: "unknown" }, { kind: "help-received", value: "caregiver" }, { kind: "setup-help", value: "engineer" }, { kind: "help-requested", value: "researcher" })
-pure val reportsValues = Set(List(), List({ kind: "help-requested", value: "caregiver" }), List({ kind: "support-report", value: "unknown" }), List({ kind: "help-received", value: "engineer" }, { kind: "support-report", value: "alone" }))
+pure val reportsValues = Set(List(), List({ kind: "help-requested", value: "caregiver" }), List({ kind: "support-report", value: "unknown" }), List({ kind: "help-received", value: "engineer" }, { kind: "support-report", value: "alone" }),
+  List({ kind: "help-received", value: "researcher" }, { kind: "help-received", value: "caregiver" }, { kind: "help-received", value: "researcher" }),
+  List({ kind: "help-requested", value: "other" }, { kind: "help-requested", value: "engineer" }, { kind: "setup-help", value: "researcher" }, { kind: "setup-help", value: "caregiver" }))
+pure val recordedRolesValues = Set(List(), List("researcher", "caregiver", "engineer", "other", "caregiver"), List("not-a-role"), List("other", "engineer"))
+pure val roleValues = reportValues.map(report => report.value).union(Set("other", "not-a-role"))
 pure val summaryValues = Set(emptySummary, { ...emptySummary, mode: "human", source: "participant-reported", humanRoles: List("engineer") })
 ```
 

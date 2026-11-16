@@ -27128,33 +27128,37 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "AudienceRegistry owns all issued object bindings, message aliases, per-binding lease state and the process-global monotone attestation sequence.",
+        "representation": "AudienceRegistry owns binding aliases, the process-global sequence, exact shared signal abort facts and independent lazy suppression carriers. AudienceLease retains addressed record/lease/call objects, captured invocation time and detached old-record completion; callbacks do not retarget the current WeakMap record.",
         "model": {
           "spec": "spec/core/audienceRegistry.md",
           "stateType": "AudienceRegistry",
           "stateFields": [
             "records",
             "messages",
+            "carriers",
+            "abortedSignals",
             "nextBinding",
+            "nextCarrier",
             "attestationSequence",
             "now"
           ],
           "transitions": [
             "createMessage",
-            "spreadMessage",
             "serializeMessage",
-            "attest",
-            "beginTurn",
-            "endTurn",
             "cancel",
             "setTime",
-            "beginRenewal",
+            "spreadMessage",
+            "endTurn",
+            "beginTurn",
+            "attest",
             "finishRenewal",
+            "observeRenewalAuthority",
+            "beginRenewal",
             "checkDisclosure",
             "markSensitiveUsed",
             "recordSuppression"
           ],
-          "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+          "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
         },
         "associatedModels": [
           {
@@ -27163,73 +27167,72 @@
             "stateFields": [
               "records",
               "messages",
+              "carriers",
+              "abortedSignals",
               "nextBinding",
+              "nextCarrier",
               "attestationSequence",
               "now"
             ],
             "transitions": [
               "createMessage",
-              "spreadMessage",
               "serializeMessage",
-              "attest",
-              "beginTurn",
-              "endTurn",
               "cancel",
               "setTime",
-              "beginRenewal",
+              "spreadMessage",
+              "endTurn",
+              "beginTurn",
+              "attest",
               "finishRenewal",
+              "observeRenewalAuthority",
+              "beginRenewal",
               "checkDisclosure",
               "markSensitiveUsed",
               "recordSuppression"
             ],
-            "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+            "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
           },
           {
             "spec": "spec/core/trustedAudience.md",
             "stateType": "AudienceLease",
             "stateFields": [
-              "attached",
-              "audience",
-              "issuedAt",
-              "expiresAt",
-              "now",
-              "sequence",
-              "currentLease",
+              "records",
+              "leases",
+              "renewals",
+              "boundRecord",
+              "nextRecord",
               "nextLease",
-              "leaseActive",
-              "cancelled",
-              "renewing",
-              "capturedLease",
-              "capturedSequence",
-              "sensitiveUsed",
-              "allowed",
-              "suppressions"
+              "nextRenewal",
+              "now",
+              "allowed"
             ],
             "transitions": [
-              "attest",
               "beginTurn",
-              "endTurn",
-              "cancel",
               "setTime",
+              "endTurn",
+              "attest",
+              "observeRenewalAuthority",
+              "checkDisclosure",
               "beginRenewal",
               "finishRenewal",
-              "checkDisclosure",
-              "markSensitiveUsed",
-              "recordSuppression"
+              "markSensitiveUsed"
             ],
-            "specSha256": "a5b6d6deebaef2e207bf40f454c5bcff1d5384a273e3a2e018c42ddcda697a05"
+            "specSha256": "a150351bd46bcbf1b2fe32babcd522492cb6439ec487d8782d296a489ff95b83"
           }
         ],
         "mappedStateFields": [
           "records",
           "messages",
+          "carriers",
+          "abortedSignals",
           "nextBinding",
+          "nextCarrier",
           "attestationSequence",
           "now"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
-        "verification": "Model checks and implementation refinement are separate evidence."
+        "verification": "Model checks and implementation refinement are separate evidence. Actual host object/signal identity, principal revalidation and canonical participant observations remain adapter contracts; finite pinned-source comparisons do not establish a refinement theorem."
       }
     },
     {
@@ -27296,33 +27299,37 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "AudienceRegistry owns all issued object bindings, message aliases, per-binding lease state and the process-global monotone attestation sequence.",
+        "representation": "AudienceRegistry owns binding aliases, the process-global sequence, exact shared signal abort facts and independent lazy suppression carriers. AudienceLease retains addressed record/lease/call objects, captured invocation time and detached old-record completion; callbacks do not retarget the current WeakMap record.",
         "model": {
           "spec": "spec/core/audienceRegistry.md",
           "stateType": "AudienceRegistry",
           "stateFields": [
             "records",
             "messages",
+            "carriers",
+            "abortedSignals",
             "nextBinding",
+            "nextCarrier",
             "attestationSequence",
             "now"
           ],
           "transitions": [
             "createMessage",
-            "spreadMessage",
             "serializeMessage",
-            "attest",
-            "beginTurn",
-            "endTurn",
             "cancel",
             "setTime",
-            "beginRenewal",
+            "spreadMessage",
+            "endTurn",
+            "beginTurn",
+            "attest",
             "finishRenewal",
+            "observeRenewalAuthority",
+            "beginRenewal",
             "checkDisclosure",
             "markSensitiveUsed",
             "recordSuppression"
           ],
-          "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+          "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
         },
         "associatedModels": [
           {
@@ -27331,73 +27338,72 @@
             "stateFields": [
               "records",
               "messages",
+              "carriers",
+              "abortedSignals",
               "nextBinding",
+              "nextCarrier",
               "attestationSequence",
               "now"
             ],
             "transitions": [
               "createMessage",
-              "spreadMessage",
               "serializeMessage",
-              "attest",
-              "beginTurn",
-              "endTurn",
               "cancel",
               "setTime",
-              "beginRenewal",
+              "spreadMessage",
+              "endTurn",
+              "beginTurn",
+              "attest",
               "finishRenewal",
+              "observeRenewalAuthority",
+              "beginRenewal",
               "checkDisclosure",
               "markSensitiveUsed",
               "recordSuppression"
             ],
-            "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+            "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
           },
           {
             "spec": "spec/core/trustedAudience.md",
             "stateType": "AudienceLease",
             "stateFields": [
-              "attached",
-              "audience",
-              "issuedAt",
-              "expiresAt",
-              "now",
-              "sequence",
-              "currentLease",
+              "records",
+              "leases",
+              "renewals",
+              "boundRecord",
+              "nextRecord",
               "nextLease",
-              "leaseActive",
-              "cancelled",
-              "renewing",
-              "capturedLease",
-              "capturedSequence",
-              "sensitiveUsed",
-              "allowed",
-              "suppressions"
+              "nextRenewal",
+              "now",
+              "allowed"
             ],
             "transitions": [
-              "attest",
               "beginTurn",
-              "endTurn",
-              "cancel",
               "setTime",
+              "endTurn",
+              "attest",
+              "observeRenewalAuthority",
+              "checkDisclosure",
               "beginRenewal",
               "finishRenewal",
-              "checkDisclosure",
-              "markSensitiveUsed",
-              "recordSuppression"
+              "markSensitiveUsed"
             ],
-            "specSha256": "a5b6d6deebaef2e207bf40f454c5bcff1d5384a273e3a2e018c42ddcda697a05"
+            "specSha256": "a150351bd46bcbf1b2fe32babcd522492cb6439ec487d8782d296a489ff95b83"
           }
         ],
         "mappedStateFields": [
           "records",
           "messages",
+          "carriers",
+          "abortedSignals",
           "nextBinding",
+          "nextCarrier",
           "attestationSequence",
           "now"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
-        "verification": "Model checks and implementation refinement are separate evidence."
+        "verification": "Model checks and implementation refinement are separate evidence. Actual host object/signal identity, principal revalidation and canonical participant observations remain adapter contracts; finite pinned-source comparisons do not establish a refinement theorem."
       }
     },
     {
@@ -27542,33 +27548,37 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "AudienceRegistry owns all issued object bindings, message aliases, per-binding lease state and the process-global monotone attestation sequence.",
+        "representation": "AudienceRegistry owns binding aliases, the process-global sequence, exact shared signal abort facts and independent lazy suppression carriers. AudienceLease retains addressed record/lease/call objects, captured invocation time and detached old-record completion; callbacks do not retarget the current WeakMap record.",
         "model": {
           "spec": "spec/core/audienceRegistry.md",
           "stateType": "AudienceRegistry",
           "stateFields": [
             "records",
             "messages",
+            "carriers",
+            "abortedSignals",
             "nextBinding",
+            "nextCarrier",
             "attestationSequence",
             "now"
           ],
           "transitions": [
             "createMessage",
-            "spreadMessage",
             "serializeMessage",
-            "attest",
-            "beginTurn",
-            "endTurn",
             "cancel",
             "setTime",
-            "beginRenewal",
+            "spreadMessage",
+            "endTurn",
+            "beginTurn",
+            "attest",
             "finishRenewal",
+            "observeRenewalAuthority",
+            "beginRenewal",
             "checkDisclosure",
             "markSensitiveUsed",
             "recordSuppression"
           ],
-          "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+          "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
         },
         "associatedModels": [
           {
@@ -27577,73 +27587,72 @@
             "stateFields": [
               "records",
               "messages",
+              "carriers",
+              "abortedSignals",
               "nextBinding",
+              "nextCarrier",
               "attestationSequence",
               "now"
             ],
             "transitions": [
               "createMessage",
-              "spreadMessage",
               "serializeMessage",
-              "attest",
-              "beginTurn",
-              "endTurn",
               "cancel",
               "setTime",
-              "beginRenewal",
+              "spreadMessage",
+              "endTurn",
+              "beginTurn",
+              "attest",
               "finishRenewal",
+              "observeRenewalAuthority",
+              "beginRenewal",
               "checkDisclosure",
               "markSensitiveUsed",
               "recordSuppression"
             ],
-            "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+            "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
           },
           {
             "spec": "spec/core/trustedAudience.md",
             "stateType": "AudienceLease",
             "stateFields": [
-              "attached",
-              "audience",
-              "issuedAt",
-              "expiresAt",
-              "now",
-              "sequence",
-              "currentLease",
+              "records",
+              "leases",
+              "renewals",
+              "boundRecord",
+              "nextRecord",
               "nextLease",
-              "leaseActive",
-              "cancelled",
-              "renewing",
-              "capturedLease",
-              "capturedSequence",
-              "sensitiveUsed",
-              "allowed",
-              "suppressions"
+              "nextRenewal",
+              "now",
+              "allowed"
             ],
             "transitions": [
-              "attest",
               "beginTurn",
-              "endTurn",
-              "cancel",
               "setTime",
+              "endTurn",
+              "attest",
+              "observeRenewalAuthority",
+              "checkDisclosure",
               "beginRenewal",
               "finishRenewal",
-              "checkDisclosure",
-              "markSensitiveUsed",
-              "recordSuppression"
+              "markSensitiveUsed"
             ],
-            "specSha256": "a5b6d6deebaef2e207bf40f454c5bcff1d5384a273e3a2e018c42ddcda697a05"
+            "specSha256": "a150351bd46bcbf1b2fe32babcd522492cb6439ec487d8782d296a489ff95b83"
           }
         ],
         "mappedStateFields": [
           "records",
           "messages",
+          "carriers",
+          "abortedSignals",
           "nextBinding",
+          "nextCarrier",
           "attestationSequence",
           "now"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
-        "verification": "Model checks and implementation refinement are separate evidence."
+        "verification": "Model checks and implementation refinement are separate evidence. Actual host object/signal identity, principal revalidation and canonical participant observations remain adapter contracts; finite pinned-source comparisons do not establish a refinement theorem."
       }
     },
     {
@@ -27668,33 +27677,37 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "AudienceRegistry owns all issued object bindings, message aliases, per-binding lease state and the process-global monotone attestation sequence.",
+        "representation": "AudienceRegistry owns binding aliases, the process-global sequence, exact shared signal abort facts and independent lazy suppression carriers. AudienceLease retains addressed record/lease/call objects, captured invocation time and detached old-record completion; callbacks do not retarget the current WeakMap record.",
         "model": {
           "spec": "spec/core/audienceRegistry.md",
           "stateType": "AudienceRegistry",
           "stateFields": [
             "records",
             "messages",
+            "carriers",
+            "abortedSignals",
             "nextBinding",
+            "nextCarrier",
             "attestationSequence",
             "now"
           ],
           "transitions": [
             "createMessage",
-            "spreadMessage",
             "serializeMessage",
-            "attest",
-            "beginTurn",
-            "endTurn",
             "cancel",
             "setTime",
-            "beginRenewal",
+            "spreadMessage",
+            "endTurn",
+            "beginTurn",
+            "attest",
             "finishRenewal",
+            "observeRenewalAuthority",
+            "beginRenewal",
             "checkDisclosure",
             "markSensitiveUsed",
             "recordSuppression"
           ],
-          "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+          "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
         },
         "associatedModels": [
           {
@@ -27703,73 +27716,72 @@
             "stateFields": [
               "records",
               "messages",
+              "carriers",
+              "abortedSignals",
               "nextBinding",
+              "nextCarrier",
               "attestationSequence",
               "now"
             ],
             "transitions": [
               "createMessage",
-              "spreadMessage",
               "serializeMessage",
-              "attest",
-              "beginTurn",
-              "endTurn",
               "cancel",
               "setTime",
-              "beginRenewal",
+              "spreadMessage",
+              "endTurn",
+              "beginTurn",
+              "attest",
               "finishRenewal",
+              "observeRenewalAuthority",
+              "beginRenewal",
               "checkDisclosure",
               "markSensitiveUsed",
               "recordSuppression"
             ],
-            "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+            "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
           },
           {
             "spec": "spec/core/trustedAudience.md",
             "stateType": "AudienceLease",
             "stateFields": [
-              "attached",
-              "audience",
-              "issuedAt",
-              "expiresAt",
-              "now",
-              "sequence",
-              "currentLease",
+              "records",
+              "leases",
+              "renewals",
+              "boundRecord",
+              "nextRecord",
               "nextLease",
-              "leaseActive",
-              "cancelled",
-              "renewing",
-              "capturedLease",
-              "capturedSequence",
-              "sensitiveUsed",
-              "allowed",
-              "suppressions"
+              "nextRenewal",
+              "now",
+              "allowed"
             ],
             "transitions": [
-              "attest",
               "beginTurn",
-              "endTurn",
-              "cancel",
               "setTime",
+              "endTurn",
+              "attest",
+              "observeRenewalAuthority",
+              "checkDisclosure",
               "beginRenewal",
               "finishRenewal",
-              "checkDisclosure",
-              "markSensitiveUsed",
-              "recordSuppression"
+              "markSensitiveUsed"
             ],
-            "specSha256": "a5b6d6deebaef2e207bf40f454c5bcff1d5384a273e3a2e018c42ddcda697a05"
+            "specSha256": "a150351bd46bcbf1b2fe32babcd522492cb6439ec487d8782d296a489ff95b83"
           }
         ],
         "mappedStateFields": [
           "records",
           "messages",
+          "carriers",
+          "abortedSignals",
           "nextBinding",
+          "nextCarrier",
           "attestationSequence",
           "now"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
-        "verification": "Model checks and implementation refinement are separate evidence."
+        "verification": "Model checks and implementation refinement are separate evidence. Actual host object/signal identity, principal revalidation and canonical participant observations remain adapter contracts; finite pinned-source comparisons do not establish a refinement theorem."
       }
     },
     {
