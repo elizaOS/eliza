@@ -816,3 +816,516 @@ lemma EnqueueKeepsTicketPair(s: Reconciliations, id: int, i: int, j: int)
     }
   }
 }
+
+lemma acquireKey_ensures(s: Reconciliations, id: int, armedAt: int)
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysOneTimerPerAcquiredTicket(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysTimersOwnTheirQueueTicket(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysEachHeldTicketOwnsTimer(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysCleanupOwnsSettledTicket(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysQueueMutualExclusion(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysCallIdentitiesUnique(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysAcquisitionCursor(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysCallbackOwnsEveryKey(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysWaitingTicketIsQueued(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysHeldTicketsAreRunning(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysOneCallOwnsEachTicket(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysWarnedTimersWereDue(acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> stepWarningRetainsAllLocks(s, "acquireKey", acquireKey(s, id, armedAt)))
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> stepCleanupRetainsOtherTails(s, "acquireKey", acquireKey(s, id, armedAt)))
+{
+  if inv(s) && canAcquireKey(s, id) {
+    AcquireKeepsTimerQueueOwners(s, id, armedAt);
+    AcquireKeepsOneTimerPerTicket(s, id, armedAt);
+    AcquireKeepsHeldTicketTimers(s, id, armedAt);
+    AcquireKeepsQueueInvariants(s, id, armedAt);
+    AcquireKeepsHeldEntriesRunning(s, id, armedAt);
+    AcquireKeepsOtherWaitingEntries(s, id, armedAt);
+    AcquireKeepsCallIdentities(s, id, armedAt);
+    AcquireKeepsCallProgress(s, id, armedAt);
+    AcquireKeepsExclusiveTicketCustody(s, id, armedAt);
+  }
+}
+lemma AcquiringCallLookup(s: Reconciliations, id: int)
+  requires alwaysCallIdentitiesUnique(s) && canAcquireKey(s, id)
+  ensures callAt(s, id) in s.calls && callAt(s, id).id == id
+  ensures forall call | call in s.calls && call.id == id :: call == callAt(s, id)
+{
+  reveal canAcquireKey(), callAt();
+  var sameId := (call: Reconciliation) => call.id == id;
+  var matches := ProofLib.Filter(sameId, s.calls);
+  var selected := callAt(s, id);
+  assert selected.waiting > 0 && noCall.waiting == 0;
+  assert |matches| > 0 && matches[0] == selected;
+  ProofLib.FilterMember(sameId, s.calls, selected);
+  assert |matches| == 1;
+  forall call | call in s.calls && call.id == id
+    ensures call == selected
+  {
+    ProofLib.FilterMember(sameId, s.calls, call);
+    assert call in matches;
+  }
+}
+
+lemma QueueEntryTicketIdentifies(s: core__connectorQueues_ConnectorQueues,
+                                left: core__connectorQueues_QueueEntry,
+                                right: core__connectorQueues_QueueEntry)
+  requires core__connectorQueues_alwaysAllocatedTickets(s)
+  requires left in s.entries && right in s.entries && left.ticket == right.ticket
+  ensures left == right
+{
+  var sameTicket := (entry: core__connectorQueues_QueueEntry) => entry.ticket == left.ticket;
+  var matches := ProofLib.Filter(sameTicket, s.entries);
+  ProofLib.FilterMember(sameTicket, s.entries, left);
+  ProofLib.FilterMember(sameTicket, s.entries, right);
+  assert |matches| == 1 && matches[0] == left && matches[0] == right;
+}
+
+lemma AcquireStartsUntimedTicket(s: Reconciliations, id: int)
+  requires inv(s) && canAcquireKey(s, id)
+  ensures var call := callAt(s, id);
+    0 < call.waiting && 0 <= call.position < |call.recordKeys| &&
+    (exists entry :: entry in s.queue.entries && entry.ticket == call.waiting && !entry.running &&
+      !entry.complete && entry.scope.owner == call.adapter && entry.scope.provider == call.recordKeys[call.position].key) &&
+    (forall timer | timer in s.timers :: timer.ticket != call.waiting) &&
+    (forall ticket | ticket in s.cleanupPending :: ticket != call.waiting)
+{
+  AcquiringCallLookup(s, id);
+  reveal canAcquireKey();
+  var call := callAt(s, id);
+  assert 0 <= call.position < |call.recordKeys|;
+  var entry :| entry in s.queue.entries && entry.ticket == call.waiting && !entry.running &&
+    !entry.complete && entry.scope.owner == call.adapter && entry.scope.provider == call.recordKeys[call.position].key;
+  forall timer | timer in s.timers
+    ensures timer.ticket != call.waiting
+  {
+    if timer.ticket == call.waiting {
+      var timerEntry :| timerEntry in s.queue.entries && timerEntry.ticket == timer.ticket &&
+        timerEntry.running == !timer.cleared && timerEntry.complete == timer.cleared &&
+        timerEntry.scope.owner == timer.adapter && timerEntry.scope.provider == timer.recordKey;
+      QueueEntryTicketIdentifies(s.queue, entry, timerEntry);
+    }
+  }
+  forall ticket | ticket in s.cleanupPending
+    ensures ticket != call.waiting
+  {
+    if ticket == call.waiting {
+      var settled :| settled in s.queue.entries && settled.ticket == ticket && settled.complete;
+      QueueEntryTicketIdentifies(s.queue, entry, settled);
+    }
+  }
+}
+
+lemma AcquireKeyFrame(s: Reconciliations, id: int, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id)
+  ensures var after := acquireKey(s, id, armedAt);
+    var call := callAt(s, id);
+    0 <= call.position < |call.recordKeys| &&
+    after.cleanupPending == s.cleanupPending &&
+    after.queue == core__connectorQueues_begin(s.queue, call.waiting) &&
+    after.timers == s.timers + [WarningTimer(call.waiting, id, call.adapter, call.recordKeys[call.position].key, armedAt, false, false, 0)] &&
+    |after.calls| == |s.calls| && |after.queue.entries| == |s.queue.entries| &&
+    (forall i | 0 <= i < |s.calls| ::
+      var prior := s.calls[i];
+      after.calls[i] ==
+        (if prior.id == id then call.(held := call.held + [call.waiting], waiting := 0,
+          position := call.position + 1, phase := if call.position + 1 == |call.recordKeys|
+              then ReconcilePhase.ExecutingRecords else ReconcilePhase.AcquiringRecords)
+         else prior)) &&
+    (forall j | 0 <= j < |s.queue.entries| ::
+      var prior := s.queue.entries[j];
+      after.queue.entries[j] == (if prior.ticket == call.waiting then prior.(running := true) else prior))
+{
+  AcquiringCallLookup(s, id);
+  reveal canAcquireKey(), acquireKey(), core__connectorQueues_begin();
+  var after := acquireKey(s, id, armedAt);
+  forall i | 0 <= i < |s.calls|
+    ensures var prior := s.calls[i];
+      var call := callAt(s, id);
+      after.calls[i] ==
+        (if prior.id == id then call.(held := call.held + [call.waiting], waiting := 0,
+          position := call.position + 1, phase := if call.position + 1 == |call.recordKeys|
+              then ReconcilePhase.ExecutingRecords else ReconcilePhase.AcquiringRecords)
+         else prior)
+  {
+    assert s.calls[i] in s.calls;
+  }
+}
+
+lemma StartedQueueEntry(s: Reconciliations, id: int, entry: core__connectorQueues_QueueEntry, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id) && entry in s.queue.entries
+  ensures var started := (if entry.ticket == callAt(s, id).waiting then entry.(running := true) else entry);
+    started in acquireKey(s, id, armedAt).queue.entries
+{
+  AcquireKeyFrame(s, id, armedAt);
+  var k :| 0 <= k < |s.queue.entries| && s.queue.entries[k] == entry;
+  assert acquireKey(s, id, armedAt).queue.entries[k] in acquireKey(s, id, armedAt).queue.entries;
+}
+
+lemma AcquiredCallEntry(s: Reconciliations, id: int, prior: Reconciliation, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id) && prior in s.calls
+  ensures var after := acquireKey(s, id, armedAt);
+    exists next :: next in after.calls && next.id == prior.id && next.adapter == prior.adapter &&
+      next.held == (if prior.id == id then prior.held + [prior.waiting] else prior.held)
+{
+  AcquireKeyFrame(s, id, armedAt);
+  var i :| 0 <= i < |s.calls| && s.calls[i] == prior;
+  assert acquireKey(s, id, armedAt).calls[i] in acquireKey(s, id, armedAt).calls;
+}
+
+lemma AcquireKeepsTimerQueueOwners(s: Reconciliations, id: int, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id)
+  ensures alwaysTimersOwnTheirQueueTicket(acquireKey(s, id, armedAt))
+{
+  AcquireKeyFrame(s, id, armedAt);
+  AcquireStartsUntimedTicket(s, id);
+  var call := callAt(s, id);
+  var after := acquireKey(s, id, armedAt);
+  var armed := after.timers[|s.timers|];
+  forall timer | timer in after.timers
+    ensures (
+      exists entry ::
+        entry in after.queue.entries && entry.ticket == timer.ticket &&
+        entry.scope.owner == timer.adapter && entry.scope.provider == timer.recordKey &&
+        entry.running == !timer.cleared && entry.complete == timer.cleared
+    )
+  {
+    if timer == armed {
+      var prior :| prior in s.queue.entries && prior.ticket == call.waiting && !prior.running &&
+        !prior.complete && prior.scope.owner == call.adapter &&
+        prior.scope.provider == call.recordKeys[call.position].key;
+      StartedQueueEntry(s, id, prior, armedAt);
+    } else {
+      assert timer in s.timers;
+      var prior :| prior in s.queue.entries && prior.ticket == timer.ticket &&
+        prior.scope.owner == timer.adapter && prior.scope.provider == timer.recordKey &&
+        prior.running == !timer.cleared && prior.complete == timer.cleared;
+      assert prior.ticket != call.waiting;
+      StartedQueueEntry(s, id, prior, armedAt);
+    }
+  }
+}
+
+lemma AcquireKeepsOneTimerPerTicket(s: Reconciliations, id: int, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id)
+  ensures alwaysOneTimerPerAcquiredTicket(acquireKey(s, id, armedAt))
+{
+  AcquiringCallLookup(s, id);
+  AcquireKeyFrame(s, id, armedAt);
+  AcquireStartsUntimedTicket(s, id);
+  var call := callAt(s, id);
+  var after := acquireKey(s, id, armedAt);
+  var armed := after.timers[|s.timers|];
+  assert after.timers == s.timers + [armed];
+  forall timer | timer in after.timers
+    ensures |ProofLib.Filter((other: WarningTimer) => other.ticket == timer.ticket, after.timers)| == 1
+    ensures !timer.cleared ==> (
+      exists owner ::
+        owner in after.calls && owner.id == timer.callId &&
+        owner.adapter == timer.adapter && timer.ticket in owner.held
+    )
+  {
+    var sameTicket := (other: WarningTimer) => other.ticket == timer.ticket;
+    ProofLib.FilterAppend(sameTicket, s.timers, armed);
+    if timer == armed {
+      ProofLib.FilterNone(sameTicket, s.timers);
+      AcquiredCallEntry(s, id, call, armedAt);
+    } else {
+      assert timer in s.timers && timer.ticket != armed.ticket;
+      if !timer.cleared {
+        var prior :| prior in s.calls && prior.id == timer.callId &&
+          prior.adapter == timer.adapter && timer.ticket in prior.held;
+        AcquiredCallEntry(s, id, prior, armedAt);
+      }
+    }
+  }
+}
+
+lemma AcquireKeepsHeldTicketTimers(s: Reconciliations, id: int, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id)
+  ensures alwaysEachHeldTicketOwnsTimer(acquireKey(s, id, armedAt))
+{
+  AcquireKeyFrame(s, id, armedAt);
+  AcquiringCallLookup(s, id);
+  var after := acquireKey(s, id, armedAt);
+  var armed := after.timers[|s.timers|];
+  assert armed in after.timers;
+  forall call | call in after.calls
+    ensures forall ticket | ticket in call.held ::
+      exists timer :: timer in after.timers && timer.ticket == ticket && timer.callId == call.id &&
+        timer.adapter == call.adapter && !timer.cleared
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == call;
+    var prior := s.calls[i];
+    assert prior in s.calls && prior.id == call.id && prior.adapter == call.adapter;
+    forall ticket | ticket in call.held
+      ensures (
+        exists timer ::
+          timer in after.timers && timer.ticket == ticket && timer.callId == call.id &&
+          timer.adapter == call.adapter && !timer.cleared
+      )
+    {
+      if ticket in prior.held {
+        var timer :| timer in s.timers && timer.ticket == ticket && timer.callId == prior.id &&
+          timer.adapter == prior.adapter && !timer.cleared;
+        assert timer in after.timers;
+      } else {
+        assert prior.id == id && ticket == prior.waiting;
+      }
+    }
+  }
+}
+
+lemma AcquireKeepsQueueInvariants(s: Reconciliations, id: int, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id)
+  ensures alwaysQueueMutualExclusion(acquireKey(s, id, armedAt))
+  ensures alwaysCleanupOwnsSettledTicket(acquireKey(s, id, armedAt))
+{
+  reveal canAcquireKey();
+  var after := acquireKey(s, id, armedAt);
+  var acquired := callAt(s, id).waiting;
+  AcquireKeyFrame(s, id, armedAt);
+  AcquireStartsUntimedTicket(s, id);
+  core__connectorQueues_begin_ensures(s.queue, acquired);
+  forall ticket | ticket in after.cleanupPending
+    ensures core__connectorQueues_canCleanup(after.queue, ticket)
+  {
+    assert ticket in s.cleanupPending && ticket != acquired;
+    var settled :| settled in s.queue.entries && settled.ticket == ticket && settled.complete;
+    StartedQueueEntry(s, id, settled, armedAt);
+  }
+}
+
+lemma AcquireKeepsHeldEntriesRunning(s: Reconciliations, id: int, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id)
+  ensures alwaysHeldTicketsAreRunning(acquireKey(s, id, armedAt))
+{
+  AcquireKeyFrame(s, id, armedAt);
+  AcquiringCallLookup(s, id);
+  AcquireStartsUntimedTicket(s, id);
+  var after := acquireKey(s, id, armedAt);
+  var selected := callAt(s, id);
+  forall call | call in after.calls
+    ensures forall ticket | ticket in call.held ::
+      (exists entry :: entry in after.queue.entries && entry.ticket == ticket && entry.running)
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == call;
+    var prior := s.calls[i];
+    assert prior in s.calls;
+    forall ticket | ticket in call.held
+      ensures (exists entry :: entry in after.queue.entries && entry.ticket == ticket && entry.running)
+    {
+      if ticket in prior.held {
+        var previous :| previous in s.queue.entries && previous.ticket == ticket && previous.running;
+        StartedQueueEntry(s, id, previous, armedAt);
+      } else {
+        assert prior.id == id && selected == prior && selected.waiting == ticket;
+        var previous :| previous in s.queue.entries && previous.ticket == ticket &&
+          !previous.running && !previous.complete && previous.scope.owner == selected.adapter &&
+          previous.scope.provider == selected.recordKeys[selected.position].key;
+        StartedQueueEntry(s, id, previous, armedAt);
+      }
+    }
+  }
+}
+
+lemma AcquireKeepsOtherWaitingEntries(s: Reconciliations, id: int, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id)
+  ensures alwaysWaitingTicketIsQueued(acquireKey(s, id, armedAt))
+{
+  AcquireKeyFrame(s, id, armedAt);
+  AcquiringCallLookup(s, id);
+  var after := acquireKey(s, id, armedAt);
+  var selected := callAt(s, id);
+  forall call | call in after.calls
+    ensures call.waiting >= 0
+    ensures call.waiting > 0 ==> (
+      call.phase.AcquiringRecords? &&
+      (exists entry :: entry in after.queue.entries && entry.ticket == call.waiting &&
+        entry.scope.owner == call.adapter && !entry.running && !entry.complete &&
+        entry.scope.provider == (if 0 <= call.position < |call.recordKeys|
+          then call.recordKeys[call.position] else noKey).key)
+    )
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == call;
+    var prior := s.calls[i];
+    assert prior in s.calls;
+    if prior.id != id && call.waiting > 0 {
+      assert call == prior;
+      assert selected in s.calls && selected.id == id && selected.waiting != call.waiting;
+      var record := if 0 <= call.position < |call.recordKeys| then call.recordKeys[call.position] else noKey;
+      var queued :| queued in s.queue.entries && queued.ticket == call.waiting &&
+        queued.scope.owner == call.adapter && queued.scope.provider == record.key &&
+        !queued.running && !queued.complete;
+      assert queued.ticket != selected.waiting;
+      StartedQueueEntry(s, id, queued, armedAt);
+    }
+  }
+}
+
+lemma AcquireKeepsCallIdentities(s: Reconciliations, id: int, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id)
+  ensures alwaysCallIdentitiesUnique(acquireKey(s, id, armedAt))
+{
+  AcquireKeyFrame(s, id, armedAt);
+  var after := acquireKey(s, id, armedAt);
+  forall call | call in after.calls
+    ensures call.id > 0 && |ProofLib.Filter((row: Reconciliation) => row.id == call.id, after.calls)| == 1
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == call;
+    assert s.calls[i] in s.calls;
+    var byId := (row: Reconciliation) => row.id == call.id;
+    ProofLib.FilterLengthPointwise(byId, byId, s.calls, after.calls);
+  }
+}
+
+lemma AcquireKeepsCallProgress(s: Reconciliations, id: int, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id)
+  ensures alwaysAcquisitionCursor(acquireKey(s, id, armedAt))
+  ensures alwaysCallbackOwnsEveryKey(acquireKey(s, id, armedAt))
+{
+  reveal canAcquireKey();
+  AcquireKeyFrame(s, id, armedAt);
+  AcquiringCallLookup(s, id);
+  var after := acquireKey(s, id, armedAt);
+  var selected := callAt(s, id);
+  assert selected in s.calls && selected.phase.AcquiringRecords?;
+  forall call | call in after.calls
+    ensures 0 <= call.position <= |call.recordKeys|
+    ensures call.phase.AcquiringRecords? ==> call.position < |call.recordKeys|
+    ensures call.phase.AcquiringRecords? || call.phase.ExecutingRecords? ==> |call.held| == call.position
+    ensures call.phase.ExecutingRecords? ==> |call.held| == |call.recordKeys|
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == call;
+    var prior := s.calls[i];
+    assert prior in s.calls;
+    if prior.id == id {
+      assert prior == selected && |prior.held| == prior.position && prior.position < |prior.recordKeys|;
+    } else {
+      assert call == prior;
+    }
+  }
+}
+
+lemma AcquireMovesWaitingTicketOnlyOnce(s: Reconciliations, id: int, armedAt: int, i: int)
+  requires inv(s) && canAcquireKey(s, id)
+  requires 0 <= i < |s.calls|
+  ensures var call := acquireKey(s, id, armedAt).calls[i];
+    forall ticket | ticket in call.held ::
+      ticket > 0 && ticket != call.waiting &&
+      |ProofLib.Filter((other: int) => other == ticket, call.held)| == 1
+{
+  reveal canAcquireKey();
+  AcquireKeyFrame(s, id, armedAt);
+  AcquiringCallLookup(s, id);
+  var prior := s.calls[i];
+  var call := acquireKey(s, id, armedAt).calls[i];
+  assert prior in s.calls;
+  if prior.id == id {
+    assert prior == callAt(s, id) && prior.waiting > 0;
+    assert prior.waiting !in prior.held;
+    forall ticket | ticket in call.held
+      ensures ticket > 0 && ticket != call.waiting &&
+        |ProofLib.Filter((other: int) => other == ticket, call.held)| == 1
+    {
+      var sameTicket := (other: int) => other == ticket;
+      ProofLib.FilterAppend(sameTicket, prior.held, prior.waiting);
+      if ticket == prior.waiting {
+        ProofLib.FilterNone(sameTicket, prior.held);
+      } else {
+        assert ticket in prior.held;
+      }
+    }
+  }
+}
+
+lemma AcquireOtherCallKeepsItsTickets(s: Reconciliations, id: int, armedAt: int, i: int, j: int)
+  requires inv(s) && canAcquireKey(s, id)
+  requires 0 <= i < |s.calls| && 0 <= j < |s.calls|
+  requires s.calls[i].id != s.calls[j].id
+  ensures var after := acquireKey(s, id, armedAt);
+    var call := after.calls[i];
+    var other := after.calls[j];
+    (call.waiting == 0 || (other.waiting != call.waiting && call.waiting !in other.held)) &&
+    (forall ticket | ticket in call.held :: other.waiting != ticket && ticket !in other.held)
+{
+  reveal canAcquireKey();
+  AcquireKeyFrame(s, id, armedAt);
+  AcquiringCallLookup(s, id);
+  var after := acquireKey(s, id, armedAt);
+  var prior := s.calls[i];
+  var peer := s.calls[j];
+  var call := after.calls[i];
+  var other := after.calls[j];
+  assert prior in s.calls && peer in s.calls;
+  if call.waiting > 0 {
+    assert call == prior;
+    assert prior.waiting != peer.waiting && prior.waiting !in peer.held;
+  }
+  forall ticket | ticket in call.held
+    ensures other.waiting != ticket && ticket !in other.held
+  {
+    if ticket in prior.held {
+      CallbackOtherTicket(s, prior, peer, ticket);
+      assert ticket > 0;
+    } else {
+      assert prior.id == id && prior == callAt(s, id) && prior.waiting == ticket && ticket > 0;
+      assert peer.waiting != ticket && ticket !in peer.held;
+    }
+  }
+}
+
+lemma ConnectionTicketCustodyByIndex(s: Reconciliations)
+  requires forall i | 0 <= i < |s.calls| ::
+    var call := s.calls[i];
+    forall ticket | ticket in call.held ::
+      ticket > 0 && ticket != call.waiting &&
+      |ProofLib.Filter((other: int) => other == ticket, call.held)| == 1
+  requires forall i, j | 0 <= i < |s.calls| && 0 <= j < |s.calls| && s.calls[i].id != s.calls[j].id ::
+    var call := s.calls[i];
+    var peer := s.calls[j];
+    (call.waiting == 0 || (peer.waiting != call.waiting && call.waiting !in peer.held)) &&
+    (forall ticket | ticket in call.held :: peer.waiting != ticket && ticket !in peer.held)
+  ensures alwaysOneCallOwnsEachTicket(s)
+{
+  reveal alwaysOneCallOwnsEachTicket();
+  forall call | call in s.calls
+    ensures forall ticket | ticket in call.held ::
+      ticket > 0 && ticket != call.waiting &&
+      |ProofLib.Filter((other: int) => other == ticket, call.held)| == 1
+  {
+    var i :| 0 <= i < |s.calls| && s.calls[i] == call;
+  }
+  forall call, peer | call in s.calls && peer in s.calls && call.id != peer.id
+    ensures (call.waiting == 0 || (peer.waiting != call.waiting && call.waiting !in peer.held)) &&
+      (forall ticket | ticket in call.held :: peer.waiting != ticket && ticket !in peer.held)
+  {
+    var i :| 0 <= i < |s.calls| && s.calls[i] == call;
+    var j :| 0 <= j < |s.calls| && s.calls[j] == peer;
+  }
+}
+
+lemma AcquireKeepsExclusiveTicketCustody(s: Reconciliations, id: int, armedAt: int)
+  requires inv(s) && canAcquireKey(s, id)
+  ensures alwaysOneCallOwnsEachTicket(acquireKey(s, id, armedAt))
+{
+  AcquireKeyFrame(s, id, armedAt);
+  var after := acquireKey(s, id, armedAt);
+  forall i | 0 <= i < |after.calls|
+    ensures var call := after.calls[i];
+      forall ticket | ticket in call.held ::
+        ticket > 0 && ticket != call.waiting &&
+        |ProofLib.Filter((other: int) => other == ticket, call.held)| == 1
+  {
+    AcquireMovesWaitingTicketOnlyOnce(s, id, armedAt, i);
+  }
+  forall i, j | 0 <= i < |after.calls| && 0 <= j < |after.calls| && after.calls[i].id != after.calls[j].id
+    ensures var call := after.calls[i];
+      var peer := after.calls[j];
+      (call.waiting == 0 || (peer.waiting != call.waiting && call.waiting !in peer.held)) &&
+      (forall ticket | ticket in call.held :: peer.waiting != ticket && ticket !in peer.held)
+  {
+    assert s.calls[i].id == after.calls[i].id && s.calls[j].id == after.calls[j].id;
+    AcquireOtherCallKeepsItsTickets(s, id, armedAt, i, j);
+  }
+  ConnectionTicketCustodyByIndex(after);
+}
