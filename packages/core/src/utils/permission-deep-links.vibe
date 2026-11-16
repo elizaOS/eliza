@@ -1,6 +1,5 @@
 // spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
-import { foreign, promised } from "../edge.vibe"
-import { logger } from "../logger.vibe"
+import { foreign, foreignSync, promised } from "../edge.vibe"
 import type { PermissionId } from "../types/permissions.vibe"
 
 const ROOT_PRIVACY = "x-apple.systempreferences:com.apple.preference.security?Privacy"
@@ -73,7 +72,8 @@ export interface OpenPermissionSettingsDeps {
 export effect function openPermissionSettings(id: PermissionId, deps: OpenPermissionSettingsDeps = {}) {
   const platform = deps.platform ?? detectPlatform()
   if (platform !== "darwin") {
-    logger.warn(`[permission-deep-links] openPermissionSettings: no system-settings deep link for platform=${platform} (id=${id}); please open settings manually.`)
+    const hostConsole = try Console.Console
+    try foreignSync(() => hostConsole.warn(`[permission-deep-links] openPermissionSettings: no system-settings deep link for platform=${platform} (id=${id}); please open settings manually.`))
     return
   }
   const url = getMacPermissionDeepLink(id)
