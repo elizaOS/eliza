@@ -924,13 +924,13 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
   });
 
   test("local enums and records keep their Quint types in generated code and proof", async () => {
-    const root = oneRule("choice", "Choose", "type Choice = Left | Right\ntype Pick = { side: Choice, n: int }\npure def read(p: Pick): int = if (p.side == Left) p.n else 0\npure def record(n: int, b: bool): int =\n  val p = { side: if (b) Left else Right, n: n }\n  read(p)\npure def updated(p: Pick): int =\n  val changed = p.with(\"side\", Left)\n  read(changed)\npure def use(c: Choice): int = if (c == Left) 1 else 2\npure def chosen(b: bool): int =\n  val c = if (b) Left else Right\n  use(c)\npure def lawChosen(b: bool): bool = chosen(b) == (if (b) 1 else 2)");
+    const root = oneRule("choice", "Choose", "type Choice = Left | Right\ntype Pick = { side: Choice, n: int }\npure def read(p: Pick): int = if (p.side == Left) p.n else 0\npure def record(n: int, b: bool): int =\n  val p = { side: if (b) Left else Right, n: n }\n  read(p)\npure def updated(p: Pick): int =\n  val changed = p.with(\"side\", Left)\n  read(changed)\npure def choices(b: bool): List[Choice] = if (b) List(Left) else List(Right)\npure def use(c: Choice): int = if (c == Left) 1 else 2\npure def chosen(b: bool): int =\n  val c = if (b) Left else Right\n  use(c)\npure def lawChosen(b: bool): bool = chosen(b) == (if (b) 1 else 2)");
     const { failed, text } = await run(root);
     assert.deepEqual(failed, ["review"], text);
     const compiled = await tool("tsc", ["--ignoreConfig", "--noEmit", "--target", "es2023", "--module", "nodenext", "--strict", "--skipLibCheck", path.join(root, "gen/choice.ts")], project);
     assert.ok(compiled.ok, compiled.out);
     const choice = await import(path.join(root, "gen/choice.ts"));
-    assert.deepEqual([choice.record(7, true), choice.record(7, false), choice.updated({ side: "Right", n: 9 })], [7, 0, 9]);
+    assert.deepEqual([choice.record(7, true), choice.record(7, false), choice.updated({ side: "Right", n: 9 }), choice.choices(true), choice.choices(false)], [7, 0, 9, ["Left"], ["Right"]]);
     const record = oneRule("recordLocal", "A local record keeps its value", "pure def value(n: int): int =\n  val box = { value: n }\n  box.value");
     await gen(record, parseSpec(record, "spec/recordLocal.md"));
     assert.equal((await import(path.join(record, "gen/recordLocal.ts"))).value(7), 7);
