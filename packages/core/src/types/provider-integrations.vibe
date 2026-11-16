@@ -762,13 +762,14 @@ module edge {
   } from "./provider-integrations.vibe"
 
   export class CapabilityAuthorizationCoordinator implements CapabilityAuthorizationConsumer {
+    private readonly isSnapshotCurrent: CapabilityAuthorizationCoordinatorOptions["isSnapshotCurrent"]
     readonly #state: CapabilityAuthorizationState
 
     /** @throws {never} */
     constructor(options: CapabilityAuthorizationCoordinatorOptions) {
-      const isSnapshotCurrent = options.isSnapshotCurrent
+      this.isSnapshotCurrent = options.isSnapshotCurrent
       this.#state = {
-        isSnapshotCurrent: (request, now) => isSnapshotCurrent.call(this, request, now),
+        isSnapshotCurrent: (request, now) => this.isSnapshotCurrent(request, now),
         registered: new Map(),
         reservedDecisionIds: new Set(),
         reservedConfirmationIds: new Set(),

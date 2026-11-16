@@ -95,11 +95,14 @@ effect function getCachedImageDescription(
   imageUrl: string,
   cacheKey: string,
 ) {
-  const pending = try foreignSync(() => runtime.getCache<CachedImageDescription>(cacheKey))
-  const cached = foreign(() => pending) catch (failure) => {
-    runtime.reportError("ImageDescriptionCache.get", failure.cause, { imageUrl })
-    return undefined
-  }
+  const cached = try foreign(() =>
+    runtime
+      .getCache<CachedImageDescription>(cacheKey)
+      .catch((err) => {
+        runtime.reportError("ImageDescriptionCache.get", err, { imageUrl })
+        return undefined
+      })
+  )
   return cached ? (normalizeImageDescription(cached) ?? undefined) : undefined
 }
 
@@ -110,10 +113,11 @@ effect function setCachedImageDescription(
   cacheKey: string,
 ) {
   if (!value.description && !value.text) return
-  const pending = try foreignSync(() => runtime.setCache(cacheKey, value))
-  foreign(() => pending) catch (failure) => {
-    runtime.reportError("ImageDescriptionCache.set", failure.cause, { imageUrl })
-  }
+  try foreign(() =>
+    runtime
+      .setCache(cacheKey, value)
+      .catch((err) => runtime.reportError("ImageDescriptionCache.set", err, { imageUrl }))
+  )
 }
 
 effect function describeUncached(

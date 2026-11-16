@@ -1,5 +1,5 @@
 // spec/core/taskEventReader.md, "Replay is idempotent and histories reject conflicting duplicates or gaps"; spec/core/taskEventReader.md, "A generation owns its pending read and every publish boundary rechecks it"
-import { foreign, foreignSync, thrown } from "../edge.vibe"
+import { foreign, foreignSync, thrown, type Foreign } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   Machine,
@@ -376,6 +376,7 @@ error InvalidPollingInterval { message: string }
 error InvalidTaskId { message: string }
 
 interface ReaderPayload {
+  taskId: string
   page: TaskEventPage | null
   timer: Fiber.Fiber<void> | undefined
 }
@@ -394,7 +395,7 @@ export effect function createReader(options: TaskEventReaderOptions, poll: () =>
   }
   const copied = { ...options }
   provide machine() {
-    const owned = try own(try Machine, { page: null, timer: undefined } satisfies ReaderPayload)
+    const owned = try own(try Machine, { taskId: "", page: null, timer: undefined } satisfies ReaderPayload)
     return { options: copied, interval, poll, owned }
   }
 }
@@ -419,7 +420,7 @@ export effect function startReader(reader: ReaderRuntime, taskId: string): (numb
     return undefined
   }
   try cancelTimer(reader)
-  return try orDie(reader.owned.step({ type: "start", task: taskId }, (_, state) => [state.ticket, { page: null, timer: undefined }]))
+  return try orDie(reader.owned.step({ type: "start", task: String(taskId) }, (_, state) => [state.ticket, { taskId, page: null, timer: undefined }]))
 }
 
 export effect function refreshReader(reader: ReaderRuntime) {
@@ -436,11 +437,10 @@ effect function notify(reader: ReaderRuntime) {
     pending: state.pending,
     failed: state.failed,
   }))
-  return foreignSync(() => { reader.options.changed(structuredClone(view)) }) catch (failure) => ({ cause: failure.cause })
-}
-
-function observerFailed(failure: { cause: unknown }): ElizaError {
-  return new ElizaError("Task event observer failed", { code: "TASK_EVENT_OBSERVER_FAILED", cause: failure.cause })
+  return try Effect.match(foreignSync(() => { reader.options.changed(structuredClone(view)) }), {
+    onFailure: (failure): Foreign | undefined => failure,
+    onSuccess: () => undefined,
+  })
 }
 
 effect function owns<A>(step: A!Rejected) {
@@ -452,14 +452,14 @@ effect function rearm(reader: ReaderRuntime) {
   try sync(reader.poll)
 }
 
-export effect function pollReader(reader: ReaderRuntime, ticket: number): void!ElizaError {
+export effect function pollReader(reader: ReaderRuntime, ticket: number): void!Foreign {
   const startFailure = try notify(reader)
-  const afterStart = try owns(reader.owned.step({ type: "publishedStart", ticket, success: !startFailure }, (payload, state) => [state, payload]))
-  if (startFailure) throw observerFailed(startFailure)
+  if (startFailure) throw startFailure
+  const afterStart = try owns(reader.owned.step({ type: "publishedStart", ticket, success: true }, (payload, state) => [state, payload]))
   if (!afterStart) return
   let reading = true
   while (reading) {
-    const [taskId, previous] = try reader.owned.read((state, payload) => [state.task, payload.page] as const)
+    const [taskId, previous] = try reader.owned.read((_, payload) => [payload.taskId, payload.page] as const)
     const value = try Effect.exit(foreign(() => reader.options.read(taskId, previous?.cursor ?? -1)))
     const merged = Exit.isSuccess(value) ? try Effect.exit(mergeTaskEventPage(taskId, previous, value.value)) : undefined
     const page = merged !== undefined && Exit.isSuccess(merged) ? merged.value : undefined
@@ -487,7 +487,7 @@ export effect function pollReader(reader: ReaderRuntime, ticket: number): void!E
   const timer = !finishFailure && again ? try forkDetach(rearm(reader)) : undefined
   const afterFinish = try owns(reader.owned.step({ type: "publishedFinish", ticket, success: !finishFailure }, (payload, state) => [state, { ...payload, timer: state.timer ? timer : undefined }]))
   if (!afterFinish?.timer) try cancel(timer)
-  if (finishFailure) throw observerFailed(finishFailure)
+  if (finishFailure) throw finishFailure
 }
 
 module edge {

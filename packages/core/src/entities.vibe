@@ -24,13 +24,25 @@ export effect function resolveTrustedComponentSourceIds(
   if (sourceIds.size === 0) return trusted
 
   const metadata = (world.metadata ?? {}) as RolesWorldMetadata
-  for concurrent (const sourceEntityId of sourceIds) {
-    const role = try resolveEntityRole(runtime, world, metadata, sourceEntityId)
-    if (isAdminRank(role)) {
-      trusted.add(sourceEntityId)
-    }
+  const resolutions = []
+  for (const sourceEntityId of sourceIds) {
+    resolutions.push(Fiber.join(fork.detached trustIfAdmin(runtime, world, metadata, sourceEntityId, trusted)))
   }
+  try.all resolutions
   return trusted
+}
+
+effect function trustIfAdmin(
+  runtime: IAgentRuntime,
+  world: World,
+  metadata: RolesWorldMetadata,
+  sourceEntityId: string,
+  trusted: Set<string>,
+) {
+  const role = try resolveEntityRole(runtime, world, metadata, sourceEntityId)
+  if (isAdminRank(role)) {
+    trusted.add(sourceEntityId)
+  }
 }
 
 export const resolveTrustedComponentSourceIdsPromise = promised(resolveTrustedComponentSourceIds)

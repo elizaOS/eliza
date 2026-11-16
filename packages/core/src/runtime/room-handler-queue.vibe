@@ -271,16 +271,26 @@ function enqueueRoomWork(
 ): Deferred.Deferred<unknown, RoomWorkFailure> {
   const item: QueuedItem = { run, done: Deferred.makeUnsafe(), signal }
   if (signal) {
+    const cancel = () => Deferred.doneUnsafe(item.done, fail(new RoomHandlerQueueAbortedError(queue.roomId, {
+      cause: signal.reason,
+    })))
+    if (signal.aborted) {
+      cancel()
+      return item.done
+    }
     const onAbort = () => {
       const index = queue.queue.indexOf(item)
       if (index < 0) return
       queue.queue.splice(index, 1)
-      Deferred.doneUnsafe(item.done, fail(new RoomHandlerQueueAbortedError(queue.roomId, {
-        cause: signal.reason,
-      })))
+      cancel()
     }
     item.onAbort = onAbort
-    signal.addEventListener("abort", onAbort, { once: true })
+    try {
+      signal.addEventListener("abort", onAbort, { once: true })
+    } catch (cause) {
+      Deferred.doneUnsafe(item.done, fail(new Foreign({ cause })))
+      return item.done
+    }
   }
   queue.queue.push(item)
   drainRoom(queue)
@@ -291,15 +301,15 @@ effect function admitRoomWork(
   table: RoomTable,
   roomId: string,
   run: unknown!Foreign,
-  signal?: AbortSignal,
+  options?: RunWithOptions,
 ): Deferred.Deferred<unknown, RoomWorkFailure>!RoomAdmissionFailure {
   const { limits } = table
   if (table.admissionClosedReason !== null) {
     throw new RoomHandlerQueueClosedError(table.admissionClosedReason)
   }
-  if (signal?.aborted) {
+  if (options?.signal?.aborted) {
     const error = new RoomHandlerQueueAbortedError(roomId, {
-      cause: signal.reason,
+      cause: options.signal.reason,
     })
     emit(table, { type: "cancelled", roomId })
     throw error
@@ -340,7 +350,13 @@ effect function admitRoomWork(
     })
     throw error
   }
-  const done = enqueueRoomWork(queue, run, signal)
+  const signal = try exit(foreignSync(() => options?.signal))
+  if (Exit.isFailure(signal)) {
+    const failed = Deferred.makeUnsafe<unknown, RoomWorkFailure>()
+    Deferred.doneUnsafe(failed, signal)
+    return failed
+  }
+  const done = enqueueRoomWork(queue, run, signal.value)
   emit(table, { type: "enqueued", roomId, queueDepth: queuePosition + 1 })
   return done
 }
@@ -384,9 +400,9 @@ export effect function runWithRoom<T>(
   table: RoomTable,
   roomId: string,
   run: T!Foreign,
-  signal?: AbortSignal,
+  options?: RunWithOptions,
 ): T!(RoomAdmissionFailure | Foreign) {
-  const done = try admitRoomWork(table, roomId, run, signal)
+  const done = try admitRoomWork(table, roomId, run, options)
   return (try settleRoomWork(table, roomId, done)) as T
 }
 
@@ -449,7 +465,7 @@ export effect function acquireRoomLease(
     Deferred.doneUnsafe(acquired, Effect.void)
     try Deferred.await(hold)
   }
-  const done = try admitRoomWork(table, roomId, holding, signal)
+  const done = try admitRoomWork(table, roomId, holding, { signal })
   const heldTurn = fork.detached holdTurn(table, roomId, done, acquired)
   try Deferred.await(acquired)
   return leaseFor(table, roomId, hold, heldTurn)
@@ -628,6 +644,7 @@ export effect function awaitIdle(signals: readonly Deferred.Deferred<void>[]): v
 }
 
 module edge {
+  import { Effect } from "effect"
   import { asLegacy, Foreign, foreign, runDetached, runDetachedSync } from "../edge.vibe"
   import type { ElizaError } from "../errors.vibe"
   import {
@@ -675,7 +692,7 @@ module edge {
       fn: () => Promise<T>,
       options?: RunWithOptions,
     ): Promise<T> {
-      return runDetached(runWithRoom(this.table, roomId, foreign(() => Promise.resolve().then(fn)), options?.signal))
+      return runDetached(Effect.suspend(() => runWithRoom(this.table, roomId, foreign(() => Promise.resolve().then(() => fn())), options)))
     }
 
     /** @throws {never} */

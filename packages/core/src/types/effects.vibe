@@ -107,6 +107,32 @@ const ISO_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(
 
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const
 
+module checked {
+  import { Effect, Exit, type Cause } from "effect"
+  import type { ElizaError } from "../errors.vibe"
+
+  /** @throws {never} */
+  export function mapChecked<T>(
+    items: readonly unknown[],
+    check: (entry: unknown, index: number) => Effect.Effect<T, ElizaError>,
+  ): Effect.Effect<T[], ElizaError> {
+    return Effect.suspend(() => {
+      let failed: Cause.Cause<ElizaError> | undefined
+      try {
+        return Effect.succeed(items.map((entry, index) => {
+          const exit = Effect.runSyncExit(check(entry, index))
+          if (Exit.isSuccess(exit)) return exit.value
+          failed = exit.cause
+          throw failed
+        }))
+      } catch (cause) {
+        return failed !== undefined && cause === failed ? Effect.failCause(failed) : Effect.die(cause)
+      }
+    })
+  }
+}
+import { mapChecked } from checked
+
 function invalid(message: string, context: Record<string, unknown>): ElizaError {
   return new ElizaError(message, {
     code: "INVALID_EFFECT_RECEIPT",
@@ -194,17 +220,11 @@ effect function normalizeStringArray(
   if (!Array.isArray(value)) {
     throw invalid(`Effect receipt field '${field}' must be an array.`, { ...context, field })
   }
-  // One map snapshot reads the input once, as the original map did: holes
-  // stay holes and an Array subclass keeps its species.
-  const values = value.map((entry: unknown) => entry)
-  for (let index = 0; index < values.length; index++) {
-    if (!(index in values)) continue
-    values[index] = try nonEmptyString(values[index], `${field}[${index}]`, context)
-  }
+  const values = try mapChecked(value, (entry, index) => nonEmptyString(entry, `${field}[${index}]`, context))
   if (new Set(values).size !== values.length) {
     throw invalid(`Effect receipt field '${field}' contains duplicate IDs.`, { ...context, field })
   }
-  return Object.freeze(values as string[])
+  return Object.freeze(values)
 }
 
 export effect function normalizeUserFacingEffectReceiptIds(
@@ -227,12 +247,9 @@ export effect function normalizeEffectReceipt(value: unknown): EffectReceipt!Eli
   if (!Array.isArray(raw.artifacts)) {
     throw invalid("Effect receipt field 'artifacts' must be an array.", context)
   }
-  const artifactRefs = raw.artifacts.map((artifact: unknown) => artifact)
-  for (let index = 0; index < artifactRefs.length; index++) {
-    if (!(index in artifactRefs)) continue
-    artifactRefs[index] = try normalizeResourceRef(artifactRefs[index], `artifacts[${index}]`, context)
-  }
-  const artifacts = Object.freeze(artifactRefs as EffectResourceRef[])
+  const artifacts = Object.freeze(
+    try mapChecked(raw.artifacts, (artifact, index) => normalizeResourceRef(artifact, `artifacts[${index}]`, context)),
+  )
   const idempotencyRaw = asObjectRecord(raw.idempotency)
   if (!idempotencyRaw) {
     throw invalid("Effect receipt field 'idempotency' must be an object.", context)

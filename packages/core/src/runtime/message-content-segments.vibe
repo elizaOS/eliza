@@ -3,7 +3,7 @@ import {
   artifactDisclosureRecordFromMemory,
   resolveArtifactDisclosure,
 } from "../access-control/artifact-disclosure.vibe"
-import { Foreign, thrown } from "../edge.vibe"
+import { Foreign, runDetachedSync, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { AccessContext } from "../types/access-context.vibe"
 import type { MessageContentSourceSelector } from "../types/database.vibe"
@@ -231,6 +231,35 @@ effect function buildSource(args: {
   return { descriptor, segments }
 }
 
+effect function projectAttachment(
+  attachment: Media,
+  message: Memory & { id: UUID },
+  segments: Memory[],
+): Media!(ElizaError | Foreign) {
+  const canonical = canonicalAttachmentText(attachment)
+  if (
+    canonical.length === 0
+    || bytes(canonical).length <= MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+  ) {
+    return { ...attachment }
+  }
+  const hash = hashAttachmentIdForLocator(attachment.id)
+  const source = try buildSource({
+    text: canonical,
+    message,
+    kind: "attachment-text",
+    attachmentHash: hash,
+  })
+  segments.push(...source.segments)
+  const projected = { ...attachment } as Media & {
+    textSource?: MessageContentSourceDescriptor
+  }
+  delete projected.text
+  delete projected.description
+  projected.textSource = source.descriptor
+  return projected
+}
+
 export effect function buildMessageContentProjection(
   message: Memory & { id: UUID },
 ): MessageContentProjection!(ElizaError | Foreign) {
@@ -252,37 +281,10 @@ export effect function buildMessageContentProjection(
   }
   if (Array.isArray(content.attachments)) {
     const attachments = content.attachments
-    const length = attachments.length
-    const projectedAttachments: Media[] = attachments.slice(0, 0)
-    projectedAttachments.length = length
-    for (let index = 0; index < length; index++) {
-      if (!(index in attachments)) continue
-      const attachment = attachments[index]
-      const canonical = canonicalAttachmentText(attachment)
-      if (
-        canonical.length === 0
-        || bytes(canonical).length <= MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
-      ) {
-        projectedAttachments[index] = { ...attachment }
-        continue
-      }
-      const hash = hashAttachmentIdForLocator(attachment.id)
-      const source = try buildSource({
-        text: canonical,
-        message,
-        kind: "attachment-text",
-        attachmentHash: hash,
-      })
-      segments.push(...source.segments)
-      const projected = { ...attachment } as Media & {
-        textSource?: MessageContentSourceDescriptor
-      }
-      delete projected.text
-      delete projected.description
-      projected.textSource = source.descriptor
-      projectedAttachments[index] = projected
-    }
-    content.attachments = projectedAttachments
+    content.attachments = try Effect.try({
+      try: () => attachments.map((attachment) => runDetachedSync(projectAttachment(attachment, message, segments))),
+      catch: (cause) => cause instanceof ElizaError ? cause : new Foreign({ cause }),
+    })
   }
   return { content, segments }
 }

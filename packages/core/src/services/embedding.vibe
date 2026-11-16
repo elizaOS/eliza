@@ -158,6 +158,7 @@ effect function activate(embedding: Embedding) {
   const initialization = try Deferred.make<void, ActivationFailure>()
   embedding.initialization = initialization
   Effect.catchDefect(initializeQueue(embedding), (cause) => Effect.fail(new Foreign({ cause }))) catch effect (failure) => {
+    try yieldNow
     embedding.initialization = null
     unregisterWork(embedding)
     try Deferred.fail(initialization, failure)

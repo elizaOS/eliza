@@ -1,11 +1,10 @@
 // spec/core/requestIssuer.md, "Only a matching live original can create or use its issuer"; spec/core/requestIssuer.md, "A contradictory repeated commit permanently taints the issuer"; spec/core/requestCompletions.md, "Resolving a second different mutation invalidates an attempt"; spec/core/requestCompletions.md, "Result fingerprints and invalidation persist across projection"; spec/core/requestCompletions.md, "Denial projection needs the exact attempt and an unexecuted zero-effect failure"; spec/core/requestAuthorityRegistry.md, "Object identity and current request fields determine the active issuer"; spec/core/requestAuthorityRegistry.md, "State.data aliases share one exact view while serialized copies carry no view"; spec/core/requestAuthorityRegistry.md, "Attempts and result objects belong to one issuer across every map"; spec/core/context.md, "A historical evidence projection requires exact validated source binding"
 import {
-  type Event,
   type Interpretation,
   Machine,
   machine,
+  normalizedInterpretation,
   type NoteOperation,
-  type Rejected,
   type RequestClassification,
   type RequestIssuer,
   restriction,
@@ -13,7 +12,6 @@ import {
 } from "../../gen/core__requestIssuer.effect.vibe"
 import { getAmbientSingleton } from "../ambient-context.vibe"
 import { failingAs, foreignSync, thrown } from "../edge.vibe"
-import { own, type Owned } from "../owned.vibe"
 import { completionContextSources, selectHistoricalNavigation } from "../runtime/completion-context.vibe"
 import { hashStableJson } from "../runtime/context-hash.vibe"
 import type { ContextObject } from "../runtime/context-object.vibe"
@@ -44,9 +42,13 @@ type Binding = {
   issuer?: RequestOperationIssuer
 }
 function orUndefined<A>(run: A!unknown): A | undefined {
-  return match (runSyncExit(run)) {
-    when Exit.Success(let value): value;
-    default: undefined;
+  try {
+    return match (runSyncExit(run)) {
+      when Exit.Success(let value): value;
+      default: undefined;
+    }
+  } catch {
+    return undefined
   }
 }
 
@@ -276,11 +278,7 @@ export type NotesRequestInterpretation = {
   readonly status: "explicit" | "unavailable" | "contradictory"
   readonly operations: readonly NotesRequestOperation[]
 }
-type CommittedSource = {
-  source?: unknown
-  currentSource?: () => unknown
-}
-type Issuer = {
+type Receiver = {
   runtime: RequestOperationRuntime
   message: Memory
   current: () => boolean
@@ -288,15 +286,22 @@ type Issuer = {
   messageId: Memory["id"]
   roomId: Memory["roomId"]
   entityId: Memory["entityId"]
-  lifecycle: Owned<RequestIssuer, Event, RequestIssuer, Rejected, CommittedSource>
-}
-type IssuerView = Issuer & {
-  state: RequestIssuer
-  committed: boolean
-  revision: number
+  requestHash: string
   classification: RequestOperationClassification
+  committed: boolean
+  tainted: boolean
+  revision: number
   interpretation?: NotesRequestInterpretation
+  interpretationHash?: string
+  source?: unknown
+  sourceHash?: string
+  currentSource?: () => unknown
 }
+type Issuer = {
+  receiver: Receiver
+  lifecycle: Machine.Shape
+}
+type IssuerView = Receiver & Issuer & { state: RequestIssuer }
 type Attempt = {
   issuer: RequestOperationIssuer
   revision: number
@@ -796,78 +801,71 @@ function validIssuer(
 ): IssuerView | undefined {
   if (!token || typeof token !== "object") return
   const value = issuers().get(token)
-  if (
-    !value
-    || (runtime && value.runtime !== runtime)
-    || (message && value.message !== message)
-  ) {
-    return
-  }
+  if (!value) return
+  const receiver = value.receiver
+  if ((runtime && receiver.runtime !== runtime) || (message && receiver.message !== message)) return
   return orUndefined(effect {
     if (
-      activeIssuers().get(value.runtime)?.get(value.message) !== token
-      || !(try foreignSync(() => value.current()))
-      || value.runtime.agentId !== value.agentId
-      || value.message.id !== value.messageId
-      || value.message.roomId !== value.roomId
-      || value.message.entityId !== value.entityId
-      || value.message.agentId !== value.agentId
+      activeIssuers().get(receiver.runtime)?.get(receiver.message) !== token
+      || !(try foreignSync(() => receiver.current()))
+      || receiver.runtime.agentId !== receiver.agentId
+      || receiver.message.id !== receiver.messageId
+      || receiver.message.roomId !== receiver.roomId
+      || receiver.message.entityId !== receiver.entityId
+      || receiver.message.agentId !== receiver.agentId
     ) {
       return undefined
     }
-    const requestHash = try hashStableJson(value.message)
-    const [held, committed] = try value.lifecycle.read((state, payload) => [state, payload] as const)
-    const currentSourceHash = requestHash === held.requestHash && held.committed && committed.currentSource
-      ? try observedSourceHash(value, held, committed)
+    const held = try value.lifecycle.get()
+    const currentRequestHash = observedHash(try hashStableJson(receiver.message), receiver.requestHash, held.requestHash)
+    const currentSourceHash = currentRequestHash === held.requestHash && held.committed && receiver.currentSource
+      ? try observedSourceHash(receiver, held)
       : held.currentSourceHash
-    const state = try value.lifecycle.step(
-      { type: "observeCurrent", live: true, currentRequestHash: requestHash, currentSourceHash },
-      (payload, next) => [next, payload] as const,
+    const state = try value.lifecycle.send(
+      { type: "observeCurrent", live: true, currentRequestHash, currentSourceHash },
     )
     return issuerHolds(state) ? issuerView(value, state) : undefined
   })
 }
 
-effect function observedSourceHash(value: Issuer, held: RequestIssuer, committed: CommittedSource) {
-  const view = issuerView(value, held)
-  const interpretationHash = try hashStableJson(view.interpretation)
-  const current = try hashStableJson(try foreignSync(() =>
-    committed.currentSource?.call({
-      ...view,
-      interpretationHash,
-      source: committed.source,
-      currentSource: committed.currentSource,
-      sourceHash: held.sourceHash,
-      requestHash: held.requestHash,
-      tainted: held.tainted,
-    })
-  ))
-  return current !== held.sourceHash ? current : try hashStableJson(committed.source)
+function observedHash(actual: string, recorded: unknown, held: string): string {
+  return actual === recorded || actual !== held ? actual : ""
+}
+
+effect function observedSourceHash(receiver: Receiver, held: RequestIssuer) {
+  const current = observedHash(
+    try hashStableJson(try foreignSync(() => receiver.currentSource?.call(receiver))),
+    receiver.sourceHash,
+    held.sourceHash,
+  )
+  return current !== held.sourceHash
+    ? current
+    : observedHash(try hashStableJson(receiver.source), receiver.sourceHash, held.sourceHash)
 }
 
 function issuerView(value: Issuer, state: RequestIssuer): IssuerView {
   return {
+    ...value.receiver,
     ...value,
     state,
     committed: state.committed,
     revision: state.revision,
     classification: CLASSIFICATIONS[state.classification],
-    interpretation: state.committed
-      ? {
-        status: STATUSES[state.interpretation.status],
-        operations: state.interpretation.operations.map((operation) => OPERATIONS[operation]),
-      }
-      : undefined,
+    interpretation: state.committed ? publicInterpretation(state.interpretation) : undefined,
   }
+}
+
+function publicInterpretation(interpretation: Interpretation): NotesRequestInterpretation {
+  return Object.freeze({
+    status: STATUSES[interpretation.status],
+    operations: Object.freeze(interpretation.operations.map((operation) => OPERATIONS[operation])),
+  })
 }
 
 effect function issuerLifecycle(requestHash: string) {
   provide machine() {
-    const lifecycle = try own(try Machine, {} satisfies CommittedSource as CommittedSource)
-    try lifecycle.step(
-      { type: "beginIssuer", identityValid: true, live: true, requestHash },
-      (payload) => [undefined, payload] as const,
-    )
+    const lifecycle = try Machine
+    try lifecycle.send({ type: "beginIssuer", identityValid: true, live: true, requestHash })
     return lifecycle
   }
 }
@@ -902,15 +900,23 @@ export function beginRequestOperationIssuer(input: {
       return validIssuer(previous, runtime, message) ? previous : undefined
     }
     const token = Object.freeze(Object.create(null)) as RequestOperationIssuer
+    const requestHash = try hashStableJson(message)
     issuers().set(token, {
-      runtime,
-      message,
-      current,
-      agentId: runtime.agentId,
-      messageId: message.id,
-      roomId: message.roomId,
-      entityId: message.entityId,
-      lifecycle: try issuerLifecycle(try hashStableJson(message)),
+      receiver: {
+        runtime,
+        message,
+        current,
+        agentId: runtime.agentId,
+        messageId: message.id,
+        roomId: message.roomId,
+        entityId: message.entityId,
+        requestHash,
+        classification: "unresolved",
+        committed: false,
+        tainted: false,
+        revision: 0,
+      },
+      lifecycle: try issuerLifecycle(requestHash),
     })
     rooms.set(message, token)
     return token
@@ -947,32 +953,48 @@ export function commitNotesRequestRestriction(
         operations: [],
       })
       : normalizeNotesRequestInterpretation(input.interpretation)
+    const requested: Interpretation = interpretation
+      ? modelInterpretation(interpretation)
+      : { status: "ContradictoryInterpretation", operations: [] }
+    const interpretationHash = try hashStableJson(
+      publicInterpretation(normalizedInterpretation(MODEL_CLASSIFICATIONS[classification], requested)),
+    )
     const sourceHash = try hashStableJson(input.source)
     if ((try hashStableJson(try foreignSync(() => input.currentSource()))) !== sourceHash) return false
-    try value.lifecycle.step(
-      {
-        type: "observeCurrent",
-        live: value.state.live,
-        currentRequestHash: value.state.currentRequestHash,
-        currentSourceHash: value.state.currentSourceHash,
-      },
-      (payload) => [undefined, payload] as const,
-    )
-    return try value.lifecycle.step(
-      {
-        type: "commitRestriction",
-        classification: MODEL_CLASSIFICATIONS[classification],
-        interpretation: interpretation
-          ? modelInterpretation(interpretation)
-          : { status: "ContradictoryInterpretation", operations: [] },
+    const before = try value.lifecycle.get()
+    try value.lifecycle.send({
+      type: "observeCurrent",
+      live: value.state.live,
+      currentRequestHash: value.state.currentRequestHash,
+      currentSourceHash: before.sourceHash,
+    })
+    const next = try value.lifecycle.send({
+      type: "commitRestriction",
+      classification: MODEL_CLASSIFICATIONS[classification],
+      interpretation: requested,
+      sourceHash,
+      observedSourceHash: sourceHash,
+    })
+    if (!before.committed) {
+      Object.assign(value.receiver, {
+        classification: CLASSIFICATIONS[next.classification],
+        interpretation: publicInterpretation(next.interpretation),
+        interpretationHash,
+        source: input.source,
         sourceHash,
-        observedSourceHash: sourceHash,
-      },
-      (payload, next) => [
-        !next.tainted,
-        payload.currentSource ? payload : { source: input.source, currentSource: input.currentSource },
-      ] as const,
-    )
+        currentSource: input.currentSource,
+        committed: true,
+        revision: next.revision,
+      })
+    } else if (next.revision !== before.revision) {
+      Object.assign(value.receiver, {
+        tainted: true,
+        classification: CLASSIFICATIONS[next.classification],
+        interpretation: publicInterpretation(next.interpretation),
+        revision: next.revision,
+      })
+    }
+    return !next.tainted
   }) ?? false
 }
 

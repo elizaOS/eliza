@@ -1,5 +1,5 @@
 // spec/core/settingsKeys.md, "Production rejects unset and public salts on refresh"; spec/core/settingsKeys.md, "A configured private salt always has a positive key identity"; spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/settingsKeys.md, "The ephemeral-key warning is emitted once until explicit cache clearing"
-import { Machine, cacheValid, encryptionRequired, machine, parseEvent, type EnvelopeKind, type KeyCache, type SaltKind } from "../gen/core__settingsKeys.effect.vibe"
+import { Machine, cacheValid, encryptionRequired, machine, type EnvelopeKind, type KeyCache, type SaltKind } from "../gen/core__settingsKeys.effect.vibe"
 import { failingAs, foreign, Foreign, promised, thrown } from "./edge.vibe"
 import { createUniqueUuid } from "./entities.vibe"
 import { ElizaError } from "./errors.vibe"
@@ -35,17 +35,19 @@ export function createSettingFromConfig(
 export error UnsafeProductionSalt { message: string }
 
 const PUBLICLY_KNOWN_SECRET_SALT = "secretsalt"
+const SALT_CACHE_TTL_MS = 300000
 const PRIVATE_KEY = 1
 const EPHEMERAL_KEY = 2
 
 interface SaltKeys {
   privateSalt: string
   ephemeralSalt: string | undefined
+  refreshedAt: number
 }
 
 effect function saltKeyMachine() {
   provide machine() {
-    return try own(try Machine, { privateSalt: "", ephemeralSalt: undefined } as SaltKeys)
+    return try own(try Machine, { privateSalt: "", ephemeralSalt: undefined, refreshedAt: 0 } as SaltKeys)
   }
 }
 
@@ -61,15 +63,20 @@ function saltKind(envSalt: string): SaltKind {
   return envSalt === PUBLICLY_KNOWN_SECRET_SALT ? "PublicSalt" : "PrivateSalt"
 }
 
-effect function cachedSalt() {
-  const clock = parseEvent({ type: "setClock", now: Date.now() })
-  if (clock === undefined) return undefined
-  return saltKeys.step(clock, (keys, state) =>
-    [cacheValid(state) ? selectedSalt(keys, state) : undefined, keys] as const) catch (_refused) => undefined
+function elapsedTicks(elapsed: number): number {
+  if (!(elapsed < SALT_CACHE_TTL_MS)) return SALT_CACHE_TTL_MS
+  return elapsed > 0 ? Math.floor(elapsed) : 0
+}
+
+effect function cachedSalt(now: number) {
+  const tick = try saltKeys.read((state, keys) => state.cachedAt + elapsedTicks(now - keys.refreshedAt))
+  return try orDie(saltKeys.step({ type: "setClock", now: tick }, (keys, state) =>
+    [cacheValid(state) ? selectedSalt(keys, state) : undefined, keys] as const))
 }
 
 export effect function getSalt() {
-  const cached = try cachedSalt()
+  const now = Date.now()
+  const cached = try cachedSalt(now)
   if (cached !== undefined) return cached
 
   getEnvironment().clearCache()
@@ -83,7 +90,8 @@ export effect function getSalt() {
   const [state, value] = try orDie(saltKeys.step({ type: "readKey", freshId: EPHEMERAL_KEY }, (keys, state): readonly [readonly [KeyCache, string | undefined], SaltKeys] => {
     if (state.result !== "KeyReady") return [[state, undefined], keys] as const
     const salt = selectedSalt(keys, state)
-    return [[state, salt], state.cachedId === EPHEMERAL_KEY ? { ...keys, ephemeralSalt: salt } : keys] as const
+    const refreshed = { ...keys, refreshedAt: now }
+    return [[state, salt], state.cachedId === EPHEMERAL_KEY ? { ...refreshed, ephemeralSalt: salt } : refreshed] as const
   }))
 
   if (value === undefined) {
@@ -128,9 +136,10 @@ function isEncryptedV2(value: string): boolean {
   return BufferUtils.fromHex(parts[1]).length === 12 && BufferUtils.fromHex(parts[3]).length === 16
 }
 
-function envelopeKind(value: string): EnvelopeKind {
+function envelopeKind(value: string, legacyFirst = false): EnvelopeKind {
+  if (legacyFirst && isEncryptedV1(value)) return "LegacyCbc"
   if (isEncryptedV2(value)) return "AuthenticatedGcm"
-  return isEncryptedV1(value) ? "LegacyCbc" : "Plaintext"
+  return !legacyFirst && isEncryptedV1(value) ? "LegacyCbc" : "Plaintext"
 }
 
 function settingsKey(salt: string) {
@@ -138,7 +147,7 @@ function settingsKey(salt: string) {
 }
 
 export effect function encryptStringValue(value: string, salt: string) {
-  if (!encryptionRequired(envelopeKind(value))) {
+  if (!encryptionRequired(envelopeKind(value, true))) {
     return value
   }
 
