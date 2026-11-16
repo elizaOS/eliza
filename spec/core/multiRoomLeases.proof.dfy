@@ -622,6 +622,7 @@ lemma OrderedBatchRoomsArePositive(rooms: seq<int>)
   requires forall room | room in rooms :: room > 0
   ensures forall room | room in orderedRooms(rooms) :: room > 0
   ensures |orderedRooms(rooms)| == 0 <==> |rooms| == 0
+  ensures roomRanksAscending(orderedRooms(rooms))
   decreases |rooms|
 {
   reveal orderedRooms();
@@ -639,6 +640,7 @@ lemma OrderedBatchRoomsArePositive(rooms: seq<int>)
     var earlier := orderedRooms(prefix);
     var sorted := orderedRooms(rooms);
     assert sorted == insertRoom(earlier, last);
+    RoomInsertionPreservesRank(earlier, last);
     if last !in earlier {
       reveal insertRoom(), ProofLib.Filter();
       var smaller := (r: int) => r < last;
@@ -657,6 +659,90 @@ lemma OrderedBatchRoomsArePositive(rooms: seq<int>)
       assert sorted == earlier;
     }
     assert last in sorted;
+  }
+}
+
+lemma RoomBatchAscendingFromRanks(rooms: seq<int>)
+  requires forall i :: 0 <= i < |rooms| ==> 0 < rooms[i]
+  requires forall i, j :: 0 <= i < j < |rooms| ==> rooms[i] < rooms[j]
+  ensures roomRanksAscending(rooms)
+  decreases |rooms|
+{
+  reveal roomRanksAscending();
+  if |rooms| > 0 {
+    var prefix := rooms[..|rooms|-1];
+    var last := rooms[|rooms|-1];
+    var rank := (a: HeldRoomOrder, r: int) => HeldRoomOrder(r, a.ascending && a.previous < r);
+    assert rooms == prefix + [last];
+    RoomBatchAscendingFromRanks(prefix);
+    RoomBatchAscendingFold(prefix, emptyHeldRoomOrder);
+    ProofLib.FoldLeftAppend(rank, emptyHeldRoomOrder, prefix, last);
+  }
+}
+
+lemma FilterKeepsRoomRanks(keep: int -> bool, rooms: seq<int>)
+  requires forall i, j :: 0 <= i < j < |rooms| ==> rooms[i] < rooms[j]
+  ensures var kept := ProofLib.Filter(keep, rooms);
+    forall i, j :: 0 <= i < j < |kept| ==> kept[i] < kept[j]
+  decreases |rooms|
+{
+  if |rooms| > 0 {
+    var tail := rooms[1..];
+    FilterKeepsRoomRanks(keep, tail);
+    ProofLib.FilterCons(keep, rooms);
+    if keep(rooms[0]) {
+      var remainder := ProofLib.Filter(keep, tail);
+      var kept := ProofLib.Filter(keep, rooms);
+      ProofLib.FilterSubset(keep, tail);
+      forall i, j | 0 <= i < j < |kept| ensures kept[i] < kept[j] {
+        if i == 0 {
+          var index :| 0 <= index < |tail| && tail[index] == remainder[j-1];
+          assert rooms[index+1] == kept[j];
+        } else {
+          assert kept[i] == remainder[i-1] && kept[j] == remainder[j-1];
+        }
+      }
+    }
+  }
+}
+
+lemma RoomInsertionPreservesRank(rooms: seq<int>, room: int)
+  requires roomRanksAscending(rooms) && room > 0
+  ensures roomRanksAscending(insertRoom(rooms, room))
+{
+  reveal insertRoom(), roomRanksAscending();
+  if room !in rooms {
+    var smaller := (value: int) => value < room;
+    var larger := (value: int) => value > room;
+    var lower := ProofLib.Filter(smaller, rooms);
+    var upper := ProofLib.Filter(larger, rooms);
+    var inserted := insertRoom(rooms, room);
+    assert inserted == lower + [room] + upper;
+    RoomBatchAscendingFold(rooms, emptyHeldRoomOrder);
+    FilterKeepsRoomRanks(smaller, rooms);
+    FilterKeepsRoomRanks(larger, rooms);
+    forall i | 0 <= i < |inserted|
+      ensures 0 < inserted[i]
+      ensures i < |lower| ==> inserted[i] < room
+      ensures |lower| < i ==> room < inserted[i]
+    {
+      if i != |lower| {
+        if i < |lower| {
+          ProofLib.FilterMember(smaller, rooms, inserted[i]);
+        } else {
+          ProofLib.FilterMember(larger, rooms, inserted[i]);
+        }
+        var index :| 0 <= index < |rooms| && rooms[index] == inserted[i];
+      }
+    }
+    forall i, j | 0 <= i < j < |inserted| ensures inserted[i] < inserted[j] {
+      if j < |lower| {
+        assert inserted[i] == lower[i] && inserted[j] == lower[j];
+      } else if |lower| < i {
+        assert inserted[i] == upper[i-|lower|-1] && inserted[j] == upper[j-|lower|-1];
+      }
+    }
+    RoomBatchAscendingFromRanks(inserted);
   }
 }
 
@@ -733,6 +819,7 @@ lemma OpenBatchPreservesRoomFacts(s: MultiRoomLeases, caller: int, rooms: seq<in
     ensures c.phase.BatchAcquiring? || c.phase.BatchWaiting? ==>
       |heldRooms(after, c.id)| == c.position && (forall room | room in heldRooms(after, c.id) :: room in c.wanted)
     ensures c.phase.BatchInvoking? ==> heldRooms(after, c.id) == c.wanted && c.position == |c.wanted|
+    ensures roomRanksAscending(c.wanted)
     ensures c.phase.BatchAcquiring? || c.phase.BatchWaiting? ==>
       wantedRoom(c) > 0 && (forall room | room in heldRooms(after, c.id) :: room < wantedRoom(c))
     ensures c.phase.BatchAcquiring? ==> c.id !in after.queue.cancelled
