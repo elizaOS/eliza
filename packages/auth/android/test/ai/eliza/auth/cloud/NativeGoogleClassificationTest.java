@@ -14,6 +14,7 @@ check("state-mismatch", "challenge-request-mismatch", CloudSignInFlow.googleFail
 check("provider-refused", "google-identity-unverified", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 401, false, "Google identity could not be verified"));
 check("expired", "challenge-consumed", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 401, false, "Sign-in challenge was already used"));
 check("provider-refused", "identity-proof-unavailable", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 401, false, "Google identity token was already used or expired"));
+check("provider-refused", "google-identity-rejected", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 401, null, "google_identity_rejected"));
 check("rate-limited", "rate-limited", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 429, false, "Too many sign-in attempts. Try again later."));
   for(int status:new int[]{400,401,404}){
    for(Object error:new Object[]{null,"<html>secret</html>","Bearer secret.jwt.payload","https://evil.test/?token=secret", "Google identity could not be verified\nsecret",new Object(){public String toString(){throw new AssertionError("must not stringify");}}}){

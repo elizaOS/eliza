@@ -212,6 +212,35 @@ back a key already committed. Saved-key acknowledgement recovery on the next sta
 creates no interactive attempt and reserves no intent; it settles the key with the
 same outcomes as the in-process retries (below).
 
+### Google sign-in with Gmail, and sign-out
+
+- Native Google mode makes one Cloud call. The plugin gets a Steward challenge,
+  opens the Android account picker for an id_token, then asks Google for exactly
+  the scopes the host names with `CloudSignInConfig.Builder.googleScope(...)`, for
+  the same account. The host shows the same list in its disclosure. Cloud's own
+  default scope list (`GET /api/v1/app-auth/mobile/google`) is not used; only its
+  `serverClientId` is read. After the Android authorization dialog, the plugin posts
+  the challenge proof, the id_token and Google's `serverAuthCode` to
+  `POST /api/v1/app-auth/mobile/google`. Cloud verifies the identity, mints the key
+  and stores the Google connection. The acknowledgement tail is unchanged.
+- With no `googleScope`, Google sign-in asks for no permission and reports no
+  `google` field.
+- With scopes, an authenticated outcome that has a `requestId` carries
+  `google: {connected: true, email, scopes}` (the scopes Google granted) or
+  `google: {connected: false, reason}`. The reason is Cloud's code (for example
+  `google_account_mismatch`) or a local one (`google_declined`,
+  `google_not_configured`, `google_unavailable`). A Gmail failure never fails the
+  sign-in.
+- An account with a second factor completes the code step first. The unused Google
+  code stays in memory. After Cloud confirms the new key, the plugin sends the code
+  to `POST /api/v1/eliza/google/connect/native` with that key.
+- `signOut({environment})` reserves a credential intent, ends a sign-in in
+  progress, removes the saved key, its receipt and the pending browser record, and
+  then revokes the key at Cloud (one try, then two in-memory retries). It clears
+  the Google picker state and answers `{environment, status: "signed-out",
+  revocation?: "revoked" | "unconfirmed"}`. The renderer parses the answer with
+  `nativeSignOut`.
+
 ### Readiness, acknowledgement and code steps
 
 - `status()` reports each method once Cloud is ready for the app. A ready method is
