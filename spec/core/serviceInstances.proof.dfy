@@ -1752,6 +1752,155 @@ lemma ServiceReturnedClassObjects(s: ServiceInstances, after: ServiceInstances, 
   }
 }
 
+lemma ServiceClassLookupMember(s: ServiceInstances, classId: int)
+  requires serviceClass(s, classId) != noClass
+  ensures serviceClass(s, classId) in s.classes && serviceClass(s, classId).id == classId
+{
+  ServiceClassProjection(s, classId);
+  var byId := (c: ServiceClassEntry) => c.id == classId;
+  var matches := ProofLib.Filter(byId, s.classes);
+  assert |matches| > 0;
+  ProofLib.FilterMember(byId, s.classes, matches[0]);
+}
+
+lemma ServiceReturnedPublicationInstances(s: ServiceInstances, after: ServiceInstances, classId: int, serviceType: string, instanceId: int)
+  requires alwaysClassAndObjectIdentities(s) && alwaysClassOwnsKnownObjects(s) && alwaysDeclarationsMatch(s)
+  requires instanceId > 0 && after.declarations == s.declarations && |after.classes| == |s.classes|
+  requires forall i :: 0 <= i < |s.classes| ==>
+    (after.classes[i] == (if s.classes[i].id == classId then s.classes[i].(live := instanceId) else s.classes[i]))
+  ensures forall instance :: instance in classInstances(after, serviceType) ==>
+    (instance > 0 && (exists c :: c in after.classes && c.serviceType == serviceType && c.live == instance))
+{
+  var instances := classInstances(after, serviceType);
+  var byType := (d: ServiceDeclaration) => d.serviceType == serviceType && serviceClass(after, d.classId).live != 0;
+  var contributing := ProofLib.Filter(byType, after.declarations);
+  assert |instances| == |contributing|;
+  forall instance | instance in instances
+    ensures instance > 0 && (exists c :: c in after.classes && c.serviceType == serviceType && c.live == instance)
+  {
+    var i :| 0 <= i < |instances| && instances[i] == instance;
+    var declaration := contributing[i];
+    ProofLib.FilterMember(byType, after.declarations, declaration);
+    var owner := serviceClass(after, declaration.classId);
+    assert instance == owner.live && owner.live != 0;
+    ServiceClassLookupMember(after, declaration.classId);
+    ServiceStartClassFields(s, after, declaration.classId);
+    var j :| 0 <= j < |after.classes| && after.classes[j] == owner;
+    assert s.classes[j] in s.classes;
+    if owner.live != instanceId {
+      assert owner.live == s.classes[j].live;
+      var priorObject :| priorObject in s.objects && priorObject.id == owner.live;
+      assert priorObject.id > 0;
+    }
+  }
+}
+
+lemma ServiceReturnedOtherPublicationOwners(s: ServiceInstances, after: ServiceInstances, classId: int, serviceType: string)
+  requires alwaysPublicationIdentitiesValid(s) && alwaysClassAndObjectIdentities(s)
+  requires serviceClass(s, classId).serviceType == serviceType && |after.classes| == |s.classes|
+  requires forall i :: 0 <= i < |s.classes| && s.classes[i].id != classId ==> after.classes[i] == s.classes[i]
+  ensures forall p :: p in s.published && p.serviceType != serviceType ==>
+    (forall id :: id in p.instances ==> (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id))
+{
+  ServiceClassFind(s, classId);
+  forall p | p in s.published && p.serviceType != serviceType
+    ensures forall id :: id in p.instances ==> (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id)
+  {
+    forall id | id in p.instances
+      ensures exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id
+    {
+      var i :| 0 <= i < |s.classes| && s.classes[i].serviceType == p.serviceType && s.classes[i].live == id;
+      assert s.classes[i] in s.classes;
+      assert s.classes[i].id != classId && after.classes[i] == s.classes[i];
+      assert after.classes[i] in after.classes;
+    }
+  }
+}
+
+lemma ServiceClassInstancesSameClasses(before: ServiceInstances, after: ServiceInstances, serviceType: string)
+  requires before.classes == after.classes && before.declarations == after.declarations
+  ensures classInstances(before, serviceType) == classInstances(after, serviceType)
+{
+  var beforeFilter := (d: ServiceDeclaration) => d.serviceType == serviceType && serviceClass(before, d.classId).live != 0;
+  var afterFilter := (d: ServiceDeclaration) => d.serviceType == serviceType && serviceClass(after, d.classId).live != 0;
+  ProofLib.FilterSamePredicate(beforeFilter, afterFilter, before.declarations);
+  var contributors := ProofLib.Filter(beforeFilter, before.declarations);
+  var earlier := classInstances(before, serviceType);
+  var later := classInstances(after, serviceType);
+  assert |earlier| == |contributors| == |later|;
+  forall i | 0 <= i < |contributors| ensures earlier[i] == later[i] {
+    var declaration := contributors[i];
+    assert serviceClass(before, declaration.classId) == serviceClass(after, declaration.classId);
+  }
+}
+
+lemma ServicePublicationIdentityFilters(s: ServiceInstances)
+  ensures alwaysPublicationIdentitiesValid(s) ==
+    (forall p :: p in s.published ==>
+      p.serviceType != "" && 0 < |p.instances| &&
+      |ProofLib.Filter((other: ServicePublication) => (other.serviceType == p.serviceType), s.published)| == 1 &&
+      (forall id :: id in p.instances ==>
+        id > 0 && (exists c :: c in s.classes && c.serviceType == p.serviceType && c.live == id)))
+{}
+
+lemma ServiceReplacedPublicationValid(s: ServiceInstances, after: ServiceInstances, serviceType: string, instances: seq<int>)
+  requires alwaysPublicationIdentitiesValid(s) && serviceType != ""
+  requires after.published == replacePublication(serviceType, instances, after.(published := s.published)).published
+  requires forall id :: id in instances ==>
+    (id > 0 && (exists c :: c in after.classes && c.serviceType == serviceType && c.live == id))
+  requires forall p :: p in s.published && p.serviceType != serviceType ==>
+    (forall id :: id in p.instances ==> (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id))
+  ensures alwaysPublicationIdentitiesValid(after)
+{
+  ServicePublicationIdentityFilters(s);
+  ServicePublicationIdentityFilters(after);
+  var replacement := ServicePublication(serviceType, instances);
+  forall p | p in after.published
+    ensures p.serviceType != "" && 0 < |p.instances| &&
+      |ProofLib.Filter((other: ServicePublication) => (other.serviceType == p.serviceType), after.published)| == 1
+    ensures forall id :: id in p.instances ==> id > 0 && (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id)
+  {
+    var byType := (other: ServicePublication) => (other.serviceType == p.serviceType);
+    var replacing := (other: ServicePublication) => (other.serviceType == serviceType);
+    if |instances| == 0 {
+      var retained := (other: ServicePublication) => (other.serviceType != serviceType);
+      assert after.published == ProofLib.Filter(retained, s.published);
+      ProofLib.FilterMember(retained, s.published, p);
+      ProofLib.FilterOfFilterLength(retained, byType, byType, s.published);
+      assert |ProofLib.Filter(byType, s.published)| == 1;
+      ProofLib.FilterMember(byType, after.published, p);
+      assert |ProofLib.Filter(byType, after.published)| == 1;
+    } else if exists current :: current in s.published && replacing(current) {
+      var i :| 0 <= i < |after.published| && after.published[i] == p;
+      var prior := s.published[i];
+      assert p == replacement || (p == prior && p in s.published && p.serviceType != serviceType);
+      assert prior in s.published && prior.serviceType == p.serviceType;
+      ProofLib.FilterSamePredicate(byType, (other: ServicePublication) => (other.serviceType == prior.serviceType), s.published);
+      assert |ProofLib.Filter(byType, s.published)| == 1;
+      ProofLib.FilterLengthPointwise(byType, byType, s.published, after.published);
+      assert |ProofLib.Filter(byType, after.published)| == 1;
+    } else {
+      assert after.published == s.published + [replacement];
+      assert p == replacement || (p in s.published && p.serviceType != serviceType);
+      if p == replacement {
+        ProofLib.FilterNone(byType, s.published);
+      } else {
+        assert |ProofLib.Filter(byType, s.published)| == 1;
+      }
+      ProofLib.FilterAppend(byType, s.published, replacement);
+      assert |ProofLib.Filter(byType, after.published)| == 1;
+    }
+    if p == replacement {
+      assert 0 < |instances|;
+      assert p.serviceType == serviceType;
+    } else {
+      assert p in s.published;
+      assert p.serviceType != "" && 0 < |p.instances|;
+    }
+    assert |ProofLib.Filter((other: ServicePublication) => (other.serviceType == p.serviceType), after.published)| == 1;
+  }
+}
+
 lemma ServiceReturnedPublication(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int)
   requires alwaysPublicationIdentitiesValid(s) && alwaysDeclarationsMatch(s) && alwaysClassAndObjectIdentities(s)
   requires alwaysClassOwnsKnownObjects(s)
@@ -1759,83 +1908,20 @@ lemma ServiceReturnedPublication(s: ServiceInstances, after: ServiceInstances, a
   requires after == returnInstance(s, attemptId, instanceId)
   ensures alwaysPublicationIdentitiesValid(after)
 {
-  var owner := serviceClass(s, serviceAttempt(s, attemptId).classId);
-  var late := s.stopped || !owner.registered;
-  if late {
+  var classId := serviceAttempt(s, attemptId).classId;
+  var owner := serviceClass(s, classId);
+  if s.stopped || !owner.registered {
     assert after.published == s.published && after.classes == s.classes;
   } else {
-    var classId := serviceAttempt(s, attemptId).classId;
-    ServiceClassProjection(s, classId);
-    var matched := ProofLib.Filter((c: ServiceClassEntry) => c.id == classId, s.classes);
-    assert |matched| > 0 && owner == matched[0];
-    ProofLib.FilterMember((c: ServiceClassEntry) => c.id == classId, s.classes, owner);
-    assert owner in s.classes;
-    var declaration :| declaration in s.declarations && declaration.classId == owner.id;
+    ServiceClassLookupMember(s, classId);
+    var declaration :| declaration in s.declarations && declaration.classId == classId;
     assert declaration.serviceType == owner.serviceType && owner.serviceType != "";
-    var instances := classInstances(after, owner.serviceType);
-    var entry := ServicePublication(owner.serviceType, instances);
-    var byType := (d: ServiceDeclaration) => d.serviceType == owner.serviceType && serviceClass(after, d.classId).live != 0;
-    var contributing := ProofLib.Filter(byType, after.declarations);
-    assert |instances| == |contributing|;
-    forall instance | instance in instances
-      ensures instance > 0 && (exists c :: c in after.classes && c.serviceType == owner.serviceType && c.live == instance)
-    {
-      var i :| 0 <= i < |instances| && instances[i] == instance;
-      var d := contributing[i];
-      ProofLib.FilterMember(byType, after.declarations, d);
-      var c := serviceClass(after, d.classId);
-      assert instance == c.live;
-      ServiceStartClassFields(s, after, d.classId);
-      ServiceClassProjection(after, d.classId);
-      var selected := ProofLib.Filter((cls: ServiceClassEntry) => cls.id == d.classId, after.classes);
-      assert |selected| > 0 && selected[0] == c;
-      ProofLib.FilterMember((cls: ServiceClassEntry) => cls.id == d.classId, after.classes, c);
-      var j :| 0 <= j < |after.classes| && after.classes[j] == c;
-      assert s.classes[j] in s.classes;
-      assert c.live == instanceId || c.live == s.classes[j].live;
-      if c.live != instanceId {
-        var priorObject :| priorObject in s.objects && priorObject.id == s.classes[j].live;
-        assert priorObject.id > 0;
-      }
-    }
-    assert after.published == replacePublication(owner.serviceType, instances, after.(published := s.published)).published;
-    forall p | p in after.published
-      ensures p.serviceType != "" && 0 < |p.instances| &&
-        |ProofLib.Filter((other: ServicePublication) => other.serviceType == p.serviceType, after.published)| == 1
-      ensures forall id :: id in p.instances ==> id > 0 && (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id)
-    {
-      if p == entry {
-        var typ := (other: ServicePublication) => other.serviceType == owner.serviceType;
-        if exists current :: current in s.published && typ(current) {
-          var priorPublication :| priorPublication in s.published && typ(priorPublication);
-          assert |ProofLib.Filter(typ, s.published)| == 1;
-          ProofLib.FilterLengthPointwise(typ, typ, s.published, after.published);
-        } else {
-          ProofLib.FilterNone(typ, s.published);
-          ProofLib.FilterAppend(typ, s.published, entry);
-        }
-      } else {
-        assert p in s.published && p.serviceType != owner.serviceType;
-        forall id | id in p.instances
-          ensures id > 0 && (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id)
-        {
-          var i :| 0 <= i < |s.classes| && s.classes[i].serviceType == p.serviceType && s.classes[i].live == id;
-          assert s.classes[i] in s.classes;
-          ServiceClassFind(s, classId);
-          assert s.classes[i].id != classId && after.classes[i] == s.classes[i];
-          assert after.classes[i] in after.classes;
-        }
-        var typ := (other: ServicePublication) => other.serviceType == p.serviceType;
-        if |instances| == 0 {
-          var retained := (other: ServicePublication) => other.serviceType != owner.serviceType;
-          ProofLib.FilterOfFilterLength(retained, typ, typ, s.published);
-        } else if exists current :: current in s.published && current.serviceType == owner.serviceType {
-          ProofLib.FilterLengthPointwise(typ, typ, s.published, after.published);
-        } else {
-          ProofLib.FilterAppend(typ, s.published, entry);
-        }
-      }
-    }
+    var prepared := s.(objects := after.objects, attempts := after.attempts, classes := after.classes);
+    assert after.published == replacePublication(owner.serviceType, classInstances(prepared, owner.serviceType), prepared).published;
+    ServiceClassInstancesSameClasses(prepared, after, owner.serviceType);
+    ServiceReturnedPublicationInstances(s, after, classId, owner.serviceType, instanceId);
+    ServiceReturnedOtherPublicationOwners(s, after, classId, owner.serviceType);
+    ServiceReplacedPublicationValid(s, after, owner.serviceType, classInstances(after, owner.serviceType));
   }
 }
 
