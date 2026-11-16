@@ -1,0 +1,30 @@
+// spec/core/numbers.md, "Canonical integers reject signs leading zeroes padding fractions and unsafe values"
+import { Arbitrary, Effect, Exit, Schema } from "effect";
+import { contract } from "vibestack/testing";
+import { parseCanonicalInteger } from "./number-parsing.vibe";
+
+const parsed = (text: string) => {
+  const exit = Effect.runSyncExit(parseCanonicalInteger(text));
+  return Exit.isSuccess(exit) ? exit.value : null;
+};
+
+const digit = Arbitrary.schema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 9 })));
+const scale = Arbitrary.schema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 15 })));
+const safe = Arbitrary.all([Arbitrary.schema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }))), scale])
+  .pipe(Arbitrary.map(([value, power]) => Math.floor(value / 10 ** power)));
+const signed = Arbitrary.all([Arbitrary.schema(Schema.Literals(["+", "-"])), Arbitrary.array(digit, { minLength: 1 })])
+  .pipe(Arbitrary.map(([sign, digits]) => sign + digits.join("")));
+
+export const safeIntegersReadBack = contract({
+  input: safe,
+  run: (value: number) => parsed(String(value)),
+  deterministic: true,
+  invariant: (value, result) => result === value,
+});
+
+export const signedDigitsAreNeverValues = contract({
+  input: signed,
+  run: parsed,
+  deterministic: true,
+  invariant: (_, result) => typeof result !== "number",
+});

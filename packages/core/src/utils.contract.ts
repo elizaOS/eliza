@@ -1,0 +1,28 @@
+// spec/core/media.md, "Story: Infer media type with the established precedence"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { Arbitrary, Schema } from "effect";
+import { contract } from "vibestack/testing";
+import { getContentTypeFromMimeType, parseBooleanFromText } from "./utils.vibe";
+
+const mimeStart = Arbitrary.schema(Schema.Literals(["", "image/", "Video/", "AUDIO/", "text/", "application/PDF", "x-Document", "imagE"]));
+const ascii = Arbitrary.all([mimeStart, Arbitrary.schema(Schema.String)]).pipe(
+  Arbitrary.map(([start, rest]) => start + Array.from(rest, (unit) => String.fromCharCode(unit.charCodeAt(0) % 128)).join("")),
+);
+
+const word = Arbitrary.schema(Schema.Literals(["yes", "Y", "true", "t", "1", "On", "enable", "no", "off", "\u00a0yes\u2003", "\u0131"]));
+const spoken = Arbitrary.all([word, Arbitrary.schema(Schema.String), Arbitrary.schema(Schema.Boolean)]).pipe(
+  Arbitrary.map(([start, rest, alone]) => (alone ? start : start + rest)),
+);
+
+export const mimeCaseNeverChangesTheMediaType = contract({
+  input: ascii,
+  run: getContentTypeFromMimeType,
+  deterministic: true,
+  invariant: (mime, type) => getContentTypeFromMimeType(mime.toUpperCase()) === type && getContentTypeFromMimeType(mime.toLowerCase()) === type,
+});
+
+export const booleanTextIgnoresCaseAndPadding = contract({
+  input: spoken,
+  run: parseBooleanFromText,
+  deterministic: true,
+  invariant: (text, truthy) => parseBooleanFromText(` ${text.toUpperCase()}\t`) === truthy,
+});

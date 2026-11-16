@@ -1,0 +1,16 @@
+// spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
+import { Arbitrary, Schema } from "effect";
+import { contract } from "vibestack/testing";
+import { isPrivateIpAddress } from "./ssrf.vibe";
+
+const octet = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 255 }));
+const leadingOctet = Arbitrary.schema(Schema.Union([Schema.Literals([0, 10, 100, 127, 169, 172, 192, 198, 224, 255]), octet]));
+const dottedQuad = Arbitrary.all([leadingOctet, Arbitrary.schema(octet), Arbitrary.schema(octet), Arbitrary.schema(octet)])
+  .pipe(Arbitrary.map((parts) => parts.join(".")));
+
+export const anIpv4MappedAddressIsScreenedAsItsIpv4Address = contract({
+  input: dottedQuad,
+  run: (address: string) => [address, `::ffff:${address}`, `::ffff:0:${address}`].map(isPrivateIpAddress),
+  deterministic: true,
+  invariant: (_address, [plain, mapped, translated]) => mapped === plain && translated === plain,
+});
