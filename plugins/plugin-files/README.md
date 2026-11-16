@@ -17,9 +17,10 @@ cancelling the action retires its pending selection and releases any late grant.
 Changes to files still require the owner to review them in the active Files view.
 `files_open` also accepts `shown`, the position of an item in the filter results on
 screen; the view binds that displayed result across permission and selection
-waits, so the filter still returns only a count. Filters remain until explicitly
-cleared. An incomplete search fails explicitly while retaining its visible rows;
-storage hosts must return `truncated: false` only for a complete query. Missing
+waits, so the filter still returns only a count. A filter stays in Files until
+the owner clears it or leaves the view. An incomplete search reports failure
+and keeps its visible rows. Storage hosts must return `truncated: false` only
+for a complete query. Missing
 completeness metadata is treated as incomplete, including legacy native queries;
 returned rows remain available for selection without claiming there are no matches.
 

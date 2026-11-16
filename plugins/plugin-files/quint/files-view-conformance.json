@@ -143,7 +143,12 @@
     {
       "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
       "classname": "test",
-      "name": "a filter is restored after both short and long visits away"
+      "name": "leaving Files clears a filter and its displayed positions"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a filter query retired on leave cannot publish into the next visit"
     },
     {
       "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
