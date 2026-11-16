@@ -418,6 +418,11 @@ The versioned `spec/lock.json` holds `specs` keyed by source path, `contracts`
 keyed by source file, and `unproved` keyed by proof unit. Commit it with the
 specs.
 
+When an accepted simulated-only obligation proves or is removed, `review`
+lists its obsolete exception. `pnpm accept` removes obsolete exceptions
+when it records the spec and contract reviews. Only `pnpm accept unproved`
+can add exceptions.
+
 Removed spec paths stay in review until their removal is accepted.
 
 Accept records everything or nothing: only when every other stage passes,

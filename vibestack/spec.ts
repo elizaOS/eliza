@@ -144,8 +144,7 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
 }
 
 /**
- * The proof stage, run while the typecheck does: what it reports, in order, and, for `accept unproved`, the ledger to
- * record, if every unit could be checked. `accepted` is the ledger as it is.
+ * The proof stage, run while the typecheck does: what it reports, in order, and the proposed ledger if it passes.
  */
 async function proofStage(root: string, memory: Memory, specs: Spec[], models: Model[], srcFiles: SrcFile[], accepted: Record<string, Accepted | undefined>, accept: false | "reviews" | "unproved"): Promise<{ results: Result[]; ledger?: Record<string, Accepted> }> {
   const results: Result[] = [];
@@ -155,7 +154,6 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
     const dafnyProblem = (await dafnyVersion()).problem;
     if (dafnyProblem) throw new Error(dafnyProblem);
     const ledger: Record<string, Accepted> = {};
-    let recordable = true;
     fs.rmSync(path.join(root, "gen/proof"), { recursive: true, force: true });
     const units = proofUnits(root, models, srcFiles);
     for (const f of strayProofFiles(root, units))
@@ -211,8 +209,8 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
       const valid = !u.src && was?.text === meaning ? was.unproved : [];
       const outdated = was && was.text !== meaning ? `; the ${was.unproved.length} accepted earlier were accepted for another text of this unit or its proof file, and no longer count` : "";
       const fresh = proof.unproved.filter((x) => !valid.includes(x));
-      const stale = valid.filter((x) => !proof.unproved.includes(x));
-      if (!u.src && proof.unproved.length) ledger[u.unit] = { text: meaning, unproved: proof.unproved };
+      const retained = accept === "unproved" ? proof.unproved : valid.filter((x) => proof.unproved.includes(x));
+      if (!u.src && retained.length) ledger[u.unit] = { text: meaning, unproved: retained };
       const start = proof.scaffold ? `\n      their lemmas without a body yet, each with one to start from: ${scaffold}` : "";
       /** The rules the obligations name: the transition or law each is of, and every definition its clause mentions. */
       const named = (xs: string[]) => {
@@ -227,22 +225,19 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
         // A precondition is assumed by the proof and checked by no one: callers outside verified code must meet it.
         + (u.requires ? `, under ${u.requires} //@ requires that its unverified callers must meet` : "");
       if (proof.errors.length) {
-        recordable = false;
         said(false, `${u.unit}: Dafny could not check it (full output in ${logFile}, final Dafny in ${dfy})`, indent(proof.errors.join("\n")), u.unit);
       } else if (u.src && proof.unproved.length) {
-        recordable = false;
         said(false, `${u.unit}: ${proof.unproved.length} of ${proof.total} obligations not proved. Hand-written code is not simulated, so they must be proved in ${u.proofFile}. Full output in ${logFile}, final Dafny in ${dfy}`, listed(proof.unproved) + start, u.unit);
       } else if (fresh.length && accept !== "unproved") {
         said(false, `${u.unit}: ${fresh.length} of ${proof.total} obligations not proved${outdated}. Prove them in ${u.proofFile}, or add the rule that makes them provable; if simulation is enough for them, that is the user's decision (\`pnpm accept unproved\`). Full output in ${logFile}, final Dafny in ${dfy}`, listed(fresh) + start, u.unit, named(fresh));
       } else {
-        said(true, `${u.unit}: ${proof.unproved.length ? `${proof.total} obligations, of which ${proof.unproved.length} are simulated only (accepted) and the rest proved` : `all ${proof.total} obligations proved`} for all states and inputs${assuming}`
-          + (stale.length && accept !== "unproved" ? `; ${stale.length} accepted earlier now prove, run \`pnpm accept unproved\` to tighten the ledger` : ""), [
+        said(true, `${u.unit}: ${proof.unproved.length ? `${proof.total} obligations, of which ${proof.unproved.length} are simulated only (accepted) and the rest proved` : `all ${proof.total} obligations proved`} for all states and inputs${assuming}`, [
             ...(proof.unproved.length ? [`    simulated only, accepted in spec/lock.json:\n${listed(proof.unproved)}`] : []),
             ...(assumed.length ? [`    assumed from the module it is proved against, simulated only there:\n${indent(u.rests.flatMap((name) => (proved.get(name)?.unproved ?? []).map((clause) => `${name}: ${clause}`)).join("\n"))}`] : []),
           ].join("\n"), u.unit);
       }
     }
-    return { results, ...(accept === "unproved" && recordable ? { ledger } : {}) };
+    return { results, ...(results.every((r) => r.ok) ? { ledger } : {}) };
   } catch (e) {
     said(false, (e as Error).message);
     return { results };
@@ -371,21 +366,29 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
       review(false, "sources changed while the check ran; nothing was accepted", indent((e as Error).message));
     }
   }
-  if (accept === "unproved" && allOk && ledger) {
-    const accepted = lock.unproved;
-    writeLedger(root, ledger, lock);
+  const formal = todos.every(({ todo }) => !todo.some((t) => t.status === "story has no rules" || t.status === "not formalized"));
+  const record = accept === "reviews" && allOk && formal;
+  const recordExceptions = accept === "unproved" && allOk;
+  if (record) acceptAllReviews(root, specs, srcFiles, { ...lock, unproved: ledger ?? lock.unproved });
+  if (ledger && (record || recordExceptions)) {
+    if (recordExceptions) writeLedger(root, ledger, lock);
     const entries = (l: Record<string, Accepted | undefined>) => Object.entries(l).flatMap(([unit, a]) => (a?.unproved ?? []).map((x) => `${unit}: ${x}  [${a!.text}]`));
-    const [before, after] = [entries(accepted), entries(ledger)];
+    const [before, after] = [entries(lock.unproved), entries(ledger)];
     const added = after.filter((x) => !before.includes(x));
     const removed = before.filter((x) => !after.includes(x));
     const line = (sign: string) => (x: string) => `    ${sign} ${x.replace(/  \[[^\]]*\]$/, "")}`;
-    report({ ok: true, stage: "proof", summary: `${path.relative(root, ledgerFile(root))}: ${added.length} added, ${removed.length} removed`,
+    if (recordExceptions || removed.length) report({ ok: true, stage: "proof", summary: `${path.relative(root, ledgerFile(root))}: ${added.length} added, ${removed.length} removed`,
       detail: [...added.map(line("+")), ...removed.map(line("-"))].join("\n") });
   }
-  const formal = todos.every(({ todo }) => !todo.some((t) => t.status === "story has no rules" || t.status === "not formalized"));
-  const record = accept === "reviews" && allOk && formal;
-  if (record) acceptAllReviews(root, specs, srcFiles, lock);
   const why = accept !== "reviews" ? "then run `pnpm accept`" : !allOk ? "nothing was accepted: fix the stages above first" : "every story needs rules and every rule a quint block before anything can be accepted";
+  if (ledger && !record && accept !== "unproved") {
+    const ledgerPath = path.relative(root, ledgerFile(root));
+    for (const [unit, was] of Object.entries(lock.unproved)) {
+      const stillUnproved = new Set(ledger[unit]?.unproved);
+      const obsolete = was.unproved.filter((x) => !stillUnproved.has(x));
+      if (obsolete.length) review(false, `${ledgerPath}: ${obsolete.length} obsolete simulated-only proof exception${obsolete.length === 1 ? "" : "s"} in ${unit}, ${why}`, indent(obsolete.join("\n")), ledgerPath);
+    }
+  }
   const items = (todo: Pending[], heading: string) => {
     const shown = moved(todo);
     return todo.map((t) => "    " + showPending(t)).join("\n") + (shown.length ? `\n\n    ${heading}:\n${shown.join("\n")}` : "");

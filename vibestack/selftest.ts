@@ -1526,22 +1526,28 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
   test("one lock holds reviews, contracts and proof acceptance and records deleted specs", async () => {
     const root = fixtures(["door"]);
     for (const spec of readSpecs(root)) acceptReviews(root, spec);
-    const proof = { door: { text: "previously-reviewed", unproved: ["an obligation"] } };
+    const proof = { "door.ts": { text: "previously-reviewed", unproved: ["an obligation"] } };
     writeLedger(root, proof);
     const lockPath = path.join(root, "spec/lock.json");
-    const before = JSON.parse(fs.readFileSync(lockPath, "utf8"));
-    fs.writeFileSync(lockPath, JSON.stringify({ ...before, contracts: { "src/old.ts": "old-contract" } }));
+    const before = JSON.parse(read("spec/lock.json", root));
+    assert.deepEqual(before.unproved, proof);
+    const withOldContract = JSON.stringify({ ...before, contracts: { "src/old.ts": "old-contract" } });
+    fs.writeFileSync(lockPath, withOldContract);
     assert.deepEqual(pending(root, readSpecs(root)[0]), []);
     fs.rmSync(path.join(root, "spec/door.md"));
     fs.writeFileSync(path.join(root, "spec/index.md"), "");
     assert.deepEqual(pendingSpecs(root, readSpecs(root)).map((p) => p.where), ["spec/door.md"]);
+    const obsolete = await run(root);
+    assert.deepEqual(obsolete.failed, ["review"], obsolete.text);
+    assert.match(obsolete.said("review", /obsolete simulated-only proof exception in door\.ts/)?.detail ?? "", /an obligation/, obsolete.text);
+    assert.equal(read("spec/lock.json", root), withOldContract);
     const removed = await run(root, "reviews");
     assert.deepEqual(removed.failed, [], removed.text);
     const after = JSON.parse(fs.readFileSync(lockPath, "utf8"));
     assert.deepEqual(Object.keys(after.specs), ["spec/index.md"]);
     assert.deepEqual(pendingSpecs(root, readSpecs(root)), []);
     assert.deepEqual(after.contracts, {});
-    assert.deepEqual(after.unproved, proof);
+    assert.deepEqual(after.unproved, {});
     fs.mkdirSync(path.join(root, "spec/child"));
     fs.writeFileSync(path.join(root, "spec/child/index.md"), "");
     fs.writeFileSync(path.join(root, "spec/index.md"), "# Home\n\n[Child](./child/)\n");
@@ -2386,6 +2392,23 @@ describe("the command line and what a failed proof leaves to start from", { conc
     fs.writeFileSync(path.join(root, "spec/highest.md"), read("spec/highest.md", root).replace("if (x > top) x else top", "if (top < x) x else top"));
     const remodelled = await run(root);
     assert.equal(remodelled.said("proof", /^highest\.ts: 1 of 1 obligations not proved; the 1 accepted earlier were accepted for another text/)?.ok, false, remodelled.text);
+    const ledger = read("spec/lock.json", root);
+    const refused = await run(root, "reviews");
+    assert.equal(refused.failed.includes("proof"), true, refused.text);
+    assert.equal(read("spec/lock.json", root), ledger);
+
+    fs.writeFileSync(path.join(root, "spec/highest.md"), read("vibestack/fixtures/highest.md"));
+    fs.writeFileSync(path.join(root, "spec/highest.proof.dfy"), read("vibestack/fixtures/highest.proof.dfy"));
+    const proved = await run(root);
+    assert.deepEqual(proved.failed, ["review"], proved.text);
+    assert.match(proved.said("review", /^spec\/lock\.json: 1 obsolete simulated-only proof exception in highest\.ts/)?.detail ?? "", /lawTheHighestIsAtLeastTheStart/, proved.text);
+    assert.equal(read("spec/lock.json", root), ledger);
+    const signed = await run(root, "reviews");
+    assert.deepEqual(signed.failed, [], signed.text);
+    assert.ok(signed.said("proof", /^spec\/lock\.json: 0 added, 1 removed/), signed.text);
+    assert.deepEqual(JSON.parse(read("spec/lock.json", root)).unproved, {});
+    const checked = await run(root);
+    assert.deepEqual(checked.failed, [], checked.text);
   });
 
   test("every operator the translator supports is used by the ops fixture, which is simulated, replayed and proved; what the proof takes as given, Node's code checks", async () => {
