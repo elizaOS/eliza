@@ -1,3 +1,19 @@
+lemma withdrawNextType_ensures(s: PluginServices, epochId: int)
+  ensures (inv(s) ==> canWithdrawNextType(s, epochId) ==> alwaysLiveClassOwnerUnique(withdrawNextType(s, epochId)))
+  ensures (inv(s) ==> canWithdrawNextType(s, epochId) ==> alwaysServiceOwnerEpochExists(withdrawNextType(s, epochId)))
+  ensures (inv(s) ==> canWithdrawNextType(s, epochId) ==> alwaysChildLifecyclesValid(withdrawNextType(s, epochId)))
+  ensures (inv(s) ==> canWithdrawNextType(s, epochId) ==> alwaysRetirementsFollowTypePlan(withdrawNextType(s, epochId)))
+  ensures (inv(s) ==> canWithdrawNextType(s, epochId) ==> alwaysNoOrphanInstance(withdrawNextType(s, epochId)))
+  ensures (inv(s) ==> canWithdrawNextType(s, epochId) ==> alwaysRetiredUndeclaredTypeIsUnknown(withdrawNextType(s, epochId)))
+  ensures (inv(s) ==> canWithdrawNextType(s, epochId) ==> alwaysStopObservationsFollowSlots(withdrawNextType(s, epochId)))
+  ensures (inv(s) ==> canWithdrawNextType(s, epochId) ==> alwaysRetiredEpochHasNoResources(withdrawNextType(s, epochId)))
+  ensures (inv(s) ==> canWithdrawNextType(s, epochId) ==> alwaysSealedOwnedClassesStable(withdrawNextType(s, epochId)))
+{
+  if inv(s) && canWithdrawNextType(s, epochId) {
+    PluginRetirementWithdrawalPreservesTypePlan(s, epochId);
+  }
+}
+
 lemma cleanPlugin_ensures(s: PluginServices, epochId: int)
   ensures (inv(s) ==> canCleanPlugin(s, epochId) ==> alwaysLiveClassOwnerUnique(cleanPlugin(s, epochId)))
   ensures (inv(s) ==> canCleanPlugin(s, epochId) ==> alwaysServiceOwnerEpochExists(cleanPlugin(s, epochId)))
@@ -284,6 +300,78 @@ lemma PluginRetirementCleanupRetainsCompletedObservations(s: PluginServices, epo
           var i :| 0 <= i < |g.observedStops| && g.observedStops[i] == slot;
         }
       }
+    }
+  }
+}
+
+lemma PluginRetirementWithdrawalHasPositionEvidence(r: ServiceRetirement)
+  ensures Std.Collections.Seq.FoldLeft((check: SequenceValidation, g: RetirementGroup) => validateRetirementGroup(check, r, g),
+    uncheckedSequence, r.groups).valid <==>
+    (forall i | 0 <= i < |r.groups| :: retirementGroupMatchesPosition(r, i, r.groups[i]))
+{
+  hide *;
+  reveal uncheckedSequence;
+  reveal validateRetirementGroup();
+  var validAt := (i: int, g: RetirementGroup) => retirementGroupMatchesPosition(r, i, g);
+  var validate := (check: SequenceValidation, g: RetirementGroup) => validateRetirementGroup(check, r, g);
+  PluginRetirementIndexedValidation(validate, validAt, uncheckedSequence, r.groups);
+}
+
+lemma PluginRetirementWithdrawalAppendsPlannedGroup(before: ServiceRetirement, after: ServiceRetirement, group: RetirementGroup)
+  requires retirementGroupsFollowPlan(before) && !before.exited
+  requires before.cursor == |before.groups| && before.cursor < |before.plan|
+  requires group.serviceType == before.plan[before.cursor]
+  requires group.phase.GroupSkipped? || group.phase.GroupWaiting?
+  requires after.plan == before.plan && !after.exited && after.groups == before.groups + [group]
+  requires after.cursor == before.cursor + (if group.phase.GroupSkipped? then 1 else 0)
+  ensures retirementGroupsFollowPlan(after)
+{
+  hide *;
+  reveal retirementGroupsFollowPlan(), retirementGroupMatchesPosition(), groupFinishedOrSkipped();
+  PluginRetirementWithdrawalHasPositionEvidence(before);
+  forall i | 0 <= i < |after.groups|
+    ensures retirementGroupMatchesPosition(after, i, after.groups[i])
+  {
+    if i < |before.groups| {
+      assert retirementGroupMatchesPosition(before, i, before.groups[i]);
+      assert i < before.cursor && i < after.cursor && after.groups[i] == before.groups[i];
+    } else {
+      assert i == before.cursor && after.groups[i] == group;
+    }
+  }
+  PluginRetirementWithdrawalHasPositionEvidence(after);
+  if after.cursor < |after.groups| {
+    assert after.groups[after.cursor] == group && group.phase.GroupWaiting?;
+  }
+}
+
+lemma PluginRetirementWithdrawalPreservesTypePlan(s: PluginServices, epochId: int)
+  requires alwaysRetirementsFollowTypePlan(s) && canWithdrawNextType(s, epochId)
+  ensures alwaysRetirementsFollowTypePlan(withdrawNextType(s, epochId))
+{
+  hide *;
+  reveal alwaysRetirementsFollowTypePlan(), canWithdrawNextType(), withdrawNextType();
+  reveal skippedGroupPhase, missingGroupPhase;
+  reveal ProofLib.Filter();
+  var after := withdrawNextType(s, epochId);
+  assert after.plugins == s.plugins && |after.retirements| == |s.retirements|;
+  forall row | row in after.retirements
+    ensures row.epochId > 0 && core__pluginRegistry_epoch(after.plugins, row.epochId).id == row.epochId
+    ensures core__pluginRegistry_epochRetiring(after.plugins, row.epochId) ||
+      !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId)
+    ensures |ProofLib.Filter((other: ServiceRetirement) => (other.epochId == row.epochId), after.retirements)| == 1
+    ensures retirementGroupsFollowPlan(row)
+  {
+    var i :| 0 <= i < |after.retirements| && after.retirements[i] == row;
+    var prior := s.retirements[i];
+    assert prior in s.retirements && prior.epochId == row.epochId;
+    var byEpoch := (other: ServiceRetirement) => (other.epochId == row.epochId);
+    ProofLib.FilterLengthPointwise(byEpoch, byEpoch, s.retirements, after.retirements);
+    if row.epochId == epochId {
+      PluginRetirementPlanLookup(s, prior);
+      assert 0 <= prior.cursor < |row.groups|;
+      var group := row.groups[prior.cursor];
+      PluginRetirementWithdrawalAppendsPlannedGroup(prior, row, group);
     }
   }
 }
