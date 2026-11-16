@@ -54,7 +54,7 @@ module edge {
   }
 
   /** @throws {never} */
-  export function readJsonPromise<T = unknown>(file: string): Promise<T> {
+  export function readJsonPromise<T = any>(file: string): Promise<T> {
     return runDetached(onNode(readJson<T>(file)))
   }
 }
