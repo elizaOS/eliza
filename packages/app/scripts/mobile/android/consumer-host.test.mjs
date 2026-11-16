@@ -880,16 +880,18 @@ test("an embedded agent is three data files: the host declares its service, sour
     ({ name }) => name === "eliza-embedded-agent",
   );
   assert.equal(module.appDependency, true);
-  for (const source of normalized.embeddedAgent.include) {
+  for (const source of EMBEDDED_AGENT_SOURCES) {
     const text = fs.readFileSync(
-      path.join(normalized.embeddedAgent.sources, source),
+      path.join(options.output, "eliza-embedded-agent/src/main/java", source),
       "utf8",
     );
     assert.doesNotMatch(text, /local[-_]?inference|ai\.eliza\.voice|kotlin/i);
   }
-  assert.deepEqual(normalized.embeddedAgent.include, [
-    ...EMBEDDED_AGENT_SOURCES,
-  ]);
+  // A changed upstream source makes the generated host refuse to configure.
+  assert.equal(
+    normalized.generationInputs.length,
+    EMBEDDED_AGENT_SOURCES.length,
+  );
   // Data the device service would refuse fails the generation instead.
   options.profile.embeddedAgent.host = write("agent.json", {
     ...host,

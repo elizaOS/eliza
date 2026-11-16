@@ -715,12 +715,17 @@ export function generateAndroidConsumerHost({
       appDependency: true,
       relocateBuild: false,
     });
-    embeddedAgent = {
-      service: data.service,
-      sources: path.join(upstreamRoot, EMBEDDED_AGENT_JAVA),
-      include: [...EMBEDDED_AGENT_SOURCES],
-      files,
-    };
+    // Copied, since AGP ignores source-set filters; a changed upstream source makes the host stale.
+    const sources = EMBEDDED_AGENT_SOURCES.map((relative) => {
+      const file = input(
+        { root: "upstream", path: `${EMBEDDED_AGENT_JAVA}/${relative}` },
+        "file",
+      );
+      const bytes = fs.readFileSync(file);
+      add(`${EMBEDDED_AGENT_MODULE}/src/main/java/${relative}`, bytes);
+      return { file, sha256: hash(bytes) };
+    });
+    embeddedAgent = { service: data.service, files, sources };
   }
   const assetNames = new Set(
     embeddedAgent ? Object.values(EMBEDDED_AGENT_ASSETS) : [],
@@ -747,10 +752,13 @@ export function generateAndroidConsumerHost({
     return script;
   });
   // A host generated from inputs that changed later refuses to configure.
-  const generationInputs = (profile.generationInputs ?? []).map((reference) => {
-    const file = input(reference, "file");
-    return { file, sha256: hash(fs.readFileSync(file)) };
-  });
+  const generationInputs = [
+    ...(profile.generationInputs ?? []).map((reference) => {
+      const file = input(reference, "file");
+      return { file, sha256: hash(fs.readFileSync(file)) };
+    }),
+    ...(embeddedAgent?.sources ?? []),
+  ];
   let runtimeMain = null;
   // A staged runtime keeps its packaged libraries unstripped, so it always
   // implies byte preservation; an explicit opt-out contradicts the payload.
@@ -796,11 +804,7 @@ export function generateAndroidConsumerHost({
     admission,
     settingsAdmission,
     assetFiles,
-    embeddedAgent: embeddedAgent && {
-      service: embeddedAgent.service,
-      sources: embeddedAgent.sources,
-      include: embeddedAgent.include,
-    },
+    embeddedAgent: embeddedAgent && { service: embeddedAgent.service },
     appScripts,
     generationInputs,
     runtimeMain,
