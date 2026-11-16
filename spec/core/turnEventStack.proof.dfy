@@ -17,6 +17,7 @@ lemma cleanupTurn_ensures(s: TurnEventStack, turnId: int)
     TurnGroupAllocatorPreservedOnCleanup(s, turnId);
     TurnLiveGroupsCleaned(s, turnId);
     TurnControllerIdentityCleaned(s, turnId);
+    TurnKeepsGroupsAfterCleanup(s, turnId);
   }
 }
 
@@ -138,6 +139,7 @@ lemma beginGlobalAbort_ensures(s: TurnEventStack, reason: string, close: bool)
     TurnMembershipSnapshotPreserved(s, beginGlobalAbort(s, reason, close));
     TurnControllerIdentityFieldsPreserved(s, beginGlobalAbort(s, reason, close));
     TurnFrameBeganGlobalAbort(s, reason, close);
+    TurnGlobalAbortKeepsAllocatorAndPendingOwners(s, reason, close);
   }
 }
 
@@ -175,6 +177,7 @@ lemma advanceGlobalAbort_ensures(s: TurnEventStack)
     TurnMembershipSnapshotPreserved(s, advanceGlobalAbort(s));
     TurnFrameAdvancedGlobal(s);
     TurnPendingAdvanceRetainsOwnership(s);
+    TurnAllocatorAfterGlobalAdvance(s);
   }
 }
 
@@ -347,9 +350,14 @@ lemma startTurn_ensures(s: TurnEventStack, turnId: int, room: string)
   ensures (inv(s) ==> canStartTurn(s, turnId, room) ==> stepFirstRegistryAbortReasonStays(s, startTurn(s, turnId, room)))
   ensures (inv(s) ==> canStartTurn(s, turnId, room) ==> stepOuterCallbackWaits(s, "startTurn", startTurn(s, turnId, room)))
 {
+  hide *;
+  reveal inv(), stepOuterCallbackWaits();
   if inv(s) && canStartTurn(s, turnId, room) {
+    TurnStartRetainsCleanupFrame(s, turnId, room);
+    TurnStartKeepsFirstAbortReason(s, turnId, room);
     TurnGroupAllocatorPreservedOnStart(s, turnId, room);
     TurnLiveGroupsStarted(s, turnId, room);
+    TurnStartRetainsRoomMemberships(s, turnId, room);
     TurnPendingOwnerStarted(s, turnId, room);
     TurnControllerIdentityStarted(s, turnId, room);
     TurnFrameStartedTurn(s, turnId, room);
@@ -500,11 +508,15 @@ lemma returnTurn_ensures(s: TurnEventStack, turnId: int, resolved: bool, errorId
   ensures (inv(s) ==> canReturnTurn(s, turnId, resolved, errorId) ==> stepFirstRegistryAbortReasonStays(s, returnTurn(s, turnId, resolved, errorId)))
   ensures (inv(s) ==> canReturnTurn(s, turnId, resolved, errorId) ==> stepOuterCallbackWaits(s, "returnTurn", returnTurn(s, turnId, resolved, errorId)))
 {
+  hide *;
+  reveal inv(), stepOuterCallbackWaits(), alwaysControllerIdentitiesValid();
   if inv(s) && canReturnTurn(s, turnId, resolved, errorId) {
+    TurnReturnRetainsStructuralFrame(s, turnId, resolved, errorId);
     TurnFirstAbortReasonsAfterReturn(s, turnId, resolved, errorId);
     TurnLiveGroupsReturned(s, turnId, resolved, errorId);
     TurnPendingOwnerReturned(s, turnId, resolved, errorId);
     TurnControllerIdentityReturned(s, turnId, resolved, errorId);
+    TurnKeepsGroupsAfterReturn(s, turnId, resolved, errorId);
     TurnFrameReturnedTurn(s, turnId, resolved, errorId);
   }
 }
@@ -526,6 +538,7 @@ lemma visitRoomSignal_ensures(s: TurnEventStack)
     TurnLiveGroupsVisited(s);
     TurnPendingOwnerVisited(s);
     TurnControllerIdentityVisited(s);
+    TurnKeepsGroupsAfterSignalVisit(s);
     TurnFrameVisitedRoom(s);
   }
 }
@@ -2317,4 +2330,455 @@ lemma TurnPendingAdvanceRetainsOwnership(s: TurnEventStack)
       TurnPendingAdvanceWitness(s, after, t);
     }
   }
+}
+
+lemma TurnRetainedControllerRoom(s: TurnEventStack, turn: core__turnControllers_TurnEntry)
+  requires alwaysTurnsRetainGroups(s) && turn in s.controllers.turns
+  ensures (exists g :: g in s.groups && g.id == groupOf(s, turn.id) && g.room == turn.room)
+{
+  reveal alwaysTurnsRetainGroups();
+}
+
+lemma TurnActiveGroupAppearsInCapture(s: TurnEventStack, group: RoomGroup)
+  requires group in s.groups && group.active
+  ensures group.id in activeGroupIds(s)
+{
+  reveal activeGroupIds();
+  var isActive := (g: RoomGroup) => g.active;
+  var active := ProofLib.Filter(isActive, s.groups);
+  ProofLib.FilterMember(isActive, s.groups, group);
+  var i :| 0 <= i < |active| && active[i] == group;
+  assert activeGroupIds(s)[i] == group.id;
+}
+
+lemma TurnNewGlobalFrameCoversCapturedGroup(s: TurnEventStack, frames: seq<TurnFrame>,
+                                          groups: seq<int>, reason: string, turnId: int, groupId: int)
+  requires groupId in groups && GlobalFrameKind(groups, 0, reason, []) in frames
+  ensures (exists f :: f in frames && frameOwnsPendingTurn(s, f, turnId, groupId))
+{
+  var owner := GlobalFrameKind(groups, 0, reason, []);
+  var i :| 0 <= i < |groups| && groups[i] == groupId;
+  TurnPendingOwnerSuffixWitness(groups, 0, groupId);
+  reveal frameOwnsPendingTurn();
+  assert frameOwnsPendingTurn(s, owner, turnId, groupId);
+}
+
+lemma TurnRetainedRoomWitness(s: TurnEventStack, turn: core__turnControllers_TurnEntry) returns (group: RoomGroup)
+  requires alwaysTurnsRetainGroups(s) && turn in s.controllers.turns
+  ensures group in s.groups && group.id == groupOf(s, turn.id) && group.room == turn.room
+{
+  hide *;
+  TurnRetainedControllerRoom(s, turn);
+  group :| group in s.groups && group.id == groupOf(s, turn.id) && group.room == turn.room;
+}
+
+lemma TurnAttachedOwnerMakesGroupActive(s: TurnEventStack, group: RoomGroup, turn: core__turnControllers_TurnEntry)
+  requires alwaysLiveGroupOwnsTurns(s) && group in s.groups
+  requires turn in s.controllers.turns && !turn.phase.TurnDetached? && groupOf(s, turn.id) == group.id
+  ensures group.active
+{
+  hide *;
+  TurnLiveGroupKnown(s, group);
+  assert (exists owned :: owned in s.controllers.turns && !owned.phase.TurnDetached? && groupOf(s, owned.id) == group.id);
+}
+
+lemma TurnAttachedGroupAppearsInCapture(s: TurnEventStack, turn: core__turnControllers_TurnEntry)
+  requires alwaysTurnsRetainGroups(s) && alwaysLiveGroupOwnsTurns(s)
+  requires turn in s.controllers.turns && !turn.phase.TurnDetached?
+  ensures groupOf(s, turn.id) in activeGroupIds(s)
+{
+  hide *;
+  var group := TurnRetainedRoomWitness(s, turn);
+  TurnAttachedOwnerMakesGroupActive(s, group, turn);
+  TurnActiveGroupAppearsInCapture(s, group);
+}
+
+lemma TurnGlobalAbortIncludesPendingTurn(s: TurnEventStack, after: TurnEventStack, reason: string,
+                                        turn: core__turnControllers_TurnEntry)
+  requires s.controllers.turns == after.controllers.turns && s.turnGroups == after.turnGroups
+  requires turn in after.controllers.turns && !turn.phase.TurnDetached?
+  requires groupOf(s, turn.id) in activeGroupIds(s)
+  requires GlobalFrameKind(activeGroupIds(s), 0, reason, []) in after.frames
+  ensures (exists frame :: frame in after.frames && frameOwnsPendingTurn(after, frame, turn.id, groupOf(after, turn.id)))
+{
+  hide *;
+  TurnLiveGroupLookupProjection(s, turn.id);
+  TurnLiveGroupLookupProjection(after, turn.id);
+  assert groupOf(after, turn.id) == groupOf(s, turn.id);
+  TurnNewGlobalFrameCoversCapturedGroup(after, after.frames, activeGroupIds(s), reason, turn.id, groupOf(after, turn.id));
+}
+
+lemma TurnGlobalAbortKeepsAllocatorAndPendingOwners(s: TurnEventStack, reason: string, close: bool)
+  requires alwaysGroupAllocatorValid(s) && alwaysTurnsRetainGroups(s) && alwaysLiveGroupOwnsTurns(s)
+  ensures alwaysGroupAllocatorValid(beginGlobalAbort(s, reason, close))
+  ensures alwaysClosedPendingHasGlobalOwner(beginGlobalAbort(s, reason, close))
+{
+  hide *;
+  reveal alwaysGroupAllocatorValid(), alwaysClosedPendingHasGlobalOwner();
+  reveal beginGlobalAbort();
+  var after := beginGlobalAbort(s, reason, close);
+  assert after.groups == s.groups && after.nextGroup == s.nextGroup;
+  assert after.turnGroups == s.turnGroups && after.controllers.turns == s.controllers.turns;
+  var owner := GlobalFrameKind(activeGroupIds(s), 0, reason, []);
+  assert after.frames == s.frames + [owner] && owner in after.frames;
+  forall turn | turn in after.controllers.turns && !turn.phase.TurnDetached? && !turn.aborted
+    ensures (exists frame :: frame in after.frames && frameOwnsPendingTurn(after, frame, turn.id, groupOf(after, turn.id)))
+  {
+    TurnAttachedGroupAppearsInCapture(s, turn);
+    TurnGlobalAbortIncludesPendingTurn(s, after, reason, turn);
+  }
+}
+
+lemma TurnLinkHasRetainedRoom(s: TurnEventStack, link: TurnGroup)
+  requires alwaysTurnsRetainGroups(s) && link in s.turnGroups
+  ensures |ProofLib.Filter((other: TurnGroup) => (other.turnId == link.turnId), s.turnGroups)| == 1
+  ensures (
+    exists t :: t in s.controllers.turns && t.id == link.turnId &&
+      (exists g :: g in s.groups && g.id == link.group && g.room == t.room)
+  )
+{
+  hide *;
+  reveal ProofLib.Filter();
+  reveal alwaysTurnsRetainGroups();
+}
+
+lemma TurnRoomWitnessMapped(before: seq<RoomGroup>, after: seq<RoomGroup>, id: int, room: string)
+  requires |before| == |after|
+  requires forall i {:trigger before[i]} | 0 <= i < |before| ::
+    before[i].id == after[i].id && before[i].room == after[i].room
+  requires (exists g :: g in before && g.id == id && g.room == room)
+  ensures (exists g :: g in after && g.id == id && g.room == room)
+{
+  var g :| g in before && g.id == id && g.room == room;
+  var i :| 0 <= i < |before| && before[i] == g;
+  assert after[i] in after && after[i].id == id && after[i].room == room;
+}
+
+lemma TurnLinkRoomWitnessMapped(before: seq<core__turnControllers_TurnEntry>,
+                              after: seq<core__turnControllers_TurnEntry>,
+                              oldGroups: seq<RoomGroup>, newGroups: seq<RoomGroup>, link: TurnGroup)
+  requires |before| == |after| && |oldGroups| == |newGroups|
+  requires forall i {:trigger before[i]} | 0 <= i < |before| ::
+    before[i].id == after[i].id && before[i].room == after[i].room
+  requires forall i {:trigger oldGroups[i]} | 0 <= i < |oldGroups| ::
+    oldGroups[i].id == newGroups[i].id && oldGroups[i].room == newGroups[i].room
+  requires (
+    exists t :: t in before && t.id == link.turnId &&
+      (exists g :: g in oldGroups && g.id == link.group && g.room == t.room)
+  )
+  ensures (
+    exists t :: t in after && t.id == link.turnId &&
+      (exists g :: g in newGroups && g.id == link.group && g.room == t.room)
+  )
+{
+  var t :| t in before && t.id == link.turnId &&
+    (exists g :: g in oldGroups && g.id == link.group && g.room == t.room);
+  var i :| 0 <= i < |before| && before[i] == t;
+  assert after[i] in after && after[i].id == t.id && after[i].room == t.room;
+  TurnRoomWitnessMapped(oldGroups, newGroups, link.group, t.room);
+}
+
+lemma TurnEntryHadLinkAndRoom(s: TurnEventStack, t: core__turnControllers_TurnEntry)
+  requires alwaysTurnsRetainGroups(s) && t in s.controllers.turns
+  ensures (exists link :: link in s.turnGroups && link.turnId == t.id)
+  ensures (exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room)
+{
+  hide *;
+  reveal alwaysTurnsRetainGroups();
+}
+
+lemma TurnLinkWitnessIndices(s: TurnEventStack, link: TurnGroup) returns (turnIndex: int, groupIndex: int)
+  requires alwaysTurnsRetainGroups(s) && link in s.turnGroups
+  ensures 0 <= turnIndex < |s.controllers.turns| && 0 <= groupIndex < |s.groups|
+  ensures s.controllers.turns[turnIndex].id == link.turnId && s.groups[groupIndex].id == link.group
+  ensures s.groups[groupIndex].room == s.controllers.turns[turnIndex].room
+{
+  hide *;
+  TurnLinkHasRetainedRoom(s, link);
+  var turn :| turn in s.controllers.turns && turn.id == link.turnId &&
+    (exists group :: group in s.groups && group.id == link.group && group.room == turn.room);
+  var group :| group in s.groups && group.id == link.group && group.room == turn.room;
+  turnIndex :| 0 <= turnIndex < |s.controllers.turns| && s.controllers.turns[turnIndex] == turn;
+  groupIndex :| 0 <= groupIndex < |s.groups| && s.groups[groupIndex] == group;
+}
+
+lemma TurnMappedLinkHasRoom(s: TurnEventStack, link: TurnGroup, turnIndex: int, groupIndex: int)
+  requires 0 <= turnIndex < |s.controllers.turns| && 0 <= groupIndex < |s.groups|
+  requires s.controllers.turns[turnIndex].id == link.turnId && s.groups[groupIndex].id == link.group
+  requires s.groups[groupIndex].room == s.controllers.turns[turnIndex].room
+  ensures (
+    exists turn :: turn in s.controllers.turns && turn.id == link.turnId &&
+      (exists group :: group in s.groups && group.id == link.group && group.room == turn.room)
+  )
+{
+  hide *;
+  assert s.controllers.turns[turnIndex] in s.controllers.turns;
+  assert s.groups[groupIndex] in s.groups;
+}
+
+lemma TurnMappedLinkKeepsWitness(before: TurnEventStack, after: TurnEventStack, link: TurnGroup)
+  requires alwaysTurnsRetainGroups(before) && link in before.turnGroups
+  requires before.turnGroups == after.turnGroups
+  requires |before.controllers.turns| == |after.controllers.turns| && |before.groups| == |after.groups|
+  requires forall i {:trigger before.controllers.turns[i]} | 0 <= i < |before.controllers.turns| ::
+    before.controllers.turns[i].id == after.controllers.turns[i].id &&
+    before.controllers.turns[i].room == after.controllers.turns[i].room
+  requires forall i {:trigger before.groups[i]} | 0 <= i < |before.groups| ::
+    before.groups[i].id == after.groups[i].id && before.groups[i].room == after.groups[i].room
+  ensures |ProofLib.Filter((g: TurnGroup) => g.turnId == link.turnId, after.turnGroups)| == 1
+  ensures (
+    exists turn :: turn in after.controllers.turns && turn.id == link.turnId &&
+      (exists group :: group in after.groups && group.id == link.group && group.room == turn.room)
+  )
+{
+  hide *;
+  TurnLinkHasRetainedRoom(before, link);
+  var i, j := TurnLinkWitnessIndices(before, link);
+  assert before.controllers.turns[i].id == after.controllers.turns[i].id;
+  assert before.controllers.turns[i].room == after.controllers.turns[i].room;
+  assert before.groups[j].id == after.groups[j].id && before.groups[j].room == after.groups[j].room;
+  TurnMappedLinkHasRoom(after, link, i, j);
+}
+
+lemma TurnMappedEntryKeepsRoom(before: TurnEventStack, after: TurnEventStack, i: int)
+  requires alwaysTurnsRetainGroups(before) && 0 <= i < |before.controllers.turns|
+  requires before.turnGroups == after.turnGroups &&
+    |before.controllers.turns| == |after.controllers.turns| && |before.groups| == |after.groups|
+  requires before.controllers.turns[i].id == after.controllers.turns[i].id &&
+    before.controllers.turns[i].room == after.controllers.turns[i].room
+  requires forall j {:trigger before.groups[j]} | 0 <= j < |before.groups| ::
+    before.groups[j].id == after.groups[j].id && before.groups[j].room == after.groups[j].room
+  ensures var turn := after.controllers.turns[i];
+    (exists link :: link in after.turnGroups && link.turnId == turn.id) &&
+    (exists group :: group in after.groups && group.id == groupOf(after, turn.id) && group.room == turn.room)
+{
+  hide *;
+  var prior := before.controllers.turns[i];
+  var next := after.controllers.turns[i];
+  assert prior in before.controllers.turns;
+  TurnEntryHadLinkAndRoom(before, prior);
+  TurnLiveGroupLookupProjection(before, prior.id);
+  TurnLiveGroupLookupProjection(after, next.id);
+  assert groupOf(after, next.id) == groupOf(before, prior.id);
+  TurnRoomWitnessMapped(before.groups, after.groups, groupOf(before, prior.id), prior.room);
+}
+
+lemma TurnMembershipRoomFieldsPreserved(before: TurnEventStack, after: TurnEventStack)
+  requires alwaysTurnsRetainGroups(before)
+  requires before.turnGroups == after.turnGroups &&
+    |before.controllers.turns| == |after.controllers.turns| && |before.groups| == |after.groups|
+  requires forall i {:trigger before.controllers.turns[i]} | 0 <= i < |before.controllers.turns| ::
+    before.controllers.turns[i].id == after.controllers.turns[i].id &&
+    before.controllers.turns[i].room == after.controllers.turns[i].room
+  requires forall i {:trigger before.groups[i]} | 0 <= i < |before.groups| ::
+    before.groups[i].id == after.groups[i].id && before.groups[i].room == after.groups[i].room
+  ensures alwaysTurnsRetainGroups(after)
+{
+  hide *;
+  reveal alwaysTurnsRetainGroups(), ProofLib.Filter();
+  forall link | link in after.turnGroups
+    ensures |ProofLib.Filter((g: TurnGroup) => g.turnId == link.turnId, after.turnGroups)| == 1
+    ensures (
+      exists turn :: turn in after.controllers.turns && turn.id == link.turnId &&
+        (exists group :: group in after.groups && group.id == link.group && group.room == turn.room)
+    )
+  {
+    TurnMappedLinkKeepsWitness(before, after, link);
+  }
+  forall turn | turn in after.controllers.turns
+    ensures (exists link :: link in after.turnGroups && link.turnId == turn.id)
+    ensures (exists group :: group in after.groups && group.id == groupOf(after, turn.id) && group.room == turn.room)
+  {
+    var i :| 0 <= i < |after.controllers.turns| && after.controllers.turns[i] == turn;
+    TurnMappedEntryKeepsRoom(before, after, i);
+  }
+}
+
+lemma TurnKeepsGroupsAfterReturn(s: TurnEventStack, turnId: int, resolved: bool, errorId: string)
+  requires alwaysTurnsRetainGroups(s)
+  ensures alwaysTurnsRetainGroups(returnTurn(s, turnId, resolved, errorId))
+{
+  hide *;
+  reveal returnTurn(), core__turnControllers_returnTurn();
+  TurnMembershipRoomFieldsPreserved(s, returnTurn(s, turnId, resolved, errorId));
+}
+
+lemma TurnKeepsGroupsAfterCleanup(s: TurnEventStack, turnId: int)
+  requires alwaysTurnsRetainGroups(s)
+  ensures alwaysTurnsRetainGroups(cleanupTurn(s, turnId))
+{
+  hide *;
+  reveal cleanupTurn(), core__turnControllers_cleanupTurn();
+  TurnMembershipRoomFieldsPreserved(s, cleanupTurn(s, turnId));
+}
+
+lemma TurnKeepsGroupsAfterSignalVisit(s: TurnEventStack)
+  requires alwaysTurnsRetainGroups(s)
+  ensures alwaysTurnsRetainGroups(visitRoomSignal(s))
+{
+  hide *;
+  reveal visitRoomSignal();
+  TurnMembershipRoomFieldsPreserved(s, visitRoomSignal(s));
+}
+
+lemma TurnStartLinksHaveRooms(before: TurnEventStack, after: TurnEventStack, addedLink: TurnGroup,
+                             addedTurn: core__turnControllers_TurnEntry, attached: RoomGroup)
+  requires alwaysTurnsRetainGroups(before)
+  requires after.turnGroups == before.turnGroups + [addedLink]
+  requires after.controllers.turns == before.controllers.turns + [addedTurn]
+  requires forall link :: link in before.turnGroups ==> link.turnId != addedLink.turnId
+  requires forall group :: group in before.groups ==> group in after.groups
+  requires attached in after.groups && attached.id == addedLink.group
+  requires addedTurn.id == addedLink.turnId && attached.room == addedTurn.room
+  ensures forall link | link in after.turnGroups ::
+    |ProofLib.Filter((other: TurnGroup) => other.turnId == link.turnId, after.turnGroups)| == 1 &&
+    (exists turn :: turn in after.controllers.turns && turn.id == link.turnId &&
+      (exists group :: group in after.groups && group.id == link.group && group.room == turn.room))
+{
+  hide *;
+  reveal ProofLib.Filter();
+  forall link | link in after.turnGroups
+    ensures |ProofLib.Filter((other: TurnGroup) => other.turnId == link.turnId, after.turnGroups)| == 1
+    ensures (
+      exists turn :: turn in after.controllers.turns && turn.id == link.turnId &&
+        (exists group :: group in after.groups && group.id == link.group && group.room == turn.room)
+    )
+  {
+    var matchesLink := (other: TurnGroup) => other.turnId == link.turnId;
+    ProofLib.FilterAppend(matchesLink, before.turnGroups, addedLink);
+    if link == addedLink {
+      ProofLib.FilterNone(matchesLink, before.turnGroups);
+      assert addedTurn in after.controllers.turns;
+    } else {
+      assert link in before.turnGroups && link.turnId != addedLink.turnId;
+      TurnLinkHasRetainedRoom(before, link);
+      var prior :| prior in before.controllers.turns && prior.id == link.turnId &&
+        (exists group :: group in before.groups && group.id == link.group && group.room == prior.room);
+      var group :| group in before.groups && group.id == link.group && group.room == prior.room;
+      assert prior in after.controllers.turns && group in after.groups;
+    }
+  }
+}
+
+lemma TurnStartEntriesHaveLinks(before: TurnEventStack, after: TurnEventStack, addedLink: TurnGroup,
+                                addedTurn: core__turnControllers_TurnEntry, attached: RoomGroup)
+  requires alwaysTurnsRetainGroups(before)
+  requires after.turnGroups == before.turnGroups + [addedLink]
+  requires after.controllers.turns == before.controllers.turns + [addedTurn]
+  requires forall link :: link in before.turnGroups ==> link.turnId != addedLink.turnId
+  requires forall turn :: turn in before.controllers.turns ==> turn.id != addedLink.turnId
+  requires forall group :: group in before.groups ==> group in after.groups
+  requires attached in after.groups && attached.id == addedLink.group
+  requires addedTurn.id == addedLink.turnId && attached.room == addedTurn.room
+  ensures forall turn | turn in after.controllers.turns ::
+    (exists link :: link in after.turnGroups && link.turnId == turn.id) &&
+    (exists group :: group in after.groups && group.id == groupOf(after, turn.id) && group.room == turn.room)
+{
+  hide *;
+  forall turn | turn in after.controllers.turns
+    ensures (exists link :: link in after.turnGroups && link.turnId == turn.id)
+    ensures (exists group :: group in after.groups && group.id == groupOf(after, turn.id) && group.room == turn.room)
+  {
+    TurnLiveGroupLookupAfterAppend(before, after, addedLink, turn.id);
+    if turn == addedTurn {
+      assert addedLink in after.turnGroups;
+    } else {
+      assert turn in before.controllers.turns && turn.id != addedLink.turnId;
+      TurnEntryHadLinkAndRoom(before, turn);
+      var priorLink :| priorLink in before.turnGroups && priorLink.turnId == turn.id;
+      var priorGroup :| priorGroup in before.groups && priorGroup.id == groupOf(before, turn.id) && priorGroup.room == turn.room;
+      assert priorLink in after.turnGroups && priorGroup in after.groups;
+    }
+  }
+}
+
+lemma TurnStartRoomAttachment(s: TurnEventStack, turnId: int, room: string)
+    returns (link: TurnGroup, attached: RoomGroup)
+  ensures startTurn(s, turnId, room).turnGroups == s.turnGroups + [link]
+  ensures link.turnId == turnId && attached.id == link.group && attached.room == room
+  ensures attached in startTurn(s, turnId, room).groups
+  ensures forall group :: group in s.groups ==> group in startTurn(s, turnId, room).groups
+{
+  hide *;
+  reveal startTurn(), liveGroup(), ProofLib.Filter();
+  var after := startTurn(s, turnId, room);
+  var existing := liveGroup(s, room);
+  if existing == 0 {
+    attached := RoomGroup(s.nextGroup, room, true);
+  } else {
+    var activeInRoom := (group: RoomGroup) => group.room == room && group.active;
+    var matches := ProofLib.Filter(activeInRoom, s.groups);
+    assert |matches| > 0 && matches[0].id == existing;
+    attached := matches[0];
+    ProofLib.FilterMember(activeInRoom, s.groups, attached);
+    assert attached in s.groups;
+  }
+  link := TurnGroup(turnId, attached.id);
+  assert attached in after.groups;
+}
+
+lemma TurnStartAppendsFreshEntry(s: TurnEventStack, turnId: int, room: string)
+    returns (added: core__turnControllers_TurnEntry)
+  requires canStartTurn(s, turnId, room)
+  ensures startTurn(s, turnId, room).controllers.turns == s.controllers.turns + [added]
+  ensures added.id == turnId && added.room == room
+  ensures forall t :: t in s.controllers.turns ==> t.id != turnId
+{
+  hide *;
+  reveal startTurn(), core__turnControllers_startTurn(), canStartTurn(), core__turnControllers_canStartTurn();
+  added := startTurn(s, turnId, room).controllers.turns[|s.controllers.turns|];
+}
+
+lemma TurnStartRetainsRoomMemberships(s: TurnEventStack, turnId: int, room: string)
+  requires alwaysTurnsRetainGroups(s) && canStartTurn(s, turnId, room)
+  ensures alwaysTurnsRetainGroups(startTurn(s, turnId, room))
+{
+  hide *;
+  var after := startTurn(s, turnId, room);
+  TurnLiveGroupsStartMembershipIsFresh(s, turnId, room);
+  var link, attached := TurnStartRoomAttachment(s, turnId, room);
+  var added := TurnStartAppendsFreshEntry(s, turnId, room);
+  TurnStartLinksHaveRooms(s, after, link, added, attached);
+  TurnStartEntriesHaveLinks(s, after, link, added, attached);
+  reveal alwaysTurnsRetainGroups(), ProofLib.Filter();
+}
+
+lemma TurnAllocatorAfterGlobalAdvance(s: TurnEventStack)
+  requires alwaysGroupAllocatorValid(s)
+  ensures alwaysGroupAllocatorValid(advanceGlobalAbort(s))
+{
+  hide *;
+  reveal alwaysGroupAllocatorValid(), advanceGlobalAbort();
+}
+
+lemma TurnReturnRetainsStructuralFrame(s: TurnEventStack, turnId: int, resolved: bool, errorId: string)
+  requires canReturnTurn(s, turnId, resolved, errorId) && alwaysGroupAllocatorValid(s)
+  ensures alwaysCleanupFrameAtBottom(returnTurn(s, turnId, resolved, errorId))
+  ensures alwaysGroupAllocatorValid(returnTurn(s, turnId, resolved, errorId))
+{
+  hide *;
+  reveal canReturnTurn(), returnTurn(), pushNotices(), alwaysCleanupFrameAtBottom(), alwaysGroupAllocatorValid();
+}
+
+lemma TurnStartRetainsCleanupFrame(s: TurnEventStack, turnId: int, room: string)
+  requires alwaysCleanupFrameAtBottom(s)
+  ensures alwaysCleanupFrameAtBottom(startTurn(s, turnId, room))
+{
+  hide *;
+  reveal startTurn(), pushNotices(), alwaysCleanupFrameAtBottom();
+  var after := startTurn(s, turnId, room);
+  if |s.frames| > 0 && |after.frames| > |s.frames| {
+    assert after.frames[1..] == s.frames[1..] + [EventFrameKind(s.controllers.nextNotice, false, 0)];
+  }
+}
+
+lemma TurnStartKeepsFirstAbortReason(s: TurnEventStack, turnId: int, room: string)
+  requires canStartTurn(s, turnId, room)
+  ensures stepFirstRegistryAbortReasonStays(s, startTurn(s, turnId, room))
+{
+  hide *;
+  var after := startTurn(s, turnId, room);
+  var added := TurnStartAppendsFreshEntry(s, turnId, room);
+  assert forall t | t in s.controllers.turns :: t in after.controllers.turns;
+  reveal stepFirstRegistryAbortReasonStays(), core__turnControllers_stepFirstAbortReasonStays();
 }
