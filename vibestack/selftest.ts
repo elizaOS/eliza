@@ -2472,6 +2472,29 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(!fs.existsSync(path.join(installed, ".claude")));
     assert.ok(!fs.existsSync(path.join(installed, "CLAUDE.md")));
     const manifest = JSON.parse(read("package.json", scaffold));
+    for (const field of ["dependencies", "devDependencies"])
+      for (const name of Object.keys(manifest[field])) manifest[field][name] = JSON.parse(fs.readFileSync(path.join(nodeModules, name, "package.json"), "utf8")).version;
+    const sourceManifest = JSON.parse(read("package.json"));
+    const dependencyDirectories = Object.keys(sourceManifest.dependencies).map((name) => {
+      const directory = fs.realpathSync(path.join(nodeModules, name));
+      manifest.pnpm.overrides[`${sourceManifest.name}@${sourceManifest.version}>${name}`] = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8")).version;
+      return directory;
+    });
+    const visited = new Set<string>();
+    for (const directory of dependencyDirectories) {
+      if (visited.has(directory)) continue;
+      visited.add(directory);
+      const pkg = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
+      const modules = path.resolve(directory, ...pkg.name.split("/").map(() => ".."));
+      for (const name of Object.keys({ ...pkg.dependencies, ...pkg.optionalDependencies })) {
+        const file = path.join(modules, name, "package.json");
+        if (!fs.existsSync(file) && name in (pkg.optionalDependencies ?? {})) continue;
+        assert.ok(fs.existsSync(file), `${pkg.name}@${pkg.version}: installed dependency ${name} is missing`);
+        const dependency = JSON.parse(fs.readFileSync(file, "utf8"));
+        manifest.pnpm.overrides[`${pkg.name}@${pkg.version}>${name}`] = dependency.name === name ? dependency.version : `npm:${dependency.name}@${dependency.version}`;
+        dependencyDirectories.push(fs.realpathSync(path.dirname(file)));
+      }
+    }
     manifest.devDependencies.vibestack = `file:${archive}`;
     fs.writeFileSync(path.join(scaffold, "package.json"), JSON.stringify(manifest));
     fs.writeFileSync(path.join(scaffold, ".agents/skills/sync/SKILL.md"), "My installed project instructions.\n");
