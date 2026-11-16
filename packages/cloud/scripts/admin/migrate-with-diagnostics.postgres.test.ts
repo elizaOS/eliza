@@ -63,6 +63,8 @@ const RELEASE_BARRIER_CHECKPOINT_TAG =
 const RELEASE_BARRIER_DROP_TAG = "0282_drop_unused_usage_quotas_table";
 const RELEASE_BARRIER_RESTORE_TAG =
   "0282_01_restore_usage_quotas_compatibility";
+const FRESH_PROVISIONING_TABLE =
+  "drizzle.__eliza_usage_quotas_fresh_provisioning";
 const RELEASE_BARRIER_OPTIONS = {
   timeoutMs: 250,
   maxAttempts: 2,
@@ -123,10 +125,15 @@ function releaseBarrierMigration(idx: number, tag: string, statement: string) {
 function releaseBarrierMigrations() {
   return [
     releaseBarrierMigration(
-      194,
-      RELEASE_BARRIER_CHECKPOINT_TAG,
-      "CREATE TABLE usage_quotas (id uuid, legacy_marker text)",
+      0,
+      "0000_release_barrier_fixture",
+      `CREATE TABLE usage_quotas (id uuid, legacy_marker text);
+        CREATE TABLE apps (id integer);
+        CREATE TABLE organizations (id integer);
+        CREATE TABLE users (id integer);
+        CREATE TABLE api_keys (id integer)`,
     ),
+    releaseBarrierMigration(194, RELEASE_BARRIER_CHECKPOINT_TAG, "SELECT 194"),
     releaseBarrierMigration(
       281,
       "0281_before_usage_quotas_release",
@@ -160,6 +167,27 @@ function migrationClient(
       await client.end();
     },
   };
+}
+
+async function retryReleaseBarrierMigrations(
+  url: string,
+  migrations: ReturnType<typeof releaseBarrierMigrations>,
+): Promise<void> {
+  const retry = new Client({ connectionString: url });
+  await retry.connect();
+  await runMigrations(
+    migrationClient(retry),
+    migrations,
+    RELEASE_BARRIER_OPTIONS,
+  );
+}
+
+async function hasFreshProvisioningMarker(client: pg.Client): Promise<boolean> {
+  const { rows } = await client.query<{ present: boolean }>(
+    "SELECT to_regclass($1) IS NOT NULL AS present",
+    [FRESH_PROVISIONING_TABLE],
+  );
+  return rows[0]?.present === true;
 }
 
 async function journalEntries(): Promise<JournalEntry[]> {
@@ -1354,47 +1382,201 @@ describe.skipIf(!ENABLED)(
       expect((await concurrentRead).rows).toEqual([{ count: "0" }]);
       const pairLedger = await observer.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = ANY($1::bigint[])",
-        [migrations.slice(2).map((migration) => migration.entry.when)],
+        [migrations.slice(-2).map((migration) => migration.entry.when)],
       );
       expect(pairLedger.rows).toEqual([{ count: "2" }]);
       await observer.end();
     }, 30_000);
 
-    test("rolls back the guarded drop and both ledger rows when PostgreSQL restore fails", async () => {
+    test("resumes fresh provisioning after PostgreSQL rolls back the guarded pair", async () => {
+      const database = await createDatabase();
+      const observer = new Client({ connectionString: database.url });
+      await observer.connect();
+      try {
+        const migrations = releaseBarrierMigrations();
+        migrations.push(
+          releaseBarrierMigration(
+            574,
+            "0574_fixture_after_usage_quotas",
+            "CREATE TABLE fixture_registry (id integer PRIMARY KEY)",
+          ),
+        );
+        const restoreStatement = "CREATE TABLE usage_quotas (id uuid)";
+
+        await expect(
+          runMigrations(
+            migrationClient(database.client, async (text) => {
+              if (text === restoreStatement) {
+                throw new Error("injected restore failure");
+              }
+            }),
+            migrations,
+            RELEASE_BARRIER_OPTIONS,
+          ),
+        ).rejects.toThrow("injected restore failure");
+
+        const table = await observer.query<{ count: string }>(
+          "SELECT count(*)::text AS count FROM usage_quotas",
+        );
+        expect(table.rows).toEqual([{ count: "0" }]);
+        const ledger = await observer.query<{ created_at: string }>(
+          "SELECT created_at::text FROM drizzle.__drizzle_migrations ORDER BY id",
+        );
+        expect(ledger.rows).toEqual(
+          migrations.slice(0, 3).map((migration) => ({
+            created_at: String(migration.entry.when),
+          })),
+        );
+
+        await retryReleaseBarrierMigrations(database.url, migrations);
+        const complete = await observer.query<{
+          ledger_count: string;
+          registry_exists: boolean;
+          legacy_column_exists: boolean;
+        }>(`
+          SELECT
+            (SELECT count(*)::text FROM drizzle.__drizzle_migrations) AS ledger_count,
+            to_regclass('public.fixture_registry') IS NOT NULL AS registry_exists,
+            EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'usage_quotas' AND column_name = 'legacy_marker'
+            ) AS legacy_column_exists
+        `);
+        expect(complete.rows).toEqual([
+          {
+            ledger_count: String(migrations.length),
+            registry_exists: true,
+            legacy_column_exists: false,
+          },
+        ]);
+        expect(await hasFreshProvisioningMarker(observer)).toBe(false);
+        await retryReleaseBarrierMigrations(database.url, migrations);
+        expect(
+          (
+            await observer.query(
+              "SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations",
+            )
+          ).rows,
+        ).toEqual([{ n: migrations.length }]);
+      } finally {
+        await observer.end();
+      }
+    }, 30_000);
+
+    test("rolls back the fresh marker when the first migration fails before commit", async () => {
+      const database = await createDatabase();
+      const migrations = releaseBarrierMigrations();
+      const observer = new Client({ connectionString: database.url });
+      await observer.connect();
+      try {
+        await expect(
+          runMigrations(
+            migrationClient(database.client, async (text) => {
+              if (text === migrations[0]?.statements[0]) {
+                throw new Error("injected first migration failure");
+              }
+            }),
+            migrations,
+            RELEASE_BARRIER_OPTIONS,
+          ),
+        ).rejects.toThrow("injected first migration failure");
+        expect(await hasFreshProvisioningMarker(observer)).toBe(false);
+        expect(
+          (
+            await observer.query(
+              "SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations",
+            )
+          ).rows,
+        ).toEqual([{ n: 0 }]);
+        await retryReleaseBarrierMigrations(database.url, migrations);
+        expect(await hasFreshProvisioningMarker(observer)).toBe(false);
+      } finally {
+        await observer.end();
+      }
+    }, 30_000);
+
+    test("requires exact fresh history and preserves quota rows and unmarked deployments", async () => {
       const database = await createDatabase();
       const observer = new Client({ connectionString: database.url });
       await observer.connect();
       const migrations = releaseBarrierMigrations();
-      const restoreStatement = "CREATE TABLE usage_quotas (id uuid)";
+      try {
+        await expect(
+          runMigrations(
+            migrationClient(database.client, async (text) => {
+              if (text === "SELECT 194") throw new Error("interrupted prefix");
+            }),
+            migrations,
+            RELEASE_BARRIER_OPTIONS,
+          ),
+        ).rejects.toThrow("interrupted prefix");
+        expect(await hasFreshProvisioningMarker(observer)).toBe(true);
 
-      await expect(
-        runMigrations(
-          migrationClient(database.client, async (text) => {
-            if (text === restoreStatement) {
-              throw new Error("injected restore failure");
-            }
-          }),
-          migrations,
-          RELEASE_BARRIER_OPTIONS,
-          undefined,
-          undefined,
-          async () => {},
-        ),
-      ).rejects.toThrow("injected restore failure");
+        // Historical drift tolerated for deployed upgrades cannot attest freshness.
+        const [historical] = migrations;
+        if (!historical)
+          throw new Error("Missing historical fixture migration");
+        await observer.query(
+          "UPDATE drizzle.__drizzle_migrations SET hash = 'historical-drift'",
+        );
+        await expect(
+          retryReleaseBarrierMigrations(database.url, migrations),
+        ).rejects.toThrow(
+          "Fresh migration provisioning receipt or prefix changed",
+        );
+        await observer.query(
+          "UPDATE drizzle.__drizzle_migrations SET hash = $1",
+          [historical.hash],
+        );
 
-      const table = await observer.query<{ count: string }>(
-        "SELECT count(*)::text AS count FROM usage_quotas",
-      );
-      expect(table.rows).toEqual([{ count: "0" }]);
-      const ledger = await observer.query<{ created_at: string }>(
-        "SELECT created_at::text FROM drizzle.__drizzle_migrations ORDER BY id",
-      );
-      expect(ledger.rows).toEqual(
-        migrations.slice(0, 2).map((migration) => ({
-          created_at: String(migration.entry.when),
-        })),
-      );
-      await observer.end();
+        const retry = new Client({ connectionString: database.url });
+        await retry.connect();
+        await retry.query(
+          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ",
+        );
+        await observer.query("BEGIN");
+        await observer.query(
+          "INSERT INTO usage_quotas (legacy_marker) VALUES ('preserve')",
+        );
+        const refusal = runMigrations(migrationClient(retry), migrations, {
+          ...RELEASE_BARRIER_OPTIONS,
+          timeoutMs: 10_000,
+        }).then(
+          () => null,
+          (error: unknown) => error,
+        );
+        try {
+          await waitForBlockedRelationLock(observer, "public.usage_quotas");
+          await observer.query("COMMIT");
+        } catch (error) {
+          await observer.query("ROLLBACK");
+          await refusal;
+          throw error;
+        }
+        expect(await refusal).toMatchObject({
+          message: "Fresh migration will not drop existing usage quotas",
+        });
+        expect(await hasFreshProvisioningMarker(observer)).toBe(true);
+        expect(
+          (await observer.query("SELECT legacy_marker FROM usage_quotas")).rows,
+        ).toEqual([{ legacy_marker: "preserve" }]);
+
+        // The same otherwise exact nonempty ledger without proof stays behind the old barrier.
+        await observer.query(`DROP TABLE ${FRESH_PROVISIONING_TABLE}`);
+        await retryReleaseBarrierMigrations(database.url, migrations);
+        expect(
+          (await observer.query("SELECT legacy_marker FROM usage_quotas")).rows,
+        ).toEqual([{ legacy_marker: "preserve" }]);
+        expect(
+          (
+            await observer.query(
+              "SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations",
+            )
+          ).rows,
+        ).toEqual([{ n: 3 }]);
+      } finally {
+        await observer.end();
+      }
     }, 30_000);
 
     test("restores the legacy usage-quota shape when 0282 is already ledgered", async () => {

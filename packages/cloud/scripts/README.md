@@ -110,6 +110,19 @@ Open it locally with the matching private key. Never put plaintext codes in logs
 or issue comments. The workflow is not a payment, redemption, or service-acceptance
 check. Do not dispatch the staging workflow against production.
 
+## Resume a new Cloud database migration
+
+Run the same `bun run db:cloud:migrate` command against the same reviewed
+database after an interrupted fresh installation. The first migration records
+fresh provisioning under the database lock. A retry checks the exact ordered
+ledger and uses that record to apply 0282 and its compatibility restore
+together. The transaction refuses to drop the quota table if it contains rows.
+
+A database with a pre-existing or unmarked ledger still stops at the
+compatibility release barrier. A pause leaves pending migrations. Check that
+the runner reports `migrations complete` before relying on tables introduced
+later in the journal. Use the existing release review for a paused database.
+
 ## Production pending migration review
 
 The read-only `Production Railway Database Authority Audit` reports
