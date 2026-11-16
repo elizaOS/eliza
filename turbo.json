@@ -24,6 +24,14 @@
         "generated/**"
       ]
     },
+    "@repo/ui#gen": {
+      "dependsOn": [
+        "//#gen"
+      ],
+      "outputs": [
+        "generated/**"
+      ]
+    },
     "build": {
       "dependsOn": [
         "gen",

@@ -92,7 +92,7 @@ export function startGroup(command: string, cwd: string, env?: NodeJS.ProcessEnv
 }
 
 /** What the proof stage needs installed. */
-export const NEEDS_DAFNY = "the proof stage needs Dafny 4.11 on the PATH";
+export const NEEDS_DAFNY = "the proof stage needs Dafny 4.11 on the PATH: https://github.com/dafny-lang/dafny/releases";
 
 /** Run a tool from the toolchain, or Dafny, and return whether it succeeded and all it wrote. */
 export async function run(cmd: string, args: string[], cwd: string, input?: string): Promise<{ ok: boolean; out: string; status: number; stderr: string }> {

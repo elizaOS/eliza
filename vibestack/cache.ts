@@ -111,7 +111,7 @@ const dafnyFiles = () => {
 const dafnySaid = (version: string | undefined, stopped?: string, out = "") => {
   const problem = !version ? `Dafny could not be run (${out.trim().split("\n")[0] || "it printed no version"})`
     : !version.startsWith("4.11.") ? `this is Dafny ${version}, and LemmaScript targets Dafny 4.11.x` : undefined;
-  return { version, problem: stopped ?? (problem && `${problem}: ${NEEDS_DAFNY} (see README, "Getting started")`) };
+  return { version, problem: stopped ?? (problem && `${problem}: ${NEEDS_DAFNY}`) };
 };
 /**
  * What is read of Dafny once for its installation as it is now: its launchers, its assemblies and Z3 on the PATH. A
@@ -145,7 +145,7 @@ export const dafnyVersion = perDafny(async (): Promise<{ version?: string; probl
     if (version && !r.stopped) installed?.keep(version);
     return dafnySaid(version, r.stopped, `${r.stdout}${r.stderr}`);
   } catch (e) {
-    return { problem: `Dafny could not be run (${(e as Error).message}): ${NEEDS_DAFNY} (see README, "Getting started")` };
+    return { problem: `Dafny could not be run (${(e as Error).message}): ${NEEDS_DAFNY}` };
   }
 }, (r) => !r.problem);
 

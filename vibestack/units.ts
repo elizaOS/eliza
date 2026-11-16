@@ -166,6 +166,9 @@ export function typecheckAll(memory: Memory, specs: Spec[]): Map<string, Promise
   }));
 }
 
+const proofFileOf = (m: Model) => m.source.replace(/\.md$/, ".proof.dfy");
+const definesAnything = (m: Model) => m.exports.types.length > 0 || m.exports.values.length > 0;
+
 /**
  * LemmaScript verifies one file at a time and does not carry definitions across
  * imports, so every unit is proved as a bundle: what it imports, then itself.
@@ -178,6 +181,9 @@ export function typecheckAll(memory: Memory, specs: Spec[]): Map<string, Promise
  *
  * A unit may have a proof file: spec/<name>.proof.dfy for a spec,
  * src/<path>.proof.dfy for src/<path>.ts.
+ *
+ * A spec that defines no type or value of its own, prose only or imports
+ * only, has no unit: it gives LemmaScript and Dafny nothing to check.
  */
 export function proofUnits(root: string, models: Model[], srcFiles: SrcFile[] = readSrc(root)): Unit[] {
   const byName = new Map(models.map((m) => [m.name, m]));
@@ -207,12 +213,12 @@ export function proofUnits(root: string, models: Model[], srcFiles: SrcFile[] = 
   const prefixed = (names: string[]) => names.map((n): [string, string] => [n, `${n}_`]);
   /** What a unit takes on trust from its module's opaque functions: their types, and the laws stated with them. */
   const assumptions = (m: Model | undefined) => ({ externs: m?.opaques.map((o) => o.name) ?? [], assumed: m?.opaques.flatMap((o) => o.laws.map((l) => l.name)) ?? [] });
-  const units: Unit[] = models.map((m) => ({
+  const units: Unit[] = models.filter(definesAnything).map((m) => ({
     unit: `${m.name}.ts`,
     text: bundle(m, true).join("\n"),
     meaning: bundle(m, false).join("\n"),
     src: false,
-    proofFile: m.source.replace(/\.md$/, ".proof.dfy"),
+    proofFile: proofFileOf(m),
     imports: imported(prefixed(needs(m))),
     // Proved against the definitions of what it imports, never against their obligations; but the abstract rules
     // carry over to a refining spec only as far as the machine it refines proved them (SPEC.md, "Refinement").
@@ -306,5 +312,9 @@ export function checkVerifiedSource(file: string, code: string) {
 /** Every proof file of the project. */
 export const proofFiles = (root: string) => ["spec", ...codeDirs(root).map((dir) => `${dir}src`)].flatMap((dir) => filesUnder(root, dir)).filter((f) => f.endsWith(".proof.dfy"));
 
-/** Proof files that belong to no unit: a typo, or a source file that is no longer proved. */
-export const strayProofFiles = (root: string, units: Unit[]) => proofFiles(root).filter((f) => !units.some((u) => u.proofFile === f));
+/**
+ * Proof files that belong to no unit: a typo, a source file that is no longer proved, or the proof file of a spec that
+ * defines nothing, which is `emptySpec`.
+ */
+export const strayProofFiles = (root: string, units: Unit[], models: Model[]) => proofFiles(root).filter((f) => !units.some((u) => u.proofFile === f))
+  .map((file) => ({ file, emptySpec: models.find((m) => proofFileOf(m) === file)?.source }));
