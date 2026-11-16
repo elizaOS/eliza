@@ -30,7 +30,7 @@ http.createServer((req, res) => {
     if (text === "crash") process.exit(3);
     res.writeHead(200, {"Content-Type":"text/event-stream"});
     if (text === "refused") return res.end('data: {"type":"done","fullText":"Sorry","failureKind":"provider_issue"}\\n\\n');
-    if (text === "cut") return res.write('data: {"text":"H', () => res.destroy());
+    if (text === "cut") return res.write('data: {"text":"H');
     res.end('data: {"text":"Hi"}\\n\\ndata: [DONE]\\n\\n');
   });
 }).listen(Number(process.env.ELIZA_API_PORT), "127.0.0.1");
@@ -157,15 +157,17 @@ test("the development agent runs from the data files and serves only their route
     await refused.text(),
     'data: {"type":"done","fullText":"Sorry","failureKind":"provider_issue"}\n\n',
   );
-  await assert.rejects(
-    (await post("/stream", { ...turn, body: { text: "cut" } })).text(),
+  const cut = (
+    await post("/stream", { ...turn, body: { text: "cut" } })
+  ).body.getReader();
+  assert.equal(
+    new TextDecoder().decode((await cut.read()).value),
+    'data: {"text":"H',
   );
-
-  await post("/stream", {
-    method: "POST",
-    path: stream,
-    body: { text: "crash" },
-  }).catch(() => {});
+  await post("/stream", { ...turn, body: { text: "crash" } }).catch(() => {});
+  await assert.rejects(async () => {
+    while (!(await cut.read()).done);
+  });
   await settled("starting");
   await settled("running");
 
