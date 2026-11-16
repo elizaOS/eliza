@@ -127,9 +127,7 @@ export async function simulate(root: string, model: Model, invariant: string, tr
     const args = ["run", `gen/${model.name}.run.qnt`, "--main", `${model.name}_run`, "--step", step, "--invariant", invariant,
       "--max-samples", String(Math.ceil(samples / shards)), "--max-steps", String(steps), "--mbt", "--seed", derivedSeed, ...(shards === 1 ? [] : ["--n-threads", "1"])];
     const r = await simulating(root, () => run("quint", [...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", path.join(out, "{seq}.itf.json")], root));
-    // Quint reports a violation twice: "[violation]" in the run on stdout, and "error: Invariant violated" on stderr when it
-    // exits. Under load the end of a long stdout can be lost when Quint exits, so either one is enough.
-    const broken = r.out.includes("[violation]") || (!r.ok && r.out.includes("error: Invariant violated"));
+    const broken = r.status === 1 && /(?:^|\n)error: Invariant violated$/.test(r.stderr.trimEnd());
     // In the order Quint wrote them, so that the same simulation always gives the traces in the same order.
     const files = fs.readdirSync(out).filter((f) => f.endsWith(".itf.json")).sort((x, y) => parseInt(x, 10) - parseInt(y, 10) || x.localeCompare(y));
     const again = `seed ${derivedSeed}; to simulate again: pnpm exec quint ${args.join(" ")}`;
