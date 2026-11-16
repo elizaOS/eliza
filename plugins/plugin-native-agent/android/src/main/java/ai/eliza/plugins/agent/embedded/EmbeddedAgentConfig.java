@@ -1,7 +1,6 @@
 package ai.eliza.plugins.agent.embedded;
 
 import java.io.IOException;
-import java.net.URI;
 import java.util.*;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
@@ -17,6 +16,7 @@ public final class EmbeddedAgentConfig {
   private static final Pattern CLASS_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+");
   private static final Pattern ENVIRONMENT_NAME = Pattern.compile("[A-Z][A-Z0-9_]*");
   private static final Pattern ROUTE = Pattern.compile("(/([A-Za-z0-9._-]+|\\{[a-z][A-Za-z]*\\}))+");
+  private static final Pattern CLOUD_ORIGIN = Pattern.compile("https://[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*/?");
   private static final Pattern PARAMETER = Pattern.compile("[A-Za-z0-9_-]{1,128}");
   private static final Set<String> LAUNCH_SETTINGS = Set.of("PATH", "HOME", "TMPDIR", "ELIZA_PROVIDER", "ELIZA_STATE_DIR",
     "ELIZA_CONFIG_PATH", "ELIZA_PLATFORM", "ELIZA_REQUIRE_LOCAL_AUTH", "ELIZA_ACTION_ALLOWLIST", "ELIZA_PAIRING_DISABLED",
@@ -42,7 +42,7 @@ public final class EmbeddedAgentConfig {
 
   public final String service;
   public final Notification notification;
-  private final URI cloud;
+  private final String cloud;
   private final String smallModel, largeModel;
   private final boolean persistMemory;
   private final List<Route> routes = new ArrayList<>();
@@ -58,9 +58,9 @@ public final class EmbeddedAgentConfig {
     JSONObject words = host.getJSONObject("notification");
     notification = new Notification(text(words, "channel"), text(words, "title"), text(words, "text"));
     JSONObject cloud = host.getJSONObject("cloud");
-    this.cloud = URI.create(cloud.getString("baseUrl"));
-    if (!"https".equals(this.cloud.getScheme()) || this.cloud.getHost() == null || this.cloud.getRawQuery() != null || this.cloud.getRawUserInfo() != null)
-      throw new IOException("The Eliza Cloud address must be an https origin");
+    String baseUrl = cloud.getString("baseUrl");
+    if (!CLOUD_ORIGIN.matcher(baseUrl).matches()) throw new IOException("The Eliza Cloud address must be an https origin");
+    this.cloud = baseUrl.replaceAll("/+$", "");
     smallModel = cloud.optString("smallModel", ""); largeModel = cloud.optString("largeModel", "");
     persistMemory = host.optBoolean("persistMemory", false);
     JSONArray routes = host.getJSONArray("routes");
@@ -72,13 +72,14 @@ public final class EmbeddedAgentConfig {
       this.routes.add(new Route(method, path, route.optBoolean("stream", false)));
     }
     if (this.routes.isEmpty()) throw new IOException("The embedded agent admits no route");
-    JSONObject settings = host.optJSONObject("environment");
-    if (settings != null) for (Iterator<String> keys = settings.keys(); keys.hasNext();) {
-      String key = keys.next(), value = settings.getString(key);
-      if (!ENVIRONMENT_NAME.matcher(key).matches() || LAUNCH_SETTINGS.contains(key) || key.startsWith("ELIZA_API_")
-          || key.startsWith("ELIZAOS_CLOUD_") || key.startsWith("LD_") || value.chars().anyMatch(c -> c == 0 || c == '\n' || c == '\r'))
+    JSONObject settings = host.has("environment") ? host.getJSONObject("environment") : new JSONObject();
+    for (Iterator<String> keys = settings.keys(); keys.hasNext();) {
+      String key = keys.next();
+      Object value = settings.get(key);
+      if (!(value instanceof String) || !ENVIRONMENT_NAME.matcher(key).matches() || LAUNCH_SETTINGS.contains(key) || key.startsWith("ELIZA_API_")
+          || key.startsWith("ELIZAOS_CLOUD_") || key.startsWith("LD_") || ((String) value).chars().anyMatch(c -> c == 0 || c == '\n' || c == '\r'))
         throw new IOException("The embedded agent environment may not set " + key);
-      environment.put(key, value);
+      environment.put(key, (String) value);
     }
     String name = character.optString("name", "").trim();
     if (name.isEmpty() || name.length() > 50 || character.optString("system", "").trim().isEmpty()) throw new IOException("Invalid embedded agent character");
@@ -90,8 +91,11 @@ public final class EmbeddedAgentConfig {
     JSONObject refused = actions.optJSONObject("refused");
     if (refused != null) for (String action : allowedActions) if (refused.has(action)) throw new IOException("Action " + action + " is both allowed and refused");
     JSONObject plugins = policy.optJSONObject("plugins");
-    JSONArray denied = plugins == null ? null : plugins.optJSONArray("denied");
-    if (denied != null) for (int index = 0; index < denied.length(); index++) deniedPlugins.put(denied.getString(index));
+    JSONArray denied = plugins == null || !plugins.has("denied") ? new JSONArray() : plugins.getJSONArray("denied");
+    for (int index = 0; index < denied.length(); index++) {
+      if (!(denied.get(index) instanceof String)) throw new IOException("The embedded agent policy denies plugins by name");
+      deniedPlugins.put(denied.get(index));
+    }
   }
 
   private static String text(JSONObject words, String key) throws IOException {
@@ -136,7 +140,7 @@ public final class EmbeddedAgentConfig {
     env.put("ELIZA_PROVIDER", "elizacloud");
     env.put("ELIZAOS_CLOUD_USE_INFERENCE", "true");
     env.put("ELIZAOS_CLOUD_API_KEY", credential);
-    env.put("ELIZAOS_CLOUD_BASE_URL", cloud.toString().replaceAll("/+$", ""));
+    env.put("ELIZAOS_CLOUD_BASE_URL", cloud);
     if (!smallModel.isEmpty()) env.put("ELIZAOS_CLOUD_SMALL_MODEL", smallModel);
     if (!largeModel.isEmpty()) env.put("ELIZAOS_CLOUD_LARGE_MODEL", largeModel);
     env.put("ELIZA_CONFIG_EXTERNAL_SECRET_ENV_VARS", "ELIZAOS_CLOUD_API_KEY");

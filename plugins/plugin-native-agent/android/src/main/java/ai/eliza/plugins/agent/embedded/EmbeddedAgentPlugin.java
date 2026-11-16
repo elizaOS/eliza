@@ -93,6 +93,7 @@ public final class EmbeddedAgentPlugin extends Plugin {
       } catch (Exception failure) {
         if (socket.isClosed() && !streams.containsKey(id)) end.put("aborted", true);
         else end.put("error", failure instanceof IOException ? failure.getMessage() : "The agent request failed");
+        if (failure instanceof NativeRuntimeSession.NotReadyException) end.put("code", NativeRuntimeSession.NotReadyException.CODE);
       } finally {
         streams.remove(id);
         try { socket.close(); } catch (IOException ignored) { }
