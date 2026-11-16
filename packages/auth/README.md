@@ -218,9 +218,10 @@ same outcomes as the in-process retries (below).
   opens the Android account picker for an id_token, then asks Google for exactly
   the scopes the host names with `CloudSignInConfig.Builder.googleScope(...)`, for
   the same account. The host shows the same list in its disclosure: `status()`
-  reports it as `googleScopes`, read with `nativeSignInGoogleScopes`. A non-empty
-  list must include an identity scope (`email` or `userinfo.email`): Cloud reads
-  the account's address with the granted token. Cloud's own
+  reports it as `googleScopes`, read with `nativeSignInGoogleScopes`, which throws
+  `unavailable` for a malformed list and returns an empty one only when the plugin
+  predates the field. A non-empty list must include an identity scope (`email` or
+  `userinfo.email`): Cloud reads the account's address with the granted token. Cloud's own
   default scope list (`GET /api/v1/app-auth/mobile/google`) is not used; only its
   `serverClientId` is read. After the Android authorization dialog, the plugin posts
   the challenge proof, the id_token and Google's `serverAuthCode` to
@@ -232,22 +233,27 @@ same outcomes as the in-process retries (below).
   `google: {connected: true, email, scopes}` (the scopes Google granted) or
   `google: {connected: false, reason}`. The reason is Cloud's code (for example
   `google_account_mismatch`) or a local one (`google_declined`,
-  `google_not_configured`, `google_unavailable`). A Gmail failure never fails the
-  sign-in.
+  `google_not_configured` when Cloud's `GET` answers that code,
+  `google_unavailable`). A Gmail failure never fails the sign-in.
 - An account with a second factor completes the code step first. The unused Google
   code stays in memory. After Cloud confirms the new key, the plugin sends the code
   to `POST /api/v1/eliza/google/connect/native` with that key. A key Cloud has not
   confirmed connects nothing; the code is dropped and the outcome reports
   `google_unavailable`.
-- Browser Google mode connects no Google account and reports no `google` field.
+- Browser Google mode connects no Google account and reports no `google` field;
+  `CloudSignInConfig` refuses Google scopes with it.
 - The account picker, Google's permission sheet and the Android authorization
   dialog each appear once, in that order.
 - `signOut({environment})` reserves a credential intent and ends a sign-in in
   progress. It stores the duty to revoke the saved key in the retiring slot, removes
   the key, its receipt and the pending browser record, and asks Cloud to end the
   key. An unanswered request is retried twice in memory and on later starts until
-  Cloud answers 2xx or 401; the duty lapses with the key. A damaged saved record is
-  removed with nothing owed. It clears
+  Cloud answers 2xx or 401; the duty lapses with the key. A duty still owed from an
+  earlier sign-out or renewal is kept beneath the new one (`earlier`), and later
+  starts settle them newest first. While such a duty waits, a renewal of a newer
+  key stays `deferred` after Cloud confirmed its successor, until Cloud answers for
+  the older key or that key lapses. A damaged saved record is removed with nothing
+  owed. It clears
   the Google picker state and answers `{environment, status: "signed-out",
   revocation?: "revoked" | "unconfirmed"}`. The renderer parses the answer with
   `nativeSignOut`.
