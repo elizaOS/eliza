@@ -251,6 +251,57 @@ export function resolveChatPanelLayout(
   return { topMargin, panelMaxH };
 }
 
+/**
+ * Content-fit open height: with nothing waiting in the stage above it, the
+ * open sheet fits its own header, transcript and composer between these
+ * shares of the viewport.
+ */
+export const SHEET_FIT_LOW = 0.38;
+export const SHEET_FIT_HIGH = 0.6;
+
+/** The measured inputs of the fitted open height, in px. */
+export interface ChatSheetFitInput {
+  /** The viewport height the sheet sizes itself to. */
+  viewport: number;
+  /** Content-fit bounds, normally `SHEET_FIT_LOW` and `SHEET_FIT_HIGH` of the viewport. */
+  low: number;
+  high: number;
+  /** The full-height detent; the open sheet never exceeds it. */
+  full: number;
+  /** The sheet header, the transcript and the composer. */
+  content: number;
+  /** The sheet header, the assistant's latest line and the composer: the open sheet's minimum. */
+  floor: number;
+  /** A draft is waiting in the stage above the sheet. */
+  draft: boolean;
+  /** What the waiting draft needs above the sheet: the stage header, the last incoming message and the whole draft. */
+  stageNeed: number;
+  /** What the stage keeps at the largest text size (its header and its last element). */
+  stageMin: number;
+}
+
+/**
+ * The open sheet's fitted height.
+ *
+ * Content fit: without a waiting draft the sheet fits its content between
+ * `low` and `high`. Draft fit: with a draft waiting above it, the sheet gives
+ * the stage what the draft needs, shrinking no further than `floor`, so the
+ * draft is never cut off while older history scrolls in the sheet. Either way
+ * the stage keeps `stageMin`, the sheet never drops below its floor (unless
+ * the floor is taller than full) and never rises above full.
+ */
+export function resolveChatSheetFitHeight(input: ChatSheetFitInput): number {
+  const sheetMin = Math.min(input.floor, input.full);
+  const fitted = Math.min(input.high, Math.max(input.low, input.content));
+  const wanted = input.draft
+    ? Math.min(fitted, input.viewport - input.stageNeed)
+    : fitted;
+  return Math.max(
+    sheetMin,
+    Math.min(Math.min(wanted, input.viewport - input.stageMin), input.full),
+  );
+}
+
 // Ceiling (px) for the "short landscape" (landscape-phone) treatment: a viewport
 // wider than tall and no taller than this reads as a landscape phone. 480 clears
 // a landscape iPhone (~390–430 tall) while staying well below every portrait
