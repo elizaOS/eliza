@@ -17,9 +17,10 @@ import {
 import type { ClientBase, TwitterAccountSession } from "./base";
 import type { Client, Tweet } from "./client/index";
 import { SearchMode } from "./client/index";
+import { TWEET_MAX_LENGTH } from "./constants";
 import { getRandomInterval, parseTwitterCount } from "./environment";
 import type { TwitterClientState } from "./types";
-import { sendTextAsTweetThread } from "./utils";
+import { quoteThreadFirstChunkMaxLength, sendTextAsTweetThread } from "./utils";
 import { createMemorySafe, ensureTwitterContext } from "./utils/memory";
 import { extractXWriteReceiptId } from "./utils/provider-receipt";
 import { getSetting } from "./utils/settings";
@@ -955,6 +956,8 @@ export class TwitterDiscoveryClient {
                           previousTweetId,
                         ),
                   ),
+                TWEET_MAX_LENGTH,
+                quoteThreadFirstChunkMaxLength(scoredTweet.tweet.id),
               );
               logger.info(`Quoted tweet: ${scoredTweet.tweet.id}`);
             }

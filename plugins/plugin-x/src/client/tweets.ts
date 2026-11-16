@@ -1192,6 +1192,16 @@ export async function getTweetAnonymous(
   return getTweet(id, auth);
 }
 
+/**
+ * Text of a quote post: the caller's text and the quoted post's status URL.
+ * The quote_tweet_id field needs an X Enterprise plan, so the URL is what
+ * makes the post a quote. X counts that URL (23) and its space toward the
+ * 280-unit limit.
+ */
+export function quoteTweetText(text: string, quotedTweetId: string): string {
+  return `${text} https://twitter.com/i/status/${quotedTweetId}`;
+}
+
 // Function to create a quote tweet
 export async function createQuoteTweetRequest(
   text: string,
@@ -1206,12 +1216,8 @@ export async function createQuoteTweetRequest(
   }
 
   try {
-    // Quote tweets in v2 are created by including the tweet URL in the text
-    const quotedTweetUrl = `https://twitter.com/i/status/${quotedTweetId}`;
-    const fullText = `${text} ${quotedTweetUrl}`;
-
     const tweetConfig: SendTweetV2Params = {
-      text: fullText,
+      text: quoteTweetText(text, quotedTweetId),
     };
     if (mediaIds && mediaIds.length > 0) {
       tweetConfig.media = {

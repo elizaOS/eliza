@@ -25,6 +25,7 @@ import {
   type TwitterProfile,
 } from "./base";
 import type { Client, Tweet } from "./client/index";
+import { TWEET_MAX_LENGTH } from "./constants";
 import { parseTwitterCount, parseTwitterInterval } from "./environment";
 import {
   quoteTweetTemplate,
@@ -34,6 +35,7 @@ import {
 import type { ActionResponse, TwitterClientState } from "./types";
 import {
   parseActionResponseFromText,
+  quoteThreadFirstChunkMaxLength,
   sendChunkedTweet,
   sendTextAsTweetThread,
 } from "./utils";
@@ -637,6 +639,8 @@ ${tweet.text}${mediaDescriptions}`;
             }
             return { id };
           },
+          TWEET_MAX_LENGTH,
+          quoteThreadFirstChunkMaxLength(tweet.id),
         );
         try {
           logger.log("Successfully posted quote thread");
