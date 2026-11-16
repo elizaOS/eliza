@@ -22,12 +22,13 @@ import { canonical, check as conformanceCheck, ConformanceError, departure, repl
 import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
 import { mirrorGen } from "./units.ts";
 import { conformance as checkTraces, conformanceFound } from "./conform.ts";
+import { explore, explored } from "./explore.ts";
 import { search } from "./simulate.ts";
 import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./spec.ts";
 
 const project = path.join(import.meta.dirname, "..");
 const harnessSkillPaths = [".codex/skills", ".cursor/skills", ".droid/skills", ".factory/skills", ".gemini/skills", ".grok/skills", ".t3/skills"];
-const scaffoldedIgnores = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", ...harnessSkillPaths.map((alias) => `/${alias}`)];
+const scaffoldedIgnores = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", "test/__traces__/", ...harnessSkillPaths.map((alias) => `/${alias}`)];
 const EXAMPLE = path.join(project, "vibestack/examples/order");
 const read = (file: string, from = project): string => fs.readFileSync(path.join(from, file), "utf8");
 const F = "`".repeat(3);
@@ -198,6 +199,50 @@ pure def add(a: int, b: int): int = a + b`);
     assert.throws(() => domain.lazyLookup({}, 1), RangeError);
     assert.throws(() => domain.add(Number.MAX_SAFE_INTEGER, 1), RangeError);
     assert.doesNotMatch(model.render(""), /Number\.isSafeInteger|function exact_/);
+  });
+
+  test("the explore stage finds a page that breaks a property, keeps the trace, replays it first, and drops it once fixed", { skip: !["linux-x64", "linux-arm64", "darwin-arm64"].includes(`${process.platform}-${process.arch}`) }, async () => {
+    const remember: Parameters<typeof explore>[1] = (_fingerprint, run) => run();
+    const page = (script: string) => `<!doctype html><html><head><title>Page</title></head><body><button>Go</button>${script}</body></html>`;
+    const server = 'import http from "node:http"; import fs from "node:fs";\nconst app = http.createServer((_, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(fs.readFileSync("index.html")); });\napp.listen(0, "127.0.0.1", () => console.log(`Local: http://localhost:${app.address().port}/`));\n';
+    const manifest = (scripts: Record<string, string>) => JSON.stringify({ name: "page", private: true, type: "module", packageManager: "pnpm@10.24.0", scripts });
+    assert.deepEqual(await explore(scratch({ "package.json": manifest({ start: "node server.js" }) }), remember), []);
+    const [unserved, silent] = await Promise.all([
+      explore(scratch({ "package.json": manifest({ build: "true" }), "index.html": page("") }), remember),
+      explore(scratch({ "package.json": manifest({ start: "node -e \"console.log('starting')\"" }), "index.html": page("") }), remember),
+    ]);
+    assert.deepEqual(unserved.map(([ok, stage, summary]) => [ok, stage, summary]), [[false, "explore", "index.html is a page, and package.json has no start or dev script that serves it: add one that prints the address it serves at"]]);
+    assert.deepEqual(silent.map(([ok, stage]) => [ok, stage]), [[false, "explore"]]);
+    assert.match(silent[0][2], /`pnpm run start` printed no http:\/\/localhost address before it ended/);
+    const root = scratch({ "package.json": manifest({ start: "node server.js" }), "server.js": server, "index.html": page('<script>throw new Error("broken on load")</script>') });
+    const saved = path.join(root, "test/__traces__/bombadil");
+    const broken = await explore(root, remember);
+    assert.deepEqual(broken.map(([ok, stage]) => [ok, stage]), [[false, "explore"]], broken.map((r) => r.join("\n")).join("\n"));
+    assert.match(broken[0][2], /^index\.html: the page breaks noUncaughtExceptions/);
+    assert.ok(fs.existsSync(saved));
+    const replayed = await explore(root, remember);
+    assert.deepEqual(replayed.map(([ok, stage]) => [ok, stage]), [[false, "explore"]], replayed.map((r) => r.join("\n")).join("\n"));
+    assert.match(replayed[0][2], /still breaks, in the replay of test\/__traces__\/bombadil, noUncaughtExceptions/);
+    fs.writeFileSync(path.join(root, "index.html"), page(""));
+    const fixed = await explore(root, remember);
+    assert.deepEqual(fixed[0].slice(0, 2), [true, "explore"], fixed.map((r) => r.join("\n")).join("\n"));
+    assert.match(fixed[0][2], /the replay of test\/__traces__\/bombadil (breaks nothing now|no longer applies to the page), so it was removed/);
+    assert.ok(!fs.existsSync(saved));
+    assert.ok(!fs.existsSync(path.join(root, "test")), "an exploration leaves no test/ behind for the next check to give Vitest");
+  });
+
+  test("what Bombadil prints is read as a pass, a broken property, a replay that no longer applies, or why it could not explore", () => {
+    const run = "00:00.512 Clicking <button> (x: 10.0, y: 20.0)\n00:01.020 Reloading page\n";
+    assert.deepEqual(explored(0, run, "", false), { kind: "held", actions: 2 });
+    assert.deepEqual(explored(0, "", "", true), { kind: "held", actions: 0 });
+    assert.match((explored(0, "Test finished after time limit!", "", false) as { why: string }).why, /^Bombadil took no action/);
+    const broken = explored(2, `${run}\nnoConsoleErrors was violated:\n\nas of 00:00.000, it should always be the case that …\n\nTest finished, finding 1 violation!\n`, "", false);
+    assert.deepEqual(broken.kind === "broke" && broken.properties, ["noConsoleErrors"]);
+    assert.match((broken as { report: string }).report, /Reloading page\n\nnoConsoleErrors was violated:/);
+    assert.match((explored(1, "", "Error: failed to locate chromium/chrome executable", false) as { why: string }).why, /^Bombadil found no Chromium: run `pnpm exec playwright install chromium`/);
+    assert.match((explored(1, "", "Error: failed to locate chromium/chrome executable", true) as { why: string }).why, /^Bombadil found no Chromium/);
+    assert.match((explored(1, "Test stopped after the browser stalled!", "", false) as { why: string }).why, /^the browser stalled/);
+    assert.deepEqual(explored(1, "", "Error: reproduction diverged", true).kind, "diverged");
   });
 
   test("transitions return effects and step rules inspect their order", async () => {
@@ -1363,7 +1408,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const json = (root: string, file: string) => JSON.parse(read(file, root));
     const pins: Record<string, string> = { ...json(project, "package.json").dependencies, ...json(project, "package.json").devDependencies };
     const pinned = (...names: string[]) => Object.fromEntries(names.map((n) => [n, pins[n]]));
-    const [runtime, tooling] = [["effect", "@effect/platform-node", "vibelang-runtime"], ["vibelang", "vibelang-vite", "vite", "vitest", "@effect/vitest", "@types/node"]];
+    const [runtime, tooling] = [["effect", "@effect/platform-node", "vibelang-runtime"], ["vibelang", "vibelang-vite", "vite", "vitest", "@effect/vitest", "@types/node", "@antithesishq/bombadil"]];
     // VibeLang's packages move together, and with one version of Effect: each is pinned exactly.
     for (const name of [...runtime, ...tooling].filter((n) => n !== "@types/node")) assert.match(pins[name], /^\d+\.\d+\.\d+$/, name);
     // A workspace's `catalog:` means nothing in the package `init` writes it into.
@@ -1995,6 +2040,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     fs.mkdirSync(installed, { recursive: true });
     const unpacked = await exec("tar", ["-xzf", archive, "--strip-components", "1", "-C", installed], copy);
     assert.equal(unpacked.status, 0, unpacked.stdout + unpacked.stderr);
+    assert.deepEqual(fs.readdirSync(installed, { recursive: true, encoding: "utf8" }).filter((file) => file.split(path.sep).includes("examples")), [], "an application's toolchain carries no example to check");
     fs.mkdirSync(path.join(installed, "node_modules"));
     for (const entry of fs.readdirSync(nodeModules).filter((name) => name !== ".bin"))
       fs.symlinkSync(path.join(nodeModules, entry), path.join(installed, "node_modules", entry), fs.statSync(path.join(nodeModules, entry)).isDirectory() ? "dir" : "file");
@@ -2023,6 +2069,18 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(proof?.ok, checked.stdout + checked.stderr);
     assert.match(proof.summary, /all 1 obligations proved/);
   });
+
+  // The examples are the tools' own subjects: checked here, where the tools test themselves, and never by an application
+  // built on them, whose check reaches only its own packages and whose installed toolchain carries no example.
+  for (const name of fs.readdirSync(path.join(project, "vibestack/examples")).sort())
+    test(`the ${name} example installs from its own lock file and passes its check, its page explored where it has one`, async () => {
+      const example = path.join(project, "vibestack/examples", name);
+      const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+      const installed = await exec(pnpm, ["install", "--frozen-lockfile", "--ignore-workspace"], example);
+      assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+      const checked = await exec(pnpm, ["check"], example);
+      assert.equal(checked.status, 0, `${checked.stdout}${checked.stderr}`.trim().split("\n").slice(-80).join("\n"));
+    });
 
   test("the command line checks, generates and watches a project directory from its parent", async () => {
     const script = path.join(project, "vibestack/spec.ts");

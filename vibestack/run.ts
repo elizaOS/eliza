@@ -1,5 +1,5 @@
 // Shared bounded execution for the Quint, TypeScript, test and proof stages.
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { availableParallelism } from "node:os";
@@ -67,6 +67,23 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
     if (next) next();
     else busy--;
   }
+}
+
+/** The process groups `startGroup` started that are still running: an interrupted check ends them before it ends itself. */
+const groups = new Set<(name: NodeJS.Signals) => void>();
+for (const name of ["SIGINT", "SIGTERM"] as const) process.once(name, () => { for (const signal of groups) signal("SIGKILL"); process.kill(process.pid, name); });
+
+/** A shell command in a process group of its own, so that stopping it stops what it started too; `stop` waits until it has closed. */
+export function startGroup(command: string, cwd: string, env?: NodeJS.ProcessEnv) {
+  const child = spawn(command, { cwd, env, shell: true, detached: !WINDOWS, stdio: ["pipe", "pipe", "pipe"] });
+  const closed = new Promise<void>((resolve) => child.on("close", () => resolve()));
+  const signal = (name: NodeJS.Signals) => {
+    try { if (!WINDOWS && child.pid) process.kill(-child.pid, name); else child.kill(name); } catch { /* already exited */ }
+  };
+  groups.add(signal);
+  void closed.then(() => groups.delete(signal));
+  const stop = async () => { signal("SIGTERM"); const timer = setTimeout(() => signal("SIGKILL"), 5000); await closed; clearTimeout(timer); };
+  return { child, closed, stop };
 }
 
 /** What the proof stage needs installed. */

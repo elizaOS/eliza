@@ -9,7 +9,7 @@ import { trusted } from "vibelang-runtime";
 import { acceptable, type Result } from "../../spec.ts";
 import { isStd, parseSpec, readSpecs, specFiles, specName } from "../../parse.ts";
 import { ledgerFile, pending, pendingContracts, pendingKey, pendingSpecs, type Lock, type Pending } from "../../review.ts";
-import { filesUnder, packageScripts, projectRoot, short } from "../../util.ts";
+import { appScript as scriptOfApp, filesUnder, packageScripts, projectRoot, servedAt, short } from "../../util.ts";
 import type { Session, Verdict } from "../gen/index.ts";
 import type { Outline } from "../gen/outline.ts";
 import { manifestOf, nodesOf, type Ids, type Manifest } from "./doc.ts";
@@ -51,13 +51,8 @@ export const manifestFile = (root: string) => path.join(root, ".studio", "manife
  * The script that runs the project's app (spec/index.md, "The app can be started and stopped whenever, beside any job"):
  * `start`, or `dev` when that is not the studio; undefined when there is none. A trusted call.
  */
-export const appScript = trusted(function appScript(root: string): string | undefined {
-  const scripts = packageScripts(root);
-  return scripts.start ? "start" : scripts.dev && !/\bspec(\.ts)? studio\b/.test(scripts.dev) ? "dev" : undefined;
-}, [Error]);
+export const appScript = trusted(scriptOfApp, [Error]);
 
-/** A terminal colour code, which development servers print around their address. */
-const COLOUR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 /** Whether the project can be built: it has a `build` script (spec/index.md, "The app is built from published specs, when no job runs"). A trusted call. */
 export const buildable = trusted((root: string) => buildCommand(root) !== undefined, [Error]);
 
@@ -72,8 +67,7 @@ export const buildCommand = trusted(function buildCommand(root: string): [string
   return workspaceApps ? ["pnpm", ["--filter", "./apps/*", "run", "build"]] : packageScripts(root).build ? ["pnpm", ["run", "build"]] : undefined;
 }, [Error]);
 
-/** The address a development server says it serves at, in a line it printed. @throws {never} */
-export const servedAt = (line: string) => line.replace(COLOUR, "").match(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):\d+[^\s]*/)?.[0];
+export { servedAt };
 
 /** `spec studio [<directory>]`'s project: the directory, which must hold a spec tree. A trusted call. */
 export const studioRoot = trusted(function studioRoot(cwd: string, directory: string): string {
