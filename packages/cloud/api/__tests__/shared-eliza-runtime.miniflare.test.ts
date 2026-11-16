@@ -1888,9 +1888,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         "https://runtime.test/search-turn",
       );
       const body = await response.text();
-      expect(outboundRequests, body).toContain(
-        "https://mcp.parallel.ai/mcp",
-      );
+      expect(outboundRequests, body).toContain("https://mcp.parallel.ai/mcp");
       expect(response.status, body).toBe(200);
       const result = JSON.parse(body) as {
         reply: string;
