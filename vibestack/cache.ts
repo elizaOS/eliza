@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { filesUnder, sha, writeWhole } from "./util.ts";
+import { filesUnder, sha, tokenize, writeWhole } from "./util.ts";
 import { NEEDS_DAFNY, exec, onPath, solver, stamp } from "./run.ts";
 
 /** Load an operator's publishing credential only for the exact cache endpoint it belongs to. */
@@ -185,18 +185,29 @@ const TOOL_DIRS = ["", "gen", "testing", "stories", "design"];
 /**
  * The tools' own scripts, as source or as built: `TOOL_DIRS`, never the projects below them (examples, Studio, the
  * tools' own tests), whose checks rewrite their gen/ while this one reads, and every script they import. Read once, as
- * this process loads them, so that a key names the code that runs, however the files change after.
+ * this process loads them, so that a key names the code that runs, however the files change after. A script is named
+ * by its tokens and the line breaks between them, which decide what it does, and not by its comments or indentation,
+ * so that rewording a comment runs nothing again; that name is remembered across processes while the file is
+ * unchanged, from before it was read.
  */
-const tools = new Map<string, { text: string; imports: string[] }>();
+const tools = new Map<string, { code: string; imports: string[] }>();
 const load = (f: string) => {
   if (tools.has(f)) return;
-  const text = fs.readFileSync(path.join(import.meta.dirname, f), "utf8");
+  const file = path.join(import.meta.dirname, f);
+  const { value, keep } = lasting(`tokens ${file}`, [file]);
+  const text = fs.readFileSync(file, "utf8");
   const imports = [...text.matchAll(IMPORT)].map(([, to]) => path.join(path.dirname(f), to.replace(/\.ts$/, ext)));
-  tools.set(f, { text, imports });
+  tools.set(f, { code: value ?? keep(sha(...tokenize(text)?.map((t) => `${t.fresh ? "\n" : ""}${t.text}`) ?? [text])), imports });
   imports.forEach(load);
 };
 TOOL_DIRS.flatMap((dir) => fs.readdirSync(path.join(import.meta.dirname, dir)).map((f) => path.join(dir, f)))
   .filter((f) => f.endsWith(ext) && f !== `selftest${ext}`).sort().forEach(load);
+/** The code of these scripts, by their names and tokens. */
+const code = (files: string[]) => sha(...files.sort().map((f) => `${f}\0${tools.get(f)?.code}`)).slice(0, 12);
+/** Every tool's script, where it is: a page that runs one of them may run any (explore.ts, `pageInputs`). */
+export const toolScripts = () => [...tools.keys()].map((f) => path.join(import.meta.dirname, f));
+/** The code of every tool, which such a page reads. */
+export const toolsCode = () => code([...tools.keys()]);
 /** The scripts that run when these do. */
 const closure = (...roots: string[]) => {
   const reached = new Set(roots.map((f) => f + ext));
@@ -221,8 +232,9 @@ type Stage = (typeof STAGES)[number];
  * simulates; a proof on Node, LemmaScript, Dafny, Z3 and the prover's code, since its unit's key holds all the unit
  * says, whichever code generated it. The part of the proof library a proof file calls (prove.ts, `libraryFor`) is part
  * of that key too. A typecheck runs VibeLang's compiler, and its key holds every tool's code. Tests, a driver's run and
- * an exploration may run any of these tools, as Studio's do, proofs included, so they depend on all of them and on the
- * verifier, or on there being none.
+ * an exploration may run any of these tools, as Studio's do, proofs included, so they depend on the verifier, or on
+ * there being none; tests and a driver's run on all the tools' code too, and an exploration on the code that explores:
+ * a page that runs the tools has their code in what it reads (explore.ts, `pageInputs`).
  * An action depends only on the code that runs a tool and keeps what it said: its key names the tool and all the tool reads.
  * The versions and the verifier are read for each key, so a process that outlives a reinstall, as `watch` does, keys by
  * what is installed now.
@@ -237,14 +249,13 @@ async function toolchainId(stage: Stage): Promise<string> {
   let id = toolchains.get(known);
   if (id) return id;
   toolchains.set(known, (id = (async () => {
-    const code = (files: string[]) => sha(...files.sort().map((f) => `${f}\0${tools.get(f)?.text}`)).slice(0, 12);
     if (stage === "action") return `${stage} ${code([`action${ext}`, `run${ext}`])}`;
     const node = `node@${process.versions.node}:${process.platform}:${process.arch}`;
     if (stage === "prove") return [stage, node, code(closure("prove")), ...versions, verifier].join(" ");
     if (stage === "simulate") return [stage, ...versions, node, code(closure("simulate", "units"))].join(" ");
     const [quint, typescript, vibelang, ...rest] = versions;
     const { findBinary } = await import("vibelang/binary");
-    return [stage, quint, node, code([...tools.keys()]), typescript, `${vibelang}:${executableDigest(findBinary())}`, ...rest, verifier].filter(Boolean).join(" ");
+    return [stage, quint, node, code(stage === "explore" ? closure("explore") : [...tools.keys()]), typescript, `${vibelang}:${executableDigest(findBinary())}`, ...rest, verifier].filter(Boolean).join(" ");
   })()));
   // A failed probe is not remembered: the next check probes again.
   id.catch(() => toolchains.delete(known));

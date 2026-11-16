@@ -548,10 +548,15 @@ under `src/`.
   state. Later runs replay it first: one that still breaks fails, one that
   cannot run keeps it, and one that breaks nothing or no longer applies to
   the page removes it. A bug worth keeping fixed becomes a step of the journey it broke.
-- **A pass is remembered** until what the page serves changes (the
-  package's files and workspace dependencies, as for its tests, without its
-  tests, drivers, traces and counterexamples), or the installed Bombadil and
-  the packages it loads, or the script. The nightly check always explores afresh.
+- **A pass is remembered** until what the page reads changes, or the
+  installed Bombadil and the packages it loads, or the script: the package's
+  files but its tests and their configuration, drivers, traces,
+  counterexamples, contracts, proofs and `spec/`; each file and directory its
+  code or scripts name by a path; what each workspace package its code
+  imports, or its scripts run, exports; and the generated modules it imports,
+  or all of them where its code names none. A page that runs the tools, as
+  Studio's does, reads the code of them all. The nightly check always
+  explores afresh.
 
 ## Large applications
 

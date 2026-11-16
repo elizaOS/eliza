@@ -199,10 +199,10 @@ function addVitest(root: string): string {
 }
 
 /**
- * What a fingerprint covers: what a package's tests read; what its page serves, which leaves out the tests, drivers,
- * traces and counterexamples; or what its typecheck may read, its scripts and JSON but the traces and counterexamples.
+ * What a fingerprint covers: what a package's tests read, or what its typecheck may read, its scripts and JSON but the
+ * traces and counterexamples. What its page reads is explore.ts's `pageInputs`.
  */
-export type Inputs = "tests" | "page" | "types";
+export type Inputs = "tests" | "types";
 
 /** A package and the workspace packages it depends on, and theirs, each once: by its real directory and the name it is depended on by. */
 export function workspacePackages(root: string): { directory: string; name: string }[] {
@@ -225,7 +225,7 @@ export function workspacePackages(root: string): { directory: string; name: stri
 const SPECIFIER = /(?:\bfrom\s+|\bimport\s*\(\s*|^\s*import\s+)["'](\.\.?\/[^"']+)["']/gm;
 
 /**
- * A fingerprint of what a package's tests, its page or its typecheck read: its files and the top of its gen/ (an owner's is
+ * A fingerprint of what a package's tests or its typecheck read: its files and the top of its gen/ (an owner's is
  * mirrored from the root's), the fixtures nested under its test/, the workspace packages it depends on, the lock file
  * and the fuzzing budget. Of a workspace package depended on, only what a dependent can load: not its spec/, Markdown,
  * tests, drivers, traces or counterexamples, nor the packages nested in it, nor its gen/ unless its scripts or its
@@ -236,7 +236,6 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
   const served = (file: string) => !isTestFile(file) && ![DRIVERS, TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`));
   const reads: Record<Inputs, (file: string) => boolean> = {
     tests: () => true,
-    page: served,
     types: (file) => /\.(?:[cm]?[jt]sx?|json|vibex?)$/.test(file) && ![TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`)),
   };
   const update = (from: string, file: string) => {
@@ -288,7 +287,7 @@ export const UNREAD = /^(node_modules|dist|build|out|coverage|storybook-static|_
  * (such as `.cache/`) or `.DS_Store`, nor the packages nested in it, which are checked on their own, except, with
  * `fixtures`, those under a test/ directory, which its tests read.
  */
-function packageFiles(root: string, keep: (file: string) => boolean, dir = "", fixtures = false): string[] {
+export function packageFiles(root: string, keep: (file: string) => boolean, dir = "", fixtures = false): string[] {
   return fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => {
     const rel = dir ? `${dir}/${e.name}` : e.name;
     if (e.name === ".git" || e.name === ".DS_Store") return [];
@@ -302,7 +301,7 @@ function packageFiles(root: string, keep: (file: string) => boolean, dir = "", f
 const packageCode = (root: string) => packageFiles(root, (file) => /\.(?:[cm]?[jt]sx?|vibex?)$/.test(file) && !SIDECAR.test(file));
 
 /** A test of a package: test/**\/*.test.*, but not a driver, which the traces stage runs. */
-const isTestFile = (file: string) => /^test\/(?!drivers\/).*\.test\.[^/.]+$/.test(file);
+export const isTestFile = (file: string) => /^test\/(?!drivers\/).*\.test\.[^/.]+$/.test(file);
 const testFiles = (root: string) => packageCode(root).filter(isTestFile);
 
 /** Where a package keeps its drivers, the traces they replay and the counterexamples the simulator found (SPEC.md, "Conformance"). */
@@ -311,7 +310,7 @@ export const TRACES = "test/traces", DRIVERS = "test/drivers", COUNTEREXAMPLES =
 /** A token of a script, and how many brackets it sits in. */
 interface Token { text: string; pos: number; start: number; depth: number; fresh: boolean }
 /** A script's tokens, or nothing if its brackets do not balance; TypeScript's scanner reads VibeLang's too. */
-function tokenize(text: string): Token[] | undefined {
+export function tokenize(text: string): Token[] | undefined {
   const K = ts.SyntaxKind;
   const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, text);
   const out: Token[] = [];
