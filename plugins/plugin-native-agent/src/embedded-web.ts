@@ -61,7 +61,21 @@ export class EmbeddedAgentWeb
       });
     const controller = new AbortController();
     this.streams.set(id, controller);
-    void this.pump(id, options, controller.signal);
+    const response = await fetch(`${EMBEDDED_AGENT_PREFIX}/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
+      signal: controller.signal,
+    }).catch((error: unknown) => {
+      this.streams.delete(id);
+      throw error;
+    });
+    if (response.status === 403) {
+      this.streams.delete(id);
+      const value = await response.json();
+      throw Object.assign(new Error(value.error), { code: value.code });
+    }
+    void this.pump(id, response, controller.signal);
     return { id };
   }
 
@@ -72,25 +86,19 @@ export class EmbeddedAgentWeb
     return { aborted: controller !== undefined };
   }
 
-  private async pump(
-    id: string,
-    options: EmbeddedAgentRequest,
-    signal: AbortSignal,
-  ) {
+  private async pump(id: string, response: Response, signal: AbortSignal) {
     try {
-      const response = await fetch(`${EMBEDDED_AGENT_PREFIX}/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(options),
-        signal,
-      });
       if (
         !response.body ||
         !response.headers.get("content-type")?.startsWith("text/event-stream")
       ) {
         const value = await response.json();
-        if (!response.ok) throw new Error(value.error ?? value.code);
-        return this.notifyListeners("streamEnd", { id, ...value });
+        return this.notifyListeners(
+          "streamEnd",
+          response.ok
+            ? { id, ...value }
+            : { id, error: value.error, code: value.code },
+        );
       }
       const reader = response.body
         .pipeThrough(new TextDecoderStream())

@@ -13,7 +13,6 @@ export type EmbeddedAgentFailure =
   | "config"
   | "credential"
   | "agent"
-  | "gateway"
   | "crashed"
   | "runtime";
 
@@ -23,6 +22,8 @@ export interface EmbeddedAgentStatus {
   failure?: EmbeddedAgentFailure;
   error?: string;
   epoch?: number;
+  onDevice?: boolean;
+  requestBodyLimit?: number;
 }
 
 export interface EmbeddedAgentRequest {
@@ -46,6 +47,7 @@ export interface EmbeddedAgentStreamEnd {
   status?: number;
   data?: unknown;
   error?: string;
+  code?: string;
   aborted?: boolean;
 }
 
@@ -59,7 +61,8 @@ export interface EmbeddedAgentPlugin {
   restart(): Promise<EmbeddedAgentStatus>;
   stop(): Promise<EmbeddedAgentStatus>;
   request(options: EmbeddedAgentRequest): Promise<EmbeddedAgentResponse>;
-  /** Each server-sent event's data arrives as `streamData`, then one `streamEnd`. `id` is the caller's, 8-64 of `[A-Za-z0-9-]`. */
+  /** Each server-sent event's data arrives as `streamData`, then one `streamEnd`. `id` is the caller's, 8-64 of `[A-Za-z0-9-]`.
+   * A refused route rejects the call with `ROUTE_REFUSED`; an agent that is not ready ends the stream with `RUNTIME_NOT_READY`. */
   requestStream(
     options: EmbeddedAgentRequest & { id: string },
   ): Promise<{ id: string }>;
