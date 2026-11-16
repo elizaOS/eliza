@@ -2346,7 +2346,9 @@
         "Plugin epochs own declaration receipts while classes share instance identity",
         "Teardown processes each service type after disposal",
         "Captured instance stops and class hooks settle in source order",
-        "A sealed request set eventually settles under fair external completion"
+        "A sealed request set eventually settles under fair external completion",
+        "Connector withdrawal permanently fences the captured owner after disposal",
+        "Connector publication follows the captured owner's withdrawal fence"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "80c0394b7f625052e1d55112cee6d295ec76c0f7465dd81dbe38843fa946f9a8",

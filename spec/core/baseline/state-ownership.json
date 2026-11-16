@@ -10607,7 +10607,7 @@
       "id": "packages/core/src/plugin-lifecycle.ts#withdrawnConnectorOwners@144",
       "line": 144,
       "scope": "module",
-      "classification": "partial-state-projection",
+      "classification": "state-projection",
       "declaration": "withdrawnConnectorOwners = new WeakSet<PluginOwnership>()",
       "mutations": [
         {
@@ -10618,168 +10618,97 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/pluginServices.md",
-        "spec/core/serviceInstances.md"
+        "spec/core/pluginRegistry.md",
+        "spec/core/plugins.md"
       ],
-      "verification": "Source ownership is identified; exact-owner connector publication guard conformance remains required.",
-      "sourceClassification": "owned-global-registry",
+      "verification": "Exact-owner publication decisions are specified in the model; model verification, pinned host conformance and implementation refinement are separate evidence.",
+      "sourceClassification": "modeled-owned-state",
       "coverage": {
-        "classification": "partial-state-projection",
-        "representation": "The associated models describe surrounding plugin epochs and service retirement. The withdrawn connector-owner latch has a separate publication lifetime and is not projected by the service class liveOwners mapping.",
+        "classification": "state-projection",
+        "representation": "Each retained plugin epoch owns a sticky connectorsWithdrawn bit. Send-handler, message-connector and post-connector publication use the callback's captured epoch, and unowned calls delegate. PluginServices.liveOwners separately maps service classes to their current epochs.",
         "model": {
-          "spec": "spec/core/pluginServices.md",
-          "stateType": "PluginServices",
+          "spec": "spec/core/pluginRegistry.md",
+          "stateType": "PluginEpochs",
           "stateFields": [
-            "plugins",
-            "services",
-            "ownership",
-            "liveOwners",
-            "retirements",
-            "requestsClosed"
+            "epochs",
+            "nextEpoch"
           ],
           "transitions": [
             "beginPlugin",
             "joinPlugin",
             "commitPlugin",
-            "registerOwnedClass",
-            "finishInitialization",
-            "ensureServices",
-            "resumeEnsure",
-            "finishClassStart",
-            "failClassStart",
-            "finishClassObserver",
-            "settleEnsure",
             "failPlugin",
             "unloadPlugin",
             "disposePlugin",
-            "requestOwnedStops",
-            "invokeClassStop",
-            "finishClassStop",
-            "finishLateStart",
-            "cleanPlugin",
-            "stopServices",
-            "sealRequests",
-            "resolveNextStart",
-            "finishNextObserver",
-            "finishNextLateStart",
-            "settleTypeAggregate",
-            "clearTypeAggregate",
-            "withdrawNextType",
-            "invokeClassHook",
-            "finishClassHook",
-            "finishRetirementGroup",
-            "skipMissingStop",
-            "claimInstanceStop",
-            "observeInstanceStop",
-            "finishClassSlot",
-            "finishNextPluginDisposal",
-            "finishNextRegistration",
-            "finishNextClassHook",
-            "advanceRetirement"
+            "cleanPlugin"
           ],
-          "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
+          "specSha256": "dea4c7289aba5a766f5d834e416570166ca7698d4bb753a8215221a846e416fa"
         },
         "associatedModels": [
           {
-            "spec": "spec/core/pluginServices.md",
-            "stateType": "PluginServices",
+            "spec": "spec/core/pluginRegistry.md",
+            "stateType": "PluginEpochs",
             "stateFields": [
-              "plugins",
-              "services",
-              "ownership",
-              "liveOwners",
-              "retirements",
-              "requestsClosed"
+              "epochs",
+              "nextEpoch"
             ],
             "transitions": [
               "beginPlugin",
               "joinPlugin",
               "commitPlugin",
-              "registerOwnedClass",
-              "finishInitialization",
-              "ensureServices",
-              "resumeEnsure",
-              "finishClassStart",
-              "failClassStart",
-              "finishClassObserver",
-              "settleEnsure",
               "failPlugin",
               "unloadPlugin",
               "disposePlugin",
-              "requestOwnedStops",
-              "invokeClassStop",
-              "finishClassStop",
-              "finishLateStart",
-              "cleanPlugin",
-              "stopServices",
-              "sealRequests",
-              "resolveNextStart",
-              "finishNextObserver",
-              "finishNextLateStart",
-              "settleTypeAggregate",
-              "clearTypeAggregate",
-              "withdrawNextType",
-              "invokeClassHook",
-              "finishClassHook",
-              "finishRetirementGroup",
-              "skipMissingStop",
-              "claimInstanceStop",
-              "observeInstanceStop",
-              "finishClassSlot",
-              "finishNextPluginDisposal",
-              "finishNextRegistration",
-              "finishNextClassHook",
-              "advanceRetirement"
+              "cleanPlugin"
             ],
-            "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
+            "specSha256": "dea4c7289aba5a766f5d834e416570166ca7698d4bb753a8215221a846e416fa"
           },
           {
-            "spec": "spec/core/serviceInstances.md",
-            "stateType": "ServiceInstances",
+            "spec": "spec/core/plugins.md",
+            "stateType": "PluginState",
             "stateFields": [
-              "declarations",
-              "classes",
-              "attempts",
-              "objects",
-              "published",
-              "calls",
-              "nextAttempt",
-              "initialization",
-              "stopped",
-              "observerErrors",
-              "typeEntries",
-              "loadPromises",
-              "aggregates",
-              "nextLoad"
+              "phase",
+              "callers",
+              "outcomeKnown",
+              "outcomeSuccess",
+              "contributions",
+              "hasAdapter",
+              "disposeCalls",
+              "disposePending",
+              "connectorsWithdrawn",
+              "cleanupFailed",
+              "connectorOwner",
+              "servicePending",
+              "serviceLive",
+              "serviceStopCalls",
+              "serviceStopPending"
             ],
             "transitions": [
-              "registerClass",
-              "acquireServices",
-              "finishInitialization",
-              "resumeAcquire",
-              "returnInstance",
-              "failStart",
-              "finishObserver",
-              "settleAcquire",
-              "requestObjectStop",
-              "invokeObjectStop",
-              "settleObjectStop",
-              "finishLateStart",
-              "unregisterClass",
-              "stopRuntime",
-              "clearTypeAggregate",
-              "settleTypeAggregate",
-              "finishNextObserver",
-              "finishNextLateStart",
-              "resolveNextStart"
+              "beginRegistration",
+              "joinRegistration",
+              "contribute",
+              "commitRegistration",
+              "failRegistration",
+              "ownConnector",
+              "replaceConnector",
+              "beginUnload",
+              "finishDispose",
+              "finishCleanup",
+              "startOwnedService",
+              "finishOwnedService",
+              "stopOwnedService",
+              "finishOwnedServiceStop"
             ],
-            "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+            "specSha256": "f7cdb36a46c6ccb6eb30750936fb967f47c9caa0d121dc28c8849bbffdc84410"
           }
         ],
-        "mappedStateFields": [],
-        "unmodeledState": "The exact PluginOwnership reference is added to withdrawnConnectorOwners after awaited disposal at pinned plugin-lifecycle.ts:863. Send-handler, message-connector and post-connector publication must consult that same latch at lines 1187, 1195 and 1207, including callbacks that resume before and after disposal. The current service and epoch models do not represent this connector admission latch.",
-        "closureStatus": "partial-state-with-explicit-adapter-boundary",
-        "verification": "Model checks and implementation refinement are separate evidence."
+        "mappedStateFields": [
+          "epochs"
+        ],
+        "unmodeledState": null,
+        "closureStatus": "state-modeled-with-explicit-refinement-boundary",
+        "verification": "Model checks and implementation refinement are separate evidence.",
+        "remainingBoundary": "The adapter maps actual captured PluginOwnership references to known retained epochs and preserves ambient capture and exact runtime identity. Absent or cross-runtime capture becomes UnownedCall. An absent dispose hook or synchronous throw reaches the fence before external interleaving, while awaited disposal is fenced by its owning continuation. Unassigned numeric-reference results are model-boundary validation. Registry traversal can fail and retain an old entry after its owner is blocked from publication. The finite pinned host comparisons cover gate decisions and observed schedules. Full source-to-model refinement remains unproved."
       }
     },
     {
@@ -12935,7 +12864,7 @@
             "disposePlugin",
             "cleanPlugin"
           ],
-          "specSha256": "12435c7fe70310841be0545ea9b68a2f98dcdef6131973bcf1b10da94d3c18b7"
+          "specSha256": "dea4c7289aba5a766f5d834e416570166ca7698d4bb753a8215221a846e416fa"
         },
         "mappedStateFields": [
           "epochs"
@@ -49554,21 +49483,14 @@
   ],
   "summary": {
     "static-or-derived-value": 559,
-    "state-projection": 360,
+    "state-projection": 361,
     "immutable-construction-input": 148,
     "derived-cache-boundary": 20,
     "external-composition-reference": 39,
-    "dynamic-scope-delegation": 6,
-    "partial-state-projection": 1
+    "dynamic-scope-delegation": 6
   },
   "mappingErrors": [],
-  "modelGaps": [
-    {
-      "id": "packages/core/src/plugin-lifecycle.ts#withdrawnConnectorOwners@144",
-      "classification": "partial-state-projection",
-      "unmodeledState": "The exact PluginOwnership reference is added to withdrawnConnectorOwners after awaited disposal at pinned plugin-lifecycle.ts:863. Send-handler, message-connector and post-connector publication must consult that same latch at lines 1187, 1195 and 1207, including callbacks that resume before and after disposal. The current service and epoch models do not represent this connector admission latch."
-    }
-  ],
+  "modelGaps": [],
   "groups": [
     {
       "id": "access-control/audience-disclosure.ts#LEVEL_RANK",
@@ -52434,13 +52356,11 @@
         "packages/core/src/plugin-lifecycle.ts#withdrawnConnectorOwners@144"
       ],
       "modelSpecs": [
-        "spec/core/pluginServices.md",
-        "spec/core/serviceInstances.md"
+        "spec/core/pluginRegistry.md",
+        "spec/core/plugins.md"
       ],
       "missingState": [],
-      "partialState": [
-        "packages/core/src/plugin-lifecycle.ts#withdrawnConnectorOwners@144"
-      ]
+      "partialState": []
     },
     {
       "id": "plugin-lifecycle.ts#generalFallbackWarnedProviders",
