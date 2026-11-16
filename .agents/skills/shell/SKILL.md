@@ -36,10 +36,10 @@ when the spec has a sender:
 | `error NotAnEvent { input }`, `NotAState { input }`, `NotASender { input }` | an untrusted value that is not one |
 | `decodeEvent(input)`, `decodeState(input)`, `decodeSender(input)` | `parseEvent`, `parseState` and `parseSender`, failing where they return `undefined` |
 | `apply(current, event[, by])` | `step`, failing with `Rejected` where `enabled` refuses instead of leaving the state unchanged |
-| `service Machine` | the state and the one way to change it: `get()`, `send(event[, by])`, `receive(input[, by])` for an untrusted event (`decodeEvent`, then `send`), and `changes`, a `Stream` of the state, starting with the current one |
+| `service Machine` | the state and the one way to change it: `get()`, the state as it is kept now; `send(event[, by])`, which applies the event to the state as it is kept when it is sent, so a `Rejected` carries that state; `receive(input[, by])` for an untrusted event (`decodeEvent`, then `send`); and `changes`, a `Stream` of the state the Machine was made with or last led to, then of each one an event sent to it leads to |
 | `machine(start = initial)` | a `Layer` that provides `Machine` in memory, applying one event at a time; `start` may be a state `decodeState` returned |
-| `machineOver(start, keep)` | an effect that makes a `Machine` from `start` which gives each new state to `keep` before it is current; `send` dies, and the state stays, where `keep` dies. A shell that keeps the state elsewhere, such as a file, supplies only how to load and `keep` it |
-| `stored(key, start = initial)` | a `Layer` that provides `Machine` kept as JSON under `key` in Effect's `KeyValueStore` (`effect/persistence/KeyValueStore`): it starts from what is stored, through `decodeState` (failing with `NotAState`, and never writing over it, where that is not a state), or from `start`; each new state is stored before it is current, and `send` dies where the store refuses it |
+| `machineOver(load, keep)` | an effect that makes a `Machine` over a state kept elsewhere: each event is applied to what `load` reads when it is sent, never to a copy, and the state it leads to goes to `keep` before `send` returns. It fails as the first `load` does; where a later `load` fails or `keep` dies, `send` dies and the state stays. A shell that keeps the state elsewhere, such as a file, supplies only how to `load` and `keep` it |
+| `stored(key, start = initial)` | a `Layer` that provides `Machine` kept as JSON under `key` in Effect's `KeyValueStore` (`effect/persistence/KeyValueStore`): each event is applied to what is stored when it is sent, through `decodeState`, or to `start` where nothing is, so a page, tab or program over the same store steps from what another stored and never writes over it; what is stored and is not a state fails the layer with `NotAState`, or makes a later `send` die, and is never written over; each new state is stored before `send` returns, and `send` dies where the store refuses it |
 
 Where transitions return `{ state, out }`, `apply`, `send` and `receive`
 return that record; `get` and `changes` give the state.
@@ -80,8 +80,12 @@ it.effect("Check out", effect () => {
 
 - **`machine()` forgets when the process ends; `stored(key)` keeps the state**
   in the `KeyValueStore` layer the program provides (`layerFileSystem(dir)` on
-  Node, `layerStorage` in a browser, `layerMemory` in a test). Never restate
-  the state as an Effect Schema. A shell that keeps it any other way, on
+  Node, `layerStorage` in a browser, `layerMemory` in a test), shared by every
+  page or program over the same key. A page another has stored past, such as a
+  second tab or the page a step back restores, shows its last state until its
+  next event, which is applied to what is stored; nothing locks the store
+  between a send's read and its write, so two that send at the same instant
+  can still lose one event. Never restate the state as an Effect Schema. A shell that keeps it any other way, on
   `machineOver` or on `apply` and the decoders, needs a driver that `check`
   compares with the spec ([SPEC.md, "Conformance"](../../../SPEC.md#conformance)):
   `check` writes one to fill in when `src/` imports `apply`.
