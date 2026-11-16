@@ -23,7 +23,9 @@ identity.
 All active classes of a type are considered in declaration order. A failed
 sibling is skipped when another class of the type already holds an
 implementation. A running implementation is reused. A class's pending
-promise is shared until observer completion or failure. The
+promise is shared until observer completion or failure. While an attempt is
+invoking, its class holds the pending slot and has no live instance. Runtime
+shutdown clears the slot and retires any object that returns afterward. The
 ServiceInstances state also owns the per-type registration status, retained
 load promise, pending resolver and latest aggregate of ordered startup results.
 The aggregate and its initiating caller settle independently after the captured
@@ -221,6 +223,8 @@ pure def sometimesFulfilledPromiseRetained(s: ServiceInstances): bool = s.typeEn
 pure def sometimesStaleAggregateCannotClearSuccessor(s: ServiceInstances): bool = s.typeEntries.some(e => e.latestAggregate > 0 and s.aggregates.some(a => a.serviceType == e.serviceType and a.id != e.latestAggregate and a.settled and not(canClearTypeAggregate(s, a.id))))
 pure def alwaysClassAndObjectIdentities(s: ServiceInstances): bool = s.classes.every(c => c.id > 0 and c.generation >= 0 and c.pending >= 0 and s.classes.select(other => other.id == c.id).length() == 1) and s.objects.every(o => o.id > 0 and s.objects.select(other => other.id == o.id).length() == 1)
 pure def alwaysPendingAttemptsOwned(s: ServiceInstances): bool = s.classes.every(c => c.pending == 0 or (serviceAttempt(s, c.pending).classId == c.id and serviceAttempt(s, c.pending).generation == c.generation and (serviceAttempt(s, c.pending).phase == StartInvoking or serviceAttempt(s, c.pending).phase == StartObserver or serviceAttempt(s, c.pending).phase == StartLateStop)))
+  and (s.stopped or s.attempts.every(a => a.phase == StartInvoking implies
+    (serviceClass(s, a.classId).pending == a.id and serviceClass(s, a.classId).live == 0)))
 pure def alwaysCapturedAttemptsExist(s: ServiceInstances): bool = s.calls.every(c => c.attempts.every(id => id > 0 and serviceAttempt(s, id).id == id)) and s.attempts.every(a => a.instance == 0 or serviceObject(s, a.instance).id == a.instance) and s.aggregates.every(a => a.members.every(m => m.attemptId == 0 or serviceAttempt(s, m.attemptId).id == m.attemptId))
 pure def alwaysDeclarationsMatch(s: ServiceInstances): bool = s.declarations.every(d => d.serviceType != "" and serviceClass(s, d.classId).registered and serviceClass(s, d.classId).serviceType == d.serviceType) and s.classes.every(c => (c.live != 0 implies c.registered) and (c.registered iff s.declarations.some(d => d.classId == c.id)))
 pure def alwaysObjectStopOnce(s: ServiceInstances): bool = s.objects.every(o => o.stopCalls >= 0 and o.stopCalls <= 1 and (o.stopPhase != StopNotRequested iff o.stopCalls == 1))
