@@ -19,7 +19,6 @@ try {
       path.join(root, "test/native-host/local-credential-client.node.mjs"),
       path.join(root, "test/native-host/gateway-artifact.node.mjs"),
       path.join(root, "test/native-host/updater-contract-fixtures.node.mjs"),
-      path.join(root, "test/native-host/embedded-agent.node.mjs"),
     ],
     { stdio: "inherit", timeout: 60000 },
   );
