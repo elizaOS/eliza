@@ -432,3 +432,156 @@ lemma PluginRetirementWithdrawalPreservesTypePlan(s: PluginServices, epochId: in
     }
   }
 }
+
+lemma finishInitialization_ensures(s: PluginServices, ok: bool)
+  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysLiveClassOwnerUnique(finishInitialization(s, ok)))
+  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysServiceOwnerEpochExists(finishInitialization(s, ok)))
+  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysChildLifecyclesValid(finishInitialization(s, ok)))
+  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysRetirementsFollowTypePlan(finishInitialization(s, ok)))
+  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysNoOrphanInstance(finishInitialization(s, ok)))
+  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysRetiredUndeclaredTypeIsUnknown(finishInitialization(s, ok)))
+  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysStopObservationsFollowSlots(finishInitialization(s, ok)))
+  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysRetiredEpochHasNoResources(finishInitialization(s, ok)))
+  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysSealedOwnedClassesStable(finishInitialization(s, ok)))
+{
+  if inv(s) && canFinishInitialization(s, ok) {
+    PluginServiceFrameAfterFinishInitialization(s, ok);
+  }
+}
+
+lemma settleTypeAggregate_ensures(s: PluginServices, callId: int)
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysLiveClassOwnerUnique(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysServiceOwnerEpochExists(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysChildLifecyclesValid(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysRetirementsFollowTypePlan(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysNoOrphanInstance(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysRetiredUndeclaredTypeIsUnknown(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysStopObservationsFollowSlots(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysRetiredEpochHasNoResources(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysSealedOwnedClassesStable(settleTypeAggregate(s, callId)))
+{
+  if inv(s) && canSettleTypeAggregate(s, callId) {
+    PluginServiceFrameAfterSettleTypeAggregate(s, callId);
+  }
+}
+
+lemma clearTypeAggregate_ensures(s: PluginServices, callId: int)
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysLiveClassOwnerUnique(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysServiceOwnerEpochExists(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysChildLifecyclesValid(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysRetirementsFollowTypePlan(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysNoOrphanInstance(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysRetiredUndeclaredTypeIsUnknown(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysStopObservationsFollowSlots(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysRetiredEpochHasNoResources(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysSealedOwnedClassesStable(clearTypeAggregate(s, callId)))
+{
+  if inv(s) && canClearTypeAggregate(s, callId) {
+    PluginServiceFrameAfterClearTypeAggregate(s, callId);
+  }
+}
+
+lemma settleEnsure_ensures(s: PluginServices, callId: int)
+  ensures (inv(s) ==> canSettleEnsure(s, callId) ==> alwaysLiveClassOwnerUnique(settleEnsure(s, callId)))
+  ensures (inv(s) ==> canSettleEnsure(s, callId) ==> alwaysServiceOwnerEpochExists(settleEnsure(s, callId)))
+  ensures (inv(s) ==> canSettleEnsure(s, callId) ==> alwaysChildLifecyclesValid(settleEnsure(s, callId)))
+  ensures (inv(s) ==> canSettleEnsure(s, callId) ==> alwaysRetirementsFollowTypePlan(settleEnsure(s, callId)))
+  ensures (inv(s) ==> canSettleEnsure(s, callId) ==> alwaysNoOrphanInstance(settleEnsure(s, callId)))
+  ensures (inv(s) ==> canSettleEnsure(s, callId) ==> alwaysRetiredUndeclaredTypeIsUnknown(settleEnsure(s, callId)))
+  ensures (inv(s) ==> canSettleEnsure(s, callId) ==> alwaysStopObservationsFollowSlots(settleEnsure(s, callId)))
+  ensures (inv(s) ==> canSettleEnsure(s, callId) ==> alwaysRetiredEpochHasNoResources(settleEnsure(s, callId)))
+  ensures (inv(s) ==> canSettleEnsure(s, callId) ==> alwaysSealedOwnedClassesStable(settleEnsure(s, callId)))
+{
+  if inv(s) && canSettleEnsure(s, callId) {
+    PluginServiceFrameAfterSettleEnsure(s, callId);
+  }
+}
+
+lemma PluginServiceFrameStopSlotStable(before: core__serviceInstances_ServiceInstances,
+    after: core__serviceInstances_ServiceInstances, slot: InstanceSlot)
+  requires before.objects == after.objects
+  ensures stopSlotSettled(slot, before) == stopSlotSettled(slot, after)
+{
+  hide *;
+  reveal stopSlotSettled(), core__serviceInstances_serviceObject();
+}
+
+lemma PluginServiceFrameObservationFoldStable(before: core__serviceInstances_ServiceInstances,
+    after: core__serviceInstances_ServiceInstances, group: RetirementGroup)
+  requires before.objects == after.objects
+  ensures allStopObservationsValid(group, before) == allStopObservationsValid(group, after)
+{
+  hide *;
+  reveal allStopObservationsValid(), validateNextStop(), validStopObservation();
+  var fromBefore := (row: SequenceValidation, slot: InstanceSlot) => validateNextStop(row, group, slot, before);
+  var fromAfter := (row: SequenceValidation, slot: InstanceSlot) => validateNextStop(row, group, slot, after);
+  forall row: SequenceValidation, i | 0 <= i < |group.observedStops|
+    ensures fromBefore(row, group.observedStops[i]) == fromAfter(row, group.observedStops[i])
+  {
+    PluginServiceFrameStopSlotStable(before, after, group.observedStops[i]);
+  }
+  ProofLib.FoldLeftPointwise(fromBefore, fromAfter, uncheckedSequence, group.observedStops, group.observedStops);
+}
+
+lemma PluginServiceFrameRetainsStopReceipts(s: PluginServices, after: PluginServices)
+  requires alwaysStopObservationsFollowSlots(s) && alwaysRetiredEpochHasNoResources(s)
+  requires after.retirements == s.retirements && after.plugins == s.plugins && after.services.objects == s.services.objects
+  ensures alwaysStopObservationsFollowSlots(after) && alwaysRetiredEpochHasNoResources(after)
+{
+  hide *;
+  reveal alwaysStopObservationsFollowSlots(), alwaysRetiredEpochHasNoResources(), retirementSettled(), retirement();
+  forall r | r in after.retirements
+    ensures forall g | g in r.groups ::
+      allStopObservationsValid(g, s.services) == allStopObservationsValid(g, after.services)
+    ensures forall g | g in r.groups ::
+      (forall slot | slot in g.observedStops :: stopSlotSettled(slot, s.services) == stopSlotSettled(slot, after.services))
+  {
+    forall g | g in r.groups
+      ensures allStopObservationsValid(g, s.services) == allStopObservationsValid(g, after.services)
+      ensures forall slot | slot in g.observedStops :: stopSlotSettled(slot, s.services) == stopSlotSettled(slot, after.services)
+    {
+      PluginServiceFrameObservationFoldStable(s.services, after.services, g);
+      forall slot | slot in g.observedStops
+        ensures stopSlotSettled(slot, s.services) == stopSlotSettled(slot, after.services)
+      {
+        PluginServiceFrameStopSlotStable(s.services, after.services, slot);
+      }
+    }
+  }
+}
+
+lemma PluginServiceFrameAfterFinishInitialization(s: PluginServices, ok: bool)
+  requires alwaysStopObservationsFollowSlots(s) && alwaysRetiredEpochHasNoResources(s)
+  ensures alwaysStopObservationsFollowSlots(finishInitialization(s, ok)) && alwaysRetiredEpochHasNoResources(finishInitialization(s, ok))
+{
+  hide *;
+  reveal finishInitialization(), core__serviceInstances_finishInitialization();
+  PluginServiceFrameRetainsStopReceipts(s, finishInitialization(s, ok));
+}
+
+lemma PluginServiceFrameAfterSettleTypeAggregate(s: PluginServices, callId: int)
+  requires alwaysStopObservationsFollowSlots(s) && alwaysRetiredEpochHasNoResources(s)
+  ensures alwaysStopObservationsFollowSlots(settleTypeAggregate(s, callId)) && alwaysRetiredEpochHasNoResources(settleTypeAggregate(s, callId))
+{
+  hide *;
+  reveal settleTypeAggregate(), core__serviceInstances_settleTypeAggregate();
+  PluginServiceFrameRetainsStopReceipts(s, settleTypeAggregate(s, callId));
+}
+
+lemma PluginServiceFrameAfterClearTypeAggregate(s: PluginServices, callId: int)
+  requires alwaysStopObservationsFollowSlots(s) && alwaysRetiredEpochHasNoResources(s)
+  ensures alwaysStopObservationsFollowSlots(clearTypeAggregate(s, callId)) && alwaysRetiredEpochHasNoResources(clearTypeAggregate(s, callId))
+{
+  hide *;
+  reveal clearTypeAggregate(), core__serviceInstances_clearTypeAggregate();
+  PluginServiceFrameRetainsStopReceipts(s, clearTypeAggregate(s, callId));
+}
+
+lemma PluginServiceFrameAfterSettleEnsure(s: PluginServices, callId: int)
+  requires alwaysStopObservationsFollowSlots(s) && alwaysRetiredEpochHasNoResources(s)
+  ensures alwaysStopObservationsFollowSlots(settleEnsure(s, callId)) && alwaysRetiredEpochHasNoResources(settleEnsure(s, callId))
+{
+  hide *;
+  reveal settleEnsure(), core__serviceInstances_settleAcquire(), core__serviceInstances_putType();
+  PluginServiceFrameRetainsStopReceipts(s, settleEnsure(s, callId));
+}
