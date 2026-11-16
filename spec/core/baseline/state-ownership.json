@@ -4508,13 +4508,16 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Runtime object identities key manager cache; empty runtime key selects separate standalone manager.",
+        "representation": "Runtime object identity keys one cache binding; standalone uses the empty runtime key. Registered native/compatible services take precedence without replacing the cache. Native objects embed the existing connectorBackends owner; externally supplied snapshots do not reset retained aliases.",
         "model": {
           "spec": "spec/core/connectorManagers.md",
           "stateType": "ConnectorManagers",
           "stateFields": [
             "nextId",
+            "runtimes",
             "managers",
+            "nativeIdentities",
+            "nativeObjects",
             "providers",
             "selected"
           ],
@@ -4523,10 +4526,11 @@
             "registerProvider",
             "unregisterProvider"
           ],
-          "specSha256": "b77e13758b074e096a67bb0252a5e5fbb90891b483abd53328527429f94f61f1"
+          "specSha256": "82a3b2adef24cb473ee23be50531757ecb00713ce440c19b05636aff40ce5c07"
         },
         "mappedStateFields": [
           "nextId",
+          "runtimes",
           "managers",
           "selected"
         ],
@@ -4554,13 +4558,16 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Runtime object identities key manager cache; empty runtime key selects separate standalone manager.",
+        "representation": "Runtime object identity keys one cache binding; standalone uses the empty runtime key. Registered native/compatible services take precedence without replacing the cache. Native objects embed the existing connectorBackends owner; externally supplied snapshots do not reset retained aliases.",
         "model": {
           "spec": "spec/core/connectorManagers.md",
           "stateType": "ConnectorManagers",
           "stateFields": [
             "nextId",
+            "runtimes",
             "managers",
+            "nativeIdentities",
+            "nativeObjects",
             "providers",
             "selected"
           ],
@@ -4569,10 +4576,11 @@
             "registerProvider",
             "unregisterProvider"
           ],
-          "specSha256": "b77e13758b074e096a67bb0252a5e5fbb90891b483abd53328527429f94f61f1"
+          "specSha256": "82a3b2adef24cb473ee23be50531757ecb00713ce440c19b05636aff40ce5c07"
         },
         "mappedStateFields": [
           "nextId",
+          "runtimes",
           "managers",
           "selected"
         ],
@@ -5494,13 +5502,16 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Manager/provider keyed replace and unregister; contribution registration failure after provider mutation remains a provider callback boundary.",
+        "representation": "Manager/provider keyed replacement retains its insertion position; unregister removes it. The retained reference denotes the normalized provider object. Public listProviders localeCompare sorting and contribution callback failure after registry mutation remain host boundaries.",
         "model": {
           "spec": "spec/core/connectorManagers.md",
           "stateType": "ConnectorManagers",
           "stateFields": [
             "nextId",
+            "runtimes",
             "managers",
+            "nativeIdentities",
+            "nativeObjects",
             "providers",
             "selected"
           ],
@@ -5509,7 +5520,7 @@
             "registerProvider",
             "unregisterProvider"
           ],
-          "specSha256": "b77e13758b074e096a67bb0252a5e5fbb90891b483abd53328527429f94f61f1"
+          "specSha256": "82a3b2adef24cb473ee23be50531757ecb00713ce440c19b05636aff40ce5c07"
         },
         "mappedStateFields": [
           "providers"
@@ -5540,13 +5551,14 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorBackends.md",
+        "spec/core/connectorManagers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
+        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs. The BackendCache is embedded once per native object in ConnectorManagers.nativeObjects; aliases reuse the same authoritative backend state, with no parallel explicit-storage owner.",
         "model": {
           "spec": "spec/core/connectorBackends.md",
           "stateType": "BackendCache",
@@ -5575,7 +5587,14 @@
           "selected",
           "warnedFallback"
         ],
-        "unmodeledState": null
+        "unmodeledState": null,
+        "composedBy": {
+          "spec": "spec/core/connectorManagers.md",
+          "stateType": "ConnectorManagers",
+          "stateField": "nativeObjects",
+          "identityDomain": "nativeIdentities",
+          "specSha256": "82a3b2adef24cb473ee23be50531757ecb00713ce440c19b05636aff40ce5c07"
+        }
       }
     },
     {
@@ -5594,13 +5613,14 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorBackends.md",
+        "spec/core/connectorManagers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
+        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs. The BackendCache is embedded once per native object in ConnectorManagers.nativeObjects; aliases reuse the same authoritative backend state, with no parallel explicit-storage owner.",
         "model": {
           "spec": "spec/core/connectorBackends.md",
           "stateType": "BackendCache",
@@ -5629,7 +5649,14 @@
           "selected",
           "warnedFallback"
         ],
-        "unmodeledState": null
+        "unmodeledState": null,
+        "composedBy": {
+          "spec": "spec/core/connectorManagers.md",
+          "stateType": "ConnectorManagers",
+          "stateField": "nativeObjects",
+          "identityDomain": "nativeIdentities",
+          "specSha256": "82a3b2adef24cb473ee23be50531757ecb00713ce440c19b05636aff40ce5c07"
+        }
       }
     },
     {
@@ -5648,13 +5675,14 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorBackends.md",
+        "spec/core/connectorManagers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
+        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs. The BackendCache is embedded once per native object in ConnectorManagers.nativeObjects; aliases reuse the same authoritative backend state, with no parallel explicit-storage owner.",
         "model": {
           "spec": "spec/core/connectorBackends.md",
           "stateType": "BackendCache",
@@ -5683,7 +5711,14 @@
           "selected",
           "warnedFallback"
         ],
-        "unmodeledState": null
+        "unmodeledState": null,
+        "composedBy": {
+          "spec": "spec/core/connectorManagers.md",
+          "stateType": "ConnectorManagers",
+          "stateField": "nativeObjects",
+          "identityDomain": "nativeIdentities",
+          "specSha256": "82a3b2adef24cb473ee23be50531757ecb00713ce440c19b05636aff40ce5c07"
+        }
       }
     },
     {
@@ -5702,13 +5737,14 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorBackends.md",
+        "spec/core/connectorManagers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
+        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs. The BackendCache is embedded once per native object in ConnectorManagers.nativeObjects; aliases reuse the same authoritative backend state, with no parallel explicit-storage owner.",
         "model": {
           "spec": "spec/core/connectorBackends.md",
           "stateType": "BackendCache",
@@ -5737,7 +5773,14 @@
           "selected",
           "warnedFallback"
         ],
-        "unmodeledState": null
+        "unmodeledState": null,
+        "composedBy": {
+          "spec": "spec/core/connectorManagers.md",
+          "stateType": "ConnectorManagers",
+          "stateField": "nativeObjects",
+          "identityDomain": "nativeIdentities",
+          "specSha256": "82a3b2adef24cb473ee23be50531757ecb00713ce440c19b05636aff40ce5c07"
+        }
       }
     },
     {
@@ -5756,13 +5799,14 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorBackends.md",
+        "spec/core/connectorManagers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
+        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs. The BackendCache is embedded once per native object in ConnectorManagers.nativeObjects; aliases reuse the same authoritative backend state, with no parallel explicit-storage owner.",
         "model": {
           "spec": "spec/core/connectorBackends.md",
           "stateType": "BackendCache",
@@ -5791,7 +5835,14 @@
           "selected",
           "warnedFallback"
         ],
-        "unmodeledState": null
+        "unmodeledState": null,
+        "composedBy": {
+          "spec": "spec/core/connectorManagers.md",
+          "stateType": "ConnectorManagers",
+          "stateField": "nativeObjects",
+          "identityDomain": "nativeIdentities",
+          "specSha256": "82a3b2adef24cb473ee23be50531757ecb00713ce440c19b05636aff40ce5c07"
+        }
       }
     },
     {
@@ -6000,13 +6051,14 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorBackends.md",
+        "spec/core/connectorManagers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
+        "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs. The BackendCache is embedded once per native object in ConnectorManagers.nativeObjects; aliases reuse the same authoritative backend state, with no parallel explicit-storage owner.",
         "model": {
           "spec": "spec/core/connectorBackends.md",
           "stateType": "BackendCache",
@@ -6035,7 +6087,14 @@
           "selected",
           "warnedFallback"
         ],
-        "unmodeledState": null
+        "unmodeledState": null,
+        "composedBy": {
+          "spec": "spec/core/connectorManagers.md",
+          "stateType": "ConnectorManagers",
+          "stateField": "nativeObjects",
+          "identityDomain": "nativeIdentities",
+          "specSha256": "82a3b2adef24cb473ee23be50531757ecb00713ce440c19b05636aff40ce5c07"
+        }
       }
     },
     {

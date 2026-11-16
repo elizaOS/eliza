@@ -1349,7 +1349,7 @@
       "sourceSha256": "39c4197560016725636b748ecc04f4b6d2d650335365940004b5716c8b079b26",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/connectors/account-manager.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
+      "implementationProofBoundary": "Manager getter selection composes one connectorBackends.BackendCache per native object, separate runtime-cache bindings, native-service storage override, duck-compatible bypass, standalone selection, provider replacement position, and a ghost allocator reserving observed external manager/provider references. First-seen foreign native backend snapshots, service classification, identity mapping, storage truthiness, provider normalization and public listProviders localeCompare ordering require host conformance. Other account/backend/flow contracts retain their separate owner models. Model proofs do not establish source-to-model refinement.",
       "relatedSpecs": [
         "spec/core/connectorStorage.md",
         "spec/core/connectorMigration.md",

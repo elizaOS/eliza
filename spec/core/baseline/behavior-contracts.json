@@ -27733,7 +27733,7 @@
       ],
       "reexports": [],
       "tests": [],
-      "proofBoundary": "Generated state laws cover the mapped lifecycle. Pure parser/codec algorithms retain these documented contracts and source test vectors; their future implementation needs a proved //@ contract or adapter conformance.",
+      "proofBoundary": "Manager getter selection composes one connectorBackends.BackendCache per native object, separate runtime-cache bindings, native-service storage override, duck-compatible bypass, standalone selection, provider replacement position, and a ghost allocator reserving observed external manager/provider references. First-seen foreign native backend snapshots, service classification, identity mapping, storage truthiness, provider normalization and public listProviders localeCompare ordering require host conformance. Other account/backend/flow contracts retain their separate owner models. Model proofs do not establish source-to-model refinement.",
       "functionContracts": [
         {
           "name": "normalizeConnectorAccountId",
