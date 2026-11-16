@@ -1,5 +1,7 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { failingAs, thrown } from "../edge.vibe"
 import { utf8ByteLength } from "../utils/unicode.vibe"
-import { type ContentReference, READ_RANGE_UNITS, type ReadRangeUnit, validateContentReference } from "./content.vibe"
+import { type ContentReference, type InvalidContentContract, READ_RANGE_UNITS, type ReadRangeUnit, validateContentReference } from "./content.vibe"
 
 export const COMPACTION_CONTENT_MANIFEST_SCHEMA_VERSION = 1 as const
 export const COMPACTION_CONTENT_MANIFEST_MAX_BYTES = 256 * 1024
@@ -37,239 +39,174 @@ export interface CompactionContentManifest {
   }>
 }
 
-const MANIFEST_KEYS = new Set([
-  "schemaVersion",
-  "contentRefs",
-  "modifiedFiles",
-  "pendingProcesses",
-])
-const ENTRY_KEYS = new Set([
-  "reference",
-  "revision",
-  "reason",
-  "rangesUsed",
-  "lastUsedAt",
-  "retained",
-  "expiresAt",
-])
+export error InvalidContentManifest { message: string }
+
+type ManifestFailure = InvalidContentManifest | InvalidContentContract
+
+const MANIFEST_KEYS = new Set(["schemaVersion", "contentRefs", "modifiedFiles", "pendingProcesses"])
+const ENTRY_KEYS = new Set(["reference", "revision", "reason", "rangesUsed", "lastUsedAt", "retained", "expiresAt"])
 const RANGE_KEYS = new Set(["unit", "start", "end"])
 const MODIFIED_FILE_KEYS = new Set(["reference", "revision"])
 const PENDING_PROCESS_KEYS = new Set(["id", "outputReference", "offset"])
 const RANGE_UNITS = new Set<string>(READ_RANGE_UNITS)
 const SAFE_ID = /^[A-Za-z0-9._:~-]{1,256}$/u
 
-function record(value: unknown, label: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError(`${label} must be an object`)
-  }
+function invalid(message: string): InvalidContentManifest {
+  return new InvalidContentManifest({ message })
+}
+
+effect function record(value: unknown, label: string): Record<string, unknown>!InvalidContentManifest {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw invalid(`${label} must be an object`)
   return value as Record<string, unknown>
 }
 
-function exactKeys(
-  value: Record<string, unknown>,
-  allowed: ReadonlySet<string>,
-  label: string,
-): void {
+effect function exactKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>, label: string): void!InvalidContentManifest {
   const unknown = Object.keys(value).filter((key) => !allowed.has(key))
-  if (unknown.length > 0) {
-    throw new TypeError(
-      `${label} contains unsupported field(s): ${unknown.join(", ")}`,
-    )
-  }
+  if (unknown.length > 0) throw invalid(`${label} contains unsupported field(s): ${unknown.join(", ")}`)
 }
 
-function nonnegative(value: unknown, label: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    throw new TypeError(`${label} must be a nonnegative safe integer`)
-  }
+effect function nonnegative(value: unknown, label: string): number!InvalidContentManifest {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw invalid(`${label} must be a nonnegative safe integer`)
   return value
 }
 
-function nonempty(value: unknown, label: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new TypeError(`${label} must be a nonempty string`)
-  }
+effect function nonempty(value: unknown, label: string): string!InvalidContentManifest {
+  if (typeof value !== "string" || value.trim().length === 0) throw invalid(`${label} must be a nonempty string`)
   return value
 }
 
-function timestamp(value: unknown, label: string): string {
-  const text = nonempty(value, label)
+effect function timestamp(value: unknown, label: string): string!InvalidContentManifest {
+  const text = try nonempty(value, label)
   const epoch = Date.parse(text)
-  if (!Number.isFinite(epoch) || new Date(epoch).toISOString() !== text) {
-    throw new TypeError(`${label} must be an ISO-8601 UTC timestamp`)
-  }
+  if (!Number.isFinite(epoch) || new Date(epoch).toISOString() !== text) throw invalid(`${label} must be an ISO-8601 UTC timestamp`)
   return text
 }
 
-export function validateCompactionContentManifest(
-  value: unknown,
-): CompactionContentManifest {
-  const input = record(value, "content manifest")
-  exactKeys(input, MANIFEST_KEYS, "content manifest")
-  if (input.schemaVersion !== COMPACTION_CONTENT_MANIFEST_SCHEMA_VERSION) {
-    throw new TypeError("content manifest schemaVersion is unsupported")
+effect function list(value: unknown, label: string, max: number, tooMany: string): unknown[]!InvalidContentManifest {
+  if (!Array.isArray(value)) throw invalid(`${label} must be an array`)
+  if (value.length > max) throw invalid(tooMany)
+  return value
+}
+
+effect function mapPresent<A, E>(values: unknown[], each: (value: unknown, index: number) => A!E): A[]!E {
+  const mapped = new Array<A>(values.length)
+  for (let index = 0; index < values.length; index++) {
+    if (index in values) mapped[index] = try each(values[index], index)
   }
-  if (!Array.isArray(input.contentRefs)) {
-    throw new TypeError("content manifest contentRefs must be an array")
+  return mapped
+}
+
+effect function revisionOf(
+  reference: ContentReference,
+  raw: unknown,
+  label: string,
+  mismatch: string,
+  seen: Map<string, string | undefined>,
+  conflicting: string,
+  duplicate: string,
+): (string | undefined)!InvalidContentManifest {
+  const revision = raw === undefined ? reference.revision : try nonempty(raw, label)
+  if (reference.revision !== undefined && revision !== undefined && reference.revision !== revision) throw invalid(mismatch)
+  const key = `${reference.kind}\u0000${reference.ref}`
+  if (seen.has(key)) throw invalid(seen.get(key) !== revision ? conflicting : duplicate)
+  seen.set(key, revision)
+  return revision
+}
+
+effect function contentRange(rawRange: unknown, label: string): CompactionContentRange!InvalidContentManifest {
+  const range = try record(rawRange, label)
+  try exactKeys(range, RANGE_KEYS, "content manifest range")
+  if (typeof range.unit !== "string" || !RANGE_UNITS.has(range.unit)) throw invalid("content manifest range unit is unsupported")
+  const start = try nonnegative(range.start, "content manifest range.start")
+  const end = try nonnegative(range.end, "content manifest range.end")
+  if (start > end) throw invalid("content manifest range start exceeds end")
+  return { unit: range.unit as ReadRangeUnit, start, end }
+}
+
+effect function contentEntry(
+  rawEntry: unknown,
+  entryIndex: number,
+  seen: Map<string, string | undefined>,
+): CompactionContentEntry!ManifestFailure {
+  const label = `contentRefs[${entryIndex}]`
+  const entry = try record(rawEntry, label)
+  try exactKeys(entry, ENTRY_KEYS, label)
+  const reference = try validateContentReference(entry.reference)
+  if (reference.resumability !== "restart-safe") throw invalid("content manifest references must declare restart-safe resumability")
+  const revision = try revisionOf(
+    reference,
+    entry.revision,
+    `${label}.revision`,
+    "content manifest reference revision mismatch",
+    seen,
+    "content manifest contains conflicting revisions",
+    "content manifest contains a duplicate reference",
+  )
+  const ranges = try list(entry.rangesUsed, `${label}.rangesUsed`, COMPACTION_CONTENT_MANIFEST_MAX_RANGES_PER_REFERENCE, "content manifest entry has too many ranges")
+  const rangesUsed = try mapPresent(ranges, (rawRange, rangeIndex) => contentRange(rawRange, `${label}.rangesUsed[${rangeIndex}]`))
+  if (typeof entry.retained !== "boolean") throw invalid(`${label}.retained must be boolean`)
+  const expiresAt = entry.expiresAt === undefined ? reference.expiresAt : try timestamp(entry.expiresAt, `${label}.expiresAt`)
+  if (reference.expiresAt !== undefined && expiresAt !== reference.expiresAt) throw invalid("content manifest reference expiry mismatch")
+  return {
+    reference,
+    ...(revision ? { revision } : {}),
+    reason: try nonempty(entry.reason, `${label}.reason`),
+    rangesUsed,
+    lastUsedAt: try timestamp(entry.lastUsedAt, `${label}.lastUsedAt`),
+    retained: entry.retained,
+    ...(expiresAt === undefined ? {} : { expiresAt }),
   }
-  if (input.contentRefs.length > COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES) {
-    throw new TypeError("content manifest has too many references")
+}
+
+effect function modifiedFile(raw: unknown, index: number, seen: Map<string, string | undefined>): CompactionContentManifest["modifiedFiles"][number]!ManifestFailure {
+  const item = try record(raw, `modifiedFiles[${index}]`)
+  try exactKeys(item, MODIFIED_FILE_KEYS, `modifiedFiles[${index}]`)
+  const reference = try validateContentReference(item.reference)
+  if (reference.kind !== "file") throw invalid("modifiedFiles references must have kind=file")
+  const revision = try revisionOf(
+    reference,
+    item.revision,
+    `modifiedFiles[${index}].revision`,
+    "modified file reference revision mismatch",
+    seen,
+    "modified files contain conflicting revisions",
+    "modified files contain a duplicate reference",
+  )
+  return { reference, ...(revision ? { revision } : {}) }
+}
+
+effect function pendingProcess(raw: unknown, index: number): CompactionContentManifest["pendingProcesses"][number]!ManifestFailure {
+  const item = try record(raw, `pendingProcesses[${index}]`)
+  try exactKeys(item, PENDING_PROCESS_KEYS, `pendingProcesses[${index}]`)
+  const id = try nonempty(item.id, `pendingProcesses[${index}].id`)
+  if (!SAFE_ID.test(id)) throw invalid("pending process id is not opaque")
+  return {
+    id,
+    ...(item.outputReference === undefined ? {} : { outputReference: try validateContentReference(item.outputReference) }),
+    ...(item.offset === undefined ? {} : { offset: try nonnegative(item.offset, "pending process offset") }),
   }
+}
+
+export effect function validateCompactionContentManifest(value: unknown): CompactionContentManifest!ManifestFailure {
+  const input = try record(value, "content manifest")
+  try exactKeys(input, MANIFEST_KEYS, "content manifest")
+  if (input.schemaVersion !== COMPACTION_CONTENT_MANIFEST_SCHEMA_VERSION) throw invalid("content manifest schemaVersion is unsupported")
+  const rawRefs = try list(input.contentRefs, "content manifest contentRefs", COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES, "content manifest has too many references")
   const seenReferences = new Map<string, string | undefined>()
-  const contentRefs = input.contentRefs.map((rawEntry, entryIndex) => {
-    const entry = record(rawEntry, `contentRefs[${entryIndex}]`)
-    exactKeys(entry, ENTRY_KEYS, `contentRefs[${entryIndex}]`)
-    const reference = validateContentReference(entry.reference)
-    if (reference.resumability !== "restart-safe") {
-      throw new TypeError(
-        "content manifest references must declare restart-safe resumability",
-      )
-    }
-    const revision = entry.revision === undefined
-      ? reference.revision
-      : nonempty(entry.revision, `contentRefs[${entryIndex}].revision`)
-    if (
-      reference.revision !== undefined
-      && revision !== undefined
-      && reference.revision !== revision
-    ) {
-      throw new TypeError("content manifest reference revision mismatch")
-    }
-    const key = `${reference.kind}\u0000${reference.ref}`
-    if (seenReferences.has(key)) {
-      const priorRevision = seenReferences.get(key)
-      if (priorRevision !== revision) {
-        throw new TypeError("content manifest contains conflicting revisions")
-      }
-      throw new TypeError("content manifest contains a duplicate reference")
-    }
-    seenReferences.set(key, revision)
-    if (!Array.isArray(entry.rangesUsed)) {
-      throw new TypeError(
-        `contentRefs[${entryIndex}].rangesUsed must be an array`,
-      )
-    }
-    if (
-      entry.rangesUsed.length
-      > COMPACTION_CONTENT_MANIFEST_MAX_RANGES_PER_REFERENCE
-    ) {
-      throw new TypeError("content manifest entry has too many ranges")
-    }
-    const rangesUsed = entry.rangesUsed.map((rawRange, rangeIndex) => {
-      const range = record(
-        rawRange,
-        `contentRefs[${entryIndex}].rangesUsed[${rangeIndex}]`,
-      )
-      exactKeys(range, RANGE_KEYS, "content manifest range")
-      if (typeof range.unit !== "string" || !RANGE_UNITS.has(range.unit)) {
-        throw new TypeError("content manifest range unit is unsupported")
-      }
-      const start = nonnegative(range.start, "content manifest range.start")
-      const end = nonnegative(range.end, "content manifest range.end")
-      if (start > end) {
-        throw new TypeError("content manifest range start exceeds end")
-      }
-      return { unit: range.unit as ReadRangeUnit, start, end }
-    })
-    if (typeof entry.retained !== "boolean") {
-      throw new TypeError(
-        `contentRefs[${entryIndex}].retained must be boolean`,
-      )
-    }
-    const expiresAt = entry.expiresAt === undefined
-      ? reference.expiresAt
-      : timestamp(entry.expiresAt, `contentRefs[${entryIndex}].expiresAt`)
-    if (
-      reference.expiresAt !== undefined
-      && expiresAt !== reference.expiresAt
-    ) {
-      throw new TypeError("content manifest reference expiry mismatch")
-    }
-    return {
-      reference,
-      ...(revision ? { revision } : {}),
-      reason: nonempty(entry.reason, `contentRefs[${entryIndex}].reason`),
-      rangesUsed,
-      lastUsedAt: timestamp(
-        entry.lastUsedAt,
-        `contentRefs[${entryIndex}].lastUsedAt`,
-      ),
-      retained: entry.retained,
-      ...(expiresAt === undefined ? {} : { expiresAt }),
-    }
-  })
-  if (!Array.isArray(input.modifiedFiles)) {
-    throw new TypeError("content manifest modifiedFiles must be an array")
-  }
-  if (input.modifiedFiles.length > COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES) {
-    throw new TypeError("content manifest has too many modified files")
-  }
+  const contentRefs = try mapPresent(rawRefs, (rawEntry, entryIndex) => contentEntry(rawEntry, entryIndex, seenReferences))
+  const rawFiles = try list(input.modifiedFiles, "content manifest modifiedFiles", COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES, "content manifest has too many modified files")
   const seenModifiedFiles = new Map<string, string | undefined>()
-  const modifiedFiles = input.modifiedFiles.map((raw, index) => {
-    const item = record(raw, `modifiedFiles[${index}]`)
-    exactKeys(item, MODIFIED_FILE_KEYS, `modifiedFiles[${index}]`)
-    const reference = validateContentReference(item.reference)
-    if (reference.kind !== "file") {
-      throw new TypeError("modifiedFiles references must have kind=file")
-    }
-    const revision = item.revision === undefined
-      ? reference.revision
-      : nonempty(item.revision, `modifiedFiles[${index}].revision`)
-    if (
-      reference.revision !== undefined
-      && revision !== undefined
-      && reference.revision !== revision
-    ) {
-      throw new TypeError("modified file reference revision mismatch")
-    }
-    const key = `${reference.kind}\u0000${reference.ref}`
-    if (seenModifiedFiles.has(key)) {
-      const priorRevision = seenModifiedFiles.get(key)
-      if (priorRevision !== revision) {
-        throw new TypeError("modified files contain conflicting revisions")
-      }
-      throw new TypeError("modified files contain a duplicate reference")
-    }
-    seenModifiedFiles.set(key, revision)
-    return { reference, ...(revision ? { revision } : {}) }
-  })
-  if (!Array.isArray(input.pendingProcesses)) {
-    throw new TypeError("content manifest pendingProcesses must be an array")
-  }
-  if (
-    input.pendingProcesses.length
-    > COMPACTION_CONTENT_MANIFEST_MAX_PENDING_PROCESSES
-  ) {
-    throw new TypeError("content manifest has too many pending processes")
-  }
-  const pendingProcesses = input.pendingProcesses.map((raw, index) => {
-    const item = record(raw, `pendingProcesses[${index}]`)
-    exactKeys(item, PENDING_PROCESS_KEYS, `pendingProcesses[${index}]`)
-    const id = nonempty(item.id, `pendingProcesses[${index}].id`)
-    if (!SAFE_ID.test(id)) {
-      throw new TypeError("pending process id is not opaque")
-    }
-    return {
-      id,
-      ...(item.outputReference === undefined
-        ? {}
-        : { outputReference: validateContentReference(item.outputReference) }),
-      ...(item.offset === undefined
-        ? {}
-        : { offset: nonnegative(item.offset, "pending process offset") }),
-    }
-  })
+  const modifiedFiles = try mapPresent(rawFiles, (raw, index) => modifiedFile(raw, index, seenModifiedFiles))
+  const rawProcesses = try list(input.pendingProcesses, "content manifest pendingProcesses", COMPACTION_CONTENT_MANIFEST_MAX_PENDING_PROCESSES, "content manifest has too many pending processes")
+  const pendingProcesses = try mapPresent(rawProcesses, pendingProcess)
   const manifest: CompactionContentManifest = {
     schemaVersion: COMPACTION_CONTENT_MANIFEST_SCHEMA_VERSION,
     contentRefs,
     modifiedFiles,
     pendingProcesses,
   }
-  if (
-    utf8ByteLength(JSON.stringify(manifest))
-    > COMPACTION_CONTENT_MANIFEST_MAX_BYTES
-  ) {
-    throw new TypeError("content manifest exceeds its serialized byte bound")
-  }
+  if (utf8ByteLength(JSON.stringify(manifest)) > COMPACTION_CONTENT_MANIFEST_MAX_BYTES) throw invalid("content manifest exceeds its serialized byte bound")
   return manifest
 }
+
+export const validateCompactionContentManifestOrThrow = thrown(failingAs(TypeError, validateCompactionContentManifest))

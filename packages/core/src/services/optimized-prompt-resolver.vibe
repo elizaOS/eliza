@@ -1,3 +1,5 @@
+// spec/core/services.md, "Story: Acquire a declared service"
+import { foreignSync, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { toWellFormedUnicode } from "../utils/unicode.vibe"
 
@@ -22,66 +24,56 @@ export interface OptimizedPromptRuntimeLike {
   getService?: (name: string) => unknown
 }
 
-export function resolveOptimizedPrompt(
+export effect function resolveOptimizedPrompt(
   service: RuntimePromptResolver | null | undefined,
   task: string,
   baseline: string,
-): string {
+) {
   if (!service) return baseline
-  const optimized = service.getPrompt(task, baseline)
+  const optimized = try foreignSync(() => service.getPrompt(task, baseline))
   if (!optimized) return baseline
   if (!optimized.fewShotExamples || optimized.fewShotExamples.length === 0) {
     return optimized.prompt
   }
-  return injectDemonstrations(optimized.prompt, optimized.fewShotExamples)
+  return try injectDemonstrations(optimized.prompt, optimized.fewShotExamples)
 }
+export const resolveOptimizedPromptOrThrow = thrown(resolveOptimizedPrompt)
 
-function completeDemonstrationText(value: string): string {
+effect function completeDemonstrationText(value: string) {
   if (toWellFormedUnicode(value) !== value) {
     throw new ElizaError(
       "Optimized prompt text contains an unpaired Unicode surrogate; regenerate the complete artifact",
-      {
-        code: "OPTIMIZED_PROMPT_INVALID_UNICODE",
-      },
+      { code: "OPTIMIZED_PROMPT_INVALID_UNICODE" },
     )
   }
   return value
 }
 
-function injectDemonstrations(
+effect function injectDemonstrations(
   prompt: string,
   examples: RuntimePromptDemonstration[],
-): string {
-  const lines: string[] = [
-    completeDemonstrationText(prompt),
-    "",
-    "Demonstrations:",
-    "",
-  ]
+) {
+  const lines: string[] = [try completeDemonstrationText(prompt), "", "Demonstrations:", ""]
   let idx = 1
   for (const example of examples) {
     lines.push(`Example ${idx}:`)
     if (example.input.system !== undefined) {
-      lines.push(`System:\n${completeDemonstrationText(example.input.system)}`)
+      lines.push(`System:\n${try completeDemonstrationText(example.input.system)}`)
     }
-    lines.push(`Input:\n${completeDemonstrationText(example.input.user)}`)
-    lines.push(
-      `Expected:\n${completeDemonstrationText(example.expectedOutput)}`,
-    )
+    lines.push(`Input:\n${try completeDemonstrationText(example.input.user)}`)
+    lines.push(`Expected:\n${try completeDemonstrationText(example.expectedOutput)}`)
     lines.push("")
     idx += 1
   }
   return lines.join("\n")
 }
 
-export function resolveOptimizedPromptForRuntime(
+export effect function resolveOptimizedPromptForRuntime(
   runtime: OptimizedPromptRuntimeLike,
   task: string,
   baseline: string,
-): string {
-  const service = (runtime.getService?.(OPTIMIZED_PROMPT_SERVICE) as
-    | RuntimePromptResolver
-    | null
-    | undefined) ?? null
-  return resolveOptimizedPrompt(service, task, baseline)
+) {
+  const service = (try foreignSync(() => runtime.getService?.(OPTIMIZED_PROMPT_SERVICE)) as RuntimePromptResolver | null | undefined) ?? null
+  return try resolveOptimizedPrompt(service, task, baseline)
 }
+export const resolveOptimizedPromptForRuntimeOrThrow = thrown(resolveOptimizedPromptForRuntime)

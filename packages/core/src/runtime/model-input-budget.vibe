@@ -1,3 +1,5 @@
+// spec/core/models.md, "Admission checks the complete request without changing its source bytes"
+import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { ChatMessage, PromptSegment, ToolDefinition } from "../types/model.vibe"
 import { utf8ByteLength } from "../utils/unicode.vibe"
@@ -17,36 +19,43 @@ export interface ModelInputBudget {
   estimationMode: "heuristic" | "utf8-upper-bound"
 }
 
-function serializedText(value: unknown): string {
+effect function serializedText(value: unknown): string!ElizaError {
   if (typeof value === "string") {
     return value
   }
   if (value == null) {
     return ""
   }
-  try {
-    return JSON.stringify(value) ?? ""
-  } catch (cause) {
-    throw new ElizaError("Model input cannot be serialized completely", {
-      code: "MODEL_INPUT_SERIALIZATION_FAILED",
-      cause,
-    })
-  }
+  return try Effect.try({
+    try: () => JSON.stringify(value) ?? "",
+    catch: (cause) =>
+      new ElizaError("Model input cannot be serialized completely", {
+        code: "MODEL_INPUT_SERIALIZATION_FAILED",
+        cause,
+      }),
+  })
 }
 
-function textMeasure(
-  value: unknown,
-  mode: "heuristic" | "utf8-upper-bound",
-): number {
-  const text = serializedText(value)
+type EstimationMode = ModelInputBudget["estimationMode"]
+
+effect function textMeasure(value: unknown, mode: EstimationMode): number!ElizaError {
+  const text = try serializedText(value)
   return mode === "utf8-upper-bound" ? utf8ByteLength(text) : text.length
+}
+
+effect function totalMeasure(values: readonly unknown[], mode: EstimationMode): number!ElizaError {
+  let total = 0
+  for (const value of values) {
+    total += try textMeasure(value, mode)
+  }
+  return total
 }
 
 export function estimateTokensFromChars(chars: number): number {
   return Math.ceil(chars / 3.5)
 }
 
-function estimateModelInputTokens(args: {
+effect function estimateModelInputTokens(args: {
   completeRequest?: unknown
   messages?: readonly ChatMessage[]
   promptSegments?: readonly PromptSegment[]
@@ -59,36 +68,26 @@ function estimateModelInputTokens(args: {
   grammar?: unknown
   responseSkeleton?: unknown
   prefill?: unknown
-  estimationMode?: "heuristic" | "utf8-upper-bound"
-}): number {
+  estimationMode?: EstimationMode
+}): number!ElizaError {
   const estimationMode = args.estimationMode ?? "heuristic"
+  const upperBound = estimationMode === "utf8-upper-bound"
   if (Object.hasOwn(args, "completeRequest")) {
-    const measured = textMeasure(args.completeRequest, estimationMode)
-    return estimationMode === "utf8-upper-bound"
-      ? measured
-      : estimateTokensFromChars(measured)
+    const measured = try textMeasure(args.completeRequest, estimationMode)
+    return upperBound ? measured : estimateTokensFromChars(measured)
   }
-  const messageChars = estimationMode === "utf8-upper-bound"
-    ? textMeasure(args.messages, estimationMode)
-    : (args.messages?.reduce(
-      (total, message) => total + textMeasure(message.content, estimationMode),
-      0,
-    ) ?? 0)
+  const messageChars = upperBound
+    ? try textMeasure(args.messages, estimationMode)
+    : try totalMeasure(args.messages?.map((message) => message.content) ?? [], estimationMode)
   const segmentChars = args.messages && args.messages.length > 0
     ? 0
-    : estimationMode === "utf8-upper-bound"
-    ? textMeasure(args.promptSegments, estimationMode)
-    : (args.promptSegments?.reduce(
-      (total, segment) => total + textMeasure(segment.content, estimationMode),
-      0,
-    ) ?? 0)
-  const toolChars = estimationMode === "utf8-upper-bound"
-    ? textMeasure(args.tools, estimationMode)
-    : (args.tools?.reduce(
-      (total, tool) => total + textMeasure(tool, estimationMode),
-      0,
-    ) ?? 0)
-  const additionalChars = [
+    : upperBound
+    ? try textMeasure(args.promptSegments, estimationMode)
+    : try totalMeasure(args.promptSegments?.map((segment) => segment.content) ?? [], estimationMode)
+  const toolChars = upperBound
+    ? try textMeasure(args.tools, estimationMode)
+    : try totalMeasure(args.tools ?? [], estimationMode)
+  const additionalChars = try totalMeasure([
     args.system,
     args.prompt,
     args.input,
@@ -97,17 +96,12 @@ function estimateModelInputTokens(args: {
     args.grammar,
     args.responseSkeleton,
     args.prefill,
-  ].reduce<number>(
-    (total, value) => total + textMeasure(value, estimationMode),
-    0,
-  )
+  ], estimationMode)
   const measured = segmentChars + messageChars + toolChars + additionalChars
-  return estimationMode === "utf8-upper-bound"
-    ? measured
-    : estimateTokensFromChars(measured)
+  return upperBound ? measured : estimateTokensFromChars(measured)
 }
 
-export function buildModelInputBudget(args: {
+export effect function buildModelInputBudget(args: {
   completeRequest?: unknown
   messages?: readonly ChatMessage[]
   promptSegments?: readonly PromptSegment[]
@@ -121,14 +115,14 @@ export function buildModelInputBudget(args: {
   responseSkeleton?: unknown
   prefill?: unknown
 
-  estimationMode?: "heuristic" | "utf8-upper-bound"
+  estimationMode?: EstimationMode
 
   contextWindowTokens?: number
 
   reserveTokens?: number
 
   modelName?: string
-}): ModelInputBudget {
+}): ModelInputBudget!ElizaError {
   const explicitWindow = Number.isFinite(args.contextWindowTokens) && args.contextWindowTokens
     ? Math.max(1, Math.floor(args.contextWindowTokens))
     : undefined
@@ -142,7 +136,7 @@ export function buildModelInputBudget(args: {
     1,
     contextWindowTokens - reserveTokens,
   )
-  const estimatedInputTokens = estimateModelInputTokens(args)
+  const estimatedInputTokens = try estimateModelInputTokens(args)
   const estimationMode = args.estimationMode ?? "heuristic"
   return {
     estimatedInputTokens,
@@ -152,6 +146,7 @@ export function buildModelInputBudget(args: {
     estimationMode,
   }
 }
+export const buildModelInputBudgetOrThrow = thrown(buildModelInputBudget)
 
 export function withModelInputBudgetProviderOptions<
   T extends Record<string, unknown>,

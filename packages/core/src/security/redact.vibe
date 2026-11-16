@@ -1,3 +1,4 @@
+// spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"; spec/core/contracts.md, "Story: Consume the replacement through existing imports"
 import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.vibe"
 import {
   compileSensitiveTextPattern,

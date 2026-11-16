@@ -1,8 +1,10 @@
+// spec/core/context.md, "Context starts with complete original sources and mandatory evidence"; spec/core/context.md, "Only complete current-source selections project prior dialogue"; spec/core/context.md, "A historical evidence projection requires exact validated source binding"
+import { failingAs, type Foreign, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { ActionParameterSchema, CompletionContextSelection } from "../types/components.vibe"
 import { normalizeEffectReceipt } from "../types/effects.vibe"
 import type { JSONSchema } from "../types/model.vibe"
-import { hashStableJson } from "./context-hash.vibe"
+import { hashStableJson, type UnstableJson } from "./context-hash.vibe"
 import type { ContextEvent, ContextObject, ContextSegmentEvent } from "./context-object.vibe"
 
 export const HISTORICAL_EFFECT_TERMINALS: unique symbol = Symbol(
@@ -15,25 +17,29 @@ export interface HistoricalEffectTerminal {
   state: "done" | "rejected" | "expired"
 }
 
-function hasHistoricalTerminal(
+effect function hasHistoricalTerminal(
   event: ContextSegmentEvent,
   requestSourceEventId: string,
   receipt: unknown,
-): boolean {
+) {
   const proofs = (
     event as ContextSegmentEvent & {
       [HISTORICAL_EFFECT_TERMINALS]?: readonly HistoricalEffectTerminal[]
     }
   )[HISTORICAL_EFFECT_TERMINALS]
   if (!proofs?.length) return false
-  const receiptHash = hashStableJson(receipt)
-  return proofs.some(
-    (proof) =>
+  const receiptHash = try hashStableJson(receipt)
+  for (const proof of proofs) {
+    if (
       proof.requestSourceEventId === requestSourceEventId
       && HISTORICAL_TERMINAL_STATES.has(proof.state)
       && (proof.originalReceiptHash === receiptHash
-        || hashStableJson(proof.terminalReceipt) === receiptHash),
-  )
+        || (try hashStableJson(proof.terminalReceipt)) === receiptHash)
+    ) {
+      return true
+    }
+  }
+  return false
 }
 
 const HISTORICAL_TERMINAL_STATES: ReadonlySet<string> = new Set([
@@ -102,15 +108,15 @@ export const COMPLETION_CONTEXT_SCHEMA = {
   ],
 } satisfies JSONSchema & ActionParameterSchema
 
-export function withRequiredCompletionSourceIdentity(
+export effect function withRequiredCompletionSourceIdentity(
   schema: JSONSchema,
   context: ContextObject,
   _exactRepair = false,
-): JSONSchema {
+) {
   const completion = schema.properties?.completionContext
   const identity = completion?.properties?.sourceSetId
   if (!completion || identity?.type !== "string") return schema
-  const snapshot = completionContextSources(context)
+  const snapshot = try completionContextSources(context)
   if (snapshot.sources.length === 0) return schema
   if (
     identity.enum !== undefined
@@ -156,14 +162,18 @@ export function withRequiredCompletionSourceIdentity(
   }
   const { pattern: _pattern, ...literalIdentity } = identity
   properties.sourceSetId = { ...literalIdentity, enum: [snapshot.sourceSetId] }
-  return {
+  const required: JSONSchema = {
     ...schema,
     properties: {
       ...schema.properties,
       completionContext: { ...completion, properties },
     },
   }
+  return required
 }
+export const withRequiredCompletionSourceIdentityOrThrow = thrown(
+  failingAs(TypeError, withRequiredCompletionSourceIdentity, ElizaError),
+)
 
 const SOURCE_LIST_FIELDS = [
   "relevantSourceIds",
@@ -285,6 +295,102 @@ function isHistoricalRequestEvidenceEvent(
   )
 }
 
+interface HistoricalEvidenceBinding {
+  known: ReadonlySet<string>
+  requests: ReadonlySet<string>
+  eventIdCounts: ReadonlyMap<string, number>
+  includedEventIds: ReadonlySet<string>
+  historicalEffects?: boolean | "settled"
+}
+
+error UnparsableHistoricalReceipt { cause: unknown }
+
+effect function historicalEntryBound(
+  observation: unknown,
+  event: ContextSegmentEvent,
+  requestSourceEventId: string,
+  effects: boolean,
+  historicalEffects: boolean | "settled" | undefined,
+) {
+  if (
+    !observation
+    || typeof observation !== "object"
+    || Array.isArray(observation)
+    || Object.keys(observation).sort().join(",") !== "actionName,receipt,success"
+    || !("actionName" in observation)
+    || typeof observation.actionName !== "string"
+    || !observation.actionName.trim()
+    || !("success" in observation)
+    || typeof observation.success !== "boolean"
+    || (!effects && observation.success !== true)
+  ) {
+    return false
+  }
+  const receipt = (observation as { receipt?: unknown }).receipt
+  const normalized = try normalizeEffectReceipt(receipt)
+  if (!effects && !(normalized.outcome === "noop" && !normalized.idempotency.replayed)) return false
+  if (
+    effects
+    && historicalEffects === "settled"
+    && !(observation.success === true
+      && (normalized.outcome === "applied"
+        || (normalized.outcome === "noop" && normalized.idempotency.replayed)))
+    && !(try hasHistoricalTerminal(event, requestSourceEventId, normalized))
+  ) {
+    return false
+  }
+  return (try hashStableJson(normalized)) === (try hashStableJson(receipt))
+}
+
+effect function keepsHistoricalEvidence(
+  event: ContextSegmentEvent,
+  binding: HistoricalEvidenceBinding,
+) {
+  const effects = event.segment.label === "runtime:historical_effects"
+  const receipt: unknown = try Effect.try({
+    try: (): unknown => JSON.parse(event.segment.content),
+    catch: (cause) => new UnparsableHistoricalReceipt({ cause }),
+  })
+  if (
+    !receipt
+    || typeof receipt !== "object"
+    || Array.isArray(receipt)
+    || !("requestSourceEventId" in receipt)
+    || typeof receipt.requestSourceEventId !== "string"
+    || !binding.known.has(receipt.requestSourceEventId)
+  ) {
+    return true
+  }
+  const requestSourceEventId = receipt.requestSourceEventId
+  if (effects || event.segment.label === "runtime:historical_observations") {
+    const field = effects ? "outcomes" : "observations"
+    const entries = (receipt as Record<string, unknown>)[field]
+    if (
+      binding.eventIdCounts.get(event.id) !== 1
+      || !binding.requests.has(requestSourceEventId)
+      || Object.keys(receipt).sort().join(",") !== `${field},requestSourceEventId,scope`
+      || !("scope" in receipt)
+      || typeof receipt.scope !== "string"
+      || !receipt.scope.trim()
+      || !Array.isArray(entries)
+      || !entries.length
+    ) {
+      return true
+    }
+    for (const observation of entries) {
+      const bound = try historicalEntryBound(
+        observation,
+        event,
+        requestSourceEventId,
+        effects,
+        binding.historicalEffects,
+      )
+      if (!bound) return true
+    }
+  }
+  return binding.includedEventIds.has(requestSourceEventId)
+}
+
 export function selectHistoricalNavigation(
   context: ContextObject,
   includedEventIds: ReadonlySet<string>,
@@ -292,107 +398,38 @@ export function selectHistoricalNavigation(
 ): ContextObject {
   const sources = collectCompletionContextSources(context)
   if (sources.length === 0) return context
-  const known = new Set(sources.map(({ event }) => event.id))
-  const requests = new Set(
-    sources
-      .filter((source) => source.event.segment.label === "prior_message:user")
-      .map((source) => source.event.id),
-  )
   const eventIdCounts = new Map<string, number>()
   for (const event of context.events) {
     eventIdCounts.set(event.id, (eventIdCounts.get(event.id) ?? 0) + 1)
+  }
+  const binding: HistoricalEvidenceBinding = {
+    known: new Set(sources.map(({ event }) => event.id)),
+    requests: new Set(
+      sources
+        .filter((source) => source.event.segment.label === "prior_message:user")
+        .map((source) => source.event.id),
+    ),
+    eventIdCounts,
+    includedEventIds,
+    historicalEffects: options.historicalEffects,
   }
   return {
     ...context,
     events: context.events.filter((event) => {
       if (!isHistoricalRequestEvidenceEvent(event)) return true
-      const effects = event.segment.label === "runtime:historical_effects"
-
-      if (effects && !options.historicalEffects) return true
-      try {
-        const receipt: unknown = JSON.parse(event.segment.content)
-        if (
-          !receipt
-          || typeof receipt !== "object"
-          || Array.isArray(receipt)
-          || !("requestSourceEventId" in receipt)
-          || typeof receipt.requestSourceEventId !== "string"
-          || !known.has(receipt.requestSourceEventId)
-        ) {
-          return true
-        }
-        const requestSourceEventId = receipt.requestSourceEventId
-        if (
-          effects
-          || event.segment.label === "runtime:historical_observations"
-        ) {
-          const field = effects ? "outcomes" : "observations"
-          const entries = (receipt as Record<string, unknown>)[field]
-
-          if (
-            eventIdCounts.get(event.id) !== 1
-            || !requests.has(receipt.requestSourceEventId)
-            || Object.keys(receipt).sort().join(",")
-              !== `${field},requestSourceEventId,scope`
-            || !("scope" in receipt)
-            || typeof receipt.scope !== "string"
-            || !receipt.scope.trim()
-            || !(field in receipt)
-            || !Array.isArray(entries)
-            || !entries.length
-            || !entries.every((observation) => {
-              if (
-                !observation
-                || typeof observation !== "object"
-                || Array.isArray(observation)
-                || Object.keys(observation).sort().join(",")
-                  !== "actionName,receipt,success"
-                || typeof observation.actionName !== "string"
-                || !observation.actionName.trim()
-                || typeof observation.success !== "boolean"
-                || (!effects && observation.success !== true)
-              ) {
-                return false
-              }
-              const normalized = normalizeEffectReceipt(observation.receipt)
-              return (
-                (effects
-                  || (normalized.outcome === "noop"
-                    && !normalized.idempotency.replayed))
-                && (!effects
-                  || options.historicalEffects !== "settled"
-                  || (observation.success === true
-                    && (normalized.outcome === "applied"
-                      || (normalized.outcome === "noop"
-                        && normalized.idempotency.replayed)))
-                  || hasHistoricalTerminal(
-                    event,
-                    requestSourceEventId,
-                    normalized,
-                  ))
-                && hashStableJson(normalized)
-                  === hashStableJson(observation.receipt)
-              )
-            })
-          ) {
-            return true
-          }
-        }
-        return includedEventIds.has(receipt.requestSourceEventId)
-      } catch {
-        return true
+      if (event.segment.label === "runtime:historical_effects" && !options.historicalEffects) return true
+      return match (runSyncExit(keepsHistoricalEvidence(event, binding))) {
+        when Exit.Success(let value): value;
+        default: true;
       }
     }),
   }
 }
 
-export function completionContextSources(context: ContextObject): {
-  sourceSetId: string
-  sources: Array<{ id: string; event: ContextSegmentEvent }>
-} {
+export effect function completionContextSources(context: ContextObject) {
   const sources = collectCompletionContextSources(context)
   return {
-    sourceSetId: hashStableJson({
+    sourceSetId: try hashStableJson({
       contextId: context.id,
       roomId: context.metadata?.roomId,
       messageId: context.metadata?.messageId,
@@ -405,8 +442,9 @@ export function completionContextSources(context: ContextObject): {
     sources,
   }
 }
+export const completionContextSourcesOrThrow = thrown(failingAs(TypeError, completionContextSources))
 
-export function selectCompletionContext(
+export effect function selectCompletionContext(
   context: ContextObject,
   options: { historicalEffects?: boolean | "settled" } = {},
 ): {
@@ -414,13 +452,13 @@ export function selectCompletionContext(
   applied: boolean
   omittedSourceCount: number
   selection?: CompletionContextSelection
-} {
+}!(UnstableJson | Foreign) {
   const complete = { context, applied: false, omittedSourceCount: 0 }
   const selection = parseCompletionContextSelection(
     context.metadata?.completionContext,
   )
   if (selection?.mode !== "selected" || !selection.complete) return complete
-  const { sourceSetId, sources } = completionContextSources(context)
+  const { sourceSetId, sources } = try completionContextSources(context)
   if (selection.sourceSetId !== sourceSetId || sources.length === 0) {
     return complete
   }
@@ -451,6 +489,7 @@ export function selectCompletionContext(
     selection,
   }
 }
+export const selectCompletionContextOrThrow = thrown(failingAs(TypeError, selectCompletionContext))
 
 const PLANNER_QUERY_TOKEN_SURFACE_MODES: ReadonlySet<string> = new Set([
   "full",
@@ -458,20 +497,25 @@ const PLANNER_QUERY_TOKEN_SURFACE_MODES: ReadonlySet<string> = new Set([
   "relay-delivery",
 ])
 
-export function referencePlannerQueryTokens(context: ContextObject): {
+export effect function referencePlannerQueryTokens(context: ContextObject): {
   context: ContextObject
   applied: boolean
-} {
+}!(UnstableJson | Foreign) {
   if (context.metadata?.plannerQueryTokensRestored === true) {
     return { context, applied: false }
   }
   let applied = false
-  const events = context.events.map((event) => {
+  const events: ContextEvent[] = []
+  for (const event of context.events) {
     if (event.type !== "message_handler" || event.source !== "message-service") {
-      return event
+      events.push(event)
+      continue
     }
     const plan = event.metadata?.plan
-    if (!plan || typeof plan !== "object" || Array.isArray(plan)) return event
+    if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
+      events.push(event)
+      continue
+    }
     const surface = plan.actionSurface
     if (
       !surface
@@ -481,29 +525,31 @@ export function referencePlannerQueryTokens(context: ContextObject): {
       || !Array.isArray(surface.queryTokens)
       || !surface.queryTokens.every((token) => typeof token === "string")
     ) {
-      return event
+      events.push(event)
+      continue
     }
     const { queryTokens, ...routing } = surface
-
     const reference = {
       sourceEventId: event.id,
       field: "metadata.plan.actionSurface.queryTokens",
       count: queryTokens.length,
-      sha256: hashStableJson(queryTokens),
+      sha256: try hashStableJson(queryTokens),
       restoreTool: "RESTORE_CONTEXT",
     }
     if (JSON.stringify(queryTokens).length <= JSON.stringify(reference).length) {
-      return event
+      events.push(event)
+      continue
     }
     applied = true
-    return {
+    events.push({
       ...event,
       metadata: {
         ...event.metadata,
         plan: { ...plan, actionSurface: routing },
         plannerQueryTokensReference: reference,
       },
-    }
-  })
+    })
+  }
   return { context: applied ? { ...context, events } : context, applied }
 }
+export const referencePlannerQueryTokensOrThrow = thrown(failingAs(TypeError, referencePlannerQueryTokens))

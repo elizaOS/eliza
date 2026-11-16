@@ -1,31 +1,20 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { logger } from "../logger.vibe"
+import { parseBooleanValue } from "./boolean.vibe"
+import { rawEnv } from "./environment.vibe"
+import { toWellFormedUnicode, truncateWellFormed } from "./unicode.vibe"
+
 type TtsBuildImportMeta = ImportMeta & {
   env: { ELIZA_TTS_DEBUG?: string; VITE_ELIZA_TTS_DEBUG?: string }
 }
 
-import { logger } from "../logger.vibe"
-
-import { parseBooleanValue } from "./boolean.vibe"
-import { toWellFormedUnicode, truncateWellFormed } from "./unicode.vibe"
-
 export function isTtsDebugEnabled(): boolean {
-  if (
-    typeof process !== "undefined"
-    && parseBooleanValue(process.env?.ELIZA_TTS_DEBUG) === true
-  ) {
-    return true
-  }
+  if (parseBooleanValue(rawEnv("ELIZA_TTS_DEBUG")) === true) return true
 
   try {
-    return (
-      parseBooleanValue(
-        String((import.meta as TtsBuildImportMeta).env.ELIZA_TTS_DEBUG ?? ""),
-      ) === true
-      || parseBooleanValue(
-        String(
-          (import.meta as TtsBuildImportMeta).env.VITE_ELIZA_TTS_DEBUG ?? "",
-        ),
-      ) === true
-    )
+    const env = (import.meta as TtsBuildImportMeta).env
+    return parseBooleanValue(String(env.ELIZA_TTS_DEBUG ?? "")) === true
+      || parseBooleanValue(String(env.VITE_ELIZA_TTS_DEBUG ?? "")) === true
   } catch {
     return false
   }
@@ -44,7 +33,7 @@ export function ttsDebugTextPreview(
 }
 
 function ttsEmit(): (typeof logger)["info"] {
-  const configuredLevel = (typeof process !== "undefined" ? process.env?.LOG_LEVEL : undefined)
+  const configuredLevel = rawEnv("LOG_LEVEL")
     ?? logger.level
     ?? "info"
   if (typeof configuredLevel === "number") {

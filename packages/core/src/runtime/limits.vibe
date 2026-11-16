@@ -1,3 +1,5 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { thrown } from "../edge.vibe"
 import type { ActionFailureProvenance } from "../types/action-failure.vibe"
 import { toWellFormedUnicode } from "../utils/unicode.vibe"
 
@@ -50,12 +52,13 @@ export type TrajectoryLimitKind =
   | "terminal_only_continuations"
   | "trajectory_token_budget"
 
-export class TrajectoryLimitExceeded extends Error {
+export class TrajectoryLimitExceeded extends Data.TaggedError("TrajectoryLimitExceeded")<{
   readonly kind: TrajectoryLimitKind
   readonly max: number
   readonly observed: number
-
   readonly failureProvenance?: ActionFailureProvenance
+}> {
+  override readonly name = "TrajectoryLimitExceeded"
 
   constructor(params: {
     kind: TrajectoryLimitKind
@@ -64,17 +67,14 @@ export class TrajectoryLimitExceeded extends Error {
     message?: string
     failureProvenance?: ActionFailureProvenance
   }) {
-    super(
-      params.message
-        ?? `Trajectory limit exceeded: ${params.kind} (${params.observed}/${params.max})`,
-    )
-    this.name = "TrajectoryLimitExceeded"
-    this.kind = params.kind
-    this.max = params.max
-    this.observed = params.observed
-    if (params.failureProvenance !== undefined) {
-      this.failureProvenance = params.failureProvenance
-    }
+    super({
+      kind: params.kind,
+      max: params.max,
+      observed: params.observed,
+      failureProvenance: params.failureProvenance,
+    })
+    this.message = params.message
+      ?? `Trajectory limit exceeded: ${params.kind} (${params.observed}/${params.max})`
   }
 }
 
@@ -89,15 +89,16 @@ export function mergeChainingLoopConfig(
   }
 }
 
-export function assertTrajectoryLimit(params: {
+export effect function assertTrajectoryLimit(params: {
   kind: TrajectoryLimitKind
   max: number
   observed: number
-}): void {
+}): void!TrajectoryLimitExceeded {
   if (params.observed > params.max) {
     throw new TrajectoryLimitExceeded(params)
   }
 }
+export const assertTrajectoryLimitOrThrow = thrown(assertTrajectoryLimit)
 
 export interface FailureLike {
   toolName?: string
@@ -134,11 +135,11 @@ function getFailureComparisonKey(failure: FailureLike): string | null {
   return repeatKey ? `${signature}:${repeatKey}` : signature
 }
 
-export function assertRepeatedFailureLimit(params: {
+export effect function assertRepeatedFailureLimit(params: {
   failures: readonly FailureLike[]
   latestFailure: FailureLike
   maxRepeatedFailures: number
-}): void {
+}): void!TrajectoryLimitExceeded {
   const latestKey = getFailureComparisonKey(params.latestFailure)
   let observed = 0
   if (latestKey) {
@@ -160,3 +161,4 @@ export function assertRepeatedFailureLimit(params: {
     })
   }
 }
+export const assertRepeatedFailureLimitOrThrow = thrown(assertRepeatedFailureLimit)

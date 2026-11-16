@@ -1,4 +1,6 @@
+// spec/core/runtime.md, "Story: Initialize an explicit host composition"
 import { type CharacterValidationResult, validateCharacter } from "./character-schema.vibe"
+import { failingAs, thrown } from "./edge.vibe"
 import type {
   Character,
   CharacterSettings,
@@ -169,32 +171,37 @@ function formatValidationErrors(
     : [error?.message || "Unknown validation error"]
 }
 
-export function parseCharacter(
+error CharacterNotLoaded { message: string }
+error CharacterInvalid { message: string }
+error CharacterInputUnsupported { message: string }
+
+export effect function parseCharacter(
   input: string | object | Character | CharacterInput,
-): Character {
+): Character!(CharacterNotLoaded | CharacterInvalid | CharacterInputUnsupported) {
   if (typeof input === "string") {
-    throw new Error(
-      `Character path provided but must be loaded first: ${input}`,
-    )
+    throw new CharacterNotLoaded({
+      message: `Character path provided but must be loaded first: ${input}`,
+    })
   }
 
   if (typeof input === "object") {
-    const normalized = input && typeof input === "object"
+    const normalized = input
       ? normalizeCharacterInput(input as CharacterInput)
       : input
     const validationResult = validateCharacter(normalized)
 
     if (!validationResult.success) {
-      throw new Error(
-        `Character validation failed: ${formatValidationErrors(validationResult.error).join("; ")}`,
-      )
+      throw new CharacterInvalid({
+        message: `Character validation failed: ${formatValidationErrors(validationResult.error).join("; ")}`,
+      })
     }
 
     return validationResult.data as Character
   }
 
-  throw new Error("Invalid character input format")
+  throw new CharacterInputUnsupported({ message: "Invalid character input format" })
 }
+export const parseCharacterOrThrow = thrown(failingAs(Error, parseCharacter))
 
 export function validateCharacterConfig(character: Character): {
   isValid: boolean

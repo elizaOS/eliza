@@ -1,3 +1,4 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
 import { toWellFormedUnicode } from "../utils/unicode.vibe"
 import {
   detectObfuscatedKeywordMatches,
@@ -8,26 +9,12 @@ import {
 
 export function detectSuspiciousPatterns(content: string): string[] {
   const safe = toWellFormedUnicode(content)
-  const matches: string[] = []
-  for (const pattern of INJECTION_PATTERNS) {
-    if (pattern.test(safe)) {
-      matches.push(pattern.source)
-    }
-  }
-  for (const pattern of EXTERNAL_CONTENT_RISK_PATTERNS) {
-    if (pattern.test(safe)) {
-      matches.push(pattern.source)
-    }
-  }
-  for (
-    const keyword of detectObfuscatedKeywordMatches(
-      safe,
-      INJECTION_KEYWORDS,
-    )
-  ) {
-    matches.push(keyword)
-  }
-  return matches
+  return [
+    ...[...INJECTION_PATTERNS, ...EXTERNAL_CONTENT_RISK_PATTERNS]
+      .filter((pattern) => pattern.test(safe))
+      .map((pattern) => pattern.source),
+    ...detectObfuscatedKeywordMatches(safe, INJECTION_KEYWORDS),
+  ]
 }
 
 const EXTERNAL_CONTENT_START = "<<<EXTERNAL_UNTRUSTED_CONTENT>>>"
@@ -74,28 +61,13 @@ const EXTERNAL_SOURCE_LABELS: Record<ExternalContentSource, string> = {
 }
 
 const FULLWIDTH_ASCII_OFFSET = 0xfee0
-const FULLWIDTH_LEFT_ANGLE = 0xff1c
-const FULLWIDTH_RIGHT_ANGLE = 0xff1e
-
-function foldMarkerChar(char: string): string {
-  const code = char.charCodeAt(0)
-  if (code >= 0xff21 && code <= 0xff3a) {
-    return String.fromCharCode(code - FULLWIDTH_ASCII_OFFSET)
-  }
-  if (code >= 0xff41 && code <= 0xff5a) {
-    return String.fromCharCode(code - FULLWIDTH_ASCII_OFFSET)
-  }
-  if (code === FULLWIDTH_LEFT_ANGLE) {
-    return "<"
-  }
-  if (code === FULLWIDTH_RIGHT_ANGLE) {
-    return ">"
-  }
-  return char
-}
 
 function foldMarkerText(input: string): string {
-  return input.replace(/[\uFF21-\uFF3A\uFF41-\uFF5A\uFF1C\uFF1E]/g, (char) => foldMarkerChar(char))
+  return input.replace(/[\uFF21-\uFF3A\uFF41-\uFF5A\uFF1C\uFF1E]/g, (char) => {
+    if (char === "\uFF1C") return "<"
+    if (char === "\uFF1E") return ">"
+    return String.fromCharCode(char.charCodeAt(0) - FULLWIDTH_ASCII_OFFSET)
+  })
 }
 
 const MARKER_REPLACEMENTS: readonly { regex: RegExp; value: string }[] = [

@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import type {
   TrajectoryDetailRecord,
   TrajectoryLlmCallRecord,
@@ -197,6 +198,13 @@ function previewFrom(
   return null
 }
 
+interface StreamSummaryParams {
+  payload: Record<string, unknown>
+  maxLength: number
+  stream: string
+  sessionId?: string
+}
+
 function suffixDetail(base: string, detail: string | null | undefined): string {
   return detail ? `${base}: ${detail}` : base
 }
@@ -247,12 +255,7 @@ function summarizeAssistantStream(params: {
   })
 }
 
-function summarizeLifecycleStream(params: {
-  payload: Record<string, unknown>
-  maxLength: number
-  stream: string
-  sessionId?: string
-}): ActivityPlaintextSummary | null {
+function summarizeLifecycleStream(params: StreamSummaryParams): ActivityPlaintextSummary | null {
   const { payload, maxLength, stream, sessionId } = params
   const type = readString(payload.type) ?? "event"
   const stepName = firstString(payload, ["stepName", "name"])
@@ -308,12 +311,7 @@ function summarizeLifecycleStream(params: {
   })
 }
 
-function summarizeActionStream(params: {
-  payload: Record<string, unknown>
-  maxLength: number
-  stream: string
-  sessionId?: string
-}): ActivityPlaintextSummary | null {
+function summarizeActionStream(params: StreamSummaryParams): ActivityPlaintextSummary | null {
   const { payload, maxLength, stream, sessionId } = params
   const type = readString(payload.type) ?? "event"
   const actionName = firstString(payload, ["actionName", "handler", "name"])
@@ -346,12 +344,7 @@ function summarizeActionStream(params: {
   })
 }
 
-function summarizeToolStream(params: {
-  payload: Record<string, unknown>
-  maxLength: number
-  stream: string
-  sessionId?: string
-}): ActivityPlaintextSummary | null {
+function summarizeToolStream(params: StreamSummaryParams): ActivityPlaintextSummary | null {
   const { payload, maxLength, stream, sessionId } = params
   const type = readString(payload.type) ?? "tool_call"
   const toolName = firstString(payload, ["toolName", "name"]) ?? "tool"
@@ -377,12 +370,7 @@ function summarizeToolStream(params: {
   })
 }
 
-function summarizeEvaluatorStream(params: {
-  payload: Record<string, unknown>
-  maxLength: number
-  stream: string
-  sessionId?: string
-}): ActivityPlaintextSummary | null {
+function summarizeEvaluatorStream(params: StreamSummaryParams): ActivityPlaintextSummary | null {
   const { payload, maxLength, stream, sessionId } = params
   const type = readString(payload.type) ?? "event"
   const evaluatorName = firstString(payload, ["evaluatorName", "name"])
@@ -419,12 +407,7 @@ function summarizeEvaluatorStream(params: {
   })
 }
 
-function summarizeProviderStream(params: {
-  payload: Record<string, unknown>
-  maxLength: number
-  stream: string
-  sessionId?: string
-}): ActivityPlaintextSummary | null {
+function summarizeProviderStream(params: StreamSummaryParams): ActivityPlaintextSummary | null {
   const { payload, maxLength, stream, sessionId } = params
   const type = readString(payload.type) ?? "event"
   const providerName = firstString(payload, ["providerName", "name"])
@@ -459,12 +442,7 @@ function summarizeProviderStream(params: {
   })
 }
 
-function summarizeMessageStream(params: {
-  payload: Record<string, unknown>
-  maxLength: number
-  stream: string
-  sessionId?: string
-}): ActivityPlaintextSummary | null {
+function summarizeMessageStream(params: StreamSummaryParams): ActivityPlaintextSummary | null {
   const { payload, maxLength, stream, sessionId } = params
   const type = readString(payload.type) ?? "received"
   const channel = firstString(payload, ["channel", "source"])
@@ -489,12 +467,7 @@ function summarizeMessageStream(params: {
   })
 }
 
-function summarizeMemoryStream(params: {
-  payload: Record<string, unknown>
-  maxLength: number
-  stream: string
-  sessionId?: string
-}): ActivityPlaintextSummary | null {
+function summarizeMemoryStream(params: StreamSummaryParams): ActivityPlaintextSummary | null {
   const { payload, maxLength, stream, sessionId } = params
   const type = readString(payload.type) ?? "event"
   const tableName = firstString(payload, ["tableName", "collection"])
@@ -534,12 +507,7 @@ function summarizeMemoryStream(params: {
   })
 }
 
-function summarizeErrorStream(params: {
-  payload: Record<string, unknown>
-  maxLength: number
-  stream: string
-  sessionId?: string
-}): ActivityPlaintextSummary | null {
+function summarizeErrorStream(params: StreamSummaryParams): ActivityPlaintextSummary | null {
   const { payload, maxLength, stream, sessionId } = params
   const type = readString(payload.type) === "warning" ? "warning" : "error"
   const code = firstString(payload, ["code"])

@@ -1,3 +1,5 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"; spec/core/privacy.md, "A marker follows successful scrub and persisted pseudonym assignments"
+import { foreign, foreignSync, type Foreign, promised } from "../edge.vibe"
 import type {
   LocalInferencePriority,
   PiiPseudonymAssignment,
@@ -9,9 +11,10 @@ import { ModelType } from "../types/model.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { detectPii, type PiiMatch } from "./pii-detectors.vibe"
 
-export class PiiScrubFabricationError extends Error {
+export class PiiScrubFabricationError extends Data.TaggedError("PiiScrubFabricationError") {
   constructor(message: string) {
-    super(`PII scrub result rejected (fail-closed): ${message}`)
+    super()
+    this.message = `PII scrub result rejected (fail-closed): ${message}`
     this.name = "PiiScrubFabricationError"
   }
 }
@@ -93,10 +96,10 @@ export function partitionScrubCandidates(
   return { covered, residue }
 }
 
-export async function scrubWithEscalation(
+export effect function scrubWithEscalation(
   runtime: IAgentRuntime,
   request: ScrubEscalationRequest,
-): Promise<ScrubEscalationResult> {
+): ScrubEscalationResult!(PiiScrubFabricationError | Foreign) {
   const tier0 = toTier0(
     detectPii(request.text, { disabledKinds: request.disabledKinds }),
   )
@@ -110,7 +113,7 @@ export async function scrubWithEscalation(
     return { tier0, escalation: null, escalated: false }
   }
 
-  const handler = runtime.getModel(ModelType.PII_SCRUB)
+  const handler = try foreignSync(() => runtime.getModel(ModelType.PII_SCRUB))
   if (!handler) {
     throw new PiiScrubFabricationError(
       `no PII_SCRUB model registered but ${residue.length} candidate span(s) require escalation; refusing to pass un-inspected content`,
@@ -127,9 +130,9 @@ export async function scrubWithEscalation(
     signal: request.signal,
   }
 
-  const result = await runtime.useModel(ModelType.PII_SCRUB, params)
+  const result = try foreign(() => runtime.useModel(ModelType.PII_SCRUB, params))
 
-  assertValidScrubResult(result, {
+  try assertValidScrubResult(result, {
     rulesetVersion: request.rulesetVersion,
     text: request.text,
     requiredSpans: residue,
@@ -137,6 +140,8 @@ export async function scrubWithEscalation(
 
   return { tier0, escalation: result, escalated: true }
 }
+
+export const scrubWithEscalationPromise = promised(scrubWithEscalation)
 
 export interface ScrubResultAssertionOptions {
   readonly rulesetVersion: string
@@ -146,10 +151,10 @@ export interface ScrubResultAssertionOptions {
   readonly requiredSpans?: readonly string[]
 }
 
-export function assertValidScrubResult(
+export effect function assertValidScrubResult(
   result: unknown,
   options: ScrubResultAssertionOptions,
-): asserts result is PiiScrubResult {
+): void!PiiScrubFabricationError {
   if (result === null || typeof result !== "object") {
     throw new PiiScrubFabricationError("result is not an object")
   }
@@ -247,3 +252,16 @@ export function assertValidScrubResult(
     }
   }
 }
+
+module edge {
+  import { runDetachedSync } from "../edge.vibe"
+  import type { PiiScrubResult } from "../types/model.vibe"
+  import { assertValidScrubResult, type PiiScrubFabricationError, type ScrubResultAssertionOptions } from "./pii-scrub-seam.vibe"
+
+  /** @throws {PiiScrubFabricationError} */
+  export function assertValidScrubResultOrThrow(result: unknown, options: ScrubResultAssertionOptions): asserts result is PiiScrubResult {
+    runDetachedSync(assertValidScrubResult(result, options))
+  }
+}
+import { assertValidScrubResultOrThrow } from edge
+export { assertValidScrubResultOrThrow }

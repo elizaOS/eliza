@@ -1,3 +1,51 @@
+// spec/core/retrievalIndex.md, "Story: Update a searchable corpus without stale frequencies"; spec/core/retrievalIndex.md, "Appending records adds one document and registers each distinct term once"; spec/core/retrievalIndex.md, "IDF inputs and score ordering retain the source numerical formulas"
+// Implementation of BM25 and Porter2 stemming
+// https://github.com/eilvelia/porter2.js
+// https://www.npmjs.com/package/fast-bm25
+
+// The MIT License
+
+// Copyright (c) 2024 eilvelia <hi@eilvelia.cat>
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+// MIT License
+
+// Copyright (c) 2024 Vivek Patel <me@patelvivek.dev>.
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+
 import { compareMemoryIds } from "./database.vibe"
 
 const isV = (char: number): boolean => {
@@ -75,45 +123,54 @@ const isShortV = (w: number[], len: number): boolean => {
   )
 }
 
-const stem = (word: string): string => {
-  if (word.length < 3) return word
+interface StemWord {
+  w: number[]
+  l: number
+  rv: number
+  r1: number
+  r2: number
+}
 
-  if (word.length <= 6) {
-    switch (word) {
-      case "ski":
-        return "ski"
-      case "skies":
-        return "sky"
-      case "dying":
-        return "die"
-      case "lying":
-        return "lie"
-      case "tying":
-        return "tie"
+const stemException = (word: string): string | undefined => {
+  if (word.length > 6) return undefined
+  switch (word) {
+    case "ski":
+      return "ski"
+    case "skies":
+      return "sky"
+    case "dying":
+      return "die"
+    case "lying":
+      return "lie"
+    case "tying":
+      return "tie"
 
-      case "idly":
-        return "idl"
-      case "gently":
-        return "gentl"
-      case "ugly":
-        return "ugli"
-      case "early":
-        return "earli"
-      case "only":
-        return "onli"
-      case "singly":
-        return "singl"
+    case "idly":
+      return "idl"
+    case "gently":
+      return "gentl"
+    case "ugly":
+      return "ugli"
+    case "early":
+      return "earli"
+    case "only":
+      return "onli"
+    case "singly":
+      return "singl"
 
-      case "sky":
-      case "news":
-      case "howe":
-      case "atlas":
-      case "cosmos":
-      case "bias":
-      case "andes":
-        return word
-    }
+    case "sky":
+    case "news":
+    case "howe":
+    case "atlas":
+    case "cosmos":
+    case "bias":
+    case "andes":
+      return word
   }
+  return undefined
+}
+
+const prepareStem = (word: string): StemWord & { yFound: boolean } => {
   const initialOffset = word.charCodeAt(0) === 39 ? 1 : 0
   let l = word.length - initialOffset
   const w = new Array<number>(l)
@@ -168,22 +225,11 @@ const stem = (word: string): string => {
   while (r2 < l && !isV(w[r2])) ++r2
   while (r2 < l && isV(w[r2])) ++r2
   if (r2 < l) ++r2
+  return { w, l, rv, r1, r2, yFound }
+}
 
-  if (l >= 3) {
-    if (w[l - 1] === 115) {
-      if (l >= 4 && w[l - 2] === 101 && w[l - 3] === 115 && w[l - 4] === 115) {
-        l -= 2
-      } else if (w[l - 2] === 101 && w[l - 3] === 105) {
-        l -= l >= 5 ? 2 : 1
-      } else if (w[l - 2] !== 117 && w[l - 2] !== 115 && rv < l - 1) {
-        l -= 1
-      }
-    } else if (w[l - 1] === 100 && w[l - 2] === 101 && w[l - 3] === 105) {
-      l -= l >= 5 ? 2 : 1
-    }
-  }
-
-  if (
+const isUnchangedAfterStep1a = ({ w, l }: StemWord): boolean => {
+  return (
     (l === 6
       && ((w[0] === 105
         && w[1] === 110
@@ -239,12 +285,31 @@ const stem = (word: string): string => {
           && w[4] === 101
           && w[5] === 101
           && w[6] === 100)))
-  ) {
-    let exp2Out = ""
-    for (let i = 0; i < l; ++i) exp2Out += String.fromCharCode(w[i])
-    return exp2Out
-  }
+  )
+}
 
+const step1a = (s: StemWord): void => {
+  const { w, rv } = s
+  let l = s.l
+  if (l >= 3) {
+    if (w[l - 1] === 115) {
+      if (l >= 4 && w[l - 2] === 101 && w[l - 3] === 115 && w[l - 4] === 115) {
+        l -= 2
+      } else if (w[l - 2] === 101 && w[l - 3] === 105) {
+        l -= l >= 5 ? 2 : 1
+      } else if (w[l - 2] !== 117 && w[l - 2] !== 115 && rv < l - 1) {
+        l -= 1
+      }
+    } else if (w[l - 1] === 100 && w[l - 2] === 101 && w[l - 3] === 105) {
+      l -= l >= 5 ? 2 : 1
+    }
+  }
+  s.l = l
+}
+
+const step1bc = (s: StemWord): void => {
+  const { w, r1, rv } = s
+  let l = s.l
   let ll = l >= 2 && w[l - 1] === 121 && w[l - 2] === 108 ? l - 2 : l
   if (ll >= 3) {
     if (w[ll - 3] === 101 && w[ll - 2] === 101 && w[ll - 1] === 100) {
@@ -279,7 +344,12 @@ const stem = (word: string): string => {
   if (l >= 3 && (w[l - 1] === 89 || w[l - 1] === 121) && !isV(w[l - 2])) {
     w[l - 1] = 105
   }
+  s.l = l
+}
 
+const step2 = (s: StemWord): void => {
+  const { w, r1 } = s
+  let l = s.l
   if (l >= r1 + 2) {
     switch (w[l - 1]) {
       case 108:
@@ -431,7 +501,12 @@ const stem = (word: string): string => {
         }
     }
   }
+  s.l = l
+}
 
+const step3 = (s: StemWord): void => {
+  const { w, r1, r2 } = s
+  let l = s.l
   if (l >= r1 + 3) {
     switch (w[l - 1]) {
       case 108:
@@ -510,7 +585,12 @@ const stem = (word: string): string => {
         }
     }
   }
+  s.l = l
+}
 
+const step4 = (s: StemWord): void => {
+  const { w, r2 } = s
+  let l = s.l
   if (l >= r2 + 2) {
     switch (w[l - 1]) {
       case 110:
@@ -586,7 +666,12 @@ const stem = (word: string): string => {
         }
     }
   }
+  s.l = l
+}
 
+const step5 = (s: StemWord): void => {
+  const { w, r1, r2 } = s
+  let l = s.l
   if (
     l >= r1 + 1
     && ((l >= r2 + 1 && w[l - 1] === 108 && w[l - 2] === 108)
@@ -594,92 +679,61 @@ const stem = (word: string): string => {
   ) {
     --l
   }
+  s.l = l
+}
+
+const spell = ({ w, l }: StemWord, restoreY: boolean): string => {
   let out = ""
-  if (yFound) {
-    for (let i = 0; i < l; ++i) {
-      out += String.fromCharCode(w[i] === 89 ? 121 : w[i])
-    }
-  } else {
-    for (let i = 0; i < l; ++i) out += String.fromCharCode(w[i])
+  for (let i = 0; i < l; ++i) {
+    out += String.fromCharCode(restoreY && w[i] === 89 ? 121 : w[i])
   }
   return out
 }
 
-const DEFAULT_OPTIONS = {
-  k1: 1.2,
-  b: 0.75,
-  minLength: 2,
-  stopWords: new Set<string>([
-    "a",
-    "an",
-    "and",
-    "are",
-    "as",
-    "at",
-    "be",
-    "by",
-    "for",
-    "from",
-    "has",
-    "he",
-    "in",
-    "is",
-    "it",
-    "its",
-    "of",
-    "on",
-    "that",
-    "the",
-    "to",
-    "was",
-    "were",
-    "will",
-    "with",
-  ]),
-  stemming: false,
+const stem = (word: string): string => {
+  if (word.length < 3) return word
+  const exception = stemException(word)
+  if (exception !== undefined) return exception
+  const s = prepareStem(word)
+  step1a(s)
+  if (isUnchangedAfterStep1a(s)) return spell(s, false)
+  step1bc(s)
+  step2(s)
+  step3(s)
+  step4(s)
+  step5(s)
+  return spell(s, s.yFound)
 }
 
 interface TokenizationStats {
   originalWordCount: number
-
   stopWordsRemoved: number
-
   stemmedWords: number
-
   processingTimeMs: number
 }
 
 interface TokenizationResult {
   tokens: string[]
-
   stats?: TokenizationStats
 }
 
 interface StemmingRule {
   pattern: RegExp | string
-
   replacement: string | ((substring: string, ...args: unknown[]) => string)
-
   minMeasure?: number
 }
 
 export interface TokenizerOptions {
   stopWords?: Set<string>
-
   minLength?: number
-
   stemming?: boolean
-
   stemmingRules?: StemmingRule[]
 }
 
 export class Tokenizer {
   readonly stopWords: Set<string>
-
   readonly minLength: number
-
   readonly stemming: boolean
-
   readonly stemmingRules: {
     pattern: RegExp
     replacement: string | ((substring: string, ...args: unknown[]) => string)
@@ -812,423 +866,332 @@ export class Tokenizer {
   }
 }
 
-interface BM25Options extends TokenizerOptions {
-  k1?: number
+error DocumentIndexOutOfBounds { message: string }
 
-  b?: number
-
-  fieldBoosts?: { [key: string]: number }
+export effect function documentAt(documents: Array<Record<string, unknown>>, index: number) {
+  if (index < 0 || index >= documents.length) {
+    throw new DocumentIndexOutOfBounds({ message: `Document index ${index} out of bounds (0-${documents.length - 1})` })
+  }
+  return documents[index]
 }
 
-interface SearchResult {
-  index: number
+module edge {
+  import { asLegacy, runDetachedSync } from "./edge.vibe"
+  import { documentAt, Tokenizer, type TokenizerOptions } from "./retrieval.vibe"
 
-  score: number
-
-  doc?: Record<string, unknown>
-}
-
-export class BM25 {
-  readonly termFrequencySaturation: number
-
-  readonly lengthNormalizationFactor: number
-
-  readonly tokenizer: Tokenizer
-
-  documentLengths: Uint32Array
-
-  averageDocLength: number
-
-  termToIndex: Map<string, number>
-
-  documentFrequency: Uint32Array
-
-  termFrequencies: Map<number, Map<number, number>>
-
-  readonly fieldBoosts: { [key: string]: number }
-
-  documents: Array<Record<string, unknown>>
-
-  constructor(
-    docs?: Array<Record<string, unknown>>,
-    options: BM25Options = {},
-  ) {
-    const opts = { ...DEFAULT_OPTIONS, ...options }
-    this.termFrequencySaturation = opts.k1
-    this.lengthNormalizationFactor = opts.b
-    this.tokenizer = new Tokenizer(opts)
-    this.fieldBoosts = opts.fieldBoosts || {}
-
-    this.documents = []
-    this.documentLengths = new Uint32Array(0)
-    this.termToIndex = new Map<string, number>()
-    this.documentFrequency = new Uint32Array(0)
-    this.averageDocLength = 0
-    this.termFrequencies = new Map<number, Map<number, number>>()
-
-    if (docs && docs.length > 0) {
-      this.documents = [...docs]
-      const {
-        documentLengths,
-        termToIndex,
-        documentFrequency,
-        averageDocLength,
-        termFrequencies,
-      } = this.processDocuments(docs)
-
-      this.documentLengths = documentLengths
-      this.termToIndex = termToIndex
-      this.documentFrequency = documentFrequency
-      this.averageDocLength = averageDocLength
-      this.termFrequencies = termFrequencies
-    }
+  const DEFAULT_OPTIONS = {
+    k1: 1.2,
+    b: 0.75,
+    minLength: 2,
+    stopWords: new Set<string>([
+      "a",
+      "an",
+      "and",
+      "are",
+      "as",
+      "at",
+      "be",
+      "by",
+      "for",
+      "from",
+      "has",
+      "he",
+      "in",
+      "is",
+      "it",
+      "its",
+      "of",
+      "on",
+      "that",
+      "the",
+      "to",
+      "was",
+      "were",
+      "will",
+      "with",
+    ]),
+    stemming: false,
   }
 
-  private processDocuments(docs: Array<Record<string, unknown>>): {
+  interface BM25Options extends TokenizerOptions {
+    k1?: number
+    b?: number
+    fieldBoosts?: { [key: string]: number }
+  }
+
+  interface SearchResult {
+    index: number
+    score: number
+    doc?: Record<string, unknown>
+  }
+
+  export class BM25 {
+    readonly termFrequencySaturation: number
+    readonly lengthNormalizationFactor: number
+    readonly tokenizer: Tokenizer
     documentLengths: Uint32Array
+    averageDocLength: number
     termToIndex: Map<string, number>
     documentFrequency: Uint32Array
-    averageDocLength: number
     termFrequencies: Map<number, Map<number, number>>
-  } {
-    const numDocs = docs.length
-    const documentLengths = new Uint32Array(numDocs)
-    const termToIndex = new Map<string, number>()
-    const termFrequencies = new Map<number, Map<number, number>>()
-    let totalDocLength = 0
-    let nextTermIndex = 0
+    readonly fieldBoosts: { [key: string]: number }
+    documents: Array<Record<string, unknown>>
 
-    docs.forEach((doc, docIndex) => {
-      let currentDocLength = 0
-      const docTermFrequencies = new Map<number, number>()
+    /** @throws {never} */
+    constructor(docs?: Array<Record<string, unknown>>, options: BM25Options = {}) {
+      const opts = { ...DEFAULT_OPTIONS, ...options }
+      this.termFrequencySaturation = opts.k1
+      this.lengthNormalizationFactor = opts.b
+      this.tokenizer = new Tokenizer(opts)
+      this.fieldBoosts = opts.fieldBoosts || {}
+      this.documents = []
+      this.documentLengths = new Uint32Array(0)
+      this.termToIndex = new Map<string, number>()
+      this.documentFrequency = new Uint32Array(0)
+      this.averageDocLength = 0
+      this.termFrequencies = new Map<number, Map<number, number>>()
+      if (docs && docs.length > 0) {
+        this.documents = [...docs]
+        this.indexDocuments(docs)
+      }
+    }
 
+    /** @throws {never} */
+    private indexDocuments(docs: Array<Record<string, unknown>>): void {
+      const documentLengths = new Uint32Array(docs.length)
+      let totalDocLength = 0
+      docs.forEach((doc, docIndex) => {
+        const { length, frequencies } = this.weighDocument(doc, (term) => {
+          const known = this.termToIndex.get(term)
+          if (known !== undefined) return known
+          const added = this.termToIndex.size
+          this.termToIndex.set(term, added)
+          return added
+        })
+        documentLengths[docIndex] = length
+        totalDocLength += length
+        frequencies.forEach((freq, termIndexVal) => {
+          let docsForTerm = this.termFrequencies.get(termIndexVal)
+          if (!docsForTerm) {
+            docsForTerm = new Map<number, number>()
+            this.termFrequencies.set(termIndexVal, docsForTerm)
+          }
+          docsForTerm.set(docIndex, freq)
+        })
+      })
+      this.documentLengths = documentLengths
+      this.documentFrequency = new Uint32Array(this.termToIndex.size)
+      this.termFrequencies.forEach((docsForTerm, termIndexVal) => {
+        this.documentFrequency[termIndexVal] = docsForTerm.size
+      })
+      this.averageDocLength = totalDocLength / docs.length
+    }
+
+    /** @throws {never} */
+    private weighDocument(
+      doc: Record<string, unknown>,
+      termIndexOf: (term: string) => number,
+    ): { length: number; frequencies: Map<number, number> } {
+      let length = 0
+      const frequencies = new Map<number, number>()
       for (const field in doc) {
         const content = doc[field]
         if (typeof content !== "string" || !content) continue
-
         const fieldBoost = this.fieldBoosts[field] || 1
         const { tokens } = this.tokenizer.tokenize(content)
-        const fieldLength = tokens.length * fieldBoost
-        currentDocLength += fieldLength
-
+        length += tokens.length * fieldBoost
         for (const term of tokens) {
-          let termIndexVal = termToIndex.get(term)
-          if (termIndexVal === undefined) {
-            termIndexVal = nextTermIndex++
-            termToIndex.set(term, termIndexVal)
-          }
-
-          const currentFreq = docTermFrequencies.get(termIndexVal) || 0
-          docTermFrequencies.set(termIndexVal, currentFreq + fieldBoost)
+          const termIndexVal = termIndexOf(term)
+          frequencies.set(termIndexVal, (frequencies.get(termIndexVal) || 0) + fieldBoost)
         }
       }
-
-      documentLengths[docIndex] = currentDocLength
-      totalDocLength += currentDocLength
-
-      docTermFrequencies.forEach((freq, termIndexVal) => {
-        let docsForTerm = termFrequencies.get(termIndexVal)
-        if (!docsForTerm) {
-          docsForTerm = new Map<number, number>()
-          termFrequencies.set(termIndexVal, docsForTerm)
-        }
-        docsForTerm.set(docIndex, freq)
-      })
-    })
-
-    const documentFrequency = new Uint32Array(termToIndex.size)
-    termFrequencies.forEach((docsForTerm, termIndexVal) => {
-      documentFrequency[termIndexVal] = docsForTerm.size
-    })
-
-    return {
-      documentLengths,
-      termToIndex,
-      documentFrequency,
-      averageDocLength: numDocs > 0 ? totalDocLength / numDocs : 0,
-      termFrequencies,
-    }
-  }
-
-  private recalculateAverageLength(): void {
-    if (this.documentLengths.length === 0) {
-      this.averageDocLength = 0
-      return
+      return { length, frequencies }
     }
 
-    const totalLength = this.documentLengths.reduce((sum, len) => sum + len, 0)
-    this.averageDocLength = totalLength / this.documentLengths.length
-  }
-
-  search(query: string, topK = 10): SearchResult[] {
-    if (topK <= 0) return []
-    const { tokens: queryTokens } = this.tokenizer.tokenize(query)
-    const scores = new Float32Array(this.documentLengths.length)
-
-    queryTokens.forEach((term) => {
-      const termIndex = this.termToIndex.get(term)
-
-      if (termIndex === undefined) return
-
-      const idf = this.calculateIdf(termIndex)
-
-      if (idf <= 0) return
-
-      const termFreqsInDocs = this.termFrequencies.get(termIndex)
-      if (!termFreqsInDocs) return
-
-      termFreqsInDocs.forEach((tf, docIndex) => {
-        const docLength = this.documentLengths[docIndex]
-
-        const numerator = tf * (this.termFrequencySaturation + 1)
-        const denominator = tf
-          + this.termFrequencySaturation
-            * (1
-              - this.lengthNormalizationFactor
-              + (this.lengthNormalizationFactor * docLength)
-                / this.averageDocLength)
-
-        scores[docIndex] += idf * (numerator / denominator)
-      })
-    })
-
-    const results: SearchResult[] = []
-    for (let i = 0; i < scores.length; i++) {
-      const score = scores[i]
-      if (score <= 0) continue
-      const result = { index: i, score }
-      if (results.length < topK) {
-        results.push(result)
-        if (results.length === topK) {
-          results.sort((a, b) => b.score - a.score)
-        }
-        continue
+    /** @throws {never} */
+    private recalculateAverageLength(): void {
+      if (this.documentLengths.length === 0) {
+        this.averageDocLength = 0
+        return
       }
-      if (score <= results[results.length - 1].score) continue
-      let insertAt = results.length - 1
-      while (insertAt > 0 && results[insertAt - 1].score < score) {
-        insertAt--
-      }
-      results.splice(insertAt, 0, result)
-      results.pop()
+      const totalLength = this.documentLengths.reduce((sum, len) => sum + len, 0)
+      this.averageDocLength = totalLength / this.documentLengths.length
     }
 
-    if (results.length < topK) results.sort((a, b) => b.score - a.score)
-    return results
-  }
-
-  searchPhrase(phrase: string, topK = 10): SearchResult[] {
-    const { tokens: phraseTokens } = this.tokenizer.tokenize(phrase)
-    if (phraseTokens.length === 0) return []
-
-    let candidateDocs: Set<number> | null = null
-
-    for (const term of phraseTokens) {
-      const termIndex = this.termToIndex.get(term)
-      if (termIndex === undefined) return []
-
-      const termFrequenciesTermIndex = this.termFrequencies.get(termIndex)
-      const docsContainingTermIter = termFrequenciesTermIndex?.keys()
-      if (!docsContainingTermIter) return []
-
-      const currentTermDocs = new Set(docsContainingTermIter)
-
-      if (candidateDocs === null) {
-        candidateDocs = currentTermDocs
-      } else {
-        candidateDocs = new Set(
-          [...candidateDocs].filter((docIdx: number) => currentTermDocs.has(docIdx)),
-        )
-      }
-
-      if (candidateDocs.size === 0) return []
-    }
-
-    if (candidateDocs === null || candidateDocs.size === 0) return []
-
-    const scores = new Map<number, number>()
-
-    candidateDocs.forEach((docIndex) => {
-      const doc = this.getDocument(docIndex)
-      let phraseFoundInDoc = false
-
-      for (const field in doc) {
-        const content = doc[field]
-        if (typeof content !== "string" || phraseFoundInDoc) continue
-
-        const fieldBoost = this.fieldBoosts[field] || 1
-
-        const { tokens: docTokens } = this.tokenizer.tokenize(content)
-
-        for (let i = 0; i <= docTokens.length - phraseTokens.length; i++) {
-          let match = true
-          for (let j = 0; j < phraseTokens.length; j++) {
-            if (docTokens[i + j] !== phraseTokens[j]) {
-              match = false
-              break
-            }
-          }
-          if (match) {
-            const phraseScoreVal = this.calculatePhraseScore(phraseTokens, docIndex) * fieldBoost
-            scores.set(docIndex, (scores.get(docIndex) || 0) + phraseScoreVal)
-            phraseFoundInDoc = true
-            break
-          }
-        }
-      }
-    })
-
-    return Array.from(scores.entries())
-      .map(([index, score]) => ({ index, score }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topK)
-  }
-
-  private calculatePhraseScore(
-    phraseTokens: string[],
-    docIndex: number,
-  ): number {
-    return phraseTokens.reduce((currentScore, term) => {
-      const termIndex = this.termToIndex.get(term)
-
-      if (termIndex === undefined) return currentScore
-
-      const idf = this.calculateIdf(termIndex)
-      const termFrequenciesTermIndex = this.termFrequencies.get(termIndex)
-      const tf = termFrequenciesTermIndex?.get(docIndex) || 0
-      const docLength = this.documentLengths[docIndex]
-
+    /** @throws {never} */
+    private termWeight(tf: number, docLength: number): number {
       const numerator = tf * (this.termFrequencySaturation + 1)
       const denominator = tf
         + this.termFrequencySaturation
-          * (1
-            - this.lengthNormalizationFactor
-            + (this.lengthNormalizationFactor * docLength)
-              / this.averageDocLength)
+          * (1 - this.lengthNormalizationFactor + (this.lengthNormalizationFactor * docLength) / this.averageDocLength)
+      return numerator / denominator
+    }
 
-      return currentScore + idf * (numerator / denominator)
-    }, 0)
-  }
-
-  async addDocument(doc: Record<string, unknown>): Promise<void> {
-    if (!doc) throw new Error("Document cannot be null")
-
-    const docIndex = this.documentLengths.length
-
-    this.documents.push(doc)
-
-    const newDocLengths = new Uint32Array(docIndex + 1)
-    newDocLengths.set(this.documentLengths, 0)
-
-    this.documentLengths = newDocLengths
-
-    let currentDocLength = 0
-    const docTermFrequencies = new Map<number, number>()
-
-    for (const field in doc) {
-      const content = doc[field]
-      if (typeof content !== "string" || !content) continue
-
-      const fieldBoost = this.fieldBoosts[field] || 1
-      const { tokens } = this.tokenizer.tokenize(content)
-      currentDocLength += tokens.length * fieldBoost
-
-      tokens.forEach((term) => {
-        let termIndexVal: number
-
-        const existingIndex = this.termToIndex.get(term)
-        if (existingIndex === undefined) {
-          termIndexVal = this.termToIndex.size
-          this.termToIndex.set(term, termIndexVal)
-
-          if (this.documentFrequency.length <= termIndexVal) {
-            const oldDf = this.documentFrequency
-
-            const newSize = Math.max(termIndexVal + 1, oldDf.length * 2 || 1)
-            this.documentFrequency = new Uint32Array(newSize)
-            this.documentFrequency.set(oldDf, 0)
-          }
-
-          this.documentFrequency[termIndexVal] = 0
-        } else {
-          termIndexVal = existingIndex
-        }
-
-        const currentFreq = docTermFrequencies.get(termIndexVal) || 0
-        docTermFrequencies.set(termIndexVal, currentFreq + fieldBoost)
+    /** @throws {never} */
+    search(query: string, topK = 10): SearchResult[] {
+      if (topK <= 0) return []
+      const { tokens: queryTokens } = this.tokenizer.tokenize(query)
+      const scores = new Float32Array(this.documentLengths.length)
+      queryTokens.forEach((term) => {
+        const termIndex = this.termToIndex.get(term)
+        if (termIndex === undefined) return
+        const idf = this.calculateIdf(termIndex)
+        if (idf <= 0) return
+        const termFreqsInDocs = this.termFrequencies.get(termIndex)
+        if (!termFreqsInDocs) return
+        termFreqsInDocs.forEach((tf, docIndex) => {
+          scores[docIndex] += idf * this.termWeight(tf, this.documentLengths[docIndex])
+        })
       })
-    }
-
-    this.documentLengths[docIndex] = currentDocLength
-
-    docTermFrequencies.forEach((freq, termIndexVal) => {
-      if (!this.termFrequencies.has(termIndexVal)) {
-        this.termFrequencies.set(termIndexVal, new Map<number, number>())
+      const results: SearchResult[] = []
+      for (let i = 0; i < scores.length; i++) {
+        const score = scores[i]
+        if (score <= 0) continue
+        const result = { index: i, score }
+        if (results.length < topK) {
+          results.push(result)
+          if (results.length === topK) results.sort((a, b) => b.score - a.score)
+          continue
+        }
+        if (score <= results[results.length - 1].score) continue
+        let insertAt = results.length - 1
+        while (insertAt > 0 && results[insertAt - 1].score < score) insertAt--
+        results.splice(insertAt, 0, result)
+        results.pop()
       }
-      const termFrequenciesTermIndexVal = this.termFrequencies.get(termIndexVal)
-      if (termFrequenciesTermIndexVal) {
-        termFrequenciesTermIndexVal.set(docIndex, freq)
+      if (results.length < topK) results.sort((a, b) => b.score - a.score)
+      return results
+    }
+
+    /** @throws {Error} */
+    searchPhrase(phrase: string, topK = 10): SearchResult[] {
+      const { tokens: phraseTokens } = this.tokenizer.tokenize(phrase)
+      if (phraseTokens.length === 0) return []
+      let candidateDocs: Set<number> | null = null
+      for (const term of phraseTokens) {
+        const termIndex = this.termToIndex.get(term)
+        if (termIndex === undefined) return []
+        const docsContainingTermIter = this.termFrequencies.get(termIndex)?.keys()
+        if (!docsContainingTermIter) return []
+        const currentTermDocs = new Set(docsContainingTermIter)
+        candidateDocs = candidateDocs === null
+          ? currentTermDocs
+          : new Set([...candidateDocs].filter((docIdx: number) => currentTermDocs.has(docIdx)))
+        if (candidateDocs.size === 0) return []
       }
-
-      if (termIndexVal < this.documentFrequency.length) {
-        this.documentFrequency[termIndexVal]++
-      }
-    })
-
-    this.recalculateAverageLength()
-  }
-
-  calculateIdf(termIndex: number): number {
-    if (termIndex < 0 || termIndex >= this.documentFrequency.length) {
-      return 0
+      if (candidateDocs === null || candidateDocs.size === 0) return []
+      const scores = new Map<number, number>()
+      candidateDocs.forEach((docIndex) => {
+        const doc = this.getDocument(docIndex)
+        let phraseFoundInDoc = false
+        for (const field in doc) {
+          const content = doc[field]
+          if (typeof content !== "string" || phraseFoundInDoc) continue
+          const fieldBoost = this.fieldBoosts[field] || 1
+          const { tokens: docTokens } = this.tokenizer.tokenize(content)
+          for (let i = 0; i <= docTokens.length - phraseTokens.length; i++) {
+            if (phraseTokens.every((token, j) => docTokens[i + j] === token)) {
+              const phraseScoreVal = this.calculatePhraseScore(phraseTokens, docIndex) * fieldBoost
+              scores.set(docIndex, (scores.get(docIndex) || 0) + phraseScoreVal)
+              phraseFoundInDoc = true
+              break
+            }
+          }
+        }
+      })
+      return Array.from(scores.entries())
+        .map(([index, score]) => ({ index, score }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK)
     }
 
-    const docFreq = this.documentFrequency[termIndex]
-
-    if (docFreq <= 0 || docFreq > this.documentLengths.length) {
-      return 0
+    /** @throws {never} */
+    private calculatePhraseScore(phraseTokens: string[], docIndex: number): number {
+      return phraseTokens.reduce((currentScore, term) => {
+        const termIndex = this.termToIndex.get(term)
+        if (termIndex === undefined) return currentScore
+        const idf = this.calculateIdf(termIndex)
+        const tf = this.getTermFrequency(termIndex, docIndex)
+        return currentScore + idf * this.termWeight(tf, this.documentLengths[docIndex])
+      }, 0)
     }
 
-    const N = this.documentLengths.length
-    const numerator = N - docFreq + 0.5
-    const denominator = docFreq + 0.5
-
-    return Math.log(1 + numerator / denominator)
-  }
-
-  getTermFrequency(termIndex: number, docIndex: number): number {
-    const termFrequenciesTermIndex = this.termFrequencies.get(termIndex)
-    return termFrequenciesTermIndex?.get(docIndex) || 0
-  }
-
-  getDocument(index: number): Record<string, unknown> {
-    if (index < 0 || index >= this.documents.length) {
-      throw new Error(
-        `Document index ${index} out of bounds (0-${this.documents.length - 1})`,
-      )
+    /** @throws {Error} */
+    async addDocument(doc: Record<string, unknown>): Promise<void> {
+      if (!doc) throw new Error("Document cannot be null")
+      const docIndex = this.documentLengths.length
+      this.documents.push(doc)
+      const newDocLengths = new Uint32Array(docIndex + 1)
+      newDocLengths.set(this.documentLengths, 0)
+      this.documentLengths = newDocLengths
+      const { length, frequencies } = this.weighDocument(doc, (term) => {
+        const known = this.termToIndex.get(term)
+        if (known !== undefined) return known
+        const added = this.termToIndex.size
+        this.termToIndex.set(term, added)
+        if (this.documentFrequency.length <= added) {
+          const oldDf = this.documentFrequency
+          this.documentFrequency = new Uint32Array(Math.max(added + 1, oldDf.length * 2 || 1))
+          this.documentFrequency.set(oldDf, 0)
+        }
+        this.documentFrequency[added] = 0
+        return added
+      })
+      this.documentLengths[docIndex] = length
+      frequencies.forEach((freq, termIndexVal) => {
+        let docsForTerm = this.termFrequencies.get(termIndexVal)
+        if (!docsForTerm) {
+          docsForTerm = new Map<number, number>()
+          this.termFrequencies.set(termIndexVal, docsForTerm)
+        }
+        docsForTerm.set(docIndex, freq)
+        if (termIndexVal < this.documentFrequency.length) this.documentFrequency[termIndexVal]++
+      })
+      this.recalculateAverageLength()
     }
-    return this.documents[index]
-  }
 
-  clearDocuments(): void {
-    this.documents = []
-    this.documentLengths = new Uint32Array(0)
-    this.termToIndex.clear()
-    this.documentFrequency = new Uint32Array(0)
-    this.averageDocLength = 0
-    this.termFrequencies.clear()
-  }
+    /** @throws {never} */
+    calculateIdf(termIndex: number): number {
+      if (termIndex < 0 || termIndex >= this.documentFrequency.length) return 0
+      const docFreq = this.documentFrequency[termIndex]
+      if (docFreq <= 0 || docFreq > this.documentLengths.length) return 0
+      const N = this.documentLengths.length
+      return Math.log(1 + (N - docFreq + 0.5) / (docFreq + 0.5))
+    }
 
-  getDocumentCount(): number {
-    return this.documents.length
-  }
+    /** @throws {never} */
+    getTermFrequency(termIndex: number, docIndex: number): number {
+      return this.termFrequencies.get(termIndex)?.get(docIndex) || 0
+    }
 
-  async addDocuments(docs: Array<Record<string, unknown>>): Promise<void> {
-    for (const doc of docs) {
-      await this.addDocument(doc)
+    /** @throws {Error} */
+    getDocument(index: number): Record<string, unknown> {
+      return runDetachedSync(asLegacy(Error, documentAt(this.documents, index)))
+    }
+
+    /** @throws {never} */
+    clearDocuments(): void {
+      this.documents = []
+      this.documentLengths = new Uint32Array(0)
+      this.termToIndex.clear()
+      this.documentFrequency = new Uint32Array(0)
+      this.averageDocLength = 0
+      this.termFrequencies.clear()
+    }
+
+    /** @throws {never} */
+    getDocumentCount(): number {
+      return this.documents.length
+    }
+
+    /** @throws {Error} */
+    async addDocuments(docs: Array<Record<string, unknown>>): Promise<void> {
+      for (const doc of docs) await this.addDocument(doc)
     }
   }
 }
+import { BM25 } from edge
+export { BM25 }
 
 export function foldForSearch(text: string): string {
   return text

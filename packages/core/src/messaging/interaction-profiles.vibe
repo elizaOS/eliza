@@ -1,3 +1,5 @@
+// spec/core/connectorRegistries.md, "Target sources replace in place and profile collisions preserve the incumbent"; spec/core/messaging.md, "Story: Dispatch through a selected connector account"
+import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { InteractionBlock, InteractionKind } from "../types/interactions.vibe"
 import { stableStringify } from "../utils/deterministic.vibe"
@@ -102,7 +104,7 @@ export interface InteractionProfileTemplate {
   nonSecretFallbacks: ConnectorInteractionCapabilityProfile["nonSecretFallbacks"]
 }
 
-function positiveInteger(value: number, path: string): void {
+effect function positiveInteger(value: number, path: string): void!ElizaError {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new ElizaError(`${path} must be a positive safe integer.`, {
       code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
@@ -111,9 +113,9 @@ function positiveInteger(value: number, path: string): void {
   }
 }
 
-function supportedLimit(supported: boolean, value: number, path: string): void {
+effect function supportedLimit(supported: boolean, value: number, path: string): void!ElizaError {
   if (supported) {
-    positiveInteger(value, path)
+    try positiveInteger(value, path)
     return
   }
   if (value !== 0) {
@@ -124,7 +126,7 @@ function supportedLimit(supported: boolean, value: number, path: string): void {
   }
 }
 
-function nonEmpty(value: string, path: string): string {
+effect function nonEmpty(value: string, path: string): string!ElizaError {
   const normalized = value.trim()
   if (!normalized) {
     throw new ElizaError(`${path} must not be blank.`, {
@@ -135,60 +137,9 @@ function nonEmpty(value: string, path: string): string {
   return normalized
 }
 
-export function normalizeConnectorInteractionCapabilityProfile(
-  profile: ConnectorInteractionCapabilityProfile,
-): ConnectorInteractionCapabilityProfile {
-  if (profile.profileVersion !== INTERACTION_PROFILE_VERSION) {
-    throw new ElizaError("Unsupported interaction profile version.", {
-      code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
-      context: { profileVersion: profile.profileVersion },
-    })
-  }
-  for (const kind of INTERACTION_BLOCK_KINDS) {
-    const capability = profile.blocks[kind]
-    if (!capability || capability.modes.length === 0) {
-      throw new ElizaError(`Interaction profile omits ${kind}.`, {
-        code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
-        context: { kind },
-      })
-    }
-    if (
-      capability.modes.some((mode) => !INTERACTION_DELIVERY_MODES.has(mode))
-    ) {
-      throw new ElizaError(`Interaction profile has an unknown ${kind} mode.`, {
-        code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
-        context: { kind },
-      })
-    }
-    positiveInteger(
-      capability.maxSessionTtlMs,
-      `blocks.${kind}.maxSessionTtlMs`,
-    )
-    if (new Set(capability.modes).size !== capability.modes.length) {
-      throw new ElizaError(`Interaction profile repeats a ${kind} mode.`, {
-        code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
-        context: { kind },
-      })
-    }
-    if (
-      kind === "secret"
-      && (capability.modes.length !== 1
-        || capability.modes[0] !== "sensitive-request")
-    ) {
-      throw new ElizaError(
-        "Secret interactions must use only the sensitive-request flow.",
-        { code: "INVALID_INTERACTION_CAPABILITY_PROFILE", context: { kind } },
-      )
-    }
-    if (kind !== "secret" && capability.modes.includes("sensitive-request")) {
-      throw new ElizaError(
-        "Ordinary interaction blocks cannot use the sensitive-request mode.",
-        { code: "INVALID_INTERACTION_CAPABILITY_PROFILE", context: { kind } },
-      )
-    }
-  }
+effect function validateProfileLimits(profile: ConnectorInteractionCapabilityProfile): void!ElizaError {
   const limits = profile.limits
-  supportedLimit(
+  try supportedLimit(
     limits.buttons.supported,
     limits.buttons.maxPerRow,
     "limits.buttons.maxPerRow",
@@ -202,57 +153,57 @@ export function normalizeConnectorInteractionCapabilityProfile(
       { code: "INVALID_INTERACTION_CAPABILITY_PROFILE" },
     )
   }
-  supportedLimit(
+  try supportedLimit(
     limits.buttons.supported,
     limits.buttons.maxPerMessage,
     "limits.buttons.maxPerMessage",
   )
-  supportedLimit(
+  try supportedLimit(
     limits.buttons.supported,
     limits.buttons.maxLabelBytes,
     "limits.buttons.maxLabelBytes",
   )
-  supportedLimit(
+  try supportedLimit(
     limits.buttons.supported,
     limits.buttons.maxCallbackBytes,
     "limits.buttons.maxCallbackBytes",
   )
-  supportedLimit(
+  try supportedLimit(
     limits.lists.supported,
     limits.lists.maxItems,
     "limits.lists.maxItems",
   )
-  supportedLimit(
+  try supportedLimit(
     limits.lists.supported,
     limits.lists.maxLabelBytes,
     "limits.lists.maxLabelBytes",
   )
-  supportedLimit(
+  try supportedLimit(
     limits.lists.supported,
     limits.lists.maxDescriptionBytes,
     "limits.lists.maxDescriptionBytes",
   )
-  supportedLimit(
+  try supportedLimit(
     limits.modals.supported,
     limits.modals.maxFields,
     "limits.modals.maxFields",
   )
-  supportedLimit(
+  try supportedLimit(
     limits.modals.supported,
     limits.modals.maxTitleBytes,
     "limits.modals.maxTitleBytes",
   )
-  supportedLimit(
+  try supportedLimit(
     limits.forms.supported,
     limits.forms.maxFields,
     "limits.forms.maxFields",
   )
-  supportedLimit(
+  try supportedLimit(
     limits.forms.supported,
     limits.forms.maxOptionsPerField,
     "limits.forms.maxOptionsPerField",
   )
-  supportedLimit(
+  try supportedLimit(
     limits.links.supported,
     limits.links.maxUrlBytes,
     "limits.links.maxUrlBytes",
@@ -270,18 +221,18 @@ export function normalizeConnectorInteractionCapabilityProfile(
       code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
     })
   }
-  supportedLimit(
+  try supportedLimit(
     limits.threads.supported,
     limits.threads.maxTitleBytes,
     "limits.threads.maxTitleBytes",
   )
-  positiveInteger(limits.text.maxMessageBytes, "limits.text.maxMessageBytes")
-  supportedLimit(
+  try positiveInteger(limits.text.maxMessageBytes, "limits.text.maxMessageBytes")
+  try supportedLimit(
     limits.attachments.supported,
     limits.attachments.maxCount,
     "limits.attachments.maxCount",
   )
-  supportedLimit(
+  try supportedLimit(
     limits.attachments.supported,
     limits.attachments.maxBytesEach,
     "limits.attachments.maxBytesEach",
@@ -328,6 +279,61 @@ export function normalizeConnectorInteractionCapabilityProfile(
       code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
     })
   }
+}
+
+export effect function normalizeConnectorInteractionCapabilityProfile(
+  profile: ConnectorInteractionCapabilityProfile,
+): ConnectorInteractionCapabilityProfile!ElizaError {
+  if (profile.profileVersion !== INTERACTION_PROFILE_VERSION) {
+    throw new ElizaError("Unsupported interaction profile version.", {
+      code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
+      context: { profileVersion: profile.profileVersion },
+    })
+  }
+  for (const kind of INTERACTION_BLOCK_KINDS) {
+    const capability = profile.blocks[kind]
+    if (!capability || capability.modes.length === 0) {
+      throw new ElizaError(`Interaction profile omits ${kind}.`, {
+        code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
+        context: { kind },
+      })
+    }
+    if (
+      capability.modes.some((mode) => !INTERACTION_DELIVERY_MODES.has(mode))
+    ) {
+      throw new ElizaError(`Interaction profile has an unknown ${kind} mode.`, {
+        code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
+        context: { kind },
+      })
+    }
+    try positiveInteger(
+      capability.maxSessionTtlMs,
+      `blocks.${kind}.maxSessionTtlMs`,
+    )
+    if (new Set(capability.modes).size !== capability.modes.length) {
+      throw new ElizaError(`Interaction profile repeats a ${kind} mode.`, {
+        code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
+        context: { kind },
+      })
+    }
+    if (
+      kind === "secret"
+      && (capability.modes.length !== 1
+        || capability.modes[0] !== "sensitive-request")
+    ) {
+      throw new ElizaError(
+        "Secret interactions must use only the sensitive-request flow.",
+        { code: "INVALID_INTERACTION_CAPABILITY_PROFILE", context: { kind } },
+      )
+    }
+    if (kind !== "secret" && capability.modes.includes("sensitive-request")) {
+      throw new ElizaError(
+        "Ordinary interaction blocks cannot use the sensitive-request mode.",
+        { code: "INVALID_INTERACTION_CAPABILITY_PROFILE", context: { kind } },
+      )
+    }
+  }
+  try validateProfileLimits(profile)
   if (profile.nonSecretFallbacks.length === 0) {
     throw new ElizaError("A non-secret fallback is required.", {
       code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
@@ -385,35 +391,36 @@ export function normalizeConnectorInteractionCapabilityProfile(
   }
   return structuredClone({
     ...profile,
-    profileId: nonEmpty(profile.profileId, "profileId"),
+    profileId: try nonEmpty(profile.profileId, "profileId"),
     connector: {
-      source: nonEmpty(profile.connector.source, "connector.source"),
-      accountId: nonEmpty(profile.connector.accountId, "connector.accountId"),
+      source: try nonEmpty(profile.connector.source, "connector.source"),
+      accountId: try nonEmpty(profile.connector.accountId, "connector.accountId"),
     },
     target: {
-      kind: nonEmpty(profile.target.kind, "target.kind"),
-      id: nonEmpty(profile.target.id, "target.id"),
+      kind: try nonEmpty(profile.target.kind, "target.kind"),
+      id: try nonEmpty(profile.target.id, "target.id"),
     },
   })
 }
 
-export function createConnectorInteractionCapabilityProfile(args: {
+export const normalizeConnectorInteractionCapabilityProfileOrThrow = thrown(normalizeConnectorInteractionCapabilityProfile)
+
+export effect function createConnectorInteractionCapabilityProfile(args: {
   template: InteractionProfileTemplate
   source: string
   accountId: string
   targetKind: string
   targetId: string
-}): ConnectorInteractionCapabilityProfile {
-  const templateId = nonEmpty(args.template.templateId, "template.templateId")
-  const source = nonEmpty(args.source, "connector.source")
-  const accountId = nonEmpty(args.accountId, "connector.accountId")
-  const targetKind = nonEmpty(args.targetKind, "target.kind")
-  const targetId = nonEmpty(args.targetId, "target.id")
-  return normalizeConnectorInteractionCapabilityProfile({
+}) {
+  const templateId = try nonEmpty(args.template.templateId, "template.templateId")
+  const source = try nonEmpty(args.source, "connector.source")
+  const accountId = try nonEmpty(args.accountId, "connector.accountId")
+  const targetKind = try nonEmpty(args.targetKind, "target.kind")
+  const targetId = try nonEmpty(args.targetId, "target.id")
+  const profileUuid = try stringToUuid(`${INTERACTION_PROFILE_VERSION}:${templateId}:${source}:${accountId}:${targetKind}:${targetId}`)
+  return try normalizeConnectorInteractionCapabilityProfile({
     profileVersion: INTERACTION_PROFILE_VERSION,
-    profileId: `ip1:${
-      stringToUuid(`${INTERACTION_PROFILE_VERSION}:${templateId}:${source}:${accountId}:${targetKind}:${targetId}`)
-    }`,
+    profileId: `ip1:${profileUuid}`,
     connector: { source, accountId },
     target: { kind: targetKind, id: targetId },
     blocks: args.template.blocks,
@@ -422,6 +429,8 @@ export function createConnectorInteractionCapabilityProfile(args: {
     sensitiveFallback: "sensitive-request",
   })
 }
+
+export const createConnectorInteractionCapabilityProfileOrThrow = thrown(createConnectorInteractionCapabilityProfile)
 
 export interface NegotiatedInteractionDelivery {
   mode: InteractionDeliveryMode
@@ -663,12 +672,12 @@ function signedHostedLimitations(
   return []
 }
 
-export function negotiateInteractionDelivery(
+export effect function negotiateInteractionDelivery(
   block: InteractionBlock,
   profileValue: ConnectorInteractionCapabilityProfile,
   context: InteractionNegotiationContext = {},
-): NegotiatedInteractionDelivery {
-  const profile = normalizeConnectorInteractionCapabilityProfile(profileValue)
+): NegotiatedInteractionDelivery!ElizaError {
+  const profile = try normalizeConnectorInteractionCapabilityProfile(profileValue)
   if (block.kind === "secret") {
     return { mode: "sensitive-request", reason: "sensitive", limitations: [] }
   }
@@ -735,44 +744,67 @@ export function negotiateInteractionDelivery(
   })
 }
 
-export class ConnectorInteractionProfileRegistry {
-  private readonly profiles = new Map<
-    string,
-    { fingerprint: string; profile: ConnectorInteractionCapabilityProfile }
-  >()
+export const negotiateInteractionDeliveryOrThrow = thrown(negotiateInteractionDelivery)
 
-  register(
-    value: ConnectorInteractionCapabilityProfile,
-  ): ConnectorInteractionCapabilityProfile {
-    const profile = normalizeConnectorInteractionCapabilityProfile(value)
-    const fingerprint = stableStringify(profile)
-    const existing = this.profiles.get(profile.profileId)
-    if (existing && existing.fingerprint !== fingerprint) {
-      throw new ElizaError(
-        "Interaction profile ID collides with a different account or target profile.",
-        {
-          code: "INTERACTION_PROFILE_ID_COLLISION",
-          context: { profileId: profile.profileId },
-        },
-      )
-    }
-    if (!existing) {
-      this.profiles.set(profile.profileId, { fingerprint, profile })
-    }
-    return structuredClone(profile)
-  }
-
-  get(profileId: string): ConnectorInteractionCapabilityProfile | null {
-    const entry = this.profiles.get(profileId)
-    return entry ? structuredClone(entry.profile) : null
-  }
+interface RegisteredProfile {
+  fingerprint: string
+  profile: ConnectorInteractionCapabilityProfile
 }
 
-export function renderInteractionCapabilityMatrix(
+export effect function registerInteractionProfile(
+  profiles: Map<string, RegisteredProfile>,
+  value: ConnectorInteractionCapabilityProfile,
+): ConnectorInteractionCapabilityProfile!ElizaError {
+  const profile = try normalizeConnectorInteractionCapabilityProfile(value)
+  const fingerprint = stableStringify(profile)
+  const existing = profiles.get(profile.profileId)
+  if (existing && existing.fingerprint !== fingerprint) {
+    throw new ElizaError(
+      "Interaction profile ID collides with a different account or target profile.",
+      {
+        code: "INTERACTION_PROFILE_ID_COLLISION",
+        context: { profileId: profile.profileId },
+      },
+    )
+  }
+  if (!existing) profiles.set(profile.profileId, { fingerprint, profile })
+  return structuredClone(profile)
+}
+
+module edge {
+  import { runDetachedSync } from "../edge.vibe"
+  import {
+    type ConnectorInteractionCapabilityProfile,
+    registerInteractionProfile,
+  } from "./interaction-profiles.vibe"
+
+  export class ConnectorInteractionProfileRegistry {
+    private readonly profiles = new Map<
+      string,
+      { fingerprint: string; profile: ConnectorInteractionCapabilityProfile }
+    >()
+
+    /** @throws {ElizaError} */
+    register(
+      value: ConnectorInteractionCapabilityProfile,
+    ): ConnectorInteractionCapabilityProfile {
+      return runDetachedSync(registerInteractionProfile(this.profiles, value))
+    }
+
+    /** @throws {never} */
+    get(profileId: string): ConnectorInteractionCapabilityProfile | null {
+      const entry = this.profiles.get(profileId)
+      return entry ? structuredClone(entry.profile) : null
+    }
+  }
+}
+import { ConnectorInteractionProfileRegistry } from edge
+export { ConnectorInteractionProfileRegistry }
+
+export effect function renderInteractionCapabilityMatrix(
   profiles: readonly ConnectorInteractionCapabilityProfile[],
-): string {
-  const rows = [...profiles]
-    .map(normalizeConnectorInteractionCapabilityProfile)
+): string!ElizaError {
+  const rows = (try forEach(profiles, (profile) => normalizeConnectorInteractionCapabilityProfile(profile)))
     .sort((a, b) =>
       `${a.connector.source}\0${a.connector.accountId}\0${a.target.kind}\0${a.target.id}`.localeCompare(
         `${b.connector.source}\0${b.connector.accountId}\0${b.target.kind}\0${b.target.id}`,
@@ -794,3 +826,5 @@ export function renderInteractionCapabilityMatrix(
     ...rows,
   ].join("\n")
 }
+
+export const renderInteractionCapabilityMatrixOrThrow = thrown(renderInteractionCapabilityMatrix)

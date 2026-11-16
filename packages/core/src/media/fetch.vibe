@@ -1,5 +1,7 @@
-import { fetchWithSsrfGuard, type GuardedFetchResult, type PinnedLookupFetchLike } from "../network/fetch-guard.vibe"
-import type { LookupFn, SsrfPolicy } from "../network/ssrf.vibe"
+// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
+import { asLegacy, Foreign, foreign, promised } from "../edge.vibe"
+import { fetchWithSsrfGuard, type PinnedLookupFetchLike } from "../network/fetch-guard.vibe"
+import { type LookupFn, SsrfBlockedError, type SsrfPolicy } from "../network/ssrf.vibe"
 import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.vibe"
 import { detectMime, extensionForMime } from "./mime.vibe"
 
@@ -15,15 +17,36 @@ export type MediaFetchErrorCode =
   | "fetch_failed"
   | "invalid_response"
 
-export class MediaFetchError extends Error {
-  readonly code: MediaFetchErrorCode
-
+export class MediaFetchError extends Data.TaggedError("MediaFetchError")<{ readonly code: MediaFetchErrorCode; readonly name: string }> {
   constructor(code: MediaFetchErrorCode, message: string, cause?: unknown) {
-    super(message, cause === undefined ? undefined : { cause })
-    this.code = code
-    this.name = "MediaFetchError"
+    super({ code, name: "MediaFetchError" })
+    this.message = message
+    if (cause !== undefined) {
+      Object.defineProperty(this, "cause", { value: cause, writable: true, configurable: true })
+    }
   }
 }
+
+module node {
+  import { Buffer } from "node:buffer"
+
+  /** @throws {RangeError | TypeError} */
+  export function mediaFetchSignal(timeoutMs: number, signal: AbortSignal | undefined): AbortSignal {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs)
+    return signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal
+  }
+
+  /** @throws {never} */
+  export function bufferOf(bytes: ArrayBuffer): Buffer {
+    return Buffer.from(bytes)
+  }
+
+  /** @throws {never} */
+  export function concatBytes(chunks: Uint8Array[], total: number): Buffer {
+    return Buffer.concat(chunks, total)
+  }
+}
+import { bufferOf, concatBytes, mediaFetchSignal } from node
 
 export type FetchLike = (
   input: RequestInfo | URL,
@@ -105,41 +128,37 @@ function parseContentDispositionFileName(
   return undefined
 }
 
-export async function readErrorBodySnippet(
+export effect function readErrorBodySnippet(
   res: Response,
   maxChars = 200,
-): Promise<string | undefined> {
-  try {
-    const { buffer, truncated } = await readBoundedBody(
-      res,
-      maxChars * 4,
-      "truncate",
-    )
+) {
+  return Effect.catchDefect(snippetOf(res, maxChars), () => succeed(undefined)) catch () => undefined
+}
+export const readErrorBodySnippetPromise = promised(readErrorBodySnippet)
 
-    const text = new TextDecoder().decode(buffer, { stream: truncated })
-    if (!text) {
-      return undefined
-    }
-    const collapsed = text.replace(/\s+/g, " ").trim()
-    if (!collapsed) {
-      return undefined
-    }
-    const wellFormed = toWellFormedUnicode(collapsed)
-    if (!truncated && wellFormed.length <= maxChars) {
-      return wellFormed
-    }
-    const budget = Math.max(0, maxChars - 1)
-    return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`
-  } catch {
+effect function snippetOf(res: Response, maxChars: number) {
+  const { buffer, truncated } = try readBoundedBody(res, maxChars * 4, "truncate")
+  const text = try Effect.try(() => new TextDecoder().decode(buffer, { stream: truncated }))
+  if (!text) {
     return undefined
   }
+  const collapsed = text.replace(/\s+/g, " ").trim()
+  if (!collapsed) {
+    return undefined
+  }
+  const wellFormed = toWellFormedUnicode(collapsed)
+  if (!truncated && wellFormed.length <= maxChars) {
+    return wellFormed
+  }
+  const budget = Math.max(0, maxChars - 1)
+  return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`
 }
 
-function enforceResponsePolicy(
+effect function enforceResponsePolicy(
   res: Response,
   url: string,
   options: FetchMediaOptions,
-): void {
+) {
   const requiredPrefix = options.requiredContentTypePrefix
     ?.trim()
     .toLowerCase()
@@ -164,28 +183,26 @@ function enforceResponsePolicy(
   }
 }
 
-async function fetchGuardedMedia(
-  options: FetchMediaOptions,
-): Promise<GuardedFetchResult> {
+effect function fetchGuardedMedia(options: FetchMediaOptions) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_MEDIA_FETCH_TIMEOUT_MS
-  const timeoutSignal = AbortSignal.timeout(timeoutMs)
-  const compositeSignal = options.signal
-    ? AbortSignal.any([options.signal, timeoutSignal])
-    : timeoutSignal
-  try {
-    return await fetchWithSsrfGuard({
-      url: options.url,
-      init: options.userAgent === undefined
-        ? undefined
-        : { headers: { "User-Agent": options.userAgent } },
-      fetchImpl: options.fetchImpl,
-      maxRedirects: options.maxRedirects,
-      signal: compositeSignal,
-      policy: options.ssrfPolicy,
-      lookupFn: options.lookupFn,
-      pinnedFetchImpl: options.pinnedFetchImpl,
-    })
-  } catch (err) {
+  const compositeSignal = try Effect.try({
+    try: () => mediaFetchSignal(timeoutMs, options.signal),
+    catch: (cause) => new Foreign({ cause }),
+  })
+  const guarded = fetchWithSsrfGuard({
+    url: options.url,
+    init: options.userAgent === undefined
+      ? undefined
+      : { headers: { "User-Agent": options.userAgent } },
+    fetchImpl: options.fetchImpl,
+    maxRedirects: options.maxRedirects,
+    signal: compositeSignal,
+    policy: options.ssrfPolicy,
+    lookupFn: options.lookupFn,
+    pinnedFetchImpl: options.pinnedFetchImpl,
+  })
+  return asLegacy(Error, guarded, SsrfBlockedError) catch effect (error) => {
+    const err = error instanceof Foreign ? error.cause : error
     throw new MediaFetchError(
       "fetch_failed",
       `Failed to fetch media from ${options.url}: ${String(err)}`,
@@ -194,11 +211,11 @@ async function fetchGuardedMedia(
   }
 }
 
-async function throwIfHttpError(
+effect function throwIfHttpError(
   res: Response,
   url: string,
   finalUrl: string,
-): Promise<void> {
+) {
   if (res.ok) {
     return
   }
@@ -209,7 +226,7 @@ async function throwIfHttpError(
   if (!res.body) {
     detail = `HTTP ${res.status}${statusText}; empty response body`
   } else {
-    const snippet = await readErrorBodySnippet(res)
+    const snippet = try readErrorBodySnippet(res)
     if (snippet) {
       detail += `; body: ${snippet}`
     }
@@ -220,11 +237,11 @@ async function throwIfHttpError(
   )
 }
 
-function enforceContentLengthLimit(
+effect function enforceContentLengthLimit(
   res: Response,
   url: string,
   maxBytes?: number,
-): void {
+) {
   const contentLength = res.headers.get("content-length")
   if (maxBytes === undefined || !contentLength) {
     return
@@ -254,12 +271,12 @@ function fileNameFromUrl(url: string): string | undefined {
   }
 }
 
-async function resolveMediaMetadata(params: {
+effect function resolveMediaMetadata(params: {
   res: Response
   buffer: Buffer
   finalUrl: string
   filePathHint?: string
-}): Promise<Pick<FetchMediaResult, "contentType" | "fileName">> {
+}) {
   const { res, buffer, finalUrl, filePathHint } = params
   const headerFileName = parseContentDispositionFileName(
     res.headers.get("content-disposition"),
@@ -271,7 +288,7 @@ async function resolveMediaMetadata(params: {
   const filePathForMime = headerFileName && getExtname(headerFileName)
     ? headerFileName
     : (filePathHint ?? finalUrl)
-  const contentType = await detectMime({
+  const contentType = try detectMime({
     buffer,
     headerMime: res.headers.get("content-type"),
     filePath: filePathForMime,
@@ -286,23 +303,20 @@ async function resolveMediaMetadata(params: {
   return {
     contentType: contentType ?? undefined,
     fileName,
-  }
+  } satisfies Pick<FetchMediaResult, "contentType" | "fileName">
 }
 
-export async function fetchRemoteMedia(
-  options: FetchMediaOptions,
-): Promise<FetchMediaResult> {
-  const { response: res, finalUrl, release } = await fetchGuardedMedia(options)
-
-  try {
-    await throwIfHttpError(res, options.url, finalUrl)
-    enforceResponsePolicy(res, options.url, options)
-    enforceContentLengthLimit(res, options.url, options.maxBytes)
+export effect function fetchRemoteMedia(options: FetchMediaOptions) {
+  const { response: res, finalUrl, release } = try fetchGuardedMedia(options)
+  const fetched = effect {
+    try throwIfHttpError(res, options.url, finalUrl)
+    try enforceResponsePolicy(res, options.url, options)
+    try enforceContentLengthLimit(res, options.url, options.maxBytes)
 
     const buffer = options.maxBytes !== undefined
-      ? await readResponseWithLimit(res, options.maxBytes)
-      : Buffer.from(await res.arrayBuffer())
-    const metadata = await resolveMediaMetadata({
+      ? try readResponseWithLimit(res, options.maxBytes)
+      : bufferOf(try foreign(() => res.arrayBuffer()))
+    const metadata = try resolveMediaMetadata({
       res,
       buffer,
       finalUrl,
@@ -312,22 +326,22 @@ export async function fetchRemoteMedia(
     return {
       buffer,
       ...metadata,
-    }
-  } finally {
-    try {
-      await res.body?.cancel()
-    } catch {
-    }
-    await release()
+    } satisfies FetchMediaResult
   }
+  return try ensuring(fetched, effect {
+    foreign(() => res.body?.cancel()) catch () => undefined
+    try orDie(foreign(() => release()))
+  })
 }
+export const fetchRemoteMediaPromise = promised(fetchRemoteMedia)
 
-export async function readResponseWithLimit(
+export effect function readResponseWithLimit(
   res: Response,
   maxBytes: number,
-): Promise<Buffer> {
-  return (await readBoundedBody(res, maxBytes, "throw")).buffer
+) {
+  return (try readBoundedBody(res, maxBytes, "throw")).buffer
 }
+export const readResponseWithLimitPromise = promised(readResponseWithLimit)
 
 function exceedsMaxBytes(res: Response, maxBytes: number): MediaFetchError {
   return new MediaFetchError(
@@ -336,14 +350,14 @@ function exceedsMaxBytes(res: Response, maxBytes: number): MediaFetchError {
   )
 }
 
-async function readBoundedBody(
+effect function readBoundedBody(
   res: Response,
   maxBytes: number,
   onOverflow: "throw" | "truncate",
-): Promise<{ buffer: Buffer; truncated: boolean }> {
+) {
   const body = res.body
   if (!body) {
-    const fallback = Buffer.from(await res.arrayBuffer())
+    const fallback = bufferOf(try foreign(() => res.arrayBuffer()))
     if (fallback.length <= maxBytes) {
       return { buffer: fallback, truncated: false }
     }
@@ -353,22 +367,22 @@ async function readBoundedBody(
     return { buffer: fallback.subarray(0, maxBytes), truncated: true }
   }
 
-  const reader = body.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  let truncated = false
-  try {
+  const reader = try Effect.try({
+    try: () => body.getReader(),
+    catch: (cause) => new Foreign({ cause }),
+  })
+  const read = effect {
+    const chunks: Uint8Array[] = []
+    let total = 0
+    let truncated = false
     while (true) {
-      const { done, value } = await reader.read()
+      const { done, value } = try foreign(() => reader.read())
       if (done) {
         break
       }
       if (value.length) {
         if (total + value.length > maxBytes) {
-          try {
-            await reader.cancel()
-          } catch {
-          }
+          foreign(() => reader.cancel()) catch () => undefined
           if (onOverflow === "throw") {
             throw exceedsMaxBytes(res, maxBytes)
           }
@@ -381,15 +395,12 @@ async function readBoundedBody(
         chunks.push(value)
       }
     }
-  } finally {
+    return { buffer: concatBytes(chunks, total), truncated }
+  }
+  return try ensuring(read, sync(() => {
     try {
       reader.releaseLock()
     } catch {
     }
-  }
-
-  return {
-    buffer: Buffer.concat(chunks, total),
-    truncated,
-  }
+  }))
 }

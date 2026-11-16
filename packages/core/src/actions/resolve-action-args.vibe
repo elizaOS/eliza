@@ -1,3 +1,6 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import type { Foreign } from "../edge.vibe"
+import type { ElizaError } from "../errors.vibe"
 import type { HandlerOptions } from "../types/components.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
@@ -273,12 +276,12 @@ function parseExtractionEnvelope<TSubaction extends string>(
   return { subaction, params, missing, confidence }
 }
 
-export async function resolveActionArgs<
+export effect function resolveActionArgs<
   TSubaction extends string,
   TParams = Record<string, unknown>,
 >(
   input: ResolveActionArgsInput<TSubaction>,
-): Promise<ResolveActionArgsResult<TSubaction, TParams>> {
+): ResolveActionArgsResult<TSubaction, TParams>!(ElizaError | Foreign) {
   const {
     runtime,
     message,
@@ -325,7 +328,7 @@ export async function resolveActionArgs<
     recentConversation,
   })
 
-  const { parsed } = await runExtractorPipeline({
+  const { parsed } = try runExtractorPipeline({
     runtime,
     prompt,
     parser: (raw) => parseExtractionEnvelope(raw, subactions),
@@ -384,3 +387,20 @@ export async function resolveActionArgs<
     params: mergedParams as TParams,
   }
 }
+
+module edge {
+  import { runDetached } from "../edge.vibe"
+  import { resolveActionArgs, type ResolveActionArgsInput, type ResolveActionArgsResult } from "./resolve-action-args.vibe"
+
+  /** @throws {never} */
+  export function resolveActionArgsPromise<
+    TSubaction extends string,
+    TParams = Record<string, unknown>,
+  >(
+    input: ResolveActionArgsInput<TSubaction>,
+  ): Promise<ResolveActionArgsResult<TSubaction, TParams>> {
+    return runDetached(resolveActionArgs<TSubaction, TParams>(input))
+  }
+}
+import { resolveActionArgsPromise } from edge
+export { resolveActionArgsPromise }

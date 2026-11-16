@@ -1,11 +1,15 @@
+// spec/core/connectionLocks.md, "Story: Reconcile overlapping records without lost in-process updates"; spec/core/connectionLocks.md, "A batch acquires deduplicated recordKeys in one strict lexical order"
 import { worldMetadataValueEquals } from "./database/world-metadata-cas.vibe"
+import { Foreign, failingAs, foreign, promised } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 import { logger } from "./logger.vibe"
 import type { IDatabaseAdapter } from "./types/database.vibe"
 import type { Entity, Room, World } from "./types/environment.vibe"
 import type { JsonValue, Metadata, UUID } from "./types/primitives.vibe"
 import { ChannelType } from "./types/primitives.vibe"
+import { unrefSleep } from "./utils/retry.vibe"
 import { stringToUuid } from "./utils/string-to-uuid.vibe"
+import type { InvalidUuidSource } from "./utils/uuid.vibe"
 
 const WORLD_UPSERT_STALE_ATTEMPTS = 3
 
@@ -74,85 +78,55 @@ function mergeEntitySourceMetadata(
 }
 
 const RECORD_RECONCILIATION_WARN_MS = 30_000
-const recordReconciliationsByAdapter = new WeakMap<
-  IDatabaseAdapter,
-  Map<string, Promise<void>>
->()
 
-function getRecordReconciliations(
-  adapter: IDatabaseAdapter,
-): Map<string, Promise<void>> {
-  const existing = recordReconciliationsByAdapter.get(adapter)
-  if (existing) return existing
-  const registry = new Map<string, Promise<void>>()
-  recordReconciliationsByAdapter.set(adapter, registry)
-  return registry
+interface RecordLock {
+  readonly lock: Semaphore.Semaphore
+  waiting: number
 }
+
+const recordLocksByAdapter = new WeakMap<IDatabaseAdapter, Map<string, RecordLock>>()
 
 export function __getConnectionReconciliationRegistrySizeForTests(
   adapter: IDatabaseAdapter,
 ): number {
-  return recordReconciliationsByAdapter.get(adapter)?.size ?? 0
+  return recordLocksByAdapter.get(adapter)?.size ?? 0
 }
 
-function withRecordLock<T>(
-  adapter: IDatabaseAdapter,
-  key: string,
-  run: () => Promise<T>,
-): Promise<T> {
-  const recordReconciliations = getRecordReconciliations(adapter)
-  const predecessor = recordReconciliations.get(key) ?? Promise.resolve()
-  const operation = predecessor.then(async () => {
-    const warningTimer = setTimeout(() => {
-      logger.warn(
-        {
-          key,
-          src: "core:connection",
-          thresholdMs: RECORD_RECONCILIATION_WARN_MS,
-        },
-        "Connection reconciliation lock is still held",
-      )
-    }, RECORD_RECONCILIATION_WARN_MS)
-    ;(
-      warningTimer as unknown as {
-        unref?: () => void
-      }
-    ).unref?.()
-    try {
-      return await run()
-    } finally {
-      clearTimeout(warningTimer)
-    }
-  })
-  const tail = operation.then(
-    () => undefined,
-    () => undefined,
+effect function warnLockStillHeld(key: string) {
+  try unrefSleep(RECORD_RECONCILIATION_WARN_MS)
+  logger.warn(
+    { key, src: "core:connection", thresholdMs: RECORD_RECONCILIATION_WARN_MS },
+    "Connection reconciliation lock is still held",
   )
-  recordReconciliations.set(key, tail)
-
-  void tail.then(() => {
-    if (recordReconciliations.get(key) === tail) {
-      recordReconciliations.delete(key)
-      if (recordReconciliations.size === 0) {
-        recordReconciliationsByAdapter.delete(adapter)
-      }
-    }
-  })
-  return operation
 }
 
-function withRecordLocks<T>(
-  adapter: IDatabaseAdapter,
-  keys: string[],
-  run: () => Promise<T>,
-): Promise<T> {
-  const ordered = [...new Set(keys)].sort()
-  const acquire = (index: number): Promise<T> => {
-    const key = ordered[index]
-    if (key === undefined) return run()
-    return withRecordLock(adapter, key, () => acquire(index + 1))
-  }
-  return acquire(0)
+effect function holdRecordLock<A, E>(key: string, run: A!E): A!E {
+  const warning = fork warnLockStillHeld(key)
+  return try ensuring(run, Fiber.interrupt(warning))
+}
+
+effect function withRecordLock<A, E>(adapter: IDatabaseAdapter, key: string, run: A!E): A!(E | Foreign) {
+  const locks = recordLocksByAdapter.get(adapter) ?? new Map<string, RecordLock>()
+  recordLocksByAdapter.set(adapter, locks)
+  const record = locks.get(key) ?? { lock: Semaphore.makeUnsafe(1), waiting: 0 }
+  record.waiting += 1
+  locks.set(key, record)
+  return try ensuring(
+    effect {
+      try foreign(() => undefined)
+      return try ensuring(record.lock.withPermits(1)(holdRecordLock(key, run)), yieldNow)
+    },
+    sync(() => {
+      record.waiting -= 1
+      if (record.waiting > 0) return
+      locks.delete(key)
+      if (locks.size === 0) recordLocksByAdapter.delete(adapter)
+    }),
+  )
+}
+
+function withRecordLocks<A, E>(adapter: IDatabaseAdapter, keys: string[], run: A!E): A!(E | Foreign) {
+  return [...new Set(keys)].sort().reduceRight<A!(E | Foreign)>((inner, key) => withRecordLock(adapter, key, inner), run)
 }
 
 const CHANNEL_TYPES: ReadonlySet<string> = new Set(Object.values(ChannelType))
@@ -161,20 +135,27 @@ function isChannelType(value: unknown): value is ChannelType {
   return typeof value === "string" && CHANNEL_TYPES.has(value)
 }
 
-function resolveWorldId(
+error WorldIdRequired { message: string }
+error ConnectionSourceRequired { message: string }
+
+effect function resolveWorldId(
   worldId: UUID | undefined,
   messageServerId: UUID | undefined,
   agentId: UUID,
-): UUID {
+): UUID!(WorldIdRequired | InvalidUuidSource) {
   if (worldId) return worldId
-  if (messageServerId) return stringToUuid(`${messageServerId}:${agentId}`)
-  throw new Error("worldId or messageServerId is required")
+  if (messageServerId) return try stringToUuid(`${messageServerId}:${agentId}`)
+  throw new WorldIdRequired({ message: "worldId or messageServerId is required" })
 }
 
-export async function ensureConnections(
+function isStaleWorldWrite(error: unknown): boolean {
+  return error instanceof ElizaError && error.code === "WORLD_METADATA_STALE_WRITE"
+}
+
+export effect function ensureConnections(
   adapter: IDatabaseAdapter,
   params: EnsureConnectionsParams,
-): Promise<EnsureConnectionsResult> {
+): EnsureConnectionsResult!(WorldIdRequired | InvalidUuidSource | Foreign) {
   const { agentId, connections } = params
   if (!connections.length) return { createdRoomParticipants: 0 }
 
@@ -195,7 +176,7 @@ export async function ensureConnections(
   const roomParticipants = new Map<UUID, Set<UUID>>()
 
   for (const c of connections) {
-    const worldId = resolveWorldId(c.worldId, c.messageServerId, agentId)
+    const worldId = try resolveWorldId(c.worldId, c.messageServerId, agentId)
     const names = [c.name, c.userName].filter(Boolean) as string[]
     const source = c.source || "default"
     let ent = entityMap.get(c.entityId)
@@ -269,11 +250,11 @@ export async function ensureConnections(
 
   const entityIds = [...entityMap.keys()]
 
-  await withRecordLocks(
+  try withRecordLocks(
     adapter,
     entityIds.map((id) => `entity:${id}`),
-    async () => {
-      const existingEntities = entityIds.length > 0 ? await adapter.getEntitiesByIds(entityIds) : []
+    effect {
+      const existingEntities = entityIds.length > 0 ? try foreign(() => adapter.getEntitiesByIds(entityIds)) : []
       const existingByKey = new Map(existingEntities.map((e) => [e.id, e]))
       const entities: Entity[] = []
       for (const [, v] of entityMap) {
@@ -296,17 +277,17 @@ export async function ensureConnections(
           agentId: v.agentId,
         })
       }
-      if (entities.length) await adapter.upsertEntities(entities)
+      if (entities.length) try foreign(() => adapter.upsertEntities(entities))
     },
   )
 
   const worldIds = [...worldMap.keys()]
-  await withRecordLocks(
+  try withRecordLocks(
     adapter,
     worldIds.map((id) => `world:${id}`),
-    async () => {
+    effect {
       for (let attempt = 0;; attempt += 1) {
-        const existingWorlds = worldIds.length > 0 ? await adapter.getWorldsByIds(worldIds) : []
+        const existingWorlds = worldIds.length > 0 ? try foreign(() => adapter.getWorldsByIds(worldIds)) : []
         const existingWorldsById = new Map(
           existingWorlds.map((world) => [world.id, world]),
         )
@@ -335,23 +316,16 @@ export async function ensureConnections(
           )
           .map(({ merged }) => merged)
         if (worlds.length === 0) break
-        try {
-          await adapter.upsertWorlds(worlds)
-          break
-        } catch (error) {
-          if (
-            !(error instanceof ElizaError)
-            || error.code !== "WORLD_METADATA_STALE_WRITE"
-            || attempt + 1 >= WORLD_UPSERT_STALE_ATTEMPTS
-          ) {
-            throw error
-          }
+        const stale = map(foreign(() => adapter.upsertWorlds(worlds)), () => false) catch effect (error) => {
+          if (!isStaleWorldWrite(error.cause) || attempt + 1 >= WORLD_UPSERT_STALE_ATTEMPTS) throw error
+          return true
         }
+        if (!stale) break
       }
     },
   )
 
-  const storedRooms = roomMap.size > 0 ? await adapter.getRoomsByIds([...roomMap.keys()]) : []
+  const storedRooms = roomMap.size > 0 ? try foreign(() => adapter.getRoomsByIds([...roomMap.keys()])) : []
   const storedRoomById = new Map(storedRooms.map((r) => [r.id, r]))
   const rooms = [...roomMap.values()].map((r) => {
     const stored = storedRoomById.get(r.id)
@@ -366,18 +340,16 @@ export async function ensureConnections(
       agentId,
     }
   })
-  if (rooms.length) await adapter.upsertRooms(rooms)
+  if (rooms.length) try foreign(() => adapter.upsertRooms(rooms))
 
-  const currentParticipants = await adapter.getParticipantsForRooms([
-    ...roomParticipants.keys(),
-  ])
+  const currentParticipants = try foreign(() => adapter.getParticipantsForRooms([...roomParticipants.keys()]))
   let createdRoomParticipants = 0
   let index = 0
   for (const [roomId, entityIdsSet] of roomParticipants) {
     const current = currentParticipants[index++]?.entityIds ?? []
     const missing = [...entityIdsSet].filter((id) => !current.includes(id))
     if (missing.length) {
-      await adapter.createRoomParticipants(missing, roomId)
+      try foreign(() => adapter.createRoomParticipants(missing, roomId))
       createdRoomParticipants += missing.length
     }
   }
@@ -385,20 +357,19 @@ export async function ensureConnections(
   return { createdRoomParticipants }
 }
 
-export async function ensureConnection(
+export const ensureConnectionsPromise = promised(failingAs(Error, ensureConnections))
+
+export effect function ensureConnection(
   adapter: IDatabaseAdapter,
   params: EnsureConnectionParams,
-): Promise<EnsureConnectionsResult> {
+): EnsureConnectionsResult!(ConnectionSourceRequired | WorldIdRequired | InvalidUuidSource | Foreign) {
   if (!params.source) {
-    throw new Error("Source is required for ensureConnection")
+    throw new ConnectionSourceRequired({ message: "Source is required for ensureConnection" })
   }
-  const worldId = resolveWorldId(
-    params.worldId,
-    params.messageServerId,
-    params.agentId,
-  )
-  return ensureConnections(adapter, {
+  const worldId = try resolveWorldId(params.worldId, params.messageServerId, params.agentId)
+  return try ensureConnections(adapter, {
     agentId: params.agentId,
     connections: [{ ...params, worldId }],
   })
 }
+export const ensureConnectionPromise = promised(failingAs(Error, ensureConnection))

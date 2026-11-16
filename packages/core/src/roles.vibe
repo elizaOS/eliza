@@ -1,3 +1,4 @@
+// spec/core/authorization.md, "Story: Change roles against fresh authority"; spec/core/authorization.md, "A role write captures the target and authority revision"; spec/core/authorization.md, "A concurrent revocation makes the captured role write stale"; spec/core/authorization.md, "A committed role change has fresh authorization and one matching audit row"; spec/core/authorization.md, "Trusted ownership and deliberate grants determine resolved roles"
 import { isAdminRank, ROLE_RANK, type RoleName } from "./access-control/role-primitives.vibe"
 import {
   getConnectorIdentityMetadataMapping,
@@ -5,6 +6,7 @@ import {
   normalizeConnectorSource,
 } from "./connectors.vibe"
 import { worldMetadataValueEquals } from "./database/world-metadata-cas.vibe"
+import { failingAs, Foreign, foreign, foreignSync, promised, settle, thrown } from "./edge.vibe"
 import { createUniqueUuid } from "./entities.vibe"
 import { ElizaError } from "./errors.vibe"
 import { logger } from "./logger.vibe"
@@ -13,7 +15,7 @@ import type {
   WorldMetadataCompareAndSwapParams,
   WorldMetadataMutationResult,
 } from "./types/database.vibe"
-import type { World } from "./types/environment.vibe"
+import type { Relationship, World } from "./types/environment.vibe"
 import type { PrincipalService } from "./types/identity.vibe"
 import type { Memory } from "./types/memory.vibe"
 import {
@@ -28,7 +30,7 @@ import { ServiceType } from "./types/service.vibe"
 import { formatError } from "./utils/errors.vibe"
 import { stringToUuid } from "./utils/string-to-uuid.vibe"
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards.vibe"
-import { validateUuid } from "./utils/uuid.vibe"
+import { type InvalidUuidSource, validateUuid } from "./utils/uuid.vibe"
 
 export type { RoleName } from "./access-control/role-primitives.vibe"
 
@@ -130,30 +132,28 @@ function getRuntimeSettingString(
   return trimmed.length > 0 ? trimmed : undefined
 }
 
-function parseOwnerContactEntityIds(raw: string | undefined): string[] {
+effect function parseOwnerContactEntityIds(raw: string | undefined) {
   if (!raw) {
     return []
   }
-
-  try {
-    const parsed = JSON.parse(raw) as Record<string, OwnerContactEntry>
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return []
-    }
-
-    return Object.values(parsed)
-      .map((entry) =>
-        entry && typeof entry.entityId === "string"
-          ? entry.entityId.trim()
-          : ""
-      )
-      .filter((entityId) => entityId.length > 0)
-  } catch (error) {
-    throw new ElizaError("Failed to parse configured owner contacts", {
-      code: "OWNER_CONTACTS_INVALID",
-      cause: error,
-    })
+  const parsed = try Effect.try({
+    try: () => JSON.parse(raw) as Record<string, OwnerContactEntry>,
+    catch: (error) =>
+      new ElizaError("Failed to parse configured owner contacts", {
+        code: "OWNER_CONTACTS_INVALID",
+        cause: error,
+      }),
+  })
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return []
   }
+  return Object.values(parsed)
+    .map((entry) =>
+      entry && typeof entry.entityId === "string"
+        ? entry.entityId.trim()
+        : ""
+    )
+    .filter((entityId) => entityId.length > 0)
 }
 
 function getMemoryMetadata(
@@ -257,34 +257,29 @@ export function getLiveEntityMetadataFromMessage(
   }
 }
 
-async function getEntityMetadata(
+effect function getEntityMetadata(
   runtime: IAgentRuntime,
   entityId: string,
-): Promise<Record<string, unknown> | undefined> {
+) {
   if (typeof runtime.getEntityById !== "function") {
     return undefined
   }
-
-  try {
-    const entity = await runtime.getEntityById(entityId as UUID)
-    return asRecord(entity?.metadata)
-  } catch (error) {
-    runtime.reportError("Roles.getEntityMetadata", error, { entityId })
-    logger.warn(
-      `[roles] Failed to look up entity ${entityId}: ${formatError(error)}`,
-    )
+  const entity = foreign(() => runtime.getEntityById(entityId as UUID)) catch effect ({ cause }) => {
+    runtime.reportError("Roles.getEntityMetadata", cause, { entityId })
+    logger.warn(`[roles] Failed to look up entity ${entityId}: ${formatError(cause)}`)
     throw new ElizaError("Failed to load entity metadata for role resolution", {
       code: "ROLE_ENTITY_LOOKUP_FAILED",
-      cause: error,
+      cause,
       context: { entityId },
     })
   }
+  return asRecord(entity?.metadata)
 }
 
-export async function findWorldsForOwner(
+export effect function findWorldsForOwner(
   runtime: IAgentRuntime,
   entityId: string,
-): Promise<World[] | null> {
+): (World[] | null)!Foreign {
   if (!entityId) {
     logger.error(
       { src: "core:roles", agentId: runtime.agentId },
@@ -293,7 +288,7 @@ export async function findWorldsForOwner(
     return null
   }
 
-  const worlds = await runtime.getAllWorlds()
+  const worlds = try foreign(() => runtime.getAllWorlds())
 
   if (!worlds || worlds.length === 0) {
     logger.debug(
@@ -315,9 +310,11 @@ export async function findWorldsForOwner(
   return ownerWorlds.length ? ownerWorlds : null
 }
 
-export function getConfiguredOwnerEntityIds(
+export const findWorldsForOwnerPromise = promised(findWorldsForOwner)
+
+export effect function getConfiguredOwnerEntityIds(
   runtime: Pick<IAgentRuntime, "getSetting">,
-): string[] {
+) {
   const configuredAdminEntityId = getRuntimeSettingString(
     runtime,
     CANONICAL_OWNER_SETTING_KEY,
@@ -326,7 +323,7 @@ export function getConfiguredOwnerEntityIds(
     runtime,
     OWNER_CONTACTS_SETTING_KEY,
   )
-  const ownerContactEntityIds = parseOwnerContactEntityIds(ownerContactsRaw)
+  const ownerContactEntityIds = try parseOwnerContactEntityIds(ownerContactsRaw)
   const deduped = new Set<string>()
 
   if (configuredAdminEntityId) {
@@ -340,43 +337,51 @@ export function getConfiguredOwnerEntityIds(
   return [...deduped]
 }
 
-export function hasConfiguredCanonicalOwner(runtime: IAgentRuntime): boolean {
-  return getConfiguredOwnerEntityIds(runtime).length > 0
+export const getConfiguredOwnerEntityIdsOrThrow = thrown(getConfiguredOwnerEntityIds)
+
+export effect function hasConfiguredCanonicalOwner(runtime: IAgentRuntime) {
+  return (try getConfiguredOwnerEntityIds(runtime)).length > 0
 }
 
-export function resolveCanonicalOwnerId(
+export const hasConfiguredCanonicalOwnerOrThrow = thrown(hasConfiguredCanonicalOwner)
+
+export effect function resolveCanonicalOwnerId(
   runtime: Pick<IAgentRuntime, "getSetting">,
   metadata?: RolesWorldMetadata,
-): string | null {
-  const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime)
+): (string | null)!ElizaError {
+  const configuredOwnerIds = try getConfiguredOwnerEntityIds(runtime)
   if (configuredOwnerIds.length > 0) {
     return configuredOwnerIds[0] ?? null
   }
-
   return validateUuid(metadata?.ownership?.ownerId)
 }
 
-export function deterministicOwnerEntityId(agentId: string): UUID {
-  return stringToUuid(`${agentId}-admin-entity`)
+export const resolveCanonicalOwnerIdOrThrow = thrown(resolveCanonicalOwnerId)
+
+export effect function deterministicOwnerEntityId(agentId: string) {
+  return try stringToUuid(`${agentId}-admin-entity`)
 }
 
-export function resolveOwnerEntityIdOrDefault(
+export const deterministicOwnerEntityIdOrThrow = thrown(failingAs(TypeError, deterministicOwnerEntityId))
+
+export effect function resolveOwnerEntityIdOrDefault(
   runtime: Pick<IAgentRuntime, "agentId" | "getSetting">,
-): UUID {
-  const configuredOwnerId = validateUuid(resolveCanonicalOwnerId(runtime))
-  return configuredOwnerId ?? deterministicOwnerEntityId(runtime.agentId)
+) {
+  const configuredOwnerId = validateUuid(try resolveCanonicalOwnerId(runtime))
+  return configuredOwnerId ?? (try deterministicOwnerEntityId(runtime.agentId))
 }
 
-function resolveOwnershipCandidateIds(
+export const resolveOwnerEntityIdOrDefaultOrThrow = thrown(failingAs(TypeError, resolveOwnerEntityIdOrDefault, ElizaError))
+
+effect function resolveOwnershipCandidateIds(
   runtime: IAgentRuntime,
   metadata?: RolesWorldMetadata,
-): string[] {
-  const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime)
+) {
+  const configuredOwnerIds = try getConfiguredOwnerEntityIds(runtime)
   if (configuredOwnerIds.length > 0) {
     return configuredOwnerIds
   }
-
-  const ownerId = resolveCanonicalOwnerId(runtime, metadata)
+  const ownerId = try resolveCanonicalOwnerId(runtime, metadata)
   return ownerId ? [ownerId] : []
 }
 
@@ -408,92 +413,111 @@ function connectorIdentityMatches(
   return false
 }
 
-async function getConfirmedLinkedEntityIds(
-  runtime: IAgentRuntime,
-  entityId: string,
-): Promise<string[]> {
-  if (typeof runtime.getRelationships !== "function") return []
+function confirmedLinkedEntityIds(relationships: readonly Relationship[], entityId: string): string[] {
+  const linkedIds = new Set<string>()
+  for (const relationship of relationships) {
+    const metadata = asRecord(relationship.metadata)
+    if (metadata?.status !== "confirmed") continue
+    if (relationship.sourceEntityId === entityId) {
+      linkedIds.add(relationship.targetEntityId)
+    }
+    if (relationship.targetEntityId === entityId) {
+      linkedIds.add(relationship.sourceEntityId)
+    }
+  }
+  return [...linkedIds]
+}
 
-  try {
-    const relationships = await runtime.getRelationships({
+effect function readConfirmedLinkedEntityIds(runtime: IAgentRuntime, entityId: string) {
+  const relationships = try foreign(() =>
+    runtime.getRelationships({
       entityIds: [entityId as UUID],
       tags: ["identity_link"],
     })
-    const linkedIds = new Set<string>()
-    for (const relationship of relationships) {
-      const metadata = asRecord(relationship.metadata)
-      if (metadata?.status !== "confirmed") continue
-      if (relationship.sourceEntityId === entityId) {
-        linkedIds.add(relationship.targetEntityId)
-      }
-      if (relationship.targetEntityId === entityId) {
-        linkedIds.add(relationship.sourceEntityId)
-      }
-    }
-    return [...linkedIds]
-  } catch (error) {
+  )
+  return try foreignSync(() => confirmedLinkedEntityIds(relationships, entityId))
+}
+
+function thrownBy(cause: Cause.Cause<unknown>): unknown {
+  try {
+    return settle(Exit.failCause(cause))
+  } catch (thrown) {
+    return thrown
+  }
+}
+
+effect function getConfirmedLinkedEntityIds(
+  runtime: IAgentRuntime,
+  entityId: string,
+) {
+  if (typeof runtime.getRelationships !== "function") return []
+  return readConfirmedLinkedEntityIds(runtime, entityId) catch effect ({ cause }) => {
     throw new ElizaError("Failed to load confirmed identity links", {
       code: "IDENTITY_LINK_QUERY_FAILED",
-      cause: error,
+      cause,
       context: { entityId },
     })
   }
 }
 
-async function resolveIdentityOwnerBinding(
+effect function resolveIdentityOwnerBinding(
   runtime: IAgentRuntime,
   entityId: UUID,
   ownerIds: readonly UUID[],
-): Promise<boolean | null> {
+): (boolean | null)!! {
   if (typeof runtime.getService !== "function") return null
   const service = runtime.getService<PrincipalService>(ServiceType.PRINCIPAL)
   if (!service) return null
+  return try Effect.catchCause(verifyOwnerBinding(runtime, service, entityId, ownerIds), (cause) => sync(() => {
+    runtime.reportError("Roles.evaluateOwnerBinding", thrownBy(cause), { entityId })
+    return false
+  }))
+}
 
-  try {
-    const canonical = await service.resolveCanonicalPrincipal(
-      runtime.agentId,
-      entityId,
-    )
+effect function verifyOwnerBinding(
+  runtime: IAgentRuntime,
+  service: PrincipalService,
+  entityId: UUID,
+  ownerIds: readonly UUID[],
+) {
+  const canonical = try foreign(() => service.resolveCanonicalPrincipal(runtime.agentId, entityId))
 
-    if (
-      canonical.agentId !== runtime.agentId
-      || canonical.requestedPrincipalId !== entityId
-      || !Number.isSafeInteger(canonical.generation)
-      || canonical.generation < 0
-    ) {
-      return false
-    }
-    const evaluation = await service.evaluateOwnerBinding({
+  if (
+    canonical.agentId !== runtime.agentId
+    || canonical.requestedPrincipalId !== entityId
+    || !Number.isSafeInteger(canonical.generation)
+    || canonical.generation < 0
+  ) {
+    return false
+  }
+  const evaluation = try foreign(() =>
+    service.evaluateOwnerBinding({
       agentId: runtime.agentId,
       actorPrincipalId: entityId,
       candidateOwnerPrincipalIds: ownerIds,
       purpose: "role_resolution",
     })
-
-    return (
-      evaluation.decision === "bound"
-      && evaluation.actorCanonicalPrincipalId === canonical.canonicalPrincipalId
-      && ownerIds.includes(evaluation.ownerPrincipalId)
-      && validateUuid(evaluation.actorCanonicalPrincipalId) !== null
-      && validateUuid(evaluation.claimId) !== null
-      && typeof evaluation.ownerBindingId === "string"
-      && evaluation.ownerBindingId.length > 0
-      && Number.isSafeInteger(evaluation.generation)
-      && evaluation.generation === canonical.generation
-    )
-  } catch (error) {
-    runtime.reportError("Roles.evaluateOwnerBinding", error, { entityId })
-    return false
-  }
+  )
+  return (
+    evaluation.decision === "bound"
+    && evaluation.actorCanonicalPrincipalId === canonical.canonicalPrincipalId
+    && ownerIds.includes(evaluation.ownerPrincipalId)
+    && validateUuid(evaluation.actorCanonicalPrincipalId) !== null
+    && validateUuid(evaluation.claimId) !== null
+    && typeof evaluation.ownerBindingId === "string"
+    && evaluation.ownerBindingId.length > 0
+    && Number.isSafeInteger(evaluation.generation)
+    && evaluation.generation === canonical.generation
+  )
 }
 
-async function resolveOwnershipRole(
+effect function resolveOwnershipRole(
   runtime: IAgentRuntime,
   metadata: RolesWorldMetadata | undefined,
   entityId: string,
   options?: ResolveEntityRoleOptions,
-): Promise<RoleName | null> {
-  const ownerIds = resolveOwnershipCandidateIds(runtime, metadata)
+): (RoleName | null)!(ElizaError | Foreign) {
+  const ownerIds = try resolveOwnershipCandidateIds(runtime, metadata)
   if (ownerIds.length === 0) {
     return null
   }
@@ -501,7 +525,7 @@ async function resolveOwnershipRole(
   const liveEntityMetadata = options?.liveEntityMetadata
   const senderMetadata = hasConnectorStableIdentity(liveEntityMetadata)
     ? liveEntityMetadata
-    : await getEntityMetadata(runtime, entityId)
+    : try getEntityMetadata(runtime, entityId)
 
   for (const ownerId of ownerIds) {
     if (ownerId === entityId) {
@@ -509,18 +533,18 @@ async function resolveOwnershipRole(
     }
   }
 
-  const verifiedBinding = await resolveIdentityOwnerBinding(
+  const verifiedBinding = try resolveIdentityOwnerBinding(
     runtime,
     entityId as UUID,
     ownerIds as UUID[],
   )
   if (verifiedBinding !== null) return verifiedBinding ? "OWNER" : null
 
-  const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId)
+  const linkedIds = try getConfirmedLinkedEntityIds(runtime, entityId)
   if (ownerIds.some((ownerId) => linkedIds.includes(ownerId))) return "OWNER"
 
   for (const ownerId of ownerIds) {
-    const ownerMetadata = await getEntityMetadata(runtime, ownerId)
+    const ownerMetadata = try getEntityMetadata(runtime, ownerId)
     if (!ownerMetadata) {
       continue
     }
@@ -533,10 +557,10 @@ async function resolveOwnershipRole(
   return null
 }
 
-function resolveWorldIdFromMessageMetadata(
+effect function resolveWorldIdFromMessageMetadata(
   runtime: IAgentRuntime,
   message: Memory,
-): UUID | null {
+) {
   const source = getMessageSource(message)
   if (!source) {
     return null
@@ -547,7 +571,7 @@ function resolveWorldIdFromMessageMetadata(
   for (const key of worldIdKeys) {
     const value = metadata?.[key]
     if (typeof value === "string" && value.trim().length > 0) {
-      return createUniqueUuid(runtime, value) as UUID
+      return try createUniqueUuid(runtime, value)
     }
   }
 
@@ -571,25 +595,26 @@ export function setConnectorAdminWhitelist(
   runtime.setSetting(CONNECTOR_ADMINS_SETTING_KEY, JSON.stringify(normalized))
 }
 
-export function getConnectorAdminWhitelist(
+export effect function getConnectorAdminWhitelist(
   runtime: IAgentRuntime,
-): ConnectorAdminWhitelist {
+) {
   const raw = getRuntimeSettingString(runtime, CONNECTOR_ADMINS_SETTING_KEY)
   if (!raw) {
     return {}
   }
-
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    return normalizeConnectorAdminWhitelist(parsed)
-  } catch (error) {
-    throw new ElizaError("Failed to parse connector administrator whitelist", {
-      code: "CONNECTOR_ADMINS_INVALID",
-      cause: error,
-      context: { setting: CONNECTOR_ADMINS_SETTING_KEY },
-    })
-  }
+  const parsed = try Effect.try({
+    try: () => JSON.parse(raw) as Record<string, unknown>,
+    catch: (error) =>
+      new ElizaError("Failed to parse connector administrator whitelist", {
+        code: "CONNECTOR_ADMINS_INVALID",
+        cause: error,
+        context: { setting: CONNECTOR_ADMINS_SETTING_KEY },
+      }),
+  })
+  return normalizeConnectorAdminWhitelist(parsed)
 }
+
+export const getConnectorAdminWhitelistOrThrow = thrown(getConnectorAdminWhitelist)
 
 export function matchEntityToConnectorAdminWhitelist(
   entityMetadata: Record<string, unknown> | null | undefined,
@@ -638,12 +663,12 @@ function getStoredRoleSource(
   return normalizeRoleGrantSource(metadata?.roleSources?.[entityId])
 }
 
-async function resolveStoredRoleSource(
+effect function resolveStoredRoleSource(
   runtime: IAgentRuntime,
   metadata: RolesWorldMetadata | undefined,
   entityId: string,
   options?: ResolveEntityRoleOptions,
-): Promise<RoleGrantSource | null> {
+): (RoleGrantSource | null)!(ElizaError | Foreign) {
   const storedSource = getStoredRoleSource(metadata, entityId)
   if (storedSource) {
     return storedSource
@@ -661,8 +686,8 @@ async function resolveStoredRoleSource(
     ? (options.liveEntityMetadata ?? undefined)
     : undefined
   const matchedWhitelist = matchEntityToConnectorAdminWhitelist(
-    entityMetadata ?? (await getEntityMetadata(runtime, entityId)),
-    getConnectorAdminWhitelist(runtime),
+    entityMetadata ?? (try getEntityMetadata(runtime, entityId)),
+    try getConnectorAdminWhitelist(runtime),
   )
 
   if (storedRole === "ADMIN" && matchedWhitelist) {
@@ -672,19 +697,14 @@ async function resolveStoredRoleSource(
   return "manual"
 }
 
-async function resolveExplicitGrantedRole(
+effect function resolveExplicitGrantedRole(
   runtime: IAgentRuntime,
   metadata: RolesWorldMetadata | undefined,
   entityId: string,
   options?: ResolveEntityRoleOptions,
-): Promise<
-  {
-    role: RoleName
-    source: "manual" | "linked_manual"
-  } | null
-> {
+): ({ role: RoleName; source: "manual" | "linked_manual" } | null)!(ElizaError | Foreign) {
   const directRole = getEntityRole(metadata, entityId)
-  const directSource = await resolveStoredRoleSource(
+  const directSource = try resolveStoredRoleSource(
     runtime,
     metadata,
     entityId,
@@ -699,12 +719,12 @@ async function resolveExplicitGrantedRole(
     : null
   if (principalService) return null
 
-  const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId)
+  const linkedIds = try getConfirmedLinkedEntityIds(runtime, entityId)
   let bestRole: RoleName | null = null
   for (const linkedEntityId of linkedIds) {
     const linkedRole = getEntityRole(metadata, linkedEntityId)
     if (linkedRole === "GUEST") continue
-    const linkedSource = await resolveStoredRoleSource(
+    const linkedSource = try resolveStoredRoleSource(
       runtime,
       metadata,
       linkedEntityId,
@@ -717,30 +737,31 @@ async function resolveExplicitGrantedRole(
   return bestRole ? { role: bestRole, source: "linked_manual" } : null
 }
 
-export async function resolveEntityRole(
+export effect function resolveEntityRole(
   runtime: IAgentRuntime,
   _world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>,
   metadata: RolesWorldMetadata | undefined,
   entityId: string,
   options?: ResolveEntityRoleOptions,
-): Promise<RoleName> {
-  return (await resolveRoleWithOwnership(runtime, metadata, entityId, options))
-    .role
+) {
+  return (try resolveRoleWithOwnership(runtime, metadata, entityId, options)).role
 }
 
-async function resolveRoleWithOwnership(
+export const resolveEntityRolePromise = promised(resolveEntityRole)
+
+effect function resolveRoleWithOwnership(
   runtime: IAgentRuntime,
   metadata: RolesWorldMetadata | undefined,
   entityId: string,
   options?: ResolveEntityRoleOptions,
-): Promise<{ role: RoleName; isOwnershipOwner: boolean }> {
-  const explicitSource = await resolveStoredRoleSource(
+): { role: RoleName; isOwnershipOwner: boolean }!(ElizaError | Foreign) {
+  const explicitSource = try resolveStoredRoleSource(
     runtime,
     metadata,
     entityId,
     options,
   )
-  const ownershipRole = await resolveOwnershipRole(
+  const ownershipRole = try resolveOwnershipRole(
     runtime,
     metadata,
     entityId,
@@ -750,7 +771,7 @@ async function resolveRoleWithOwnership(
     return { role: "OWNER", isOwnershipOwner: true }
   }
   return {
-    role: await resolveGrantedRole(
+    role: try resolveGrantedRole(
       runtime,
       metadata,
       entityId,
@@ -761,15 +782,15 @@ async function resolveRoleWithOwnership(
   }
 }
 
-async function resolveGrantedRole(
+effect function resolveGrantedRole(
   runtime: IAgentRuntime,
   metadata: RolesWorldMetadata | undefined,
   entityId: string,
   explicitSource: RoleGrantSource | null,
   options?: ResolveEntityRoleOptions,
-): Promise<RoleName> {
+): RoleName!(ElizaError | Foreign) {
   const explicitRole = getEntityRole(metadata, entityId)
-  const whitelist = getConnectorAdminWhitelist(runtime)
+  const whitelist = try getConnectorAdminWhitelist(runtime)
   const liveMatched = matchEntityToConnectorAdminWhitelist(
     options?.liveEntityMetadata ?? undefined,
     whitelist,
@@ -789,7 +810,7 @@ async function resolveGrantedRole(
         return "ADMIN"
       }
 
-      const entityMetadata = await getEntityMetadata(runtime, entityId)
+      const entityMetadata = try getEntityMetadata(runtime, entityId)
       const matched = matchEntityToConnectorAdminWhitelist(
         entityMetadata,
         whitelist,
@@ -812,7 +833,7 @@ async function resolveGrantedRole(
     return "ADMIN"
   }
 
-  const entityMetadata = await getEntityMetadata(runtime, entityId)
+  const entityMetadata = try getEntityMetadata(runtime, entityId)
   const matched = matchEntityToConnectorAdminWhitelist(
     entityMetadata,
     whitelist,
@@ -824,18 +845,18 @@ async function resolveGrantedRole(
   return "ADMIN"
 }
 
-export async function checkSenderPrivateAccess(
+export effect function checkSenderPrivateAccess(
   runtime: IAgentRuntime,
   message: Memory,
-): Promise<
+): (
   | (RoleCheckResult & {
     hasPrivateAccess: boolean
     accessRole: RoleName | null
     accessSource: "owner" | "manual" | "linked_manual" | null
   })
   | null
-> {
-  const resolved = await resolveWorldForMessage(runtime, message)
+)!(ElizaError | Foreign | InvalidUuidSource) {
+  const resolved = try resolveWorldForMessage(runtime, message)
   if (!resolved) return null
 
   const { metadata } = resolved
@@ -844,7 +865,7 @@ export async function checkSenderPrivateAccess(
     liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
     liveEntityId: entityId,
   }
-  const { role, isOwnershipOwner } = await resolveRoleWithOwnership(
+  const { role, isOwnershipOwner } = try resolveRoleWithOwnership(
     runtime,
     metadata,
     entityId,
@@ -864,7 +885,7 @@ export async function checkSenderPrivateAccess(
     }
   }
 
-  const explicitAccess = await resolveExplicitGrantedRole(
+  const explicitAccess = try resolveExplicitGrantedRole(
     runtime,
     metadata,
     entityId,
@@ -883,6 +904,8 @@ export async function checkSenderPrivateAccess(
   }
 }
 
+export const checkSenderPrivateAccessPromise = promised(failingAs(TypeError, checkSenderPrivateAccess, ElizaError))
+
 export function canModifyRole(
   actorRole: RoleName,
   targetCurrentRole: RoleName,
@@ -900,45 +923,44 @@ export function canModifyRole(
   return false
 }
 
-export async function resolveWorldById(
+type ResolvedWorld = {
+  world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>
+  metadata: RolesWorldMetadata
+}
+
+export effect function resolveWorldById(
   runtime: IAgentRuntime,
   worldId: UUID,
-): Promise<
-  {
-    world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>
-    metadata: RolesWorldMetadata
-  } | null
-> {
-  const world = await runtime.getWorld(worldId)
+): (ResolvedWorld | null)!Foreign {
+  const world = try foreign(() => runtime.getWorld(worldId))
   if (!world) return null
   const metadata = (world.metadata ?? {}) as RolesWorldMetadata
   return { world, metadata }
 }
 
-export async function resolveWorldForMessage(
+export const resolveWorldByIdPromise = promised(resolveWorldById)
+
+export effect function resolveWorldForMessage(
   runtime: IAgentRuntime,
   message: Memory,
-): Promise<
-  {
-    world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>
-    metadata: RolesWorldMetadata
-  } | null
-> {
-  const room = await runtime.getRoom(message.roomId)
-  const worldId = room?.worldId ?? resolveWorldIdFromMessageMetadata(runtime, message)
-  return worldId ? resolveWorldById(runtime, worldId) : null
+): (ResolvedWorld | null)!(Foreign | InvalidUuidSource) {
+  const room = try foreign(() => runtime.getRoom(message.roomId))
+  const worldId = room?.worldId ?? (try resolveWorldIdFromMessageMetadata(runtime, message))
+  return worldId ? try resolveWorldById(runtime, worldId) : null
 }
 
-export async function resolveCanonicalOwnerIdForMessage(
+export const resolveWorldForMessagePromise = promised(failingAs(TypeError, resolveWorldForMessage))
+
+export effect function resolveCanonicalOwnerIdForMessage(
   runtime: IAgentRuntime,
   message: Memory,
-): Promise<string | null> {
-  const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime)
+): (string | null)!(ElizaError | Foreign | InvalidUuidSource) {
+  const configuredOwnerIds = try getConfiguredOwnerEntityIds(runtime)
   if (configuredOwnerIds.length > 0) {
     if (configuredOwnerIds.includes(message.entityId)) {
       return message.entityId
     }
-    const verifiedBinding = await resolveIdentityOwnerBinding(
+    const verifiedBinding = try resolveIdentityOwnerBinding(
       runtime,
       message.entityId,
       configuredOwnerIds as UUID[],
@@ -949,8 +971,8 @@ export async function resolveCanonicalOwnerIdForMessage(
     return configuredOwnerIds[0] ?? null
   }
 
-  const resolved = await resolveWorldForMessage(runtime, message)
-  const recordedOwnerId = resolveCanonicalOwnerId(runtime, resolved?.metadata)
+  const resolved = try resolveWorldForMessage(runtime, message)
+  const recordedOwnerId = try resolveCanonicalOwnerId(runtime, resolved?.metadata)
 
   const actorEntityId = message.entityId
   if (
@@ -959,7 +981,7 @@ export async function resolveCanonicalOwnerIdForMessage(
     && recordedOwnerId !== actorEntityId
     && resolved?.world
   ) {
-    const actorOwnershipRole = await resolveOwnershipRole(
+    const actorOwnershipRole = try resolveOwnershipRole(
       runtime,
       resolved.metadata,
       actorEntityId,
@@ -976,15 +998,17 @@ export async function resolveCanonicalOwnerIdForMessage(
   return recordedOwnerId
 }
 
-export async function checkSenderRole(
+export const resolveCanonicalOwnerIdForMessagePromise = promised(failingAs(TypeError, resolveCanonicalOwnerIdForMessage, ElizaError))
+
+export effect function checkSenderRole(
   runtime: IAgentRuntime,
   message: Memory,
-): Promise<RoleCheckResult | null> {
-  const resolved = await resolveWorldForMessage(runtime, message)
+): (RoleCheckResult | null)!(ElizaError | Foreign | InvalidUuidSource) {
+  const resolved = try resolveWorldForMessage(runtime, message)
   if (!resolved) return null
   const { world, metadata } = resolved
   const entityId = message.entityId as UUID
-  const role = await resolveEntityRole(runtime, world, metadata, entityId, {
+  const role = try resolveEntityRole(runtime, world, metadata, entityId, {
     liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
     liveEntityId: entityId,
   })
@@ -996,6 +1020,8 @@ export async function checkSenderRole(
     canManageRoles: isAdminRank(role),
   }
 }
+
+export const checkSenderRolePromise = promised(failingAs(TypeError, checkSenderRole, ElizaError))
 
 type AccessContext = {
   runtime: IAgentRuntime & { agentId: string }
@@ -1042,70 +1068,61 @@ export type RoleAccessDeps = {
   ) => Promise<string | null | undefined>
 }
 
-async function isCanonicalOwner(
+
+effect function isCanonicalOwner(
   runtime: IAgentRuntime,
   message: Memory,
-  resolveFn: NonNullable<
-    RoleAccessDeps["resolveCanonicalOwnerIdForMessage"]
-  > = resolveCanonicalOwnerIdForMessage,
-): Promise<boolean> {
-  try {
-    const ownerId = await resolveFn(runtime, message)
-    return typeof ownerId === "string" && ownerId === message.entityId
-  } catch (error) {
-    runtime.reportError("RoleAccess.resolveCanonicalOwner", error, {
+  resolveFn: RoleAccessDeps["resolveCanonicalOwnerIdForMessage"],
+) {
+  const ownerId = resolveFn
+    ? foreign(() => resolveFn(runtime, message))
+    : resolveCanonicalOwnerIdForMessage(runtime, message)
+  return (try Effect.catchCause(ownerId, (cause) => sync(() => {
+    runtime.reportError("RoleAccess.resolveCanonicalOwner", thrownBy(cause), {
       entityId: message.entityId,
       roomId: message.roomId,
     })
-    return false
-  }
+    return undefined
+  }))) === message.entityId
 }
 
-export async function hasRoleAccess(
+effect function senderMeetsRole(context: AccessContext, requiredRole: RoleName, deps: RoleAccessDeps) {
+  const checkRoleFn = deps.checkSenderRole
+  const result = try (checkRoleFn
+    ? foreign(() => checkRoleFn(context.runtime, context.message))
+    : checkSenderRole(context.runtime, context.message))
+  const senderRank = result
+    ? ROLE_RANK[result.role] ?? 0
+    : ROLE_RANK[getUnresolvedSenderRoleFloor(context.message)]
+  return senderRank >= (ROLE_RANK[requiredRole] ?? 0)
+}
+
+export effect function hasRoleAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
   requiredRole: RoleName,
   deps: RoleAccessDeps = {},
-): Promise<boolean> {
+) {
   const context = getAccessContext(runtime, message)
   if (!context) return false
   if (requiredRole === "GUEST") return true
-
   if (context.message.entityId === context.runtime.agentId) {
     return true
   }
-
-  if (
-    await isCanonicalOwner(
-      context.runtime,
-      context.message,
-      deps.resolveCanonicalOwnerIdForMessage,
-    )
-  ) {
+  if (try isCanonicalOwner(context.runtime, context.message, deps.resolveCanonicalOwnerIdForMessage)) {
     return true
   }
-
-  const checkRoleFn = deps.checkSenderRole ?? checkSenderRole
-  try {
-    const result = await checkRoleFn(context.runtime, context.message)
-    if (!result) {
-      const senderRank = ROLE_RANK[getUnresolvedSenderRoleFloor(context.message)]
-      const requiredRank = ROLE_RANK[requiredRole] ?? 0
-      return senderRank >= requiredRank
-    }
-
-    const senderRank = ROLE_RANK[result.role] ?? 0
-    const requiredRank = ROLE_RANK[requiredRole] ?? 0
-    return senderRank >= requiredRank
-  } catch (error) {
-    context.runtime.reportError("RoleAccess.checkSenderRole", error, {
+  return try Effect.catchCause(senderMeetsRole(context, requiredRole, deps), (cause) => sync(() => {
+    context.runtime.reportError("RoleAccess.checkSenderRole", thrownBy(cause), {
       entityId: context.message.entityId,
       roomId: context.message.roomId,
       requiredRole,
     })
     return false
-  }
+  }))
 }
+
+export const hasRoleAccessPromise = promised(hasRoleAccess)
 
 export function recordOwnerGrant(
   metadata: RolesWorldMetadata,
@@ -1150,15 +1167,17 @@ export function recordRoleGrant(
   return changed
 }
 
-export async function setEntityRole(
+error WorldUnresolved { message: string }
+
+export effect function setEntityRole(
   runtime: IAgentRuntime,
   message: Memory,
   targetEntityId: string,
   newRole: RoleName,
   source: RoleGrantSource = "manual",
-): Promise<Record<string, RoleName>> {
-  const resolved = await resolveWorldForMessage(runtime, message)
-  if (!resolved) throw new Error("Cannot resolve world for role assignment")
+) {
+  const resolved = try resolveWorldForMessage(runtime, message)
+  if (!resolved) throw new WorldUnresolved({ message: "Cannot resolve world for role assignment" })
   const { world, metadata } = resolved
   if (!metadata.roles) metadata.roles = {}
   metadata.roleSources ??= {}
@@ -1169,11 +1188,11 @@ export async function setEntityRole(
     metadata.roleSources[targetEntityId] = source
   }
   ;(world as { metadata: RolesWorldMetadata }).metadata = metadata
-  await runtime.updateWorld(
-    world as Parameters<IAgentRuntime["updateWorld"]>[0],
-  )
+  try foreign(() => runtime.updateWorld(world as Parameters<IAgentRuntime["updateWorld"]>[0]))
   return { ...metadata.roles }
 }
+
+export const setEntityRolePromise = promised(failingAs(Error, setEntityRole))
 
 export type EntityRoleCasResult =
   | {
@@ -1186,13 +1205,13 @@ export type EntityRoleCasResult =
 
 export const ROLE_WRITE_CAS_MAX_ATTEMPTS = 3
 
-function requireWorldMetadataCasCapability(
-  adapter: IAgentRuntime["adapter"],
-): asserts adapter is IAgentRuntime["adapter"] & {
+type CasCapableAdapter = IAgentRuntime["adapter"] & {
   compareAndSwapWorldMetadata: (
     params: WorldMetadataCompareAndSwapParams,
   ) => Promise<WorldMetadataMutationResult>
-} {
+}
+
+effect function requireWorldMetadataCasCapability(adapter: IAgentRuntime["adapter"]): CasCapableAdapter!ElizaError {
   if (
     typeof (
       adapter as Partial<IDatabaseAdapter> & {
@@ -1200,7 +1219,7 @@ function requireWorldMetadataCasCapability(
       }
     ).compareAndSwapWorldMetadata === "function"
   ) {
-    return
+    return adapter as CasCapableAdapter
   }
 
   throw new ElizaError(
@@ -1217,7 +1236,7 @@ function requireWorldMetadataCasCapability(
   )
 }
 
-export async function setEntityRoleCas(
+export effect function setEntityRoleCas(
   runtime: IAgentRuntime,
   message: Memory,
   targetEntityId: string,
@@ -1230,12 +1249,12 @@ export async function setEntityRoleCas(
     maxAttempts?: number
 
     authorize?: (
-      fresh: Awaited<ReturnType<typeof resolveWorldForMessage>>,
+      fresh: ResolvedWorld | null,
     ) => boolean | Promise<boolean>
 
     mutateMetadata?: (replacement: RolesWorldMetadata) => void
   } = {},
-): Promise<EntityRoleCasResult> {
+): EntityRoleCasResult!(ElizaError | Foreign | InvalidUuidSource) {
   const source = options.source ?? "manual"
   const maxAttempts = options.maxAttempts ?? ROLE_WRITE_CAS_MAX_ATTEMPTS
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
@@ -1244,7 +1263,7 @@ export async function setEntityRoleCas(
       context: { maxAttempts },
     })
   }
-  requireWorldMetadataCasCapability(runtime.adapter)
+  const adapter = try requireWorldMetadataCasCapability(runtime.adapter)
 
   const targetUuid = validateUuid(targetEntityId)
   if (!targetUuid) {
@@ -1256,20 +1275,20 @@ export async function setEntityRoleCas(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const resolved = options.worldId
-      ? await resolveWorldById(runtime, options.worldId)
-      : await resolveWorldForMessage(runtime, message)
+      ? try resolveWorldById(runtime, options.worldId)
+      : try resolveWorldForMessage(runtime, message)
     if (!resolved?.world) return { status: "world_not_found" }
     const { world } = resolved
 
     const resolvedWorld = structuredClone(world)
     const expectedSnapshot = (resolvedWorld.metadata
       ?? {}) as RolesWorldMetadata
-    const authorizeView: typeof resolved = {
+    const authorizeView: ResolvedWorld = {
       world: resolvedWorld,
       metadata: expectedSnapshot,
     }
 
-    if (options.authorize && !(await options.authorize(authorizeView))) {
+    if (options.authorize && !(try foreign(() => options.authorize!(authorizeView)))) {
       return { status: "unauthorized" }
     }
 
@@ -1278,25 +1297,27 @@ export async function setEntityRoleCas(
     )
     const replacement: RolesWorldMetadata = structuredClone(expectedSnapshot)
     recordRoleGrant(replacement, targetEntityId, newRole, source)
-    options.mutateMetadata?.(replacement)
+    try foreignSync(() => options.mutateMetadata?.(replacement))
 
     if (worldMetadataValueEquals(expectedSnapshot, replacement)) {
       return { status: "committed", roles: { ...(replacement.roles ?? {}) } }
     }
 
-    const result = await runtime.adapter.compareAndSwapWorldMetadata({
-      worldId: world.id,
-      expectedMetadata: expectedSnapshot as unknown as Metadata,
-      replacementMetadata: replacement as unknown as Metadata,
-      audit: {
-        actorEntityId: message.entityId,
-        targetEntityId: targetUuid,
-        previousRole,
-        newRole,
-        source,
-        roomId: message.roomId,
-      },
-    })
+    const result = try foreign(() =>
+      adapter.compareAndSwapWorldMetadata({
+        worldId: world.id,
+        expectedMetadata: expectedSnapshot as unknown as Metadata,
+        replacementMetadata: replacement as unknown as Metadata,
+        audit: {
+          actorEntityId: message.entityId,
+          targetEntityId: targetUuid,
+          previousRole,
+          newRole,
+          source,
+          roomId: message.roomId,
+        },
+      })
+    )
     if (result.status === "updated") {
       return { status: "committed", roles: { ...replacement.roles } }
     }
@@ -1306,18 +1327,24 @@ export async function setEntityRoleCas(
   return { status: "conflict" }
 }
 
-export function hasOwnerAccess(
+export const setEntityRoleCasPromise = promised(failingAs(TypeError, setEntityRoleCas, ElizaError))
+
+export effect function hasOwnerAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
   deps: RoleAccessDeps = {},
-): Promise<boolean> {
-  return hasRoleAccess(runtime, message, "OWNER", deps)
+) {
+  return try hasRoleAccess(runtime, message, "OWNER", deps)
 }
 
-export function hasAdminAccess(
+export const hasOwnerAccessPromise = promised(hasOwnerAccess)
+
+export effect function hasAdminAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
   deps: RoleAccessDeps = {},
-): Promise<boolean> {
-  return hasRoleAccess(runtime, message, "ADMIN", deps)
+) {
+  return try hasRoleAccess(runtime, message, "ADMIN", deps)
 }
+
+export const hasAdminAccessPromise = promised(hasAdminAccess)

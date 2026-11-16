@@ -1,4 +1,8 @@
+// spec/core/grammar.md, "Story: Compile model input schemas to portable grammar classes"; spec/core/grammar.md, "Portable escaping preserves literal members and range structure"
+import { type ClassMember, encodeMember } from "../../gen/core__grammar.effect.vibe"
 import { type JsonSchema, normalizeActionJsonSchema } from "../actions/action-schema.vibe"
+import { failingAs, thrown } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
 import type { Action } from "../types/components.vibe"
 import type {
   JSONSchema,
@@ -7,6 +11,7 @@ import type {
   SpanSamplerOverride,
   SpanSamplerPlan,
 } from "../types/model.vibe"
+import { rawEnv } from "../utils/environment.vibe"
 
 export interface ResponseHandlerFieldShape {
   name: string
@@ -40,19 +45,24 @@ export interface ResponseGrammarResult {
   grammar: string
 }
 
+function hexEscape(ch: string): string {
+  return `\\x${(ch.codePointAt(0) ?? 0).toString(16).padStart(2, "0")}`
+}
+
 function gbnfEscapeLiteral(text: string): string {
   let out = ""
   for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0
-    if (ch === "\\") out += "\\\\"
-    else if (ch === "\"") out += "\\\""
-    else if (ch === "\n") out += "\\n"
-    else if (ch === "\r") out += "\\r"
-    else if (ch === "\t") out += "\\t"
-    else if (code < 0x20) out += `\\x${code.toString(16).padStart(2, "0")}`
-    else out += ch
+    out += ch === "\"" ? "\\\"" : gbnfEscapeControl(ch)
   }
   return out
+}
+
+function gbnfEscapeControl(ch: string): string {
+  if (ch === "\\") return "\\\\"
+  if (ch === "\n") return "\\n"
+  if (ch === "\r") return "\\r"
+  if (ch === "\t") return "\\t"
+  return (ch.codePointAt(0) ?? 0) < 0x20 ? hexEscape(ch) : ch
 }
 
 function gbnfLiteral(text: string): string {
@@ -676,37 +686,25 @@ function compileSimpleRegexAtom(atom: SimpleRegexAtom): string {
   }
 }
 
+function classMember(ch: string): ClassMember {
+  if (ch === "-") return "Hyphen"
+  if (ch === "^") return "Caret"
+  if (ch === "]") return "ClosingBracket"
+  return "Plain"
+}
+
 function escapeGbnfClassChar(value: string): string {
   let out = ""
   for (const ch of value) {
-    switch (ch) {
-      case "\\":
-        out += "\\\\"
+    switch (encodeMember(classMember(ch))) {
+      case "HexEscape":
+        out += hexEscape(ch)
         break
-      case "]":
-        out += "\\]"
+      case "BackslashEscape":
+        out += `\\${ch}`
         break
-
-      case "-":
-        out += "\\x2d"
-        break
-      case "^":
-        out += "\\x5e"
-        break
-      case "\n":
-        out += "\\n"
-        break
-      case "\r":
-        out += "\\r"
-        break
-      case "\t":
-        out += "\\t"
-        break
-      default: {
-        const code = ch.codePointAt(0) ?? 0
-        if (code < 0x20) out += `\\x${code.toString(16).padStart(2, "0")}`
-        else out += ch
-      }
+      default:
+        out += gbnfEscapeControl(ch)
     }
   }
   return out
@@ -877,10 +875,12 @@ function gbnfRefForFieldSchema(
   return "jsonvalue"
 }
 
-export function buildResponseGrammar(
+export error ResponseHandlerFieldsMissing { message: string }
+
+export effect function buildResponseGrammar(
   runtime: ResponseGrammarRuntimeView,
   options: BuildResponseGrammarOptions,
-): ResponseGrammarResult {
+): ResponseGrammarResult!ResponseHandlerFieldsMissing {
   const fields = sortFields(runtime.responseHandlerFields ?? [])
   const contextIds = normalizeContextIds(options.contexts)
   const actionNames = Array.from(
@@ -905,7 +905,7 @@ export function buildResponseGrammar(
 
   const firstField = fields[0]
   if (!firstField) {
-    throw new Error("buildResponseGrammar requires response-handler fields")
+    throw new ResponseHandlerFieldsMissing({ message: "buildResponseGrammar requires response-handler fields" })
   }
   const open = `{"${firstField.name}":`
   spans.push({ kind: "literal", value: open })
@@ -968,6 +968,7 @@ export function buildResponseGrammar(
     grammar,
   })
 }
+export const buildResponseGrammarOrThrow = thrown(failingAs(Error, buildResponseGrammar))
 
 export function clearResponseGrammarCache(): void {
   stage1Cache.clear()
@@ -976,7 +977,7 @@ export function clearResponseGrammarCache(): void {
 }
 
 function guidedDecodeEnabledByDefault(): boolean {
-  const raw = (process.env.ELIZA_LOCAL_GUIDED_DECODE ?? "")
+  const raw = (rawEnv("ELIZA_LOCAL_GUIDED_DECODE") ?? "")
     .trim()
     .toLowerCase()
   return raw !== "0" && raw !== "false" && raw !== "off" && raw !== "no"
@@ -1036,15 +1037,17 @@ export interface PlannerActionGrammarResult {
 const plannerCache = new Map<string, PlannerActionGrammarResult>()
 const plannerStrictCache = new Map<string, PlannerActionGrammarResult>()
 
-function plannerGrammarInput(
+effect function plannerGrammarInput(
   cachePrefix: string,
   actions: ReadonlyArray<
     Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
   >,
 ) {
-  const descriptors = actions
-    .map(actionToPlannerDescriptor)
-    .filter((d) => d.name.length > 0)
+  const descriptors: PlannerActionDescriptor[] = []
+  for (const action of actions) {
+    const descriptor = try actionToPlannerDescriptor(action)
+    if (descriptor.name.length > 0) descriptors.push(descriptor)
+  }
   if (descriptors.length === 0) return null
   const names = Array.from(new Set(descriptors.map((d) => d.name))).sort()
   const actionSchemas: Record<string, JSONSchema> = {}
@@ -1059,22 +1062,24 @@ function plannerGrammarInput(
   return { names, sortedDescriptors, cacheKey, actionSchemas }
 }
 
-export function actionToPlannerDescriptor(
+export effect function actionToPlannerDescriptor(
   action: Pick<Action, "name" | "parameters" | "allowAdditionalParameters">,
-): PlannerActionDescriptor {
-  return {
+) {
+  const descriptor: PlannerActionDescriptor = {
     name: action.name,
-    parametersSchema: normalizeActionJsonSchema(action),
+    parametersSchema: try normalizeActionJsonSchema(action),
     allowAdditionalParameters: action.allowAdditionalParameters === true,
   }
+  return descriptor
 }
+export const actionToPlannerDescriptorOrThrow = thrown(failingAs(Error, actionToPlannerDescriptor, ElizaError))
 
-export function buildPlannerActionGrammar(
+export effect function buildPlannerActionGrammar(
   actions: ReadonlyArray<
     Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
   >,
-): PlannerActionGrammarResult | null {
-  const input = plannerGrammarInput("planner", actions)
+) {
+  const input = try plannerGrammarInput("planner", actions)
   if (!input) return null
   const { names, cacheKey, actionSchemas } = input
   const cached = plannerCache.get(cacheKey)
@@ -1120,19 +1125,21 @@ export function buildPlannerActionGrammar(
   rootParts.push(gbnfLiteral("}"))
 
   builder.root(rootParts)
-  return cacheGrammar(plannerCache, cacheKey, {
+  const result: PlannerActionGrammarResult | null = cacheGrammar(plannerCache, cacheKey, {
     responseSkeleton: { spans, id: cacheKey },
     grammar: builder.build(),
     actionSchemas,
   })
+  return result
 }
+export const buildPlannerActionGrammarOrThrow = thrown(failingAs(Error, buildPlannerActionGrammar, ElizaError))
 
-export function buildPlannerActionGrammarStrict(
+export effect function buildPlannerActionGrammarStrict(
   actions: ReadonlyArray<
     Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
   >,
-): PlannerActionGrammarResult | null {
-  const input = plannerGrammarInput("planner-strict", actions)
+) {
+  const input = try plannerGrammarInput("planner-strict", actions)
   if (!input) return null
   const { sortedDescriptors, cacheKey, actionSchemas } = input
   const cached = plannerStrictCache.get(cacheKey)
@@ -1168,12 +1175,14 @@ export function buildPlannerActionGrammarStrict(
     id: cacheKey,
   }
 
-  return cacheGrammar(plannerStrictCache, cacheKey, {
+  const result: PlannerActionGrammarResult | null = cacheGrammar(plannerStrictCache, cacheKey, {
     responseSkeleton,
     grammar: builder.build(),
     actionSchemas,
   })
+  return result
 }
+export const buildPlannerActionGrammarStrictOrThrow = thrown(failingAs(Error, buildPlannerActionGrammarStrict, ElizaError))
 
 function sanitizeGbnfRuleName(name: string): string {
   const cleaned = name.replace(/[^A-Za-z0-9-]/g, "-").replace(/-+/g, "-")
@@ -1404,10 +1413,10 @@ function escapeJsonKey(key: string): string {
   return key.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")
 }
 
-export function buildPlannerParamsSkeleton(
+export effect function buildPlannerParamsSkeleton(
   action: Pick<Action, "name" | "parameters" | "allowAdditionalParameters">,
-): ResponseSkeleton {
-  const schema = normalizeActionJsonSchema(action)
+) {
+  const schema = try normalizeActionJsonSchema(action)
   const properties = (schema.properties ?? {}) as Record<string, JSONSchema>
   const keys = Object.keys(properties)
   const spans: ResponseSkeletonSpan[] = []
@@ -1446,8 +1455,10 @@ export function buildPlannerParamsSkeleton(
   })
   spans.push({ kind: "literal", value: "}" })
   const idSuffix = enumDigest.length > 0 ? `#${enumDigest.join(",")}` : ""
-  return { spans, id: `params#${action.name}#${keys.join(",")}${idSuffix}` }
+  const skeleton: ResponseSkeleton = { spans, id: `params#${action.name}#${keys.join(",")}${idSuffix}` }
+  return skeleton
 }
+export const buildPlannerParamsSkeletonOrThrow = thrown(failingAs(Error, buildPlannerParamsSkeleton, ElizaError))
 
 function readStringEnum(propSchema: JSONSchema): string[] | null {
   const raw = (propSchema as { enum?: unknown }).enum

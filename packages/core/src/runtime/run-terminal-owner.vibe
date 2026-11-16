@@ -1,163 +1,190 @@
+// spec/core/terminal.md, "Story: Finalize one run after all admitted child work"; spec/core/terminal.md, "Every child and effect retains identity until the terminal snapshot is captured"; spec/core/terminal.md, "The first request freezes complete outcome evidence and owns one scheduled task"
+import { Foreign, foreignSync, foreign, runDetached } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { roomDeliverySettlement, trackPostDeliveryTask } from "../services/post-delivery-task-tracker.vibe"
 import type { ActionResult } from "../types/components.vibe"
-import { mergeEffectReceipts } from "../types/effects.vibe"
-import type { EffectReceipt } from "../types/effects.vibe"
-import { EventType } from "../types/events.vibe"
-import type { RunEventPayload } from "../types/events.vibe"
+import { type EffectReceipt, mergeEffectReceipts } from "../types/effects.vibe"
+import { EventType, type RunEventPayload } from "../types/events.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { TurnOutcome } from "../types/message-service.vibe"
 import type { UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import type { RoomHandlerLease } from "./room-handler-queue.vibe"
 
-export class RunTerminalOwner {
-  private readonly pending = new Set<Promise<void>>()
-  private settledEffects: readonly EffectReceipt[] = []
+interface TerminalRequest {
+  outcome: TurnOutcome
+  error?: unknown
+}
 
-  recordActionResult(result: ActionResult): void {
-    this.settledEffects = mergeEffectReceipts(
-      this.settledEffects,
-      result.effectReceipts,
-    )
-  }
+export interface RunTerminalState {
+  readonly runtime: IAgentRuntime
+  readonly runId: UUID
+  readonly message: Memory
+  readonly startTime: number
+  readonly roomHandlerLease?: RoomHandlerLease
+  readonly pending: Set<Deferred.Deferred<void>>
+  settledEffects: readonly EffectReceipt[]
+  terminalRequest?: TerminalRequest
+}
 
-  get effects(): readonly EffectReceipt[] {
-    return this.settledEffects
-  }
+export effect function recordRunActionResult(state: RunTerminalState, result: ActionResult) {
+  state.settledEffects = try mergeEffectReceipts(state.settledEffects, result.effectReceipts)
+}
 
-  private terminalRequest:
-    | {
-      outcome: TurnOutcome
-      error?: unknown
-    }
-    | undefined
-  private terminalTask: Promise<void> | undefined
-
-  constructor(
-    private readonly runtime: IAgentRuntime,
-    private readonly runId: UUID,
-    private readonly message: Memory,
-    private readonly startTime: number,
-    private readonly roomHandlerLease?: RoomHandlerLease,
-  ) {}
-
-  track(label: string, task: () => Promise<unknown>): Promise<void> {
-    if (this.terminalRequest) {
-      const error = new ElizaError(
-        "Run-owned work cannot start after terminalization was requested",
-        {
-          code: "RUN_TASK_AFTER_TERMINAL",
-          context: {
-            label,
-            runId: this.runId,
-            messageId: this.message.id,
-          },
-        },
-      )
-      this.runtime.reportError("RunTerminalOwner.track", error, {
-        label,
-        runId: this.runId,
-        messageId: this.message.id,
-      })
-      return Promise.resolve()
-    }
-
-    const tracked: Promise<void> = Promise.resolve()
-      .then(task)
-      .then(() => undefined)
-      .catch((error) => {
-        this.runtime.reportError("PostDeliveryTask", error, {
-          agentId: this.runtime.agentId,
-          label,
-          runId: this.runId,
-        })
-      })
-      .finally(() => {
-        this.pending.delete(tracked)
-      })
-    this.pending.add(tracked)
-    return tracked
-  }
-
-  adopt(label: string, task: Promise<unknown>): Promise<void> {
-    return this.track(label, () => task)
-  }
-
-  trackAfterDelivery(
-    label: string,
-    task: () => Promise<unknown>,
-  ): Promise<void> {
-    const delivered = roomDeliverySettlement(
-      this.runtime,
-      this.message.roomId,
-      this.roomHandlerLease,
-    )
-    return this.track(label, async () => {
-      if (!(await delivered)) {
-        throw new ElizaError(
-          "Post-turn work skipped because delivery did not settle",
-          {
-            code: "POST_DELIVERY_NOT_SETTLED",
-          },
-        )
-      }
-      return task()
+export effect function runOwnedWork(state: RunTerminalState, label: string, work: unknown!(Foreign | ElizaError)) {
+  const { runtime, runId } = state
+  if (state.terminalRequest) {
+    const context = { label, runId, messageId: state.message.id }
+    const error = new ElizaError("Run-owned work cannot start after terminalization was requested", {
+      code: "RUN_TASK_AFTER_TERMINAL",
+      context: { ...context },
     })
+    try foreignSync(() => runtime.reportError("RunTerminalOwner.track", error, context))
+    return Effect.void
   }
-
-  request(outcome: TurnOutcome, error?: unknown): Promise<void> {
-    if (this.terminalRequest) return this.terminalTask ?? Promise.resolve()
-    const terminal = {
-      outcome: {
-        ...outcome,
-        effects: mergeEffectReceipts(this.settledEffects, outcome.effects),
+  const done = try Deferred.make<void>()
+  state.pending.add(done)
+  return effect {
+    try foreign(() => undefined)
+    try ensuring(
+      effect {
+        work catch effect (failure) => {
+          const cause = failure instanceof Foreign ? failure.cause : failure
+          try foreignSync(() => runtime.reportError("PostDeliveryTask", cause, { agentId: runtime.agentId, label, runId }))
+        }
       },
-      error,
-    }
-    this.terminalRequest = terminal
-    try {
-      this.terminalTask = trackPostDeliveryTask(
-        this.runtime,
-        "RUN_ENDED",
-        async () => {
-          await Promise.allSettled([...this.pending])
-          const endTime = Date.now()
-          await this.runtime.emitEvent(EventType.RUN_ENDED, {
-            runtime: this.runtime,
-            source: "messageHandler",
-            runId: this.runId,
-            messageId: this.message.id,
-            roomId: this.message.roomId,
-            entityId: this.message.entityId,
-            startTime: this.startTime,
-            status: terminal.outcome.status,
-            outcome: terminal.outcome,
-            endTime,
-            duration: endTime - this.startTime,
-            ...(terminal.error === undefined
-              ? {}
-              : {
-                error: terminal.error instanceof Error
-                  ? terminal.error
-                  : String(terminal.error),
-              }),
-          } as RunEventPayload)
-        },
-        {
-          kind: "room-state",
-          ...(this.roomHandlerLease
-            ? {
-              roomId: this.message.roomId,
-              roomHandlerLease: this.roomHandlerLease,
-            }
-            : {}),
-        },
-      )
-    } catch (terminalScheduleError) {
-      this.terminalRequest = undefined
-      throw terminalScheduleError
-    }
-    return this.terminalTask
+      effect {
+        state.pending.delete(done)
+        try Deferred.succeed(done, undefined)
+      },
+    )
   }
 }
+
+export effect function trackRunWorkAfterDelivery(state: RunTerminalState, label: string, task: () => Promise<unknown>) {
+  const delivered = try roomDeliverySettlement(state.runtime, state.message.roomId, state.roomHandlerLease)
+  return try runOwnedWork(state, label, effect {
+    if (!(try delivered)) {
+      throw new ElizaError("Post-turn work skipped because delivery did not settle", {
+        code: "POST_DELIVERY_NOT_SETTLED",
+      })
+    }
+    return try foreign(() => task())
+  })
+}
+
+effect function emitRunEnded(state: RunTerminalState, terminal: TerminalRequest) {
+  for (const work of [...state.pending]) try Deferred.await(work)
+  const endTime = Date.now()
+  const payload = {
+    runtime: state.runtime,
+    source: "messageHandler",
+    runId: state.runId,
+    messageId: state.message.id,
+    roomId: state.message.roomId,
+    entityId: state.message.entityId,
+    startTime: state.startTime,
+    status: terminal.outcome.status,
+    outcome: terminal.outcome,
+    endTime,
+    duration: endTime - state.startTime,
+    ...(terminal.error === undefined
+      ? {}
+      : { error: terminal.error instanceof Error ? terminal.error : String(terminal.error) }),
+  } as RunEventPayload
+  try foreign(() => state.runtime.emitEvent(EventType.RUN_ENDED, payload))
+}
+
+function runEndedTask(state: RunTerminalState, terminal: TerminalRequest): () => Promise<void> {
+  return () => runDetached(emitRunEnded(state, terminal))
+}
+
+export effect function requestRunTerminal(state: RunTerminalState, outcome: TurnOutcome, error?: unknown) {
+  const terminal: TerminalRequest = {
+    outcome: { ...outcome, effects: try mergeEffectReceipts(state.settledEffects, outcome.effects) },
+    error,
+  }
+  state.terminalRequest = terminal
+  return trackPostDeliveryTask(
+    state.runtime,
+    "RUN_ENDED",
+    runEndedTask(state, terminal),
+    {
+      kind: "room-state",
+      ...(state.roomHandlerLease
+        ? { roomId: state.message.roomId, roomHandlerLease: state.roomHandlerLease }
+        : {}),
+    },
+  ) catch effect (failure) => {
+    state.terminalRequest = undefined
+    throw failure
+  }
+}
+
+module edge {
+  import { foreign, runDetached, runDetachedSync } from "../edge.vibe"
+  import type { ActionResult } from "../types/components.vibe"
+  import type { EffectReceipt } from "../types/effects.vibe"
+  import type { Memory } from "../types/memory.vibe"
+  import type { TurnOutcome } from "../types/message-service.vibe"
+  import type { UUID } from "../types/primitives.vibe"
+  import type { IAgentRuntime } from "../types/runtime.vibe"
+  import type { RoomHandlerLease } from "./room-handler-queue.vibe"
+  import {
+    recordRunActionResult,
+    requestRunTerminal,
+    runOwnedWork,
+    type RunTerminalState,
+    trackRunWorkAfterDelivery,
+  } from "./run-terminal-owner.vibe"
+
+  export class RunTerminalOwner {
+    readonly #state: RunTerminalState
+    #terminalTask: Promise<void> | undefined
+
+    /** @throws {never} */
+    constructor(
+      runtime: IAgentRuntime,
+      runId: UUID,
+      message: Memory,
+      startTime: number,
+      roomHandlerLease?: RoomHandlerLease,
+    ) {
+      this.#state = { runtime, runId, message, startTime, roomHandlerLease, pending: new Set(), settledEffects: [] }
+    }
+
+    /** @throws {ElizaError} */
+    recordActionResult(result: ActionResult): void {
+      runDetachedSync(recordRunActionResult(this.#state, result))
+    }
+
+    /** @throws {never} */
+    get effects(): readonly EffectReceipt[] {
+      return this.#state.settledEffects
+    }
+
+    /** @throws {unknown} */
+    track(label: string, task: () => Promise<unknown>): Promise<void> {
+      return runDetached(runDetachedSync(runOwnedWork(this.#state, label, foreign(() => task()))))
+    }
+
+    /** @throws {unknown} */
+    adopt(label: string, task: Promise<unknown>): Promise<void> {
+      return this.track(label, () => task)
+    }
+
+    /** @throws {unknown} */
+    trackAfterDelivery(label: string, task: () => Promise<unknown>): Promise<void> {
+      return runDetached(runDetachedSync(trackRunWorkAfterDelivery(this.#state, label, task)))
+    }
+
+    /** @throws {ElizaError} */
+    request(outcome: TurnOutcome, error?: unknown): Promise<void> {
+      if (this.#state.terminalRequest) return this.#terminalTask ?? Promise.resolve()
+      this.#terminalTask = runDetached(runDetachedSync(requestRunTerminal(this.#state, outcome, error)))
+      return this.#terminalTask
+    }
+  }
+}
+import { RunTerminalOwner } from edge
+export { RunTerminalOwner }

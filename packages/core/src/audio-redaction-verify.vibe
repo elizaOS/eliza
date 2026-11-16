@@ -1,4 +1,6 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import { normalizeSpokenText } from "./audio-redaction.vibe"
+import { Foreign, foreign, promised, thrown } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 import type { TranscriptWord } from "./transcripts.vibe"
 
@@ -22,6 +24,8 @@ export interface RedactionTranscriber {
 }
 
 export class AudioRedactionVerifyUnavailableError extends ElizaError {
+  override readonly _tag = "AudioRedactionVerifyUnavailableError" as const
+
   constructor(message: string) {
     super(`audio redaction verify unavailable: ${message}`, {
       code: "AUDIO_REDACTION_VERIFY_UNAVAILABLE",
@@ -88,12 +92,12 @@ function missingSentinels(
   return missing
 }
 
-export function judgeRedactedTranscript(
+export effect function judgeRedactedTranscript(
   verifierId: string,
   transcript: string,
   expectation: RedactionVerifyExpectation,
-): RedactionVerifierFinding {
-  assertVerifyExpectation(expectation)
+): RedactionVerifierFinding!ElizaError {
+  try assertVerifyExpectation(expectation)
   const haystack = normalizeSpokenText(transcript)
   if (haystack.length === 0) {
     throw new ElizaError(
@@ -103,6 +107,7 @@ export function judgeRedactedTranscript(
   }
   return judge(verifierId, transcript, haystack, expectation)
 }
+export const judgeRedactedTranscriptOrThrow = thrown(judgeRedactedTranscript)
 
 function judge(
   verifierId: string,
@@ -124,20 +129,20 @@ function judge(
   }
 }
 
-export async function verifyAudioRedaction(
+export effect function verifyAudioRedaction(
   transcribers: readonly RedactionTranscriber[],
   input: RedactionTranscribeInput,
   expectation: RedactionVerifyExpectation,
-): Promise<RedactionVerifyResult> {
+): RedactionVerifyResult!(ElizaError | Foreign) {
   if (transcribers.length === 0) {
     throw new AudioRedactionVerifyUnavailableError(
       "no verifier transcriber configured — refusing a vacuous pass",
     )
   }
-  assertVerifyExpectation(expectation)
+  try assertVerifyExpectation(expectation)
   const findings: RedactionVerifierFinding[] = []
   for (const transcriber of transcribers) {
-    const transcript = await transcriber.transcribe(input)
+    const transcript = try foreign(() => transcriber.transcribe(input))
     const haystack = typeof transcript?.text === "string"
       ? normalizeSpokenText(transcript.text)
       : ""
@@ -153,10 +158,11 @@ export async function verifyAudioRedaction(
   }
   return { ok: findings.every((finding) => finding.ok), findings }
 }
+export const verifyAudioRedactionPromise = promised(verifyAudioRedaction)
 
-function assertVerifyExpectation(
+effect function assertVerifyExpectation(
   expectation: RedactionVerifyExpectation,
-): void {
+): void!ElizaError {
   if (
     expectation.piiTexts.length === 0
     || expectation.piiTexts.some((text) => normalizeSpokenText(text).length === 0)

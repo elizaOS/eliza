@@ -1,3 +1,5 @@
+// spec/core/models.md, "Story: Dispatch a complete admitted request"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"
+import { failingAs, foreign, promised, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   getModelFallbackChain,
@@ -28,6 +30,7 @@ export function isUnavailableLocalModel(error: unknown): boolean {
 }
 
 export class NoModelProviderConfiguredError extends ElizaError {
+  override readonly _tag = "NoModelProviderConfiguredError" as const
   override readonly name = "NoModelProviderConfiguredError"
   readonly reason: "no-provider" | "capability-disabled"
 
@@ -92,10 +95,12 @@ export function isTextStreamResult(
   )
 }
 
-export function assertModelResultPresent(
+export error InvalidTextResult { message: string }
+
+export effect function assertModelResultPresent(
   result: unknown,
   modelType: string,
-): void {
+): void!InvalidTextResult {
   if (!isTextGenerationModelKey(modelType)) return
   if (typeof result === "string") return
   if (typeof result === "object" && result !== null) {
@@ -105,23 +110,25 @@ export function assertModelResultPresent(
       }
     } else if ("text" in result && typeof result.text === "string") return
   }
-  throw new TypeError(`Invalid text result for model type ${modelType}`)
+  throw new InvalidTextResult({ message: `Invalid text result for model type ${modelType}` })
 }
+export const assertModelResultPresentOrThrow = thrown(failingAs(TypeError, assertModelResultPresent))
 
-export async function assertRuntimeModelOutputComplete(args: {
+export effect function assertRuntimeModelOutputComplete(args: {
   result: unknown
   provider: string
   model: string
-}): Promise<void> {
+}) {
   if (typeof args.result !== "object" || args.result === null) return
   const record = args.result as { finishReason?: unknown }
   if (!("finishReason" in record)) return
-  assertModelOutputComplete({
-    finishReason: await Promise.resolve(record.finishReason),
+  try assertModelOutputComplete({
+    finishReason: try foreign(() => record.finishReason),
     provider: args.provider,
     model: args.model,
   })
 }
+export const assertRuntimeModelOutputCompletePromise = promised(assertRuntimeModelOutputComplete)
 
 export function readReasoningTokensFromResponse(
   response: unknown,

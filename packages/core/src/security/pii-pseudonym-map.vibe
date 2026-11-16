@@ -1,6 +1,5 @@
+// spec/core/corpusPseudonyms.md, "Story: Preserve one pseudonym per verified cluster across corpus writes"; spec/core/corpusPseudonyms.md, "Assignment keeps platform identity ownership unique and aliases explicitly ambiguous"
 import type { PiiPseudonymAssignment } from "../types/model.vibe"
-import { BufferUtils } from "../utils/buffer.vibe"
-import { compileReplacer, DEFAULT_PSEUDONYM_BLOCKLIST, mintSurrogate } from "./pii-pseudonymizer.vibe"
 
 export interface PseudonymClusterIdentity {
   readonly platform: string
@@ -66,420 +65,21 @@ export interface CorpusPseudonymMapOptions {
   readonly now?: () => number
 }
 
-export class PseudonymMapIntegrityError extends Error {
+export class PseudonymMapIntegrityError extends Data.TaggedError("PseudonymMapIntegrityError") {
   constructor(message: string) {
-    super(`Corpus pseudonym map integrity violation: ${message}`)
+    super()
+    this.message = `Corpus pseudonym map integrity violation: ${message}`
     this.name = "PseudonymMapIntegrityError"
   }
 }
 
-function randomSalt(): string {
-  return BufferUtils.toHex(BufferUtils.randomBytes(16))
-}
-
-function identityKey(identity: PseudonymClusterIdentity): string {
+export function identityKey(identity: PseudonymClusterIdentity): string {
   return `${identity.platform.trim().toLowerCase()}\0${identity.handle.trim().toLowerCase()}`
 }
 
-interface ClusterState {
-  readonly clusterId: string
-  readonly kind: string
-  pseudonym: string
-  aliases: string[]
-  identities: PseudonymClusterIdentity[]
-  evidence: string[]
-  firstSeen: number
-  rulesetVersion: string
-  supersededPseudonyms: string[]
-}
-
-export class CorpusPseudonymMap {
-  private readonly salt: string
-  private readonly blocklistLower: ReadonlySet<string>
-  private readonly minAliasLength: number
-  private readonly now: () => number
-
-  private readonly clusters = new Map<string, ClusterState>()
-
-  private readonly aliasOwners = new Map<string, Set<string>>()
-
-  private readonly identityOwner = new Map<string, string>()
-
-  private readonly pseudonymsLower = new Map<string, string>()
-
-  constructor(options: CorpusPseudonymMapOptions = {}) {
-    this.salt = options.salt ?? randomSalt()
-    this.blocklistLower = new Set(
-      [...DEFAULT_PSEUDONYM_BLOCKLIST, ...(options.blocklist ?? [])]
-        .map((v) => v.trim().toLowerCase())
-        .filter(Boolean),
-    )
-    this.minAliasLength = options.minAliasLength ?? 2
-    this.now = options.now ?? Date.now
-  }
-
-  get size(): number {
-    return this.clusters.size
-  }
-
-  get records(): PseudonymClusterRecord[] {
-    return [...this.clusters.values()].map((c) => toRecord(c))
-  }
-
-  assign(input: AssignClusterInput): PseudonymClusterRecord {
-    if (typeof input.clusterId !== "string" || input.clusterId.length === 0) {
-      throw new PseudonymMapIntegrityError(
-        "clusterId must be a non-empty string",
-      )
-    }
-    if (
-      typeof input.rulesetVersion !== "string"
-      || input.rulesetVersion.length === 0
-    ) {
-      throw new PseudonymMapIntegrityError(
-        `cluster ${JSON.stringify(input.clusterId)} assigned without a rulesetVersion`,
-      )
-    }
-
-    const aliases = this.acceptableAliases(input.aliases)
-    const identities = dedupeIdentities(input.identities ?? [])
-
-    for (const identity of identities) {
-      const key = identityKey(identity)
-      const owner = this.identityOwner.get(key)
-      if (owner !== undefined && owner !== input.clusterId) {
-        throw new PseudonymMapIntegrityError(
-          `identity ${identity.platform}:${identity.handle} already belongs to cluster ${
-            JSON.stringify(
-              owner,
-            )
-          }; refusing to re-home it to ${
-            JSON.stringify(
-              input.clusterId,
-            )
-          } (identity merges go through the merge engine)`,
-        )
-      }
-    }
-
-    let state = this.clusters.get(input.clusterId)
-    if (!state) {
-      state = {
-        clusterId: input.clusterId,
-        kind: input.kind,
-        pseudonym: "",
-        aliases: [],
-        identities: [],
-        evidence: [],
-        firstSeen: this.now(),
-        rulesetVersion: input.rulesetVersion,
-        supersededPseudonyms: [],
-      }
-      this.clusters.set(input.clusterId, state)
-      state.pseudonym = this.mintUniquePseudonym(state)
-      this.pseudonymsLower.set(state.pseudonym.toLowerCase(), state.clusterId)
-    }
-
-    const knownAliasesLower = new Set(
-      state.aliases.map((a) => a.toLowerCase()),
-    )
-    for (const alias of aliases) {
-      const lower = alias.toLowerCase()
-      if (!knownAliasesLower.has(lower)) {
-        state.aliases.push(alias)
-        knownAliasesLower.add(lower)
-      }
-      let owners = this.aliasOwners.get(lower)
-      if (!owners) {
-        owners = new Set()
-        this.aliasOwners.set(lower, owners)
-      }
-      owners.add(state.clusterId)
-
-      const collidingClusterId = this.pseudonymsLower.get(lower)
-      if (collidingClusterId !== undefined) {
-        const colliding = this.clusters.get(collidingClusterId)
-        if (colliding) this.remint(colliding)
-      }
-    }
-
-    const knownIdentityKeys = new Set(state.identities.map(identityKey))
-    for (const identity of identities) {
-      const key = identityKey(identity)
-      if (!knownIdentityKeys.has(key)) {
-        state.identities.push(identity)
-        knownIdentityKeys.add(key)
-      }
-      this.identityOwner.set(key, state.clusterId)
-    }
-
-    const knownEvidence = new Set(state.evidence)
-    for (const item of input.evidence ?? []) {
-      const trimmed = item.trim()
-      if (trimmed.length > 0 && !knownEvidence.has(trimmed)) {
-        state.evidence.push(trimmed)
-        knownEvidence.add(trimmed)
-      }
-    }
-
-    state.rulesetVersion = input.rulesetVersion
-    return toRecord(state)
-  }
-
-  getCluster(clusterId: string): PseudonymClusterRecord | undefined {
-    const state = this.clusters.get(clusterId)
-    return state ? toRecord(state) : undefined
-  }
-
-  clustersForAlias(alias: string): PseudonymClusterRecord[] {
-    const owners = this.aliasOwners.get(alias.trim().toLowerCase())
-    if (!owners) return []
-    const records: PseudonymClusterRecord[] = []
-    for (const clusterId of owners) {
-      const state = this.clusters.get(clusterId)
-      if (state) records.push(toRecord(state))
-    }
-    return records
-  }
-
-  clusterForIdentity(
-    platform: string,
-    handle: string,
-  ): PseudonymClusterRecord | undefined {
-    const owner = this.identityOwner.get(identityKey({ platform, handle }))
-    return owner ? this.getCluster(owner) : undefined
-  }
-
-  assignmentFor(clusterId: string): PiiPseudonymAssignment | undefined {
-    const state = this.clusters.get(clusterId)
-    if (!state) return undefined
-    return {
-      entityClusterId: state.clusterId,
-      surrogate: state.pseudonym,
-      kind: state.kind,
-    }
-  }
-
-  assignmentsForText(text: string): PiiPseudonymAssignment[] {
-    if (!text || this.clusters.size === 0) return []
-    const matcher = this.compileAliasMatcher()
-    if (!matcher) return []
-    matcher.regex.lastIndex = 0
-    const hit = new Set<string>()
-    for (const match of text.matchAll(matcher.regex)) {
-      const owners = this.aliasOwners.get(match[0].toLowerCase())
-      if (!owners) continue
-      for (const clusterId of owners) hit.add(clusterId)
-    }
-    const assignments: PiiPseudonymAssignment[] = []
-    for (const clusterId of hit) {
-      const assignment = this.assignmentFor(clusterId)
-      if (assignment) assignments.push(assignment)
-    }
-    return assignments
-  }
-
-  substituteAliases(text: string): AliasSubstitutionResult {
-    if (!text || this.clusters.size === 0) {
-      return { text, applied: [], ambiguous: [] }
-    }
-
-    const ambiguous = new Set<string>()
-    const appliedClusters = new Set<string>()
-    const pairs: { from: string; to: string }[] = []
-    for (const state of this.clusters.values()) {
-      for (const alias of state.aliases) {
-        const owners = this.aliasOwners.get(alias.toLowerCase())
-        if (owners && owners.size > 1) {
-          pairs.push({ from: alias, to: alias })
-          continue
-        }
-        pairs.push({ from: alias, to: state.pseudonym })
-      }
-
-      pairs.push({ from: state.pseudonym, to: state.pseudonym })
-    }
-
-    let result = text
-    const replacer = compileReplacer(pairs)
-    if (replacer) {
-      replacer.regex.lastIndex = 0
-      result = text.replace(replacer.regex, (match) => {
-        const to = replacer.map.get(match)
-        if (to === undefined) return match
-        if (to !== match) {
-          const owners = this.aliasOwners.get(match.toLowerCase())
-          if (owners) {
-            for (const clusterId of owners) appliedClusters.add(clusterId)
-          }
-        }
-        return to
-      })
-    }
-
-    const ambiguousAliases = [...this.aliasOwners.entries()]
-      .filter(([, owners]) => owners.size > 1)
-      .map(([lower]) => lower)
-    if (ambiguousAliases.length > 0) {
-      for (const state of this.clusters.values()) {
-        for (const alias of state.aliases) {
-          const owners = this.aliasOwners.get(alias.toLowerCase())
-          if (!owners || owners.size <= 1) continue
-          const probe = compileReplacer([{ from: alias, to: alias }])
-          if (probe) {
-            probe.regex.lastIndex = 0
-            if (probe.regex.test(text)) ambiguous.add(alias)
-          }
-        }
-      }
-    }
-
-    const applied: PiiPseudonymAssignment[] = []
-    for (const clusterId of appliedClusters) {
-      const assignment = this.assignmentFor(clusterId)
-      if (assignment) applied.push(assignment)
-    }
-    return { text: result, applied, ambiguous: [...ambiguous] }
-  }
-
-  toSnapshot(): PseudonymMapSnapshot {
-    return {
-      version: 1,
-      salt: this.salt,
-      clusters: this.records,
-    }
-  }
-
-  static fromSnapshot(
-    snapshot: PseudonymMapSnapshot,
-    options: Omit<CorpusPseudonymMapOptions, "salt"> = {},
-  ): CorpusPseudonymMap {
-    assertValidSnapshot(snapshot)
-    const map = new CorpusPseudonymMap({ ...options, salt: snapshot.salt })
-    for (const record of snapshot.clusters) {
-      const state: ClusterState = {
-        clusterId: record.clusterId,
-        kind: record.kind,
-        pseudonym: record.pseudonym,
-        aliases: [...record.aliases],
-        identities: record.identities.map((i) => ({ ...i })),
-        evidence: [...record.evidence],
-        firstSeen: record.firstSeen,
-        rulesetVersion: record.rulesetVersion,
-        supersededPseudonyms: [...record.supersededPseudonyms],
-      }
-      map.clusters.set(state.clusterId, state)
-      map.pseudonymsLower.set(state.pseudonym.toLowerCase(), state.clusterId)
-      for (const alias of state.aliases) {
-        const lower = alias.toLowerCase()
-        let owners = map.aliasOwners.get(lower)
-        if (!owners) {
-          owners = new Set()
-          map.aliasOwners.set(lower, owners)
-        }
-        owners.add(state.clusterId)
-      }
-      for (const identity of state.identities) {
-        map.identityOwner.set(identityKey(identity), state.clusterId)
-      }
-    }
-    return map
-  }
-
-  private acceptableAliases(aliases: readonly string[]): string[] {
-    const accepted: string[] = []
-    for (const raw of aliases) {
-      if (typeof raw !== "string") continue
-      const alias = raw.trim()
-      if (alias.length < this.minAliasLength) continue
-      if (this.blocklistLower.has(alias.toLowerCase())) continue
-      accepted.push(alias)
-    }
-    return accepted
-  }
-
-  private mintUniquePseudonym(state: ClusterState): string {
-    for (let attempt = 0; attempt < 512; attempt += 1) {
-      const candidate = mintSurrogate(
-        this.salt,
-        state.kind,
-        state.clusterId,
-        attempt,
-      )
-      const lower = candidate.toLowerCase()
-      if (this.pseudonymsLower.has(lower)) continue
-      if (this.aliasOwners.has(lower)) continue
-      if (this.blocklistLower.has(lower)) continue
-      return candidate
-    }
-
-    const fallback = `${mintSurrogate(this.salt, state.kind, state.clusterId, 0)} ${this.clusters.size.toString(36)}x`
-    return fallback
-  }
-
-  private remint(state: ClusterState): void {
-    const old = state.pseudonym
-    this.pseudonymsLower.delete(old.toLowerCase())
-    const fresh = this.mintUniquePseudonym(state)
-    state.pseudonym = fresh
-    this.pseudonymsLower.set(fresh.toLowerCase(), state.clusterId)
-    if (!state.supersededPseudonyms.includes(old)) {
-      state.supersededPseudonyms.push(old)
-    }
-  }
-
-  private compileAliasMatcher(): { regex: RegExp } | null {
-    const pairs: { from: string; to: string }[] = []
-    for (const state of this.clusters.values()) {
-      for (const alias of state.aliases) {
-        pairs.push({ from: alias, to: alias })
-      }
-    }
-    const compiled = compileReplacer(pairs)
-    return compiled ? { regex: compiled.regex } : null
-  }
-}
-
-function toRecord(state: ClusterState): PseudonymClusterRecord {
-  return {
-    clusterId: state.clusterId,
-    kind: state.kind,
-    pseudonym: state.pseudonym,
-    aliases: [...state.aliases],
-    identities: state.identities.map((i) => ({ ...i })),
-    evidence: [...state.evidence],
-    firstSeen: state.firstSeen,
-    rulesetVersion: state.rulesetVersion,
-    supersededPseudonyms: [...state.supersededPseudonyms],
-  }
-}
-
-function dedupeIdentities(
-  identities: readonly PseudonymClusterIdentity[],
-): PseudonymClusterIdentity[] {
-  const seen = new Set<string>()
-  const out: PseudonymClusterIdentity[] = []
-  for (const identity of identities) {
-    if (
-      typeof identity?.platform !== "string"
-      || typeof identity?.handle !== "string"
-    ) {
-      continue
-    }
-    const platform = identity.platform.trim()
-    const handle = identity.handle.trim()
-    if (platform.length === 0 || handle.length === 0) continue
-    const key = identityKey({ platform, handle })
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push({ platform, handle })
-  }
-  return out
-}
-
-export function assertValidSnapshot(
+export effect function assertValidSnapshot(
   snapshot: unknown,
-): asserts snapshot is PseudonymMapSnapshot {
+): void!PseudonymMapIntegrityError {
   if (snapshot === null || typeof snapshot !== "object") {
     throw new PseudonymMapIntegrityError("snapshot is not an object")
   }
@@ -596,3 +196,435 @@ export function assertValidSnapshot(
     }
   }
 }
+
+module edge {
+  import { runDetachedSync } from "../edge.vibe"
+  import type { PiiPseudonymAssignment } from "../types/model.vibe"
+  import { BufferUtils } from "../utils/buffer.vibe"
+  import { compileReplacer, DEFAULT_PSEUDONYM_BLOCKLIST, mintSurrogate } from "./pii-pseudonymizer.vibe"
+  import {
+    type AliasSubstitutionResult,
+    type AssignClusterInput,
+    assertValidSnapshot,
+    type CorpusPseudonymMapOptions,
+    identityKey,
+    type PseudonymClusterIdentity,
+    type PseudonymClusterRecord,
+    PseudonymMapIntegrityError,
+    type PseudonymMapSnapshot,
+  } from "./pii-pseudonym-map.vibe"
+
+  interface ClusterState {
+    readonly clusterId: string
+    readonly kind: string
+    pseudonym: string
+    aliases: string[]
+    identities: PseudonymClusterIdentity[]
+    evidence: string[]
+    firstSeen: number
+    rulesetVersion: string
+    supersededPseudonyms: string[]
+  }
+
+  function toRecord(state: ClusterState): PseudonymClusterRecord {
+    return {
+      clusterId: state.clusterId,
+      kind: state.kind,
+      pseudonym: state.pseudonym,
+      aliases: [...state.aliases],
+      identities: state.identities.map((i) => ({ ...i })),
+      evidence: [...state.evidence],
+      firstSeen: state.firstSeen,
+      rulesetVersion: state.rulesetVersion,
+      supersededPseudonyms: [...state.supersededPseudonyms],
+    }
+  }
+
+  function dedupeIdentities(
+    identities: readonly PseudonymClusterIdentity[],
+  ): PseudonymClusterIdentity[] {
+    const seen = new Set<string>()
+    const out: PseudonymClusterIdentity[] = []
+    for (const identity of identities) {
+      if (
+        typeof identity?.platform !== "string"
+        || typeof identity?.handle !== "string"
+      ) {
+        continue
+      }
+      const platform = identity.platform.trim()
+      const handle = identity.handle.trim()
+      if (platform.length === 0 || handle.length === 0) continue
+      const key = identityKey({ platform, handle })
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({ platform, handle })
+    }
+    return out
+  }
+
+  export class CorpusPseudonymMap {
+    private readonly salt: string
+    private readonly blocklistLower: ReadonlySet<string>
+    private readonly minAliasLength: number
+    private readonly now: () => number
+
+    private readonly clusters = new Map<string, ClusterState>()
+
+    private readonly aliasOwners = new Map<string, Set<string>>()
+
+    private readonly identityOwner = new Map<string, string>()
+
+    private readonly pseudonymsLower = new Map<string, string>()
+
+    /** @throws {never} */
+    constructor(options: CorpusPseudonymMapOptions = {}) {
+      this.salt = options.salt ?? BufferUtils.toHex(BufferUtils.randomBytes(16))
+      this.blocklistLower = new Set(
+        [...DEFAULT_PSEUDONYM_BLOCKLIST, ...(options.blocklist ?? [])]
+          .map((v) => v.trim().toLowerCase())
+          .filter(Boolean),
+      )
+      this.minAliasLength = options.minAliasLength ?? 2
+      this.now = options.now ?? Date.now
+    }
+
+    /** @throws {never} */
+    get size(): number {
+      return this.clusters.size
+    }
+
+    /** @throws {never} */
+    get records(): PseudonymClusterRecord[] {
+      return [...this.clusters.values()].map((c) => toRecord(c))
+    }
+
+    /** @throws {PseudonymMapIntegrityError | TypeError} */
+    assign(input: AssignClusterInput): PseudonymClusterRecord {
+      if (typeof input.clusterId !== "string" || input.clusterId.length === 0) {
+        throw new PseudonymMapIntegrityError(
+          "clusterId must be a non-empty string",
+        )
+      }
+      if (
+        typeof input.rulesetVersion !== "string"
+        || input.rulesetVersion.length === 0
+      ) {
+        throw new PseudonymMapIntegrityError(
+          `cluster ${JSON.stringify(input.clusterId)} assigned without a rulesetVersion`,
+        )
+      }
+
+      const aliases = this.acceptableAliases(input.aliases)
+      const identities = dedupeIdentities(input.identities ?? [])
+
+      for (const identity of identities) {
+        const owner = this.identityOwner.get(identityKey(identity))
+        if (owner !== undefined && owner !== input.clusterId) {
+          throw new PseudonymMapIntegrityError(
+            `identity ${identity.platform}:${identity.handle} already belongs to cluster ${
+              JSON.stringify(
+                owner,
+              )
+            }; refusing to re-home it to ${
+              JSON.stringify(
+                input.clusterId,
+              )
+            } (identity merges go through the merge engine)`,
+          )
+        }
+      }
+
+      let state = this.clusters.get(input.clusterId)
+      if (!state) {
+        state = {
+          clusterId: input.clusterId,
+          kind: input.kind,
+          pseudonym: "",
+          aliases: [],
+          identities: [],
+          evidence: [],
+          firstSeen: this.now(),
+          rulesetVersion: input.rulesetVersion,
+          supersededPseudonyms: [],
+        }
+        this.clusters.set(input.clusterId, state)
+        state.pseudonym = this.mintUniquePseudonym(state)
+        this.pseudonymsLower.set(state.pseudonym.toLowerCase(), state.clusterId)
+      }
+
+      const knownAliasesLower = new Set(
+        state.aliases.map((a) => a.toLowerCase()),
+      )
+      for (const alias of aliases) {
+        const lower = alias.toLowerCase()
+        if (!knownAliasesLower.has(lower)) {
+          state.aliases.push(alias)
+          knownAliasesLower.add(lower)
+        }
+        let owners = this.aliasOwners.get(lower)
+        if (!owners) {
+          owners = new Set()
+          this.aliasOwners.set(lower, owners)
+        }
+        owners.add(state.clusterId)
+
+        const collidingClusterId = this.pseudonymsLower.get(lower)
+        if (collidingClusterId !== undefined) {
+          const colliding = this.clusters.get(collidingClusterId)
+          if (colliding) this.remint(colliding)
+        }
+      }
+
+      const knownIdentityKeys = new Set(state.identities.map(identityKey))
+      for (const identity of identities) {
+        const key = identityKey(identity)
+        if (!knownIdentityKeys.has(key)) {
+          state.identities.push(identity)
+          knownIdentityKeys.add(key)
+        }
+        this.identityOwner.set(key, state.clusterId)
+      }
+
+      const knownEvidence = new Set(state.evidence)
+      for (const item of input.evidence ?? []) {
+        const trimmed = item.trim()
+        if (trimmed.length > 0 && !knownEvidence.has(trimmed)) {
+          state.evidence.push(trimmed)
+          knownEvidence.add(trimmed)
+        }
+      }
+
+      state.rulesetVersion = input.rulesetVersion
+      return toRecord(state)
+    }
+
+    /** @throws {never} */
+    getCluster(clusterId: string): PseudonymClusterRecord | undefined {
+      const state = this.clusters.get(clusterId)
+      return state ? toRecord(state) : undefined
+    }
+
+    /** @throws {never} */
+    clustersForAlias(alias: string): PseudonymClusterRecord[] {
+      const owners = this.aliasOwners.get(alias.trim().toLowerCase())
+      if (!owners) return []
+      const records: PseudonymClusterRecord[] = []
+      for (const clusterId of owners) {
+        const state = this.clusters.get(clusterId)
+        if (state) records.push(toRecord(state))
+      }
+      return records
+    }
+
+    /** @throws {never} */
+    clusterForIdentity(
+      platform: string,
+      handle: string,
+    ): PseudonymClusterRecord | undefined {
+      const owner = this.identityOwner.get(identityKey({ platform, handle }))
+      return owner ? this.getCluster(owner) : undefined
+    }
+
+    /** @throws {never} */
+    assignmentFor(clusterId: string): PiiPseudonymAssignment | undefined {
+      const state = this.clusters.get(clusterId)
+      if (!state) return undefined
+      return {
+        entityClusterId: state.clusterId,
+        surrogate: state.pseudonym,
+        kind: state.kind,
+      }
+    }
+
+    /** @throws {never} */
+    assignmentsForText(text: string): PiiPseudonymAssignment[] {
+      if (!text || this.clusters.size === 0) return []
+      const matcher = this.compileAliasMatcher()
+      if (!matcher) return []
+      matcher.regex.lastIndex = 0
+      const hit = new Set<string>()
+      for (const match of text.matchAll(matcher.regex)) {
+        const owners = this.aliasOwners.get(match[0].toLowerCase())
+        if (!owners) continue
+        for (const clusterId of owners) hit.add(clusterId)
+      }
+      const assignments: PiiPseudonymAssignment[] = []
+      for (const clusterId of hit) {
+        const assignment = this.assignmentFor(clusterId)
+        if (assignment) assignments.push(assignment)
+      }
+      return assignments
+    }
+
+    /** @throws {never} */
+    substituteAliases(text: string): AliasSubstitutionResult {
+      if (!text || this.clusters.size === 0) {
+        return { text, applied: [], ambiguous: [] }
+      }
+
+      const ambiguous = new Set<string>()
+      const appliedClusters = new Set<string>()
+      const pairs: { from: string; to: string }[] = []
+      for (const state of this.clusters.values()) {
+        for (const alias of state.aliases) {
+          const owners = this.aliasOwners.get(alias.toLowerCase())
+          if (owners && owners.size > 1) {
+            pairs.push({ from: alias, to: alias })
+            continue
+          }
+          pairs.push({ from: alias, to: state.pseudonym })
+        }
+
+        pairs.push({ from: state.pseudonym, to: state.pseudonym })
+      }
+
+      let result = text
+      const replacer = compileReplacer(pairs)
+      if (replacer) {
+        replacer.regex.lastIndex = 0
+        result = text.replace(replacer.regex, (match) => {
+          const to = replacer.map.get(match)
+          if (to === undefined) return match
+          if (to !== match) {
+            const owners = this.aliasOwners.get(match.toLowerCase())
+            if (owners) {
+              for (const clusterId of owners) appliedClusters.add(clusterId)
+            }
+          }
+          return to
+        })
+      }
+
+      const ambiguousAliases = [...this.aliasOwners.entries()]
+        .filter(([, owners]) => owners.size > 1)
+        .map(([lower]) => lower)
+      if (ambiguousAliases.length > 0) {
+        for (const state of this.clusters.values()) {
+          for (const alias of state.aliases) {
+            const owners = this.aliasOwners.get(alias.toLowerCase())
+            if (!owners || owners.size <= 1) continue
+            const probe = compileReplacer([{ from: alias, to: alias }])
+            if (probe) {
+              probe.regex.lastIndex = 0
+              if (probe.regex.test(text)) ambiguous.add(alias)
+            }
+          }
+        }
+      }
+
+      const applied: PiiPseudonymAssignment[] = []
+      for (const clusterId of appliedClusters) {
+        const assignment = this.assignmentFor(clusterId)
+        if (assignment) applied.push(assignment)
+      }
+      return { text: result, applied, ambiguous: [...ambiguous] }
+    }
+
+    /** @throws {never} */
+    toSnapshot(): PseudonymMapSnapshot {
+      return {
+        version: 1,
+        salt: this.salt,
+        clusters: this.records,
+      }
+    }
+
+    /** @throws {PseudonymMapIntegrityError} */
+    static fromSnapshot(
+      snapshot: PseudonymMapSnapshot,
+      options: Omit<CorpusPseudonymMapOptions, "salt"> = {},
+    ): CorpusPseudonymMap {
+      runDetachedSync(assertValidSnapshot(snapshot))
+      const map = new CorpusPseudonymMap({ ...options, salt: snapshot.salt })
+      for (const record of snapshot.clusters) {
+        const state: ClusterState = {
+          clusterId: record.clusterId,
+          kind: record.kind,
+          pseudonym: record.pseudonym,
+          aliases: [...record.aliases],
+          identities: record.identities.map((i) => ({ ...i })),
+          evidence: [...record.evidence],
+          firstSeen: record.firstSeen,
+          rulesetVersion: record.rulesetVersion,
+          supersededPseudonyms: [...record.supersededPseudonyms],
+        }
+        map.clusters.set(state.clusterId, state)
+        map.pseudonymsLower.set(state.pseudonym.toLowerCase(), state.clusterId)
+        for (const alias of state.aliases) {
+          const lower = alias.toLowerCase()
+          let owners = map.aliasOwners.get(lower)
+          if (!owners) {
+            owners = new Set()
+            map.aliasOwners.set(lower, owners)
+          }
+          owners.add(state.clusterId)
+        }
+        for (const identity of state.identities) {
+          map.identityOwner.set(identityKey(identity), state.clusterId)
+        }
+      }
+      return map
+    }
+
+    private acceptableAliases(aliases: readonly string[]): string[] {
+      const accepted: string[] = []
+      for (const raw of aliases) {
+        if (typeof raw !== "string") continue
+        const alias = raw.trim()
+        if (alias.length < this.minAliasLength) continue
+        if (this.blocklistLower.has(alias.toLowerCase())) continue
+        accepted.push(alias)
+      }
+      return accepted
+    }
+
+    private mintUniquePseudonym(state: ClusterState): string {
+      for (let attempt = 0; attempt < 512; attempt += 1) {
+        const candidate = mintSurrogate(
+          this.salt,
+          state.kind,
+          state.clusterId,
+          attempt,
+        )
+        const lower = candidate.toLowerCase()
+        if (this.pseudonymsLower.has(lower)) continue
+        if (this.aliasOwners.has(lower)) continue
+        if (this.blocklistLower.has(lower)) continue
+        return candidate
+      }
+
+      const fallback = `${mintSurrogate(this.salt, state.kind, state.clusterId, 0)} ${this.clusters.size.toString(36)}x`
+      return fallback
+    }
+
+    private remint(state: ClusterState): void {
+      const old = state.pseudonym
+      this.pseudonymsLower.delete(old.toLowerCase())
+      const fresh = this.mintUniquePseudonym(state)
+      state.pseudonym = fresh
+      this.pseudonymsLower.set(fresh.toLowerCase(), state.clusterId)
+      if (!state.supersededPseudonyms.includes(old)) {
+        state.supersededPseudonyms.push(old)
+      }
+    }
+
+    private compileAliasMatcher(): { regex: RegExp } | null {
+      const pairs: { from: string; to: string }[] = []
+      for (const state of this.clusters.values()) {
+        for (const alias of state.aliases) {
+          pairs.push({ from: alias, to: alias })
+        }
+      }
+      const compiled = compileReplacer(pairs)
+      return compiled ? { regex: compiled.regex } : null
+    }
+  }
+
+  /** @throws {PseudonymMapIntegrityError} */
+  export function assertValidSnapshotOrThrow(snapshot: unknown): asserts snapshot is PseudonymMapSnapshot {
+    runDetachedSync(assertValidSnapshot(snapshot))
+  }
+}
+import { assertValidSnapshotOrThrow, CorpusPseudonymMap } from edge
+export { assertValidSnapshotOrThrow, CorpusPseudonymMap }

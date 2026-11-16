@@ -1,3 +1,4 @@
+// spec/core/messaging.md, "Story: Dispatch through a selected connector account"
 import type {
   ChoiceInteraction,
   FollowupKind,
@@ -56,15 +57,19 @@ export interface InteractionRegion {
   block: InteractionBlock
 }
 
-function randomId(prefix: string): string {
-  if (
-    typeof crypto !== "undefined"
-    && typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID()
+module node {
+  /** @throws {never} */
+  export function randomId(prefix: string): string {
+    if (
+      typeof crypto !== "undefined"
+      && typeof crypto.randomUUID === "function"
+    ) {
+      return crypto.randomUUID()
+    }
+    return `${prefix}-${Math.random().toString(36).slice(2, 10)}`
   }
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`
 }
+import { randomId } from node
 
 function parseOptionLines(body: string): InteractionOption[] {
   const options: InteractionOption[] = []

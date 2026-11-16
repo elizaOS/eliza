@@ -1,3 +1,6 @@
+// spec/core/notifications.md, "Inbox mutations retain stable IDs and increasing sequence coordinates"; spec/core/notifications.md, "Acknowledgement publishes success while ambiguity requires reconciliation"; spec/core/notifications.md, "Read fences use quiescent durable state and restart reloads that state"; spec/core/notifications.md, "Exact grouped projections reuse the durable row"; spec/core/notifications.md, "Group count and expiry use the current row and commit time"; spec/core/notifications.md, "Hydration validates every row and the complete coordinate map"; spec/core/notificationRecovery.md, "Availability and in-flight ownership decide recovery admission"; spec/core/notificationRecovery.md, "Failure cleanup retains attempt ownership and elapsed time controls the next retry"; spec/core/notificationRecoveryOwners.md, "A successful old callback clears the map only if its own identity is still mapped"
+import { delayMs } from "../../gen/core__notificationRecovery.effect.vibe"
+import { asLegacy, Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
 import { logger } from "../logger.vibe"
 import {
   type AgentNotification,
@@ -26,8 +29,20 @@ import { Service, ServiceType } from "../types/service.vibe"
 import { utf8ByteLength } from "../utils/unicode.vibe"
 import { validateUuid } from "../utils/uuid.vibe"
 
-const RECOVERY_BASE_DELAY_MS = 1_000
-const RECOVERY_MAX_DELAY_MS = 30_000
+module node {
+  import { randomUUID } from "node:crypto"
+
+  /** @throws {never} */
+  export function newId(): string {
+    return randomUUID()
+  }
+
+  /** @throws {never} */
+  export function monotonicNow(): number {
+    return performance.now()
+  }
+}
+import { monotonicNow, newId } from node
 
 export type NotificationServiceAvailability =
   | "disabled"
@@ -58,10 +73,38 @@ export interface NotificationServiceLifecycleRuntime {
 
 interface NotificationRecoveryState {
   failures: number
-
   nextAttemptAt: number
-  inFlight: Promise<NotificationService | null> | null
+  inFlight: boolean
 }
+
+interface Inbox {
+  readonly runtime: IAgentRuntime
+  notifications: AgentNotification[]
+  nativeEpoch: string
+  nativeSequence: number
+  nativeSequences: Record<string, number>
+  persistenceUncertain: boolean
+  stopped: boolean
+  tail: Deferred.Deferred<void>
+}
+
+export class NotificationNativeError extends Data.TaggedError("NotificationNativeError")<{
+  readonly code: string
+  readonly status: number
+}> {
+  override readonly name = "NotificationNativeError"
+
+  constructor(code: string, message: string, status = 400) {
+    super({ code, status })
+    this.message = message
+  }
+}
+
+error WriteRejected { message: string }
+error TitleRequired { message: string }
+error PersistRejected { message: string }
+error UnexpectedRecovery { message: string }
+error PersistenceUnreconciled { errors: unknown[] }
 
 const recoveryByRuntime = new WeakMap<
   NotificationServiceLifecycleRuntime,
@@ -72,15 +115,30 @@ const availabilityByRuntime = new WeakMap<
   NotificationServiceAvailability
 >()
 
-function retryAfterSeconds(delayMs: number): number {
-  return Math.max(1, Math.ceil(delayMs / 1_000))
+const UUID_LOWER_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+const NATIVE_DEEP_LINKS: ReadonlySet<string> = new Set([
+  "/chat",
+  "/automations",
+  "/clock",
+  "/notes",
+  "/calendar",
+  "/reminders",
+  "/tasks",
+  "/apps/tasks",
+])
+
+interface EventBusLike {
+  emit: (event: {
+    runId: string
+    stream: string
+    data: Record<string, unknown>
+    agentId?: string
+  }) => void
 }
 
-function recoveryDelayMs(failures: number): number {
-  return Math.min(
-    RECOVERY_MAX_DELAY_MS,
-    RECOVERY_BASE_DELAY_MS * 2 ** Math.max(0, failures - 1),
-  )
+function retryAfterSeconds(delay: number): number {
+  return Math.max(1, Math.ceil(delay / 1_000))
 }
 
 function recordAvailability(
@@ -95,16 +153,111 @@ function recordAvailability(
     availability,
   }
   if (availability === "failed") {
-    logger.warn(
-      context,
-      "NotificationService unavailable after startup failure",
-    )
+    logger.warn(context, "NotificationService unavailable after startup failure")
   } else if (availability === "disabled") {
     logger.info(context, "NotificationService intentionally disabled")
   } else {
     logger.debug(context, "NotificationService availability changed")
   }
   return availability
+}
+
+function availabilityOf(runtime: NotificationServiceLifecycleRuntime): NotificationServiceAvailability {
+  const service = runtime.getService(ServiceType.NOTIFICATION)
+  if (service instanceof NotificationService) {
+    recoveryByRuntime.delete(runtime)
+    return recordAvailability(runtime, "registered")
+  }
+  if (!runtime.hasService(ServiceType.NOTIFICATION)) {
+    return recordAvailability(runtime, "disabled")
+  }
+  const status = runtime.getServiceRegistrationStatus(ServiceType.NOTIFICATION)
+  if (status === "pending" || status === "registering") {
+    return recordAvailability(runtime, status)
+  }
+  if (status === "failed" || status === "registered") {
+    return recordAvailability(runtime, "failed")
+  }
+  return recordAvailability(runtime, "pending")
+}
+
+function requestRecovery(runtime: NotificationServiceLifecycleRuntime): NotificationServiceRecovery {
+  const existing = recoveryByRuntime.get(runtime)
+  if (existing?.inFlight) {
+    return { state: "in-flight", retryAfterSeconds: 1 }
+  }
+  if (availabilityOf(runtime) !== "failed") {
+    return { state: "unavailable", retryAfterSeconds: 1 }
+  }
+  const now = monotonicNow()
+  if (existing && existing.nextAttemptAt > now) {
+    return {
+      state: "backoff",
+      retryAfterSeconds: retryAfterSeconds(existing.nextAttemptAt - now),
+    }
+  }
+  const recovery: NotificationRecoveryState = existing ?? {
+    failures: 0,
+    nextAttemptAt: 0,
+    inFlight: false,
+  }
+  const attempt = recovery.failures + 1
+  const loading = runtime.getServiceLoadPromise(ServiceType.NOTIFICATION)
+  recovery.inFlight = true
+  recoveryByRuntime.set(runtime, recovery)
+  void runDetached(recover(runtime, recovery, attempt, loading))
+  logger.info(
+    { src: "service:notification", agentId: runtime.agentId, attempt },
+    "NotificationService recovery started",
+  )
+  return { state: "started", retryAfterSeconds: 1 }
+}
+
+effect function recover(
+  runtime: NotificationServiceLifecycleRuntime,
+  recovery: NotificationRecoveryState,
+  attempt: number,
+  loading: Promise<Service>,
+) {
+  try ensuring(effect {
+    effect {
+      const service = try foreign(() => loading)
+      if (!(service instanceof NotificationService)) {
+        throw new UnexpectedRecovery({ message: "Recovered notification service has an unexpected implementation" })
+      }
+      if (recoveryByRuntime.get(runtime) !== recovery) return
+      recoveryByRuntime.delete(runtime)
+      try foreignSync(() => {
+        recordAvailability(runtime, "registered")
+        logger.info(
+          { src: "service:notification", agentId: runtime.agentId, attempt },
+          "NotificationService recovery succeeded",
+        )
+      })
+    } catch (failure) => {
+      const error = failure instanceof Foreign ? failure.cause : new Error(failure.message)
+      const failures = recovery.failures + 1
+      const delay = delayMs(failures)
+      recovery.failures = failures
+      recovery.nextAttemptAt = monotonicNow() + delay
+      runtime.reportError("NotificationService.recovery", error, {
+        attempt,
+        retryAfterSeconds: retryAfterSeconds(delay),
+      })
+      logger.warn(
+        {
+          src: "service:notification",
+          agentId: runtime.agentId,
+          attempt,
+          retryAfterSeconds: retryAfterSeconds(delay),
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "NotificationService recovery failed; backing off",
+      )
+    }
+  }, sync(() => {
+    recovery.inFlight = false
+  }))
 }
 
 function isExpired(n: AgentNotification, now: number): boolean {
@@ -117,15 +270,6 @@ function copyNotification<T extends NotificationInput>(notification: T): T {
   return copy
 }
 
-interface EventBusLike {
-  emit: (event: {
-    runId: string
-    stream: string
-    data: Record<string, unknown>
-    agentId?: string
-  }) => void
-}
-
 function isEventBus(value: unknown): value is EventBusLike {
   return (
     typeof value === "object"
@@ -134,18 +278,6 @@ function isEventBus(value: unknown): value is EventBusLike {
   )
 }
 
-const UUID_LOWER_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-
-const NATIVE_DEEP_LINKS: ReadonlySet<string> = new Set([
-  "/chat",
-  "/automations",
-  "/clock",
-  "/notes",
-  "/calendar",
-  "/reminders",
-  "/tasks",
-  "/apps/tasks",
-])
 function jsonByteLength(value: unknown): number {
   return utf8ByteLength(JSON.stringify(value))
 }
@@ -158,623 +290,556 @@ function hasControlCharacter(value: string): boolean {
   return false
 }
 
-function newNotificationId(): UUID {
-  return asUUID(crypto.randomUUID())
+function newInbox(runtime: () => IAgentRuntime): Inbox {
+  const tail = Deferred.makeUnsafe<void>()
+  Deferred.doneUnsafe(tail, Effect.void)
+  return {
+    get runtime() {
+      return runtime()
+    },
+    notifications: [],
+    nativeEpoch: newId(),
+    nativeSequence: 0,
+    nativeSequences: Object.create(null),
+    persistenceUncertain: false,
+    stopped: false,
+    tail,
+  }
 }
 
-export class NotificationNativeError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly status = 400,
-  ) {
-    super(message)
-    this.name = "NotificationNativeError"
+function cacheKey(inbox: Inbox): string {
+  return `notifications:${inbox.runtime.agentId}`
+}
+
+function inboxInvalid(message: string): NotificationNativeError {
+  return new NotificationNativeError("NOTIFICATION_INBOX_INVALID", message, 503)
+}
+
+function inboxUnavailable(): NotificationNativeError {
+  return new NotificationNativeError("NOTIFICATION_INBOX_UNAVAILABLE", "Notification inbox is not durably available", 503)
+}
+
+function legacyOf(failure: Foreign | PersistRejected | NotificationNativeError): unknown {
+  if (failure instanceof Foreign) return failure.cause
+  return failure instanceof PersistRejected ? new Error(failure.message) : failure
+}
+
+function settled<A, E extends Error>(effect: A!E): Promise<A> {
+  return runDetached(asLegacy(
+    Error,
+    Effect.mapError(effect, (failure): Error =>
+      failure instanceof PersistenceUnreconciled
+        ? new AggregateError(failure.errors, "notification persistence and reconciliation failed")
+        : failure),
+    NotificationNativeError,
+    AggregateError,
+  ))
+}
+
+effect function enqueueWrite<A, E>(inbox: Inbox, write: A!E) {
+  if (inbox.stopped) {
+    throw new WriteRejected({ message: "[NotificationService] notification write rejected: service is stopped" })
   }
+  const previous = inbox.tail
+  const done = try Deferred.make<void>()
+  inbox.tail = done
+  return try ensuring(effect {
+    try Deferred.await(previous)
+    if (inbox.persistenceUncertain) try reconcilePersistFailure(inbox)
+    return try write
+  }, Deferred.done(done, Exit.void))
+}
+
+effect function startInbox(inbox: Inbox) {
+  try hydrate(inbox)
+  logger.debug(
+    { src: "service:notification", count: inbox.notifications.length },
+    "NotificationService started",
+  )
+}
+
+effect function stopInbox(inbox: Inbox) {
+  inbox.stopped = true
+  try Deferred.await(inbox.tail)
+  inbox.notifications = []
+}
+
+effect function hydrate(inbox: Inbox) {
+  const stored = try foreign(() => inbox.runtime.getCache<unknown>(cacheKey(inbox)))
+  if (stored == null || Array.isArray(stored)) {
+    inbox.notifications = Array.isArray(stored)
+      ? stored.filter((n) => n && typeof n.id === "string" && n.title)
+      : []
+    for (const n of inbox.notifications) {
+      if (Object.hasOwn(inbox.nativeSequences, n.id)) throw inboxInvalid("Duplicate persisted notification id")
+      inbox.nativeSequences[n.id] = ++inbox.nativeSequence
+    }
+    try persist(inbox)
+  } else {
+    try restore(inbox, stored)
+  }
+}
+
+function snapshot(inbox: Inbox): NotificationInboxSnapshot {
+  const nativeSequences: Record<string, number> = Object.create(null)
+  for (const n of inbox.notifications) {
+    nativeSequences[n.id] = inbox.nativeSequences[n.id]
+  }
+  return {
+    version: 2,
+    notifications: inbox.notifications,
+    nativeEpoch: inbox.nativeEpoch,
+    nativeSequence: inbox.nativeSequence,
+    nativeSequences,
+  }
+}
+
+effect function restore(inbox: Inbox, value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw inboxInvalid("Invalid persisted notification coordinates")
+  }
+  const state = value as NotificationInboxSnapshot
+  if (
+    state.version !== 2
+    || typeof state.nativeEpoch !== "string"
+    || !UUID_LOWER_PATTERN.test(state.nativeEpoch)
+    || !Number.isSafeInteger(state.nativeSequence)
+    || state.nativeSequence < 0
+    || !Array.isArray(state.notifications)
+    || !state.nativeSequences
+    || typeof state.nativeSequences !== "object"
+    || Array.isArray(state.nativeSequences)
+    || Object.keys(state.nativeSequences).length !== state.notifications.length
+  ) {
+    throw inboxInvalid("Invalid persisted notification coordinates")
+  }
+  let previous = 0
+  for (const n of state.notifications) {
+    if (
+      !n
+      || typeof n.id !== "string"
+      || !n.title
+      || !Object.hasOwn(state.nativeSequences, n.id)
+    ) {
+      throw inboxInvalid("Invalid persisted notification coordinates")
+    }
+    const sequence = state.nativeSequences[n.id]
+    if (
+      !Number.isSafeInteger(sequence)
+      || sequence <= previous
+      || sequence > state.nativeSequence
+    ) {
+      throw inboxInvalid("Invalid persisted notification coordinates")
+    }
+    previous = sequence
+  }
+  inbox.notifications = state.notifications
+  inbox.nativeEpoch = state.nativeEpoch
+  inbox.nativeSequence = state.nativeSequence
+  inbox.nativeSequences = state.nativeSequences
+}
+
+effect function persist(inbox: Inbox) {
+  const state = snapshot(inbox)
+  const accepted = try foreign(() => inbox.runtime.setCache(cacheKey(inbox), state))
+  if (!accepted) {
+    throw new PersistRejected({ message: "[NotificationService] notification cache persistence was rejected" })
+  }
+  inbox.nativeSequences = state.nativeSequences
+}
+
+effect function reconcilePersistFailure(inbox: Inbox) {
+  inbox.persistenceUncertain = true
+  const stored = try foreign(() => inbox.runtime.getCache<unknown>(cacheKey(inbox)))
+  if (stored == null) throw inboxInvalid("Notification snapshot disappeared")
+  try restore(inbox, stored)
+  inbox.persistenceUncertain = false
+}
+
+effect function persistMutation(inbox: Inbox) {
+  persist(inbox) catch effect (cause) => {
+    reconcilePersistFailure(inbox) catch effect (reconcileCause) => {
+      throw new PersistenceUnreconciled({ errors: [legacyOf(cause), legacyOf(reconcileCause)] })
+    }
+    throw cause
+  }
+}
+
+effect function notify(inbox: Inbox, input: NotificationInput) {
+  const admitted = copyNotification(input)
+  return try enqueueWrite(inbox, notifySerialized(inbox, admitted, true))
+}
+
+effect function ensureGroupedNotification(
+  inbox: Inbox,
+  input: NotificationInput & { groupKey: string },
+  isExact: (notification: AgentNotification) => boolean,
+) {
+  const admitted = copyNotification(input)
+  return try enqueueWrite(inbox, effect {
+    const grouped = inbox.notifications.filter((entry) => entry.groupKey === admitted.groupKey)
+    if (grouped.length === 1 && try foreignSync(() => isExact(copyNotification(grouped[0])))) {
+      return withNativeCoordinates(inbox, grouped[0])
+    }
+    return try notifySerialized(inbox, admitted, false)
+  })
+}
+
+effect function notifySerialized(inbox: Inbox, input: NotificationInput, coalesceGroup: boolean) {
+  const title = input.title?.trim()
+  if (!title) {
+    throw new TitleRequired({ message: "[NotificationService] notification.title is required" })
+  }
+  if (inbox.nativeSequence >= Number.MAX_SAFE_INTEGER) {
+    throw new NotificationNativeError("NOTIFICATION_SEQUENCE_EXHAUSTED", "Notification sequence exhausted", 503)
+  }
+  const category = input.category ?? DEFAULT_NOTIFICATION_CATEGORY
+  const priority: NotificationPriority = input.priority ?? defaultPriorityForCategory(category)
+  const createdAt = Date.now()
+  const groupKey = input.groupKey
+  inbox.notifications = inbox.notifications.filter((n) => !isExpired(n, createdAt))
+  let superseded: AgentNotification | undefined
+  if (groupKey) {
+    superseded = inbox.notifications.find((n) => n.groupKey === groupKey)
+    inbox.notifications = inbox.notifications.filter((n) => n.groupKey !== groupKey)
+  }
+  const data = resolveCoalescedData(input.data, coalesceGroup ? superseded : undefined)
+  let expiresAt = input.expiresAt
+  if (expiresAt === undefined && tierForPriority(priority) === "silent") {
+    expiresAt = createdAt + SILENT_TIER_DEFAULT_EXPIRY_MS
+  }
+  const notification: AgentNotification = {
+    id: try asUUID(newId()),
+    title,
+    body: input.body?.trim()
+      ? category === "reminder" && input.source === "lifeops"
+        ? input.body
+        : input.body.trim()
+      : undefined,
+    category,
+    priority,
+    source: input.source ?? DEFAULT_NOTIFICATION_SOURCE,
+    deepLink: input.deepLink,
+    icon: input.icon,
+    groupKey,
+    data,
+    createdAt,
+    readAt: null,
+    expiresAt,
+    agentId: input.agentId ?? (inbox.runtime.agentId as UUID),
+  }
+  inbox.nativeSequences = {
+    ...inbox.nativeSequences,
+    [notification.id]: ++inbox.nativeSequence,
+  }
+  inbox.notifications = [...inbox.notifications, notification]
+  try persistMutation(inbox)
+  broadcast(inbox, notification)
+  logger.debug(
+    {
+      src: "service:notification",
+      id: notification.id,
+      category: notification.category,
+      priority: notification.priority,
+    },
+    `[NotificationService] ${notification.source}: ${notification.title}`,
+  )
+  return withNativeCoordinates(inbox, notification)
+}
+
+function broadcast(
+  inbox: Inbox,
+  notification: AgentNotification,
+  type: NotificationEventData["type"] = "notification",
+  removed = false,
+): void {
+  const { runtime } = inbox
+  try {
+    const bus = runtime.getService(ServiceType.AGENT_EVENT)
+    if (!isEventBus(bus)) return
+    const data: NotificationEventData = {
+      type,
+      notification: removed ? copyNotification(notification) : withNativeCoordinates(inbox, notification),
+      unreadCount: unreadCount(inbox),
+      ...(removed ? { removed: true } : {}),
+    }
+    if (!removed) {
+      const record = nativeRecord(inbox, notification)
+      if (record) {
+        data.nativeNotification = record
+      } else {
+        const error = recordTooLarge("Notification cannot fit the native record contract")
+        data.nativeProjectionError = {
+          code: error.code,
+          notificationId: notification.id,
+          nativeEpoch: inbox.nativeEpoch,
+          nativeSequence: inbox.nativeSequences[notification.id],
+        }
+        runtime.reportError("NotificationService.nativeProjection", error, { notificationId: notification.id })
+      }
+    }
+    bus.emit({
+      runId: notification.id,
+      stream: NOTIFICATION_STREAM,
+      data,
+      agentId: notification.agentId,
+    })
+  } catch (error) {
+    try {
+      runtime.reportError("NotificationService.broadcast", error, { notificationId: notification.id })
+      logger.warn(
+        { error, notificationId: notification.id },
+        "[NotificationService] live fan-out failed after durable persistence",
+      )
+    } catch {}
+  }
+}
+
+function withNativeCoordinates(inbox: Inbox, n: AgentNotification): AgentNotification {
+  const copy = copyNotification(n)
+  copy.nativeEpoch = inbox.nativeEpoch
+  copy.nativeSequence = inbox.nativeSequences[n.id]
+  return copy
+}
+
+function recordTooLarge(message: string): NotificationNativeError {
+  return new NotificationNativeError("NATIVE_NOTIFICATION_RECORD_TOO_LARGE", message, 413)
+}
+
+function nativeRecord(inbox: Inbox, n: AgentNotification): NativeNotification | null {
+  const record: NativeNotification = {
+    id: n.id,
+    title: n.title,
+    body: n.body ?? "",
+    category: n.category,
+    priority: n.priority,
+    createdAt: n.createdAt,
+    readAt: n.readAt ?? null,
+    expiresAt: n.expiresAt ?? null,
+    nativeEpoch: inbox.nativeEpoch,
+    nativeSequence: inbox.nativeSequences[n.id],
+  }
+  if (n.deepLink && NATIVE_DEEP_LINKS.has(n.deepLink)) {
+    record.deepLink = n.deepLink
+  }
+  if (n.groupKey != null) record.groupKey = n.groupKey
+  const data: NonNullable<NativeNotification["data"]> = {}
+  if (
+    n.data?.ownerType === "clock"
+    || n.data?.ownerType === "reminder"
+    || n.data?.ownerType === "occurrence"
+  ) {
+    data.ownerType = n.data.ownerType
+  }
+  for (const field of ["conversationId", "messageId"] as const) {
+    const id = validateUuid(n.data?.[field])
+    if (id) data[field] = id
+  }
+  if (Object.keys(data).length) record.data = data
+  const tooLarge = record.title.length > 512
+    || record.body.length > 4096
+    || record.title.includes("\0")
+    || record.body.includes("\0")
+    || (record.groupKey != null && (record.groupKey.length > 512 || hasControlCharacter(record.groupKey)))
+    || jsonByteLength(record) > NATIVE_NOTIFICATION_RECORD_BYTES
+  return tooLarge ? null : record
+}
+
+effect function listNativePage(inbox: Inbox, query: NativeNotificationQuery) {
+  try Deferred.await(inbox.tail)
+  if (inbox.persistenceUncertain || inbox.stopped) throw inboxUnavailable()
+  if (query.nativeEpoch != null && query.nativeEpoch !== inbox.nativeEpoch) {
+    throw new NotificationNativeError("NATIVE_NOTIFICATION_EPOCH_CHANGED", "Notification inbox epoch changed", 409)
+  }
+  const after = query.afterSequence ?? 0,
+    through = query.throughSequence ?? inbox.nativeSequence
+  const limit = query.limit ?? NATIVE_NOTIFICATION_PAGE_LIMIT
+  if (
+    ![after, through].every((value) => Number.isSafeInteger(value) && value >= 0)
+    || through < after
+    || through > inbox.nativeSequence
+    || !Number.isSafeInteger(limit)
+    || limit < 1
+    || limit > NATIVE_NOTIFICATION_PAGE_LIMIT
+    || ((after > 0 || query.throughSequence != null) && !query.nativeEpoch)
+  ) {
+    throw new NotificationNativeError("INVALID_NATIVE_NOTIFICATION_CURSOR", "Invalid native notification cursor or limit")
+  }
+  const page: NativeNotificationPage = {
+    notifications: [],
+    nativeEpoch: inbox.nativeEpoch,
+    throughSequence: through,
+    nextSequence: through,
+    complete: true,
+    unreadCount: unreadCount(inbox),
+    serviceStatus: "ready",
+  }
+  for (const n of inbox.notifications) {
+    const sequence = inbox.nativeSequences[n.id]
+    if (sequence <= after || sequence > through) continue
+    if (page.notifications.length >= limit) {
+      page.complete = false
+      break
+    }
+    const projected = nativeRecord(inbox, n)
+    if (!projected) throw recordTooLarge("Notification cannot fit the native record contract")
+    page.notifications.push(projected)
+    if (jsonByteLength(page) + 1 > NATIVE_NOTIFICATION_PAGE_BYTES) {
+      page.notifications.pop()
+      if (!page.notifications.length) throw recordTooLarge("Notification cannot fit a native page")
+      page.complete = false
+      break
+    }
+  }
+  if (!page.complete) {
+    page.nextSequence = page.notifications[page.notifications.length - 1].nativeSequence
+  }
+  if (!page.complete && page.nextSequence <= after) {
+    throw new NotificationNativeError("INVALID_NATIVE_NOTIFICATION_CURSOR", "Native page did not advance", 503)
+  }
+  return page
+}
+
+function listIncludingExpired(inbox: Inbox): AgentNotification[] {
+  return inbox.notifications.map((n) => withNativeCoordinates(inbox, n)).reverse()
+}
+
+effect function listDurableIncludingExpired(inbox: Inbox) {
+  let pending: Deferred.Deferred<void>
+  do {
+    pending = inbox.tail
+    try Deferred.await(pending)
+  } while (pending !== inbox.tail)
+  if (inbox.persistenceUncertain || inbox.stopped) throw inboxUnavailable()
+  return listIncludingExpired(inbox)
+}
+
+function unreadCount(inbox: Inbox): number {
+  const now = Date.now()
+  let count = 0
+  for (const n of inbox.notifications) {
+    if (!n.readAt && n.priority !== "low" && !isExpired(n, now)) count++
+  }
+  return count
+}
+
+function resolveCoalescedData(
+  inputData: AgentNotification["data"],
+  superseded: AgentNotification | undefined,
+): AgentNotification["data"] {
+  const producerCount = inputData?.[NOTIFICATION_COUNT_KEY]
+  if (typeof producerCount === "number") return inputData
+  if (!superseded) return inputData
+  const priorCount = superseded.data?.[NOTIFICATION_COUNT_KEY]
+  const nextCount = (typeof priorCount === "number" ? priorCount : 1) + 1
+  return { ...(inputData ?? {}), [NOTIFICATION_COUNT_KEY]: nextCount }
+}
+
+effect function markRead(inbox: Inbox, id: string) {
+  const notification = inbox.notifications.find((n) => n.id === id)
+  if (!notification || notification.readAt) return false
+  const updated = { ...notification, readAt: Date.now() }
+  inbox.notifications = inbox.notifications.map((entry) => entry.id === id ? updated : entry)
+  try persistMutation(inbox)
+  broadcast(inbox, updated, "notification_update")
+  return true
+}
+
+effect function markReadByGroupKey(inbox: Inbox, groupKey: string) {
+  if (!groupKey) return 0
+  const now = Date.now()
+  const changedNotifications: AgentNotification[] = []
+  inbox.notifications = inbox.notifications.map((entry) => {
+    if (entry.groupKey !== groupKey || entry.readAt) return entry
+    const changed = { ...entry, readAt: now }
+    changedNotifications.push(changed)
+    return changed
+  })
+  if (changedNotifications.length > 0) {
+    try persistMutation(inbox)
+    for (const n of changedNotifications) broadcast(inbox, n, "notification_update")
+  }
+  return changedNotifications.length
+}
+
+effect function markAllRead(inbox: Inbox) {
+  const updated: AgentNotification[] = []
+  const now = Date.now()
+  inbox.notifications = inbox.notifications.map((entry) => {
+    if (entry.readAt) return entry
+    const notification = { ...entry, readAt: now }
+    updated.push(notification)
+    return notification
+  })
+  if (updated.length > 0) try persistMutation(inbox)
+  for (const notification of updated) broadcast(inbox, notification, "notification_update")
+  return updated.length
+}
+
+effect function remove(inbox: Inbox, id: string) {
+  const notification = inbox.notifications.find((entry) => entry.id === id)
+  const before = inbox.notifications.length
+  inbox.notifications = inbox.notifications.filter((n) => n.id !== id)
+  const removed = inbox.notifications.length !== before
+  if (removed) {
+    try persistMutation(inbox)
+    if (notification) broadcast(inbox, notification, "notification_update", true)
+  }
+  return removed
+}
+
+effect function clear(inbox: Inbox) {
+  const removed = inbox.notifications
+  inbox.notifications = []
+  try persistMutation(inbox)
+  for (const notification of removed) broadcast(inbox, notification, "notification_update", true)
 }
 
 export class NotificationService extends Service {
   static serviceType: string = ServiceType.NOTIFICATION
   capabilityDescription = "Creates, persists, and fans out user-facing notifications across every client surface"
 
-  private notifications: AgentNotification[] = []
-  private nativeEpoch: string = crypto.randomUUID()
-  private nativeSequence = 0
-  private nativeSequences: Record<string, number> = Object.create(null)
-  private persistenceUncertain = false
-  private notificationWriteTail: Promise<void> = Promise.resolve()
+  private readonly inbox: Inbox = newInbox(() => this.runtime)
 
-  private stopped = false
-
-  private enqueueWrite<T>(write: () => Promise<T>): Promise<T> {
-    if (this.stopped) {
-      return Promise.reject(
-        new Error(
-          "[NotificationService] notification write rejected: service is stopped",
-        ),
-      )
-    }
-    const admitted = async () => {
-      if (this.persistenceUncertain) await this.reconcilePersistFailure()
-      return write()
-    }
-    const operation = this.notificationWriteTail.then(admitted, admitted)
-
-    this.notificationWriteTail = operation.then(
-      () => undefined,
-      () => undefined,
-    )
-    return operation
+  static getAvailability(runtime: NotificationServiceLifecycleRuntime): NotificationServiceAvailability {
+    return availabilityOf(runtime)
   }
 
-  private get cacheKey(): string {
-    return `notifications:${this.runtime.agentId}`
+  static requestRecovery(runtime: NotificationServiceLifecycleRuntime): NotificationServiceRecovery {
+    return requestRecovery(runtime)
   }
 
-  static getAvailability(
-    runtime: NotificationServiceLifecycleRuntime,
-  ): NotificationServiceAvailability {
-    const service = runtime.getService(ServiceType.NOTIFICATION)
-    if (service instanceof NotificationService) {
-      recoveryByRuntime.delete(runtime)
-      return recordAvailability(runtime, "registered")
-    }
-    if (!runtime.hasService(ServiceType.NOTIFICATION)) {
-      return recordAvailability(runtime, "disabled")
-    }
-    const status = runtime.getServiceRegistrationStatus(
-      ServiceType.NOTIFICATION,
-    )
-    if (status === "pending" || status === "registering") {
-      return recordAvailability(runtime, status)
-    }
-    if (status === "failed" || status === "registered") {
-      return recordAvailability(runtime, "failed")
-    }
-    return recordAvailability(runtime, "pending")
-  }
-
-  static requestRecovery(
-    runtime: NotificationServiceLifecycleRuntime,
-  ): NotificationServiceRecovery {
-    const existing = recoveryByRuntime.get(runtime)
-    if (existing?.inFlight) {
-      return { state: "in-flight", retryAfterSeconds: 1 }
-    }
-    if (NotificationService.getAvailability(runtime) !== "failed") {
-      return { state: "unavailable", retryAfterSeconds: 1 }
-    }
-
-    const now = performance.now()
-    if (existing && existing.nextAttemptAt > now) {
-      return {
-        state: "backoff",
-        retryAfterSeconds: retryAfterSeconds(existing.nextAttemptAt - now),
-      }
-    }
-
-    const recovery: NotificationRecoveryState = existing ?? {
-      failures: 0,
-      nextAttemptAt: 0,
-      inFlight: null,
-    }
-    const attempt = recovery.failures + 1
-    const inFlight = runtime
-      .getServiceLoadPromise(ServiceType.NOTIFICATION)
-      .then((service) => {
-        if (!(service instanceof NotificationService)) {
-          throw new Error(
-            "Recovered notification service has an unexpected implementation",
-          )
-        }
-        if (recoveryByRuntime.get(runtime) !== recovery) return null
-        recoveryByRuntime.delete(runtime)
-        recordAvailability(runtime, "registered")
-        logger.info(
-          {
-            src: "service:notification",
-            agentId: runtime.agentId,
-            attempt,
-          },
-          "NotificationService recovery succeeded",
-        )
-        return service
-      })
-      .catch((error: unknown) => {
-        const failures = recovery.failures + 1
-        const delayMs = recoveryDelayMs(failures)
-        recovery.failures = failures
-        recovery.nextAttemptAt = performance.now() + delayMs
-        runtime.reportError("NotificationService.recovery", error, {
-          attempt,
-          retryAfterSeconds: retryAfterSeconds(delayMs),
-        })
-        logger.warn(
-          {
-            src: "service:notification",
-            agentId: runtime.agentId,
-            attempt,
-            retryAfterSeconds: retryAfterSeconds(delayMs),
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "NotificationService recovery failed; backing off",
-        )
-        return null
-      })
-      .finally(() => {
-        recovery.inFlight = null
-      })
-    recovery.inFlight = inFlight
-    recoveryByRuntime.set(runtime, recovery)
-    logger.info(
-      {
-        src: "service:notification",
-        agentId: runtime.agentId,
-        attempt,
-      },
-      "NotificationService recovery started",
-    )
-    return { state: "started", retryAfterSeconds: 1 }
-  }
-
-  static async start(runtime: IAgentRuntime): Promise<Service> {
+  static start(runtime: IAgentRuntime): Promise<Service> {
     const service = new NotificationService(runtime)
-    await service.hydrate()
-    logger.debug(
-      { src: "service:notification", count: service.notifications.length },
-      "NotificationService started",
-    )
-    return service
+    return settled(Effect.as(startInbox(service.inbox), service))
   }
 
-  async stop(): Promise<void> {
-    this.stopped = true
-
-    await this.notificationWriteTail.catch(() => undefined)
-    this.notifications = []
+  stop(): Promise<void> {
+    return runDetached(stopInbox(this.inbox))
   }
 
-  private async hydrate(): Promise<void> {
-    const stored = await this.runtime.getCache<unknown>(this.cacheKey)
-    if (stored == null || Array.isArray(stored)) {
-      this.notifications = Array.isArray(stored)
-        ? stored.filter((n) => n && typeof n.id === "string" && n.title)
-        : []
-      for (const n of this.notifications) {
-        if (Object.hasOwn(this.nativeSequences, n.id)) {
-          throw new NotificationNativeError(
-            "NOTIFICATION_INBOX_INVALID",
-            "Duplicate persisted notification id",
-            503,
-          )
-        }
-        this.nativeSequences[n.id] = ++this.nativeSequence
-      }
-      await this.persist()
-    } else {
-      this.restore(stored)
-    }
+  notify(input: NotificationInput): Promise<AgentNotification> {
+    return settled(notify(this.inbox, input))
   }
 
-  private snapshot(): NotificationInboxSnapshot {
-    const nativeSequences: Record<string, number> = Object.create(null)
-    for (const n of this.notifications) {
-      nativeSequences[n.id] = this.nativeSequences[n.id]
-    }
-    return {
-      version: 2,
-      notifications: this.notifications,
-      nativeEpoch: this.nativeEpoch,
-      nativeSequence: this.nativeSequence,
-      nativeSequences,
-    }
-  }
-
-  private restore(value: unknown): void {
-    const invalid = () =>
-      new NotificationNativeError(
-        "NOTIFICATION_INBOX_INVALID",
-        "Invalid persisted notification coordinates",
-        503,
-      )
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw invalid()
-    }
-    const state = value as NotificationInboxSnapshot
-    if (
-      state.version !== 2
-      || typeof state.nativeEpoch !== "string"
-      || !UUID_LOWER_PATTERN.test(state.nativeEpoch)
-      || !Number.isSafeInteger(state.nativeSequence)
-      || state.nativeSequence < 0
-      || !Array.isArray(state.notifications)
-      || !state.nativeSequences
-      || typeof state.nativeSequences !== "object"
-      || Array.isArray(state.nativeSequences)
-      || Object.keys(state.nativeSequences).length !== state.notifications.length
-    ) {
-      throw invalid()
-    }
-    let previous = 0
-    for (const n of state.notifications) {
-      if (
-        !n
-        || typeof n.id !== "string"
-        || !n.title
-        || !Object.hasOwn(state.nativeSequences, n.id)
-      ) {
-        throw invalid()
-      }
-      const sequence = state.nativeSequences[n.id]
-      if (
-        !Number.isSafeInteger(sequence)
-        || sequence <= previous
-        || sequence > state.nativeSequence
-      ) {
-        throw invalid()
-      }
-      previous = sequence
-    }
-    this.notifications = state.notifications
-    this.nativeEpoch = state.nativeEpoch
-    this.nativeSequence = state.nativeSequence
-    this.nativeSequences = state.nativeSequences
-  }
-
-  private async persist(): Promise<void> {
-    const state = this.snapshot()
-    if (!(await this.runtime.setCache(this.cacheKey, state))) {
-      throw new Error(
-        "[NotificationService] notification cache persistence was rejected",
-      )
-    }
-    this.nativeSequences = state.nativeSequences
-  }
-
-  private async reconcilePersistFailure(): Promise<void> {
-    this.persistenceUncertain = true
-    const stored = await this.runtime.getCache<unknown>(this.cacheKey)
-
-    if (stored == null) {
-      throw new NotificationNativeError(
-        "NOTIFICATION_INBOX_INVALID",
-        "Notification snapshot disappeared",
-        503,
-      )
-    }
-    this.restore(stored)
-    this.persistenceUncertain = false
-  }
-
-  private async failAfterMutationPersistence(cause: unknown): Promise<never> {
-    try {
-      await this.reconcilePersistFailure()
-    } catch (reconcileCause) {
-      throw new AggregateError(
-        [cause, reconcileCause],
-        "notification persistence and reconciliation failed",
-      )
-    }
-    throw cause
-  }
-
-  async notify(input: NotificationInput): Promise<AgentNotification> {
-    const admitted = copyNotification(input)
-    return this.enqueueWrite(() => this.notifySerialized(admitted, true))
-  }
-
-  async notifyWithoutEviction(
-    input: NotificationInput,
-  ): Promise<AgentNotification> {
+  notifyWithoutEviction(input: NotificationInput): Promise<AgentNotification> {
     return this.notify(input)
   }
 
-  async ensureGroupedNotification(
+  ensureGroupedNotification(
     input: NotificationInput & { groupKey: string },
     isExact: (notification: AgentNotification) => boolean,
   ): Promise<AgentNotification> {
-    const admitted = copyNotification(input)
-    return this.enqueueWrite(async () => {
-      const grouped = this.notifications.filter(
-        (entry) => entry.groupKey === admitted.groupKey,
-      )
-      if (grouped.length === 1 && isExact(copyNotification(grouped[0]))) {
-        return this.withNativeCoordinates(grouped[0])
-      }
-      return this.notifySerialized(admitted, false)
-    })
+    return settled(ensureGroupedNotification(this.inbox, input, isExact))
   }
 
-  private async notifySerialized(
-    input: NotificationInput,
-    coalesceGroup: boolean,
-  ): Promise<AgentNotification> {
-    const title = input.title?.trim()
-    if (!title) {
-      throw new Error("[NotificationService] notification.title is required")
-    }
-    if (this.nativeSequence >= Number.MAX_SAFE_INTEGER) {
-      throw new NotificationNativeError(
-        "NOTIFICATION_SEQUENCE_EXHAUSTED",
-        "Notification sequence exhausted",
-        503,
-      )
-    }
-
-    const category = input.category ?? DEFAULT_NOTIFICATION_CATEGORY
-
-    const priority: NotificationPriority = input.priority ?? defaultPriorityForCategory(category)
-
-    const createdAt = Date.now()
-    const groupKey = input.groupKey
-
-    this.notifications = this.notifications.filter(
-      (n) => !isExpired(n, createdAt),
-    )
-
-    let superseded: AgentNotification | undefined
-    if (groupKey) {
-      superseded = this.notifications.find((n) => n.groupKey === groupKey)
-      this.notifications = this.notifications.filter(
-        (n) => n.groupKey !== groupKey,
-      )
-    }
-    const data = this.resolveCoalescedData(
-      input.data,
-      coalesceGroup ? superseded : undefined,
-    )
-
-    let expiresAt = input.expiresAt
-    if (expiresAt === undefined && tierForPriority(priority) === "silent") {
-      expiresAt = createdAt + SILENT_TIER_DEFAULT_EXPIRY_MS
-    }
-
-    const notification: AgentNotification = {
-      id: newNotificationId(),
-      title,
-      body: input.body?.trim()
-        ? category === "reminder" && input.source === "lifeops"
-          ? input.body
-          : input.body.trim()
-        : undefined,
-      category,
-      priority,
-      source: input.source ?? DEFAULT_NOTIFICATION_SOURCE,
-      deepLink: input.deepLink,
-      icon: input.icon,
-      groupKey,
-      data,
-      createdAt,
-      readAt: null,
-      expiresAt,
-      agentId: input.agentId ?? (this.runtime.agentId as UUID),
-    }
-
-    this.nativeSequences = {
-      ...this.nativeSequences,
-      [notification.id]: ++this.nativeSequence,
-    }
-    this.notifications = [...this.notifications, notification]
-
-    try {
-      await this.persist()
-    } catch (error) {
-      await this.failAfterMutationPersistence(error)
-    }
-
-    this.broadcast(notification)
-    logger.debug(
-      {
-        src: "service:notification",
-        id: notification.id,
-        category: notification.category,
-        priority: notification.priority,
-      },
-      `[NotificationService] ${notification.source}: ${notification.title}`,
-    )
-    return this.withNativeCoordinates(notification)
-  }
-
-  private broadcast(
-    notification: AgentNotification,
-    type: NotificationEventData["type"] = "notification",
-    removed = false,
-  ): void {
-    try {
-      const bus = this.runtime.getService(ServiceType.AGENT_EVENT)
-      if (!isEventBus(bus)) {
-        return
-      }
-      const data: NotificationEventData = {
-        type,
-        notification: removed
-          ? copyNotification(notification)
-          : this.withNativeCoordinates(notification),
-        unreadCount: this.getUnreadCount(),
-        ...(removed ? { removed: true } : {}),
-      }
-      try {
-        if (!removed) {
-          data.nativeNotification = this.projectNative(notification)
-        }
-      } catch (error) {
-        if (!(error instanceof NotificationNativeError)) throw error
-        data.nativeProjectionError = {
-          code: error.code,
-          notificationId: notification.id,
-          nativeEpoch: this.nativeEpoch,
-          nativeSequence: this.nativeSequences[notification.id],
-        }
-        this.runtime.reportError(
-          "NotificationService.nativeProjection",
-          error,
-          {
-            notificationId: notification.id,
-          },
-        )
-      }
-      bus.emit({
-        runId: notification.id,
-        stream: NOTIFICATION_STREAM,
-        data,
-        agentId: notification.agentId,
-      })
-    } catch (error) {
-      try {
-        this.runtime.reportError("NotificationService.broadcast", error, {
-          notificationId: notification.id,
-        })
-        logger.warn(
-          { error, notificationId: notification.id },
-          "[NotificationService] live fan-out failed after durable persistence",
-        )
-      } catch {
-      }
-    }
-  }
-
-  private withNativeCoordinates(n: AgentNotification): AgentNotification {
-    const copy = copyNotification(n)
-    copy.nativeEpoch = this.nativeEpoch
-    copy.nativeSequence = this.nativeSequences[n.id]
-    return copy
-  }
-
-  private projectNative(n: AgentNotification): NativeNotification {
-    const record: NativeNotification = {
-      id: n.id,
-      title: n.title,
-      body: n.body ?? "",
-      category: n.category,
-      priority: n.priority,
-      createdAt: n.createdAt,
-      readAt: n.readAt ?? null,
-      expiresAt: n.expiresAt ?? null,
-      nativeEpoch: this.nativeEpoch,
-      nativeSequence: this.nativeSequences[n.id],
-    }
-
-    if (n.deepLink && NATIVE_DEEP_LINKS.has(n.deepLink)) {
-      record.deepLink = n.deepLink
-    }
-    if (n.groupKey != null) record.groupKey = n.groupKey
-    const data: NonNullable<NativeNotification["data"]> = {}
-    if (
-      n.data?.ownerType === "clock"
-      || n.data?.ownerType === "reminder"
-      || n.data?.ownerType === "occurrence"
-    ) {
-      data.ownerType = n.data.ownerType
-    }
-    for (const field of ["conversationId", "messageId"] as const) {
-      const id = validateUuid(n.data?.[field])
-      if (id) data[field] = id
-    }
-    if (Object.keys(data).length) record.data = data
-    if (
-      record.title.length > 512
-      || record.body.length > 4096
-      || record.title.includes("\0")
-      || record.body.includes("\0")
-      || (record.groupKey != null
-        && (record.groupKey.length > 512
-          || hasControlCharacter(record.groupKey)))
-      || jsonByteLength(record) > NATIVE_NOTIFICATION_RECORD_BYTES
-    ) {
-      throw new NotificationNativeError(
-        "NATIVE_NOTIFICATION_RECORD_TOO_LARGE",
-        "Notification cannot fit the native record contract",
-        413,
-      )
-    }
-    return record
-  }
-
-  async listNativePage(
-    query: NativeNotificationQuery = {},
-  ): Promise<NativeNotificationPage> {
-    await this.notificationWriteTail
-    if (this.persistenceUncertain || this.stopped) {
-      throw new NotificationNativeError(
-        "NOTIFICATION_INBOX_UNAVAILABLE",
-        "Notification inbox is not durably available",
-        503,
-      )
-    }
-    if (query.nativeEpoch != null && query.nativeEpoch !== this.nativeEpoch) {
-      throw new NotificationNativeError(
-        "NATIVE_NOTIFICATION_EPOCH_CHANGED",
-        "Notification inbox epoch changed",
-        409,
-      )
-    }
-    const after = query.afterSequence ?? 0,
-      through = query.throughSequence ?? this.nativeSequence
-    const limit = query.limit ?? NATIVE_NOTIFICATION_PAGE_LIMIT
-    if (
-      ![after, through].every(
-        (value) => Number.isSafeInteger(value) && value >= 0,
-      )
-      || through < after
-      || through > this.nativeSequence
-      || !Number.isSafeInteger(limit)
-      || limit < 1
-      || limit > NATIVE_NOTIFICATION_PAGE_LIMIT
-      || ((after > 0 || query.throughSequence != null) && !query.nativeEpoch)
-    ) {
-      throw new NotificationNativeError(
-        "INVALID_NATIVE_NOTIFICATION_CURSOR",
-        "Invalid native notification cursor or limit",
-      )
-    }
-    const page: NativeNotificationPage = {
-      notifications: [],
-      nativeEpoch: this.nativeEpoch,
-      throughSequence: through,
-      nextSequence: through,
-      complete: true,
-      unreadCount: this.getUnreadCount(),
-      serviceStatus: "ready",
-    }
-    for (const n of this.notifications) {
-      const sequence = this.nativeSequences[n.id]
-      if (sequence <= after || sequence > through) continue
-      if (page.notifications.length >= limit) {
-        page.complete = false
-        break
-      }
-      const projected = this.projectNative(n)
-      page.notifications.push(projected)
-
-      if (jsonByteLength(page) + 1 > NATIVE_NOTIFICATION_PAGE_BYTES) {
-        page.notifications.pop()
-        if (!page.notifications.length) {
-          throw new NotificationNativeError(
-            "NATIVE_NOTIFICATION_RECORD_TOO_LARGE",
-            "Notification cannot fit a native page",
-            413,
-          )
-        }
-        page.complete = false
-        break
-      }
-    }
-    if (!page.complete) {
-      page.nextSequence = page.notifications[page.notifications.length - 1].nativeSequence
-    }
-    if (!page.complete && page.nextSequence <= after) {
-      throw new NotificationNativeError(
-        "INVALID_NATIVE_NOTIFICATION_CURSOR",
-        "Native page did not advance",
-        503,
-      )
-    }
-    return page
+  listNativePage(query: NativeNotificationQuery = {}): Promise<NativeNotificationPage> {
+    return settled(listNativePage(this.inbox, query))
   }
 
   list(query: NotificationQuery = {}): AgentNotification[] {
     const now = Date.now()
-    let result = this.notifications.filter((n) => !isExpired(n, now)).reverse()
+    let result = this.inbox.notifications.filter((n) => !isExpired(n, now)).reverse()
     if (query.unreadOnly) {
       result = result.filter((n) => !n.readAt)
     }
@@ -784,176 +849,43 @@ export class NotificationService extends Service {
     if (typeof query.limit === "number" && query.limit >= 0) {
       result = result.slice(0, query.limit)
     }
-    return result.map((n) => this.withNativeCoordinates(n))
+    return result.map((n) => withNativeCoordinates(this.inbox, n))
   }
 
   listIncludingExpired(): AgentNotification[] {
-    return this.notifications
-      .map((n) => this.withNativeCoordinates(n))
-      .reverse()
+    return listIncludingExpired(this.inbox)
   }
 
   getAvailableCapacity(): number {
     return Number.POSITIVE_INFINITY
   }
 
-  async listDurableIncludingExpired(): Promise<AgentNotification[]> {
-    let pending: Promise<void>
-    do {
-      pending = this.notificationWriteTail
-      await pending
-    } while (pending !== this.notificationWriteTail)
-    if (this.persistenceUncertain || this.stopped) {
-      throw new NotificationNativeError(
-        "NOTIFICATION_INBOX_UNAVAILABLE",
-        "Notification inbox is not durably available",
-        503,
-      )
-    }
-    return this.listIncludingExpired()
+  listDurableIncludingExpired(): Promise<AgentNotification[]> {
+    return settled(listDurableIncludingExpired(this.inbox))
   }
 
   getUnreadCount(): number {
-    const now = Date.now()
-    let count = 0
-    for (const n of this.notifications) {
-      if (!n.readAt && n.priority !== "low" && !isExpired(n, now)) count++
-    }
-    return count
+    return unreadCount(this.inbox)
   }
 
-  private resolveCoalescedData(
-    inputData: AgentNotification["data"],
-    superseded: AgentNotification | undefined,
-  ): AgentNotification["data"] {
-    const producerCount = inputData?.[NOTIFICATION_COUNT_KEY]
-
-    if (typeof producerCount === "number") {
-      return inputData
-    }
-
-    if (!superseded) {
-      return inputData
-    }
-    const priorCount = superseded.data?.[NOTIFICATION_COUNT_KEY]
-    const nextCount = (typeof priorCount === "number" ? priorCount : 1) + 1
-    return { ...(inputData ?? {}), [NOTIFICATION_COUNT_KEY]: nextCount }
+  markRead(id: string): Promise<boolean> {
+    return settled(enqueueWrite(this.inbox, markRead(this.inbox, id)))
   }
 
-  async markRead(id: string): Promise<boolean> {
-    return this.enqueueWrite(() => this.markReadSerialized(id))
+  markReadByGroupKey(groupKey: string): Promise<number> {
+    return settled(enqueueWrite(this.inbox, markReadByGroupKey(this.inbox, groupKey)))
   }
 
-  private async markReadSerialized(id: string): Promise<boolean> {
-    const notification = this.notifications.find((n) => n.id === id)
-    if (!notification || notification.readAt) {
-      return false
-    }
-    const updated = { ...notification, readAt: Date.now() }
-    this.notifications = this.notifications.map((entry) => entry.id === id ? updated : entry)
-    try {
-      await this.persist()
-    } catch (error) {
-      return this.failAfterMutationPersistence(error)
-    }
-    this.broadcast(updated, "notification_update")
-    return true
+  markAllRead(): Promise<number> {
+    return settled(enqueueWrite(this.inbox, markAllRead(this.inbox)))
   }
 
-  async markReadByGroupKey(groupKey: string): Promise<number> {
-    return this.enqueueWrite(() => this.markReadByGroupKeySerialized(groupKey))
+  remove(id: string): Promise<boolean> {
+    return settled(enqueueWrite(this.inbox, remove(this.inbox, id)))
   }
 
-  private async markReadByGroupKeySerialized(
-    groupKey: string,
-  ): Promise<number> {
-    if (!groupKey) {
-      return 0
-    }
-    const now = Date.now()
-    const changedNotifications: AgentNotification[] = []
-    this.notifications = this.notifications.map((entry) => {
-      if (entry.groupKey !== groupKey || entry.readAt) return entry
-      const changed = { ...entry, readAt: now }
-      changedNotifications.push(changed)
-      return changed
-    })
-    if (changedNotifications.length > 0) {
-      try {
-        await this.persist()
-      } catch (error) {
-        return this.failAfterMutationPersistence(error)
-      }
-      for (const n of changedNotifications) {
-        this.broadcast(n, "notification_update")
-      }
-    }
-    return changedNotifications.length
-  }
-
-  async markAllRead(): Promise<number> {
-    return this.enqueueWrite(() => this.markAllReadSerialized())
-  }
-
-  private async markAllReadSerialized(): Promise<number> {
-    const updated: AgentNotification[] = []
-    let changed = 0
-    const now = Date.now()
-    this.notifications = this.notifications.map((entry) => {
-      if (entry.readAt) return entry
-      changed++
-      const notification = { ...entry, readAt: now }
-      updated.push(notification)
-      return notification
-    })
-    if (changed > 0) {
-      try {
-        await this.persist()
-      } catch (error) {
-        return this.failAfterMutationPersistence(error)
-      }
-    }
-    for (const notification of updated) {
-      this.broadcast(notification, "notification_update")
-    }
-    return changed
-  }
-
-  async remove(id: string): Promise<boolean> {
-    return this.enqueueWrite(() => this.removeSerialized(id))
-  }
-
-  private async removeSerialized(id: string): Promise<boolean> {
-    const notification = this.notifications.find((entry) => entry.id === id)
-    const before = this.notifications.length
-    this.notifications = this.notifications.filter((n) => n.id !== id)
-    const removed = this.notifications.length !== before
-    if (removed) {
-      try {
-        await this.persist()
-      } catch (error) {
-        return this.failAfterMutationPersistence(error)
-      }
-      if (notification) {
-        this.broadcast(notification, "notification_update", true)
-      }
-    }
-    return removed
-  }
-
-  async clear(): Promise<void> {
-    return this.enqueueWrite(async () => {
-      const removed = this.notifications
-      this.notifications = []
-      try {
-        await this.persist()
-      } catch (error) {
-        return this.failAfterMutationPersistence(error)
-      }
-      for (const notification of removed) {
-        this.broadcast(notification, "notification_update", true)
-      }
-    })
+  clear(): Promise<void> {
+    return settled(enqueueWrite(this.inbox, clear(this.inbox)))
   }
 }
 

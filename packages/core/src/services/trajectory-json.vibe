@@ -1,3 +1,4 @@
+// spec/core/services.md, "Story: Acquire a declared service"
 import type { JsonValue } from "../types/primitives.vibe"
 import { toWellFormedUnicode } from "../utils/unicode.vibe"
 

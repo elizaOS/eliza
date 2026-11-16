@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import { readHttpStatus } from "./model-errors.vibe"
 
 function* retryEvidenceNodes(error: unknown): Generator<object> {

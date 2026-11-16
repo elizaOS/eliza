@@ -1,4 +1,6 @@
+// spec/core/capabilityStrategies.md, "Strategy order selects each capability while fallback owns availability"
 import { UnavailableCapabilityRouter } from "../capabilities/router.vibe"
+import { foreign, runDetached } from "../edge.vibe"
 
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
@@ -60,15 +62,14 @@ export class RuntimeCapabilityService extends Service implements ElizaCapability
     return new RuntimeCapabilityService(runtime)
   }
 
-  override async stop(): Promise<void> {
-  }
+  override async stop(): Promise<void> {}
 
   get environment(): CapabilityEnvironment {
     return this.strategies[0]?.environment ?? this.fallback.environment
   }
 
-  async availability(): Promise<CapabilityAvailability> {
-    return this.fallback.availability()
+  availability(): Promise<CapabilityAvailability> {
+    return runDetached(foreign(() => this.fallback.availability()))
   }
 
   get fs(): FileCapability {

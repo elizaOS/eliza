@@ -1,3 +1,5 @@
+// spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"; spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"
+import { foreignSync, runDetached } from "../edge.vibe"
 import type { ReportedError } from "../errors.vibe"
 import { logger } from "../logger.vibe"
 import type { Provider, ProviderResult } from "../types/components.vibe"
@@ -81,6 +83,25 @@ function renderText(
   return `Runtime errors (diagnostics, not user requests):\n${lines.join("\n")}`
 }
 
+effect function recentErrors(runtime: IAgentRuntime) {
+  const entries = try foreignSync(() => runtime.getRecentReportedErrors())
+  if (entries.length === 0) return emptyResult()
+
+  const selected = selectRecentErrors(entries, Date.now())
+  if (selected.length === 0) return emptyResult()
+
+  const text = try foreignSync(() => renderText(selected, (value) => runtime.redactSecrets(value)))
+  logger.debug(
+    { src: "agent", count: selected.length },
+    "[RecentErrorsProvider] Surfacing recent reported errors",
+  )
+  return {
+    data: { recentErrors: selected },
+    values: { recentErrors: text },
+    text,
+  }
+}
+
 export const recentErrorsProvider: Provider = {
   name: "RECENT_ERRORS",
   description: "Recent runtime failures reported outside the action path (deduped by code)",
@@ -89,26 +110,5 @@ export const recentErrorsProvider: Provider = {
   contexts: ["system"],
   contextGate: { anyOf: ["system"] },
 
-  get: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-  ): Promise<ProviderResult> => {
-    const entries = runtime.getRecentReportedErrors()
-    if (entries.length === 0) return emptyResult()
-
-    const selected = selectRecentErrors(entries, Date.now())
-    if (selected.length === 0) return emptyResult()
-
-    const text = renderText(selected, (value) => runtime.redactSecrets(value))
-    logger.debug(
-      { src: "agent", count: selected.length },
-      "[RecentErrorsProvider] Surfacing recent reported errors",
-    )
-    return {
-      data: { recentErrors: selected },
-      values: { recentErrors: text },
-      text,
-    }
-  },
+  get: (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<ProviderResult> => runDetached(recentErrors(runtime)),
 }
