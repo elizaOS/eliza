@@ -21,6 +21,7 @@ import { canonical, check as conformanceCheck, ConformanceError, departure, repl
 import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
 import { mirrorGen } from "./units.ts";
 import { conformance as checkTraces, conformanceFound } from "./conform.ts";
+import { search } from "./simulate.ts";
 import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./spec.ts";
 
 const project = path.join(import.meta.dirname, "..");
@@ -511,6 +512,17 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     const { failed, text } = await run(oneRule("t", "Counting", quint));
     assert.ok(failed.includes("always"), text);
     assert.ok(!failed.includes("sometimes"), text);
+  });
+
+  test("a deep witness is found in the short sweep before the full search", async () => {
+    const quint = "pure val initial: int = 0\npure def up(n: int): int = n + 1\npure def sometimesLate(n: int): bool = n == 38";
+    const root = oneRule("t", "Counting", quint);
+    const spec = readSpecs(root)[0];
+    const model = await gen(root, spec);
+    const result = await search(root, model, "never_sometimesLate", "step", [20, 40], 180);
+    assert.equal(result.broken, true, result.again);
+    assert.match(result.again, /--max-samples 32 --max-steps 40\b/);
+    assert.equal(result.traces[0]?.at(-1)?.state, 38);
   });
 
   test("hand-written code that changes what it is checked against is refused or flagged", async () => {
