@@ -521,6 +521,7 @@ lemma settleEnsure_ensures(s: PluginServices, callId: int)
     core__serviceInstances_settleAcquire_ensures(s.services, callId);
     PluginRetirementChildRulesMatchImportedInvariants(after);
     PluginServiceFrameRetainsStopReceipts(s, after);
+    PluginReceiptsRetainDeclaredType(s, after);
     PluginAcquireSettlementPreservesTypeStatus(s, callId);
   }
 }
@@ -1188,7 +1189,9 @@ lemma PluginServiceFrameKeepsLocalRules(s: PluginServices, after: PluginServices
   requires inv(s) && after == s.(services := after.services)
   requires after.services.objects == s.services.objects && |after.services.classes| == |s.services.classes|
   requires forall i | 0 <= i < |s.services.classes| ::
-    after.services.classes[i].registered == s.services.classes[i].registered
+    after.services.classes[i].id == s.services.classes[i].id
+      && after.services.classes[i].serviceType == s.services.classes[i].serviceType
+      && after.services.classes[i].registered == s.services.classes[i].registered
       && after.services.classes[i].live == s.services.classes[i].live
   requires after.services.declarations == s.services.declarations && after.services.stopped == s.services.stopped
   requires forall r | r in s.retirements ::
@@ -1203,6 +1206,7 @@ lemma PluginServiceFrameKeepsLocalRules(s: PluginServices, after: PluginServices
   hide *;
   reveal inv(), alwaysLiveClassOwnerUnique(), alwaysServiceOwnerEpochExists(), alwaysRetirementsFollowTypePlan();
   reveal alwaysNoOrphanInstance(), alwaysRetiredUndeclaredTypeIsUnknown(), alwaysSealedOwnedClassesStable();
+  PluginReceiptsRetainDeclaredType(s, after);
   forall obj | obj in after.services.objects
     ensures obj.stopCalls > 0
       || (exists c | c in after.services.classes :: c.live == obj.id && c.registered)
@@ -1384,6 +1388,7 @@ lemma PluginOwnedClassRegistrationPreservesPluginRules(s: PluginServices, epochI
   reveal alwaysNoOrphanInstance(), alwaysRetiredUndeclaredTypeIsUnknown();
   var after := registerOwnedClass(s, epochId, classId, serviceType, hasStopHook);
   PluginRetirementStartActiveEpochPositive(s, epochId);
+  PluginRegistrationAddsReceiptWithClassType(s, epochId, classId, serviceType, hasStopHook);
   PluginServiceFrameRetainsStopReceipts(s, after);
   PluginOwnedClassRegistrationRetainsUniqueLiveOwners(s, after, OwnedClass(epochId, classId, serviceType, hasStopHook));
   forall o | o in after.services.objects && o.stopCalls <= 0
@@ -1459,7 +1464,9 @@ lemma failClassStart_ensures(s: PluginServices, attemptId: int, errorId: string)
   if inv(s) && canFailClassStart(s, attemptId, errorId) {
     var after := failClassStart(s, attemptId, errorId);
     forall i | 0 <= i < |s.services.classes|
-      ensures after.services.classes[i].registered == s.services.classes[i].registered
+      ensures after.services.classes[i].id == s.services.classes[i].id
+        && after.services.classes[i].serviceType == s.services.classes[i].serviceType
+        && after.services.classes[i].registered == s.services.classes[i].registered
         && after.services.classes[i].live == s.services.classes[i].live
     {}
     PluginServiceFrameKeepsLocalRules(s, after);
@@ -1486,7 +1493,9 @@ lemma finishLateStart_ensures(s: PluginServices, attemptId: int)
   if inv(s) && canFinishLateStart(s, attemptId) {
     var after := finishLateStart(s, attemptId);
     forall i | 0 <= i < |s.services.classes|
-      ensures after.services.classes[i].registered == s.services.classes[i].registered
+      ensures after.services.classes[i].id == s.services.classes[i].id
+        && after.services.classes[i].serviceType == s.services.classes[i].serviceType
+        && after.services.classes[i].registered == s.services.classes[i].registered
         && after.services.classes[i].live == s.services.classes[i].live
     {}
     PluginServiceFrameKeepsLocalRules(s, after);
@@ -1513,7 +1522,9 @@ lemma finishClassObserver_ensures(s: PluginServices, attemptId: int, ok: bool)
   if inv(s) && canFinishClassObserver(s, attemptId, ok) {
     var after := finishClassObserver(s, attemptId, ok);
     forall i | 0 <= i < |s.services.classes|
-      ensures after.services.classes[i].registered == s.services.classes[i].registered
+      ensures after.services.classes[i].id == s.services.classes[i].id
+        && after.services.classes[i].serviceType == s.services.classes[i].serviceType
+        && after.services.classes[i].registered == s.services.classes[i].registered
         && after.services.classes[i].live == s.services.classes[i].live
     {}
     PluginServiceFrameKeepsLocalRules(s, after);
@@ -1758,6 +1769,7 @@ lemma PluginStopObjectUpdatePreservesReceipts(s: PluginServices, after: PluginSe
   reveal alwaysLiveClassOwnerUnique(), alwaysServiceOwnerEpochExists(), alwaysRetirementsFollowTypePlan();
   reveal alwaysNoOrphanInstance(), alwaysRetiredUndeclaredTypeIsUnknown(), core__serviceInstances_serviceTypeEntry();
   reveal alwaysSealedOwnedClassesStable();
+  PluginReceiptsRetainDeclaredType(s, after);
   forall obj | obj in after.services.objects
     ensures obj.stopCalls > 0
       || (exists c | c in after.services.classes :: c.live == obj.id && c.registered)
@@ -1909,7 +1921,8 @@ lemma PluginAdmissionFoldProjection(rows: seq<core__serviceInstances_ServiceDecl
     after.(classes := s.classes, attempts := s.attempts, nextAttempt := s.nextAttempt) == s
       && |after.classes| == |s.classes|
       && (forall i | 0 <= i < |s.classes| ::
-        after.classes[i].registered == s.classes[i].registered && after.classes[i].live == s.classes[i].live)
+        after.classes[i].id == s.classes[i].id && after.classes[i].serviceType == s.classes[i].serviceType
+          && after.classes[i].registered == s.classes[i].registered && after.classes[i].live == s.classes[i].live)
       && ((forall d | d in rows :: d.serviceType != serviceType) ==> after == s)
 {
   hide *;
@@ -1931,7 +1944,8 @@ lemma PluginAdmissionFoldProjection(rows: seq<core__serviceInstances_ServiceDecl
     var after := visit(middle, last);
     assert rows == prior + [last] && result == after;
     forall i | 0 <= i < |s.classes|
-      ensures after.classes[i].registered == s.classes[i].registered && after.classes[i].live == s.classes[i].live
+      ensures after.classes[i].id == s.classes[i].id && after.classes[i].serviceType == s.classes[i].serviceType
+          && after.classes[i].registered == s.classes[i].registered && after.classes[i].live == s.classes[i].live
     {}
     if forall d | d in rows :: d.serviceType != serviceType {
       assert forall d | d in prior :: d.serviceType != serviceType;
@@ -1946,7 +1960,8 @@ lemma PluginAdmissionProjection(s: core__serviceInstances_ServiceInstances, call
     admitted.objects == s.objects && admitted.declarations == s.declarations && admitted.stopped == s.stopped
       && |admitted.classes| == |s.classes|
       && (forall i | 0 <= i < |s.classes| ::
-        admitted.classes[i].registered == s.classes[i].registered && admitted.classes[i].live == s.classes[i].live)
+        admitted.classes[i].id == s.classes[i].id && admitted.classes[i].serviceType == s.classes[i].serviceType
+          && admitted.classes[i].registered == s.classes[i].registered && admitted.classes[i].live == s.classes[i].live)
       && (forall query | query != serviceType || !(exists d :: d in s.declarations && d.serviceType == query) ::
         core__serviceInstances_serviceTypeEntry(admitted, query).status == core__serviceInstances_serviceTypeEntry(s, query).status)
 {
@@ -2052,6 +2067,92 @@ lemma resumeEnsure_ensures(s: PluginServices, callId: int)
     PluginRetirementChildRulesMatchImportedInvariants(s);
     core__serviceInstances_resumeAcquire_ensures(s.services, callId);
     PluginRetirementChildRulesMatchImportedInvariants(after);
+  }
+}
+
+lemma PluginReceiptLookupPreservesClassType(before: core__serviceInstances_ServiceInstances,
+    after: core__serviceInstances_ServiceInstances, classId: int)
+  requires 0 < classId && core__serviceInstances_serviceClass(before, classId).id == classId
+  requires |before.classes| <= |after.classes| <= |before.classes| + 1
+  requires forall i | 0 <= i < |before.classes| ::
+    before.classes[i].id == after.classes[i].id && before.classes[i].serviceType == after.classes[i].serviceType
+  ensures core__serviceInstances_serviceClass(after, classId).id == classId &&
+    core__serviceInstances_serviceClass(after, classId).serviceType == core__serviceInstances_serviceClass(before, classId).serviceType
+{
+  hide *;
+  reveal core__serviceInstances_serviceClass(), core__serviceInstances_noClass, ProofLib.Filter();
+  var byId := (cls: core__serviceInstances_ServiceClassEntry) => cls.id == classId;
+  var typeIdentity := (prior: core__serviceInstances_ServiceClassEntry, current: core__serviceInstances_ServiceClassEntry) =>
+    prior.id == current.id && prior.serviceType == current.serviceType;
+  var prefix := after.classes[..|before.classes|];
+  var oldMatches := ProofLib.Filter(byId, before.classes);
+  var newPrefix := ProofLib.Filter(byId, prefix);
+  ProofLib.FilterPointwise(byId, byId, typeIdentity, before.classes, prefix);
+  assert |oldMatches| > 0 && |newPrefix| > 0;
+  if |before.classes| < |after.classes| {
+    var added := after.classes[|before.classes|];
+    assert after.classes == prefix + [added];
+    ProofLib.FilterAppend(byId, prefix, added);
+  } else {
+    assert after.classes == prefix;
+  }
+  var matches := ProofLib.Filter(byId, after.classes);
+  assert |matches| > 0 && matches[0] == newPrefix[0];
+}
+
+lemma PluginReceiptsRetainDeclaredType(s: PluginServices, after: PluginServices)
+  requires alwaysServiceOwnerEpochExists(s)
+  requires s.ownership == after.ownership && s.plugins == after.plugins
+  requires |s.services.classes| <= |after.services.classes| <= |s.services.classes| + 1
+  requires forall i | 0 <= i < |s.services.classes| ::
+    s.services.classes[i].id == after.services.classes[i].id && s.services.classes[i].serviceType == after.services.classes[i].serviceType
+  ensures alwaysServiceOwnerEpochExists(after)
+{
+  hide *;
+  reveal alwaysServiceOwnerEpochExists();
+  forall owner | owner in after.ownership
+    ensures owner.classId > 0 && core__pluginRegistry_epoch(after.plugins, owner.epochId).id == owner.epochId
+    ensures core__serviceInstances_serviceClass(after.services, owner.classId).id == owner.classId &&
+      core__serviceInstances_serviceClass(after.services, owner.classId).serviceType == owner.serviceType
+  {
+    PluginReceiptLookupPreservesClassType(s.services, after.services, owner.classId);
+  }
+}
+
+lemma PluginRegistrationAddsReceiptWithClassType(s: PluginServices, epochId: int, classId: int,
+    serviceType: string, hasStopHook: bool)
+  requires alwaysServiceOwnerEpochExists(s) && canRegisterOwnedClass(s, epochId, classId, serviceType, hasStopHook)
+  requires core__pluginRegistry_epoch(s.plugins, epochId).id == epochId
+  ensures alwaysServiceOwnerEpochExists(registerOwnedClass(s, epochId, classId, serviceType, hasStopHook))
+{
+  hide *;
+  reveal alwaysServiceOwnerEpochExists(), canRegisterOwnedClass(), registerOwnedClass();
+  reveal core__serviceInstances_canRegisterClass(), core__serviceInstances_registerClass(), core__serviceInstances_registerType();
+  reveal core__serviceInstances_putType(), core__serviceInstances_serviceClass(), core__serviceInstances_noClass, ProofLib.Filter();
+  var after := registerOwnedClass(s, epochId, classId, serviceType, hasStopHook);
+  var ownerView := after.(ownership := s.ownership);
+  forall i | 0 <= i < |s.services.classes|
+    ensures after.services.classes[i].id == s.services.classes[i].id &&
+      after.services.classes[i].serviceType == s.services.classes[i].serviceType
+  {}
+  PluginReceiptsRetainDeclaredType(s, ownerView);
+  var byId := (cls: core__serviceInstances_ServiceClassEntry) => cls.id == classId;
+  var known := core__serviceInstances_serviceClass(s.services, classId);
+  if known.id == 0 {
+    var added := after.services.classes[|s.services.classes|];
+    assert after.services.classes == s.services.classes + [added] && added.id == classId && added.serviceType == serviceType;
+    var prior := ProofLib.Filter(byId, s.services.classes);
+    if |prior| > 0 {
+      ProofLib.FilterMember(byId, s.services.classes, prior[0]);
+      assert false;
+    }
+    ProofLib.FilterAppend(byId, s.services.classes, added);
+  } else {
+    var prior := ProofLib.Filter(byId, s.services.classes);
+    assert |prior| > 0;
+    ProofLib.FilterMember(byId, s.services.classes, prior[0]);
+    assert known.id == classId && known.serviceType == serviceType;
+    PluginReceiptLookupPreservesClassType(s.services, after.services, classId);
   }
 }
 
@@ -2235,6 +2336,7 @@ lemma finishClassStart_ensures(s: PluginServices, attemptId: int, instanceId: in
     PluginRetirementChildRulesMatchImportedInvariants(s);
     core__serviceInstances_returnInstance_ensures(s.services, attemptId, instanceId);
     PluginRetirementChildRulesMatchImportedInvariants(after);
+    PluginReturningStartRetainsReceiptTypes(s, attemptId, instanceId);
     PluginReturningStartKeepsTypeStatus(s, attemptId, instanceId);
     PluginReturningStartKeepsObjectOwners(s, attemptId, instanceId);
     PluginReturningStartKeepsStopReceipts(s, attemptId, instanceId);
@@ -2263,4 +2365,19 @@ lemma resolveNextStart_ensures(s: PluginServices, ok: bool, instanceId: int, err
       failClassStart_ensures(s, attemptId, errorId);
     }
   }
+}
+
+lemma PluginReturningStartRetainsReceiptTypes(s: PluginServices, attemptId: int, instanceId: int)
+  requires alwaysServiceOwnerEpochExists(s)
+  ensures alwaysServiceOwnerEpochExists(finishClassStart(s, attemptId, instanceId))
+{
+  hide *;
+  reveal finishClassStart(), core__serviceInstances_returnInstance(), core__serviceInstances_stopObjectOnce();
+  reveal core__serviceInstances_setTypeStatus(), core__serviceInstances_putType(), core__serviceInstances_replacePublication();
+  var after := finishClassStart(s, attemptId, instanceId);
+  forall i | 0 <= i < |s.services.classes|
+    ensures after.services.classes[i].id == s.services.classes[i].id &&
+      after.services.classes[i].serviceType == s.services.classes[i].serviceType
+  {}
+  PluginReceiptsRetainDeclaredType(s, after);
 }

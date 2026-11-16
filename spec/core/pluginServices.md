@@ -8,6 +8,10 @@ As a host I can unload a plugin while original starts and shared stop promises a
 
 ### Plugin epochs own declaration receipts while classes share instance identity
 
+A declaration receipt retains its plugin epoch, class identity, and service
+type. A class keeps that type after withdrawal, so retirement uses the
+same service-type bucket that owned the declaration when it was registered.
+
 ```quint
 import pluginRegistry as E from "./pluginRegistry"
 import serviceInstances as I from "./serviceInstances"
@@ -65,7 +69,9 @@ pure def canSettleEnsure(s: PluginServices, callId: int): bool = I::canSettleAcq
 pure def settleEnsure(s: PluginServices, callId: int): PluginServices = { ...s, services: I::settleAcquire(s.services, callId) }
 pure def currentClassOwner(s: PluginServices, classId: int): int = s.liveOwners.select(o => o.classId == classId).listMap(o => o.epochId).nthOr(0, 0)
 pure def alwaysLiveClassOwnerUnique(s: PluginServices): bool = s.liveOwners.every(o => s.ownership.includes(o) and s.liveOwners.select(other => other.classId == o.classId).length() == 1)
-pure def alwaysServiceOwnerEpochExists(s: PluginServices): bool = s.ownership.every(o => E::epoch(s.plugins, o.epochId).id == o.epochId)
+pure def alwaysServiceOwnerEpochExists(s: PluginServices): bool = s.ownership.every(o =>
+  E::epoch(s.plugins, o.epochId).id == o.epochId and o.classId > 0 and
+    I::serviceClass(s.services, o.classId).id == o.classId and I::serviceClass(s.services, o.classId).serviceType == o.serviceType)
 pure def alwaysChildLifecyclesValid(s: PluginServices): bool = E::alwaysEpochIdentityUnique(s.plugins) and E::alwaysOneActiveEpochPerName(s.plugins) and E::alwaysEpochOutcomeHonest(s.plugins) and I::alwaysTypeEntriesUnique(s.services) and I::alwaysTypeReferencesRetained(s.services) and I::alwaysAggregateAndLoadIdsUnique(s.services) and I::alwaysAcquisitionIdsUnique(s.services) and I::alwaysInitWaitingHasNoAggregate(s.services) and I::alwaysClassAndObjectIdentities(s.services) and I::alwaysPendingAttemptsOwned(s.services) and I::alwaysCapturedAttemptsExist(s.services) and I::alwaysDeclarationsMatch(s.services) and I::alwaysObjectStopOnce(s.services) and I::alwaysClassOwnsKnownObjects(s.services) and I::alwaysPublicationIdentitiesValid(s.services) and I::alwaysAttemptGeneration(s.services) and I::alwaysStoppedHasNoPublication(s.services) and I::alwaysFailedTypeHasNoPublication(s.services)
 pure def sometimesTwoPluginsOwnServices(s: PluginServices): bool = s.ownership.some(a => s.ownership.some(b => a.epochId != b.epochId and I::serviceClass(s.services, a.classId).live != 0 and I::serviceClass(s.services, b.classId).live != 0))
 ```
