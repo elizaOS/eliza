@@ -171,7 +171,7 @@ it.live('a spec is published with its origins, checked, and synced by an agent (
 
 it.live('sign-off records the review and a disk write rechecks it (spec/index.md, "Story: Sign off"; spec/index.md, "Story: Check")', effect () => { provide services { try scoped(effect {
   const fs = try FileSystem.FileSystem
-  const text = try fs.readFileString(`${TOOLS}/fixtures/door.md`)
+  const text = "# Door\n"
   const root = try scratch({ "spec/door.md": text })
   const { post, project, settled } = try studioOn(root)
   const checking = (try post("check", {})).status
