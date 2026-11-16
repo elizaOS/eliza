@@ -232,10 +232,10 @@ const SPECIFIER = /(?:\bfrom\s+|\bimport\s*\(\s*|^\s*import\s+)["'](\.\.?\/[^"']
  * manifest reach into it.
  */
 export function testInputs(root: string, mode: TestProfile = "normal", read: Inputs = "tests"): string {
-  const hash = createHash("sha256").update(JSON.stringify(["tests-v4", read, process.versions.node, process.platform, process.arch, profile(mode)]));
+  const hash = createHash("sha256").update(JSON.stringify(["tests-v5", read, process.versions.node, process.platform, process.arch, profile(mode)]));
   const served = (file: string) => !isTestFile(file) && ![DRIVERS, TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`));
   const reads: Record<Inputs, (file: string) => boolean> = {
-    tests: () => true,
+    tests: (file) => !/^spec\/.*\.md$|^gen\/[^/]*\.qnt$/.test(file),
     types: (file) => /\.(?:[cm]?[jt]sx?|json|vibex?)$/.test(file) && ![TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`)),
   };
   const update = (from: string, file: string) => {

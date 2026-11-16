@@ -150,6 +150,7 @@
         "!vibestack/{examples,studio}/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
         "spec/**",
+        "!spec/**/*.md",
         "src/**",
         "test/**"
       ],
