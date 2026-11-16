@@ -43,7 +43,6 @@
   },
   "exports": {
     "./content-context": "./suites/content-context/index.ts",
-    "./content-context/fixtures": "./suites/content-context/testing/index.ts",
     "./planner-optimization": "./suites/planner-optimization/index.ts"
   }
 }

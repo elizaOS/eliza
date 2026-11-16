@@ -47,10 +47,7 @@
     },
     "scripts": {
       "coreBuild": true,
-      "testSerial": true,
-      "contentContextEvidence": {
-        "role": "coding-tools"
-      }
+      "testSerial": true
     }
   },
   "keywords": [
