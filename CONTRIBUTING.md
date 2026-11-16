@@ -81,13 +81,16 @@ Node runs all of it directly; `pnpm build` compiles it for the packaged `spec` c
 it is reported, then that object as its last line. Each result has `ok`, `stage` (a stage, or `skipped`), `summary`,
 `detail` and, when it concerns them, `where` and `rules` (each rule as `{ file, key }`); `next` is the line the command
 line ends with. `pnpm selftest` builds scratch projects from this project's spec or from `vibestack/fixtures/`, breaks
-one thing at a time and asserts which stage catches each; it is a cached task of `pnpm verify`. What a change to the
+one thing at a time and asserts which stage catches each. It runs as three cached tasks, each keyed by what its tests
+read: `selftest:docs` the documents against every file they can name, `selftest:examples` each standalone example
+against its own files and the tools, and `selftest:tools` everything else, which no example but the order one reaches.
+`pnpm selftest` runs all three through Turborepo, as `pnpm verify` does. What a change to the
 tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENTS.md#definition-of-done).
 
 ## Releasing
 
 Set `version` in the root `package.json`, merge to `main`, and push the tag `v<version>` from it.
-`.github/workflows/release.yml` builds, packs with `pnpm pack`, runs `pnpm selftest` and attaches the tarball to a GitHub release of that tag.
+`.github/workflows/release.yml` builds, packs with `pnpm pack`, runs `pnpm selftest`, which the shared cache answers for a commit CI has verified, and attaches the tarball to a GitHub release of that tag.
 A project installs it as [README.md, "Using it from another package"](README.md#using-it-from-another-package) says.
 ## Architecture
 
@@ -263,7 +266,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 |---|---|
 | Pull request or push to `develop` or `main` | `pnpm verify --continue`: build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and selftest |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `develop` |
-| A `v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest`, and the tarball attached to a GitHub release |
+| A `v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest` read from the shared cache, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
@@ -271,11 +274,12 @@ exploration is, as an artifact.
 
 Each run restores pnpm's store, every `.spec-cache/`, and Quint's evaluator.
 Turborepo shares task results through the private Cloudflare/R2 cache.
-The task entry point disables Turbo telemetry. Selftest waits for the root and
+The task entry point disables Turbo telemetry. `selftest:tools` waits for the root and
 Studio test tasks so those integration journeys do not compete with it.
 Pull requests read shared results; only branch pushes receive the publishing
 credential, protected by the `turbo-cache-publish` environment's branch
-policy. Newer commits replace an older run of the same pull request.
+policy. A pull request keeps its own Turborepo results in the GitHub cache
+instead, which only that pull request reads, so its next push reuses them. Newer commits replace an older run of the same pull request.
 Every pushed commit can finish. Completed tasks are shared through the cache.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials

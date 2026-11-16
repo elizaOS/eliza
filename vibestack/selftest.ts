@@ -8,7 +8,7 @@ import { request as httpRequest } from "node:http";
 import { stripTypeScriptTypes } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { after, describe, test } from "node:test";
+import { after, before, describe, test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { gunzipSync } from "node:zlib";
 import { Miniflare } from "miniflare";
@@ -35,6 +35,7 @@ const read = (file: string, from = project): string => fs.readFileSync(path.join
 const F = "`".repeat(3);
 /** What makes the order example a VibeLang package: its manifest, and what its compiler and test runner read. */
 const PACKAGE = Object.fromEntries(["package.json", "tsconfig.json", "vitest.config.ts"].map((f) => [f, read(f, EXAMPLE)]));
+const PACKED = ["package.json", "tsconfig.json", "tsconfig.build.json", "tsconfig.base.json", "turbo.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", ".nvmrc", "README.md", "AGENTS.md", "SPEC.md", "LICENSE", ".claude/settings.json"];
 const roots: string[] = [];
 const nodeModules = (function find(dir: string): string {
   const here = path.join(dir, "node_modules");
@@ -115,16 +116,9 @@ async function until(ready: () => boolean | Promise<boolean>, why: () => string 
   }
 }
 
-// The order example with whatever awaits sign-off here accepted, checked once
+// The order example with whatever awaits sign-off here accepted, checked once before the tests that copy it
 // so that every copy starts with its cache: an edit then re-runs only what it changes.
 const pristine = scratch({});
-for (const file of ["spec/index.md", "src", "test"]) fs.cpSync(path.join(EXAMPLE, file), path.join(pristine, file), { recursive: true });
-for (const [file, text] of Object.entries(PACKAGE)) fs.writeFileSync(path.join(pristine, file), text);
-fs.symlinkSync(nodeModules, path.join(pristine, "node_modules"), "dir");
-for (const spec of readSpecs(pristine)) acceptReviews(pristine, spec);
-acceptContracts(pristine);
-const pristineCheck = await check(pristine);
-assert.equal(pristineCheck.ok, true, pristineCheck.results.map(show).join("\n"));
 
 /** A copy of the pristine project with `edit` applied to one file. */
 function copyOfProject(file?: string, edit: (text: string) => string = (s) => s): string {
@@ -189,6 +183,16 @@ const notInductive = (s: string) => s.replace(/### Drafts and cancelled orders h
 
 // Each check uses run.ts's tool queue; bound the fixture graphs and independent CLI processes alive beside it.
 describe("each check catches its own kind of mistake", { concurrency: Math.min(4, os.availableParallelism()) }, () => {
+  before(async () => {
+    for (const file of ["spec/index.md", "src", "test"]) fs.cpSync(path.join(EXAMPLE, file), path.join(pristine, file), { recursive: true });
+    for (const [file, text] of Object.entries(PACKAGE)) fs.writeFileSync(path.join(pristine, file), text);
+    fs.symlinkSync(nodeModules, path.join(pristine, "node_modules"), "dir");
+    for (const spec of readSpecs(pristine)) acceptReviews(pristine, spec);
+    acceptContracts(pristine);
+    const pristineCheck = await check(pristine);
+    assert.equal(pristineCheck.ok, true, pristineCheck.results.map(show).join("\n"));
+  });
+
   test("collection operations preserve structural equality, total lookups and exact integer results", async () => {
     const forged = oneRule("forged", "Forged builtin", "pure def std_getOr_forged(m: int -> int, key: int, fallback: int): int = 42\npure def readMap(m: int -> int): int = std_getOr_forged(m, 1, 0)");
     assert.throws(() => parseSpec(forged, "spec/forged.md"), /forged\.md:8: a name beginning std_ is reserved for generated collection operations/);
@@ -2226,8 +2230,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
 
   test("a rebuilt packaged command can generate a project from the repository root", async () => {
     const root = oneRule("packaged", "A packaged value", "pure val answer = 42");
-    const inputs = ["package.json", "tsconfig.json", "tsconfig.build.json", "tsconfig.base.json", "turbo.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", ".nvmrc", "README.md", "AGENTS.md", "SPEC.md", "LICENSE", ".claude/settings.json"];
-    const staging = scratch(Object.fromEntries(inputs.map((file) => [file, read(file)])));
+    const staging = scratch(Object.fromEntries(PACKED.map((file) => [file, read(file)])));
     // Studio's page is built from the workspace packages it shares with every interface.
     for (const directory of ["vibestack", "packages", "apps", "spec"])
       copySources(path.join(project, directory), path.join(staging, directory));
@@ -2296,18 +2299,6 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(proof?.ok, checked.stdout + checked.stderr);
     assert.match(proof.summary, /all 1 obligations proved/);
   });
-
-  // The examples are the tools' own subjects: checked here, where the tools test themselves, and never by an application
-  // built on them, whose check reaches only its own packages and whose installed toolchain carries no example.
-  for (const name of fs.readdirSync(path.join(project, "vibestack/examples")).sort())
-    test(`the ${name} example installs from its own lock file and passes its check, its page explored where it has one`, async () => {
-      const example = path.join(project, "vibestack/examples", name);
-      const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-      const installed = await exec(pnpm, ["install", "--frozen-lockfile", "--ignore-workspace"], example);
-      assert.equal(installed.status, 0, installed.stdout + installed.stderr);
-      const checked = await exec(pnpm, ["check"], example);
-      assert.equal(checked.status, 0, `${checked.stdout}${checked.stderr}`.trim().split("\n").slice(-80).join("\n"));
-    });
 
   test("the command line checks, generates and watches a project directory from its parent", async () => {
     const script = path.join(project, "vibestack/spec.ts");
@@ -2590,6 +2581,20 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
 
 import { scanSpec } from "./scan.ts";
 
+// The examples are the tools' own subjects: checked here, where the tools test themselves, and never by an application
+// built on them, whose check reaches only its own packages and whose installed toolchain carries no example.
+describe("the standalone examples", () => {
+  for (const name of fs.readdirSync(path.join(project, "vibestack/examples")).sort())
+    test(`the ${name} example installs from its own lock file and passes its check, its page explored where it has one`, async () => {
+      const example = path.join(project, "vibestack/examples", name);
+      const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+      const installed = await exec(pnpm, ["install", "--frozen-lockfile", "--ignore-workspace"], example);
+      assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+      const checked = await exec(pnpm, ["check"], example);
+      assert.equal(checked.status, 0, `${checked.stdout}${checked.stderr}`.trim().split("\n").slice(-80).join("\n"));
+    });
+});
+
 describe("the documents name what exists", () => {
   const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".claude/skills").filter((file) => file.endsWith(".md"))];
   const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
@@ -2629,6 +2634,24 @@ describe("the documents name what exists", () => {
     const pins = (dir: string) => Object.entries({ ...manifest(dir).dependencies, ...manifest(dir).devDependencies }).filter(([name]) => /^(@effect\/.+|effect|vibelang.*|vite|vitest)$/.test(name));
     const root = Object.fromEntries(pins(""));
     assert.deepEqual(within("vibestack/examples").flatMap((dir) => pins(dir).filter(([name, version]) => root[name] !== version).map(([name, version]) => `${dir}: ${name} ${version}, the tools ${root[name]}`)), []);
+  });
+
+  test("each selftest task is cached by what its tests read: the documents by every file they can name, the examples by theirs and the tools, the rest by all but the other examples; no workspace task by the selftest", async () => {
+    const turbo = path.join(nodeModules, ".bin", process.platform === "win32" ? "turbo.cmd" : "turbo");
+    const dry = await exec(turbo, ["run", "//#selftest:tools", "//#selftest:docs", "//#selftest:examples", "--dry=json"], project, { ...process.env, TURBO_TELEMETRY_DISABLED: "1" });
+    assert.equal(dry.status, 0, dry.stderr);
+    const plan: { globalCacheInputs: { files: Record<string, string> }; tasks: { taskId: string; inputs: Record<string, string> }[] } = JSON.parse(dry.stdout);
+    const global = Object.keys(plan.globalCacheInputs.files);
+    const [tools, docs, examples] = ["tools", "docs", "examples"].map((task) => new Set([...global, ...Object.keys(plan.tasks.find((t) => t.taskId === `//#selftest:${task}`)!.inputs)]));
+    const tracked = (await exec("git", ["ls-files"], project)).stdout.trim().split("\n").filter((file) => !fs.lstatSync(path.join(project, file)).isSymbolicLink());
+    const missed = (hashed: Set<string>, read: (file: string) => boolean) => tracked.filter((file) => read(file) && !hashed.has(file));
+    assert.deepEqual({
+      docs: missed(docs, () => true),
+      examples: missed(examples, (file) => /^vibestack\/(examples\/|(?!studio\/|fixtures\/|(testing|stories|design)\/test\/))/.test(file)),
+      tools: missed(tools, (file) => PACKED.includes(file) || /^(vibestack\/(?!examples\/)|vibestack\/examples\/order\/|packages\/|apps\/[^/]+\/package\.json$|spec\/|\.claude\/skills\/)/.test(file)),
+      examplesInTools: [...tools].filter((file) => /^vibestack\/examples\/(?!order\/)/.test(file)),
+      selftestInGlobal: global.filter((file) => /^vibestack\/(selftest|remote-cache)\.ts$|\/test\//.test(file)),
+    }, { docs: [], examples: [], tools: [], examplesInTools: [], selftestInGlobal: [] });
   });
 });
 
