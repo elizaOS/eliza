@@ -1,21 +1,17 @@
-import { AsyncLocalStorage } from "node:async_hooks"
+// spec/core/concurrency.md, "Story: Own each room through durable settlement"; spec/core/concurrency.md, "Room leases admit bounded FIFO requests and one owner per room"; spec/core/concurrency.md, "Release closes write admission and waits for every admitted write"; spec/core/roomQueueObservers.md, "Story: Observe and drain room queues without racing their owners"; spec/core/roomQueueObservers.md, "Queue identities and idle promises follow actual admission and drain"; spec/core/roomQueueObservers.md, "Live telemetry observers finish nested emissions before resuming"
+import * as EffectSemaphore from "effect/Semaphore"
+import { Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 
-interface QueuedItem<T> {
-  fn: () => Promise<T>
-  resolve: (value: T) => void
-  reject: (error: unknown) => void
-  onAbort?: () => void
-  signal?: AbortSignal
-}
-
-export class RoomHandlerQueueAbortedError extends Error {
-  readonly roomId: string
+export class RoomHandlerQueueAbortedError extends Data.TaggedError("RoomHandlerQueueAbortedError")<{ readonly roomId: string }> {
+  override readonly name = "RoomHandlerQueueAbortedError"
 
   constructor(roomId: string, options?: ErrorOptions) {
-    super(`Room handler was cancelled while waiting for ${roomId}`, options)
-    this.name = "RoomHandlerQueueAbortedError"
-    this.roomId = roomId
+    super({ roomId })
+    this.message = `Room handler was cancelled while waiting for ${roomId}`
+    if (options && "cause" in options) {
+      Object.defineProperty(this, "cause", { value: options.cause, writable: true, configurable: true })
+    }
   }
 }
 
@@ -24,6 +20,8 @@ export const DEFAULT_ROOM_HANDLER_QUEUE_MAX_PENDING_TOTAL = 512
 export const DEFAULT_ROOM_HANDLER_QUEUE_MAX_ACTIVE_ROOMS = 256
 
 export class RoomHandlerQueueClosedError extends ElizaError {
+  override readonly _tag = "RoomHandlerQueueClosedError" as const
+
   constructor(reason: string) {
     super("Room handler queue is not accepting new work", {
       code: "ROOM_HANDLER_QUEUE_CLOSED",
@@ -34,6 +32,8 @@ export class RoomHandlerQueueClosedError extends ElizaError {
 }
 
 export class RoomHandlerQueueGlobalSaturatedError extends ElizaError {
+  override readonly _tag = "RoomHandlerQueueGlobalSaturatedError" as const
+
   constructor(
     readonly limitKind: "pending" | "rooms",
     readonly limit: number,
@@ -51,6 +51,7 @@ export class RoomHandlerQueueGlobalSaturatedError extends ElizaError {
 }
 
 export class RoomHandlerQueueSaturatedError extends ElizaError {
+  override readonly _tag = "RoomHandlerQueueSaturatedError" as const
   override readonly name = "RoomHandlerQueueSaturatedError"
   readonly roomId: string
   readonly maxPendingPerRoom: number
@@ -87,14 +88,34 @@ export interface RoomHandlerLease {
   release(): Promise<void>
 }
 
-interface RoomHandlerOwnershipContext {
+export interface RoomHandlerOwnershipContext {
   lease: RoomHandlerLease
   roomId: string
 }
 
 type AmbientLeases = ReadonlyMap<string, RoomHandlerLease>
 
-const roomHandlerOwnershipStorage = new AsyncLocalStorage<AmbientLeases>()
+module node {
+  import { AsyncLocalStorage } from "node:async_hooks"
+
+  export interface OwnershipStorage<T> {
+    run<R>(value: T, fn: () => R): R
+    /** @throws {never} */
+    current(): T | undefined
+  }
+
+  /** @throws {never} */
+  export function ownershipStorage<T>(): OwnershipStorage<T> {
+    const storage = new AsyncLocalStorage<T>()
+    return {
+      run: (value, fn) => storage.run(value, fn),
+      current: () => storage.getStore(),
+    }
+  }
+}
+import { ownershipStorage, type OwnershipStorage } from node
+
+const roomHandlerOwnershipStorage = ownershipStorage<AmbientLeases>()
 
 function crossRoomReentry(
   ownerRoomIds: readonly string[],
@@ -106,7 +127,14 @@ function crossRoomReentry(
   })
 }
 
-interface RunWithOptions {
+function leaseMismatch(roomId: string): ElizaError {
+  return new ElizaError("Room ownership capability is not live", {
+    code: "ROOM_HANDLER_LEASE_MISMATCH",
+    context: { roomId },
+  })
+}
+
+export interface RunWithOptions {
   signal?: AbortSignal
 }
 
@@ -116,481 +144,656 @@ export interface WithRoomHandlerLeaseOptions {
   lease?: RoomHandlerLease
 }
 
-class RoomQueue {
-  readonly roomId: string
-  private queue: QueuedItem<unknown>[] = []
-  private active: QueuedItem<unknown> | null = null
-  private idleWaiters: (() => void)[] = []
+type RoomWorkFailure = Foreign | RoomHandlerQueueAbortedError
 
-  constructor(roomId: string) {
-    this.roomId = roomId
-  }
+type RoomAdmissionFailure =
+  | RoomHandlerQueueAbortedError
+  | RoomHandlerQueueClosedError
+  | RoomHandlerQueueGlobalSaturatedError
+  | RoomHandlerQueueSaturatedError
 
-  get pendingCount(): number {
-    return this.queue.length + (this.active ? 1 : 0)
-  }
-
-  enqueue<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    if (signal?.aborted) {
-      return Promise.reject(
-        new RoomHandlerQueueAbortedError(this.roomId, {
-          cause: signal.reason,
-        }),
-      )
-    }
-    return new Promise<T>((resolve, reject) => {
-      const item: QueuedItem<unknown> = {
-        fn: fn as () => Promise<unknown>,
-        resolve: resolve as (value: unknown) => void,
-        reject,
-        signal,
-      }
-      if (signal) {
-        const onAbort = () => {
-          const index = this.queue.indexOf(item)
-          if (index < 0) return
-          this.queue.splice(index, 1)
-          item.reject(
-            new RoomHandlerQueueAbortedError(this.roomId, {
-              cause: signal.reason,
-            }),
-          )
-        }
-        item.onAbort = onAbort
-        signal.addEventListener("abort", onAbort, { once: true })
-      }
-      this.queue.push(item)
-      this.drain()
-    })
-  }
-
-  quiesce(): Promise<void> {
-    if (!this.active) return Promise.resolve()
-    return new Promise((resolve) => this.idleWaiters.push(resolve))
-  }
-
-  private drain(): void {
-    if (this.active) return
-    const next = this.queue.shift()
-    if (!next) {
-      for (const resolve of this.idleWaiters.splice(0)) resolve()
-      return
-    }
-    if (next.signal && next.onAbort) {
-      next.signal.removeEventListener("abort", next.onAbort)
-    }
-    this.active = next
-    Promise.resolve()
-      .then(() => next.fn())
-      .then(
-        (value) => {
-          next.resolve(value)
-          this.active = null
-          this.drain()
-        },
-        (error) => {
-          next.reject(error)
-          this.active = null
-          this.drain()
-        },
-      )
-  }
+interface QueuedItem {
+  readonly run: unknown!Foreign
+  readonly done: Deferred.Deferred<unknown, RoomWorkFailure>
+  readonly signal?: AbortSignal
+  onAbort?: () => void
 }
 
-export class RoomHandlerQueue {
-  private rooms = new Map<string, RoomQueue>()
-  private listeners = new Set<(event: RoomQueueEvent) => void>()
-  private activeLeases = new WeakMap<
-    RoomHandlerLease,
-    {
-      roomId: string
-      released: boolean
-      accepting: boolean
-      writerTail: Promise<void>
-    }
-  >()
+interface RoomQueue {
+  readonly roomId: string
+  readonly queue: QueuedItem[]
+  active: QueuedItem | null
+  readonly idleWaiters: Deferred.Deferred<void>[]
+}
+
+interface LeaseOwnership {
+  readonly roomId: string
+  released: boolean
+  accepting: boolean
+  readonly writers: EffectSemaphore.Semaphore
+}
+
+interface RoomQueueLimits {
   readonly maxPendingPerRoom: number
   readonly maxPendingTotal: number
   readonly maxActiveRooms: number
-  private admissionClosedReason: string | null = null
-  private readonly onListenerError?: (
-    error: unknown,
-    event: RoomQueueEvent,
-  ) => void
-  private readonly ownershipStorage: AsyncLocalStorage<AmbientLeases> | null
+}
 
-  constructor(options: RoomHandlerQueueOptions = {}) {
-    const maxPendingPerRoom = options.maxPendingPerRoom
-      ?? DEFAULT_ROOM_HANDLER_QUEUE_MAX_PENDING_PER_ROOM
-    if (!Number.isSafeInteger(maxPendingPerRoom) || maxPendingPerRoom < 1) {
-      throw new RangeError("maxPendingPerRoom must be a positive safe integer")
-    }
-    this.maxPendingPerRoom = maxPendingPerRoom
-    const maxPendingTotal = options.maxPendingTotal ?? DEFAULT_ROOM_HANDLER_QUEUE_MAX_PENDING_TOTAL
-    const maxActiveRooms = options.maxActiveRooms ?? DEFAULT_ROOM_HANDLER_QUEUE_MAX_ACTIVE_ROOMS
-    if (!Number.isSafeInteger(maxPendingTotal) || maxPendingTotal < 1) {
-      throw new RangeError("maxPendingTotal must be a positive safe integer")
-    }
-    if (!Number.isSafeInteger(maxActiveRooms) || maxActiveRooms < 1) {
-      throw new RangeError("maxActiveRooms must be a positive safe integer")
-    }
-    this.maxPendingTotal = maxPendingTotal
-    this.maxActiveRooms = maxActiveRooms
-    this.onListenerError = options.onListenerError
-    this.ownershipStorage = options.asyncContext === "explicit" ? null : roomHandlerOwnershipStorage
+export interface RoomTable {
+  readonly rooms: Map<string, RoomQueue>
+  readonly listeners: Set<(event: RoomQueueEvent) => void>
+  readonly leases: WeakMap<RoomHandlerLease, LeaseOwnership>
+  readonly limits: RoomQueueLimits
+  readonly onListenerError?: (error: unknown, event: RoomQueueEvent) => void
+  readonly ownershipStorage: OwnershipStorage<AmbientLeases> | null
+  admissionClosedReason: string | null
+}
+
+error InvalidRoomQueueLimit { message: string }
+
+export effect function roomQueueLimits(options: RoomHandlerQueueOptions): RoomQueueLimits!InvalidRoomQueueLimit {
+  const maxPendingPerRoom = options.maxPendingPerRoom
+    ?? DEFAULT_ROOM_HANDLER_QUEUE_MAX_PENDING_PER_ROOM
+  if (!Number.isSafeInteger(maxPendingPerRoom) || maxPendingPerRoom < 1) {
+    throw new InvalidRoomQueueLimit({ message: "maxPendingPerRoom must be a positive safe integer" })
   }
+  const maxPendingTotal = options.maxPendingTotal ?? DEFAULT_ROOM_HANDLER_QUEUE_MAX_PENDING_TOTAL
+  const maxActiveRooms = options.maxActiveRooms ?? DEFAULT_ROOM_HANDLER_QUEUE_MAX_ACTIVE_ROOMS
+  if (!Number.isSafeInteger(maxPendingTotal) || maxPendingTotal < 1) {
+    throw new InvalidRoomQueueLimit({ message: "maxPendingTotal must be a positive safe integer" })
+  }
+  if (!Number.isSafeInteger(maxActiveRooms) || maxActiveRooms < 1) {
+    throw new InvalidRoomQueueLimit({ message: "maxActiveRooms must be a positive safe integer" })
+  }
+  return { maxPendingPerRoom, maxPendingTotal, maxActiveRooms }
+}
 
-  async runWith<T>(
-    roomId: string,
-    fn: () => Promise<T>,
-    options?: RunWithOptions,
-  ): Promise<T> {
-    if (this.admissionClosedReason !== null) {
-      throw new RoomHandlerQueueClosedError(this.admissionClosedReason)
-    }
-    if (options?.signal?.aborted) {
-      const error = new RoomHandlerQueueAbortedError(roomId, {
-        cause: options.signal.reason,
-      })
-      this.emit({ type: "cancelled", roomId })
-      throw error
-    }
-    const existingQueue = this.rooms.get(roomId)
-    if (!existingQueue && this.rooms.size >= this.maxActiveRooms) {
-      throw new RoomHandlerQueueGlobalSaturatedError(
-        "rooms",
-        this.maxActiveRooms,
-        this.rooms.size,
-      )
-    }
-    const totalPending = this.pendingTotal()
-    if (totalPending >= this.maxPendingTotal) {
-      throw new RoomHandlerQueueGlobalSaturatedError(
-        "pending",
-        this.maxPendingTotal,
-        totalPending,
-      )
-    }
-    const queue = existingQueue ?? this.createQueue(roomId)
-    const queuePosition = queue.pendingCount
-    if (queuePosition >= this.maxPendingPerRoom) {
-      const error = new RoomHandlerQueueSaturatedError(
-        roomId,
-        this.maxPendingPerRoom,
-        queuePosition,
-      )
-      this.emit({
-        type: "saturated",
-        roomId,
-        queueDepth: queuePosition,
-        maxPendingPerRoom: this.maxPendingPerRoom,
-      })
-      throw error
-    }
+export function roomTable(options: RoomHandlerQueueOptions, limits: RoomQueueLimits): RoomTable {
+  return {
+    rooms: new Map(),
+    listeners: new Set(),
+    leases: new WeakMap(),
+    limits,
+    onListenerError: options.onListenerError,
+    ownershipStorage: options.asyncContext === "explicit" ? null : roomHandlerOwnershipStorage,
+    admissionClosedReason: null,
+  }
+}
+
+export function pendingCount(queue: RoomQueue): number {
+  return queue.queue.length + (queue.active ? 1 : 0)
+}
+
+export function pendingTotal(table: RoomTable): number {
+  let total = 0
+  for (const queue of table.rooms.values()) total += pendingCount(queue)
+  return total
+}
+
+function emit(table: RoomTable, event: RoomQueueEvent): void {
+  for (const listener of table.listeners) {
     try {
-      const pending = queue.enqueue(fn, options?.signal)
-      this.emit({ type: "enqueued", roomId, queueDepth: queuePosition + 1 })
-      const result = await pending
-      this.emit({ type: "completed", roomId })
-      return result
+      listener(event)
     } catch (error) {
+      try {
+        table.onListenerError?.(error, event)
+      } catch {
+      }
+    }
+  }
+}
+
+effect function runActive(queue: RoomQueue, item: QueuedItem): void!! {
+  const outcome = try exit(item.run)
+  Deferred.doneUnsafe(item.done, outcome)
+  queue.active = null
+  drainRoom(queue)
+}
+
+function drainRoom(queue: RoomQueue): void {
+  if (queue.active) return
+  const next = queue.queue.shift()
+  if (!next) {
+    for (const idle of queue.idleWaiters.splice(0)) Deferred.doneUnsafe(idle, Effect.void)
+    return
+  }
+  if (next.signal && next.onAbort) {
+    next.signal.removeEventListener("abort", next.onAbort)
+  }
+  queue.active = next
+  runFork(runActive(queue, next))
+}
+
+function enqueueRoomWork(
+  queue: RoomQueue,
+  run: unknown!Foreign,
+  signal?: AbortSignal,
+): Deferred.Deferred<unknown, RoomWorkFailure> {
+  const item: QueuedItem = { run, done: Deferred.makeUnsafe(), signal }
+  if (signal) {
+    const onAbort = () => {
+      const index = queue.queue.indexOf(item)
+      if (index < 0) return
+      queue.queue.splice(index, 1)
+      Deferred.doneUnsafe(item.done, fail(new RoomHandlerQueueAbortedError(queue.roomId, {
+        cause: signal.reason,
+      })))
+    }
+    item.onAbort = onAbort
+    signal.addEventListener("abort", onAbort, { once: true })
+  }
+  queue.queue.push(item)
+  drainRoom(queue)
+  return item.done
+}
+
+effect function admitRoomWork(
+  table: RoomTable,
+  roomId: string,
+  run: unknown!Foreign,
+  signal?: AbortSignal,
+): Deferred.Deferred<unknown, RoomWorkFailure>!RoomAdmissionFailure {
+  const { limits } = table
+  if (table.admissionClosedReason !== null) {
+    throw new RoomHandlerQueueClosedError(table.admissionClosedReason)
+  }
+  if (signal?.aborted) {
+    const error = new RoomHandlerQueueAbortedError(roomId, {
+      cause: signal.reason,
+    })
+    emit(table, { type: "cancelled", roomId })
+    throw error
+  }
+  const existingQueue = table.rooms.get(roomId)
+  if (!existingQueue && table.rooms.size >= limits.maxActiveRooms) {
+    throw new RoomHandlerQueueGlobalSaturatedError(
+      "rooms",
+      limits.maxActiveRooms,
+      table.rooms.size,
+    )
+  }
+  const totalPending = pendingTotal(table)
+  if (totalPending >= limits.maxPendingTotal) {
+    throw new RoomHandlerQueueGlobalSaturatedError(
+      "pending",
+      limits.maxPendingTotal,
+      totalPending,
+    )
+  }
+  let queue = existingQueue
+  if (!queue) {
+    queue = { roomId, queue: [], active: null, idleWaiters: [] }
+    table.rooms.set(roomId, queue)
+  }
+  const queuePosition = pendingCount(queue)
+  if (queuePosition >= limits.maxPendingPerRoom) {
+    const error = new RoomHandlerQueueSaturatedError(
+      roomId,
+      limits.maxPendingPerRoom,
+      queuePosition,
+    )
+    emit(table, {
+      type: "saturated",
+      roomId,
+      queueDepth: queuePosition,
+      maxPendingPerRoom: limits.maxPendingPerRoom,
+    })
+    throw error
+  }
+  const done = enqueueRoomWork(queue, run, signal)
+  emit(table, { type: "enqueued", roomId, queueDepth: queuePosition + 1 })
+  return done
+}
+
+function pruneRoom(table: RoomTable, roomId: string): void {
+  const queue = table.rooms.get(roomId)
+  if (queue && pendingCount(queue) === 0) {
+    table.rooms.delete(roomId)
+  }
+}
+
+effect function settleRoomWork(
+  table: RoomTable,
+  roomId: string,
+  done: Deferred.Deferred<unknown, RoomWorkFailure>,
+): unknown!RoomWorkFailure {
+  const settled = effect {
+    const value = Deferred.await(done) catch effect (failure) => {
+      const error = failure instanceof Foreign ? failure.cause : failure
       if (error instanceof RoomHandlerQueueAbortedError) {
-        this.emit({ type: "cancelled", roomId })
+        emit(table, { type: "cancelled", roomId })
       } else {
-        this.emit({
+        emit(table, {
           type: "errored",
           roomId,
           error: error instanceof Error ? error.message : String(error),
         })
       }
-      throw error
-    } finally {
-      const q = this.rooms.get(roomId)
-      if (q && q.pendingCount === 0) {
-        this.rooms.delete(roomId)
-      }
+      throw failure
     }
+    emit(table, { type: "completed", roomId })
+    return value
   }
+  return try ensuring(settled, sync(() => pruneRoom(table, roomId)))
+}
 
-  async acquire(
-    roomId: string,
-    signal?: AbortSignal,
-  ): Promise<RoomHandlerLease> {
-    let markAcquired: (() => void) | undefined
-    let rejectAcquired: ((error: unknown) => void) | undefined
-    const acquired = new Promise<void>((resolve, reject) => {
-      markAcquired = resolve
-      rejectAcquired = reject
-    })
-    let releaseHold: (() => void) | undefined
-    const hold = new Promise<void>((resolve) => {
-      releaseHold = resolve
-    })
+export effect function runWithRoom<T>(
+  table: RoomTable,
+  roomId: string,
+  run: T!Foreign,
+  signal?: AbortSignal,
+): T!(RoomAdmissionFailure | Foreign) {
+  const done = try admitRoomWork(table, roomId, run, signal)
+  return (try settleRoomWork(table, roomId, done)) as T
+}
 
-    const heldTurn = this.runWith(
-      roomId,
-      async () => {
-        markAcquired?.()
-        await hold
-      },
-      { signal },
-    )
+effect function releaseLease(
+  ownership: LeaseOwnership,
+  hold: Deferred.Deferred<void>,
+  heldTurn: Fiber.Fiber<void>,
+): void!! {
+  try ownership.writers.withPermit(Effect.void)
+  ownership.released = true
+  Deferred.doneUnsafe(hold, Effect.void)
+  try join heldTurn
+}
 
-    void heldTurn.catch((error) => rejectAcquired?.(error))
-    await acquired
-
-    let released: Promise<void> | null = null
-    const ownership = {
-      roomId,
-      released: false,
-      accepting: true,
-      writerTail: Promise.resolve(),
-    }
-    const lease: RoomHandlerLease = {
-      release: () => {
-        if (!released) {
-          ownership.accepting = false
-          released = (async () => {
-            await ownership.writerTail
-            ownership.released = true
-            releaseHold?.()
-            await heldTurn
-          })()
-        }
-        return released
-      },
-    }
-    this.activeLeases.set(lease, ownership)
-    return lease
+function leaseFor(
+  table: RoomTable,
+  roomId: string,
+  hold: Deferred.Deferred<void>,
+  heldTurn: Fiber.Fiber<void>,
+): RoomHandlerLease {
+  let released: Promise<void> | null = null
+  const ownership: LeaseOwnership = {
+    roomId,
+    released: false,
+    accepting: true,
+    writers: EffectSemaphore.makeUnsafe(1),
   }
-
-  async withLease<T>(
-    roomId: string,
-    fn: (lease: RoomHandlerLease) => Promise<T>,
-    options?: WithRoomHandlerLeaseOptions,
-  ): Promise<T> {
-    if (options?.lease) {
-      const lease = options.lease
-      return await this.runInLease(roomId, lease, () => fn(lease))
-    }
-    const live = this.liveAmbientLeases()
-    if (live.size > 0) {
-      const inherited = live.get(roomId)
-      if (!inherited) throw crossRoomReentry([...live.keys()], [roomId])
-      return await fn(inherited)
-    }
-    const lease = await this.acquire(roomId, options?.signal)
-    try {
-      return await this.runInLease(roomId, lease, () => fn(lease))
-    } finally {
-      await lease.release()
-    }
+  const lease: RoomHandlerLease = {
+    release: () => {
+      if (!released) {
+        ownership.accepting = false
+        released = runDetached(releaseLease(ownership, hold, heldTurn))
+      }
+      return released
+    },
   }
+  table.leases.set(lease, ownership)
+  return lease
+}
 
-  async withLeases<T>(
-    roomIds: Iterable<string>,
-    fn: (leases: ReadonlyMap<string, RoomHandlerLease>) => Promise<T>,
-    options?: WithRoomHandlerLeaseOptions,
-  ): Promise<T> {
-    const rooms = [...new Set(roomIds)].sort()
-    if (rooms.length === 0) return fn(new Map())
-
-    const live = this.liveAmbientLeases()
-    if (live.size > 0) {
-      const reused = new Map<string, RoomHandlerLease>()
-      for (const roomId of rooms) {
-        const lease = live.get(roomId)
-        if (!lease) throw crossRoomReentry([...live.keys()], rooms)
-        reused.set(roomId, lease)
-      }
-      return fn(reused)
-    }
-    if (options?.lease) {
-      const ownership = this.activeLeases.get(options.lease)
-      if (
-        !ownership
-        || ownership.released
-        || !ownership.accepting
-        || rooms.length !== 1
-        || rooms[0] !== ownership.roomId
-      ) {
-        throw crossRoomReentry(ownership ? [ownership.roomId] : [], rooms)
-      }
-      return fn(new Map([[ownership.roomId, options.lease]]))
-    }
-    const leases = new Map<string, RoomHandlerLease>()
-    try {
-      for (const roomId of rooms) {
-        leases.set(roomId, await this.acquire(roomId, options?.signal))
-      }
-      const owned: AmbientLeases = leases
-      return await (this.ownershipStorage
-        ? this.ownershipStorage.run(owned, () => fn(owned))
-        : fn(owned))
-    } finally {
-      for (let index = rooms.length - 1; index >= 0; index--) {
-        await leases.get(rooms[index])?.release()
-      }
-    }
+effect function holdTurn(
+  table: RoomTable,
+  roomId: string,
+  done: Deferred.Deferred<unknown, RoomWorkFailure>,
+  acquired: Deferred.Deferred<void, RoomWorkFailure>,
+): void!! {
+  settleRoomWork(table, roomId, done) catch effect (failure) => {
+    try Deferred.fail(acquired, failure)
   }
+}
 
-  async withLeaseWrite<T>(
-    roomId: string,
-    lease: RoomHandlerLease,
-    fn: () => Promise<T>,
-  ): Promise<T> {
-    const ownership = this.activeLeases.get(lease)
+export effect function acquireRoomLease(
+  table: RoomTable,
+  roomId: string,
+  signal?: AbortSignal,
+): RoomHandlerLease!(RoomAdmissionFailure | Foreign) {
+  const acquired = Deferred.makeUnsafe<void, RoomWorkFailure>()
+  const hold = Deferred.makeUnsafe<void>()
+  const holding = effect {
+    Deferred.doneUnsafe(acquired, Effect.void)
+    try Deferred.await(hold)
+  }
+  const done = try admitRoomWork(table, roomId, holding, signal)
+  const heldTurn = fork.detached holdTurn(table, roomId, done, acquired)
+  try Deferred.await(acquired)
+  return leaseFor(table, roomId, hold, heldTurn)
+}
+
+export function ownsLease(
+  table: RoomTable,
+  roomId: string,
+  lease: RoomHandlerLease | null | undefined,
+): lease is RoomHandlerLease {
+  if (!lease) return false
+  const ownership = table.leases.get(lease)
+  return (
+    ownership !== undefined
+    && ownership.roomId === roomId
+    && !ownership.released
+    && ownership.accepting
+  )
+}
+
+export function liveAmbientLeases(table: RoomTable): Map<string, RoomHandlerLease> {
+  const live = new Map<string, RoomHandlerLease>()
+  for (const [roomId, lease] of table.ownershipStorage?.current() ?? []) {
+    if (ownsLease(table, roomId, lease)) live.set(roomId, lease)
+  }
+  return live
+}
+
+effect function assertLeaseForRoom(table: RoomTable, roomId: string, lease: RoomHandlerLease): void!ElizaError {
+  const ownership = table.leases.get(lease)
+  if (
+    ownership
+    && !ownership.released
+    && ownership.accepting
+    && ownership.roomId !== roomId
+  ) {
+    throw crossRoomReentry([ownership.roomId], [roomId])
+  }
+  if (!ownsLease(table, roomId, lease)) {
+    throw leaseMismatch(roomId)
+  }
+}
+
+export effect function runInLeaseScope<T>(
+  table: RoomTable,
+  roomId: string,
+  lease: RoomHandlerLease,
+  fn: () => T,
+): T!(ElizaError | Foreign) {
+  try assertLeaseForRoom(table, roomId, lease)
+  const storage = table.ownershipStorage
+  if (!storage) return try foreignSync(fn)
+
+  if (storage.current()?.get(roomId) === lease) return try foreignSync(fn)
+  return try foreignSync(() => storage.run(new Map([[roomId, lease]]), fn))
+}
+
+effect function runLeased<T>(
+  table: RoomTable,
+  roomId: string,
+  lease: RoomHandlerLease,
+  fn: (lease: RoomHandlerLease) => Promise<T>,
+): T!(ElizaError | Foreign) {
+  const pending = try runInLeaseScope(table, roomId, lease, () => fn(lease))
+  return try foreign(() => pending)
+}
+
+export effect function withRoomLease<T>(
+  table: RoomTable,
+  roomId: string,
+  fn: (lease: RoomHandlerLease) => Promise<T>,
+  options?: WithRoomHandlerLeaseOptions,
+): T!(RoomAdmissionFailure | ElizaError | Foreign) {
+  if (options?.lease) {
+    return try runLeased(table, roomId, options.lease, fn)
+  }
+  const live = liveAmbientLeases(table)
+  if (live.size > 0) {
+    const inherited = live.get(roomId)
+    if (!inherited) throw crossRoomReentry([...live.keys()], [roomId])
+    return try foreign(() => fn(inherited))
+  }
+  const lease = try acquireRoomLease(table, roomId, options?.signal)
+  const outcome = try exit(runLeased(table, roomId, lease, fn))
+  try foreign(() => lease.release())
+  return try outcome
+}
+
+export effect function withRoomLeases<T>(
+  table: RoomTable,
+  roomIds: Iterable<string>,
+  fn: (leases: ReadonlyMap<string, RoomHandlerLease>) => Promise<T>,
+  options?: WithRoomHandlerLeaseOptions,
+): T!(RoomAdmissionFailure | ElizaError | Foreign) {
+  const rooms = [...new Set(roomIds)].sort()
+  if (rooms.length === 0) return try foreign(() => fn(new Map()))
+
+  const live = liveAmbientLeases(table)
+  if (live.size > 0) {
+    const reused = new Map<string, RoomHandlerLease>()
+    for (const roomId of rooms) {
+      const lease = live.get(roomId)
+      if (!lease) throw crossRoomReentry([...live.keys()], rooms)
+      reused.set(roomId, lease)
+    }
+    return try foreign(() => fn(reused))
+  }
+  const explicit = options?.lease
+  if (explicit) {
+    const ownership = table.leases.get(explicit)
     if (
       !ownership
-      || ownership.roomId !== roomId
       || ownership.released
       || !ownership.accepting
+      || rooms.length !== 1
+      || rooms[0] !== ownership.roomId
     ) {
-      throw new ElizaError("Room ownership capability is not live", {
-        code: "ROOM_HANDLER_LEASE_MISMATCH",
-        context: { roomId },
-      })
+      throw crossRoomReentry(ownership ? [ownership.roomId] : [], rooms)
     }
-    const predecessor = ownership.writerTail
-    const operation = predecessor.then(fn)
-    ownership.writerTail = operation.then(
-      () => undefined,
-      () => undefined,
-    )
-    return operation
+    return try foreign(() => fn(new Map([[ownership.roomId, explicit]])))
   }
-
-  async withLeaseWrites<T>(
-    leases: ReadonlyMap<string, RoomHandlerLease>,
-    fn: () => Promise<T>,
-  ): Promise<T> {
-    const entries = [...leases.entries()].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
-    const acquireWriter = (index: number): Promise<T> => {
-      const entry = entries[index]
-      if (!entry) return fn()
-      return this.withLeaseWrite(entry[0], entry[1], () => acquireWriter(index + 1))
+  const leases = new Map<string, RoomHandlerLease>()
+  const outcome = try exit(effect {
+    for (const roomId of rooms) {
+      leases.set(roomId, try acquireRoomLease(table, roomId, options?.signal))
     }
-    return acquireWriter(0)
+    const owned: AmbientLeases = leases
+    const storage = table.ownershipStorage
+    return try foreign(() => storage ? storage.run(owned, () => fn(owned)) : fn(owned))
+  })
+  for (let index = rooms.length - 1; index >= 0; index--) {
+    const lease = leases.get(rooms[index])
+    if (lease) try foreign(() => lease.release())
   }
+  return try outcome
+}
 
-  runInLease<T>(roomId: string, lease: RoomHandlerLease, fn: () => T): T {
-    this.assertLeaseForRoom(roomId, lease)
-    if (!this.ownershipStorage) return fn()
-
-    if (this.ownershipStorage.getStore()?.get(roomId) === lease) return fn()
-    return this.ownershipStorage.run(new Map([[roomId, lease]]), fn)
+export effect function writeUnderLease<T, E>(
+  table: RoomTable,
+  roomId: string,
+  lease: RoomHandlerLease,
+  write: T!E,
+): T!(E | ElizaError) {
+  const ownership = table.leases.get(lease)
+  if (
+    !ownership
+    || ownership.roomId !== roomId
+    || ownership.released
+    || !ownership.accepting
+  ) {
+    throw leaseMismatch(roomId)
   }
+  return try ownership.writers.withPermit(write)
+}
 
-  currentLease(roomId: string): RoomHandlerLease | undefined {
-    const lease = this.ownershipStorage?.getStore()?.get(roomId)
-    return this.ownsLease(roomId, lease) ? lease : undefined
-  }
+export effect function writeUnderLeases<T>(
+  table: RoomTable,
+  entries: readonly (readonly [string, RoomHandlerLease])[],
+  index: number,
+  write: T!Foreign,
+): T!(ElizaError | Foreign) {
+  const entry = entries[index]
+  if (!entry) return try write
+  return try writeUnderLease(table, entry[0], entry[1], writeUnderLeases(table, entries, index + 1, write))
+}
 
-  currentOwnership(): RoomHandlerOwnershipContext | undefined {
-    const context = this.ownershipStorage?.getStore()
-    if (context?.size !== 1) return undefined
-    const [[roomId, lease]] = context
-    return this.ownsLease(roomId, lease) ? { roomId, lease } : undefined
-  }
+export function idleSignals(queue: RoomQueue | undefined): Deferred.Deferred<void>[] {
+  if (!queue?.active) return []
+  const idle = Deferred.makeUnsafe<void>()
+  queue.idleWaiters.push(idle)
+  return [idle]
+}
 
-  private liveAmbientLeases(): Map<string, RoomHandlerLease> {
-    const live = new Map<string, RoomHandlerLease>()
-    for (const [roomId, lease] of this.ownershipStorage?.getStore() ?? []) {
-      if (this.ownsLease(roomId, lease)) live.set(roomId, lease)
+export effect function awaitIdle(signals: readonly Deferred.Deferred<void>[]): void!! {
+  for (const idle of signals) try Deferred.await(idle)
+}
+
+module edge {
+  import { asLegacy, Foreign, foreign, runDetached, runDetachedSync } from "../edge.vibe"
+  import type { ElizaError } from "../errors.vibe"
+  import {
+    acquireRoomLease,
+    awaitIdle,
+    idleSignals,
+    ownsLease,
+    pendingCount,
+    pendingTotal,
+    roomQueueLimits,
+    roomTable,
+    runInLeaseScope,
+    runWithRoom,
+    withRoomLease,
+    withRoomLeases,
+    writeUnderLease,
+    writeUnderLeases,
+    type RoomHandlerLease,
+    type RoomHandlerOwnershipContext,
+    type RoomHandlerQueueOptions,
+    type RoomQueueEvent,
+    type RoomTable,
+    type RunWithOptions,
+    type WithRoomHandlerLeaseOptions,
+  } from "./room-handler-queue.vibe"
+
+  export class RoomHandlerQueue {
+    private readonly table: RoomTable
+    readonly maxPendingPerRoom: number
+    readonly maxPendingTotal: number
+    readonly maxActiveRooms: number
+
+    /** @throws {RangeError} */
+    constructor(options: RoomHandlerQueueOptions = {}) {
+      const limits = runDetachedSync(asLegacy(RangeError, roomQueueLimits(options)))
+      this.maxPendingPerRoom = limits.maxPendingPerRoom
+      this.maxPendingTotal = limits.maxPendingTotal
+      this.maxActiveRooms = limits.maxActiveRooms
+      this.table = roomTable(options, limits)
     }
-    return live
-  }
 
-  ownsLease(
-    roomId: string,
-    lease: RoomHandlerLease | null | undefined,
-  ): lease is RoomHandlerLease {
-    if (!lease) return false
-    const ownership = this.activeLeases.get(lease)
-    return (
-      ownership !== undefined
-      && ownership.roomId === roomId
-      && !ownership.released
-      && ownership.accepting
-    )
-  }
-
-  pendingFor(roomId: string): number {
-    return this.rooms.get(roomId)?.pendingCount ?? 0
-  }
-
-  pendingTotal(): number {
-    let total = 0
-    for (const queue of this.rooms.values()) total += queue.pendingCount
-    return total
-  }
-
-  closeAdmissions(reason: string): void {
-    if (this.admissionClosedReason === null) {
-      this.admissionClosedReason = reason
+    /** @throws {never} */
+    async runWith<T>(
+      roomId: string,
+      fn: () => Promise<T>,
+      options?: RunWithOptions,
+    ): Promise<T> {
+      return runDetached(runWithRoom(this.table, roomId, foreign(() => Promise.resolve().then(fn)), options?.signal))
     }
-  }
 
-  isAcceptingAdmissions(): boolean {
-    return this.admissionClosedReason === null
-  }
-
-  requiresExplicitOwnership(): boolean {
-    return this.ownershipStorage === null
-  }
-
-  async quiesce(roomId: string): Promise<void> {
-    const queue = this.rooms.get(roomId)
-    if (!queue) return
-    await queue.quiesce()
-  }
-
-  async quiesceAll(): Promise<void> {
-    await Promise.all([...this.rooms.values()].map((q) => q.quiesce()))
-  }
-
-  onEvent(listener: (event: RoomQueueEvent) => void): () => void {
-    this.listeners.add(listener)
-    return () => this.listeners.delete(listener)
-  }
-
-  private createQueue(roomId: string): RoomQueue {
-    const queue = new RoomQueue(roomId)
-    this.rooms.set(roomId, queue)
-    return queue
-  }
-
-  private assertLeaseForRoom(roomId: string, lease: RoomHandlerLease): void {
-    const ownership = this.activeLeases.get(lease)
-    if (
-      ownership
-      && !ownership.released
-      && ownership.accepting
-      && ownership.roomId !== roomId
-    ) {
-      throw crossRoomReentry([ownership.roomId], [roomId])
+    /** @throws {never} */
+    async acquire(
+      roomId: string,
+      signal?: AbortSignal,
+    ): Promise<RoomHandlerLease> {
+      return runDetached(acquireRoomLease(this.table, roomId, signal))
     }
-    if (!this.ownsLease(roomId, lease)) {
-      throw new ElizaError("Room ownership capability is not live", {
-        code: "ROOM_HANDLER_LEASE_MISMATCH",
-        context: { roomId },
-      })
-    }
-  }
 
-  private emit(event: RoomQueueEvent): void {
-    for (const listener of this.listeners) {
-      try {
-        listener(event)
-      } catch (error) {
-        try {
-          this.onListenerError?.(error, event)
-        } catch {
-        }
+    /** @throws {never} */
+    async withLease<T>(
+      roomId: string,
+      fn: (lease: RoomHandlerLease) => Promise<T>,
+      options?: WithRoomHandlerLeaseOptions,
+    ): Promise<T> {
+      return runDetached(withRoomLease(this.table, roomId, fn, options))
+    }
+
+    /** @throws {never} */
+    async withLeases<T>(
+      roomIds: Iterable<string>,
+      fn: (leases: ReadonlyMap<string, RoomHandlerLease>) => Promise<T>,
+      options?: WithRoomHandlerLeaseOptions,
+    ): Promise<T> {
+      return runDetached(withRoomLeases(this.table, roomIds, fn, options))
+    }
+
+    /** @throws {never} */
+    async withLeaseWrite<T>(
+      roomId: string,
+      lease: RoomHandlerLease,
+      fn: () => Promise<T>,
+    ): Promise<T> {
+      return runDetached(writeUnderLease(this.table, roomId, lease, foreign(() => Promise.resolve().then(fn))))
+    }
+
+    /** @throws {never} */
+    async withLeaseWrites<T>(
+      leases: ReadonlyMap<string, RoomHandlerLease>,
+      fn: () => Promise<T>,
+    ): Promise<T> {
+      const entries = [...leases.entries()].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+      const write = foreign(() => entries.length === 0 ? fn() : Promise.resolve().then(fn))
+      return runDetached(writeUnderLeases(this.table, entries, 0, write))
+    }
+
+    /** @throws {ElizaError | Foreign} */
+    runInLease<T>(roomId: string, lease: RoomHandlerLease, fn: () => T): T {
+      return runDetachedSync(runInLeaseScope(this.table, roomId, lease, fn))
+    }
+
+    /** @throws {never} */
+    currentLease(roomId: string): RoomHandlerLease | undefined {
+      const lease = this.table.ownershipStorage?.current()?.get(roomId)
+      return ownsLease(this.table, roomId, lease) ? lease : undefined
+    }
+
+    /** @throws {never} */
+    currentOwnership(): RoomHandlerOwnershipContext | undefined {
+      const context = this.table.ownershipStorage?.current()
+      if (context?.size !== 1) return undefined
+      const [[roomId, lease]] = context
+      return ownsLease(this.table, roomId, lease) ? { roomId, lease } : undefined
+    }
+
+    /** @throws {never} */
+    ownsLease(
+      roomId: string,
+      lease: RoomHandlerLease | null | undefined,
+    ): lease is RoomHandlerLease {
+      return ownsLease(this.table, roomId, lease)
+    }
+
+    /** @throws {never} */
+    pendingFor(roomId: string): number {
+      const queue = this.table.rooms.get(roomId)
+      return queue ? pendingCount(queue) : 0
+    }
+
+    /** @throws {never} */
+    pendingTotal(): number {
+      return pendingTotal(this.table)
+    }
+
+    /** @throws {never} */
+    closeAdmissions(reason: string): void {
+      if (this.table.admissionClosedReason === null) {
+        this.table.admissionClosedReason = reason
       }
+    }
+
+    /** @throws {never} */
+    isAcceptingAdmissions(): boolean {
+      return this.table.admissionClosedReason === null
+    }
+
+    /** @throws {never} */
+    requiresExplicitOwnership(): boolean {
+      return this.table.ownershipStorage === null
+    }
+
+    /** @throws {never} */
+    async quiesce(roomId: string): Promise<void> {
+      return runDetached(awaitIdle(idleSignals(this.table.rooms.get(roomId))))
+    }
+
+    /** @throws {never} */
+    async quiesceAll(): Promise<void> {
+      return runDetached(awaitIdle([...this.table.rooms.values()].flatMap(idleSignals)))
+    }
+
+    /** @throws {never} */
+    onEvent(listener: (event: RoomQueueEvent) => void): () => void {
+      this.table.listeners.add(listener)
+      return () => this.table.listeners.delete(listener)
     }
   }
 }
+import { RoomHandlerQueue } from edge
+export { RoomHandlerQueue }
 
 export type RoomQueueEvent =
   | { type: "enqueued"; roomId: string; queueDepth: number }

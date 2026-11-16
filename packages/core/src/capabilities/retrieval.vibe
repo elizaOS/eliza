@@ -1,3 +1,5 @@
+// spec/core/providers.md, "Story: Share provider work without sharing cancellation"
+import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 
 export interface CapabilityCatalogEntry {
@@ -27,7 +29,6 @@ export interface CapabilityRetrievalMetrics {
   retrievedCount: number
   catalogPromptTokenEstimate: number
   retrievedPromptTokenEstimate: number
-
   floodRatio: number
 }
 
@@ -41,9 +42,7 @@ export interface CapabilityRetrievalResult {
 export interface RetrieveCapabilitiesInput {
   catalog: readonly CapabilityCatalogEntry[]
   intentText: string
-
   limit?: number
-
   ambiguityMargin?: number
 }
 
@@ -62,46 +61,31 @@ export function tokenizeCapabilityIntent(text: string): string[] {
     .filter((token) => token.length > 1)
 }
 
-function invalidRetrievalInput(
-  message: string,
-  context: Record<string, unknown>,
-): never {
-  throw new ElizaError(message, {
+function invalidRetrievalInput(message: string, context: Record<string, unknown>): ElizaError {
+  return new ElizaError(message, {
     code: "INVALID_CAPABILITY_RETRIEVAL_INPUT",
     context,
     severity: "fatal",
   })
 }
 
-function validateCatalog(catalog: readonly CapabilityCatalogEntry[]): void {
+effect function validateCatalog(catalog: readonly CapabilityCatalogEntry[]): void!ElizaError {
   const seen = new Set<string>()
   for (const entry of catalog) {
     if (entry.capabilityId.trim().length === 0) {
-      invalidRetrievalInput(
-        "Capability catalog entry has an empty capabilityId.",
-        {},
-      )
+      throw invalidRetrievalInput("Capability catalog entry has an empty capabilityId.", {})
     }
     if (seen.has(entry.capabilityId)) {
-      invalidRetrievalInput(
-        "Capability catalog contains a duplicate capabilityId.",
-        {
-          capabilityId: entry.capabilityId,
-        },
-      )
+      throw invalidRetrievalInput("Capability catalog contains a duplicate capabilityId.", {
+        capabilityId: entry.capabilityId,
+      })
     }
     seen.add(entry.capabilityId)
-    if (
-      !Number.isSafeInteger(entry.promptTokenEstimate)
-      || entry.promptTokenEstimate <= 0
-    ) {
-      invalidRetrievalInput(
-        "Capability catalog entry promptTokenEstimate must be a positive safe integer.",
-        {
-          capabilityId: entry.capabilityId,
-          promptTokenEstimate: entry.promptTokenEstimate,
-        },
-      )
+    if (!Number.isSafeInteger(entry.promptTokenEstimate) || entry.promptTokenEstimate <= 0) {
+      throw invalidRetrievalInput("Capability catalog entry promptTokenEstimate must be a positive safe integer.", {
+        capabilityId: entry.capabilityId,
+        promptTokenEstimate: entry.promptTokenEstimate,
+      })
     }
   }
 }
@@ -138,26 +122,16 @@ function scoreEntry(
   return { score, matchedTokens }
 }
 
-export function retrieveCapabilities(
-  input: RetrieveCapabilitiesInput,
-): CapabilityRetrievalResult {
+export effect function retrieveCapabilities(input: RetrieveCapabilitiesInput): CapabilityRetrievalResult!ElizaError {
   const limit = input.limit ?? DEFAULT_LIMIT
   if (!Number.isInteger(limit) || limit <= 0) {
-    invalidRetrievalInput(
-      "Capability retrieval limit must be a positive integer.",
-      { limit },
-    )
+    throw invalidRetrievalInput("Capability retrieval limit must be a positive integer.", { limit })
   }
   const ambiguityMargin = input.ambiguityMargin ?? DEFAULT_AMBIGUITY_MARGIN
   if (!(ambiguityMargin >= 0 && ambiguityMargin < 1)) {
-    invalidRetrievalInput(
-      "Capability retrieval ambiguityMargin must be in [0, 1).",
-      {
-        ambiguityMargin,
-      },
-    )
+    throw invalidRetrievalInput("Capability retrieval ambiguityMargin must be in [0, 1).", { ambiguityMargin })
   }
-  validateCatalog(input.catalog)
+  try validateCatalog(input.catalog)
 
   const catalogPromptTokenEstimate = input.catalog.reduce(
     (sum, entry) => sum + entry.promptTokenEstimate,
@@ -165,10 +139,9 @@ export function retrieveCapabilities(
   )
 
   if (!Number.isSafeInteger(catalogPromptTokenEstimate)) {
-    invalidRetrievalInput(
-      "Capability catalog aggregate promptTokenEstimate exceeds the safe integer range.",
-      { catalogSize: input.catalog.length },
-    )
+    throw invalidRetrievalInput("Capability catalog aggregate promptTokenEstimate exceeds the safe integer range.", {
+      catalogSize: input.catalog.length,
+    })
   }
   const queryTokens = tokenizeCapabilityIntent(input.intentText)
   const uniqueQueryTokens = new Set(queryTokens)
@@ -178,7 +151,6 @@ export function retrieveCapabilities(
     .filter((candidate) => candidate.score > 0)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score
-
       if (a.entry.capabilityId === b.entry.capabilityId) return 0
       return a.entry.capabilityId < b.entry.capabilityId ? -1 : 1
     })
@@ -238,3 +210,5 @@ export function retrieveCapabilities(
     queryTokens: Object.freeze(queryTokens),
   }
 }
+
+export const retrieveCapabilitiesOrThrow = thrown(retrieveCapabilities)

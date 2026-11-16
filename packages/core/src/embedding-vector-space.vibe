@@ -1,3 +1,5 @@
+// spec/core/embeddingSpace.md, "A probe prepares dimensions and representation before pinning"
+import { thrown } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 
 export const BGE_SMALL_VECTOR_SPACE = "BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1"
@@ -15,10 +17,10 @@ export function getEmbeddingVectorSpace(vector: unknown): string | undefined {
   return getEmbeddingVectorSpaceIdentity(vector) ?? undefined
 }
 
-export function identifyEmbeddingVector(
+export effect function identifyEmbeddingVector(
   vector: number[],
   spaceId: string | null,
-): number[] {
+): number[]!ElizaError {
   if (spaceId !== null && (!spaceId.trim() || spaceId !== spaceId.trim())) {
     throw new ElizaError(
       "Embedding representation requires a canonical identifier",
@@ -43,14 +45,16 @@ export function identifyEmbeddingVector(
   return vector
 }
 
-export function copyEmbeddingVectorSpace(
+export const identifyEmbeddingVectorOrThrow = thrown(identifyEmbeddingVector)
+
+export effect function copyEmbeddingVectorSpace(
   source: unknown,
   target: unknown,
-): void {
+): void!ElizaError {
   const spaceId = getEmbeddingVectorSpaceIdentity(source)
   if (spaceId === undefined) return
   if (spaceId === null && Array.isArray(target)) {
-    identifyEmbeddingVector(target, null)
+    try identifyEmbeddingVector(target, null)
     return
   }
   if (
@@ -71,5 +75,7 @@ export function copyEmbeddingVectorSpace(
       },
     )
   }
-  identifyEmbeddingVector(target, spaceId)
+  try identifyEmbeddingVector(target, spaceId)
 }
+
+export const copyEmbeddingVectorSpaceOrThrow = thrown(copyEmbeddingVectorSpace)

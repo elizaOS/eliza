@@ -1,3 +1,5 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   advanceFenceScan,
@@ -11,7 +13,7 @@ import {
 
 export const MARKDOWN_CHUNK_LIMIT_INVALID = "MARKDOWN_CHUNK_LIMIT_INVALID"
 
-export function assertValidMarkdownChunkLimit(limit: number): void {
+export effect function assertValidMarkdownChunkLimit(limit: number) {
   if (Number.isSafeInteger(limit) && limit > 0) {
     return
   }
@@ -22,8 +24,10 @@ export function assertValidMarkdownChunkLimit(limit: number): void {
   })
 }
 
-export function chunkText(text: string, limit: number): string[] {
-  assertValidMarkdownChunkLimit(limit)
+export const assertValidMarkdownChunkLimitOrThrow = thrown(assertValidMarkdownChunkLimit)
+
+export effect function chunkText(text: string, limit: number) {
+  try assertValidMarkdownChunkLimit(limit)
   if (!text) {
     return []
   }
@@ -68,12 +72,14 @@ export function chunkText(text: string, limit: number): string[] {
   return chunks
 }
 
-export function chunkByParagraph(
+export const chunkTextOrThrow = thrown(chunkText)
+
+export effect function chunkByParagraph(
   text: string,
   limit: number,
   opts?: { splitLongParagraphs?: boolean },
-): string[] {
-  assertValidMarkdownChunkLimit(limit)
+) {
+  try assertValidMarkdownChunkLimit(limit)
   if (!text) {
     return []
   }
@@ -89,7 +95,7 @@ export function chunkByParagraph(
     if (!splitLongParagraphs) {
       return [normalized]
     }
-    return chunkText(normalized, limit)
+    return try chunkText(normalized, limit)
   }
 
   const spans = parseFenceSpans(normalized)
@@ -120,15 +126,17 @@ export function chunkByParagraph(
     } else if (!splitLongParagraphs) {
       chunks.push(paragraph)
     } else {
-      chunks.push(...chunkText(paragraph, limit))
+      chunks.push(...try chunkText(paragraph, limit))
     }
   }
 
   return chunks
 }
 
-export function chunkMarkdownText(text: string, limit: number): string[] {
-  assertValidMarkdownChunkLimit(limit)
+export const chunkByParagraphOrThrow = thrown(chunkByParagraph)
+
+export effect function chunkMarkdownText(text: string, limit: number) {
+  try assertValidMarkdownChunkLimit(limit)
   if (!text) {
     return []
   }
@@ -275,6 +283,8 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
   }
   return chunks
 }
+
+export const chunkMarkdownTextOrThrow = thrown(chunkMarkdownText)
 
 const GraphemeSegmenter = (
   Intl as unknown as {

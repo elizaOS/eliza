@@ -1,3 +1,4 @@
+// spec/core/integrationTelemetry.md, "Finalization claims the latch before invoking dependencies"; spec/core/integrationTelemetry.md, "Expected fallback paths use information severity under the default policy"
 import { logger } from "./logger.vibe"
 
 export type IntegrationBoundary =

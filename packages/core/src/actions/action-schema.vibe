@@ -1,3 +1,5 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { failingAs, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Action, ActionParameter, ActionParameterSchema } from "../types/components.vibe"
 import type { JSONSchema } from "../types/model.vibe"
@@ -48,6 +50,10 @@ export interface ActionParametersJsonSchema extends JsonSchema {
   required: string[]
   additionalProperties?: boolean
 }
+
+export error UntypedSchema { message: string }
+export error UnsupportedSchemaType { message: string }
+type SchemaFailure = UntypedSchema | UnsupportedSchemaType | ElizaError
 
 const SUPPORTED_SCHEMA_TYPES = new Set<string>([
   "string",
@@ -148,28 +154,22 @@ function getSchemaDefault(schema: ActionParameterSchema): unknown {
   return undefined
 }
 
-function assertSupportedSchemaType(
-  type: string,
-  path: string,
-): asserts type is JsonSchemaPrimitiveType {
-  if (!SUPPORTED_SCHEMA_TYPES.has(type)) {
-    throw new Error(
-      `Unsupported schema type '${type}' for action parameter '${path}'`,
-    )
-  }
+function isSupportedSchemaType(type: string): type is JsonSchemaPrimitiveType {
+  return SUPPORTED_SCHEMA_TYPES.has(type)
 }
 
-export function actionParameterSchemaToJsonSchema(
+export effect function actionParameterSchemaToJsonSchema(
   schema: ActionParameterSchema,
   options: { path?: string; description?: string; enumValues?: unknown[] } = {},
-): JsonSchema {
+): JsonSchema!SchemaFailure {
   const path = options.path ?? "<anonymous>"
   const description = schema.description ?? options.description
 
   const unionSchema: JsonSchema = {}
   for (const keyword of ["anyOf", "oneOf"] as const) {
-    if (schema[keyword]?.length) {
-      unionSchema[keyword] = schema[keyword].map((branch, index) =>
+    const branches = schema[keyword]
+    if (branches?.length) {
+      unionSchema[keyword] = try forEach(branches, (branch, index) =>
         actionParameterSchemaToJsonSchema(branch, {
           path: `${path}.${keyword}[${index}]`,
         })
@@ -178,9 +178,9 @@ export function actionParameterSchemaToJsonSchema(
   }
   const schemaType = schema.type
   if (!schemaType && !unionSchema.anyOf && !unionSchema.oneOf) {
-    throw new Error(
-      `Action parameter schema at '${path}' must include a 'type' or use 'oneOf' / 'anyOf'`,
-    )
+    throw new UntypedSchema({
+      message: `Action parameter schema at '${path}' must include a 'type' or use 'oneOf' / 'anyOf'`,
+    })
   }
   if (!schemaType) {
     const unsupported = untypedUnionConstraintKeys(schema)
@@ -201,7 +201,11 @@ export function actionParameterSchemaToJsonSchema(
       ...(description ? { description } : {}),
     }
   }
-  assertSupportedSchemaType(schemaType, path)
+  if (!isSupportedSchemaType(schemaType)) {
+    throw new UnsupportedSchemaType({
+      message: `Unsupported schema type '${schemaType}' for action parameter '${path}'`,
+    })
+  }
 
   const jsonSchema: JsonSchema = {
     ...unionSchema,
@@ -248,7 +252,7 @@ export function actionParameterSchemaToJsonSchema(
     const required: string[] = []
 
     for (const [name, childSchema] of Object.entries(schema.properties ?? {})) {
-      properties[name] = actionParameterSchemaToJsonSchema(childSchema, {
+      properties[name] = try actionParameterSchemaToJsonSchema(childSchema, {
         path: `${path}.${name}`,
       })
       if (requiredNames.has(name) || isSchemaRequired(childSchema)) {
@@ -261,7 +265,7 @@ export function actionParameterSchemaToJsonSchema(
     if (schema.additionalProperties !== undefined) {
       jsonSchema.additionalProperties = typeof schema.additionalProperties === "boolean"
         ? schema.additionalProperties
-        : actionParameterSchemaToJsonSchema(schema.additionalProperties, {
+        : try actionParameterSchemaToJsonSchema(schema.additionalProperties, {
           path: `${path}.*`,
         })
     } else {
@@ -271,7 +275,7 @@ export function actionParameterSchemaToJsonSchema(
 
   if (schema.type === "array") {
     jsonSchema.items = schema.items
-      ? actionParameterSchemaToJsonSchema(schema.items, {
+      ? try actionParameterSchemaToJsonSchema(schema.items, {
         path: `${path}[]`,
       })
       : { type: "string" }
@@ -279,6 +283,8 @@ export function actionParameterSchemaToJsonSchema(
 
   return jsonSchema
 }
+
+export const actionParameterSchemaToJsonSchemaOrThrow = thrown(failingAs(Error, actionParameterSchemaToJsonSchema, ElizaError))
 
 function appendParameterExamples(
   description: string | undefined,
@@ -303,15 +309,15 @@ function appendParameterExamples(
   return description ? `${description} (${examplesPart})` : examplesPart
 }
 
-export function actionParametersToJsonSchema(
+export effect function actionParametersToJsonSchema(
   parameters: ActionParameter[] = [],
   options: { allowAdditionalProperties?: boolean } = {},
-): ActionParametersJsonSchema {
+): ActionParametersJsonSchema!SchemaFailure {
   const properties: Record<string, JsonSchema> = {}
   const required: string[] = []
 
   for (const parameter of parameters) {
-    properties[parameter.name] = actionParameterSchemaToJsonSchema(
+    properties[parameter.name] = try actionParameterSchemaToJsonSchema(
       parameter.schema,
       {
         path: parameter.name,
@@ -335,13 +341,17 @@ export function actionParametersToJsonSchema(
   }
 }
 
-export function actionToJsonSchema(
+export const actionParametersToJsonSchemaOrThrow = thrown(failingAs(Error, actionParametersToJsonSchema, ElizaError))
+
+export effect function actionToJsonSchema(
   action: Pick<Action, "parameters" | "allowAdditionalParameters">,
-): ActionParametersJsonSchema {
-  return actionParametersToJsonSchema(action.parameters ?? [], {
+) {
+  return try actionParametersToJsonSchema(action.parameters ?? [], {
     allowAdditionalProperties: action.allowAdditionalParameters === true,
   })
 }
+
+export const actionToJsonSchemaOrThrow = thrown(failingAs(Error, actionToJsonSchema, ElizaError))
 
 function jsonSchemaFromLocal(local: JsonSchema): JSONSchema {
   const out: JSONSchema = {}
@@ -376,8 +386,10 @@ function jsonSchemaFromLocal(local: JsonSchema): JSONSchema {
   return out
 }
 
-export function normalizeActionJsonSchema(
+export effect function normalizeActionJsonSchema(
   action: Pick<Action, "parameters" | "allowAdditionalParameters">,
-): JSONSchema {
-  return jsonSchemaFromLocal(actionToJsonSchema(action))
+) {
+  return jsonSchemaFromLocal(try actionToJsonSchema(action))
 }
+
+export const normalizeActionJsonSchemaOrThrow = thrown(failingAs(Error, normalizeActionJsonSchema, ElizaError))

@@ -1,3 +1,5 @@
+// spec/core/serviceInstances.md, "Story: Share starts and stop each returned object once"; spec/core/serviceInstances.md, "Acquisition snapshots keep each class and attempt generation"; spec/core/serviceInstances.md, "Instance stop promises retain identity across every caller"
+import { asLegacy, Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { EventType } from "../types/events.vibe"
 import type { ServiceClass } from "../types/plugin.vibe"
@@ -45,43 +47,378 @@ const EAGER_SERVICE_START_RETRY_DELAYS_MS: readonly number[] = [
   10_000,
 ]
 
+error ServiceImplementationDidNotStart { message: string }
+error ServiceStartAfterStop { message: string }
+error ServiceUnregisteredDuringStart { message: string }
+
+function thrownValue(failure: Foreign | ElizaError | ServiceStartAfterStop | ServiceUnregisteredDuringStart): unknown {
+  if (failure instanceof Foreign) return failure.cause
+  if (failure instanceof ElizaError) return failure
+  return new Error(failure.message)
+}
+
+export effect function startServiceEagerly(
+  lifecycle: RuntimeServiceLifecycle,
+  serviceType: ServiceTypeName | string,
+  pluginName: string,
+): void!! {
+  const { runtime, host } = lifecycle
+  for (let attempt = 0;; attempt += 1) {
+    const started = try result(ensureServiceStarted(lifecycle, serviceType))
+    if (Result.isSuccess(started)) return
+    const err = started.failure instanceof Foreign ? started.failure.cause : started.failure
+    const delayMs = EAGER_SERVICE_START_RETRY_DELAYS_MS[attempt]
+    const willRetry = delayMs !== undefined
+      && !host.stopRequested()
+      && !host.stopped()
+    runtime.logger.error(
+      {
+        src: "agent",
+        agentId: runtime.agentId,
+        plugin: pluginName,
+        serviceType,
+        attempt: attempt + 1,
+        willRetry,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      willRetry ? "Service start failed; retrying" : "Service start failed",
+    )
+    if (!willRetry) return
+    try sleep(delayMs)
+    if (host.stopRequested() || host.stopped()) return
+  }
+}
+
+effect function stopServiceOperation(
+  retirement: RuntimeRetirement,
+  serviceType: string,
+  service: Service,
+): void!Foreign {
+  foreign(() => Promise.resolve().then(() => service.stop())) catch effect (failure) => {
+    retirement.recordFailure(`stop:${serviceType}`, failure.cause)
+    throw failure
+  }
+}
+
+export effect function stopServiceInstance(
+  lifecycle: RuntimeServiceLifecycle,
+  serviceType: string,
+  service: Service | null | undefined,
+  reason: string,
+): void!! {
+  const { runtime, retirement } = lifecycle
+  if (!service) {
+    retirement.recordFailure(
+      `stop:${serviceType}`,
+      new Error("Null service instance"),
+    )
+    runtime.logger.warn(
+      { src: "agent", agentId: runtime.agentId, serviceType, reason },
+      "Null service instance during stop; skipping",
+    )
+    return
+  }
+
+  if (typeof service.stop !== "function") {
+    retirement.recordFailure(
+      `stop:${serviceType}`,
+      new Error("Service is missing stop()"),
+    )
+    runtime.logger.warn(
+      { src: "agent", agentId: runtime.agentId, serviceType, reason },
+      "Service instance is missing stop(); skipping",
+    )
+    return
+  }
+  foreign(() => lifecycle.stopServiceOnce(serviceType, service)) catch ({ cause: err }) => {
+    runtime.logger.warn(
+      {
+        src: "agent",
+        agentId: runtime.agentId,
+        serviceType,
+        reason,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      "Service stop() threw; continuing",
+    )
+  }
+}
+
+effect function startServiceClass(
+  host: RuntimeServiceLifecycleHost,
+  key: ServiceTypeName,
+  serviceType: string,
+  serviceClass: ServiceClass,
+): Service!(Foreign | ServiceImplementationDidNotStart) {
+  const service = foreign(() => host.runServiceStart(key, serviceType, serviceClass)) catch effect (failure) => {
+    host.failedServiceClasses().add(serviceClass)
+    throw failure
+  }
+  if (!service) {
+    throw new ServiceImplementationDidNotStart({
+      message: `Service implementation ${serviceClass.name || "<anonymous>"} did not start`,
+    })
+  }
+  host.failedServiceClasses().delete(serviceClass)
+  return service
+}
+
+function startPendingClass(
+  host: RuntimeServiceLifecycleHost,
+  key: ServiceTypeName,
+  serviceType: string,
+  serviceClass: ServiceClass,
+): Promise<Service> {
+  const starting = onExit(
+    asLegacy(Error, startServiceClass(host, key, serviceType, serviceClass)),
+    () => sync(() => host.startingServiceClasses().delete(serviceClass)),
+  )
+  const start = runDetached(starting)
+  host.startingServiceClasses().set(serviceClass, start)
+  return start
+}
+
+function serviceStarts(
+  host: RuntimeServiceLifecycleHost,
+  key: ServiceTypeName,
+  serviceType: string,
+  classes: readonly ServiceClass[],
+): Promise<Service>[] {
+  const instances = host.serviceInstancesByClass()
+  const startedClass = classes.find((serviceClass) => instances.has(serviceClass))
+  const startedImplementation = startedClass && instances.get(startedClass)
+  return classes.map((serviceClass) => {
+    const started = host.serviceInstancesByClass().get(serviceClass)
+    if (started) return Promise.resolve(started)
+    const pending = host.startingServiceClasses().get(serviceClass)
+    if (pending) return pending
+    if (
+      startedImplementation
+      && host.failedServiceClasses().has(serviceClass)
+    ) {
+      return Promise.resolve(startedImplementation)
+    }
+    return startPendingClass(host, key, serviceType, serviceClass)
+  })
+}
+
+effect function settleStarts(starts: readonly Promise<Service>[]): Exit.Exit<Service, Foreign>[]!! {
+  const settled: Exit.Exit<Service, Foreign>[] = []
+  for concurrent (const [index, start] of starts.entries()) {
+    settled[index] = try exit(foreign(() => start))
+  }
+  return settled
+}
+
+effect function firstStarted(starts: readonly Promise<Service>[]): (Service | null)!! {
+  const settled = try settleStarts(starts)
+  return settled.find(Exit.isSuccess)?.value ?? null
+}
+
+function publishAggregateStart(
+  host: RuntimeServiceLifecycleHost,
+  key: ServiceTypeName,
+  starts: readonly Promise<Service>[],
+): void {
+  const allStarts: Promise<Service | null> = runDetached(onExit(
+    firstStarted(starts),
+    () => sync(() => {
+      if (host.startingServices().get(key) === allStarts) {
+        host.startingServices().delete(key)
+      }
+    }),
+  ))
+  host.startingServices().set(key, allStarts)
+}
+
+function rejectionOf(settled: Exit.Exit<Service, Foreign>): unknown[] {
+  if (Exit.isSuccess(settled)) return []
+  const failure = Cause.squash(settled.cause)
+  return [failure instanceof Foreign ? failure.cause : failure]
+}
+
+export effect function ensureServiceStarted(
+  lifecycle: RuntimeServiceLifecycle,
+  serviceType: ServiceTypeName | string,
+): (Service | null)!(Foreign | ElizaError) {
+  const { runtime, host } = lifecycle
+  if (host.stopRequested()) return null
+  const key = host.resolveServiceTypeAlias(
+    serviceType,
+  ) as ServiceTypeName
+
+  const alreadyRunning = runtime.services.get(key)?.[0]
+  if (alreadyRunning && host.initResolver()) return alreadyRunning
+  try foreign(() => runtime.initPromise)
+
+  if (host.stopRequested() || host.initializationFailed()) {
+    return null
+  }
+  const classes = host.serviceTypes().get(key)
+  if (!classes || classes.length === 0) {
+    return null
+  }
+  const starts = serviceStarts(host, key, serviceType, classes)
+  publishAggregateStart(host, key, starts)
+
+  const settled = try settleStarts(starts)
+  const first = runtime.services.get(key)?.[0] ?? null
+  if (first) {
+    host.serviceRegistrationStatus().set(key, "registered")
+    const handler = host.servicePromiseHandlers().get(key)
+    if (handler) {
+      handler.resolve(first)
+      host.servicePromiseHandlers().delete(key)
+    }
+    return first
+  }
+
+  const cause = new AggregateError(
+    settled.flatMap(rejectionOf),
+    `All implementations of service ${serviceType} failed`,
+  )
+  const startupError = new ElizaError(
+    `Service ${serviceType} not found or failed to start`,
+    {
+      code: "SERVICE_START_FAILED",
+      context: {
+        serviceType,
+        implementationCount: classes.length,
+      },
+      cause,
+    },
+  )
+  const handler = host.servicePromiseHandlers().get(key)
+  if (handler) {
+    handler.reject(startupError)
+    host.servicePromiseHandlers().delete(key)
+    host.servicePromises().delete(key)
+  }
+
+  if (host.serviceTypes().get(key)?.length) {
+    host.serviceRegistrationStatus().set(key, "failed")
+  } else {
+    host.serviceRegistrationStatus().delete(key)
+  }
+  throw startupError
+}
+
+effect function publishStartedService(
+  lifecycle: RuntimeServiceLifecycle,
+  key: ServiceTypeName,
+  serviceType: string,
+  serviceDef: ServiceClass,
+): Service!(Foreign | ElizaError | ServiceStartAfterStop | ServiceUnregisteredDuringStart) {
+  const { runtime, host } = lifecycle
+  if (host.stopped() || host.stopRequested()) {
+    throw new ServiceStartAfterStop({
+      message: `Runtime stop requested before service ${serviceType} could start`,
+    })
+  }
+  const serviceInstance = try foreign(() => serviceDef.start(runtime))
+  if (!serviceInstance) {
+    throw new ElizaError("Service start returned no instance", {
+      code: "SERVICE_START_RESULT_INVALID",
+      context: { serviceType },
+    })
+  }
+  if (host.stopped() || host.stopRequested()) {
+    try stopServiceInstance(
+      lifecycle,
+      key,
+      serviceInstance,
+      "late service start after runtime stop",
+    )
+    throw new ServiceStartAfterStop({
+      message: `Runtime stop requested while service ${serviceType} was starting`,
+    })
+  }
+
+  if (!host.serviceTypes().get(key)?.includes(serviceDef)) {
+    try stopServiceInstance(
+      lifecycle,
+      key,
+      serviceInstance,
+      "late service start after plugin unload",
+    )
+    throw new ServiceUnregisteredDuringStart({
+      message: `Service ${serviceType} was unregistered while it was starting`,
+    })
+  }
+  host.serviceInstancesByClass().set(serviceDef, serviceInstance)
+  const orderedInstances = (
+    host.serviceTypes().get(key) ?? []
+  ).flatMap((serviceClass) => {
+    const instance = host
+      .serviceInstancesByClass()
+      .get(serviceClass)
+    return instance ? [instance] : []
+  })
+  runtime.services.set(key, orderedInstances)
+  host.serviceRegistrationStatus().set(key, "registered")
+  if (serviceDef.registerSendHandlers) {
+    const registerSendHandlers = serviceDef.registerSendHandlers
+    try foreignSync(() => registerSendHandlers(runtime, serviceInstance))
+  }
+
+  foreign(() => runtime.emitEvent(EventType.SERVICE_STARTED, {
+    runtime,
+    source: "runtime",
+    serviceType,
+  })) catch ({ cause: error }) => {
+    runtime.reportError(
+      "AgentRuntime.serviceStartedObserver",
+      error,
+      {
+        serviceType,
+      },
+    )
+  }
+  return serviceInstance
+}
+
+effect function runServiceStart(
+  lifecycle: RuntimeServiceLifecycle,
+  key: ServiceTypeName,
+  serviceType: string,
+  serviceDef: ServiceClass,
+): Service!(Foreign | ElizaError) {
+  const { runtime, host } = lifecycle
+  if ((runtime.services.get(key)?.length ?? 0) === 0) {
+    host.serviceRegistrationStatus().set(key, "registering")
+  }
+  if (typeof serviceDef.start !== "function") {
+    throw new ElizaError("Service class has no static start method", {
+      code: "SERVICE_START_METHOD_MISSING",
+      context: { serviceType },
+    })
+  }
+  return publishStartedService(lifecycle, key, serviceType, serviceDef) catch effect (failure) => {
+    const error = thrownValue(failure)
+    runtime.reportError("AgentRuntime.serviceStart", error, {
+      serviceType,
+    })
+
+    throw new ElizaError(`Service ${serviceType} failed to start`, {
+      code: "SERVICE_START_FAILED",
+      cause: error,
+      context: { serviceType },
+    })
+  }
+}
+
 export class RuntimeServiceLifecycle {
   async startServiceEagerly(
     serviceType: ServiceTypeName | string,
     pluginName: string,
   ): Promise<void> {
-    for (let attempt = 0;; attempt += 1) {
-      try {
-        await this._ensureServiceStarted(serviceType)
-        return
-      } catch (err) {
-        const delayMs = EAGER_SERVICE_START_RETRY_DELAYS_MS[attempt]
-        const willRetry = delayMs !== undefined
-          && !this.host.stopRequested()
-          && !this.host.stopped()
-        this.runtime.logger.error(
-          {
-            src: "agent",
-            agentId: this.runtime.agentId,
-            plugin: pluginName,
-            serviceType,
-            attempt: attempt + 1,
-            willRetry,
-            error: err instanceof Error ? err.message : String(err),
-          },
-          willRetry ? "Service start failed; retrying" : "Service start failed",
-        )
-        if (!willRetry) return
-        await new Promise<void>((resolve) => setTimeout(resolve, delayMs))
-        if (this.host.stopRequested() || this.host.stopped()) return
-      }
-    }
+    return runDetached(startServiceEagerly(this, serviceType, pluginName))
   }
 
   constructor(
-    private readonly runtime: IAgentRuntime,
-    private readonly host: RuntimeServiceLifecycleHost,
-    private readonly retirement: RuntimeRetirement,
+    readonly runtime: IAgentRuntime,
+    readonly host: RuntimeServiceLifecycleHost,
+    readonly retirement: RuntimeRetirement,
   ) {}
 
   private readonly stopOperations = new WeakMap<Service, Promise<void>>()
@@ -89,14 +426,7 @@ export class RuntimeServiceLifecycle {
   stopServiceOnce(serviceType: string, service: Service): Promise<void> {
     let operation = this.stopOperations.get(service)
     if (!operation) {
-      operation = this.retirement.run(() =>
-        Promise.resolve()
-          .then(() => service.stop())
-          .catch((error) => {
-            this.retirement.recordFailure(`stop:${serviceType}`, error)
-            throw error
-          })
-      )
+      operation = this.retirement.run(() => runDetached(stopServiceOperation(this.retirement, serviceType, service)))
       this.stopOperations.set(service, operation)
     }
     return operation
@@ -107,158 +437,13 @@ export class RuntimeServiceLifecycle {
     service: Service | null | undefined,
     reason: string,
   ): Promise<void> {
-    if (!service) {
-      this.retirement.recordFailure(
-        `stop:${serviceType}`,
-        new Error("Null service instance"),
-      )
-      this.runtime.logger.warn(
-        { src: "agent", agentId: this.runtime.agentId, serviceType, reason },
-        "Null service instance during stop; skipping",
-      )
-      return
-    }
-
-    if (typeof service.stop !== "function") {
-      this.retirement.recordFailure(
-        `stop:${serviceType}`,
-        new Error("Service is missing stop()"),
-      )
-      this.runtime.logger.warn(
-        { src: "agent", agentId: this.runtime.agentId, serviceType, reason },
-        "Service instance is missing stop(); skipping",
-      )
-      return
-    }
-    try {
-      await this.stopServiceOnce(serviceType, service)
-    } catch (err) {
-      this.runtime.logger.warn(
-        {
-          src: "agent",
-          agentId: this.runtime.agentId,
-          serviceType,
-          reason,
-          error: err instanceof Error ? err.message : String(err),
-        },
-        "Service stop() threw; continuing",
-      )
-    }
+    return runDetached(stopServiceInstance(this, serviceType, service, reason))
   }
 
   async _ensureServiceStarted(
     serviceType: ServiceTypeName | string,
   ): Promise<Service | null> {
-    if (this.host.stopRequested()) return null
-    const key = this.host.resolveServiceTypeAlias(
-      serviceType,
-    ) as ServiceTypeName
-
-    const alreadyRunning = this.runtime.services.get(key)?.[0]
-    if (alreadyRunning && this.host.initResolver()) return alreadyRunning
-    await this.runtime.initPromise
-
-    if (this.host.stopRequested() || this.host.initializationFailed()) {
-      return null
-    }
-    const classes = this.host.serviceTypes().get(key)
-    if (!classes || classes.length === 0) {
-      return null
-    }
-    const instances = this.host.serviceInstancesByClass()
-    const startedClass = classes.find((serviceClass) => instances.has(serviceClass))
-    const startedImplementation = startedClass && instances.get(startedClass)
-    const starts = classes.map((serviceClass) => {
-      const started = this.host.serviceInstancesByClass().get(serviceClass)
-      if (started) return Promise.resolve(started)
-      const pending = this.host.startingServiceClasses().get(serviceClass)
-      if (pending) return pending
-      if (
-        startedImplementation
-        && this.host.failedServiceClasses().has(serviceClass)
-      ) {
-        return Promise.resolve(startedImplementation)
-      }
-
-      const start = this.host
-        .runServiceStart(key, serviceType, serviceClass)
-        .then(
-          (service) => {
-            if (!service) {
-              throw new Error(
-                `Service implementation ${serviceClass.name || "<anonymous>"} did not start`,
-              )
-            }
-            this.host.failedServiceClasses().delete(serviceClass)
-            return service
-          },
-          (error) => {
-            this.host.failedServiceClasses().add(serviceClass)
-            throw error
-          },
-        )
-      this.host.startingServiceClasses().set(serviceClass, start)
-      void start.then(
-        () => this.host.startingServiceClasses().delete(serviceClass),
-        () => this.host.startingServiceClasses().delete(serviceClass),
-      )
-      return start
-    })
-
-    const settlement = Promise.allSettled(starts)
-    const allStarts = settlement.then((results) => {
-      const firstSuccessful = results.find(
-        (result): result is PromiseFulfilledResult<Service> => result.status === "fulfilled",
-      )?.value
-      return firstSuccessful ?? null
-    })
-    this.host.startingServices().set(key, allStarts)
-    void allStarts.then(() => {
-      if (this.host.startingServices().get(key) === allStarts) {
-        this.host.startingServices().delete(key)
-      }
-    })
-
-    const settled = await settlement
-    const first = this.runtime.services.get(key)?.[0] ?? null
-    if (first) {
-      this.host.serviceRegistrationStatus().set(key, "registered")
-      const handler = this.host.servicePromiseHandlers().get(key)
-      if (handler) {
-        handler.resolve(first)
-        this.host.servicePromiseHandlers().delete(key)
-      }
-      return first
-    }
-
-    const cause = new AggregateError(
-      settled.flatMap((result) => result.status === "rejected" ? [result.reason] : []),
-      `All implementations of service ${serviceType} failed`,
-    )
-    const startupError = new ElizaError(
-      `Service ${serviceType} not found or failed to start`,
-      {
-        code: "SERVICE_START_FAILED",
-        context: {
-          serviceType,
-          implementationCount: classes.length,
-        },
-        cause,
-      },
-    )
-    const handler = this.host.servicePromiseHandlers().get(key)
-    if (handler) {
-      handler.reject(startupError)
-      this.host.servicePromiseHandlers().delete(key)
-      this.host.servicePromises().delete(key)
-    }
-
-    if (this.host.serviceTypes().get(key)?.length) {
-      this.host.serviceRegistrationStatus().set(key, "failed")
-    } else {
-      this.host.serviceRegistrationStatus().delete(key)
-    }
-    throw startupError
+    return runDetached(ensureServiceStarted(this, serviceType))
   }
 
   _runServiceStart(
@@ -266,92 +451,6 @@ export class RuntimeServiceLifecycle {
     serviceType: string,
     serviceDef: ServiceClass,
   ): Promise<Service | null> {
-    return this.retirement.run(async () => {
-      if ((this.runtime.services.get(key)?.length ?? 0) === 0) {
-        this.host.serviceRegistrationStatus().set(key, "registering")
-      }
-      if (typeof serviceDef.start !== "function") {
-        throw new ElizaError("Service class has no static start method", {
-          code: "SERVICE_START_METHOD_MISSING",
-          context: { serviceType },
-        })
-      }
-      try {
-        if (this.host.stopped() || this.host.stopRequested()) {
-          throw new Error(
-            `Runtime stop requested before service ${serviceType} could start`,
-          )
-        }
-        const serviceInstance = await serviceDef.start(this.runtime)
-        if (!serviceInstance) {
-          throw new ElizaError("Service start returned no instance", {
-            code: "SERVICE_START_RESULT_INVALID",
-            context: { serviceType },
-          })
-        }
-        if (this.host.stopped() || this.host.stopRequested()) {
-          await this._stopServiceInstance(
-            key,
-            serviceInstance,
-            "late service start after runtime stop",
-          )
-          throw new Error(
-            `Runtime stop requested while service ${serviceType} was starting`,
-          )
-        }
-
-        if (!this.host.serviceTypes().get(key)?.includes(serviceDef)) {
-          await this._stopServiceInstance(
-            key,
-            serviceInstance,
-            "late service start after plugin unload",
-          )
-          throw new Error(
-            `Service ${serviceType} was unregistered while it was starting`,
-          )
-        }
-        this.host.serviceInstancesByClass().set(serviceDef, serviceInstance)
-        const orderedInstances = (
-          this.host.serviceTypes().get(key) ?? []
-        ).flatMap((serviceClass) => {
-          const instance = this.host
-            .serviceInstancesByClass()
-            .get(serviceClass)
-          return instance ? [instance] : []
-        })
-        this.runtime.services.set(key, orderedInstances)
-        this.host.serviceRegistrationStatus().set(key, "registered")
-        if (serviceDef.registerSendHandlers) {
-          serviceDef.registerSendHandlers(this.runtime, serviceInstance)
-        }
-
-        try {
-          await this.runtime.emitEvent(EventType.SERVICE_STARTED, {
-            runtime: this.runtime,
-            source: "runtime",
-            serviceType,
-          })
-        } catch (error) {
-          this.runtime.reportError(
-            "AgentRuntime.serviceStartedObserver",
-            error,
-            {
-              serviceType,
-            },
-          )
-        }
-        return serviceInstance
-      } catch (error) {
-        this.runtime.reportError("AgentRuntime.serviceStart", error, {
-          serviceType,
-        })
-
-        throw new ElizaError(`Service ${serviceType} failed to start`, {
-          code: "SERVICE_START_FAILED",
-          cause: error,
-          context: { serviceType },
-        })
-      }
-    })
+    return this.retirement.run(() => runDetached(runServiceStart(this, key, serviceType, serviceDef)))
   }
 }

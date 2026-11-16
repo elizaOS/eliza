@@ -1,4 +1,6 @@
+// spec/core/services.md, "Story: Acquire a declared service"
 import { isPassiveConnectorSource } from "../connectors.vibe"
+import { foreign, foreignSync, promised } from "../edge.vibe"
 import { logger } from "../logger.vibe"
 import type { MessageEventData } from "../types/agent-event.vibe"
 import type { ActionEventPayload, EvaluatorEventPayload, MessagePayload, RunEventPayload } from "../types/events.vibe"
@@ -554,10 +556,10 @@ function messageEventData(
   }
 }
 
-export async function bridgeConnectorMessageReceivedToStreams(
+export effect function bridgeConnectorMessageReceivedToStreams(
   eventType: string,
   payload: unknown,
-): Promise<void> {
+) {
   const message = normalizeRawConnectorMessage(eventType, payload)
   if (!message) return
 
@@ -570,26 +572,24 @@ export async function bridgeConnectorMessageReceivedToStreams(
 
   const agentEvents = resolveAgentEventService(message.runtime)
   if (agentEvents) {
-    try {
+    foreignSync(() => {
       agentEvents.emitMessage(runId, messageEventData(message), sessionKey)
-
       agentEvents.clearRunContext(runId)
-    } catch (err) {
+    }) catch ({ cause }) =>
       reportBridgeFailure(
         message.runtime,
         "connectorMessage",
-        err,
+        cause,
         "Failed to bridge connector message event to AgentEventService",
         { eventType },
       )
-    }
   }
 
   const notifications = resolveNotificationService(message.runtime)
   if (!notifications || !shouldNotifyForRawConnectorMessage(message)) return
 
-  try {
-    await notifications.notify({
+  foreign(() =>
+    notifications.notify({
       title: message.senderName
         ? `New ${message.channel} message from ${message.senderName}`
         : `New ${message.channel} message`,
@@ -602,26 +602,19 @@ export async function bridgeConnectorMessageReceivedToStreams(
       data: rawConnectorNotificationData(message),
       agentId: message.runtime.agentId,
     })
-  } catch (err) {
+  ) catch ({ cause }) =>
     reportBridgeFailure(
       message.runtime,
       "connectorNotification",
-      err,
+      cause,
       "Failed to create connector-message notification",
       { eventType },
     )
-  }
 }
 
-function isSuccessfulActionStatus(payload: ActionEventPayload): boolean {
-  const status = (payload.content as Record<string, unknown> | undefined)
-    ?.actionStatus
-  return status !== "failed"
-}
+export const bridgeConnectorMessageReceivedToStreamsPromise = promised(bridgeConnectorMessageReceivedToStreams)
 
-export async function bridgeMessageReceivedToStreams(
-  payload: MessagePayload,
-): Promise<void> {
+export effect function bridgeMessageReceivedToStreams(payload: MessagePayload) {
   const source = resolveMessageSource(payload)
   const channel = resolveMessageChannel(payload, source)
   const sessionKey = resolveMessageSessionKey(payload)
@@ -633,7 +626,7 @@ export async function bridgeMessageReceivedToStreams(
     const { runId, oneShot } = messageRunId
     const service = resolveAgentEventService(payload.runtime)
     if (service) {
-      try {
+      foreignSync(() => {
         service.emitMessageReceived(
           runId,
           {
@@ -646,27 +639,21 @@ export async function bridgeMessageReceivedToStreams(
           },
           sessionKey,
         )
-
         if (oneShot) service.clearRunContext(runId)
-      } catch (err) {
+      }) catch ({ cause }) =>
         reportBridgeFailure(
           payload.runtime,
           "messageReceived",
-          err,
+          cause,
           "Failed to bridge MESSAGE_RECEIVED to AgentEventService",
         )
-      }
     }
   }
 
-  if (!shouldNotifyForInboundMessage(payload, source)) {
-    return
-  }
+  if (!shouldNotifyForInboundMessage(payload, source)) return
 
   const notifications = resolveNotificationService(payload.runtime)
-  if (!notifications) {
-    return
-  }
+  if (!notifications) return
 
   const senderName = resolveMessageSenderName(payload)
   const title = senderName
@@ -676,8 +663,8 @@ export async function bridgeMessageReceivedToStreams(
     || (isObjectRecord(payload.message.content.mentionContext)
       && readBoolean(payload.message.content.mentionContext.isMention) === true)
 
-  try {
-    await notifications.notify({
+  foreign(() =>
+    notifications.notify({
       title,
       body: content || (attachments ? "Message includes attachments" : undefined),
       category: "message",
@@ -688,173 +675,120 @@ export async function bridgeMessageReceivedToStreams(
       data: notificationData(payload, source),
       agentId: payload.runtime.agentId,
     })
-  } catch (err) {
+  ) catch ({ cause }) =>
     reportBridgeFailure(
       payload.runtime,
       "inboundNotification",
-      err,
+      cause,
       "Failed to create inbound-message notification",
     )
+}
+
+export const bridgeMessageReceivedToStreamsPromise = promised(bridgeMessageReceivedToStreams)
+
+function bridgeToAgentEvents(
+  runtime: RuntimeServiceHost,
+  payloadRunId: string | undefined,
+  scope: string,
+  message: string,
+  emit: (service: AgentEventService, runId: string) => void,
+): void {
+  const service = resolveAgentEventService(runtime)
+  if (!service) return
+  const runId = resolveRunId(runtime, payloadRunId)
+  if (!runId) return
+  try {
+    emit(service, runId)
+  } catch (err) {
+    reportBridgeFailure(runtime, scope, err, message)
   }
 }
 
 export function bridgeActionStartedToStreams(
   payload: ActionEventPayload,
 ): void {
-  const runtime = payload.runtime
-  const service = resolveAgentEventService(runtime)
-  if (!service) {
-    return
-  }
-  const runId = resolveRunId(runtime, readContentRunId(payload))
-  if (!runId) {
-    return
-  }
-  const actionName = resolveActionName(payload)
-  try {
-    service.emitActionStart(runId, { actionName })
-    service.emitLifecycle(runId, { type: "action_start", actionName })
-  } catch (err) {
-    reportBridgeFailure(
-      runtime,
-      "actionStarted",
-      err,
-      "Failed to bridge ACTION_STARTED to AgentEventService",
-    )
-  }
+  bridgeToAgentEvents(
+    payload.runtime,
+    readContentRunId(payload),
+    "actionStarted",
+    "Failed to bridge ACTION_STARTED to AgentEventService",
+    (service, runId) => {
+      const actionName = resolveActionName(payload)
+      service.emitActionStart(runId, { actionName })
+      service.emitLifecycle(runId, { type: "action_start", actionName })
+    },
+  )
 }
 
 export function bridgeActionCompletedToStreams(
   payload: ActionEventPayload,
 ): void {
-  const runtime = payload.runtime
-  const service = resolveAgentEventService(runtime)
-  if (!service) {
-    return
-  }
-  const runId = resolveRunId(runtime, readContentRunId(payload))
-  if (!runId) {
-    return
-  }
-  const actionName = resolveActionName(payload)
-  const success = isSuccessfulActionStatus(payload)
-  try {
-    service.emitActionComplete(runId, { actionName, success })
-    service.emitLifecycle(runId, {
-      type: "action_end",
-      actionName,
-      success,
-    })
-  } catch (err) {
-    reportBridgeFailure(
-      runtime,
-      "actionCompleted",
-      err,
-      "Failed to bridge ACTION_COMPLETED to AgentEventService",
-    )
-  }
+  bridgeToAgentEvents(
+    payload.runtime,
+    readContentRunId(payload),
+    "actionCompleted",
+    "Failed to bridge ACTION_COMPLETED to AgentEventService",
+    (service, runId) => {
+      const actionName = resolveActionName(payload)
+      const success = (payload.content as Record<string, unknown> | undefined)?.actionStatus !== "failed"
+      service.emitActionComplete(runId, { actionName, success })
+      service.emitLifecycle(runId, { type: "action_end", actionName, success })
+    },
+  )
 }
 
 export function bridgeRunStartedToStreams(payload: RunEventPayload): void {
-  const runtime = payload.runtime
-  const service = resolveAgentEventService(runtime)
-  if (!service) {
-    return
-  }
-  const runId = resolveRunId(runtime, payload.runId)
-  if (!runId) {
-    return
-  }
-  try {
-    service.emitLifecycle(runId, { type: "run_start" })
-  } catch (err) {
-    reportBridgeFailure(
-      runtime,
-      "runStarted",
-      err,
-      "Failed to bridge RUN_STARTED to AgentEventService",
-    )
-  }
+  bridgeToAgentEvents(
+    payload.runtime,
+    payload.runId,
+    "runStarted",
+    "Failed to bridge RUN_STARTED to AgentEventService",
+    (service, runId) => service.emitLifecycle(runId, { type: "run_start" }),
+  )
 }
 
 export function bridgeRunEndedToStreams(payload: RunEventPayload): void {
-  const runtime = payload.runtime
-  const service = resolveAgentEventService(runtime)
-  if (!service) {
-    return
-  }
-  const runId = resolveRunId(runtime, payload.runId)
-  if (!runId) {
-    return
-  }
-  const duration = typeof payload.duration === "number" ? payload.duration : undefined
-  try {
-    service.emitLifecycle(runId, {
-      type: "run_end",
-      success: payload.status === "completed",
-      ...(duration !== undefined ? { duration } : {}),
-    })
-
-    service.clearRunContext(runId)
-  } catch (err) {
-    reportBridgeFailure(
-      runtime,
-      "runEnded",
-      err,
-      "Failed to bridge RUN_ENDED to AgentEventService",
-    )
-  }
+  bridgeToAgentEvents(
+    payload.runtime,
+    payload.runId,
+    "runEnded",
+    "Failed to bridge RUN_ENDED to AgentEventService",
+    (service, runId) => {
+      const duration = typeof payload.duration === "number" ? payload.duration : undefined
+      service.emitLifecycle(runId, {
+        type: "run_end",
+        success: payload.status === "completed",
+        ...(duration !== undefined ? { duration } : {}),
+      })
+      service.clearRunContext(runId)
+    },
+  )
 }
 
 export function bridgeEvaluatorStartedToStreams(
   payload: EvaluatorEventPayload,
 ): void {
-  const runtime = payload.runtime
-  const service = resolveAgentEventService(runtime)
-  if (!service) {
-    return
-  }
-  const runId = resolveRunId(runtime)
-  if (!runId) {
-    return
-  }
-  try {
-    service.emitEvaluatorStart(runId, {
-      evaluatorName: payload.evaluatorName,
-    })
-  } catch (err) {
-    reportBridgeFailure(
-      runtime,
-      "evaluatorStarted",
-      err,
-      "Failed to bridge EVALUATOR_STARTED to AgentEventService",
-    )
-  }
+  bridgeToAgentEvents(
+    payload.runtime,
+    undefined,
+    "evaluatorStarted",
+    "Failed to bridge EVALUATOR_STARTED to AgentEventService",
+    (service, runId) => service.emitEvaluatorStart(runId, { evaluatorName: payload.evaluatorName }),
+  )
 }
 
 export function bridgeEvaluatorCompletedToStreams(
   payload: EvaluatorEventPayload,
 ): void {
-  const runtime = payload.runtime
-  const service = resolveAgentEventService(runtime)
-  if (!service) {
-    return
-  }
-  const runId = resolveRunId(runtime)
-  if (!runId) {
-    return
-  }
-  try {
-    service.emitEvaluatorComplete(runId, {
-      evaluatorName: payload.evaluatorName,
-      validated: payload.completed === true,
-    })
-  } catch (err) {
-    reportBridgeFailure(
-      runtime,
-      "evaluatorCompleted",
-      err,
-      "Failed to bridge EVALUATOR_COMPLETED to AgentEventService",
-    )
-  }
+  bridgeToAgentEvents(
+    payload.runtime,
+    undefined,
+    "evaluatorCompleted",
+    "Failed to bridge EVALUATOR_COMPLETED to AgentEventService",
+    (service, runId) =>
+      service.emitEvaluatorComplete(runId, {
+        evaluatorName: payload.evaluatorName,
+        validated: payload.completed === true,
+      }),
+  )
 }

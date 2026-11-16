@@ -1,3 +1,6 @@
+// spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/core/storage.md, "Revisions and pagination reject invalid numeric inputs"
+import { revisionMatches } from "../../gen/core__storage.effect.vibe"
+import { Foreign, foreignSync, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Metadata } from "../types/primitives.vibe"
 import { isPlainObject } from "../utils/type-guards.vibe"
@@ -42,38 +45,39 @@ export function getWorldMetadataRevision(
     : null
 }
 
-export function requireFreshWorldMetadataRevision(
+effect function cloneMetadata(metadata: Metadata | undefined): Metadata!Foreign {
+  return try foreignSync(() => structuredClone(metadata ?? {}) as Metadata)
+}
+
+export effect function requireFreshWorldMetadataRevision(
   storedMetadata: Metadata | undefined,
   writerMetadata: Metadata | undefined,
   worldId: string,
-): number {
+): number!ElizaError {
   const storedRevision = getWorldMetadataRevision(storedMetadata)
   const writerRevision = getWorldMetadataRevision(writerMetadata)
-  if (
-    storedRevision === null
-    || writerRevision === null
-    || storedRevision !== writerRevision
-  ) {
-    throw new ElizaError("World metadata write used a stale revision", {
-      code: "WORLD_METADATA_STALE_WRITE",
-      context: {
-        worldId,
-        storedRevision,
-        writerRevision,
-        reason: storedRevision === null || writerRevision === null
-          ? "malformed_revision"
-          : "revision_mismatch",
-      },
-    })
+  if (storedRevision !== null && writerRevision !== null && revisionMatches(storedRevision, writerRevision)) {
+    return storedRevision
   }
-  return storedRevision
+  throw new ElizaError("World metadata write used a stale revision", {
+    code: "WORLD_METADATA_STALE_WRITE",
+    context: {
+      worldId,
+      storedRevision,
+      writerRevision,
+      reason: storedRevision === null || writerRevision === null
+        ? "malformed_revision"
+        : "revision_mismatch",
+    },
+  })
 }
+export const requireFreshWorldMetadataRevisionOrThrow = thrown(requireFreshWorldMetadataRevision)
 
-export function mergeWorldMetadataForLegacyWrite(
+export effect function mergeWorldMetadataForLegacyWrite(
   storedMetadata: Metadata | undefined,
   incomingMetadata: Metadata | undefined,
   worldId: string,
-): Metadata {
+): Metadata!(ElizaError | Foreign) {
   const storedRevision = getWorldMetadataRevision(storedMetadata)
   if (storedRevision === null) {
     throw new ElizaError("Stored world metadata revision is malformed", {
@@ -81,8 +85,8 @@ export function mergeWorldMetadataForLegacyWrite(
       context: { worldId, storedRevision, reason: "malformed_revision" },
     })
   }
-  const stored = structuredClone(storedMetadata ?? {}) as Metadata
-  const incoming = structuredClone(incomingMetadata ?? {}) as Metadata
+  const stored = try cloneMetadata(storedMetadata)
+  const incoming = try cloneMetadata(incomingMetadata)
 
   delete incoming.roles
   delete incoming.roleSources
@@ -103,11 +107,12 @@ export function mergeWorldMetadataForLegacyWrite(
     [WORLD_METADATA_REVISION_KEY]: storedRevision,
   }
 }
+export const mergeWorldMetadataForLegacyWriteOrThrow = thrown(mergeWorldMetadataForLegacyWrite)
 
-export function advanceWorldMetadataRevision(
+export effect function advanceWorldMetadataRevision(
   metadata: Metadata | undefined,
   currentRevision: number,
-): Metadata {
+): Metadata!(ElizaError | Foreign) {
   if (!Number.isSafeInteger(currentRevision) || currentRevision < 0) {
     throw new ElizaError("World metadata revision is invalid", {
       code: "WORLD_METADATA_REVISION_INVALID",
@@ -119,29 +124,32 @@ export function advanceWorldMetadataRevision(
       code: "WORLD_METADATA_REVISION_EXHAUSTED",
     })
   }
-  const replacement = structuredClone(metadata ?? {}) as Metadata
+  const replacement = try cloneMetadata(metadata)
   replacement[WORLD_METADATA_REVISION_KEY] = currentRevision + 1
   return replacement
 }
+export const advanceWorldMetadataRevisionOrThrow = thrown(advanceWorldMetadataRevision)
 
-export function appendWorldMetadataRoleAudit(
+export effect function appendWorldMetadataRoleAudit(
   metadata: Metadata | undefined,
   audit: Record<string, unknown>,
-): Metadata {
-  const replacement = structuredClone(metadata ?? {}) as Metadata
+): Metadata!Foreign {
+  const replacement = try cloneMetadata(metadata)
   const prior = replacement[WORLD_METADATA_ROLE_AUDIT_KEY]
   const entries = Array.isArray(prior) ? prior : []
   replacement[WORLD_METADATA_ROLE_AUDIT_KEY] = [
     ...entries,
-    structuredClone(audit),
+    try foreignSync(() => structuredClone(audit)),
   ] as never
   return replacement
 }
+export const appendWorldMetadataRoleAuditOrThrow = thrown(appendWorldMetadataRoleAudit)
 
-export function initializeWorldMetadataRevision(
+export effect function initializeWorldMetadataRevision(
   metadata: Metadata | undefined,
-): Metadata {
-  const replacement = structuredClone(metadata ?? {}) as Metadata
+): Metadata!Foreign {
+  const replacement = try cloneMetadata(metadata)
   replacement[WORLD_METADATA_REVISION_KEY] = 0
   return replacement
 }
+export const initializeWorldMetadataRevisionOrThrow = thrown(initializeWorldMetadataRevision)

@@ -1,3 +1,5 @@
+// spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+import { foreign, promised, runDetached } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 import { invalidateTurnMemo, invalidateTurnMemoPrefix, memoizeTurnWork } from "./trajectory-context.vibe"
 import type { PrincipalService } from "./types/identity.vibe"
@@ -29,10 +31,10 @@ function getIdentityAuthority(runtime: IAgentRuntime): PrincipalService | null {
   return runtime.getService<PrincipalService>(ServiceType.PRINCIPAL)
 }
 
-export async function getRelatedEntityIds(
+export effect function getRelatedEntityIds(
   runtime: IAgentRuntime,
   entityId: UUID,
-): Promise<UUID[]> {
+) {
   const resolver = getIdentityClusterResolver(runtime)
   if (!resolver?.getMemberEntityIds) {
     return [entityId]
@@ -40,53 +42,62 @@ export async function getRelatedEntityIds(
   const getMemberEntityIds = resolver.getMemberEntityIds.bind(resolver)
 
   const key = `identity-cluster:${runtime.agentId}:${entityId}`
-  return memoizeTurnWork(key, async () => {
-    const relatedEntityIds = await getMemberEntityIds(entityId)
-    return Array.from(new Set([entityId, ...relatedEntityIds]))
-  })
+  return try foreign(() =>
+    memoizeTurnWork(key, () =>
+      runDetached(effect {
+        const relatedEntityIds = try foreign(() => getMemberEntityIds(entityId))
+        return Array.from(new Set([entityId, ...relatedEntityIds]))
+      })))
 }
 
-export async function getVerifiedRelatedEntityIds(
+export const getRelatedEntityIdsPromise = promised(getRelatedEntityIds)
+
+effect function verifiedClusterIds(runtime: IAgentRuntime, entityId: UUID) {
+  const authority = getIdentityAuthority(runtime)
+  if (authority) {
+    const cluster = try foreign(() => authority.getCluster(runtime.agentId, entityId))
+    if (!cluster) return [entityId]
+    const principalIds = Array.from(
+      new Set([
+        entityId,
+        cluster.canonicalPrincipalId,
+        ...cluster.principalIds,
+      ]),
+    )
+    if (
+      cluster.agentId !== runtime.agentId
+      || !Number.isSafeInteger(cluster.generation)
+      || cluster.generation < 0
+      || !cluster.principalIds.includes(entityId)
+      || !cluster.principalIds.includes(cluster.canonicalPrincipalId)
+      || principalIds.some(
+        (principalId) => typeof principalId !== "string" || principalId.length === 0,
+      )
+    ) {
+      throw new ElizaError("Identity authority returned an invalid cluster", {
+        code: "IDENTITY_CLUSTER_INVALID",
+        context: { entityId, runtimeAgentId: runtime.agentId },
+      })
+    }
+    return principalIds
+  }
+
+  const resolver = getIdentityClusterResolver(runtime)
+  if (!resolver?.getVerifiedMemberEntityIds) return [entityId]
+  const getVerifiedMemberEntityIds = resolver.getVerifiedMemberEntityIds.bind(resolver)
+  const relatedEntityIds = try foreign(() => getVerifiedMemberEntityIds(entityId))
+  return Array.from(new Set([entityId, ...relatedEntityIds]))
+}
+
+export effect function getVerifiedRelatedEntityIds(
   runtime: IAgentRuntime,
   entityId: UUID,
-): Promise<UUID[]> {
+) {
   const key = `verified-identity-cluster:${runtime.agentId}:${entityId}`
-  return memoizeTurnWork(key, async () => {
-    const authority = getIdentityAuthority(runtime)
-    if (authority) {
-      const cluster = await authority.getCluster(runtime.agentId, entityId)
-      if (!cluster) return [entityId]
-      const principalIds = Array.from(
-        new Set([
-          entityId,
-          cluster.canonicalPrincipalId,
-          ...cluster.principalIds,
-        ]),
-      )
-      if (
-        cluster.agentId !== runtime.agentId
-        || !Number.isSafeInteger(cluster.generation)
-        || cluster.generation < 0
-        || !cluster.principalIds.includes(entityId)
-        || !cluster.principalIds.includes(cluster.canonicalPrincipalId)
-        || principalIds.some(
-          (principalId) => typeof principalId !== "string" || principalId.length === 0,
-        )
-      ) {
-        throw new ElizaError("Identity authority returned an invalid cluster", {
-          code: "IDENTITY_CLUSTER_INVALID",
-          context: { entityId, runtimeAgentId: runtime.agentId },
-        })
-      }
-      return principalIds
-    }
-
-    const resolver = getIdentityClusterResolver(runtime)
-    if (!resolver?.getVerifiedMemberEntityIds) return [entityId]
-    const relatedEntityIds = await resolver.getVerifiedMemberEntityIds(entityId)
-    return Array.from(new Set([entityId, ...relatedEntityIds]))
-  })
+  return try foreign(() => memoizeTurnWork(key, () => runDetached(verifiedClusterIds(runtime, entityId))))
 }
+
+export const getVerifiedRelatedEntityIdsPromise = promised(getVerifiedRelatedEntityIds)
 
 export function invalidateRelatedEntityIds(
   runtime: IAgentRuntime,
@@ -103,13 +114,16 @@ export function invalidateRelatedEntityIds(
   }
 }
 
-export async function resolvePrimaryEntityId(
+export effect function resolvePrimaryEntityId(
   runtime: IAgentRuntime,
   entityId: UUID,
-): Promise<UUID> {
+) {
   const resolver = getIdentityClusterResolver(runtime)
   if (!resolver?.resolvePrimaryEntityId) {
     return entityId
   }
-  return resolver.resolvePrimaryEntityId(entityId)
+  const resolvePrimary = resolver.resolvePrimaryEntityId.bind(resolver)
+  return try foreign(() => resolvePrimary(entityId))
 }
+
+export const resolvePrimaryEntityIdPromise = promised(resolvePrimaryEntityId)

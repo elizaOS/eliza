@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { AgentContext } from "./contexts.vibe"
 import type { Room } from "./environment.vibe"
 import type { Memory } from "./memory.vibe"
@@ -23,7 +24,6 @@ export interface OutgoingContentContext {
   message?: Memory
   actionName?: string
   responseId?: UUID
-
   streaming?: boolean
 }
 
@@ -63,12 +63,9 @@ export type PipelineMessageTurnFields = PipelineMessageCorrelation & {
 
 export type ModelCallHookCorrelation = {
   requestedModelType: string
-
   resolvedModelKey: string
   provider?: string
-
   roomId?: UUID
-
   params: unknown
 }
 
@@ -86,15 +83,10 @@ export type PipelineHookContext =
   | ({ phase: "incoming_before_compose" } & PipelineMessageTurnFields)
   | {
     phase: "compose_state_providers"
-
     message: Memory
-
     providers: { current: string[] }
-
     activeContexts: readonly AgentContext[]
-
     onlyInclude: boolean
-
     includeList: readonly string[] | null
   }
   | ({ phase: "pre_should_respond" } & PipelineMessageTurnFields & {
@@ -121,9 +113,7 @@ export type PipelineHookContext =
   | ({ phase: "pre_model" } & ModelCallHookCorrelation)
   | ({ phase: "post_model" } & ModelCallHookCorrelation & {
     durationMs: number
-
     result: { current: unknown }
-
     streaming?: boolean
   })
   | {
@@ -135,7 +125,6 @@ export type PipelineHookContext =
   | ({ phase: "model_stream_chunk" } & ModelStreamHookCorrelation & {
     chunk: string
     accumulated?: string
-
     field?: string
   })
   | ({ phase: "model_stream_end" } & ModelStreamHookCorrelation & {
@@ -162,11 +151,8 @@ function withPipelinePhase<P extends PipelineHookPhase>(
 export interface PipelineHookSpec {
   id: string
   phase: PipelineHookPhase
-
   position?: number
-
   schedule?: PipelineHookSchedule
-
   mutatesPrimary?: boolean
   handler: PipelineHookHandler
 }
@@ -224,7 +210,6 @@ export function pipelineHookMetricRoomId(ctx: PipelineHookContext): UUID {
 export type ResolvedPipelineHook = {
   id: string
   phase: PipelineHookPhase
-
   position: number
   schedule: PipelineHookSchedule
   mutatesPrimary: boolean

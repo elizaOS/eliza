@@ -1,3 +1,5 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { failingAs, thrown } from "../edge.vibe"
 import { getActionRoutingContext } from "../runtime/action-routing-context.vibe"
 import type { ActionResult } from "./components.vibe"
 
@@ -8,9 +10,7 @@ export interface ActionReplyFailure {
     | "no_provider"
     | "reply_generation_error"
   code: string
-
   message: string
-
   transient: false
 }
 
@@ -42,11 +42,13 @@ export function createUnavailableGroundedActionReply(
   }
 }
 
-export function normalizeActionReplyFailure(
+export error InvalidActionReplyFailure { message: string }
+
+export effect function normalizeActionReplyFailure(
   value: unknown,
-): ActionReplyFailure {
+): ActionReplyFailure!InvalidActionReplyFailure {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new TypeError("ActionResult.replyFailure must be an object.")
+    throw new InvalidActionReplyFailure({ message: "ActionResult.replyFailure must be an object." })
   }
   const record = value as Record<string, unknown>
   if (
@@ -60,9 +62,7 @@ export function normalizeActionReplyFailure(
     || !record.message.trim()
     || record.transient !== false
   ) {
-    throw new TypeError(
-      "ActionResult.replyFailure must declare a non-replayable reply failure.",
-    )
+    throw new InvalidActionReplyFailure({ message: "ActionResult.replyFailure must declare a non-replayable reply failure." })
   }
   return {
     kind: record.kind,
@@ -72,21 +72,22 @@ export function normalizeActionReplyFailure(
   }
 }
 
+export const normalizeActionReplyFailureOrThrow = thrown(failingAs(TypeError, normalizeActionReplyFailure))
+
 export function readActionReplyFailure(
   value: unknown,
 ): ActionReplyFailure | undefined {
   if (value === undefined) return undefined
-  try {
-    return normalizeActionReplyFailure(value)
-  } catch {
-    return undefined
+  return match (runSyncExit(normalizeActionReplyFailure(value))) {
+    when Exit.Success(let failure): failure;
+    default: undefined;
   }
 }
 
-export function applyGroundedActionReply(
+export effect function applyGroundedActionReply(
   result: ActionResult,
   reply: GroundedActionReply,
-): ActionResult {
+): ActionResult!InvalidActionReplyFailure {
   const settled = { ...result }
   if (reply.kind === "deferred") {
     settled.data = { ...settled.data, replyGrounding: reply.grounding }
@@ -115,7 +116,7 @@ export function applyGroundedActionReply(
     delete settled.replyFailure
     return settled
   }
-  settled.replyFailure = normalizeActionReplyFailure(reply.failure)
+  settled.replyFailure = try normalizeActionReplyFailure(reply.failure)
   settled.transcriptVisibility = "internal"
   settled.turnComplete = false
   delete settled.userFacingText
@@ -126,3 +127,5 @@ export function applyGroundedActionReply(
   delete settled.continueChain
   return settled
 }
+
+export const applyGroundedActionReplyOrThrow = thrown(failingAs(TypeError, applyGroundedActionReply))

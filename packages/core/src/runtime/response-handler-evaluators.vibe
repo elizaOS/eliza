@@ -1,3 +1,5 @@
+// spec/core/responseEvaluation.md, "Story: Apply response evaluator decisions in priority order"; spec/core/responseEvaluation.md, "Each candidate checks eligibility before evaluating its patch"; spec/core/responseEvaluation.md, "Invalid tool choices and scope replacements reject the entire patch"; spec/core/responseEvaluation.md, "Applied patches retain exact ordering and context evidence"
+import { Foreign, foreign, foreignSync, promised } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type {
   MessageHandlerAction,
@@ -125,10 +127,10 @@ function normalizeDeterministicToolCall(
   return params ? { name, params } : { name }
 }
 
-function allowedDeterministicToolCall(
+effect function allowedDeterministicToolCall(
   evaluator: ResponseHandlerEvaluator,
   patch: ResponseHandlerPatch,
-): MessageHandlerDeterministicToolCall | null {
+): (MessageHandlerDeterministicToolCall | null)!ElizaError {
   const toolCall = normalizeDeterministicToolCall(patch.deterministicToolCall)
   if (!toolCall) return null
 
@@ -214,13 +216,13 @@ const PROTECTED_SCOPE_FIELDS: ReadonlySet<string> = new Set([
   "__proto__",
 ])
 
-function applyResponseHandlerPatch(
+effect function applyResponseHandlerPatch(
   evaluatorName: string,
   messageHandler: MessageHandlerResult,
   patch: ResponseHandlerPatch,
   deterministicToolCall: MessageHandlerDeterministicToolCall | null,
   available: Set<string> | null,
-): AppliedResponseHandlerPatch | null {
+): (AppliedResponseHandlerPatch | null)!ElizaError {
   const scope = patch.replaceIntentScope
 
   if (
@@ -345,7 +347,7 @@ function applyResponseHandlerPatch(
   }
 }
 
-export async function runResponseHandlerEvaluators(args: {
+interface ResponseHandlerEvaluatorsArgs {
   runtime: IAgentRuntime
   message: Memory
   state: State
@@ -353,7 +355,91 @@ export async function runResponseHandlerEvaluators(args: {
   availableContexts: readonly ContextDefinition[]
   userRoles?: readonly RoleGateRole[]
   evaluators?: readonly ResponseHandlerEvaluator[]
-}): Promise<ResponseHandlerEvaluationRunResult> {
+}
+
+interface EvaluationRun {
+  readonly args: ResponseHandlerEvaluatorsArgs
+  readonly available: Set<string> | null
+  readonly invalidatedScopeFields: Set<string>
+  readonly result: ResponseHandlerEvaluationRunResult
+  wholeRequestOwner?: DirectActionRoutingRule
+}
+
+effect function runCandidate(run: EvaluationRun, evaluator: ResponseHandlerEvaluator): void!(Foreign | ElizaError) {
+  const { args, result } = run
+  const context: ResponseHandlerEvaluatorContext = {
+    invalidatedScopeFields: run.invalidatedScopeFields,
+    wholeRequestOwner: run.wholeRequestOwner,
+    runtime: args.runtime,
+    message: args.message,
+    state: args.state,
+    messageHandler: args.messageHandler,
+    availableContexts: args.availableContexts,
+    userRoles: args.userRoles,
+  }
+  const shouldRun = try foreign(() => evaluator.shouldRun(context))
+  if (!shouldRun) {
+    return
+  }
+  result.activeEvaluators.push(evaluator.name)
+  const patch = try foreign(() => evaluator.evaluate(context))
+  if (!patch) {
+    return
+  }
+  const deterministicToolCall = try allowedDeterministicToolCall(evaluator, patch)
+  const applied = try applyResponseHandlerPatch(
+    evaluator.name,
+    args.messageHandler,
+    patch,
+    deterministicToolCall,
+    run.available,
+  )
+  if (applied) {
+    if (patch.replaceIntentScope) {
+      run.wholeRequestOwner = patch.replaceIntentScope.owner
+      for (const field of patch.replaceIntentScope.invalidateFields) {
+        run.invalidatedScopeFields.add(field)
+      }
+    }
+    if (patch.clearCandidateActions) {
+      result.candidateActionsClearedByEvaluators = true
+    }
+    result.appliedPatches.push(applied.trace)
+    result.candidateActionsAddedByEvaluators = mergeUniqueStrings(
+      result.candidateActionsAddedByEvaluators,
+      applied.candidateActionsAdded,
+    )
+  }
+  if (patch.contextSources?.length) {
+    result.contextSources ??= []
+    result.contextSources.push(...patch.contextSources)
+  }
+}
+
+effect function recordEvaluatorFailure(
+  run: EvaluationRun,
+  evaluator: ResponseHandlerEvaluator,
+  failure: Foreign | ElizaError,
+): void!Foreign {
+  if (failure instanceof Foreign && failure.cause instanceof TurnAbortedError) throw failure
+  const error = failure instanceof Foreign ? failure.cause : failure
+  const { runtime } = run.args
+  try foreignSync(() => runtime.reportError("ResponseHandlerEvaluator.evaluate", error, {
+    evaluator: evaluator.name,
+  }))
+  const message = error instanceof Error ? error.message : String(error)
+  run.result.errors.push({ evaluatorName: evaluator.name, error: message })
+  try foreignSync(() => runtime.logger.warn(
+    {
+      src: "response-handler-evaluator",
+      evaluator: evaluator.name,
+      err: message,
+    },
+    "Response-handler evaluator failed",
+  ))
+}
+
+export effect function runResponseHandlerEvaluators(args: ResponseHandlerEvaluatorsArgs): ResponseHandlerEvaluationRunResult!Foreign {
   const candidates = [
     ...(args.evaluators ?? []),
     ...(args.runtime.responseHandlerEvaluators ?? []),
@@ -371,74 +457,18 @@ export async function runResponseHandlerEvaluators(args: {
     return result
   }
 
-  const available = availableContextSet(args.availableContexts)
-  const invalidatedScopeFields = new Set<string>()
-  let wholeRequestOwner: DirectActionRoutingRule | undefined
+  const run: EvaluationRun = {
+    args,
+    available: availableContextSet(args.availableContexts),
+    invalidatedScopeFields: new Set<string>(),
+    result,
+  }
   for (const evaluator of candidates) {
-    const context: ResponseHandlerEvaluatorContext = {
-      invalidatedScopeFields,
-      wholeRequestOwner,
-      runtime: args.runtime,
-      message: args.message,
-      state: args.state,
-      messageHandler: args.messageHandler,
-      availableContexts: args.availableContexts,
-      userRoles: args.userRoles,
-    }
-    try {
-      const shouldRun = await evaluator.shouldRun(context)
-      if (!shouldRun) {
-        continue
-      }
-      result.activeEvaluators.push(evaluator.name)
-      const patch = await evaluator.evaluate(context)
-      if (!patch) {
-        continue
-      }
-      const applied = applyResponseHandlerPatch(
-        evaluator.name,
-        args.messageHandler,
-        patch,
-        allowedDeterministicToolCall(evaluator, patch),
-        available,
-      )
-      if (applied) {
-        if (patch.replaceIntentScope) {
-          wholeRequestOwner = patch.replaceIntentScope.owner
-          for (const field of patch.replaceIntentScope.invalidateFields) {
-            invalidatedScopeFields.add(field)
-          }
-        }
-        if (patch.clearCandidateActions) {
-          result.candidateActionsClearedByEvaluators = true
-        }
-        result.appliedPatches.push(applied.trace)
-        result.candidateActionsAddedByEvaluators = mergeUniqueStrings(
-          result.candidateActionsAddedByEvaluators,
-          applied.candidateActionsAdded,
-        )
-      }
-      if (patch.contextSources?.length) {
-        result.contextSources ??= []
-        result.contextSources.push(...patch.contextSources)
-      }
-    } catch (error) {
-      if (error instanceof TurnAbortedError) throw error
-
-      args.runtime.reportError("ResponseHandlerEvaluator.evaluate", error, {
-        evaluator: evaluator.name,
-      })
-      const message = error instanceof Error ? error.message : String(error)
-      result.errors.push({ evaluatorName: evaluator.name, error: message })
-      args.runtime.logger.warn(
-        {
-          src: "response-handler-evaluator",
-          evaluator: evaluator.name,
-          err: message,
-        },
-        "Response-handler evaluator failed",
-      )
+    runCandidate(run, evaluator) catch effect (failure) => {
+      try recordEvaluatorFailure(run, evaluator, failure)
     }
   }
   return result
 }
+
+export const runResponseHandlerEvaluatorsPromise = promised(runResponseHandlerEvaluators)

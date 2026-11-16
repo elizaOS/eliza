@@ -1,4 +1,6 @@
-import { compareMemoryIds } from "../database.vibe"
+// spec/core/storage.md, "Every page read checks current authorization and expected revision"; spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/core/storage.md, "Revisions and pagination reject invalid numeric inputs"
+import { validPagination } from "../../gen/core__storage.effect.vibe"
+import { foreign, Foreign, promised, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type {
   DocumentFragmentQueryParams,
@@ -12,7 +14,6 @@ import type {
 } from "../types/database.vibe"
 import { type Memory, MemoryType } from "../types/memory.vibe"
 import type { UUID } from "../types/primitives.vibe"
-import { validateUuid } from "../utils/uuid.vibe"
 
 export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 4 as const
 export const DOCUMENT_LIST_MAX_LIMIT = 100
@@ -48,18 +49,458 @@ const DOCUMENT_LIST_SCOPES = new Set([
 ])
 const DOCUMENT_SEARCH_SEPARATOR = /[ \t\r\n\f]+/
 
-function invalidPagination(
+module listing {
+  import { compareMemoryIds } from "../database.vibe"
+  import { ElizaError } from "../errors.vibe"
+  import type {
+    DocumentFragmentQueryParams,
+    DocumentListCursor,
+    DocumentListQueryParams,
+    DocumentListQueryResult,
+  } from "../types/database.vibe"
+  import { type Memory, MemoryType } from "../types/memory.vibe"
+  import type { UUID } from "../types/primitives.vibe"
+  import { validateUuid } from "../utils/uuid.vibe"
+  import {
+    documentSearchText,
+    isDocumentVisibleToRequester,
+    portableDocumentSearchTokens,
+    readDocumentMutationSnapshot,
+  } from "./document-list-query.vibe"
+
+  /** @throws {never} */
+  export function isUuid(value: unknown): value is UUID {
+    return validateUuid(value) !== null
+  }
+
+  /** @throws {never} */
+  export function isDocumentMemory(memory: Memory): boolean {
+    return memory.metadata?.type === MemoryType.DOCUMENT
+  }
+
+  /** @throws {never} */
+  export function readDocumentRevision(metadata: unknown): number | null {
+    if (metadata === null || typeof metadata !== "object") return null
+    const value = Reflect.get(metadata, "documentRevision")
+    if (value === undefined) return 0
+    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : null
+  }
+
+  function missingUuid(memory: Memory): ElizaError {
+    return new ElizaError("Stored document is missing a valid UUID", {
+      code: "DOCUMENT_LIST_INVALID_MEMORY",
+      context: { agentId: memory.agentId, documentId: memory.id },
+      severity: "fatal",
+    })
+  }
+
+  /** @throws {ElizaError} */
+  export function storedCreatedAt(memory: Memory): number {
+    if (
+      typeof memory.createdAt !== "number"
+      || !Number.isSafeInteger(memory.createdAt)
+    ) {
+      throw new ElizaError("Stored document is missing a valid creation time", {
+        code: "DOCUMENT_LIST_INVALID_MEMORY",
+        context: {
+          agentId: memory.agentId,
+          documentId: memory.id,
+          createdAt: memory.createdAt,
+        },
+        severity: "fatal",
+      })
+    }
+    return memory.createdAt
+  }
+
+  /** @throws {ElizaError} */
+  export function documentOrder(left: Memory, right: Memory): number {
+    const timeDifference = storedCreatedAt(right) - storedCreatedAt(left)
+    if (timeDifference !== 0) return timeDifference
+    return compareMemoryIds(right.id ?? "", left.id ?? "")
+  }
+
+  function documentCursor(
+    memory: Memory,
+    snapshot: Pick<DocumentListCursor, "snapshotCreatedAt" | "snapshotId">,
+  ): DocumentListCursor {
+    if (!isUuid(memory.id)) throw missingUuid(memory)
+    return {
+      createdAt: storedCreatedAt(memory),
+      id: memory.id,
+      ...snapshot,
+    }
+  }
+
+  function isAfterDocumentCursor(
+    memory: Memory,
+    cursor: DocumentListCursor,
+  ): boolean {
+    const createdAt = storedCreatedAt(memory)
+    if (createdAt !== cursor.createdAt) return createdAt < cursor.createdAt
+    return (
+      typeof memory.id === "string"
+      && memory.id.toLowerCase() < cursor.id.toLowerCase()
+    )
+  }
+
+  function isWithinDocumentSnapshot(
+    memory: Memory,
+    cursor: DocumentListCursor,
+  ): boolean {
+    const snapshotCreatedAt = cursor.snapshotCreatedAt ?? cursor.createdAt
+    const snapshotId = cursor.snapshotId ?? cursor.id
+    const createdAt = storedCreatedAt(memory)
+    if (createdAt !== snapshotCreatedAt) return createdAt < snapshotCreatedAt
+    return (
+      typeof memory.id === "string"
+      && memory.id.toLowerCase() <= snapshotId.toLowerCase()
+    )
+  }
+
+  function matchesDocumentFilters(
+    memory: Memory,
+    params: DocumentListQueryParams,
+  ): boolean {
+    const metadata = (memory.metadata ?? {}) as Record<string, unknown>
+    if (params.scope && metadata.scope !== params.scope) {
+      return false
+    }
+    if (
+      params.scopedToEntityId
+      && metadata.scopedToEntityId !== params.scopedToEntityId
+    ) {
+      return false
+    }
+    if (params.addedBy && metadata.addedBy !== params.addedBy) return false
+
+    const timestamp = typeof metadata.timestamp === "number"
+      ? metadata.timestamp
+      : storedCreatedAt(memory)
+    if (
+      params.timeRangeStart !== undefined
+      && timestamp < params.timeRangeStart
+    ) {
+      return false
+    }
+    if (params.timeRangeEnd !== undefined && timestamp > params.timeRangeEnd) {
+      return false
+    }
+
+    if (params.tags?.length) {
+      const tags = Array.isArray(metadata.tags)
+        ? metadata.tags.filter((tag): tag is string => typeof tag === "string")
+        : []
+      if (!params.tags.every((tag) => tags.includes(tag))) return false
+    }
+    return true
+  }
+
+  function matchesDocumentQuery(
+    memory: Memory,
+    queryLexemes: readonly string[],
+    sourceSegmentsByDocument: ReadonlyMap<string, readonly Memory[]>,
+  ): boolean {
+    if (queryLexemes.length === 0) return false
+    const haystack = new Set(
+      portableDocumentSearchTokens(documentSearchText(memory)),
+    )
+    for (const segment of sourceSegmentsByDocument.get(String(memory.id)) ?? []) {
+      for (
+        const token of portableDocumentSearchTokens(
+          segment.content.text ?? "",
+        )
+      ) {
+        haystack.add(token)
+      }
+    }
+    return queryLexemes.every((lexeme) => haystack.has(lexeme))
+  }
+
+  function assertUniqueDocumentIds(memories: Memory[]): void {
+    const ids = new Set<UUID>()
+    for (const memory of memories) {
+      if (!isUuid(memory.id)) throw missingUuid(memory)
+      if (ids.has(memory.id)) {
+        throw new ElizaError("Document list adapter returned a duplicate UUID", {
+          code: "DOCUMENT_LIST_DUPLICATE_MEMORY",
+          context: { agentId: memory.agentId, documentId: memory.id },
+          severity: "fatal",
+        })
+      }
+      ids.add(memory.id)
+    }
+  }
+
+  function paginateDocuments(
+    memories: Memory[],
+    params: DocumentListQueryParams,
+  ): {
+    documents: Memory[]
+    hasMore: boolean
+    nextCursor?: DocumentListCursor
+  } {
+    const cursorFiltered = params.cursor
+      ? memories.filter(
+        (memory) =>
+          isWithinDocumentSnapshot(
+            memory,
+            params.cursor as DocumentListCursor,
+          )
+          && isAfterDocumentCursor(memory, params.cursor as DocumentListCursor),
+      )
+      : memories
+    const offset = params.cursor ? 0 : params.offset
+    const page = cursorFiltered.slice(offset, offset + params.limit + 1)
+    const hasMore = page.length > params.limit
+    const documents = page.slice(0, params.limit)
+    const last = documents.at(-1)
+    const first = memories.at(0)
+    const snapshotCreatedAt = params.cursor?.snapshotCreatedAt
+      ?? params.cursor?.createdAt
+      ?? (first ? storedCreatedAt(first) : undefined)
+    const snapshotId = params.cursor?.snapshotId
+      ?? params.cursor?.id
+      ?? (first && isUuid(first.id) ? first.id : undefined)
+    const snapshot = snapshotCreatedAt !== undefined && snapshotId
+      ? { snapshotCreatedAt, snapshotId }
+      : {}
+    return {
+      documents,
+      hasMore,
+      ...(hasMore && last ? { nextCursor: documentCursor(last, snapshot) } : {}),
+    }
+  }
+
+  /** @throws {ElizaError} */
+  export function documentsInMemory(
+    memories: Memory[],
+    params: DocumentListQueryParams,
+  ): DocumentListQueryResult {
+    const documents = memories.filter(isDocumentMemory)
+    assertUniqueDocumentIds(documents)
+
+    const parents = new Map<string, Memory>()
+    for (const document of documents) {
+      if (document.agentId === params.agentId && isUuid(document.id)) {
+        parents.set(String(document.id), document)
+      }
+    }
+    const sourceSegmentsByDocument = new Map<string, Memory[]>()
+
+    const parentFences = new Map<
+      string,
+      { revision: number; attemptId: unknown } | null
+    >()
+    for (const memory of memories) {
+      const metadata = (memory.metadata ?? {}) as Record<string, unknown>
+      if (
+        memory.agentId !== params.agentId
+        || metadata.type !== MemoryType.FRAGMENT
+        || metadata.fragmentRole !== "source-segment"
+        || typeof metadata.documentId !== "string"
+      ) {
+        continue
+      }
+      const parent = parents.get(metadata.documentId)
+      if (!parent) continue
+      let fence = parentFences.get(metadata.documentId)
+      if (fence === undefined) {
+        const parentSnapshot = readDocumentMutationSnapshot(parent)
+        fence = parentSnapshot
+          ? {
+            revision: parentSnapshot.revision,
+            attemptId: (parent.metadata as Record<string, unknown> | undefined)
+              ?.revisionAttemptId,
+          }
+          : null
+        parentFences.set(metadata.documentId, fence)
+      }
+      const segmentRevision = readDocumentRevision(metadata)
+      if (
+        !fence
+        || segmentRevision === null
+        || segmentRevision !== fence.revision
+      ) {
+        continue
+      }
+      if (
+        typeof fence.attemptId === "string"
+        && metadata.revisionAttemptId !== fence.attemptId
+      ) {
+        continue
+      }
+      const rows = sourceSegmentsByDocument.get(metadata.documentId) ?? []
+      rows.push(memory)
+      sourceSegmentsByDocument.set(metadata.documentId, rows)
+    }
+    const allVisibleDocuments = documents
+      .filter(
+        (memory) =>
+          memory.agentId === params.agentId
+          && isDocumentVisibleToRequester(memory, params),
+      )
+      .sort(documentOrder)
+    const visibleDocuments = params.cursor
+      ? allVisibleDocuments.filter((memory) => isWithinDocumentSnapshot(memory, params.cursor as DocumentListCursor))
+      : allVisibleDocuments
+    const availableDocuments = visibleDocuments.filter(
+      (memory) =>
+        matchesDocumentFilters(memory, params)
+        && (!params.pinnedOnly
+          || (memory.metadata as Record<string, unknown> | undefined)?.pinned
+            === true),
+    )
+    const normalizedQuery = params.query?.trim()
+    const queryLexemes = normalizedQuery
+      ? portableDocumentSearchTokens(normalizedQuery)
+      : []
+    const matchedDocuments = normalizedQuery
+      ? availableDocuments.filter((memory) => matchesDocumentQuery(memory, queryLexemes, sourceSegmentsByDocument))
+      : availableDocuments
+    const matchedPage = paginateDocuments(matchedDocuments, params)
+    const availablePage = normalizedQuery
+        && matchedDocuments.length === 0
+        && availableDocuments.length > 0
+      ? paginateDocuments(availableDocuments, params)
+      : { documents: [], hasMore: false }
+
+    return {
+      documents: matchedPage.documents,
+      availableDocuments: availablePage.documents,
+      totalVisible: visibleDocuments.length,
+      totalAvailable: availableDocuments.length,
+      totalMatched: matchedDocuments.length,
+      hasMore: matchedPage.hasMore,
+      availableHasMore: availablePage.hasMore,
+      ...(matchedPage.nextCursor ? { nextCursor: matchedPage.nextCursor } : {}),
+      ...(availablePage.nextCursor
+        ? { availableNextCursor: availablePage.nextCursor }
+        : {}),
+    }
+  }
+
+  function cosineSimilarity(left: number[], right: number[]): number {
+    if (left.length !== right.length || left.length === 0) return -1
+    let dot = 0
+    let leftMagnitude = 0
+    let rightMagnitude = 0
+    for (let index = 0; index < left.length; index++) {
+      const leftValue = left[index]
+      const rightValue = right[index]
+      if (
+        typeof leftValue !== "number"
+        || typeof rightValue !== "number"
+        || !Number.isFinite(leftValue)
+        || !Number.isFinite(rightValue)
+      ) {
+        return -1
+      }
+      dot += leftValue * rightValue
+      leftMagnitude += leftValue * leftValue
+      rightMagnitude += rightValue * rightValue
+    }
+    if (leftMagnitude === 0 || rightMagnitude === 0) return -1
+    return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude))
+  }
+
+  /** @throws {ElizaError} */
+  export function fragmentsInMemory(
+    memories: Memory[],
+    params: DocumentFragmentQueryParams,
+  ): Memory[] {
+    const parents = new Map<UUID, Memory>()
+    for (const memory of memories) {
+      if (
+        memory.agentId === params.agentId
+        && isDocumentMemory(memory)
+        && isUuid(memory.id)
+      ) {
+        parents.set(memory.id, memory)
+      }
+    }
+    const fragments = memories
+      .filter((memory) => {
+        if (
+          memory.agentId !== params.agentId
+          || memory.metadata?.type !== MemoryType.FRAGMENT
+          || (memory.metadata as unknown as Record<string, unknown>).fragmentRole
+            === "source-segment"
+        ) {
+          return false
+        }
+        const documentId = memory.metadata?.documentId
+        if (!isUuid(documentId)) return false
+        if (params.documentId && documentId !== params.documentId) return false
+        const parent = parents.get(documentId)
+        if (!parent || !isDocumentVisibleToRequester(parent, params)) {
+          return false
+        }
+        const parentSnapshot = readDocumentMutationSnapshot(parent)
+        const fragmentRevision = readDocumentRevision(memory.metadata ?? {})
+        if (
+          !parentSnapshot
+          || fragmentRevision === null
+          || fragmentRevision !== parentSnapshot.revision
+        ) {
+          return false
+        }
+
+        const parentAttempt = (
+          (parent.metadata ?? {}) as { revisionAttemptId?: unknown }
+        ).revisionAttemptId
+        const fragmentAttempt = (
+          (memory.metadata ?? {}) as unknown as { revisionAttemptId?: unknown }
+        ).revisionAttemptId
+        if (
+          typeof parentAttempt === "string"
+          && fragmentAttempt !== parentAttempt
+        ) {
+          return false
+        }
+        if (params.roomId && parent.roomId !== params.roomId) return false
+        if (params.worldId && parent.worldId !== params.worldId) return false
+        if (params.entityId && parent.entityId !== params.entityId) return false
+        return true
+      })
+      .map((memory) => {
+        if (!params.embedding) return memory
+        const similarity = memory.embedding
+          ? cosineSimilarity(memory.embedding, params.embedding)
+          : -1
+        return { ...memory, similarity }
+      })
+      .filter(
+        (memory) =>
+          !params.embedding
+          || (typeof memory.similarity === "number"
+            && memory.similarity >= (params.matchThreshold ?? 0)),
+      )
+    if (params.embedding) {
+      fragments.sort(
+        (left, right) =>
+          (right.similarity ?? -1) - (left.similarity ?? -1)
+          || documentOrder(left, right),
+      )
+    } else {
+      fragments.sort(documentOrder)
+    }
+    const offset = params.offset ?? 0
+    return fragments.slice(offset, offset + params.limit)
+  }
+}
+import { documentOrder, documentsInMemory, fragmentsInMemory, isDocumentMemory, isUuid, readDocumentRevision, storedCreatedAt } from listing
+
+function paginationError(
   message: string,
   context: Record<string, unknown>,
-): never {
-  throw new ElizaError(message, {
+): ElizaError {
+  return new ElizaError(message, {
     code: "DOCUMENT_LIST_INVALID_PAGINATION",
     context,
   })
-}
-
-function isUuid(value: unknown): value is UUID {
-  return validateUuid(value) !== null
 }
 
 function normalizeDocumentListCursor(
@@ -98,23 +539,23 @@ function normalizeDocumentListCursor(
   }
 }
 
-function invalidDocumentListResult(
+function listResultError(
   message: string,
   context: Record<string, unknown>,
-): never {
-  throw new ElizaError(message, {
+): ElizaError {
+  return new ElizaError(message, {
     code: "DOCUMENT_LIST_INVALID_RESULT",
     context,
     severity: "fatal",
   })
 }
 
-export function validateDocumentListQueryResult(
+export effect function validateDocumentListQueryResult(
   value: unknown,
   params: DocumentListQueryParams,
-): asserts value is DocumentListQueryResult {
+): DocumentListQueryResult!ElizaError {
   if (value === null || typeof value !== "object") {
-    invalidDocumentListResult("Document list adapter returned a non-object", {
+    throw listResultError("Document list adapter returned a non-object", {
       resultType: typeof value,
     })
   }
@@ -126,7 +567,7 @@ export function validateDocumentListQueryResult(
       || rows.length > params.limit
       || rows.some((row) => row === null || typeof row !== "object")
     ) {
-      invalidDocumentListResult(
+      throw listResultError(
         `Document list adapter returned invalid ${field}`,
         {
           field,
@@ -145,7 +586,7 @@ export function validateDocumentListQueryResult(
   ) {
     const count = result[field]
     if (!Number.isSafeInteger(count) || (count as number) < 0) {
-      invalidDocumentListResult(
+      throw listResultError(
         `Document list adapter returned invalid ${field}`,
         { field, count },
       )
@@ -164,7 +605,7 @@ export function validateDocumentListQueryResult(
       || hasMore !== (cursor !== undefined)
       || (cursor !== undefined && !normalizeDocumentListCursor(cursor))
     ) {
-      invalidDocumentListResult(
+      throw listResultError(
         `Document list adapter returned invalid ${cursorField}`,
         {
           moreField,
@@ -175,79 +616,38 @@ export function validateDocumentListQueryResult(
       )
     }
   }
+  return value as DocumentListQueryResult
 }
 
-export function documentCreatedAt(memory: Memory): number {
-  if (
-    typeof memory.createdAt !== "number"
-    || !Number.isSafeInteger(memory.createdAt)
-  ) {
-    throw new ElizaError("Stored document is missing a valid creation time", {
-      code: "DOCUMENT_LIST_INVALID_MEMORY",
-      context: {
-        agentId: memory.agentId,
-        documentId: memory.id,
-        createdAt: memory.createdAt,
-      },
-      severity: "fatal",
-    })
-  }
-  return memory.createdAt
-}
+module edge {
+  import { runDetachedSync } from "../edge.vibe"
+  import type { DocumentListQueryParams, DocumentListQueryResult } from "../types/database.vibe"
+  import { validateDocumentListQueryResult } from "./document-list-query.vibe"
 
-export function compareDocumentOrder(left: Memory, right: Memory): number {
-  const timeDifference = documentCreatedAt(right) - documentCreatedAt(left)
-  if (timeDifference !== 0) return timeDifference
-  return compareMemoryIds(right.id ?? "", left.id ?? "")
-}
-
-function documentCursor(
-  memory: Memory,
-  snapshot: Pick<DocumentListCursor, "snapshotCreatedAt" | "snapshotId">,
-): DocumentListCursor {
-  if (!isUuid(memory.id)) {
-    throw new ElizaError("Stored document is missing a valid UUID", {
-      code: "DOCUMENT_LIST_INVALID_MEMORY",
-      context: { agentId: memory.agentId, documentId: memory.id },
-      severity: "fatal",
-    })
-  }
-  return {
-    createdAt: documentCreatedAt(memory),
-    id: memory.id,
-    ...snapshot,
+  /** @throws {unknown} */
+  export function validateDocumentListQueryResultOrThrow(
+    value: unknown,
+    params: DocumentListQueryParams,
+  ): asserts value is DocumentListQueryResult {
+    runDetachedSync(validateDocumentListQueryResult(value, params))
   }
 }
+import { validateDocumentListQueryResultOrThrow } from edge
+export { validateDocumentListQueryResultOrThrow }
 
-function isAfterDocumentCursor(
-  memory: Memory,
-  cursor: DocumentListCursor,
-): boolean {
-  const createdAt = documentCreatedAt(memory)
-  if (createdAt !== cursor.createdAt) return createdAt < cursor.createdAt
-  return (
-    typeof memory.id === "string"
-    && memory.id.toLowerCase() < cursor.id.toLowerCase()
-  )
+function storedDocumentFailure(cause: unknown): ElizaError | Foreign {
+  return cause instanceof ElizaError ? cause : new Foreign({ cause })
 }
 
-function isWithinDocumentSnapshot(
-  memory: Memory,
-  cursor: DocumentListCursor,
-): boolean {
-  const snapshotCreatedAt = cursor.snapshotCreatedAt ?? cursor.createdAt
-  const snapshotId = cursor.snapshotId ?? cursor.id
-  const createdAt = documentCreatedAt(memory)
-  if (createdAt !== snapshotCreatedAt) return createdAt < snapshotCreatedAt
-  return (
-    typeof memory.id === "string"
-    && memory.id.toLowerCase() <= snapshotId.toLowerCase()
-  )
+export effect function documentCreatedAt(memory: Memory): number!(ElizaError | Foreign) {
+  return try Effect.try({ try: () => storedCreatedAt(memory), catch: storedDocumentFailure })
 }
+export const documentCreatedAtOrThrow = thrown(documentCreatedAt)
 
-function isDocumentMemory(memory: Memory): boolean {
-  return memory.metadata?.type === MemoryType.DOCUMENT
+export effect function compareDocumentOrder(left: Memory, right: Memory): number!(ElizaError | Foreign) {
+  return try Effect.try({ try: () => documentOrder(left, right), catch: storedDocumentFailure })
 }
+export const compareDocumentOrderOrThrow = thrown(compareDocumentOrder)
 
 export function documentRoleHasGlobalVisibility(
   role: DocumentListQueryParams["requesterRole"],
@@ -283,7 +683,7 @@ function readDirectGrantEntityIds(
   return grants
 }
 
-export function validateDocumentDirectGrantEntityIds(value: unknown): UUID[] {
+export effect function validateDocumentDirectGrantEntityIds(value: unknown): UUID[]!ElizaError {
   if (!Array.isArray(value) || value.length > DOCUMENT_DIRECT_GRANT_LIMIT) {
     throw new ElizaError(
       "Document direct grants must be a bounded UUID array",
@@ -304,15 +704,7 @@ export function validateDocumentDirectGrantEntityIds(value: unknown): UUID[] {
   }
   return grants.sort()
 }
-
-function readDocumentRevision(metadata: unknown): number | null {
-  if (metadata === null || typeof metadata !== "object") return null
-  const value = Reflect.get(metadata, "documentRevision")
-  if (value === undefined) return 0
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : null
-}
+export const validateDocumentDirectGrantEntityIdsOrThrow = thrown(validateDocumentDirectGrantEntityIds)
 
 export function readDocumentMutationSnapshot(
   memory: Memory,
@@ -381,10 +773,10 @@ function isRuntimeRequester(
   return role === "AGENT" || role === "RUNTIME"
 }
 
-export function validateDocumentRevisionReplacement(
+export effect function validateDocumentRevisionReplacement(
   params: DocumentRevisionReplaceParams,
-): void {
-  validateDocumentRequesterContext(params)
+): void!ElizaError {
+  try validateDocumentRequesterContext(params)
   const replacement = params.replacement
   const replacementMetadata = replacement.metadata as
     | Record<string, unknown>
@@ -404,12 +796,11 @@ export function validateDocumentRevisionReplacement(
   const invalid = (
     reason: string,
     context: Record<string, unknown> = {},
-  ): never => {
-    throw new ElizaError("Invalid atomic document revision replacement", {
+  ): ElizaError =>
+    new ElizaError("Invalid atomic document revision replacement", {
       code: "DOCUMENT_MUTATION_INVALID_REPLACEMENT",
       context: { documentId: params.documentId, reason, ...context },
     })
-  }
   if (
     replacement.id !== params.documentId
     || replacement.agentId !== params.agentId
@@ -431,10 +822,10 @@ export function validateDocumentRevisionReplacement(
       !== params.expected.ingestionAttemptId
     || replacementSnapshot.ingestionState !== params.expected.ingestionState
   ) {
-    invalid("parent identity or revision does not match the mutation")
+    throw invalid("parent identity or revision does not match the mutation")
   }
   if (params.fragments.length > DOCUMENT_REVISION_MAX_FRAGMENTS) {
-    invalid("fragment batch exceeds the supported bound", {
+    throw invalid("fragment batch exceeds the supported bound", {
       fragmentCount: params.fragments.length,
     })
   }
@@ -472,7 +863,7 @@ export function validateDocumentRevisionReplacement(
           || fragment.embedding.length === 0
           || fragment.embedding.some((value) => !Number.isFinite(value))))
     ) {
-      invalid("fragment is not a complete member of the replacement revision", {
+      throw invalid("fragment is not a complete member of the replacement revision", {
         fragmentIndex: index,
         fragmentId,
       })
@@ -480,12 +871,13 @@ export function validateDocumentRevisionReplacement(
     ids.add(fragmentId as UUID)
   }
   if (sourcePosition !== replacementMetadata?.sourceSegmentCount) {
-    invalid("source segment count does not match the replacement parent", {
+    throw invalid("source segment count does not match the replacement parent", {
       expectedSourceSegments: replacementMetadata?.sourceSegmentCount,
       actualSourceSegments: sourcePosition,
     })
   }
 }
+export const validateDocumentRevisionReplacementOrThrow = thrown(validateDocumentRevisionReplacement)
 
 export function isDocumentVisibleToRequester(
   memory: Memory,
@@ -598,44 +990,6 @@ function uuidArraysEqual(left?: UUID[], right?: UUID[]): boolean {
   )
 }
 
-function matchesDocumentFilters(
-  memory: Memory,
-  params: DocumentListQueryParams,
-): boolean {
-  const metadata = (memory.metadata ?? {}) as Record<string, unknown>
-  if (params.scope && metadata.scope !== params.scope) {
-    return false
-  }
-  if (
-    params.scopedToEntityId
-    && metadata.scopedToEntityId !== params.scopedToEntityId
-  ) {
-    return false
-  }
-  if (params.addedBy && metadata.addedBy !== params.addedBy) return false
-
-  const timestamp = typeof metadata.timestamp === "number"
-    ? metadata.timestamp
-    : documentCreatedAt(memory)
-  if (
-    params.timeRangeStart !== undefined
-    && timestamp < params.timeRangeStart
-  ) {
-    return false
-  }
-  if (params.timeRangeEnd !== undefined && timestamp > params.timeRangeEnd) {
-    return false
-  }
-
-  if (params.tags?.length) {
-    const tags = Array.isArray(metadata.tags)
-      ? metadata.tags.filter((tag): tag is string => typeof tag === "string")
-      : []
-    if (!params.tags.every((tag) => tags.includes(tag))) return false
-  }
-  return true
-}
-
 function asciiLower(value: string): string {
   return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase())
 }
@@ -659,99 +1013,17 @@ export function documentSearchText(memory: Memory): string {
     .join("\n")
 }
 
-function matchesDocumentQuery(
-  memory: Memory,
-  queryLexemes: readonly string[],
-  sourceSegmentsByDocument: ReadonlyMap<string, readonly Memory[]>,
-): boolean {
-  if (queryLexemes.length === 0) return false
-  const haystack = new Set(
-    portableDocumentSearchTokens(documentSearchText(memory)),
-  )
-  for (const segment of sourceSegmentsByDocument.get(String(memory.id)) ?? []) {
-    for (
-      const token of portableDocumentSearchTokens(
-        segment.content.text ?? "",
-      )
-    ) {
-      haystack.add(token)
-    }
-  }
-  return queryLexemes.every((lexeme) => haystack.has(lexeme))
-}
-
-function assertUniqueDocumentIds(memories: Memory[]): void {
-  const ids = new Set<UUID>()
-  for (const memory of memories) {
-    if (!isUuid(memory.id)) {
-      throw new ElizaError("Stored document is missing a valid UUID", {
-        code: "DOCUMENT_LIST_INVALID_MEMORY",
-        context: { agentId: memory.agentId, documentId: memory.id },
-        severity: "fatal",
-      })
-    }
-    if (ids.has(memory.id)) {
-      throw new ElizaError("Document list adapter returned a duplicate UUID", {
-        code: "DOCUMENT_LIST_DUPLICATE_MEMORY",
-        context: { agentId: memory.agentId, documentId: memory.id },
-        severity: "fatal",
-      })
-    }
-    ids.add(memory.id)
-  }
-}
-
-function paginateDocuments(
-  memories: Memory[],
-  params: DocumentListQueryParams,
-): {
-  documents: Memory[]
-  hasMore: boolean
-  nextCursor?: DocumentListCursor
-} {
-  const cursorFiltered = params.cursor
-    ? memories.filter(
-      (memory) =>
-        isWithinDocumentSnapshot(
-          memory,
-          params.cursor as DocumentListCursor,
-        )
-        && isAfterDocumentCursor(memory, params.cursor as DocumentListCursor),
-    )
-    : memories
-  const offset = params.cursor ? 0 : params.offset
-  const page = cursorFiltered.slice(offset, offset + params.limit + 1)
-  const hasMore = page.length > params.limit
-  const documents = page.slice(0, params.limit)
-  const last = documents.at(-1)
-  const first = memories.at(0)
-  const snapshotCreatedAt = params.cursor?.snapshotCreatedAt
-    ?? params.cursor?.createdAt
-    ?? (first ? documentCreatedAt(first) : undefined)
-  const snapshotId = params.cursor?.snapshotId
-    ?? params.cursor?.id
-    ?? (first && isUuid(first.id) ? first.id : undefined)
-  const snapshot = snapshotCreatedAt !== undefined && snapshotId
-    ? { snapshotCreatedAt, snapshotId }
-    : {}
-  return {
-    documents,
-    hasMore,
-    ...(hasMore && last ? { nextCursor: documentCursor(last, snapshot) } : {}),
-  }
-}
-
-export function validateDocumentRequesterContext(
+export effect function validateDocumentRequesterContext(
   params: DocumentRequesterContext,
-): void {
+): void!ElizaError {
   if (!isUuid(params.agentId) || !isUuid(params.requesterEntityId)) {
-    invalidPagination("Document list requester identity is invalid", {
+    throw paginationError("Document list requester identity is invalid", {
       agentId: params.agentId,
       requesterEntityId: params.requesterEntityId,
     })
   }
   if (!DOCUMENT_LIST_ROLES.has(params.requesterRole)) {
-    invalidPagination("Document list requester role is invalid", {
+    throw paginationError("Document list requester role is invalid", {
       requesterRole: params.requesterRole,
     })
   }
@@ -760,17 +1032,18 @@ export function validateDocumentRequesterContext(
     || params.requesterRoomIds.length > DOCUMENT_LIST_MAX_REQUESTER_ROOMS
     || params.requesterRoomIds.some((roomId) => !isUuid(roomId))
   ) {
-    invalidPagination("Document list requester rooms are invalid", {
+    throw paginationError("Document list requester rooms are invalid", {
       roomCount: params.requesterRoomIds?.length,
     })
   }
 }
+export const validateDocumentRequesterContextOrThrow = thrown(validateDocumentRequesterContext)
 
-export function validateDocumentFragmentQueryParams(
+export effect function validateDocumentFragmentQueryParams(
   params: DocumentFragmentQueryParams,
   expectedEmbeddingDimension?: number,
-): void {
-  validateDocumentRequesterContext(params)
+): void!ElizaError {
+  try validateDocumentRequesterContext(params)
   if (
     !Number.isSafeInteger(params.limit)
     || params.limit < 1
@@ -786,7 +1059,7 @@ export function validateDocumentFragmentQueryParams(
   }
   if (
     params.offset !== undefined
-    && (!Number.isSafeInteger(params.offset) || params.offset < 0)
+    && (!Number.isSafeInteger(params.offset) || !validPagination(params.limit, params.offset))
   ) {
     throw new ElizaError(
       "Document fragment offset must be a non-negative integer",
@@ -841,11 +1114,12 @@ export function validateDocumentFragmentQueryParams(
     })
   }
 }
+export const validateDocumentFragmentQueryParamsOrThrow = thrown(validateDocumentFragmentQueryParams)
 
-export function validateDocumentListQueryParams(
+export effect function validateDocumentListQueryParams(
   params: DocumentListQueryParams,
-): void {
-  validateDocumentRequesterContext(params)
+): void!ElizaError {
+  try validateDocumentRequesterContext(params)
   if (
     (params.pinnedOnly !== undefined
       && typeof params.pinnedOnly !== "boolean")
@@ -853,40 +1127,40 @@ export function validateDocumentListQueryParams(
     || params.limit < 1
     || params.limit > DOCUMENT_LIST_MAX_LIMIT
   ) {
-    invalidPagination(
+    throw paginationError(
       `Document list limit must be an integer between 1 and ${DOCUMENT_LIST_MAX_LIMIT}`,
       { limit: params.limit },
     )
   }
   if (
     !Number.isSafeInteger(params.offset)
-    || params.offset < 0
+    || !validPagination(params.limit, params.offset)
     || params.offset > DOCUMENT_LIST_MAX_OFFSET
   ) {
-    invalidPagination(
+    throw paginationError(
       `Document list offset must be an integer between 0 and ${DOCUMENT_LIST_MAX_OFFSET}`,
       { offset: params.offset },
     )
   }
   if (params.cursor && !normalizeDocumentListCursor(params.cursor)) {
-    invalidPagination("Document list cursor is invalid", {
+    throw paginationError("Document list cursor is invalid", {
       cursor: params.cursor,
     })
   }
   if (params.cursor && params.offset !== 0) {
-    invalidPagination(
+    throw paginationError(
       "Document list cursor cannot be combined with a non-zero offset",
       { offset: params.offset },
     )
   }
   if ((params.query?.length ?? 0) > DOCUMENT_LIST_MAX_QUERY_LENGTH) {
-    invalidPagination(
+    throw paginationError(
       `Document list query cannot exceed ${DOCUMENT_LIST_MAX_QUERY_LENGTH} characters`,
       { queryLength: params.query?.length },
     )
   }
   if (params.scope !== undefined && !DOCUMENT_LIST_SCOPES.has(params.scope)) {
-    invalidPagination("Document list scope is invalid", {
+    throw paginationError("Document list scope is invalid", {
       scope: params.scope,
     })
   }
@@ -894,12 +1168,12 @@ export function validateDocumentListQueryParams(
     params.scopedToEntityId !== undefined
     && !isUuid(params.scopedToEntityId)
   ) {
-    invalidPagination("Document list scoped entity is invalid", {
+    throw paginationError("Document list scoped entity is invalid", {
       scopedToEntityId: params.scopedToEntityId,
     })
   }
   if (params.addedBy !== undefined && !isUuid(params.addedBy)) {
-    invalidPagination("Document list addedBy entity is invalid", {
+    throw paginationError("Document list addedBy entity is invalid", {
       addedBy: params.addedBy,
     })
   }
@@ -910,7 +1184,7 @@ export function validateDocumentListQueryParams(
     ] as const
   ) {
     if (value !== undefined && !Number.isSafeInteger(value)) {
-      invalidPagination(`Document list ${name} must be a safe integer`, {
+      throw paginationError(`Document list ${name} must be a safe integer`, {
         [name]: value,
       })
     }
@@ -920,7 +1194,7 @@ export function validateDocumentListQueryParams(
     && params.timeRangeEnd !== undefined
     && params.timeRangeStart > params.timeRangeEnd
   ) {
-    invalidPagination("Document list time range is inverted", {
+    throw paginationError("Document list time range is inverted", {
       timeRangeStart: params.timeRangeStart,
       timeRangeEnd: params.timeRangeEnd,
     })
@@ -934,229 +1208,31 @@ export function validateDocumentListQueryParams(
         || tag.length > DOCUMENT_LIST_MAX_TAG_LENGTH,
     )
   ) {
-    invalidPagination("Document list tags exceed the supported bounds", {
+    throw paginationError("Document list tags exceed the supported bounds", {
       tagCount: params.tags?.length,
     })
   }
 }
+export const validateDocumentListQueryParamsOrThrow = thrown(validateDocumentListQueryParams)
 
-export function queryDocumentsInMemory(
+export effect function queryDocumentsInMemory(
   memories: Memory[],
   params: DocumentListQueryParams,
-): DocumentListQueryResult {
-  validateDocumentListQueryParams(params)
-  const documents = memories.filter(isDocumentMemory)
-  assertUniqueDocumentIds(documents)
-
-  const parents = new Map<string, Memory>()
-  for (const document of documents) {
-    if (document.agentId === params.agentId && isUuid(document.id)) {
-      parents.set(String(document.id), document)
-    }
-  }
-  const sourceSegmentsByDocument = new Map<string, Memory[]>()
-
-  const parentFences = new Map<
-    string,
-    { revision: number; attemptId: unknown } | null
-  >()
-  for (const memory of memories) {
-    const metadata = (memory.metadata ?? {}) as Record<string, unknown>
-    if (
-      memory.agentId !== params.agentId
-      || metadata.type !== MemoryType.FRAGMENT
-      || metadata.fragmentRole !== "source-segment"
-      || typeof metadata.documentId !== "string"
-    ) {
-      continue
-    }
-    const parent = parents.get(metadata.documentId)
-    if (!parent) continue
-    let fence = parentFences.get(metadata.documentId)
-    if (fence === undefined) {
-      const parentSnapshot = readDocumentMutationSnapshot(parent)
-      fence = parentSnapshot
-        ? {
-          revision: parentSnapshot.revision,
-          attemptId: (parent.metadata as Record<string, unknown> | undefined)
-            ?.revisionAttemptId,
-        }
-        : null
-      parentFences.set(metadata.documentId, fence)
-    }
-    const segmentRevision = readDocumentRevision(metadata)
-    if (
-      !fence
-      || segmentRevision === null
-      || segmentRevision !== fence.revision
-    ) {
-      continue
-    }
-    if (
-      typeof fence.attemptId === "string"
-      && metadata.revisionAttemptId !== fence.attemptId
-    ) {
-      continue
-    }
-    const rows = sourceSegmentsByDocument.get(metadata.documentId) ?? []
-    rows.push(memory)
-    sourceSegmentsByDocument.set(metadata.documentId, rows)
-  }
-  const allVisibleDocuments = documents
-    .filter(
-      (memory) =>
-        memory.agentId === params.agentId
-        && isDocumentVisibleToRequester(memory, params),
-    )
-    .sort(compareDocumentOrder)
-  const visibleDocuments = params.cursor
-    ? allVisibleDocuments.filter((memory) => isWithinDocumentSnapshot(memory, params.cursor as DocumentListCursor))
-    : allVisibleDocuments
-  const availableDocuments = visibleDocuments.filter(
-    (memory) =>
-      matchesDocumentFilters(memory, params)
-      && (!params.pinnedOnly
-        || (memory.metadata as Record<string, unknown> | undefined)?.pinned
-          === true),
-  )
-  const normalizedQuery = params.query?.trim()
-  const queryLexemes = normalizedQuery
-    ? portableDocumentSearchTokens(normalizedQuery)
-    : []
-  const matchedDocuments = normalizedQuery
-    ? availableDocuments.filter((memory) => matchesDocumentQuery(memory, queryLexemes, sourceSegmentsByDocument))
-    : availableDocuments
-  const matchedPage = paginateDocuments(matchedDocuments, params)
-  const availablePage = normalizedQuery
-      && matchedDocuments.length === 0
-      && availableDocuments.length > 0
-    ? paginateDocuments(availableDocuments, params)
-    : { documents: [], hasMore: false }
-
-  return {
-    documents: matchedPage.documents,
-    availableDocuments: availablePage.documents,
-    totalVisible: visibleDocuments.length,
-    totalAvailable: availableDocuments.length,
-    totalMatched: matchedDocuments.length,
-    hasMore: matchedPage.hasMore,
-    availableHasMore: availablePage.hasMore,
-    ...(matchedPage.nextCursor ? { nextCursor: matchedPage.nextCursor } : {}),
-    ...(availablePage.nextCursor
-      ? { availableNextCursor: availablePage.nextCursor }
-      : {}),
-  }
+): DocumentListQueryResult!(ElizaError | Foreign) {
+  try validateDocumentListQueryParams(params)
+  return try Effect.try({ try: () => documentsInMemory(memories, params), catch: storedDocumentFailure })
 }
+export const queryDocumentsInMemoryOrThrow = thrown(queryDocumentsInMemory)
 
-function cosineSimilarity(left: number[], right: number[]): number {
-  if (left.length !== right.length || left.length === 0) return -1
-  let dot = 0
-  let leftMagnitude = 0
-  let rightMagnitude = 0
-  for (let index = 0; index < left.length; index++) {
-    const leftValue = left[index]
-    const rightValue = right[index]
-    if (
-      typeof leftValue !== "number"
-      || typeof rightValue !== "number"
-      || !Number.isFinite(leftValue)
-      || !Number.isFinite(rightValue)
-    ) {
-      return -1
-    }
-    dot += leftValue * rightValue
-    leftMagnitude += leftValue * leftValue
-    rightMagnitude += rightValue * rightValue
-  }
-  if (leftMagnitude === 0 || rightMagnitude === 0) return -1
-  return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude))
-}
-
-export function queryDocumentFragmentsInMemory(
+export effect function queryDocumentFragmentsInMemory(
   memories: Memory[],
   params: DocumentFragmentQueryParams,
   expectedEmbeddingDimension?: number,
-): Memory[] {
-  validateDocumentFragmentQueryParams(params, expectedEmbeddingDimension)
-  const parents = new Map<UUID, Memory>()
-  for (const memory of memories) {
-    if (
-      memory.agentId === params.agentId
-      && isDocumentMemory(memory)
-      && isUuid(memory.id)
-    ) {
-      parents.set(memory.id, memory)
-    }
-  }
-  const fragments = memories
-    .filter((memory) => {
-      if (
-        memory.agentId !== params.agentId
-        || memory.metadata?.type !== MemoryType.FRAGMENT
-        || (memory.metadata as unknown as Record<string, unknown>).fragmentRole
-          === "source-segment"
-      ) {
-        return false
-      }
-      const documentId = memory.metadata?.documentId
-      if (!isUuid(documentId)) return false
-      if (params.documentId && documentId !== params.documentId) return false
-      const parent = parents.get(documentId)
-      if (!parent || !isDocumentVisibleToRequester(parent, params)) {
-        return false
-      }
-      const parentSnapshot = readDocumentMutationSnapshot(parent)
-      const fragmentRevision = readDocumentRevision(memory.metadata ?? {})
-      if (
-        !parentSnapshot
-        || fragmentRevision === null
-        || fragmentRevision !== parentSnapshot.revision
-      ) {
-        return false
-      }
-
-      const parentAttempt = (
-        (parent.metadata ?? {}) as { revisionAttemptId?: unknown }
-      ).revisionAttemptId
-      const fragmentAttempt = (
-        (memory.metadata ?? {}) as unknown as { revisionAttemptId?: unknown }
-      ).revisionAttemptId
-      if (
-        typeof parentAttempt === "string"
-        && fragmentAttempt !== parentAttempt
-      ) {
-        return false
-      }
-      if (params.roomId && parent.roomId !== params.roomId) return false
-      if (params.worldId && parent.worldId !== params.worldId) return false
-      if (params.entityId && parent.entityId !== params.entityId) return false
-      return true
-    })
-    .map((memory) => {
-      if (!params.embedding) return memory
-      const similarity = memory.embedding
-        ? cosineSimilarity(memory.embedding, params.embedding)
-        : -1
-      return { ...memory, similarity }
-    })
-    .filter(
-      (memory) =>
-        !params.embedding
-        || (typeof memory.similarity === "number"
-          && memory.similarity >= (params.matchThreshold ?? 0)),
-    )
-  if (params.embedding) {
-    fragments.sort(
-      (left, right) =>
-        (right.similarity ?? -1) - (left.similarity ?? -1)
-        || compareDocumentOrder(left, right),
-    )
-  } else {
-    fragments.sort(compareDocumentOrder)
-  }
-  const offset = params.offset ?? 0
-  return fragments.slice(offset, offset + params.limit)
+): Memory[]!(ElizaError | Foreign) {
+  try validateDocumentFragmentQueryParams(params, expectedEmbeddingDimension)
+  return try Effect.try({ try: () => fragmentsInMemory(memories, params), catch: storedDocumentFailure })
 }
+export const queryDocumentFragmentsInMemoryOrThrow = thrown(queryDocumentFragmentsInMemory)
 
 export function hasDocumentListQueryCapability(
   adapter: IDatabaseAdapter,
@@ -1184,7 +1260,7 @@ export function hasDocumentListQueryCapability(
   )
 }
 
-function requireDocumentListQueryCapability(adapter: IDatabaseAdapter): void {
+effect function requireDocumentListQueryCapability(adapter: IDatabaseAdapter): void!ElizaError {
   if (hasDocumentListQueryCapability(adapter)) return
   const candidate = adapter as IDatabaseAdapter & {
     documentListQueryCapability?: unknown
@@ -1207,14 +1283,13 @@ function requireDocumentListQueryCapability(adapter: IDatabaseAdapter): void {
   )
 }
 
-export async function queryDocumentsWithCapability(
+export effect function queryDocumentsWithCapability(
   adapter: IDatabaseAdapter,
   params: DocumentListQueryParams,
-): Promise<DocumentListQueryResult> {
-  validateDocumentListQueryParams(params)
-  requireDocumentListQueryCapability(adapter)
-  const result: unknown = await adapter.queryDocuments(params)
-  validateDocumentListQueryResult(result, params)
+): DocumentListQueryResult!(ElizaError | Foreign) {
+  try validateDocumentListQueryParams(params)
+  try requireDocumentListQueryCapability(adapter)
+  const result = try validateDocumentListQueryResult(try foreign(() => adapter.queryDocuments(params)), params)
   return {
     documents: result.documents,
     availableDocuments: result.availableDocuments,
@@ -1239,3 +1314,4 @@ export async function queryDocumentsWithCapability(
       : {}),
   }
 }
+export const queryDocumentsWithCapabilityPromise = promised(queryDocumentsWithCapability)

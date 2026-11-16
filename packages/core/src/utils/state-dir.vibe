@@ -1,6 +1,31 @@
-import { homedir } from "node:os"
-import { isAbsolute, join, resolve } from "node:path"
-import { readEnv } from "./environment.vibe"
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { processEnv, readEnv } from "./environment.vibe"
+
+module node {
+  import os from "node:os"
+  import path from "node:path"
+
+  /** @throws {never} */
+  export function homedir(): string {
+    return os.homedir()
+  }
+
+  /** @throws {never} */
+  export function isAbsolute(target: string): boolean {
+    return path.isAbsolute(target)
+  }
+
+  /** @throws {never} */
+  export function join(...segments: string[]): string {
+    return path.join(...segments)
+  }
+
+  /** @throws {never} */
+  export function resolve(target: string): string {
+    return path.resolve(target)
+  }
+}
+import { homedir, isAbsolute, join, resolve } from node
 
 export function resolveUserPath(input: string): string {
   const trimmed = input.trim()
@@ -11,25 +36,18 @@ export function resolveUserPath(input: string): string {
   return resolve(trimmed)
 }
 
-export function getElizaNamespace(
-  env: NodeJS.ProcessEnv = process.env,
-): string {
+export function getElizaNamespace(env: NodeJS.ProcessEnv = processEnv()): string {
   return readEnv("ELIZA_NAMESPACE", { env }) ?? "eliza"
 }
 
-export function resolveStateDir(
-  env: NodeJS.ProcessEnv = process.env,
-  getHome: () => string = homedir,
-): string {
+export function resolveStateDir(env: NodeJS.ProcessEnv = processEnv(), getHome: () => string = homedir): string {
   const explicit = readEnv("ELIZA_STATE_DIR", { env })
   if (explicit) return resolveUserPath(explicit)
   const namespace = getElizaNamespace(env)
   const xdgStateHome = readEnv("XDG_STATE_HOME", { env })
   if (xdgStateHome) {
     const base = xdgStateHome.trim()
-    return isAbsolute(base)
-      ? join(base, namespace)
-      : join(getHome(), base, namespace)
+    return isAbsolute(base) ? join(base, namespace) : join(getHome(), base, namespace)
   }
   return join(getHome(), ".local", "state", namespace)
 }
@@ -38,12 +56,7 @@ export function getOptimizationRootDir(settingValue?: string | null): string {
   return settingValue || join(resolveStateDir(), "optimization")
 }
 
-export function resolveOAuthDir(
-  env: NodeJS.ProcessEnv = process.env,
-  stateDirPath: string = resolveStateDir(env),
-): string {
+export function resolveOAuthDir(env: NodeJS.ProcessEnv = processEnv(), stateDirPath: string = resolveStateDir(env)): string {
   const explicit = readEnv("ELIZA_OAUTH_DIR", { env })
-  return explicit
-    ? resolveUserPath(explicit)
-    : join(stateDirPath, "credentials")
+  return explicit ? resolveUserPath(explicit) : join(stateDirPath, "credentials")
 }

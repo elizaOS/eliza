@@ -1,3 +1,5 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { foreign, foreignSync, promised, type Foreign } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { UUID } from "../types/primitives.vibe"
@@ -10,54 +12,56 @@ type ActionEventWorldRuntime = Pick<
 
 type ActionEventWorldMessage = Pick<Memory, "roomId" | "worldId">
 
-export async function resolveActionEventWorldId(
+effect function fallBackToAgentWorld(
+  runtime: ActionEventWorldRuntime,
+  reportScope: string,
+  message: ActionEventWorldMessage,
+  text: string,
+  code: string,
+  cause?: Error,
+): UUID!Foreign {
+  const error = new ElizaError(text, {
+    code,
+    cause,
+    severity: "ephemeral",
+    context: { roomId: message.roomId },
+  })
+  try foreignSync(() => runtime.reportError(reportScope, error))
+  return runtime.agentId
+}
+
+export effect function resolveActionEventWorldId(
   runtime: ActionEventWorldRuntime,
   message: ActionEventWorldMessage,
   reportScope: string,
-): Promise<UUID> {
+): UUID!Foreign {
   if (message.worldId) {
     return message.worldId
   }
 
-  let room: Awaited<ReturnType<ActionEventWorldRuntime["getRoom"]>>
-  try {
-    room = await runtime.getRoom(message.roomId)
-  } catch (cause: unknown) {
-    runtime.reportError(
+  const lookup = try result(foreign(() => runtime.getRoom(message.roomId)))
+  if (Result.isFailure(lookup)) {
+    const cause = lookup.failure.cause
+    return try fallBackToAgentWorld(
+      runtime,
       reportScope,
-      new ElizaError("Action event world lookup failed", {
-        code: "ACTION_EVENT_WORLD_LOOKUP_FAILED",
-        cause: cause instanceof Error ? cause : new Error(String(cause)),
-        severity: "ephemeral",
-        context: { roomId: message.roomId },
-      }),
+      message,
+      "Action event world lookup failed",
+      "ACTION_EVENT_WORLD_LOOKUP_FAILED",
+      cause instanceof Error ? cause : new Error(String(cause)),
     )
-    return runtime.agentId
   }
+  const room = lookup.success
 
   if (!room) {
-    runtime.reportError(
-      reportScope,
-      new ElizaError("Action event room was not found", {
-        code: "ACTION_EVENT_ROOM_NOT_FOUND",
-        severity: "ephemeral",
-        context: { roomId: message.roomId },
-      }),
-    )
-    return runtime.agentId
+    return try fallBackToAgentWorld(runtime, reportScope, message, "Action event room was not found", "ACTION_EVENT_ROOM_NOT_FOUND")
   }
 
   if (!room.worldId) {
-    runtime.reportError(
-      reportScope,
-      new ElizaError("Action event room has no world", {
-        code: "ACTION_EVENT_ROOM_WORLD_MISSING",
-        severity: "ephemeral",
-        context: { roomId: message.roomId },
-      }),
-    )
-    return runtime.agentId
+    return try fallBackToAgentWorld(runtime, reportScope, message, "Action event room has no world", "ACTION_EVENT_ROOM_WORLD_MISSING")
   }
 
   return room.worldId
 }
+
+export const resolveActionEventWorldIdPromise = promised(resolveActionEventWorldId)

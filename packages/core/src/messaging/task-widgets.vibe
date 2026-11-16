@@ -1,3 +1,5 @@
+// spec/core/messaging.md, "Story: Dispatch through a selected connector account"
+import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { ChoiceInteraction } from "../types/interactions.vibe"
 
@@ -38,22 +40,26 @@ const BLOCK_FIELDS = [
 const OPTION_FIELDS = ["value", "label", "description"]
 const utf8 = new TextEncoder()
 
-function fail(): never {
-  throw new ElizaError("Invalid task choice widget", {
+function invalidWidget(): ElizaError {
+  return new ElizaError("Invalid task choice widget", {
     code: "TASK_CHOICE_INVALID",
   })
 }
 
-export function validateTaskChoiceWidget(
-  value: unknown,
-): asserts value is TaskChoiceWidget {
-  if (!value || typeof value !== "object" || Array.isArray(value)) fail()
+function invalidResponse(): ElizaError {
+  return new ElizaError("Invalid task choice response", {
+    code: "TASK_CHOICES_INVALID",
+  })
+}
+
+export effect function validateTaskChoiceWidget(value: unknown): void!ElizaError {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidWidget()
   const widget = value as TaskChoiceWidget
   if (
     Object.keys(value).length !== WIDGET_FIELDS.length
     || WIDGET_FIELDS.some((key) => !Object.hasOwn(value, key))
   ) {
-    fail()
+    throw invalidWidget()
   }
   if (
     widget.schemaVersion !== 1
@@ -67,14 +73,14 @@ export function validateTaskChoiceWidget(
     || !/^is1:[a-f0-9]{32}$/.test(widget.callbackData)
     || !WIDGET_STATES.includes(widget.state)
   ) {
-    fail()
+    throw invalidWidget()
   }
   if (
     typeof widget.expiresAt !== "string"
     || !Number.isFinite(Date.parse(widget.expiresAt))
     || new Date(widget.expiresAt).toISOString() !== widget.expiresAt
   ) {
-    fail()
+    throw invalidWidget()
   }
   const block = widget.block
   if (
@@ -90,9 +96,9 @@ export function validateTaskChoiceWidget(
     || block.options.length < 1
     || block.options.length > 25
   ) {
-    fail()
+    throw invalidWidget()
   }
-  if (Object.keys(block).some((key) => !BLOCK_FIELDS.includes(key))) fail()
+  if (Object.keys(block).some((key) => !BLOCK_FIELDS.includes(key))) throw invalidWidget()
   const seen = new Set<string>()
   for (const option of block.options) {
     if (
@@ -108,17 +114,17 @@ export function validateTaskChoiceWidget(
           || option.description.length > 1000))
       || Object.keys(option).some((key) => !OPTION_FIELDS.includes(key))
     ) {
-      fail()
+      throw invalidWidget()
     }
     seen.add(option.value)
   }
 }
 
-export function admitTaskChoiceResponse(
+export effect function admitTaskChoiceResponse(
   value: unknown,
   task: { taskId: string; epoch: number } | undefined,
   maxWidgets: number,
-): TaskChoiceWidget[] {
+): TaskChoiceWidget[]!ElizaError {
   const values = value ?? []
   if (
     !Number.isSafeInteger(maxWidgets)
@@ -126,25 +132,33 @@ export function admitTaskChoiceResponse(
     || !Array.isArray(values)
     || values.length > maxWidgets
   ) {
-    throw new ElizaError("Invalid task choice response", {
-      code: "TASK_CHOICES_INVALID",
-    })
+    throw invalidResponse()
   }
-  let detached: unknown[]
-  try {
-    detached = structuredClone(values)
-  } catch {
-    throw new ElizaError("Invalid task choice response", {
-      code: "TASK_CHOICES_INVALID",
-    })
-  }
-  return Array.from(detached, (widget) => {
-    validateTaskChoiceWidget(widget)
-    if (!task || widget.taskId !== task.taskId || widget.epoch !== task.epoch) {
+  const detached = try Effect.try({ try: (): unknown[] => structuredClone(values), catch: invalidResponse })
+  const admitted: TaskChoiceWidget[] = []
+  for (const widget of detached) {
+    try validateTaskChoiceWidget(widget)
+    const valid = widget as TaskChoiceWidget
+    if (!task || valid.taskId !== task.taskId || valid.epoch !== task.epoch) {
       throw new ElizaError("Task choice response does not match its request", {
         code: "TASK_CHOICES_MISMATCH",
       })
     }
-    return widget
-  })
+    admitted.push(valid)
+  }
+  return admitted
 }
+
+export const admitTaskChoiceResponseOrThrow = thrown(admitTaskChoiceResponse)
+
+module edge {
+  import { runDetachedSync } from "../edge.vibe"
+  import { validateTaskChoiceWidget, type TaskChoiceWidget } from "./task-widgets.vibe"
+
+  /** @throws {ElizaError} */
+  export function validateTaskChoiceWidgetOrThrow(value: unknown): asserts value is TaskChoiceWidget {
+    runDetachedSync(validateTaskChoiceWidget(value))
+  }
+}
+import { validateTaskChoiceWidgetOrThrow } from edge
+export { validateTaskChoiceWidgetOrThrow }

@@ -1,3 +1,4 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/authorization.md, "Role gates combine exclusions, minimum rank and all required memberships"
 import { satisfiesRoleGate } from "../access-control/role-primitives.vibe"
 import type { AgentContext, ContextGate, RoleGate, RoleGateRole } from "../types/contexts.vibe"
 import { lookupProviderCatalogContexts } from "../utils/context-catalog.vibe"

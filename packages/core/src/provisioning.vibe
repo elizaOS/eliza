@@ -1,3 +1,5 @@
+// spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"
+import { failingAs, foreign, promised, type Foreign } from "./edge.vibe"
 import { createLogger } from "./logger.vibe"
 import type { Agent, Character } from "./types/agent.vibe"
 import type { IDatabaseAdapter } from "./types/database.vibe"
@@ -6,8 +8,13 @@ import type { JsonValue, UUID } from "./types/primitives.vibe"
 import { ChannelType } from "./types/primitives.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 import { isExactTrueEnvFlag } from "./utils/env.vibe"
+import { rawEnv } from "./utils/environment.vibe"
 
 const logger = createLogger({ namespace: "provisioning", level: "info" })
+
+export error ProvisioningUnsupported { message: string }
+export error AgentMissing { message: string }
+export error AgentEntityMissing { message: string }
 
 export interface ProvisionAgentOptions {
   runMigrations?: boolean
@@ -26,9 +33,7 @@ function hasAgentProvisioningRuntime(
   )
 }
 
-export async function runPluginMigrations(
-  runtime: IAgentRuntime,
-): Promise<void> {
+export effect function runPluginMigrations(runtime: IAgentRuntime) {
   const logger = runtime.logger
   const adapter = runtime.adapter
   if (!adapter) {
@@ -70,64 +75,57 @@ export async function runPluginMigrations(
     return
   }
 
-  const isProduction = process.env.NODE_ENV === "production"
-  const forceDestructive = isExactTrueEnvFlag(
-    process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS,
-  )
+  const isProduction = rawEnv("NODE_ENV") === "production"
+  const forceDestructive = isExactTrueEnvFlag(rawEnv("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS"))
 
-  await adapter.runPluginMigrations(pluginsWithSchemas, {
-    verbose: !isProduction,
-    force: forceDestructive,
-    dryRun: false,
-  })
+  try foreign(() =>
+    adapter.runPluginMigrations!(pluginsWithSchemas, {
+      verbose: !isProduction,
+      force: forceDestructive,
+      dryRun: false,
+    })
+  )
   logger.debug(
     { src: "provisioning", agentId: runtime.agentId },
     "Plugin migrations completed",
   )
 }
 
-export async function ensureAgentInfrastructure(
-  runtime: IAgentRuntime,
-): Promise<void> {
+export const runPluginMigrationsPromise = promised(runPluginMigrations)
+
+export effect function ensureAgentInfrastructure(runtime: IAgentRuntime) {
   const adapter = runtime.adapter
   const agentId = runtime.agentId
   const character = runtime.character
 
   if (!hasAgentProvisioningRuntime(runtime)) {
-    throw new Error("Runtime does not support agent provisioning")
+    throw new ProvisioningUnsupported({ message: "Runtime does not support agent provisioning" })
   }
 
-  const existingAgent = await runtime.ensureAgentExists({
-    ...character,
-    id: agentId,
-  } as Partial<Agent>)
+  const existingAgent = try foreign(() => runtime.ensureAgentExists({ ...character, id: agentId } as Partial<Agent>))
   if (!existingAgent) {
-    throw new Error(
-      `Agent ${agentId} does not exist in database after ensureAgentExists call`,
-    )
+    throw new AgentMissing({ message: `Agent ${agentId} does not exist in database after ensureAgentExists call` })
   }
 
-  const entities = await adapter.getEntitiesByIds([agentId])
-  let agentEntity = entities[0] ?? null
-  if (!agentEntity) {
-    await adapter.createEntities([
+  const entities = try foreign(() => adapter.getEntitiesByIds([agentId]))
+  if (!entities[0]) {
+    try foreign(() => adapter.createEntities([
       {
         id: agentId,
         names: [character.name ?? "Agent"],
         metadata: {},
         agentId: existingAgent.id ?? agentId,
       },
-    ])
-    const refetched = await adapter.getEntitiesByIds([agentId])
-    agentEntity = refetched[0] ?? null
-    if (!agentEntity) {
-      throw new Error(`Agent entity not found for ${agentId}`)
+    ]))
+    const refetched = try foreign(() => adapter.getEntitiesByIds([agentId]))
+    if (!refetched[0]) {
+      throw new AgentEntityMissing({ message: `Agent entity not found for ${agentId}` })
     }
   }
 
-  const rooms = await adapter.getRoomsByIds([agentId])
+  const rooms = try foreign(() => adapter.getRoomsByIds([agentId]))
   if (rooms.length === 0) {
-    await adapter.createRooms([
+    try foreign(() => adapter.createRooms([
       {
         id: agentId,
         name: character.name ?? "Agent",
@@ -137,19 +135,19 @@ export async function ensureAgentInfrastructure(
         messageServerId: agentId,
         worldId: agentId,
       },
-    ])
+    ]))
   }
 
-  const participantResults = await adapter.getParticipantsForRooms([agentId])
+  const participantResults = try foreign(() => adapter.getParticipantsForRooms([agentId]))
   const participants = participantResults[0]?.entityIds ?? []
   if (!participants.includes(agentId)) {
-    await adapter.createRoomParticipants([agentId], agentId)
+    try foreign(() => adapter.createRoomParticipants([agentId], agentId))
   }
 }
 
-export async function ensureEmbeddingDimension(
-  runtime: IAgentRuntime,
-): Promise<void> {
+export const ensureAgentInfrastructurePromise = promised(failingAs(Error, ensureAgentInfrastructure))
+
+export effect function ensureEmbeddingDimension(runtime: IAgentRuntime) {
   const adapter = runtime.adapter
   const model = runtime.getModel(ModelType.TEXT_EMBEDDING)
   if (!model) {
@@ -191,32 +189,36 @@ export async function ensureEmbeddingDimension(
     return
   }
 
-  await adapter.ensureEmbeddingDimension(dimension)
+  try foreign(() => adapter.ensureEmbeddingDimension(dimension))
   logger.debug(
     { src: "provisioning", agentId: runtime.agentId, dimension },
     "Embedding dimension set",
   )
 }
 
-export async function provisionAgent(
+export const ensureEmbeddingDimensionPromise = promised(ensureEmbeddingDimension)
+
+export effect function provisionAgent(
   runtime: IAgentRuntime,
   options: ProvisionAgentOptions = {},
-): Promise<void> {
+) {
   const { runMigrations = true } = options
 
   if (runMigrations) {
-    await runPluginMigrations(runtime)
+    try runPluginMigrations(runtime)
   }
-  await ensureAgentInfrastructure(runtime)
-  await ensureEmbeddingDimension(runtime)
+  try ensureAgentInfrastructure(runtime)
+  try ensureEmbeddingDimension(runtime)
 }
 
-export async function mergeDbSettings(
+export const provisionAgentPromise = promised(failingAs(Error, provisionAgent))
+
+export effect function mergeDbSettings(
   character: Character,
   adapter: IDatabaseAdapter,
   agentId: UUID,
-): Promise<Character> {
-  const agents = await adapter.getAgentsByIds([agentId])
+): Character!Foreign {
+  const agents = try foreign(() => adapter.getAgentsByIds([agentId]))
   const existingAgent = agents[0] ?? null
   if (!existingAgent?.settings) {
     return character
@@ -268,3 +270,5 @@ export async function mergeDbSettings(
       : character.secrets,
   }
 }
+
+export const mergeDbSettingsPromise = promised(mergeDbSettings)

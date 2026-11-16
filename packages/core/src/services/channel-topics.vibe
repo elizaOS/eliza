@@ -1,4 +1,7 @@
+// spec/core/channelTopics.md, "Retirement rejects new work and joins admitted operations before clearing local state"; spec/core/topicService.md, "Stop blocks every new room admission and joins the complete room snapshot"; spec/core/topicRooms.md, "Every room observation reads the one authoritative room record"
+import { refreshTopic } from "../../gen/core__channelTopics.effect.vibe"
 import { compareMemoryIds } from "../database.vibe"
+import { foreign, runDetached } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { logger } from "../logger.vibe"
 import type { Room } from "../types/environment.vibe"
@@ -30,170 +33,135 @@ function coerceTopicList(value: unknown): string[] {
     : result
 }
 
+interface TopicRooms {
+  readonly topicsByRoom: Map<UUID, string[]>
+  readonly hydrated: Set<UUID>
+  readonly queues: Map<UUID, Deferred.Deferred<void>>
+  stopping: boolean
+}
+
+function reportDatabaseFailure(
+  runtime: IAgentRuntime,
+  operation: "hydrate" | "persist",
+  roomId: UUID,
+  cause: unknown,
+): ElizaError {
+  const error = new ElizaError(`Channel topic ${operation} failed for room ${roomId}`, {
+    code: `CHANNEL_TOPICS_${operation.toUpperCase()}_FAILED`,
+    context: { roomId, operation },
+    cause,
+    severity: "ephemeral",
+  })
+  runtime.reportError(`ChannelTopicsService.${operation}`, error)
+  return error
+}
+
+effect function stopRooms(rooms: TopicRooms) {
+  rooms.stopping = true
+  while (rooms.queues.size > 0) {
+    try forEach([...rooms.queues.values()], (queue) => Deferred.await(queue), { discard: true })
+  }
+  rooms.topicsByRoom.clear()
+  rooms.hydrated.clear()
+  rooms.queues.clear()
+}
+
+effect function enqueueRoomOperation<A, E>(rooms: TopicRooms, roomId: UUID, operation: A!E) {
+  if (rooms.stopping) {
+    throw new ElizaError("Channel topic service has stopped admission", {
+      code: "CHANNEL_TOPICS_STOPPING",
+      context: { roomId },
+      severity: "ephemeral",
+    })
+  }
+  const previous = rooms.queues.get(roomId)
+  const current = try Deferred.make<void>()
+  rooms.queues.set(roomId, current)
+  const queued = effect {
+    try yieldNow
+    if (previous) try Deferred.await(previous)
+    return try operation
+  }
+  return try ensuring(queued, sync(() => {
+    Deferred.doneUnsafe(current, Effect.void)
+    if (rooms.queues.get(roomId) === current) rooms.queues.delete(roomId)
+  }))
+}
+
+effect function hydrateRoom(runtime: IAgentRuntime, rooms: TopicRooms, roomId: UUID) {
+  if (rooms.hydrated.has(roomId)) return
+  const room = foreign(() => runtime.getRoom(roomId)) catch effect ({ cause }) => {
+    throw reportDatabaseFailure(runtime, "hydrate", roomId, cause)
+  }
+  const persisted = coerceTopicList(room?.metadata?.[CHANNEL_TOPICS_METADATA_KEY])
+  if (persisted.length > 0) rooms.topicsByRoom.set(roomId, persisted)
+  rooms.hydrated.add(roomId)
+}
+
+effect function persistRoom(runtime: IAgentRuntime, roomId: UUID, topics: string[]) {
+  const room = foreign(() => runtime.getRoom(roomId)) catch effect ({ cause }) => {
+    throw reportDatabaseFailure(runtime, "persist", roomId, cause)
+  }
+  if (!room) {
+    logger.debug({ src: "service:channel_topics", roomId }, `${LOG_PREFIX} room not found; skipping topic persistence`)
+    return
+  }
+  const updated: Room = {
+    ...room,
+    metadata: { ...room.metadata, [CHANNEL_TOPICS_METADATA_KEY]: topics },
+  }
+  foreign(() => runtime.updateRoom(updated)) catch effect ({ cause }) => {
+    throw reportDatabaseFailure(runtime, "persist", roomId, cause)
+  }
+}
+
+effect function recordTopics(runtime: IAgentRuntime, rooms: TopicRooms, roomId: UUID, topics: string[]) {
+  if (!roomId || !Array.isArray(topics) || topics.length === 0) return
+  try enqueueRoomOperation(rooms, roomId, effect {
+    try hydrateRoom(runtime, rooms, roomId)
+    const next = topics.reduce((current, raw) => refreshTopic(current, raw.trim()), rooms.topicsByRoom.get(roomId) ?? [])
+    rooms.topicsByRoom.set(roomId, next)
+    try persistRoom(runtime, roomId, next)
+  })
+}
+
+effect function ensureHydrated(runtime: IAgentRuntime, rooms: TopicRooms, roomId: UUID) {
+  return try enqueueRoomOperation(rooms, roomId, effect {
+    try hydrateRoom(runtime, rooms, roomId)
+    return [...(rooms.topicsByRoom.get(roomId) ?? [])]
+  })
+}
+
 export class ChannelTopicsService extends Service {
   static override serviceType = "channel_topics"
   override capabilityDescription = "Maintains a per-channel LRU of recent topic labels extracted at Stage-1."
 
-  private readonly topicsByRoom = new Map<UUID, string[]>()
+  private readonly rooms: TopicRooms = { topicsByRoom: new Map(), hydrated: new Set(), queues: new Map(), stopping: false }
 
-  private readonly hydrated = new Set<UUID>()
-
-  private readonly roomQueues = new Map<UUID, Promise<unknown>>()
-  private stopping = false
-
-  private reportDatabaseFailure(
-    operation: "hydrate" | "persist",
-    roomId: UUID,
-    cause: unknown,
-  ): ElizaError {
-    const error = new ElizaError(
-      `Channel topic ${operation} failed for room ${roomId}`,
-      {
-        code: `CHANNEL_TOPICS_${operation.toUpperCase()}_FAILED`,
-        context: { roomId, operation },
-        cause,
-        severity: "ephemeral",
-      },
-    )
-    this.runtime.reportError(`ChannelTopicsService.${operation}`, error)
-    return error
-  }
-
-  static override async start(
-    runtime: IAgentRuntime,
-  ): Promise<ChannelTopicsService> {
+  static override async start(runtime: IAgentRuntime): Promise<ChannelTopicsService> {
     return new ChannelTopicsService(runtime)
   }
 
   override async stop(): Promise<void> {
-    this.stopping = true
-    while (this.roomQueues.size > 0) {
-      await Promise.allSettled(this.roomQueues.values())
-    }
-    this.topicsByRoom.clear()
-    this.hydrated.clear()
-    this.roomQueues.clear()
-  }
-
-  private enqueueRoomOperation<T>(
-    roomId: UUID,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    if (this.stopping) {
-      return Promise.reject(
-        new ElizaError("Channel topic service has stopped admission", {
-          code: "CHANNEL_TOPICS_STOPPING",
-          context: { roomId },
-          severity: "ephemeral",
-        }),
-      )
-    }
-    const previous = this.roomQueues.get(roomId) ?? Promise.resolve()
-    const current = previous
-      .catch(() => undefined)
-      .then(operation)
-    this.roomQueues.set(roomId, current)
-
-    return current.finally(() => {
-      if (this.roomQueues.get(roomId) === current) {
-        this.roomQueues.delete(roomId)
-      }
-    })
-  }
-
-  private async hydrateRoom(roomId: UUID): Promise<void> {
-    if (this.hydrated.has(roomId)) return
-    try {
-      const room = await this.runtime.getRoom(roomId)
-      const persisted = coerceTopicList(
-        room?.metadata?.[CHANNEL_TOPICS_METADATA_KEY],
-      )
-      if (persisted.length > 0) {
-        this.topicsByRoom.set(roomId, persisted)
-      }
-      this.hydrated.add(roomId)
-    } catch (cause) {
-      throw this.reportDatabaseFailure("hydrate", roomId, cause)
-    }
-  }
-
-  private applyTopics(roomId: UUID, incoming: string[]): string[] {
-    const current = this.topicsByRoom.get(roomId) ?? []
-
-    const ordered = new Map<string, true>()
-    for (const topic of current) {
-      ordered.set(topic, true)
-    }
-    for (const raw of incoming) {
-      const topic = raw.trim()
-      if (!topic) continue
-
-      ordered.delete(topic)
-      ordered.set(topic, true)
-    }
-    let next = Array.from(ordered.keys())
-    if (next.length > CHANNEL_TOPICS_LRU_CAPACITY) {
-      next = next.slice(next.length - CHANNEL_TOPICS_LRU_CAPACITY)
-    }
-    this.topicsByRoom.set(roomId, next)
-    return next
-  }
-
-  private async persistRoom(roomId: UUID, topics: string[]): Promise<void> {
-    let room: Room | null
-    try {
-      room = await this.runtime.getRoom(roomId)
-    } catch (cause) {
-      throw this.reportDatabaseFailure("persist", roomId, cause)
-    }
-    if (!room) {
-      logger.debug(
-        { src: "service:channel_topics", roomId },
-        `${LOG_PREFIX} room not found; skipping topic persistence`,
-      )
-      return
-    }
-    const updated: Room = {
-      ...room,
-      metadata: {
-        ...room.metadata,
-        [CHANNEL_TOPICS_METADATA_KEY]: topics,
-      },
-    }
-    try {
-      await this.runtime.updateRoom(updated)
-    } catch (cause) {
-      throw this.reportDatabaseFailure("persist", roomId, cause)
-    }
+    return runDetached(stopRooms(this.rooms))
   }
 
   async recordTopics(roomId: UUID, topics: string[]): Promise<void> {
-    if (!roomId || !Array.isArray(topics) || topics.length === 0) {
-      return
-    }
-
-    return this.enqueueRoomOperation(roomId, async () => {
-      await this.hydrateRoom(roomId)
-      const next = this.applyTopics(roomId, topics)
-      await this.persistRoom(roomId, next)
-    })
+    return runDetached(recordTopics(this.runtime, this.rooms, roomId, topics))
   }
 
   getTopicsForRoom(roomId: UUID): string[] {
-    const topics = this.topicsByRoom.get(roomId)
+    const topics = this.rooms.topicsByRoom.get(roomId)
     return topics ? [...topics] : []
   }
 
   async ensureHydrated(roomId: UUID): Promise<string[]> {
-    return this.enqueueRoomOperation(roomId, async () => {
-      await this.hydrateRoom(roomId)
-      return this.getTopicsForRoom(roomId)
-    })
+    return runDetached(ensureHydrated(this.runtime, this.rooms, roomId))
   }
 
   getTopicsForAllRooms(): Record<string, string[]> {
     const out: Record<string, string[]> = {}
-    for (const [roomId, topics] of this.topicsByRoom.entries()) {
+    for (const [roomId, topics] of this.rooms.topicsByRoom.entries()) {
       out[roomId] = [...topics]
     }
     return out

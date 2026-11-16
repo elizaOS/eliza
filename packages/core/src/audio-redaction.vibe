@@ -1,3 +1,5 @@
+// spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+import { thrown } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 import type { TranscriptWord } from "./transcripts.vibe"
 
@@ -17,6 +19,7 @@ export interface PiiTextSpan {
 export const DEFAULT_REDACTION_PAD_MS = 250
 
 export class RedactionSpanError extends ElizaError {
+  override readonly _tag = "RedactionSpanError" as const
   constructor(message: string) {
     super(`audio redaction span invalid: ${message}`, {
       code: "AUDIO_REDACTION_SPAN_INVALID",
@@ -36,9 +39,9 @@ interface NormalizedWordStream {
   charToWord: number[]
 }
 
-function buildWordStream(
+effect function buildWordStream(
   words: readonly TranscriptWord[],
-): NormalizedWordStream {
+): NormalizedWordStream!RedactionSpanError {
   const ordered = [...words].sort(
     (a, b) => a.startMs - b.startMs || a.endMs - b.endMs,
   )
@@ -73,11 +76,11 @@ export interface PiiSpanMatchResult {
   unmatched: PiiTextSpan[]
 }
 
-export function matchPiiSpansToWords(
+export effect function matchPiiSpansToWords(
   words: readonly TranscriptWord[],
   piiSpans: readonly PiiTextSpan[],
-): PiiSpanMatchResult {
-  const stream = buildWordStream(words)
+): PiiSpanMatchResult!RedactionSpanError {
+  const stream = try buildWordStream(words)
   const matches: AudioRedactionSpan[] = []
   const unmatched: PiiTextSpan[] = []
   for (const pii of piiSpans) {
@@ -106,6 +109,8 @@ export function matchPiiSpansToWords(
   return { matches, unmatched }
 }
 
+export const matchPiiSpansToWordsOrThrow = thrown(matchPiiSpansToWords)
+
 export interface MergeRedactionSpanOptions {
   durationMs: number
 
@@ -114,10 +119,10 @@ export interface MergeRedactionSpanOptions {
   mergeGapMs?: number
 }
 
-export function mergeRedactionSpans(
+export effect function mergeRedactionSpans(
   spans: readonly AudioRedactionSpan[],
   options: MergeRedactionSpanOptions,
-): AudioRedactionSpan[] {
+): AudioRedactionSpan[]!RedactionSpanError {
   const padMs = options.padMs ?? DEFAULT_REDACTION_PAD_MS
   const mergeGapMs = options.mergeGapMs ?? 0
   const durationMs = options.durationMs
@@ -191,6 +196,8 @@ export function mergeRedactionSpans(
   }))
 }
 
+export const mergeRedactionSpansOrThrow = thrown(mergeRedactionSpans)
+
 export interface AudioRedactionSpanPlan {
   spans: AudioRedactionSpan[]
 
@@ -199,19 +206,21 @@ export interface AudioRedactionSpanPlan {
   unmatched: PiiTextSpan[]
 }
 
-export function buildAudioRedactionSpans(
+export effect function buildAudioRedactionSpans(
   words: readonly TranscriptWord[],
   piiSpans: readonly PiiTextSpan[],
   options: MergeRedactionSpanOptions,
-): AudioRedactionSpanPlan {
-  const { matches, unmatched } = matchPiiSpansToWords(words, piiSpans)
-  const spans = mergeRedactionSpans(matches, options)
+): AudioRedactionSpanPlan!RedactionSpanError {
+  const { matches, unmatched } = try matchPiiSpansToWords(words, piiSpans)
+  const spans = try mergeRedactionSpans(matches, options)
   return { spans, matches, unmatched }
 }
 
-export function assertCompleteAudioRedactionPlan(
+export const buildAudioRedactionSpansOrThrow = thrown(buildAudioRedactionSpans)
+
+export effect function assertCompleteAudioRedactionPlan(
   plan: AudioRedactionSpanPlan,
-): void {
+): void!RedactionSpanError {
   if (plan.unmatched.length > 0) {
     throw new RedactionSpanError(
       `${plan.unmatched.length} PII span(s) could not be located in timed words (text lengths: ${
@@ -225,3 +234,5 @@ export function assertCompleteAudioRedactionPlan(
     throw new RedactionSpanError("complete plan has no executable spans")
   }
 }
+
+export const assertCompleteAudioRedactionPlanOrThrow = thrown(assertCompleteAudioRedactionPlan)

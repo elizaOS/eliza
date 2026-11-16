@@ -1,11 +1,13 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { failingAs, foreignSync, thrown } from "../edge.vibe"
 import type { JSONSchema } from "../types/model.vibe"
 import { hashStableJson } from "./context-hash.vibe"
-import type { ContextObject, ContextProviderEvent } from "./context-object.vibe"
+import type { ContextEvent, ContextObject, ContextProviderEvent } from "./context-object.vibe"
 import { OWNED_CONTEXT_SOURCE_SCOPE } from "./context-object.vibe"
 
 const REVIEW_SOURCE_ID = /^[a-zA-Z][a-zA-Z0-9]*$/
 
-export function providerReviewSources(context: ContextObject) {
+export effect function providerReviewSources(context: ContextObject) {
   const loaded = context.metadata?.loadedContextProviders
   const providers = context.events.filter(
     (event): event is ContextProviderEvent =>
@@ -60,7 +62,7 @@ export function providerReviewSources(context: ContextObject) {
   return {
     providers,
     ids,
-    sourceSetId: hashStableJson({
+    sourceSetId: try hashStableJson({
       contextId: context.id,
       roomId: context.metadata.roomId,
       messageId: context.metadata.messageId,
@@ -69,11 +71,13 @@ export function providerReviewSources(context: ContextObject) {
   }
 }
 
-export function withProviderReviewSchema(
+export const providerReviewSourcesOrThrow = thrown(failingAs(TypeError, providerReviewSources))
+
+export effect function withProviderReviewSchema(
   schema: JSONSchema,
   context: ContextObject,
-): JSONSchema {
-  const review = providerReviewSources(context)
+) {
+  const review = try providerReviewSources(context)
   if (!review) return schema
   return {
     ...schema,
@@ -92,19 +96,76 @@ export function withProviderReviewSchema(
       },
     },
     required: [...(schema.required ?? []), "providerReview"],
-  }
+  } satisfies JSONSchema
 }
 
-export function projectDeferredProviders(context: ContextObject): {
-  context: ContextObject
-  available: string[]
-} {
+export const withProviderReviewSchemaOrThrow = thrown(failingAs(TypeError, withProviderReviewSchema))
+
+interface DeferralReview {
+  readonly context: ContextObject
+  readonly loaded: unknown
+  readonly review: { providers: ContextProviderEvent[] } | undefined
+  readonly keep: Set<string> | undefined
+  readonly available: string[]
+}
+
+effect function projectProviderEvent(projection: DeferralReview, event: ContextEvent) {
+  const { context, loaded, review, keep, available } = projection
+  const source = event as ContextProviderEvent
+  const scope = source[OWNED_CONTEXT_SOURCE_SCOPE]
+  if (
+    ("discoveryRequiresRuntimeBinding" in event
+      || OWNED_CONTEXT_SOURCE_SCOPE in event
+      || event.source?.startsWith("host:"))
+    && (source.discoveryRequiresRuntimeBinding !== true
+      || typeof scope?.canDefer !== "function"
+      || !(try foreignSync(() => scope.canDefer(context, source))))
+  ) {
+    return event
+  }
+  if (keep && review?.providers.includes(event as ContextProviderEvent)) {
+    const provider = event as ContextProviderEvent
+    const sources = provider.reviewableSources
+    if (!sources) return event
+    const selected = sources.sources.filter((source) => keep.has(source.id))
+    if (selected.length === sources.sources.length) return event
+    const text = [
+      sources.notice,
+      ...selected.map((source) => `[${source.id}]\n${source.text}`),
+      "Other recalled sources omitted after handler review; restore provider context if needed.",
+    ].join("\n")
+    if (text.length >= (provider.text?.length ?? 0)) return event
+    available.push(provider.name)
+    return { ...provider, text }
+  }
+  if (
+    event.type !== "provider"
+    || !("discoveryText" in event)
+    || typeof event.discoveryText !== "string"
+    || !event.discoveryText.trim()
+    || !("text" in event)
+    || typeof event.text !== "string"
+    || (source.referenceBodyDeferred !== true
+      && event.discoveryText.length >= event.text.length)
+    || !("name" in event)
+    || typeof event.name !== "string"
+    || (source.referenceBodyDeferred !== true
+      && Array.isArray(loaded)
+      && loaded.includes(event.name))
+  ) {
+    return event
+  }
+  available.push(event.name)
+  return { ...event, text: event.discoveryText }
+}
+
+export effect function projectDeferredProviders(context: ContextObject) {
   const available: string[] = []
   if (context.metadata?.providerDiscoveryEnabled !== true) {
     return { context, available }
   }
   const loaded = context.metadata.loadedContextProviders
-  const review = providerReviewSources(context)
+  const review = try providerReviewSources(context)
   const raw = context.metadata.providerReview
   const selection = raw && typeof raw === "object"
     ? (raw as { sourceSetId?: unknown; complete?: unknown; keep?: unknown })
@@ -116,53 +177,10 @@ export function projectDeferredProviders(context: ContextObject): {
       && selection.keep.every((id) => typeof id === "string" && review.ids.has(id))
     ? new Set(selection.keep as string[])
     : undefined
-  const events = context.events.map((event) => {
-    const source = event as ContextProviderEvent
-    const scope = source[OWNED_CONTEXT_SOURCE_SCOPE]
-    if (
-      ("discoveryRequiresRuntimeBinding" in event
-        || OWNED_CONTEXT_SOURCE_SCOPE in event
-        || event.source?.startsWith("host:"))
-      && (source.discoveryRequiresRuntimeBinding !== true
-        || typeof scope?.canDefer !== "function"
-        || !scope.canDefer(context, source))
-    ) {
-      return event
-    }
-    if (keep && review?.providers.includes(event as ContextProviderEvent)) {
-      const provider = event as ContextProviderEvent
-      const sources = provider.reviewableSources
-      if (!sources) return event
-      const selected = sources.sources.filter((source) => keep.has(source.id))
-      if (selected.length === sources.sources.length) return event
-      const text = [
-        sources.notice,
-        ...selected.map((source) => `[${source.id}]\n${source.text}`),
-        "Other recalled sources omitted after handler review; restore provider context if needed.",
-      ].join("\n")
-      if (text.length >= (provider.text?.length ?? 0)) return event
-      available.push(provider.name)
-      return { ...provider, text }
-    }
-    if (
-      event.type !== "provider"
-      || !("discoveryText" in event)
-      || typeof event.discoveryText !== "string"
-      || !event.discoveryText.trim()
-      || !("text" in event)
-      || typeof event.text !== "string"
-      || (source.referenceBodyDeferred !== true
-        && event.discoveryText.length >= event.text.length)
-      || !("name" in event)
-      || typeof event.name !== "string"
-      || (source.referenceBodyDeferred !== true
-        && Array.isArray(loaded)
-        && loaded.includes(event.name))
-    ) {
-      return event
-    }
-    available.push(event.name)
-    return { ...event, text: event.discoveryText }
-  })
+  const projection: DeferralReview = { context, loaded, review, keep, available }
+  const events: ContextEvent[] = []
+  for (const event of context.events) events.push(try projectProviderEvent(projection, event))
   return { context: { ...context, events }, available }
 }
+
+export const projectDeferredProvidersOrThrow = thrown(failingAs(TypeError, projectDeferredProviders))

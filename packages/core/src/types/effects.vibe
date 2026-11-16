@@ -1,31 +1,25 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { asObjectRecord } from "../utils/type-guards.vibe"
 
 export interface EffectResourceRef {
   kind: string
-
   id: string
-
   version?: string
 }
 
 export interface EffectIdempotency {
   key: string | null
-
   replayed: boolean
 }
 
 interface EffectReceiptBase {
   receiptId: string
-
   operation: string
-
   resource: EffectResourceRef
-
   artifacts: readonly EffectResourceRef[]
-
   idempotency: EffectIdempotency
-
   observedAt: string
 }
 
@@ -33,9 +27,7 @@ export interface AppliedEffectReceipt extends EffectReceiptBase {
   outcome: "applied"
   commit: {
     kind: "durable" | "provider_accepted"
-
     id: string
-
     committedAt: string
   }
 }
@@ -54,7 +46,6 @@ export interface FailedEffectReceipt extends EffectReceiptBase {
   failure: {
     code: string
     retryable: boolean
-
     acceptance: "rejected" | "unknown"
   }
 }
@@ -63,9 +54,7 @@ export interface RolledBackEffectReceipt extends EffectReceiptBase {
   outcome: "rolled_back"
   rollback: {
     receiptId: string
-
     revertedReceiptIds: readonly string[]
-
     rolledBackAt: string
   }
 }
@@ -115,48 +104,37 @@ export const IDEMPOTENT_EFFECT_ACTION_TAG = "effect:idempotent"
 export const EFFECT_RECEIPT_REQUIRED_ACTION_TAG = "effect:receipt-required"
 
 const ISO_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-](\d{2}):(\d{2}))$/
+
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const
 
-function invalid(message: string, context: Record<string, unknown>): never {
-  throw new ElizaError(message, {
+function invalid(message: string, context: Record<string, unknown>): ElizaError {
+  return new ElizaError(message, {
     code: "INVALID_EFFECT_RECEIPT",
     context,
     severity: "fatal",
   })
 }
 
-function nonEmptyString(
+effect function nonEmptyString(
   value: unknown,
   field: string,
   context: Record<string, unknown>,
-): string {
+): string!ElizaError {
   if (typeof value !== "string" || value.trim().length === 0) {
-    return invalid(
-      `Effect receipt field '${field}' must be a non-empty string.`,
-      {
-        ...context,
-        field,
-      },
-    )
+    throw invalid(`Effect receipt field '${field}' must be a non-empty string.`, { ...context, field })
   }
   return value.trim()
 }
 
-function isoTimestamp(
+effect function isoTimestamp(
   value: unknown,
   field: string,
   context: Record<string, unknown>,
-): string {
-  const timestamp = nonEmptyString(value, field, context)
+): string!ElizaError {
+  const timestamp = try nonEmptyString(value, field, context)
   const match = ISO_TIMESTAMP_PATTERN.exec(timestamp)
   if (!match) {
-    return invalid(
-      `Effect receipt field '${field}' must be an ISO timestamp with a timezone.`,
-      {
-        ...context,
-        field,
-      },
-    )
+    throw invalid(`Effect receipt field '${field}' must be an ISO timestamp with a timezone.`, { ...context, field })
   }
   const year = Number(match[1])
   const month = Number(match[2])
@@ -182,37 +160,25 @@ function isoTimestamp(
     || offsetMinute > 59
     || !Number.isFinite(parsed)
   ) {
-    return invalid(
-      `Effect receipt field '${field}' must be a valid ISO timestamp.`,
-      {
-        ...context,
-        field,
-      },
-    )
+    throw invalid(`Effect receipt field '${field}' must be a valid ISO timestamp.`, { ...context, field })
   }
   return new Date(parsed).toISOString()
 }
 
-function normalizeResourceRef(
+effect function normalizeResourceRef(
   value: unknown,
   field: string,
   context: Record<string, unknown>,
-): EffectResourceRef {
+): EffectResourceRef!ElizaError {
   const raw = asObjectRecord(value)
   if (!raw) {
-    return invalid(
-      `Effect receipt field '${field}' must be a resource reference.`,
-      {
-        ...context,
-        field,
-      },
-    )
+    throw invalid(`Effect receipt field '${field}' must be a resource reference.`, { ...context, field })
   }
-  const kind = nonEmptyString(raw.kind, `${field}.kind`, context)
-  const id = nonEmptyString(raw.id, `${field}.id`, context)
+  const kind = try nonEmptyString(raw.kind, `${field}.kind`, context)
+  const id = try nonEmptyString(raw.id, `${field}.id`, context)
   const version = raw.version === undefined
     ? undefined
-    : nonEmptyString(raw.version, `${field}.version`, context)
+    : try nonEmptyString(raw.version, `${field}.version`, context)
   return Object.freeze({
     kind,
     id,
@@ -220,86 +186,79 @@ function normalizeResourceRef(
   })
 }
 
-function normalizeStringArray(
+effect function normalizeStringArray(
   value: unknown,
   field: string,
   context: Record<string, unknown>,
-): readonly string[] {
+): readonly string[]!ElizaError {
   if (!Array.isArray(value)) {
-    return invalid(`Effect receipt field '${field}' must be an array.`, {
-      ...context,
-      field,
-    })
+    throw invalid(`Effect receipt field '${field}' must be an array.`, { ...context, field })
   }
-  const values = value.map((entry, index) => nonEmptyString(entry, `${field}[${index}]`, context))
+  // The original mapped the input: holes stay holes and an Array subclass
+  // keeps its species, so the result comes from the input's own map.
+  const trimmed: string[] = []
+  for (let index = 0; index < value.length; index++) {
+    if (!(index in value)) continue
+    trimmed[index] = try nonEmptyString(value[index], `${field}[${index}]`, context)
+  }
+  const values = value.map((_entry: unknown, index: number) => trimmed[index])
   if (new Set(values).size !== values.length) {
-    return invalid(`Effect receipt field '${field}' contains duplicate IDs.`, {
-      ...context,
-      field,
-    })
+    throw invalid(`Effect receipt field '${field}' contains duplicate IDs.`, { ...context, field })
   }
   return Object.freeze(values)
 }
 
-export function normalizeUserFacingEffectReceiptIds(
+export effect function normalizeUserFacingEffectReceiptIds(
   value: unknown,
-): readonly string[] {
-  return normalizeStringArray(value, "userFacingEffectReceiptIds", {})
+): readonly string[]!ElizaError {
+  return try normalizeStringArray(value, "userFacingEffectReceiptIds", {})
 }
 
-export function normalizeEffectReceipt(value: unknown): EffectReceipt {
+export const normalizeUserFacingEffectReceiptIdsOrThrow = thrown(normalizeUserFacingEffectReceiptIds)
+
+export effect function normalizeEffectReceipt(value: unknown): EffectReceipt!ElizaError {
   const raw = asObjectRecord(value)
   if (!raw) {
-    return invalid("Effect receipt must be an object.", {})
+    throw invalid("Effect receipt must be an object.", {})
   }
-  const receiptId = nonEmptyString(raw.receiptId, "receiptId", {})
+  const receiptId = try nonEmptyString(raw.receiptId, "receiptId", {})
   const context = { receiptId }
-  const operation = nonEmptyString(raw.operation, "operation", context)
-  const resource = normalizeResourceRef(raw.resource, "resource", context)
+  const operation = try nonEmptyString(raw.operation, "operation", context)
+  const resource = try normalizeResourceRef(raw.resource, "resource", context)
   if (!Array.isArray(raw.artifacts)) {
-    return invalid(
-      "Effect receipt field 'artifacts' must be an array.",
-      context,
-    )
+    throw invalid("Effect receipt field 'artifacts' must be an array.", context)
+  }
+  const artifactRefs: EffectResourceRef[] = []
+  for (let index = 0; index < raw.artifacts.length; index++) {
+    if (!(index in raw.artifacts)) continue
+    artifactRefs[index] = try normalizeResourceRef(raw.artifacts[index], `artifacts[${index}]`, context)
   }
   const artifacts = Object.freeze(
-    raw.artifacts.map((artifact, index) => normalizeResourceRef(artifact, `artifacts[${index}]`, context)),
+    raw.artifacts.map((_artifact: unknown, index: number) => artifactRefs[index]),
   )
   const idempotencyRaw = asObjectRecord(raw.idempotency)
   if (!idempotencyRaw) {
-    return invalid(
-      "Effect receipt field 'idempotency' must be an object.",
-      context,
-    )
+    throw invalid("Effect receipt field 'idempotency' must be an object.", context)
   }
   const idempotencyKey = idempotencyRaw.key === null
     ? null
-    : nonEmptyString(idempotencyRaw.key, "idempotency.key", context)
+    : try nonEmptyString(idempotencyRaw.key, "idempotency.key", context)
   if (typeof idempotencyRaw.replayed !== "boolean") {
-    return invalid(
-      "Effect receipt field 'idempotency.replayed' must be a boolean.",
-      context,
-    )
+    throw invalid("Effect receipt field 'idempotency.replayed' must be a boolean.", context)
   }
   if (idempotencyRaw.replayed && idempotencyKey === null) {
-    return invalid(
-      "Replayed effect receipts require an idempotency key.",
-      context,
-    )
+    throw invalid("Replayed effect receipts require an idempotency key.", context)
   }
   const idempotency = Object.freeze({
     key: idempotencyKey,
     replayed: idempotencyRaw.replayed,
   })
-  const observedAt = isoTimestamp(raw.observedAt, "observedAt", context)
+  const observedAt = try isoTimestamp(raw.observedAt, "observedAt", context)
   if (
     typeof raw.outcome !== "string"
     || !EFFECT_OUTCOMES.has(raw.outcome as EffectReceipt["outcome"])
   ) {
-    return invalid("Effect receipt has an unsupported outcome.", {
-      ...context,
-      outcome: raw.outcome,
-    })
+    throw invalid("Effect receipt has an unsupported outcome.", { ...context, outcome: raw.outcome })
   }
   const outcome = raw.outcome as EffectReceipt["outcome"]
   const base = {
@@ -315,31 +274,21 @@ export function normalizeEffectReceipt(value: unknown): EffectReceipt {
     case "applied": {
       const commitRaw = asObjectRecord(raw.commit)
       if (!commitRaw) {
-        return invalid(
-          "Applied effect receipts require commit proof.",
-          context,
-        )
+        throw invalid("Applied effect receipts require commit proof.", context)
       }
       if (
         commitRaw.kind !== "durable"
         && commitRaw.kind !== "provider_accepted"
       ) {
-        return invalid("Applied effect receipt has an invalid commit kind.", {
-          ...context,
-          commitKind: commitRaw.kind,
-        })
+        throw invalid("Applied effect receipt has an invalid commit kind.", { ...context, commitKind: commitRaw.kind })
       }
       return Object.freeze({
         ...base,
         outcome: "applied",
         commit: Object.freeze({
           kind: commitRaw.kind,
-          id: nonEmptyString(commitRaw.id, "commit.id", context),
-          committedAt: isoTimestamp(
-            commitRaw.committedAt,
-            "commit.committedAt",
-            context,
-          ),
+          id: try nonEmptyString(commitRaw.id, "commit.id", context),
+          committedAt: try isoTimestamp(commitRaw.committedAt, "commit.committedAt", context),
         }),
       })
     }
@@ -349,36 +298,27 @@ export function normalizeEffectReceipt(value: unknown): EffectReceipt {
       return Object.freeze({
         ...base,
         outcome: "noop",
-        reason: nonEmptyString(raw.reason, "reason", context),
+        reason: try nonEmptyString(raw.reason, "reason", context),
       })
     case "failed": {
       const failureRaw = asObjectRecord(raw.failure)
       if (!failureRaw) {
-        return invalid(
-          "Failed effect receipts require failure details.",
-          context,
-        )
+        throw invalid("Failed effect receipts require failure details.", context)
       }
       if (typeof failureRaw.retryable !== "boolean") {
-        return invalid(
-          "Effect receipt field 'failure.retryable' must be a boolean.",
-          context,
-        )
+        throw invalid("Effect receipt field 'failure.retryable' must be a boolean.", context)
       }
       if (
         failureRaw.acceptance !== "rejected"
         && failureRaw.acceptance !== "unknown"
       ) {
-        return invalid(
-          "Failed effect receipt has an invalid acceptance state.",
-          context,
-        )
+        throw invalid("Failed effect receipt has an invalid acceptance state.", context)
       }
       return Object.freeze({
         ...base,
         outcome: "failed",
         failure: Object.freeze({
-          code: nonEmptyString(failureRaw.code, "failure.code", context),
+          code: try nonEmptyString(failureRaw.code, "failure.code", context),
           retryable: failureRaw.retryable,
           acceptance: failureRaw.acceptance,
         }),
@@ -387,62 +327,45 @@ export function normalizeEffectReceipt(value: unknown): EffectReceipt {
     case "rolled_back": {
       const rollbackRaw = asObjectRecord(raw.rollback)
       if (!rollbackRaw) {
-        return invalid(
-          "Rolled-back effect receipts require rollback proof.",
-          context,
-        )
+        throw invalid("Rolled-back effect receipts require rollback proof.", context)
       }
-      const revertedReceiptIds = normalizeStringArray(
+      const revertedReceiptIds = try normalizeStringArray(
         rollbackRaw.revertedReceiptIds,
         "rollback.revertedReceiptIds",
         context,
       )
       if (revertedReceiptIds.length === 0) {
-        return invalid(
-          "Rolled-back effect receipts must identify at least one reverted receipt.",
-          context,
-        )
+        throw invalid("Rolled-back effect receipts must identify at least one reverted receipt.", context)
       }
       return Object.freeze({
         ...base,
         outcome: "rolled_back",
         rollback: Object.freeze({
-          receiptId: nonEmptyString(
-            rollbackRaw.receiptId,
-            "rollback.receiptId",
-            context,
-          ),
+          receiptId: try nonEmptyString(rollbackRaw.receiptId, "rollback.receiptId", context),
           revertedReceiptIds,
-          rolledBackAt: isoTimestamp(
-            rollbackRaw.rolledBackAt,
-            "rollback.rolledBackAt",
-            context,
-          ),
+          rolledBackAt: try isoTimestamp(rollbackRaw.rolledBackAt, "rollback.rolledBackAt", context),
         }),
       })
     }
   }
 }
 
-export function normalizeEffectReceipts(
+export const normalizeEffectReceiptOrThrow = thrown(normalizeEffectReceipt)
+
+export effect function normalizeEffectReceipts(
   value: unknown,
-): readonly EffectReceipt[] {
+): readonly EffectReceipt[]!ElizaError {
   if (value === undefined) return Object.freeze([])
   if (!Array.isArray(value)) {
-    return invalid("ActionResult.effectReceipts must be an array.", {})
+    throw invalid("ActionResult.effectReceipts must be an array.", {})
   }
   const byId = new Map<string, EffectReceipt>()
   for (const rawReceipt of value) {
-    const receipt = normalizeEffectReceipt(rawReceipt)
+    const receipt = try normalizeEffectReceipt(rawReceipt)
     const existing = byId.get(receipt.receiptId)
     if (existing) {
       if (JSON.stringify(existing) !== JSON.stringify(receipt)) {
-        return invalid(
-          "Effect receipt ID was reused for a different outcome.",
-          {
-            receiptId: receipt.receiptId,
-          },
-        )
+        throw invalid("Effect receipt ID was reused for a different outcome.", { receiptId: receipt.receiptId })
       }
       continue
     }
@@ -450,6 +373,8 @@ export function normalizeEffectReceipts(
   }
   return Object.freeze([...byId.values()])
 }
+
+export const normalizeEffectReceiptsOrThrow = thrown(normalizeEffectReceipts)
 
 export function tagsMayProduceEffects(
   tags: readonly string[] | undefined,
@@ -480,11 +405,13 @@ export function tagsRequireEffectReceipts(
   )
 }
 
-export function mergeEffectReceipts(
+export effect function mergeEffectReceipts(
   ...lists: ReadonlyArray<readonly EffectReceipt[] | undefined>
-): readonly EffectReceipt[] {
-  return normalizeEffectReceipts(lists.flatMap((list) => list ?? []))
+): readonly EffectReceipt[]!ElizaError {
+  return try normalizeEffectReceipts(lists.flatMap((list) => list ?? []))
 }
+
+export const mergeEffectReceiptsOrThrow = thrown(mergeEffectReceipts)
 
 export function revertedEffectReceiptIds(
   receipts: readonly EffectReceipt[],
@@ -507,11 +434,11 @@ function hasBoundUserFacingText(result: EffectBearingResult): boolean {
   )
 }
 
-function resolveBoundReceipts(
+effect function resolveBoundReceipts(
   result: EffectBearingResult,
   normalizedReceipts: readonly EffectReceipt[],
-): EffectReceipt[] | null {
-  const normalizedIds = normalizeStringArray(
+): (EffectReceipt[] | null)!ElizaError {
+  const normalizedIds = try normalizeStringArray(
     result.userFacingEffectReceiptIds,
     "userFacingEffectReceiptIds",
     {},
@@ -528,17 +455,19 @@ function resolveBoundReceipts(
   return resolved
 }
 
-export function resolveUserFacingEffectReceipts(
+export effect function resolveUserFacingEffectReceipts(
   result: EffectBearingResult,
   allTurnReceipts: readonly EffectReceipt[] = result.effectReceipts ?? [],
-): readonly EffectReceipt[] | null {
+): (readonly EffectReceipt[] | null)!ElizaError {
   if (!hasBoundUserFacingText(result)) return null
-  const resolved = resolveBoundReceipts(
+  const resolved = try resolveBoundReceipts(
     result,
-    normalizeEffectReceipts(allTurnReceipts),
+    try normalizeEffectReceipts(allTurnReceipts),
   )
   return resolved && Object.freeze(resolved)
 }
+
+export const resolveUserFacingEffectReceiptsOrThrow = thrown(resolveUserFacingEffectReceipts)
 
 function isCommittedEffectReceipt(
   receipt: EffectReceipt,
@@ -549,10 +478,10 @@ function isCommittedEffectReceipt(
   )
 }
 
-export function activeCommittedEffectReceipts(
+export effect function activeCommittedEffectReceipts(
   receipts: readonly EffectReceipt[],
-): readonly CommittedEffectReceipt[] {
-  const normalized = normalizeEffectReceipts(receipts)
+): readonly CommittedEffectReceipt[]!ElizaError {
+  const normalized = try normalizeEffectReceipts(receipts)
   const reverted = revertedEffectReceiptIds(normalized)
   return Object.freeze(
     normalized.filter(
@@ -562,13 +491,15 @@ export function activeCommittedEffectReceipts(
   )
 }
 
-export function resolveAppliedUserFacingEffectReceipts(
+export const activeCommittedEffectReceiptsOrThrow = thrown(activeCommittedEffectReceipts)
+
+export effect function resolveAppliedUserFacingEffectReceipts(
   result: EffectBearingResult,
   allTurnReceipts: readonly EffectReceipt[] = result.effectReceipts ?? [],
-): readonly CommittedEffectReceipt[] | null {
+): (readonly CommittedEffectReceipt[] | null)!ElizaError {
   if (!hasBoundUserFacingText(result)) return null
-  const normalized = normalizeEffectReceipts(allTurnReceipts)
-  const resolved = resolveBoundReceipts(result, normalized)
+  const normalized = try normalizeEffectReceipts(allTurnReceipts)
+  const resolved = try resolveBoundReceipts(result, normalized)
   if (!resolved) return null
   const reverted = revertedEffectReceiptIds(normalized)
   const committed: CommittedEffectReceipt[] = []
@@ -581,11 +512,15 @@ export function resolveAppliedUserFacingEffectReceipts(
   return Object.freeze(committed)
 }
 
-export function hasAppliedUserFacingEffectProof(
+export const resolveAppliedUserFacingEffectReceiptsOrThrow = thrown(resolveAppliedUserFacingEffectReceipts)
+
+export effect function hasAppliedUserFacingEffectProof(
   result: EffectBearingResult,
   allTurnReceipts?: readonly EffectReceipt[],
-): boolean {
+): boolean!ElizaError {
   return (
-    resolveAppliedUserFacingEffectReceipts(result, allTurnReceipts) !== null
+    (try resolveAppliedUserFacingEffectReceipts(result, allTurnReceipts)) !== null
   )
 }
+
+export const hasAppliedUserFacingEffectProofOrThrow = thrown(hasAppliedUserFacingEffectProof)

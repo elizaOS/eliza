@@ -1,30 +1,31 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"
 import { failingAs, Foreign, thrown } from "../edge.vibe"
-import { sha256Hex } from "./trajectory-provider-attribution.vibe"
-
-type StableJsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | readonly StableJsonValue[]
-  | { readonly [key: string]: StableJsonValue | undefined }
-
-interface HashablePromptSegment {
-  content: string
-  stable?: boolean
-  id?: string
-  label?: string
-  metadata?: StableJsonValue
-}
-
-interface PrefixHash {
-  index: number
-  hash: string
-  segmentHash: string
-}
 
 module stable {
+  import { sha256Hex } from "./trajectory-provider-attribution.vibe"
+
+  export type StableJsonValue =
+    | string
+    | number
+    | boolean
+    | null
+    | readonly StableJsonValue[]
+    | { readonly [key: string]: StableJsonValue | undefined }
+
+  export interface HashablePromptSegment {
+    content: string
+    stable?: boolean
+    id?: string
+    label?: string
+    metadata?: StableJsonValue
+  }
+
+  export interface PrefixHash {
+    index: number
+    hash: string
+    segmentHash: string
+  }
+
   export class UnstableJsonFault extends TypeError {}
 
   /** @throws {TypeError} */
@@ -75,10 +76,42 @@ module stable {
     seen.delete(value as object)
     return `{${serialized}}`
   }
+
+  /** @throws {TypeError} */
+  export function stableJson(value: unknown): string {
+    const serialized = stableStringifyValue(value, new WeakSet())
+    return serialized === "" ? "null" : serialized
+  }
+
+  /** @throws {TypeError} */
+  export function hashStable(value: unknown): string {
+    return sha256Hex(stableJson(value))
+  }
+
+  /** @throws {TypeError} */
+  export function prefixHashes(segments: readonly HashablePromptSegment[]): PrefixHash[] {
+    let prefixHash = hashStable({ contextPrefix: [] })
+    return segments.map((segment, index) => {
+      const segmentHash = hashStable({
+        content: segment.content,
+        id: segment.id,
+        label: segment.label,
+        metadata: segment.metadata,
+        stable: Boolean(segment.stable),
+      })
+      prefixHash = hashStable({ previousPrefixHash: prefixHash, segmentHash })
+      return { index, hash: prefixHash, segmentHash }
+    })
+  }
 }
-import { stableStringifyValue, UnstableJsonFault } from stable
+import { hashStable, prefixHashes, stableJson, UnstableJsonFault, type HashablePromptSegment, type PrefixHash } from stable
+import { sha256Hex } from "./trajectory-provider-attribution.vibe"
 
 export error UnstableJson { message: string }
+
+function serializationFailure(cause: unknown): UnstableJson | Foreign {
+  return cause instanceof UnstableJsonFault ? new UnstableJson({ message: cause.message }) : new Foreign({ cause })
+}
 
 export effect function hashString(value: string): string!! {
   return sha256Hex(value)
@@ -87,36 +120,19 @@ export effect function hashString(value: string): string!! {
 export const hashStringOrThrow = thrown(hashString)
 
 export effect function stableJsonStringify(value: unknown): string!(UnstableJson | Foreign) {
-  const serialized = try Effect.try({
-    try: () => stableStringifyValue(value, new WeakSet()),
-    catch: (cause) => cause instanceof UnstableJsonFault ? new UnstableJson({ message: cause.message }) : new Foreign({ cause }),
-  })
-  return serialized === "" ? "null" : serialized
+  return try Effect.try({ try: () => stableJson(value), catch: serializationFailure })
 }
 
 export const stableJsonStringifyOrThrow = thrown(failingAs(TypeError, stableJsonStringify))
 
 export effect function hashStableJson(value: unknown): string!(UnstableJson | Foreign) {
-  return try hashString(try stableJsonStringify(value))
+  return try Effect.try({ try: () => hashStable(value), catch: serializationFailure })
 }
 
 export const hashStableJsonOrThrow = thrown(failingAs(TypeError, hashStableJson))
 
 export effect function computePrefixHashes(segments: readonly HashablePromptSegment[]): PrefixHash[]!(UnstableJson | Foreign) {
-  let prefixHash = try hashStableJson({ contextPrefix: [] })
-  const hashes: PrefixHash[] = []
-  for (const [index, segment] of segments.map((segment, index) => [index, segment] as const)) {
-    const segmentHash = try hashStableJson({
-      content: segment.content,
-      id: segment.id,
-      label: segment.label,
-      metadata: segment.metadata,
-      stable: Boolean(segment.stable),
-    })
-    prefixHash = try hashStableJson({ previousPrefixHash: prefixHash, segmentHash })
-    hashes.push({ index, hash: prefixHash, segmentHash })
-  }
-  return hashes
+  return try Effect.try({ try: () => prefixHashes(segments), catch: serializationFailure })
 }
 
 export const computePrefixHashesOrThrow = thrown(failingAs(TypeError, computePrefixHashes))

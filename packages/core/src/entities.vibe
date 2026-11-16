@@ -1,13 +1,17 @@
-import type { RolesWorldMetadata } from "./roles.vibe"
+// spec/core/entities.md, "Component visibility uses current source identity and trusted roles"
+import { isAdminRank } from "./access-control/role-primitives.vibe"
+import { failingAs, promised, thrown } from "./edge.vibe"
+import { resolveEntityRole, type RolesWorldMetadata } from "./roles.vibe"
 import type { Entity, World } from "./types/environment.vibe"
 import type { UUID } from "./types/primitives.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 import { stringToUuid } from "./utils/string-to-uuid.vibe"
-export async function resolveTrustedComponentSourceIds(
+
+export effect function resolveTrustedComponentSourceIds(
   runtime: IAgentRuntime,
   world: World | null,
   components: NonNullable<Entity["components"]>,
-): Promise<Set<string>> {
+) {
   const trusted = new Set<string>()
   if (!world) return trusted
 
@@ -19,23 +23,17 @@ export async function resolveTrustedComponentSourceIds(
   }
   if (sourceIds.size === 0) return trusted
 
-  const { resolveEntityRole, isAdminRank } = await import("./roles.vibe")
   const metadata = (world.metadata ?? {}) as RolesWorldMetadata
-  await Promise.all(
-    [...sourceIds].map(async (sourceEntityId) => {
-      const role = await resolveEntityRole(
-        runtime,
-        world,
-        metadata,
-        sourceEntityId,
-      )
-      if (isAdminRank(role)) {
-        trusted.add(sourceEntityId)
-      }
-    }),
-  )
+  for concurrent (const sourceEntityId of sourceIds) {
+    const role = try resolveEntityRole(runtime, world, metadata, sourceEntityId)
+    if (isAdminRank(role)) {
+      trusted.add(sourceEntityId)
+    }
+  }
   return trusted
 }
+
+export const resolveTrustedComponentSourceIdsPromise = promised(resolveTrustedComponentSourceIds)
 
 function visibleComponents(
   entity: Entity,
@@ -57,16 +55,16 @@ function visibleComponents(
   })
 }
 
-export async function withVisibleComponents(
+export effect function withVisibleComponents(
   runtime: IAgentRuntime,
   world: World | null,
   entity: Entity,
   messageEntityId: UUID,
-): Promise<Entity> {
+) {
   if (!entity.components) {
     return { ...entity }
   }
-  const trustedSourceIds = await resolveTrustedComponentSourceIds(
+  const trustedSourceIds = try resolveTrustedComponentSourceIds(
     runtime,
     world,
     entity.components,
@@ -82,14 +80,16 @@ export async function withVisibleComponents(
   }
 }
 
-export const createUniqueUuid = (
+export const withVisibleComponentsPromise = promised(withVisibleComponents)
+
+export effect function createUniqueUuid(
   runtime: IAgentRuntime,
   baseUserId: UUID | string,
-): UUID => {
+) {
   if (baseUserId === runtime.agentId) {
     return runtime.agentId
   }
-
-  const combinedString = `${baseUserId}:${runtime.agentId}`
-  return stringToUuid(combinedString)
+  return try stringToUuid(`${baseUserId}:${runtime.agentId}`)
 }
+
+export const createUniqueUuidOrThrow = thrown(failingAs(TypeError, createUniqueUuid))

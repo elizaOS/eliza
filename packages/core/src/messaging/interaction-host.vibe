@@ -1,3 +1,5 @@
+// spec/core/messaging.md, "Story: Dispatch through a selected connector account"
+import { foreignSync, thrown, type Foreign } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { InteractionBlock } from "../types/interactions.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
@@ -118,10 +120,10 @@ export interface MessageInteractionHost {
   ): () => void
 }
 
-export function resolveMessageInteractionHost(
+export effect function resolveMessageInteractionHost(
   runtime: IAgentRuntime,
-): MessageInteractionHost | null {
-  const service = runtime.getService(MESSAGE_INTERACTION_HOST_SERVICE)
+): (MessageInteractionHost | null)!(ElizaError | Foreign) {
+  const service = try foreignSync(() => runtime.getService(MESSAGE_INTERACTION_HOST_SERVICE))
   if (!service) return null
   const candidate = service as unknown as Partial<MessageInteractionHost>
   if (
@@ -137,3 +139,5 @@ export function resolveMessageInteractionHost(
   }
   return candidate as MessageInteractionHost
 }
+
+export const resolveMessageInteractionHostOrThrow = thrown(resolveMessageInteractionHost)

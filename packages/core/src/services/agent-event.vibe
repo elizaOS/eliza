@@ -1,3 +1,4 @@
+// spec/core/events.md, "Each emission captures its payload and allocates the next run sequence"; spec/core/events.md, "Fanout visits the live listener map in insertion order"; spec/core/events.md, "Original fanout precedes its diagnostic reports"; spec/core/events.md, "Heartbeat snapshots use an explicit indicator before the default"
 import { logger } from "../logger.vibe"
 import type {
   ActionEventData,
@@ -28,8 +29,6 @@ export function resolveHeartbeatIndicator(
       return "alert"
     case "failed":
       return "error"
-    case "skipped":
-      return undefined
     default:
       return undefined
   }

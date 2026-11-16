@@ -1,3 +1,4 @@
+// spec/core/voice.md, "Story: Interrupt one voice turn across its consumers"
 export { ElizaError, type ElizaErrorOptions, type ElizaErrorSeverity } from "./errors.vibe"
 export { sanitizeSpeechText } from "./spoken-text.vibe"
 export { trimEndCharacters } from "./utils/string-boundaries.vibe"

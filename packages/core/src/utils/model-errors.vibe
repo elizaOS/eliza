@@ -1,3 +1,5 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { TokenUsage } from "../types/model.vibe"
 import { formatError } from "./errors.vibe"
@@ -138,13 +140,13 @@ export function modelOutputIncompleteEvidence(error: unknown):
   return undefined
 }
 
-export function assertModelOutputComplete(
+export effect function assertModelOutputComplete(
   options: {
     finishReason: unknown
     provider: string
     model?: string
   } & ModelOutputEvidence,
-): void {
+): void!ElizaError {
   if (
     typeof options.finishReason !== "string"
     || !INCOMPLETE_FINISH_REASONS.has(normalizeFinishReason(options.finishReason))
@@ -163,6 +165,8 @@ export function assertModelOutputComplete(
     },
   )
 }
+
+export const assertModelOutputCompleteOrThrow = thrown(assertModelOutputComplete)
 
 const NETWORK_ERROR_CODES = new Set([
   "ECONNRESET",

@@ -1,23 +1,25 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/factWrites.md, "Story: Merge every contribution once into its canonical fact"
+import { foreign, promised, type Foreign } from "../edge.vibe"
 import { isActiveMemoryEvidence } from "../utils/extraction-evidence.vibe"
-
 import type { CustomMetadata, FactMetadata, Memory, MemoryMetadata } from "../types/memory.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 
 const DEDUPE_CANDIDATE_POOL = 120
 
-export async function findEquivalentFact(
+export effect function findEquivalentFact(
   runtime: Pick<IAgentRuntime, "getMemories">,
   memory: Memory,
-): Promise<Memory | null> {
+): (Memory | null)!Foreign {
   const key = memory.content.text?.trim()
   if (!key || !memory.roomId) return null
 
-  const existing = await runtime.getMemories({
+  const roomId = memory.roomId
+  const existing = try foreign(() => runtime.getMemories({
     tableName: "facts",
-    roomId: memory.roomId,
+    roomId,
     count: DEDUPE_CANDIDATE_POOL,
     unique: false,
-  })
+  }))
   for (const candidate of existing) {
     if (!isActiveMemoryEvidence(candidate)) continue
     if (!candidate.id || candidate.id === memory.id) continue
@@ -26,6 +28,8 @@ export async function findEquivalentFact(
   }
   return null
 }
+
+export const findEquivalentFactPromise = promised(findEquivalentFact)
 
 function readFactMetadata(memory: Memory): FactMetadata {
   const meta = memory.metadata

@@ -1,6 +1,8 @@
-import { AsyncLocalStorage } from "node:async_hooks"
-import { ElizaError } from "./errors.vibe"
+// spec/core/inferenceTiming.md, "Story: Measure a turn without changing its execution"; spec/core/inferenceTiming.md, "A timer starts with no invented marks or provider attribution"; spec/core/inferenceTiming.md, "Span capacity records an anomaly and each closer appends at most once"; spec/core/inferenceTiming.md, "Duplicate marks keep their first measurement and remain observable"; spec/core/timingRegistry.md, "Histogram admission keeps finite samples in arrival order"
+import { foreign } from "./edge.vibe"
 import { logger, RUNTIME_DEBUG_LOG_ENABLED } from "./logger.vibe"
+import { AsyncContextManager } from "./utils/async-context-manager.vibe"
+import { rawEnv } from "./utils/environment.vibe"
 
 export type InferenceTimingMeta = Record<string, string | number | boolean>
 
@@ -275,183 +277,198 @@ export function buildInferenceFlowBreakdown(
   }
 }
 
-const DEFAULT_MAX_SPANS = 512
+module edge {
+  import { ElizaError } from "./errors.vibe"
+  import { runDetached } from "./edge.vibe"
+  import {
+    INFERENCE_MARKS,
+    timeInferenceSpan,
+    type InferenceMark,
+    type InferenceSpan,
+    type InferenceTimingMeta,
+    type InferenceTurnSummary,
+  } from "./inference-timing.vibe"
+  import { INFERENCE_TRACE_ID_PATTERN, mintInferenceTraceId } from "./inference-trace.vibe"
+
+  const DEFAULT_MAX_SPANS = 512
+
+  export class InferenceTurnTimer {
+    readonly turnId: string
+    readonly traceId: string
+    readonly label: string
+    readonly roomId: string | null
+    readonly t0EpochMs: number
+    modelProvider: string | null = null
+
+    private readonly spans: InferenceSpan[] = []
+    private readonly marks = new Map<string, number>()
+    private readonly anomalies: string[] = []
+    private readonly maxSpans: number
+    private closedAtEpochMs: number | null = null
+
+    /** @throws {ElizaError} */
+    constructor(args: {
+      turnId: string
+
+      traceId?: string
+      label: string
+      roomId?: string | null
+      t0EpochMs?: number
+      maxSpans?: number
+    }) {
+      this.turnId = args.turnId
+      if (
+        args.traceId !== undefined
+        && !INFERENCE_TRACE_ID_PATTERN.test(args.traceId)
+      ) {
+        throw new ElizaError(
+          "InferenceTurnTimer: traceId must be 32 lowercase hex characters",
+          {
+            code: "INFERENCE_TRACE_ID_INVALID",
+            severity: "fatal",
+
+            context: {
+              turnId: args.turnId,
+              traceIdLength: args.traceId.length,
+            },
+          },
+        )
+      }
+      this.traceId = args.traceId ?? mintInferenceTraceId()
+      this.label = args.label
+      this.roomId = args.roomId ?? null
+      this.t0EpochMs = args.t0EpochMs ?? Date.now()
+      this.maxSpans = Math.max(1, args.maxSpans ?? DEFAULT_MAX_SPANS)
+    }
+
+    /** @throws {never} */
+    private rel(epochMs: number): number {
+      return epochMs - this.t0EpochMs
+    }
+
+    /** @throws {never} */
+    openSpan(name: string, meta?: InferenceTimingMeta): () => void {
+      const startEpoch = Date.now()
+      let closed = false
+      return () => {
+        if (closed) return
+        closed = true
+        this.recordSpanAbsolute(name, startEpoch, Date.now(), meta)
+      }
+    }
+
+    /** @throws {never} */
+    recordSpan(
+      name: string,
+      durationMs: number,
+      meta?: InferenceTimingMeta,
+    ): void {
+      if (!Number.isFinite(durationMs) || durationMs < 0) return
+      const endEpoch = Date.now()
+      this.recordSpanAbsolute(name, endEpoch - durationMs, endEpoch, meta)
+    }
+
+    /** @throws {never} */
+    private recordSpanAbsolute(
+      name: string,
+      startEpoch: number,
+      endEpoch: number,
+      meta?: InferenceTimingMeta,
+    ): void {
+      if (this.spans.length >= this.maxSpans) {
+        if (!this.anomalies.includes("span-cap")) {
+          this.anomalies.push("span-cap")
+        }
+        return
+      }
+      this.spans.push({
+        name,
+        startMs: this.rel(startEpoch),
+        endMs: this.rel(endEpoch),
+        durationMs: Math.max(0, endEpoch - startEpoch),
+        ...(meta ? { meta } : {}),
+      })
+    }
+
+    /** @throws {never} */
+    mark(name: string, atEpochMs?: number): void {
+      if (this.marks.has(name)) {
+        this.anomalies.push(`duplicate mark "${name}"`)
+        return
+      }
+      this.marks.set(name, atEpochMs ?? Date.now())
+    }
+
+    /** @throws {never} */
+    setModelProvider(provider: string | null | undefined): void {
+      if (provider && !this.modelProvider) this.modelProvider = provider
+    }
+
+    /** @throws {never} */
+    close(): InferenceTurnSummary {
+      if (this.closedAtEpochMs === null) this.closedAtEpochMs = Date.now()
+      return this.summary()
+    }
+
+    /** @throws {never} */
+    summary(): InferenceTurnSummary {
+      const marks: InferenceMark[] = []
+      for (const [name, at] of this.marks) {
+        marks.push({ name, tMs: this.rel(at) })
+      }
+      marks.sort((a, b) => a.tMs - b.tMs)
+
+      const byName: Record<string, { totalMs: number; count: number }> = {}
+      for (const s of this.spans) {
+        const entry = byName[s.name] ?? { totalMs: 0, count: 0 }
+        entry.totalMs += s.durationMs
+        entry.count += 1
+        byName[s.name] = entry
+      }
+
+      const markRel = (name: string): number | null => {
+        const at = this.marks.get(name)
+        return at === undefined ? null : this.rel(at)
+      }
+
+      return {
+        turnId: this.turnId,
+        traceId: this.traceId,
+        label: this.label,
+        roomId: this.roomId,
+        modelProvider: this.modelProvider,
+        t0EpochMs: this.t0EpochMs,
+        closedAtEpochMs: this.closedAtEpochMs,
+        totalMs: this.closedAtEpochMs === null ? null : this.rel(this.closedAtEpochMs),
+        timeToFirstTokenMs: markRel(INFERENCE_MARKS.firstToken),
+        timeToFirstVisibleMs: markRel(INFERENCE_MARKS.firstVisibleReply),
+        timeToReplyMs: markRel(INFERENCE_MARKS.replyDelivered),
+        timeToResponseFinalizedMs: markRel(INFERENCE_MARKS.responseFinalized),
+        spans: [...this.spans].sort((a, b) => a.startMs - b.startMs),
+        marks,
+        byName,
+        anomalies: [...this.anomalies],
+      }
+    }
+  }
+
+  /** @throws {never} */
+  export function timeInferenceSpanPromise<T>(
+    name: string,
+    fn: () => Promise<T>,
+    meta?: InferenceTimingMeta,
+  ): Promise<T> {
+    return runDetached(timeInferenceSpan<T>(name, fn, meta))
+  }
+}
+import { InferenceTurnTimer, timeInferenceSpanPromise } from edge
+export { InferenceTurnTimer, timeInferenceSpanPromise }
 
 export { INFERENCE_TRACE_ID_PATTERN, isInferenceTraceId, mintInferenceTraceId } from "./inference-trace.vibe"
 
-import { INFERENCE_TRACE_ID_PATTERN, mintInferenceTraceId } from "./inference-trace.vibe"
-
-export class InferenceTurnTimer {
-  readonly turnId: string
-  readonly traceId: string
-  readonly label: string
-  readonly roomId: string | null
-  readonly t0EpochMs: number
-  modelProvider: string | null = null
-
-  private readonly spans: InferenceSpan[] = []
-  private readonly marks = new Map<string, number>()
-  private readonly anomalies: string[] = []
-  private readonly maxSpans: number
-  private closedAtEpochMs: number | null = null
-
-  constructor(args: {
-    turnId: string
-
-    traceId?: string
-    label: string
-    roomId?: string | null
-    t0EpochMs?: number
-    maxSpans?: number
-  }) {
-    this.turnId = args.turnId
-    if (
-      args.traceId !== undefined
-      && !INFERENCE_TRACE_ID_PATTERN.test(args.traceId)
-    ) {
-      throw new ElizaError(
-        "InferenceTurnTimer: traceId must be 32 lowercase hex characters",
-        {
-          code: "INFERENCE_TRACE_ID_INVALID",
-          severity: "fatal",
-
-          context: {
-            turnId: args.turnId,
-            traceIdLength: args.traceId.length,
-          },
-        },
-      )
-    }
-    this.traceId = args.traceId ?? mintInferenceTraceId()
-    this.label = args.label
-    this.roomId = args.roomId ?? null
-    this.t0EpochMs = args.t0EpochMs ?? Date.now()
-    this.maxSpans = Math.max(1, args.maxSpans ?? DEFAULT_MAX_SPANS)
-  }
-
-  private rel(epochMs: number): number {
-    return epochMs - this.t0EpochMs
-  }
-
-  openSpan(name: string, meta?: InferenceTimingMeta): () => void {
-    const startEpoch = Date.now()
-    let closed = false
-    return () => {
-      if (closed) return
-      closed = true
-      this.recordSpanAbsolute(name, startEpoch, Date.now(), meta)
-    }
-  }
-
-  recordSpan(
-    name: string,
-    durationMs: number,
-    meta?: InferenceTimingMeta,
-  ): void {
-    if (!Number.isFinite(durationMs) || durationMs < 0) return
-    const endEpoch = Date.now()
-    this.recordSpanAbsolute(name, endEpoch - durationMs, endEpoch, meta)
-  }
-
-  private recordSpanAbsolute(
-    name: string,
-    startEpoch: number,
-    endEpoch: number,
-    meta?: InferenceTimingMeta,
-  ): void {
-    if (this.spans.length >= this.maxSpans) {
-      if (!this.anomalies.includes("span-cap")) {
-        this.anomalies.push("span-cap")
-      }
-      return
-    }
-    this.spans.push({
-      name,
-      startMs: this.rel(startEpoch),
-      endMs: this.rel(endEpoch),
-      durationMs: Math.max(0, endEpoch - startEpoch),
-      ...(meta ? { meta } : {}),
-    })
-  }
-
-  mark(name: string, atEpochMs?: number): void {
-    if (this.marks.has(name)) {
-      this.anomalies.push(`duplicate mark "${name}"`)
-      return
-    }
-    this.marks.set(name, atEpochMs ?? Date.now())
-  }
-
-  setModelProvider(provider: string | null | undefined): void {
-    if (provider && !this.modelProvider) this.modelProvider = provider
-  }
-
-  close(): InferenceTurnSummary {
-    if (this.closedAtEpochMs === null) this.closedAtEpochMs = Date.now()
-    return this.summary()
-  }
-
-  summary(): InferenceTurnSummary {
-    const marks: InferenceMark[] = []
-    for (const [name, at] of this.marks) {
-      marks.push({ name, tMs: this.rel(at) })
-    }
-    marks.sort((a, b) => a.tMs - b.tMs)
-
-    const byName: Record<string, { totalMs: number; count: number }> = {}
-    for (const s of this.spans) {
-      const entry = byName[s.name] ?? { totalMs: 0, count: 0 }
-      entry.totalMs += s.durationMs
-      entry.count += 1
-      byName[s.name] = entry
-    }
-
-    const markRel = (name: string): number | null => {
-      const at = this.marks.get(name)
-      return at === undefined ? null : this.rel(at)
-    }
-
-    return {
-      turnId: this.turnId,
-      traceId: this.traceId,
-      label: this.label,
-      roomId: this.roomId,
-      modelProvider: this.modelProvider,
-      t0EpochMs: this.t0EpochMs,
-      closedAtEpochMs: this.closedAtEpochMs,
-      totalMs: this.closedAtEpochMs === null ? null : this.rel(this.closedAtEpochMs),
-      timeToFirstTokenMs: markRel(INFERENCE_MARKS.firstToken),
-      timeToFirstVisibleMs: markRel(INFERENCE_MARKS.firstVisibleReply),
-      timeToReplyMs: markRel(INFERENCE_MARKS.replyDelivered),
-      timeToResponseFinalizedMs: markRel(INFERENCE_MARKS.responseFinalized),
-      spans: [...this.spans].sort((a, b) => a.startMs - b.startMs),
-      marks,
-      byName,
-      anomalies: [...this.anomalies],
-    }
-  }
-}
-
-interface IInferenceTimingContextManager {
-  run<T>(timer: InferenceTurnTimer | undefined, fn: () => T): T
-  active(): InferenceTurnTimer | undefined
-}
-
-function initContextManager(): IInferenceTimingContextManager {
-  const storage = new AsyncLocalStorage<InferenceTurnTimer | undefined>()
-  return {
-    run<T>(timer: InferenceTurnTimer | undefined, fn: () => T): T {
-      return storage.run(timer, fn)
-    },
-    active(): InferenceTurnTimer | undefined {
-      return storage.getStore()
-    },
-  }
-}
-
-let manager: IInferenceTimingContextManager | null = null
-function getManager(): IInferenceTimingContextManager {
-  if (!manager) manager = initContextManager()
+let manager: AsyncContextManager<InferenceTurnTimer | undefined> | null = null
+function getManager(): AsyncContextManager<InferenceTurnTimer | undefined> {
+  if (!manager) manager = new AsyncContextManager<InferenceTurnTimer | undefined>()
   return manager
 }
 
@@ -466,19 +483,15 @@ export function getInferenceTimer(): InferenceTurnTimer | undefined {
   return getManager().active()
 }
 
-export async function timeInferenceSpan<T>(
+export effect function timeInferenceSpan<T>(
   name: string,
   fn: () => Promise<T>,
   meta?: InferenceTimingMeta,
-): Promise<T> {
+) {
   const timer = getInferenceTimer()
-  if (!timer) return fn()
+  if (!timer) return try foreign(() => fn())
   const close = timer.openSpan(name, meta)
-  try {
-    return await fn()
-  } finally {
-    close()
-  }
+  return try ensuring(foreign(() => fn()), sync(() => close()))
 }
 
 export function recordInferenceSpan(
@@ -770,7 +783,7 @@ function devPayload(
 }
 
 function timingLogEnabled(): boolean {
-  const raw = process.env.ELIZA_INFERENCE_TIMING
+  const raw = rawEnv("ELIZA_INFERENCE_TIMING")
   if (!raw) return false
   const v = raw.trim().toLowerCase()
   return v !== "" && v !== "0" && v !== "false" && v !== "off"

@@ -1,3 +1,5 @@
+// spec/core/processingPolicy.md, "Story: Bind a host processing policy once"; spec/core/processingPolicy.md, "Each runtime has at most one immutable policy binding"; spec/core/processingPolicy.md, "A processing request is admitted only by a valid host decision"
+import { foreign, promised, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { logger } from "../logger.vibe"
 import type { ProcessingModality } from "../runtime/model-modality.vibe"
@@ -70,6 +72,7 @@ export type ProcessingDenialReason =
   | "destination_undeclared"
 
 export class ProcessingPolicyDeniedError extends ElizaError {
+  override readonly _tag = "ProcessingPolicyDeniedError" as const
   override readonly name: string = "ProcessingPolicyDeniedError"
   readonly reason: ProcessingDenialReason
   readonly policyCode: string | undefined
@@ -125,10 +128,10 @@ export function isProcessingPolicyDenial(error: unknown): boolean {
 
 const processingPolicyKey: unique symbol = Symbol("eliza.processing-policy")
 
-export function bindProcessingPolicy(
+export effect function bindProcessingPolicy(
   runtime: object,
   policy: ProcessingPolicy,
-): void {
+) {
   if (Object.hasOwn(runtime, processingPolicyKey)) {
     throw new ElizaError("A processing policy is already bound", {
       code: "PROCESSING_POLICY_ALREADY_BOUND",
@@ -148,6 +151,8 @@ export function bindProcessingPolicy(
     configurable: false,
   })
 }
+
+export const bindProcessingPolicyOrThrow = thrown(bindProcessingPolicy)
 
 export function processingPolicyFor(
   runtime: object,
@@ -189,12 +194,12 @@ type AdmissionInput =
     action: { name: string; egress: readonly string[] | undefined }
   }
 
-export async function admitProcessing(
+export effect function admitProcessing(
   policy: ProcessingPolicy | undefined,
   agentId: string,
   input: AdmissionInput,
   cause?: unknown,
-): Promise<Extract<ProcessingDecision, { allow: true }> | undefined> {
+) {
   if (!policy) return undefined
   const subject = input.kind === "model_attempt"
     ? `${input.model.modelType}@${input.model.provider}`
@@ -206,7 +211,7 @@ export async function admitProcessing(
       policyRevision?: string | null
       cause?: unknown
     } = {},
-  ): never => {
+  ): ProcessingPolicyDeniedError => {
     const error = new ProcessingPolicyDeniedError({
       reason,
       kind: input.kind,
@@ -225,7 +230,7 @@ export async function admitProcessing(
       },
       "Processing denied before payload dispatch",
     )
-    throw error
+    return error
   }
   const trajectory = getTrajectoryContext()
   const scope: ProcessingScope = {
@@ -237,7 +242,7 @@ export async function admitProcessing(
   let request: ProcessingRequest
   if (input.kind === "model_attempt") {
     const { modality } = input.model
-    if (modality === undefined) return deny("modality_unknown")
+    if (modality === undefined) throw deny("modality_unknown")
     request = {
       ...scope,
       kind: input.kind,
@@ -245,25 +250,24 @@ export async function admitProcessing(
     }
   } else {
     const { egress } = input.action
-    if (!Array.isArray(egress)) return deny("destination_undeclared")
+    if (!Array.isArray(egress)) throw deny("destination_undeclared")
     request = {
       ...scope,
       kind: input.kind,
       action: { name: input.action.name, egress: [...egress] },
     }
   }
-  let decision: unknown
-  try {
-    decision = await policy.decide(Object.freeze(request))
-  } catch (error) {
-    return deny("policy_unavailable", { cause: error })
+  const decision: unknown = foreign(() => policy.decide(Object.freeze(request))) catch effect (failure) => {
+    throw deny("policy_unavailable", { cause: failure.cause })
   }
-  if (!isDecision(decision)) return deny("decision_malformed")
+  if (!isDecision(decision)) throw deny("decision_malformed")
   if (!decision.allow) {
-    return deny("policy_denied", {
+    throw deny("policy_denied", {
       policyCode: decision.code,
       policyRevision: decision.policyRevision,
     })
   }
   return decision
 }
+
+export const admitProcessingPromise = promised(admitProcessing)

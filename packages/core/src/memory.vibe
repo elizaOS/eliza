@@ -1,3 +1,4 @@
+// spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"
 import { ElizaError } from "./errors.vibe"
 import {
   type CustomMetadata,
@@ -92,10 +93,10 @@ export function getMemoryText(memory: Memory, defaultValue = ""): string {
   return memory.content.text ?? defaultValue
 }
 
-export function stampAppConversationProvenance<T extends Memory>(
+export effect function stampAppConversationProvenance<T extends Memory>(
   agentId: UUID,
   memory: T,
-): T {
+): T!ElizaError {
   if (!memory.id) {
     throw new ElizaError("Conversation memory is missing its durable id", {
       code: "CONVERSATION_MEMORY_ID_MISSING",
@@ -127,6 +128,20 @@ export function stampAppConversationProvenance<T extends Memory>(
   } satisfies MessageMetadata
   return memory
 }
+
+module edge {
+  import type { Memory } from "./types/memory.vibe"
+  import type { UUID } from "./types/primitives.vibe"
+  import { runDetachedSync } from "./edge.vibe"
+  import { stampAppConversationProvenance } from "./memory.vibe"
+
+  /** @throws {ElizaError} */
+  export function stampAppConversationProvenanceOrThrow<T extends Memory>(agentId: UUID, memory: T): T {
+    return runDetachedSync(stampAppConversationProvenance<T>(agentId, memory))
+  }
+}
+import { stampAppConversationProvenanceOrThrow } from edge
+export { stampAppConversationProvenanceOrThrow }
 
 export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
   const content = memory.content

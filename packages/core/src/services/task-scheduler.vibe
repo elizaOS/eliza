@@ -1,3 +1,5 @@
+// spec/core/sharedScheduler.md, "Each timer tick queues process work and captures at most one query for its own generation"; spec/core/sharedScheduler.md, "Adapter replacement and stop retain detached query and process ownership"; spec/core/processScheduler.md, "Process task names are unique only while registered and stale disposers preserve replacements"; spec/core/processScheduler.md, "Adapter detachment keeps the timer only for registered process work"; spec/core/queryDrain.md, "Queries capture every selected registration and their adapter ownership"; spec/core/queryDrain.md, "Each result group rechecks registration identity after the prior worker settles"; spec/core/queryDrain.md, "Adapter handoff keeps both handles owned until every captured query settles"
+import { foreign, runDetached, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { logger } from "../logger.vibe"
 import type { IDatabaseAdapter } from "../types/database.vibe"
@@ -18,16 +20,16 @@ interface SchedulerRegistration {
 const registry = new Map<string, SchedulerRegistration>()
 
 const dirtyAgents = new Set<string>()
-let timer: ReturnType<typeof setInterval> | null = null
+let timer: Fiber.Fiber<never> | null = null
 let adapter: IDatabaseAdapter | null = null
-let activeTick: Promise<void> | null = null
+let activeTick: Fiber.Fiber<void> | null = null
 let schedulerGeneration = 0
 let nextRegistrationId = 0
 
 const busyServices = new Set<TaskServiceLike>()
 
 const pendingQueries = new Map<
-  Promise<void>,
+  Deferred.Deferred<void>,
   { adapters: Set<IDatabaseAdapter>; services: Set<TaskServiceLike> }
 >()
 
@@ -36,14 +38,26 @@ const TICK_INTERVAL_MS = 1000
 interface ProcessTask {
   controller: AbortController
   run: (signal: AbortSignal) => Promise<void>
-  active?: Promise<void>
+  active?: Fiber.Fiber<void>
 }
 const processTasks = new Map<string, ProcessTask>()
 
-export function registerScheduledProcessTask(
+function stopTimer(): void {
+  timer?.interruptUnsafe()
+  timer = null
+}
+
+effect function disposeProcessTask(name: string, task: ProcessTask) {
+  if (processTasks.get(name) === task) processTasks.delete(name)
+  task.controller.abort()
+  if (!adapter && processTasks.size === 0 && timer) stopTimer()
+  if (task.active) try join task.active
+}
+
+export effect function registerScheduledProcessTask(
   name: string,
   run: (signal: AbortSignal) => Promise<void>,
-): () => Promise<void> {
+) {
   if (processTasks.has(name)) {
     throw new ElizaError("Scheduled process task is already registered", {
       code: "TASK_SCHEDULER_DUPLICATE_PROCESS_TASK",
@@ -53,41 +67,33 @@ export function registerScheduledProcessTask(
   const task: ProcessTask = { controller: new AbortController(), run }
   processTasks.set(name, task)
   ensureTimer()
-  return async () => {
-    if (processTasks.get(name) === task) processTasks.delete(name)
-    task.controller.abort()
-    if (!adapter && processTasks.size === 0 && timer) {
-      clearInterval(timer)
-      timer = null
-    }
-    await task.active
-  }
+  return (): Promise<void> => runDetached(disposeProcessTask(name, task))
 }
 
-function runProcessTasks(): void {
+export const registerScheduledProcessTaskOrThrow = thrown(registerScheduledProcessTask)
+
+effect function runProcessTask(name: string, task: ProcessTask) {
+  const signal = task.controller.signal
+  if (signal.aborted) return
+  foreign(() => task.run(signal)) catch ({ cause }) =>
+    logger.error(
+      {
+        err: new ElizaError("Scheduled process task failed", {
+          code: "TASK_SCHEDULER_PROCESS_TASK_FAILED",
+          context: { name },
+          cause,
+        }),
+      },
+      "[TaskScheduler] process task failed",
+    )
+}
+
+effect function runProcessTasks() {
   for (const [name, task] of processTasks) {
     if (task.active || task.controller.signal.aborted) continue
-    task.active = Promise.resolve()
-      .then(() => {
-        if (!task.controller.signal.aborted) {
-          return task.run(task.controller.signal)
-        }
-      })
-      .catch((cause) =>
-        logger.error(
-          {
-            err: new ElizaError("Scheduled process task failed", {
-              code: "TASK_SCHEDULER_PROCESS_TASK_FAILED",
-              context: { name },
-              cause,
-            }),
-          },
-          "[TaskScheduler] process task failed",
-        )
-      )
-      .finally(() => {
-        task.active = undefined
-      })
+    task.active = fork.detached ensuring(runProcessTask(name, task), sync(() => {
+      task.active = undefined
+    }))
   }
 }
 
@@ -116,17 +122,49 @@ function currentRegistration(
   return entry?.registrationId === registrationId ? entry : undefined
 }
 
-async function tick(generation: number): Promise<void> {
-  if (generation !== schedulerGeneration) {
-    throw staleGenerationError(generation)
+function queryFailure(
+  generation: number,
+  registrations: ReadonlyMap<string, number>,
+  agentIds: UUID[],
+  cause: unknown,
+): ElizaError {
+  if (generation !== schedulerGeneration) return staleGenerationError(generation, cause)
+  const error = new ElizaError("Shared task queue query failed", {
+    code: "TASK_SCHEDULER_QUERY_FAILED",
+    context: { agentIds },
+    cause,
+    severity: "ephemeral",
+  })
+  for (const [aid, registrationId] of registrations) {
+    const entry = currentRegistration(aid, registrationId, generation)
+    if (!entry) continue
+    dirtyAgents.add(aid)
+    entry.runtime.reportError("TaskScheduler.query", error, { agentId: aid })
   }
+  return error
+}
+
+function registrationChanged(agentId: string, registrationId: number, message: string): void {
+  logger.error(
+    {
+      err: new ElizaError(message, {
+        code: "TASK_SCHEDULER_REGISTRATION_CHANGED",
+        context: { agentId, registrationId },
+        severity: "ephemeral",
+      }),
+    },
+    "[TaskScheduler] rejected tasks for a stale registration",
+  )
+}
+
+effect function tick(generation: number) {
+  if (generation !== schedulerGeneration) throw staleGenerationError(generation)
 
   const snapshot = Array.from(dirtyAgents)
   const registrations = new Map<string, number>()
   const queryOwners = new Set<TaskServiceLike>()
   for (const agentId of snapshot) {
     const entry = registry.get(agentId)
-
     if (entry && busyServices.has(entry.taskService)) continue
     if (entry) {
       registrations.set(agentId, entry.registrationId)
@@ -140,45 +178,18 @@ async function tick(generation: number): Promise<void> {
   if (!adp) return
 
   const agentIds = Array.from(registrations.keys()) as UUID[]
-  let finishQuery!: () => void
-  const queryDone = new Promise<void>((resolve) => {
-    finishQuery = resolve
-  })
-  pendingQueries.set(queryDone, {
-    adapters: new Set([adp]),
-    services: queryOwners,
-  })
-  let allTasks: Task[]
-  try {
-    allTasks = await adp.getTasks({
-      tags: ["queue"],
-      agentIds,
-    })
-  } catch (cause) {
-    if (generation !== schedulerGeneration) {
-      throw staleGenerationError(generation, cause)
-    }
-
-    const error = new ElizaError("Shared task queue query failed", {
-      code: "TASK_SCHEDULER_QUERY_FAILED",
-      context: { agentIds },
-      cause,
-      severity: "ephemeral",
-    })
-    for (const [aid, registrationId] of registrations) {
-      const entry = currentRegistration(aid, registrationId, generation)
-      if (!entry) continue
-      dirtyAgents.add(aid)
-      entry.runtime.reportError("TaskScheduler.query", error, { agentId: aid })
-    }
-    throw error
-  } finally {
-    pendingQueries.delete(queryDone)
-    finishQuery()
-  }
-  if (generation !== schedulerGeneration) {
-    throw staleGenerationError(generation)
-  }
+  const queryDone = try Deferred.make<void>()
+  pendingQueries.set(queryDone, { adapters: new Set([adp]), services: queryOwners })
+  const queried: { tasks: Task[] } | { failed: unknown } = map(
+    foreign(() => adp.getTasks({ tags: ["queue"], agentIds })),
+    (tasks) => ({ tasks }),
+  ) catch ({ cause }) => ({ failed: cause })
+  const failure = "failed" in queried ? queryFailure(generation, registrations, agentIds, queried.failed) : undefined
+  pendingQueries.delete(queryDone)
+  try Deferred.succeed(queryDone, undefined)
+  if (failure) throw failure
+  if (generation !== schedulerGeneration) throw staleGenerationError(generation)
+  const allTasks = "tasks" in queried ? queried.tasks : []
 
   const byAgent = new Map<string, { registrationId: number; tasks: Task[] }>()
   const staleRegistrations = new Set<string>()
@@ -186,45 +197,24 @@ async function tick(generation: number): Promise<void> {
     const aid = task.agentId ?? ""
     const registrationId = aid ? registrations.get(aid) : undefined
     if (!aid || registrationId === undefined) {
-      const error = new ElizaError(
-        "Task scheduler adapter returned an out-of-scope task",
-        {
-          code: "TASK_SCHEDULER_SCOPE_VIOLATION",
-          context: {
-            taskId: task.id,
-            returnedAgentId: aid || null,
-            queriedAgentIds: agentIds,
-          },
-          severity: "fatal",
-        },
-      )
+      const error = new ElizaError("Task scheduler adapter returned an out-of-scope task", {
+        code: "TASK_SCHEDULER_SCOPE_VIOLATION",
+        context: { taskId: task.id, returnedAgentId: aid || null, queriedAgentIds: agentIds },
+        severity: "fatal",
+      })
       for (const [queriedAgentId, queriedRegistrationId] of registrations) {
-        currentRegistration(
-          queriedAgentId,
-          queriedRegistrationId,
-          generation,
-        )?.runtime.reportError("TaskScheduler.scope", error, {
-          agentId: queriedAgentId,
-        })
+        currentRegistration(queriedAgentId, queriedRegistrationId, generation)?.runtime.reportError(
+          "TaskScheduler.scope",
+          error,
+          { agentId: queriedAgentId },
+        )
       }
       continue
     }
     if (!currentRegistration(aid, registrationId, generation)) {
       if (!staleRegistrations.has(aid)) {
         staleRegistrations.add(aid)
-        logger.error(
-          {
-            err: new ElizaError(
-              "Task scheduler registration changed during a tick",
-              {
-                code: "TASK_SCHEDULER_REGISTRATION_CHANGED",
-                context: { agentId: aid, registrationId },
-                severity: "ephemeral",
-              },
-            ),
-          },
-          "[TaskScheduler] rejected tasks for a stale registration",
-        )
+        registrationChanged(aid, registrationId, "Task scheduler registration changed during a tick")
       }
       continue
     }
@@ -236,35 +226,18 @@ async function tick(generation: number): Promise<void> {
   for (const [agentIdKey, { registrationId, tasks }] of byAgent) {
     const entry = currentRegistration(agentIdKey, registrationId, generation)
     if (!entry) {
-      logger.error(
-        {
-          err: new ElizaError(
-            "Task scheduler registration changed before dispatch",
-            {
-              code: "TASK_SCHEDULER_REGISTRATION_CHANGED",
-              context: { agentId: agentIdKey, registrationId },
-              severity: "ephemeral",
-            },
-          ),
-        },
-        "[TaskScheduler] rejected tasks for a stale registration",
-      )
+      registrationChanged(agentIdKey, registrationId, "Task scheduler registration changed before dispatch")
       continue
     }
     busyServices.add(entry.taskService)
-    try {
-      await entry.taskService.runTick(tasks)
-    } catch (error) {
-      entry.runtime.reportError("TaskScheduler.runTick", error, {
-        agentId: agentIdKey,
-      })
-    } finally {
-      busyServices.delete(entry.taskService)
-    }
-
-    if (currentRegistration(agentIdKey, registrationId, generation)) {
-      dirtyAgents.add(agentIdKey)
-    }
+    try ensuring(
+      effect {
+        foreign(() => entry.taskService.runTick(tasks)) catch ({ cause }) =>
+          entry.runtime.reportError("TaskScheduler.runTick", cause, { agentId: agentIdKey })
+      },
+      sync(() => busyServices.delete(entry.taskService)),
+    )
+    if (currentRegistration(agentIdKey, registrationId, generation)) dirtyAgents.add(agentIdKey)
   }
 }
 
@@ -281,21 +254,22 @@ export function startTaskScheduler(adapterInstance: IDatabaseAdapter): void {
   ensureTimer()
 }
 
+effect function onTimer() {
+  try runProcessTasks()
+  if (!adapter || activeTick) return
+  const generation = schedulerGeneration
+  const tickFiber: Fiber.Fiber<void> = fork.detached ensuring(
+    catchCause(tick(generation), (cause) => sync(() => logger.error({ err: Cause.squash(cause) }, "[TaskScheduler] tick failed"))),
+    sync(() => {
+      if (activeTick === tickFiber) activeTick = null
+    }),
+  )
+  activeTick = tickFiber
+}
+
 function ensureTimer(): void {
   if (timer) return
-  timer = setInterval(() => {
-    runProcessTasks()
-    if (!adapter) return
-    if (activeTick) return
-
-    const generation = schedulerGeneration
-    const tickPromise = tick(generation)
-      .catch((err) => logger.error({ err }, "[TaskScheduler] tick failed"))
-      .finally(() => {
-        if (activeTick === tickPromise) activeTick = null
-      })
-    activeTick = tickPromise
-  }, TICK_INTERVAL_MS)
+  timer = runFork(forever(andThen(sleep(TICK_INTERVAL_MS), onTimer())))
 }
 
 export function stopTaskScheduler(): Promise<void> {
@@ -326,10 +300,7 @@ export function handoffTaskSchedulerAdapter(
 
 function detachTaskScheduler(): void {
   schedulerGeneration += 1
-  if (timer && processTasks.size === 0) {
-    clearInterval(timer)
-    timer = null
-  }
+  if (timer && processTasks.size === 0) stopTimer()
   registry.clear()
   dirtyAgents.clear()
   adapter = null
@@ -377,7 +348,7 @@ function drainQueries(
         && (!closingAdapter || ownership.adapters.has(closingAdapter)),
     )
     .map(([done]) => done)
-  return Promise.all(queries).then(() => undefined)
+  return runDetached(forEach(queries, (done) => Deferred.await(done), { discard: true }))
 }
 
 export function markTaskSchedulerDirty(agentId: UUID): void {

@@ -1,6 +1,17 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { failingAs, thrown } from "../edge.vibe"
 import { isObjectRecord } from "../utils/type-guards.vibe"
 import type { ContextObjectPromptSegment } from "./context-object.vibe"
 import { segmentBlock } from "./context-renderer.vibe"
+
+function parseCanonicalJson(text: string): { value: unknown } | undefined {
+  try {
+    const value: unknown = JSON.parse(text)
+    return JSON.stringify(value) === text ? { value } : undefined
+  } catch {
+    return undefined
+  }
+}
 
 function receiptTableEntry(segment: ContextObjectPromptSegment) {
   const field = segment.label === "runtime:historical_navigation"
@@ -11,13 +22,9 @@ function receiptTableEntry(segment: ContextObjectPromptSegment) {
     ? "observations"
     : undefined
   if (!field || segment.stable) return undefined
-  let record: unknown
-  try {
-    record = JSON.parse(segment.content)
-  } catch {
-    return undefined
-  }
-  if (JSON.stringify(record) !== segment.content) return undefined
+  const parsed = parseCanonicalJson(segment.content)
+  if (!parsed) return undefined
+  const record = parsed.value
   if (
     !isObjectRecord(record)
     || typeof record.requestSourceEventId !== "string"
@@ -105,7 +112,19 @@ const NESTED_RECEIPT_FIELDS: ReadonlySet<string> = new Set([
   "rollback",
 ])
 
-function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
+error ReceiptTableUnreadable { message: string; cause: unknown }
+
+interface ReceiptTable {
+  encoding: string
+  columns: string[]
+  receiptColumns: string[]
+  scope?: string
+  rows: ReceiptEntry["row"][]
+  receiptEncoding?: string
+  receiptShapes?: (string | [string, string[]])[][]
+}
+
+effect function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]): ReceiptTable!ReceiptTableUnreadable {
   const table = {
     encoding:
       "Each row uses columns; nested receipt rows use receiptColumns. Preserve order. Values are exact; shared scope applies to every row.",
@@ -130,16 +149,12 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
         const original = receipt[receiptIndex]
         let object = original
         if (navigation) {
-          try {
-            object = JSON.parse(String(original))
-          } catch {
+          const parsed = parseCanonicalJson(String(original))
+          if (!parsed) {
             packable = false
             break
           }
-          if (JSON.stringify(object) !== original) {
-            packable = false
-            break
-          }
+          object = parsed.value
         }
         if (
           !isObjectRecord(object)
@@ -221,20 +236,15 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
       content = referenceCandidate
     }
   }
-  return JSON.parse(content) as {
-    encoding: string
-    columns: string[]
-    receiptColumns: string[]
-    scope?: string
-    rows: ReceiptEntry["row"][]
-    receiptEncoding?: string
-    receiptShapes?: (string | [string, string[]])[][]
-  }
+  return try Effect.try({
+    try: () => JSON.parse(content) as ReceiptTable,
+    catch: (cause) => new ReceiptTableUnreadable({ message: cause instanceof Error ? cause.message : String(cause), cause }),
+  })
 }
 
-export function compactHistoricalReceiptSegments(
+export effect function compactHistoricalReceiptSegments(
   segments: ContextObjectPromptSegment[],
-): ContextObjectPromptSegment[] {
+): ContextObjectPromptSegment[]!ReceiptTableUnreadable {
   const entries = segments.map(receiptTableEntry)
   const groups = new Map<string, { index: number; entry: ReceiptEntry }[]>()
   let stableBoundary = 0
@@ -268,7 +278,7 @@ export function compactHistoricalReceiptSegments(
       }
       const run = indices.slice(offset, end)
       const originals = run.map((index) => segments[index])
-      const table = encodeReceiptTable(
+      const table = try encodeReceiptTable(
         entry,
         group.slice(offset, end).map(({ entry }) => entry.row),
       )
@@ -288,16 +298,16 @@ export function compactHistoricalReceiptSegments(
     const baselineChars = wireChars(
       indices.flatMap((index) => consecutive.get(index) ?? []),
     )
-    const table = encodeReceiptTable(
+    const table = try encodeReceiptTable(
       entry,
       group.map(({ entry }) => entry.row),
     )
     const { rows, ...schema } = table
 
-    let reference: string
-    do {
+    let reference = `receipt_wire_${++referenceCounter}`
+    while (segments.some((segment) => segment.content.includes(reference))) {
       reference = `receipt_wire_${++referenceCounter}`
-    } while (segments.some((segment) => segment.content.includes(reference)))
+    }
     const shared: ContextObjectPromptSegment = {
       id: reference,
       label: "runtime:historical_receipt_encoding",
@@ -330,3 +340,5 @@ export function compactHistoricalReceiptSegments(
     (segment, index) => replacements.get(index) ?? [segment],
   )
 }
+
+export const compactHistoricalReceiptSegmentsOrThrow = thrown(failingAs(SyntaxError, compactHistoricalReceiptSegments))

@@ -1,3 +1,4 @@
+// spec/core/authorization.md, "Story: Read only the authorized records"
 import { ChannelType } from "./types/primitives.vibe"
 
 export type SensitiveRequestKind =

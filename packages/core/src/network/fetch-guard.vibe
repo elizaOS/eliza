@@ -1,11 +1,13 @@
+// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
+import { failingAs, Foreign, foreign, promised, runDetached } from "../edge.vibe"
 import { logger } from "../logger.vibe"
 import type { FetchLike } from "../media/fetch.vibe"
+import { whenAborted } from "../utils/retry.vibe"
 import {
   isBlockedHostname,
   isPrivateIpAddress,
   type LookupFn,
   normalizeHostLike,
-  type PinnedHostname,
   type PinnedLookup,
   resolvePinnedHostnameWithPolicy,
   SsrfBlockedError,
@@ -41,6 +43,49 @@ export type GuardedFetchResult = {
   release: () => Promise<void>
 }
 
+export error FetchUnavailable { message: string }
+export error UnpinnedLookup { message: string }
+export error PinnedTransportUnavailable { message: string; cause: unknown }
+export error InvalidUrl { message: string; cause?: unknown }
+export error MissingRedirectLocation { message: string }
+
+module node {
+  import { Effect } from "effect"
+  import { Foreign } from "../edge.vibe"
+  import type { FetchLike } from "../media/fetch.vibe"
+
+  /** @throws {never} */
+  export function platformFetch(): FetchLike | undefined {
+    return globalThis.fetch
+  }
+
+  /** @throws {never} */
+  export function isNodeLikeRuntime(): boolean {
+    const runtime = globalThis as {
+      Bun?: unknown
+      process?: { versions?: { node?: string } }
+    }
+    return Boolean(runtime.Bun || runtime.process?.versions?.node)
+  }
+
+  /** @throws {never} */
+  export function withoutHeaders(
+    headers: HeadersInit | undefined,
+    names: readonly string[],
+  ): Effect.Effect<HeadersInit | undefined, Foreign> {
+    return Effect.try({
+      try: () => {
+        if (!headers) return headers
+        const cleaned = new Headers(headers)
+        for (const name of names) cleaned.delete(name)
+        return cleaned
+      },
+      catch: (cause) => new Foreign({ cause }),
+    })
+  }
+}
+import { isNodeLikeRuntime, platformFetch, withoutHeaders } from node
+
 const DEFAULT_MAX_REDIRECTS = 3
 
 const CROSS_ORIGIN_STRIPPED_HEADERS = [
@@ -57,32 +102,6 @@ const REDIRECT_BODY_STRIPPED_HEADERS = [
   "content-length",
 ] as const
 
-function stripCredentialHeaders(
-  headers: HeadersInit | undefined,
-): HeadersInit | undefined {
-  if (!headers) {
-    return headers
-  }
-  const cleaned = new Headers(headers)
-  for (const name of CROSS_ORIGIN_STRIPPED_HEADERS) {
-    cleaned.delete(name)
-  }
-  return cleaned
-}
-
-function stripBodyHeaders(
-  headers: HeadersInit | undefined,
-): HeadersInit | undefined {
-  if (!headers) {
-    return headers
-  }
-  const cleaned = new Headers(headers)
-  for (const name of REDIRECT_BODY_STRIPPED_HEADERS) {
-    cleaned.delete(name)
-  }
-  return cleaned
-}
-
 function shouldRewriteToGet(status: number, method: string): boolean {
   const upper = method.toUpperCase()
   if ((status === 301 || status === 302) && upper === "POST") {
@@ -92,50 +111,6 @@ function shouldRewriteToGet(status: number, method: string): boolean {
     return true
   }
   return false
-}
-
-type NodePinnedFetchDefaults = {
-  lookupFn: LookupFn
-  pinnedFetchImpl: PinnedLookupFetchLike
-}
-
-let nodePinnedFetchDefaults:
-  | Promise<NodePinnedFetchDefaults | null>
-  | undefined
-
-function isNodeLikeRuntime(): boolean {
-  const runtime = globalThis as {
-    Bun?: unknown
-    process?: { versions?: { node?: string } }
-  }
-  return Boolean(runtime.Bun || runtime.process?.versions?.node)
-}
-
-async function loadNodePinnedFetchDefaults(): Promise<NodePinnedFetchDefaults | null> {
-  if (!isNodeLikeRuntime()) {
-    return null
-  }
-
-  nodePinnedFetchDefaults ??= import("./node-pinned-fetch.vibe").then(
-    ({ nodeLookupFn, nodePinnedFetch }) => ({
-      lookupFn: nodeLookupFn,
-      pinnedFetchImpl: nodePinnedFetch,
-    }),
-  )
-  try {
-    return await nodePinnedFetchDefaults
-  } catch (error) {
-    logger.error(
-      { error },
-      "[FetchGuard] Failed to load the pinned DNS transport on a Node-like runtime; failing closed",
-    )
-    throw new Error(
-      "SSRF guard: pinned DNS transport (node-pinned-fetch) failed to load on a Node-like runtime. "
-        + "Refusing to fall back to unpinned fetch (DNS rebinding risk). "
-        + `Underlying error: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    )
-  }
 }
 
 function isRedirectStatus(status: number): boolean {
@@ -148,126 +123,97 @@ function isRedirectStatus(status: number): boolean {
   )
 }
 
-function cancelResponseBody(response: Response): void {
+type PinnedFetch = (params: PinnedLookupFetchParams) => Response!Foreign
+
+const nodePinnedTransport = Effect.runSync(Effect.cached(foreign(() => import("./node-pinned-fetch.vibe"))))
+
+effect function loadNodePinnedFetchDefaults() {
+  if (!isNodeLikeRuntime()) {
+    return null
+  }
+  const transport = nodePinnedTransport catch effect (error) => {
+    logger.error(
+      { error: error.cause },
+      "[FetchGuard] Failed to load the pinned DNS transport on a Node-like runtime; failing closed",
+    )
+    throw new PinnedTransportUnavailable({
+      message: "SSRF guard: pinned DNS transport (node-pinned-fetch) failed to load on a Node-like runtime. "
+        + "Refusing to fall back to unpinned fetch (DNS rebinding risk). "
+        + `Underlying error: ${error.cause instanceof Error ? error.cause.message : String(error.cause)}`,
+      cause: error.cause,
+    })
+  }
+  return { lookupFn: transport.nodeLookupFn, pinnedFetch: transport.nodePinnedFetch }
+}
+
+effect function cancelResponseBody(response: Response) {
   const body = response.body
   if (!body) {
     return
   }
-  const warn = (error: unknown) =>
+  foreign(() => body.cancel()) catch (error) =>
     logger.warn(
-      { error },
+      { error: error.cause },
       "[FetchGuard] Failed to cancel rejected response body",
     )
-  try {
-    void Promise.resolve(body.cancel()).catch((error: unknown) => warn(error))
-  } catch (error) {
-    warn(error)
-  }
 }
 
-function buildAbortSignal(params: {
-  timeoutMs?: number
-  signal?: AbortSignal
-}): {
-  signal?: AbortSignal
-  cleanup: () => void
-} {
-  const { timeoutMs, signal } = params
-  if (!timeoutMs && !signal) {
-    return { signal: undefined, cleanup: () => {} }
-  }
+effect function abortAfter(controller: AbortController, timeoutMs: number) {
+  try sleep(timeoutMs >= 1 && timeoutMs <= 2147483647 ? timeoutMs : 1)
+  controller.abort()
+}
 
+effect function guardSignal(timeoutMs: number | undefined, signal: AbortSignal | undefined) {
   if (!timeoutMs) {
-    return { signal, cleanup: () => {} }
+    return { signal, release: Effect.void }
   }
-
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  const timer = fork.detached abortAfter(controller, timeoutMs)
   const onAbort = () => controller.abort()
-  if (signal) {
-    if (signal.aborted) {
-      controller.abort()
-    } else {
-      signal.addEventListener("abort", onAbort, { once: true })
-    }
+  if (signal?.aborted) {
+    controller.abort()
+  } else {
+    signal?.addEventListener("abort", onAbort, { once: true })
   }
-
-  const cleanup = () => {
-    clearTimeout(timeoutId)
-    if (signal) {
-      signal.removeEventListener("abort", onAbort)
-    }
+  const release = effect {
+    try Fiber.interrupt(timer)
+    signal?.removeEventListener("abort", onAbort)
   }
-
-  return { signal: controller.signal, cleanup }
+  return { signal: controller.signal, release }
 }
 
-function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) {
-    return promise
-  }
-  if (signal.aborted) {
-    promise.catch(() => {})
-    return Promise.reject(signal.reason)
-  }
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason)
-    signal.addEventListener("abort", onAbort, { once: true })
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", onAbort)
-        resolve(value)
-      },
-      (error: unknown) => {
-        signal.removeEventListener("abort", onAbort)
-        reject(error)
-      },
-    )
-  })
+effect function abortedBy(signal: AbortSignal) {
+  throw new Foreign({ cause: try whenAborted(signal) })
 }
 
-export async function fetchWithSsrfGuard(
-  params: GuardedFetchOptions,
-): Promise<GuardedFetchResult> {
-  const fetcher: FetchLike | undefined = params.fetchImpl ?? globalThis.fetch
-  if (!fetcher) {
-    throw new Error("fetch is not available")
+interface Route {
+  readonly params: GuardedFetchOptions
+  readonly fetcher: FetchLike
+  readonly lookupFn: LookupFn | undefined
+  readonly pinnedFetch: PinnedFetch | undefined
+  readonly maxRedirects: number
+  readonly signal: AbortSignal | undefined
+}
+
+effect function screenHost(route: Route, hostname: string, allowedHostnames: ReadonlySet<string>) {
+  const { lookupFn, params, signal } = route
+  if (lookupFn) {
+    const pinned = resolvePinnedHostnameWithPolicy(hostname, { lookupFn, policy: params.policy })
+    return try (signal ? raceFirst(pinned, abortedBy(signal)) : pinned)
   }
-  const nodeDefaults = !params.pinnedFetchImpl && !params.fetchImpl
-    ? await loadNodePinnedFetchDefaults()
-    : null
-  const lookupFn = params.lookupFn ?? nodeDefaults?.lookupFn
-  const pinnedFetchImpl = params.pinnedFetchImpl ?? nodeDefaults?.pinnedFetchImpl
-
-  if (lookupFn && !pinnedFetchImpl) {
-    throw new Error(
-      "SSRF guard: a DNS lookupFn was provided without a pinnedFetchImpl. "
-        + "Refusing to fall back to the unpinned fetcher — the computed DNS pin "
-        + "would be discarded, re-introducing a DNS-rebinding race. Provide a "
-        + "pinnedFetchImpl (e.g. node-pinned-fetch) alongside the lookupFn.",
-    )
-  }
-
-  const maxRedirects = typeof params.maxRedirects === "number"
-      && Number.isFinite(params.maxRedirects)
-    ? Math.max(0, Math.floor(params.maxRedirects))
-    : DEFAULT_MAX_REDIRECTS
-
-  const { signal, cleanup } = buildAbortSignal({
-    timeoutMs: params.timeoutMs,
-    signal: params.signal,
-  })
-
-  let released = false
-  const release = async () => {
-    if (released) {
-      return
+  if (!params.policy?.allowPrivateNetwork && !allowedHostnames.has(normalizeHostLike(hostname))) {
+    if (isBlockedHostname(hostname)) {
+      throw new SsrfBlockedError(`Blocked hostname: ${hostname}`)
     }
-    released = true
-    cleanup()
+    if (isPrivateIpAddress(hostname)) {
+      throw new SsrfBlockedError("Blocked: private/internal IP address")
+    }
   }
+  return undefined
+}
 
-  const allowPrivateNetwork = Boolean(params.policy?.allowPrivateNetwork)
+effect function followRedirects(route: Route) {
+  const { params, signal } = route
   const allowedHostnames = new Set(
     (params.policy?.allowedHostnames ?? []).map(normalizeHostLike),
   )
@@ -275,112 +221,122 @@ export async function fetchWithSsrfGuard(
   let currentUrl = params.url
   let redirectCount = 0
   let hopHeaders = params.init?.headers
-
   let hopMethod = params.init?.method
   let hopBodyDropped = false
 
   while (true) {
-    let parsedUrl: URL
-    try {
-      parsedUrl = new URL(currentUrl)
-    } catch (error) {
-      await release()
-      throw new Error("Invalid URL: must be http or https", { cause: error })
-    }
+    const target = currentUrl
+    const parsedUrl = try Effect.try({
+      try: () => new URL(target),
+      catch: (cause) => new InvalidUrl({ message: "Invalid URL: must be http or https", cause }),
+    })
     if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-      await release()
-      throw new Error("Invalid URL: must be http or https")
+      throw new InvalidUrl({ message: "Invalid URL: must be http or https" })
     }
-    try {
-      let pinned: PinnedHostname | undefined
-      if (lookupFn) {
-        pinned = await raceAbort(
-          resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
-            lookupFn,
-            policy: params.policy,
-          }),
-          signal,
-        )
-      } else if (
-        !allowPrivateNetwork
-        && !allowedHostnames.has(normalizeHostLike(parsedUrl.hostname))
-      ) {
-        if (isBlockedHostname(parsedUrl.hostname)) {
-          throw new SsrfBlockedError(`Blocked hostname: ${parsedUrl.hostname}`)
-        }
-        if (isPrivateIpAddress(parsedUrl.hostname)) {
-          throw new SsrfBlockedError("Blocked: private/internal IP address")
-        }
-      }
+    const pinned = try screenHost(route, parsedUrl.hostname, allowedHostnames)
 
-      const init: RequestInit = {
-        ...params.init,
-        ...(hopHeaders ? { headers: hopHeaders } : {}),
-        ...(hopMethod !== undefined ? { method: hopMethod } : {}),
-        ...(hopBodyDropped ? { body: undefined } : {}),
-        redirect: "manual",
-        ...(signal ? { signal } : {}),
-      }
-
-      if (signal?.aborted) {
-        throw signal.reason
-      }
-
-      const response = pinned && pinnedFetchImpl
-        ? await pinnedFetchImpl({
-          url: parsedUrl,
-          init,
-          lookup: pinned.lookup,
-          addresses: pinned.addresses,
-        })
-        : await fetcher(parsedUrl.toString(), init)
-
-      if (isRedirectStatus(response.status)) {
-        const location = response.headers.get("location")
-        if (!location) {
-          cancelResponseBody(response)
-          throw new Error(
-            `Redirect missing location header (${response.status})`,
-          )
-        }
-        redirectCount += 1
-        if (redirectCount > maxRedirects) {
-          cancelResponseBody(response)
-
-          throw new SsrfBlockedError(
-            `Too many redirects (limit: ${maxRedirects})`,
-          )
-        }
-
-        cancelResponseBody(response)
-        const nextParsedUrl = new URL(location, parsedUrl)
-        const nextUrl = nextParsedUrl.toString()
-        if (visited.has(nextUrl)) {
-          throw new SsrfBlockedError("Redirect loop detected")
-        }
-        visited.add(nextUrl)
-
-        if (shouldRewriteToGet(response.status, hopMethod ?? "GET")) {
-          hopMethod = "GET"
-          hopBodyDropped = true
-          hopHeaders = stripBodyHeaders(hopHeaders)
-        }
-
-        if (parsedUrl.origin !== nextParsedUrl.origin) {
-          hopHeaders = stripCredentialHeaders(hopHeaders)
-        }
-        currentUrl = nextUrl
-        continue
-      }
-
-      return {
-        response,
-        finalUrl: currentUrl,
-        release,
-      }
-    } catch (err) {
-      await release()
-      throw err
+    const init: RequestInit = {
+      ...params.init,
+      ...(hopHeaders ? { headers: hopHeaders } : {}),
+      ...(hopMethod !== undefined ? { method: hopMethod } : {}),
+      ...(hopBodyDropped ? { body: undefined } : {}),
+      redirect: "manual",
+      ...(signal ? { signal } : {}),
     }
+
+    if (signal?.aborted) {
+      throw new Foreign({ cause: signal.reason })
+    }
+
+    const response = pinned && route.pinnedFetch
+      ? try route.pinnedFetch({
+        url: parsedUrl,
+        init,
+        lookup: pinned.lookup,
+        addresses: pinned.addresses,
+      })
+      : try foreign(() => route.fetcher(parsedUrl.toString(), init))
+
+    if (!isRedirectStatus(response.status)) {
+      return { response, finalUrl: currentUrl }
+    }
+
+    fork.detached cancelResponseBody(response)
+    const location = response.headers.get("location")
+    if (!location) {
+      throw new MissingRedirectLocation({
+        message: `Redirect missing location header (${response.status})`,
+      })
+    }
+    redirectCount += 1
+    if (redirectCount > route.maxRedirects) {
+      throw new SsrfBlockedError(
+        `Too many redirects (limit: ${route.maxRedirects})`,
+      )
+    }
+
+    const nextParsedUrl = try Effect.try({
+      try: () => new URL(location, parsedUrl),
+      catch: (cause) => new Foreign({ cause }),
+    })
+    const nextUrl = nextParsedUrl.toString()
+    if (visited.has(nextUrl)) {
+      throw new SsrfBlockedError("Redirect loop detected")
+    }
+    visited.add(nextUrl)
+
+    if (shouldRewriteToGet(response.status, hopMethod ?? "GET")) {
+      hopMethod = "GET"
+      hopBodyDropped = true
+      hopHeaders = try withoutHeaders(hopHeaders, REDIRECT_BODY_STRIPPED_HEADERS)
+    }
+
+    if (parsedUrl.origin !== nextParsedUrl.origin) {
+      hopHeaders = try withoutHeaders(hopHeaders, CROSS_ORIGIN_STRIPPED_HEADERS)
+    }
+    currentUrl = nextUrl
   }
 }
+
+export effect function fetchWithSsrfGuard(params: GuardedFetchOptions) {
+  const fetcher = params.fetchImpl ?? platformFetch()
+  if (!fetcher) {
+    throw new FetchUnavailable({ message: "fetch is not available" })
+  }
+  const nodeDefaults = !params.pinnedFetchImpl && !params.fetchImpl
+    ? try loadNodePinnedFetchDefaults()
+    : null
+  const lookupFn = params.lookupFn ?? nodeDefaults?.lookupFn
+  const pinnedFetchImpl = params.pinnedFetchImpl
+  const pinnedFetch: PinnedFetch | undefined = pinnedFetchImpl
+    ? (request) => foreign(() => pinnedFetchImpl(request))
+    : nodeDefaults?.pinnedFetch
+
+  if (lookupFn && !pinnedFetch) {
+    throw new UnpinnedLookup({
+      message: "SSRF guard: a DNS lookupFn was provided without a pinnedFetchImpl. "
+        + "Refusing to fall back to the unpinned fetcher — the computed DNS pin "
+        + "would be discarded, re-introducing a DNS-rebinding race. Provide a "
+        + "pinnedFetchImpl (e.g. node-pinned-fetch) alongside the lookupFn.",
+    })
+  }
+
+  const maxRedirects = typeof params.maxRedirects === "number"
+      && Number.isFinite(params.maxRedirects)
+    ? Math.max(0, Math.floor(params.maxRedirects))
+    : DEFAULT_MAX_REDIRECTS
+
+  const guard = try guardSignal(params.timeoutMs, params.signal)
+  const route = { params, fetcher, lookupFn, pinnedFetch, maxRedirects, signal: guard.signal }
+  const reached = followRedirects(route) catch effect (error) => {
+    try guard.release
+    throw error
+  }
+  return {
+    response: reached.response,
+    finalUrl: reached.finalUrl,
+    release: () => runDetached(guard.release),
+  } satisfies GuardedFetchResult
+}
+
+export const fetchWithSsrfGuardPromise = promised(failingAs(Error, fetchWithSsrfGuard, SsrfBlockedError))

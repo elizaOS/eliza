@@ -1,5 +1,8 @@
+// spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+import { failingAs, thrown } from "./edge.vibe"
 import type { UUID } from "./types/primitives.vibe"
 import { stringToUuid } from "./utils/string-to-uuid.vibe"
+import type { InvalidUuidSource } from "./utils/uuid.vibe"
 
 export function normalizeChatIdempotencyKey(
   value: unknown,
@@ -12,12 +15,14 @@ export function normalizeChatIdempotencyKey(
     : null
 }
 
-export function conversationClientUserMemoryId(
+export effect function conversationClientUserMemoryId(
   scope: string,
   clientMessageId: string,
-): UUID {
-  return stringToUuid(`conversation-user:${scope}:${clientMessageId}`)
+): UUID!InvalidUuidSource {
+  return try stringToUuid(`conversation-user:${scope}:${clientMessageId}`)
 }
+
+export const conversationClientUserMemoryIdOrThrow = thrown(failingAs(TypeError, conversationClientUserMemoryId))
 
 export interface DurableConversationChatMarker {
   version: 1
