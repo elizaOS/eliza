@@ -1,0 +1,37 @@
+export interface TraceCorrelation {
+  traceId: string
+
+  runId?: string
+
+  roomId?: string
+
+  taskId?: string
+
+  sessionId?: string
+
+  parentStepId?: string
+
+  childTrajectoryId?: string
+}
+
+export const TRACE_ENV = {
+  TRACE_ID: "ELIZA_TRACE_ID",
+  TASK_ID: "ELIZA_TASK_ID",
+  SESSION_ID: "ORCHESTRATOR_SESSION_ID",
+  PARENT_STEP_ID: "ELIZA_PARENT_TRAJECTORY_STEP_ID",
+} as const
+
+export function resolveTraceCorrelationFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): Partial<TraceCorrelation> {
+  const out: Partial<TraceCorrelation> = {}
+  const traceId = env[TRACE_ENV.TRACE_ID]?.trim()
+  if (traceId) out.traceId = traceId
+  const taskId = env[TRACE_ENV.TASK_ID]?.trim()
+  if (taskId) out.taskId = taskId
+  const sessionId = env[TRACE_ENV.SESSION_ID]?.trim()
+  if (sessionId) out.sessionId = sessionId
+  const parentStepId = env[TRACE_ENV.PARENT_STEP_ID]?.trim()
+  if (parentStepId) out.parentStepId = parentStepId
+  return out
+}

@@ -1,0 +1,10 @@
+export interface PiCodingActionProfile {
+  readonly kind: "pi"
+  readonly includeWorktree?: boolean
+}
+
+export type CodingActionProfile = PiCodingActionProfile
+
+export const PI_CODING_ACTION_PROFILE: PiCodingActionProfile = Object.freeze({
+  kind: "pi",
+})

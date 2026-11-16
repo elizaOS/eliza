@@ -1,0 +1,1102 @@
+import { ElizaError } from "../errors.vibe"
+import { withStandaloneTrajectory } from "../trajectory-utils.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import type { JsonValue } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { Service, ServiceType } from "../types/service.vibe"
+import type { Task, TaskMetadata, TaskRunStatus } from "../types/task.vibe"
+import {
+  getTaskSchedulerAdapter,
+  markTaskSchedulerDirty,
+  registerTaskSchedulerRuntime,
+  unregisterTaskSchedulerRuntime,
+} from "./task-scheduler.vibe"
+
+function resolveDueTime(task: Task): number | null {
+  if (task.dueAt != null) return Number(task.dueAt)
+  const scheduledAt = task.metadata?.scheduledAt
+  if (scheduledAt == null) return null
+  if (typeof scheduledAt === "number") return scheduledAt
+  const t = new Date(scheduledAt).getTime()
+  return Number.isNaN(t) ? null : t
+}
+
+function lastRanAt(task: Task): number {
+  if (typeof task.metadata?.updatedAt === "number") {
+    return task.metadata.updatedAt
+  }
+  if (typeof task.updatedAt === "number") return task.updatedAt
+  if (typeof task.updatedAt === "bigint") return Number(task.updatedAt)
+  if (task.updatedAt) return new Date(String(task.updatedAt)).getTime()
+  return 0
+}
+
+function repeatDueAt(task: Task, atomicWake: boolean): number {
+  const meta = task.metadata
+  const idealNextRun = lastRanAt(task) + (meta?.updateInterval ?? 0)
+  const wakeAt = atomicWake && !meta?.failureCount ? meta?.wakeAt : undefined
+  return Math.min(idealNextRun - (meta?.notBefore ?? 0), wakeAt ?? Infinity)
+}
+
+const MIN_TICK_MS = 1000
+
+const DEFAULT_MAX_TICK_MS = 60_000
+
+const MAX_TIMEOUT_MS = 2_147_483_647
+
+export const TASK_TICK_MAX_MS_SETTING = "TASK_TICK_MAX_MS"
+
+export const WALL_CLOCK_CHECK_MS = 1000
+
+function readMaxTickMs(runtime: IAgentRuntime): number {
+  const raw = runtime.getSetting(TASK_TICK_MAX_MS_SETTING)
+  if (raw == null || raw === "") return DEFAULT_MAX_TICK_MS
+  const value = Number(raw)
+  if (!(value >= MIN_TICK_MS && value <= MAX_TIMEOUT_MS)) {
+    throw new ElizaError(
+      `${TASK_TICK_MAX_MS_SETTING} must be ${MIN_TICK_MS} to ${MAX_TIMEOUT_MS} milliseconds`,
+      {
+        code: "TASK_TICK_MAX_INVALID",
+        context: { value: String(raw) },
+        severity: "fatal",
+      },
+    )
+  }
+  return value
+}
+
+export type TaskServiceTimerHandle = unknown
+
+export interface TaskServiceTimeoutClock {
+  now(): number
+  setTimeout(
+    callback: () => Promise<void>,
+    delayMs: number,
+  ): TaskServiceTimerHandle
+  clearTimeout(handle: TaskServiceTimerHandle): void
+}
+
+export interface TaskServiceIntervalClock {
+  now(): number
+  setInterval(
+    callback: () => Promise<void>,
+    intervalMs: number,
+  ): TaskServiceTimerHandle
+  clearInterval(handle: TaskServiceTimerHandle): void
+}
+
+export type TaskServiceClock =
+  | TaskServiceTimeoutClock
+  | TaskServiceIntervalClock
+
+function toTimeoutClock(clock: TaskServiceClock): TaskServiceTimeoutClock {
+  if ("setTimeout" in clock) return clock
+  return {
+    now: () => clock.now(),
+    setTimeout: (callback, delayMs) => {
+      let fired = false
+      const handle = clock.setInterval(async () => {
+        if (fired) return
+        fired = true
+        clock.clearInterval(handle)
+        await callback()
+      }, delayMs)
+      return handle
+    },
+    clearTimeout: (handle) => clock.clearInterval(handle),
+  }
+}
+
+export const systemTaskServiceClock: TaskServiceTimeoutClock = {
+  now: () => Date.now(),
+  setTimeout: (callback, delayMs) => {
+    const target = Date.now() + delayMs
+    const handle: { native?: ReturnType<typeof setTimeout> } = {}
+    const step = () => {
+      const left = target - Date.now()
+      if (left <= 0) {
+        handle.native = undefined
+        void callback()
+        return
+      }
+      handle.native = setTimeout(step, Math.min(left, WALL_CLOCK_CHECK_MS))
+    }
+    handle.native = setTimeout(
+      step,
+      Math.max(0, Math.min(delayMs, WALL_CLOCK_CHECK_MS)),
+    )
+    return handle
+  },
+  clearTimeout: (handle) => {
+    const h = handle as { native?: ReturnType<typeof setTimeout> }
+    if (h.native !== undefined) clearTimeout(h.native)
+    h.native = undefined
+  },
+}
+
+export class TaskService extends Service {
+  private timer: TaskServiceTimerHandle
+  private hasTimer = false
+
+  private timerAt = 0
+
+  private localTimer = false
+  private maxTickMs = DEFAULT_MAX_TICK_MS
+  private activeTick: Promise<void> | null = null
+  private schedulerDrain: Promise<void> | undefined
+  private readonly clock: TaskServiceTimeoutClock
+
+  private executingTasks = new Map<string, number>()
+
+  private pendingOperations = new Set<Promise<void>>()
+
+  private quarantinedOrphans = new Set<string>()
+
+  private readonly startedAt: number
+
+  private stopped = false
+
+  private static readonly ORPHAN_GRACE_MS = 60_000
+  static serviceType = ServiceType.TASK
+  capabilityDescription = "The agent is able to schedule and execute tasks"
+
+  constructor(
+    runtime?: IAgentRuntime,
+    clock: TaskServiceClock = systemTaskServiceClock,
+  ) {
+    super(runtime)
+    this.clock = toTimeoutClock(clock)
+    this.startedAt = clock.now()
+  }
+
+  static async start(runtime: IAgentRuntime): Promise<Service> {
+    const service = new TaskService(runtime)
+    await service.startTimer()
+    return service
+  }
+
+  startTimer() {
+    if (this.stopped) return
+    if (this.runtime.serverless === true) {
+      return
+    }
+    if (getTaskSchedulerAdapter() != null) {
+      registerTaskSchedulerRuntime(this.runtime, this)
+      return
+    }
+    this.maxTickMs = readMaxTickMs(this.runtime)
+    this.clearTimer()
+    this.localTimer = true
+    this.armTimer(this.clock.now() + MIN_TICK_MS)
+  }
+
+  private armTimer(at: number): void {
+    if (this.stopped || !this.localTimer) return
+    if (this.hasTimer && this.timerAt <= at) return
+    this.clearTimer()
+    this.timerAt = at
+    this.timer = this.clock.setTimeout(
+      () => this.onTimer(),
+      Math.max(0, at - this.clock.now()),
+    )
+    this.hasTimer = true
+  }
+
+  private clearTimer(): void {
+    if (!this.hasTimer) return
+    this.hasTimer = false
+    this.clock.clearTimeout(this.timer)
+  }
+
+  private async onTimer(): Promise<void> {
+    this.hasTimer = false
+    if (this.stopped) return
+    if (this.activeTick) {
+      void this.activeTick.then(() => this.armTimer(this.clock.now() + MIN_TICK_MS))
+      return
+    }
+    const wake: { at: number | null } = {
+      at: this.clock.now() + MIN_TICK_MS,
+    }
+    const tick = this.checkTasks(wake)
+      .catch((error) => {
+        this.runtime.reportError("TaskService.timer", error, {
+          agentId: this.runtime.agentId,
+        })
+      })
+      .finally(() => {
+        if (this.activeTick === tick) {
+          this.activeTick = null
+        }
+      })
+    this.activeTick = tick
+    await tick
+    if (wake.at !== null) this.armTimer(wake.at)
+  }
+
+  private nextWakeAt(tasks: Task[]): number {
+    const now = this.clock.now()
+    const atomicWake = this.runtime.adapter?.supportsAtomicTaskWake === true
+    let at = now + this.maxTickMs
+    for (const task of tasks) {
+      if (
+        !task.id
+        || task.metadata?.paused
+        || this.quarantinedOrphans.has(task.id)
+        || task.scheduleError !== undefined
+        || this.invalidScheduleField(task)
+      ) {
+        continue
+      }
+      const due = task.tags?.includes("repeat")
+        ? repeatDueAt(task, atomicWake)
+        : (resolveDueTime(task) ?? now)
+      at = Math.min(at, due > now ? due : now + MIN_TICK_MS)
+    }
+    return at
+  }
+
+  private async validateTasks(
+    tasks: Task[],
+  ): Promise<{ tasks: Task[]; errors: ElizaError[] }> {
+    const validatedTasks: Task[] = []
+    const errors: ElizaError[] = []
+
+    for (const task of tasks) {
+      if (this.stopped) break
+      const context = { taskId: task.id, taskName: task.name }
+      const metadata = task.metadata
+      if (metadata?.paused) {
+        if (
+          task.tags?.includes("repeat")
+          && metadata.orphanedNoWorker === true
+          && task.id
+          && this.runtime.getTaskWorker(task.name)
+        ) {
+          await this.resumeHealedOrphanTask(task, metadata)
+        }
+
+        continue
+      }
+      if (!task.id) {
+        errors.push(
+          new ElizaError("Scheduled task is missing an id", {
+            code: "TASK_INVALID_ID",
+            context,
+            severity: "fatal",
+          }),
+        )
+        continue
+      }
+
+      if (task.scheduleError !== undefined) {
+        errors.push(
+          new ElizaError(task.scheduleError, {
+            code: "TASK_SCHEDULE_INVALID",
+            context: { ...context, field: "metadata.scheduledAt" },
+            severity: "fatal",
+          }),
+        )
+        continue
+      }
+
+      const worker = this.runtime.getTaskWorker(task.name)
+      if (!worker) {
+        if (this.clock.now() - this.startedAt < TaskService.ORPHAN_GRACE_MS) {
+          continue
+        }
+
+        if (!this.quarantinedOrphans.has(task.id)) {
+          await this.quarantineOrphanTask(task, errors)
+        }
+        continue
+      }
+
+      if (this.quarantinedOrphans.has(task.id)) {
+        this.quarantinedOrphans.delete(task.id)
+      }
+
+      const invalidField = this.invalidScheduleField(task)
+      if (invalidField) {
+        errors.push(
+          new ElizaError(`Task ${task.name} has invalid ${invalidField}`, {
+            code: "TASK_SCHEDULE_INVALID",
+            context: { ...context, field: invalidField },
+            severity: "fatal",
+          }),
+        )
+        continue
+      }
+
+      if (worker.shouldRun) {
+        let shouldRun: unknown
+        try {
+          shouldRun = await worker.shouldRun(this.runtime, task)
+        } catch (cause) {
+          errors.push(
+            new ElizaError(`Task ${task.name} preflight failed`, {
+              code: "TASK_PREFLIGHT_FAILED",
+              context,
+              cause,
+              severity: "ephemeral",
+            }),
+          )
+          continue
+        }
+        if (typeof shouldRun !== "boolean") {
+          errors.push(
+            new ElizaError(
+              `Task ${task.name} preflight returned a non-boolean`,
+              {
+                code: "TASK_PREFLIGHT_INVALID",
+                context: { ...context, resultType: typeof shouldRun },
+                severity: "fatal",
+              },
+            ),
+          )
+          continue
+        }
+        if (!shouldRun) continue
+      }
+
+      validatedTasks.push(task)
+    }
+
+    return { tasks: validatedTasks, errors }
+  }
+
+  private async quarantineOrphanTask(
+    task: Task,
+    errors: ElizaError[],
+  ): Promise<void> {
+    if (!task.id) return
+    const context = { taskId: task.id, taskName: task.name }
+    const isRepeat = task.tags?.includes("repeat") === true
+    try {
+      if (isRepeat) {
+        if (task.metadata?.paused !== true) {
+          await this.runtime.updateTask(task.id, {
+            metadata: {
+              ...task.metadata,
+              paused: true,
+
+              orphanedNoWorker: true,
+              lastError: `No worker registered for task ${task.name} (orphan auto-paused)`,
+              updatedAt: this.clock.now(),
+            },
+          })
+        }
+        this.runtime.logger.warn(
+          {
+            src: "plugin:basic-capabilities:service:task",
+            agentId: this.runtime.agentId,
+            ...context,
+          },
+          "Orphaned repeat task auto-paused (no worker registered)",
+        )
+      } else {
+        await this.runtime.deleteTask(task.id)
+        this.runtime.logger.warn(
+          {
+            src: "plugin:basic-capabilities:service:task",
+            agentId: this.runtime.agentId,
+            ...context,
+          },
+          "Orphaned one-shot task deleted (no worker registered)",
+        )
+      }
+    } catch (cause) {
+      errors.push(
+        new ElizaError(`Failed to quarantine orphaned task ${task.name}`, {
+          code: "TASK_ORPHAN_QUARANTINE_FAILED",
+          context,
+          cause,
+          severity: "ephemeral",
+        }),
+      )
+    }
+    this.quarantinedOrphans.add(task.id)
+  }
+
+  private async resumeHealedOrphanTask(
+    task: Task,
+    metadata: TaskMetadata,
+  ): Promise<void> {
+    if (!task.id) return
+    try {
+      await this.runtime.updateTask(task.id, {
+        metadata: {
+          ...metadata,
+          paused: false,
+          orphanedNoWorker: false,
+          lastError: undefined,
+          updatedAt: this.clock.now(),
+        },
+      })
+      this.quarantinedOrphans.delete(task.id)
+      this.runtime.logger.info(
+        {
+          src: "plugin:basic-capabilities:service:task",
+          agentId: this.runtime.agentId,
+          taskId: task.id,
+          taskName: task.name,
+        },
+        "Orphan-paused task auto-resumed (worker registered again)",
+      )
+    } catch (cause) {
+      this.runtime.logger.warn(
+        {
+          src: "plugin:basic-capabilities:service:task",
+          agentId: this.runtime.agentId,
+          taskId: task.id,
+          taskName: task.name,
+          err: cause,
+        },
+        "Failed to auto-resume orphan-paused task; will retry next tick",
+      )
+      this.runtime.reportError("TaskService.resumeOrphan", cause, {
+        taskId: task.id,
+        taskName: task.name,
+      })
+    }
+  }
+
+  private invalidScheduleField(task: Task): string | undefined {
+    const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value)
+    const metadata = task.metadata
+    if (task.dueAt != null) {
+      const validDueAt = finite(task.dueAt)
+        || (typeof task.dueAt === "bigint" && Number.isFinite(Number(task.dueAt)))
+      if (!validDueAt) return "dueAt"
+    }
+    if (
+      metadata?.scheduledAt != null
+      && !finite(metadata.scheduledAt)
+      && Number.isNaN(new Date(String(metadata.scheduledAt)).getTime())
+    ) {
+      return "metadata.scheduledAt"
+    }
+    if (!task.tags?.includes("repeat")) return undefined
+    if (
+      !finite(metadata?.updateInterval)
+      || (metadata?.updateInterval ?? 0) <= 0
+    ) {
+      return "metadata.updateInterval"
+    }
+    for (const field of ["updatedAt", "notBefore", "notAfter"] as const) {
+      const value = metadata?.[field]
+      if (value != null && (!finite(value) || value < 0)) {
+        return `metadata.${field}`
+      }
+    }
+    for (const field of ["wakeAt", "wakeRevision"] as const) {
+      const value = metadata?.[field]
+      if (value != null && (!Number.isSafeInteger(value) || value < 0)) {
+        return `metadata.${field}`
+      }
+    }
+    const failureCount = metadata?.failureCount
+    if (failureCount != null && (!finite(failureCount) || failureCount < 0)) {
+      return "metadata.failureCount"
+    }
+    const baseInterval = metadata?.baseInterval
+    if (baseInterval != null && (!finite(baseInterval) || baseInterval <= 0)) {
+      return "metadata.baseInterval"
+    }
+    const maxFailures = metadata?.maxFailures
+    if (
+      maxFailures != null
+      && maxFailures !== Infinity
+      && !finite(maxFailures)
+    ) {
+      return "metadata.maxFailures"
+    }
+    return undefined
+  }
+
+  private async checkTasks(wake: { at: number | null }) {
+    if (this.stopped) {
+      wake.at = null
+      return
+    }
+
+    let allTasks: Task[]
+    try {
+      allTasks = await this.runtime.getTasks({
+        tags: ["queue"],
+        agentIds: [this.runtime.agentId],
+      })
+    } catch (error) {
+      throw new ElizaError("Task queue query failed", {
+        code: "TASK_QUERY_FAILED",
+        context: { agentId: this.runtime.agentId },
+        cause: error,
+        severity: "ephemeral",
+      })
+    }
+
+    if (!allTasks || allTasks.length === 0) {
+      wake.at = null
+      return
+    }
+
+    wake.at = this.nextWakeAt(allTasks)
+
+    if (this.stopped) {
+      return
+    }
+    await this.runTick(allTasks)
+  }
+
+  async runTick(tasks: Task[]): Promise<void> {
+    if (this.stopped) return
+    return this.withExecutionAdmission(() => this.runTickInternal(tasks))
+  }
+
+  private async runTickInternal(tasks: Task[]): Promise<void> {
+    const validation = await this.validateTasks(tasks)
+    if (this.stopped) return
+    const failures: ElizaError[] = [...validation.errors]
+    const now = this.clock.now()
+
+    for (const task of validation.tasks) {
+      if (this.stopped) break
+
+      if (!task.tags?.includes("repeat")) {
+        const dueMs = resolveDueTime(task)
+        if (dueMs != null && now < dueMs) continue
+        await this.executeTaskCollectingFailure(task, failures)
+        continue
+      }
+
+      const taskMetadata = task.metadata
+      const updateIntervalMs = taskMetadata?.updateInterval ?? 0
+      const notAfterMs = taskMetadata?.notAfter
+      const idealNextRun = lastRanAt(task) + updateIntervalMs
+      const earliest = repeatDueAt(
+        task,
+        this.runtime.adapter?.supportsAtomicTaskWake === true,
+      )
+
+      if (now < earliest) {
+        continue
+      }
+
+      if (notAfterMs != null && now > idealNextRun + notAfterMs) {
+        this.runtime.logger.warn(
+          {
+            src: "plugin:basic-capabilities:service:task",
+            agentId: this.runtime.agentId,
+            taskName: task.name,
+            taskId: task.id,
+            overdueMs: now - (idealNextRun + notAfterMs),
+          },
+          "Task overdue",
+        )
+      }
+
+      const isBlocking = task.metadata?.blocking !== false
+      if (isBlocking && task.id && this.executingTasks.has(task.id)) {
+        this.runtime.logger.debug(
+          {
+            src: "plugin:basic-capabilities:service:task",
+            agentId: this.runtime.agentId,
+            taskName: task.name,
+            taskId: task.id,
+          },
+          "Skipping task - already executing (blocking enabled)",
+        )
+        continue
+      }
+
+      this.runtime.logger.debug(
+        {
+          src: "plugin:basic-capabilities:service:task",
+          agentId: this.runtime.agentId,
+          taskName: task.name,
+          intervalMs: updateIntervalMs,
+        },
+        "Executing task - interval elapsed",
+      )
+      await this.executeTaskCollectingFailure(task, failures)
+    }
+    if (failures.length > 0) {
+      throw new ElizaError(`${failures.length} scheduled task failure(s)`, {
+        code: "TASK_TICK_FAILED",
+        context: {
+          failureCodes: failures.map((failure) => failure.code),
+          failures: failures.map((failure) => ({
+            code: failure.code,
+            ...(typeof failure.context?.taskId === "string"
+              ? { taskId: failure.context.taskId }
+              : {}),
+            ...(typeof failure.context?.taskName === "string"
+              ? { taskName: failure.context.taskName }
+              : {}),
+          })),
+        },
+        cause: new AggregateError(failures),
+        severity: failures.some((failure) => failure.severity === "fatal")
+          ? "fatal"
+          : "ephemeral",
+      })
+    }
+  }
+
+  private async executeTaskCollectingFailure(
+    task: Task,
+    failures: ElizaError[],
+  ): Promise<void> {
+    try {
+      await this.executeTask(task)
+    } catch (error) {
+      failures.push(
+        error instanceof ElizaError
+          ? error
+          : new ElizaError(`Task ${task.name} execution failed`, {
+            code: "TASK_EXECUTION_FAILED",
+            context: { taskId: task.id, taskName: task.name },
+            cause: error,
+          }),
+      )
+    }
+  }
+
+  private assertAcceptingExecution(): void {
+    if (this.stopped) {
+      throw new ElizaError("Task service has stopped accepting execution", {
+        code: "TASK_SERVICE_STOPPED",
+        severity: "ephemeral",
+      })
+    }
+  }
+
+  private releaseExecution(taskId: string): void {
+    const remaining = (this.executingTasks.get(taskId) ?? 1) - 1
+    if (remaining > 0) this.executingTasks.set(taskId, remaining)
+    else this.executingTasks.delete(taskId)
+  }
+
+  private async withExecutionAdmission<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    this.assertAcceptingExecution()
+    let settle!: () => void
+    const completion = new Promise<void>((resolve) => {
+      settle = resolve
+    })
+    this.pendingOperations.add(completion)
+    try {
+      return await operation()
+    } finally {
+      this.pendingOperations.delete(completion)
+      settle()
+    }
+  }
+
+  private async executeTask(task: Task) {
+    this.assertAcceptingExecution()
+    if (!task.id) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:basic-capabilities:service:task",
+          agentId: this.runtime.agentId,
+        },
+        "Task not found",
+      )
+      return
+    }
+
+    const worker = this.runtime.getTaskWorker(task.name)
+    if (!worker) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:basic-capabilities:service:task",
+          agentId: this.runtime.agentId,
+          taskName: task.name,
+        },
+        "No worker found for task type",
+      )
+      return
+    }
+
+    const isRepeat = task.tags?.includes("repeat") === true
+    if (
+      (!isRepeat || task.metadata?.blocking !== false)
+      && this.executingTasks.has(task.id)
+    ) {
+      return
+    }
+    this.executingTasks.set(
+      task.id,
+      (this.executingTasks.get(task.id) ?? 0) + 1,
+    )
+    if (!isRepeat) {
+      let current: Task | null
+      try {
+        current = await this.runtime.getTask(task.id)
+      } catch (error) {
+        this.releaseExecution(task.id)
+        throw error
+      }
+      if (!current || this.stopped) {
+        this.releaseExecution(task.id)
+        return
+      }
+    }
+    const startTime = this.clock.now()
+    const observedWakeRevision = task.metadata?.wakeRevision
+    const observedWakeAt = task.metadata?.wakeAt
+
+    try {
+      const taskOptions = (task.metadata ?? {}) as Record<
+        string,
+        JsonValue | object
+      >
+      const result = await withStandaloneTrajectory(
+        this.runtime,
+        {
+          source: "task",
+          metadata: { taskId: task.id, taskName: task.name },
+          deferUntilModelCall: true,
+        },
+        () => worker.execute(this.runtime, taskOptions, task),
+      )
+      if (result?.preserveTask) {
+        return
+      }
+
+      if (task.tags?.includes("repeat")) {
+        const latestTask = await this.runtime.getTask(task.id)
+        if (!latestTask) {
+          return
+        }
+        const meta = latestTask.metadata
+        const baseInterval = meta?.baseInterval ?? meta?.updateInterval
+        const bookkeeping: Partial<TaskMetadata> = {
+          updatedAt: this.clock.now(),
+          failureCount: 0,
+        }
+        const cleared: (keyof TaskMetadata)[] = ["lastError"]
+        const nextInterval = result != null
+            && typeof result === "object"
+            && "nextInterval" in result
+          ? (result as { nextInterval?: number }).nextInterval
+          : undefined
+        if (
+          nextInterval != null
+          && (typeof nextInterval !== "number"
+            || !Number.isFinite(nextInterval)
+            || nextInterval <= 0)
+        ) {
+          throw new ElizaError(
+            `Task ${task.name} returned an invalid nextInterval`,
+            {
+              code: "TASK_ADAPTIVE_INTERVAL_INVALID",
+              context: { taskId: task.id, taskName: task.name, nextInterval },
+              severity: "fatal",
+            },
+          )
+        }
+        if (nextInterval != null) {
+          bookkeeping.updateInterval = nextInterval
+          cleared.push("baseInterval")
+        } else if (baseInterval != null) {
+          bookkeeping.updateInterval = baseInterval
+        }
+        const nextWakeAt = result?.nextWakeAt
+        if (
+          nextWakeAt !== undefined
+          && (!Number.isSafeInteger(nextWakeAt) || nextWakeAt < 0)
+        ) {
+          throw new ElizaError("Task returned an invalid absolute wake", {
+            code: "TASK_WAKE_INVALID",
+          })
+        }
+        if (
+          this.runtime.adapter?.supportsAtomicTaskWake === true
+          && (observedWakeAt !== undefined || nextWakeAt !== undefined)
+        ) {
+          const outcome = await this.runtime.patchTaskMetadata(task.id, {
+            set: bookkeeping,
+            unset: cleared,
+            wake: {
+              consumeRevision: observedWakeRevision ?? 0,
+              ...(nextWakeAt !== undefined ? { requestAt: nextWakeAt } : {}),
+            },
+          })
+          if (outcome === "unsupported") {
+            throw new ElizaError("Atomic task wake capability was withdrawn", {
+              code: "TASK_WAKE_UNSUPPORTED",
+            })
+          }
+        } else {
+          if (nextWakeAt !== undefined) {
+            this.runtime.reportError(
+              "TaskService.absoluteWake",
+              new ElizaError(
+                "Adapter retains interval cadence; atomic wake unavailable",
+                { code: "TASK_WAKE_UNSUPPORTED" },
+              ),
+              { taskId: task.id, diagnosticOnly: true },
+            )
+          }
+          await this.persistTaskMetadata(task.id, meta, bookkeeping, cleared)
+        }
+      } else {
+        await this.runtime.deleteTask(task.id)
+        this.runtime.logger.debug(
+          {
+            src: "plugin:basic-capabilities:service:task",
+            agentId: this.runtime.agentId,
+            taskName: task.name,
+            taskId: task.id,
+          },
+          "Deleted non-repeating task after execution",
+        )
+      }
+    } catch (error) {
+      let persistenceError: unknown
+      try {
+        if (task.tags?.includes("repeat")) {
+          const latestTask = await this.runtime.getTask(task.id)
+          if (!latestTask) {
+            return
+          }
+          const meta = latestTask.metadata
+          const failureCount = (meta?.failureCount ?? 0) + 1
+          const rawMax = meta?.maxFailures
+
+          const neverPause = rawMax === Infinity || (typeof rawMax === "number" && rawMax <= 0)
+          const maxFailures = neverPause ? Infinity : (rawMax ?? 5)
+          const failedAt = this.clock.now()
+          const newMeta: Partial<TaskMetadata> = {
+            updatedAt: failedAt,
+            failureCount,
+            lastError: error instanceof Error ? error.message : String(error),
+          }
+          if (!neverPause && failureCount >= maxFailures) {
+            newMeta.paused = true
+            this.runtime.logger.warn(
+              {
+                taskName: task.name,
+                taskId: task.id,
+                failureCount,
+              },
+              "Task auto-paused after max failures",
+            )
+          } else {
+            const baseInterval = meta?.baseInterval ?? meta?.updateInterval ?? 1000
+
+            newMeta.baseInterval = baseInterval
+            newMeta.updateInterval = Math.min(
+              baseInterval * 2 ** failureCount,
+              300_000,
+            )
+            if (
+              error instanceof ElizaError
+              && typeof error.retryAt === "number"
+              && Number.isFinite(error.retryAt)
+            ) {
+              newMeta.updateInterval = Math.max(
+                newMeta.updateInterval,
+                error.retryAt - failedAt + (meta?.notBefore ?? 0),
+              )
+            }
+          }
+          await this.persistTaskMetadata(task.id, meta, newMeta)
+        } else if (task.id) {
+          await this.runtime.deleteTask(task.id)
+          this.runtime.logger.debug(
+            {
+              src: "plugin:basic-capabilities:service:task",
+              agentId: this.runtime.agentId,
+              taskName: task.name,
+              taskId: task.id,
+            },
+            "Deleted non-repeating task after execution failure",
+          )
+        }
+      } catch (cause) {
+        persistenceError = cause
+      }
+      const cause = persistenceError
+        ? new AggregateError(
+          [error, persistenceError],
+          "Task execution and state transition failed",
+        )
+        : error
+      const failure = !persistenceError && error instanceof ElizaError
+        ? error
+        : new ElizaError(`Task ${task.name} execution failed`, {
+          code: persistenceError
+            ? "TASK_EXECUTION_STATE_FAILED"
+            : "TASK_EXECUTION_FAILED",
+          context: { taskName: task.name, taskId: task.id },
+          cause,
+          severity: persistenceError ? "fatal" : "ephemeral",
+        })
+      this.runtime.logger.error(
+        { taskName: task.name, taskId: task.id, error: failure },
+        "Task execution failed",
+      )
+      throw failure
+    } finally {
+      this.releaseExecution(task.id)
+      const durationMs = this.clock.now() - startTime
+      this.runtime.logger.debug(
+        {
+          src: "plugin:basic-capabilities:service:task",
+          agentId: this.runtime.agentId,
+          taskName: task.name,
+          taskId: task.id,
+          durationMs,
+        },
+        "Task execution completed",
+      )
+    }
+  }
+
+  markDirty(): void {
+    if (getTaskSchedulerAdapter() != null) {
+      markTaskSchedulerDirty(this.runtime.agentId)
+      return
+    }
+    this.armTimer(this.clock.now() + MIN_TICK_MS)
+  }
+
+  async runDueTasks(): Promise<void> {
+    if (this.stopped) return
+    while (this.activeTick) {
+      await this.activeTick
+    }
+    if (this.stopped) return
+    const run = (async () => {
+      const allTasks = await this.runtime.getTasks({
+        tags: ["queue"],
+        agentIds: [this.runtime.agentId],
+      })
+      if (allTasks.length) {
+        await this.runTick(allTasks)
+      }
+    })()
+    const tick = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.activeTick = tick
+    try {
+      await run
+    } finally {
+      if (this.activeTick === tick) {
+        this.activeTick = null
+      }
+    }
+  }
+
+  async executeTaskById(taskId: UUID): Promise<void> {
+    return this.withExecutionAdmission(async () => {
+      const task = await this.runtime.getTask(taskId)
+      if (!task) {
+        throw new Error(`Task ${taskId} not found`)
+      }
+      await this.executeTask(task)
+    })
+  }
+
+  private async persistTaskMetadata(
+    taskId: UUID,
+    snapshot: TaskMetadata | undefined,
+    set: Partial<TaskMetadata>,
+    unset: readonly (keyof TaskMetadata)[] = [],
+  ): Promise<void> {
+    const outcome = await this.runtime.patchTaskMetadata(taskId, {
+      set,
+      unset,
+    })
+    if (outcome !== "unsupported") return
+    const merged: Record<string, unknown> = { ...(snapshot ?? {}), ...set }
+    for (const key of unset) delete merged[key]
+    await this.runtime.updateTask(taskId, {
+      metadata: merged as TaskMetadata,
+    })
+  }
+
+  async pauseTask(taskId: UUID): Promise<void> {
+    const task = await this.runtime.getTask(taskId)
+    if (!task) {
+      throw new Error(`Task ${taskId} not found`)
+    }
+    await this.persistTaskMetadata(taskId, task.metadata, { paused: true })
+  }
+
+  async resumeTask(taskId: UUID, runImmediately?: boolean): Promise<void> {
+    return this.withExecutionAdmission(async () => {
+      const task = await this.runtime.getTask(taskId)
+      if (!task) {
+        throw new Error(`Task ${taskId} not found`)
+      }
+      await this.persistTaskMetadata(taskId, task.metadata, { paused: false })
+      if (runImmediately) {
+        const updated = await this.runtime.getTask(taskId)
+        if (updated) {
+          await this.executeTask(updated)
+        }
+      }
+    })
+  }
+
+  async getTaskStatus(taskId: UUID): Promise<TaskRunStatus> {
+    const task = await this.runtime.getTask(taskId)
+    if (!task) {
+      return { task: null, paused: false, executing: false }
+    }
+    const paused = task.metadata?.paused === true
+    const executing = task.id ? this.executingTasks.has(task.id) : false
+    let nextRunAt: number | undefined
+    if (task.tags?.includes("repeat")) {
+      const meta = task.metadata
+      const interval = meta?.updateInterval ?? 0
+      const notBefore = meta?.notBefore ?? 0
+      nextRunAt = lastRanAt(task) + interval - notBefore
+    }
+    return {
+      task,
+      paused,
+      executing,
+      nextRunAt,
+      lastError: task.metadata?.lastError,
+    }
+  }
+
+  static async stop(runtime: IAgentRuntime) {
+    const service = runtime.getService(ServiceType.TASK)
+    if (service) {
+      await service.stop()
+    }
+  }
+
+  prepareStop() {
+    this.stopped = true
+    this.schedulerDrain = unregisterTaskSchedulerRuntime(
+      this.runtime.agentId,
+      this,
+    )
+    this.localTimer = false
+    this.clearTimer()
+  }
+
+  async stop() {
+    this.prepareStop()
+    await this.schedulerDrain
+    if (this.activeTick) {
+      await this.activeTick
+    }
+    const inFlight = Array.from(this.pendingOperations)
+    if (inFlight.length > 0) {
+      await Promise.allSettled(inFlight)
+    }
+
+    this.executingTasks.clear()
+  }
+}

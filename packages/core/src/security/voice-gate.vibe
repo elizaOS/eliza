@@ -1,0 +1,174 @@
+import { ElizaError } from "../errors.vibe"
+import { readReminderPresentation } from "../types/reminder-presentation.vibe"
+
+import { runWithTrajectoryPurpose } from "../trajectory-context.vibe"
+import { readActionReplyFailure } from "../types/action-reply.vibe"
+import { ModelType } from "../types/model.vibe"
+import type { Content } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { readSystemNotice, systemNoticeText } from "../types/system-notice.vibe"
+import { stripReasoningBlocks } from "./model-failure.vibe"
+
+export interface EnsureAgentVoiceOptions {
+  source: string
+}
+
+const VOICE_CACHE_MAX = 500
+const voiceCache = new Map<string, string>()
+
+function cacheGet(key: string): string | undefined {
+  const hit = voiceCache.get(key)
+  if (hit === undefined) return undefined
+
+  voiceCache.delete(key)
+  voiceCache.set(key, hit)
+  return hit
+}
+
+function cacheSet(key: string, value: string): void {
+  voiceCache.set(key, value)
+  if (voiceCache.size > VOICE_CACHE_MAX) {
+    const oldest = voiceCache.keys().next().value
+    if (oldest !== undefined) voiceCache.delete(oldest)
+  }
+}
+
+function hashText(text: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(36)
+}
+
+function joinLines(...parts: (string | undefined | false)[]): string {
+  return parts.filter((p): p is string => typeof p === "string").join("\n")
+}
+
+export function buildVoiceGatePrompt(
+  character: IAgentRuntime["character"],
+  rawText: string,
+): string {
+  const name = character?.name?.trim() || "the assistant"
+  const bio = Array.isArray(character?.bio)
+    ? character.bio.filter((b) => typeof b === "string" && b.trim())
+    : []
+  const style = [
+    ...(character?.style?.all ?? []),
+    ...(character?.style?.chat ?? []),
+  ].filter((s) => typeof s === "string" && s.trim())
+
+  return joinLines(
+    `You are ${name}. Rewrite the message below so it reads as if you, a real person, wrote it yourself in your own natural voice. It must sound human, never like a canned system string.`,
+    bio.length > 0 && "",
+    bio.length > 0 && "About you:",
+    ...bio.map((b) => `- ${b}`),
+    style.length > 0 && "",
+    style.length > 0 && "Your voice and tone:",
+    ...style.map((s) => `- ${s}`),
+    "",
+    "Hard rules:",
+    "- Preserve every exact value verbatim: numbers, counts, prices, amounts, dates, times, file paths, IDs, URLs, code, commands, and proper names must appear unchanged.",
+    "- Do not add any new information, do not answer anything the message does not already answer, and do not drop any concrete fact the message states.",
+    "- If the message reports a problem or error, keep it an honest, plain acknowledgement that something went wrong. Do not invent a cause and do not pretend it succeeded.",
+    "- Never mention internal mechanism words such as: planner, action, handler, callback, JSON, XML, schema, model, prompt, parser, runtime, dispatch, connector, promptInstructions, null, undefined, stack trace, or exception. The user does not know or care what those are.",
+    "- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
+    "- Keep it roughly the same length as the original.",
+    "- Return ONLY the rewritten message text. No labels, no surrounding quotes, no markdown fences, no <think>.",
+    "",
+    "Message to rewrite:",
+    rawText,
+    "",
+    "Rewritten message:",
+  )
+}
+
+export async function ensureAgentVoice(
+  runtime: IAgentRuntime,
+  content: Content,
+  options: EnsureAgentVoiceOptions,
+): Promise<Content> {
+  if (
+    content.elizaSyntheticFailure === true
+    && readActionReplyFailure(content.replyFailure)
+  ) {
+    return content
+  }
+  if (content.reminderPresentation !== undefined) {
+    const reminder = readReminderPresentation(content.reminderPresentation)
+    if (!reminder || content.text !== reminder.chatText) {
+      throw new ElizaError("Untrusted or mismatched reminder presentation", {
+        code: "REMINDER_PRESENTATION_UNTRUSTED",
+      })
+    }
+    const {
+      agentVoiced: _voice,
+      reminderPresentation: _authority,
+      ...rest
+    } = content
+    return { ...rest, text: reminder.chatText }
+  }
+  const notice = readSystemNotice(content.systemNotice)
+  if (notice) {
+    const { agentVoiced: _provenance, ...status } = content
+    return { ...status, text: systemNoticeText(notice) }
+  }
+  const rewriteOverride = runtime.getSetting?.("OUTBOUND_VOICE_REWRITE")
+  if (
+    rewriteOverride !== undefined
+    && rewriteOverride !== null
+    && ["false", "0", "no", "off"].includes(
+      String(rewriteOverride).trim().toLowerCase(),
+    )
+  ) {
+    return content
+  }
+  const raw = typeof content.text === "string" ? content.text : ""
+  if (raw.trim().length === 0) return content
+  if (content.agentVoiced === true) return content
+  if (typeof runtime.useModel !== "function") return content
+
+  const key = `${runtime.agentId}\u0000${options.source}\u0000${hashText(raw)}`
+  const cached = cacheGet(key)
+  if (cached !== undefined) {
+    return { ...content, text: cached, agentVoiced: true }
+  }
+
+  const escalationDiagnostic = content.metadata !== null
+    && typeof content.metadata === "object"
+    && "escalation" in content.metadata
+    && content.metadata.escalation === true
+  let rephrased = ""
+  try {
+    const prompt = buildVoiceGatePrompt(runtime.character, raw)
+    const response = await runWithTrajectoryPurpose(
+      "voice-gate-rephrase",
+      () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+    )
+    rephrased = typeof response === "string" ? stripReasoningBlocks(response).trim() : ""
+  } catch (error) {
+    runtime.reportError("voice-gate", error, {
+      source: options.source,
+      agentId: runtime.agentId,
+      ...(escalationDiagnostic ? { diagnosticOnly: true } : {}),
+    })
+    return content
+  }
+
+  if (rephrased.length === 0) {
+    runtime.reportError(
+      "voice-gate",
+      new Error("voice-gate rephrase returned empty output"),
+      {
+        source: options.source,
+        agentId: runtime.agentId,
+        ...(escalationDiagnostic ? { diagnosticOnly: true } : {}),
+      },
+    )
+    return content
+  }
+
+  cacheSet(key, rephrased)
+  return { ...content, text: rephrased, agentVoiced: true }
+}

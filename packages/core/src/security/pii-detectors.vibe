@@ -1,0 +1,379 @@
+import { createHash } from "../utils/crypto-compat.vibe"
+import { findBasicEmailSpans } from "./basic-email.vibe"
+import { findAllMnemonicPhrases } from "./bip39-wordlist.vibe"
+
+export interface PiiDetector {
+  readonly kind: string
+
+  readonly pattern: RegExp
+
+  readonly validate?: (
+    match: string,
+    groups: readonly (string | undefined)[],
+  ) => boolean
+
+  readonly extract?: (match: RegExpMatchArray) => string
+
+  readonly findSpans?: (
+    text: string,
+  ) => ReadonlyArray<{ value: string; start: number; end: number }>
+}
+
+export interface PiiMatch {
+  readonly kind: string
+  readonly value: string
+  readonly start: number
+  readonly end: number
+}
+
+export function luhnValid(digits: string): boolean {
+  if (digits.length === 0 || /\D/.test(digits)) return false
+  let sum = 0
+  let double = false
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let d = digits.charCodeAt(i) - 48
+    if (double) {
+      d *= 2
+      if (d > 9) d -= 9
+    }
+    sum += d
+    double = !double
+  }
+  return sum % 10 === 0
+}
+
+export function cardBrand(digits: string): string | null {
+  if (/^4\d{12}(?:\d{3})?(?:\d{3})?$/.test(digits)) return "visa"
+  if (
+    /^(?:5[1-5]\d{14}|2(?:22[1-9]|2[3-9]\d|[3-6]\d\d|7[01]\d|720)\d{12})$/.test(
+      digits,
+    )
+  ) {
+    return "mastercard"
+  }
+  if (/^3[47]\d{13}$/.test(digits)) return "amex"
+  if (/^(?:6011\d{12}|65\d{14}|64[4-9]\d{13}|622\d{13})$/.test(digits)) {
+    return "discover"
+  }
+  if (/^3(?:0[0-5]\d{11}|[68]\d{12})$/.test(digits)) return "diners"
+  if (/^35(?:2[89]|[3-8]\d)\d{12}$/.test(digits)) return "jcb"
+  return null
+}
+
+function creditCardValid(match: string): boolean {
+  const digits = match.replace(/[\s-]/g, "")
+  if (digits.length < 13 || digits.length > 19) return false
+  return luhnValid(digits) && cardBrand(digits) !== null
+}
+
+export function ssnValid(value: string): boolean {
+  const d = value.replace(/\D/g, "")
+  if (d.length !== 9) return false
+  const area = d.slice(0, 3)
+  const group = d.slice(3, 5)
+  const serial = d.slice(5)
+  if (area === "000" || area === "666" || Number(area) >= 900) return false
+  if (group === "00") return false
+  if (serial === "0000") return false
+  return true
+}
+
+export function ipv4Valid(value: string): boolean {
+  const parts = value.split(".")
+  if (parts.length !== 4) return false
+  return parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255)
+}
+
+export function ibanValid(value: string): boolean {
+  const s = value.replace(/\s/g, "").toUpperCase()
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(s)) return false
+  const rearranged = s.slice(4) + s.slice(0, 4)
+  let remainder = 0
+  for (const ch of rearranged) {
+    const code = ch.charCodeAt(0)
+
+    const chunk = code >= 65 ? String(code - 55) : String.fromCharCode(code)
+    for (const c of chunk) {
+      remainder = (remainder * 10 + (c.charCodeAt(0) - 48)) % 97
+    }
+  }
+  return remainder === 1
+}
+
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+const BASE58_INDEX = new Map(
+  [...BASE58_ALPHABET].map((c, i) => [c, BigInt(i)]),
+)
+
+function base58Decode(input: string): Uint8Array | null {
+  let num = 0n
+  for (const ch of input) {
+    const v = BASE58_INDEX.get(ch)
+    if (v === undefined) return null
+    num = num * 58n + v
+  }
+  const bytes: number[] = []
+  while (num > 0n) {
+    bytes.unshift(Number(num & 0xffn))
+    num >>= 8n
+  }
+  for (const ch of input) {
+    if (ch === "1") bytes.unshift(0)
+    else break
+  }
+  return Uint8Array.from(bytes)
+}
+
+export function wifValid(value: string): boolean {
+  const decoded = base58Decode(value)
+  if (!decoded || (decoded.length !== 37 && decoded.length !== 38)) {
+    return false
+  }
+  const version = decoded[0]
+  if (version !== 0x80 && version !== 0xef) return false
+  if (decoded.length === 38 && decoded[decoded.length - 5] !== 0x01) {
+    return false
+  }
+  const body = decoded.subarray(0, decoded.length - 4)
+  const checksum = decoded.subarray(decoded.length - 4)
+  const h1 = createHash("sha256").update(body).digest() as Uint8Array
+  const h2 = createHash("sha256").update(h1).digest() as Uint8Array
+  for (let i = 0; i < 4; i += 1) {
+    if (h2[i] !== checksum[i]) return false
+  }
+  return true
+}
+
+const IBAN_CANDIDATE = /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?\b/g
+
+const IBAN_LENGTH_BY_COUNTRY: ReadonlyMap<string, number> = new Map(
+  "AD24 AE23 AL28 AO25 AT20 AX18 AZ28 BA20 BE16 BF28 BG22 BH22 BI27 BJ28 BL27 BR29 BY28 CF27 CG27 CH21 CI28 CM27 CR22 CV25 CY28 CZ24 DE22 DJ27 DK18 DO28 DZ26 EE20 EG29 ES24 FI18 FK18 FO18 FR27 GA27 GB22 GE22 GF27 GI23 GL18 GP27 GQ27 GR27 GT28 GW25 HN28 HR21 HU28 IE22 IL23 IQ23 IR26 IS26 IT27 JO30 KM27 KW30 KZ20 LB28 LC32 LI21 LT20 LU20 LV21 LY25 MA28 MC27 MD24 ME22 MF27 MG27 MK19 ML28 MN20 MQ27 MR27 MT31 MU30 MZ25 NC27 NE28 NI28 NL18 NO15 OM23 PF27 PK24 PL28 PM27 PS29 PT25 QA29 RE27 RO24 RS22 RU33 SA24 SC31 SD18 SE24 SI19 SK24 SM27 SN28 SO23 ST25 SV28 TD27 TF27 TG28 TL23 TN24 TR26 UA29 VA22 VG24 WF27 XK20 YE30 YT27"
+    .split(" ")
+    .map((entry) => [entry.slice(0, 2), Number(entry.slice(2))]),
+)
+
+function findIbanSpans(
+  text: string,
+): Array<{ value: string; start: number; end: number }> {
+  const spans: Array<{ value: string; start: number; end: number }> = []
+  IBAN_CANDIDATE.lastIndex = 0
+  for (
+    let match = IBAN_CANDIDATE.exec(text);
+    match;
+    match = IBAN_CANDIDATE.exec(text)
+  ) {
+    let value = match[0]
+    if (!ibanValid(value)) {
+      const length = IBAN_LENGTH_BY_COUNTRY.get(value.slice(0, 2)) ?? 0
+      while (value.replace(/ /g, "").length > length && value.includes(" ")) {
+        value = value.slice(0, value.lastIndexOf(" "))
+      }
+      if (value.replace(/ /g, "").length !== length || !ibanValid(value)) {
+        continue
+      }
+    }
+    spans.push({ value, start: match.index, end: match.index + value.length })
+    IBAN_CANDIDATE.lastIndex = match.index + value.length
+  }
+  return spans
+}
+
+function basicAuthValid(b64: string): boolean {
+  try {
+    const decoded = typeof atob === "function"
+      ? atob(b64)
+      : Buffer.from(b64, "base64").toString("latin1")
+    return decoded.includes(":") && decoded.length >= 3
+  } catch {
+    return false
+  }
+}
+
+export const PII_DETECTORS: readonly PiiDetector[] = [
+  {
+    kind: "email",
+    pattern: /$/g,
+    findSpans: (text) => findBasicEmailSpans(text),
+  },
+
+  {
+    kind: "credit-card",
+    pattern: /\b\d{13,19}\b|\b\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{1,7}\b|\b\d{4}[ -]\d{6}[ -]\d{5}\b/g,
+    validate: (match) => creditCardValid(match),
+  },
+
+  {
+    kind: "ssn",
+    pattern: /\b\d{3}[ -]\d{2}[ -]\d{4}\b/g,
+    validate: (match) => ssnValid(match),
+  },
+
+  {
+    kind: "iban",
+    pattern: IBAN_CANDIDATE,
+    findSpans: (text) => findIbanSpans(text),
+  },
+
+  {
+    kind: "jwt",
+    pattern: /\beyJ[A-Za-z0-9_-]{6,}\.eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\b/g,
+  },
+
+  {
+    kind: "seed-phrase",
+    pattern: /\b(?:[a-zA-Z]{3,8}[ \t]+){11,}[a-zA-Z]{3,8}\b/g,
+    findSpans: (text) => findAllMnemonicPhrases(text),
+  },
+
+  {
+    kind: "wif-private-key",
+    pattern: /\b[5KLc9][1-9A-HJ-NP-Za-km-z]{50,51}\b/g,
+    validate: (match) => wifValid(match),
+  },
+
+  {
+    kind: "url-credentials",
+    pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:[^\s@]+@[^\s"'<>]+/gi,
+    extract: (match) => match[0],
+  },
+
+  {
+    kind: "anthropic-key",
+    pattern: /\bsk-ant-(?:api03|admin01)-[A-Za-z0-9_-]{16,}\b/g,
+  },
+
+  { kind: "stripe-webhook-secret", pattern: /\bwhsec_[A-Za-z0-9]{20,}\b/g },
+
+  {
+    kind: "slack-webhook-url",
+    pattern: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{6,}\/B[A-Z0-9]{6,}\/[A-Za-z0-9]{20,}/g,
+  },
+
+  {
+    kind: "basic-auth-header",
+    pattern: /\bAuthorization\s*:\s*Basic\s+([A-Za-z0-9+/]{12,}={0,2})/gi,
+    validate: (_match, groups) => typeof groups[0] === "string" && basicAuthValid(groups[0]),
+  },
+
+  {
+    kind: "google-oauth-refresh-token",
+    pattern: /(?<![\w/])1\/\/[0-9A-Za-z_-]{20,}\b/g,
+  },
+
+  {
+    kind: "telegram-bot-token",
+    pattern: /\b\d{8,10}:AA[A-Za-z0-9_-]{30,}\b/g,
+  },
+
+  {
+    kind: "pgp-private-key",
+    pattern:
+      /-----BEGIN PGP PRIVATE KEY BLOCK-----(?:(?!-----BEGIN PGP PRIVATE KEY BLOCK-----)[\s\S])+?(?:-----END PGP PRIVATE KEY BLOCK-----|(?=-----BEGIN PGP PRIVATE KEY BLOCK-----))|-----BEGIN PGP PRIVATE KEY BLOCK-----(?=-----BEGIN PGP PRIVATE KEY BLOCK-----)/g,
+  },
+
+  {
+    kind: "aws-access-key",
+    pattern: /\b(?:AKIA|ASIA|AROA|AIDA|AGPA|ANPA|ANVA|AIPA)[0-9A-Z]{16}\b/g,
+  },
+
+  {
+    kind: "stripe-key",
+    pattern: /\b(?:sk|rk|pk)_(?:live|test)_[0-9A-Za-z]{16,}\b/g,
+  },
+
+  { kind: "google-api-key", pattern: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+
+  {
+    kind: "github-token",
+    pattern: /\b(?:ghp|gho|ghu|ghs|ghr)_[0-9A-Za-z]{36}\b|\bgithub_pat_[0-9A-Za-z_]{22,}\b/g,
+  },
+
+  { kind: "openai-key", pattern: /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/g },
+
+  { kind: "slack-token", pattern: /\bxox[baprs]-[0-9A-Za-z-]{10,}\b/g },
+
+  {
+    kind: "private-key",
+    pattern:
+      /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----(?:(?!-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----)[\s\S])+?(?:-----END (?:[A-Z]+ )?PRIVATE KEY-----|(?=-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----))|-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----(?=-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----)/g,
+  },
+
+  { kind: "hex-secret", pattern: /\b0[xX][a-fA-F0-9]{64}\b/g },
+
+  {
+    kind: "mac-address",
+    pattern: /\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b/g,
+  },
+
+  {
+    kind: "ipv4",
+    pattern: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
+    validate: (match) => ipv4Valid(match),
+  },
+
+  {
+    kind: "phone",
+    pattern: /(?<!\d)(?:\+?1[ .-]?)?(?:\(\d{3}\)[ .-]?|\d{3}[ .-])\d{3}[ .-]?\d{4}(?!\d)|\+[1-9]\d{7,14}(?!\d)/g,
+  },
+]
+
+export const PII_DETECTOR_BY_KIND: ReadonlyMap<string, PiiDetector> = new Map(
+  PII_DETECTORS.map((d) => [d.kind, d]),
+)
+
+function extractValue(detector: PiiDetector, match: RegExpMatchArray): string {
+  if (detector.extract) return detector.extract(match)
+  const groups = match.slice(1).filter((g): g is string => Boolean(g))
+  return groups.length > 0 ? (groups[groups.length - 1] as string) : match[0]
+}
+
+export function detectPii(
+  text: string,
+  options: { disabledKinds?: ReadonlySet<string> } = {},
+): PiiMatch[] {
+  const disabled = options.disabledKinds
+  const candidates: PiiMatch[] = []
+  for (const detector of PII_DETECTORS) {
+    if (disabled?.has(detector.kind)) continue
+    if (detector.findSpans) {
+      for (const span of detector.findSpans(text)) {
+        if (span.value) {
+          candidates.push({
+            kind: detector.kind,
+            value: span.value,
+            start: span.start,
+            end: span.end,
+          })
+        }
+      }
+      continue
+    }
+    detector.pattern.lastIndex = 0
+    for (const match of text.matchAll(detector.pattern)) {
+      const whole = match[0]
+      if (detector.validate && !detector.validate(whole, match.slice(1))) {
+        continue
+      }
+      const value = extractValue(detector, match)
+      if (!value) continue
+      const start = (match.index ?? 0) + whole.indexOf(value)
+      candidates.push({
+        kind: detector.kind,
+        value,
+        start,
+        end: start + value.length,
+      })
+    }
+  }
+
+  candidates.sort(
+    (a, b) => b.value.length - a.value.length || a.start - b.start,
+  )
+  const kept: PiiMatch[] = []
+  for (const cand of candidates) {
+    const overlaps = kept.some((k) => cand.start < k.end && k.start < cand.end)
+    if (!overlaps) kept.push(cand)
+  }
+  kept.sort((a, b) => a.start - b.start)
+  return kept
+}

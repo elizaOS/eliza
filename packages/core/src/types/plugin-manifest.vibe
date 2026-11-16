@@ -1,0 +1,12 @@
+export interface PluginAutoEnableContext {
+  env: NodeJS.ProcessEnv
+
+  config: Record<string, unknown>
+
+  isNativePlatform: boolean
+}
+
+export interface PluginAutoEnableModule {
+  shouldEnable: (ctx: PluginAutoEnableContext) => boolean | Promise<boolean>
+  shouldForce?: (ctx: PluginAutoEnableContext) => boolean
+}

@@ -1,0 +1,114 @@
+import type { ReportedError } from "../errors.vibe"
+import { logger } from "../logger.vibe"
+import type { Provider, ProviderResult } from "../types/components.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import type { State } from "../types/state.vibe"
+import { deepToWellFormedUnicode } from "../utils/unicode.vibe"
+
+const ERROR_MAX_AGE_MS = 30 * 60 * 1000
+
+export const QUIET_ERROR_CODES: ReadonlySet<string> = new Set([
+  "TASK_TICK_FAILED",
+  "TASK_WORKER_MISSING",
+  "TASK_QUERY_FAILED",
+  "TASK_ORPHAN_QUARANTINE_FAILED",
+
+  "PROVIDER_COMPOSITION_ABORTED",
+  "TURN_ABORTED",
+])
+
+const PROVIDER_THROTTLE_PATTERN = /too many requests|rate[ _-]?limit|tokens? per minute|requests? per minute|\b429\b/i
+
+export function isProviderThrottleReport(
+  entry: Pick<ReportedError, "message" | "context">,
+): boolean {
+  if (PROVIDER_THROTTLE_PATTERN.test(entry.message)) return true
+  const context = entry.context
+  if (!context) return false
+  const status = (context as { status?: unknown }).status
+    ?? (context as { providerError?: { status?: unknown } }).providerError?.status
+  return status === 429
+}
+
+function emptyResult(): ProviderResult {
+  return {
+    data: { recentErrors: [] },
+    values: { recentErrors: "" },
+    text: "",
+  }
+}
+
+export function serializeContext(
+  context: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!context || Object.keys(context).length === 0) return undefined
+  try {
+    return JSON.stringify(deepToWellFormedUnicode(context))
+  } catch {
+    return undefined
+  }
+}
+
+function selectRecentErrors(
+  entries: ReportedError[],
+  now: number,
+): ReportedError[] {
+  const newestByCode = new Map<string, ReportedError>()
+  for (const entry of entries) {
+    if (now - entry.at > ERROR_MAX_AGE_MS) continue
+    if (entry.context?.diagnosticOnly === true) continue
+
+    if (QUIET_ERROR_CODES.has(entry.code)) continue
+    if (isProviderThrottleReport(entry)) continue
+    const existing = newestByCode.get(entry.code)
+    if (!existing || entry.at >= existing.at) {
+      newestByCode.set(entry.code, entry)
+    }
+  }
+  return [...newestByCode.values()].sort((a, b) => b.at - a.at)
+}
+
+function renderText(
+  selected: ReportedError[],
+  redact: (text: string) => string,
+): string {
+  const lines = selected.map((entry) => {
+    const ctx = serializeContext(entry.context)
+    const suffix = ctx ? ` — ${redact(ctx)}` : ""
+    return `- [${entry.scope}] ${entry.code}: ${redact(entry.message)}${suffix}`
+  })
+  return `Runtime errors (diagnostics, not user requests):\n${lines.join("\n")}`
+}
+
+export const recentErrorsProvider: Provider = {
+  name: "RECENT_ERRORS",
+  description: "Recent runtime failures reported outside the action path (deduped by code)",
+  dynamic: true,
+
+  contexts: ["system"],
+  contextGate: { anyOf: ["system"] },
+
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ): Promise<ProviderResult> => {
+    const entries = runtime.getRecentReportedErrors()
+    if (entries.length === 0) return emptyResult()
+
+    const selected = selectRecentErrors(entries, Date.now())
+    if (selected.length === 0) return emptyResult()
+
+    const text = renderText(selected, (value) => runtime.redactSecrets(value))
+    logger.debug(
+      { src: "agent", count: selected.length },
+      "[RecentErrorsProvider] Surfacing recent reported errors",
+    )
+    return {
+      data: { recentErrors: selected },
+      values: { recentErrors: text },
+      text,
+    }
+  },
+}

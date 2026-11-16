@@ -1,0 +1,130 @@
+import { getAmbientSingleton, setAmbientSingleton } from "./ambient-context.vibe"
+import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution.vibe"
+import type { PseudonymSession } from "./security/pii-pseudonymizer.vibe"
+import type { SecretSwapSession } from "./security/secret-swap.vibe"
+import type { RoleGateRole } from "./types/contexts.vibe"
+import type { State } from "./types/state.vibe"
+import { AsyncContextManager } from "./utils/async-context-manager.vibe"
+
+export interface TrajectoryContext {
+  trajectoryId?: string
+  trajectoryStepId?: string
+
+  activateTaskCapture?: () => Promise<
+    { trajectoryId: string; trajectoryStepId: string } | undefined
+  >
+
+  activateChildStep?: () =>
+    | { trajectoryId: string; trajectoryStepId: string; parentStepId: string }
+    | undefined
+
+  traceId?: string
+
+  runId?: string
+
+  roomId?: string
+
+  messageId?: string
+
+  userRole?: RoleGateRole
+
+  turnMemo?: Map<string, Promise<unknown>>
+
+  purpose?: string
+
+  evaluatorName?: string
+
+  providerOrder?: string[]
+  providerAttributions?: TrajectoryProviderAttribution[]
+
+  providerAttributionState?: State
+
+  secretSwapSession?: SecretSwapSession
+
+  piiSwapSession?: PseudonymSession
+
+  parentStepId?: string
+}
+
+export interface ITrajectoryContextManager {
+  run<T>(
+    context: TrajectoryContext | undefined,
+    fn: () => T | Promise<T>,
+  ): T | Promise<T>
+  active(): TrajectoryContext | undefined
+}
+
+const TRAJECTORY_CONTEXT_MANAGER_KEY = Symbol.for(
+  "elizaos.trajectoryContextManager",
+)
+
+function createTrajectoryContextManager(): ITrajectoryContextManager {
+  return new AsyncContextManager<TrajectoryContext | undefined>()
+}
+
+export function setTrajectoryContextManager(
+  manager: ITrajectoryContextManager,
+): void {
+  setAmbientSingleton(TRAJECTORY_CONTEXT_MANAGER_KEY, manager)
+}
+
+export function getTrajectoryContextManager(): ITrajectoryContextManager {
+  return getAmbientSingleton(
+    TRAJECTORY_CONTEXT_MANAGER_KEY,
+    createTrajectoryContextManager,
+  )
+}
+
+export function runWithTrajectoryContext<T>(
+  context: TrajectoryContext | undefined,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  return getTrajectoryContextManager().run(context, fn)
+}
+
+export function getTrajectoryContext(): TrajectoryContext | undefined {
+  return getTrajectoryContextManager().active()
+}
+
+export function memoizeTurnWork<T>(
+  key: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const memo = getTrajectoryContext()?.turnMemo
+  if (!memo) return work()
+  const cached = memo.get(key)
+  if (cached) return cached as Promise<T>
+
+  const promise = work()
+  memo.set(key, promise)
+
+  void promise.catch(() => {
+    if (memo.get(key) === promise) memo.delete(key)
+  })
+  return promise
+}
+
+export function invalidateTurnMemo(key: string): void {
+  getTrajectoryContext()?.turnMemo?.delete(key)
+}
+
+export function invalidateTurnMemoPrefix(prefix: string): void {
+  const memo = getTrajectoryContext()?.turnMemo
+  if (!memo) return
+  for (const key of memo.keys()) {
+    if (key.startsWith(prefix)) memo.delete(key)
+  }
+}
+
+export function runWithTrajectoryPurpose<T>(
+  purpose: string,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  const manager = getTrajectoryContextManager()
+  return manager.run({ ...manager.active(), purpose }, fn)
+}
+
+export function setTrajectoryPurpose(purpose: string): void {
+  const ctx = getTrajectoryContextManager().active()
+  if (ctx) ctx.purpose = purpose
+}

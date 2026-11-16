@@ -1,0 +1,80 @@
+import type { Metadata } from "./primitives.vibe"
+import type { IAgentRuntime } from "./runtime.vibe"
+
+type CoreServiceTypeRegistry = typeof ServiceType
+
+export interface ServiceTypeRegistry extends CoreServiceTypeRegistry {}
+
+export type ServiceTypeName = ServiceTypeRegistry[keyof ServiceTypeRegistry]
+
+export const ServiceType = {
+  TRANSCRIPTION: "transcription",
+  VIDEO: "video",
+  BROWSER: "browser",
+  PDF: "pdf",
+  REMOTE_FILES: "aws_s3",
+  TUNNEL: "tunnel",
+  WEB_SEARCH: "web_search",
+  EMAIL: "email",
+  TEE: "tee",
+  TASK: "task",
+  APPROVAL: "approval",
+  WALLET: "wallet",
+  LP_POOL: "lp_pool",
+  TOKEN_DATA: "token_data",
+  MESSAGE_SERVICE: "message_service",
+  MESSAGE: "message",
+  POST: "post",
+  HOOKS: "hooks",
+  PAIRING: "pairing",
+  CONNECTOR_ACCOUNT: "connector_account",
+  CONNECTOR_ACCOUNT_STORAGE: "connector_account_storage",
+  AGENT_EVENT: "agent_event",
+  CONTROL_TRANSPORT: "control_transport",
+  NOTIFICATION: "notification",
+  MEDIA_GENERATION: "media_generation",
+  VOICE_CACHE: "voice_cache",
+  OPTIMIZED_PROMPT: "optimized_prompt",
+  CHANNEL_TOPICS: "channel_topics",
+  COMMANDS: "commands",
+  MOBILE_DEVICE_BRIDGE: "mobile_device_bridge",
+  SCREEN_CAPTURE: "screen_capture",
+  DOCUMENTS: "documents",
+  RELATIONSHIPS: "relationships",
+  PRINCIPAL: "principal",
+  MEMBERSHIP: "membership",
+  FOLLOW_UP: "follow_up",
+  TRAJECTORIES: "trajectories",
+  SWARM_COORDINATOR: "SWARM_COORDINATOR",
+  UNKNOWN: "unknown",
+} as const
+
+export abstract class Service {
+  protected runtime!: IAgentRuntime
+
+  constructor(runtime?: IAgentRuntime) {
+    if (runtime) {
+      this.runtime = runtime
+    }
+  }
+
+  abstract stop(): Promise<void>
+
+  prepareStop?(_reason: string): void
+
+  static serviceType: string
+
+  static allowsMultiple?: boolean
+
+  abstract capabilityDescription: string
+
+  config?: Metadata
+
+  static async start(_runtime: IAgentRuntime): Promise<Service> {
+    throw new Error("Service.start() must be implemented by subclass")
+  }
+
+  static stopRuntime?(_runtime: IAgentRuntime): Promise<void>
+
+  static registerSendHandlers?(runtime: IAgentRuntime, service: Service): void
+}

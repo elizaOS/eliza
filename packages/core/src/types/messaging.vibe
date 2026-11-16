@@ -1,0 +1,522 @@
+import type { Memory } from "./memory.vibe"
+import type { Content, Metadata, UUID } from "./primitives.vibe"
+import type { IAgentRuntime } from "./runtime.vibe"
+
+export interface TargetInfo {
+  source: string
+  channelId?: string
+  serverId?: string
+  threadId?: string
+
+  parentChannelId?: string
+
+  accountId?: string
+  roomId?: UUID
+  entityId?: UUID
+
+  responseMemoryId?: UUID
+}
+
+export interface SendHandlerPersistenceFailure {
+  providerMessageId: string
+
+  stage: "connection" | "memory"
+  code: string
+  message: string
+}
+
+export type SendHandlerPersistence =
+  | {
+    status: "persisted"
+    memoryIds: readonly UUID[]
+  }
+  | {
+    status: "partial"
+    memoryIds: readonly UUID[]
+    failures: readonly SendHandlerPersistenceFailure[]
+  }
+  | {
+    status: "failed"
+    failures: readonly SendHandlerPersistenceFailure[]
+  }
+  | {
+    status: "not_attempted"
+    reason: string
+  }
+
+export interface SendHandlerReceipt {
+  providerMessageIds: readonly [string, ...string[]]
+  acceptedAt: number
+  persistence: SendHandlerPersistence
+
+  evidenceKind?: "provider" | "local-effect"
+}
+
+export function primarySendHandlerProviderMessageId(
+  receipt: SendHandlerReceipt,
+): string | undefined {
+  if (receipt.evidenceKind === "local-effect") return undefined
+  return receipt.providerMessageIds[receipt.providerMessageIds.length - 1]
+}
+
+export type SendHandlerOutcome =
+  | {
+    kind: "delivered"
+    receipt: SendHandlerReceipt
+    memories: readonly Memory[]
+  }
+  | {
+    kind: "partially_delivered"
+    receipt: SendHandlerReceipt
+    memories: readonly Memory[]
+    code: string
+    message: string
+  }
+  | {
+    kind: "duplicate"
+    priorDelivery: "in_flight"
+  }
+  | {
+    kind: "duplicate"
+    priorDelivery: "delivered" | "partially_delivered"
+    receipt: SendHandlerReceipt
+  }
+  | {
+    kind: "not_delivered"
+    code: string
+    message: string
+  }
+
+export type SendHandlerResult = Promise<
+  Memory | SendHandlerOutcome | undefined | void
+>
+
+export type PostHandlerResult = Promise<Memory | Memory[] | undefined | void>
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return (
+    Array.isArray(value)
+    && value.every((item) => typeof item === "string" && item.trim().length > 0)
+  )
+}
+
+function isPersistenceFailure(
+  value: unknown,
+): value is SendHandlerPersistenceFailure {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<SendHandlerPersistenceFailure>
+  return (
+    typeof candidate.providerMessageId === "string"
+    && candidate.providerMessageId.trim().length > 0
+    && (candidate.stage === "connection" || candidate.stage === "memory")
+    && typeof candidate.code === "string"
+    && typeof candidate.message === "string"
+  )
+}
+
+function isSendHandlerPersistence(
+  value: unknown,
+): value is SendHandlerPersistence {
+  if (typeof value !== "object" || value === null || !("status" in value)) {
+    return false
+  }
+  const candidate = value as Record<string, unknown>
+  if (candidate.status === "persisted") {
+    return isStringArray(candidate.memoryIds)
+  }
+  if (candidate.status === "partial") {
+    return (
+      isStringArray(candidate.memoryIds)
+      && Array.isArray(candidate.failures)
+      && candidate.failures.length > 0
+      && candidate.failures.every(isPersistenceFailure)
+    )
+  }
+  if (candidate.status === "failed") {
+    return (
+      Array.isArray(candidate.failures)
+      && candidate.failures.length > 0
+      && candidate.failures.every(isPersistenceFailure)
+    )
+  }
+  return (
+    candidate.status === "not_attempted"
+    && typeof candidate.reason === "string"
+    && candidate.reason.trim().length > 0
+  )
+}
+
+function isSendHandlerReceipt(value: unknown): value is SendHandlerReceipt {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<SendHandlerReceipt>
+  if (!isStringArray(candidate.providerMessageIds)) return false
+  if (candidate.providerMessageIds.length <= 0) return false
+  if (typeof candidate.acceptedAt !== "number") return false
+  if (!Number.isFinite(candidate.acceptedAt)) return false
+
+  if (
+    candidate.evidenceKind !== undefined
+    && candidate.evidenceKind !== "provider"
+    && candidate.evidenceKind !== "local-effect"
+  ) {
+    return false
+  }
+  return isSendHandlerPersistence(candidate.persistence)
+}
+
+export function isSendHandlerOutcome(
+  value: unknown,
+): value is SendHandlerOutcome {
+  if (typeof value !== "object" || value === null || !("kind" in value)) {
+    return false
+  }
+  const candidate = value as Record<string, unknown>
+  if (candidate.kind === "not_delivered") {
+    return (
+      typeof candidate.code === "string"
+      && typeof candidate.message === "string"
+    )
+  }
+  if (candidate.kind === "delivered") {
+    return (
+      isSendHandlerReceipt(candidate.receipt)
+      && Array.isArray(candidate.memories)
+    )
+  }
+  if (candidate.kind === "partially_delivered") {
+    return (
+      isSendHandlerReceipt(candidate.receipt)
+      && Array.isArray(candidate.memories)
+      && typeof candidate.code === "string"
+      && typeof candidate.message === "string"
+    )
+  }
+  if (candidate.kind !== "duplicate") return false
+  if (candidate.priorDelivery === "in_flight") return true
+  return (
+    (candidate.priorDelivery === "delivered"
+      || candidate.priorDelivery === "partially_delivered")
+    && isSendHandlerReceipt(candidate.receipt)
+  )
+}
+
+export type SendHandlerDisposition =
+  | {
+    kind: "delivered"
+    replayed: boolean
+    receipt?: SendHandlerReceipt
+    providerMessageId?: string
+    memories: readonly Memory[]
+  }
+  | {
+    kind: "partially_delivered"
+    replayed: boolean
+    receipt: SendHandlerReceipt
+    providerMessageId?: string
+    memories: readonly Memory[]
+    code: string
+    message: string
+  }
+  | {
+    kind: "in_flight"
+    message: string
+  }
+  | {
+    kind: "not_delivered"
+    code: string
+    message: string
+  }
+  | {
+    kind: "unknown"
+    message: string
+  }
+
+function memoryProviderMessageId(memory: Memory): string | undefined {
+  const metadata = typeof memory.metadata === "object" && memory.metadata !== null
+    ? (memory.metadata as Record<string, unknown>)
+    : undefined
+  for (
+    const field of [
+      "platformMessageId",
+      "discordMessageId",
+      "messageIdFull",
+    ] as const
+  ) {
+    const value = metadata?.[field]
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value
+    }
+  }
+  return typeof memory.id === "string" ? memory.id : undefined
+}
+
+export function inspectSendHandlerResult(
+  value: Awaited<SendHandlerResult>,
+): SendHandlerDisposition {
+  if (!value) {
+    return {
+      kind: "unknown",
+      message: "The connector returned no delivery evidence; provider acceptance is unknown.",
+    }
+  }
+  if (
+    typeof value === "object"
+    && value !== null
+    && "kind" in value
+    && !isSendHandlerOutcome(value)
+  ) {
+    return {
+      kind: "unknown",
+      message: "The connector returned an invalid structural delivery outcome; provider acceptance is unknown.",
+    }
+  }
+  if (!isSendHandlerOutcome(value)) {
+    return {
+      kind: "delivered",
+      replayed: false,
+      providerMessageId: memoryProviderMessageId(value),
+      memories: [value],
+    }
+  }
+  if (value.kind === "delivered") {
+    return {
+      kind: "delivered",
+      replayed: false,
+      receipt: value.receipt,
+      providerMessageId: primarySendHandlerProviderMessageId(value.receipt),
+      memories: value.memories,
+    }
+  }
+  if (value.kind === "partially_delivered") {
+    return {
+      kind: "partially_delivered",
+      replayed: false,
+      receipt: value.receipt,
+      providerMessageId: primarySendHandlerProviderMessageId(value.receipt),
+      memories: value.memories,
+      code: value.code,
+      message: value.message,
+    }
+  }
+  if (value.kind === "not_delivered") {
+    return value
+  }
+  if (value.priorDelivery === "in_flight") {
+    return {
+      kind: "in_flight",
+      message: "A matching connector delivery is still in flight; completion is not confirmed.",
+    }
+  }
+  if (value.priorDelivery === "delivered") {
+    return {
+      kind: "delivered",
+      replayed: true,
+      receipt: value.receipt,
+      providerMessageId: primarySendHandlerProviderMessageId(value.receipt),
+      memories: [],
+    }
+  }
+  return {
+    kind: "partially_delivered",
+    replayed: true,
+    receipt: value.receipt,
+    providerMessageId: primarySendHandlerProviderMessageId(value.receipt),
+    memories: [],
+    code: "CONNECTOR_PARTIAL_DELIVERY_REPLAY",
+    message: "A prior matching attempt completed only part of the transport payload.",
+  }
+}
+
+export function requireConfirmedSendHandlerDelivery(
+  value: Awaited<SendHandlerResult>,
+): Extract<SendHandlerDisposition, { kind: "delivered" }> {
+  const disposition = inspectSendHandlerResult(value)
+  if (disposition.kind !== "delivered") {
+    throw new Error(
+      `Connector delivery is not confirmed: ${disposition.message}`,
+    )
+  }
+  if (
+    disposition.receipt
+    && (disposition.receipt.persistence.status === "partial"
+      || disposition.receipt.persistence.status === "failed")
+  ) {
+    const acceptance = disposition.receipt.evidenceKind === "local-effect"
+      ? "The local transport reported completion without provider message IDs"
+      : `The provider accepted messages ${disposition.receipt.providerMessageIds.join(", ")}`
+    throw new Error(
+      `${acceptance}, but local delivery evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
+    )
+  }
+  return disposition
+}
+
+export const SEND_HANDLER_NOT_FOUND = "SEND_HANDLER_NOT_FOUND" as const
+
+export type SendHandlerFunction = (
+  runtime: IAgentRuntime,
+  target: TargetInfo,
+  content: Content,
+) => SendHandlerResult
+
+export type ControlMessageAction = "disable_input" | "enable_input"
+
+export interface UIControlPayload {
+  action: ControlMessageAction
+
+  target?: string
+
+  reason?: string
+
+  duration?: number
+}
+
+export interface ControlMessage {
+  type: "control"
+
+  payload: UIControlPayload
+
+  roomId: UUID
+}
+
+export interface MessageServer {
+  id: UUID
+  name: string
+  sourceType: string
+  sourceId?: string
+  metadata?: Metadata
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface MessagingChannel {
+  id: UUID
+  messageServerId: UUID
+  name: string
+  type: string
+  sourceType?: string
+  sourceId?: string
+  topic?: string
+  metadata?: Metadata
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface MessagingMessage {
+  id: UUID
+  channelId: UUID
+  authorId: UUID
+  content: string
+  rawMessage?: Record<string, unknown>
+  sourceType?: string
+  sourceId?: string
+  metadata?: Metadata
+  inReplyToRootMessageId?: UUID
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface IMessagingAdapter {
+  createMessageServer(data: {
+    id?: UUID
+    name: string
+    sourceType: string
+    sourceId?: string
+    metadata?: Metadata
+  }): Promise<MessageServer>
+
+  getMessageServers(): Promise<MessageServer[]>
+
+  getMessageServerById(serverId: UUID): Promise<MessageServer | null>
+
+  getMessageServerByRlsServerId(
+    rlsServerId: UUID,
+  ): Promise<MessageServer | null>
+
+  addAgentToMessageServer(messageServerId: UUID, agentId: UUID): Promise<void>
+
+  getAgentsForMessageServer(messageServerId: UUID): Promise<UUID[]>
+
+  removeAgentFromMessageServer(
+    messageServerId: UUID,
+    agentId: UUID,
+  ): Promise<void>
+
+  createChannel(
+    data: {
+      id?: UUID
+      messageServerId: UUID
+      name: string
+      type: string
+      sourceType?: string
+      sourceId?: string
+      topic?: string
+      metadata?: Metadata
+    },
+    participantIds?: UUID[],
+  ): Promise<MessagingChannel>
+
+  getChannelsForMessageServer(
+    messageServerId: UUID,
+  ): Promise<MessagingChannel[]>
+
+  getChannelDetails(channelId: UUID): Promise<MessagingChannel | null>
+
+  updateChannel(
+    channelId: UUID,
+    updates: {
+      name?: string
+      participantCentralUserIds?: UUID[]
+      metadata?: Metadata
+    },
+  ): Promise<MessagingChannel>
+
+  deleteChannel(channelId: UUID): Promise<void>
+
+  addChannelParticipants(channelId: UUID, entityIds: UUID[]): Promise<void>
+
+  getChannelParticipants(channelId: UUID): Promise<UUID[]>
+
+  isChannelParticipant(channelId: UUID, entityId: UUID): Promise<boolean>
+
+  createMessage(data: {
+    channelId: UUID
+    authorId: UUID
+    content: string
+    rawMessage?: Record<string, unknown>
+    sourceType?: string
+    sourceId?: string
+    metadata?: Metadata
+    inReplyToRootMessageId?: UUID
+    messageId?: UUID
+  }): Promise<MessagingMessage>
+
+  getMessageById(id: UUID): Promise<MessagingMessage | null>
+
+  updateMessage(
+    id: UUID,
+    patch: {
+      content?: string
+      rawMessage?: Record<string, unknown>
+      sourceType?: string
+      sourceId?: string
+      metadata?: Metadata
+      inReplyToRootMessageId?: UUID
+    },
+  ): Promise<MessagingMessage | null>
+
+  getMessagesForChannel(
+    channelId: UUID,
+    limit?: number,
+    beforeTimestamp?: Date,
+    beforeMessageId?: UUID,
+  ): Promise<MessagingMessage[]>
+
+  deleteMessage(messageId: UUID): Promise<void>
+
+  findOrCreateDmChannel(
+    user1Id: UUID,
+    user2Id: UUID,
+    messageServerId: UUID,
+  ): Promise<MessagingChannel>
+}

@@ -1,0 +1,125 @@
+import type { NavigateViewDetail } from "../events.vibe"
+import { NAVIGATE_VIEW_EVENT, normalizeCompletedActionHandoffId } from "../events.vibe"
+
+export function createCompletedActionNavigationState(readPath: () => string) {
+  const MAX_TRACKED_HANDOFFS = 256
+  const handledHandoffs = new Set<string>()
+  const pendingHandoffs = new Map<
+    string,
+    {
+      navigationEpoch: number
+      path: string
+    }
+  >()
+  let navigationEpoch = 0
+  let observedWindow: Window | undefined
+  function advanceNavigationEpoch(): void {
+    navigationEpoch += 1
+  }
+  function observeNavigationEpoch(): void {
+    if (typeof window === "undefined" || observedWindow === window) return
+    observedWindow?.removeEventListener("popstate", advanceNavigationEpoch)
+    observedWindow?.removeEventListener("hashchange", advanceNavigationEpoch)
+    observedWindow = window
+    observedWindow.addEventListener("popstate", advanceNavigationEpoch)
+    observedWindow.addEventListener("hashchange", advanceNavigationEpoch)
+  }
+
+  function captureCompletedActionNavigationFence(): () => boolean {
+    observeNavigationEpoch()
+    const initialWindow = observedWindow
+    const initialEpoch = navigationEpoch
+    const initialPath = readPath()
+    return () =>
+      observedWindow === initialWindow
+      && navigationEpoch === initialEpoch
+      && readPath() === initialPath
+  }
+  function rememberHandledHandoff(id: string): void {
+    pendingHandoffs.delete(id)
+    handledHandoffs.delete(id)
+    handledHandoffs.add(id)
+    while (handledHandoffs.size > MAX_TRACKED_HANDOFFS) {
+      const oldest = handledHandoffs.values().next().value
+      if (typeof oldest !== "string") break
+      handledHandoffs.delete(oldest)
+    }
+  }
+  function rememberPendingHandoff(
+    id: string,
+    snapshot: {
+      navigationEpoch: number
+      path: string
+    },
+  ): void {
+    pendingHandoffs.delete(id)
+    pendingHandoffs.set(id, snapshot)
+    while (pendingHandoffs.size > MAX_TRACKED_HANDOFFS) {
+      const oldest = pendingHandoffs.keys().next().value
+      if (typeof oldest !== "string") break
+      pendingHandoffs.delete(oldest)
+    }
+  }
+
+  function dispatchCompletedActionNavigation(
+    detail: NavigateViewDetail,
+  ): boolean {
+    if (typeof window === "undefined") return false
+    observeNavigationEpoch()
+    const id = normalizeCompletedActionHandoffId(
+      detail.completedActionHandoffId,
+    )
+    if (id && handledHandoffs.has(id)) return false
+    const path = readPath()
+    const pending = id ? pendingHandoffs.get(id) : undefined
+    if (
+      id
+      && pending
+      && (pending.navigationEpoch !== navigationEpoch || pending.path !== path)
+    ) {
+      rememberHandledHandoff(id)
+      return false
+    }
+    const snapshot = { navigationEpoch, path }
+    const event = new CustomEvent<NavigateViewDetail>(NAVIGATE_VIEW_EVENT, {
+      detail,
+      cancelable: true,
+    })
+    window.dispatchEvent(event)
+    if (id) {
+      if (event.defaultPrevented) rememberHandledHandoff(id)
+      else if (!pending) rememberPendingHandoff(id, snapshot)
+    }
+    return true
+  }
+
+  function markCompletedActionNavigationHandled(
+    event: Event,
+    detail: NavigateViewDetail | undefined,
+  ): void {
+    if (
+      !event.cancelable
+      || !normalizeCompletedActionHandoffId(detail?.completedActionHandoffId)
+    ) {
+      return
+    }
+    event.preventDefault()
+  }
+
+  function resetCompletedActionNavigationForTests(): void {
+    handledHandoffs.clear()
+    pendingHandoffs.clear()
+    observedWindow?.removeEventListener("popstate", advanceNavigationEpoch)
+    observedWindow?.removeEventListener("hashchange", advanceNavigationEpoch)
+    observedWindow = undefined
+    navigationEpoch = 0
+  }
+
+  return {
+    captureCompletedActionNavigationFence,
+    dispatchCompletedActionNavigation,
+    markCompletedActionNavigationHandled,
+    resetCompletedActionNavigationForTests,
+    dispose: resetCompletedActionNavigationForTests,
+  }
+}

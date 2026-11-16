@@ -1,0 +1,88 @@
+import { ElizaError } from "../errors.vibe"
+import { runWithTrajectoryPurpose } from "../trajectory-context.vibe"
+import { type GenerateTextParams, ModelType } from "../types/model.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+
+type ModelTypeValue = (typeof ModelType)[keyof typeof ModelType]
+
+export interface ExtractorPipelineResult<TParsed> {
+  parsed: TParsed | null
+
+  raw: string
+
+  repaired: boolean
+}
+
+export interface RunExtractorPipelineArgs<TParsed> {
+  runtime: IAgentRuntime
+  prompt: string
+
+  system?: string
+
+  responseFormat?: GenerateTextParams["responseFormat"]
+
+  parser: (raw: string) => TParsed | null
+
+  buildRepairPrompt?: (rawFirstPass: string) => string
+
+  modelType?: ModelTypeValue
+}
+
+function asString(value: unknown): string {
+  if (typeof value === "string") return value
+  throw new ElizaError("Extractor model returned a non-text response", {
+    code: "EXTRACTOR_NON_TEXT_RESPONSE",
+    context: { responseType: typeof value },
+  })
+}
+
+export async function runExtractorPipeline<TParsed>(
+  args: RunExtractorPipelineArgs<TParsed>,
+): Promise<ExtractorPipelineResult<TParsed>> {
+  const { runtime, prompt, parser, buildRepairPrompt } = args
+  const modelType = args.modelType ?? ModelType.TEXT_LARGE
+  const callOptions = {
+    ...(args.system !== undefined ? { system: args.system } : {}),
+    ...(args.responseFormat !== undefined
+      ? { responseFormat: args.responseFormat }
+      : {}),
+  }
+
+  try {
+    const firstResult = await runWithTrajectoryPurpose(
+      "lifeops-extractor-first-pass",
+      () => runtime.useModel(modelType, { prompt, ...callOptions }),
+    )
+    const firstRaw = asString(firstResult)
+    const firstParsed = parser(firstRaw)
+    if (firstParsed !== null) {
+      return { parsed: firstParsed, raw: firstRaw, repaired: false }
+    }
+
+    if (!buildRepairPrompt) {
+      return { parsed: null, raw: firstRaw, repaired: false }
+    }
+
+    const repairResult = await runWithTrajectoryPurpose(
+      "lifeops-extractor-repair-pass",
+      () =>
+        runtime.useModel(modelType, {
+          prompt: buildRepairPrompt(firstRaw),
+          ...callOptions,
+        }),
+    )
+    const repairRaw = asString(repairResult)
+    const repairParsed = parser(repairRaw)
+    return { parsed: repairParsed, raw: repairRaw, repaired: true }
+  } catch (error) {
+    runtime.reportError("ExtractorPipeline.model", error, { modelType })
+    runtime.logger.warn(
+      {
+        src: "lifeops:extractor-pipeline",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Extractor pipeline model call failed",
+    )
+    throw error
+  }
+}

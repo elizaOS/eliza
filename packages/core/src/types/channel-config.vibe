@@ -1,0 +1,168 @@
+import type { NormalizedChatType } from "../utils/channel-utils.vibe"
+
+export type TypingMode = "never" | "instant" | "thinking" | "message"
+
+export type SessionScope = "per-sender" | "global"
+
+export type DmScope =
+  | "main"
+  | "per-peer"
+  | "per-channel-peer"
+  | "per-account-channel-peer"
+
+export type ReplyToMode = "off" | "first" | "all"
+
+export type GroupPolicy = "open" | "disabled" | "allowlist"
+
+export type DmPolicy = "pairing" | "allowlist" | "open" | "disabled"
+
+export type OutboundRetryConfig = {
+  attempts?: number
+
+  minDelayMs?: number
+
+  maxDelayMs?: number
+
+  jitter?: number
+}
+
+export type BlockStreamingCoalesceConfig = {
+  minChars?: number
+  maxChars?: number
+  idleMs?: number
+}
+
+export type BlockStreamingChunkConfig = {
+  minChars?: number
+  maxChars?: number
+  breakPreference?: "paragraph" | "newline" | "sentence"
+}
+
+export type MarkdownTableMode = "off" | "bullets" | "code"
+
+export type MarkdownConfig = {
+  tables?: MarkdownTableMode
+}
+
+export type HumanDelayConfig = {
+  mode?: "off" | "natural" | "custom"
+
+  minMs?: number
+
+  maxMs?: number
+}
+
+export type SessionSendPolicyAction = "allow" | "deny"
+
+export type SessionSendPolicyMatch = {
+  channel?: string
+  chatType?: NormalizedChatType
+  keyPrefix?: string
+}
+
+export type SessionSendPolicyRule = {
+  action: SessionSendPolicyAction
+  match?: SessionSendPolicyMatch
+}
+
+export type SessionSendPolicyConfig = {
+  default?: SessionSendPolicyAction
+  rules?: SessionSendPolicyRule[]
+}
+
+export type SessionResetMode = "daily" | "idle"
+
+export type SessionResetConfig = {
+  mode?: SessionResetMode
+
+  atHour?: number
+
+  idleMinutes?: number
+}
+
+export type SessionResetByTypeConfig = {
+  dm?: SessionResetConfig
+  group?: SessionResetConfig
+  thread?: SessionResetConfig
+}
+
+export type SessionConfig = {
+  scope?: SessionScope
+
+  dmScope?: DmScope
+
+  identityLinks?: Record<string, string[]>
+  resetTriggers?: string[]
+  idleMinutes?: number
+  reset?: SessionResetConfig
+  resetByType?: SessionResetByTypeConfig
+
+  resetByChannel?: Record<string, SessionResetConfig>
+  store?: string
+  typingIntervalSeconds?: number
+  typingMode?: TypingMode
+  mainKey?: string
+  sendPolicy?: SessionSendPolicyConfig
+  agentToAgent?: {
+    maxPingPongTurns?: number
+  }
+}
+
+export type ChannelHeartbeatVisibilityConfig = {
+  showOk?: boolean
+
+  showAlerts?: boolean
+
+  useIndicator?: boolean
+}
+
+export type IdentityConfig = {
+  name?: string
+  theme?: string
+  emoji?: string
+
+  avatar?: string
+}
+
+export type ToolProfileId = "minimal" | "coding" | "messaging" | "full"
+
+export type ToolPolicyConfig = {
+  allow?: string[]
+
+  alsoAllow?: string[]
+  deny?: string[]
+  profile?: ToolProfileId
+}
+
+export type GroupToolPolicyConfig = {
+  allow?: string[]
+
+  alsoAllow?: string[]
+  deny?: string[]
+}
+
+export type GroupToolPolicyBySenderConfig = Record<
+  string,
+  GroupToolPolicyConfig
+>
+
+export type GroupChatConfig = {
+  mentionPatterns?: string[]
+  historyLimit?: number
+}
+
+export type DmConfig = {
+  historyLimit?: number
+}
+
+export type NativeCommandsSetting = boolean | "auto"
+
+export type ProviderCommandsConfig = {
+  native?: NativeCommandsSetting
+
+  nativeSkills?: NativeCommandsSetting
+}
+
+export type AgentElevatedAllowFromConfig = Partial<
+  Record<string, Array<string | number>>
+>

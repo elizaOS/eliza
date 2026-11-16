@@ -1,0 +1,109 @@
+import { isActiveMemoryEvidence } from "../utils/extraction-evidence.vibe"
+
+import type { CustomMetadata, FactMetadata, Memory, MemoryMetadata } from "../types/memory.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+
+const DEDUPE_CANDIDATE_POOL = 120
+
+export async function findEquivalentFact(
+  runtime: Pick<IAgentRuntime, "getMemories">,
+  memory: Memory,
+): Promise<Memory | null> {
+  const key = memory.content.text?.trim()
+  if (!key || !memory.roomId) return null
+
+  const existing = await runtime.getMemories({
+    tableName: "facts",
+    roomId: memory.roomId,
+    count: DEDUPE_CANDIDATE_POOL,
+    unique: false,
+  })
+  for (const candidate of existing) {
+    if (!isActiveMemoryEvidence(candidate)) continue
+    if (!candidate.id || candidate.id === memory.id) continue
+    if ((candidate.entityId ?? null) !== (memory.entityId ?? null)) continue
+    if (candidate.content.text?.trim() === key) return candidate
+  }
+  return null
+}
+
+function readFactMetadata(memory: Memory): FactMetadata {
+  const meta = memory.metadata
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return {}
+  return meta as FactMetadata
+}
+
+export function mergeStrongerFactMetadata(
+  existing: Memory,
+  incoming: Memory,
+): MemoryMetadata | null {
+  const kept = readFactMetadata(existing)
+  const next = readFactMetadata(incoming)
+  const upgrades: FactMetadata & CustomMetadata = {}
+  const incomingEvidence = (incoming.metadata as CustomMetadata | undefined)
+    ?.extractionEvidenceIds
+  if (Array.isArray(incomingEvidence)) {
+    const keptMetadata = existing.metadata as CustomMetadata | undefined
+    const keptEvidence = Array.isArray(keptMetadata?.extractionEvidenceIds)
+      ? keptMetadata.extractionEvidenceIds
+      : []
+    const evidenceIds = [
+      ...new Set(
+        [...keptEvidence, ...incomingEvidence].filter(
+          (id): id is string => typeof id === "string",
+        ),
+      ),
+    ]
+    if (evidenceIds.length !== keptEvidence.length) {
+      upgrades.extractionEvidenceIds = evidenceIds
+    }
+    const incomingRevisions = (incoming.metadata as CustomMetadata)
+      .extractionSourceRevisions
+    const keptRevisions = keptMetadata?.extractionSourceRevisions
+    if (
+      incomingRevisions
+      && typeof incomingRevisions === "object"
+      && !Array.isArray(incomingRevisions)
+    ) {
+      upgrades.extractionSourceRevisions = {
+        ...(keptRevisions
+            && typeof keptRevisions === "object"
+            && !Array.isArray(keptRevisions)
+          ? keptRevisions
+          : {}),
+        ...incomingRevisions,
+      }
+    }
+  }
+
+  if (
+    (incoming.metadata as CustomMetadata | undefined)?.extractionBackfill
+    === true
+  ) {
+    return Object.keys(upgrades).length === 0
+      ? null
+      : ({ ...existing.metadata, ...upgrades } as MemoryMetadata)
+  }
+
+  if (
+    typeof next.confidence === "number"
+    && Number.isFinite(next.confidence)
+    && (typeof kept.confidence !== "number" || next.confidence > kept.confidence)
+  ) {
+    upgrades.confidence = next.confidence
+  }
+  if (next.kind && !kept.kind) {
+    upgrades.kind = next.kind
+  }
+  for (const field of ["validAt", "lastConfirmedAt"] as const) {
+    const incomingAt = Date.parse(next[field] ?? "")
+    if (Number.isNaN(incomingAt)) continue
+    const keptAt = Date.parse(kept[field] ?? "")
+    if (Number.isNaN(keptAt) || incomingAt > keptAt) {
+      upgrades[field] = next[field]
+    }
+  }
+
+  if (Object.keys(upgrades).length === 0) return null
+  return { ...existing.metadata, ...upgrades } as MemoryMetadata
+}

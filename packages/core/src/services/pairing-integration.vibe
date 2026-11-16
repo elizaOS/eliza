@@ -1,0 +1,175 @@
+import type { PairingChannel } from "../types/pairing.vibe"
+import { getPairingIdLabel } from "../types/pairing.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { ServiceType } from "../types/service.vibe"
+import type { PairingService } from "./pairing.vibe"
+
+export interface PairingCheckResult {
+  allowed: boolean
+
+  pairingCode?: string
+
+  newRequest?: boolean
+
+  replyMessage?: string
+
+  idLabel?: string
+}
+
+export interface PairingCheckParams {
+  channel: PairingChannel
+
+  senderId: string
+
+  metadata?: Record<string, string>
+
+  suppressReply?: boolean
+}
+
+export function getPairingService(
+  runtime: IAgentRuntime,
+): PairingService | null {
+  return runtime.getService<PairingService>(ServiceType.PAIRING)
+}
+
+export async function checkPairingAllowed(
+  runtime: IAgentRuntime,
+  params: PairingCheckParams,
+): Promise<PairingCheckResult> {
+  const { channel, senderId, metadata, suppressReply } = params
+
+  const pairingService = getPairingService(runtime)
+  if (!pairingService) {
+    runtime.reportError(
+      "pairing-integration",
+      new Error(
+        "PairingService is not registered but the DM policy is 'pairing'; denying sender",
+      ),
+      { channel, senderId },
+    )
+    return {
+      allowed: false,
+      replyMessage: "Access pairing is temporarily unavailable.",
+      idLabel: getPairingIdLabel(channel),
+    }
+  }
+
+  const isAllowed = await pairingService.isAllowed(channel, senderId)
+  if (isAllowed) {
+    return { allowed: true }
+  }
+
+  if (suppressReply) {
+    return { allowed: false }
+  }
+
+  const { code, created } = await pairingService.upsertRequest({
+    channel,
+    senderId,
+    metadata,
+  })
+
+  const idLabel = getPairingIdLabel(channel)
+
+  if (!code) {
+    return { allowed: false, idLabel }
+  }
+
+  const replyMessage = created && pairingService.claimPairingReply(channel, senderId)
+    ? buildPairingReplyMessage({
+      channel,
+      senderId,
+      code,
+      idLabel,
+    })
+    : undefined
+
+  return {
+    allowed: false,
+    pairingCode: code,
+    newRequest: created,
+    replyMessage,
+    idLabel,
+  }
+}
+
+export function buildPairingReplyMessage(params: {
+  channel: PairingChannel
+  senderId: string
+  code: string
+  idLabel?: string
+}): string {
+  const { channel, senderId, code, idLabel = "userId" } = params
+
+  const lines = [
+    "Access not configured.",
+    "",
+    `Your ${idLabel}: ${senderId}`,
+    "",
+    `Pairing code: ${code}`,
+    "",
+    "Ask the bot owner to approve with:",
+    `  pairing approve ${channel} ${code}`,
+  ]
+
+  return lines.join("\n")
+}
+
+export async function addToAllowlist(
+  runtime: IAgentRuntime,
+  channel: PairingChannel,
+  senderId: string,
+  metadata?: Record<string, string>,
+): Promise<boolean> {
+  const pairingService = getPairingService(runtime)
+  if (!pairingService) {
+    runtime.logger.warn(
+      { src: "pairing-integration", channel },
+      "PairingService not available",
+    )
+    return false
+  }
+
+  await pairingService.addToAllowlist(channel, senderId, metadata)
+  return true
+}
+
+export async function removeFromAllowlist(
+  runtime: IAgentRuntime,
+  channel: PairingChannel,
+  senderId: string,
+): Promise<boolean> {
+  const pairingService = getPairingService(runtime)
+  if (!pairingService) {
+    return false
+  }
+
+  return pairingService.removeFromAllowlist(channel, senderId)
+}
+
+export async function isInAllowlist(
+  runtime: IAgentRuntime,
+  channel: PairingChannel,
+  senderId: string,
+): Promise<boolean> {
+  const pairingService = getPairingService(runtime)
+  if (!pairingService) {
+    return false
+  }
+
+  return pairingService.isAllowed(channel, senderId)
+}
+
+export async function approvePairingCode(
+  runtime: IAgentRuntime,
+  channel: PairingChannel,
+  code: string,
+): Promise<string | null> {
+  const pairingService = getPairingService(runtime)
+  if (!pairingService) {
+    return null
+  }
+
+  const result = await pairingService.approveCode({ channel, code })
+  return result?.senderId ?? null
+}

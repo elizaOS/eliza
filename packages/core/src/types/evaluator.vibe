@@ -1,0 +1,140 @@
+import type { ActionResult, HandlerCallback } from "./components.vibe"
+import type { Memory } from "./memory.vibe"
+import type { JSONSchema, ModelTypeName, PromptSegment } from "./model.vibe"
+import type { JsonValue } from "./primitives.vibe"
+import type { IAgentRuntime } from "./runtime.vibe"
+import type { State } from "./state.vibe"
+
+export interface EvaluatorEvidenceReconciliation {
+  id: string
+  changedMessageIds: string[]
+  removedMessageIds: string[]
+  currentSourceRevisions: Record<string, string>
+
+  pendingEvidenceId?: string
+}
+
+export interface EvaluatorRunOptions {
+  didRespond?: boolean
+  responses?: Memory[]
+  callback?: HandlerCallback
+  phase?: string
+
+  semanticSignal?: boolean
+
+  extraction?: {
+    progressState?: JsonValue
+    isBackfill: boolean
+    remainingSourceCount?: number
+    referenceRevisions?: Record<string, string>
+    messages: Memory[]
+    sourceRevisions: Record<string, string>
+    changedMessageIds: string[]
+    removedMessageIds: string[]
+    evidenceId: string
+  }
+}
+
+export interface EvaluatorRunContext {
+  runtime: IAgentRuntime
+  message: Memory
+  state?: State
+  options: EvaluatorRunOptions
+}
+
+export interface EvaluatorSharedPromptContext {
+  roomTranscriptRendered: boolean
+
+  actionResultsText?: string
+
+  blocks?: Readonly<Record<string, string>>
+}
+
+export interface EvaluatorPromptContext<TPrepared = unknown> extends EvaluatorRunContext {
+  state: State
+  prepared: TPrepared
+  shared?: EvaluatorSharedPromptContext
+}
+
+export interface EvaluatorProcessorContext<
+  TOutput = JsonValue,
+  TPrepared = unknown,
+> extends EvaluatorPromptContext<TPrepared> {
+  output: TOutput
+  evaluatorName: string
+}
+
+export interface EvaluatorProcessor<TOutput = JsonValue, TPrepared = unknown> {
+  name?: string
+  priority?: number
+  process(
+    context: EvaluatorProcessorContext<TOutput, TPrepared>,
+  ): Promise<ActionResult | undefined>
+}
+
+export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
+  name: string
+  description: string
+  similes?: string[]
+  priority?: number
+
+  override?: boolean
+  providers?: string[]
+  schema: JSONSchema
+  modelType?: ModelTypeName
+
+  incremental?: boolean | ((runtime: IAgentRuntime) => boolean)
+
+  background?: boolean
+
+  reconcileEvidence?(
+    context: EvaluatorRunContext & {
+      reconciliation: EvaluatorEvidenceReconciliation
+    },
+  ): Promise<{ reprocessSourceIds: string[] }>
+
+  inputScope?: "current_message"
+  shouldRun(context: EvaluatorRunContext): Promise<boolean>
+  prepare?(context: EvaluatorRunContext & { state: State }): Promise<TPrepared>
+
+  resolveOutput?(context: EvaluatorPromptContext<TPrepared>): TOutput
+
+  resolveOutputWhen?(context: EvaluatorPromptContext<TPrepared>): boolean
+  prompt(context: EvaluatorPromptContext<TPrepared>): string
+
+  promptSegments?(context: EvaluatorPromptContext<TPrepared>): PromptSegment[]
+
+  sharedBlocks?(
+    context: EvaluatorPromptContext<TPrepared>,
+  ): Record<string, string>
+  parse?(
+    output: unknown,
+    context?: EvaluatorPromptContext<TPrepared> & {
+      outputSource?: "model" | "staged" | "resolved"
+    },
+  ): TOutput | null
+  processors?: Array<EvaluatorProcessor<TOutput, TPrepared>>
+
+  progressState?(
+    context: EvaluatorProcessorContext<TOutput, TPrepared>,
+  ): JsonValue
+}
+
+export type RegisteredEvaluator = Evaluator<unknown, unknown>
+
+export interface EvaluatorRunResult {
+  hasMoreEvidence?: boolean
+  skipped: boolean
+  activeEvaluators: string[]
+  processedEvaluators: string[]
+  results: ActionResult[]
+  errors: Array<{
+    evaluatorName: string
+    processorName?: string
+
+    retryAt?: number
+
+    retryable?: boolean
+    error: string
+  }>
+}

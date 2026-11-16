@@ -1,0 +1,360 @@
+import { logger } from "../logger.vibe"
+import type {
+  ActionEventData,
+  AgentEventInput,
+  AgentEventListener,
+  AgentEventPayload,
+  AgentRunContext,
+  EvaluatorEventData,
+  HeartbeatEventInput,
+  HeartbeatEventListener,
+  HeartbeatEventPayload,
+  HeartbeatIndicatorType,
+  HeartbeatStatus,
+  MessageEventData,
+} from "../types/agent-event.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { Service, ServiceType } from "../types/service.vibe"
+
+export function resolveHeartbeatIndicator(
+  status: HeartbeatStatus,
+): HeartbeatIndicatorType | undefined {
+  switch (status) {
+    case "ok-empty":
+    case "ok-token":
+      return "ok"
+    case "sent":
+      return "alert"
+    case "failed":
+      return "error"
+    case "skipped":
+      return undefined
+    default:
+      return undefined
+  }
+}
+
+function subscribeListener<Listener>(
+  listeners: Map<Listener, () => void>,
+  listener: Listener,
+): () => void {
+  const existing = listeners.get(listener)
+  if (existing) return existing
+  const unsubscribe = () => {
+    if (listeners.get(listener) === unsubscribe) listeners.delete(listener)
+  }
+  listeners.set(listener, unsubscribe)
+  return unsubscribe
+}
+
+export class AgentEventService extends Service {
+  static serviceType: string = ServiceType.AGENT_EVENT
+  capabilityDescription =
+    "Manages agent event streaming for lifecycle, messages, actions, evaluators, providers, memory, tools, and heartbeats"
+
+  private seqByRun = new Map<string, number>()
+
+  private eventListeners = new Map<AgentEventListener, () => void>()
+
+  private heartbeatListeners = new Map<HeartbeatEventListener, () => void>()
+
+  private runContextById = new Map<string, AgentRunContext>()
+
+  private lastHeartbeat: HeartbeatEventPayload | null = null
+
+  static async start(runtime: IAgentRuntime): Promise<Service> {
+    const service = new AgentEventService(runtime)
+    logger.debug({ src: "service:agent_event" }, "AgentEventService started")
+    return service
+  }
+
+  async stop(): Promise<void> {
+    this.eventListeners.clear()
+    this.heartbeatListeners.clear()
+    this.seqByRun.clear()
+    this.runContextById.clear()
+    this.lastHeartbeat = null
+    logger.debug({ src: "service:agent_event" }, "AgentEventService stopped")
+  }
+
+  registerRunContext(runId: string, context: AgentRunContext): void {
+    if (!runId) {
+      return
+    }
+
+    const existing = this.runContextById.get(runId)
+    if (!existing) {
+      this.runContextById.set(runId, { ...context })
+      return
+    }
+
+    if (context.sessionKey && existing.sessionKey !== context.sessionKey) {
+      existing.sessionKey = context.sessionKey
+    }
+    if (
+      context.verboseLevel
+      && existing.verboseLevel !== context.verboseLevel
+    ) {
+      existing.verboseLevel = context.verboseLevel
+    }
+    if (
+      context.isHeartbeat !== undefined
+      && existing.isHeartbeat !== context.isHeartbeat
+    ) {
+      existing.isHeartbeat = context.isHeartbeat
+    }
+    if (context.agentId && existing.agentId !== context.agentId) {
+      existing.agentId = context.agentId
+    }
+    if (context.roomId && existing.roomId !== context.roomId) {
+      existing.roomId = context.roomId
+    }
+  }
+
+  getRunContext(runId: string): AgentRunContext | undefined {
+    return this.runContextById.get(runId)
+  }
+
+  clearRunContext(runId: string): void {
+    this.runContextById.delete(runId)
+    this.seqByRun.delete(runId)
+  }
+
+  emit(event: AgentEventInput): void {
+    const nextSeq = (this.seqByRun.get(event.runId) ?? 0) + 1
+    this.seqByRun.set(event.runId, nextSeq)
+
+    const context = this.runContextById.get(event.runId)
+    const sessionKey = typeof event.sessionKey === "string" && event.sessionKey.trim()
+      ? event.sessionKey
+      : context?.sessionKey
+
+    const enriched: AgentEventPayload = {
+      ...event,
+      sessionKey,
+      seq: nextSeq,
+      ts: Date.now(),
+    }
+
+    const errors: unknown[] = []
+    for (const listener of this.eventListeners.keys()) {
+      try {
+        listener(enriched)
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+
+    for (const error of errors) {
+      this.runtime.reportError("AgentEventService.listener", error, {
+        stream: enriched.stream,
+        runId: enriched.runId,
+      })
+      logger.error(
+        {
+          src: "service:agent_event",
+          error,
+          stream: enriched.stream,
+          runId: enriched.runId,
+        },
+        "Error in event listener - listener threw exception",
+      )
+    }
+
+    if (errors.length > 0 && event.stream !== "error") {
+      this.emit({
+        runId: event.runId,
+        stream: "error",
+        data: {
+          type: "warning",
+          message: `${errors.length} event listener(s) threw exceptions`,
+          code: "LISTENER_ERROR",
+          recoverable: true,
+        },
+        sessionKey: event.sessionKey,
+      })
+    }
+  }
+
+  subscribe(listener: AgentEventListener): () => void {
+    return subscribeListener(this.eventListeners, listener)
+  }
+
+  emitHeartbeat(event: HeartbeatEventInput): void {
+    const enriched: HeartbeatEventPayload = {
+      ts: Date.now(),
+      ...event,
+      indicatorType: event.indicatorType ?? resolveHeartbeatIndicator(event.status),
+    }
+
+    this.lastHeartbeat = enriched
+
+    let heartbeatErrors = 0
+    for (const listener of this.heartbeatListeners.keys()) {
+      try {
+        listener(enriched)
+      } catch (error) {
+        heartbeatErrors++
+        this.runtime.reportError("AgentEventService.heartbeatListener", error, {
+          status: enriched.status,
+        })
+        logger.error(
+          { src: "service:agent_event", error, status: enriched.status },
+          "Error in heartbeat listener - listener threw exception",
+        )
+      }
+    }
+
+    if (heartbeatErrors > 0) {
+      logger.warn(
+        { src: "service:agent_event", errorCount: heartbeatErrors },
+        "Heartbeat event completed with listener errors",
+      )
+    }
+  }
+
+  subscribeHeartbeat(listener: HeartbeatEventListener): () => void {
+    return subscribeListener(this.heartbeatListeners, listener)
+  }
+
+  getLastHeartbeat(): HeartbeatEventPayload | null {
+    return this.lastHeartbeat
+  }
+
+  getCurrentSeq(runId: string): number {
+    return this.seqByRun.get(runId) ?? 0
+  }
+
+  emitLifecycle(
+    runId: string,
+    data: {
+      type:
+        | "run_start"
+        | "run_end"
+        | "step_start"
+        | "step_end"
+        | "context_loaded"
+        | "action_start"
+        | "action_end"
+      stepName?: string
+      actionName?: string
+      duration?: number
+      success?: boolean
+      error?: string
+    },
+    sessionKey?: string,
+  ): void {
+    this.emit({
+      runId,
+      stream: "lifecycle",
+      data,
+      sessionKey,
+    })
+  }
+
+  emitMessage(
+    runId: string,
+    data: MessageEventData,
+    sessionKey?: string,
+  ): void {
+    this.emit({
+      runId,
+      stream: "message",
+      data,
+      sessionKey,
+    })
+  }
+
+  emitMessageReceived(
+    runId: string,
+    params: {
+      messageId?: UUID
+      channel?: string
+      userId?: UUID
+      roomId?: UUID
+      content?: string
+      hasAttachments?: boolean
+    },
+    sessionKey?: string,
+  ): void {
+    this.emitMessage(runId, { type: "received", ...params }, sessionKey)
+  }
+
+  emitAction(runId: string, data: ActionEventData, sessionKey?: string): void {
+    this.emit({
+      runId,
+      stream: "action",
+      data,
+      sessionKey,
+    })
+  }
+
+  emitActionStart(
+    runId: string,
+    params: {
+      actionName: string
+      handler?: string
+      input?: Record<string, unknown>
+      memoryId?: UUID
+    },
+    sessionKey?: string,
+  ): void {
+    this.emitAction(runId, { type: "start", ...params }, sessionKey)
+  }
+
+  emitActionComplete(
+    runId: string,
+    params: {
+      actionName: string
+      handler?: string
+      output?: Record<string, unknown>
+      duration?: number
+      success?: boolean
+      memoryId?: UUID
+    },
+    sessionKey?: string,
+  ): void {
+    this.emitAction(runId, { type: "complete", ...params }, sessionKey)
+  }
+
+  emitEvaluator(
+    runId: string,
+    data: EvaluatorEventData,
+    sessionKey?: string,
+  ): void {
+    this.emit({
+      runId,
+      stream: "evaluator",
+      data,
+      sessionKey,
+    })
+  }
+
+  emitEvaluatorStart(
+    runId: string,
+    params: {
+      evaluatorName: string
+      messageId?: UUID
+    },
+    sessionKey?: string,
+  ): void {
+    this.emitEvaluator(runId, { type: "start", ...params }, sessionKey)
+  }
+
+  emitEvaluatorComplete(
+    runId: string,
+    params: {
+      evaluatorName: string
+      validated?: boolean
+      result?: unknown
+      duration?: number
+      messageId?: UUID
+    },
+    sessionKey?: string,
+  ): void {
+    this.emitEvaluator(runId, { type: "complete", ...params }, sessionKey)
+  }
+}
+
+export default AgentEventService

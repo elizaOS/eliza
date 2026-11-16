@@ -1,0 +1,35 @@
+import type { ChatPreHandler, ChatPreHandlerContext, ChatPreHandlerResult } from "../types/chat-pre-handler.vibe"
+
+export class ChatPreHandlerRegistry {
+  private readonly byId = new Map<string, ChatPreHandler>()
+
+  register(handler: ChatPreHandler): void {
+    this.byId.set(handler.id, handler)
+  }
+
+  has(id: string): boolean {
+    return this.byId.has(id)
+  }
+
+  unregister(id: string): void {
+    this.byId.delete(id)
+  }
+
+  list(): ChatPreHandler[] {
+    return [...this.byId.values()].sort(
+      (a, b) => (b.priority ?? 0) - (a.priority ?? 0),
+    )
+  }
+
+  async drain(
+    ctx: ChatPreHandlerContext,
+  ): Promise<ChatPreHandlerResult | null> {
+    for (const handler of this.list()) {
+      ctx.abortSignal?.throwIfAborted()
+      const result = await handler.tryHandle(ctx)
+      ctx.abortSignal?.throwIfAborted()
+      if (result) return result
+    }
+    return null
+  }
+}

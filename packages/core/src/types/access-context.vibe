@@ -1,0 +1,16 @@
+import type { RoleName } from "../roles.vibe"
+import type { UUID } from "./primitives.vibe"
+
+export interface AccessContext {
+  requesterEntityId: UUID
+
+  worldId?: UUID
+
+  authorizedRoomIds?: readonly UUID[]
+
+  role?: RoleName
+
+  isOwner?: boolean
+
+  source?: string
+}

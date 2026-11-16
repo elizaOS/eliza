@@ -1,0 +1,154 @@
+import type { ElizaError } from "../errors.vibe"
+import type { ProviderResult } from "../types/components.vibe"
+import { TurnAbortedError } from "./turn-aborted-error.vibe"
+
+export type ProviderExecutionOutcome = "success" | "error" | "aborted"
+
+export interface ProviderExecutionRecord extends ProviderResult {
+  providerName: string
+  providerStartedAt: number
+  providerEndedAt: number
+  providerDurationMs: number
+  providerOutcome: ProviderExecutionOutcome
+  providerCoalesced: boolean
+  providerError?: ElizaError
+}
+
+export interface CachedProviderResult extends ProviderResult {
+  providerName: string
+  providerStartedAt?: number
+  providerEndedAt?: number
+  providerDurationMs?: number
+  providerOutcome?: ProviderExecutionOutcome
+}
+
+export interface InFlightProviderExecution {
+  promise: Promise<ProviderResult>
+
+  controller: AbortController
+
+  waiters: number
+  startedAt: number
+  startedAtMonotonic: number
+}
+
+export function awaitProviderExecution(
+  execution: InFlightProviderExecution,
+  signal: AbortSignal | undefined,
+  evict: () => void,
+): Promise<ProviderResult> {
+  execution.waiters += 1
+  let released = false
+  const release = () => {
+    if (released) return false
+    released = true
+    execution.waiters -= 1
+    return true
+  }
+  if (!signal) {
+    return execution.promise.finally(release)
+  }
+  return new Promise<ProviderResult>((resolve, reject) => {
+    const settle = <V>(handler: (value: V) => void) => {
+      return (value: V) => {
+        if (!release()) return
+        signal.removeEventListener("abort", onAbort)
+        handler(value)
+      }
+    }
+    const onAbort = settle(() => {
+      if (execution.waiters === 0) {
+        evict()
+        execution.controller.abort(signal.reason)
+      }
+      reject(signal.reason ?? new Error("Provider execution aborted"))
+    })
+
+    execution.promise.then(settle(resolve), settle(reject))
+    if (signal.aborted) {
+      onAbort(undefined)
+      return
+    }
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
+}
+
+export function calculateProviderOverlaps(
+  timings: readonly {
+    providerName: string
+    providerStartedAt: number
+    providerEndedAt: number
+  }[],
+): Array<Array<{ providerName: string; overlapMs: number }>> {
+  return timings.map((timing, index) =>
+    timings.flatMap((sibling, siblingIndex) => {
+      if (siblingIndex === index) return []
+      const overlapMs = Math.max(
+        0,
+        Math.min(timing.providerEndedAt, sibling.providerEndedAt)
+          - Math.max(timing.providerStartedAt, sibling.providerStartedAt),
+      )
+      return overlapMs > 0
+        ? [{ providerName: sibling.providerName, overlapMs }]
+        : []
+    })
+  )
+}
+
+export function runProviderExecution<T>(
+  run: () => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  let rejectFromSignal: (() => void) | undefined
+  const aborted = new Promise<never>((_, reject) => {
+    rejectFromSignal = () => {
+      reject(signal.reason ?? new Error("Provider execution aborted"))
+    }
+    if (signal.aborted) {
+      rejectFromSignal()
+      return
+    }
+    signal.addEventListener("abort", rejectFromSignal, {
+      once: true,
+    })
+  })
+  const providerPromise = Promise.resolve().then(() => {
+    if (signal.aborted) {
+      throw signal.reason ?? new Error("Provider execution aborted")
+    }
+    return run()
+  })
+  return Promise.race([providerPromise, aborted]).finally(() => {
+    if (rejectFromSignal) {
+      signal.removeEventListener("abort", rejectFromSignal)
+    }
+  })
+}
+
+export function providerCancellationReason(
+  callerSignal: AbortSignal | undefined,
+  executionSignal: AbortSignal,
+  cause: unknown,
+): boolean {
+  return (
+    (callerSignal?.aborted === true && cause === callerSignal.reason)
+    || (executionSignal.aborted && cause === executionSignal.reason)
+  )
+}
+
+export function throwIfProviderCompositionAborted(
+  signal: AbortSignal | undefined,
+  runtimeStopped: boolean,
+): void {
+  if (signal?.aborted) {
+    const reason = signal.reason
+    throw reason instanceof TurnAbortedError
+      ? reason
+      : new TurnAbortedError(
+        reason instanceof Error ? reason.message : String(reason),
+      )
+  }
+  if (runtimeStopped) {
+    throw new TurnAbortedError("runtime-stop")
+  }
+}

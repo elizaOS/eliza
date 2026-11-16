@@ -1,0 +1,82 @@
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { Service } from "../types/service.vibe"
+
+export const CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE = "ConnectorTargetSourceRegistry"
+
+export interface TargetEntry {
+  id: string
+  name: string
+  kind: "channel" | "recipient" | "chat"
+}
+
+export interface TargetGroup {
+  platform: string
+
+  groupId: string
+
+  groupName: string
+  targets: TargetEntry[]
+}
+
+export interface TargetSourceLogger {
+  warn?: (obj: Record<string, unknown>, msg?: string) => void
+}
+
+export interface TargetEnumerationContext {
+  groupId?: string
+
+  getConfig?: () => unknown
+
+  fetchImpl?: typeof fetch
+
+  now?: () => number
+
+  logger?: TargetSourceLogger
+}
+
+export interface TargetSource {
+  readonly platform: string
+
+  enumerate(ctx: TargetEnumerationContext): Promise<TargetGroup[]>
+}
+
+export interface TargetSourceRegistry {
+  register(source: TargetSource): void
+  unregister(platform: string): void
+  get(platform: string): TargetSource | undefined
+  list(): TargetSource[]
+}
+
+export class TargetSourceRegistryService extends Service implements TargetSourceRegistry {
+  static override serviceType = CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE
+  override capabilityDescription =
+    "Connector target-source registry: enumerates addressable connector destinations for workflow target selection."
+
+  private readonly sources = new Map<string, TargetSource>()
+
+  static override async start(
+    _runtime: IAgentRuntime,
+  ): Promise<TargetSourceRegistryService> {
+    return new TargetSourceRegistryService()
+  }
+
+  override async stop(): Promise<void> {
+    this.sources.clear()
+  }
+
+  register(source: TargetSource): void {
+    this.sources.set(source.platform, source)
+  }
+
+  unregister(platform: string): void {
+    this.sources.delete(platform)
+  }
+
+  get(platform: string): TargetSource | undefined {
+    return this.sources.get(platform)
+  }
+
+  list(): TargetSource[] {
+    return Array.from(this.sources.values())
+  }
+}

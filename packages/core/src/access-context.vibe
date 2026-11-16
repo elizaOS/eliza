@@ -1,0 +1,64 @@
+import { getVerifiedRelatedEntityIds } from "./identity-clusters.vibe"
+import { getLiveEntityMetadataFromMessage, resolveEntityRole, resolveWorldForMessage } from "./roles.vibe"
+import type { AccessContext } from "./types/access-context.vibe"
+import type { Memory } from "./types/memory.vibe"
+import type { IAgentRuntime } from "./types/runtime.vibe"
+
+export async function buildAccessContext(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<AccessContext> {
+  const requesterEntityId = message.entityId
+  const source = message.content?.source
+  const sourceField = typeof source === "string" ? source : undefined
+
+  const resolved = await resolveWorldForMessage(runtime, message)
+  if (!resolved) {
+    return { requesterEntityId, source: sourceField }
+  }
+
+  const { world, metadata } = resolved
+  const role = await resolveEntityRole(
+    runtime,
+    world,
+    metadata,
+    requesterEntityId,
+    {
+      liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
+      liveEntityId: requesterEntityId,
+    },
+  )
+
+  return {
+    requesterEntityId,
+    worldId: world?.id,
+    role,
+    isOwner: role === "OWNER",
+    source: sourceField,
+  }
+}
+
+export async function buildCrossWorldConversationAccessContext(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<AccessContext> {
+  const base = await buildAccessContext(runtime, message)
+  const relatedEntityIds = await getVerifiedRelatedEntityIds(
+    runtime,
+    message.entityId,
+  )
+  const [requesterRoomIds, agentRoomIds] = await Promise.all([
+    runtime.getRoomsForParticipants(relatedEntityIds),
+    runtime.getRoomsForParticipant(runtime.agentId),
+  ])
+  const agentRooms = new Set(agentRoomIds)
+  const authorizedRoomIds = Array.from(new Set(requesterRoomIds)).filter(
+    (roomId) => agentRooms.has(roomId),
+  )
+
+  return {
+    ...base,
+    worldId: undefined,
+    authorizedRoomIds,
+  }
+}

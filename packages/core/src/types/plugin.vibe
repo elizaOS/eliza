@@ -1,0 +1,662 @@
+import type { ConnectorSourceDefinition } from "../connectors.vibe"
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators.vibe"
+import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-fields.vibe"
+import type { ViewKind, ViewModality, ViewType } from "../views/declarations.vibe"
+import type { Character } from "./agent.vibe"
+import type { ChatPreHandler } from "./chat-pre-handler.vibe"
+import type { Action, AgentContext, Provider } from "./components.vibe"
+import type { RoleGate } from "./contexts.vibe"
+import type { IDatabaseAdapter } from "./database.vibe"
+import type { RegisteredEvaluator } from "./evaluator.vibe"
+import type { EventHandler, EventPayload, EventPayloadMap } from "./events.vibe"
+import type { ModelParamsMap, ModelRegistrationMetadata, PluginModelResult } from "./model.vibe"
+import type { JsonValue, UUID } from "./primitives.vibe"
+import type { IAgentRuntime } from "./runtime.vibe"
+import type { Service } from "./service.vibe"
+import type { SurfaceManifest } from "./surface-manifest.vibe"
+import type { TestSuite } from "./testing.vibe"
+import type { ViewCapability } from "./view-capability.vibe"
+
+export interface ServiceClass {
+  serviceType: string
+
+  allowsMultiple?: boolean
+
+  start(runtime: IAgentRuntime): Promise<Service>
+
+  stopRuntime?(runtime: IAgentRuntime): Promise<void>
+
+  registerSendHandlers?(runtime: IAgentRuntime, service: Service): void
+
+  new(runtime?: IAgentRuntime): Service
+}
+
+export interface JSONSchemaDefinition {
+  type: string
+  properties?: { [key: string]: JSONSchemaDefinition }
+  items?: JSONSchemaDefinition
+  required?: string[]
+  enumValues?: string[]
+  description?: string
+}
+
+export interface ComponentTypeDefinition {
+  name: string
+  schema: JSONSchemaDefinition
+  validator?: (data: Record<string, JsonValue>) => boolean
+}
+
+export type PluginEvents = {
+  [K in keyof EventPayloadMap]?: EventHandler<K>[]
+}
+
+export type RuntimeEventStorage = PluginEvents & {
+  [key: string]:
+    | ((
+      params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
+    ) => Promise<void>)[]
+    | undefined
+}
+
+export type AdapterFactory = (
+  agentId: UUID,
+  settings: Record<string, string>,
+) => IDatabaseAdapter | Promise<IDatabaseAdapter>
+
+export type PluginAppSessionMode = "viewer" | "spectate-and-steer" | "external"
+
+export type PluginAppSessionFeature =
+  | "commands"
+  | "telemetry"
+  | "pause"
+  | "resume"
+  | "suggestions"
+
+export type PluginAppControlAction = "pause" | "resume"
+
+export type PluginAppTelemetryValue =
+  | JsonValue
+  | PluginAppTelemetryValue[]
+  | { [key: string]: PluginAppTelemetryValue }
+
+export interface PluginAppViewer {
+  url: string
+  embedParams?: Record<string, string>
+  postMessageAuth?: boolean
+  sandbox?: string
+}
+
+export interface PluginAppViewerAuthMessage {
+  type: string
+  authToken?: string
+  characterId?: string
+  sessionToken?: string
+  agentId?: string
+  followEntity?: string
+}
+
+export interface PluginAppSession {
+  mode: PluginAppSessionMode
+  features?: PluginAppSessionFeature[]
+}
+
+export interface PluginAppRecommendation {
+  id: string
+  label: string
+  type?: string
+  reason?: string | null
+  priority?: number | null
+  command?: string | null
+}
+
+export interface PluginAppActivityItem {
+  id: string
+  type: string
+  message: string
+  timestamp?: number | null
+  severity?: "info" | "warning" | "error"
+}
+
+export interface PluginAppSessionState {
+  sessionId: string
+  appName: string
+  mode: PluginAppSessionMode
+  status: string
+  displayName?: string
+  agentId?: string
+  characterId?: string
+  followEntity?: string
+  canSendCommands?: boolean
+  controls?: PluginAppControlAction[]
+  summary?: string | null
+  goalLabel?: string | null
+  suggestedPrompts?: string[]
+  recommendations?: PluginAppRecommendation[]
+  activity?: PluginAppActivityItem[]
+  telemetry?: Record<string, PluginAppTelemetryValue> | null
+}
+
+export interface PluginAppLaunchDiagnostic {
+  code: string
+  severity: "info" | "warning" | "error"
+  message: string
+}
+
+export interface PluginDiagnosticPrerequisite {
+  key: string
+
+  label: string
+}
+
+export interface PluginDiagnosticDescriptor {
+  id: string
+  name: string
+  description: string
+  tags: string[]
+  envKey: string | null
+  category:
+    | "ai-provider"
+    | "connector"
+    | "streaming"
+    | "database"
+    | "app"
+    | "feature"
+  source: "bundled" | "store"
+  configKeys: string[]
+  npmName: string
+  managementMode: "standard" | "core-optional"
+
+  aliases: string[]
+  prerequisites: PluginDiagnosticPrerequisite[]
+}
+
+export interface PluginAppBridgeLaunchContext {
+  appName?: string
+  launchUrl?: string | null
+  runtime?: IAgentRuntime | null
+  app?: PluginApp | null
+  viewer?:
+    | (PluginAppViewer & {
+      authMessage?: PluginAppViewerAuthMessage
+    })
+    | null
+}
+
+export interface PluginAppBridgeRunContext extends PluginAppBridgeLaunchContext {
+  runId?: string
+  session?: PluginAppSessionState | null
+}
+
+export interface PluginAppLaunchPreparation {
+  diagnostics?: PluginAppLaunchDiagnostic[]
+  launchUrl?: string | null
+  viewer?: PluginAppViewer | null
+}
+
+export interface PluginAppBridge {
+  prepareLaunch?: (
+    ctx: PluginAppBridgeLaunchContext,
+  ) => Promise<PluginAppLaunchPreparation | null>
+  resolveViewerAuthMessage?: (
+    ctx: PluginAppBridgeLaunchContext,
+  ) => Promise<PluginAppViewerAuthMessage | null>
+  ensureRuntimeReady?: (ctx: PluginAppBridgeLaunchContext) => Promise<void>
+  collectLaunchDiagnostics?: (
+    ctx: PluginAppBridgeRunContext,
+  ) => Promise<PluginAppLaunchDiagnostic[]>
+  resolveLaunchSession?: (
+    ctx: PluginAppBridgeLaunchContext,
+  ) => Promise<PluginAppSessionState | null>
+  refreshRunSession?: (
+    ctx: PluginAppBridgeRunContext,
+  ) => Promise<PluginAppSessionState | null>
+
+  stopRun?: (ctx: PluginAppBridgeRunContext) => Promise<void>
+}
+
+export type { AppShellBackgroundPolicy, ViewHeaderPolicy } from "./surface-manifest.vibe"
+
+export interface PluginAppNavTab {
+  id: string
+
+  label: string
+
+  icon?: string
+
+  path: string
+
+  tabAffinity?: string
+
+  order?: number
+
+  viewKind?: ViewKind
+
+  group?: string
+
+  surface?: SurfaceManifest
+
+  componentExport?: string
+}
+
+export const PLUGIN_WIDGET_SLOTS = [
+  "chat-sidebar",
+  "character",
+  "nav-page",
+  "home",
+] as const
+
+export type PluginWidgetSlot = (typeof PLUGIN_WIDGET_SLOTS)[number]
+
+export interface PluginWidgetDeclaration {
+  id: string
+
+  pluginId: string
+
+  slot: PluginWidgetSlot
+
+  label: string
+
+  icon?: string
+
+  order?: number
+
+  defaultEnabled?: boolean
+
+  navGroup?: string
+
+  viewKind?: ViewKind
+
+  componentExport?: string
+
+  signalKinds?: readonly string[]
+
+  size?: { cols: number; rows: number }
+
+  visibility?: "always" | "fallback" | "snapshot"
+}
+
+export interface PluginAppUiExtension {
+  detailPanelId?: string
+}
+
+export type ViewPlatform =
+  | "web"
+  | "desktop"
+  | "ios"
+  | "android"
+  | "quest"
+  | "xreal"
+
+export type { ViewModality, ViewType } from "../views/declarations.vibe"
+
+export interface CollapsedView extends ViewDeclaration {
+  modalities: ViewModality[]
+}
+
+export type { ViewCapability, ViewCapabilityParameter } from "./view-capability.vibe"
+
+export interface ViewScopedActionStep {
+  kind: "agent-fill" | "agent-click" | "agent-focus"
+
+  target: string
+
+  value?: string
+}
+
+export interface ViewScopedAction {
+  name: string
+
+  description: string
+
+  similes?: string[]
+
+  steps: ViewScopedActionStep[]
+
+  parameters?: string[]
+}
+
+export interface ViewDeclaration {
+  id: string
+
+  fallbackFor?: string
+
+  label: string
+
+  navigationAliases?: readonly string[]
+
+  roleGate?: RoleGate
+
+  viewType?: ViewType
+
+  modalities?: ViewModality[]
+
+  description?: string
+
+  icon?: string
+
+  path?: string
+
+  order?: number
+
+  group?: string
+
+  tags?: string[]
+
+  responseContext?: {
+    primaryContext: AgentContext
+    secondaryContexts?: AgentContext[]
+  }
+
+  relatedActions?: string[]
+
+  scopedActions?: ViewScopedAction[]
+
+  contextHints?: string[]
+
+  anticipatoryIntent?: string
+
+  heroImagePath?: string
+
+  surface?: SurfaceManifest
+
+  platforms?: ViewPlatform[]
+
+  nativeOs?: boolean
+
+  viewKind?: ViewKind
+
+  componentExport?: string
+
+  bundlePath?: string
+
+  bundleUrl?: string
+
+  framePath?: string
+
+  frameUrl?: string
+
+  capabilities?: ViewCapability[]
+
+  beforeAgentInteract?: (
+    capability: string,
+    params: Record<string, unknown> | undefined,
+    context: { runtime: IAgentRuntime },
+  ) => void
+
+  serverInteract?: (
+    capability: string,
+    params?: Record<string, unknown>,
+    context?: { runtime?: IAgentRuntime },
+  ) => Promise<unknown>
+
+  desktopTabEnabled?: boolean
+
+  visibleInManager?: boolean
+
+  pinnable?: boolean
+}
+
+export interface PluginApp {
+  displayName?: string
+  category?: string
+  launchType?: string
+  launchUrl?: string | null
+  icon?: string | null
+  capabilities?: string[]
+  minPlayers?: number | null
+  maxPlayers?: number | null
+  runtimePlugin?: string
+  viewer?: PluginAppViewer
+  session?: PluginAppSession
+  bridgeExport?: string
+  uiExtension?: PluginAppUiExtension
+
+  viewKind?: ViewKind
+
+  visibleInAppStore?: boolean
+
+  navTabs?: PluginAppNavTab[]
+}
+
+export interface PluginEventRegistration {
+  eventName: string
+  handler: (
+    params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
+  ) => Promise<void> | void
+}
+
+export interface PluginModelRegistration {
+  modelType: string
+  handler: (
+    runtime: IAgentRuntime,
+    params: Record<string, JsonValue | object>,
+  ) => Promise<JsonValue | object>
+  metadata?: ModelRegistrationMetadata
+  provider: string
+}
+
+export interface PluginServiceRegistration {
+  serviceType: string
+  serviceClass: ServiceClass
+}
+
+export interface PluginOwnership {
+  pluginName: string
+  plugin: Plugin
+  registeredPlugin: Plugin | null
+  actions: Action[]
+  providers: Provider[]
+  evaluators: RegisteredEvaluator[]
+  events: PluginEventRegistration[]
+  models: PluginModelRegistration[]
+  services: PluginServiceRegistration[]
+  sendHandlerSources: string[]
+  messageConnectors: { source: string; accountId?: string }[]
+  postConnectors: { source: string; accountId?: string }[]
+  hasAdapter: boolean
+  chatPreHandlerIds: string[]
+  responseHandlerEvaluatorNames: string[]
+  responseHandlerFieldEvaluatorNames: string[]
+  registeredAt: number
+}
+
+export type PluginMode = "direct" | "remote"
+
+export type RemotePluginRole =
+  | "capability"
+  | "sub-agent"
+  | "view-host"
+  | "system"
+  | "user"
+
+export interface RemotePluginPermissions {
+  bun: {
+    network?: "none" | "loopback" | "allowlist" | "any"
+
+    networkAllowlist?: string[]
+
+    fs?: "none" | "readonly" | "readwrite"
+
+    fsAllowlist?: string[]
+
+    process?: boolean
+
+    env?: string[]
+  }
+
+  host: {
+    services?: string[]
+
+    models?: string[]
+
+    events?: string[]
+
+    memory?: "none" | "read" | "readwrite"
+  }
+}
+
+export type RemotePluginIsolation = "shared-worker" | "isolated-process"
+
+export interface RemotePluginDeployment {
+  preferred?: "host" | "cloud" | "auto"
+
+  allowedTargets?: ("host" | "cloud")[]
+
+  requiresProcess?: boolean
+}
+
+export interface RemotePluginConfig {
+  role?: RemotePluginRole
+
+  permissions: RemotePluginPermissions
+
+  isolation: RemotePluginIsolation
+
+  worker: { relativePath: string }
+
+  view?: { relativePath: string; hidden?: boolean }
+
+  deployment?: RemotePluginDeployment
+
+  lifetime?: "session" | "persistent"
+
+  subAgent?: {
+    runner: "claude-code" | "codex" | "eliza"
+    promptInjection: "stdin-only" | "argv" | "env"
+  }
+
+  protocol?: { methods?: string[] }
+}
+
+export type RemotePluginInstallSource =
+  | { kind: "inline"; files: Record<string, string> }
+  | {
+    kind: "tarball"
+    url: string
+    attestation: { signedBy: string; signature: string }
+  }
+  | { kind: "workspace"; pkgName: string }
+
+export interface RemotePluginInstallOptions {
+  source: RemotePluginInstallSource
+
+  lifetime?: "session" | "persistent"
+}
+
+export interface RemotePluginInstanceHandle {
+  pluginName: string
+
+  instanceId: string
+
+  grantedPermissions: RemotePluginPermissions
+
+  uninstall(): Promise<void>
+}
+
+export class PermissionNarrowedRejection extends Error {
+  constructor(
+    message: string,
+    readonly capability: string,
+    readonly requested: unknown,
+    readonly granted: unknown,
+  ) {
+    super(message)
+    this.name = "PermissionNarrowedRejection"
+  }
+}
+
+export interface Plugin {
+  databaseBackends?: readonly ("postgres" | "pglite" | "sqlite")[]
+  name: string
+  description: string
+
+  packageName?: string
+
+  mode?: PluginMode
+
+  remote?: RemotePluginConfig
+
+  passiveConnectorsByDefault?: boolean
+
+  preflight?: () => Promise<void> | void
+
+  init?: (
+    config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ) => Promise<void> | void
+
+  dispose?: (runtime: IAgentRuntime) => Promise<void> | void
+
+  applyConfig?: (
+    config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ) => Promise<void> | void
+
+  config?: Record<string, string | number | boolean | null>
+
+  services?: ServiceClass[]
+
+  componentTypes?: ComponentTypeDefinition[]
+
+  actions?: Action[]
+  providers?: Provider[]
+
+  chatPreHandlers?: ChatPreHandler[]
+  evaluators?: RegisteredEvaluator[]
+  responseHandlerEvaluators?: ResponseHandlerEvaluator[]
+
+  responseHandlerFieldEvaluators?: ResponseHandlerFieldEvaluator[]
+
+  adapter?: AdapterFactory
+  models?: {
+    [K in keyof ModelParamsMap]?: (
+      runtime: IAgentRuntime,
+      params: ModelParamsMap[K],
+    ) => Promise<PluginModelResult<K>>
+  }
+
+  modelMetadata?: Record<string, ModelRegistrationMetadata>
+  events?: PluginEvents
+
+  connectorSources?: ConnectorSourceDefinition[]
+  tests?: TestSuite[]
+
+  dependencies?: string[]
+
+  testDependencies?: string[]
+
+  priority?: number
+
+  schema?: Record<string, JsonValue | object>
+
+  app?: PluginApp
+  appBridge?: PluginAppBridge
+
+  views?: ViewDeclaration[]
+
+  widgets?: PluginWidgetDeclaration[]
+
+  contexts?: AgentContext[]
+
+  autoEnable?: {
+    envKeys?: string[]
+
+    connectorKeys?: string[]
+
+    shouldEnable?: (
+      env: Record<string, string | undefined>,
+      config: Record<string, unknown>,
+    ) => boolean | Promise<boolean>
+  }
+}
+
+export interface ProjectAgent {
+  character: Character
+  init?: (runtime: IAgentRuntime) => Promise<void>
+  plugins?: Plugin[]
+  tests?: TestSuite | TestSuite[]
+}
+
+export interface Project {
+  agents: ProjectAgent[]
+}

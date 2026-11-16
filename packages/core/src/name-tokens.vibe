@@ -1,0 +1,31 @@
+export function replaceNameTokens(text: string, name: string): string {
+  if (!text) return text
+  return text.replace(/\{\{\s*(?:name|agentName)\s*\}\}/g, () => name)
+}
+
+export function replaceIndexedNameTokens(
+  text: string,
+  names: readonly string[],
+): string {
+  if (!text) return text
+  return text.replace(
+    /\{\{\s*(?:name|user)(\d+)\s*\}\}/g,
+    (match, slot: string) => {
+      const name = names[Number(slot) - 1]
+      return name === undefined ? match : name
+    },
+  )
+}
+
+export function tokenizeNameOccurrences(text: string, name: string): string {
+  if (!text || !name) return text
+  const trimmed = name.trim()
+  if (trimmed.length < 2) return text
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+  const pattern = new RegExp(
+    `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`,
+    "gu",
+  )
+  return text.replace(pattern, "{{name}}")
+}

@@ -1,0 +1,227 @@
+import { ElizaError } from "./errors.vibe"
+import type { TranscriptWord } from "./transcripts.vibe"
+
+export interface AudioRedactionSpan {
+  startMs: number
+  endMs: number
+
+  labels?: readonly string[]
+}
+
+export interface PiiTextSpan {
+  text: string
+
+  label?: string
+}
+
+export const DEFAULT_REDACTION_PAD_MS = 250
+
+export class RedactionSpanError extends ElizaError {
+  constructor(message: string) {
+    super(`audio redaction span invalid: ${message}`, {
+      code: "AUDIO_REDACTION_SPAN_INVALID",
+    })
+  }
+}
+
+export function normalizeSpokenText(raw: string): string {
+  return raw.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "")
+}
+
+interface NormalizedWordStream {
+  words: TranscriptWord[]
+
+  concat: string
+
+  charToWord: number[]
+}
+
+function buildWordStream(
+  words: readonly TranscriptWord[],
+): NormalizedWordStream {
+  const ordered = [...words].sort(
+    (a, b) => a.startMs - b.startMs || a.endMs - b.endMs,
+  )
+  const kept: TranscriptWord[] = []
+  const charToWord: number[] = []
+  let concat = ""
+
+  for (const [position, word] of ordered.entries()) {
+    if (!Number.isFinite(word.startMs) || !Number.isFinite(word.endMs)) {
+      throw new RedactionSpanError(
+        `word ${position} has non-finite timing (${word.startMs}..${word.endMs})`,
+      )
+    }
+    if (word.endMs <= word.startMs) {
+      throw new RedactionSpanError(
+        `word ${position} ends (${word.endMs}) before it starts (${word.startMs})`,
+      )
+    }
+    const normalized = normalizeSpokenText(word.text)
+    if (normalized.length === 0) continue
+    const wordIndex = kept.length
+    kept.push(word)
+    for (let i = 0; i < normalized.length; i += 1) charToWord.push(wordIndex)
+    concat += normalized
+  }
+  return { words: kept, concat, charToWord }
+}
+
+export interface PiiSpanMatchResult {
+  matches: AudioRedactionSpan[]
+
+  unmatched: PiiTextSpan[]
+}
+
+export function matchPiiSpansToWords(
+  words: readonly TranscriptWord[],
+  piiSpans: readonly PiiTextSpan[],
+): PiiSpanMatchResult {
+  const stream = buildWordStream(words)
+  const matches: AudioRedactionSpan[] = []
+  const unmatched: PiiTextSpan[] = []
+  for (const pii of piiSpans) {
+    const needle = normalizeSpokenText(pii.text)
+    if (needle.length === 0) {
+      unmatched.push(pii)
+      continue
+    }
+    let found = false
+    let from = 0
+    while (from <= stream.concat.length - needle.length) {
+      const at = stream.concat.indexOf(needle, from)
+      if (at === -1) break
+      found = true
+      const firstWord = stream.words[stream.charToWord[at]]
+      const lastWord = stream.words[stream.charToWord[at + needle.length - 1]]
+      matches.push({
+        startMs: firstWord.startMs,
+        endMs: lastWord.endMs,
+        ...(pii.label !== undefined ? { labels: [pii.label] } : {}),
+      })
+      from = at + 1
+    }
+    if (!found) unmatched.push(pii)
+  }
+  return { matches, unmatched }
+}
+
+export interface MergeRedactionSpanOptions {
+  durationMs: number
+
+  padMs?: number
+
+  mergeGapMs?: number
+}
+
+export function mergeRedactionSpans(
+  spans: readonly AudioRedactionSpan[],
+  options: MergeRedactionSpanOptions,
+): AudioRedactionSpan[] {
+  const padMs = options.padMs ?? DEFAULT_REDACTION_PAD_MS
+  const mergeGapMs = options.mergeGapMs ?? 0
+  const durationMs = options.durationMs
+  if (!Number.isFinite(durationMs) || durationMs < 0) {
+    throw new RedactionSpanError(`durationMs ${durationMs} is not valid`)
+  }
+  if (!Number.isFinite(padMs) || padMs < 0) {
+    throw new RedactionSpanError(`padMs ${padMs} is not valid`)
+  }
+  if (!Number.isFinite(mergeGapMs) || mergeGapMs < 0) {
+    throw new RedactionSpanError(`mergeGapMs ${mergeGapMs} is not valid`)
+  }
+
+  const padded: AudioRedactionSpan[] = []
+  for (const span of spans) {
+    if (!Number.isFinite(span.startMs) || !Number.isFinite(span.endMs)) {
+      throw new RedactionSpanError(
+        `span has non-finite bounds (${span.startMs}..${span.endMs})`,
+      )
+    }
+    if (span.endMs <= span.startMs) {
+      throw new RedactionSpanError(
+        `span ends (${span.endMs}) before it starts (${span.startMs})`,
+      )
+    }
+    let start = Math.floor(span.startMs - padMs)
+    let end = Math.ceil(span.endMs + padMs)
+
+    if (start < 0) start = 0
+    if (durationMs > 0 && end > durationMs) end = Math.ceil(durationMs)
+    if (durationMs > 0 && (span.startMs >= durationMs || span.endMs <= 0)) {
+      throw new RedactionSpanError(
+        `span ${span.startMs}..${span.endMs} does not overlap audio duration ${durationMs}`,
+      )
+    }
+    if (end <= start) {
+      throw new RedactionSpanError(
+        `span ${span.startMs}..${span.endMs} became empty after clamping`,
+      )
+    }
+    padded.push({
+      startMs: start,
+      endMs: end,
+      ...(span.labels && span.labels.length > 0
+        ? { labels: [...span.labels] }
+        : {}),
+    })
+  }
+
+  padded.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs)
+
+  const merged: Array<{ startMs: number; endMs: number; labels: Set<string> }> = []
+  for (const span of padded) {
+    const last = merged[merged.length - 1]
+    if (last && span.startMs <= last.endMs + mergeGapMs) {
+      last.endMs = Math.max(last.endMs, span.endMs)
+      for (const label of span.labels ?? []) last.labels.add(label)
+      continue
+    }
+    merged.push({
+      startMs: span.startMs,
+      endMs: span.endMs,
+      labels: new Set(span.labels ?? []),
+    })
+  }
+
+  return merged.map((span) => ({
+    startMs: span.startMs,
+    endMs: span.endMs,
+    ...(span.labels.size > 0 ? { labels: [...span.labels].sort() } : {}),
+  }))
+}
+
+export interface AudioRedactionSpanPlan {
+  spans: AudioRedactionSpan[]
+
+  matches: AudioRedactionSpan[]
+
+  unmatched: PiiTextSpan[]
+}
+
+export function buildAudioRedactionSpans(
+  words: readonly TranscriptWord[],
+  piiSpans: readonly PiiTextSpan[],
+  options: MergeRedactionSpanOptions,
+): AudioRedactionSpanPlan {
+  const { matches, unmatched } = matchPiiSpansToWords(words, piiSpans)
+  const spans = mergeRedactionSpans(matches, options)
+  return { spans, matches, unmatched }
+}
+
+export function assertCompleteAudioRedactionPlan(
+  plan: AudioRedactionSpanPlan,
+): void {
+  if (plan.unmatched.length > 0) {
+    throw new RedactionSpanError(
+      `${plan.unmatched.length} PII span(s) could not be located in timed words (text lengths: ${
+        plan.unmatched
+          .map((span) => span.text.length)
+          .join(", ")
+      })`,
+    )
+  }
+  if (plan.spans.length === 0) {
+    throw new RedactionSpanError("complete plan has no executable spans")
+  }
+}

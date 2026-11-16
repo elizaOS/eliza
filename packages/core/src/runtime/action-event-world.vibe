@@ -1,0 +1,63 @@
+import { ElizaError } from "../errors.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+
+type ActionEventWorldRuntime = Pick<
+  IAgentRuntime,
+  "agentId" | "getRoom" | "reportError"
+>
+
+type ActionEventWorldMessage = Pick<Memory, "roomId" | "worldId">
+
+export async function resolveActionEventWorldId(
+  runtime: ActionEventWorldRuntime,
+  message: ActionEventWorldMessage,
+  reportScope: string,
+): Promise<UUID> {
+  if (message.worldId) {
+    return message.worldId
+  }
+
+  let room: Awaited<ReturnType<ActionEventWorldRuntime["getRoom"]>>
+  try {
+    room = await runtime.getRoom(message.roomId)
+  } catch (cause: unknown) {
+    runtime.reportError(
+      reportScope,
+      new ElizaError("Action event world lookup failed", {
+        code: "ACTION_EVENT_WORLD_LOOKUP_FAILED",
+        cause: cause instanceof Error ? cause : new Error(String(cause)),
+        severity: "ephemeral",
+        context: { roomId: message.roomId },
+      }),
+    )
+    return runtime.agentId
+  }
+
+  if (!room) {
+    runtime.reportError(
+      reportScope,
+      new ElizaError("Action event room was not found", {
+        code: "ACTION_EVENT_ROOM_NOT_FOUND",
+        severity: "ephemeral",
+        context: { roomId: message.roomId },
+      }),
+    )
+    return runtime.agentId
+  }
+
+  if (!room.worldId) {
+    runtime.reportError(
+      reportScope,
+      new ElizaError("Action event room has no world", {
+        code: "ACTION_EVENT_ROOM_WORLD_MISSING",
+        severity: "ephemeral",
+        context: { roomId: message.roomId },
+      }),
+    )
+    return runtime.agentId
+  }
+
+  return room.worldId
+}

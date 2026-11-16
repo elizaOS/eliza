@@ -1,0 +1,55 @@
+import { ElizaError } from "./errors.vibe"
+import { deterministicOwnerEntityId, hasConfiguredCanonicalOwner, resolveOwnerEntityIdOrDefault } from "./roles.vibe"
+import type { IAgentRuntime } from "./types/runtime.vibe"
+import { validateUuid } from "./utils/uuid.vibe"
+
+type WorldMetadataShape = {
+  ownership?: { ownerId?: string }
+}
+
+export function resolveFallbackOwnerEntityId(
+  runtime: Pick<IAgentRuntime, "agentId">,
+): string {
+  return deterministicOwnerEntityId(runtime.agentId)
+}
+
+export async function resolveOwnerEntityId(
+  runtime: IAgentRuntime,
+): Promise<string | null> {
+  if (hasConfiguredCanonicalOwner(runtime)) {
+    return resolveOwnerEntityIdOrDefault(runtime)
+  }
+
+  let phase = "rooms"
+  let roomId: string | undefined
+  let worldId: string | undefined
+  try {
+    const roomIds = await runtime.getRoomsForParticipant(runtime.agentId)
+    for (const candidateRoomId of roomIds) {
+      phase = "room"
+      roomId = candidateRoomId
+      worldId = undefined
+      const room = await runtime.getRoom(candidateRoomId)
+      if (!room?.worldId) continue
+      phase = "world"
+      worldId = room.worldId
+      const world = await runtime.getWorld(room.worldId)
+      const metadata = (world?.metadata ?? {}) as WorldMetadataShape
+
+      const candidateOwnerId = validateUuid(metadata.ownership?.ownerId)
+      if (candidateOwnerId) return candidateOwnerId
+    }
+  } catch (cause) {
+    throw new ElizaError(
+      "Owner identity lookup failed; restore storage access and retry.",
+      {
+        code: "OWNER_ENTITY_LOOKUP_FAILED",
+        cause,
+        context: { agentId: runtime.agentId, phase, roomId, worldId },
+        severity: "ephemeral",
+      },
+    )
+  }
+
+  return resolveFallbackOwnerEntityId(runtime)
+}

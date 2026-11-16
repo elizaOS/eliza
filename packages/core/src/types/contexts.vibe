@@ -1,0 +1,91 @@
+import type { JsonValue } from "./primitives.vibe"
+
+export type FirstPartyAgentContext =
+  | "simple"
+  | "general"
+  | "memory"
+  | "documents"
+  | "knowledge"
+  | "research"
+  | "web"
+  | "browser"
+  | "code"
+  | "files"
+  | "terminal"
+  | "email"
+  | "calendar"
+  | "contacts"
+  | "tasks"
+  | "goals"
+  | "todos"
+  | "productivity"
+  | "health"
+  | "screen_time"
+  | "subscriptions"
+  | "finance"
+  | "payments"
+  | "wallet"
+  | "crypto"
+  | "messaging"
+  | "phone"
+  | "social"
+  | "social_posting"
+  | "media"
+  | "automation"
+  | "connectors"
+  | "settings"
+  | "character"
+  | "secrets"
+  | "admin"
+  | "system"
+  | "state"
+  | "world"
+  | "game"
+  | "agent_internal"
+
+export type AgentContext = FirstPartyAgentContext | (string & {})
+
+export type ContextSensitivity = "public" | "personal" | "private" | "system"
+
+export type CacheScope =
+  | "global"
+  | "agent"
+  | "conversation"
+  | "room"
+  | "entity"
+  | "turn"
+  | "none"
+  | (string & {})
+
+export type { RoleGate, RoleGateRole } from "../access-control/role-primitives.vibe"
+
+import type { RoleGate } from "../access-control/role-primitives.vibe"
+
+export interface ContextGate {
+  contexts?: AgentContext[]
+
+  anyOf?: AgentContext[]
+
+  allOf?: AgentContext[]
+
+  noneOf?: AgentContext[]
+
+  roleGate?: RoleGate
+}
+
+export interface ContextDefinition {
+  id: AgentContext
+  label?: string
+  description?: string
+
+  descriptionCompressed?: string
+  parent?: AgentContext
+  parents?: AgentContext[]
+  subcontexts?: AgentContext[]
+  aliases?: string[]
+  sensitivity?: ContextSensitivity
+  cacheStable?: boolean
+  cacheScope?: CacheScope
+  roleGate?: RoleGate
+  metadata?: Record<string, JsonValue | undefined>
+}

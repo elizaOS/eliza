@@ -1,0 +1,144 @@
+import type { AccessContext } from "../types/access-context.vibe"
+import type {
+  ArtifactRoomSnapshot,
+  ArtifactShareGrant,
+  ArtifactShareMetadata,
+  Memory,
+  MemoryScope,
+} from "../types/memory.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import { validateUuid } from "../utils/uuid.vibe"
+import { actorFromAccessContext, canReadScope } from "./filter.vibe"
+import { isMemoryScope, parseShareGrantList } from "./memory-scope.vibe"
+
+export type ArtifactDisclosure = "full" | "redacted" | "none"
+
+export interface ParsedArtifactShareMetadata {
+  grants: ArtifactShareGrant[]
+
+  roomSnapshot?: ArtifactRoomSnapshot
+}
+
+export function parseArtifactShareMetadata(
+  metadata: unknown,
+): ParsedArtifactShareMetadata {
+  if (!metadata || typeof metadata !== "object") return { grants: [] }
+  const share = (metadata as { share?: unknown }).share
+  if (!share || typeof share !== "object") return { grants: [] }
+  const grants = parseShareGrantList((share as { grants?: unknown }).grants)
+  const roomSnapshot = parseArtifactShareRoomSnapshot(
+    (share as { roomSnapshot?: unknown }).roomSnapshot,
+  )
+  return {
+    grants,
+    ...(roomSnapshot ? { roomSnapshot } : {}),
+  }
+}
+
+export function parseArtifactShareGrants(
+  metadata: unknown,
+): ArtifactShareGrant[] {
+  return parseArtifactShareMetadata(metadata).grants
+}
+
+function parseArtifactShareRoomSnapshot(
+  value: unknown,
+): ArtifactRoomSnapshot | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const snapshot = value as Record<string, unknown>
+  const roomId = validateUuid(snapshot.roomId)
+  if (!roomId) return undefined
+  const atMs = snapshot.atMs
+  if (typeof atMs !== "number") return undefined
+  const entityIds = snapshot.entityIds
+  if (!Array.isArray(entityIds)) return undefined
+  if (!entityIds.every((entityId) => validateUuid(entityId) !== null)) {
+    return undefined
+  }
+  return {
+    roomId,
+    entityIds: entityIds as UUID[],
+    atMs,
+  }
+}
+
+export interface ArtifactDisclosureRecord {
+  scope: MemoryScope
+
+  scopedEntityId?: UUID
+
+  grants?: readonly ArtifactShareGrant[]
+
+  share?: ParsedArtifactShareMetadata | ArtifactShareMetadata
+}
+
+export function artifactDisclosureRecordFromMemory(
+  memory: Pick<Memory, "entityId" | "metadata">,
+): ArtifactDisclosureRecord {
+  const metadata = memory.metadata && typeof memory.metadata === "object"
+    ? (memory.metadata as Record<string, unknown>)
+    : undefined
+  const scopedEntityId = validateUuid(metadata?.scopedToEntityId)
+    ?? validateUuid(metadata?.addedBy)
+    ?? memory.entityId
+  const scope = metadata?.scope
+  return {
+    scope: isMemoryScope(scope) ? scope : "owner-private",
+    ...(scopedEntityId ? { scopedEntityId } : {}),
+    grants: parseArtifactShareGrants(metadata),
+  }
+}
+
+export function resolveArtifactDisclosure(
+  record: ArtifactDisclosureRecord,
+  ctx: AccessContext | undefined,
+  agentId: UUID,
+): ArtifactDisclosure {
+  if (!ctx) return "full"
+  if (ctx.requesterEntityId === agentId) return "full"
+  const actor = actorFromAccessContext(ctx, agentId)
+
+  if (actor.role === "OWNER" || actor.role === "ADMIN") return "full"
+  const grants = record.grants ?? record.share?.grants
+  const grant = grants?.find((g) => g.entityId === ctx.requesterEntityId)
+  if (grant) return grant.mode === "full" ? "full" : "redacted"
+
+  if (
+    actor.role === "UNRESOLVED"
+    && record.scope !== "global"
+    && record.scope !== "shared"
+    && record.scope !== "room"
+  ) {
+    return "none"
+  }
+  const ladderActor = actor.role === "UNRESOLVED" ? { ...actor, role: "USER" as const } : actor
+  return canReadScope(record.scope, record.scopedEntityId, ladderActor)
+    ? "full"
+    : "none"
+}
+
+export interface ArtifactVariantUrls {
+  fullUrl?: string | null
+  redactedUrl?: string | null
+}
+
+export interface DisclosedArtifactUrl {
+  disclosure: Exclude<ArtifactDisclosure, "none">
+  url: string
+  redacted: boolean
+}
+
+export function selectDisclosedArtifactUrl(
+  disclosure: ArtifactDisclosure,
+  urls: ArtifactVariantUrls,
+): DisclosedArtifactUrl | null {
+  if (disclosure === "none") return null
+  if (disclosure === "redacted") {
+    return typeof urls.redactedUrl === "string" && urls.redactedUrl.length > 0
+      ? { disclosure, url: urls.redactedUrl, redacted: true }
+      : null
+  }
+  return typeof urls.fullUrl === "string" && urls.fullUrl.length > 0
+    ? { disclosure, url: urls.fullUrl, redacted: false }
+    : null
+}

@@ -1,0 +1,1 @@
+export type ViewKind = "system" | "release" | "developer" | "preview"

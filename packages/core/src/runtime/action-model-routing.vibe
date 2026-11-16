@@ -1,0 +1,179 @@
+import { isModelProviderFallbackError } from "../security/model-failure.vibe"
+import { LOCAL_MODEL_PROVIDERS } from "../security/secrets.vibe"
+import type { ActionModelClass } from "../types/components.vibe"
+import { type ModelHandler, type ModelRegistrationMetadata, ModelType } from "../types/model.vibe"
+
+export interface ModelCapabilityView {
+  readonly provider: string
+  readonly metadata?: ModelRegistrationMetadata
+}
+
+export interface ActionModelRoutingStep {
+  readonly modelType: string
+
+  readonly providerFilter?: (candidate: ModelCapabilityView) => boolean
+}
+
+export interface ActionModelRoutingStrategy {
+  readonly chain: readonly ActionModelRoutingStep[]
+  readonly confidenceThreshold?: number
+
+  readonly requireChainMatch?: boolean
+}
+
+export function isLocalProvider(provider: string): boolean {
+  const normalized = provider.toLowerCase()
+  if ((LOCAL_MODEL_PROVIDERS as readonly string[]).includes(normalized)) {
+    return true
+  }
+
+  return (
+    normalized.includes("ollama")
+    || normalized.includes("lm-studio")
+    || normalized.includes("lmstudio")
+    || normalized.includes("mlx")
+    || normalized.includes("llama.cpp")
+    || normalized.includes("llamacpp")
+    || normalized.includes("eliza-local-inference")
+    || normalized.includes("eliza-device-bridge")
+    || normalized.includes("capacitor-llama")
+    || normalized.includes("eliza-aosp-llama")
+    || normalized === "local"
+  )
+}
+
+export function isLocalHandler(candidate: ModelCapabilityView): boolean {
+  const declared = candidate.metadata?.local
+  if (typeof declared === "boolean") {
+    return declared
+  }
+  return isLocalProvider(candidate.provider)
+}
+
+const ACTION_MODEL_STRATEGIES: Readonly<
+  Record<ActionModelClass, ActionModelRoutingStrategy>
+> = {
+  LOCAL: {
+    chain: [
+      { modelType: ModelType.TEXT_SMALL, providerFilter: isLocalHandler },
+    ],
+    requireChainMatch: true,
+  },
+  TEXT_SMALL: {
+    chain: [
+      { modelType: ModelType.TEXT_SMALL },
+      { modelType: ModelType.TEXT_LARGE },
+    ],
+  },
+  TEXT_LARGE: {
+    chain: [{ modelType: ModelType.TEXT_LARGE }],
+  },
+}
+
+const ROUTABLE_TEXT_MODEL_TYPES: ReadonlySet<string> = new Set([
+  ModelType.TEXT_NANO,
+  ModelType.TEXT_SMALL,
+  ModelType.TEXT_MEDIUM,
+  ModelType.TEXT_LARGE,
+  ModelType.TEXT_MEGA,
+  ModelType.RESPONSE_HANDLER,
+  ModelType.ACTION_PLANNER,
+  ModelType.TEXT_REASONING_SMALL,
+  ModelType.TEXT_REASONING_LARGE,
+  ModelType.TEXT_COMPLETION,
+])
+
+export function maybeReroute(
+  modelClass: ActionModelClass | undefined,
+  requestedModelType: string,
+): ActionModelRoutingStrategy | undefined {
+  if (!modelClass || !ROUTABLE_TEXT_MODEL_TYPES.has(requestedModelType)) {
+    return undefined
+  }
+  return ACTION_MODEL_STRATEGIES[modelClass]
+}
+
+export interface ResolvedActionModel {
+  readonly handler: ModelHandler["handler"]
+  readonly modelType: string
+  readonly provider: string
+}
+
+export function resolveChain(
+  strategy: ActionModelRoutingStrategy,
+  lookup: (modelType: string) => readonly ModelHandler[] | undefined,
+): ResolvedActionModel[] {
+  const resolved: ResolvedActionModel[] = []
+  const seen = new Set<string>()
+  for (const step of strategy.chain) {
+    const handlers = lookup(step.modelType)
+    if (!handlers || handlers.length === 0) {
+      continue
+    }
+    for (const handler of handlers) {
+      if (step.providerFilter && !step.providerFilter(handler)) {
+        continue
+      }
+      const key = `${step.modelType}:${handler.provider}`
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      resolved.push({
+        handler: handler.handler,
+        modelType: step.modelType,
+        provider: handler.provider,
+      })
+      break
+    }
+  }
+  return resolved
+}
+
+function isLowConfidence(
+  result: unknown,
+  threshold: number | undefined,
+): boolean {
+  if (threshold === undefined) {
+    return false
+  }
+  if (!result || typeof result !== "object") {
+    return false
+  }
+  const conf = (result as { confidence?: unknown }).confidence
+  if (typeof conf !== "number") {
+    return false
+  }
+  return conf < threshold
+}
+
+export async function executeChainWithFallback<TResult>(
+  chain: readonly ResolvedActionModel[],
+  threshold: number | undefined,
+  invoke: (resolved: ResolvedActionModel) => Promise<TResult>,
+): Promise<TResult> {
+  if (chain.length === 0) {
+    throw new Error(
+      "executeChainWithFallback: chain is empty — no handlers resolved",
+    )
+  }
+  let attempted = 0
+  let lastError: unknown
+  for (const resolved of chain) {
+    attempted += 1
+    try {
+      const result = await invoke(resolved)
+      if (attempted === chain.length || !isLowConfidence(result, threshold)) {
+        return result
+      }
+      lastError = new Error(
+        `Low-confidence result from ${resolved.modelType} (provider=${resolved.provider}); escalating`,
+      )
+    } catch (err) {
+      if (!isModelProviderFallbackError(err, resolved.modelType)) throw err
+      lastError = err
+    }
+  }
+
+  throw lastError
+}

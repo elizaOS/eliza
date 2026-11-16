@@ -1,0 +1,85 @@
+import type {
+  AppShellBackgroundPolicy,
+  PageLayoutManifest,
+  ResolvedSurfaceManifest,
+  SurfaceCapability,
+  SurfaceManifest,
+  SurfaceManifestBearer,
+} from "../types/surface-manifest.vibe"
+
+export const SURFACE_ISOLATION_LEVELS = [
+  "in-process",
+  "sandboxed-iframe",
+  "native-webview",
+  "immersive",
+] as const
+
+export const SURFACE_CAPABILITIES = [
+  "wallpaper",
+  "background:apply",
+  "navigate",
+  "storage",
+  "agent-surface",
+] as const
+
+const DEFAULT_PAGE_LAYOUT_MANIFEST: PageLayoutManifest = Object.freeze({
+  kind: "content",
+  topology: "framed",
+  width: "standard",
+  scroll: "view",
+  gutter: "standard",
+})
+
+export function resolveSurfaceManifest(
+  decl: SurfaceManifestBearer | null | undefined,
+): ResolvedSurfaceManifest {
+  const surface = decl?.surface
+
+  const capabilities: ReadonlySet<SurfaceCapability> = new Set(
+    surface?.capabilities,
+  )
+
+  const declaredBackground = surface?.background ?? "opaque"
+
+  const background: AppShellBackgroundPolicy = declaredBackground === "shared" && capabilities.has("wallpaper")
+    ? "shared"
+    : "opaque"
+
+  return {
+    background,
+    header: surface?.header ?? "normal",
+    isolation: surface?.isolation ?? "in-process",
+    lifecycle: surface?.lifecycle ?? "ephemeral",
+    layout: surface?.layout
+      ? { topology: "framed", ...surface.layout }
+      : DEFAULT_PAGE_LAYOUT_MANIFEST,
+    capabilities,
+  }
+}
+
+export function resolveSurfaceBackgroundPolicy(
+  decl: SurfaceManifestBearer | null | undefined,
+): AppShellBackgroundPolicy {
+  return resolveSurfaceManifest(decl).background
+}
+
+export function surfaceGrants(
+  manifest: ResolvedSurfaceManifest,
+  capability: SurfaceCapability,
+): boolean {
+  return manifest.capabilities.has(capability)
+}
+
+export const IMMERSIVE_WALLPAPER_SURFACE: SurfaceManifest = {
+  background: "shared",
+  header: "immersive",
+  isolation: "immersive",
+  layout: {
+    kind: "immersive",
+    topology: "ambient",
+    width: "full",
+    scroll: "view",
+    gutter: "none",
+  },
+  capabilities: ["wallpaper", "background:apply"],
+}

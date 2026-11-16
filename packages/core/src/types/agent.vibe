@@ -1,0 +1,84 @@
+import type { DocumentSourceItem } from "./documents.vibe"
+import type { Content, JsonObject, JsonValue } from "./primitives.vibe"
+import type { State } from "./state.vibe"
+
+export type TemplateType =
+  | string
+  | ((params: {
+    state:
+      | State
+      | Record<string, string | number | boolean | null | undefined>
+      | object
+  }) => string)
+
+export interface MessageExample {
+  name: string
+  content: Content
+}
+
+export interface MessageExampleGroup {
+  examples: MessageExample[]
+}
+
+export interface CharacterSettings {
+  shouldRespondModel?: string
+  useMultiStep?: boolean
+  maxMultistepIterations?: number
+  providersTotalTimeoutMs?: number
+  maxWorkingMemoryEntries?: number
+  alwaysRespondChannels?: string
+  alwaysRespondSources?: string
+  defaultTemperature?: number
+  defaultMaxTokens?: number
+  defaultFrequencyPenalty?: number
+  defaultPresencePenalty?: number
+  extra?: JsonObject
+  enableRelationships?: boolean
+  enableTrajectories?: boolean
+  ENABLE_AUTONOMY?: boolean | string
+  ADVANCED_CAPABILITIES?: boolean | string
+  ENABLE_TRUST?: boolean | string
+  ENABLE_SECRETS_MANAGER?: boolean | string
+  ENABLE_PLUGIN_MANAGER?: boolean | string
+  ENABLE_DOCUMENTS?: boolean | string
+  ENABLE_RELATIONSHIPS?: boolean | string
+  secrets?: Record<string, string | boolean | number>
+  [key: string]: JsonValue | undefined
+}
+
+export interface Character {
+  id?: string
+  name?: string
+  username?: string
+  system?: string
+  templates?: { [key: string]: TemplateType }
+  bio?: string[]
+  postExamples?: string[]
+  topics?: string[]
+  adjectives?: string[]
+  plugins?: string[]
+  settings?: CharacterSettings
+  secrets?: Record<string, string | number | boolean>
+  messageExamples?: MessageExampleGroup[]
+  documents?: DocumentSourceItem[]
+  knowledge?: DocumentSourceItem[]
+  style?: { all?: string[]; chat?: string[]; post?: string[] }
+
+  advancedPlanning?: boolean
+
+  advancedMemory?: boolean
+}
+
+export enum AgentStatus {
+  ACTIVE = "active",
+  INACTIVE = "inactive",
+}
+
+export interface Agent extends Character {
+  enabled?: boolean
+  status?: AgentStatus
+  createdAt: number | bigint
+  updatedAt: number | bigint
+
+  metadata?: Record<string, unknown>
+}

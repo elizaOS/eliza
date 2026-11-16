@@ -1,0 +1,135 @@
+{
+  "name": "@elizaos/core",
+  "version": "2.0.6",
+  "private": true,
+  "type": "module",
+  "sideEffects": true,
+  "description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS, written in VibeLang on Effect.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=26"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./catalog/channel-plugin-map.json": {
+      "eliza-source": "./src/catalog/channel-plugin-map.json",
+      "default": "./dist/src/catalog/channel-plugin-map.json"
+    },
+    "./catalog/curated-app-definitions.json": {
+      "eliza-source": "./src/catalog/curated-app-definitions.json",
+      "default": "./dist/src/catalog/curated-app-definitions.json"
+    },
+    "./catalog/generated.json": {
+      "eliza-source": "./src/catalog/generated.json",
+      "default": "./dist/src/catalog/generated.json"
+    },
+    "./catalog/provider-plugin-map.json": {
+      "eliza-source": "./src/catalog/provider-plugin-map.json",
+      "default": "./dist/src/catalog/provider-plugin-map.json"
+    },
+    "./catalog/short-id-plugin-map.json": {
+      "eliza-source": "./src/catalog/short-id-plugin-map.json",
+      "default": "./dist/src/catalog/short-id-plugin-map.json"
+    },
+    "./restart-exit-code.json": {
+      "eliza-source": "./src/restart-exit-code.json",
+      "default": "./dist/src/restart-exit-code.json"
+    },
+    "./logging": {
+      "eliza-source": "./src/logging.vibe",
+      "types": "./dist/src/logging.d.ts",
+      "import": "./dist/src/logging.js",
+      "default": "./dist/src/logging.js"
+    },
+    "./view-interaction": {
+      "eliza-source": "./src/view-interaction.vibe",
+      "types": "./dist/src/view-interaction.d.ts",
+      "import": "./dist/src/view-interaction.js",
+      "default": "./dist/src/view-interaction.js"
+    },
+    "./protocol": {
+      "eliza-source": "./src/protocol.vibe",
+      "types": "./dist/src/protocol.d.ts",
+      "import": "./dist/src/protocol.js",
+      "default": "./dist/src/protocol.js"
+    },
+    "./permissions": {
+      "eliza-source": "./src/types/permissions.vibe",
+      "types": "./dist/src/types/permissions.d.ts",
+      "import": "./dist/src/types/permissions.js",
+      "default": "./dist/src/types/permissions.js"
+    },
+    "./security/redact": {
+      "eliza-source": "./src/security/redact.vibe",
+      "types": "./dist/src/security/redact.d.ts",
+      "import": "./dist/src/security/redact.js",
+      "default": "./dist/src/security/redact.js"
+    },
+    "./speech": {
+      "eliza-source": "./src/speech.vibe",
+      "types": "./dist/src/speech.d.ts",
+      "import": "./dist/src/speech.js",
+      "default": "./dist/src/speech.js"
+    },
+    "./task-events": {
+      "eliza-source": "./src/messaging/task-events.vibe",
+      "types": "./dist/src/messaging/task-events.d.ts",
+      "import": "./dist/src/messaging/task-events.js",
+      "default": "./dist/src/messaging/task-events.js"
+    },
+    "./task-widgets": {
+      "eliza-source": "./src/messaging/task-widgets.vibe",
+      "types": "./dist/src/messaging/task-widgets.d.ts",
+      "import": "./dist/src/messaging/task-widgets.js",
+      "default": "./dist/src/messaging/task-widgets.js"
+    },
+    "./read-memo": {
+      "eliza-source": "./src/read-memo.vibe",
+      "types": "./dist/src/read-memo.d.ts",
+      "import": "./dist/src/read-memo.js",
+      "default": "./dist/src/read-memo.js"
+    },
+    "./schema-types": {
+      "eliza-source": "./src/schema-types.vibe",
+      "types": "./dist/src/schema-types.d.ts",
+      "import": "./dist/src/schema-types.js",
+      "default": "./dist/src/schema-types.js"
+    }
+  },
+  "scripts": {
+    "build": "vibelang -p tsconfig.build.json",
+    "typecheck": "vibelang --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.1.1",
+    "adze": "^2.2.5",
+    "effect": "4.1.1",
+    "file-type": "^22.0.0",
+    "json5": "^2.2.3",
+    "markdown-it": "^15.0.3",
+    "vibelang-runtime": "0.0.13",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.1.1",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "vibelang-vite": "0.0.13",
+    "vibestack": "workspace:*",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

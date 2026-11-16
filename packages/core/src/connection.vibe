@@ -1,0 +1,404 @@
+import { worldMetadataValueEquals } from "./database/world-metadata-cas.vibe"
+import { ElizaError } from "./errors.vibe"
+import { logger } from "./logger.vibe"
+import type { IDatabaseAdapter } from "./types/database.vibe"
+import type { Entity, Room, World } from "./types/environment.vibe"
+import type { JsonValue, Metadata, UUID } from "./types/primitives.vibe"
+import { ChannelType } from "./types/primitives.vibe"
+import { stringToUuid } from "./utils/string-to-uuid.vibe"
+
+const WORLD_UPSERT_STALE_ATTEMPTS = 3
+
+function worldUnchangedByMerge(
+  existing: World,
+  merged: { name?: string; messageServerId?: UUID; metadata?: unknown },
+): boolean {
+  return (
+    (merged.name ?? existing.name) === existing.name
+    && (merged.messageServerId ?? existing.messageServerId)
+      === existing.messageServerId
+    && worldMetadataValueEquals(existing.metadata ?? {}, merged.metadata ?? {})
+  )
+}
+
+export interface EnsureConnectionParams {
+  agentId: UUID
+  entityId: UUID
+  roomId: UUID
+  roomName?: string
+
+  worldId?: UUID
+  worldName?: string
+  userName?: string
+  name?: string
+  source: string
+  type?: ChannelType | string
+  channelId?: string
+
+  serverId?: string
+  messageServerId?: UUID
+  userId?: UUID
+  metadata?: Record<string, JsonValue>
+}
+
+export interface EnsureConnectionsParams {
+  agentId: UUID
+  connections: EnsureConnectionParams[]
+}
+
+export interface EnsureConnectionsResult {
+  createdRoomParticipants: number
+}
+
+function mergeEntitySourceMetadata(
+  existing: Metadata,
+  incoming: Record<string, unknown>,
+): Metadata {
+  const merged: Record<string, unknown> = { ...existing }
+  for (const [key, value] of Object.entries(incoming)) {
+    const prior = merged[key]
+    if (
+      prior !== null
+      && typeof prior === "object"
+      && !Array.isArray(prior)
+      && value !== null
+      && typeof value === "object"
+      && !Array.isArray(value)
+    ) {
+      merged[key] = { ...prior, ...value }
+    } else {
+      merged[key] = value
+    }
+  }
+  return merged as Metadata
+}
+
+const RECORD_RECONCILIATION_WARN_MS = 30_000
+const recordReconciliationsByAdapter = new WeakMap<
+  IDatabaseAdapter,
+  Map<string, Promise<void>>
+>()
+
+function getRecordReconciliations(
+  adapter: IDatabaseAdapter,
+): Map<string, Promise<void>> {
+  const existing = recordReconciliationsByAdapter.get(adapter)
+  if (existing) return existing
+  const registry = new Map<string, Promise<void>>()
+  recordReconciliationsByAdapter.set(adapter, registry)
+  return registry
+}
+
+export function __getConnectionReconciliationRegistrySizeForTests(
+  adapter: IDatabaseAdapter,
+): number {
+  return recordReconciliationsByAdapter.get(adapter)?.size ?? 0
+}
+
+function withRecordLock<T>(
+  adapter: IDatabaseAdapter,
+  key: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const recordReconciliations = getRecordReconciliations(adapter)
+  const predecessor = recordReconciliations.get(key) ?? Promise.resolve()
+  const operation = predecessor.then(async () => {
+    const warningTimer = setTimeout(() => {
+      logger.warn(
+        {
+          key,
+          src: "core:connection",
+          thresholdMs: RECORD_RECONCILIATION_WARN_MS,
+        },
+        "Connection reconciliation lock is still held",
+      )
+    }, RECORD_RECONCILIATION_WARN_MS)
+    ;(
+      warningTimer as unknown as {
+        unref?: () => void
+      }
+    ).unref?.()
+    try {
+      return await run()
+    } finally {
+      clearTimeout(warningTimer)
+    }
+  })
+  const tail = operation.then(
+    () => undefined,
+    () => undefined,
+  )
+  recordReconciliations.set(key, tail)
+
+  void tail.then(() => {
+    if (recordReconciliations.get(key) === tail) {
+      recordReconciliations.delete(key)
+      if (recordReconciliations.size === 0) {
+        recordReconciliationsByAdapter.delete(adapter)
+      }
+    }
+  })
+  return operation
+}
+
+function withRecordLocks<T>(
+  adapter: IDatabaseAdapter,
+  keys: string[],
+  run: () => Promise<T>,
+): Promise<T> {
+  const ordered = [...new Set(keys)].sort()
+  const acquire = (index: number): Promise<T> => {
+    const key = ordered[index]
+    if (key === undefined) return run()
+    return withRecordLock(adapter, key, () => acquire(index + 1))
+  }
+  return acquire(0)
+}
+
+const CHANNEL_TYPES: ReadonlySet<string> = new Set(Object.values(ChannelType))
+
+function isChannelType(value: unknown): value is ChannelType {
+  return typeof value === "string" && CHANNEL_TYPES.has(value)
+}
+
+function resolveWorldId(
+  worldId: UUID | undefined,
+  messageServerId: UUID | undefined,
+  agentId: UUID,
+): UUID {
+  if (worldId) return worldId
+  if (messageServerId) return stringToUuid(`${messageServerId}:${agentId}`)
+  throw new Error("worldId or messageServerId is required")
+}
+
+export async function ensureConnections(
+  adapter: IDatabaseAdapter,
+  params: EnsureConnectionsParams,
+): Promise<EnsureConnectionsResult> {
+  const { agentId, connections } = params
+  if (!connections.length) return { createdRoomParticipants: 0 }
+
+  const entityMap = new Map<
+    UUID,
+    {
+      entityId: UUID
+      names: string[]
+      metadata: Record<string, unknown>
+      agentId: UUID
+    }
+  >()
+  const worldMap = new Map<UUID, World>()
+  const worldFallbackNames = new Map<UUID, string>()
+  const roomMap = new Map<UUID, Room>()
+  const roomExplicitTypes = new Map<UUID, ChannelType>()
+  const roomFallbackNames = new Map<UUID, string>()
+  const roomParticipants = new Map<UUID, Set<UUID>>()
+
+  for (const c of connections) {
+    const worldId = resolveWorldId(c.worldId, c.messageServerId, agentId)
+    const names = [c.name, c.userName].filter(Boolean) as string[]
+    const source = c.source || "default"
+    let ent = entityMap.get(c.entityId)
+    if (!ent) {
+      ent = { entityId: c.entityId, names: [], metadata: {}, agentId }
+      entityMap.set(c.entityId, ent)
+    }
+    for (const name of names) {
+      if (!ent.names.includes(name)) ent.names.push(name)
+    }
+
+    const sourceRecord: Record<string, JsonValue> = {}
+    if (c.userId !== undefined) sourceRecord.id = c.userId
+    if (c.name !== undefined) sourceRecord.name = c.name
+    if (c.userName !== undefined) sourceRecord.userName = c.userName
+    if (Object.keys(sourceRecord).length > 0) {
+      ent.metadata[source] = {
+        ...(ent.metadata[source] as Record<string, JsonValue> | undefined),
+        ...sourceRecord,
+      }
+    }
+
+    const batchedWorld = worldMap.get(worldId)
+    const world: World = {
+      id: worldId,
+      name: c.worldName || batchedWorld?.name || undefined,
+      agentId,
+      messageServerId: c.messageServerId,
+      metadata: {
+        ...batchedWorld?.metadata,
+        ...c.metadata,
+      },
+    }
+    worldMap.set(worldId, world)
+    if (!worldFallbackNames.has(worldId)) {
+      worldFallbackNames.set(
+        worldId,
+        c.messageServerId
+          ? `World for server ${c.messageServerId}`
+          : `World for room ${c.roomId}`,
+      )
+    }
+
+    const roomType = isChannelType(c.type) ? c.type : ChannelType.DM
+
+    if (roomType !== ChannelType.DM || c.type === ChannelType.DM) {
+      roomExplicitTypes.set(c.roomId, roomType)
+    }
+
+    const room: Room = {
+      id: c.roomId,
+      name: c.roomName || undefined,
+      source,
+      type: roomType,
+      channelId: c.channelId,
+      serverId: c.serverId,
+      messageServerId: c.messageServerId,
+      worldId,
+    }
+    roomMap.set(c.roomId, room)
+    if (c.name) roomFallbackNames.set(c.roomId, c.name)
+
+    let participants = roomParticipants.get(c.roomId)
+    if (!participants) {
+      participants = new Set()
+      roomParticipants.set(c.roomId, participants)
+    }
+    participants.add(c.entityId)
+    participants.add(agentId)
+  }
+
+  const entityIds = [...entityMap.keys()]
+
+  await withRecordLocks(
+    adapter,
+    entityIds.map((id) => `entity:${id}`),
+    async () => {
+      const existingEntities = entityIds.length > 0 ? await adapter.getEntitiesByIds(entityIds) : []
+      const existingByKey = new Map(existingEntities.map((e) => [e.id, e]))
+      const entities: Entity[] = []
+      for (const [, v] of entityMap) {
+        const existing = existingByKey.get(v.entityId) ?? null
+        const names = existing
+          ? [...new Set([...(existing.names || []), ...v.names])].filter(
+            Boolean,
+          )
+          : v.names
+        const metadata = existing
+          ? mergeEntitySourceMetadata(
+            (existing.metadata ?? {}) as Metadata,
+            v.metadata,
+          )
+          : (v.metadata as Metadata)
+        entities.push({
+          id: v.entityId,
+          names,
+          metadata,
+          agentId: v.agentId,
+        })
+      }
+      if (entities.length) await adapter.upsertEntities(entities)
+    },
+  )
+
+  const worldIds = [...worldMap.keys()]
+  await withRecordLocks(
+    adapter,
+    worldIds.map((id) => `world:${id}`),
+    async () => {
+      for (let attempt = 0;; attempt += 1) {
+        const existingWorlds = worldIds.length > 0 ? await adapter.getWorldsByIds(worldIds) : []
+        const existingWorldsById = new Map(
+          existingWorlds.map((world) => [world.id, world]),
+        )
+        const worlds = [...worldMap.values()]
+          .map((world) => {
+            const existing = existingWorldsById.get(world.id)
+            return {
+              existing,
+              merged: {
+                ...existing,
+                ...world,
+                name: world.name
+                  || existing?.name
+                  || worldFallbackNames.get(world.id),
+                messageServerId: world.messageServerId ?? existing?.messageServerId,
+                agentId,
+                metadata: {
+                  ...(existing?.metadata ?? {}),
+                  ...(world.metadata ?? {}),
+                },
+              },
+            }
+          })
+          .filter(
+            ({ existing, merged }) => !existing || !worldUnchangedByMerge(existing, merged),
+          )
+          .map(({ merged }) => merged)
+        if (worlds.length === 0) break
+        try {
+          await adapter.upsertWorlds(worlds)
+          break
+        } catch (error) {
+          if (
+            !(error instanceof ElizaError)
+            || error.code !== "WORLD_METADATA_STALE_WRITE"
+            || attempt + 1 >= WORLD_UPSERT_STALE_ATTEMPTS
+          ) {
+            throw error
+          }
+        }
+      }
+    },
+  )
+
+  const storedRooms = roomMap.size > 0 ? await adapter.getRoomsByIds([...roomMap.keys()]) : []
+  const storedRoomById = new Map(storedRooms.map((r) => [r.id, r]))
+  const rooms = [...roomMap.values()].map((r) => {
+    const stored = storedRoomById.get(r.id)
+    return {
+      ...r,
+      name: r.name || stored?.name || roomFallbackNames.get(r.id) || "default",
+      channelId: r.channelId ?? stored?.channelId ?? r.id,
+
+      type: roomExplicitTypes.get(r.id) ?? stored?.type ?? r.type,
+      serverId: r.serverId ?? stored?.serverId,
+      messageServerId: r.messageServerId ?? stored?.messageServerId,
+      agentId,
+    }
+  })
+  if (rooms.length) await adapter.upsertRooms(rooms)
+
+  const currentParticipants = await adapter.getParticipantsForRooms([
+    ...roomParticipants.keys(),
+  ])
+  let createdRoomParticipants = 0
+  let index = 0
+  for (const [roomId, entityIdsSet] of roomParticipants) {
+    const current = currentParticipants[index++]?.entityIds ?? []
+    const missing = [...entityIdsSet].filter((id) => !current.includes(id))
+    if (missing.length) {
+      await adapter.createRoomParticipants(missing, roomId)
+      createdRoomParticipants += missing.length
+    }
+  }
+
+  return { createdRoomParticipants }
+}
+
+export async function ensureConnection(
+  adapter: IDatabaseAdapter,
+  params: EnsureConnectionParams,
+): Promise<EnsureConnectionsResult> {
+  if (!params.source) {
+    throw new Error("Source is required for ensureConnection")
+  }
+  const worldId = resolveWorldId(
+    params.worldId,
+    params.messageServerId,
+    params.agentId,
+  )
+  return ensureConnections(adapter, {
+    agentId: params.agentId,
+    connections: [{ ...params, worldId }],
+  })
+}

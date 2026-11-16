@@ -1,0 +1,45 @@
+type ByteSizeFormatterOptions = {
+  unknownLabel?: string
+
+  precision?: number
+
+  kbPrecision?: number
+  mbPrecision?: number
+  gbPrecision?: number
+  tbPrecision?: number
+}
+
+export function formatByteSize(
+  bytes: number | null | undefined,
+  options: ByteSizeFormatterOptions = {},
+): string {
+  const {
+    unknownLabel = "unknown",
+    precision,
+    kbPrecision = precision ?? 1,
+    mbPrecision = precision ?? 1,
+    gbPrecision = precision ?? 1,
+    tbPrecision = precision ?? 1,
+  } = options
+
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) {
+    return unknownLabel
+  }
+
+  const units = [
+    { size: 1024 ** 4, suffix: "TB", precision: tbPrecision },
+    { size: 1024 ** 3, suffix: "GB", precision: gbPrecision },
+    { size: 1024 ** 2, suffix: "MB", precision: mbPrecision },
+    { size: 1024, suffix: "KB", precision: kbPrecision },
+  ]
+  for (const [index, unit] of units.entries()) {
+    if (bytes < unit.size) continue
+    const rounded = (bytes / unit.size).toFixed(unit.precision)
+    const larger = units[index - 1]
+    if (larger && Number(rounded) >= 1024) {
+      return `${(bytes / larger.size).toFixed(larger.precision)} ${larger.suffix}`
+    }
+    return `${rounded} ${unit.suffix}`
+  }
+  return `${bytes} B`
+}

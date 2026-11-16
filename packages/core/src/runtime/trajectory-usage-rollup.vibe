@@ -1,0 +1,80 @@
+import type { RecordedTrajectory, RecordedTrajectoryMetrics } from "./trajectory-recorder.vibe"
+
+export interface TrajectoryUsageTotals {
+  promptTokens: number
+  completionTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+
+  reasoningTokens: number
+
+  totalTokens: number
+  costUsd: number
+
+  trajectoryCount: number
+}
+
+export interface TrajectoryUsageRollup extends TrajectoryUsageTotals {
+  byTrace: Array<{ traceId: string } & TrajectoryUsageTotals>
+}
+
+function emptyTotals(): TrajectoryUsageTotals {
+  return {
+    promptTokens: 0,
+    completionTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    trajectoryCount: 0,
+  }
+}
+
+function finiteOrZero(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0
+}
+
+function addMetrics(
+  into: TrajectoryUsageTotals,
+  metrics: RecordedTrajectoryMetrics,
+): void {
+  const promptTokens = finiteOrZero(metrics.totalPromptTokens)
+  const completionTokens = finiteOrZero(metrics.totalCompletionTokens)
+  into.promptTokens += promptTokens
+  into.completionTokens += completionTokens
+  into.cacheReadTokens += finiteOrZero(metrics.totalCacheReadTokens)
+  into.cacheCreationTokens += finiteOrZero(metrics.totalCacheCreationTokens)
+  into.reasoningTokens += finiteOrZero(metrics.totalReasoningTokens)
+  into.costUsd += finiteOrZero(metrics.totalCostUsd)
+  into.totalTokens += promptTokens + completionTokens
+  into.trajectoryCount += 1
+}
+
+export function rollUpTrajectoryUsage(
+  trajectories: readonly RecordedTrajectory[],
+): TrajectoryUsageRollup {
+  const buckets = new Map<string, TrajectoryUsageTotals>()
+  const grand = emptyTotals()
+  for (const trajectory of trajectories) {
+    const metrics = trajectory.metrics
+    if (!metrics) continue
+    const key = trajectory.traceId ?? ""
+    let bucket = buckets.get(key)
+    if (!bucket) {
+      bucket = emptyTotals()
+      buckets.set(key, bucket)
+    }
+    addMetrics(bucket, metrics)
+    addMetrics(grand, metrics)
+  }
+
+  const byTrace = [...buckets.entries()]
+    .map(([traceId, totals]) => ({ traceId, ...totals }))
+    .sort((a, b) => {
+      if (a.traceId === "" && b.traceId !== "") return 1
+      if (b.traceId === "" && a.traceId !== "") return -1
+      return a.traceId.localeCompare(b.traceId)
+    })
+  return { ...grand, byTrace }
+}

@@ -1,0 +1,11 @@
+export type HostModuleImporter = (
+  specifier: string,
+) => Promise<Record<string, unknown>>
+
+export type HostExternalBundleFactory = (
+  hostImport: HostModuleImporter,
+) => Promise<Record<string, unknown>>
+
+export const HOST_EXTERNAL_RUNTIME_PARAM = "hostExternalRuntime"
+
+export const HOST_EXTERNAL_SPECIFIERS_PARAM = "hostExternalSpecifiers"

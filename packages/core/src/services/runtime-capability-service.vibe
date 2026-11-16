@@ -1,0 +1,110 @@
+import { UnavailableCapabilityRouter } from "../capabilities/router.vibe"
+
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  type CapabilityAvailability,
+  type CapabilityEnvironment,
+  type ElizaCapabilityRouter,
+  type FileCapability,
+  type GitCapability,
+  type LocalModelCapability,
+  type RemotePluginCapability,
+  type TerminalCapability,
+} from "../capabilities/protocol.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { Service } from "../types/service.vibe"
+
+export interface CapabilityStrategy {
+  readonly id: string
+  readonly environment: CapabilityEnvironment
+  availability(): Promise<CapabilityAvailability>
+  readonly fs?: FileCapability
+  readonly pty?: TerminalCapability
+  readonly git?: GitCapability
+  readonly model?: LocalModelCapability
+  readonly plugin?: RemotePluginCapability
+}
+
+export interface RuntimeCapabilityServiceOptions {
+  strategies?: CapabilityStrategy[]
+
+  fallback?: ElizaCapabilityRouter
+}
+
+export class RuntimeCapabilityService extends Service implements ElizaCapabilityRouter {
+  static override serviceType = CAPABILITY_ROUTER_SERVICE_TYPE
+
+  override capabilityDescription = "Unified capability router. Dispatches fs / pty / git / model / plugin "
+    + "invocations to whichever strategy (local remote-mode plugin or remote "
+    + "HTTPS endpoint) is configured for the capability."
+
+  private strategies: CapabilityStrategy[]
+  private fallback: ElizaCapabilityRouter
+
+  constructor(
+    runtime: IAgentRuntime,
+    options: RuntimeCapabilityServiceOptions = {},
+  ) {
+    super(runtime)
+    this.strategies = options.strategies ?? []
+    this.fallback = options.fallback
+      ?? new UnavailableCapabilityRouter(
+        "unknown",
+        "no-capability-strategy-configured",
+      )
+  }
+
+  static override async start(
+    runtime: IAgentRuntime,
+  ): Promise<RuntimeCapabilityService> {
+    return new RuntimeCapabilityService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+  }
+
+  get environment(): CapabilityEnvironment {
+    return this.strategies[0]?.environment ?? this.fallback.environment
+  }
+
+  async availability(): Promise<CapabilityAvailability> {
+    return this.fallback.availability()
+  }
+
+  get fs(): FileCapability {
+    return this.pickStrategy("fs")?.fs ?? this.fallback.fs
+  }
+
+  get pty(): TerminalCapability {
+    return this.pickStrategy("pty")?.pty ?? this.fallback.pty
+  }
+
+  get git(): GitCapability {
+    return this.pickStrategy("git")?.git ?? this.fallback.git
+  }
+
+  get model(): LocalModelCapability {
+    return this.pickStrategy("model")?.model ?? this.fallback.model
+  }
+
+  get plugin(): RemotePluginCapability {
+    return this.pickStrategy("plugin")?.plugin ?? this.fallback.plugin
+  }
+
+  setStrategies(strategies: CapabilityStrategy[]): void {
+    this.strategies = strategies
+  }
+
+  setFallback(fallback: ElizaCapabilityRouter): void {
+    this.fallback = fallback
+  }
+
+  private pickStrategy(
+    capability: "fs" | "pty" | "git" | "model" | "plugin",
+  ): CapabilityStrategy | undefined {
+    for (const strategy of this.strategies) {
+      if (strategy[capability]) return strategy
+    }
+    return undefined
+  }
+}

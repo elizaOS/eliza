@@ -1,0 +1,92 @@
+import type { UUID } from "./primitives.vibe"
+
+export type PluginColumnType =
+  | "uuid"
+  | "string"
+  | "text"
+  | "integer"
+  | "boolean"
+  | "timestamp"
+  | "jsonb"
+
+export interface PluginColumn {
+  name: string
+  type: PluginColumnType
+  primaryKey?: boolean
+  notNull?: boolean
+  default?: unknown
+  references?: {
+    table: string
+    column: string
+    onDelete?: "cascade" | "set null" | "restrict"
+  }
+}
+
+export interface PluginIndex {
+  name: string
+  columns: string[]
+  unique?: boolean
+}
+
+export interface PluginTableSchema {
+  name: string
+  columns: PluginColumn[]
+  indexes?: PluginIndex[]
+}
+
+export interface PluginSchema {
+  pluginName: string
+  tables: PluginTableSchema[]
+  version?: number
+}
+
+export type PluginFilterValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { $in: (string | number | boolean)[] }
+  | { $gt: number | Date }
+  | { $lt: number | Date }
+  | { $gte: number | Date }
+  | { $lte: number | Date }
+
+export type PluginFilter = Record<string, PluginFilterValue>
+
+export type PluginSortDirection = "asc" | "desc"
+
+export interface PluginOrderBy {
+  column: string
+  direction: PluginSortDirection
+}
+
+export interface PluginQueryOptions {
+  limit?: number
+  offset?: number
+  orderBy?: PluginOrderBy | PluginOrderBy[]
+}
+
+export interface IPluginStore {
+  query<T = Record<string, unknown>>(
+    table: string,
+    filter?: PluginFilter,
+    options?: PluginQueryOptions,
+  ): Promise<T[]>
+
+  getById<T = Record<string, unknown>>(
+    table: string,
+    id: UUID,
+  ): Promise<T | null>
+
+  insert(table: string, rows: Record<string, unknown>[]): Promise<UUID[]>
+
+  update(
+    table: string,
+    filter: PluginFilter,
+    set: Record<string, unknown>,
+  ): Promise<number>
+
+  delete(table: string, filter: PluginFilter): Promise<number>
+
+  count(table: string, filter?: PluginFilter): Promise<number>
+}

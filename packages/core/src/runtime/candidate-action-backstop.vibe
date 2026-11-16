@@ -1,0 +1,27 @@
+import type { IAgentRuntime } from "../types/runtime.vibe"
+
+export interface CandidateActionBackstopRule {
+  readonly actionNames: readonly string[]
+
+  matches(messageText: string): boolean
+}
+
+const rules = new WeakMap<IAgentRuntime, CandidateActionBackstopRule[]>()
+
+export function registerCandidateActionBackstopRule(
+  runtime: IAgentRuntime,
+  rule: CandidateActionBackstopRule,
+): void {
+  const existing = rules.get(runtime)
+  if (existing) {
+    existing.push(rule)
+  } else {
+    rules.set(runtime, [rule])
+  }
+}
+
+export function getCandidateActionBackstopRules(
+  runtime: IAgentRuntime,
+): readonly CandidateActionBackstopRule[] {
+  return rules.get(runtime) ?? []
+}

@@ -1,0 +1,32 @@
+export type SetupState = "idle" | "configuring" | "paired" | "error"
+
+export interface SetupStatusResponse<TDetail = unknown> {
+  connector: string
+  state: SetupState
+  detail?: TDetail
+}
+
+export interface SetupErrorResponse {
+  error: {
+    code: string
+    message: string
+  }
+
+  message: string
+}
+
+export const SETUP_ERROR_CODES = {
+  BAD_REQUEST: "bad_request",
+  SERVICE_UNAVAILABLE: "service_unavailable",
+  INTERNAL_ERROR: "internal_error",
+  TOO_MANY_SESSIONS: "too_many_sessions",
+} as const
+
+export type SetupErrorCode = (typeof SETUP_ERROR_CODES)[keyof typeof SETUP_ERROR_CODES]
+
+export function buildSetupError(
+  code: SetupErrorCode | string,
+  message: string,
+): SetupErrorResponse {
+  return { error: { code, message }, message }
+}

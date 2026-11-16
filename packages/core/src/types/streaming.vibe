@@ -1,0 +1,64 @@
+import type { ContextEvent } from "../runtime/context-object.vibe"
+import type { EvaluationResult } from "./components.vibe"
+import type { ToolCall } from "./model.vibe"
+
+type MaybePromise<T> = T | Promise<T>
+
+export interface StreamingToolCallPayload {
+  toolCall: ToolCall
+  contextEvent?: ContextEvent
+  messageId?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface StreamingToolResultPayload {
+  toolCall?: ToolCall
+  toolCallId?: string
+  result?: ToolCall["result"]
+  status?: ToolCall["status"]
+  contextEvent?: ContextEvent
+  messageId?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface StreamingEvaluationPayload {
+  evaluation: EvaluationResult
+  contextEvent?: ContextEvent
+  messageId?: string
+  metadata?: Record<string, unknown>
+}
+
+export type StreamingContextEventPayload = ContextEvent
+
+export interface StreamingEventHooks {
+  onToolCall?: (payload: StreamingToolCallPayload) => MaybePromise<void>
+  onToolResult?: (payload: StreamingToolResultPayload) => MaybePromise<void>
+  onEvaluation?: (payload: StreamingEvaluationPayload) => MaybePromise<void>
+  onContextEvent?: (
+    payload: StreamingContextEventPayload,
+  ) => MaybePromise<void>
+}
+
+export interface IStreamExtractor {
+  readonly done: boolean
+
+  push(chunk: string): string
+
+  flush?(): string
+
+  reset?(): void
+}
+
+export interface StructuredFieldEventCallbacks {
+  onFieldStart?: (field: string) => void
+
+  onFieldDone?: (field: string, value: string) => void
+}
+
+export interface IStreamingRetryState {
+  getStreamedText(): string
+
+  isComplete(): boolean
+
+  reset(): void
+}

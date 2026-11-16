@@ -1,0 +1,97 @@
+export interface InteractionOption {
+  value: string
+
+  label: string
+
+  description?: string
+}
+
+export type InteractionFieldType =
+  | "text"
+  | "number"
+  | "select"
+  | "checkbox"
+  | "secret"
+  | "image"
+  | "file"
+  | "date"
+  | "time"
+  | "datetime"
+
+export interface InteractionField {
+  name: string
+  type: InteractionFieldType
+  label?: string
+  placeholder?: string
+  required?: boolean
+
+  options?: InteractionOption[]
+
+  mimeTypes?: string[]
+
+  maxBytes?: number
+}
+
+export interface FormInteraction {
+  kind: "form"
+  id: string
+  title?: string
+  description?: string
+  submitLabel?: string
+  fields: InteractionField[]
+}
+
+export interface ChoiceInteraction {
+  kind: "choice"
+  id: string
+  scope: string
+  prompt?: string
+  options: InteractionOption[]
+  allowCustom?: boolean
+}
+
+export type FollowupKind = "reply" | "navigate" | "prompt"
+
+export interface FollowupOption {
+  kind: FollowupKind
+
+  payload: string
+  label: string
+}
+
+export interface FollowupsInteraction {
+  kind: "followups"
+  id: string
+  options: FollowupOption[]
+}
+
+export interface TaskInteraction {
+  kind: "task"
+  threadId: string
+  title: string
+}
+
+export interface SecretInteraction {
+  kind: "secret"
+  id: string
+  secretKind: "secret" | "oauth"
+  reason?: string
+
+  fields?: InteractionField[]
+
+  provider?: string
+
+  scopes?: string[]
+
+  url?: string
+  submitLabel?: string
+}
+
+export type InteractionBlock =
+  | FormInteraction
+  | ChoiceInteraction
+  | FollowupsInteraction
+  | TaskInteraction
+  | SecretInteraction
+
+export type InteractionKind = InteractionBlock["kind"]

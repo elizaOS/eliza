@@ -1,0 +1,39 @@
+import JSON5 from "json5"
+
+const jsonBlockPattern = /```(?:(?:json5|json)(?![A-Za-z0-9_-]))?\s*\r?\n?([\s\S]*?)\r?\n?```/i
+
+export function extractAndParseJSONObjectFromText(
+  text: string,
+): Record<string, unknown> | unknown[] {
+  if (!text || typeof text !== "string") {
+    throw new Error("Invalid input: text must be a non-empty string")
+  }
+
+  try {
+    let parsed: unknown
+    try {
+      parsed = JSON5.parse(text.trim())
+    } catch (error) {
+      const match = text.match(jsonBlockPattern)
+      if (!match) throw error
+      parsed = JSON5.parse(match[1].trim())
+    }
+    if (parsed === null || typeof parsed !== "object") {
+      throw new Error("Parsed JSON must be an object or array")
+    }
+    return parsed as Record<string, unknown> | unknown[]
+  } catch (error) {
+    throw new Error("Failed to parse invalid JSON", { cause: error })
+  }
+}
+
+export function parseJSONObjectFromText(
+  text: string,
+): Record<string, unknown> | null {
+  try {
+    const result = extractAndParseJSONObjectFromText(text)
+    return Array.isArray(result) ? null : result
+  } catch (_error) {
+    return null
+  }
+}

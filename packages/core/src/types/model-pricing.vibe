@@ -1,0 +1,11 @@
+export interface TokenUsageForCost {
+  promptTokens?: number
+  completionTokens?: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+  totalTokens?: number
+}
+
+export interface TrajectoryRuntimeLogger {
+  warn?: (context: unknown, message?: string) => void
+}

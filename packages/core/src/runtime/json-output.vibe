@@ -1,0 +1,387 @@
+import { unwrapWholeCodeFence } from "../markdown/code.vibe"
+import { formatError } from "../utils/errors.vibe"
+
+export function parseJsonObject<T extends object>(raw: string): T | null {
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const candidate = unwrapWholeCodeFence(trimmed, ["json"]) ?? trimmed
+
+  const parsedCandidate = parseObjectCandidateWithRepairs<T>(candidate)
+  if (parsedCandidate) {
+    return parsedCandidate
+  }
+
+  return (
+    parseFirstObjectRegion<T>(candidate)
+      ?? parseFirstObjectRegion<T>(repairJsonStringEscapes(candidate))
+  )
+}
+
+function parseObjectCandidateWithRepairs<T extends object>(
+  text: string,
+): T | null {
+  return (
+    parseObjectCandidate<T>(text)
+      ?? parseObjectCandidate<T>(
+        repairJsonStringEscapes(text, { trailingBackslashQuotes: false }),
+      )
+      ?? parseObjectCandidate<T>(repairJsonStringEscapes(text))
+  )
+}
+
+function parseFirstObjectRegion<T extends object>(text: string): T | null {
+  for (const { start, end } of extractJsonObjectSpans(text)) {
+    const parsed = parseObjectCandidateWithRepairs<T>(text.slice(start, end))
+    if (parsed) {
+      return parsed
+    }
+  }
+  return null
+}
+
+function parseObjectCandidate<T extends object>(candidate: string): T | null {
+  try {
+    const parsed = JSON.parse(candidate)
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as T
+    }
+  } catch {
+    const objectText = extractJsonObjects(candidate)[0]
+    if (!objectText) return null
+    try {
+      const parsed = JSON.parse(objectText)
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as T
+      }
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+export function extractJsonObjects(raw: string): string[] {
+  const objects: string[] = []
+  let depth = 0
+  let start = -1
+  let inString = false
+  let escaped = false
+  for (let index = 0; index < raw.length; index++) {
+    const char = raw[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === "\"") {
+        inString = false
+      }
+      continue
+    }
+    if (char === "\"") {
+      inString = true
+      continue
+    }
+    if (char === "{") {
+      if (depth === 0) {
+        start = index
+      }
+      depth++
+      continue
+    }
+    if (char !== "}" || depth === 0) {
+      continue
+    }
+    depth--
+    if (depth === 0 && start >= 0) {
+      objects.push(raw.slice(start, index + 1))
+      start = -1
+    }
+  }
+  return objects
+}
+
+export function extractJsonObjectSpans(
+  raw: string,
+): Array<{ start: number; end: number }> {
+  const UNRESOLVED = -2
+  const UNCLOSED = -1
+  const objectEnds = new Int32Array(raw.length).fill(UNRESOLVED)
+  const stringEnds = new Int32Array(raw.length).fill(UNRESOLVED)
+
+  const resolveStringEnd = (from: number): number => {
+    const visited: number[] = []
+    let end = UNCLOSED
+    for (let index = from; index < raw.length; index++) {
+      const known = stringEnds[index] as number
+      if (known !== UNRESOLVED) {
+        end = known
+        break
+      }
+      visited.push(index)
+      if (raw[index] === "\\") {
+        index++
+      } else if (raw[index] === "\"") {
+        end = index
+        break
+      }
+    }
+    for (const index of visited) stringEnds[index] = end
+    return end
+  }
+
+  const resolveObjectEnd = (from: number): number => {
+    const frames = [{ start: from, index: from + 1 }]
+    let childEnd = UNRESOLVED
+    while (frames.length > 0) {
+      const frame = frames[frames.length - 1] as (typeof frames)[number]
+      let end = childEnd === UNCLOSED ? UNCLOSED : UNRESOLVED
+      if (childEnd >= 0) frame.index = childEnd
+      childEnd = UNRESOLVED
+      for (; end === UNRESOLVED && frame.index < raw.length; frame.index++) {
+        const char = raw[frame.index]
+        if (char === "\"") {
+          const close = resolveStringEnd(frame.index + 1)
+          if (close === UNCLOSED) end = UNCLOSED
+          else frame.index = close
+        } else if (char === "}") {
+          end = frame.index + 1
+        } else if (char === "{") {
+          const nested = objectEnds[frame.index] as number
+          if (nested === UNRESOLVED) break
+          if (nested === UNCLOSED) end = UNCLOSED
+          else frame.index = nested - 1
+        }
+      }
+      if (end === UNRESOLVED && frame.index < raw.length) {
+        frames.push({ start: frame.index, index: frame.index + 1 })
+        continue
+      }
+      childEnd = end === UNRESOLVED ? UNCLOSED : end
+      objectEnds[frame.start] = childEnd
+      frames.pop()
+    }
+    return childEnd
+  }
+  const spans: Array<{ start: number; end: number }> = []
+  for (let start = raw.indexOf("{"); start >= 0;) {
+    const end = resolveObjectEnd(start)
+    if (end >= 0) spans.push({ start, end })
+    start = raw.indexOf("{", end >= 0 ? end : start + 1)
+  }
+  return spans
+}
+
+function repairJsonStringEscapes(
+  raw: string,
+  {
+    trailingBackslashQuotes = true,
+  }: { trailingBackslashQuotes?: boolean } = {},
+): string {
+  let output = ""
+  let inString = false
+  let escaped = false
+
+  for (let index = 0; index < raw.length; index++) {
+    const char = raw[index] ?? ""
+    if (!inString) {
+      output += char
+      if (char === "\"") {
+        inString = true
+      }
+      continue
+    }
+
+    if (escaped) {
+      if (
+        trailingBackslashQuotes
+        && char === "\""
+        && looksLikeJsonDelimiterAfterString(raw, index + 1)
+      ) {
+        output += "\\\\\""
+        inString = false
+        escaped = false
+        continue
+      }
+      if (isValidJsonEscape(raw, index)) {
+        output += `\\${char}`
+        if (char === "u") {
+          output += raw.slice(index + 1, index + 5)
+          index += 4
+        }
+      } else {
+        output += `\\\\${escapeRawJsonStringChar(char)}`
+      }
+      escaped = false
+      continue
+    }
+
+    if (char === "\\") {
+      escaped = true
+      continue
+    }
+    if (char === "\"") {
+      inString = false
+      output += char
+      continue
+    }
+    output += escapeRawJsonStringChar(char)
+  }
+
+  if (escaped) {
+    output += "\\\\"
+  }
+
+  return output
+}
+
+function looksLikeJsonDelimiterAfterString(
+  raw: string,
+  index: number,
+): boolean {
+  for (let cursor = index; cursor < raw.length; cursor++) {
+    const char = raw[cursor]
+    if (char === " " || char === "\n" || char === "\r" || char === "\t") {
+      continue
+    }
+    return char === "," || char === "}" || char === "]"
+  }
+  return true
+}
+
+function isValidJsonEscape(raw: string, index: number): boolean {
+  const char = raw[index]
+  if (
+    char === "\""
+    || char === "\\"
+    || char === "/"
+    || char === "b"
+    || char === "f"
+    || char === "n"
+    || char === "r"
+    || char === "t"
+  ) {
+    return true
+  }
+  if (char !== "u") {
+    return false
+  }
+  return HEX4_RE.test(raw.slice(index + 1, index + 5))
+}
+
+const HEX4_RE = /^[0-9a-fA-F]{4}$/
+
+function escapeRawJsonStringChar(char: string): string {
+  switch (char) {
+    case "\b":
+      return "\\b"
+    case "\f":
+      return "\\f"
+    case "\n":
+      return "\\n"
+    case "\r":
+      return "\\r"
+    case "\t":
+      return "\\t"
+    default: {
+      const code = char.codePointAt(0) ?? 0
+      return code < 0x20 ? `\\u${code.toString(16).padStart(4, "0")}` : char
+    }
+  }
+}
+
+export function stringifyForModel(value: unknown): string {
+  const serialized = JSON.stringify(value, null, 2)
+  if (serialized === undefined) {
+    throw new TypeError("Model prompt data is not JSON-serializable")
+  }
+  return serialized
+}
+
+export function stringifyForDiagnostics(value: unknown): string {
+  if (typeof value === "string") return value
+
+  const ancestors: object[] = []
+  try {
+    const serialized = JSON.stringify(
+      value,
+      function(_key, nestedValue: unknown) {
+        if (typeof nestedValue === "bigint") return `${nestedValue}n`
+        if (nestedValue && typeof nestedValue === "object") {
+          while (ancestors.length && ancestors.at(-1) !== this) {
+            ancestors.pop()
+          }
+          if (ancestors.includes(nestedValue)) return "[Circular]"
+          ancestors.push(nestedValue)
+        }
+        return nestedValue
+      },
+      2,
+    )
+    return serialized ?? formatError(value)
+  } catch {
+    return formatError(value)
+  }
+}
+
+const PSEUDO_TOOL_SNAKE_NAME_SRC = "[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+"
+
+const PSEUDO_TOOL_TAG_NAME_SRC = `${PSEUDO_TOOL_SNAKE_NAME_SRC}|[A-Z][A-Z0-9]{3,}`
+
+const PSEUDO_TOOL_TAG_BLOCK_RE = new RegExp(
+  `<(${PSEUDO_TOOL_TAG_NAME_SRC})>[\\s\\S]*?</\\1>`,
+  "g",
+)
+const PSEUDO_TOOL_TAG_OPEN_TAIL_RE = new RegExp(
+  `<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>[\\s\\S]*$`,
+  "g",
+)
+const PSEUDO_TOOL_TAG_OPEN_RE = new RegExp(`<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>`)
+const NATIVE_TOOL_CALL_MARKUP_RE = /<\/?(?:tool_call|function_call|arg_key|arg_value)\b/i
+const PSEUDO_TAG_INVOCATION_RE = new RegExp(
+  `<(${PSEUDO_TOOL_SNAKE_NAME_SRC})>\\s*(\\{[\\s\\S]*?\\})\\s*<\\/\\1>`,
+  "g",
+)
+const PAIRED_TOOL_CALL_RE = /<tool_call\b[\s\S]*?<\/tool_call>/gi
+const TRUNCATED_TOOL_CALL_RE = /<tool_call\b[^>]*>\s*(?=[A-Z][A-Z0-9_]{2,}|[\s\S]*?<arg_(?:key|value)\b)[\s\S]*$/g
+const JSON_PUNCTUATION_ONLY_RE = /^[\s{}[\]":,]+$/
+
+export function containsToolCallShapedMarkup(text: string): boolean {
+  return (
+    NATIVE_TOOL_CALL_MARKUP_RE.test(text) || PSEUDO_TOOL_TAG_OPEN_RE.test(text)
+  )
+}
+
+export function parsePseudoTagToolInvocations(
+  text: string | undefined,
+): Array<{ name: string; params: Record<string, unknown> }> {
+  if (!text?.includes("<")) return []
+  const calls: Array<{ name: string; params: Record<string, unknown> }> = []
+  for (const match of text.matchAll(PSEUDO_TAG_INVOCATION_RE)) {
+    try {
+      const parsed: unknown = JSON.parse(match[2])
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        calls.push({
+          name: match[1],
+          params: parsed as Record<string, unknown>,
+        })
+      }
+    } catch {
+    }
+  }
+  return calls
+}
+
+export function stripJsonStructuralJunkReply(value: string): string {
+  const cleaned = value
+    .replace(PAIRED_TOOL_CALL_RE, "")
+    .replace(TRUNCATED_TOOL_CALL_RE, "")
+    .replace(PSEUDO_TOOL_TAG_BLOCK_RE, "")
+    .replace(PSEUDO_TOOL_TAG_OPEN_TAIL_RE, "")
+    .trim()
+  if (!cleaned) return ""
+  return JSON_PUNCTUATION_ONLY_RE.test(cleaned) ? "" : cleaned
+}

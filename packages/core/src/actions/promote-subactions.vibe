@@ -1,0 +1,423 @@
+import type {
+  Action,
+  ActionExample,
+  ActionParameter,
+  ActionParameters,
+  Handler,
+  HandlerCallback,
+  HandlerOptions,
+  Validator,
+} from "../types/components.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { JsonValue } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import type { State } from "../types/state.vibe"
+import { CANONICAL_SUBACTION_KEY, DEFAULT_SUBACTION_KEYS, normalizeSubaction } from "./subaction-dispatch.vibe"
+
+export interface SubactionPromotionOverrides {
+  parameters?: readonly ActionParameter[]
+
+  description?: string
+
+  descriptionCompressed?: string
+
+  similes?: readonly string[]
+
+  examples?: ActionExample[][]
+}
+
+export interface PromoteSubactionsOptions {
+  overrides?: Record<string, SubactionPromotionOverrides>
+
+  namePrefix?: string
+
+  shareParentExamples?: boolean
+}
+
+const PROMOTED_MARKER = Symbol.for("@elizaos/core/promote-subactions/marker")
+
+interface PromotedAction extends Action {
+  [PROMOTED_MARKER]?: {
+    parent: string
+    parentRoutingHint?: string
+
+    parentDescription: string
+    subaction: string
+
+    operationDescription?: string
+  }
+}
+
+export function promotedSubactionDescription(action: Action):
+  | {
+    parent: string
+    parentDescription: string
+    subaction: string
+    operationDescription?: string
+  }
+  | undefined
+{
+  const marker = (action as PromotedAction)[PROMOTED_MARKER]
+  return marker
+    ? {
+      parent: marker.parent,
+      parentDescription: marker.parentDescription,
+      subaction: marker.subaction,
+      ...(marker.operationDescription
+        ? { operationDescription: marker.operationDescription }
+        : {}),
+    }
+    : undefined
+}
+
+export function composedPromotedSubactionDescription(
+  action: Action,
+): string | undefined {
+  const promoted = promotedSubactionDescription(action)
+  return promoted
+    ? `${promoted.parentDescription} — ${promoted.operationDescription ?? `subaction = ${promoted.subaction}`}`
+    : undefined
+}
+
+export function promotedParentRoutingHint(
+  action: Action,
+): { parent: string; hint: string } | undefined {
+  const marker = (action as PromotedAction)[PROMOTED_MARKER]
+  const hint = marker?.parentRoutingHint?.trim()
+  return marker && hint ? { parent: marker.parent, hint } : undefined
+}
+
+export function promotedSubactionParent(action: Action): string | undefined {
+  return (action as PromotedAction)[PROMOTED_MARKER]?.parent
+}
+
+export function pinnedDiscriminatorForPromotedChild(
+  parent: Action,
+  childName: string,
+  lookup: (name: string) => Action | undefined,
+): { child: string; discriminator: string; value: string } | undefined {
+  const wanted = toUpperSnake(childName)
+  const declared = parent.subActions?.find(
+    (entry) => toUpperSnake(typeof entry === "string" ? entry : entry.name) === wanted,
+  )
+  if (!declared) return undefined
+  const child = lookup(typeof declared === "string" ? declared : declared.name)
+  if (!child || promotedSubactionParent(child) !== parent.name) {
+    return undefined
+  }
+  const discriminator = findDiscriminatorParameter(child.parameters)
+  if (!discriminator) return undefined
+  const enumValues = (discriminator.schema as { enum?: unknown }).enum
+  if (!Array.isArray(enumValues) || enumValues.length !== 1) return undefined
+  const value = enumValues[0]
+  if (typeof value !== "string") return undefined
+  return { child: child.name, discriminator: discriminator.name, value }
+}
+
+export function listSubactionsFromParameters(
+  parameters: readonly ActionParameter[] | undefined,
+): readonly string[] {
+  const enumValues = findDiscriminatorParameter(parameters)?.schema.enum
+  return enumValues
+    ? enumValues.filter((v): v is string => typeof v === "string")
+    : []
+}
+
+function hasEnum(parameter: ActionParameter): boolean {
+  const schema = parameter.schema
+  return (
+    typeof schema === "object"
+    && schema !== null
+    && Array.isArray((schema as { enum?: unknown }).enum)
+  )
+}
+
+function findDiscriminatorParameter(
+  parameters: readonly ActionParameter[] | undefined,
+): ActionParameter | undefined {
+  if (!parameters) return undefined
+  for (const key of DEFAULT_SUBACTION_KEYS) {
+    const parameter = parameters.find((p) => p.name === key && hasEnum(p))
+    if (parameter) return parameter
+  }
+  return undefined
+}
+
+function parameterRequiredForSubaction(
+  requiredForSubactions: readonly string[] | undefined,
+  subaction: string,
+): boolean {
+  if (!requiredForSubactions) return false
+  const pinned = normalizeSubaction(subaction)
+  return requiredForSubactions.some(
+    (entry) => normalizeSubaction(entry) === pinned,
+  )
+}
+
+function parameterAppliesToSubaction(
+  parameter: ActionParameter,
+  subaction: string,
+): boolean {
+  if (!parameter.subactions) return true
+  const pinned = normalizeSubaction(subaction)
+  return parameter.subactions.some(
+    (entry) => normalizeSubaction(entry) === pinned,
+  )
+}
+
+export function pinnedDiscriminatorDescription(subaction: string): string {
+  return `Subaction discriminator (auto-set to "${subaction}" for this virtual; do not change).`
+}
+
+function pinDiscriminatorForVirtual(
+  parameters: readonly ActionParameter[] | undefined,
+  subaction: string,
+): ActionParameter[] | undefined {
+  if (!parameters) return undefined
+  const discriminator = findDiscriminatorParameter(parameters)
+  if (!discriminator) return [...parameters]
+  const sliced: ActionParameter[] = []
+  for (const parameter of parameters) {
+    if (parameter.name === discriminator.name) {
+      const baseSchema = parameter.schema && typeof parameter.schema === "object"
+        ? parameter.schema
+        : { type: "string" as const }
+      const { subactions: _stray, ...discriminatorRest } = parameter
+      sliced.push({
+        ...discriminatorRest,
+        description: pinnedDiscriminatorDescription(subaction),
+        required: false,
+        schema: {
+          ...baseSchema,
+          type: baseSchema.type,
+          enum: [subaction],
+          default: subaction,
+        },
+      })
+      continue
+    }
+    if (!parameterAppliesToSubaction(parameter, subaction)) continue
+    const {
+      subactions: _applicability,
+      requiredForSubactions,
+      ...rest
+    } = parameter
+    sliced.push(
+      parameterRequiredForSubaction(requiredForSubactions, subaction)
+        ? { ...rest, required: true }
+        : rest,
+    )
+  }
+  return sliced
+}
+
+function toUpperSnake(value: string): string {
+  return value
+    .trim()
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^A-Za-z0-9_]/g, "")
+    .toUpperCase()
+}
+
+function mergeOptionsWithSubaction(
+  parent: Action,
+  options: HandlerOptions | Record<string, JsonValue | undefined> | undefined,
+  subaction: string,
+): HandlerOptions {
+  const incoming = (options as HandlerOptions | undefined) ?? ({} as HandlerOptions)
+  const incomingParams = (incoming.parameters ?? {}) as ActionParameters
+  const discriminatorKey = findDiscriminatorParameter(parent.parameters)?.name
+    ?? CANONICAL_SUBACTION_KEY
+  const parentDeclaresNestedAction = parent.parameters?.some(
+    (parameter) => parameter.name === CANONICAL_SUBACTION_KEY,
+  )
+  const mergedParams: ActionParameters = {
+    ...incomingParams,
+    [discriminatorKey]: subaction,
+  }
+  if (discriminatorKey !== "subaction") {
+    mergedParams.subaction = subaction
+  }
+  if (
+    discriminatorKey !== CANONICAL_SUBACTION_KEY
+    && !parentDeclaresNestedAction
+    && incomingParams[CANONICAL_SUBACTION_KEY] === undefined
+  ) {
+    mergedParams[CANONICAL_SUBACTION_KEY] = subaction
+  }
+  return {
+    ...incoming,
+    parameters: mergedParams,
+  }
+}
+
+function buildVirtualHandler(parent: Action, subaction: string): Handler {
+  const parentHandler = parent.handler
+  const pinned = normalizeSubaction(subaction)
+  return async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: HandlerOptions | Record<string, JsonValue | undefined>,
+    callback?: HandlerCallback,
+    responses?: Memory[],
+  ) => {
+    const rawParams = (options as HandlerOptions | undefined)?.parameters as
+      | Record<string, unknown>
+      | undefined
+    if (rawParams) {
+      for (const key of DEFAULT_SUBACTION_KEYS) {
+        const declared = parent.parameters?.find((p) => p.name === key)
+        if (declared) {
+          const declaredEnum = (
+            declared.schema as { enum?: unknown } | undefined
+          )?.enum
+          const carriesPin = Array.isArray(declaredEnum)
+            && declaredEnum.some(
+              (v) => typeof v === "string" && normalizeSubaction(v) === pinned,
+            )
+          if (!carriesPin) continue
+        }
+        const value = rawParams[key]
+        if (
+          typeof value === "string"
+          && value.trim() !== ""
+          && normalizeSubaction(value) !== pinned
+        ) {
+          const parentName = toUpperSnake(parent.name)
+          const wanted = `${parentName}_${toUpperSnake(value.trim())}`
+          const text =
+            `This tool is pinned to ${subaction}; '${key}: ${value}' contradicts it. Call ${wanted} (or ${parentName} with ${key}=${value}) instead.`
+          return { success: false, text, error: new Error(text) }
+        }
+      }
+    }
+    const merged = mergeOptionsWithSubaction(parent, options, subaction)
+    return parentHandler(runtime, message, state, merged, callback, responses)
+  }
+}
+
+function buildVirtualValidator(parent: Action, subaction: string): Validator {
+  const parentValidate = parent.validate
+  if (!parentValidate) return async () => true
+  return (runtime, message, state, options) => {
+    const merged = mergeOptionsWithSubaction(parent, options, subaction)
+    return parentValidate(runtime, message, state, merged)
+  }
+}
+
+export function promoteSubactionsToActions(
+  parent: Action,
+  options: PromoteSubactionsOptions = {},
+): readonly Action[] {
+  const subactions = listSubactionsFromParameters(parent.parameters)
+  if (subactions.length === 0) return [parent]
+
+  const namePrefix = options.namePrefix ?? parent.name
+  const overrides = options.overrides ?? {}
+
+  const virtuals: PromotedAction[] = subactions.map((sub) => {
+    const subKey = sub.toLowerCase()
+    const override = overrides[subKey] ?? {}
+    const virtualName = `${toUpperSnake(namePrefix)}_${toUpperSnake(sub)}`
+
+    const operationDescription = override.description?.trim() || undefined
+    const description = operationDescription
+      ? `${parent.name} operation "${subKey}": ${operationDescription}`
+      : `${parent.name} operation "${subKey}".`
+    const similes = Array.from(
+      new Set([
+        toUpperSnake(parent.name),
+        ...(override.similes ?? []),
+        toUpperSnake(sub),
+      ]),
+    )
+    const examples = override.examples
+      ?? (options.shareParentExamples ? parent.examples : undefined)
+
+    const virtual: PromotedAction = {
+      name: virtualName,
+      description,
+      descriptionCompressed: override.descriptionCompressed,
+      similes,
+      examples,
+      handler: buildVirtualHandler(parent, subKey),
+      restrictRequestOperation: parent.restrictRequestOperation,
+      validate: buildVirtualValidator(parent, subKey),
+      parameters: pinDiscriminatorForVirtual(
+        override.parameters ?? parent.parameters,
+        subKey,
+      ),
+      toolSchemaStrict: parent.toolSchemaStrict,
+      contexts: parent.contexts,
+      contextGate: parent.contextGate,
+      roleGate: parent.roleGate,
+      disclosureGate: parent.disclosureGate,
+      egress: parent.egress,
+      historicalObservationOperations: parent.historicalObservationOperations,
+      cacheStable: parent.cacheStable,
+      cacheScope: parent.cacheScope,
+      suppressPostActionContinuation: parent.suppressPostActionContinuation,
+      suppressActionResultClipboard: parent.suppressActionResultClipboard,
+      suppressEarlyReply: parent.suppressEarlyReply,
+      asyncHandoff: parent.asyncHandoff,
+      tags: parent.tags,
+      priority: parent.priority,
+      connectorAccountPolicy: parent.connectorAccountPolicy,
+      accountPolicy: parent.accountPolicy,
+    }
+
+    Object.defineProperty(virtual, PROMOTED_MARKER, {
+      value: {
+        parent: parent.name,
+        parentRoutingHint: parent.routingHint,
+        parentDescription: parent.description,
+        subaction: subKey,
+        ...(operationDescription ? { operationDescription } : {}),
+      },
+      enumerable: true,
+      configurable: false,
+      writable: true,
+    })
+    return virtual
+  })
+
+  attachVirtualSubactions(
+    parent,
+    virtuals.map((virtual) => virtual.name),
+  )
+
+  return [parent, ...virtuals]
+}
+
+export function isPromotedSubactionVirtual(action: Action): boolean {
+  return Boolean((action as PromotedAction)[PROMOTED_MARKER])
+}
+
+function attachVirtualSubactions(
+  parent: Action,
+  virtualNames: readonly string[],
+) {
+  if (virtualNames.length === 0) {
+    return
+  }
+
+  const existing = parent.subActions ?? []
+  const seen = new Set(
+    existing.map((entry) => toUpperSnake(typeof entry === "string" ? entry : entry.name)),
+  )
+  const additions = virtualNames.filter((name) => {
+    const normalized = toUpperSnake(name)
+    if (seen.has(normalized)) {
+      return false
+    }
+    seen.add(normalized)
+    return true
+  })
+
+  if (additions.length === 0) {
+    return
+  }
+
+  parent.subActions = [...existing, ...additions]
+}

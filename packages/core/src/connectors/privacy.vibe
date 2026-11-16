@@ -1,0 +1,28 @@
+import type { ConnectorAccount } from "./account-manager.vibe"
+
+export type PrivacyLevel =
+  | "owner_only"
+  | "team_visible"
+  | "semi_public"
+  | "public"
+
+export const PRIVACY_LEVELS: PrivacyLevel[] = [
+  "owner_only",
+  "team_visible",
+  "semi_public",
+  "public",
+]
+
+export const DEFAULT_PRIVACY_LEVEL: PrivacyLevel = "owner_only"
+
+export function isPrivacyLevel(value: unknown): value is PrivacyLevel {
+  return (
+    typeof value === "string"
+    && (PRIVACY_LEVELS as readonly string[]).includes(value)
+  )
+}
+
+export function getAccountPrivacy(account: ConnectorAccount): PrivacyLevel {
+  const raw = account.metadata?.privacy
+  return isPrivacyLevel(raw) ? raw : DEFAULT_PRIVACY_LEVEL
+}

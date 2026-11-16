@@ -1,0 +1,102 @@
+import { isTruthyEnvValue } from "./utils/env.vibe"
+
+export const MODEL_GATEWAY_URL_KEY = "ELIZA_MODEL_GATEWAY_URL"
+
+export const MODEL_GATEWAY_TOKEN_KEY = "ELIZA_MODEL_GATEWAY_TOKEN"
+
+export const MODEL_GATEWAY_STRICT_KEY = "ELIZA_MODEL_GATEWAY_STRICT"
+
+export const RAW_PROVIDER_KEY_VARS = [
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+] as const
+
+export type RawProviderKeyVar = (typeof RAW_PROVIDER_KEY_VARS)[number]
+
+export type GetSettingFn = (key: string) => string | undefined
+
+export interface ModelGatewayResolution {
+  enabled: boolean
+
+  strict: boolean
+
+  baseURL: string | undefined
+
+  apiKey: string | undefined
+}
+
+const trimToUndefined = (value: string | undefined): string | undefined => {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+export class ModelGatewayStrictError extends Error {
+  readonly offendingVars: RawProviderKeyVar[]
+
+  constructor(offendingVars: RawProviderKeyVar[]) {
+    super(
+      `Model gateway strict mode is enabled (${MODEL_GATEWAY_STRICT_KEY}) `
+        + `but raw provider key(s) are set: ${offendingVars.join(", ")}. `
+        + `Remove them so all model traffic flows through the gateway `
+        + `(${MODEL_GATEWAY_URL_KEY}/${MODEL_GATEWAY_TOKEN_KEY}), `
+        + `or disable strict mode.`,
+    )
+    this.name = "ModelGatewayStrictError"
+    this.offendingVars = offendingVars
+  }
+}
+
+export function resolveModelGateway(
+  getSetting: GetSettingFn,
+): ModelGatewayResolution {
+  const gatewayURL = trimToUndefined(getSetting(MODEL_GATEWAY_URL_KEY))
+  const gatewayToken = trimToUndefined(getSetting(MODEL_GATEWAY_TOKEN_KEY))
+  const strict = isTruthyEnvValue(getSetting(MODEL_GATEWAY_STRICT_KEY))
+  const enabled = gatewayURL !== undefined
+
+  if (!enabled) {
+    return {
+      enabled: false,
+      strict,
+      baseURL: undefined,
+      apiKey: undefined,
+    }
+  }
+
+  if (strict) {
+    const offendingVars = RAW_PROVIDER_KEY_VARS.filter(
+      (key) => trimToUndefined(getSetting(key)) !== undefined,
+    )
+    if (offendingVars.length > 0) {
+      throw new ModelGatewayStrictError([...offendingVars])
+    }
+  }
+
+  return {
+    enabled: true,
+    strict,
+    baseURL: gatewayURL,
+
+    apiKey: gatewayToken,
+  }
+}
+
+export interface OpenAiCompatibleCreds {
+  baseURL: string | undefined
+  apiKey: string | undefined
+}
+
+export function applyModelGateway(
+  raw: OpenAiCompatibleCreds,
+  resolution: ModelGatewayResolution,
+): OpenAiCompatibleCreds {
+  if (!resolution.enabled) {
+    return { baseURL: raw.baseURL, apiKey: raw.apiKey }
+  }
+  return {
+    baseURL: resolution.baseURL ?? raw.baseURL,
+
+    apiKey: resolution.apiKey,
+  }
+}

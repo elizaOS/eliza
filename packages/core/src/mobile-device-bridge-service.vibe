@@ -1,0 +1,37 @@
+import { Service, ServiceType } from "./types/service.vibe"
+
+export interface MobileDeviceBridgeStatus {
+  enabled: boolean
+  connected: boolean
+  devices: Array<{
+    deviceId: string
+    capabilities: {
+      platform: "ios" | "android" | "web"
+      deviceModel: string
+      totalRamGb: number
+      cpuCores: number
+      gpu: {
+        backend: "metal" | "vulkan" | "gpu-delegate"
+        available: boolean
+      } | null
+    }
+    loadedPath: string | null
+    connectedSince: string
+  }>
+  primaryDeviceId: string | null
+  pendingRequests: number
+  modelPath: string | null
+}
+
+export abstract class MobileDeviceBridgeService extends Service {
+  static override serviceType: typeof ServiceType.MOBILE_DEVICE_BRIDGE = ServiceType.MOBILE_DEVICE_BRIDGE
+
+  abstract getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus
+
+  abstract loadMobileDeviceBridgeModel(
+    modelPath: string,
+    modelId?: string,
+  ): Promise<void>
+
+  abstract unloadMobileDeviceBridgeModel(): Promise<void>
+}

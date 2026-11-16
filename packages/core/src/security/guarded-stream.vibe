@@ -1,0 +1,352 @@
+import { BIP39_WORD_SET } from "./bip39-wordlist.vibe"
+import type { PseudonymSession } from "./pii-pseudonymizer.vibe"
+import type { SecretSwapSession } from "./secret-swap.vibe"
+
+export interface GuardedStreamOutput {
+  safe: string
+
+  visible: string
+}
+
+export interface GuardedStreamScannerOptions {
+  secretSession?: SecretSwapSession | null
+  piiSession?: PseudonymSession | null
+}
+
+const NOTHING: GuardedStreamOutput = { safe: "", visible: "" }
+
+const OPENER_PATTERNS: readonly RegExp[] = [
+  /[A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL|SEED[_-]?PHRASE)\s*(?:[=:]\s*(?:["']?[^\s"'\\]*)?)?$/i,
+
+  /"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*(?::\s*(?:"[^"]*(?:"[^\s]*)?)?)?$/i,
+
+  /--(?:api[-_]?key|token|secret|password|passwd)(?:[=\s]+(?:["']?[^\s"']*)?)?$/i,
+]
+
+const AUTHORIZATION_HEADER_TAIL = /\b(?:Proxy-)?Authorization(?:[ \t]*(?::|=)[^\r\n]*|[ \t]*)$/i
+
+const GROUPED_RUN_SCAN_LIMIT = 512
+
+const OPENER_WINDOW = 512
+
+const ARMOR_BEGIN = "-----BEGIN"
+
+function isDigit(code: number): boolean {
+  return code >= 48 && code <= 57
+}
+function isAsciiAlpha(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+}
+function isAlnum(code: number): boolean {
+  return isDigit(code) || isAsciiAlpha(code)
+}
+function isAsciiWhitespace(code: number): boolean {
+  return (
+    code === 32
+    || code === 9
+    || code === 10
+    || code === 13
+    || code === 12
+    || code === 11
+  )
+}
+function isSpaceOrTab(code: number): boolean {
+  return code === 32 || code === 9
+}
+function isUpperAlnum(code: number): boolean {
+  return isDigit(code) || (code >= 65 && code <= 90)
+}
+
+function isGroupSeparator(code: number): boolean {
+  return code === 32 || code === 9 || code === 45
+}
+
+export class GuardedStreamScanner {
+  private pending = ""
+  private readonly secretSession: SecretSwapSession | null
+  private readonly piiSession: PseudonymSession | null
+
+  constructor(options: GuardedStreamScannerOptions) {
+    this.secretSession = options.secretSession ?? null
+    this.piiSession = options.piiSession ?? null
+  }
+
+  push(chunk: string): GuardedStreamOutput {
+    if (!chunk) return NOTHING
+    this.pending += chunk
+    const cut = this.findSafeCut()
+    if (cut <= 0) return NOTHING
+    const raw = this.pending.slice(0, cut)
+    this.pending = this.pending.slice(cut)
+    return this.transform(raw)
+  }
+
+  flush(): GuardedStreamOutput {
+    if (!this.pending) return NOTHING
+    const raw = this.pending
+    this.pending = ""
+    return this.transform(raw)
+  }
+
+  private transform(raw: string): GuardedStreamOutput {
+    let safe = raw
+    if (this.secretSession) safe = this.secretSession.substituteText(safe)
+    if (this.piiSession) safe = this.piiSession.substituteText(safe)
+    const restoredPii = this.piiSession
+      ? this.piiSession.restoreText(safe)
+      : safe
+    const visible = this.secretSession
+      ? this.secretSession.restoreUserReplyText(restoredPii)
+      : restoredPii
+    return { safe, visible }
+  }
+
+  private maxTokenLength(): number {
+    let max = 0
+    if (this.secretSession) {
+      max = Math.max(max, this.secretSession.maxTokenLength)
+    }
+    if (this.piiSession) max = Math.max(max, this.piiSession.maxTokenLength)
+    return max
+  }
+
+  private tokenKeys(): string[] {
+    const keys: string[] = []
+    if (this.secretSession) {
+      for (const entry of this.secretSession.entries) {
+        keys.push(entry.value, entry.placeholder)
+      }
+    }
+    if (this.piiSession) {
+      for (const entry of this.piiSession.entries) {
+        keys.push(entry.value, entry.surrogate)
+      }
+    }
+    return keys
+  }
+
+  private findSafeCut(): number {
+    const n = this.pending.length
+    if (n === 0) return 0
+    let cut = n - this.maxTokenLength()
+    if (cut > n) cut = n
+    if (cut <= 0) return 0
+
+    const keys = this.tokenKeys()
+    for (let iterations = 0; iterations <= n + 2; iterations += 1) {
+      let next = this.snapToWhitespace(cut)
+      next = Math.min(next, this.groupedNumberRunStart(next))
+      next = Math.min(next, this.phoneRunStart(next))
+      next = Math.min(next, this.bip39RunStart(next))
+      next = Math.min(next, this.openerTailStart(next))
+      next = Math.min(next, this.openArmorStart(next))
+      next = Math.min(next, this.knownTokenCrossingStart(next, keys))
+      next = this.snapToWhitespace(next)
+      if (next >= cut) break
+      cut = next
+      if (cut <= 0) return 0
+    }
+    return cut > 0 ? cut : 0
+  }
+
+  private snapToWhitespace(index: number): number {
+    const p = this.pending
+    let i = Math.min(index, p.length)
+    while (i > 0 && !isAsciiWhitespace(p.charCodeAt(i - 1))) i -= 1
+    return i
+  }
+
+  private groupedNumberRunStart(cut: number): number {
+    const p = this.pending
+    let i = cut
+    let groups = 0
+    let hasDigitGroup = false
+    let runStart = cut
+    for (;;) {
+      let sepEnd = i
+      if (sepEnd > 0 && isGroupSeparator(p.charCodeAt(sepEnd - 1))) {
+        sepEnd -= 1
+      } else if (i !== cut) {
+        break
+      }
+      let k = sepEnd
+      let len = 0
+      let digitInGroup = false
+      let upperAlnum = true
+      while (k > 0 && len < 8 && isAlnum(p.charCodeAt(k - 1))) {
+        const code = p.charCodeAt(k - 1)
+        if (isDigit(code)) digitInGroup = true
+        else if (!isUpperAlnum(code)) upperAlnum = false
+        k -= 1
+        len += 1
+      }
+      if (len === 0) break
+
+      if (k > 0 && isAlnum(p.charCodeAt(k - 1))) break
+
+      if (!digitInGroup && !(len === 4 && upperAlnum)) break
+      groups += 1
+      if (digitInGroup) hasDigitGroup = true
+      runStart = k
+      i = k
+      if (cut - runStart > GROUPED_RUN_SCAN_LIMIT) return 0
+    }
+    return groups >= 1 && hasDigitGroup ? runStart : cut
+  }
+
+  private phoneRunStart(cut: number): number {
+    const p = this.pending
+    let i = cut
+    let runStart = cut
+    let groups = 0
+    let hasParen = false
+    for (;;) {
+      let sepEnd = i
+      if (sepEnd > 0 && isGroupSeparator(p.charCodeAt(sepEnd - 1))) {
+        sepEnd -= 1
+      } else if (i !== cut) {
+        break
+      }
+      let k = sepEnd
+      let paren = false
+
+      if (k > 0 && p.charCodeAt(k - 1) === 41) {
+        let j = k - 1
+        let digits = 0
+        while (j > 0 && isDigit(p.charCodeAt(j - 1)) && digits < 4) {
+          j -= 1
+          digits += 1
+        }
+        if (digits >= 2 && j > 0 && p.charCodeAt(j - 1) === 40) {
+          k = j - 1
+          paren = true
+        }
+      }
+      if (!paren) {
+        let j = sepEnd
+        let digits = 0
+        while (j > 0 && isDigit(p.charCodeAt(j - 1)) && digits < 7) {
+          j -= 1
+          digits += 1
+        }
+        if (digits === 0) break
+
+        if (j > 0 && isAlnum(p.charCodeAt(j - 1))) break
+        k = j
+      }
+      groups += 1
+      if (paren) hasParen = true
+      runStart = k
+      i = k
+      if (cut - runStart > GROUPED_RUN_SCAN_LIMIT) return cut
+    }
+    if (groups === 0 || !hasParen) return cut
+
+    let s = runStart
+    while (s > 0 && isSpaceOrTab(p.charCodeAt(s - 1))) s -= 1
+    if (s > 0 && p.charCodeAt(s - 1) === 49) {
+      let t = s - 1
+      if (t > 0 && p.charCodeAt(t - 1) === 43) t -= 1
+      if (t === 0 || !isAlnum(p.charCodeAt(t - 1))) runStart = t
+    } else if (s > 0 && p.charCodeAt(s - 1) === 43) {
+      runStart = s - 1
+    }
+    return runStart
+  }
+
+  private bip39RunStart(cut: number): number {
+    const p = this.pending
+    let i = cut
+    let runStart = cut
+    let sawWord = false
+    for (;;) {
+      let j = i
+      while (j > 0 && isSpaceOrTab(p.charCodeAt(j - 1))) j -= 1
+      if (j === i && i !== cut) break
+      let k = j
+      while (k > 0 && isAsciiAlpha(p.charCodeAt(k - 1))) k -= 1
+      const wordLen = j - k
+      if (wordLen < 3 || wordLen > 8) break
+      if (k > 0 && isAlnum(p.charCodeAt(k - 1))) break
+      if (!BIP39_WORD_SET.has(p.slice(k, j).toLowerCase())) break
+      sawWord = true
+      runStart = k
+      i = k
+    }
+    return sawWord ? runStart : cut
+  }
+
+  private openerTailStart(cut: number): number {
+    const p = this.pending
+    const end = Math.min(cut, p.length)
+    const lineStart = Math.max(p.lastIndexOf("\n", end - 1), p.lastIndexOf("\r", end - 1)) + 1
+    const authorization = AUTHORIZATION_HEADER_TAIL.exec(
+      p.slice(lineStart, end),
+    )
+    if (authorization) return lineStart + authorization.index
+
+    const matchStart = (base: number): number => {
+      const tail = p.slice(base, end)
+      let start = end
+      for (const pattern of OPENER_PATTERNS) {
+        const match = pattern.exec(tail)
+        if (match) start = Math.min(start, base + match.index)
+      }
+      return start
+    }
+
+    const base = Math.max(0, end - OPENER_WINDOW)
+    const tailStart = matchStart(base)
+    if (tailStart < end) return tailStart
+
+    let runStart = end
+    while (runStart > 0 && !isAsciiWhitespace(p.charCodeAt(runStart - 1))) {
+      runStart -= 1
+    }
+    if (runStart >= base) return end
+
+    const extendedBase = Math.max(0, runStart - OPENER_WINDOW)
+    return matchStart(extendedBase)
+  }
+
+  private openArmorStart(cut: number): number {
+    const p = this.pending
+    const n = p.length
+    const beginIdx = p.lastIndexOf(ARMOR_BEGIN, Math.max(0, cut - 1))
+    if (beginIdx !== -1 && beginIdx < cut) {
+      const endIdx = p.indexOf("-----END", beginIdx)
+      const closeDashIdx = endIdx === -1 ? -1 : p.indexOf("-----", endIdx + 8)
+
+      if (closeDashIdx === -1) return beginIdx
+      if (cut < closeDashIdx + 5) return beginIdx
+    }
+
+    const maxLen = Math.min(ARMOR_BEGIN.length - 1, n)
+    for (let len = maxLen; len >= 1; len -= 1) {
+      if (p.endsWith(ARMOR_BEGIN.slice(0, len))) return n - len
+    }
+    return n
+  }
+
+  private knownTokenCrossingStart(
+    cut: number,
+    keys: readonly string[],
+  ): number {
+    const p = this.pending
+    let result = cut
+    let moved = true
+    while (moved) {
+      moved = false
+      for (const key of keys) {
+        const len = key.length
+        if (len === 0) continue
+        const idx = p.lastIndexOf(key, result - 1)
+        if (idx !== -1 && idx < result && result < idx + len) {
+          result = idx
+          moved = true
+        }
+      }
+    }
+    return result
+  }
+}

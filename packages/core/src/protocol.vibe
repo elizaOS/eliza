@@ -1,0 +1,565 @@
+export * from "./access-control/artifact-disclosure.vibe"
+export * from "./access-control/audience-disclosure.vibe"
+export * from "./access-control/audience-egress.vibe"
+export * from "./access-control/filter.vibe"
+export * from "./access-control/role-primitives.vibe"
+export * from "./account-pool-bridge.vibe"
+export * from "./action-names.vibe"
+export { actionToJsonSchema } from "./actions/action-schema.vibe"
+export {
+  composedPromotedSubactionDescription,
+  pinnedDiscriminatorDescription,
+  pinnedDiscriminatorForPromotedChild,
+  promotedParentRoutingHint,
+  promotedSubactionDescription,
+  promotedSubactionParent,
+} from "./actions/promote-subactions.vibe"
+export { validateToolArgs } from "./actions/validate-tool-args.vibe"
+export { hasActionContext, validateActionKeywords, validateActionRegex } from "./actions/validation.vibe"
+
+export * from "./activity-plaintext.vibe"
+export * from "./agent-backup-limits.vibe"
+export * from "./audio-redaction.vibe"
+export * from "./audio-redaction-verify.vibe"
+export * from "./awareness.vibe"
+export * from "./canonical-json.vibe"
+export * from "./capabilities/protocol.vibe"
+export * from "./capabilities/remote-runner.vibe"
+export * from "./capabilities/retrieval.vibe"
+export * from "./capabilities/router.vibe"
+export * from "./capability-catalog.vibe"
+export * from "./catalog/apps.vibe"
+export { default as channelPluginMap } from "./catalog/channel-plugin-map.json" with {
+  type: "json",
+}
+export { loadRegistryFromRawEntries } from "./catalog/loader.vibe"
+export { default as providerPluginMap } from "./catalog/provider-plugin-map.json" with {
+  type: "json",
+}
+export * from "./catalog/runtime-kernel.vibe"
+export { default as shortIdPluginMap } from "./catalog/short-id-plugin-map.json" with {
+  type: "json",
+}
+export * from "./character.vibe"
+export * from "./character-language.vibe"
+export * from "./character-schema.vibe"
+export * from "./character-utils.vibe"
+export * from "./chat-upload-limits.vibe"
+export * from "./connector-account-catalog.vibe"
+export * from "./connectors/connector-config.vibe"
+export * from "./connectors/privacy.vibe"
+export * from "./connectors/target-sources.vibe"
+export * from "./connectors.vibe"
+export * from "./database.vibe"
+export * from "./database/cache-cas.vibe"
+export * from "./database/connector-json.vibe"
+export * from "./database/document-list-query.vibe"
+export * from "./database/world-metadata-cas.vibe"
+export * from "./discord-dm-policy.vibe"
+export * from "./embedding-vector-space.vibe"
+export * from "./error-classification.vibe"
+export * from "./errors.vibe"
+export * from "./events.vibe"
+export type { ValidationKeywordLocale } from "./i18n/keywords.vibe"
+export * from "./i18n/language.vibe"
+export * from "./i18n/recurrence-markers.vibe"
+export * from "./inference-trace.vibe"
+export * from "./markdown/chunk.vibe"
+export { type FenceSpan, findFenceSpanAt, isSafeFenceBreak, parseFenceSpans } from "./markdown/code.vibe"
+export * from "./markdown/frontmatter.vibe"
+export * from "./meeting-artifacts.vibe"
+export * from "./meetings.vibe"
+export * from "./memory.vibe"
+export { isInternalBridgeMessage } from "./messaging/automated-turns.vibe"
+export * from "./messaging/interaction-dashboard-markers.vibe"
+export {
+  findInteractionRegions,
+  type InteractionRegion,
+  MAX_FOLLOWUPS,
+  MAX_FORM_FIELDS,
+  MAX_TASK_TITLE_LEN,
+  type ParsedInteractions,
+  parseInteractionBlocks,
+  stripUnclaimedInteractionMarkup,
+} from "./messaging/interaction-parse.vibe"
+export {
+  createInteractiveTask,
+  type InteractiveTask,
+  MAX_TASK_ORIGIN_CHAIN,
+  MAX_TASK_ORIGIN_GRANTS,
+  sameTaskOwner,
+  TASK_ACTION_NOT_DISPATCHED,
+  TASK_ACTION_NOT_DISPATCHED_REF,
+  type TaskActionProposal,
+  type TaskContext,
+  type TaskObservation,
+  type TaskOperation,
+  type TaskOriginGrant,
+  type TaskOriginStep,
+  type TaskOutcome,
+  type TaskOwner,
+  type TaskTransition,
+  transitionInteractiveTask,
+  validateInteractiveTask,
+} from "./messaging/interactive-task.vibe"
+export {
+  mergeTaskEventPage,
+  mergeTaskEvents,
+  TASK_EVENT_KINDS,
+  TASK_ID_PATTERN,
+  type TaskEvent,
+  type TaskEventKind,
+  type TaskEventPage,
+  TaskEventReader,
+  type TaskEventReaderOptions,
+  type TaskEventReaderState,
+  type TaskOperationStatus,
+  type TaskStatus as TaskEventStatus,
+  validateTaskEvent,
+} from "./messaging/task-events.vibe"
+export * from "./messaging/task-widgets.vibe"
+export * from "./mobile-device-bridge-service.vibe"
+export * from "./model-gateway.vibe"
+export * from "./name-tokens.vibe"
+export * from "./network/ssrf.vibe"
+export * from "./prompt-optimization.vibe"
+export * from "./recent-messages-state.vibe"
+export * from "./retrieval.vibe"
+export type { RolesConfig } from "./roles.vibe"
+export * from "./runtime/action-wildcard-glob.vibe"
+export * from "./runtime/candidate-action-backstop.vibe"
+export * from "./runtime/content-access-manifest.vibe"
+export * from "./runtime/context-gates.vibe"
+export {
+  appendContextEvent,
+  type ContextEvent,
+  type ContextObject,
+  type ContextObjectPromptSegment,
+  type ContextObjectTool,
+  type ContextProviderEvent,
+  createContextObject,
+  OWNED_CONTEXT_SOURCE_SCOPE,
+} from "./runtime/context-object.vibe"
+export * from "./runtime/context-registry.vibe"
+export {
+  buildStageChatMessages,
+  cachePrefixSegments,
+  normalizePromptSegments,
+  renderContextObject,
+  segmentBlock,
+} from "./runtime/context-renderer.vibe"
+export * from "./runtime/direct-action-routing.vibe"
+export * from "./runtime/effect-delivery.vibe"
+export * from "./runtime/historical-receipt-wire.vibe"
+export {
+  containsToolCallShapedMarkup,
+  extractJsonObjectSpans,
+  extractJsonObjects,
+  parseJsonObject,
+  parsePseudoTagToolInvocations,
+  stringifyForDiagnostics,
+  stringifyForModel,
+  stripJsonStructuralJunkReply,
+} from "./runtime/json-output.vibe"
+export {
+  assertRepeatedFailureLimit,
+  assertTrajectoryLimit,
+  type ChainingLoopConfig,
+  type FailureLike,
+  mergeChainingLoopConfig,
+  TrajectoryLimitExceeded,
+} from "./runtime/limits.vibe"
+export * from "./runtime/locale-detection.vibe"
+export * from "./runtime/localized-examples-provider.vibe"
+export {
+  buildModelInputBudget,
+  DEFAULT_CONTEXT_WINDOW_TOKENS,
+  DEFAULT_INPUT_RESERVE_TOKENS,
+  estimateTokensFromChars,
+  MODEL_WINDOW_RESERVE_FRACTION,
+  type ModelInputBudget,
+  withModelInputBudgetProviderOptions,
+} from "./runtime/model-input-budget.vibe"
+export * from "./runtime/model-modality.vibe"
+export { isCanonicalModelCapabilityDisabled, resolveProviderModelString } from "./runtime/model-policy.vibe"
+export type {
+  EvaluatorEffects,
+  EvaluatorModelResult,
+  EvaluatorOutput,
+  EvaluatorRoute,
+  EvaluatorRuntime,
+  InferredSubactionDispatch,
+  PlannerLoopParams,
+  PlannerLoopResult,
+  PlannerRuntime,
+  PlannerStep,
+  PlannerTerminalFailure,
+  PlannerToolCall,
+  PlannerToolResult,
+  PlannerTrajectory,
+  RunEvaluatorParams,
+} from "./runtime/planner-types.vibe"
+export type {
+  CreatePreparedModelRequestGuardArgs,
+  PreparedModelRequestBudget,
+  PreparedModelRequestGuard,
+} from "./runtime/prepared-model-request.vibe"
+export {
+  extractReplyTextFromTranscript,
+  looksLikeRawFieldTranscript,
+  parseFieldTranscript,
+  splitTranscriptList,
+} from "./runtime/response-field-transcript.vibe"
+export * from "./runtime/response-handler-evaluators.vibe"
+export * from "./runtime/response-handler-fields.vibe"
+export * from "./runtime/run-terminal-owner.vibe"
+export * from "./runtime/session-provider.vibe"
+export * from "./runtime/system-prompt.vibe"
+export * from "./runtime/trajectory-usage-rollup.vibe"
+export {
+  looksLikeActionEnvelopeJson,
+  looksLikeEvaluatorEnvelopeJson,
+  looksLikeSpawnEnvelopeJson,
+  sanitizeUserVisibleModelOutput,
+  type UserVisibleModelOutput,
+} from "./runtime/user-visible-model-output.vibe"
+export * from "./security/basic-email.vibe"
+export * from "./security/bind-host.vibe"
+export * from "./security/entity-recognizer.vibe"
+export * from "./security/external-content.vibe"
+export {
+  AUTHORITY_KEYWORDS,
+  containsObfuscatedKeyword,
+  detectObfuscatedKeywordMatches,
+  getKeywordPattern,
+  INJECTION_KEYWORDS,
+  INJECTION_PATTERNS,
+  INTIMIDATION_KEYWORDS,
+  normalizeForScan,
+  reverseString,
+  URGENCY_KEYWORDS,
+} from "./security/injection-primitives.vibe"
+export * from "./security/log-redaction.vibe"
+export * from "./security/outbound-envelope-guard.vibe"
+export * from "./security/outbound-sanitize.vibe"
+export * from "./security/pii-context-pack.vibe"
+export * from "./security/process-env-policy.vibe"
+export * from "./security/redact.vibe"
+export {
+  CANONICAL_SECRET_KEYS,
+  type CanonicalSecretKey,
+  CHANNEL_OPTIONAL_SECRETS,
+  CHANNEL_SECRETS,
+  checkRequiredSecrets,
+  getAliasesForKey,
+  getProviderForApiKey,
+  inferValidationPatternKey,
+  isCanonicalSecretKey,
+  LOCAL_MODEL_PROVIDERS,
+  MODEL_PROVIDER_SECRETS,
+  SECRET_KEY_ALIASES,
+  SECRET_VALIDATION_PATTERNS,
+  type SecretValidationPattern,
+  type SecretValidationResult,
+  validateSecretKey,
+  validateSecrets,
+} from "./security/secrets.vibe"
+export * from "./security/spawn-env-policy.vibe"
+export {
+  composeToolDiagnosticRedactor,
+  projectCompleteToolArgsForModel,
+  projectCompleteToolValueForModel,
+  projectModelCallDiagnosticValue,
+  projectProtectedModelCallValue,
+  projectToolDiagnosticArgs,
+  projectToolDiagnosticValue,
+  TOOL_DIAGNOSTIC_MASK,
+  type ToolDiagnosticTextRedactor,
+} from "./security/tool-diagnostics.vibe"
+export * from "./sensitive-request-dispatch.vibe"
+export * from "./sensitive-request-policy.vibe"
+export * from "./services.vibe"
+export {
+  OPTIMIZED_PROMPT_SERVICE,
+  type OptimizedPromptRuntimeLike,
+  type RuntimePromptResolver,
+  resolveOptimizedPrompt,
+  resolveOptimizedPromptForRuntime,
+} from "./services/optimized-prompt-resolver.vibe"
+export * from "./services/pairing-integration.vibe"
+export * from "./services/post-delivery-task-tracker.vibe"
+export * from "./services/runtime-capability-service.vibe"
+export * from "./services/trajectory-export.vibe"
+export * from "./services/trajectory-json.vibe"
+export {
+  parseTrajectorySemanticStage,
+  parseTrajectorySemanticStages,
+  recordedStagesToSemanticStages,
+  recordedStageToSemanticStage,
+  TRAJECTORY_SEMANTIC_STAGE_SCHEMA_VERSION,
+  type TrajectorySemanticStageRecord,
+} from "./services/trajectory-semantic-stage.vibe"
+export {
+  ELIZA_NATIVE_MODEL_BOUNDARIES,
+  ELIZA_NATIVE_TRAJECTORY_FORMAT,
+  type ElizaNativeModelBoundary,
+  type ElizaNativeModelRequestRecord,
+  type ElizaNativeModelResponseRecord,
+  type ElizaNativeTrajectoryFormat,
+  type ElizaNativeTrajectoryRow,
+  type TrajectoryActionAttemptRecord,
+  type TrajectoryCacheStatsRecord,
+  type TrajectoryData,
+  type TrajectoryDetailRecord,
+  type TrajectoryExportFormat,
+  type TrajectoryExportOptions,
+  type TrajectoryExportResult,
+  type TrajectoryFlattenedLlmCallRecord,
+  type TrajectoryJsonShape,
+  type TrajectoryListOptions,
+  type TrajectoryListResult,
+  type TrajectoryLlmCallRecord,
+  type TrajectoryProviderAccessRecord,
+  type TrajectoryScalar,
+  type TrajectorySkillInvocationRecord,
+  type TrajectorySkillInvocationTruncationMarker,
+  type TrajectoryStatus,
+  type TrajectoryStepId,
+  type TrajectoryStepKind,
+  type TrajectoryStepRecord,
+  type TrajectorySummaryRecord,
+  type TrajectoryUsageTotalsRecord,
+} from "./services/trajectory-types.vibe"
+export * from "./services/trigger-scheduling.vibe"
+export * from "./speaker-name-inference.vibe"
+export * from "./spoken-text.vibe"
+export * from "./transcripts.vibe"
+export * from "./tunnel-service.vibe"
+export * from "./types/access-context.vibe"
+export * from "./types/action-failure.vibe"
+export * from "./types/agent.vibe"
+export {
+  type AgentAutomationMode,
+  type AgentStartupDiagnostics,
+  type ChatImageAttachment,
+  type ColumnInfo,
+  type ConnectionTestResult,
+  type CreateTriggerRequest,
+  type DatabaseStatus,
+  DELTA_STREAM_PROTOCOL,
+  type LogEntry as AgentLogEntry,
+  type PluginParamDef,
+  type QueryResult,
+  type RuntimeOrderItem,
+  type RuntimeServiceOrderItem,
+  type SkillEntry,
+  type StreamEventEnvelope,
+  type StreamEventType as AgentStreamEventType,
+  type TableInfo,
+  type TriggerHealthSnapshot,
+  type TriggerSummary,
+  type TriggerTaskMetadata,
+  type UpdateTriggerRequest,
+} from "./types/agent-api.vibe"
+export * from "./types/agent-event.vibe"
+export * from "./types/channel-config.vibe"
+export * from "./types/chat-pre-handler.vibe"
+export * from "./types/coding.vibe"
+export * from "./types/commands.vibe"
+export * from "./types/components.vibe"
+export type {
+  ConnectorAccountAccessGate,
+  ConnectorAccountPolicy,
+  ConnectorAccountStatus,
+} from "./types/connector-account-policy.vibe"
+export * from "./types/connector-setup.vibe"
+export * from "./types/content.vibe"
+export * from "./types/content-manifest.vibe"
+export * from "./types/contexts.vibe"
+export * from "./types/database.vibe"
+export * from "./types/documents.vibe"
+export * from "./types/effects.vibe"
+export * from "./types/environment.vibe"
+export * from "./types/evaluator.vibe"
+export * from "./types/events.vibe"
+export * from "./types/hook.vibe"
+export * from "./types/identity.vibe"
+export * from "./types/interactions.vibe"
+export * from "./types/long-term-memory.vibe"
+export * from "./types/membership.vibe"
+export * from "./types/memory.vibe"
+export * from "./types/memory-storage.vibe"
+export * from "./types/message-service.vibe"
+export * from "./types/message-source.vibe"
+export * from "./types/messaging.vibe"
+export * from "./types/model.vibe"
+export * from "./types/model-pricing.vibe"
+export * from "./types/notification.vibe"
+export * from "./types/pairing.vibe"
+export * from "./types/payment.vibe"
+export {
+  PENDING_USER_ACTION_WEIGHT,
+  type PendingUserAction,
+  type PendingUserActionKind,
+  type PendingUserActionOption,
+  type PendingUserActionResolution,
+  type PendingUserActionResolutionTarget,
+} from "./types/pending-user-action.vibe"
+export * from "./types/permissions.vibe"
+export * from "./types/pipeline-hooks.vibe"
+export * from "./types/plugin.vibe"
+export * from "./types/plugin-manifest.vibe"
+export * from "./types/plugin-store.vibe"
+export * from "./types/primitives.vibe"
+export * from "./types/reminder-presentation.vibe"
+export * from "./types/runtime.vibe"
+export * from "./types/search.vibe"
+export * from "./types/service.vibe"
+export * from "./types/service-interfaces.vibe"
+export * from "./types/session.vibe"
+export * from "./types/settings.vibe"
+export * from "./types/state.vibe"
+export * from "./types/streaming.vibe"
+export * from "./types/surface-manifest.vibe"
+export * from "./types/swarm-coordinator.vibe"
+export * from "./types/system-notice.vibe"
+export * from "./types/task.vibe"
+export * from "./types/testing.vibe"
+export {
+  type ActionAttempt,
+  type ARTTrajectory,
+  type ChatMessage as TrajectoryChatMessage,
+  CONTEXT_OBJECT_TRAJECTORY_VERSION,
+  type ContextObjectTrajectoryExport,
+  type ContextObjectTrajectoryVersion,
+  type EnvironmentState,
+  type LLMCall,
+  type ProviderAccess,
+  type RewardComponents,
+  type RewardRequest,
+  type RewardResponse,
+  type TrainingBatch,
+  type Trajectory,
+  type TrajectoryGroup,
+  type TrajectoryRecord,
+  type TrajectoryStep,
+} from "./types/trajectory-export.vibe"
+export * from "./types/trigger.vibe"
+export * from "./types/workspace-delta.vibe"
+export {
+  ACTION_RESULT_OVERSIZE_WARNING_TOKENS,
+  collectActionResultSizeWarnings,
+  estimateActionResultTokens,
+  getActionResultActionName,
+  trimActionResultForPromptState,
+} from "./utils/action-results.vibe"
+export * from "./utils/assistant-text.vibe"
+export type { BatchItemOutcome } from "./utils/batch-queue.vibe"
+export * from "./utils/boolean.vibe"
+export * from "./utils/channel-utils.vibe"
+export * from "./utils/character-message-examples.vibe"
+export type {
+  ConfirmationDecision,
+  ConfirmationStatus,
+  DestructiveConfirmationGateResult,
+  RequireConfirmationArgs,
+} from "./utils/confirmation.vibe"
+export {
+  CONTEXT_CAPABILITIES_STATE_KEY,
+  getExplicitRoutingContexts,
+  isPageScopedRoutingContext,
+  routingContextsOverlap,
+  shouldSurfaceContextCapabilities,
+  withActiveRoutingContexts,
+} from "./utils/context-routing.vibe"
+export * from "./utils/deadline.vibe"
+export * from "./utils/deterministic.vibe"
+export * from "./utils/duration.vibe"
+export * from "./utils/env.vibe"
+export {
+  errorMessage,
+  formatDiagnosticError,
+  formatError,
+  formatError as getErrorMessage,
+  formatErrorWithStack,
+  isRedirectResponse,
+  isTimeoutError,
+  readDiagnosticProperty,
+} from "./utils/errors.vibe"
+export * from "./utils/example-names.vibe"
+export * from "./utils/exec-safety.vibe"
+export {
+  isExpectedLocalEmbeddingUnavailability,
+  modelProviderFailureDetails,
+} from "./utils/expected-local-embedding-unavailability.vibe"
+export * from "./utils/extraction-evidence.vibe"
+export type { SymlinkType } from "./utils/filesystem.vibe"
+export * from "./utils/format-bytes.vibe"
+export * from "./utils/html-raw-text.vibe"
+export * from "./utils/inflection-term-keys.vibe"
+export * from "./utils/json5-model-output.vibe"
+export { getLogPrefix } from "./utils/log-prefix.vibe"
+export { userRequestFromAugmentedText } from "./utils/message-text.vibe"
+export {
+  assertModelOutputComplete,
+  isModelOutputLimitFinishReason,
+  isModelProviderError,
+  isProviderContextOverflowError,
+  isProviderContextOverflowFailure,
+  isProviderSchemaRejection,
+  isTransientModelError,
+  type ModelOutputEvidence,
+  modelOutputIncompleteEvidence,
+  modelProviderErrorDetail,
+  PROVIDER_CONTEXT_OVERFLOW,
+} from "./utils/model-errors.vibe"
+export * from "./utils/model-retry.vibe"
+export * from "./utils/number-parsing.vibe"
+export * from "./utils/path-component.vibe"
+export {
+  getMacPermissionDeepLink,
+  type OpenPermissionSettingsDeps,
+  openPermissionSettings,
+} from "./utils/permission-deep-links.vibe"
+export { hasReasoningResidue, REASONING_TAG_NAMES, stripReasoningPrefixes } from "./utils/reasoning-tags.vibe"
+export * from "./utils/reference-echo.vibe"
+export { containsResourceAddress, parseWebResourceAddress } from "./utils/resource-address.vibe"
+export { sleepWithAbort } from "./utils/retry.vibe"
+export * from "./utils/session-key.vibe"
+export * from "./utils/streaming.vibe"
+export * from "./utils/string-boundaries.vibe"
+export * from "./utils/task-scheduling.vibe"
+export { MAX_TEXT_NORMALIZE_EDGES, TEXT_NORMALIZE_UNBOUNDED, toMultilineText } from "./utils/text-normalize.vibe"
+export * from "./utils/type-guards.vibe"
+export * from "./utils/unicode.vibe"
+export * from "./utils/union-find.vibe"
+export { uuidFromString, validateUuid } from "./utils/uuid.vibe"
+export { createCompletedActionNavigationState } from "./views/completed-action-navigation.vibe"
+export {
+  collapseViewDeclarations,
+  dedupeModalities,
+  type EnabledViewKinds,
+  getViewModalities,
+  isAlwaysOnViewKind,
+  isViewKindEnabled,
+  isViewVisible,
+  resolveViewKind,
+  VIEW_KIND_META,
+  VIEW_KINDS,
+  type ViewKind,
+  type ViewKindBearer,
+  type ViewModality,
+  type ViewType,
+} from "./views/declarations.vibe"
+export * from "./views/host-external-contract.vibe"
+export {
+  IMMERSIVE_WALLPAPER_SURFACE,
+  resolveSurfaceBackgroundPolicy,
+  resolveSurfaceManifest,
+  SURFACE_CAPABILITIES,
+  SURFACE_ISOLATION_LEVELS,
+  surfaceGrants,
+} from "./views/surface-manifest.vibe"
+export { findViewActionHandoff, type ViewActionHandoff } from "./views/view-action-handoff.vibe"
+export * from "./views/view-interact-protocol.vibe"
+export * from "./voice-cancellation-token.vibe"

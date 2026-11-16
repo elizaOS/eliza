@@ -1,0 +1,69 @@
+export type AppShellBackgroundPolicy = "opaque" | "shared"
+
+export type ViewHeaderPolicy = "normal" | "fullscreen" | "modal" | "immersive"
+
+export type SurfaceIsolationLevel =
+  | "in-process"
+  | "sandboxed-iframe"
+  | "native-webview"
+  | "immersive"
+
+export type SurfaceCapability =
+  | "wallpaper"
+  | "background:apply"
+  | "navigate"
+  | "storage"
+  | "agent-surface"
+
+export type SurfaceLifecyclePolicy = "ephemeral" | "retained"
+
+export type PageLayoutManifest =
+  | {
+    kind: "content"
+    topology?: "framed" | "ambient"
+    width: "reading" | "standard" | "wide"
+    scroll: "shell" | "view"
+    gutter?: "standard" | "none"
+  }
+  | {
+    kind: "workspace"
+    topology?: "framed" | "ambient"
+    width: "wide" | "full"
+    scroll: "view"
+    gutter?: "standard" | "none"
+  }
+  | {
+    kind: "immersive"
+    topology?: "framed" | "ambient"
+    width: "full"
+    scroll: "view"
+    gutter: "none"
+  }
+
+export interface SurfaceManifest {
+  background?: AppShellBackgroundPolicy
+
+  header?: ViewHeaderPolicy
+
+  isolation?: SurfaceIsolationLevel
+
+  lifecycle?: SurfaceLifecyclePolicy
+
+  layout?: PageLayoutManifest
+
+  capabilities?: readonly SurfaceCapability[]
+}
+
+export interface ResolvedSurfaceManifest {
+  background: AppShellBackgroundPolicy
+  header: ViewHeaderPolicy
+  isolation: SurfaceIsolationLevel
+  lifecycle: SurfaceLifecyclePolicy
+  layout: PageLayoutManifest
+
+  capabilities: ReadonlySet<SurfaceCapability>
+}
+
+export interface SurfaceManifestBearer {
+  surface?: SurfaceManifest
+}

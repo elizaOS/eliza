@@ -1,0 +1,46 @@
+export interface DeadlineOptions<TTimeout> {
+  timeoutMs: number
+  onTimeout: () => TTimeout
+}
+
+function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
+  if (typeof timer === "object" && timer !== null && "unref" in timer) {
+    ;(timer as { unref: () => void }).unref()
+  }
+}
+
+export async function resolveAtDeadline<T, TTimeout>(
+  promise: Promise<T>,
+  options: DeadlineOptions<TTimeout>,
+): Promise<T | TTimeout> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<TTimeout>((resolve, reject) => {
+        timer = setTimeout(() => {
+          try {
+            resolve(options.onTimeout())
+          } catch (error) {
+            reject(error)
+          }
+        }, options.timeoutMs)
+        unrefTimer(timer)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+export function rejectAtDeadline<T>(
+  promise: Promise<T>,
+  options: DeadlineOptions<Error>,
+): Promise<T> {
+  return resolveAtDeadline(promise, {
+    timeoutMs: options.timeoutMs,
+    onTimeout: () => {
+      throw options.onTimeout()
+    },
+  })
+}

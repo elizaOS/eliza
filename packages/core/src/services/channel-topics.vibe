@@ -1,0 +1,242 @@
+import { compareMemoryIds } from "../database.vibe"
+import { ElizaError } from "../errors.vibe"
+import { logger } from "../logger.vibe"
+import type { Room } from "../types/environment.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { Service } from "../types/service.vibe"
+
+export const CHANNEL_TOPICS_METADATA_KEY = "currentTopics"
+
+export const CHANNEL_TOPICS_LRU_CAPACITY = 20
+
+const LOG_PREFIX = "[ChannelTopicsService]"
+
+function coerceTopicList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const item of value) {
+    if (typeof item !== "string") continue
+    const normalized = item.trim()
+    if (!normalized) continue
+    if (seen.has(normalized)) continue
+    seen.add(normalized)
+    result.push(normalized)
+  }
+
+  return result.length > CHANNEL_TOPICS_LRU_CAPACITY
+    ? result.slice(result.length - CHANNEL_TOPICS_LRU_CAPACITY)
+    : result
+}
+
+export class ChannelTopicsService extends Service {
+  static override serviceType = "channel_topics"
+  override capabilityDescription = "Maintains a per-channel LRU of recent topic labels extracted at Stage-1."
+
+  private readonly topicsByRoom = new Map<UUID, string[]>()
+
+  private readonly hydrated = new Set<UUID>()
+
+  private readonly roomQueues = new Map<UUID, Promise<unknown>>()
+  private stopping = false
+
+  private reportDatabaseFailure(
+    operation: "hydrate" | "persist",
+    roomId: UUID,
+    cause: unknown,
+  ): ElizaError {
+    const error = new ElizaError(
+      `Channel topic ${operation} failed for room ${roomId}`,
+      {
+        code: `CHANNEL_TOPICS_${operation.toUpperCase()}_FAILED`,
+        context: { roomId, operation },
+        cause,
+        severity: "ephemeral",
+      },
+    )
+    this.runtime.reportError(`ChannelTopicsService.${operation}`, error)
+    return error
+  }
+
+  static override async start(
+    runtime: IAgentRuntime,
+  ): Promise<ChannelTopicsService> {
+    return new ChannelTopicsService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    this.stopping = true
+    while (this.roomQueues.size > 0) {
+      await Promise.allSettled(this.roomQueues.values())
+    }
+    this.topicsByRoom.clear()
+    this.hydrated.clear()
+    this.roomQueues.clear()
+  }
+
+  private enqueueRoomOperation<T>(
+    roomId: UUID,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    if (this.stopping) {
+      return Promise.reject(
+        new ElizaError("Channel topic service has stopped admission", {
+          code: "CHANNEL_TOPICS_STOPPING",
+          context: { roomId },
+          severity: "ephemeral",
+        }),
+      )
+    }
+    const previous = this.roomQueues.get(roomId) ?? Promise.resolve()
+    const current = previous
+      .catch(() => undefined)
+      .then(operation)
+    this.roomQueues.set(roomId, current)
+
+    return current.finally(() => {
+      if (this.roomQueues.get(roomId) === current) {
+        this.roomQueues.delete(roomId)
+      }
+    })
+  }
+
+  private async hydrateRoom(roomId: UUID): Promise<void> {
+    if (this.hydrated.has(roomId)) return
+    try {
+      const room = await this.runtime.getRoom(roomId)
+      const persisted = coerceTopicList(
+        room?.metadata?.[CHANNEL_TOPICS_METADATA_KEY],
+      )
+      if (persisted.length > 0) {
+        this.topicsByRoom.set(roomId, persisted)
+      }
+      this.hydrated.add(roomId)
+    } catch (cause) {
+      throw this.reportDatabaseFailure("hydrate", roomId, cause)
+    }
+  }
+
+  private applyTopics(roomId: UUID, incoming: string[]): string[] {
+    const current = this.topicsByRoom.get(roomId) ?? []
+
+    const ordered = new Map<string, true>()
+    for (const topic of current) {
+      ordered.set(topic, true)
+    }
+    for (const raw of incoming) {
+      const topic = raw.trim()
+      if (!topic) continue
+
+      ordered.delete(topic)
+      ordered.set(topic, true)
+    }
+    let next = Array.from(ordered.keys())
+    if (next.length > CHANNEL_TOPICS_LRU_CAPACITY) {
+      next = next.slice(next.length - CHANNEL_TOPICS_LRU_CAPACITY)
+    }
+    this.topicsByRoom.set(roomId, next)
+    return next
+  }
+
+  private async persistRoom(roomId: UUID, topics: string[]): Promise<void> {
+    let room: Room | null
+    try {
+      room = await this.runtime.getRoom(roomId)
+    } catch (cause) {
+      throw this.reportDatabaseFailure("persist", roomId, cause)
+    }
+    if (!room) {
+      logger.debug(
+        { src: "service:channel_topics", roomId },
+        `${LOG_PREFIX} room not found; skipping topic persistence`,
+      )
+      return
+    }
+    const updated: Room = {
+      ...room,
+      metadata: {
+        ...room.metadata,
+        [CHANNEL_TOPICS_METADATA_KEY]: topics,
+      },
+    }
+    try {
+      await this.runtime.updateRoom(updated)
+    } catch (cause) {
+      throw this.reportDatabaseFailure("persist", roomId, cause)
+    }
+  }
+
+  async recordTopics(roomId: UUID, topics: string[]): Promise<void> {
+    if (!roomId || !Array.isArray(topics) || topics.length === 0) {
+      return
+    }
+
+    return this.enqueueRoomOperation(roomId, async () => {
+      await this.hydrateRoom(roomId)
+      const next = this.applyTopics(roomId, topics)
+      await this.persistRoom(roomId, next)
+    })
+  }
+
+  getTopicsForRoom(roomId: UUID): string[] {
+    const topics = this.topicsByRoom.get(roomId)
+    return topics ? [...topics] : []
+  }
+
+  async ensureHydrated(roomId: UUID): Promise<string[]> {
+    return this.enqueueRoomOperation(roomId, async () => {
+      await this.hydrateRoom(roomId)
+      return this.getTopicsForRoom(roomId)
+    })
+  }
+
+  getTopicsForAllRooms(): Record<string, string[]> {
+    const out: Record<string, string[]> = {}
+    for (const [roomId, topics] of this.topicsByRoom.entries()) {
+      out[roomId] = [...topics]
+    }
+    return out
+  }
+
+  searchTopics(query: string, limit?: number): TopicSearchHit[] {
+    return matchTopicRooms(this.getTopicsForAllRooms(), query, limit)
+  }
+}
+
+export interface TopicSearchHit {
+  roomId: string
+
+  matchedTopics: string[]
+
+  topics: string[]
+}
+
+export function matchTopicRooms(
+  topicsByRoom: Record<string, string[]>,
+  query: string,
+  limit?: number,
+): TopicSearchHit[] {
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return []
+  const scored: Array<TopicSearchHit & { score: number }> = []
+  for (const [roomId, topics] of Object.entries(topicsByRoom)) {
+    const matched = topics.filter((t) => {
+      const lower = t.toLowerCase()
+      return tokens.some((tok) => lower.includes(tok))
+    })
+    if (matched.length > 0) {
+      scored.push({
+        roomId,
+        matchedTopics: matched,
+        topics,
+        score: matched.length,
+      })
+    }
+  }
+  scored.sort(
+    (a, b) => b.score - a.score || compareMemoryIds(a.roomId, b.roomId),
+  )
+  const selected = limit === undefined ? scored : scored.slice(0, Math.max(0, limit))
+  return selected.map(({ score, ...hit }) => hit)
+}

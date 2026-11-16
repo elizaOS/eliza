@@ -1,0 +1,174 @@
+import type { InferenceTurnSummary } from "../inference-timing.vibe"
+import type { RoomHandlerLease } from "../runtime/room-handler-queue.vibe"
+import type { ProviderRateLimit } from "../utils/model-retry.vibe"
+import type { CodingActionProfile } from "./coding.vibe"
+import type { ActionResult, AgentContext, HandlerCallback, StreamChunkCallback } from "./components.vibe"
+import type { EffectReceipt } from "./effects.vibe"
+import type { Room } from "./environment.vibe"
+import type { Memory } from "./memory.vibe"
+import type { ModelType } from "./model.vibe"
+import type { Content, JsonValue, Media, MentionContext, UUID } from "./primitives.vibe"
+import type { IAgentRuntime } from "./runtime.vibe"
+import type { State } from "./state.vibe"
+
+export type {
+  TypedReadEgressReceipt,
+  TypedReadFact,
+  TypedReadReplyBinding,
+  TypedReadReplyPart,
+  TypedReadReplyPolicy,
+  TypedReadReplyResolver,
+  TypedReadReplyVerdict,
+  TypedReadRequirement,
+} from "../runtime/typed-read-contract.vibe"
+
+export interface MessageProcessingOptions {
+  resolveTypedReadReply?: import("../runtime/typed-read-contract.vibe").TypedReadReplyResolver
+
+  onTypedReadEgress?: (
+    receipt: import("../runtime/typed-read-contract.vibe").TypedReadEgressReceipt,
+  ) => void
+  maxRetries?: number
+  useMultiStep?: boolean
+  maxMultiStepIterations?: number
+
+  codingMode?: boolean
+
+  codingActionProfile?: CodingActionProfile
+  shouldRespondModel?: ShouldRespondModelType
+  onStreamChunk?: StreamChunkCallback
+
+  onPlanningAcknowledgment?: (text: string) => void | Promise<void>
+
+  onActivityStatus?: (activity: {
+    actionName: string
+    label: string
+  }) => void | Promise<void>
+
+  onResponseDecision?: () => void
+
+  continueAfterActions?: boolean
+
+  abortSignal?: AbortSignal
+
+  roomHandlerLease?: RoomHandlerLease
+
+  onSettledActionResult?: (result: ActionResult) => void
+
+  onTrajectoryTerminalOwner?: (owner: "run") => void
+
+  onInferenceTimingSummary?: (summary: InferenceTurnSummary) => void
+
+  keepExistingResponses?: boolean
+}
+
+export interface RuntimeFailure {
+  kind: string
+
+  code?: string
+
+  transient: boolean
+
+  message: string
+
+  rateLimit?: ProviderRateLimit
+}
+
+export interface MessageReplyRecoveryContext {
+  context: string
+
+  actionResults?: ActionResult[]
+
+  historySelection?: {
+    context: string
+    fullContextHash: string
+    contextHash: string
+  }
+  pendingToolCalls: JsonValue[]
+  evaluatorOutputs: JsonValue[]
+  ownerExclusiveDisclosureUsed: boolean
+}
+
+export type TurnOutcome =
+  & (
+    | { status: "completed"; reason?: string }
+    | { status: "denied"; reason: string }
+    | { status: "cancelled"; reason: string }
+    | { status: "failed"; error: RuntimeFailure }
+  )
+  & { effects: readonly EffectReceipt[] }
+
+export interface MessageProcessingResult {
+  outcome: TurnOutcome
+
+  requestFulfilled?: boolean
+  didRespond: boolean
+  responseContent?: Content | null
+  responseMessages: Memory[]
+
+  trajectoryTerminalOwner?: "run"
+
+  persistedResponseMessageIds?: UUID[]
+
+  actionResults?: ActionResult[]
+
+  replyRecovery?: MessageReplyRecoveryContext
+  state?: State
+  mode?: MessageProcessingMode
+  skipEvaluation?: boolean
+  reason?: string
+}
+
+export interface ResponseDecision {
+  shouldRespond: boolean
+  skipEvaluation: boolean
+  reason: string
+}
+
+export interface ContextRoutedResponseDecision extends ResponseDecision {
+  primaryContext?: AgentContext
+
+  secondaryContexts?: AgentContext[]
+}
+
+export type ShouldRespondModelType =
+  | "nano"
+  | "small"
+  | "large"
+  | "mega"
+  | "response-handler"
+  | typeof ModelType.TEXT_NANO
+  | typeof ModelType.TEXT_SMALL
+  | typeof ModelType.TEXT_LARGE
+  | typeof ModelType.TEXT_MEGA
+  | typeof ModelType.RESPONSE_HANDLER
+export type MessageProcessingMode = "simple" | "actions" | "none" | "blocked"
+
+export interface IMessageService {
+  handleMessage(
+    runtime: IAgentRuntime,
+    message: Memory,
+    callback?: HandlerCallback,
+    options?: MessageProcessingOptions,
+  ): Promise<MessageProcessingResult>
+
+  shouldRespond(
+    runtime: IAgentRuntime,
+    message: Memory,
+    room?: Room,
+    mentionContext?: MentionContext,
+  ): ResponseDecision
+
+  processAttachments?(
+    runtime: IAgentRuntime,
+    attachments: Media[],
+  ): Promise<Media[]>
+
+  deleteMessage(runtime: IAgentRuntime, message: Memory): Promise<void>
+
+  clearChannel(
+    runtime: IAgentRuntime,
+    roomId: UUID,
+    channelId: string,
+  ): Promise<void>
+}

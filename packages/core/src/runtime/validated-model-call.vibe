@@ -1,0 +1,223 @@
+import { type JsonSchema, validateSchema } from "../actions/validate-tool-args.vibe"
+import type { GenerateTextParams, ModelHandler, ModelTypeName, TextGenerationModelType } from "../types/model.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { isLocalProvider } from "./action-model-routing.vibe"
+import { parseJsonObject } from "./json-output.vibe"
+
+export const DEFAULT_REMOTE_REROLL_BUDGET = 2
+
+export interface ParseAndValidateResult {
+  valid: boolean
+  parsed: Record<string, unknown> | null
+  parseError?: string
+
+  errors: string[]
+
+  failedSchemaPath?: string
+}
+
+export function parseAndValidate(
+  raw: string,
+  schema: JsonSchema,
+): ParseAndValidateResult {
+  const parsed = parseJsonObject<Record<string, unknown>>(raw)
+  if (!parsed) {
+    return {
+      valid: false,
+      parsed: null,
+      parseError: "Failed to parse JSON object from model response",
+      errors: ["Failed to parse JSON object from model response"],
+    }
+  }
+
+  const errors: string[] = []
+  validateSchema(schema, parsed, "", errors)
+
+  if (errors.length === 0) {
+    return { valid: true, parsed, errors: [] }
+  }
+
+  return {
+    valid: false,
+    parsed,
+    errors,
+    failedSchemaPath: extractFirstPath(errors[0]),
+  }
+}
+
+export class SchemaValidationFailedError extends Error {
+  readonly lastRawResponse: string
+
+  readonly lastParsedResponse: Record<string, unknown> | null
+
+  readonly errors: readonly string[]
+
+  readonly schemaPath: string | undefined
+
+  readonly attempts: number
+
+  readonly maxAttempts: number
+
+  constructor(args: {
+    lastRawResponse: string
+    lastParsedResponse: Record<string, unknown> | null
+    errors: readonly string[]
+    schemaPath: string | undefined
+    attempts: number
+    maxAttempts: number
+  }) {
+    const summary = args.errors[0] ?? "no specific validation error"
+    super(
+      `Remote model output failed schema validation after ${args.attempts} attempts (max ${args.maxAttempts}): ${summary}`,
+    )
+    this.name = "SchemaValidationFailedError"
+    this.lastRawResponse = args.lastRawResponse
+    this.lastParsedResponse = args.lastParsedResponse
+    this.errors = args.errors
+    this.schemaPath = args.schemaPath
+    this.attempts = args.attempts
+    this.maxAttempts = args.maxAttempts
+  }
+}
+
+export function getProviderForModelType(
+  runtime: IAgentRuntime,
+  modelType: ModelTypeName | string,
+): string | undefined {
+  const models = (runtime as { models?: Map<string, ModelHandler[]> }).models
+  if (!models || typeof models.get !== "function") return undefined
+
+  return models.get(String(modelType))?.[0]?.provider
+}
+
+function shouldValidate(
+  runtime: IAgentRuntime,
+  modelType: ModelTypeName | string,
+  explicit: boolean | undefined,
+): boolean {
+  if (explicit !== undefined) return explicit
+  const provider = getProviderForModelType(runtime, modelType)
+  if (provider && isLocalProvider(provider)) return false
+  return true
+}
+
+export function rerollBudgetCeilingFromSetting(
+  runtime: IAgentRuntime,
+): number | undefined {
+  const raw = (
+    runtime as { getSetting?: (key: string) => unknown }
+  ).getSetting?.("VALIDATION_LEVEL")
+  if (typeof raw !== "string") return undefined
+  switch (raw.toLowerCase()) {
+    case "trusted":
+    case "fast":
+      return 0
+    case "progressive":
+      return 2
+    case "strict":
+    case "safe":
+      return 3
+    default:
+      return undefined
+  }
+}
+
+export interface CallModelWithValidationOptions {
+  modelType: TextGenerationModelType | ModelTypeName | string
+
+  params: GenerateTextParams
+
+  provider?: string
+
+  schema: JsonSchema
+
+  validateBeforeReturn?: boolean
+
+  maxRerolls?: number
+}
+
+export interface CallModelWithValidationResult {
+  rawResponse: string
+
+  parsed: Record<string, unknown>
+
+  attempts: number
+}
+
+export async function callModelWithValidation(
+  runtime: IAgentRuntime,
+  options: CallModelWithValidationOptions,
+): Promise<CallModelWithValidationResult> {
+  const validate = shouldValidate(
+    runtime,
+    options.modelType,
+    options.validateBeforeReturn,
+  )
+  const requestedBudget = options.maxRerolls ?? DEFAULT_REMOTE_REROLL_BUDGET
+  const ceiling = rerollBudgetCeilingFromSetting(runtime)
+  const effectiveBudget = ceiling !== undefined
+    ? Math.min(requestedBudget, ceiling)
+    : requestedBudget
+  const maxAttempts = effectiveBudget + 1
+
+  let lastRaw = ""
+  let lastParsed: Record<string, unknown> | null = null
+  let lastErrors: string[] = []
+  let lastSchemaPath: string | undefined
+  let attempts = 0
+
+  while (attempts < maxAttempts) {
+    attempts++
+
+    const result = await (
+      runtime.useModel as (
+        modelType: string,
+        params: GenerateTextParams,
+        provider?: string,
+      ) => Promise<unknown>
+    )(String(options.modelType), options.params, options.provider)
+    lastRaw = typeof result === "string" ? result : String(result ?? "")
+
+    if (!validate) {
+      const parsed = parseJsonObject<Record<string, unknown>>(lastRaw)
+      return {
+        rawResponse: lastRaw,
+        parsed: parsed ?? {},
+        attempts,
+      }
+    }
+
+    const validation = parseAndValidate(lastRaw, options.schema)
+    if (validation.valid && validation.parsed) {
+      return {
+        rawResponse: lastRaw,
+        parsed: validation.parsed,
+        attempts,
+      }
+    }
+
+    lastParsed = validation.parsed
+    lastErrors = validation.errors
+    lastSchemaPath = validation.failedSchemaPath
+  }
+
+  throw new SchemaValidationFailedError({
+    lastRawResponse: lastRaw,
+    lastParsedResponse: lastParsed,
+    errors: lastErrors,
+    schemaPath: lastSchemaPath,
+    attempts,
+    maxAttempts,
+  })
+}
+
+function extractFirstPath(error: string | undefined): string | undefined {
+  if (!error) return undefined
+  const argMatch = error.match(/Argument '([^']+)'/)
+  if (argMatch) return argMatch[1]
+  const missingMatch = error.match(/Missing required argument '([^']+)'/)
+  if (missingMatch) return missingMatch[1]
+  const unexpectedMatch = error.match(/Unexpected argument '([^']+)'/)
+  if (unexpectedMatch) return unexpectedMatch[1]
+  return undefined
+}

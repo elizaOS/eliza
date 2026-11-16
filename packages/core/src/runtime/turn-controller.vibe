@@ -1,0 +1,155 @@
+import { AsyncLocalStorage } from "node:async_hooks"
+import { TurnAbortedError } from "./turn-aborted-error.vibe"
+
+export { TurnAbortedError }
+
+interface ActiveTurn {
+  roomId: string
+  controller: AbortController
+  startedAt: number
+  reason?: string
+}
+
+export class TurnControllerRegistry {
+  private readonly currentTurnStorage = new AsyncLocalStorage<ActiveTurn>()
+  private active = new Map<string, ActiveTurn[]>()
+  private listeners = new Set<(event: TurnEvent) => void>()
+  private closedReason: string | null = null
+
+  async runWith<T>(
+    roomId: string,
+    fn: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    const controller = new AbortController()
+    const turn: ActiveTurn = {
+      roomId,
+      controller,
+      startedAt: Date.now(),
+    }
+    if (this.closedReason !== null) {
+      turn.reason = this.closedReason
+      controller.abort(new TurnAbortedError(this.closedReason))
+    }
+    const turns = this.active.get(roomId) ?? []
+    turns.push(turn)
+    this.active.set(roomId, turns)
+    this.emit({ type: "started", roomId, startedAt: turn.startedAt })
+    try {
+      const result = await this.currentTurnStorage.run(turn, () => fn(controller.signal))
+      this.emit({
+        type: "completed",
+        roomId,
+        durationMs: Date.now() - turn.startedAt,
+      })
+      return result
+    } catch (error) {
+      if (controller.signal.aborted) {
+        this.emit({
+          type: "aborted-cleanup",
+          roomId,
+          reason: turn.reason ?? "unknown",
+          durationMs: Date.now() - turn.startedAt,
+        })
+      } else {
+        this.emit({
+          type: "errored",
+          roomId,
+          error: error instanceof Error ? error.message : String(error),
+          durationMs: Date.now() - turn.startedAt,
+        })
+      }
+      throw error
+    } finally {
+      turns.splice(turns.indexOf(turn), 1)
+      if (turns.length === 0) this.active.delete(roomId)
+    }
+  }
+
+  abortTurn(roomId: string, reason: string): boolean {
+    const self = this.currentTurnStorage.getStore()
+    let aborted = false
+    for (const turn of this.active.get(roomId) ?? []) {
+      if (turn === self) continue
+      if (turn.controller.signal.aborted) continue
+      turn.reason = reason
+      turn.controller.abort(new TurnAbortedError(reason))
+      aborted = true
+    }
+    if (aborted) this.emit({ type: "aborted", roomId, reason })
+    return aborted
+  }
+
+  abortAllTurns(reason: string): string[] {
+    const aborted: string[] = []
+    for (const [roomId, turns] of Array.from(this.active.entries())) {
+      let roomAborted = false
+
+      for (const turn of turns) {
+        if (turn.controller.signal.aborted) continue
+        turn.reason = reason
+        turn.controller.abort(new TurnAbortedError(reason))
+        roomAborted = true
+      }
+      if (roomAborted) {
+        this.emit({ type: "aborted", roomId, reason })
+        aborted.push(roomId)
+      }
+    }
+    return aborted
+  }
+
+  closeTurns(reason: string): string[] {
+    this.closedReason = reason
+    return this.abortAllTurns(reason)
+  }
+
+  hasActiveTurn(roomId: string): boolean {
+    return this.active.has(roomId)
+  }
+
+  hasAbortableTurn(roomId: string): boolean {
+    const self = this.currentTurnStorage.getStore()
+    return (this.active.get(roomId) ?? []).some(
+      (turn) => turn !== self && !turn.controller.signal.aborted,
+    )
+  }
+
+  activeRoomIds(): string[] {
+    return Array.from(this.active.keys())
+  }
+
+  signalFor(roomId: string): AbortSignal | null {
+    const self = this.currentTurnStorage.getStore()
+    if (self && self.roomId === roomId) return self.controller.signal
+    const turns = this.active.get(roomId)
+    return turns && turns.length > 0
+      ? turns[turns.length - 1].controller.signal
+      : null
+  }
+
+  onEvent(listener: (event: TurnEvent) => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  private emit(event: TurnEvent): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event)
+      } catch {
+      }
+    }
+  }
+}
+
+export type TurnEvent =
+  | { type: "started"; roomId: string; startedAt: number }
+  | { type: "completed"; roomId: string; durationMs: number }
+  | { type: "errored"; roomId: string; error: string; durationMs: number }
+  | { type: "aborted"; roomId: string; reason: string }
+  | {
+    type: "aborted-cleanup"
+    roomId: string
+    reason: string
+    durationMs: number
+  }

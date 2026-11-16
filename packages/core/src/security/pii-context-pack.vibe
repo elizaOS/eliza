@@ -1,0 +1,538 @@
+import { ElizaError } from "../errors.vibe"
+import type { PiiScrubRequestPayload } from "../types/events.vibe"
+import type { Memory } from "../types/memory.vibe"
+import { ModelType, type PiiPseudonymAssignment, type TextEmbeddingParams } from "../types/model.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import type { Service } from "../types/service.vibe"
+import { toWellFormedUnicode } from "../utils/unicode.vibe"
+import { canonicalKind } from "./entity-recognizer.vibe"
+import type { CorpusPseudonymMap } from "./pii-pseudonym-map.vibe"
+
+export interface PiiScrubCandidate {
+  readonly surfaceForm: string
+
+  readonly kind: string
+
+  readonly sourceRef?: {
+    readonly memoryId?: string
+    readonly documentId?: string
+    readonly tableName?: string
+
+    readonly position?: number
+  }
+
+  readonly span?: { readonly start: number; readonly end: number }
+
+  readonly identity?: { readonly platform: string; readonly handle: string }
+}
+
+export interface PiiContextFragment {
+  readonly text: string
+  readonly origin: "document" | "memory" | "message" | "attachment"
+
+  readonly ref?: string
+
+  readonly score?: number
+}
+
+export interface PiiResolvedEntity {
+  readonly clusterId: string
+  readonly kind: string
+
+  readonly aliases: readonly string[]
+  readonly identities: readonly {
+    readonly platform: string
+    readonly handle: string
+  }[]
+  readonly confidence: number
+  readonly evidence: readonly string[]
+}
+
+export interface PiiEntityResolverStore {
+  resolve(query: {
+    name?: string
+    identity?: { platform: string; handle: string }
+    type?: string
+  }): Promise<
+    readonly {
+      readonly entity: {
+        readonly entityId: string
+        readonly type: string
+        readonly preferredName: string
+        readonly fullName?: string
+        readonly identities: readonly {
+          readonly platform: string
+          readonly handle: string
+        }[]
+      }
+      readonly confidence: number
+      readonly evidence: readonly string[]
+    }[]
+  >
+}
+
+export interface PiiContextSources {
+  readonly resolveEntity?: (
+    candidate: PiiScrubCandidate,
+  ) => Promise<readonly PiiResolvedEntity[]>
+  readonly searchDocuments?: (
+    query: string,
+  ) => Promise<readonly PiiContextFragment[]>
+  readonly searchMemories?: (
+    query: string,
+  ) => Promise<readonly PiiContextFragment[]>
+  readonly searchMessages?: (
+    query: string,
+  ) => Promise<readonly PiiContextFragment[]>
+}
+
+export interface PiiContextPack {
+  readonly contextPack: string
+
+  readonly assignments: readonly PiiPseudonymAssignment[]
+
+  readonly resolvedEntities: readonly PiiResolvedEntity[]
+
+  readonly candidateSpans: readonly string[]
+
+  readonly sourcesQueried: readonly string[]
+}
+
+export interface AssembleContextPackRequest {
+  readonly chunk: string
+
+  readonly candidates: readonly PiiScrubCandidate[]
+
+  readonly map: CorpusPseudonymMap
+
+  readonly rulesetVersion: string
+
+  readonly minEntityConfidence?: number
+}
+
+const DEFAULT_MIN_ENTITY_CONFIDENCE = 0.6
+const COMPLETE_SOURCE_PAGE_SIZE = 64
+
+interface PrefixRequest {
+  readonly limit: number
+  readonly offset: number
+}
+
+function requiredSourceIdentity(
+  source: string,
+  value: { readonly id?: UUID },
+): string {
+  if (value.id) return value.id
+  throw new ElizaError(
+    `PII context ${source} source returned an unidentifiable row`,
+    {
+      code: "PII_CONTEXT_SOURCE_INVALID_PAGE",
+      context: { source },
+      severity: "fatal",
+    },
+  )
+}
+
+async function readStableCompletePages<T>(
+  source: string,
+  fetchPrefix: (request: PrefixRequest) => Promise<readonly T[]>,
+  identity: (value: T) => string,
+): Promise<readonly T[]> {
+  const complete: T[] = []
+  const seen = new Set<string>()
+  let offset = 0
+
+  for (;;) {
+    const current = await fetchPrefix({
+      limit: COMPLETE_SOURCE_PAGE_SIZE,
+      offset,
+    })
+    if (current.length > COMPLETE_SOURCE_PAGE_SIZE) {
+      throw new ElizaError(
+        `PII context ${source} source exceeded its requested page`,
+        {
+          code: "PII_CONTEXT_SOURCE_INVALID_PAGE",
+          context: {
+            source,
+            offset,
+            requested: COMPLETE_SOURCE_PAGE_SIZE,
+            received: current.length,
+          },
+          severity: "fatal",
+        },
+      )
+    }
+
+    for (const value of current) {
+      const key = identity(value)
+      if (seen.has(key)) {
+        throw new ElizaError(
+          `PII context ${source} source repeated a result during traversal`,
+          {
+            code: "PII_CONTEXT_SOURCE_UNSTABLE",
+            context: { source, offset, repeatedIdentity: key },
+          },
+        )
+      }
+      seen.add(key)
+      complete.push(value)
+    }
+
+    if (current.length < COMPLETE_SOURCE_PAGE_SIZE) {
+      const continuation = await fetchPrefix({
+        limit: 1,
+        offset: offset + current.length,
+      })
+      if (continuation.length > 0) {
+        throw new ElizaError(
+          `PII context ${source} source returned a capped prefix`,
+          {
+            code: "PII_CONTEXT_SOURCE_INCOMPLETE",
+            context: {
+              source,
+              offset,
+              returned: current.length,
+              requested: COMPLETE_SOURCE_PAGE_SIZE,
+            },
+          },
+        )
+      }
+      return complete
+    }
+
+    if (offset > Number.MAX_SAFE_INTEGER - current.length) {
+      throw new ElizaError(
+        `PII context ${source} result count is not representable`,
+        {
+          code: "PII_CONTEXT_SOURCE_TOO_LARGE",
+          context: { source, offset, pageSize: current.length },
+          severity: "fatal",
+        },
+      )
+    }
+    offset += current.length
+  }
+}
+
+function assertWellFormedContextText(value: string, field: string): void {
+  if (toWellFormedUnicode(value) !== value) {
+    throw new ElizaError(`PII context ${field} contains malformed Unicode`, {
+      code: "PII_CONTEXT_MALFORMED_UNICODE",
+      context: { field },
+      severity: "fatal",
+    })
+  }
+}
+
+function assertCandidate(candidate: PiiScrubCandidate, index: number): void {
+  assertWellFormedContextText(
+    candidate.surfaceForm,
+    `candidates[${index}].surfaceForm`,
+  )
+  if (candidate.surfaceForm.trim().length === 0) {
+    throw new ElizaError(
+      "PII context candidate surface form must not be blank",
+      {
+        code: "PII_CONTEXT_INVALID_CANDIDATE",
+        context: { index },
+        severity: "fatal",
+      },
+    )
+  }
+}
+
+function assertResolvedEntity(entity: PiiResolvedEntity, field: string): void {
+  assertWellFormedContextText(entity.clusterId, `${field}.clusterId`)
+  assertWellFormedContextText(entity.kind, `${field}.kind`)
+  entity.aliases.forEach((alias, index) => {
+    assertWellFormedContextText(alias, `${field}.aliases[${index}]`)
+  })
+  entity.identities.forEach((identity, index) => {
+    assertWellFormedContextText(
+      identity.platform,
+      `${field}.identities[${index}].platform`,
+    )
+    assertWellFormedContextText(
+      identity.handle,
+      `${field}.identities[${index}].handle`,
+    )
+  })
+  entity.evidence.forEach((evidence, index) => {
+    assertWellFormedContextText(evidence, `${field}.evidence[${index}]`)
+  })
+}
+
+export async function assembleContextPack(
+  sources: PiiContextSources,
+  request: AssembleContextPackRequest,
+): Promise<PiiContextPack> {
+  const {
+    chunk,
+    candidates,
+    map,
+    rulesetVersion,
+    minEntityConfidence = DEFAULT_MIN_ENTITY_CONFIDENCE,
+  } = request
+
+  const sourcesQueried: string[] = []
+  const resolvedEntities: PiiResolvedEntity[] = []
+  const fragments: PiiContextFragment[] = []
+
+  const candidateSpans = candidates.map((candidate, index) => {
+    assertCandidate(candidate, index)
+    return candidate.surfaceForm
+  })
+
+  if (sources.resolveEntity) {
+    sourcesQueried.push("entities")
+    for (const [candidateIndex, candidate] of candidates.entries()) {
+      const resolved = await sources.resolveEntity(candidate)
+      for (const [entityIndex, entity] of resolved.entries()) {
+        assertResolvedEntity(
+          entity,
+          `candidates[${candidateIndex}].resolvedEntities[${entityIndex}]`,
+        )
+        resolvedEntities.push(entity)
+        if (entity.confidence >= minEntityConfidence) {
+          map.assign({
+            clusterId: entity.clusterId,
+            kind: entity.kind,
+            aliases: [candidate.surfaceForm, ...entity.aliases],
+            identities: entity.identities,
+            evidence: entity.evidence,
+            rulesetVersion,
+          })
+        }
+      }
+    }
+  }
+
+  const fragmentSources: [
+    string,
+    ((query: string) => Promise<readonly PiiContextFragment[]>) | undefined,
+  ][] = [
+    ["documents", sources.searchDocuments],
+    ["memories", sources.searchMemories],
+    ["messages", sources.searchMessages],
+  ]
+  for (const [name, search] of fragmentSources) {
+    if (!search) continue
+    sourcesQueried.push(name)
+    for (const form of candidateSpans) {
+      const results = await search(form)
+      for (const [fragmentIndex, fragment] of results.entries()) {
+        assertWellFormedContextText(
+          fragment.text,
+          `${name}[${fragmentIndex}].text`,
+        )
+        fragments.push(fragment)
+      }
+    }
+  }
+
+  const assignments = new Map<string, PiiPseudonymAssignment>()
+  for (const assignment of map.assignmentsForText(chunk)) {
+    assignments.set(assignment.entityClusterId, assignment)
+  }
+  for (const entity of resolvedEntities) {
+    const assignment = map.assignmentFor(entity.clusterId)
+    if (assignment) assignments.set(assignment.entityClusterId, assignment)
+  }
+
+  const sections: string[] = []
+  if (resolvedEntities.length > 0) {
+    const lines = resolvedEntities.map((entity) => {
+      const mapped = map.assignmentFor(entity.clusterId)
+        ? " [cluster already pseudonymized — reuse its assignment]"
+        : ""
+      const handles = entity.identities
+        .map((i) => `${i.platform}:${i.handle}`)
+        .join(", ")
+      return `- ${entity.clusterId} (${entity.kind}, confidence ${entity.confidence.toFixed(2)}${
+        handles ? `, identities: ${handles}` : ""
+      })${mapped}`
+    })
+    sections.push(`Resolved entity candidates:\n${lines.join("\n")}`)
+  }
+  if (fragments.length > 0) {
+    const lines = fragments.map(
+      (f) => `- [${f.origin}${f.ref ? ` ${f.ref}` : ""}] ${f.text}`,
+    )
+    sections.push(`Related context:\n${lines.join("\n")}`)
+  }
+  const contextPack = sections.join("\n\n")
+  assertWellFormedContextText(contextPack, "contextPack")
+
+  return {
+    contextPack,
+    assignments: [...assignments.values()],
+    resolvedEntities,
+    candidateSpans,
+    sourcesQueried,
+  }
+}
+
+export function entityResolverFromStore(
+  store: PiiEntityResolverStore,
+): (candidate: PiiScrubCandidate) => Promise<readonly PiiResolvedEntity[]> {
+  return async (candidate) => {
+    const query: {
+      name?: string
+      identity?: { platform: string; handle: string }
+    } = candidate.identity
+      ? { identity: candidate.identity }
+      : { name: candidate.surfaceForm }
+    const resolved = await store.resolve(query)
+    return resolved.map((match) => {
+      const aliases = [
+        match.entity.preferredName,
+        ...(match.entity.fullName ? [match.entity.fullName] : []),
+        ...match.entity.identities.map((identity) => identity.handle),
+      ]
+      return {
+        clusterId: `entity:${match.entity.entityId}`,
+        kind: canonicalKind(match.entity.type),
+        aliases,
+        identities: match.entity.identities.map((identity) => ({
+          platform: identity.platform,
+          handle: identity.handle,
+        })),
+        confidence: match.confidence,
+        evidence: match.evidence,
+      }
+    })
+  }
+}
+
+export interface RuntimeContextSourceOptions {
+  readonly roomIds?: readonly UUID[]
+
+  readonly resolveEntity?: PiiContextSources["resolveEntity"]
+}
+
+interface DocumentSearchService {
+  searchDocuments(
+    message: Memory,
+  ): Promise<
+    readonly { id: UUID; content: { text?: string }; similarity?: number }[]
+  >
+}
+
+export function sourcesFromRuntime(
+  runtime: IAgentRuntime,
+  options: RuntimeContextSourceOptions = {},
+): PiiContextSources {
+  const sources: {
+    -readonly [K in keyof PiiContextSources]: PiiContextSources[K]
+  } = {}
+
+  if (options.resolveEntity) {
+    sources.resolveEntity = options.resolveEntity
+  }
+
+  const documents = runtime.getService("documents") as
+    | (Service & Partial<DocumentSearchService>)
+    | null
+  const searchDocumentsFn = documents?.searchDocuments
+  if (documents && typeof searchDocumentsFn === "function") {
+    sources.searchDocuments = async (query) => {
+      const results = await searchDocumentsFn.call(documents, {
+        entityId: runtime.agentId,
+        roomId: (options.roomIds?.[0] ?? runtime.agentId) as UUID,
+        content: { text: query },
+      })
+      return results.map((doc) => ({
+        text: doc.content.text ?? "",
+        origin: "document" as const,
+        ref: doc.id,
+        ...(typeof doc.similarity === "number"
+          ? { score: doc.similarity }
+          : {}),
+      }))
+    }
+  }
+
+  if (runtime.getModel(ModelType.TEXT_EMBEDDING)) {
+    sources.searchMemories = async (query) => {
+      const params: TextEmbeddingParams = { text: query }
+
+      const embedding = await runtime.useModel(
+        ModelType.TEXT_EMBEDDING,
+        params,
+      )
+      const memories = await readStableCompletePages(
+        "memories",
+        async ({ limit, offset }) =>
+          runtime.searchMemories({
+            embedding,
+            tableName: "messages",
+            count: limit,
+            offset,
+          }),
+        (memory) => requiredSourceIdentity("memories", memory),
+      )
+      return memories
+        .filter((memory) => typeof memory.content.text === "string")
+        .map((memory) => ({
+          text: memory.content.text as string,
+          origin: "memory" as const,
+          ref: memory.id,
+          ...(typeof memory.similarity === "number"
+            ? { score: memory.similarity }
+            : {}),
+        }))
+    }
+  }
+
+  const roomIds = options.roomIds
+  if (roomIds && roomIds.length > 0) {
+    sources.searchMessages = async (query) => {
+      const hits = await readStableCompletePages(
+        "messages",
+        async ({ limit, offset }) =>
+          runtime.adapter.searchMessages({
+            roomIds: [...roomIds],
+            query,
+            limit,
+            offset,
+          }),
+        (hit) => requiredSourceIdentity("messages", hit.memory),
+      )
+      return hits
+        .filter((hit) => typeof hit.memory.content.text === "string")
+        .map((hit) => ({
+          text: hit.memory.content.text as string,
+          origin: "message" as const,
+          ref: hit.memory.id,
+
+          score: hit.trigramSimilarity,
+        }))
+    }
+  }
+
+  return sources
+}
+
+export function buildScrubRequestDraft(input: {
+  readonly content: string
+  readonly rulesetVersion: string
+  readonly pack: PiiContextPack
+  readonly priority?: PiiScrubRequestPayload["priority"]
+  readonly inferencePriority?: PiiScrubRequestPayload["inferencePriority"]
+  readonly jobId?: PiiScrubRequestPayload["jobId"]
+  readonly itemRef?: string
+}): Omit<PiiScrubRequestPayload, "runtime"> {
+  return {
+    content: input.content,
+    rulesetVersion: input.rulesetVersion,
+    candidateSpans: input.pack.candidateSpans,
+    contextPack: input.pack.contextPack,
+    pseudonymAssignments: input.pack.assignments,
+    priority: input.priority,
+    inferencePriority: input.inferencePriority,
+    jobId: input.jobId,
+    itemRef: input.itemRef,
+    source: "pii-context-pack",
+  }
+}

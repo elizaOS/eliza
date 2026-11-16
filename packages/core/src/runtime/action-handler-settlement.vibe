@@ -1,0 +1,516 @@
+import {
+  type BoundRequestOperationAttempt,
+  BoundRequestOperationError,
+  bindRequestOperationResult,
+} from "../actions/task-extraction-context.vibe"
+import { copyBoundOperationDenial } from "./operation-restriction-projection.vibe"
+
+import { ElizaError } from "../errors.vibe"
+import {
+  admitProcessing,
+  isProcessingPolicyDenial,
+  PROCESSING_POLICY_DENIED,
+  processingPolicyFor,
+} from "../security/processing-policy.vibe"
+import { runWithSuppressedModelStream } from "../streaming-context.vibe"
+import {
+  type ActionFailureProvenance,
+  normalizeActionFailureProvenance,
+  readActionFailureProvenance,
+} from "../types/action-failure.vibe"
+import { applyGroundedActionReply, normalizeActionReplyFailure } from "../types/action-reply.vibe"
+import type { Action, ActionResult, HandlerCallback } from "../types/components.vibe"
+import {
+  normalizeEffectReceipts,
+  normalizeUserFacingEffectReceiptIds,
+  resolveAppliedUserFacingEffectReceipts,
+  resolveUserFacingEffectReceipts,
+  tagsMayProduceEffects,
+  tagsRequireEffectReceipts,
+} from "../types/effects.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { Content } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { isProviderContextOverflowFailure, PROVIDER_CONTEXT_OVERFLOW } from "../utils/model-errors.vibe"
+import { isPlainObject } from "../utils/type-guards.vibe"
+import { bindEffectDelivery } from "./effect-delivery.vibe"
+
+type BufferedActionCallback = {
+  response: Content
+  actionName?: string
+}
+
+type SettlementPhase = "pending" | "settled" | "failed"
+
+export interface SettleActionHandlerOptions {
+  operationAttempt?: BoundRequestOperationAttempt
+  runtime: IAgentRuntime
+  action: Action
+  callback?: HandlerCallback
+
+  beforeCallbacks?: (result: ActionResult) => void
+  invoke: (callback?: HandlerCallback) => unknown | Promise<unknown>
+
+  handlerError?: "return-failure" | "rethrow"
+}
+
+function invalidActionResult(message: string): never {
+  throw new ElizaError(message, {
+    code: "INVALID_ACTION_RESULT",
+    severity: "fatal",
+  })
+}
+
+function markCanonicalCallback(
+  response: Content,
+  result: ActionResult,
+): Content {
+  const canonical = result.userFacingText?.trim()
+  const callbackText = response.text?.trim()
+  if (
+    result.verifiedUserFacing !== true
+    || !canonical
+    || callbackText !== canonical
+  ) {
+    return response
+  }
+  return { ...response, agentVoiced: true }
+}
+
+export function normalizeActionResult(
+  actionName: string,
+  result: unknown,
+  operationAttempt?: BoundRequestOperationAttempt,
+): ActionResult {
+  if (!isPlainObject(result)) {
+    return invalidActionResult(
+      "Action handlers must return a plain ActionResult object.",
+    )
+  }
+  if (typeof result.success !== "boolean") {
+    return invalidActionResult(
+      "ActionResult.success must be an explicit boolean.",
+    )
+  }
+  const rawResult = result as unknown as ActionResult
+  const resultData = isPlainObject(rawResult.data) ? rawResult.data : {}
+  const effectReceipts = rawResult.effectReceipts === undefined
+    ? undefined
+    : normalizeEffectReceipts(rawResult.effectReceipts)
+  const userFacingEffectReceiptIds = rawResult.userFacingEffectReceiptIds === undefined
+    ? undefined
+    : normalizeUserFacingEffectReceiptIds(
+      rawResult.userFacingEffectReceiptIds,
+    )
+  const failureProvenance = rawResult.failureProvenance === undefined
+    ? undefined
+    : normalizeActionFailureProvenance(rawResult.failureProvenance)
+  if (rawResult.success !== false && failureProvenance !== undefined) {
+    return invalidActionResult(
+      "Successful ActionResult values cannot carry failureProvenance.",
+    )
+  }
+
+  const normalized: ActionResult = {
+    ...rawResult,
+    ...(effectReceipts !== undefined ? { effectReceipts } : {}),
+    ...(userFacingEffectReceiptIds !== undefined
+      ? { userFacingEffectReceiptIds }
+      : {}),
+    ...(failureProvenance !== undefined ? { failureProvenance } : {}),
+    data: {
+      ...resultData,
+
+      actionName,
+    },
+  }
+  if (operationAttempt) {
+    bindRequestOperationResult(normalized, operationAttempt)
+  }
+  copyBoundOperationDenial(rawResult, normalized, operationAttempt)
+  if (rawResult.replyFailure === undefined) return normalized
+  const finalResult = applyGroundedActionReply(normalized, {
+    kind: "unavailable",
+    failure: normalizeActionReplyFailure(rawResult.replyFailure),
+  })
+  if (operationAttempt) {
+    bindRequestOperationResult(finalResult, operationAttempt)
+  }
+  copyBoundOperationDenial(normalized, finalResult, operationAttempt)
+  return finalResult
+}
+
+export function actionFailureResult(
+  actionName: string,
+  message: string,
+  extraData: Record<string, unknown> = {},
+  failureProvenance?: ActionFailureProvenance,
+): ActionResult {
+  return {
+    success: false,
+    text: message,
+    error: message,
+    ...(failureProvenance ? { failureProvenance } : {}),
+    data: {
+      ...extraData,
+      actionName,
+    },
+  }
+}
+
+export function stringifyActionError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+async function deliverSettledCallback(args: {
+  runtime: IAgentRuntime
+  action: Action
+  result: ActionResult
+  callback: HandlerCallback
+  buffered: BufferedActionCallback
+  deliveredKeys: Set<string>
+  effectContractDeclared: boolean
+}): Promise<Memory[]> {
+  const mutationContractActive = args.effectContractDeclared
+    || (args.result.success !== false
+      && tagsRequireEffectReceipts(args.action.tags))
+  if (!mutationContractActive) {
+    const { effectReceiptIds: _untrustedReceiptIds, ...response } = args.buffered.response
+    return args.callback(
+      markCanonicalCallback(response, args.result),
+      args.buffered.actionName ?? args.action.name,
+    )
+  }
+
+  const boundReceipts = resolveUserFacingEffectReceipts(args.result)
+  const appliedReceipts = resolveAppliedUserFacingEffectReceipts(args.result)
+  const expectedText = args.result.userFacingText?.trim()
+  const callbackText = args.buffered.response.text?.trim()
+  if (!boundReceipts || !expectedText || callbackText !== expectedText) {
+    args.runtime.logger.warn(
+      {
+        src: "action-handler-settlement",
+        action: args.action.name,
+        callbackText,
+        hasBoundReceipts: boundReceipts !== null,
+      },
+      "Suppressed an action callback that was not bound to canonical effect receipts",
+    )
+    return []
+  }
+
+  const receiptIds = boundReceipts.map((receipt) => receipt.receiptId)
+  const deliveryKey = JSON.stringify([
+    args.buffered.actionName ?? args.action.name,
+    expectedText,
+    receiptIds,
+  ])
+  if (args.deliveredKeys.has(deliveryKey)) return []
+  args.deliveredKeys.add(deliveryKey)
+  return args.callback(
+    bindEffectDelivery(
+      markCanonicalCallback(
+        {
+          ...args.buffered.response,
+          effectReceiptIds: receiptIds,
+        },
+        args.result,
+      ),
+      expectedText,
+      receiptIds,
+      appliedReceipts !== null,
+    ),
+    args.buffered.actionName ?? args.action.name,
+  )
+}
+
+function reportCallbackDeliveryFailure(
+  runtime: IAgentRuntime,
+  action: Action,
+  result: ActionResult,
+  error: unknown,
+): void {
+  const message = stringifyActionError(error)
+  if (typeof runtime.reportError === "function") {
+    try {
+      runtime.reportError("ActionCallbackDelivery", error, {
+        actionName: action.name,
+        effectReceiptIds: result.effectReceipts?.map((receipt) => receipt.receiptId) ?? [],
+      })
+      return
+    } catch (reportingError) {
+      runtime.logger.error(
+        {
+          src: "action-handler-settlement",
+          action: action.name,
+          error: message,
+          reportingError: stringifyActionError(reportingError),
+        },
+        "Action callback delivery and error reporting both failed",
+      )
+      return
+    }
+  }
+  runtime.logger.error(
+    {
+      src: "action-handler-settlement",
+      action: action.name,
+      error: message,
+    },
+    "Action callback delivery failed after the handler settled",
+  )
+}
+
+export async function settleActionHandler(
+  options: SettleActionHandlerOptions,
+): Promise<ActionResult> {
+  const bufferedCallbacks: BufferedActionCallback[] = []
+  const deliveredCallbackKeys = new Set<string>()
+  const callbackDeliveryFailures: string[] = []
+  let phase: SettlementPhase = "pending"
+  let settledResult: ActionResult | undefined
+  let effectContractDeclared = false
+
+  const deliverSafely = async (
+    buffered: BufferedActionCallback,
+  ): Promise<Memory[]> => {
+    if (
+      !options.callback
+      || !settledResult
+      || phase !== "settled"
+      || settledResult.replyFailure
+    ) {
+      return []
+    }
+    try {
+      return await deliverSettledCallback({
+        runtime: options.runtime,
+        action: options.action,
+        result: settledResult,
+        callback: options.callback,
+        buffered,
+        deliveredKeys: deliveredCallbackKeys,
+        effectContractDeclared,
+      })
+    } catch (error) {
+      callbackDeliveryFailures.push(stringifyActionError(error))
+      reportCallbackDeliveryFailure(
+        options.runtime,
+        options.action,
+        settledResult,
+        error,
+      )
+      return []
+    }
+  }
+  const deliverWithoutModelStream = (buffered: BufferedActionCallback) =>
+    runWithSuppressedModelStream(() => deliverSafely(buffered))
+
+  let deliveryTail: Promise<unknown> = Promise.resolve()
+  const deliverInOrder = (
+    buffered: BufferedActionCallback,
+  ): Promise<Memory[]> => {
+    const delivery = deliveryTail.then(() => deliverWithoutModelStream(buffered))
+    deliveryTail = delivery
+    return delivery
+  }
+
+  const actionCallback: HandlerCallback | undefined = options.callback
+    ? async (response, actionName) => {
+      const buffered = { response, actionName }
+      if (phase === "pending") {
+        bufferedCallbacks.push(buffered)
+
+        return []
+      }
+      if (phase === "failed") {
+        options.runtime.logger.warn(
+          {
+            src: "action-handler-settlement",
+            action: options.action.name,
+          },
+          "Suppressed an action callback because the handler boundary failed",
+        )
+        return []
+      }
+      return deliverInOrder(buffered)
+    }
+    : undefined
+
+  try {
+    await admitProcessing(
+      processingPolicyFor(options.runtime),
+      options.runtime.agentId,
+      {
+        kind: "action_effect",
+        action: { name: options.action.name, egress: options.action.egress },
+      },
+    )
+  } catch (error) {
+    phase = "failed"
+    if (options.handlerError === "rethrow") throw error
+    return actionFailureResult(
+      options.action.name,
+      stringifyActionError(error),
+      { error, retryable: false, processingDenied: true },
+      {
+        kind: "handler_error",
+        boundary: "handler",
+        code: PROCESSING_POLICY_DENIED,
+        retryable: false,
+      },
+    )
+  }
+
+  let rawResult: unknown
+  try {
+    rawResult = await runWithSuppressedModelStream(() => options.invoke(actionCallback))
+  } catch (error) {
+    phase = "failed"
+    bufferedCallbacks.length = 0
+    if (options.handlerError === "rethrow") {
+      throw error
+    }
+    if (error instanceof BoundRequestOperationError) {
+      const denied = actionFailureResult(
+        options.action.name,
+        error.message,
+        {
+          code: error.code,
+          acceptance: "rejected",
+          executionStatus: "not_started",
+          executed: false,
+          retryable: false,
+        },
+        {
+          kind: "handler_error",
+          boundary: "handler",
+          code: error.code,
+          retryable: false,
+        },
+      )
+      if (options.operationAttempt) {
+        bindRequestOperationResult(denied, options.operationAttempt)
+      }
+      copyBoundOperationDenial(error, denied, options.operationAttempt)
+      return denied
+    }
+    const contextOverflow = isProviderContextOverflowFailure(error)
+
+    const processingDenied = isProcessingPolicyDenial(error)
+    const failureProvenance = contextOverflow
+      ? ({
+        kind: "handler_error",
+        boundary: "handler",
+        code: PROVIDER_CONTEXT_OVERFLOW,
+        retryable: false,
+      } satisfies ActionFailureProvenance)
+      : processingDenied
+      ? ({
+        kind: "handler_error",
+        boundary: "handler",
+        code: PROCESSING_POLICY_DENIED,
+        retryable: false,
+      } satisfies ActionFailureProvenance)
+      : (readActionFailureProvenance(error)
+        ?? ({
+          kind: "handler_error",
+          boundary: "handler",
+          code: "ACTION_HANDLER_FAILED",
+          retryable: true,
+        } satisfies ActionFailureProvenance))
+    return actionFailureResult(
+      options.action.name,
+      stringifyActionError(error),
+      {
+        error,
+        ...(contextOverflow ? { retryable: false } : {}),
+        ...(processingDenied
+          ? { retryable: false, processingDenied: true }
+          : {}),
+      },
+      failureProvenance,
+    )
+  }
+  if (isPlainObject(rawResult)) {
+    effectContractDeclared = "effectReceipts" in rawResult
+      || "userFacingEffectReceiptIds" in rawResult
+  }
+  try {
+    if (isPlainObject(rawResult) && options.operationAttempt) {
+      bindRequestOperationResult(rawResult, options.operationAttempt)
+    }
+    settledResult = normalizeActionResult(
+      options.action.name,
+      rawResult,
+      options.operationAttempt,
+    )
+    if (
+      settledResult.success !== false
+      && tagsMayProduceEffects(options.action.tags)
+      && !effectContractDeclared
+      && !tagsRequireEffectReceipts(options.action.tags)
+    ) {
+      options.runtime.logger.warn(
+        {
+          src: "action-handler-settlement",
+          action: options.action.name,
+        },
+        "Mutation-capable action has not migrated to the effect receipt contract",
+      )
+    }
+    phase = "settled"
+  } catch (cause) {
+    phase = "failed"
+    bufferedCallbacks.length = 0
+    const error = new ElizaError(
+      "Action completed with an invalid result. Its external outcome is unknown and must be reconciled before retrying.",
+      {
+        code: "ACTION_RESULT_INVALID_AFTER_HANDLER",
+        cause,
+        context: {
+          actionName: options.action.name,
+          effectContractDeclared,
+          retryable: false,
+        },
+        severity: "fatal",
+      },
+    )
+    if (options.handlerError === "rethrow") {
+      throw error
+    }
+    return actionFailureResult(
+      options.action.name,
+      error.message,
+      {
+        error,
+        outcomeUnknown: true,
+        retryable: false,
+        reconciliationRequired: true,
+      },
+      {
+        kind: "handler_error",
+        boundary: "handler",
+        code: "ACTION_RESULT_INVALID_AFTER_HANDLER",
+        retryable: false,
+      },
+    )
+  }
+
+  options.beforeCallbacks?.(settledResult)
+
+  if (settledResult.replyFailure) bufferedCallbacks.length = 0
+  for (const buffered of bufferedCallbacks) void deliverInOrder(buffered)
+  await deliveryTail
+  if (callbackDeliveryFailures.length > 0) {
+    settledResult = {
+      ...settledResult,
+      data: {
+        ...(settledResult.data ?? {}),
+        callbackDeliveryFailures,
+        actionName: options.action.name,
+      },
+    }
+  }
+  return settledResult
+}

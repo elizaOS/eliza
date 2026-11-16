@@ -1,0 +1,42 @@
+import type { JsonValue } from "./json.vibe"
+
+export interface ActionParameterSchema {
+  type?: string
+  description?: string
+
+  default?: JsonValue | null
+
+  properties?: Record<string, ActionParameterSchema>
+
+  required?: string[]
+
+  additionalProperties?: boolean | ActionParameterSchema
+
+  items?: ActionParameterSchema
+
+  enumValues?: Array<string | number | boolean | null>
+
+  enum?: Array<string | number | boolean | null>
+
+  minLength?: number
+
+  maxLength?: number
+
+  pattern?: string
+
+  minimum?: number
+
+  maximum?: number
+
+  oneOf?: ReadonlyArray<ActionParameterSchema>
+
+  anyOf?: ReadonlyArray<ActionParameterSchema>
+}
+
+export interface JSONSchema {
+  type?: string | string[]
+  properties?: Record<string, JSONSchema>
+  items?: JSONSchema | JSONSchema[]
+  required?: string[]
+  [key: string]: JsonValue | JSONSchema | JSONSchema[] | undefined
+}

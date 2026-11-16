@@ -1,0 +1,88 @@
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+export async function sleepWithAbort(
+  ms: number,
+  abortSignal?: AbortSignal,
+): Promise<void> {
+  abortSignal?.throwIfAborted()
+  if (ms <= 0) {
+    return
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timeoutId)
+      reject(abortSignal?.reason)
+    }
+    const timeoutId = setTimeout(() => {
+      abortSignal?.removeEventListener("abort", onAbort)
+      resolve()
+    }, ms)
+    abortSignal?.addEventListener("abort", onAbort, { once: true })
+  })
+}
+
+export type BackoffPolicy = {
+  initialMs: number
+
+  maxMs: number
+
+  factor: number
+
+  jitter: number
+}
+
+export function computeBackoff(policy: BackoffPolicy, attempt: number): number {
+  const base = policy.initialMs * policy.factor ** Math.max(attempt - 1, 0)
+  const jitter = base * policy.jitter * Math.random()
+  return Math.min(policy.maxMs, Math.round(base + jitter))
+}
+
+export type RetryConfig = {
+  attempts?: number
+
+  minDelayMs?: number
+
+  maxDelayMs?: number
+
+  jitter?: number
+}
+
+const asFiniteNumber = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined
+
+const clampNumber = (
+  value: unknown,
+  fallback: number,
+  min?: number,
+  max?: number,
+): number => {
+  const next = asFiniteNumber(value)
+  if (next === undefined) {
+    return fallback
+  }
+  const floor = typeof min === "number" ? min : Number.NEGATIVE_INFINITY
+  const ceiling = typeof max === "number" ? max : Number.POSITIVE_INFINITY
+  return Math.min(Math.max(next, floor), ceiling)
+}
+
+export function resolveRetryConfig(
+  defaults: Required<RetryConfig>,
+  overrides?: RetryConfig,
+): Required<RetryConfig> {
+  const attempts = Math.max(
+    1,
+    Math.round(clampNumber(overrides?.attempts, defaults.attempts, 1)),
+  )
+  const minDelayMs = Math.max(
+    0,
+    Math.round(clampNumber(overrides?.minDelayMs, defaults.minDelayMs, 0)),
+  )
+  const maxDelayMs = Math.max(
+    minDelayMs,
+    Math.round(clampNumber(overrides?.maxDelayMs, defaults.maxDelayMs, 0)),
+  )
+  const jitter = clampNumber(overrides?.jitter, defaults.jitter, 0, 1)
+  return { attempts, minDelayMs, maxDelayMs, jitter }
+}

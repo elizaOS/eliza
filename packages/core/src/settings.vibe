@@ -1,0 +1,453 @@
+import { createUniqueUuid } from "./entities.vibe"
+import { ElizaError } from "./errors.vibe"
+import { logger } from "./logger.vibe"
+import type { Character } from "./types/agent.vibe"
+import type { World } from "./types/environment.vibe"
+import type { IAgentRuntime } from "./types/runtime.vibe"
+import type { Setting, SetupConfig, WorldSettings } from "./types/settings.vibe"
+import { BufferUtils } from "./utils/buffer.vibe"
+import * as cryptoUtils from "./utils/crypto-compat.vibe"
+import { getEnv, getEnvironment } from "./utils/environment.vibe"
+
+export function createSettingFromConfig(
+  configSetting: Omit<Setting, "value">,
+): Setting {
+  return {
+    name: configSetting.name,
+    description: configSetting.description,
+    usageDescription: configSetting.usageDescription || "",
+    value: null,
+    required: configSetting.required,
+    validation: configSetting.validation || undefined,
+    public: configSetting.public || false,
+    secret: configSetting.secret || false,
+    dependsOn: configSetting.dependsOn || [],
+    onSetAction: configSetting.onSetAction || undefined,
+    visibleIf: configSetting.visibleIf || undefined,
+  }
+}
+
+interface SaltCache {
+  value: string
+  timestamp: number
+}
+
+let saltCache: SaltCache | null = null
+let saltErrorLogged = false
+const SALT_CACHE_TTL_MS = 5 * 60 * 1000
+
+const PUBLICLY_KNOWN_SECRET_SALT = "secretsalt"
+
+let ephemeralSalt: string | null = null
+function getEphemeralSalt(): string {
+  if (!ephemeralSalt) {
+    ephemeralSalt = BufferUtils.toHex(BufferUtils.randomBytes(32))
+  }
+  return ephemeralSalt
+}
+
+const SETTINGS_V2_AAD = new TextEncoder().encode("elizaos:settings:v2")
+
+function isEncryptedV1(value: string): boolean {
+  if (value.charCodeAt(32) !== 58) return false
+  const parts = value.split(":")
+  if (parts.length !== 2) return false
+
+  const [ivHex, ciphertextHex] = parts
+  return (
+    /^[0-9a-fA-F]{32}$/.test(ivHex)
+    && /^[0-9a-fA-F]{32,}$/.test(ciphertextHex)
+    && ciphertextHex.length % 32 === 0
+  )
+}
+
+function isEncryptedV2(value: string): boolean {
+  if (!value.startsWith("v2:")) return false
+  const parts = value.split(":")
+  if (parts.length !== 4) return false
+  if (parts[0] !== "v2") return false
+  try {
+    const iv = BufferUtils.fromHex(parts[1])
+    const tag = BufferUtils.fromHex(parts[3])
+    return iv.length === 12 && tag.length === 16
+  } catch {
+    return false
+  }
+}
+
+export function getSalt(): string {
+  const now = Date.now()
+
+  if (saltCache !== null && now - saltCache.timestamp < SALT_CACHE_TTL_MS) {
+    return saltCache.value
+  }
+
+  getEnvironment().clearCache()
+  const envSalt = getEnv("SECRET_SALT", "") || ""
+  const nodeEnv = (getEnv("NODE_ENV", "") || "").toLowerCase()
+  const isProduction = nodeEnv === "production"
+  const isKnownOrUnset = envSalt === "" || envSalt === PUBLICLY_KNOWN_SECRET_SALT
+
+  if (isProduction && isKnownOrUnset) {
+    throw new Error(
+      "SECRET_SALT must be set to a non-default value in production.",
+    )
+  }
+
+  let value = envSalt
+  if (isKnownOrUnset) {
+    value = getEphemeralSalt()
+    if (!saltErrorLogged) {
+      logger.warn(
+        { src: "core:settings", event: "core.settings.ephemeral_secret_salt" },
+        "SECRET_SALT is not set — generated an EPHEMERAL random salt for this process. "
+          + "Settings encrypted now will NOT be decryptable after restart. "
+          + "Set SECRET_SALT to a stable random value to persist encrypted settings.",
+      )
+      saltErrorLogged = true
+    }
+  }
+
+  saltCache = {
+    value,
+    timestamp: now,
+  }
+
+  return value
+}
+
+export function clearSaltCache(): void {
+  saltCache = null
+  saltErrorLogged = false
+}
+
+export function encryptStringValue(value: string, salt: string): string {
+  if (isEncryptedV1(value) || isEncryptedV2(value)) {
+    return value
+  }
+
+  const key = cryptoUtils
+    .createHash("sha256")
+    .update(salt)
+    .digest()
+    .slice(0, 32)
+  const iv = BufferUtils.randomBytes(12)
+
+  const plaintextBytes = BufferUtils.fromString(value, "utf8")
+  const { ciphertext, tag } = cryptoUtils.encryptAes256Gcm(
+    key,
+    iv,
+    plaintextBytes,
+    SETTINGS_V2_AAD,
+  )
+
+  return `v2:${BufferUtils.toHex(iv)}:${BufferUtils.toHex(ciphertext)}:${BufferUtils.toHex(tag)}`
+}
+
+export function decryptStringValue(value: string, salt: string): string {
+  try {
+    const encryptedV2 = isEncryptedV2(value)
+    const encryptedV1 = !encryptedV2 && isEncryptedV1(value)
+
+    if (!encryptedV2 && !encryptedV1) {
+      return value
+    }
+
+    const parts = value.split(":")
+    const key = cryptoUtils
+      .createHash("sha256")
+      .update(salt)
+      .digest()
+      .slice(0, 32)
+
+    if (encryptedV2) {
+      const iv = BufferUtils.fromHex(parts[1])
+      const ciphertext = BufferUtils.fromHex(parts[2])
+      const tag = BufferUtils.fromHex(parts[3])
+      const plaintextBytes = cryptoUtils.decryptAes256Gcm(
+        key,
+        iv,
+        ciphertext,
+        tag,
+        SETTINGS_V2_AAD,
+      )
+      return BufferUtils.bufferToString(plaintextBytes, "utf8")
+    }
+
+    const iv = BufferUtils.fromHex(parts[0])
+    const encryptedText = parts[1]
+    const decipher = cryptoUtils.createDecipheriv("aes-256-cbc", key, iv)
+    let decrypted = decipher.update(encryptedText, "hex", "utf8")
+    decrypted += decipher.final("utf8")
+    return decrypted
+  } catch (error) {
+    throw new ElizaError("Failed to decrypt secret setting", {
+      code: "SETTING_DECRYPTION_FAILED",
+      cause: error,
+      severity: "fatal",
+    })
+  }
+}
+
+export function saltSettingValue(setting: Setting, salt: string): Setting {
+  const settingCopy = { ...setting }
+
+  if (
+    setting.secret === true
+    && typeof setting.value === "string"
+    && setting.value
+  ) {
+    settingCopy.value = encryptStringValue(setting.value, salt)
+  }
+
+  return settingCopy
+}
+
+export function unsaltSettingValue(setting: Setting, salt: string): Setting {
+  const settingCopy = { ...setting }
+
+  if (
+    setting.secret === true
+    && typeof setting.value === "string"
+    && setting.value
+  ) {
+    settingCopy.value = decryptStringValue(setting.value, salt)
+  }
+
+  return settingCopy
+}
+
+function extractSettingsRecord(
+  worldSettings: WorldSettings,
+): Record<string, Setting> {
+  if (worldSettings.settings && typeof worldSettings.settings === "object") {
+    return worldSettings.settings
+  }
+  const { settings: _settings, ...rest } = worldSettings as
+    & WorldSettings
+    & Record<string, Setting>
+  return rest
+}
+
+function wrapSettingsRecord(
+  worldSettings: WorldSettings,
+  settings: Record<string, Setting>,
+): WorldSettings {
+  if (worldSettings.settings !== undefined) {
+    return {
+      ...worldSettings,
+      settings,
+    }
+  }
+  return settings as WorldSettings
+}
+
+export function saltWorldSettings(
+  worldSettings: WorldSettings,
+  salt: string,
+): WorldSettings {
+  const settingsRecord = extractSettingsRecord(worldSettings)
+  const saltedSettings: Record<string, Setting> = {}
+
+  for (const [key, setting] of Object.entries(settingsRecord)) {
+    saltedSettings[key] = saltSettingValue(setting, salt)
+  }
+
+  return wrapSettingsRecord(worldSettings, saltedSettings)
+}
+
+export function unsaltWorldSettings(
+  worldSettings: WorldSettings,
+  salt: string,
+): WorldSettings {
+  const settingsRecord = extractSettingsRecord(worldSettings)
+  const unsaltedSettings: Record<string, Setting> = {}
+
+  for (const [key, setting] of Object.entries(settingsRecord)) {
+    unsaltedSettings[key] = unsaltSettingValue(setting, salt)
+  }
+
+  return wrapSettingsRecord(worldSettings, unsaltedSettings)
+}
+
+export async function updateWorldSettings(
+  runtime: IAgentRuntime,
+  serverId: string,
+  worldSettings: WorldSettings,
+): Promise<boolean> {
+  const worldId = createUniqueUuid(runtime, serverId)
+  const world = await runtime.getWorld(worldId)
+
+  if (!world) {
+    logger.error({ src: "core:settings", serverId }, "World not found")
+    return false
+  }
+
+  if (!world.metadata) {
+    world.metadata = {}
+  }
+
+  const salt = getSalt()
+  const saltedSettings = saltWorldSettings(worldSettings, salt)
+
+  world.metadata.settings = saltedSettings
+
+  await runtime.updateWorld(world)
+
+  return true
+}
+
+export async function getWorldSettings(
+  runtime: IAgentRuntime,
+  serverId: string,
+): Promise<WorldSettings | null> {
+  const worldId = createUniqueUuid(runtime, serverId)
+  const world = await runtime.getWorld(worldId)
+
+  const settings = world?.metadata?.settings
+  if (!settings) {
+    return null
+  }
+
+  const saltedSettings = settings as WorldSettings
+
+  const salt = getSalt()
+  return unsaltWorldSettings(saltedSettings, salt)
+}
+
+export async function initializeSetup(
+  runtime: IAgentRuntime,
+  world: World,
+  config: SetupConfig,
+): Promise<WorldSettings | null> {
+  const existingSettings = world.metadata?.settings
+  if (existingSettings) {
+    logger.debug(
+      { src: "core:settings", serverId: world.messageServerId },
+      "Setup state already exists",
+    )
+
+    const saltedSettings = existingSettings as WorldSettings
+    const salt = getSalt()
+    return unsaltWorldSettings(saltedSettings, salt)
+  }
+
+  const worldSettings: Record<string, Setting> = {}
+
+  if (config.settings) {
+    for (const [key, configSetting] of Object.entries(config.settings)) {
+      worldSettings[key] = createSettingFromConfig(configSetting)
+    }
+  }
+
+  if (!world.metadata) {
+    world.metadata = {}
+  }
+
+  world.metadata.settings = worldSettings as WorldSettings
+
+  await runtime.updateWorld(world)
+
+  logger.info(
+    { src: "core:settings", serverId: world.messageServerId },
+    "Settings config initialized",
+  )
+  return worldSettings as WorldSettings
+}
+
+export function encryptedCharacter(character: Character): Character {
+  const encryptedChar: Character = {
+    ...character,
+    secrets: character.secrets ? { ...character.secrets } : undefined,
+    settings: character.settings
+      ? {
+        ...character.settings,
+        secrets: character.settings.secrets
+          ? { ...character.settings.secrets }
+          : undefined,
+      }
+      : undefined,
+  }
+  const salt = getSalt()
+
+  if (encryptedChar.secrets) {
+    encryptedChar.secrets = encryptObjectValues(encryptedChar.secrets, salt)
+  }
+
+  if (encryptedChar.settings?.secrets) {
+    encryptedChar.settings.secrets = encryptObjectValues(
+      encryptedChar.settings.secrets,
+      salt,
+    )
+  }
+
+  return encryptedChar
+}
+
+export function decryptedCharacter(
+  character: Character,
+  _runtime?: IAgentRuntime,
+): Character {
+  const decryptedChar: Character = {
+    ...character,
+    secrets: character.secrets ? { ...character.secrets } : undefined,
+    settings: character.settings
+      ? {
+        ...character.settings,
+        secrets: character.settings.secrets
+          ? { ...character.settings.secrets }
+          : undefined,
+      }
+      : undefined,
+  }
+  const salt = getSalt()
+
+  if (decryptedChar.secrets) {
+    decryptedChar.secrets = decryptObjectValues(decryptedChar.secrets, salt)
+  }
+
+  if (decryptedChar.settings?.secrets) {
+    decryptedChar.settings.secrets = decryptObjectValues(
+      decryptedChar.settings.secrets,
+      salt,
+    )
+  }
+
+  return decryptedChar
+}
+
+export function encryptObjectValues(
+  obj: Record<string, string | number | boolean>,
+  salt: string,
+): Record<string, string | number | boolean> {
+  const result: Record<string, string | number | boolean> = {}
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === "string" && value) {
+      result[key] = encryptStringValue(value, salt)
+    } else {
+      result[key] = value
+    }
+  }
+
+  return result
+}
+
+export function decryptObjectValues(
+  obj: Record<string, string | number | boolean>,
+  salt: string,
+): Record<string, string | number | boolean> {
+  const result: Record<string, string | number | boolean> = {}
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === "string" && value) {
+      result[key] = decryptStringValue(value, salt)
+    } else {
+      result[key] = value
+    }
+  }
+
+  return result
+}
+
+export { decryptStringValue as decryptSecret }

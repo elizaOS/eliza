@@ -1,0 +1,20 @@
+type AmbientSlot = Record<PropertyKey, unknown>
+
+function ambientSlot(): AmbientSlot {
+  return globalThis as AmbientSlot
+}
+
+export function getAmbientSingleton<T>(key: symbol, factory: () => T): T {
+  const slot = ambientSlot()
+  const existing = slot[key]
+  if (existing !== undefined) {
+    return existing as T
+  }
+  const created = factory()
+  slot[key] = created
+  return created
+}
+
+export function setAmbientSingleton<T>(key: symbol, value: T): void {
+  ambientSlot()[key] = value
+}

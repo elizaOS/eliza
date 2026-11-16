@@ -1,0 +1,395 @@
+import type { RequestOperationIssuer } from "../actions/task-extraction-context.vibe"
+import type { ActionFailureKind, ActionFailureProvenance } from "../types/action-failure.vibe"
+import type { ActionReplyFailure } from "../types/action-reply.vibe"
+import type {
+  ActionResult,
+  CompletionContextSelection,
+  EvaluationResult,
+  ReplyEffectStatus,
+} from "../types/components.vibe"
+import type { EffectReceipt } from "../types/effects.vibe"
+import type {
+  ChatMessage,
+  GenerateTextResult,
+  ModelAttemptContext,
+  ModelRegistrationInfo,
+  PromptSegment,
+  TextGenerationModelType,
+  ToolChoice,
+  ToolDefinition,
+} from "../types/model.vibe"
+import type { Content } from "../types/primitives.vibe"
+import type { State } from "../types/state.vibe"
+import type { ContextObject } from "./context-object.vibe"
+import type { ChainingLoopConfig } from "./limits.vibe"
+import type { TrajectoryRecorder } from "./trajectory-recorder.vibe"
+import type {
+  TypedReadEgressReceipt,
+  TypedReadReplyBinding,
+  TypedReadReplyPart,
+  TypedReadReplyResolver,
+} from "./typed-read-contract.vibe"
+
+export interface PlannerToolCall {
+  id?: string
+  name: string
+  params?: Record<string, unknown>
+
+  completionContext?: CompletionContextSelection | null
+}
+
+export type EvaluatorRoute = EvaluationResult["decision"]
+
+export type EvaluatorModelResult =
+  | string
+  | (Partial<GenerateTextResult> & { object?: unknown })
+
+export interface EvaluatorRuntime {
+  restoreProviderContext?(context: ContextObject): Promise<ContextObject>
+
+  supportsModelAttemptPreparation?: boolean
+
+  getModelRegistrations?(): ModelRegistrationInfo[]
+
+  getSetting?(key: string): string | boolean | number | null
+  reportError?(
+    scope: string,
+    error: unknown,
+    context?: Record<string, unknown>,
+  ): void
+
+  redactSecrets?(text: string): string
+  useModel(
+    modelType: TextGenerationModelType,
+    params: {
+      messages: ChatMessage[]
+      model?: string
+      maxTokens?: number
+      responseSchema?: unknown
+      promptSegments?: PromptSegment[]
+      providerOptions?: Record<string, unknown>
+      prepareModelAttempt?: (
+        attempt: ModelAttemptContext,
+        params: {
+          messages: ChatMessage[]
+          promptSegments?: PromptSegment[]
+          providerOptions?: Record<string, unknown>
+        },
+      ) => Promise<void> | void
+    },
+    provider?: string,
+  ): Promise<EvaluatorModelResult>
+  logger?: {
+    warn?: (context: unknown, message?: string) => void
+    debug?: (context: unknown, message?: string) => void
+  }
+}
+
+export interface EvaluatorEffects {
+  copyToClipboard?:
+    | false
+    | ((
+      clipboard: NonNullable<EvaluationResult["copyToClipboard"]>,
+    ) => Promise<void> | void)
+  messageToUser?: (message: string) => Promise<void> | void
+}
+
+export type EvaluatorOutput = EvaluationResult & {
+  replyFailure?: ActionReplyFailure
+
+  typedReadRejected?: true
+  typedReadSnapshot?: string
+  typedReadFinal?: true
+  typedReadValidatedParts?: readonly TypedReadReplyPart[]
+  typedReadAwaitingEvidence?: true
+  typedReadRendered?: true
+
+  requestFullyCovered?: boolean
+  outcomeCoverage?: readonly {
+    intentId: string
+    status: "completed" | "blocked" | "pending"
+    evidenceStepIds: readonly string[]
+  }[]
+
+  replyEffectStatus?: Exclude<ReplyEffectStatus, "pending">
+
+  effectReceiptIds?: readonly string[]
+
+  plannerReply?: { text: string; effectReceiptIds: readonly string[] }
+  nextTool?: PlannerToolCall
+
+  protocolFailure?: true
+  parseError?: string
+  raw?: Record<string, unknown>
+}
+
+export interface PlannerRuntime {
+  getService?(service: string): unknown
+
+  getModelRegistrations?(): ModelRegistrationInfo[]
+  supportsModelAttemptPreparation?: boolean
+
+  restoreProviderContext?(context: ContextObject): Promise<ContextObject>
+
+  getSetting?(key: string): string | boolean | number | null
+  reportError?(
+    scope: string,
+    error: unknown,
+    context?: Record<string, unknown>,
+  ): void
+
+  redactSecrets?(text: string): string
+  useModel(
+    modelType: TextGenerationModelType,
+    params: {
+      messages: ChatMessage[]
+      maxTokens?: number
+      tools?: ToolDefinition[]
+      toolChoice?: ToolChoice
+      responseSchema?: unknown
+      promptSegments?: PromptSegment[]
+      providerOptions?: Record<string, unknown>
+    },
+    provider?: string,
+  ): Promise<string | GenerateTextResult>
+  logger?: {
+    debug?: (context: unknown, message?: string) => void
+    warn?: (context: unknown, message?: string) => void
+    error?: (context: unknown, message?: string) => void
+  }
+}
+
+export interface InferredSubactionDispatch {
+  child: string
+
+  discriminator: string
+
+  value: string
+}
+
+export interface PlannerToolResult {
+  emptyTrackedState?: ActionResult["emptyTrackedState"]
+  success: boolean
+  verification?: ActionResult["verification"]
+
+  subPlannerEvaluation?: {
+    decision: "FINISH"
+    success: boolean
+    messageToUser?: string
+  }
+
+  inferredSubaction?: InferredSubactionDispatch
+
+  registeredSubaction?: InferredSubactionDispatch
+
+  text?: string
+
+  transcriptVisibility?: "internal"
+
+  userFacingText?: string
+
+  verifiedUserFacing?: boolean
+
+  effectReceipts?: readonly EffectReceipt[]
+
+  userFacingEffectReceiptIds?: readonly string[]
+
+  summary?: string
+  data?: Record<string, unknown>
+
+  promptData?: Record<string, unknown>
+
+  promptDataMode?: "replace-data"
+  error?: unknown
+
+  failureProvenance?: ActionFailureProvenance
+
+  replyFailure?: ActionReplyFailure
+
+  turnComplete?: boolean
+
+  modelReplyRequired?: boolean
+
+  modelReplyFallback?: string
+
+  continueChain?: boolean
+}
+
+export interface PlannerStep {
+  iteration: number
+  thought?: string
+  toolCall?: PlannerToolCall
+  result?: PlannerToolResult
+  terminalMessage?: string
+  terminalOnly?: boolean
+}
+
+export interface PlannerTrajectory {
+  outcomeIntents?: readonly string[]
+  context: ContextObject
+
+  modelBaseContext?: ContextObject
+
+  modelHistory?: ChatMessage[]
+
+  codingMode?: boolean
+  steps: PlannerStep[]
+  archivedSteps: PlannerStep[]
+  plannedQueue: PlannerToolCall[]
+  evaluatorOutputs: EvaluatorOutput[]
+}
+
+export interface PlannerTerminalFailure {
+  kind:
+    | "context_overflow"
+    | "resource_limit"
+    | "planner_timeout"
+    | "coding_mutation_unverified"
+    | "coding_verification_failed"
+    | "coding_tool_failure"
+    | ActionReplyFailure["kind"]
+    | ActionFailureKind
+  transient: boolean
+  message: string
+
+  code?: string
+}
+
+export interface PlannerLoopResult {
+  replyRecoveryRequired?: true
+  status: "finished" | "continued"
+  trajectory: PlannerTrajectory
+  evaluator?: EvaluatorOutput
+  finalMessage?: string
+
+  finalContent?: Content
+
+  terminalFailure?: PlannerTerminalFailure
+
+  endedWithDeliberateSilence?: boolean
+
+  silentTerminalAction?: "IGNORE" | "STOP"
+
+  modelUsage?: {
+    promptTokens: number
+    completionTokens: number
+    modelCalls: number
+  }
+}
+
+export interface PlannerLoopParams {
+  requestOperationIssuer?: RequestOperationIssuer
+  resolveTypedReadReply?: TypedReadReplyResolver
+  onTypedReadEgress?: (receipt: TypedReadEgressReceipt) => void
+  admitTypedReadCorrection?: () => boolean
+
+  deferInternalReplyRecoveryToCaller?: boolean
+
+  navigationWithFollowUp?: boolean
+  runtime: PlannerRuntime
+  context: ContextObject
+
+  postToolReplySeed?: {
+    toolCall: PlannerToolCall
+    result: PlannerToolResult
+
+    sourceReply?: {
+      scope: { agentId: string; roomId: string; messageId: string }
+      sources: readonly { id: string; text: string }[]
+    }
+  }
+
+  onCheckpoint?: (
+    state: {
+      trajectory: PlannerTrajectory
+      modelUsage: NonNullable<PlannerLoopResult["modelUsage"]>
+    },
+    phase: "before_tool" | "after_tool",
+  ) => Promise<void>
+
+  resumeState?: {
+    trajectory: PlannerTrajectory
+    modelUsage: NonNullable<PlannerLoopResult["modelUsage"]>
+  }
+
+  codingMode?: boolean
+  config?: Partial<ChainingLoopConfig>
+  executeToolCall: (
+    toolCall: PlannerToolCall,
+    context: {
+      trajectory: PlannerTrajectory
+      iteration: number
+
+      plannerCompleted?: boolean
+    },
+  ) => Promise<PlannerToolResult> | PlannerToolResult
+  evaluate?: (params: {
+    resolveTypedReadReply?: TypedReadReplyResolver
+    typedReadFinalizing?: true
+    admitTypedReadCorrection?: () => boolean
+    admittedToolNames?: readonly string[]
+    iteration?: number
+    onUsage?: RunEvaluatorParams["onUsage"]
+    runtime: PlannerRuntime
+    context: ContextObject
+    trajectory: PlannerTrajectory
+  }) => Promise<EvaluatorOutput> | EvaluatorOutput
+  onToolCallEnqueued?: (
+    toolCall: PlannerToolCall,
+    context: { iteration: number },
+  ) => Promise<void> | void
+  modelType?: TextGenerationModelType
+  evaluatorEffects?: EvaluatorEffects
+  provider?: string
+
+  onModelUsage?: (usage: {
+    promptTokens: number
+    completionTokens: number
+  }) => void
+
+  tools?: ToolDefinition[]
+
+  toolChoice?: ToolChoice
+
+  requireNonTerminalToolCall?: boolean
+
+  replyOwed?: boolean
+
+  stageOneReplyText?: string
+
+  requiredToolMissBudgetOverride?: number
+
+  requiredToolEvidence?: "inferred"
+
+  recorder?: TrajectoryRecorder
+  trajectoryId?: string
+
+  cacheConversationId?: string
+  parentStageId?: string
+  providerAttributionState?: State
+}
+
+export interface RunEvaluatorParams {
+  resolveTypedReadReply?: TypedReadReplyResolver
+  typedReadFinalizing?: true
+  admitTypedReadCorrection?: () => boolean
+  admittedToolNames?: readonly string[]
+  typedReadReply?: TypedReadReplyBinding
+
+  hasUnresolvedToolFailure?: boolean
+  runtime: EvaluatorRuntime
+  context: ContextObject
+  trajectory: PlannerTrajectory
+  modelType?: TextGenerationModelType
+
+  model?: string
+  effects?: EvaluatorEffects
+  provider?: string
+  recorder?: TrajectoryRecorder
+  trajectoryId?: string
+
+  cacheConversationId?: string
+  parentStageId?: string
+  iteration?: number
+  onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void
+}

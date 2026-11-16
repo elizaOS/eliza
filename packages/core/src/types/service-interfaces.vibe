@@ -1,0 +1,567 @@
+import type { ControlMessageAction } from "./messaging.vibe"
+import type { Content, JsonObject, JsonValue, UUID } from "./primitives.vibe"
+import { Service, ServiceType } from "./service.vibe"
+
+export interface TokenBalance {
+  address: string
+  balance: string
+  decimals: number
+  uiAmount?: number
+  name?: string
+  symbol?: string
+  logoUri?: string
+}
+
+export interface TokenData {
+  id: string
+  symbol: string
+  name: string
+  address: string
+  chain: string
+  sourceProvider: string
+  price?: number
+  priceChange24hPercent?: number
+  priceChange24hUsd?: number
+  volume24hUsd?: number
+  marketCapUsd?: number
+  liquidity?: number
+  holders?: number
+  logoUri?: string
+  decimals?: number
+  lastUpdatedAt?: Date
+  raw?: JsonObject
+}
+
+export interface WalletAsset {
+  address: string
+  balance: string
+  decimals: number
+  uiAmount?: number
+  name?: string
+  symbol?: string
+  logoUri?: string
+  priceUsd?: number
+  valueUsd?: number
+}
+
+export interface WalletPortfolio {
+  totalValueUsd: number
+  assets: WalletAsset[]
+}
+
+export interface PoolTokenInfo {
+  mint: string
+  symbol?: string
+  reserve?: string
+  decimals?: number
+}
+
+export interface PoolInfo {
+  id: string
+  displayName?: string
+  dex: string
+  tokenA: PoolTokenInfo
+  tokenB: PoolTokenInfo
+  lpTokenMint?: string
+  apr?: number
+  apy?: number
+  tvl?: number
+  fee?: number
+  metadata?: JsonObject
+}
+
+export interface LpPositionDetails {
+  poolId: string
+  dex: string
+  lpTokenBalance: TokenBalance
+  underlyingTokens: TokenBalance[]
+  valueUsd?: number
+  accruedFees: TokenBalance[]
+  rewards: TokenBalance[]
+  metadata?: JsonObject
+}
+
+export interface TransactionResult {
+  success: boolean
+  transactionId?: string
+  error?: string
+  data?: JsonObject
+}
+
+export interface IMessageBusService extends Service {
+  notifyActionStart(
+    roomId: UUID,
+    worldId: UUID,
+    content: Content,
+    messageId?: UUID,
+  ): Promise<void>
+
+  notifyActionUpdate(
+    roomId: UUID,
+    worldId: UUID,
+    content: Content,
+    messageId?: UUID,
+  ): Promise<void>
+}
+
+export interface ControlTransportMessage {
+  type: "controlMessage"
+  payload: {
+    action: ControlMessageAction
+    target?: string
+    roomId: UUID
+  }
+}
+
+export abstract class IControlTransportService extends Service {
+  static override readonly serviceType = ServiceType.CONTROL_TRANSPORT
+
+  public readonly capabilityDescription = "Dispatches backend control messages to interactive clients."
+
+  abstract sendMessage(message: ControlTransportMessage): Promise<void>
+}
+
+export abstract class ITokenDataService extends Service {
+  static override readonly serviceType = ServiceType.TOKEN_DATA
+  static override readonly allowsMultiple = true
+  public readonly capabilityDescription = "Provides standardized access to token market data."
+
+  abstract getTokenDetails(
+    address: string,
+    chain: string,
+  ): Promise<TokenData | null>
+
+  abstract getTrendingTokens(
+    chain?: string,
+    limit?: number,
+    timePeriod?: string,
+  ): Promise<TokenData[]>
+
+  abstract searchTokens(
+    query: string,
+    chain?: string,
+    limit?: number,
+  ): Promise<TokenData[]>
+
+  abstract getTokensByAddresses(
+    addresses: string[],
+    chain: string,
+  ): Promise<TokenData[]>
+}
+
+export abstract class IWalletService extends Service {
+  static override readonly serviceType = ServiceType.WALLET
+  static override readonly allowsMultiple = true
+
+  public readonly capabilityDescription = "Provides standardized access to wallet balances and portfolios."
+
+  abstract getPortfolio(owner?: string): Promise<WalletPortfolio>
+
+  abstract getBalance(assetAddress: string, owner?: string): Promise<number>
+
+  abstract transferSol(
+    from: object,
+    to: object,
+    lamports: number,
+  ): Promise<string>
+}
+
+export abstract class ILpService extends Service {
+  static override readonly serviceType = "lp_pool"
+  static override readonly allowsMultiple = true
+
+  public readonly capabilityDescription = "Provides standardized access to DEX liquidity pools."
+
+  abstract getDexName(): string
+
+  abstract getPools(
+    tokenAMint?: string,
+    tokenBMint?: string,
+  ): Promise<PoolInfo[]>
+
+  abstract addLiquidity(params: {
+    userVault: object
+    poolId: string
+    tokenAAmountLamports: string
+    tokenBAmountLamports?: string
+    slippageBps: number
+    tickLowerIndex?: number
+    tickUpperIndex?: number
+  }): Promise<TransactionResult & { lpTokensReceived?: TokenBalance }>
+
+  abstract removeLiquidity(params: {
+    userVault: object
+    poolId: string
+    lpTokenAmountLamports: string
+    slippageBps: number
+  }): Promise<TransactionResult & { tokensReceived?: TokenBalance[] }>
+
+  abstract getLpPositionDetails(
+    userAccountPublicKey: string,
+    poolOrPositionIdentifier: string,
+  ): Promise<LpPositionDetails | null>
+
+  abstract getMarketDataForPools(
+    poolIds: string[],
+  ): Promise<Record<string, Partial<PoolInfo>>>
+}
+
+export abstract class ITranscriptionService extends Service {
+  static override readonly serviceType = ServiceType.TRANSCRIPTION
+
+  public readonly capabilityDescription = "Audio transcription and speech processing capabilities"
+
+  abstract transcribeAudio(
+    audioPath: string | Buffer,
+    options?: TranscriptionOptions,
+  ): Promise<TranscriptionResult>
+
+  abstract transcribeVideo(
+    videoPath: string | Buffer,
+    options?: TranscriptionOptions,
+  ): Promise<TranscriptionResult>
+
+  abstract speechToText(
+    audioStream: NodeJS.ReadableStream | Buffer,
+    options?: SpeechToTextOptions,
+  ): Promise<TranscriptionResult>
+
+  abstract textToSpeech(
+    text: string,
+    options?: TextToSpeechOptions,
+  ): Promise<Buffer>
+
+  abstract getSupportedLanguages(): Promise<string[]>
+
+  abstract getAvailableVoices(): Promise<
+    Array<{
+      id: string
+      name: string
+      language: string
+      gender?: "male" | "female" | "neutral"
+    }>
+  >
+
+  abstract detectLanguage(audioPath: string | Buffer): Promise<string>
+}
+
+export abstract class IVideoService extends Service {
+  static override readonly serviceType = ServiceType.VIDEO
+
+  public readonly capabilityDescription = "Video download, processing, and conversion capabilities"
+
+  abstract getVideoInfo(url: string): Promise<VideoInfo>
+
+  abstract downloadVideo(
+    url: string,
+    options?: VideoDownloadOptions,
+  ): Promise<string>
+
+  abstract extractAudio(
+    videoPath: string,
+    outputPath?: string,
+  ): Promise<string>
+
+  abstract getThumbnail(videoPath: string, timestamp?: number): Promise<string>
+
+  abstract convertVideo(
+    videoPath: string,
+    outputPath: string,
+    options?: VideoProcessingOptions,
+  ): Promise<string>
+
+  abstract getAvailableFormats(url: string): Promise<VideoFormat[]>
+}
+
+export type MediaGenerationMediaType = "image" | "video" | "audio"
+export type MediaGenerationAudioKind = "music" | "sfx" | "tts"
+
+export interface MediaGenerationRequest {
+  mediaType: MediaGenerationMediaType
+  prompt: string
+  audioKind?: MediaGenerationAudioKind
+  size?: string
+  quality?: "standard" | "hd"
+  style?: "natural" | "vivid"
+  negativePrompt?: string
+  seed?: number
+  duration?: number
+  aspectRatio?: string
+  resolution?: string
+  audio?: boolean
+  imageUrl?: string
+  instrumental?: boolean
+  genre?: string
+  voice?: string
+}
+
+export interface MediaGenerationResponse {
+  mediaType: MediaGenerationMediaType
+  audioKind?: MediaGenerationAudioKind
+  url?: string
+  imageUrl?: string
+  imageBase64?: string
+  videoUrl?: string
+  audioUrl?: string
+  thumbnailUrl?: string
+  revisedPrompt?: string
+  title?: string
+  duration?: number
+  mimeType?: string
+  provider?: string
+  raw?: Record<string, JsonValue>
+}
+
+export abstract class IMediaGenerationService extends Service {
+  static override readonly serviceType = ServiceType.MEDIA_GENERATION
+
+  public readonly capabilityDescription: string = "Generates image, video, and audio media from prompts."
+
+  canGenerateMedia(
+    _request: Pick<MediaGenerationRequest, "mediaType" | "audioKind">,
+  ): boolean | Promise<boolean> {
+    return true
+  }
+
+  abstract generateMedia(
+    request: MediaGenerationRequest,
+  ): Promise<MediaGenerationResponse>
+}
+
+export interface ScreenCaptureFrameOptions {
+  fps?: number
+  quality?: number
+
+  endpoint?: string
+
+  gameUrl?: string
+}
+
+export abstract class IScreenCaptureService extends Service {
+  static override readonly serviceType = ServiceType.SCREEN_CAPTURE
+
+  public readonly capabilityDescription = "Desktop screen/frame capture for live streaming"
+
+  abstract isFrameCaptureActive(): boolean
+
+  abstract startFrameCapture(options: ScreenCaptureFrameOptions): Promise<void>
+
+  abstract stopFrameCapture(): void
+}
+
+export interface StoredFile {
+  url: string
+
+  hash: string
+
+  fileName: string
+
+  mimeType: string
+
+  size: number
+}
+
+export interface StoredPrivateFile extends Omit<StoredFile, "url"> {}
+
+export interface StoredFileListItem extends StoredFile {
+  createdAt: number
+}
+
+export abstract class IFileStorageService extends Service {
+  static override readonly serviceType = ServiceType.REMOTE_FILES
+
+  public readonly capabilityDescription: string =
+    "Content-addressed file storage: store, serve, list, and delete attachment bytes"
+
+  abstract store(
+    bytes: Buffer | Uint8Array,
+    mimeType: string,
+  ): Promise<StoredFile>
+
+  abstract storePrivate(
+    bytes: Buffer | Uint8Array,
+    mimeType: string,
+  ): Promise<StoredPrivateFile>
+
+  abstract readPrivate(fileName: string): Promise<Buffer | null>
+
+  abstract deletePrivate(fileName: string): Promise<boolean>
+
+  abstract storeDataUrl(dataUrl: string): Promise<StoredFile | null>
+
+  abstract getUrl(fileName: string): string | null
+
+  abstract exists(fileName: string): Promise<boolean>
+
+  abstract read(fileName: string): Promise<Buffer | null>
+
+  abstract list(): Promise<StoredFileListItem[]>
+
+  abstract delete(fileName: string): Promise<boolean>
+}
+
+export interface TranscriptionOptions {
+  language?: string
+
+  model?: string
+
+  temperature?: number
+
+  prompt?: string
+
+  response_format?: "json" | "text" | "srt" | "vtt" | "verbose_json"
+
+  timestamp_granularities?: ("word" | "segment")[]
+
+  word_timestamps?: boolean
+
+  segment_timestamps?: boolean
+}
+
+export interface TranscriptionResult {
+  text: string
+
+  language?: string
+
+  duration?: number
+
+  segments?: TranscriptionSegment[]
+
+  words?: TranscriptionWord[]
+
+  confidence?: number
+}
+
+export interface TranscriptionSegment {
+  id: number
+
+  text: string
+
+  start: number
+
+  end: number
+
+  confidence?: number
+
+  tokens?: number[]
+
+  temperature?: number
+
+  avg_logprob?: number
+
+  compression_ratio?: number
+
+  no_speech_prob?: number
+}
+
+export interface TranscriptionWord {
+  word: string
+
+  start: number
+
+  end: number
+
+  confidence?: number
+}
+
+export interface SpeechToTextOptions {
+  language?: string
+
+  model?: string
+
+  continuous?: boolean
+
+  interimResults?: boolean
+
+  maxAlternatives?: number
+}
+
+export interface TextToSpeechOptions {
+  voice?: string
+
+  model?: string
+
+  speed?: number
+
+  format?: "mp3" | "wav" | "flac" | "aac"
+
+  response_format?: "mp3" | "opus" | "aac" | "flac"
+}
+
+export interface VideoInfo {
+  title?: string
+
+  duration?: number
+
+  url: string
+
+  thumbnail?: string
+
+  description?: string
+
+  uploader?: string
+
+  viewCount?: number
+
+  uploadDate?: Date
+
+  formats?: VideoFormat[]
+}
+
+export interface VideoFormat {
+  formatId: string
+
+  url: string
+
+  extension: string
+
+  quality: string
+
+  fileSize?: number
+
+  videoCodec?: string
+
+  audioCodec?: string
+
+  resolution?: string
+
+  fps?: number
+
+  bitrate?: number
+}
+
+export interface VideoDownloadOptions {
+  format?: string
+
+  quality?: "best" | "worst" | "bestvideo" | "bestaudio" | string
+
+  outputPath?: string
+
+  audioOnly?: boolean
+
+  videoOnly?: boolean
+
+  subtitles?: boolean
+
+  embedSubs?: boolean
+
+  writeInfoJson?: boolean
+}
+
+export interface VideoProcessingOptions {
+  startTime?: number
+
+  endTime?: number
+
+  outputFormat?: string
+
+  resolution?: string
+
+  bitrate?: string
+
+  framerate?: number
+
+  audioCodec?: string
+
+  videoCodec?: string
+}

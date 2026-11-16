@@ -1,0 +1,120 @@
+import { isObjectRecord } from "../utils/type-guards.vibe"
+
+const DASHBOARD_CONFIG_MARKER_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g
+
+const DASHBOARD_CONNECTOR_MARKER_RE = /\[CONNECTOR:([@\w][\w@./:-]*)\]/g
+
+const DASHBOARD_BACKGROUND_MARKER_RE = /\[BACKGROUND\]/g
+
+const CHECKLIST_STATUS_GLYPHS: Record<string, string> = {
+  completed: "[x]",
+  in_progress: "[~]",
+  pending: "[ ]",
+}
+
+function checklistBodyToPlainText(body: string): string | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return null
+  }
+  if (!isObjectRecord(parsed) || !Array.isArray(parsed.items)) return null
+  const lines: string[] = []
+  for (const raw of parsed.items) {
+    if (!isObjectRecord(raw) || typeof raw.content !== "string") continue
+    const content = raw.content.trim()
+    if (!content) continue
+    const glyph = typeof raw.status === "string"
+      ? (CHECKLIST_STATUS_GLYPHS[raw.status]
+        ?? CHECKLIST_STATUS_GLYPHS.pending)
+      : CHECKLIST_STATUS_GLYPHS.pending
+    lines.push(`- ${glyph} ${content}`)
+  }
+  if (lines.length === 0) return null
+  const title = typeof parsed.title === "string" && parsed.title.trim().length > 0
+    ? `${parsed.title.trim()}:\n`
+    : ""
+  return `${title}${lines.join("\n")}`
+}
+
+function workflowBodyToPlainText(body: string): string | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return null
+  }
+  if (!isObjectRecord(parsed) || !Array.isArray(parsed.steps)) return null
+  const lines: string[] = []
+  for (const raw of parsed.steps) {
+    if (!isObjectRecord(raw) || typeof raw.label !== "string") continue
+    const label = raw.label.trim()
+    if (!label) continue
+    const status = typeof raw.status === "string" && raw.status.trim().length > 0
+      ? raw.status.trim()
+      : "pending"
+    lines.push(`${lines.length + 1}. ${label} — ${status}`)
+  }
+  if (lines.length === 0) return null
+  const title = typeof parsed.title === "string" && parsed.title.trim().length > 0
+    ? `${parsed.title.trim()}:\n`
+    : ""
+  return `${title}${lines.join("\n")}`
+}
+
+function degradeWidgetBlocks(text: string): string {
+  return replaceDashboardBlocks(
+    replaceDashboardBlocks(
+      text,
+      "CHECKLIST",
+      (body) => checklistBodyToPlainText(body) ?? body.trim(),
+    ),
+    "WORKFLOW",
+    (body) => workflowBodyToPlainText(body) ?? body.trim(),
+  )
+}
+
+function replaceDashboardBlocks(
+  text: string,
+  kind: "CHECKLIST" | "WORKFLOW",
+  render: (body: string) => string,
+): string {
+  const opening = `[${kind}]\n`
+  const closing = `\n[/${kind}]`
+  const chunks: string[] = []
+  let cursor = 0
+  while (cursor < text.length) {
+    const start = text.indexOf(opening, cursor)
+    if (start < 0) break
+    const end = text.indexOf(closing, start + opening.length)
+    if (end < 0) break
+    chunks.push(
+      text.slice(cursor, start),
+      render(text.slice(start + opening.length, end)),
+    )
+    cursor = end + closing.length
+  }
+  if (chunks.length === 0) return text
+  chunks.push(text.slice(cursor))
+  return chunks.join("")
+}
+
+export function stripDashboardOnlyMarkers(text: string): string {
+  if (
+    !text.includes("[CONFIG:")
+    && !text.includes("[CONNECTOR:")
+    && !text.includes("[BACKGROUND]")
+    && !text.includes("[CHECKLIST]")
+    && !text.includes("[WORKFLOW]")
+  ) {
+    return text
+  }
+  return degradeWidgetBlocks(text)
+    .replace(DASHBOARD_CONFIG_MARKER_RE, "")
+    .replace(DASHBOARD_CONNECTOR_MARKER_RE, "")
+    .replace(DASHBOARD_BACKGROUND_MARKER_RE, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}

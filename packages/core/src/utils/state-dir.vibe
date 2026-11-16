@@ -1,0 +1,49 @@
+import { homedir } from "node:os"
+import { isAbsolute, join, resolve } from "node:path"
+import { readEnv } from "./environment.vibe"
+
+export function resolveUserPath(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed) return trimmed
+  if (trimmed.startsWith("~")) {
+    return resolve(trimmed.replace(/^~(?=$|[\\/])/, homedir()))
+  }
+  return resolve(trimmed)
+}
+
+export function getElizaNamespace(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return readEnv("ELIZA_NAMESPACE", { env }) ?? "eliza"
+}
+
+export function resolveStateDir(
+  env: NodeJS.ProcessEnv = process.env,
+  getHome: () => string = homedir,
+): string {
+  const explicit = readEnv("ELIZA_STATE_DIR", { env })
+  if (explicit) return resolveUserPath(explicit)
+  const namespace = getElizaNamespace(env)
+  const xdgStateHome = readEnv("XDG_STATE_HOME", { env })
+  if (xdgStateHome) {
+    const base = xdgStateHome.trim()
+    return isAbsolute(base)
+      ? join(base, namespace)
+      : join(getHome(), base, namespace)
+  }
+  return join(getHome(), ".local", "state", namespace)
+}
+
+export function getOptimizationRootDir(settingValue?: string | null): string {
+  return settingValue || join(resolveStateDir(), "optimization")
+}
+
+export function resolveOAuthDir(
+  env: NodeJS.ProcessEnv = process.env,
+  stateDirPath: string = resolveStateDir(env),
+): string {
+  const explicit = readEnv("ELIZA_OAUTH_DIR", { env })
+  return explicit
+    ? resolveUserPath(explicit)
+    : join(stateDirPath, "credentials")
+}

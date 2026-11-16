@@ -1,0 +1,165 @@
+import type { UUID } from "./primitives.vibe"
+
+export type PairingChannel =
+  | "telegram"
+  | "discord"
+  | "whatsapp"
+  | "slack"
+  | "imessage"
+  | "googlechat"
+  | "msteams"
+  | (string & {})
+
+export interface PairingRequest {
+  id: UUID
+
+  channel: PairingChannel
+
+  senderId: string
+
+  code: string
+
+  createdAt: Date
+
+  lastSeenAt: Date
+
+  metadata?: Record<string, string>
+
+  agentId: UUID
+}
+
+export interface PairingAllowlistEntry {
+  id: UUID
+
+  channel: PairingChannel
+
+  senderId: string
+
+  createdAt: Date
+
+  agentId: UUID
+
+  metadata?: Record<string, string>
+}
+
+export const DEFAULT_PAIRING_PAGE_LIMIT = 50
+
+export const MAX_PAIRING_PAGE_LIMIT = 100
+
+export interface PairingPageOptions {
+  limit?: number
+
+  offset?: number
+}
+
+export interface PairingPageInfo {
+  limit: number
+  offset: number
+  hasMore: boolean
+  nextOffset: number | null
+}
+
+export interface PairingPage<T> extends PairingPageInfo {
+  items: T[]
+}
+
+export type PairingSortOrder = "oldest" | "newest"
+
+export interface PairingQueryOptions extends PairingPageOptions {
+  order?: PairingSortOrder
+}
+
+export interface PairingRequestQuery extends PairingQueryOptions {
+  channel: PairingChannel
+  agentId: UUID
+
+  createdAfter?: Date
+}
+
+export interface PairingAllowlistQuery extends PairingQueryOptions {
+  channel: PairingChannel
+  agentId: UUID
+}
+
+export function normalizePairingPageOptions(
+  options: PairingPageOptions = {},
+): Required<PairingPageOptions> {
+  const limit = options.limit ?? DEFAULT_PAIRING_PAGE_LIMIT
+  const offset = options.offset ?? 0
+
+  if (
+    !Number.isSafeInteger(limit)
+    || limit < 1
+    || limit > MAX_PAIRING_PAGE_LIMIT
+  ) {
+    throw new RangeError(
+      `Pairing page limit must be an integer between 1 and ${MAX_PAIRING_PAGE_LIMIT}`,
+    )
+  }
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    throw new RangeError("Pairing page offset must be a non-negative integer")
+  }
+
+  return { limit, offset }
+}
+
+export interface UpsertPairingRequestResult {
+  code: string
+
+  created: boolean
+
+  request?: PairingRequest
+}
+
+export interface ApprovePairingResult {
+  senderId: string
+
+  request: PairingRequest
+
+  allowlistEntry: PairingAllowlistEntry
+}
+
+export interface UpsertPairingRequestParams {
+  channel: PairingChannel
+
+  senderId: string
+
+  metadata?: Record<string, string>
+}
+
+export interface ApprovePairingParams {
+  channel: PairingChannel
+
+  code: string
+}
+
+export interface PairingConfig {
+  maxPendingRequests?: number
+
+  requestTtlMs?: number
+
+  codeLength?: number
+}
+
+export const DEFAULT_PAIRING_CONFIG: Required<PairingConfig> = {
+  maxPendingRequests: 3,
+  requestTtlMs: 60 * 60 * 1000,
+  codeLength: 8,
+}
+
+export const PAIRING_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+export const PAIRING_ID_LABELS: Record<string, string> = {
+  telegram: "userId",
+  whatsapp: "phoneNumber",
+  signal: "phoneNumber",
+  discord: "userId",
+  slack: "userId",
+  imessage: "phoneOrEmail",
+  googlechat: "email",
+  msteams: "userId",
+}
+
+export function getPairingIdLabel(channel: PairingChannel): string {
+  return PAIRING_ID_LABELS[channel] ?? "userId"
+}

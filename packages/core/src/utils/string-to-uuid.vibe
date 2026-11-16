@@ -1,0 +1,7 @@
+import { createHash } from "node:crypto"
+import type { UUID } from "../types/primitives.vibe"
+import { uuidFromString } from "./uuid.vibe"
+
+export function stringToUuid(target: string | number): UUID {
+  return uuidFromString(target, (input) => createHash("sha1").update(input).digest())
+}

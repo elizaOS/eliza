@@ -1,0 +1,107 @@
+import type { DeliveryContext, SessionOrigin, SessionSkillsSnapshot } from "./memory.vibe"
+
+export type SessionChatType = "dm" | "group" | "channel" | "thread"
+
+export type SessionEntry = {
+  sessionId: string
+
+  updatedAt: number
+
+  sessionFile?: string
+
+  spawnedBy?: string
+
+  label?: string
+
+  displayName?: string
+
+  systemSent?: boolean
+
+  abortedLastRun?: boolean
+
+  chatType?: SessionChatType
+
+  channel?: string
+
+  groupId?: string
+
+  subject?: string
+
+  groupChannel?: string
+
+  space?: string
+
+  origin?: SessionOrigin
+
+  deliveryContext?: DeliveryContext
+
+  lastChannel?: string
+
+  lastTo?: string
+
+  lastAccountId?: string
+
+  lastThreadId?: string | number
+
+  thinkingLevel?: string
+
+  verboseLevel?: string
+
+  reasoningLevel?: string
+
+  elevatedLevel?: string
+
+  providerOverride?: string
+
+  modelOverride?: string
+
+  authProfileOverride?: string
+
+  authProfileOverrideSource?: "auto" | "user"
+
+  authProfileOverrideCompactionCount?: number
+
+  inputTokens?: number
+
+  outputTokens?: number
+
+  totalTokens?: number
+
+  contextTokens?: number
+
+  compactionCount?: number
+
+  modelProvider?: string
+
+  model?: string
+
+  groupActivation?: "mention" | "always"
+
+  groupActivationNeedsSystemIntro?: boolean
+
+  sendPolicy?: "allow" | "deny"
+
+  responseUsage?: "on" | "off" | "tokens" | "full"
+
+  ttsAuto?: "on" | "off" | "voice-only"
+
+  execHost?: string
+
+  execSecurity?: string
+
+  execAsk?: string
+
+  execNode?: string
+
+  memoryFlushAt?: number
+
+  memoryFlushCompactionCount?: number
+
+  skillsSnapshot?: SessionSkillsSnapshot
+
+  lastHeartbeatText?: string
+
+  lastHeartbeatSentAt?: number
+
+  cliSessionIds?: Record<string, string>
+}

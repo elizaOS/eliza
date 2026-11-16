@@ -184,14 +184,18 @@
         "@repo/app#build",
         "@repo/app#typecheck",
         "@repo/app#test",
-        "@repo/app#test:browser"
+        "@repo/app#test:browser",
+        "@elizaos/core#build",
+        "@elizaos/core#typecheck",
+        "@elizaos/core#test"
       ],
       "cache": false
     },
     "//#lint:js": {
       "dependsOn": [
         "@repo/design-system#build",
-        "@repo/app#typecheck"
+        "@repo/app#typecheck",
+        "@elizaos/core#typecheck"
       ],
       "inputs": [
         "apps/**",

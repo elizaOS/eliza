@@ -1,0 +1,146 @@
+import { ElizaError } from "./errors.vibe"
+import {
+  type CustomMetadata,
+  type DescriptionMetadata,
+  type DocumentMetadata,
+  type FragmentMetadata,
+  type Memory,
+  type MemoryMetadata,
+  type MemoryScope,
+  MemoryType,
+  type MessageMemory,
+  type MessageMetadata,
+} from "./types/memory.vibe"
+import type { Content, UUID } from "./types/primitives.vibe"
+
+export function createMessageMemory(params: {
+  id?: UUID
+  entityId: UUID
+  agentId?: UUID
+  roomId: UUID
+  content: Content & { text: string }
+  embedding?: number[]
+  scope?: MemoryScope
+}): MessageMemory {
+  const { scope, ...memoryFields } = params
+  const now = Date.now()
+  return {
+    ...memoryFields,
+    createdAt: now,
+    metadata: {
+      type: MemoryType.MESSAGE,
+      timestamp: now,
+      scope: scope ?? (params.agentId ? "private" : "shared"),
+    },
+  }
+}
+
+export function isDocumentMetadata(
+  metadata: MemoryMetadata,
+): metadata is DocumentMetadata {
+  return metadata.type === MemoryType.DOCUMENT
+}
+
+export function isFragmentMetadata(
+  metadata: MemoryMetadata,
+): metadata is FragmentMetadata {
+  return metadata.type === MemoryType.FRAGMENT
+}
+
+export function isMessageMetadata(
+  metadata: MemoryMetadata,
+): metadata is MessageMetadata {
+  return metadata.type === MemoryType.MESSAGE
+}
+
+export function isDescriptionMetadata(
+  metadata: MemoryMetadata,
+): metadata is DescriptionMetadata {
+  return metadata.type === MemoryType.DESCRIPTION
+}
+
+export function isCustomMetadata(
+  metadata: MemoryMetadata,
+): metadata is CustomMetadata {
+  return (
+    metadata.type !== MemoryType.DOCUMENT
+    && metadata.type !== MemoryType.FRAGMENT
+    && metadata.type !== MemoryType.MESSAGE
+    && metadata.type !== MemoryType.DESCRIPTION
+  )
+}
+
+export function isDocumentMemory(
+  memory: Memory,
+): memory is Memory & { metadata: DocumentMetadata } {
+  return (
+    memory.metadata !== undefined
+    && memory.metadata.type === MemoryType.DOCUMENT
+  )
+}
+
+export function isFragmentMemory(
+  memory: Memory,
+): memory is Memory & { metadata: FragmentMetadata } {
+  return (
+    memory.metadata !== undefined
+    && memory.metadata.type === MemoryType.FRAGMENT
+  )
+}
+
+export function getMemoryText(memory: Memory, defaultValue = ""): string {
+  return memory.content.text ?? defaultValue
+}
+
+export function stampAppConversationProvenance<T extends Memory>(
+  agentId: UUID,
+  memory: T,
+): T {
+  if (!memory.id) {
+    throw new ElizaError("Conversation memory is missing its durable id", {
+      code: "CONVERSATION_MEMORY_ID_MISSING",
+      context: { roomId: memory.roomId },
+    })
+  }
+  const metadataRecord = memory.metadata
+      && typeof memory.metadata === "object"
+      && !Array.isArray(memory.metadata)
+    ? (memory.metadata as Record<string, unknown>)
+    : {}
+  const readMetadataString = (key: string): string | undefined => {
+    const value = metadataRecord[key]
+    return typeof value === "string" && value.trim() ? value : undefined
+  }
+  const provider = readMetadataString("provider") ?? "client_chat"
+  const accountId = readMetadataString("accountId") ?? agentId
+  const platformMessageId = readMetadataString("platformMessageId") ?? memory.id
+
+  memory.agentId ??= agentId
+  memory.metadata = {
+    ...metadataRecord,
+    type: "message",
+    scope: memory.metadata?.scope ?? "private",
+    provider,
+    accountId,
+    platformMessageId,
+    sourceId: readMetadataString("sourceId") ?? platformMessageId,
+  } satisfies MessageMetadata
+  return memory
+}
+
+export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
+  const content = memory.content
+  const metadata = memory.metadata
+  return (
+    content.doNotPersist === true
+    || content.skipMemory === true
+    || content.transient === true
+    || (metadata != null
+      && "doNotPersist" in metadata
+      && metadata.doNotPersist === true)
+    || (metadata != null
+      && "skipMemory" in metadata
+      && metadata.skipMemory === true)
+    || (metadata != null && "transient" in metadata && metadata.transient === true)
+  )
+}

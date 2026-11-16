@@ -1,0 +1,181 @@
+import { validateUuid } from "../utils/uuid.vibe"
+import type { InteractionBlock } from "./interactions.vibe"
+import type { JsonValue } from "./json.vibe"
+
+export type { JsonObject, JsonPrimitive, JsonValue } from "./json.vibe"
+
+export type ProcessEnvLike = Record<string, string | undefined>
+
+export type UUID = string
+
+export const ChannelType = {
+  SELF: "SELF",
+  DM: "DM",
+  GROUP: "GROUP",
+  VOICE_DM: "VOICE_DM",
+  VOICE_GROUP: "VOICE_GROUP",
+  FEED: "FEED",
+  THREAD: "THREAD",
+  WORLD: "WORLD",
+  FORUM: "FORUM",
+  AUTONOMOUS: "AUTONOMOUS",
+  API: "API",
+} as const
+
+export type ChannelType = (typeof ChannelType)[keyof typeof ChannelType]
+
+export const DEFAULT_UUID: UUID = "00000000-0000-0000-0000-000000000000"
+
+export function asUUID(id: string): UUID {
+  if (!validateUuid(id)) {
+    throw new Error(`Invalid UUID format: ${id}`)
+  }
+  return id as UUID
+}
+
+export type ContentValue =
+  | JsonValue
+  | undefined
+  | ContentValue[]
+  | { [key: string]: ContentValue }
+
+export interface Content {
+  thought?: string
+
+  text?: string
+
+  sourceReplyReferences?: {
+    replySha256: string
+    sources: { eventId: string; sourceSha256: string }[]
+  }
+
+  effectReceiptIds?: string[]
+
+  transcriptVisibility?: "internal"
+
+  merge?: "append" | "replace"
+
+  actions?: string[]
+
+  providers?: string[]
+
+  source?: string
+
+  agentVoiced?: boolean
+  reminderPresentation?: import("./reminder-presentation.vibe").ReminderPresentation
+
+  systemNotice?: import("./system-notice.vibe").SystemNotice
+
+  target?: string
+
+  url?: string
+
+  inReplyTo?: UUID
+
+  reactedMessageText?: string
+
+  attachments?: Media[]
+
+  channelType?: ChannelType
+
+  mentionContext?: MentionContext
+
+  responseMessageId?: UUID
+
+  responseId?: UUID
+
+  actionCallbacks?: Content
+
+  evalCallbacks?: Content
+
+  type?: string
+
+  interactions?: InteractionBlock[]
+
+  [key: string]:
+    | ContentValue
+    | ChannelType
+    | MentionContext
+    | Media[]
+    | InteractionBlock[]
+    | Content
+    | undefined
+}
+
+export interface MentionContext {
+  isMention: boolean
+
+  isReply: boolean
+
+  isThread: boolean
+
+  mentionType?: "platform_mention" | "reply" | "thread" | "none"
+}
+
+export interface Media {
+  id: string
+
+  url: string
+
+  title?: string
+
+  source?: string
+
+  description?: string
+
+  text?: string
+
+  contentType?: ContentType
+
+  thumbnailUrl?: string
+
+  mimeType?: string
+
+  filename?: string
+
+  size?: number
+
+  checksum?: string
+
+  width?: number
+
+  height?: number
+
+  duration?: number
+
+  pageCount?: number
+
+  createdAt?: number
+
+  ephemeral?: boolean
+
+  notProcessed?: string
+
+  enrichmentFailure?: {
+    phase: "fetch" | "describe" | "extract" | "transcribe" | "budget"
+    code: "unavailable" | "empty_result" | "unsupported_type" | "byte_limit"
+    retryable: boolean
+  }
+
+  redactedUrl?: string
+}
+
+export const ContentType = {
+  IMAGE: "image",
+  VIDEO: "video",
+  AUDIO: "audio",
+  DOCUMENT: "document",
+  LINK: "link",
+} as const
+
+export type ContentType = (typeof ContentType)[keyof typeof ContentType]
+
+export type MetadataValue =
+  | JsonValue
+  | undefined
+  | MetadataValue[]
+  | { readonly [key: string]: MetadataValue | undefined }
+
+export type Metadata = {
+  [key: string]: MetadataValue
+}

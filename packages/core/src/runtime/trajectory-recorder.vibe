@@ -1,0 +1,527 @@
+import { ElizaError } from "../errors.vibe"
+import {
+  projectCompleteToolArgsForModel,
+  projectCompleteToolValueForModel,
+  type ToolDiagnosticTextRedactor,
+} from "../security/tool-diagnostics.vibe"
+import type { RecordedStageKind } from "../services/trajectory-semantic-stage.vibe"
+import type { EvaluationResult } from "../types/components.vibe"
+import type { ChatMessage, GenerateTextResult, ToolChoice } from "../types/model.vibe"
+import { toWellFormedUnicode } from "../utils/unicode.vibe"
+import { resolveTrajectoryGate } from "./trajectory-gate.vibe"
+import {
+  canonicalPromptForModelCall,
+  omitUnvalidatedProviderSpans,
+  type TrajectoryProviderAttribution,
+} from "./trajectory-provider-attribution.vibe"
+
+export { RECORDED_STAGE_KINDS, type RecordedStageKind } from "../services/trajectory-semantic-stage.vibe"
+
+export interface RecordedUsage {
+  promptTokens?: number
+  completionTokens?: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+  reasoningTokens?: number
+  totalTokens?: number
+}
+
+export interface RecordedToolCall {
+  id?: string
+  name?: string
+  args?: Record<string, unknown>
+}
+
+export interface RecordedModelCall {
+  modelType: string
+  modelName?: string
+  provider?: string
+  prompt?: string
+  messages?: ChatMessage[] | unknown[]
+  tools?: unknown
+  toolChoice?: ToolChoice | unknown
+  providerOptions?: unknown
+  response: string
+
+  responseContent?: GenerateTextResult["content"]
+  toolCalls?: RecordedToolCall[]
+  usage?: RecordedUsage
+  finishReason?: string
+
+  costUsd?: number
+
+  priceTableId?: string
+
+  providerOrder?: string[]
+
+  providerAttributions?: TrajectoryProviderAttribution[]
+}
+
+export interface RecordedTruncationMarker {
+  field: "input" | "output" | "error" | "args" | "result"
+  originalBytes: number
+  capBytes: number
+}
+
+export interface RecordedToolStage {
+  name: string
+  args: Record<string, unknown>
+  result: unknown
+  success: boolean
+  durationMs: number
+
+  description?: string
+  error?: string
+
+  input?: string
+
+  output?: string
+
+  errorText?: string
+
+  truncated?: RecordedTruncationMarker[]
+}
+
+export interface RecordedRetrievalStageEntry {
+  actionName: string
+  score: number
+  rank: number
+}
+
+export interface RecordedRetrievalPerStageScores {
+  exact: RecordedRetrievalStageEntry[]
+  regex: RecordedRetrievalStageEntry[]
+  keyword: RecordedRetrievalStageEntry[]
+  bm25: RecordedRetrievalStageEntry[]
+  embedding: RecordedRetrievalStageEntry[]
+  contextMatch: RecordedRetrievalStageEntry[]
+}
+
+export interface RecordedToolSearchStage {
+  query: {
+    text: string
+    tokens?: string[]
+    candidateActions?: string[]
+    parentActionHints?: string[]
+  }
+  results: Array<{
+    name: string
+    score: number
+    rank: number
+    rrfScore?: number
+    matchedBy?: string[]
+    stageScores?: Record<string, number>
+  }>
+  tier: { tierA: string[]; tierB: string[]; omitted: number }
+  durationMs: number
+  fallback?: string
+
+  perStageScores?: RecordedRetrievalPerStageScores
+
+  fusedTopK?: Array<{ actionName: string; rrfScore: number; rank: number }>
+
+  selectedActions?: string[]
+
+  correctActions?: string[]
+}
+
+export interface RecordedEvaluationStage extends EvaluationResult {
+  protocolFailure?: true
+  [key: string]: unknown
+}
+
+export interface RecordedFactsAndRelationshipsStage {
+  candidates: {
+    facts: string[]
+    relationships: Array<{
+      subject: string
+      predicate: string
+      object: string
+    }>
+  }
+  kept: {
+    facts: string[]
+    relationships: Array<{
+      subject: string
+      predicate: string
+      object: string
+    }>
+  }
+  written: { facts: number; relationships: number }
+  thought: string
+
+  llmCallSkipped?: boolean
+  reason?: string
+}
+
+export interface RecordedCacheStage {
+  segmentHashes: string[]
+  prefixHash: string
+  diffFromPriorStage?: {
+    added: number
+    unchanged: number
+    removed: number
+  }
+}
+
+export interface RecordedStage {
+  stageId: string
+  kind: RecordedStageKind
+  iteration?: number
+  retryIdx?: number
+  parentStageId?: string
+  startedAt: number
+  endedAt: number
+  latencyMs: number
+  model?: RecordedModelCall
+  tool?: RecordedToolStage
+  toolSearch?: RecordedToolSearchStage
+  evaluation?: RecordedEvaluationStage
+  cache?: RecordedCacheStage
+  factsAndRelationships?: RecordedFactsAndRelationshipsStage
+}
+
+export interface RecordedTrajectoryMetrics {
+  totalLatencyMs: number
+  totalPromptTokens: number
+  totalCompletionTokens: number
+  totalCacheReadTokens: number
+  totalCacheCreationTokens: number
+  totalReasoningTokens?: number
+  totalCostUsd: number
+  plannerIterations: number
+  toolCallsExecuted: number
+  toolCallFailures: number
+  toolSearchCount: number
+  evaluatorFailures: number
+  finalDecision?: "FINISH" | "CONTINUE" | "max_iterations" | "error"
+}
+
+export interface RecordedTrajectory {
+  trajectoryId: string
+  agentId: string
+  roomId?: string
+  runId?: string
+  scenarioId?: string
+
+  traceId?: string
+  taskId?: string
+  sessionId?: string
+  parentStepId?: string
+  codingActionProfile?: {
+    kind: "pi"
+    includeWorktree: boolean
+  }
+  rootMessage: { id: string; text: string; sender?: string }
+  startedAt: number
+  endedAt?: number
+  status: "running" | "finished" | "errored"
+  stages: RecordedStage[]
+  metrics: RecordedTrajectoryMetrics
+}
+
+export interface StartTrajectoryInput {
+  agentId: string
+  roomId?: string
+  rootMessage: { id: string; text: string; sender?: string }
+
+  runId?: string
+  scenarioId?: string
+
+  traceId?: string
+  taskId?: string
+  sessionId?: string
+  parentStepId?: string
+
+  codingActionProfile?: {
+    kind: "pi"
+    includeWorktree: boolean
+  }
+}
+
+export interface ListTrajectoriesOptions {
+  agentId?: string
+  since?: number
+  limit?: number
+}
+
+export interface TrajectoryRecorder {
+  startTrajectory(input: StartTrajectoryInput): string
+  recordStage(trajectoryId: string, stage: RecordedStage): Promise<void>
+  endTrajectory(
+    trajectoryId: string,
+    status: "finished" | "errored",
+  ): Promise<void>
+  load(trajectoryId: string): Promise<RecordedTrajectory | null>
+  list(opts?: ListTrajectoriesOptions): Promise<RecordedTrajectory[]>
+}
+
+export interface RecorderLogger {
+  warn?: (context: unknown, message?: string) => void
+  debug?: (context: unknown, message?: string) => void
+  error?: (context: unknown, message?: string) => void
+}
+
+export function isTrajectoryRecordingEnabled(): boolean {
+  return resolveTrajectoryGate().enabled
+}
+
+const RECORD_SANITIZE_MAX_DEPTH = 40
+
+function sanitizeForRecord(
+  value: unknown,
+  seen = new WeakSet<object>(),
+  depth = 0,
+): unknown {
+  if (depth > RECORD_SANITIZE_MAX_DEPTH) {
+    return "[MaxDepth]"
+  }
+  if (value === null) return null
+  if (typeof value === "string") return toWellFormedUnicode(value)
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null
+  }
+  if (typeof value === "boolean") {
+    return value
+  }
+  if (typeof value === "bigint") {
+    return value.toString()
+  }
+  if (value === undefined) {
+    return undefined
+  }
+  if (typeof value === "function") {
+    const fnName = (value as { name?: string }).name
+    return `[Function ${typeof fnName === "string" && fnName.length > 0 ? fnName : "anonymous"}]`
+  }
+  if (typeof value === "symbol") {
+    return value.toString()
+  }
+  if (value instanceof Date) {
+    return value.toJSON()
+  }
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    }
+  }
+  if (value instanceof RegExp) {
+    return value.toString()
+  }
+  if (value instanceof ArrayBuffer) {
+    return { type: "ArrayBuffer", byteLength: value.byteLength }
+  }
+  if (ArrayBuffer.isView(value)) {
+    return {
+      type: value.constructor.name || "ArrayBufferView",
+      byteLength: value.byteLength,
+    }
+  }
+  if (value instanceof Map) {
+    if (seen.has(value)) return "[Circular]"
+    seen.add(value)
+    const output: Record<string, unknown> = {}
+    for (const [key, entry] of value.entries()) {
+      const sanitized = sanitizeForRecord(entry, seen, depth + 1)
+      if (sanitized !== undefined) {
+        output[String(key)] = sanitized
+      }
+    }
+    seen.delete(value)
+    return output
+  }
+  if (value instanceof Set) {
+    if (seen.has(value)) return "[Circular]"
+    seen.add(value)
+    const output: unknown[] = []
+    for (const entry of value.values()) {
+      output.push(sanitizeForRecord(entry, seen, depth + 1) ?? null)
+    }
+    seen.delete(value)
+    return output
+  }
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return "[Circular]"
+    seen.add(value)
+    const output: unknown[] = []
+    const length = value.length
+    for (let i = 0; i < length; i++) {
+      output.push(sanitizeForRecord(value[i], seen, depth + 1) ?? null)
+    }
+    seen.delete(value)
+    return output
+  }
+  if (typeof value === "object") {
+    if (seen.has(value)) return "[Circular]"
+    seen.add(value)
+    const entries = Object.entries(value as Record<string, unknown>)
+    if (entries.length === 0) {
+      seen.delete(value)
+      const prototype = Object.getPrototypeOf(value)
+      if (prototype === Object.prototype || prototype === null) {
+        return {}
+      }
+      return String(value)
+    }
+    const output: Record<string, unknown> = {}
+    for (const [key, entry] of entries) {
+      const sanitized = sanitizeForRecord(entry, seen, depth + 1)
+      if (sanitized !== undefined) {
+        output[key] = sanitized
+      }
+    }
+    seen.delete(value)
+    return output
+  }
+  return String(value)
+}
+
+export function cloneTrajectoryValue<T>(value: T): T {
+  return sanitizeForRecord(value) as T
+}
+
+export function encodeTrajectoryFieldValue(value: unknown): string {
+  if (typeof value === "string") return value
+  if (value === undefined || value === null) return ""
+  const serialized = JSON.stringify(sanitizeForRecord(value))
+  if (serialized === undefined) {
+    throw new ElizaError("Trajectory field is not JSON-serializable", {
+      code: "TRAJECTORY_FIELD_INVALID",
+    })
+  }
+  return serialized
+}
+
+export interface ToolStageIOInput {
+  input?: unknown
+  output?: unknown
+  error?: unknown
+}
+
+export interface ToolStageIOCapture {
+  input?: string
+  output?: string
+  errorText?: string
+}
+
+export function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture {
+  const out: ToolStageIOCapture = {}
+  if (args.input !== undefined) {
+    out.input = encodeWellFormedTrajectoryField(args.input)
+  }
+  if (args.output !== undefined) {
+    out.output = encodeWellFormedTrajectoryField(args.output)
+  }
+  if (args.error !== undefined) {
+    out.errorText = encodeWellFormedTrajectoryField(args.error)
+  }
+  return out
+}
+
+function encodeWellFormedTrajectoryField(value: unknown): string {
+  return typeof value === "string"
+    ? toWellFormedUnicode(value)
+    : encodeTrajectoryFieldValue(value)
+}
+
+export function projectRecordedStageToolDiagnostics(
+  stage: RecordedStage,
+  redactText: ToolDiagnosticTextRedactor,
+): void {
+  if (stage.tool) {
+    stage.tool.args = projectCompleteToolArgsForModel(stage.tool.args, redactText) ?? {}
+    stage.tool.result = projectCompleteToolValueForModel(
+      stage.tool.result,
+      redactText,
+    )
+    if (typeof stage.tool.error === "string") {
+      stage.tool.error = redactText(stage.tool.error)
+    }
+    if (stage.tool.input !== undefined) {
+      stage.tool.input = redactText(stage.tool.input)
+    }
+    if (stage.tool.output !== undefined) {
+      stage.tool.output = redactText(stage.tool.output)
+    }
+    if (stage.tool.errorText !== undefined) {
+      stage.tool.errorText = redactText(stage.tool.errorText)
+    }
+  }
+  if (stage.model) {
+    const attributionInputBefore = canonicalPromptForModelCall({
+      messages: stage.model.messages,
+      prompt: stage.model.prompt,
+    })
+    if (stage.model.toolCalls?.length) {
+      stage.model.toolCalls = stage.model.toolCalls.map((toolCall) => ({
+        ...toolCall,
+        ...(toolCall.args !== undefined
+          ? { args: projectCompleteToolArgsForModel(toolCall.args, redactText) }
+          : {}),
+      }))
+    }
+
+    if (typeof stage.model.prompt === "string") {
+      stage.model.prompt = redactText(stage.model.prompt)
+    }
+    stage.model.response = redactText(stage.model.response)
+    if (Array.isArray(stage.model.messages)) {
+      stage.model.messages = projectCompleteToolValueForModel(
+        stage.model.messages,
+        redactText,
+      ) as RecordedModelCall["messages"]
+    }
+    const attributionInputAfter = canonicalPromptForModelCall({
+      messages: stage.model.messages,
+      prompt: stage.model.prompt,
+    })
+    if (
+      attributionInputAfter !== attributionInputBefore
+      && stage.model.providerAttributions?.length
+    ) {
+      stage.model.providerAttributions = omitUnvalidatedProviderSpans(
+        stage.model.providerAttributions,
+      )
+    }
+  }
+  if (stage.evaluation) {
+    stage.evaluation = projectCompleteToolValueForModel(
+      stage.evaluation,
+      redactText,
+    ) as RecordedEvaluationStage
+  }
+}
+
+export interface FinalizeTrajectoryRecordingOptions {
+  recorder: TrajectoryRecorder
+  trajectoryId: string
+  status: "finished" | "errored"
+  logger?: RecorderLogger
+  reportError?: (
+    scope: string,
+    error: unknown,
+    context?: Record<string, unknown>,
+  ) => void
+}
+
+export async function finalizeTrajectoryRecording(
+  opts: FinalizeTrajectoryRecordingOptions,
+): Promise<void> {
+  try {
+    await opts.recorder.endTrajectory(opts.trajectoryId, opts.status)
+  } catch (err) {
+    opts.logger?.warn?.(
+      {
+        err: err instanceof Error ? err.message : String(err),
+        trajectoryId: opts.trajectoryId,
+      },
+      "[TrajectoryRecorder] endTrajectory failed",
+    )
+    opts.reportError?.("TrajectoryRecorder.finalize", err, {
+      trajectoryId: opts.trajectoryId,
+      status: opts.status,
+    })
+  }
+}

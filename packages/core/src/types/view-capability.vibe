@@ -1,0 +1,29 @@
+export interface ViewCapabilityParameter {
+  type: string
+
+  description: string
+
+  required?: boolean
+
+  enum?: Array<string | number | boolean>
+
+  pattern?: string
+
+  minLength?: number
+
+  maxLength?: number
+
+  minimum?: number
+
+  maximum?: number
+}
+
+export interface ViewCapability {
+  id: string
+
+  description: string
+
+  authority?: "agent" | "human"
+
+  params?: Record<string, ViewCapabilityParameter>
+}

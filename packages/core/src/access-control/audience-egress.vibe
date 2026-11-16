@@ -1,0 +1,38 @@
+import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audience.vibe"
+import type { DisclosureSubject } from "../types/memory.vibe"
+import { validateUuid } from "../utils/uuid.vibe"
+import {
+  type AudienceAdmission,
+  attestedAudienceViewerResolver,
+  resolveAudienceAdmission,
+} from "./audience-disclosure.vibe"
+import { isMemoryScope, parseShareGrantList } from "./memory-scope.vibe"
+
+export function parseEgressDisclosureSubject(
+  value: unknown,
+): DisclosureSubject | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== "object") {
+    return { scope: "owner-private" }
+  }
+  const record = value as Record<string, unknown>
+  const scope = isMemoryScope(record.scope) ? record.scope : "owner-private"
+  const scopedEntityId = validateUuid(record.scopedEntityId)
+  const grants = parseShareGrantList(record.grants)
+  return {
+    scope,
+    ...(scopedEntityId ? { scopedEntityId } : {}),
+    ...(grants.length > 0 ? { grants } : {}),
+  }
+}
+
+export function resolveEgressAudienceAdmission(
+  subject: DisclosureSubject,
+  audience: TrustedDeliveryAudience,
+): AudienceAdmission {
+  return resolveAudienceAdmission(
+    subject,
+    audience,
+    attestedAudienceViewerResolver(subject, audience),
+  )
+}

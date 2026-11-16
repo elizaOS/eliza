@@ -102,7 +102,7 @@ export default defineConfig(
   { files: ["**/*.{vibe,vibex}"], extends: [tseslint.configs.disableTypeChecked], languageOptions: { parser: vibelang, parserOptions: { projectService: false } }, rules: { "no-undef": "off" } },
   // React belongs to interfaces: the tools apart from Studio's page, and schemas, contracts, drivers and the shell everywhere, do without it.
   {
-    files: ["vibestack/**", "**/*.{schema,contract}.ts", "**/test/drivers/**", "**/*.vibe"],
+    files: ["vibestack/**", "packages/core/**", "**/*.{schema,contract}.ts", "**/test/drivers/**", "**/*.vibe"],
     ignores: ["vibestack/studio/src/page/**"],
     rules: { "no-restricted-imports": ["error", noReact] },
   },

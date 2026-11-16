@@ -1,0 +1,41 @@
+const TRUTHY = new Set(["1", "true", "yes", "on"])
+
+function coerceFlag(raw: string | undefined): boolean | undefined {
+  if (raw === undefined) return undefined
+  const trimmed = raw.trim()
+  if (trimmed === "") return undefined
+  return TRUTHY.has(trimmed.toLowerCase())
+}
+
+export interface TrajectoryGateDecision {
+  enabled: boolean
+
+  reason: string
+}
+
+export function resolveTrajectoryGate(
+  env: NodeJS.ProcessEnv = process.env,
+): TrajectoryGateDecision {
+  if (env.ELIZA_DISABLE_TRAJECTORY_LOGGING === "1") {
+    return { enabled: false, reason: "disable-flag" }
+  }
+
+  const explicit = coerceFlag(env.ELIZA_TRAJECTORY_LOGGING)
+  if (explicit !== undefined) {
+    return { enabled: explicit, reason: "explicit-logging" }
+  }
+
+  if ((env.ELIZA_PROTECTED_PROFILE ?? "").trim() !== "") {
+    return { enabled: false, reason: "protected-profile-default-off" }
+  }
+
+  if (env.NODE_ENV === "test") {
+    return { enabled: false, reason: "test-default-off" }
+  }
+
+  if (env.NODE_ENV === "production") {
+    return { enabled: false, reason: "production-opt-in" }
+  }
+
+  return { enabled: true, reason: "dev-default-on" }
+}

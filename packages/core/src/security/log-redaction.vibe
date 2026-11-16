@@ -1,0 +1,497 @@
+const REDACTED_VALUE = "[REDACTED]"
+
+export const REDACTION_FAILED_VALUE = "[REDACTED: redaction failed]"
+
+const MAX_REDACT_DEPTH = 8
+
+const MAX_SHARED_WORK = 10_000
+const SHARED_TEXT_UNIT = 256
+const CIRCULAR_VALUE = "[Circular]"
+const SHARED_VALUE = "[Shared]"
+
+const SENSITIVE_KEY_SUBSTRINGS: readonly string[] = [
+  "password",
+  "passwd",
+  "passphrase",
+  "secret",
+  "mnemonic",
+  "seedphrase",
+  "privatekey",
+  "apikey",
+  "accesstoken",
+  "refreshtoken",
+  "authkey",
+  "credential",
+  "authorization",
+  "sessionkey",
+
+  "webhook",
+  "connectionstring",
+]
+
+const SENSITIVE_KEY_EXACT: ReadonlySet<string> = new Set([
+  "auth",
+  "session",
+  "jwt",
+  "bearer",
+  "cookie",
+  "dsn",
+])
+
+const NON_SECRET_KEY_METADATA_KEYS: ReadonlySet<string> = new Set([
+  "budgettokens",
+  "cachecreationinputtokens",
+  "cachereadinputtokens",
+  "completiontokens",
+  "compactionthresholdtokens",
+  "contextwindowtokens",
+  "dedupekey",
+  "estimatedinputtokens",
+  "finalprompttokens",
+  "groupkey",
+  "idempotencykey",
+  "inputtokens",
+  "maxtokens",
+  "maxtokensomitted",
+  "operationkey",
+  "originalprompttokens",
+  "outputreservetokens",
+  "outputtokens",
+  "prompttokens",
+  "reasoningtokens",
+  "reservetokens",
+  "tokencount",
+  "tokencountestimated",
+  "tokenid",
+  "totaltokens",
+])
+
+export function isSensitiveLogKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[_\-. ]/g, "")
+  if (NON_SECRET_KEY_METADATA_KEYS.has(normalized)) return false
+  if (SENSITIVE_KEY_EXACT.has(normalized)) return true
+  if (SENSITIVE_KEY_SUBSTRINGS.some((needle) => normalized.includes(needle))) {
+    return true
+  }
+  if (normalized.includes("token")) return true
+
+  if (/(?:^|[_\-. ])key$/i.test(key) || /[a-z]Key$/.test(key)) return true
+
+  if (/(?:master|signing|ssh|encryption)key$/.test(normalized)) return true
+
+  if (
+    /(?:^|[_\-. ])(jwt|bearer|cookie)$/i.test(key)
+    || /[a-z](Jwt|Bearer|Cookie)$/.test(key)
+  ) {
+    return true
+  }
+  return false
+}
+
+const HTTP_TOKEN_PATTERN = "[!#$%&'*+\\-.^_`|~0-9A-Za-z]+"
+const HTTP_BWS_PATTERN = String.raw`[ \t]*`
+const HTTP_QUOTED_STRING_PATTERN = String.raw`"(?:[\t\x20\x21\x23-\x5B\x5D-\x7E\x80-\xFF]|\\[\t\x20-\x7E\x80-\xFF])*"`
+const HTTP_AUTH_PARAM_PATTERN =
+  `${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=${HTTP_BWS_PATTERN}(?:${HTTP_TOKEN_PATTERN}|${HTTP_QUOTED_STRING_PATTERN})`
+
+const HTTP_AUTH_PARAM_LIST_PATTERN =
+  `(?:,${HTTP_BWS_PATTERN})*${HTTP_AUTH_PARAM_PATTERN}(?:(?:${HTTP_BWS_PATTERN},)+${HTTP_BWS_PATTERN}${HTTP_AUTH_PARAM_PATTERN})*(?:${HTTP_BWS_PATTERN},)*`
+const HTTP_TOKEN68_PATTERN = String.raw`[A-Za-z0-9._~+/\-]+={0,}`
+
+export const SENSITIVE_ASSIGNMENT_PATTERNS: readonly string[] = [
+  String
+    .raw`/(?<![A-Za-z0-9_-])(?:[a-z0-9]+[_-])*(?:password|passwd|passphrase|mnemonic|seed|credential|secret|token|api[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|bot[_-]?token|session[_-]?key|private[_-]?key|client[_-]?secret|seed[_-]?phrase)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/gi`,
+
+  String
+    .raw`/\b(?:[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)|(?:api_key|access_token|refresh_token|auth_token|bot_token|session_key|private_key|client_secret|seed_phrase|connection_string|webhook_url))\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/g`,
+]
+
+export const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
+  ...SENSITIVE_ASSIGNMENT_PATTERNS,
+
+  String
+    .raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
+
+  String
+    .raw`(["'])(?:[A-Za-z0-9]+[_.\-]){0,8}(?:api[_.\-]?key|access[_.\-]?token|refresh[_.\-]?token|auth[_.\-]?token|bot[_.\-]?token|session[_.\-]?key|private[_.\-]?key|client[_.\-]?secret|seed[_.\-]?phrase|passphrase|password|passwd|mnemonic|credential|secret|token|key)\1\s*[:=]\s*(["'])([^"'\\]+)\2`,
+
+  String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
+
+  String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=/~]+)`,
+  String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Basic[ \t]+(${HTTP_TOKEN68_PATTERN})(?=[ \t]|[\r\n]|$)`,
+  String
+    .raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_AUTH_PARAM_LIST_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
+  String
+    .raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_TOKEN68_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
+  String
+    .raw`(?:Proxy-)?Authorization\s*[:=]\s*(?!(?:Basic|Bearer)(?:[ \t]|$))(${HTTP_TOKEN_PATTERN})[ \t]+((?=${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=)[^\r\n]+)(?=[\r\n]|$)`,
+  String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._~+/\-]{18,}={0,})(?=[\r\n]|$)`,
+  String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
+
+  String.raw`\b[a-z][a-z0-9+.-]*:\/\/([^\s/@]+)@`,
+
+  String
+    .raw`-----BEGIN [A-Z ]*PRIVATE KEY-----(?:(?!-----BEGIN [A-Z ]*PRIVATE KEY-----)[\s\S])+?(?:-----END [A-Z ]*PRIVATE KEY-----|(?=-----BEGIN [A-Z ]*PRIVATE KEY-----))|-----BEGIN [A-Z ]*PRIVATE KEY-----(?=-----BEGIN [A-Z ]*PRIVATE KEY-----)`,
+
+  String.raw`\b(sk-[A-Za-z0-9_-]{8,})\b`,
+  String.raw`\b(csk-[A-Za-z0-9_-]{8,})\b`,
+  String.raw`\b((?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,})\b`,
+
+  String.raw`/\b((?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16})\b/g`,
+  String.raw`\b(ghp_[A-Za-z0-9]{20,})\b`,
+  String.raw`\b(github_pat_[A-Za-z0-9_]{20,})\b`,
+  String.raw`\b(xox[baprs]-[A-Za-z0-9-]{10,})\b`,
+  String.raw`\b(xapp-[A-Za-z0-9-]{10,})\b`,
+  String.raw`\b(gsk_[A-Za-z0-9_-]{10,})\b`,
+  String.raw`\b(AIza[0-9A-Za-z\-_]{20,})\b`,
+  String.raw`\b(pplx-[A-Za-z0-9_-]{10,})\b`,
+  String.raw`\b(npm_[A-Za-z0-9]{10,})\b`,
+
+  String.raw`(?<![0-9A-Fa-f]{4}-)\b(\d{6,}:[A-Za-z0-9_-]{20,})\b`,
+
+  String.raw`/(1\/\/[A-Za-z0-9_\-]{10,})/g`,
+  String.raw`/\b(ya29\.[A-Za-z0-9_\-.]{10,})/g`,
+]
+
+export function compileSensitiveTextPattern(raw: string): RegExp | null {
+  if (!raw.trim()) return null
+  const match = raw.match(/^\/(.+)\/([gimsuy]*)$/)
+  try {
+    if (match) {
+      const flags = match[2].includes("g") ? match[2] : `${match[2]}g`
+      return new RegExp(match[1], flags)
+    }
+    return new RegExp(raw, "gi")
+  } catch {
+    return null
+  }
+}
+
+export const SENSITIVE_TEXT_REGEXPS: readonly RegExp[] = SENSITIVE_TEXT_PATTERNS.map(compileSensitiveTextPattern)
+  .filter(
+    (re): re is RegExp => re !== null,
+  )
+
+const SENSITIVE_TEXT_MIN_LENGTH = 18
+const SENSITIVE_TEXT_KEEP_START = 6
+const SENSITIVE_TEXT_KEEP_END = 4
+
+function maskSensitiveToken(token: string): string {
+  if (token.length < SENSITIVE_TEXT_MIN_LENGTH) {
+    return "***"
+  }
+  const start = token.slice(0, SENSITIVE_TEXT_KEEP_START)
+  const end = token.slice(-SENSITIVE_TEXT_KEEP_END)
+  return `${start}…${end}`
+}
+
+function redactSensitiveLogMatch(match: string, groups: string[]): string {
+  if (match.includes("PRIVATE KEY-----")) {
+    return "***"
+  }
+  const filteredGroups = groups.filter(
+    (value) => typeof value === "string" && value.length > 0,
+  )
+  const token = filteredGroups[filteredGroups.length - 1] ?? match
+
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(match) && match.endsWith("@")) {
+    return match.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@$/i, "$1***@")
+  }
+  const masked = maskSensitiveToken(token)
+  if (token === match) {
+    return masked
+  }
+
+  const tailIndex = match.length - token.length
+  if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
+    return `${match.slice(0, tailIndex)}${masked}`
+  }
+
+  return match.replace(token, () => masked)
+}
+
+export function redactSensitiveLogText(text: string): string {
+  if (!text) {
+    return text
+  }
+  let next = text
+  for (const pattern of SENSITIVE_TEXT_REGEXPS) {
+    next = next.replace(
+      pattern,
+      (...args: string[]) => redactSensitiveLogMatch(args[0], args.slice(1, args.length - 2)),
+    )
+  }
+  return next
+}
+
+function createRedactClone(): Record<string, unknown> {
+  return {}
+}
+
+function protectCloneCoercion(clone: object, text: string): void {
+  Object.defineProperty(clone, Symbol.toPrimitive, {
+    value: (hint: string) => (hint === "number" ? Number.NaN : text),
+  })
+}
+
+interface SharedReferenceBudget {
+  expanded: WeakSet<object>
+
+  rejected: WeakSet<object>
+  remaining: number
+
+  repeatDepth: number
+}
+
+function sharedTextExtra(text: unknown): number {
+  return typeof text === "string"
+    ? Math.floor(text.length / SHARED_TEXT_UNIT)
+    : 0
+}
+
+function shallowWidth(value: object): number {
+  if (Array.isArray(value)) return value.length
+  if (value instanceof Map) return Reflect.get(Map.prototype, "size", value)
+  if (value instanceof Set) return Reflect.get(Set.prototype, "size", value)
+
+  return Object.keys(value).length + (value instanceof Error ? 1 : 0)
+}
+
+function spendRepeatedSlot(shared: SharedReferenceBudget): boolean {
+  return shared.repeatDepth === 0 || spendSharedWork(shared, 1)
+}
+
+function spendSharedWork(shared: SharedReferenceBudget, cost: number): boolean {
+  if (shared.remaining < cost) return false
+  shared.remaining -= cost
+  return true
+}
+
+export function redactLogValue(
+  value: unknown,
+  seen: WeakSet<object>,
+  depth: number,
+): unknown {
+  return redactWalkValue(value, seen, depth, {
+    expanded: new WeakSet<object>(),
+    rejected: new WeakSet<object>(),
+    remaining: MAX_SHARED_WORK,
+    repeatDepth: 0,
+  })
+}
+
+function redactWalkValue(
+  value: unknown,
+  seen: WeakSet<object>,
+  depth: number,
+  shared: SharedReferenceBudget,
+): unknown {
+  if (typeof value === "string") {
+    const extra = shared.repeatDepth > 0 ? sharedTextExtra(value) : 0
+    if (extra > 0 && !spendSharedWork(shared, extra)) return SHARED_VALUE
+    return redactSensitiveLogText(value)
+  }
+
+  if (typeof value === "function") return null
+  if (value === null || typeof value !== "object") return value
+  if (seen.has(value)) return CIRCULAR_VALUE
+  if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE
+  const repeated = shared.expanded.has(value)
+  shared.expanded.add(value)
+  if (isLeafObject(value)) {
+    const extra = (repeated || shared.repeatDepth > 0) && value instanceof RegExp
+      ? sharedTextExtra(RegExp.prototype.toString.call(value))
+      : 0
+    if (extra > 0 && !spendSharedWork(shared, extra)) return SHARED_VALUE
+    return redactLeafObject(value)
+  }
+  if (repeated || shared.repeatDepth > 0) {
+    if (shared.rejected.has(value) || shared.remaining <= 0) {
+      return SHARED_VALUE
+    }
+
+    const errorText = value instanceof Error
+      ? sharedTextExtra(value.message) + sharedTextExtra(value.stack)
+      : 0
+    if (shared.remaining < 1 + shallowWidth(value) + errorText) {
+      shared.rejected.add(value)
+      return SHARED_VALUE
+    }
+    shared.remaining -= 1 + errorText
+  }
+  if (repeated) shared.repeatDepth += 1
+
+  seen.add(value)
+  try {
+    return redactObjectValue(value, seen, depth, shared)
+  } finally {
+    seen.delete(value)
+    if (repeated) shared.repeatDepth -= 1
+  }
+}
+
+function isLeafObject(value: object): boolean {
+  return (
+    ArrayBuffer.isView(value)
+    || value instanceof ArrayBuffer
+    || value instanceof Date
+    || value instanceof RegExp
+    || value instanceof WeakMap
+    || value instanceof WeakSet
+    || value instanceof Promise
+  )
+}
+
+function redactLeafObject(value: object): string {
+  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+    return `[BUFFER REDACTED ${value.byteLength} bytes]`
+  }
+
+  if (value instanceof Date) {
+    try {
+      return Date.prototype.toISOString.call(value)
+    } catch {
+      return "[Invalid Date]"
+    }
+  }
+  if (value instanceof RegExp) {
+    return `[RegExp ${redactSensitiveLogText(RegExp.prototype.toString.call(value))}]`
+  }
+  if (value instanceof WeakMap) return "[WeakMap]"
+  if (value instanceof WeakSet) return "[WeakSet]"
+  return "[Promise]"
+}
+
+function redactObjectValue(
+  value: object,
+  seen: WeakSet<object>,
+  depth: number,
+  shared: SharedReferenceBudget,
+): unknown {
+  if (value instanceof Error) {
+    const clone = new Error(redactSensitiveLogText(value.message))
+    clone.name = redactSensitiveLogText(value.name)
+    if (value.stack) clone.stack = redactSensitiveLogText(value.stack)
+    protectCloneCoercion(clone, Error.prototype.toString.call(clone))
+    if (value.cause !== undefined) {
+      clone.cause = spendRepeatedSlot(shared)
+        ? redactWalkValue(value.cause, seen, depth + 1, shared)
+        : SHARED_VALUE
+    }
+    const target = clone as unknown as Record<string, unknown>
+    redactOwnPropertiesInto(value, target, seen, depth + 1, shared)
+    return clone
+  }
+
+  if (Array.isArray(value)) {
+    const result = new Array<unknown>(value.length)
+    for (let index = 0; index < value.length; index += 1) {
+      result[index] = spendRepeatedSlot(shared)
+        ? redactWalkValue(value[index], seen, depth + 1, shared)
+        : SHARED_VALUE
+    }
+    return result
+  }
+
+  if (value instanceof Map) {
+    const entries: unknown[] = []
+    Map.prototype.forEach.call(
+      value,
+      (entryValue: unknown, entryKey: unknown) => {
+        if (!spendRepeatedSlot(shared)) {
+          entries.push(SHARED_VALUE)
+          return
+        }
+        const safeKey = redactWalkValue(entryKey, seen, depth + 1, shared)
+        const safeValue = typeof entryKey === "string" && isSensitiveLogKey(entryKey)
+          ? REDACTED_VALUE
+          : redactWalkValue(entryValue, seen, depth + 1, shared)
+        entries.push([safeKey, safeValue])
+      },
+    )
+    const result = createRedactClone()
+    defineSafeProperty(result, "type", "Map")
+    defineSafeProperty(result, "entries", entries)
+    return result
+  }
+  if (value instanceof Set) {
+    const values: unknown[] = []
+    Set.prototype.forEach.call(value, (entryValue: unknown) => {
+      values.push(
+        spendRepeatedSlot(shared)
+          ? redactWalkValue(entryValue, seen, depth + 1, shared)
+          : SHARED_VALUE,
+      )
+    })
+    const result = createRedactClone()
+    defineSafeProperty(result, "type", "Set")
+    defineSafeProperty(result, "values", values)
+    return result
+  }
+
+  const result = createRedactClone()
+  redactOwnPropertiesInto(value, result, seen, depth + 1, shared)
+
+  if (Object.hasOwn(result, "toString")) {
+    protectCloneCoercion(result, "[object Object]")
+  }
+  return result
+}
+
+function defineSafeProperty(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  })
+}
+
+function redactOwnPropertiesInto(
+  source: object,
+  target: Record<string, unknown>,
+  seen: WeakSet<object>,
+  depth: number,
+  shared: SharedReferenceBudget,
+): void {
+  for (const key of Object.keys(source)) {
+    if (!spendRepeatedSlot(shared)) {
+      defineSafeProperty(target, key, SHARED_VALUE)
+      continue
+    }
+    if (isSensitiveLogKey(key)) {
+      defineSafeProperty(target, key, REDACTED_VALUE)
+      continue
+    }
+    try {
+      const entry = (source as Record<string, unknown>)[key]
+
+      if (typeof entry === "function") continue
+      defineSafeProperty(
+        target,
+        key,
+        redactWalkValue(entry, seen, depth, shared),
+      )
+    } catch {
+      defineSafeProperty(target, key, REDACTION_FAILED_VALUE)
+    }
+  }
+}
+
+export function redactTrailingArgs(args: readonly unknown[]): unknown[] {
+  return args.map((arg) => {
+    if (typeof arg === "string") return redactSensitiveLogText(arg)
+    if (arg === null || (typeof arg !== "object" && typeof arg !== "function")) {
+      return arg
+    }
+    try {
+      return redactLogValue(arg, new WeakSet<object>(), 0)
+    } catch {
+      return REDACTION_FAILED_VALUE
+    }
+  })
+}

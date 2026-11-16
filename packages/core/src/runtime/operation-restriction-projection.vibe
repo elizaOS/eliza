@@ -1,0 +1,15 @@
+import {
+  type BoundRequestOperationAttempt,
+  transferBoundOperationDenial,
+} from "../actions/task-extraction-context.vibe"
+
+export function copyBoundOperationDenial<T extends object>(
+  source: object,
+  target: T,
+  expectedAttempt: BoundRequestOperationAttempt | undefined,
+): T {
+  if (expectedAttempt) {
+    transferBoundOperationDenial(source, target, expectedAttempt)
+  }
+  return target
+}

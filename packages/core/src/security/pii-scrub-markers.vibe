@@ -1,0 +1,88 @@
+import { sha256Hex } from "../runtime/trajectory-provider-attribution.vibe"
+
+export const PII_SCRUB_MARKER_PREFIX = "pii"
+
+export interface PiiScrubDoneMarker {
+  readonly contentHash: string
+
+  readonly rulesetVersion: string
+
+  readonly modelId: string
+
+  readonly completedAt: number
+
+  readonly tier0Only: boolean
+}
+
+export function hashScrubContent(content: string): string {
+  return sha256Hex(content)
+}
+
+export function scrubMarkerKey(
+  contentHash: string,
+  rulesetVersion: string,
+): string {
+  if (typeof rulesetVersion !== "string" || rulesetVersion.length === 0) {
+    throw new Error(
+      "[pii-scrub-markers] rulesetVersion must be a non-empty string; refusing to build a version-collapsed marker key",
+    )
+  }
+  if (typeof contentHash !== "string" || contentHash.length === 0) {
+    throw new Error(
+      "[pii-scrub-markers] contentHash must be a non-empty string",
+    )
+  }
+  return `${PII_SCRUB_MARKER_PREFIX}:${contentHash}:v${rulesetVersion}`
+}
+
+export function scrubMarkerKeyForContent(
+  content: string,
+  rulesetVersion: string,
+): string {
+  return scrubMarkerKey(hashScrubContent(content), rulesetVersion)
+}
+
+export interface ScrubMarkerCache {
+  getCache<T>(key: string): Promise<T | undefined>
+  setCache<T>(key: string, value: T): Promise<boolean>
+  deleteCache(key: string): Promise<boolean>
+}
+
+export async function isScrubDone(
+  cache: ScrubMarkerCache,
+  content: string,
+  rulesetVersion: string,
+): Promise<boolean> {
+  const key = scrubMarkerKeyForContent(content, rulesetVersion)
+  const marker = await cache.getCache<PiiScrubDoneMarker>(key)
+  return marker !== undefined && marker !== null
+}
+
+export async function markScrubDone(
+  cache: ScrubMarkerCache,
+  content: string,
+  marker: Omit<PiiScrubDoneMarker, "contentHash" | "completedAt"> & {
+    completedAt?: number
+  },
+): Promise<boolean> {
+  const contentHash = hashScrubContent(content)
+  const key = scrubMarkerKey(contentHash, marker.rulesetVersion)
+  const record: PiiScrubDoneMarker = {
+    contentHash,
+    rulesetVersion: marker.rulesetVersion,
+    modelId: marker.modelId,
+    tier0Only: marker.tier0Only,
+    completedAt: marker.completedAt ?? Date.now(),
+  }
+  return cache.setCache<PiiScrubDoneMarker>(key, record)
+}
+
+export async function getScrubMarker(
+  cache: ScrubMarkerCache,
+  content: string,
+  rulesetVersion: string,
+): Promise<PiiScrubDoneMarker | undefined> {
+  const key = scrubMarkerKeyForContent(content, rulesetVersion)
+  const marker = await cache.getCache<PiiScrubDoneMarker>(key)
+  return marker ?? undefined
+}

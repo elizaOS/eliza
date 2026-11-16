@@ -72,6 +72,21 @@ export default {
         "tailwindcss"
       ]
     },
+    "packages/core": {
+      "entry": [
+        "src/{index,protocol,logging,view-interaction,speech,read-memo,schema-types}.vibe",
+        "src/types/permissions.vibe",
+        "src/security/redact.vibe",
+        "src/messaging/{task-events,task-widgets}.vibe",
+        "test/**/*.test.{ts,vibe}",
+        "test/drivers/*.ts",
+        "src/**/*.{schema,contract}.{ts,vibe}"
+      ],
+      "project": [
+        "src/**/*.{ts,vibe}",
+        "test/**/*.{ts,vibe}"
+      ]
+    },
     "apps/*": {
       "entry": [
         "test/**/*.test.{ts,tsx,vibe}",

@@ -1,0 +1,14 @@
+import type { Plugin } from "../types/plugin.vibe"
+import { registerCoreIncomingMessageSecurityHook } from "./incoming-message-security.vibe"
+
+export const CORE_SECURITY_HOOKS_PLUGIN_NAME = "core-security-hooks"
+
+export function createCoreSecurityHooksPlugin(): Plugin {
+  return {
+    name: CORE_SECURITY_HOOKS_PLUGIN_NAME,
+    description: "Always-on incoming-message external-content hardening.",
+    init: (_config, runtime) => {
+      registerCoreIncomingMessageSecurityHook(runtime)
+    },
+  }
+}

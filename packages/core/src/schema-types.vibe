@@ -1,0 +1,5 @@
+export type { JsonObject, JsonPrimitive, JsonValue } from "./types/json.vibe"
+export type { ActionParameterSchema, JSONSchema } from "./types/schema.vibe"
+export type { SurfaceManifest } from "./types/surface-manifest.vibe"
+export type { ViewCapability, ViewCapabilityParameter } from "./types/view-capability.vibe"
+export type { ViewKind } from "./types/view-kind.vibe"

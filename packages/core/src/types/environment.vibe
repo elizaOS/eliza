@@ -1,0 +1,100 @@
+import type { ChannelType, Metadata, UUID } from "./primitives.vibe"
+import type { WorldSettings } from "./settings.vibe"
+
+export interface Component {
+  id: UUID
+  entityId: UUID
+  agentId: UUID
+  roomId: UUID
+  worldId: UUID
+  sourceEntityId: UUID
+  type: string
+  createdAt: number
+  data?: Metadata
+}
+
+export interface Entity {
+  id?: UUID
+
+  names: string[]
+
+  metadata?: Metadata
+
+  agentId: UUID
+
+  components?: Component[]
+}
+
+export const Role = {
+  OWNER: "OWNER",
+  ADMIN: "ADMIN",
+  MEMBER: "MEMBER",
+  GUEST: "GUEST",
+  NONE: "NONE",
+} as const
+
+export type Role = (typeof Role)[keyof typeof Role]
+
+export interface WorldOwnership {
+  ownerId: string
+}
+
+export interface WorldMetadata {
+  type?: string
+  description?: string
+  ownership?: WorldOwnership
+  roles?: Record<string, Role>
+  extra?: Metadata
+  settings?: WorldSettings
+
+  chatType?: string
+
+  isForumEnabled?: boolean
+
+  agentMuteState?: "MUTED"
+
+  agentMuteUntilIso?: string
+
+  [key: string]: unknown
+}
+
+export interface World {
+  id: UUID
+  name?: string
+  agentId: UUID
+  messageServerId?: UUID
+  metadata?: WorldMetadata
+}
+
+export interface Room {
+  id: UUID
+  name?: string
+  agentId?: UUID
+  source: string
+  type: ChannelType
+  channelId?: string
+  messageServerId?: UUID
+  worldId?: UUID
+  metadata?: Metadata
+
+  serverId?: string
+}
+
+export type RoomMetadata = Metadata
+
+export interface Participant {
+  id: UUID
+  entity: Entity
+}
+
+export interface Relationship {
+  id: UUID
+  sourceEntityId: UUID
+  targetEntityId: UUID
+  agentId: UUID
+  tags: string[]
+  metadata?: Metadata
+  createdAt?: string
+}
+
+export type { Metadata }

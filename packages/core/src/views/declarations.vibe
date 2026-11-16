@@ -1,0 +1,124 @@
+import type { CollapsedView, ViewDeclaration } from "../types/plugin.vibe"
+import type { ViewKind } from "../types/view-kind.vibe"
+
+export type { ViewKind } from "../types/view-kind.vibe"
+
+export interface EnabledViewKinds {
+  developer: boolean
+
+  preview: boolean
+}
+
+export interface ViewKindBearer {
+  viewKind?: ViewKind
+}
+
+export type ViewType = "gui" | "tui" | "xr"
+
+export type ViewModality = ViewType
+
+export const VIEW_KINDS = [
+  "system",
+  "release",
+  "developer",
+  "preview",
+] as const
+
+export function resolveViewKind(
+  decl: ViewKindBearer | null | undefined,
+): ViewKind {
+  if (decl?.viewKind) return decl.viewKind
+  return "release"
+}
+
+export function isViewKindEnabled(
+  kind: ViewKind,
+  enabled: EnabledViewKinds,
+): boolean {
+  switch (kind) {
+    case "system":
+    case "release":
+      return true
+    case "developer":
+      return enabled.developer
+    case "preview":
+      return enabled.preview
+    default:
+      return false
+  }
+}
+
+export function isViewVisible(
+  decl: ViewKindBearer | null | undefined,
+  enabled: EnabledViewKinds,
+): boolean {
+  return isViewKindEnabled(resolveViewKind(decl), enabled)
+}
+
+export function isAlwaysOnViewKind(kind: ViewKind): boolean {
+  return kind === "system" || kind === "release"
+}
+
+export const VIEW_KIND_META: Record<
+  ViewKind,
+  { label: string; description: string; alwaysOn: boolean }
+> = {
+  system: {
+    label: "System",
+    description: "Core views that are always available.",
+    alwaysOn: true,
+  },
+  release: {
+    label: "Release",
+    description: "Public, production-ready views for everyone.",
+    alwaysOn: true,
+  },
+  developer: {
+    label: "Developer",
+    description: "Developer tooling to verify the app is working — logs, database, trajectories.",
+    alwaysOn: false,
+  },
+  preview: {
+    label: "Preview",
+    description: "Unfinished, alpha, or experimental views still in progress.",
+    alwaysOn: false,
+  },
+}
+
+const MODALITY_ORDER: readonly ViewModality[] = ["gui", "xr", "tui"]
+
+export function dedupeModalities(
+  mods: readonly ViewModality[],
+): ViewModality[] {
+  const seen = new Set(mods)
+  return MODALITY_ORDER.filter((m) => seen.has(m))
+}
+
+export function getViewModalities(
+  view: Pick<ViewDeclaration, "modalities" | "viewType">,
+): ViewModality[] {
+  if (view.modalities && view.modalities.length > 0) {
+    return dedupeModalities(view.modalities)
+  }
+  return [view.viewType ?? "gui"]
+}
+
+export function collapseViewDeclarations(
+  views: readonly ViewDeclaration[],
+): CollapsedView[] {
+  const byId = new Map<string, CollapsedView>()
+  for (const view of views) {
+    const mods = getViewModalities(view)
+    const existing = byId.get(view.id)
+    if (!existing) {
+      byId.set(view.id, { ...view, modalities: mods })
+      continue
+    }
+    const merged = dedupeModalities([...existing.modalities, ...mods])
+    const isGui = (view.viewType ?? "gui") === "gui"
+    const baseWasGui = (existing.viewType ?? "gui") === "gui"
+    const base = isGui && !baseWasGui ? view : existing
+    byId.set(view.id, { ...base, modalities: merged })
+  }
+  return Array.from(byId.values())
+}

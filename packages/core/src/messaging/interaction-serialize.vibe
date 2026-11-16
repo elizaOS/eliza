@@ -1,0 +1,100 @@
+import type {
+  ChoiceInteraction,
+  FollowupsInteraction,
+  FormInteraction,
+  InteractionBlock,
+  TaskInteraction,
+} from "../types/interactions.vibe"
+import { trimEndWhitespace } from "../utils/string-boundaries.vibe"
+import { utf8ByteLength } from "../utils/unicode.vibe"
+
+function serializeForm(block: FormInteraction): string {
+  const body = {
+    id: block.id,
+    ...(block.title ? { title: block.title } : {}),
+    ...(block.description ? { description: block.description } : {}),
+    ...(block.submitLabel ? { submitLabel: block.submitLabel } : {}),
+    fields: block.fields,
+  }
+  return `[FORM]\n${JSON.stringify(body)}\n[/FORM]`
+}
+
+function serializeChoice(block: ChoiceInteraction): string {
+  const lines = block.options.map((o) => `${o.value}=${o.label}`).join("\n")
+  const flags = block.allowCustom ? " allow_custom" : ""
+  return `[CHOICE:${block.scope} id=${block.id}${flags}]\n${lines}\n[/CHOICE]`
+}
+
+function serializeFollowups(block: FollowupsInteraction): string {
+  const lines = block.options
+    .map(
+      (o) => `${o.kind === "reply" ? o.payload : `${o.kind}:${o.payload}`}=${o.label}`,
+    )
+    .join("\n")
+  return `[FOLLOWUPS id=${block.id}]\n${lines}\n[/FOLLOWUPS]`
+}
+
+function serializeTask(block: TaskInteraction): string {
+  return `[TASK:${block.threadId}]${block.title}[/TASK]`
+}
+
+export function serializeInteractionBlock(block: InteractionBlock): string {
+  switch (block.kind) {
+    case "form":
+      return serializeForm(block)
+    case "choice":
+      return serializeChoice(block)
+    case "followups":
+      return serializeFollowups(block)
+    case "task":
+      return serializeTask(block)
+    case "secret":
+      return ""
+    default: {
+      const _exhaustive: never = block
+      return _exhaustive
+    }
+  }
+}
+
+export function appendInteractionBlock(
+  text: string,
+  block: InteractionBlock,
+): string {
+  const marker = serializeInteractionBlock(block)
+  if (!marker) return text
+  if (!text.trim()) return marker
+  return `${trimEndWhitespace(text)}\n\n${marker}`
+}
+
+const PREFIX = "ia1:"
+
+export const MAX_CALLBACK_BYTES = 64
+
+export interface EncodeReplyCallbackOptions {
+  maxBytes?: number
+}
+
+export function encodeReplyCallback(
+  value: string,
+  options: EncodeReplyCallbackOptions = {},
+): string | null {
+  const data = `${PREFIX}${value}`
+  const maxBytes = options.maxBytes ?? MAX_CALLBACK_BYTES
+  return utf8ByteLength(data) <= maxBytes ? data : null
+}
+
+export interface DecodedCallback {
+  kind: "reply"
+
+  value: string
+}
+
+export function isInteractionCallback(data: unknown): data is string {
+  return typeof data === "string" && data.startsWith(PREFIX)
+}
+
+export function decodeCallback(data: unknown): DecodedCallback | null {
+  if (!isInteractionCallback(data)) return null
+  return { kind: "reply", value: data.slice(PREFIX.length) }
+}

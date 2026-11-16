@@ -1,0 +1,66 @@
+import type { UUID } from "./primitives.vibe"
+
+export const TRIGGER_SCHEMA_VERSION = 1 as const
+
+export type TriggerType = "interval" | "once" | "cron" | "event"
+export type TriggerWakeMode = "inject_now" | "next_autonomy_cycle"
+
+export type TriggerLastStatus = "success" | "error" | "skipped"
+
+export type TriggerKind = "workflow" | "prompt"
+
+interface TriggerConfigBase {
+  version: typeof TRIGGER_SCHEMA_VERSION
+  triggerId: UUID
+  displayName: string
+  instructions: string
+  triggerType: TriggerType
+  enabled: boolean
+  wakeMode: TriggerWakeMode
+  createdBy: string
+
+  notifyOnOutcome?: boolean
+  timezone?: string
+  intervalMs?: number
+  scheduledAtIso?: string
+
+  delayMs?: number
+  cronExpression?: string
+  eventKind?: string
+
+  eventFilter?: Record<string, unknown>
+  maxRuns?: number
+  runCount: number
+  nextRunAtMs?: number
+  lastRunAtIso?: string
+  lastStatus?: TriggerLastStatus
+  lastError?: string
+  dedupeKey?: string
+}
+
+export interface WorkflowTriggerConfig extends TriggerConfigBase {
+  kind: "workflow"
+  workflowId: string
+  workflowName?: string
+}
+
+export interface PromptTriggerConfig extends TriggerConfigBase {
+  kind: "prompt"
+}
+
+export type TriggerConfig = WorkflowTriggerConfig | PromptTriggerConfig
+
+export interface TriggerRunRecord {
+  triggerRunId: UUID
+  triggerId: UUID
+  taskId: UUID
+  startedAt: number
+  finishedAt: number
+  status: TriggerLastStatus
+  error?: string
+  latencyMs: number
+  source: "scheduler" | "manual" | "event"
+  eventKind?: string
+
+  missedOccurrenceAt?: number
+}

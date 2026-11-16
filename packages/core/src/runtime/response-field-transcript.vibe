@@ -1,0 +1,162 @@
+export const RESPONSE_HANDLER_FIELD_NAMES = [
+  "shouldRespond",
+  "contexts",
+  "intents",
+  "candidateActionNames",
+  "replyText",
+  "replyEffectStatus",
+  "facts",
+  "relationships",
+  "addressedTo",
+  "topics",
+  "emotion",
+] as const
+
+export type ResponseHandlerFieldName = (typeof RESPONSE_HANDLER_FIELD_NAMES)[number]
+
+const FIELD_LINE = new RegExp(
+  `^\\s{0,3}(${RESPONSE_HANDLER_FIELD_NAMES.join("|")})\\s*:\\s?(.*)$`,
+)
+
+const LINE_BREAK = /\r?\n/
+
+const FENCE_MARKER_LINE = /^( {0,3})(`{3,}|~{3,})(.*)$/
+
+interface OpenFence {
+  char: "`" | "~"
+  length: number
+}
+
+function readFenceMarker(
+  line: string,
+): { char: "`" | "~"; length: number; rest: string } | null {
+  const match = FENCE_MARKER_LINE.exec(line)
+  if (!match) return null
+  const marker = match[2] ?? ""
+  const char = marker[0]
+  if (char !== "`" && char !== "~") return null
+  return { char, length: marker.length, rest: match[3] ?? "" }
+}
+
+function openFenceFromLine(line: string): OpenFence | null {
+  const marker = readFenceMarker(line)
+  if (!marker) return null
+  if (marker.char === "`" && marker.rest.includes("`")) return null
+  return { char: marker.char, length: marker.length }
+}
+
+function closesFence(line: string, open: OpenFence): boolean {
+  const marker = readFenceMarker(line)
+  if (!marker) return false
+  return (
+    marker.char === open.char
+    && marker.length >= open.length
+    && /^[ \t]*$/.test(marker.rest)
+  )
+}
+
+export function looksLikeRawFieldTranscript(text: unknown): boolean {
+  if (typeof text !== "string" || text.length === 0) return false
+  let fence: OpenFence | null = null
+  let leadsWithFieldLine = false
+  for (const line of text.split(LINE_BREAK)) {
+    if (fence) {
+      if (closesFence(line, fence)) fence = null
+      continue
+    }
+    const opened = openFenceFromLine(line)
+    if (opened) {
+      fence = opened
+      continue
+    }
+    if (line.trim().length === 0) continue
+    const match = FIELD_LINE.exec(line)
+    if (!leadsWithFieldLine) {
+      if (!match) return false
+      leadsWithFieldLine = true
+    }
+    if (match && (match[1] === "shouldRespond" || match[1] === "replyText")) {
+      return true
+    }
+
+    if (match?.[2]) fence = openFenceFromLine(match[2])
+  }
+  return false
+}
+
+export interface ParsedFieldTranscript {
+  fields: Partial<Record<ResponseHandlerFieldName, string>>
+
+  fieldCount: number
+}
+
+export function parseFieldTranscript(
+  raw: string | null | undefined,
+): ParsedFieldTranscript | null {
+  if (typeof raw !== "string") return null
+  const lines = raw.split(LINE_BREAK)
+
+  const fields: Partial<Record<ResponseHandlerFieldName, string>> = {}
+  let currentField: ResponseHandlerFieldName | null = null
+  let buffer: string[] = []
+  let foundAny = false
+
+  const flush = () => {
+    if (currentField !== null) {
+      if (fields[currentField] === undefined) {
+        fields[currentField] = buffer.join("\n").trim()
+      }
+    }
+    buffer = []
+  }
+
+  let fence: OpenFence | null = null
+  for (const line of lines) {
+    if (fence) {
+      if (closesFence(line, fence)) fence = null
+      if (currentField !== null) buffer.push(line)
+      continue
+    }
+    const opened = openFenceFromLine(line)
+    if (opened) {
+      fence = opened
+      if (currentField !== null) buffer.push(line)
+      continue
+    }
+    const match = FIELD_LINE.exec(line)
+    if (match) {
+      flush()
+      currentField = match[1] as ResponseHandlerFieldName
+      foundAny = true
+      const inline = match[2] ?? ""
+      buffer = inline ? [inline] : []
+
+      fence = openFenceFromLine(inline)
+    } else if (currentField !== null) {
+      buffer.push(line)
+    }
+  }
+  flush()
+
+  if (!foundAny) return null
+  const fieldCount = Object.keys(fields).length
+  return { fields, fieldCount }
+}
+
+export function extractReplyTextFromTranscript(
+  raw: string | null | undefined,
+): string | null {
+  return parseFieldTranscript(raw)?.fields.replyText || null
+}
+
+export function splitTranscriptList(value: string | undefined): string[] {
+  if (typeof value !== "string") return []
+  const trimmed = value.trim()
+  if (!trimmed) return []
+  const lowered = trimmed.toLowerCase()
+  if (lowered === "none" || lowered === "n/a" || lowered === "[]") return []
+  return trimmed
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
