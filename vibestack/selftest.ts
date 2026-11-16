@@ -2386,6 +2386,23 @@ describe("the command line and what a failed proof leaves to start from", { conc
     fs.writeFileSync(path.join(root, "spec/highest.md"), read("spec/highest.md", root).replace("if (x > top) x else top", "if (top < x) x else top"));
     const remodelled = await run(root);
     assert.equal(remodelled.said("proof", /^highest\.ts: 1 of 1 obligations not proved; the 1 accepted earlier were accepted for another text/)?.ok, false, remodelled.text);
+    const ledger = read("spec/lock.json", root);
+    const refused = await run(root, "reviews");
+    assert.equal(refused.failed.includes("proof"), true, refused.text);
+    assert.equal(read("spec/lock.json", root), ledger);
+
+    fs.writeFileSync(path.join(root, "spec/highest.md"), read("vibestack/fixtures/highest.md"));
+    fs.writeFileSync(path.join(root, "spec/highest.proof.dfy"), read("vibestack/fixtures/highest.proof.dfy"));
+    const proved = await run(root);
+    assert.deepEqual(proved.failed, ["review"], proved.text);
+    assert.match(proved.said("review", /^spec\/lock\.json: 1 obsolete simulated-only proof exception in highest\.ts/)?.detail ?? "", /lawTheHighestIsAtLeastTheStart/, proved.text);
+    assert.equal(read("spec/lock.json", root), ledger);
+    const signed = await run(root, "reviews");
+    assert.deepEqual(signed.failed, [], signed.text);
+    assert.ok(signed.said("proof", /^spec\/lock\.json: 0 added, 1 removed/), signed.text);
+    assert.deepEqual(JSON.parse(read("spec/lock.json", root)).unproved, {});
+    const checked = await run(root);
+    assert.deepEqual(checked.failed, [], checked.text);
   });
 
   test("every operator the translator supports is used by the ops fixture, which is simulated, replayed and proved; what the proof takes as given, Node's code checks", async () => {

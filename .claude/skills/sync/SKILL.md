@@ -41,6 +41,7 @@ Give up and report after five rounds on the same failure.
 | `review` … **new** | Read the rule's prose and Quint in the spec and make sure they say the same. |
 | `review` … **removed or renamed** | A rule: check that no story still depends on it. A story: check that its rules moved with it or went too. |
 | `review` … **new contract** or **contract changed** | Read the `//@` lines printed under `src/`. Check they say what the code must do, and no less than the rules it serves. |
+| `review` … **obsolete simulated-only proof exception** | List the exception in your report. The obligation now proves or is gone, and the user's next `pnpm accept` clears the exception. |
 | `review` … **cited by** `file:line` | The rule's meaning moved, and that test or shell line cites it. Read each again against the rule as it is now; change an assertion only where the rule now asks for something else, and name it in your report. |
 | `review` … **contract removed** | A `src/` file lost its last `//@` or was deleted. Check that nothing still relies on what it proved. |
 | `model` | Fix at the reported `spec/…:line:col`. AGENTS.md lists what Quint is supported and which names are refused. |
