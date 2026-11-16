@@ -68,6 +68,8 @@ pure def stop(s: Privacy): Privacy = { ...s, life: Stopping }
 pure def canDispose(s: Privacy): bool = s.life == Stopping and s.startup != Starting and s.phase == Idle
 pure def dispose(s: Privacy): Privacy = { ...s, life: Stopped, startup: Dormant, discarded: s.discarded + s.queued, queued: 0 }
 pure def alwaysStoppedOwnsNoQueue(s: Privacy): bool = s.life != Stopped or (s.startup == Dormant and s.queued == 0 and s.phase == Idle)
+pure def wellFormed(s: Privacy): bool = alwaysAcceptedWorkIsAccounted(s) and alwaysCountsAreNonnegative(s) and
+  alwaysCompletionRequiresPersistentMarker(s) and alwaysStoppedOwnsNoQueue(s)
 pure def sometimesShutdownDuringLookup(s: Privacy): bool = s.life == Stopped and s.checking and s.accepted == 0
 ```
 
