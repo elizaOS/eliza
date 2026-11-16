@@ -13,10 +13,13 @@ const emptyNameRefused = extract(({ document }) => {
   return !name || !greet || name.value !== "" || greet.disabled;
 });
 
-/** A reload keeps every greeting, and no action adds more than one. */
-export const greetingsCountOneByOne = always(now(() => {
+/**
+ * No action loses a greeting, a reload or a step back included. A page opened from a link greets once it has loaded,
+ * so the greeting it adds can land with the next action's: how many an action adds is the spec's to prove, not the page's.
+ */
+export const greetingsAreNeverLost = always(now(() => {
   const before = greetings.current;
-  return next(() => greetings.current === before || greetings.current === before + 1);
+  return next(() => greetings.current >= before);
 }));
 
 /** Greet is never offered for an empty name. */

@@ -1330,7 +1330,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.equal(read(".gitignore", root), scaffoldedIgnores.join("\n") + "\n");
     const skills = fs.readdirSync(path.join(project, ".claude/skills"), { withFileTypes: true })
       .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-    const skillFiles = filesUnder(project, ".claude/skills");
+    const skillFiles = filesUnder(project, ".claude/skills").filter((file) => path.basename(file) !== ".DS_Store");
     assert.deepEqual(filesUnder(root, ".claude/skills"), skillFiles);
     for (const file of skillFiles) {
       assert.deepEqual(fs.readFileSync(path.join(root, file)), fs.readFileSync(path.join(project, file)), file);
