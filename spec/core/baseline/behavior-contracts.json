@@ -2325,7 +2325,7 @@
       ],
       "reexports": [],
       "tests": [],
-      "proofBoundary": "Generated state laws cover the mapped lifecycle. Pure parser/codec algorithms retain these documented contracts and source test vectors; their future implementation needs a proved //@ contract or adapter conformance.",
+      "proofBoundary": "Declarative role gates are modeled in spec/core/authorization.md using exact custom and blank string identities, USER-to-MEMBER aliasing, role alternatives, exclusions, required memberships and a zero-initialized rank floor. Host String coercion, trimming and Unicode uppercasing require conformance. hasAtLeastRole uppercases without trimming and remains a separate source contract. World role resolution is separate. Source-to-model refinement is pending.",
       "functionContracts": [
         {
           "name": "hasAtLeastRole",
