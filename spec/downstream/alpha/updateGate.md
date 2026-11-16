@@ -7,6 +7,8 @@ native `AlphaDevice` plugin headers for the exact `updateState` method.
 Older hosts without that method can mount. Any advertised native update
 journal must respond. The [native install journal](../mobileOta.md) owns
 physical package staging, installation and activation.
+An operator's [pilot APK readback](./apkReadback.md) qualifies installed
+package identity and app-data preservation.
 
 ## Story: Keep editors safe while a confirmed app activation owns input
 

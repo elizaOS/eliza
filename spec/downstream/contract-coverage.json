@@ -1966,7 +1966,7 @@
         "test"
       ],
       "priority": "build-or-test-tooling",
-      "relatedSpec": "spec/downstream/mobile.md",
+      "relatedSpec": "spec/downstream/alpha/apkReadback.md",
       "coverage": "related-contract"
     },
     {
