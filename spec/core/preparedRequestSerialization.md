@@ -38,14 +38,24 @@ pure def admittedSerialization(serializer: SerializerChoice, observed: Serialize
     | SerializedText(text) => if (U::validCodeUnits(text.codeUnits)) AdmittedBody({codeUnits: text.codeUnits}) else InvalidBody
     | _ => InvalidBody
   }
+pure def hasAdmittedBody(admission: BodyAdmission): bool =
+  match admission {
+    | AdmittedBody(_) => true
+    | _ => false
+  }
+pure def admittedBodyEquals(admission: BodyAdmission, codeUnits: List[int]): bool =
+  match admission {
+    | AdmittedBody(body) => body.codeUnits == codeUnits
+    | _ => false
+  }
 pure def lawMissingSerializerHasNoBody(observed: SerializedObservation): bool =
-  admittedSerialization(serializerChoice(false, false), observed) == InvalidBody
+  not(hasAdmittedBody(admittedSerialization(serializerChoice(false, false), observed)))
 pure def lawConflictingSerializersHaveNoBody(observed: SerializedObservation): bool =
-  admittedSerialization(serializerChoice(true, true), observed) == InvalidBody
+  not(hasAdmittedBody(admittedSerialization(serializerChoice(true, true), observed)))
 pure def lawNonStringWireHasNoBody(serializer: SerializerChoice): bool =
-  admittedSerialization(serializer, NonStringWireReturn) == InvalidBody
+  not(hasAdmittedBody(admittedSerialization(serializer, NonStringWireReturn)))
 pure def lawUndefinedRootHasNoBody(serializer: SerializerChoice): bool =
-  admittedSerialization(serializer, JsonRootMissing) == InvalidBody
+  not(hasAdmittedBody(admittedSerialization(serializer, JsonRootMissing)))
 ```
 
 ### The validation walk refuses cycles and unsupported visited values
@@ -116,5 +126,5 @@ pure def finishSerialization(walk: Validation, serializer: SerializerChoice, obs
   if (serializer == ProjectionSerializer and (not(walk.valid) or walk.ancestors.length() != 0)) InvalidBody
   else admittedSerialization(serializer, observed)
 pure def lawUnfinishedProjectionHasNoBody(walk: Validation, observed: SerializedObservation): bool =
-  (not(walk.valid) or walk.ancestors.length() != 0) implies finishSerialization(walk, ProjectionSerializer, observed) == InvalidBody
+  (not(walk.valid) or walk.ancestors.length() != 0) implies not(hasAdmittedBody(finishSerialization(walk, ProjectionSerializer, observed)))
 ```

@@ -99,7 +99,9 @@ pure def sometimesEstimateAboveThresholdAdmitted(s: PreparedRequests): bool = s.
 An invalid or unfinished serialization fails before tokenization. A failed
 tokenizer or a count for a different serialized body leaves no guard. The
 adapter reports a thrown tokenizer or an invalid numeric count as tokenization
-failure, and rounds a successful finite nonnegative count upward. When there
+failure, and rounds a successful finite nonnegative count upward. The guard
+reports `MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED` or
+`MODEL_PREPARED_REQUEST_TOKENIZATION_FAILED` for these preparation failures. When there
 is no tokenizer, the diagnostic count is the UTF-8 length of the admitted
 UTF-16 sequence. An estimate remains diagnostic. The adapter is responsible
 for passing the exact serialized body to the reported tokenizer and for
@@ -136,22 +138,28 @@ pure def preparationSucceeded(preparation: PreparationObservation): bool = {
     | _ => false
   }
 }
+pure def preparationError(result: RequestPreparation): str =
+  match result {
+    | SerializationFailed => "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED"
+    | TokenizationFailed => "MODEL_PREPARED_REQUEST_TOKENIZATION_FAILED"
+    | _ => ""
+  }
 pure def lawFailedSerializationPrecedesTokenizer(preparation: PreparationObservation): bool =
-  S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized) == S::InvalidBody implies
-    prepareObservation(preparation) == SerializationFailed
+  not(S::hasAdmittedBody(S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized))) implies
+    preparationError(prepareObservation(preparation)) == "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED"
 pure def lawPreparationRetainsAdmittedBody(preparation: PreparationObservation): bool = {
   val result = prepareObservation(preparation)
+  val admission = S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized)
   match result {
-    | Prepared(ready) => S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized) ==
-        S::AdmittedBody({codeUnits: ready.request.codeUnits})
+    | Prepared(ready) => S::admittedBodyEquals(admission, ready.request.codeUnits)
     | _ => true
   }
 }
 pure def lawCountMustDescribeTheAdmittedBody(preparation: PreparationObservation, body: List[int]): bool = {
   val edited = { ...preparation, tokens: TokenizerCount({body: body, roundedUp: 0, exact: true}) }
-  S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized) != S::InvalidBody and
-    S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized) != S::AdmittedBody({codeUnits: body}) implies
-    prepareObservation(edited) == TokenizationFailed
+  val admission = S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized)
+  S::hasAdmittedBody(admission) and not(S::admittedBodyEquals(admission, body)) implies
+    preparationError(prepareObservation(edited)) == "MODEL_PREPARED_REQUEST_TOKENIZATION_FAILED"
 }
 ```
 
