@@ -29,8 +29,14 @@ jobs:
       TURBO_CACHE: ${{ github.event_name == 'push' && 'local:rw,remote:rw' || 'local:rw,remote:r' }}
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
+      - id: setup
+        uses: ./.github/actions/setup
       - run: pnpm verify --continue
+      - if: always() && steps.setup.outputs.spec-cache-key != ''
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ steps.setup.outputs.spec-cache-path }}
+          key: ${{ steps.setup.outputs.spec-cache-key }}
       - if: always()
         uses: actions/upload-artifact@v7
         with:
