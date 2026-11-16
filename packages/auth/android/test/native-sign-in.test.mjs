@@ -1068,7 +1068,7 @@ public class NativeGoogleObserverTest {
  static class Log {static String value;static int i(String tag,String line){value=tag+" "+line;return 0;}}
  CloudSignInConfig config(){return TestRegistration.PRODUCT;}
  ${methods.replaceAll("android.util.Log.i", "Log.i").replace(/^ private /gm, " ")}
- public static void main(String[]args){NativeGoogleObserverTest p=new NativeGoogleObserverTest();Response r=new Response();r.status=401;r.data.ok=false;r.data.ok=null;r.data.error="google_identity_rejected";
+ public static void main(String[]args){NativeGoogleObserverTest p=new NativeGoogleObserverTest();Response r=new Response();r.status=401;r.data.ok=null;r.data.error="google_identity_rejected";
   CloudSignInFlow.GoogleFailure f=p.observeGoogleResponse(new Attempt(),CloudSignInFlow.GoogleStage.VERIFY,r);
   if(!"provider-refused".equals(f.code)||!Log.value.startsWith("ElizaCloudSignIn ")||!Log.value.contains("reason=google-identity-rejected")||Log.value.contains((String)r.data.error))throw new AssertionError(Log.value);
   r.data.error="SECRET_TOKEN\\nhttps://private/?jwt=secret";p.observeGoogleResponse(new Attempt(),CloudSignInFlow.GoogleStage.VERIFY,r);

@@ -1389,6 +1389,10 @@ public class CloudSignInChainTest {
   PluginCall cleared=signOutCall(damaged,"production");
   check(cleared.result.length()==2&&!slots.containsKey("cloud:production")&&!slots.containsKey(RETIRING)&&CloudKeyRevocation.signOuts.isEmpty(),"a damaged saved record is removed with nothing owed");
 
+  CloudSignInChainTest cut=signedIn();slots.put(receipt,"synthetic-receipt");cut.failReceiptRemove=true;
+  PluginCall interrupted=signOutCall(cut,"production");
+  check("storage".equals(interrupted.error)&&slots.containsKey("cloud:production")&&slots.containsKey(receipt)&&slots.containsKey(RETIRING)&&CloudKeyRevocation.signOuts.isEmpty(),"a sign-out cut short at the receipt keeps the key with its receipt, so no saved key is left without one");
+
   CloudSignInChainTest closed=signedIn();closed.destroyed=true;
   check("unavailable".equals(signOutCall(closed,"production").error)&&slots.containsKey("cloud:production"),"a closed plugin answers at once and changes nothing");
  }

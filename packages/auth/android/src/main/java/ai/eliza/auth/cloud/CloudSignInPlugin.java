@@ -130,7 +130,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   Attempt(CloudSignInEnvironment environment, boolean google, String requestId, Runnable credentialGuard) {
    this.environment = environment; this.google = google; this.requestId = requestId; this.credentialGuard = credentialGuard;
   }
-  void cancel() { cancelled = true; CountDownLatch decision = authorizationDecision; if (decision != null) decision.countDown(); android.os.CancellationSignal picker = googleCancellation; if (picker != null) picker.cancel(); googleVerifier = null; googleChallengeId = null; HttpURLConnection current = connection; if (current != null) current.disconnect(); }
+  void cancel() { cancelled = true; CountDownLatch decision = authorizationDecision; if (decision != null) decision.countDown(); android.os.CancellationSignal picker = googleCancellation; if (picker != null) picker.cancel(); googleVerifier = null; googleChallengeId = null; gmailCode = null; HttpURLConnection current = connection; if (current != null) current.disconnect(); }
  }
  private static final class Response {
   final int status; final JSONObject data; final String location, retryAfter;
@@ -705,7 +705,7 @@ public abstract class CloudSignInPlugin extends Plugin {
  private String gmailClientId(Attempt next) {
   if (config().googleScopes.isEmpty()) return null;
   try {
-   Response answer = get(next.environment.api() + "/api/v1/app-auth/mobile/google");
+   Response answer = get(next.environment.api() + "/api/v1/app-auth/mobile/google", next);
    String clientId = answer.data.optString("serverClientId", "");
    if (answer.status == 200 && Boolean.TRUE.equals(answer.data.opt("configured")) && clientId.matches("[0-9]+-[A-Za-z0-9_-]+\\.apps\\.googleusercontent\\.com")) return clientId;
    next.gmail = gmailRefused("google_not_configured".equals(answer.data.optString("code", null)) ? "google_not_configured" : "google_unavailable");
@@ -1120,7 +1120,7 @@ public abstract class CloudSignInPlugin extends Plugin {
  /**
   * Signs a deployment out under a new credential intent and ends any sign-in in progress (the pending
   * browser record is shared by every deployment). The duty to revoke the saved key is stored in the
-  * retiring slot first, above any duty still owed there (owedAbove); then the key, its receipt and the pending record are removed. A damaged saved
+  * retiring slot first, above any duty still owed there (owedAbove); then the receipt, the key and the pending record are removed. A damaged saved
   * record is removed with nothing owed. Cloud is then asked to end the key: an answer it did not give
   * is asked again twice in this process and on later starts (retireStored) until Cloud no longer
   * accepts the key. Answers {environment, status: 'signed-out', revocation?: 'revoked' | 'unconfirmed'}.
@@ -1153,9 +1153,9 @@ public abstract class CloudSignInPlugin extends Plugin {
      String retiring = config().retiringSlot(environment);
      owned.write(retiring, owedAbove(owned.read(retiring), new JSONObject().put("token", token).put("expiresAt", record.opt("expiresAt")).put("signOut", true)));
     }
+    owned.remove(config().receiptSlot(environment));
     owned.remove(slot);
    }
-   owned.remove(config().receiptSlot(environment));
    owned.remove(config().pendingSlot);
    synchronized (lock) { activating.remove(environment.name); if (attempt == null) pendingRetirementUnconfirmed = false; }
   } catch (Exception storage) { call.reject("Sign-out was not saved", "storage"); return; }
@@ -2059,11 +2059,13 @@ public abstract class CloudSignInPlugin extends Plugin {
   return fetch(url, "{}".getBytes(StandardCharsets.UTF_8), null).status;
  }
  /** Readiness probe reads: fixed GET routes on the Cloud API, nothing followed. */
- private Response get(String text) throws Exception {
+ private Response get(String text) throws Exception { return get(text, null); }
+ /** A read the attempt {@code current} owns, so ending it disconnects the request. */
+ private Response get(String text, Attempt current) throws Exception {
   URI url = new URI(text);
   if (!CloudSignInRoutes.origin(config(), url.getScheme(), url.getHost(), url.getPort()) || !CloudSignInRoutes.route(url.getRawPath(), "GET", false))
    throw new IllegalArgumentException();
-  return response(fetch(url, null, null));
+  return response(fetch(url, null, null, current, CloudSignInReadiness.REQUEST_TIMEOUT_MS, CloudSignInReadiness.REQUEST_TIMEOUT_MS));
  }
  private static Response response(Fetched fetched) throws SignInFailure {
   JSONObject data = new JSONObject();
