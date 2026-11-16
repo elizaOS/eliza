@@ -15,7 +15,8 @@ The [signal scan](./turnSignalScan.md) advances one controller at a time.
 The registry owns the live array and supplies its members at each step. A
 native signal callback may reenter before the room scan reaches its next
 slot. A global abort captures the room-array identities in insertion order
-and delegates each captured array to a separate scan.
+and delegates each captured array to a separate scan. Every captured group
+remains in the registry while the callback visits or returns from it.
 
 ```quint
 import turnControllers as T from "./turnControllers"
@@ -23,7 +24,7 @@ import turnSignalScan as S from "./turnSignalScan"
 type EventFrame = {noticeId: int, invoking: bool, listenerGeneration: int}
 type GlobalFrame = {groups: List[int], cursor: int, reason: str, abortedRooms: List[str]}
 type RoomScan = {group: int, room: str, global: bool, scan: S::ScanFrame}
-type RoomAbortReturn = {abortRoom: str, fromGlobal: bool, changedSignal: bool}
+type RoomAbortReturn = {group: int, abortRoom: str, fromGlobal: bool, changedSignal: bool}
 type TurnFrame = EventFrameKind(EventFrame) | GlobalFrameKind(GlobalFrame) | CleanupFrameKind({turnId: int}) | RoomScanKind(RoomScan) | RoomAbortReturnKind(RoomAbortReturn)
 type RoomGroup = {id: int, room: str, active: bool}
 type TurnGroup = {turnId: int, group: int}
@@ -131,6 +132,10 @@ scan adds that room to its own parent frame's result after telemetry
 returns. Room-specific callers observe their changed result at the same
 boundary.
 
+Discovered by the proof: an abort scan and its return retain the same room
+identity as the captured group, even when a callback starts another scan.
+An abort without a captured room array cannot change a signal.
+
 ```quint
 pure def canVisitRoomSignal(s: TurnEventStack): bool = {
   val r = currentRoomScan(s)
@@ -159,7 +164,7 @@ pure def canFinishRoomSignal(s: TurnEventStack): bool = {
 pure def finishRoomSignal(s: TurnEventStack): TurnEventStack = {
   val r = currentRoomScan(s)
   val ended = S::finishSignalScan(scanProjection(s, r)).returned.nthOr(0, {scanId: 0, changed: false})
-  val frames = replaceTop(s.frames, RoomAbortReturnKind({abortRoom: r.room, fromGlobal: r.global, changedSignal: ended.changed}))
+  val frames = replaceTop(s.frames, RoomAbortReturnKind({group: r.group, abortRoom: r.room, fromGlobal: r.global, changedSignal: ended.changed}))
   val controls = { ...s.controllers,
     notices: if (ended.changed) s.controllers.notices.append(T::freshNotice(s.controllers.nextNotice, T::TurnAborted, r.room, r.scan.reason, "", 0)) else s.controllers.notices,
     nextNotice: s.controllers.nextNotice + (if (ended.changed) 1 else 0) }
@@ -168,8 +173,8 @@ pure def finishRoomSignal(s: TurnEventStack): TurnEventStack = {
 pure def currentAbortReturn(s: TurnEventStack): RoomAbortReturn = {
   val top = topFrame(s)
   match top {
-    | RoomAbortReturnKind(r) => {abortRoom: r.abortRoom, fromGlobal: r.fromGlobal, changedSignal: r.changedSignal}
-    | _ => {abortRoom: "", fromGlobal: false, changedSignal: false}
+    | RoomAbortReturnKind(r) => {group: r.group, abortRoom: r.abortRoom, fromGlobal: r.fromGlobal, changedSignal: r.changedSignal}
+    | _ => {group: 0, abortRoom: "", fromGlobal: false, changedSignal: false}
   }
 }
 pure def canReturnRoomAbort(s: TurnEventStack): bool = {
@@ -244,17 +249,20 @@ pure def alwaysTurnsRetainGroups(s: TurnEventStack): bool = s.turnGroups.every(g
 pure def alwaysLiveGroupOwnsTurns(s: TurnEventStack): bool = s.groups.every(g => g.active iff s.controllers.turns.some(t => t.phase != T::TurnDetached and groupOf(s, t.id) == g.id))
 pure def noticeFrameMatches(f: TurnFrame, noticeId: int): bool = match f { | EventFrameKind(frame) => frame.noticeId == noticeId | _ => false }
 pure def cleanupFrameMatches(f: TurnFrame, turnId: int): bool = match f { | CleanupFrameKind(frame) => frame.turnId == turnId | _ => false }
+pure def validRoomCapture(s: TurnEventStack, group: int, room: str, global: bool, changed: bool): bool =
+  if (group == 0) not(global or changed) else s.groups.some(g => g.id == group and g.room == room)
 pure def validRoomScan(s: TurnEventStack, r: RoomScan): bool = {
   val projectedScan = scanProjection(s, r)
   r.scan.scanId > 0 and r.scan.excluded >= 0 and (r.global implies r.scan.excluded == 0) and
+    validRoomCapture(s, r.group, r.room, r.global, r.scan.changed) and
     S::alwaysScanCursorValid(projectedScan) and S::alwaysNativeDeliveryOwnsAbortedTurn(projectedScan)
 }
 pure def validStackFrame(s: TurnEventStack, f: TurnFrame): bool = match f {
   | EventFrameKind(frame) => frame.noticeId > 0 and s.frames.select(other => noticeFrameMatches(other, frame.noticeId)).length() == 1 and s.controllers.notices.some(n => n.id == frame.noticeId and not(n.finished)) and (frame.invoking implies s.controllers.notices.some(n => n.id == frame.noticeId and n.cursor == frame.listenerGeneration))
-  | GlobalFrameKind(frame) => frame.cursor >= 0 and frame.cursor <= frame.groups.length()
+  | GlobalFrameKind(frame) => frame.cursor >= 0 and frame.cursor <= frame.groups.length() and frame.groups.every(id => s.groups.some(g => g.id == id))
   | CleanupFrameKind(frame) => frame.turnId > 0 and s.frames.select(other => cleanupFrameMatches(other, frame.turnId)).length() == 1 and s.controllers.turns.some(t => t.id == frame.turnId and t.phase == T::TurnReturned)
   | RoomScanKind(r) => validRoomScan(s, {group: r.group, room: r.room, global: r.global, scan: r.scan})
-  | RoomAbortReturnKind(_) => true
+  | RoomAbortReturnKind(r) => validRoomCapture(s, r.group, r.abortRoom, r.fromGlobal, r.changedSignal)
 }
 pure def alwaysFramesRetainNotices(s: TurnEventStack): bool = s.frames.every(f => validStackFrame(s, f))
 pure def stepOuterCallbackWaits(before: TurnEventStack, via: str, after: TurnEventStack): bool = via == "endListener" implies before.frames.length() == after.frames.length()
