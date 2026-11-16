@@ -1,0 +1,73 @@
+// spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/index.md, "Each boundary operation has one owning layer"
+
+export error Foreign { cause: unknown }
+
+export effect function foreign<A>(call: (signal: AbortSignal) => PromiseLike<A>): A!Foreign {
+  return try tryPromise({ try: (signal) => call(signal), catch: (cause) => new Foreign({ cause }) })
+}
+
+module edge {
+  import { Cause, Effect, Exit, ManagedRuntime, type Layer } from "effect"
+  import { publicOutcome, type Outcome } from "../gen/core.ts"
+  import { TurnAbortedError } from "./runtime/turn-aborted-error.vibe"
+  import { Foreign } from "./edge.vibe"
+
+  function outcomeOf<A, E>(exit: Exit.Exit<A, E>): Outcome {
+    if (Exit.isSuccess(exit)) return "Succeeded"
+    return Cause.hasInterruptsOnly(exit.cause) ? "Interrupted" : "Failed"
+  }
+
+  function rejectionOf(cause: Cause.Cause<unknown>): unknown {
+    const error = Cause.squash(cause)
+    return error instanceof Foreign ? error.cause : error
+  }
+
+  /** @throws {unknown} */
+  export function settle<A, E>(exit: Exit.Exit<A, E>, signal?: AbortSignal): A {
+    if (Exit.isSuccess(exit)) return exit.value
+    if (publicOutcome(outcomeOf(exit)) === "Aborted") throw signal?.aborted ? signal.reason : new TurnAbortedError("interrupted")
+    throw rejectionOf(exit.cause)
+  }
+
+  export class Kernel<R> {
+    readonly #managed: ManagedRuntime.ManagedRuntime<R, never>
+    /** @throws {never} */
+    constructor(layer: Layer.Layer<R>) {
+      this.#managed = ManagedRuntime.make(layer)
+    }
+    /** @throws {never} */
+    async run<A, E>(effect: Effect.Effect<A, E, R>, signal?: AbortSignal): Promise<A> {
+      return settle(await this.#managed.runPromiseExit(effect, { signal }), signal)
+    }
+    /** @throws {unknown} */
+    runSync<A, E>(effect: Effect.Effect<A, E, R>): A {
+      return settle(this.#managed.runSyncExit(effect))
+    }
+    /** @throws {never} */
+    async dispose(): Promise<void> {
+      await this.#managed.dispose()
+    }
+  }
+
+  /** @throws {never} */
+  export async function runDetached<A, E>(effect: Effect.Effect<A, E>, signal?: AbortSignal): Promise<A> {
+    return settle(await Effect.runPromiseExit(effect, { signal }), signal)
+  }
+
+  /** @throws {unknown} */
+  export function runDetachedSync<A, E>(effect: Effect.Effect<A, E>): A {
+    return settle(Effect.runSyncExit(effect))
+  }
+
+  /** @throws {never} */
+  export function promised<Args extends readonly unknown[], A, E>(run: (...args: Args) => Effect.Effect<A, E>): (...args: Args) => Promise<A> {
+    return (...args) => runDetached(run(...args))
+  }
+
+  /** @throws {never} */
+  export function thrown<Args extends readonly unknown[], A, E>(run: (...args: Args) => Effect.Effect<A, E>): (...args: Args) => A {
+    return (...args) => runDetachedSync(run(...args))
+  }
+}
+import { Kernel, promised, runDetached, runDetachedSync, settle, thrown } from edge
+export { Kernel, promised, runDetached, runDetachedSync, settle, thrown }

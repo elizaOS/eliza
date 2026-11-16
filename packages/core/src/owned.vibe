@@ -1,0 +1,21 @@
+// spec/core/journey.md, "A turn composes the existing machines without a second state store"
+
+export interface MachineShape<S, E, Out, Refused> {
+  get(): S!!
+  send(event: E): Out!Refused
+}
+
+export interface Owned<S, E, Out, Refused, P> {
+  read<A>(view: (state: S, payload: P) => A): A!!
+  step<A>(event: E, settle: (payload: P, out: Out) => readonly [A, P]): A!Refused
+}
+
+export effect function own<S, E, Out, Refused, P>(machine: MachineShape<S, E, Out, Refused>, payload: P): Owned<S, E, Out, Refused, P>!! {
+  const held = try SynchronizedRef.make(payload)
+  return {
+    read: <A>(view: (state: S, payload: P) => A) =>
+      SynchronizedRef.modifyEffect(held, effect (current: P) => [view(try machine.get(), current), current] as const),
+    step: <A>(event: E, settle: (payload: P, out: Out) => readonly [A, P]) =>
+      SynchronizedRef.modifyEffect(held, effect (current: P) => settle(current, try machine.send(event)))
+  }
+}
