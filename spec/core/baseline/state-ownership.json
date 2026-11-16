@@ -4889,7 +4889,8 @@
             "durableAcknowledged",
             "verifierRef",
             "outbound",
-            "hasOutbound"
+            "hasOutbound",
+            "storedVerifier"
           ],
           "transitions": [
             "configure",
@@ -4902,7 +4903,7 @@
             "durableResult",
             "setClock"
           ],
-          "specSha256": "bf150ac4156aecb08e166f3be770d127c6ac8958a1a80c6669a4f21acefc7a48"
+          "specSha256": "1e241c4732a31d38a22197ef8fe219124381344db5c3ec8ba1e9bd32b3c07a2c"
         },
         "associatedModels": [
           {
@@ -4924,7 +4925,8 @@
               "durableAcknowledged",
               "verifierRef",
               "outbound",
-              "hasOutbound"
+              "hasOutbound",
+              "storedVerifier"
             ],
             "transitions": [
               "configure",
@@ -4937,7 +4939,7 @@
               "durableResult",
               "setClock"
             ],
-            "specSha256": "bf150ac4156aecb08e166f3be770d127c6ac8958a1a80c6669a4f21acefc7a48"
+            "specSha256": "1e241c4732a31d38a22197ef8fe219124381344db5c3ec8ba1e9bd32b3c07a2c"
           },
           {
             "spec": "spec/core/connectorStorage.md",
@@ -4996,7 +4998,8 @@
           "durableAcknowledged",
           "verifierRef",
           "outbound",
-          "hasOutbound"
+          "hasOutbound",
+          "storedVerifier"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
@@ -5075,7 +5078,8 @@
             "durableAcknowledged",
             "verifierRef",
             "outbound",
-            "hasOutbound"
+            "hasOutbound",
+            "storedVerifier"
           ],
           "transitions": [
             "configure",
@@ -5088,7 +5092,7 @@
             "durableResult",
             "setClock"
           ],
-          "specSha256": "bf150ac4156aecb08e166f3be770d127c6ac8958a1a80c6669a4f21acefc7a48"
+          "specSha256": "1e241c4732a31d38a22197ef8fe219124381344db5c3ec8ba1e9bd32b3c07a2c"
         },
         "associatedModels": [
           {
@@ -5110,7 +5114,8 @@
               "durableAcknowledged",
               "verifierRef",
               "outbound",
-              "hasOutbound"
+              "hasOutbound",
+              "storedVerifier"
             ],
             "transitions": [
               "configure",
@@ -5123,7 +5128,7 @@
               "durableResult",
               "setClock"
             ],
-            "specSha256": "bf150ac4156aecb08e166f3be770d127c6ac8958a1a80c6669a4f21acefc7a48"
+            "specSha256": "1e241c4732a31d38a22197ef8fe219124381344db5c3ec8ba1e9bd32b3c07a2c"
           },
           {
             "spec": "spec/core/connectorStorage.md",
@@ -5182,7 +5187,8 @@
           "durableAcknowledged",
           "verifierRef",
           "outbound",
-          "hasOutbound"
+          "hasOutbound",
+          "storedVerifier"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
@@ -5278,7 +5284,8 @@
             "durableAcknowledged",
             "verifierRef",
             "outbound",
-            "hasOutbound"
+            "hasOutbound",
+            "storedVerifier"
           ],
           "transitions": [
             "configure",
@@ -5291,7 +5298,7 @@
             "durableResult",
             "setClock"
           ],
-          "specSha256": "bf150ac4156aecb08e166f3be770d127c6ac8958a1a80c6669a4f21acefc7a48"
+          "specSha256": "1e241c4732a31d38a22197ef8fe219124381344db5c3ec8ba1e9bd32b3c07a2c"
         },
         "associatedModels": [
           {
@@ -5313,7 +5320,8 @@
               "durableAcknowledged",
               "verifierRef",
               "outbound",
-              "hasOutbound"
+              "hasOutbound",
+              "storedVerifier"
             ],
             "transitions": [
               "configure",
@@ -5326,7 +5334,7 @@
               "durableResult",
               "setClock"
             ],
-            "specSha256": "bf150ac4156aecb08e166f3be770d127c6ac8958a1a80c6669a4f21acefc7a48"
+            "specSha256": "1e241c4732a31d38a22197ef8fe219124381344db5c3ec8ba1e9bd32b3c07a2c"
           },
           {
             "spec": "spec/core/connectorStorage.md",
@@ -5385,7 +5393,8 @@
           "durableAcknowledged",
           "verifierRef",
           "outbound",
-          "hasOutbound"
+          "hasOutbound",
+          "storedVerifier"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
@@ -5915,7 +5924,7 @@
             "finishOperation",
             "setClock"
           ],
-          "specSha256": "eeb17c8d30aec70fd5c73c6fe94f0273c5be3d1ddd9913c2d611cb3fefc864b9"
+          "specSha256": "1566ab67d0f30d5af2f94e04b2c827283882c3561b4485208e4d2d8765574d02"
         },
         "associatedModels": [
           {
@@ -5965,7 +5974,7 @@
               "finishOperation",
               "setClock"
             ],
-            "specSha256": "eeb17c8d30aec70fd5c73c6fe94f0273c5be3d1ddd9913c2d611cb3fefc864b9"
+            "specSha256": "1566ab67d0f30d5af2f94e04b2c827283882c3561b4485208e4d2d8765574d02"
           }
         ],
         "mappedStateFields": [

@@ -1172,7 +1172,7 @@
       "currentModels": [
         {
           "spec": "spec/core/connectorHandoff.md",
-          "sha256": "eeb17c8d30aec70fd5c73c6fe94f0273c5be3d1ddd9913c2d611cb3fefc864b9",
+          "sha256": "1566ab67d0f30d5af2f94e04b2c827283882c3561b4485208e4d2d8765574d02",
           "definitions": [
             "initial",
             "targetStore",
@@ -1252,7 +1252,12 @@
             "fair_finishBridgeConsumption",
             "fair_finishTransfer",
             "sometimesMirrorOnlyConsumeJoins",
-            "stepMirrorOnlyConsumePreservesDurableTarget"
+            "stepMirrorOnlyConsumePreservesDurableTarget",
+            "transferInProgress",
+            "acknowledgedAccounts",
+            "alwaysAwaitingFlowHasCurrentSnapshot",
+            "alwaysAccountSnapshotIdentityUnique",
+            "alwaysCopiedAccountPrefixRetained"
           ],
           "stateType": "Handoff",
           "stateFields": [
