@@ -7,10 +7,9 @@ One accent on quiet neutrals. Color carries meaning; position and weight carry h
 - **Text.** `foreground` by default, `muted-foreground` for what matters less. Every `x-foreground` is
   the text color on `x`, and each pair meets WCAG AA in both themes.
 - **Edges.** `border` divides and may be faint. `input` is the edge of a control (a field, a checkbox, an
-  outlined button): it and the focus `ring` stand at least 3:1 off `background` and `card` in both
-  themes (WCAG 1.4.11).
+  outlined button): it stands at least 3:1 off `background` and `card` in both themes (WCAG 1.4.11).
 - **Meaning.** `primary` is the one accent: the main action, links, the focus `ring`. `destructive`,
-  `ok`, `warn` and `info` are states, never decoration.
+  `ok` and `warn` are states, never decoration.
 - **Shape.** One `radius`; `rounded-sm`, `-md`, `-lg` and `-xl` derive from it. Three shadows, by elevation.
 - **Motion.** `fast` for hover and press, `base` for most changes, `slow` for entering and leaving.
 - **Dark.** Follows the system; a `.dark` or `.light` class on an ancestor overrides it.
@@ -57,7 +56,6 @@ this prose into tokens. To change the design, describe it, and have the change w
 | `ring` | oklch(0.511 0.23 277) | oklch(0.682 0.173 282.3) |
 | `ok` | oklch(0.527 0.137 150.1) | oklch(0.8 0.182 151.7) |
 | `warn` | oklch(0.555 0.146 49) | oklch(0.837 0.164 84.4) |
-| `info` | oklch(0.5 0.13 255) | oklch(0.82 0.09 253) |
 
 | Token | Value |
 | --- | --- |

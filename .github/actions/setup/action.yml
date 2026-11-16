@@ -1,16 +1,11 @@
 name: setup
-description: Node 26, pnpm from packageManager and its cache; with verification, Dafny, Quint's evaluator, Chromium and the spec cache.
-inputs:
-  verification:
-    description: Set up the tools pnpm verify needs beyond Node and pnpm.
-    default: "true"
+description: Node 26, pnpm from packageManager, Dafny, Chromium, and the caches of pnpm, Turborepo and spec.
 runs:
   using: composite
   steps:
     - uses: pnpm/action-setup@v6
     # Before setup-node: this action puts an old Node on PATH, which setup-node then replaces.
-    - if: inputs.verification == 'true'
-      uses: dafny-lang/setup-dafny-action@v1
+    - uses: dafny-lang/setup-dafny-action@v1
       with:
         dafny-version: "4.11.0"
     - uses: actions/setup-node@v7
@@ -19,8 +14,7 @@ runs:
         cache: pnpm
     # Turborepo skips a task whose inputs it has seen; spec skips a simulation or proof it has seen.
     # Quint downloads its evaluator to ~/.quint from GitHub's rate-limited API: once per cache, not per run.
-    - if: inputs.verification == 'true'
-      uses: actions/cache@v6
+    - uses: actions/cache@v6
       with:
         path: |
           **/.spec-cache
@@ -34,7 +28,6 @@ runs:
     # Quint's first-run downloader uses the unauthenticated GitHub API.
     # Fetch its pinned release directly before concurrent checks need it.
     - name: Install Quint evaluator
-      if: inputs.verification == 'true'
       run: |
         evaluator_version=$(node -p "require('@informalsystems/quint/dist/src/rust/binaryManager.js').QUINT_EVALUATOR_VERSION")
         evaluator_dir="$HOME/.quint/rust-evaluator-$evaluator_version"
@@ -45,6 +38,5 @@ runs:
         "$evaluator_dir/quint_evaluator" --help
       shell: bash
     # Studio's journeys and every test:browser drive a real Chromium.
-    - if: inputs.verification == 'true'
-      run: pnpm exec playwright install --with-deps chromium
+    - run: pnpm exec playwright install --with-deps chromium
       shell: bash

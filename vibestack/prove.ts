@@ -88,8 +88,8 @@ export function dafnyVersion(): Promise<{ version?: string; problem?: string }> 
     const version = r.status === 0 ? r.stdout.match(/\d+\.\d+\.\d+/)?.[0] : undefined;
     const problem = !version ? `Dafny could not be run (${`${r.stdout}${r.stderr}`.trim().split("\n")[0] || "it printed no version"})`
       : !version.startsWith("4.11.") ? `this is Dafny ${version}, and LemmaScript targets Dafny 4.11.x` : undefined;
-    return { version, problem: r.stopped ?? (problem && `${problem}: ${NEEDS_DAFNY}`) };
-  }, (e: Error) => ({ problem: `Dafny could not be run (${e.message}): ${NEEDS_DAFNY}` }))
+    return { version, problem: r.stopped ?? (problem && `${problem}: ${NEEDS_DAFNY} (see README, "Getting started")`) };
+  }, (e: Error) => ({ problem: `Dafny could not be run (${e.message}): ${NEEDS_DAFNY} (see README, "Getting started")` }))
     .then((r) => { if (r.problem) dafny = undefined; return r; }));
 }
 

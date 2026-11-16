@@ -11,7 +11,7 @@ import { type Plan, type Story, plan } from "./variants.ts";
 export type { Prop, Story };
 
 /** Part of every hash: raise it when the same inputs would be written differently. */
-const VERSION = 7;
+const VERSION = 6;
 
 export interface Component {
   id: string;
@@ -90,8 +90,6 @@ function story(c: Found, p: Plan, from: (file: string) => string): string {
       ? [
           "/** A disabled or loading story refuses a person: a click, Enter or Space on what it renders calls no spy it was given. */",
           "const refuses = async ({ args, canvasElement }) => {",
-          "  // Spies in `base` are shared by every story of the file: count only what this one does.",
-          "  for (const value of Object.values(args)) if (isMockFunction(value)) value.mockClear();",
           '  const target = canvasElement.querySelector("a, button, input, select, textarea, [role=button], [role=checkbox], [role=switch], [tabindex]");',
           "  if (target) {",
           "    await userEvent.click(target, { pointerEventsCheck: 0 });",

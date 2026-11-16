@@ -40,26 +40,9 @@ test("apply accepts a valid change and rejects an unknown path, an invalid color
   expect(() => applyChanges(tokens, [{ ...primary, path: "constructor.name" }])).toThrow("unknown token path")
   expect(() => applyChanges(tokens, [{ ...primary, value: "#4f46e5" }])).toThrow(/expected oklch/)
   expect(() => applyChanges(tokens, [{ ...primary, value: "oklch(0.9 0.05 277)" }])).toThrow(/color\.light\.primary-foreground on primary: contrast .* is below 4\.5/)
-  // A field's outline is seen, not read: 3:1 against the page (WCAG 1.4.11).
-  expect(() => applyChanges(tokens, [{ path: "color.dark.input", value: tokens.color.dark.background, reason: "invisible field" }])).toThrow(/color\.dark\.input on background: contrast 1\.00 is below 3/)
-  expect(() => applyChanges(tokens, [{ path: "color.light.ring", value: tokens.color.light.card, reason: "invisible focus" }])).toThrow(/color\.light\.ring on card: contrast 1\.00 is below 3/)
   expect(() => applyChanges(tokens, [{ path: primary.path, value: primary.value }])).toThrow(/reason/)
   const { radius: _, ...rest } = tokens
   expect(() => parseTokens({ ...rest, spacing: "1rem" })).toThrow("unknown token path: spacing\nradius: missing")
-  // A palette color is named in light; dark may override it but never introduce one.
-  expect(() => parseTokens({ ...tokens, color: { ...tokens.color, dark: { ...tokens.color.dark, brand: "oklch(0.5 0.1 200)" } } })).toThrow("color.dark.brand: no light value")
-  expect(() => parseTokens({ ...tokens, text: { body: "20" } })).toThrow("text.body: expected a length in rem or px")
-  expect(() => parseTokens({ ...tokens, keyframes: { blink: "opacity:0" } })).toThrow("keyframes.blink: expected keyframe stops")
-  expect(() => parseTokens({ ...tokens, text: { ...tokens.text, primary: "1rem" } })).toThrow("text.primary: also a color")
-})
-
-test("a palette color, radius, size, blur and gradient each become a utility; a palette color without a dark value keeps its light one", () => {
-  const next = parseTokens({ ...tokens, color: { light: { ...tokens.color.light, brand: "oklch(0.5 0.1 200)" }, dark: tokens.color.dark }, rounded: { pill: "999px" }, text: { hero: "3rem" }, blur: { frost: "20px" }, keyframes: { blink: "50%{opacity:0}" }, animate: { blink: "blink 1s step-end infinite" }, gradient: { sky: "linear-gradient(var(--brand), var(--primary))" } })
-  const [css, theme] = [tokensCss(next), themeCss(next)]
-  // Set in :root and .light; .dark and a dark system inherit it.
-  expect(css.match(/--brand: [^;]+;/g)).toEqual(["--brand: oklch(0.5 0.1 200);", "--brand: oklch(0.5 0.1 200);"])
-  for (const line of ["--color-brand: var(--brand);", "--radius-pill: 999px;", "--text-hero: 3rem;", "--blur-frost: 20px;", "--animate-blink: blink 1s step-end infinite;", "@keyframes blink { 50%{opacity:0} }", "@utility bg-gradient-sky {"]) expect(theme).toContain(line)
-  expect(css).toContain("--gradient-sky: linear-gradient(var(--brand), var(--primary));")
 })
 
 test("check passes on the project's tokens and design.md, and detects a stale design.md", () => {

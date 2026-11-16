@@ -14,6 +14,22 @@ const PRIMITIVE: Record<string, string> = { int: "number", bool: "boolean", str:
  * `typedefs` are the types a module can name: its own and those of the specs it imports. A type the module defines
  * is spelled with `prefix` in TypeScript; one from another module is spelled <module>_<name>.
  */
+/**
+ * The integer in a trace value that Quint wrote as a bignumber.js object rather than as {"#bigint": "<digits>"}.
+ * Quint 0.33 reads the Rust simulator's output through json-bigint, which turns every integer of 16 or more
+ * digits into a BigNumber; the trace then holds its fields: sign s, exponent e, and digit groups c of base 10^14,
+ * the first group holding the digits before the remaining full groups. Anything else, or a fraction, is undefined.
+ */
+export const bigNumberInteger = (v: any): bigint | undefined => {
+  const digits = (x: any): string | undefined => (typeof x?.["#bigint"] === "string" && /^-?\d+$/.test(x["#bigint"]) ? x["#bigint"] : undefined);
+  if (v === null || typeof v !== "object" || Object.keys(v).sort().join() !== "c,e,s" || !Array.isArray(v.c) || v.c.length === 0) return undefined;
+  const sign = digits(v.s), exponent = digits(v.e), groups = v.c.map(digits);
+  if ((sign !== "1" && sign !== "-1") || exponent === undefined || groups.some((g: string | undefined) => g === undefined || g.startsWith("-") || g.length > 14)) return undefined;
+  const coefficient = groups.map((g: string, i: number) => (i === 0 ? g : g.padStart(14, "0"))).join("");
+  const shift = BigInt(exponent) - BigInt(coefficient.length - 1);
+  return shift < 0n ? undefined : BigInt(sign) * BigInt(coefficient) * 10n ** shift;
+};
+
 export function typeWalks(typedefs: Json[], module: string, prefix = "") {
   const fields = (t: Json): Json[] => t.kind === "rec" && t.fields.fields.some((f: Json) => f.fieldName === "__proto__")
     ? fail("a record field cannot be called `__proto__`, which JavaScript reads as the object's prototype") : t.fields.fields;
@@ -176,7 +192,7 @@ export function typeWalks(typedefs: Json[], module: string, prefix = "") {
     const t = resolve(t0);
     if (t.kind === "int") {
       // A trace writes every integer as {"#bigint": "<digits>"}. One beyond 2^53 would be silently rounded by Number.
-      const n = typeof v?.["#bigint"] === "string" ? BigInt(v["#bigint"]) : typeof v === "number" ? v : fail(`a trace holds ${JSON.stringify(v)} where an integer belongs`);
+      const n = typeof v?.["#bigint"] === "string" ? BigInt(v["#bigint"]) : typeof v === "number" ? v : bigNumberInteger(v) ?? fail(`a trace holds ${JSON.stringify(v)} where an integer belongs`);
       return Number.isSafeInteger(Number(n)) ? Number(n)
         : fail(`a simulated trace reached the integer ${n}, which is beyond 2^53 and so cannot be represented exactly in TypeScript; bound it with a guard`);
     }
