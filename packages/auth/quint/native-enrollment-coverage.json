@@ -431,6 +431,7 @@
       "OwedUntilEnded",
       "SavedKeyKept",
       "NewerKeyKept",
+      "OnlySignedOutKeysEnd",
       "DamagedOwesNothing",
       "AttemptEnded",
       "RemovedTogether",
@@ -439,7 +440,7 @@
     ],
     "status": "partial",
     "limitations": [
-      "One Android deployment, one sign-out of a working or damaged saved record, restarts at any point, one newer sign-in after the removal.",
+      "One Android deployment, a sign-out of a working or damaged saved record, restarts at any point, and one newer sign-in after the removal that is signed out of in turn while the first key is still owed. The temporal property DutiesSettle holds under strong fairness of the sign-out steps and of a start-up check Cloud answers.",
       "Conformance executes the exact signOut, retireReplaced, retryRetirement and retireStored methods with synthetic storage and HTTPS in the JVM harness.",
       "A storage failure that refuses the sign-out, a renewal running beside it and the Google picker state remain separate."
     ]
