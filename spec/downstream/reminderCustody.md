@@ -1,13 +1,17 @@
 # AlphaPhone reminder creation and action custody
 
-AlphaPhone consumes `reminder-journal.ts`, `reminder-contract.ts` and
-`reminder-create-contract.ts` at Eliza
-`c518127a025ab173874af9c7d304f26b25213b0d`. See [capability admission](./clockReminder.md).
-The journal uses validated JSON and atomic compare-and-edit over a store
-owned by the current connection. Creation allows 32 entries and evicts
-confirmed entries first. An action store allows 100. Both have a 128 KiB
-serialized bound. A native outcome valid for a different journal entry
-leaves the current entry pending.
+AlphaPhone `8d44dfe52b0a6e2f3462b5da85dd3f8037518f43` projects
+`reminder-journal.ts`, `reminder-contract.ts` and
+`reminder-create-contract.ts` from its Eliza pin
+`c518127a025ab173874af9c7d304f26b25213b0d` into `.eliza/client-features`.
+The installed consumers are `apps/app/src/runtime/reminder-creations.ts` and
+`apps/app/src/runtime/reminder-deletions.ts`. The shared journal validates
+JSON and requires atomic compare-and-edit. Their `reminder-journal-store.ts`
+adapter compares and exchanges the current connection's secure slot on
+Android and edits the named browser document in a browser. Creation allows
+32 entries and evicts confirmed entries first. An action store allows 100.
+Both have a 128 KiB serialized bound. A native outcome valid for a different
+journal entry leaves the current entry pending. [Capability admission](./clockReminder.md)
 
 ## Story: Recover a reminder write without repeating an uncertain effect
 
@@ -24,7 +28,10 @@ for a later read. Reconciliation is read-only at the native boundary.
 An explicit owner discard follows a warning and can leave a native
 effect outstanding. A discarded journal record cannot be applied to a
 successor's request. The model uses one retained key and projects exact
-CAS, device row and receipt comparisons as validated evidence.
+CAS, device row and receipt comparisons as validated evidence. The live
+handler owns the dispatch boundary. The persisted request remains pending
+across an uncertain call, and reconciliation asks the device for a row or
+receipt before changing the journal.
 
 ```quint
 type JournalKind = CreationRequest | RevisionAction
