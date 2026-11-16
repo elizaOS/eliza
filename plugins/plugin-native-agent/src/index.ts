@@ -14,3 +14,4 @@ export const Agent = registerPlugin<AgentPlugin>("Agent", {
   // Electrobun uses the preload bridge (agent:start, agent:stop, etc.)
   // iOS/Android use the native bridge when registered, otherwise the HTTP web fallback.
 });
+export * from "./embedded.js";
