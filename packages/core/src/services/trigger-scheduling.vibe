@@ -1,6 +1,6 @@
 // spec/core/services.md, "Story: Acquire a declared service"
 import { failingAs, thrown } from "../edge.vibe"
-import { rawEnv } from "../utils/environment.vibe"
+import { processEnv } from "../utils/environment.vibe"
 import type { TriggerConfig } from "../types/trigger.vibe"
 
 export const MIN_TRIGGER_INTERVAL_MS = 60_000
@@ -423,11 +423,13 @@ export effect function resolveTriggerTiming(
       return timingEvery(nowMs, DISABLED_TRIGGER_INTERVAL_MS)
     default: {
       const exhaustiveCheck: never = trigger.triggerType
-      throw new UnsupportedTriggerType({ message: `Unsupported trigger type: ${String(exhaustiveCheck)}` })
+      throw new UnsupportedTriggerType({ message: `Unsupported trigger type: ${exhaustiveCheck as string}` })
     }
   }
 }
-export const resolveTriggerTimingOrThrow = thrown(failingAs(Error, resolveTriggerTiming))
+export const resolveTriggerTimingOrThrow = thrown((trigger: TriggerConfig, nowMs: number) =>
+  Effect.mapError(resolveTriggerTiming(trigger, nowMs), (failure) => new Error(failure.message)),
+)
 
 export const MISSED_SCHEDULED_OCCURRENCES_SETTING = "ELIZA_MISSED_SCHEDULED_OCCURRENCES"
 
@@ -443,7 +445,7 @@ export function recordsMissedScheduledOccurrences(
     : undefined
   const value = typeof configured === "string"
     ? configured
-    : rawEnv(MISSED_SCHEDULED_OCCURRENCES_SETTING)
+    : (processEnv() as NodeJS.ProcessEnv | undefined)?.[MISSED_SCHEDULED_OCCURRENCES_SETTING]
   return value === "record"
 }
 

@@ -214,8 +214,17 @@ function isPublicHttpsUrl(url: URL): boolean {
     && (literalFamily === 0 || isPublicInternetAddress(hostname, literalFamily))
 }
 
+function parseEndpoint(value: string): URL | null {
+  try {
+    if (value.length > 2_048 || containsAsciiControl(value)) return null
+    return new URL(value)
+  } catch {
+    return null
+  }
+}
+
 export effect function assertPublicHttpsEndpoint(value: string, resource: string) {
-  const url = value == null || value.length > 2_048 || containsAsciiControl(value) ? null : URL.parse(value)
+  const url = parseEndpoint(value)
   if (!url || !isPublicHttpsUrl(url)) throw new NonPublicHttpsUrl({ message: `${resource} must be a public https URL` })
   return url
 }

@@ -3,7 +3,7 @@ import * as EffectSemaphore from "effect/Semaphore"
 import type { UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import type { Task } from "../types/task.vibe"
-import { Foreign, foreign, runDetached } from "../edge.vibe"
+import { asLegacy, Foreign, foreign, runDetached } from "../edge.vibe"
 import { whenAborted } from "./retry.vibe"
 
 export function createSerialise(): <T>(fn: () => Promise<T>) => Promise<T> {
@@ -129,10 +129,7 @@ export effect function startTaskDrain(drain: TaskDrain, runtime: IAgentRuntime) 
   if (!state.skipRegisterWorker) {
     const onDrain = state.onDrain
     if (!onDrain) throw new TaskDrainMisconfigured({ message: "TaskDrain: onDrain is required when registerWorker is enabled" })
-    try Effect.try({
-      try: () => runtime.registerTaskWorker({ name: state.taskName, execute: (rt) => runDetached(drainOnce(state, onDrain, rt)) }),
-      catch: (cause) => new Foreign({ cause }),
-    })
+    runtime.registerTaskWorker({ name: state.taskName, execute: (rt) => runDetached(drainOnce(state, onDrain, rt)) })
   }
   try ensureTask(drain, runtime)
 }
@@ -148,10 +145,8 @@ effect function ensureTask(drain: TaskDrain, runtime: IAgentRuntime) {
   if (mine?.id) {
     state.taskId = mine.id
     if (matchingTasks.length > 1 && typeof runtime.deleteTask === "function") {
-      for concurrent (const task of matchingTasks.slice(1)) {
-        const taskId = task.id
-        if (taskId) foreign(() => runtime.deleteTask(taskId)) catch () => undefined
-      }
+      const pending = matchingTasks.slice(1).filter((task) => task.id).map((task) => runtime.deleteTask(task.id as UUID))
+      for concurrent (const deletion of pending) foreign(() => deletion) catch () => undefined
     }
     if (typeof runtime.getTask === "function" && typeof runtime.updateTask === "function") {
       try updateTaskDrainInterval(drain, runtime, state.intervalMs)
@@ -197,7 +192,11 @@ export effect function disposeTaskDrain(drain: TaskDrain, runtime: IAgentRuntime
   state.disposed = true
   const taskId = state.taskId
   if (!taskId || typeof runtime.deleteTask !== "function") return
-  foreign(() => runtime.deleteTask(taskId)) catch (err) => runtime.reportError("TaskDrain.dispose", err.cause, { taskId })
+  const pending = try Effect.try({
+    try: () => runtime.deleteTask(taskId).catch((err) => runtime.reportError("TaskDrain.dispose", err, { taskId })),
+    catch: (cause) => new Foreign({ cause }),
+  })
+  try foreign(() => pending)
   state.taskId = null
 }
 
@@ -223,7 +222,7 @@ export class TaskDrain {
   }
 
   async start(runtime: IAgentRuntime): Promise<void> {
-    return runDetached(startTaskDrain(this, runtime))
+    return runDetached(asLegacy(Error, startTaskDrain(this, runtime)))
   }
 
   async updateInterval(runtime: IAgentRuntime, newIntervalMs: number): Promise<void> {

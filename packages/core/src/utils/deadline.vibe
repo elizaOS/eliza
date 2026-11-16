@@ -1,5 +1,5 @@
 // spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
-import { Foreign, foreign } from "../edge.vibe"
+import { foreign } from "../edge.vibe"
 import { unrefSleep } from "./retry.vibe"
 
 export interface DeadlineOptions<TTimeout> {
@@ -8,8 +8,7 @@ export interface DeadlineOptions<TTimeout> {
 }
 
 export effect function resolveAtDeadline<T, TTimeout>(promise: Promise<T>, options: DeadlineOptions<TTimeout>) {
-  const onTimeout = Effect.try({ try: () => options.onTimeout(), catch: (cause) => new Foreign({ cause }) })
-  return try Effect.raceFirst(foreign(() => promise), Effect.andThen(unrefSleep(options.timeoutMs), onTimeout))
+  return try Effect.raceFirst(foreign(() => promise), Effect.andThen(unrefSleep(options.timeoutMs), foreign(() => options.onTimeout())))
 }
 
 module edge {

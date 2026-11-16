@@ -6,7 +6,6 @@ const jsonBlockPattern = /```(?:(?:json5|json)(?![A-Za-z0-9_-]))?\s*\r?\n?([\s\S
 
 export error InvalidModelText { message: string }
 export error UnparsableModelJson { message: string; cause: unknown }
-error NotAJsonObject { message: string }
 
 function unparsable(cause: unknown): UnparsableModelJson {
   return new UnparsableModelJson({ message: "Failed to parse invalid JSON", cause })
@@ -23,11 +22,12 @@ export effect function extractAndParseJSONObjectFromText(text: string) {
     if (!match) throw error
     return try parseJson5(match[1])
   }
-  if (parsed === null || typeof parsed !== "object") throw unparsable(new NotAJsonObject({ message: "Parsed JSON must be an object or array" }))
+  if (parsed === null || typeof parsed !== "object") throw unparsable(new Error("Parsed JSON must be an object or array"))
   return parsed as Record<string, unknown> | unknown[]
 }
 
-export const extractAndParseJSONObjectFromTextOrThrow = thrown(extractAndParseJSONObjectFromText)
+export const extractAndParseJSONObjectFromTextOrThrow = thrown((text: string) => mapError(extractAndParseJSONObjectFromText(text), (error) =>
+  error._tag === "UnparsableModelJson" ? new Error(error.message, { cause: error.cause }) : new Error(error.message)))
 
 export function parseJSONObjectFromText(text: string): Record<string, unknown> | null {
   return match (runSyncExit(extractAndParseJSONObjectFromText(text))) {

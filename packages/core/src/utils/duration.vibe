@@ -1,5 +1,5 @@
 // spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
-import { thrown } from "../edge.vibe"
+import { failingAs, thrown } from "../edge.vibe"
 
 const DURATION_UNIT_MS = {
   ms: 1,
@@ -29,4 +29,4 @@ export effect function parseDurationMs(raw: string, opts?: DurationMsParseOption
   return Math.round(milliseconds)
 }
 
-export const parseDurationMsOrThrow = thrown(parseDurationMs)
+export const parseDurationMsOrThrow = thrown(failingAs(Error, parseDurationMs))

@@ -76,12 +76,10 @@ export effect function detectMime(opts: {
   filePath?: string
 }) {
   const ext = getFileExtension(opts.filePath)
+  const extension = mimeCandidate(ext ? MIME_BY_EXT[ext] : undefined)
+  const header = mimeCandidate(normalizeHeaderMime(opts.headerMime))
   const sniffed = try sniffMime(opts.buffer)
-  return chooseMime(
-    mimeCandidate(sniffed),
-    mimeCandidate(ext ? MIME_BY_EXT[ext] : undefined),
-    mimeCandidate(normalizeHeaderMime(opts.headerMime)),
-  ) || undefined
+  return chooseMime(mimeCandidate(sniffed), extension, header) || undefined
 }
 export const detectMimePromise = promised(detectMime)
 

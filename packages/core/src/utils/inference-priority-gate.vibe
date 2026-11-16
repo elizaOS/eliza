@@ -1,13 +1,13 @@
 // spec/core/inferenceGate.md, "Story: Prioritize interactive inference without changing requests"; spec/core/inferenceGate.md, "Native inference starts only for lane owners"; spec/core/inferenceGate.md, "Handoff prunes the examined background prefix only"; spec/core/inferenceGate.md, "Queued timeout and signal callbacks release only their own attachment"
 import type { LocalInferencePriority } from "../types/model.vibe"
-import { foreign, runDetached } from "../edge.vibe"
-import { readEnv } from "./environment.vibe"
+import { asLegacy, foreign, runDetached } from "../edge.vibe"
+import { processEnv } from "./environment.vibe"
 import { unrefSleep, whenAborted } from "./retry.vibe"
 
 export type InferenceRamClass = "constrained" | "standard"
 
-export function inferenceRamClassFromEnv(env?: NodeJS.ProcessEnv): InferenceRamClass | null {
-  const raw = readEnv("ELIZA_INFERENCE_RAM_CLASS", { env })?.toLowerCase()
+export function inferenceRamClassFromEnv(env: NodeJS.ProcessEnv = processEnv()): InferenceRamClass | null {
+  const raw = env.ELIZA_INFERENCE_RAM_CLASS?.trim().toLowerCase()
   return raw === "constrained" || raw === "standard" ? raw : null
 }
 
@@ -196,7 +196,7 @@ export class InferencePriorityGate {
   }
 
   async runExclusive<T>(opts: RunExclusiveOptions, fn: () => Promise<T>): Promise<T> {
-    return runDetached(runExclusive(this.lane, opts, fn))
+    return runDetached(asLegacy(Error, runExclusive(this.lane, opts, fn), InferenceBackgroundWaitTimeoutError))
   }
 }
 

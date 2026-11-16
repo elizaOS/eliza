@@ -6,6 +6,10 @@ export effect function foreign<A>(call: (signal: AbortSignal) => A | PromiseLike
   return try tryPromise({ try: async (signal) => await call(signal), catch: (cause) => new Foreign({ cause }) })
 }
 
+export effect function foreignSync<A>(call: () => A): A!Foreign {
+  return try Effect.try({ try: () => call(), catch: (cause) => new Foreign({ cause }) })
+}
+
 module edge {
   import { Cause, Effect, Exit, ManagedRuntime, type Layer } from "effect"
   import { publicOutcome, type Outcome } from "../gen/core.ts"
@@ -61,20 +65,21 @@ module edge {
 
   /** @throws {never} */
   export function asLegacy<A, E extends Error, R>(
-    Legacy: new (message: string) => Error,
+    Legacy: new (message: string, options?: ErrorOptions) => Error,
     effect: Effect.Effect<A, E, R>,
     ...kept: ReadonlyArray<abstract new (...args: never[]) => Error>
   ): Effect.Effect<A, Error, R> {
-    const unchanged: ReadonlyArray<abstract new (...args: never[]) => Error> = [Foreign, Legacy, ...kept]
+    const unchanged: ReadonlyArray<abstract new (...args: never[]) => Error> = [Foreign, ...kept]
     return Effect.mapError(effect, (error): Error => {
-      const passes = unchanged.some((Kind) => error instanceof Kind)
-      return passes ? error : new Legacy(error.message)
+      const passes = error.constructor === Legacy || unchanged.some((Kind) => error instanceof Kind)
+      if (passes) return error
+      return error.cause === undefined ? new Legacy(error.message) : new Legacy(error.message, { cause: error.cause })
     })
   }
 
   /** @throws {never} */
   export function failingAs<Args extends readonly unknown[], A, E extends Error>(
-    Legacy: new (message: string) => Error,
+    Legacy: new (message: string, options?: ErrorOptions) => Error,
     run: (...args: Args) => Effect.Effect<A, E>,
     ...kept: ReadonlyArray<abstract new (...args: never[]) => Error>
   ): (...args: Args) => Effect.Effect<A, Error> {

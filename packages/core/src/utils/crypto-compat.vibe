@@ -1,5 +1,5 @@
 // spec/core/protocols.md, "Binary helpers preserve byte contents and the input slice ownership contract"
-import { Foreign, thrown } from "../edge.vibe"
+import { failingAs, Foreign, thrown } from "../edge.vibe"
 
 module node {
   import { Buffer } from "node:buffer"
@@ -78,7 +78,7 @@ export effect function createHash(algorithm: string) {
   return hashBuilder(algorithm)
 }
 
-export const createHashOrThrow = thrown(createHash)
+export const createHashOrThrow = thrown(failingAs(Error, createHash))
 
 effect function validateKey(key: Uint8Array) {
   if (key.length !== 32) {
@@ -108,14 +108,14 @@ export effect function createDecipheriv(algorithm: string, key: Uint8Array, iv: 
   return cbcDecipher(key, iv)
 }
 
-export const createDecipherivOrThrow = thrown(createDecipheriv)
+export const createDecipherivOrThrow = thrown(failingAs(Error, createDecipheriv))
 
 export effect function encryptAes256Gcm(key: Uint8Array, iv: Uint8Array, plaintext: Uint8Array, aad?: Uint8Array) {
   try validateKeyAndGcmIv(key, iv)
   return gcmEncrypt(key, iv, plaintext, aad)
 }
 
-export const encryptAes256GcmOrThrow = thrown(encryptAes256Gcm)
+export const encryptAes256GcmOrThrow = thrown(failingAs(Error, encryptAes256Gcm))
 
 export effect function decryptAes256Gcm(key: Uint8Array, iv: Uint8Array, ciphertext: Uint8Array, tag: Uint8Array, aad?: Uint8Array) {
   try validateKeyAndGcmIv(key, iv)
@@ -125,4 +125,4 @@ export effect function decryptAes256Gcm(key: Uint8Array, iv: Uint8Array, ciphert
   return try Effect.try({ try: () => gcmDecrypt(key, iv, ciphertext, tag, aad), catch: (cause) => new Foreign({ cause }) })
 }
 
-export const decryptAes256GcmOrThrow = thrown(decryptAes256Gcm)
+export const decryptAes256GcmOrThrow = thrown(failingAs(Error, decryptAes256Gcm))
