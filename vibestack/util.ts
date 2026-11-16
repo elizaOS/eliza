@@ -189,12 +189,17 @@ function addVitest(root: string): string {
   return `test/ had nothing to run it: added "test": "vitest run" to package.json${config ? ", and vitest.config.ts" : ""}, as \`spec init\` does`;
 }
 
+/** What a fingerprint covers: what a package's tests read, or what its page serves, which leaves out the tests, drivers, traces and counterexamples. */
+export type Inputs = "tests" | "page";
+
 /**
- * A fingerprint of what a package's tests read: its files and the top of its gen/ (an owner's is mirrored from the
- * root's), the workspace packages it depends on, the lock file and the fuzzing budget.
+ * A fingerprint of what a package's tests, or its page, read: its files and the top of its gen/ (an owner's is
+ * mirrored from the root's), the fixtures nested under its test/, the workspace packages it depends on without their
+ * spec/ or the packages nested in them, the lock file and the fuzzing budget.
  */
-export function testInputs(root: string, mode: TestProfile = "normal"): string {
-  const hash = createHash("sha256").update(JSON.stringify(["tests-v2", process.versions.node, process.platform, process.arch, profile(mode)]));
+export function testInputs(root: string, mode: TestProfile = "normal", read: Inputs = "tests"): string {
+  const hash = createHash("sha256").update(JSON.stringify(["tests-v3", read, process.versions.node, process.platform, process.arch, profile(mode)]));
+  const served = (file: string) => !isTestFile(file) && ![DRIVERS, TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`));
   const pending = [{ directory: root, name: "." }];
   const seen = new Set<string>();
   for (const { directory, name } of pending) {
@@ -207,10 +212,14 @@ export function testInputs(root: string, mode: TestProfile = "normal"): string {
       const directory = path.join(from, "node_modules", dependency);
       if (String(version).startsWith("workspace:") && fs.existsSync(directory)) pending.push({ directory, name: dependency });
     }
+    const own = name === ".";
     const gen = path.join(from, "gen");
     const top = fs.existsSync(gen) ? fs.readdirSync(gen, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `gen/${e.name}`) : [];
-    for (const file of [...packageFiles(from, () => true, "", true), ...top].map((f) => path.join(from, f)))
-      hash.update(`${path.relative(from, file)}\0`).update(fs.readFileSync(file));
+    const keep = (file: string) => (own || !file.startsWith("spec/")) && (read === "tests" || served(file));
+    for (const file of [...packageFiles(from, keep, "", own), ...top]) {
+      const bytes = fs.readFileSync(path.join(from, file));
+      hash.update(`${file}\0${bytes.length}\0`).update(bytes);
+    }
   }
   const { lock } = packageManager(root);
   if (lock) hash.update(fs.readFileSync(lock));
@@ -235,23 +244,29 @@ export function danglingCitations(root: string, specs: Spec[], dir = ""): string
 }
 
 /**
- * A package's files that `keep` accepts, as paths from it: not gen/, build output, dependencies or hidden
- * directories (such as `.cache/`), nor the packages nested in it, which are checked on their own.
+ * A package's files that `keep` accepts, as paths from it: not gen/, build output, dependencies, hidden directories
+ * (such as `.cache/`) or `.DS_Store`, nor the packages nested in it, which are checked on their own, except, with
+ * `fixtures`, those under a test/ directory, which its tests read.
  */
-function packageFiles(root: string, keep: (name: string) => boolean, dir = "", nested = false): string[] {
+function packageFiles(root: string, keep: (file: string) => boolean, dir = "", fixtures = false): string[] {
   return fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => {
     const rel = dir ? `${dir}/${e.name}` : e.name;
-    if (e.name === ".git") return [];
-    if (e.isFile()) return keep(e.name) ? [rel] : [];
+    if (e.name === ".git" || e.name === ".DS_Store") return [];
+    if (e.isFile()) return keep(rel) ? [rel] : [];
+    const nested = fs.existsSync(path.join(root, rel, "package.json"));
     const skip = /^(node_modules|dist|build|out|coverage|storybook-static|__traces__|__screenshots__|\..*)$/.test(e.name)
-      || (e.name === "gen" && fs.existsSync(path.join(root, rel, "package.json"))) || (!nested && fs.existsSync(path.join(root, rel, "package.json")));
-    return e.isDirectory() && !skip ? packageFiles(root, keep, rel, nested) : [];
+      || (nested && (e.name === "gen" || !fixtures || !/(?:^|\/)test\//.test(rel)));
+    return e.isDirectory() && !skip ? packageFiles(root, keep, rel, fixtures) : [];
   }).sort();
 }
-const packageCode = (root: string) => packageFiles(root, (name) => /\.(?:[cm]?[jt]sx?|vibex?)$/.test(name) && !SIDECAR.test(name));
+const packageCode = (root: string) => packageFiles(root, (file) => /\.(?:[cm]?[jt]sx?|vibex?)$/.test(file) && !SIDECAR.test(file));
 
-/** A package's tests: test/**\/*.test.*, but not its drivers, which the traces stage runs. */
-const testFiles = (root: string) => packageCode(root).filter((f) => /^test\/(?!drivers\/).*\.test\.[^/.]+$/.test(f));
+/** A test of a package: test/**\/*.test.*, but not a driver, which the traces stage runs. */
+const isTestFile = (file: string) => /^test\/(?!drivers\/).*\.test\.[^/.]+$/.test(file);
+const testFiles = (root: string) => packageCode(root).filter(isTestFile);
+
+/** Where a package keeps its drivers, the traces they replay and the counterexamples the simulator found (SPEC.md, "Conformance"). */
+export const TRACES = "test/traces", DRIVERS = "test/drivers", COUNTEREXAMPLES = "test/counterexamples";
 
 /** A token of a script, and how many brackets it sits in. */
 interface Token { text: string; pos: number; start: number; depth: number; fresh: boolean }

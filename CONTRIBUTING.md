@@ -145,7 +145,12 @@ separately, outside the workspace cache.
 
 A complete passing Vitest run records its input fingerprint. `check` reuses
 that result only while its source, generated core, transitive workspace
-inputs, lockfile and fixed profile match. Filtered, exclusive, interrupted
+inputs, lockfile and fixed profile match. The fingerprint covers the package's
+files, with the packages nested under its `test/` as fixtures but not other
+nested packages, and each `workspace:` dependency without its `spec/` or the
+packages nested in it; a file a test reads from elsewhere comes through a
+declared dependency, as the root's `@repo/design-system` does. Turbo's
+`//#test` inputs cover the same files, so a restored receipt still matches. Filtered, exclusive, interrupted
 and failed runs record no complete result. Acceptance and nightly checks
 bypass these receipts and the inner verification cache.
 

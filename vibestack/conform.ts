@@ -12,7 +12,7 @@ import type { Model } from "./gen.ts";
 import { heading, type Spec } from "./parse.ts";
 import type { Step } from "./simulate.ts";
 import { exec, startGroup } from "./run.ts";
-import { filesUnder, indent, type Reported } from "./util.ts";
+import { COUNTEREXAMPLES, DRIVERS, filesUnder, indent, TRACES, type Reported } from "./util.ts";
 
 export type Simulated = Found<any> & { traces: Sent<any>[][] };
 export interface Machine { domain: Oracle<any, any>; model: Model; found: Simulated }
@@ -58,7 +58,6 @@ export function writeConformance(root: string, model: Model) {
   ].join("\n"));
 }
 
-const TRACES = "test/traces", DRIVERS = "test/drivers", COUNTEREXAMPLES = "test/counterexamples";
 const ANSWER_WITHIN = 10_000;
 
 /** A real program, one JSON answer for each reset/event request. */

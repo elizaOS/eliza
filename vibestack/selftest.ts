@@ -649,7 +649,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.deepEqual(headed.failed, [], headed.text);
   });
 
-  test("a test pass is remembered for its inputs; runner receipts allow reuse but a forged Turbo environment does not; unchecked specs are noted", async () => {
+  test("a test pass is remembered for what the tests read, and an exploration for what the page serves; runner receipts allow reuse but a forged Turbo environment does not; unchecked specs are noted", async () => {
     const ran = path.join(scratch({}), "ran");
     const root = fixtures(["door"], (f) => Object.assign(f, {
       "package.json": JSON.stringify({ scripts: { test: `echo x >> ${JSON.stringify(ran)}` } }),
@@ -679,6 +679,22 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     fs.writeFileSync(path.join(root, "src/door.ts"), "export const door = 3;\n");
     await run(root);
     assert.equal(runs(), 4, "a receipt for older source cannot suppress the tests");
+    const workspace = scratch({ "tsconfig.json": "{}", "package.json": JSON.stringify({ devDependencies: { kit: "workspace:*" } }),
+      ...Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts", "test/fixtures/p/package.json",
+        "test/fixtures/p/a.ts", "apps/other/package.json", "apps/other/a.ts", "kit/package.json", "kit/a.ts", "kit/spec/a.md", "kit/nested/package.json", "kit/nested/a.ts"].map((f) => [f, "{}"])) });
+    fs.mkdirSync(path.join(workspace, "node_modules"));
+    fs.symlinkSync("../kit", path.join(workspace, "node_modules/kit"), "dir");
+    const changed = (file: string) => {
+      const before = [testInputs(workspace), testInputs(workspace, "normal", "page")];
+      fs.appendFileSync(path.join(workspace, file), " ");
+      return [testInputs(workspace) !== before[0], testInputs(workspace, "normal", "page") !== before[1]];
+    };
+    assert.deepEqual(Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts",
+      "test/fixtures/p/a.ts", "apps/other/a.ts", "kit/a.ts", "kit/package.json", "kit/spec/a.md", "kit/nested/a.ts", ".DS_Store"].map((f) => [f, changed(f)])), {
+      "src/a.ts": [true, true], "test/a.test.ts": [true, false], "test/drivers/a.ts": [true, false], "test/traces/a.jsonl": [true, false],
+      "test/counterexamples/a.json": [true, false], "test/bombadil.ts": [true, true], "test/fixtures/p/a.ts": [true, true], "apps/other/a.ts": [false, false],
+      "kit/a.ts": [true, true], "kit/package.json": [true, true], "kit/spec/a.md": [false, false], "kit/nested/a.ts": [false, false], ".DS_Store": [false, false],
+    }, "the tests read the package, its test fixtures and what its workspace dependencies ship; the page leaves out the tests, drivers, traces and counterexamples");
   });
 
   test("a rule whose prose or model changed names the code that cites it, for a person to read again", () => {

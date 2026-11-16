@@ -6,7 +6,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { bin, exec, startGroup } from "./run.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
-import { appScript, COLOUR, filesUnder, indent, packageManager, servedAt, testInputs, type Remember, type Reported } from "./util.ts";
+import { appScript, COLOUR, filesUnder, indent, manifest, packageManager, servedAt, testInputs, type Remember, type Reported } from "./util.ts";
 
 const SPECIFICATION = "test/bombadil.ts";
 const SAVED = "test/__traces__/bombadil";
@@ -96,7 +96,7 @@ async function served(root: string, script: string, checking: string, explore: (
 /**
  * The explore stage of the package `directory`, checked from `checking`: nothing if it has no page. A trace saved by
  * an earlier failure is replayed first; then the page is explored for the profile's time. A pass is remembered until
- * the package's test inputs change.
+ * what the page serves, the installed Bombadil or the script change.
  */
 export async function explore(directory: string, remember: Remember, mode: TestProfile = "normal", checking = directory): Promise<Reported<"explore" | "skipped">[]> {
   const root = path.resolve(directory);
@@ -129,8 +129,8 @@ export async function explore(directory: string, remember: Remember, mode: TestP
       results.push([true, "explore", `${page}: the replay of ${SAVED} ${again.kind === "held" ? "breaks nothing now" : "no longer applies to the page"}, so it was removed`, "", page]);
     }
     const { explore: seconds } = profile(mode);
-    const version = (await exec(bin("bombadil", root), ["--version"], root)).stdout.trim();
-    results.push(await remember(JSON.stringify([testInputs(root, mode), version, script]), async (): Promise<Reported<"explore">> => {
+    const version = manifest(path.join(path.dirname(bin("bombadil", root)), "../@antithesishq/bombadil")).version;
+    results.push(await remember(JSON.stringify([testInputs(root, mode, "page"), version, script]), async (): Promise<Reported<"explore">> => {
       fs.mkdirSync(path.dirname(saved), { recursive: true });
       const fresh = await served(root, script, resolved, (origin) => bombadil(root, origin, { seconds }, saved));
       if (fresh.kind !== "broke") drop();

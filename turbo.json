@@ -129,21 +129,17 @@
     },
     "//#test": {
       "dependsOn": [
-        "//#gen"
+        "//#gen",
+        "^build"
       ],
       "inputs": [
+        "*",
         "vibestack/**",
-        "!vibestack/examples/**",
+        "!vibestack/{examples,studio}/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
-        "!{apps,packages,vibestack/studio}/**/gen/**",
-        "package.json",
-        "tsconfig.json",
         "spec/**",
         "src/**",
-        "test/**",
-        "vitest.config.ts",
-        "packages/design-system/tokens.json",
-        "packages/design-system/design.md"
+        "test/**"
       ],
       "outputs": [
         ".cache/test-result-*.json"
