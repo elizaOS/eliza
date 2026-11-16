@@ -1152,15 +1152,19 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
   test("a law that needs induction is proved by a proof file, and only then offered to the spec that imports it", async () => {
     const project = (edit: (f: Record<string, string>) => void = () => {}) => fixtures(["highest", "ticket"], edit);
     const root = project();
+    const bareRoot = project((f) => { delete f["spec/highest.proof.dfy"]; delete f["spec/ticket.proof.dfy"]; f["spec/typo.proof.dfy"] = ""; f["spec/notes.md"] = "# Notes\n"; f["spec/notes.proof.dfy"] = ""; });
     const [bare, proved, unoffered, trusting] = await Promise.all([
-      run(project((f) => { delete f["spec/highest.proof.dfy"]; delete f["spec/ticket.proof.dfy"]; f["spec/typo.proof.dfy"] = ""; })),
+      run(bareRoot),
       run(root),
       run(project((f) => { delete f["spec/highest.proof.dfy"]; })),
       run(project((f) => { f["spec/highest.proof.dfy"] = f["spec/highest.proof.dfy"].replace("ProofLib.FoldLeftMax", "assume false;\n  ProofLib.FoldLeftMax"); })),
     ]);
-    // Without a proof file the law is not proved, and a proof file that belongs to nothing is pointed out.
+    // Without a proof file the law is not proved, and a proof file that belongs to nothing is pointed out. A spec that
+    // defines nothing is no unit and starts no prover, so a proof file beside it has nothing to prove.
     assert.equal(bare.said("proof", /^highest\.ts: 1 of 1 obligations not proved/)?.ok, false, bare.text);
     assert.equal(bare.said("proof", /^spec\/typo\.proof\.dfy belongs to no proof unit/)?.ok, false, bare.text);
+    assert.equal(bare.said("proof", /^spec\/notes\.proof\.dfy has nothing to prove: spec\/notes\.md defines no type or value/)?.ok, false, bare.text);
+    assert.ok(!bare.said("proof", /^notes\.ts/) && !fs.existsSync(path.join(bareRoot, "gen/proof/notes")), bare.text);
     // With both proof files, everything proves, and the final Dafny is there to read.
     assert.deepEqual(proved.failed, ["review"], proved.text);
     assert.ok(proved.said("proof", /^ticket\.ts: all 3 obligations proved/), proved.text);
