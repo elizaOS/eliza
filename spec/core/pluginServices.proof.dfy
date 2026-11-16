@@ -1185,7 +1185,10 @@ lemma finishNextRegistration_ensures(s: PluginServices, ok: bool)
 
 lemma PluginServiceFrameKeepsLocalRules(s: PluginServices, after: PluginServices)
   requires inv(s) && after == s.(services := after.services)
-  requires after.services.objects == s.services.objects && after.services.classes == s.services.classes
+  requires after.services.objects == s.services.objects && |after.services.classes| == |s.services.classes|
+  requires forall i | 0 <= i < |s.services.classes| ::
+    after.services.classes[i].registered == s.services.classes[i].registered
+      && after.services.classes[i].live == s.services.classes[i].live
   requires after.services.declarations == s.services.declarations && after.services.stopped == s.services.stopped
   requires forall r | r in s.retirements ::
     (forall g | g in r.groups ::
@@ -1199,6 +1202,19 @@ lemma PluginServiceFrameKeepsLocalRules(s: PluginServices, after: PluginServices
   hide *;
   reveal inv(), alwaysLiveClassOwnerUnique(), alwaysServiceOwnerEpochExists(), alwaysRetirementsFollowTypePlan();
   reveal alwaysNoOrphanInstance(), alwaysRetiredUndeclaredTypeIsUnknown(), alwaysSealedOwnedClassesStable();
+  forall obj | obj in after.services.objects
+    ensures obj.stopCalls > 0
+      || (exists c | c in after.services.classes :: c.live == obj.id && c.registered)
+      || (exists r | r in after.retirements :: exists g | g in r.groups ::
+        missingStopObservedFor(g, obj.id)
+        || (core__pluginRegistry_epochOwnsResources(after.plugins, r.epochId) && obj.id in g.instances))
+  {
+    if exists c | c in s.services.classes :: c.live == obj.id && c.registered {
+      var c :| c in s.services.classes && c.live == obj.id && c.registered;
+      var i :| 0 <= i < |s.services.classes| && s.services.classes[i] == c;
+      assert after.services.classes[i] in after.services.classes;
+    }
+  }
   PluginServiceFrameRetainsStopReceipts(s, after);
 }
 
@@ -1423,4 +1439,143 @@ lemma registerOwnedClass_ensures(s: PluginServices, epochId: int, classId: int, 
     core__serviceInstances_registerClass_ensures(s.services, classId, serviceType);
     PluginRetirementChildRulesMatchImportedInvariants(registerOwnedClass(s, epochId, classId, serviceType, hasStopHook));
   }
+}
+
+lemma failClassStart_ensures(s: PluginServices, attemptId: int, errorId: string)
+  ensures (inv(s) ==> canFailClassStart(s, attemptId, errorId) ==> alwaysLiveClassOwnerUnique(failClassStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailClassStart(s, attemptId, errorId) ==> alwaysServiceOwnerEpochExists(failClassStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailClassStart(s, attemptId, errorId) ==> alwaysChildLifecyclesValid(failClassStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailClassStart(s, attemptId, errorId) ==> alwaysRetirementsFollowTypePlan(failClassStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailClassStart(s, attemptId, errorId) ==> alwaysNoOrphanInstance(failClassStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailClassStart(s, attemptId, errorId) ==> alwaysRetiredUndeclaredTypeIsUnknown(failClassStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailClassStart(s, attemptId, errorId) ==> alwaysStopObservationsFollowSlots(failClassStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailClassStart(s, attemptId, errorId) ==> alwaysRetiredEpochHasNoResources(failClassStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailClassStart(s, attemptId, errorId) ==> alwaysSealedOwnedClassesStable(failClassStart(s, attemptId, errorId)))
+{
+  hide *;
+  reveal inv(), core__serviceInstances_inv(), core__serviceInstances_serviceTypeEntry();
+  reveal failClassStart(), canFailClassStart(), core__serviceInstances_failStart(), core__serviceInstances_rejectStartAttempt();
+  if inv(s) && canFailClassStart(s, attemptId, errorId) {
+    var after := failClassStart(s, attemptId, errorId);
+    forall i | 0 <= i < |s.services.classes|
+      ensures after.services.classes[i].registered == s.services.classes[i].registered
+        && after.services.classes[i].live == s.services.classes[i].live
+    {}
+    PluginServiceFrameKeepsLocalRules(s, after);
+    PluginRetirementChildRulesMatchImportedInvariants(s);
+    core__serviceInstances_failStart_ensures(s.services, attemptId, errorId);
+    PluginRetirementChildRulesMatchImportedInvariants(after);
+  }
+}
+
+lemma finishLateStart_ensures(s: PluginServices, attemptId: int)
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysLiveClassOwnerUnique(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysServiceOwnerEpochExists(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysChildLifecyclesValid(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysRetirementsFollowTypePlan(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysNoOrphanInstance(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysRetiredUndeclaredTypeIsUnknown(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysStopObservationsFollowSlots(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysRetiredEpochHasNoResources(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysSealedOwnedClassesStable(finishLateStart(s, attemptId)))
+{
+  hide *;
+  reveal inv(), core__serviceInstances_inv(), core__serviceInstances_serviceTypeEntry();
+  reveal finishLateStart(), canFinishLateStart(), core__serviceInstances_finishLateStart(), core__serviceInstances_rejectStartAttempt();
+  if inv(s) && canFinishLateStart(s, attemptId) {
+    var after := finishLateStart(s, attemptId);
+    forall i | 0 <= i < |s.services.classes|
+      ensures after.services.classes[i].registered == s.services.classes[i].registered
+        && after.services.classes[i].live == s.services.classes[i].live
+    {}
+    PluginServiceFrameKeepsLocalRules(s, after);
+    PluginRetirementChildRulesMatchImportedInvariants(s);
+    core__serviceInstances_finishLateStart_ensures(s.services, attemptId);
+    PluginRetirementChildRulesMatchImportedInvariants(after);
+  }
+}
+
+lemma finishClassObserver_ensures(s: PluginServices, attemptId: int, ok: bool)
+  ensures (inv(s) ==> canFinishClassObserver(s, attemptId, ok) ==> alwaysLiveClassOwnerUnique(finishClassObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishClassObserver(s, attemptId, ok) ==> alwaysServiceOwnerEpochExists(finishClassObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishClassObserver(s, attemptId, ok) ==> alwaysChildLifecyclesValid(finishClassObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishClassObserver(s, attemptId, ok) ==> alwaysRetirementsFollowTypePlan(finishClassObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishClassObserver(s, attemptId, ok) ==> alwaysNoOrphanInstance(finishClassObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishClassObserver(s, attemptId, ok) ==> alwaysRetiredUndeclaredTypeIsUnknown(finishClassObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishClassObserver(s, attemptId, ok) ==> alwaysStopObservationsFollowSlots(finishClassObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishClassObserver(s, attemptId, ok) ==> alwaysRetiredEpochHasNoResources(finishClassObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishClassObserver(s, attemptId, ok) ==> alwaysSealedOwnedClassesStable(finishClassObserver(s, attemptId, ok)))
+{
+  hide *;
+  reveal inv(), core__serviceInstances_inv(), core__serviceInstances_serviceTypeEntry();
+  reveal finishClassObserver(), canFinishClassObserver(), core__serviceInstances_finishObserver();
+  if inv(s) && canFinishClassObserver(s, attemptId, ok) {
+    var after := finishClassObserver(s, attemptId, ok);
+    forall i | 0 <= i < |s.services.classes|
+      ensures after.services.classes[i].registered == s.services.classes[i].registered
+        && after.services.classes[i].live == s.services.classes[i].live
+    {}
+    PluginServiceFrameKeepsLocalRules(s, after);
+    PluginRetirementChildRulesMatchImportedInvariants(s);
+    core__serviceInstances_finishObserver_ensures(s.services, attemptId, ok);
+    PluginRetirementChildRulesMatchImportedInvariants(after);
+  }
+}
+
+lemma finishNextObserver_ensures(s: PluginServices, ok: bool)
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysLiveClassOwnerUnique(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysServiceOwnerEpochExists(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysChildLifecyclesValid(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysRetirementsFollowTypePlan(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysNoOrphanInstance(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysRetiredUndeclaredTypeIsUnknown(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysStopObservationsFollowSlots(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysRetiredEpochHasNoResources(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysSealedOwnedClassesStable(finishNextObserver(s, ok)))
+{
+  hide *;
+  reveal inv(), finishNextObserver(), canFinishNextObserver(), core__serviceInstances_finishNextObserver(), core__serviceInstances_canFinishNextObserver();
+  reveal finishClassObserver(), canFinishClassObserver();
+  if inv(s) && canFinishNextObserver(s, ok) {
+    var attemptId := core__serviceInstances_nextObservableAttempt(s.services);
+    finishClassObserver_ensures(s, attemptId, ok);
+  }
+}
+
+lemma finishNextLateStart_ensures(s: PluginServices)
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysLiveClassOwnerUnique(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysServiceOwnerEpochExists(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysChildLifecyclesValid(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysRetirementsFollowTypePlan(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysNoOrphanInstance(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysRetiredUndeclaredTypeIsUnknown(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysStopObservationsFollowSlots(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysRetiredEpochHasNoResources(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysSealedOwnedClassesStable(finishNextLateStart(s)))
+{
+  hide *;
+  reveal inv(), finishNextLateStart(), canFinishNextLateStart(), core__serviceInstances_finishNextLateStart(), core__serviceInstances_canFinishNextLateStart();
+  reveal finishLateStart(), canFinishLateStart();
+  if inv(s) && canFinishNextLateStart(s) {
+    var attemptId := core__serviceInstances_nextRetiredAttempt(s.services);
+    finishLateStart_ensures(s, attemptId);
+  }
+}
+
+lemma sealRequests_ensures(s: PluginServices)
+  ensures (inv(s) ==> canSealRequests(s) ==> alwaysLiveClassOwnerUnique(sealRequests(s)))
+  ensures (inv(s) ==> canSealRequests(s) ==> alwaysServiceOwnerEpochExists(sealRequests(s)))
+  ensures (inv(s) ==> canSealRequests(s) ==> alwaysChildLifecyclesValid(sealRequests(s)))
+  ensures (inv(s) ==> canSealRequests(s) ==> alwaysRetirementsFollowTypePlan(sealRequests(s)))
+  ensures (inv(s) ==> canSealRequests(s) ==> alwaysNoOrphanInstance(sealRequests(s)))
+  ensures (inv(s) ==> canSealRequests(s) ==> alwaysRetiredUndeclaredTypeIsUnknown(sealRequests(s)))
+  ensures (inv(s) ==> canSealRequests(s) ==> alwaysStopObservationsFollowSlots(sealRequests(s)))
+  ensures (inv(s) ==> canSealRequests(s) ==> alwaysRetiredEpochHasNoResources(sealRequests(s)))
+  ensures (inv(s) ==> canSealRequests(s) ==> alwaysSealedOwnedClassesStable(sealRequests(s)))
+{
+  hide *;
+  reveal inv(), sealRequests(), alwaysLiveClassOwnerUnique(), alwaysServiceOwnerEpochExists();
+  reveal alwaysChildLifecyclesValid(), alwaysRetirementsFollowTypePlan(), alwaysNoOrphanInstance();
+  reveal alwaysRetiredUndeclaredTypeIsUnknown(), alwaysStopObservationsFollowSlots();
+  reveal alwaysRetiredEpochHasNoResources(), retirementSettled(), retirement(), alwaysSealedOwnedClassesStable();
 }
