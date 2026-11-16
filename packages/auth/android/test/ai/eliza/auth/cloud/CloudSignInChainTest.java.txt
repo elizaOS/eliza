@@ -9,7 +9,7 @@ import org.json.JSONObject;
 /** Executes the exact injected CloudSignInPlugin methods with synthetic HTTPS/store/bridge facades.
  * No browser, real account, secret, mailbox or device is used. */
 public class CloudSignInChainTest {
- final Object lock=new Object(); boolean destroyed,defer; Attempt attempt; String mode="valid";
+ final Object lock=new Object(),duties=new Object(); boolean destroyed,defer; Attempt attempt; String mode="valid";
  final ArrayDeque<Runnable> queued=new ArrayDeque<>();
  final java.util.concurrent.Executor worker=this::run;
  /** Startup acknowledgement requests wait here until the fixture runs them, apart from the sign-in worker. */
