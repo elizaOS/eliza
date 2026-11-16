@@ -416,3 +416,17 @@ test("a refund that read no grant just before the payment-request settlement com
     ),
   ).toBe("retry");
 });
+
+test("a refund for a payment request settled by another payment intent is acknowledged, not retried", async () => {
+  const request = await pendingPaymentRequest(2500);
+  // The request settled under a different intent, so this intent never grants.
+  await pg().query(
+    "UPDATE payment_requests SET status='settled', settlement_tx_ref=$2 WHERE organization_id=$1",
+    [request.org, `pi_${randomUUID().replaceAll("-", "")}`],
+  );
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${randomUUID()}`, 2500, request.paymentIntentId),
+    ),
+  ).toBe("ack");
+});

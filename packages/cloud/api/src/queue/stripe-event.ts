@@ -1799,11 +1799,23 @@ async function topUpGrantPending(paymentIntentId: string): Promise<boolean> {
   const paymentRequestPending = async (id: string | null | undefined) => {
     if (!id) return undefined;
     const [request] = await dbRead
-      .select({ provider: paymentRequests.provider })
+      .select({
+        provider: paymentRequests.provider,
+        status: paymentRequests.status,
+        settlementTxRef: paymentRequests.settlement_tx_ref,
+      })
       .from(paymentRequests)
       .where(eq(paymentRequests.id, id))
       .limit(1);
     if (!request) return undefined;
+    // A request settled by another payment intent never grants under this
+    // one, so a retry would only delay the ack until the dead-letter queue.
+    if (
+      request.status === "settled" &&
+      request.settlementTxRef !== null &&
+      request.settlementTxRef !== paymentIntentId
+    )
+      return false;
     return request.provider === "stripe";
   };
   const sessions = await stripe.checkout.sessions.list({
