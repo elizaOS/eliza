@@ -110,6 +110,18 @@ pure def canFinishGlobalAbort(s: TurnEventStack): bool = {
 pure def finishGlobalAbort(s: TurnEventStack): TurnEventStack = { ...s, controllers: { ...s.controllers, lastAbortedRooms: currentGlobal(s).abortedRooms }, frames: s.frames.removeAt(s.frames.length() - 1) }
 ```
 
+### A turn cleanup frame sits at the bottom of the stack
+
+Discovered by the proof: a turn returns only from an empty synchronous
+stack. Its cleanup waits below the completion notice and any callbacks that
+notice starts. Cleanup above a room scan could detach a scanned turn and
+move the scan cursor beyond the end of the room array.
+
+```quint
+pure def alwaysCleanupFrameAtBottom(s: TurnEventStack): bool =
+  s.frames.removeAt(0).every(f => match f { | CleanupFrameKind(_) => false | _ => true })
+```
+
 ### A room notice follows the last native signal callback
 
 Each scan owns its changed result. A native callback can start a nested
