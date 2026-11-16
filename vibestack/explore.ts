@@ -44,8 +44,8 @@ export function explored(status: number, stdout: string, stderr: string, replay:
     return { kind: "broke", properties, report: [...before, ...last, ...last.length ? [""] : [], violations].join("\n") };
   }
   if (/failed to locate chromium/.test(tail)) return { kind: "failed", why: "Bombadil found no Chromium: run `pnpm exec playwright install chromium`, or set CHROME to a Chrome or Chromium executable", output: tail };
-  if (replay) return { kind: "diverged", output: tail };
-  return { kind: "failed", why: /stalled/i.test(tail) ? "the browser stalled while Bombadil explored the page" : `Bombadil could not explore the page (exit ${status})`, output: tail };
+  if (replay && /reproduction and original test diverged!/.test(tail)) return { kind: "diverged", output: tail };
+  return { kind: "failed", why: /stalled/i.test(tail) ? "the browser stalled while Bombadil explored the page" : `Bombadil could not ${replay ? "replay the trace" : "explore the page"} (exit ${status})`, output: tail };
 }
 
 /** Playwright's Chromium for Bombadil, unless CHROME names a browser already; without either, Bombadil looks for Chrome itself. */
