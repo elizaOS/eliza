@@ -592,6 +592,20 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.equal(found.broken, true, found.again);
     assert.match(found.again, /--max-samples 1024 --max-steps 40\b/);
     assert.equal(found.traces[0]?.at(-1)?.state, -1);
+
+    const lateGuard = oneRule("gate", "Allow completion after counting", [
+      "pure val initial: int = 0",
+      "pure def up(n: int): int = n + 1",
+      "pure def canFinish(n: int): bool = n >= 38",
+      "pure def finish(n: int): int = 0",
+    ].join("\n"));
+    const guardModel = await gen(lateGuard, readSpecs(lateGuard)[0]);
+    const allowed = await search(lateGuard, guardModel, "never_allows_canFinish", "probe", [20, 40], 180, 1, "eval_canFinish__1");
+    assert.match(allowed.again, /--step eval_canFinish__1 .* --max-samples 32 --max-steps 40\b/);
+    assert.equal(allowed.broken, true);
+    const trace = allowed.traces[0];
+    assert.deepEqual(trace?.at(-1)?.evaluated, { name: "canFinish", picks: {}, result: true });
+    replay(await import(path.join(lateGuard, "gen/gate.ts")), trace, guardModel);
   });
 
   test("hand-written code that changes what it is checked against is refused or flagged", async () => {

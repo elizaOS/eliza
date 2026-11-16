@@ -56,7 +56,7 @@ export function generated(root: string, spec: Spec, ir: any, models: Map<string,
   for (const r of spec.rules) for (const d of r.defs) origins.set(d, { rule: r.key, line: r.line });
   const model = generate(ir, spec.name, spec.file, (d) => origins.get(d), models);
   fs.writeFileSync(path.join(dir, `${spec.name}.ts`), model.ts);
-  fs.writeFileSync(path.join(dir, `${spec.name}.run.qnt`), model.harness);
+  fs.writeFileSync(path.join(dir, `${spec.name}.run.qnt`), model.guardHarness || model.harness);
   writeFaces(root, dir, spec, model.ts);
   if (model.opaques.length) fs.writeFileSync(path.join(dir, `${spec.name}.sim.qnt`), simulated(spec.qnt, model.opaques));
   writeConformance(root, model);
