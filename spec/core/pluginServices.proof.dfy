@@ -3794,7 +3794,8 @@ lemma PluginActiveReplacementRetainsStopReceipts(s: PluginServices, placement: P
   requires next.serviceType == currentGroup(s, epochId).serviceType && placement.plugins == s.plugins
   requires |placement.retirements| == |s.retirements|
   requires forall i | 0 <= i < |s.retirements| ::
-    placement.retirements[i].(failures := s.retirements[i].failures) == s.retirements[i]
+    placement.retirements[i].epochId == s.retirements[i].epochId
+      && placement.retirements[i].groups == s.retirements[i].groups
       && (s.retirements[i].epochId != epochId ==> placement.retirements[i] == s.retirements[i])
   requires |placement.services.objects| == |s.services.objects|
   requires forall i | 0 <= i < |s.services.objects| ::
@@ -4093,4 +4094,265 @@ lemma PluginReconciliationKeepsChildInvariant(s: core__serviceInstances_ServiceI
   reveal core__serviceInstances_alwaysAttemptGeneration(), core__serviceInstances_alwaysStoppedHasNoPublication();
   reveal core__serviceInstances_serviceClass(), core__serviceInstances_serviceAttempt(), core__serviceInstances_serviceObject();
   PluginReconciliationKeepsTypeRules(s, serviceType);
+}
+
+lemma PluginClassPhaseChangeKeepsPlan(before: ServiceRetirement, after: ServiceRetirement)
+  requires retirementGroupsFollowPlan(before) && 0 <= before.cursor < |before.groups|
+  requires before.groups[before.cursor].phase.GroupStoppingClasses?
+  requires after.plan == before.plan && |after.groups| == |before.groups|
+  requires after.groups[..before.cursor] == before.groups[..before.cursor]
+  requires after.groups[before.cursor].serviceType == before.groups[before.cursor].serviceType
+  requires var phase := after.groups[before.cursor].phase;
+    phase.GroupFinished? || phase.GroupFailed? || phase.GroupStoppingClasses?
+  requires after.cursor == before.cursor + (if after.groups[before.cursor].phase.GroupFinished? then 1 else 0)
+  requires after.exited == after.groups[before.cursor].phase.GroupFailed?
+  ensures retirementGroupsFollowPlan(after)
+{
+  hide *;
+  reveal retirementGroupsFollowPlan(), retirementGroupMatchesPosition(), groupFinishedOrSkipped();
+  var current := before.cursor;
+  PluginRetirementWithdrawalHasPositionEvidence(before);
+  assert |before.groups| == current + 1;
+  forall i | 0 <= i < |after.groups|
+    ensures retirementGroupMatchesPosition(after, i, after.groups[i])
+  {
+    if i < current {
+      assert after.groups[i] == before.groups[i] && i < after.cursor;
+      assert retirementGroupMatchesPosition(before, i, before.groups[i]);
+    } else {
+      assert i == current && i < |before.plan|;
+      assert retirementGroupMatchesPosition(before, current, before.groups[current]);
+    }
+  }
+  PluginRetirementWithdrawalHasPositionEvidence(after);
+}
+
+lemma PluginClassPhaseTransitionPreservesPlans(s: PluginServices, after: PluginServices, epochId: int,
+    phase: RetirementGroupPhase)
+  requires alwaysRetirementsFollowTypePlan(s) && currentGroup(s, epochId).phase.GroupStoppingClasses?
+  requires phase.GroupFinished? || phase.GroupFailed? || phase.GroupStoppingClasses?
+  requires after.plugins == s.plugins && |after.retirements| == |s.retirements|
+  requires forall i | 0 <= i < |s.retirements| ::
+    var before := s.retirements[i];
+    var updated := after.retirements[i];
+    updated.epochId == before.epochId && updated.plan == before.plan
+      && |updated.groups| == |before.groups|
+      && updated.cursor == before.cursor + (if before.epochId == epochId && phase.GroupFinished? then 1 else 0)
+      && updated.exited == (if before.epochId == epochId then phase.GroupFailed? else before.exited)
+      && (before.epochId != epochId ==> updated == before)
+      && (before.epochId == epochId ==> (0 <= before.cursor < |before.groups|
+        && updated.groups[..before.cursor] == before.groups[..before.cursor]
+        && updated.groups[before.cursor].serviceType == before.groups[before.cursor].serviceType
+        && updated.groups[before.cursor].phase == phase))
+  ensures alwaysRetirementsFollowTypePlan(after)
+{
+  hide *;
+  reveal alwaysRetirementsFollowTypePlan(), currentGroup(), ProofLib.Filter();
+  forall row | row in after.retirements
+    ensures row.epochId > 0 && core__pluginRegistry_epoch(after.plugins, row.epochId).id == row.epochId
+    ensures core__pluginRegistry_epochRetiring(after.plugins, row.epochId) ||
+      !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId)
+    ensures |ProofLib.Filter((other: ServiceRetirement) => other.epochId == row.epochId, after.retirements)| == 1
+    ensures retirementGroupsFollowPlan(row)
+  {
+    var i :| 0 <= i < |after.retirements| && after.retirements[i] == row;
+    var prior := s.retirements[i];
+    assert prior in s.retirements && prior.epochId == row.epochId;
+    var byEpoch := (other: ServiceRetirement) => other.epochId == row.epochId;
+    ProofLib.FilterLengthPointwise(byEpoch, byEpoch, s.retirements, after.retirements);
+    if row.epochId == epochId {
+      PluginRetirementPlanLookup(s, prior);
+      PluginClassPhaseChangeKeepsPlan(prior, row);
+    }
+  }
+}
+
+lemma PluginClassPhaseCompletionKeepsSlots(g: RetirementGroup, next: RetirementGroup,
+    services: core__serviceInstances_ServiceInstances)
+  requires g.phase.GroupStoppingClasses? && classPhaseFollowsInstances(g)
+  requires g.instanceCursor <= |g.observedStops| <= |g.instances| && allStopObservationsValid(g, services)
+  requires next.(phase := g.phase, hook := g.hook) == g
+  requires next.phase.GroupFinished? || next.phase.GroupFailed? || next.phase.GroupStoppingClasses?
+  ensures classPhaseFollowsInstances(next) && allStopObservationsValid(next, services)
+{
+  hide *;
+  reveal classPhaseFollowsInstances(), validStopObservation();
+  PluginStopObjectUpdateGroupObservations(g, services);
+  forall i | 0 <= i < |next.observedStops|
+    ensures validStopObservation(next, i, next.observedStops[i], services)
+  {
+    assert i < g.instanceCursor && validStopObservation(g, i, g.observedStops[i], services);
+  }
+  PluginStopObjectUpdateGroupObservations(next, services);
+}
+
+lemma PluginClassPhaseCompletionKeepsPluginRules(s: PluginServices, placement: PluginServices, next: RetirementGroup, epochId: int)
+  requires inv(s) && currentGroup(s, epochId).phase.GroupStoppingClasses?
+  requires next == currentGroup(s, epochId).(phase := next.phase, hook := next.hook)
+  requires next.phase.GroupFinished? || next.phase.GroupFailed? || next.phase.GroupStoppingClasses?
+  requires placement.(retirements := s.retirements) == s && |placement.retirements| == |s.retirements|
+  requires forall i | 0 <= i < |s.retirements| ::
+    var before := s.retirements[i];
+    var pending := placement.retirements[i];
+    pending == (if before.epochId != epochId then before else before.(
+      cursor := before.cursor + (if next.phase.GroupFinished? then 1 else 0),
+      exited := next.phase.GroupFailed?, hookError := pending.hookError))
+  ensures inv(putCurrentGroup(next, epochId, placement))
+{
+  hide *;
+  reveal inv(), putCurrentGroup(), currentGroup(), noGroup, retirementGroupsFollowPlan();
+  reveal alwaysLiveClassOwnerUnique(), alwaysSealedOwnedClassesStable(), alwaysChildLifecyclesValid();
+  reveal alwaysStopObservationsFollowSlots();
+  var current := currentGroup(s, epochId);
+  var after := putCurrentGroup(next, epochId, placement);
+  PluginActiveRetirementHasResources(s, epochId);
+  var row := retirement(s, epochId);
+  assert row in s.retirements && current in row.groups;
+  PluginClassPhaseCompletionKeepsSlots(current, next, s.services);
+  PluginCurrentGroupReplacementProjects(s, placement, next, epochId);
+  forall i | 0 <= i < |s.retirements|
+    ensures var before := s.retirements[i];
+      var updated := after.retirements[i];
+      updated.epochId == before.epochId && updated.plan == before.plan
+        && |updated.groups| == |before.groups|
+        && updated.cursor == before.cursor + (if before.epochId == epochId && next.phase.GroupFinished? then 1 else 0)
+        && updated.exited == (if before.epochId == epochId then next.phase.GroupFailed? else before.exited)
+        && (before.epochId != epochId ==> updated == before)
+        && (before.epochId == epochId ==> (0 <= before.cursor < |before.groups|
+          && updated.groups[..before.cursor] == before.groups[..before.cursor]
+          && updated.groups[before.cursor].serviceType == before.groups[before.cursor].serviceType
+          && updated.groups[before.cursor].phase == next.phase))
+  {
+    var before := s.retirements[i];
+    var updated := after.retirements[i];
+    if before.epochId == epochId {
+      assert before in s.retirements;
+      PluginRetirementPlanLookup(s, before);
+      assert current == before.groups[before.cursor] && updated.groups[before.cursor] == next;
+      forall j | 0 <= j < before.cursor ensures updated.groups[j] == before.groups[j] {}
+      assert updated.groups[..before.cursor] == before.groups[..before.cursor];
+    }
+  }
+  PluginClassPhaseTransitionPreservesPlans(s, after, epochId, next.phase);
+  PluginReceiptsRetainDeclaredType(s, after);
+  PluginActiveReplacementRetainsObjectCustody(s, placement, next, epochId);
+  PluginActiveReplacementRetainsTypeStatus(s, placement, next, epochId);
+  PluginActiveReplacementRetainsStopReceipts(s, placement, next, epochId);
+}
+
+lemma finishClassHook_ensures(s: PluginServices, epochId: int, ok: bool, errorId: string)
+  ensures (inv(s) ==> canFinishClassHook(s, epochId, ok, errorId) ==> alwaysLiveClassOwnerUnique(finishClassHook(s, epochId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassHook(s, epochId, ok, errorId) ==> alwaysServiceOwnerEpochExists(finishClassHook(s, epochId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassHook(s, epochId, ok, errorId) ==> alwaysChildLifecyclesValid(finishClassHook(s, epochId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassHook(s, epochId, ok, errorId) ==> alwaysRetirementsFollowTypePlan(finishClassHook(s, epochId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassHook(s, epochId, ok, errorId) ==> alwaysNoOrphanInstance(finishClassHook(s, epochId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassHook(s, epochId, ok, errorId) ==> alwaysRetiredUndeclaredTypeIsUnknown(finishClassHook(s, epochId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassHook(s, epochId, ok, errorId) ==> alwaysStopObservationsFollowSlots(finishClassHook(s, epochId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassHook(s, epochId, ok, errorId) ==> alwaysRetiredEpochHasNoResources(finishClassHook(s, epochId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassHook(s, epochId, ok, errorId) ==> alwaysSealedOwnedClassesStable(finishClassHook(s, epochId, ok, errorId)))
+{
+  hide *;
+  reveal inv(), canFinishClassHook(), finishClassHook(), retirementGroupsFollowPlan(), currentGroup(), noGroup;
+  if inv(s) && canFinishClassHook(s, epochId, ok, errorId) {
+    var current := currentGroup(s, epochId);
+    assert current.phase.GroupStoppingClasses? && current != noGroup;
+    var next := if ok then current.(hook := ClassHookPhase.HookFinished)
+      else current.(hook := ClassHookPhase.HookFailed, phase := RetirementGroupPhase.GroupFailed);
+    var rows := s.retirements;
+    var placement := if ok then s else s.(retirements := seq(|rows|, i requires 0 <= i < |rows| =>
+      if rows[i].epochId == epochId then rows[i].(exited := true, hookError := errorId) else rows[i]));
+    var result := finishClassHook(s, epochId, ok, errorId);
+    if ok {
+      assert result == putCurrentGroup(next, epochId, placement);
+    } else {
+      var resultPlacement := s.(retirements := seq(|rows|, i requires 0 <= i < |rows| =>
+        var r := rows[i];
+        if r.epochId == epochId then r.(exited := true, hookError := errorId) else r));
+      assert result == putCurrentGroup(next, epochId, resultPlacement);
+      forall i | 0 <= i < |rows|
+        ensures resultPlacement.retirements[i] == placement.retirements[i]
+      {}
+      assert resultPlacement.retirements == placement.retirements && resultPlacement == placement;
+    }
+    assert result == putCurrentGroup(next, epochId, placement);
+    forall i | 0 <= i < |rows|
+      ensures var before := rows[i];
+        var pending := placement.retirements[i];
+        pending == (if before.epochId != epochId then before else before.(
+          cursor := before.cursor, exited := next.phase.GroupFailed?, hookError := pending.hookError))
+    {
+      var before := rows[i];
+      if before.epochId == epochId {
+        assert before in s.retirements;
+        PluginRetirementPlanLookup(s, before);
+        assert retirement(s, epochId) == before && 0 <= before.cursor < |before.groups|;
+        reveal alwaysRetirementsFollowTypePlan();
+        assert retirementGroupsFollowPlan(before) && before.groups[before.cursor] == current;
+        assert !before.exited;
+      }
+    }
+    PluginClassPhaseCompletionKeepsPluginRules(s, placement, next, epochId);
+  }
+}
+
+lemma finishRetirementGroup_ensures(s: PluginServices, epochId: int)
+  ensures (inv(s) ==> canFinishRetirementGroup(s, epochId) ==> alwaysLiveClassOwnerUnique(finishRetirementGroup(s, epochId)))
+  ensures (inv(s) ==> canFinishRetirementGroup(s, epochId) ==> alwaysServiceOwnerEpochExists(finishRetirementGroup(s, epochId)))
+  ensures (inv(s) ==> canFinishRetirementGroup(s, epochId) ==> alwaysChildLifecyclesValid(finishRetirementGroup(s, epochId)))
+  ensures (inv(s) ==> canFinishRetirementGroup(s, epochId) ==> alwaysRetirementsFollowTypePlan(finishRetirementGroup(s, epochId)))
+  ensures (inv(s) ==> canFinishRetirementGroup(s, epochId) ==> alwaysNoOrphanInstance(finishRetirementGroup(s, epochId)))
+  ensures (inv(s) ==> canFinishRetirementGroup(s, epochId) ==> alwaysRetiredUndeclaredTypeIsUnknown(finishRetirementGroup(s, epochId)))
+  ensures (inv(s) ==> canFinishRetirementGroup(s, epochId) ==> alwaysStopObservationsFollowSlots(finishRetirementGroup(s, epochId)))
+  ensures (inv(s) ==> canFinishRetirementGroup(s, epochId) ==> alwaysRetiredEpochHasNoResources(finishRetirementGroup(s, epochId)))
+  ensures (inv(s) ==> canFinishRetirementGroup(s, epochId) ==> alwaysSealedOwnedClassesStable(finishRetirementGroup(s, epochId)))
+{
+  hide *;
+  reveal inv(), canFinishRetirementGroup(), finishRetirementGroup(), putCurrentGroup(), retirementGroupsFollowPlan(), currentGroup(), noGroup;
+  if inv(s) && canFinishRetirementGroup(s, epochId) {
+    var current := currentGroup(s, epochId);
+    assert current.phase.GroupStoppingClasses? && current != noGroup;
+    var next := current.(phase := RetirementGroupPhase.GroupFinished);
+    var rows := s.retirements;
+    var placement := s.(retirements := seq(|rows|, i requires 0 <= i < |rows| =>
+      if rows[i].epochId == epochId then rows[i].(cursor := rows[i].cursor + 1) else rows[i]));
+    var after := putCurrentGroup(next, epochId, placement);
+    var result := finishRetirementGroup(s, epochId);
+    forall i | 0 <= i < |rows|
+      ensures after.retirements[i] == result.retirements[i]
+      ensures var before := rows[i];
+        var pending := placement.retirements[i];
+        pending == (if before.epochId != epochId then before else before.(
+          cursor := before.cursor + 1, exited := false, hookError := pending.hookError))
+    {
+      var before := rows[i];
+      if before.epochId == epochId {
+        assert before in s.retirements;
+        PluginRetirementPlanLookup(s, before);
+        assert retirement(s, epochId) == before && 0 <= before.cursor < |before.groups|;
+        reveal alwaysRetirementsFollowTypePlan();
+        assert retirementGroupsFollowPlan(before) && before.groups[before.cursor] == current;
+        assert !before.exited;
+      }
+    }
+    assert after.retirements == result.retirements && after == result;
+    PluginClassPhaseCompletionKeepsPluginRules(s, placement, next, epochId);
+  }
+}
+
+lemma finishNextClassHook_ensures(s: PluginServices, ok: bool, errorId: string)
+  ensures (inv(s) ==> canFinishNextClassHook(s, ok, errorId) ==> alwaysLiveClassOwnerUnique(finishNextClassHook(s, ok, errorId)))
+  ensures (inv(s) ==> canFinishNextClassHook(s, ok, errorId) ==> alwaysServiceOwnerEpochExists(finishNextClassHook(s, ok, errorId)))
+  ensures (inv(s) ==> canFinishNextClassHook(s, ok, errorId) ==> alwaysChildLifecyclesValid(finishNextClassHook(s, ok, errorId)))
+  ensures (inv(s) ==> canFinishNextClassHook(s, ok, errorId) ==> alwaysRetirementsFollowTypePlan(finishNextClassHook(s, ok, errorId)))
+  ensures (inv(s) ==> canFinishNextClassHook(s, ok, errorId) ==> alwaysNoOrphanInstance(finishNextClassHook(s, ok, errorId)))
+  ensures (inv(s) ==> canFinishNextClassHook(s, ok, errorId) ==> alwaysRetiredUndeclaredTypeIsUnknown(finishNextClassHook(s, ok, errorId)))
+  ensures (inv(s) ==> canFinishNextClassHook(s, ok, errorId) ==> alwaysStopObservationsFollowSlots(finishNextClassHook(s, ok, errorId)))
+  ensures (inv(s) ==> canFinishNextClassHook(s, ok, errorId) ==> alwaysRetiredEpochHasNoResources(finishNextClassHook(s, ok, errorId)))
+  ensures (inv(s) ==> canFinishNextClassHook(s, ok, errorId) ==> alwaysSealedOwnedClassesStable(finishNextClassHook(s, ok, errorId)))
+{
+  hide *;
+  reveal canFinishNextClassHook(), finishNextClassHook();
+  if inv(s) && canFinishNextClassHook(s, ok, errorId) {
+    finishClassHook_ensures(s, pendingClassHookEpoch(s), ok, errorId);
+  }
 }
