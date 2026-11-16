@@ -4379,7 +4379,7 @@ lemma PluginWithdrawalKeepsStopReceipts(s: PluginServices, epochId: int)
   var after := withdrawNextType(s, epochId);
   assert after.services.objects == s.services.objects && after.plugins == s.plugins;
   var frame := s.(services := after.services);
-  PluginMappedObjectsRetainStopReceipts(s, frame);
+  PluginServiceFrameRetainsStopReceipts(s, frame);
   PluginWithdrawalGroupsKeepEarlierEntries(s, epochId);
   forall row | row in after.retirements
     ensures forall g | g in row.groups ::

@@ -58,7 +58,9 @@
         "dispose",
         "reload",
         "component/model/event registrations",
-        "joint service ownership and retirement"
+        "joint service ownership and retirement",
+        "sticky exact-owner connector withdrawal at the disposal continuation",
+        "captured-owner send-handler message-connector and post-connector publication decisions"
       ]
     },
     {
