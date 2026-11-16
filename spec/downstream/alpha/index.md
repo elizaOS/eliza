@@ -24,6 +24,7 @@ activation on a physical device.
 | `apps/app/src/prototype/settings-adapter.ts`, `system-shade.ts`, `runtime/always-on-listener.ts`, `AlphaApplication.java` | [Native reset, problem journal, Settings, shade and listener custody](./system.md) |
 | `apps/app/src/runtime/view-focus.ts` | [Screen focus ownership, priority, and restoration](./screenFocus.md) |
 | `apps/app/src/main.tsx`, `packages/ui/src/state/app-update-gate.ts` | [Renderer update admission and activation readback](./updateGate.md) |
+| `scripts/pilot-update.ts`, `DataIntegrityProvider.java` | [Installed APK identity and preserved app data](./apkReadback.md) |
 | `apps/app/src/main.tsx` and `apps/app/src/prototype/agent-adapter.ts` | [Client conversation](../conversation.md), [turn ownership and cancellation](../../core/turnControllers.md) |
 | `apps/app/src/prototype/assistant-draft-controller.ts`, `apps/app/src/runtime/assistant-draft-store.ts`, `apps/app/src/browser/documents.ts` | [Durable drafts and send recovery](./durableDraft.md), [browser document receipts and recovery](./documentStore.md) |
 | `apps/app/src/prototype/canonical-notes-ui.ts`, `notes-controller.ts`, `notes-editor.ts` | [Notes snapshot and draft custody](./notes.md), [Previous Notes Trash and audio recovery](./notesTrash.md), [local search and selected content](./notesRead.md), [native recording custody](../mobileNoteAudioCustody.md) |
