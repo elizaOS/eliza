@@ -76,10 +76,13 @@ pure def lawUndefinedRootHasNoBody(serializer: SerializerChoice): bool =
 An active ancestor reference is a cycle. A shared reference may be visited
 again after its first frame leaves the stack. Validation rejects nonfinite
 numbers, non-JSON primitive types and nonplain objects other than arrays.
-Enumerable own string keys require data descriptors. Array slots follow
-JavaScript indexed reads. Undefined and sparse array slots pass validation
-and use JavaScript's JSON rendering rules. The walk abstracts the traversal
-observations supplied by the adapter. It preserves exact ancestor identity.
+For each enumerable own string key, the adapter rejects a missing descriptor
+or one with a getter or setter callback. Otherwise it visits the descriptor's
+value. An accessor with both callbacks absent visits undefined, as does an
+undefined data value. Array slots follow JavaScript indexed reads. Undefined
+and sparse array slots pass validation and use JavaScript's JSON rendering
+rules. The walk abstracts the traversal observations supplied by the adapter.
+It preserves exact ancestor identity.
 
 The pinned walk and stringifier read array indices separately. The
 stringifier can call a non-enumerable `toJSON` hook after the walk has
@@ -90,7 +93,7 @@ The actual string establishes what was serialized.
 
 ```quint
 type GraphValue = PrimitiveValue | UndefinedValue | NonFiniteNumber | NonJsonPrimitive | OpaqueObject | ContainerValue({identity: int})
-type GraphObservation = VisitValue({visited: GraphValue}) | LeaveContainer({identity: int}) | ObjectPropertyWithoutData
+type GraphObservation = VisitValue({visited: GraphValue}) | LeaveContainer({identity: int}) | RejectedOwnPropertyDescriptor
 type Validation = {ancestors: List[int], valid: bool}
 pure val initial: Validation = {ancestors: List(), valid: true}
 pure val recordOne: GraphValue = ContainerValue({identity: 1})
@@ -99,7 +102,7 @@ pure val observeOne: GraphObservation = VisitValue({visited: recordOne})
 pure val observeTwo: GraphObservation = VisitValue({visited: recordTwo})
 pure val leaveOne: GraphObservation = LeaveContainer({identity: 1})
 pure val leaveTwo: GraphObservation = LeaveContainer({identity: 2})
-pure val observationValues = Set(observeOne, observeTwo, leaveOne, leaveTwo, ObjectPropertyWithoutData, VisitValue({visited: NonFiniteNumber}), VisitValue({visited: UndefinedValue}), VisitValue({visited: PrimitiveValue}), VisitValue({visited: NonJsonPrimitive}), VisitValue({visited: OpaqueObject}))
+pure val observationValues = Set(observeOne, observeTwo, leaveOne, leaveTwo, RejectedOwnPropertyDescriptor, VisitValue({visited: NonFiniteNumber}), VisitValue({visited: UndefinedValue}), VisitValue({visited: PrimitiveValue}), VisitValue({visited: NonJsonPrimitive}), VisitValue({visited: OpaqueObject}))
 pure def visitGraph(value: GraphValue, walk: Validation): Validation =
   match value {
     | ContainerValue(data) =>
@@ -117,7 +120,7 @@ pure def observeGraph(walk: Validation, observation: GraphObservation): Validati
       if (walk.ancestors.nthOr(walk.ancestors.length() - 1, 0) == data.identity and data.identity > 0)
         { ...walk, ancestors: walk.ancestors.removeAt(walk.ancestors.length() - 1) }
       else { ...walk, valid: false }
-    | ObjectPropertyWithoutData => { ...walk, valid: false }
+    | RejectedOwnPropertyDescriptor => { ...walk, valid: false }
   }
 pure def stepFailedValidationIsTerminal(before: Validation, after: Validation): bool =
   not(before.valid) implies not(after.valid)
