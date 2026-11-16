@@ -630,6 +630,10 @@ lemma OrderedBatchRoomsArePositive(rooms: seq<int>)
     var last := rooms[|rooms|-1];
     var order := (ordered: seq<int>, room: int) => insertRoom(ordered, room);
     assert rooms == prefix + [last];
+    assert last in rooms && last > 0;
+    forall room | room in prefix ensures room > 0 {
+      assert room in rooms;
+    }
     OrderedBatchRoomsArePositive(prefix);
     ProofLib.FoldLeftAppend(order, [], prefix, last);
     var earlier := orderedRooms(prefix);
@@ -642,6 +646,15 @@ lemma OrderedBatchRoomsArePositive(rooms: seq<int>)
       ProofLib.FilterSubset(smaller, earlier);
       ProofLib.FilterSubset(larger, earlier);
       assert sorted == ProofLib.Filter(smaller, earlier) + [last] + ProofLib.Filter(larger, earlier);
+      forall room | room in sorted ensures room > 0 {
+        if room != last {
+          assert room in ProofLib.Filter(smaller, earlier) || room in ProofLib.Filter(larger, earlier);
+          assert room in earlier;
+        }
+      }
+    } else {
+      reveal insertRoom();
+      assert sorted == earlier;
     }
     assert last in sorted;
   }
