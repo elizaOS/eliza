@@ -17,7 +17,7 @@
   "bounds": {
     "domain": "One supervisor and one agent child launched alone, with no gateway or broker. Start, restart and stop in any state; the pre-spawn refusals config, payload, storage and credential; a spawn that fails; readiness, timeout and child exit before readiness; child exit while running, restarted within a budget of two.",
     "assumptions": "Readiness is an observed authenticated probe of the agent's own endpoint. A refused check or a failed spawn leaves no child. Stop, restart, timeout and failure request the child's destruction, modeled as immediate; physical exit is outside this model and in ParallelRuntimeStartup.",
-    "progress": "A start settles (running, failed or stopped) under weak fairness of advance, which includes the readiness deadline. Without fairness a start may stutter forever.",
+    "progress": "A spawned agent's readiness wait ends (running, failed, stopped or a new launch) under weak fairness of advance, which includes the readiness deadline. Without fairness the wait may stutter forever. A host that restarts forever keeps a start from settling; that is not excluded.",
     "limitations": "Elapsed time, the back-off delay, the Android foreground-service rules, the route allowlist and the stream bridge are outside the model. The device service and plugin have never run on a device or emulator; the development launch and the JVM supervisor are checked by the conformance contracts."
   },
   "conformance": "plugins/plugin-native-agent/scripts/check-embedded-agent-lifecycle.mjs",
@@ -37,19 +37,22 @@
         "StartupFailureIsNotACrash",
         "BoundedRestarts"
       ],
-      "temporal": ["StartSettles", "StartSettlesWithoutFairness"],
+      "temporal": [
+        "ReadinessWaitSettles",
+        "ReadinessWaitSettlesWithoutFairness"
+      ],
       "temporalChecks": [
         {
-          "property": "StartSettles",
+          "property": "ReadinessWaitSettles",
           "expect": "holds",
           "assumptions": [
-            "Weak fairness of advance: checks, spawn, readiness or its deadline, and exit observation. No assumption that the agent becomes ready."
+            "Weak fairness of advance: readiness, its deadline and exit observation. No assumption that the agent becomes ready. A host may restart or stop a wait; that also ends it."
           ]
         },
         {
-          "property": "StartSettlesWithoutFairness",
+          "property": "ReadinessWaitSettlesWithoutFairness",
           "expect": "counterexample",
-          "assumptions": ["No fairness. A start may stutter forever."]
+          "assumptions": ["No fairness. A readiness wait may stutter forever."]
         }
       ],
       "maxSteps": 30,
