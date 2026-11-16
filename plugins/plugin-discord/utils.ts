@@ -6,6 +6,7 @@
  * (`buildOutboundDiscordAttachment`, which resolves bytes through the
  * guarded fetch / media store and never treats a URL as a local path).
  */
+import { randomBytes } from "node:crypto";
 import {
 	ElizaError,
 	type IAgentRuntime,
@@ -497,6 +498,15 @@ interface MessageSendOptions {
 }
 
 /**
+ * A fresh nonce for one Discord message create. It stays the same across the
+ * REST client's automatic retries of that create, so Discord stores the
+ * message once. Discord accepts at most 25 characters.
+ */
+export function sendNonce(): string {
+	return randomBytes(12).toString("hex");
+}
+
+/**
  * Convert the connector's neutral {@link DiscordActionRow} specs (produced by
  * `renderDiscordInteractions`) into discord.js `ActionRowBuilder`s ready to hand
  * to `channel.send`/`user.send`. Already-built discord.js rows pass through
@@ -646,10 +656,11 @@ export async function sendMessageInChunks(
 				const options: MessageSendOptions = {
 					content: message,
 				};
-				if (fence) {
-					options.nonce = fence.nonceForChunk(i);
-					options.enforceNonce = true;
-				}
+				// discord.js re-POSTs a create after a 5xx or a timeout. Discord may
+				// already have stored the first one, so every send carries a nonce
+				// Discord enforces: the re-POST returns that message, not a copy.
+				options.nonce = fence ? fence.nonceForChunk(i) : sendNonce();
+				options.enforceNonce = true;
 
 				if (
 					inReplyTo &&
