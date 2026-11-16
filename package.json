@@ -63,10 +63,12 @@
     "LICENSE"
   ],
   "dependencies": {
+    "@antithesishq/bombadil": "0.7.10",
     "@effect/platform-node": "4.1.1",
     "@informalsystems/quint": "^0.33.1",
     "effect": "4.1.1",
     "lemmascript": "^0.6.8",
+    "playwright": "catalog:",
     "typescript": "^6.0.3",
     "vibelang-runtime": "0.0.13"
   },
@@ -87,7 +89,6 @@
     "knip": "catalog:",
     "madge": "catalog:",
     "miniflare": "5.20261113.0-beta",
-    "playwright": "catalog:",
     "stylelint": "catalog:",
     "stylelint-config-standard": "catalog:",
     "turbo": "catalog:",

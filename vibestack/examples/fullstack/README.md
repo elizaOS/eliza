@@ -8,7 +8,7 @@ spec puts the server, two tabs and an unreliable network together.
 pnpm install --ignore-workspace   # here, after the install at the repository root
 pnpm check      # the whole pipeline (from this directory)
 pnpm test       # the tests alone, against the real server on a free port
-pnpm start      # build, then open http://localhost:3000 in two windows; the list is kept in ./todos.json
+pnpm start      # build, then open the address it prints (http://localhost:3000, or a free port while 3000 is taken) in two windows; the list is kept in dist/todos.json
 pnpm storybook  # every component of the page in each of its states
 pnpm lint       # the page uses the design tokens only
 ```
@@ -27,6 +27,7 @@ Needs Node 26+ and Dafny on the path.
 | `src/protocol.vibe` | shared shell | Wire format |
 | `src/web/sync.vibe` | frontend shell | The `Tab` service: one client machine and its requests, shared with `test/app.test.vibe` |
 | `test/drivers/client.ts`, `test/drivers/server.ts` | conformance | How `check` reaches a tab and the HTTP server: every journey and random walks, compared with `spec/client.md` and `spec/server.md` |
+| `test/bombadil.ts` | exploration | What `check` holds the page to while Bombadil clicks, types and reloads it in Chromium, served by `pnpm start` |
 | `src/web/` | page | React: `main.tsx` gives `components/TodoPage.tsx` the tab's `Client`, through the generated `useMachine` of `gen/client.react.ts`, and the tab's effects |
 | `tokens.json`, `design.md` | design | The page's colors and shapes, as tokens |
 
@@ -62,8 +63,8 @@ answered: written to `file.tmp`, flushed to disk, renamed over `file`, and
 the rename flushed with the directory, one request at a time. Where a
 directory cannot be opened, as on Windows, that last flush is left to the
 system, and a power cut just after an answer may undo its rename. `pnpm start` keeps it in
-`todos.json` in the directory it is run from; delete that file to start
-over.
+`dist/todos.json`, beside the program it runs, so that no check counts it
+among the sources; delete that file to start over.
 
 | Stays TypeScript | Why |
 |---|---|
@@ -101,7 +102,9 @@ shell's journeys and the mount of every story.
   that holds no state; the real server against `spec/server.md`, through its
   driver, comparing the state it saved in its file with the spec's and each
   answer's verdict with its log; a tab against `spec/client.md` through its
-  driver; that every story mounts. No test drives the page in a browser.
+  driver; that every story mounts; and the page in Chromium, explored by
+  Bombadil against `test/bombadil.ts` (Add is never offered for a blank title,
+  and no uncaught error, console error or failed request).
 - **Trusted**: `src/`, React, Effect, the VibeLang compiler, the generator,
   Dafny and Quint. Convergence is a `sometimes` rule: the model shows it can
   happen, not that it always does.

@@ -30,6 +30,7 @@
     "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
+    "@antithesishq/bombadil": "0.7.10",
     "@effect/vitest": "4.1.1",
     "@storybook/addon-a11y": "10.6.7",
     "@storybook/addon-vitest": "10.6.7",

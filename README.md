@@ -83,7 +83,7 @@ would call true or false.
 | Proof | Dafny on the generated core, and [LemmaScript](https://github.com/midspiral/LemmaScript) `//@` contracts on hand-written logic | `proof`, with each exception recorded in `spec/lock.json` |
 | Shell | HTTP, storage, queues and every other effect, in VibeLang on Effect 4 | `types`: the `vibelang` compiler over `src/`, tests and `gen/` |
 | Interface | React with Vite, Tailwind CSS v4, shadcn/ui on Radix, tokens from `packages/design-system`, components in `packages/ui` with generated stories | `types`, ESLint and Stylelint rules for tokens, Storybook and browser tests |
-| Tests | Whole journeys in Vitest with `@effect/vitest` and Playwright, citing the rule each step serves; conformance runs of the real app against the spec | `tests`, `traces` |
+| Tests | Whole journeys in Vitest with `@effect/vitest` and Playwright, citing the rule each step serves; conformance runs of the real app against the spec; [Bombadil](https://github.com/antithesishq/bombadil) exploring each served page against `test/bombadil.ts` | `tests`, `traces`, `explore` |
 | Workspace | Node 26, pnpm workspaces, Turborepo; ESLint boundaries, Knip, Madge and jscpd | `pnpm verify`, CI on every push |
 
 ```mermaid
@@ -284,7 +284,7 @@ pnpm check
 | an empty `spec/index.md` | |
 | `tsconfig.json` | for the VibeLang compiler: `src`, `test`, `gen/*.ts` and `gen/*.vibe`, emitting to `dist/`, with the compiler's declarations in `.vibe/declarations` |
 | `vitest.config.ts` | the one Vitest configuration, `project()` from `vibestack/testing/vitest.ts` ([AGENTS.md, "Tests"](AGENTS.md#tests)) |
-| `.gitignore` | `gen/`, `.spec-cache/`, `.studio/`, `dist/`, `.vibe/` and the generated harness skill paths |
+| `.gitignore` | `gen/`, `.spec-cache/`, `.studio/`, `dist/`, `.vibe/`, `test/__traces__/` and the generated harness skill paths |
 | `package.json` | scripts `dev`, `check`, `gen`, `accept`, `build` (`vibelang`) and `test` (`vitest run`); the VibeLang toolchain it lacks, at its pins, with the `@effect/platform-node-shared` override that keeps one Effect; `packageManager` (`pnpm@10.24.0`), `engines.node` (`>=26`, the Node `spec` refuses to run below) and `"type": "module"` if unset |
 
 It preserves project-authored content, scripts, and dependencies.
@@ -307,7 +307,7 @@ current one. Installed as a package, use `pnpm exec spec <command> [<dir>]`.
 |---|---|
 | `pnpm dev` | Starts Studio on this project and every workspace package's `dev` script, together |
 | `pnpm studio [<dir>]` | Opens Studio alone, on one project |
-| `pnpm check [<dir>] [--json]` | Checks spec, source and tests; ends with a `next:` line ([JSON shape](CONTRIBUTING.md#changing-the-tools)) |
+| `pnpm check [<dir>] [--json]` | Checks spec, source and tests, and explores each page; ends with a `next:` line ([JSON shape](CONTRIBUTING.md#changing-the-tools)) |
 | `pnpm quick` | Types, lint and tests of what changed |
 | `pnpm verify` | Everything CI runs: build, types, tests, browser tests, checks, lint, Knip, Madge, jscpd and the selftest, for every workspace package |
 | `pnpm gen [<dir>]` | Generates `gen/` only |

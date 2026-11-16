@@ -118,6 +118,12 @@ Style with Tailwind utilities on the project's tokens, compose shadcn/ui
 components before writing one, and follow the
 [design skill](../design/SKILL.md).
 
+The page is served by the package's `start` script, or `dev` when that is
+not the studio, which prints the `http://localhost` address it serves at:
+`check`'s `explore` stage runs it and lets Bombadil drive the page. What
+must hold in every state the page reaches goes in `test/bombadil.ts`
+([SPEC.md, "Exploring the page"](../../../SPEC.md#exploring-the-page)).
+
 ## Building, running and testing
 
 | | Command | Does |
@@ -125,6 +131,7 @@ components before writing one, and follow the
 | check | `pnpm check` | `types` checks `src/`, `test/` and `gen/` with `vibelang --noEmit -p .` |
 | build | `pnpm build` (`vibelang`) | checks, and writes JavaScript to `dist/`, as `dist/src/…` and `dist/gen/…` |
 | run | `pnpm build && node dist/src/main.js` | runs the built `src/main.vibe` |
+| explore | `pnpm check` | the `explore` stage serves the page and checks `test/bombadil.ts` with Bombadil in Chromium |
 | test | `pnpm test` (`vitest run`) | `test/**/*.test.vibe`, written with `@effect/vitest`, and the property tests of `src/**/*.schema.*` and `*.contract.*`; compiled as they load, no build first ([AGENTS.md, "Tests"](../../../AGENTS.md#tests)) |
 
 | Needs | |
