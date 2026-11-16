@@ -887,10 +887,10 @@ test("an embedded agent is three data files: the host declares its service, sour
     );
     assert.doesNotMatch(text, /local[-_]?inference|ai\.eliza\.voice|kotlin/i);
   }
-  // A changed upstream source makes the generated host refuse to configure.
+  // A changed data file or upstream source makes the generated host refuse to configure.
   assert.equal(
     normalized.generationInputs.length,
-    EMBEDDED_AGENT_SOURCES.length,
+    3 + EMBEDDED_AGENT_SOURCES.length,
   );
   // Data the device service would refuse fails the generation instead.
   options.profile.embeddedAgent.host = write("agent.json", {

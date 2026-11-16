@@ -117,9 +117,13 @@ loopback socket, so the page needs no cleartext access and never holds a token.
 `requestStream` sends each event's data as `streamData` and ends with `streamEnd`;
 `abort` closes the request, which ends the agent's turn. `status` events follow
 each lifecycle change. A failed status names its `failure`: `payload`, `storage`,
-`config`, `credential`, `agent`, `crashed` or `runtime`. An agent that exits
-before it is ready, or that cannot be spawned, fails the start with `agent`; a
-running agent that exits is restarted twice, 3 and 6 seconds apart, then fails with
+`config`, `credential`, `agent`, `crashed` or `runtime`; an `unavailable` status
+(no runtime payload in the build, or data the bridge cannot read) names `payload`
+or `config`. A start cannot know whether Eliza Cloud is reachable until a turn is
+made, so a start fails only on what it can check, the payload and the credential
+among them, and a cloud failure is reported per turn. Private files that cannot
+be prepared fail the start with `runtime`. An agent that exits before it is
+ready, or that cannot be spawned, fails the start with `agent`; a running agent that exits is restarted twice, 3 and 6 seconds apart, then fails with
 `crashed` (`quint/EmbeddedAgentLifecycle.qnt`). The service returns `START_STICKY`
 so that Android may restart it after its process is killed; that has not been
 observed on a device, and a restart Android refuses to bring to the foreground
@@ -136,7 +140,9 @@ registration.
 `native-host/embedded-agent.mjs` exports `embeddedAgentDevelopment`, a Vite plugin
 that starts the agent from the Eliza checkout at `source` with the same data files,
 that checkout's `private-runtime-launch.mjs` and the same lifecycle, and serves the
-bridge's web fallback under `/__eliza-embedded-agent`. It answers only a
+bridge's web fallback under `/__eliza-embedded-agent`. The agent's home is the
+given `stateDirectory`, and it is stopped when the dev server closes or the
+process exits. It answers only a
 loopback, IP-literal or Vite-allowed host, and takes a command only as JSON from
 the dev server's own origin, so another site in the browser cannot reach the
 agent. Both readers of the data
