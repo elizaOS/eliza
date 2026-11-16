@@ -1,0 +1,43 @@
+{
+  "sources": [
+    "plugins/plugin-telegram/src/messageManager.ts",
+    "plugins/plugin-telegram/__tests__/edit-unchanged-text.real.test.ts",
+    "plugins/plugin-telegram/quint/check-telegram-edit-unchanged.mjs"
+  ],
+  "conformance": "plugins/plugin-telegram/quint/check-telegram-edit-unchanged.mjs",
+  "bounds": "One agent, one private chat without a forum thread, one turn, and two progress texts. Each case is four events: a compact progress update that shows text A or text B, or the user deleting the bot's status message while it is shown. Updates run through createTelegramCompactProgressCallback with the editMessage of the MessageManager that TelegramService starts on PGlite, wired as MessageManager.handleMessage wires it; the base callback posts through sendMessageInChunks. The conformance script replays all 44 generated event sequences against a loopback Bot API that refuses an edit of a deleted message (\"message to edit not found\") and an edit that does not change the shown text (\"message is not modified\"), as Telegram does, and compares the Bot API calls, the refusals, the status messages left in the chat and the text that they show. The connector edit_message capability (runtime.editMessageOnTarget) is checked by a named test, not by the model. Reply markup, forum threads, the MarkdownV2 plain-text fallback, rate-limit retries, supergroup migration, concurrent updates and the task board are not covered by this model. Under weak fairness of the replay step all four events run. Explicit stuttering lets the replay stop before them, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "edit-unchanged-text",
+      "main": "TelegramEditUnchanged",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "LaterUpdatesEdit",
+        "OneStatusMessage",
+        "PostsOnlyWithoutStatus",
+        "ShowsLatest",
+        "TypeOK"
+      ],
+      "temporal": ["ReplayEnds", "ReplayEndsWithoutFairness"],
+      "maxSteps": 8,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "ReplayEnds",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled replay step eventually runs (weak fairness). This checks that the replay then runs all four events, not how long the database or loopback work takes."
+          ]
+        },
+        {
+          "property": "ReplayEndsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The replay may stop before the four events, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
