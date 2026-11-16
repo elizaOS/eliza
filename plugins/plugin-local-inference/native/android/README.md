@@ -138,15 +138,22 @@ output classes only: no inference session, JNI bridge, native library or model a
   microphone. The session resolves when recognition is connected, so replies can be spoken.
   `setCloudSpeechMuted` with `muted: false` then opens the microphone. Without the permission it
   rejects with `permission-required` and the session stays open and muted; the host asks for the
-  permission (which pauses the activity and ends the session) and starts a new session.
+  permission (which pauses the activity and ends the session) and starts a new session. An
+  unmute before recognition is connected resolves at once and opens the microphone on connect.
+  A muted start resolves with `echoCancelled: false`; the `ready` event, which also carries
+  `muted`, gives the real value once the microphone opens. Muting sends a short silence tail
+  only when the microphone was open.
 - `speakCloudSpeech` takes `pace` (0.5 to 2, default 1). The speech plays at that speed with the
-  same pitch on the device; the relay is unchanged.
+  same pitch on the device, in a buffer scaled up for a faster pace; an output that refuses the
+  pace plays at the normal pace. The relay is unchanged.
 - While speech plays, `progress` events give `playedMs` (audio heard so far, at the synthesized
   pace) and `receivedMs` (audio received so far). `audio-end` and the `cancelCloudSpeech` result
   give `playedMs` too, so the host can find the word that was reached.
 - The session holds transient, duckable audio focus while it speaks or its microphone is open,
-  and releases it when it does neither. Speech plays with the assistant usage, which Android
-  controls with the media volume.
+  and releases it when it does neither. A transient or permanent focus loss, or a call, ends
+  the session even while it only listens; a ducking loss lowers the current and the next
+  utterance. Speech plays with the assistant usage, which AOSP maps to the media volume by
+  default (not yet checked on a device).
 
 `node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs`
 runs the host-JVM contracts and compiles the library against Android 36. Its pinned
