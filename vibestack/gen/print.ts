@@ -243,8 +243,11 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
         const { base, updates } = unroll(e);
         return [typed(`{ ...${ex(base, ATOM)}, ${updates.join(", ")} }`, e), ATOM];
       }
-      // An empty list carries its type, which TypeScript cannot infer where it is a fold's starting value.
-      case "List": return [a.length ? `[${a.map((x) => ex(x, TERNARY)).join(", ")}]` : `([] as ${tsType(typeOf(e.id))})`, ATOM];
+      // Empty lists and lists inside another expression carry their inferred type.
+      case "List": {
+        const items = `[${a.map((x) => ex(x, TERNARY)).join(", ")}]`;
+        return [a.length && nesting <= 1 ? items : `(${items} as ${tsType(typeOf(e.id))})`, ATOM];
+      }
       case "append": case "concat": return [joined(e), ATOM];
       case "length": return [`${recv()}.length`, ATOM];
       case "nth": return partial("nth", recv(), ex(a[1]));
