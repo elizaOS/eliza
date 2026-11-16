@@ -68,7 +68,6 @@ import {
   cn,
   createNavigateViewHandler,
   type DesktopBottomBarSurfaceState,
-  DesktopTabBar,
   DeveloperTabHost,
   DynamicPluginFallback,
   DynamicViewLoader,
@@ -183,7 +182,6 @@ import {
   useChatComposer,
   useChatInputRef,
   useContextMenu,
-  useDesktopTabs,
   useEnabledViewKinds,
   useFirstRunChatRelease,
   useKioskViewSurfaces,
@@ -255,10 +253,7 @@ import { FirstRunConductorMount } from "./onboarding/use-first-run-conductor";
 // Import the page registry from its standalone module, NOT the
 // `app-shell-components` barrel — that barrel statically re-exports every page
 // view, so importing through it folds all of them back into the main chunk.
-// DesktopTabBar stays static: it is already pulled
-// eagerly elsewhere in the app graph (plugin-loader / boot-config), so a
-// lazy() boundary here would only fold back into main. The remaining page
-// views are lazy-split below.
+// The page views are lazy-split below.
 /** Check if we're in pop-out mode (StreamView only, no chrome). */
 function useIsPopout(): boolean {
   const [popout] = useState(() => {
@@ -1862,7 +1857,6 @@ type ShellContentProps = {
   availableViewsForLayout: ViewRegistryEntry[];
   cloudAuthenticated: boolean;
   customActionsPanelOpen: boolean;
-  desktopTabBar: ReactNode;
   isChat: boolean;
   isFullBleed: boolean;
   screenBackgroundPolicy: AppShellBackgroundPolicy;
@@ -1918,7 +1912,7 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
 /**
  * The single routed shell for every view. ViewRouter already resolves every tab
  * — static page views, dynamic plugin pages, and remote view bundles — so the
- * shell only adds the desktop tab bar and per-tab padding around it. Chat is the
+ * shell only adds per-tab padding around it. Chat is the
  * always-present ChatOverlay floating over this base, never embedded
  * per-view.
  */
@@ -1933,7 +1927,6 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
       : APP_SHELL_CLASS;
   return (
     <div key={`tab-shell-${props.tab}`} className={shellClass}>
-      {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         {props.viewLayout ? (
           <ViewLayoutSurface
@@ -2022,7 +2015,6 @@ function ShellContent(props: ShellContentProps): ReactNode {
           aria-hidden={!showNotes || undefined}
           style={{ display: showNotes ? "flex" : "none" }}
         >
-          {showNotes ? props.desktopTabBar : null}
           <main className={routedShellMainClass("notes")}>
             <ViewSurfaceFrame declaration={retainedNotes.current.registration}>
               <RegisteredAppShellPage
@@ -2957,16 +2949,7 @@ function AppContent() {
   const [settingsNavigatePayload, setSettingsNavigatePayload] =
     useState<unknown>(undefined);
   const [settingsNavigateSequence, setSettingsNavigateSequence] = useState(0);
-  // Desktop tab bar — persisted pinned tabs for the Electrobun shell.
-  const {
-    tabs: desktopTabs,
-    openTab: openDesktopTab,
-    closeTab: closeDesktopTab,
-  } = useDesktopTabs();
-  const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(
-    null,
-  );
-  const { views: availableViewsForDesktopTabs } = useRoutableViews();
+  const { views: availableViews } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
   const navigationPath = useCurrentNavigationPath();
   const enabledKinds = useEnabledViewKinds();
@@ -2996,7 +2979,7 @@ function AppContent() {
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
     navigationPath,
-    availableViews: availableViewsForDesktopTabs,
+    availableViews: availableViews,
     dynamicPage: activeDynamicPage,
     viewLayout,
   });
@@ -3013,7 +2996,7 @@ function AppContent() {
   const activeViewSurface = useActiveViewSurface({
     tab,
     navigationPath,
-    availableViews: availableViewsForDesktopTabs,
+    availableViews: availableViews,
     dynamicPage: activeDynamicPage,
     viewLayout,
     enabledKinds,
@@ -3160,16 +3143,11 @@ function AppContent() {
   // the user to a specific view by path or view ID.
   // When the target is "/views" or "/apps" (legacy launcher aliases), we also
   // directly set the tab so the nav bar becomes visible.
-  // On desktop, also open the view as a desktop tab if desktopTabEnabled.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const baseHandler = createNavigateViewHandler({
-      availableViewsForDesktopTabs,
-      closeDesktopTab,
-      desktopTabs,
+      availableViews,
       invokeDesktopBridgeRequest,
-      openDesktopTab,
-      setActiveDesktopTabId,
       setTab,
       setTabForPath: (routeTab) => setTab(routeTab, { history: "preserve" }),
       setViewLayout,
@@ -3214,13 +3192,7 @@ function AppContent() {
       return handled;
     };
     return listenForNavigateViewRequests(handleNavigateView);
-  }, [
-    setTab,
-    availableViewsForDesktopTabs,
-    closeDesktopTab,
-    desktopTabs,
-    openDesktopTab,
-  ]);
+  }, [setTab, availableViews]);
   useEffect(() => {
     if (tab !== "views" && viewLayout) {
       setViewLayout(null);
@@ -3255,58 +3227,9 @@ function AppContent() {
       },
     });
   }, []);
-  // Handle desktop tab navigation: clicking a tab navigates to its path.
-  // Closing the active tab falls back to the chat view.
-  const handleDesktopTabClick = useCallback(
-    (viewId: string) => {
-      const dtab = desktopTabs.find((t) => t.viewId === viewId);
-      if (!dtab) return;
-      setViewLayout(null);
-      setActiveDesktopTabId(viewId);
-      try {
-        if (typeof window === "undefined") return;
-        if (window.location.protocol === "file:") {
-          window.location.hash = dtab.path;
-        } else {
-          shellHistory.pushState(null, "", dtab.path);
-          window.dispatchEvent(new PopStateEvent("popstate"));
-        }
-      } catch {
-        // sandboxed — ignore
-      }
-    },
-    [desktopTabs],
-  );
-  const handleDesktopTabClose = useCallback(
-    (viewId: string) => {
-      setViewLayout(null);
-      closeDesktopTab(viewId);
-      if (activeDesktopTabId === viewId) {
-        setActiveDesktopTabId(null);
-        setTab("chat");
-      }
-    },
-    [closeDesktopTab, activeDesktopTabId, setTab],
-  );
-  const handleOpenViewManagerFromTabBar = useCallback(() => {
-    setViewLayout(null);
-    setTab("views");
-  }, [setTab]);
   const handleClearViewLayout = useCallback(() => {
     setViewLayout(null);
   }, []);
-  // desktopTabBar is computed here (after handlers) so the memo below can
-  // reference a stable value. Rendered inside each shell variant, not at the
-  // outer level, so Header + TabBar + content stack correctly per shell.
-  const desktopTabBar = (
-    <DesktopTabBar
-      tabs={desktopTabs}
-      activeViewId={activeDesktopTabId}
-      onTabClick={handleDesktopTabClick}
-      onTabClose={handleDesktopTabClose}
-      onOpenViewManager={handleOpenViewManagerFromTabBar}
-    />
-  );
   const bugReport = useBugReportState();
   // Loading is handled entirely by StartupScreen.
   const androidCloudAuthAutoStart = isAndroidCloudBuild();
@@ -3389,10 +3312,9 @@ function AppContent() {
       <ShellContent
         actionNotice={actionNotice}
         mobileHome={sharedMobileApplication}
-        availableViewsForLayout={availableViewsForDesktopTabs}
+        availableViewsForLayout={availableViews}
         cloudAuthenticated={cloudAuthenticated}
         customActionsPanelOpen={customActionsPanelOpen}
-        desktopTabBar={desktopTabBar}
         isChat={isChat}
         isFullBleed={isFullBleed}
         screenBackgroundPolicy={screenBackgroundPolicy}
@@ -3420,8 +3342,7 @@ function AppContent() {
       settingsInitialSection,
       settingsNavigatePayload,
       settingsNavigateSequence,
-      desktopTabBar,
-      availableViewsForDesktopTabs,
+      availableViews,
       cloudAuthenticated,
       viewLayout,
       handleClearViewLayout,

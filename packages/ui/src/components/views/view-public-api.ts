@@ -405,7 +405,6 @@ export {
 } from "../../hooks/useAvailableViews.js";
 export { useBugReportState } from "../../hooks/useBugReport.hooks.js";
 export { useContextMenu } from "../../hooks/useContextMenu.js";
-export { useDesktopTabs } from "../../hooks/useDesktopTabs.js";
 export { useSecretsManagerModalState } from "../../hooks/useSecretsManagerModal.js";
 export { useSecretsManagerShortcut } from "../../hooks/useSecretsManagerShortcut.js";
 export { createTranslator } from "../../i18n/index.js";
@@ -501,4 +500,3 @@ export {
 export { TaskChoice } from "../chat/TaskChoice.js";
 export { DiffReviewPanel } from "../composites/DiffReviewPanel.js";
 export { PageLoadingState } from "../composites/page-panel/content-state.js";
-export { DesktopTabBar } from "../DesktopTabBar.js";

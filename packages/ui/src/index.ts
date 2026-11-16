@@ -326,7 +326,6 @@ export { PageLoadingState } from "./components/composites/page-panel/content-sta
 export { PagePanel } from "./components/composites/page-panel/index.js";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor.js";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel.js";
-export { DesktopTabBar } from "./components/DesktopTabBar.js";
 export { AppsPageView } from "./components/pages/AppsPageView.js";
 export { LauncherSurface } from "./components/pages/LauncherSurface.js";
 export { PluginPageFrame } from "./components/pages/PluginPageFrame.js";
@@ -878,7 +877,6 @@ export {
 } from "./hooks/useAvailableViews.js";
 export { useBugReportState } from "./hooks/useBugReport.hooks.js";
 export { useContextMenu } from "./hooks/useContextMenu.js";
-export { useDesktopTabs } from "./hooks/useDesktopTabs.js";
 export { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal.js";
 export { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut.js";
 export { useVoiceChat } from "./hooks/useVoiceChat.js";

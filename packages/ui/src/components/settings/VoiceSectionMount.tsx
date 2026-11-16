@@ -32,10 +32,6 @@ import {
   subscribeFusedWakeStatus,
 } from "../../voice/fused-wake-bridge";
 import {
-  armDesktopFusedWake,
-  disarmDesktopFusedWake,
-} from "../../voice/fused-wake-desktop-bridge";
-import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
@@ -128,9 +124,8 @@ export function VoiceSectionMount(): React.ReactElement {
   const [wakeWordEnabled, setWakeWordEnabled] = React.useState<boolean>(() =>
     loadWakeWordEnabled(),
   );
-  // The only wake detector the app starts is the desktop one, armed over the
-  // electrobun RPC at boot (registerDesktopFusedWake). On iOS, Android and web
-  // nothing starts a detector, so the switch must not look like it works.
+  // The renderer starts no wake detector. On iOS, Android and web the switch
+  // stays unavailable so it does not look like it works.
   const wakeWordAvailable = getElectrobunRendererRpc() !== undefined;
   // Desktop only: the native wake detector can fail to start (wake models not
   // downloaded, microphone refused). Show the host's reason instead of leaving
@@ -223,14 +218,10 @@ export function VoiceSectionMount(): React.ReactElement {
     };
   }, []);
   // Persist the wake-word toggle and update local state so the control reflects
-  // it immediately; the shell picks the new value up on its next render. On
-  // desktop the toggle also owns the native detector: on starts it (again, if
-  // an earlier start failed), off stops it and releases the microphone.
+  // it immediately; the shell picks the new value up on its next render.
   const handleWakeWordToggle = React.useCallback((next: boolean) => {
     setWakeWordEnabled(next);
     saveWakeWordEnabled(next);
-    if (!getFusedWakeStatus().bridged) return;
-    void (next ? armDesktopFusedWake() : disarmDesktopFusedWake());
   }, []);
   const persistPendingPrefs = React.useCallback(async () => {
     while (pendingPersistPrefs.current) {

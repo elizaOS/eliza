@@ -2467,27 +2467,10 @@ async function main(): Promise<void> {
       }
     }
   }
-  // Desktop fused on-device wake (#10351): forward native libwakeword fires from
-  // the agent process to the renderer's `eliza:fused-wake` bridge so the
-  // battery-efficient on-device path drives the bottom bar — not just the
-  // Swabble fallback. Awaited before mountReactApp ONLY on desktop, where
-  // useWakeController's first-render capability probe reads
-  // `window.__ELIZA_FUSED_WAKE__`; on web/mobile the registration is a no-op
-  // (no electrobun RPC), so blocking first paint on the voice chunk there
-  // bought nothing — it runs after mount instead (see below).
-  if (isDesktopPlatform()) {
-    (await voiceModuleReady)?.registerDesktopFusedWake();
-  }
   markStartup("bridges:end", { platform });
   measureStartup("bridges", "bridges:start", "bridges:end");
   rendererBootstrap.mount();
   scheduleDeferredAppModuleLoadsAfterPaint();
-  if (!isDesktopPlatform()) {
-    // Off-desktop registerDesktopFusedWake self-gates to a no-op; keep calling
-    // it post-mount so any host that DOES expose the electrobun RPC without
-    // the desktop platform marker still wires the channel.
-    void voiceModuleReady.then((voice) => voice?.registerDesktopFusedWake());
-  }
   await initializePlatform();
 }
 
