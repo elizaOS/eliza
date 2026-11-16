@@ -10,7 +10,9 @@
  *
  * The per-session nonce makes placeholders unforgeable: restore and assertion
  * scope only to THIS session's nonce, so a placeholder-shaped token from user
- * input or model output can never resolve to a real secret. A this-session
+ * input or model output can never resolve to a real secret. Restore also
+ * accepts only placeholders this session wrote into substituted text: a known
+ * secret the turn never showed the model stays unresolved. A this-session
  * placeholder that should resolve but does not (e.g. a model that fabricated
  * `…_999__`) can fail loud via SecretSwapUnresolvedPlaceholderError rather than
  * silently leak.
@@ -328,12 +330,14 @@ function replaceValue(
 	text: string,
 	pattern: RegExp,
 	placeholder: string,
+	onInsert?: () => void,
 ): string {
 	const replace = (value: string) =>
-		value.replace(
-			pattern,
-			(_match, existingPlaceholder) => existingPlaceholder ?? placeholder,
-		);
+		value.replace(pattern, (_match, existingPlaceholder) => {
+			if (existingPlaceholder !== undefined) return existingPlaceholder;
+			onInsert?.();
+			return placeholder;
+		});
 	const json = replaceJsonStringValues(text, replace);
 	if (json !== null) return json;
 	// Evaluators also accept fenced JSON. Protect its structure while still
@@ -507,6 +511,8 @@ export class SecretSwapSession {
 	private readonly replyProtectedValues = new Set<string>();
 	private readonly valueToEntry = new Map<string, SecretSwapEntry>();
 	private readonly placeholderToEntry = new Map<string, SecretSwapEntry>();
+	/** Placeholders this session actually wrote into substituted text. */
+	private readonly exposedPlaceholders = new Set<string>();
 	private readonly exemptValues: ReadonlySet<string>;
 	private readonly disabledKinds: ReadonlySet<string>;
 	/**
@@ -620,22 +626,21 @@ export class SecretSwapSession {
 			(a, b) => a.start - b.start || b.end - a.end,
 		)) {
 			if (span.start < cursor) continue;
-			parts.push(
-				result.slice(cursor, span.start),
-				this.entryForValue(span.value, "secret").placeholder,
-			);
+			const { placeholder } = this.entryForValue(span.value, "secret");
+			this.exposedPlaceholders.add(placeholder);
+			parts.push(result.slice(cursor, span.start), placeholder);
 			cursor = span.end;
 		}
 		parts.push(result.slice(cursor));
 		result = parts.join("");
-		return this.replaceKnownValues(result);
+		return this.replaceKnownValues(result, true);
 	}
 
 	/**
 	 * Replace every known value with its placeholder, longest first so a value
 	 * that is a substring of another does not corrupt the longer placeholder.
 	 */
-	private replaceKnownValues(text: string): string {
+	private replaceKnownValues(text: string, expose = false): string {
 		let result = text;
 		for (const entry of this.entries.sort(
 			(a, b) => b.value.length - a.value.length,
@@ -645,7 +650,14 @@ export class SecretSwapSession {
 				pattern = compileReplacePattern(entry.value);
 				this.replacePatterns.set(entry.value, pattern);
 			}
-			result = replaceValue(result, pattern, entry.placeholder);
+			result = replaceValue(
+				result,
+				pattern,
+				entry.placeholder,
+				expose
+					? () => this.exposedPlaceholders.add(entry.placeholder)
+					: undefined,
+			);
 		}
 		return result;
 	}
@@ -732,7 +744,8 @@ export class SecretSwapSession {
 		this.placeholderPattern.lastIndex = 0;
 		const restored = text.replace(this.placeholderPattern, (placeholder) => {
 			const entry = this.placeholderToEntry.get(placeholder);
-			if (!entry) {
+			// A reference this session never emitted cannot come from model input.
+			if (!entry || !this.exposedPlaceholders.has(placeholder)) {
 				unresolved.add(placeholder);
 				return placeholder;
 			}
@@ -760,7 +773,11 @@ export class SecretSwapSession {
 		const placeholders = [
 			...new Set(serialized.match(this.placeholderPattern) ?? []),
 		]
-			.filter((placeholder) => !this.placeholderToEntry.has(placeholder))
+			.filter(
+				(placeholder) =>
+					!this.placeholderToEntry.has(placeholder) ||
+					!this.exposedPlaceholders.has(placeholder),
+			)
 			.sort();
 		if (placeholders.length > 0) {
 			throw new SecretSwapUnresolvedPlaceholderError(placeholders);
