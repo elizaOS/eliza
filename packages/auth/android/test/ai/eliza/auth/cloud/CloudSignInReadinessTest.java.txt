@@ -17,7 +17,7 @@ public class CloudSignInReadinessTest {
   JSONArray optJSONArray(String key) { return null; }
  }
  static class SignInFailure extends Exception { SignInFailure(String code) { super(code); } }
- static class JSONArray { int length() { return 0; } String optString(int index) { return ""; } }
+ static class JSONArray { final List<Object> values = new ArrayList<>(); JSONArray() {} JSONArray(Collection<?> items) { values.addAll(items); } int length() { return values.size(); } String optString(int index) { return ""; } }
  static class JSObject { final Map<String,Object> values = new HashMap<>(); JSObject put(String key, Object value) { values.put(key, value); return this; } }
  static class Uri { static String encode(String value) { return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8); } }
  static class Response { final int status; final JSONObject data; final String location; Response(int s, JSONObject d, String l) { status = s; data = d; location = l; } }
@@ -262,6 +262,7 @@ public class CloudSignInReadinessTest {
   check(resumed.changes.size() == 1 && resumed.attempt == waitingInBrowser && waitingInBrowser.ended == null && resumed.main.delayed.isEmpty(), "resume announces the change and never ends or times a browser attempt in the browser's own task");
   PluginCall during = call(false); resumed.status(during);
   check(Boolean.TRUE.equals(during.result.values.get("active")) && "google".equals(during.result.values.get("kind")) && !during.result.values.containsKey("activationPending"), "the waiting attempt is still reported active");
+  check(((JSONArray) during.result.values.get("googleScopes")).values.equals(TestRegistration.PRODUCT.googleScopes), "status reports the registered Google scopes a disclosure shows");
   resumed.activating.add(e.name); PluginCall pendingKey = call(false); resumed.status(pendingKey);
   check(Boolean.TRUE.equals(pendingKey.result.values.get("activationPending")), "a stored key that waits for its acknowledgement is reported");
 

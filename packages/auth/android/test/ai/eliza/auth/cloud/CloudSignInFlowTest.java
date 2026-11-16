@@ -41,6 +41,7 @@ public final class CloudSignInFlowTest {
   for (String scope : new String[]{"https://mail.google.com/", "https://www.googleapis.com/auth/gmail.readonly ", "gmail.readonly", "", null})
    refused(() -> TestRegistration.base().googleScope(scope).environment(production).build(), "refused Google scope " + scope);
   refused(() -> TestRegistration.base().googleScope("email").googleScope("email").environment(production).build(), "duplicate Google scope");
+  refused(() -> TestRegistration.base().googleScope("https://www.googleapis.com/auth/gmail.readonly").environment(production).build(), "Gmail scopes without an identity scope");
 
   // PKCE and state: RFC 7636 shapes, fresh every time, S256 matches the verifier.
   Set<String> seen = new HashSet<>();

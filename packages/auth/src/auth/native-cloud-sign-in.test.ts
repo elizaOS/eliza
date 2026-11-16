@@ -7,6 +7,7 @@ import {
   nativeSignInAuthenticated,
   nativeSignInCodeStarted,
   nativeSignInGoogleOutcome,
+  nativeSignInGoogleScopes,
   nativeSignInReadiness,
   nativeSignInReadinessChanged,
   nativeSignInRenewal,
@@ -453,6 +454,18 @@ describe("native Cloud sign-in renderer contract", () => {
       "activationPending",
     ])
       expect(nativeSignInActivationPending(value)).toBe(false);
+  });
+
+  it("reads the registered Google scopes a disclosure shows from status", () => {
+    const scopes = ["email", "https://www.googleapis.com/auth/gmail.readonly"];
+    expect(nativeSignInGoogleScopes({ googleScopes: scopes })).toEqual(scopes);
+    for (const value of [
+      { googleScopes: ["https://mail.google.com/"] },
+      { googleScopes: "email" },
+      {},
+      null,
+    ])
+      expect(nativeSignInGoogleScopes(value)).toEqual([]);
   });
 
   it("reads a readiness change only for this deployment and only from explicit booleans", () => {

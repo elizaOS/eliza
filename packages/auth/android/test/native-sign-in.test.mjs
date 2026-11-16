@@ -206,7 +206,7 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     ACTUAL_CANCEL: between(
       plugin,
       " @PluginMethod public void cancel(",
-      " /** Post-authentication consent",
+      " /** The owner's consent to this product",
     ).replace("@PluginMethod ", ""),
     ACTUAL_CALLBACK: between(
       plugin,
@@ -324,7 +324,7 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     assert.match(output, /^PASS silent key renewal \(20 scenario groups\)$/m);
     assert.match(
       output,
-      /^PASS native Google sign-in with Gmail and sign-out \(9 scenarios\)$/m,
+      /^PASS native Google sign-in with Gmail and sign-out \(13 scenarios\)$/m,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -860,7 +860,8 @@ test("silent renewal stages durable custody before confirmation, promotes only c
     "a completed exchange is not a server acknowledgement receipt",
   );
   // A replaced key counts as retired when Cloud revoked it or already refuses it (401), and the
-  // request names the key it was renewed into.
+  // request names the key it was renewed into. Only a sign-out's duty (no successor) sends the bare
+  // request, which ends that key's whole sign-in.
   const retire = between(
     renewal,
     " private boolean retireReplaced(",
@@ -868,7 +869,7 @@ test("silent renewal stages durable custody before confirmation, promotes only c
   );
   assert.match(
     retire,
-    /if \(!CloudKeyRevocation\.retire\(config\(\), environment, replaced, successor\)\) return false;/,
+    /if \(!\(successor == null \? CloudKeyRevocation\.signOut\(config\(\), environment, replaced\) : CloudKeyRevocation\.retire\(config\(\), environment, replaced, successor\)\)\) return false;/,
   );
   const revocation = read(join(main, "CloudKeyRevocation.java"));
   assert.match(
@@ -887,8 +888,12 @@ test("silent renewal stages durable custody before confirmation, promotes only c
   // The stored duty never revokes the key that is still the saved one.
   const stored = renewal.slice(renewal.indexOf(" private void retireStored("));
   assert.ok(
-    stored.indexOf("if (stillSaved || successor == null || ") > 0 &&
-      stored.indexOf("if (stillSaved || successor == null || ") <
+    stored.indexOf(
+      "successor = signedOut ? null : CloudKeyRevocation.renewedCredential(",
+    ) > 0 &&
+      stored.indexOf("if (stillSaved || !signedOut && successor == null || ") >
+        0 &&
+      stored.indexOf("if (stillSaved || !signedOut && successor == null || ") <
         stored.indexOf("retireReplaced(environment, replaced, successor)"),
   );
   // While Cloud's confirmation of the new key is still awaited, no expiry warning is reported.
@@ -1063,9 +1068,9 @@ public class NativeGoogleObserverTest {
  static class Log {static String value;static int i(String tag,String line){value=tag+" "+line;return 0;}}
  CloudSignInConfig config(){return TestRegistration.PRODUCT;}
  ${methods.replaceAll("android.util.Log.i", "Log.i").replace(/^ private /gm, " ")}
- public static void main(String[]args){NativeGoogleObserverTest p=new NativeGoogleObserverTest();Response r=new Response();r.status=401;r.data.ok=false;r.data.error="Google identity could not be verified";
+ public static void main(String[]args){NativeGoogleObserverTest p=new NativeGoogleObserverTest();Response r=new Response();r.status=401;r.data.ok=false;r.data.ok=null;r.data.error="google_identity_rejected";
   CloudSignInFlow.GoogleFailure f=p.observeGoogleResponse(new Attempt(),CloudSignInFlow.GoogleStage.VERIFY,r);
-  if(!"provider-refused".equals(f.code)||!Log.value.startsWith("ElizaCloudSignIn ")||!Log.value.contains("reason=google-identity-unverified")||Log.value.contains((String)r.data.error))throw new AssertionError(Log.value);
+  if(!"provider-refused".equals(f.code)||!Log.value.startsWith("ElizaCloudSignIn ")||!Log.value.contains("reason=google-identity-rejected")||Log.value.contains((String)r.data.error))throw new AssertionError(Log.value);
   r.data.error="SECRET_TOKEN\\nhttps://private/?jwt=secret";p.observeGoogleResponse(new Attempt(),CloudSignInFlow.GoogleStage.VERIFY,r);
   if(Log.value.contains("SECRET")||Log.value.contains("https")||!Log.value.contains("unclassified-provider-refusal"))throw new AssertionError(Log.value);
   System.out.println("PASS exact native Google observer");

@@ -217,7 +217,10 @@ same outcomes as the in-process retries (below).
 - Native Google mode makes one Cloud call. The plugin gets a Steward challenge,
   opens the Android account picker for an id_token, then asks Google for exactly
   the scopes the host names with `CloudSignInConfig.Builder.googleScope(...)`, for
-  the same account. The host shows the same list in its disclosure. Cloud's own
+  the same account. The host shows the same list in its disclosure: `status()`
+  reports it as `googleScopes`, read with `nativeSignInGoogleScopes`. A non-empty
+  list must include an identity scope (`email` or `userinfo.email`): Cloud reads
+  the account's address with the granted token. Cloud's own
   default scope list (`GET /api/v1/app-auth/mobile/google`) is not used; only its
   `serverClientId` is read. After the Android authorization dialog, the plugin posts
   the challenge proof, the id_token and Google's `serverAuthCode` to
@@ -233,10 +236,18 @@ same outcomes as the in-process retries (below).
   sign-in.
 - An account with a second factor completes the code step first. The unused Google
   code stays in memory. After Cloud confirms the new key, the plugin sends the code
-  to `POST /api/v1/eliza/google/connect/native` with that key.
-- `signOut({environment})` reserves a credential intent, ends a sign-in in
-  progress, removes the saved key, its receipt and the pending browser record, and
-  then revokes the key at Cloud (one try, then two in-memory retries). It clears
+  to `POST /api/v1/eliza/google/connect/native` with that key. A key Cloud has not
+  confirmed connects nothing; the code is dropped and the outcome reports
+  `google_unavailable`.
+- Browser Google mode connects no Google account and reports no `google` field.
+- The account picker, Google's permission sheet and the Android authorization
+  dialog each appear once, in that order.
+- `signOut({environment})` reserves a credential intent and ends a sign-in in
+  progress. It stores the duty to revoke the saved key in the retiring slot, removes
+  the key, its receipt and the pending browser record, and asks Cloud to end the
+  key. An unanswered request is retried twice in memory and on later starts until
+  Cloud answers 2xx or 401; the duty lapses with the key. A damaged saved record is
+  removed with nothing owed. It clears
   the Google picker state and answers `{environment, status: "signed-out",
   revocation?: "revoked" | "unconfirmed"}`. The renderer parses the answer with
   `nativeSignOut`.
@@ -405,7 +416,8 @@ The renderer half is `@elizaos/auth/auth/native-cloud-sign-in`
 (`src/auth/native-cloud-sign-in.ts`, dependency-free): the plugin methods as a
 `NativeCloudSignInPort`, strict parsers for every answer (`nativeSignInAuthenticated`,
 `nativeSignInCodeStarted`, `nativeSignInVerified`, `nativeSignInGoogleOutcome`,
-`nativeSignInReadiness`, `nativeSignInActivationPending`, `nativeSignInRenewal`) and
+`nativeSignInReadiness`, `nativeSignInActivationPending`, `nativeSignInGoogleScopes`,
+`nativeSignInRenewal`, `nativeSignOut`) and
 event (`nativeSignInReadinessChanged`, `nativeSignInRenewed`), the failure codes the
 plugin rejects with and owner-facing copy that takes the app's and the deployment's
 names. An answer with an extra key, another deployment or a malformed time is refused

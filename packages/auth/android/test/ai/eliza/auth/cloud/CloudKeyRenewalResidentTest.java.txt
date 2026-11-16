@@ -29,6 +29,7 @@ public class CloudKeyRenewalResidentTest {
  static class CloudKeyRevocation {
   static boolean revoke(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("revoke:"+(NEW.equals(token)?"new":"old"));return true;}
   static boolean retire(CloudSignInConfig config,CloudSignInEnvironment environment,String token,String successor){check(SERVER_NEW.equals(successor),"the replaced key's revocation names the key it was renewed into");events.add("retire:"+(NEW.equals(token)?"new":"old"));return true;}
+  static boolean signOut(CloudSignInConfig config,CloudSignInEnvironment environment,String token){throw new AssertionError("a renewal never signs out");}
  }
  static class Main { void postDelayed(Runnable task,long delay){throw new AssertionError("no retry is expected");} }
  static final long[] REVOCATION_RETRY_MS={5000,25000};

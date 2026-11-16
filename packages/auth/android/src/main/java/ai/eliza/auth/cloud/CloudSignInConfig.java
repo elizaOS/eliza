@@ -22,6 +22,13 @@ public final class CloudSignInConfig {
  public final String googleClientId;
  /** Explicit host selection. Native is the default; browser requires verified App Links and an external browser. */
  public final String googleSignInMode;
+ /**
+  * The Google scopes native Google sign-in asks for on behalf of Cloud, in one place: the client
+  * requests exactly these, and the host's disclosure reads the same list (status() reports it as
+  * `googleScopes`). Empty: Google sign-in connects no Google account. A non-empty list includes an
+  * identity scope (`email` or `userinfo.email`), because Cloud reads the account's address with the
+  * granted token before it keeps the connection.
+  */
  public final List<String> googleScopes;
  /** Tag of the one bounded Google diagnostic line. */
  public final String logTag;
@@ -32,8 +39,9 @@ public final class CloudSignInConfig {
  /** Native-only credential slot prefix of an acknowledgement receipt, per environment. */
  public final String receiptSlotPrefix;
  /**
-  * Native-only credential slot prefix of a key a renewal replaced and Cloud has not yet confirmed
-  * revoked, per environment. A host that renews keys must store it like the receipt slot.
+  * Native-only credential slot prefix of a key a renewal replaced or the owner signed out of and
+  * Cloud has not yet confirmed revoked, per environment. A host that renews keys or calls signOut
+  * must store it like the receipt slot.
   */
  public final String retiringSlotPrefix;
  /** Credential slot prefix of the minted Cloud key, per environment. */
@@ -52,6 +60,8 @@ public final class CloudSignInConfig {
    if (scopes.contains(scope)) throw new IllegalArgumentException("Duplicate Google scope");
    scopes.add(scope);
   }
+  if (!scopes.isEmpty() && !scopes.contains("email") && !scopes.contains("https://www.googleapis.com/auth/userinfo.email"))
+   throw new IllegalArgumentException("Google scopes need an identity scope");
   googleScopes = Collections.unmodifiableList(scopes);
   logTag = required(builder.logTag, "[A-Za-z][A-Za-z0-9_]{0,22}", "log tag");
   readinessPreferences = required(builder.readinessPreferences, "[A-Za-z0-9._:-]{1,200}", "readiness preferences");
@@ -102,6 +112,7 @@ public final class CloudSignInConfig {
   public Builder productName(String value) { productName = value; return this; }
   public Builder googleClientId(String value) { googleClientId = value; return this; }
   public Builder googleSignInMode(String value) { googleSignInMode = value; return this; }
+  /** Adds one scope to {@link CloudSignInConfig#googleScopes}. */
   public Builder googleScope(String value) { googleScopes.add(value); return this; }
   public Builder logTag(String value) { logTag = value; return this; }
   public Builder readinessPreferences(String value) { readinessPreferences = value; return this; }

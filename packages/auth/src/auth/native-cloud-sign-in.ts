@@ -651,6 +651,21 @@ export function nativeSignInActivationPending(value: unknown): boolean {
 }
 
 /**
+ * `status().googleScopes`: the Google scopes the host's registration asks for, the one list a
+ * sign-in disclosure shows. An absent or malformed list is empty: Google connects no account.
+ */
+export function nativeSignInGoogleScopes(value: unknown): string[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const scopes = (value as Record<string, unknown>).googleScopes;
+  return Array.isArray(scopes) &&
+    scopes.every(
+      (scope) => typeof scope === "string" && GOOGLE_SCOPE.test(scope),
+    )
+    ? [...(scopes as string[])]
+    : [];
+}
+
+/**
  * The `signInReadinessChanged` event for this deployment. It is a hint to show or hide methods, so
  * an event for another deployment or with anything but explicit booleans is ignored (null).
  */
