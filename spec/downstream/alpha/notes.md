@@ -8,6 +8,8 @@ uses the mutation reply's target rather than inferring a creation from a
 collection diff. Alpha's prior `CanonicalNotesController`,
 `CanonicalNotesDraft`, `CanonicalNotesMutation`, and `CanonicalNotesStore`
 Quint models are indexed in the pinned source inventory.
+[Previous Notes draft retention](./notesDraftRecovery.md) owns the separate
+device-local encrypted draft.
 
 ## Story: Read and save a note under the current connection
 

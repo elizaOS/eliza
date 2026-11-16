@@ -3858,7 +3858,7 @@
         "renderer-entry"
       ],
       "priority": "priority-consumer-path",
-      "relatedSpec": "spec/downstream/alpha/notes.md",
+      "relatedSpec": "spec/downstream/alpha/notesDraftRecovery.md",
       "coverage": "related-contract"
     },
     {
