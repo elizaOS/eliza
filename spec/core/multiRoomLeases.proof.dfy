@@ -1427,3 +1427,582 @@ lemma RoomCompletionKeepsNonWaitingOwnership(before: MultiRoomLeases, after: Mul
   RoomCompletionRetainsLeaseOwners(before, after, caller);
   RoomCompletionRetainsAcquisitionAuthority(before, after, caller);
 }
+
+lemma advanceAcquisition_ensures(s: MultiRoomLeases, caller: int)
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysNestedReuseExact(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysQueueInvariant(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysBatchIdentitiesUnique(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysBatchesHaveValidPosition(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysStoredResultFollowsPhase(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysQueueConfiguredForCalls(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysLeasesBelongToBatch(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysWaiterHasOwner(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysHeldPrefixMatchesRequests(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysInvocationHoldsAllRooms(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysWaiterMatchesNextRoom(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysWaitsAboveHeldRooms(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysDoneHasNoLease(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysAcquiringQueueAuthority(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysReverseReleaseRank(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> alwaysBatchProgressOrTerminal(advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> stepNestedDoesNotAcquire(s, "advanceAcquisition", advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> stepClosedAdmissionCannotGrow(s, advanceAcquisition(s, caller)))
+  ensures (inv(s) ==> canAdvanceAcquisition(s, caller) ==> stepReleasedAfterWriteSettlement(s, advanceAcquisition(s, caller)))
+{
+  if inv(s) && canAdvanceAcquisition(s, caller) {
+    var after := advanceAcquisition(s, caller);
+    RoomAdvanceFrame(s, caller);
+    RoomAdvanceQueueFootprint(s, caller);
+    RoomBatchMapIdentities(s, after);
+    RoomAdvanceKeepsValidBatchPlans(s, caller);
+    RoomAdvanceWaiterMatchesBatch(s, caller);
+    RoomAdvanceRetainsLeaseOwners(s, caller);
+    RoomAdvanceRetainsAuthorityAndTerminalFacts(s, caller);
+    reveal acquisitionFailure();
+    RoomBatchProgress(after);
+  }
+}
+lemma RoomAdvanceChoosesNewWaiter(s: MultiRoomLeases, caller: int, room: int)
+  requires alwaysWaiterHasOwner(s)
+  ensures var waiting := core__concurrency_queueRoom(s.queue, caller, room);
+    var joined := core__concurrency_RoomWaiter(caller, room, s.queue.nextTicket);
+    var occupied := (exists lease :: lease in s.queue.leases && lease.room == room);
+    waiting.leases == s.queue.leases && waiting.waiting == s.queue.waiting + [joined] &&
+    core__concurrency_canGrantRoom(waiting, room) == !occupied &&
+    (!occupied ==> ProofLib.Filter((w: core__concurrency_RoomWaiter) => w.room == room, waiting.waiting) == [joined])
+{
+  reveal core__concurrency_queueRoom(), core__concurrency_canGrantRoom();
+  var inRoom := (w: core__concurrency_RoomWaiter) => w.room == room;
+  var joined := core__concurrency_RoomWaiter(caller, room, s.queue.nextTicket);
+  var waiting := core__concurrency_queueRoom(s.queue, caller, room);
+  assert joined in waiting.waiting;
+  if !(exists lease :: lease in s.queue.leases && lease.room == room) {
+    forall i | 0 <= i < |s.queue.waiting| ensures !inRoom(s.queue.waiting[i]) {
+      assert s.queue.waiting[i] in s.queue.waiting;
+    }
+    ProofLib.FilterNone(inRoom, s.queue.waiting);
+    ProofLib.FilterAppend(inRoom, s.queue.waiting, joined);
+  }
+}
+
+lemma RoomAdvanceFrame(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canAdvanceAcquisition(s, caller)
+  ensures var batch := batchAt(s, caller);
+    var room := wantedRoom(batch);
+    var failure := acquisitionFailure(s, batch);
+    var after := advanceAcquisition(s, caller);
+    var queued := core__concurrency_queueRoom(s.queue, caller, room);
+    var occupied := (exists lease :: lease in s.queue.leases && lease.room == room);
+    var granted := failure.BatchPending? && !occupied;
+    after.nested == s.nested && after.closeCause == s.closeCause &&
+    after.queue == (if failure.BatchPending? then
+      (if occupied then queued else core__concurrency_grantRoom(queued, room)) else s.queue) &&
+    |after.calls| == |s.calls| &&
+    (forall i | 0 <= i < |s.calls| ::
+      var prior := s.calls[i];
+      var updated := after.calls[i];
+      updated.id == prior.id && updated.wanted == prior.wanted &&
+      (prior.id != caller ==> updated == prior) &&
+      (prior.id == caller && granted ==> (
+        updated.position == prior.position + 1 &&
+        updated.phase == (if updated.position == |prior.wanted| then BatchLeasePhase.BatchInvoking else BatchLeasePhase.BatchAcquiring) &&
+        updated.resultKind == prior.resultKind
+      )) &&
+      (prior.id == caller && !granted ==> (
+        updated.position == prior.position &&
+        (failure.BatchPending? ==> updated.phase.BatchWaiting? && updated.resultKind == prior.resultKind) &&
+        (!failure.BatchPending? ==> updated.phase.BatchReleasing? && updated.resultKind == failure)
+      )))
+  ensures alwaysQueueInvariant(advanceAcquisition(s, caller))
+{
+  reveal canAdvanceAcquisition(), advanceAcquisition(), grantAvailable();
+  var batch := batchAt(s, caller);
+  var room := wantedRoom(batch);
+  var failure := acquisitionFailure(s, batch);
+  var after := advanceAcquisition(s, caller);
+  var queued := core__concurrency_queueRoom(s.queue, caller, room);
+  var occupied := (exists lease :: lease in s.queue.leases && lease.room == room);
+  if failure.BatchPending? {
+    RoomAdvanceChoosesNewWaiter(s, caller, room);
+    core__concurrency_queueRoom_ensures(s.queue, caller, room);
+    if !occupied {
+      core__concurrency_grantRoom_ensures(queued, room);
+    }
+  }
+  forall i | 0 <= i < |s.calls|
+    ensures var prior := s.calls[i];
+      var updated := after.calls[i];
+      var granted := failure.BatchPending? && !occupied;
+      updated.id == prior.id && updated.wanted == prior.wanted &&
+      (prior.id != caller ==> updated == prior) &&
+      (prior.id == caller && granted ==> (
+        updated.position == prior.position + 1 &&
+        updated.phase == (if updated.position == |prior.wanted| then BatchLeasePhase.BatchInvoking else BatchLeasePhase.BatchAcquiring) &&
+        updated.resultKind == prior.resultKind
+      )) &&
+      (prior.id == caller && !granted ==> (
+        updated.position == prior.position &&
+        (failure.BatchPending? ==> updated.phase.BatchWaiting? && updated.resultKind == prior.resultKind) &&
+        (!failure.BatchPending? ==> updated.phase.BatchReleasing? && updated.resultKind == failure)
+      ))
+  {
+    if s.calls[i].id == caller {
+      assert s.calls[i] in s.calls;
+      RoomBatchIdentityLookup(s, s.calls[i]);
+    }
+  }
+}
+
+lemma RoomQueueGrantServesOnlyNewWaiter(s: MultiRoomLeases, caller: int, room: int)
+  requires alwaysWaiterHasOwner(s) && core__concurrency_alwaysWaitersUnique(s.queue)
+  requires !(exists lease :: lease in s.queue.leases && lease.room == room)
+  ensures var joined := core__concurrency_queueRoom(s.queue, caller, room);
+    var granted := core__concurrency_grantRoom(joined, room);
+    granted.waiting == s.queue.waiting &&
+    granted.leases == s.queue.leases + [core__concurrency_Lease(caller, room, true, 0)]
+{
+  RoomAdvanceChoosesNewWaiter(s, caller, room);
+  reveal core__concurrency_grantRoom();
+  var joined := core__concurrency_queueRoom(s.queue, caller, room);
+  var retained := (w: core__concurrency_RoomWaiter) => w.ticket != s.queue.nextTicket;
+  var all := (w: core__concurrency_RoomWaiter) => true;
+  forall i | 0 <= i < |s.queue.waiting|
+    ensures retained(s.queue.waiting[i]) == all(s.queue.waiting[i])
+  {
+    assert s.queue.waiting[i] in s.queue.waiting;
+  }
+  ProofLib.FilterSamePredicate(retained, all, s.queue.waiting);
+  RoomFilterAllWaiters(s.queue.waiting);
+  ProofLib.FilterAppend(retained, s.queue.waiting, core__concurrency_RoomWaiter(caller, room, s.queue.nextTicket));
+}
+
+lemma RoomFilterAllWaiters(waiters: seq<core__concurrency_RoomWaiter>)
+  ensures ProofLib.Filter((w: core__concurrency_RoomWaiter) => true, waiters) == waiters
+  decreases |waiters|
+{
+  if |waiters| == 0 {
+    ProofLib.FilterNil((w: core__concurrency_RoomWaiter) => true, waiters);
+  } else {
+    ProofLib.FilterCons((w: core__concurrency_RoomWaiter) => true, waiters);
+    RoomFilterAllWaiters(waiters[1..]);
+    assert waiters == [waiters[0]] + waiters[1..];
+  }
+}
+
+lemma RoomAdvanceQueueFootprint(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canAdvanceAcquisition(s, caller)
+  ensures var batch := batchAt(s, caller);
+    var room := wantedRoom(batch);
+    var after := advanceAcquisition(s, caller);
+    var pending := acquisitionFailure(s, batch).BatchPending?;
+    var occupied := (exists owner :: owner in s.queue.leases && owner.room == room);
+    after.queue.leases == (if pending && !occupied then
+      s.queue.leases + [core__concurrency_Lease(caller, room, true, 0)] else s.queue.leases) &&
+    after.queue.waiting == (if pending && occupied then
+      s.queue.waiting + [core__concurrency_RoomWaiter(caller, room, s.queue.nextTicket)] else s.queue.waiting) &&
+    after.queue.cancelled == s.queue.cancelled &&
+    after.queue.sealedCallers == s.queue.sealedCallers &&
+    after.queue.finishedCallers == s.queue.finishedCallers &&
+    after.queue.configured == s.queue.configured
+{
+  RoomAdvanceFrame(s, caller);
+  reveal core__concurrency_queueRoom(), core__concurrency_grantRoom();
+  var batch := batchAt(s, caller);
+  var room := wantedRoom(batch);
+  if acquisitionFailure(s, batch).BatchPending? && !(exists owner :: owner in s.queue.leases && owner.room == room) {
+    RoomQueueGrantServesOnlyNewWaiter(s, caller, room);
+  }
+}
+
+lemma RoomBatchHeldAfterLeaseAppend(before: MultiRoomLeases, after: MultiRoomLeases,
+                                   added: core__concurrency_Lease, caller: int)
+  requires after.queue.leases == before.queue.leases + [added]
+  ensures heldRooms(after, caller) == (
+    if added.caller == caller then heldRooms(before, caller) + [added.room] else heldRooms(before, caller)
+  )
+{
+  var belongs := (lease: core__concurrency_Lease) => lease.caller == caller;
+  var prior := ProofLib.Filter(belongs, before.queue.leases);
+  var current := ProofLib.Filter(belongs, after.queue.leases);
+  ProofLib.FilterAppend(belongs, before.queue.leases, added);
+  RoomBatchHeldProjection(before, caller);
+  RoomBatchHeldProjection(after, caller);
+  if added.caller == caller {
+    var held := heldRooms(before, caller);
+    var next := heldRooms(after, caller);
+    assert |next| == |held| + 1 && next[|held|] == added.room;
+    forall i | 0 <= i < |held| ensures next[i] == held[i] {
+      assert prior[i] == current[i];
+    }
+    assert next[..|held|] == held;
+    assert next == next[..|held|] + [next[|held|]];
+  }
+}
+
+lemma RoomSortedSequenceHasDistinctRanks(rooms: seq<int>)
+  requires forall i, j | 0 <= i < j < |rooms| :: rooms[i] < rooms[j]
+  ensures |set room | room in rooms| == |rooms|
+  decreases |rooms|
+{
+  if |rooms| > 0 {
+    var first := rooms[0];
+    var rest := rooms[1..];
+    assert rooms == [first] + rest;
+    RoomSortedSequenceHasDistinctRanks(rest);
+    if first in rest {
+      var i :| 0 <= i < |rest| && rest[i] == first;
+      assert rooms[i + 1] > first && rooms[i + 1] == first;
+    }
+    assert (set room | room in rooms) == (set room | room in rest) + {first};
+  }
+}
+
+lemma RoomSameRanksHaveTheSameSortedSequence(left: seq<int>, right: seq<int>)
+  requires |left| == |right|
+  requires forall i, j | 0 <= i < j < |left| :: left[i] < left[j]
+  requires forall i, j | 0 <= i < j < |right| :: right[i] < right[j]
+  requires forall room :: room in left <==> room in right
+  ensures left == right
+  decreases |left|
+{
+  if |left| > 0 {
+    var l := left[0];
+    var r := right[0];
+    assert l in right && r in left;
+    var i :| 0 <= i < |right| && right[i] == l;
+    var j :| 0 <= j < |left| && left[j] == r;
+    if i > 0 {
+      assert r < l;
+      if j > 0 { assert l < r; }
+      assert false;
+    }
+    assert l == r;
+    var leftTail := left[1..];
+    var rightTail := right[1..];
+    assert left == [l] + leftTail && right == [r] + rightTail;
+    forall room: int ensures room in leftTail <==> room in rightTail {
+      if room == l {
+        if room in leftTail {
+          var k :| 0 <= k < |leftTail| && leftTail[k] == room;
+          assert left[k + 1] > l;
+        }
+        if room in rightTail {
+          var k :| 0 <= k < |rightTail| && rightTail[k] == room;
+          assert right[k + 1] > r;
+        }
+      } else {
+        assert room in left <==> room in right;
+      }
+    }
+    RoomSameRanksHaveTheSameSortedSequence(leftTail, rightTail);
+  }
+}
+
+lemma RoomRankSubsetOfSameSizeIsEqual(acquired: set<int>, planned: set<int>)
+  requires acquired <= planned && |acquired| == |planned|
+  ensures acquired == planned
+  decreases |acquired|
+{
+  if |acquired| > 0 {
+    var room :| room in acquired;
+    assert room in planned;
+    var acquiredRest := acquired - {room};
+    var plannedRest := planned - {room};
+    assert acquired == acquiredRest + {room} && planned == plannedRest + {room};
+    assert |acquiredRest| == |acquired| - 1 && |plannedRest| == |planned| - 1;
+    RoomRankSubsetOfSameSizeIsEqual(acquiredRest, plannedRest);
+  } else {
+    assert acquired == {} && planned == {};
+  }
+}
+
+lemma RoomHeldRoomsAreTheExactPlanPrefix(s: MultiRoomLeases, call: BatchLeaseCall)
+  requires inv(s) && call in s.calls
+  requires call.phase.BatchAcquiring? || call.phase.BatchWaiting?
+  ensures 0 <= call.position < |call.wanted|
+  ensures heldRooms(s, call.id) == call.wanted[..call.position]
+{
+  var held := heldRooms(s, call.id);
+  var wanted := call.wanted;
+  var position := call.position;
+  var prefix := wanted[..position];
+  assert |held| == |prefix| == position;
+  reveal roomRanksAscending(), wantedRoom();
+  RoomBatchAscendingFold(held, emptyHeldRoomOrder);
+  RoomBatchAscendingFold(wanted, emptyHeldRoomOrder);
+  forall room | room in held ensures room in prefix {
+    assert room in wanted && room < wanted[position];
+    var i :| 0 <= i < |wanted| && wanted[i] == room;
+    if i >= position {
+      if i > position { assert wanted[position] < wanted[i]; }
+      assert false;
+    }
+    assert prefix[i] == wanted[i] && prefix[i] in prefix;
+  }
+  RoomSortedSequenceHasDistinctRanks(held);
+  RoomSortedSequenceHasDistinctRanks(prefix);
+  var acquiredRanks := set room | room in held;
+  var prefixRanks := set room | room in prefix;
+  assert acquiredRanks <= prefixRanks && |acquiredRanks| == |prefixRanks|;
+  RoomRankSubsetOfSameSizeIsEqual(acquiredRanks, prefixRanks);
+  forall room: int ensures room in held <==> room in prefix {
+    assert room in acquiredRanks <==> room in held;
+    assert room in prefixRanks <==> room in prefix;
+  }
+  RoomSameRanksHaveTheSameSortedSequence(held, prefix);
+}
+
+lemma RoomPlanRanksHoldForEveryPrefix(plan: seq<int>, position: int)
+  requires roomRanksAscending(plan) && 0 <= position <= |plan|
+  ensures roomRanksAscending(plan[..position])
+  ensures position < |plan| ==> 0 < plan[position] && (forall room | room in plan[..position] :: room < plan[position])
+{
+  reveal roomRanksAscending();
+  RoomBatchAscendingFold(plan, emptyHeldRoomOrder);
+  RoomBatchAscendingFromRanks(plan[..position]);
+  if position < |plan| {
+    assert 0 < plan[position];
+    forall room | room in plan[..position] ensures room < plan[position] {
+      var i :| 0 <= i < position && plan[..position][i] == room;
+      assert plan[i] == room;
+    }
+  }
+}
+
+lemma RoomAdvanceAfterGrantFollowsPlan(s: MultiRoomLeases, caller: int, i: int)
+  requires inv(s) && canAdvanceAcquisition(s, caller)
+  requires 0 <= i < |s.calls| && s.calls[i].id == caller
+  requires acquisitionFailure(s, batchAt(s, caller)).BatchPending?
+  requires !(exists lease :: lease in s.queue.leases && lease.room == wantedRoom(batchAt(s, caller)))
+  ensures var after := advanceAcquisition(s, caller);
+    var call := after.calls[i];
+    var held := heldRooms(after, caller);
+    0 <= call.position <= |call.wanted| && held == call.wanted[..call.position] &&
+    roomRanksAscending(held) &&
+    (call.phase.BatchAcquiring? ==> (
+      call.position < |call.wanted| && wantedRoom(call) > 0 &&
+      (forall room | room in held :: room < wantedRoom(call))
+    )) &&
+    (call.phase.BatchInvoking? ==> call.position == |call.wanted| && held == call.wanted)
+{
+  RoomAdvanceFrame(s, caller);
+  RoomAdvanceQueueFootprint(s, caller);
+  var before := s.calls[i];
+  assert before in s.calls;
+  RoomBatchIdentityLookup(s, before);
+  reveal canAdvanceAcquisition();
+  assert before.phase.BatchAcquiring?;
+  RoomHeldRoomsAreTheExactPlanPrefix(s, before);
+  var after := advanceAcquisition(s, caller);
+  var next := after.calls[i];
+  var lease := core__concurrency_Lease(caller, wantedRoom(before), true, 0);
+  reveal wantedRoom();
+  RoomBatchHeldAfterLeaseAppend(s, after, lease, caller);
+  assert next.wanted == before.wanted && next.position == before.position + 1;
+  assert before.wanted[..next.position] == before.wanted[..before.position] + [wantedRoom(before)];
+  assert heldRooms(after, caller) == before.wanted[..next.position];
+  RoomPlanRanksHoldForEveryPrefix(next.wanted, next.position);
+}
+
+lemma RoomAdvanceKeepsHeldRoomsWithoutMatchingGrant(s: MultiRoomLeases, caller: int, other: int)
+  requires inv(s) && canAdvanceAcquisition(s, caller)
+  requires other != caller || !acquisitionFailure(s, batchAt(s, caller)).BatchPending? ||
+    (exists lease :: lease in s.queue.leases && lease.room == wantedRoom(batchAt(s, caller)))
+  ensures heldRooms(advanceAcquisition(s, caller), other) == heldRooms(s, other)
+{
+  RoomAdvanceQueueFootprint(s, caller);
+  var after := advanceAcquisition(s, caller);
+  if after.queue.leases != s.queue.leases {
+    assert other != caller;
+    RoomBatchHeldAfterLeaseAppend(s, after,
+      core__concurrency_Lease(caller, wantedRoom(batchAt(s, caller)), true, 0), other);
+  } else {
+    RoomBatchHeldProjection(s, other);
+    RoomBatchHeldProjection(after, other);
+  }
+}
+
+lemma RoomAdvanceKeepsValidBatchPlans(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canAdvanceAcquisition(s, caller)
+  ensures alwaysBatchesHaveValidPosition(advanceAcquisition(s, caller))
+  ensures alwaysStoredResultFollowsPhase(advanceAcquisition(s, caller))
+  ensures alwaysHeldPrefixMatchesRequests(advanceAcquisition(s, caller))
+  ensures alwaysInvocationHoldsAllRooms(advanceAcquisition(s, caller))
+  ensures alwaysWaitsAboveHeldRooms(advanceAcquisition(s, caller))
+  ensures alwaysReverseReleaseRank(advanceAcquisition(s, caller))
+{
+  RoomAdvanceFrame(s, caller);
+  var after := advanceAcquisition(s, caller);
+  var batch := batchAt(s, caller);
+  var room := wantedRoom(batch);
+  var pending := acquisitionFailure(s, batch).BatchPending?;
+  var occupied := (exists lease :: lease in s.queue.leases && lease.room == room);
+  forall call | call in after.calls
+    ensures 0 <= call.position <= |call.wanted|
+    ensures (call.phase.BatchAcquiring? || call.phase.BatchWaiting?) ==> call.position < |call.wanted|
+    ensures (call.phase.BatchReleasing? || call.phase.BatchDone?) == !call.resultKind.BatchPending?
+    ensures (call.phase.BatchAcquiring? || call.phase.BatchWaiting?) ==> (
+      |heldRooms(after, call.id)| == call.position &&
+      (forall held | held in heldRooms(after, call.id) :: held in call.wanted)
+    )
+    ensures call.phase.BatchInvoking? ==> heldRooms(after, call.id) == call.wanted && call.position == |call.wanted|
+    ensures roomRanksAscending(call.wanted) && roomRanksAscending(heldRooms(after, call.id))
+    ensures (call.phase.BatchAcquiring? || call.phase.BatchWaiting?) ==> (
+      wantedRoom(call) > 0 && (forall held | held in heldRooms(after, call.id) :: held < wantedRoom(call))
+    )
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == call;
+    var prior := s.calls[i];
+    assert prior in s.calls && prior.id == call.id && prior.wanted == call.wanted;
+    if prior.id == caller {
+      RoomBatchIdentityLookup(s, prior);
+      reveal canAdvanceAcquisition();
+      assert prior.phase.BatchAcquiring? && prior.resultKind.BatchPending?;
+    }
+    if prior.id == caller && pending && !occupied {
+      RoomAdvanceAfterGrantFollowsPlan(s, caller, i);
+    } else {
+      RoomAdvanceKeepsHeldRoomsWithoutMatchingGrant(s, caller, prior.id);
+      assert call.position == prior.position && wantedRoom(call) == wantedRoom(prior);
+    }
+  }
+}
+
+lemma RoomBatchLookupRetainsNonterminalIdentity(s: MultiRoomLeases, caller: int)
+  requires !batchAt(s, caller).phase.BatchDone?
+  ensures batchAt(s, caller) in s.calls && batchAt(s, caller).id == caller
+{
+  reveal batchAt();
+  var byId := (c: BatchLeaseCall) => c.id == caller;
+  var matches := ProofLib.Filter(byId, s.calls);
+  var call := batchAt(s, caller);
+  assert noLeaseCall.phase.BatchDone? && |matches| > 0 && call == matches[0];
+  ProofLib.FilterMember(byId, s.calls, call);
+}
+
+lemma RoomAdvanceWaiterMatchesBatch(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canAdvanceAcquisition(s, caller)
+  requires alwaysBatchIdentitiesUnique(advanceAcquisition(s, caller))
+  ensures alwaysWaiterMatchesNextRoom(advanceAcquisition(s, caller))
+{
+  RoomAdvanceFrame(s, caller);
+  RoomAdvanceQueueFootprint(s, caller);
+  reveal canAdvanceAcquisition();
+  var after := advanceAcquisition(s, caller);
+  var selected := batchAt(s, caller);
+  var room := wantedRoom(selected);
+  var added := core__concurrency_RoomWaiter(caller, room, s.queue.nextTicket);
+  RoomBatchLookupRetainsNonterminalIdentity(s, caller);
+  assert selected.phase.BatchAcquiring?;
+  forall w | w in after.queue.waiting
+    ensures batchAt(after, w.caller).phase.BatchWaiting? && wantedRoom(batchAt(after, w.caller)) == w.room
+  {
+    if w in s.queue.waiting {
+      var prior := batchAt(s, w.caller);
+      assert prior.phase.BatchWaiting? && w.caller != caller;
+      RoomBatchLookupRetainsNonterminalIdentity(s, w.caller);
+      var i :| 0 <= i < |s.calls| && s.calls[i] == prior;
+      assert after.calls[i] == prior && prior in after.calls;
+      RoomBatchIdentityLookup(after, prior);
+    } else {
+      assert w == added && |after.queue.waiting| > |s.queue.waiting|;
+      var i :| 0 <= i < |s.calls| && s.calls[i] == selected;
+      var next := after.calls[i];
+      assert next in after.calls && next.phase.BatchWaiting? && next.position == selected.position;
+      assert wantedRoom(next) == room;
+      RoomBatchIdentityLookup(after, next);
+    }
+  }
+  forall call | call in after.calls && call.phase.BatchWaiting?
+    ensures (exists w :: w in after.queue.waiting && w.caller == call.id && w.room == wantedRoom(call))
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == call;
+    var prior := s.calls[i];
+    assert prior in s.calls;
+    if call.id == caller {
+      RoomBatchIdentityLookup(s, prior);
+      assert wantedRoom(call) == room && added in after.queue.waiting;
+    } else {
+      assert call == prior;
+      var w :| w in s.queue.waiting && w.caller == call.id && w.room == wantedRoom(call);
+      assert w in after.queue.waiting;
+    }
+  }
+}
+
+lemma RoomAdvanceRetainsLeaseOwners(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canAdvanceAcquisition(s, caller)
+  ensures alwaysLeasesBelongToBatch(advanceAcquisition(s, caller))
+  ensures alwaysWaiterHasOwner(advanceAcquisition(s, caller))
+{
+  RoomAdvanceFrame(s, caller);
+  RoomAdvanceQueueFootprint(s, caller);
+  reveal canAdvanceAcquisition(), wantedRoom();
+  var after := advanceAcquisition(s, caller);
+  var selected := batchAt(s, caller);
+  var room := wantedRoom(selected);
+  RoomBatchLookupRetainsNonterminalIdentity(s, caller);
+  assert selected.phase.BatchAcquiring? && 0 <= selected.position < |selected.wanted| && room in selected.wanted;
+  forall lease | lease in after.queue.leases
+    ensures (exists c :: c in after.calls && c.id == lease.caller && !c.phase.BatchDone? && lease.room in c.wanted)
+  {
+    if lease in s.queue.leases {
+      var prior :| prior in s.calls && prior.id == lease.caller && !prior.phase.BatchDone? && lease.room in prior.wanted;
+      var i :| 0 <= i < |s.calls| && s.calls[i] == prior;
+      assert after.calls[i] in after.calls && !after.calls[i].phase.BatchDone?;
+    } else {
+      assert lease == core__concurrency_Lease(caller, room, true, 0);
+      var i :| 0 <= i < |s.calls| && s.calls[i] == selected;
+      assert after.calls[i] in after.calls && !after.calls[i].phase.BatchDone?;
+    }
+  }
+  forall w | w in after.queue.waiting
+    ensures (exists owner :: owner in after.queue.leases && owner.room == w.room)
+  {
+    if w in s.queue.waiting {
+      var owner :| owner in s.queue.leases && owner.room == w.room;
+      assert owner in after.queue.leases;
+    } else {
+      assert w.room == room && |after.queue.waiting| > |s.queue.waiting|;
+      var owner :| owner in s.queue.leases && owner.room == room;
+      assert owner in after.queue.leases;
+    }
+  }
+}
+
+lemma RoomAdvanceRetainsAuthorityAndTerminalFacts(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canAdvanceAcquisition(s, caller)
+  ensures alwaysAcquiringQueueAuthority(advanceAcquisition(s, caller))
+  ensures alwaysDoneHasNoLease(advanceAcquisition(s, caller))
+{
+  RoomAdvanceFrame(s, caller);
+  RoomAdvanceQueueFootprint(s, caller);
+  reveal canAdvanceAcquisition();
+  var after := advanceAcquisition(s, caller);
+  forall id | id in after.queue.cancelled
+    ensures (exists c :: c in after.calls && c.id == id)
+  {
+    var prior :| prior in s.calls && prior.id == id;
+    var i :| 0 <= i < |s.calls| && s.calls[i] == prior;
+    assert after.calls[i] in after.calls;
+  }
+  forall c | c in after.calls && c.phase.BatchAcquiring?
+    ensures c.id !in after.queue.cancelled
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == c;
+    var prior := s.calls[i];
+    assert prior in s.calls;
+    if prior.id == caller {
+      RoomBatchIdentityLookup(s, prior);
+    }
+    assert prior.phase.BatchAcquiring?;
+  }
+  forall c | c in after.calls && c.phase.BatchDone?
+    ensures |heldRooms(after, c.id)| == 0 && !c.resultKind.BatchPending?
+    ensures forall waiter | waiter in after.queue.waiting :: waiter.caller != c.id
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == c;
+    assert s.calls[i] == c && c in s.calls && c.id != caller;
+    RoomAdvanceKeepsHeldRoomsWithoutMatchingGrant(s, caller, c.id);
+  }
+}
