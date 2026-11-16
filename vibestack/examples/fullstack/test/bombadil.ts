@@ -13,4 +13,3 @@ const blankTitleRefused = extract(({ document }) => {
 
 /** Add is never offered for a title that is blank. */
 export const blankTitleCannotBeAdded = always(() => blankTitleRefused.current);
-
