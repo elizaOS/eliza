@@ -54,6 +54,7 @@ import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories/o
 import { referralSignupsRepository } from "@elizaos/cloud-shared/db/repositories/referrals";
 import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
 import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
+import { paymentRequests } from "@elizaos/cloud-shared/db/schemas/payment-requests";
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import type { DrainResult } from "@elizaos/cloud-shared/lib/redis-queue";
 import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
@@ -1791,6 +1792,22 @@ function chargePaymentIntentId(charge: Stripe.Charge): string | undefined {
  */
 async function topUpGrantPending(paymentIntentId: string): Promise<boolean> {
   const stripe = requireStripe();
+  // A Stripe payment request is credited by its own settlement webhook, keyed
+  // on this payment intent. Settlement credits whatever the request status, so
+  // only a settled request (whose grant the caller already looked up) is done.
+  const paymentRequestPending = async (id: string | null | undefined) => {
+    if (!id) return undefined;
+    const [request] = await dbRead
+      .select({
+        provider: paymentRequests.provider,
+        status: paymentRequests.status,
+      })
+      .from(paymentRequests)
+      .where(eq(paymentRequests.id, id))
+      .limit(1);
+    if (!request) return undefined;
+    return request.provider === "stripe" && request.status !== "settled";
+  };
   const sessions = await stripe.checkout.sessions.list({
     payment_intent: paymentIntentId,
     limit: 1,
@@ -1800,6 +1817,10 @@ async function topUpGrantPending(paymentIntentId: string): Promise<boolean> {
     if (session.mode !== "payment" || session.payment_status !== "paid")
       return false;
     if (retiredMiniappPayment(session.metadata)) return false;
+    const requestPending = await paymentRequestPending(
+      session.metadata?.payment_request_id,
+    );
+    if (requestPending !== undefined) return requestPending;
     const orderId = session.metadata?.checkout_order_id;
     if (orderId) {
       const order = await stripeCheckoutOrdersService.get(orderId);
@@ -1820,6 +1841,10 @@ async function topUpGrantPending(paymentIntentId: string): Promise<boolean> {
   const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
   if (paymentIntent.status !== "succeeded") return false;
   if (retiredMiniappPayment(paymentIntent.metadata)) return false;
+  const requestPending = await paymentRequestPending(
+    paymentIntent.metadata?.payment_request_id,
+  );
+  if (requestPending !== undefined) return requestPending;
   // A succeeded auto top-up intent is credited by `payment_intent.succeeded`;
   // a canceled attempt never reaches a succeeded intent.
   if (paymentIntent.metadata?.auto_top_up_attempt_id) return true;
