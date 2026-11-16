@@ -4,6 +4,7 @@ import ai.eliza.plugins.agent.runtime.NativeProcessSupervisor;
 import ai.eliza.plugins.agent.runtime.NativeProcessSupervisor.State;
 import java.io.*;
 import java.nio.file.Path;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.BooleanSupplier;
@@ -39,8 +40,11 @@ public final class NativeProcessSupervisorTest {
                 return true;
             }, 2000, 10);
         }, 10, 10, 1)) {
+            List<State> observed = Collections.synchronizedList(new ArrayList<>());
+            supervisor.observe(() -> observed.add(supervisor.snapshot().state));
             supervisor.start();
             until(() -> supervisor.snapshot().state == State.RUNNING);
+            check(observed.equals(List.of(State.STARTING, State.RUNNING)));
             long epoch = supervisor.snapshot().epoch;
             Process retiredFirst = first.get(), retiredSecond = second.get();
             supervisor.start(); check(launches.get() == 1);
@@ -51,6 +55,8 @@ public final class NativeProcessSupervisorTest {
             check(releases.get() == 1);
             first.get().destroyForcibly();
             until(() -> supervisor.snapshot().state == State.FAILED);
+            check(supervisor.snapshot().failure instanceof NativeProcessSupervisor.RestartsExhausted);
+            check(observed.get(observed.size() - 1) == State.FAILED);
             until(() -> !second.get().isAlive()); check(launches.get() == 2); check(releases.get() == 2);
             supervisor.restart(); until(() -> supervisor.snapshot().state == State.RUNNING);
         }

@@ -66,7 +66,7 @@ public final class EmbeddedRuntimeGroup {
     redactions.add(token);
     scope.check();
     Process process = scope.start("agent",agentCommand.create(selected),log,redactions);
-    await(RuntimeStartFailure.Cause.AGENT,scope,process,() -> readiness.ready(selected,false),agentBudget);
+    await(scope,process,RuntimeStartFailure.Cause.AGENT,null,null,() -> readiness.ready(selected,false),agentBudget);
   }
 
   public void launch(NativeRuntimeSession.Scope scope, AgentCommand agentCommand,
@@ -95,15 +95,19 @@ public final class EmbeddedRuntimeGroup {
     gateway = selectedGateway;
     ProcessBuilder command = gatewayCommand.create(selectedAgent,selectedGateway,broker.port(),brokerToken);
     Process gatewayProcess = scope.start("gateway",command,log,redactions);
-    await(RuntimeStartFailure.Cause.AGENT,scope,agentProcess,() -> readiness.ready(selectedAgent,false),agentBudget);
-    await(RuntimeStartFailure.Cause.GATEWAY,scope,gatewayProcess,() -> readiness.ready(selectedGateway,true),gatewayBudget);
+    await(scope,agentProcess,RuntimeStartFailure.Cause.AGENT,gatewayProcess,RuntimeStartFailure.Cause.GATEWAY,
+      () -> readiness.ready(selectedAgent,false),agentBudget);
+    await(scope,gatewayProcess,RuntimeStartFailure.Cause.GATEWAY,agentProcess,RuntimeStartFailure.Cause.AGENT,
+      () -> readiness.ready(selectedGateway,true),gatewayBudget);
   }
 
-  private void await(RuntimeStartFailure.Cause cause, NativeRuntimeSession.Scope scope, Process process,
-      NativeProcessSupervisor.Probe probe, long budget) throws Exception {
+  /** A failed wait names the child that exited, or the awaited one when it did not answer in time. */
+  private void await(NativeRuntimeSession.Scope scope, Process process, RuntimeStartFailure.Cause cause,
+      Process sibling, RuntimeStartFailure.Cause siblingCause, NativeProcessSupervisor.Probe probe, long budget) throws Exception {
     try { scope.awaitReady(process,probe,budget,poll); }
     catch (NativeProcessSupervisor.LifecycleException failure) {
-      throw new RuntimeStartFailure(cause,failure.getMessage(),failure);
+      boolean siblingExited = process.isAlive() && sibling != null && !sibling.isAlive();
+      throw new RuntimeStartFailure(siblingExited ? siblingCause : cause,failure.getMessage(),failure);
     }
   }
 }

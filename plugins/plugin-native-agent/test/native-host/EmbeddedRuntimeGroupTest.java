@@ -131,6 +131,9 @@ public final class EmbeddedRuntimeGroupTest {
           check(launched[0]==0);
           // A gateway that exits while the agent boots fails the agent's wait at once.
           if(mode.equals("gateway-exit"))check(!agentReady.get());
+          // The failure names the child that exited.
+          check(RuntimeStartFailure.of(session.snapshot().lifecycle.failure)
+            ==(mode.equals("gateway-exit")?RuntimeStartFailure.Cause.GATEWAY:RuntimeStartFailure.Cause.AGENT));
         }
       } finally { session.close(); }
       until(()->session.snapshot().processes.values().stream().noneMatch(Process::isAlive));
@@ -142,6 +145,27 @@ public final class EmbeddedRuntimeGroupTest {
       check(!output.contains("synthetic-agent-authority"));
       if(group.gateway()!=null)check(!output.contains(group.gateway().token));
       if(brokerSecret.get()!=null)check(!output.contains(brokerSecret.get()));
+    }
+    for(boolean exits:List.of(false,true)) {
+      Path dir=Files.createDirectory(root.resolve(exits?"agent-alone-exit":"agent-alone"));
+      EmbeddedRuntimeGroup group=new EmbeddedRuntimeGroup(new NativeProcessLog(dir.resolve("runtime.log"),4096,512),
+        "synthetic-agent-authority",(name,bytes)->{throw new AssertionError("an agent alone publishes nothing");},
+        EmbeddedRuntimeGroupTest::ready,6000,6000,10);
+      NativeRuntimeSession session=new NativeRuntimeSession(scope->group.launchAgent(scope,
+        agent->command(agent,100,exits),List.of("synthetic-provider-authority")),10,10,0);
+      try {
+        session.start();
+        if(exits) {
+          until(()->session.snapshot().lifecycle.state==NativeProcessSupervisor.State.FAILED);
+          check(RuntimeStartFailure.of(session.snapshot().lifecycle.failure)==RuntimeStartFailure.Cause.AGENT);
+        } else {
+          until(()->session.snapshot().lifecycle.state==NativeProcessSupervisor.State.RUNNING);
+          // The bridge talks to the agent itself; no gateway exists.
+          check(group.gateway()==null&&group.served()==group.agent()&&session.snapshot().processes.keySet().equals(Set.of("agent")));
+        }
+      } finally { session.close(); }
+      until(()->session.snapshot().processes.values().stream().noneMatch(Process::isAlive));
+      check(!Files.readString(dir.resolve("runtime.log")).contains("synthetic-agent-authority"));
     }
     System.out.println("EmbeddedRuntimeGroup: "+checks+" checks passed");
   }
