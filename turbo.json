@@ -159,8 +159,7 @@
       ],
       "inputs": [
         "vibestack/**",
-        "!vibestack/examples/{assistant,dashboard,fullstack}/**",
-        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
         "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
         "packages/**",
         ".claude/skills/**",
@@ -241,9 +240,6 @@
         ".jscpd.json"
       ],
       "outputs": []
-    },
-    "//#examples": {
-      "cache": false
     },
     "dev": {
       "cache": false,
