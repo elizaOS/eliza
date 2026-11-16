@@ -12,6 +12,11 @@ public final class NativeProcessSupervisor implements AutoCloseable {
     @FunctionalInterface public interface Probe { boolean ready() throws Exception; }
     public static class LifecycleException extends IOException {
         public LifecycleException(String message) { super(message); }
+        public LifecycleException(String message, Throwable cause) { super(message, cause); }
+    }
+    /** The children kept exiting after every restart the policy allows; only an explicit restart runs again. */
+    public static final class RestartsExhausted extends LifecycleException {
+        public RestartsExhausted() { super("Native child stopped unexpectedly"); }
     }
     public static final class Snapshot {
         public final long epoch;
@@ -29,6 +34,7 @@ public final class NativeProcessSupervisor implements AutoCloseable {
     private final long monitorMs, restartDelayMs;
     private final int maxRestarts;
     private volatile Snapshot snapshot = new Snapshot(0, State.STOPPED, null);
+    private volatile Runnable observer = () -> {};
     private Scope current;
     private Future<?> pending;
     private boolean closed;
@@ -41,6 +47,15 @@ public final class NativeProcessSupervisor implements AutoCloseable {
         this.restartDelayMs = restartDelayMs; this.maxRestarts = maxRestarts;
     }
     public Snapshot snapshot() { return snapshot; }
+    /** Runs after every lifecycle change, under the supervisor lock: it must only hand the change on. */
+    public void observe(Runnable observer) {
+        if (observer == null) throw new IllegalArgumentException("Lifecycle observer is required");
+        this.observer = observer;
+    }
+    private void publish(long epoch, State state, Exception failure) {
+        snapshot = new Snapshot(epoch, state, failure);
+        observer.run();
+    }
     public synchronized void start() {
         if (closed) throw new IllegalStateException("Native process supervisor is closed");
         if (snapshot.state != State.STARTING && snapshot.state != State.RUNNING) begin(0, 0);
@@ -52,7 +67,7 @@ public final class NativeProcessSupervisor implements AutoCloseable {
     /** Immediately fence replies before the host delivers its restart command. */
     public synchronized void invalidate() {
         if (closed) throw new IllegalStateException("Native process supervisor is closed");
-        snapshot = new Snapshot(snapshot.epoch + 1, State.STARTING, null);
+        publish(snapshot.epoch + 1, State.STARTING, null);
         retire();
     }
     private void retire() {
@@ -61,12 +76,12 @@ public final class NativeProcessSupervisor implements AutoCloseable {
         if (retired != null) {
             try { retired.close(); }
             catch (RuntimeException failure) {
-                snapshot = new Snapshot(snapshot.epoch, State.FAILED, failure); throw failure;
+                publish(snapshot.epoch, State.FAILED, failure); throw failure;
             }
         }
     }
     private void begin(int attempt, long delayMs) {
-        snapshot = new Snapshot(snapshot.epoch + 1, State.STARTING, null);
+        publish(snapshot.epoch + 1, State.STARTING, null);
         retire();
         Scope scope = new Scope(); current = scope;
         pending = worker.schedule(() -> launch(scope, attempt), delayMs, TimeUnit.MILLISECONDS);
@@ -77,14 +92,14 @@ public final class NativeProcessSupervisor implements AutoCloseable {
             synchronized (this) {
                 if (closed || current != scope) return;
                 if (!scope.alive()) throw new LifecycleException("Native child exited during startup");
-                snapshot = new Snapshot(snapshot.epoch, State.RUNNING, null);
+                publish(snapshot.epoch, State.RUNNING, null);
                 pending = worker.schedule(() -> monitor(scope, attempt), monitorMs, TimeUnit.MILLISECONDS);
             }
         } catch (Exception failure) {
             synchronized (this) {
                 if (current != scope || closed) return;
                 try { scope.close(); } catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
-                snapshot = new Snapshot(snapshot.epoch, State.FAILED, failure);
+                publish(snapshot.epoch, State.FAILED, failure);
             }
         }
     }
@@ -95,15 +110,15 @@ public final class NativeProcessSupervisor implements AutoCloseable {
         } else if (attempt < maxRestarts) {
             begin(attempt + 1, restartDelayMs * (attempt + 1));
         } else {
-            Exception failure = new LifecycleException("Native child stopped unexpectedly");
+            Exception failure = new RestartsExhausted();
             try { scope.close(); } catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
-            snapshot = new Snapshot(snapshot.epoch, State.FAILED, failure);
+            publish(snapshot.epoch, State.FAILED, failure);
         }
     }
     @Override public synchronized void close() {
         if (closed) return;
         closed = true;
-        snapshot = new Snapshot(snapshot.epoch + 1, State.STOPPED, null);
+        publish(snapshot.epoch + 1, State.STOPPED, null);
         try { retire(); } finally { worker.shutdownNow(); }
     }
 

@@ -48,6 +48,7 @@ public final class NativeRuntimeSession implements AutoCloseable {
             if (before == supervisor.snapshot()) return result;
         }
     }
+    public void observe(Runnable observer) { supervisor.observe(observer); }
     public void start() { supervisor.start(); }
     public void restart() { supervisor.restart(); }
     public void invalidate() { supervisor.invalidate(); }
