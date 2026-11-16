@@ -17,6 +17,7 @@ lemma withdrawNextType_ensures(s: PluginServices, epochId: int)
     PluginWithdrawalKeepsEarlierTypeStatus(s, epochId);
     PluginWithdrawalKeepsStopReceipts(s, epochId);
     PluginWithdrawalKeepsInstanceCustody(s, epochId);
+    PluginWithdrawalPreservesCoreLifecycles(s, epochId);
   }
 }
 
@@ -4643,6 +4644,429 @@ lemma PluginWithdrawalKeepsInstanceCustody(s: PluginServices, epochId: int)
         var p :| p in s.services.published && obj.id in p.instances;
         PluginWithdrawalTransfersPublishedCustody(s, epochId, c, p);
       }
+    }
+  }
+}
+
+lemma PluginWithdrawalDeclarationProjection(classes: seq<RetireClass>, services: core__serviceInstances_ServiceInstances,
+    d: core__serviceInstances_ServiceDeclaration)
+  ensures d in withdrawRetiringClasses(classes, services).declarations
+    <==> d in services.declarations && !(exists c :: c in classes && c.id == d.classId)
+{
+  hide *;
+  reveal withdrawRetiringClasses(), core__serviceInstances_withdrawClass(), Std.Collections.Seq.FoldLeft(), ProofLib.Filter();
+  if |classes| == 0 {
+    assert withdrawRetiringClasses(classes, services) == services;
+  } else {
+    var prefix := classes[..|classes|-1];
+    var last := classes[|classes|-1];
+    var apply := (acc: core__serviceInstances_ServiceInstances, c: RetireClass) =>
+      core__serviceInstances_withdrawClass(c.id, acc);
+    var before := withdrawRetiringClasses(prefix, services);
+    PluginWithdrawalDeclarationProjection(prefix, services, d);
+    ProofLib.FoldLeftAppend(apply, services, prefix, last);
+    assert classes == prefix + [last] && withdrawRetiringClasses(classes, services) == apply(before, last);
+    ProofLib.FilterMember((other: core__serviceInstances_ServiceDeclaration) => other.classId != last.id, before.declarations, d);
+    if exists c :: c in classes && c.id == d.classId {
+      var removed :| removed in classes && removed.id == d.classId;
+      assert removed == last || removed in prefix;
+    } else {
+      assert last.id != d.classId && !(exists c :: c in prefix && c.id == d.classId);
+    }
+  }
+}
+
+lemma PluginWithdrawalLookupProjection(classes: seq<RetireClass>, services: core__serviceInstances_ServiceInstances, id: int)
+  requires core__serviceInstances_alwaysClassAndObjectIdentities(services)
+  ensures var before := core__serviceInstances_serviceClass(services, id);
+    var after := core__serviceInstances_serviceClass(withdrawRetiringClasses(classes, services), id);
+    after == (if (exists c :: c in classes && c.id == id) then before.(registered := false, live := 0) else before)
+{
+  hide *;
+  reveal core__serviceInstances_alwaysClassAndObjectIdentities(), core__serviceInstances_serviceClass(), core__serviceInstances_noClass;
+  reveal ProofLib.Filter(), withdrawRetiringClasses();
+  var after := withdrawRetiringClasses(classes, services);
+  var byId := (c: core__serviceInstances_ServiceClassEntry) => c.id == id;
+  var matching := ProofLib.Filter(byId, services.classes);
+  var retained := ProofLib.Filter(byId, after.classes);
+  PluginWithdrawalFoldKeepsClassIdentity(classes, services);
+  assert |after.classes| == |services.classes|;
+  forall i | 0 <= i < |services.classes|
+    ensures byId(services.classes[i]) == byId(after.classes[i])
+  {}
+  ProofLib.FilterLengthPointwise(byId, byId, services.classes, after.classes);
+  if |matching| == 0 {
+    assert |retained| == 0;
+  } else {
+    var before := matching[0];
+    ProofLib.FilterMember(byId, services.classes, before);
+    assert before in services.classes && before.id == id && |matching| == 1;
+    var i :| 0 <= i < |services.classes| && services.classes[i] == before;
+    PluginWithdrawalClassRows(classes, services, i);
+    var updated := after.classes[i];
+    assert updated in after.classes && byId(updated);
+    ProofLib.FilterMember(byId, after.classes, updated);
+    assert |retained| == 1 && retained[0] == updated;
+  }
+}
+
+lemma PluginWithdrawalPreservesClassAndDeclarationRules(classes: seq<RetireClass>, s: core__serviceInstances_ServiceInstances)
+  requires core__serviceInstances_inv(s)
+  ensures var after := withdrawRetiringClasses(classes, s);
+    core__serviceInstances_alwaysClassAndObjectIdentities(after)
+      && core__serviceInstances_alwaysClassOwnsKnownObjects(after)
+      && core__serviceInstances_alwaysDeclarationsMatch(after)
+{
+  hide *;
+  reveal core__serviceInstances_inv(), core__serviceInstances_alwaysClassAndObjectIdentities();
+  reveal core__serviceInstances_alwaysClassOwnsKnownObjects(), core__serviceInstances_alwaysDeclarationsMatch();
+  reveal withdrawRetiringClasses(), ProofLib.Filter();
+  var after := withdrawRetiringClasses(classes, s);
+  PluginWithdrawalFoldKeepsClassIdentity(classes, s);
+  assert after.objects == s.objects && |after.classes| == |s.classes|;
+  forall c | c in after.classes
+    ensures c.id > 0 && c.generation >= 0 && c.pending >= 0
+    ensures |ProofLib.Filter((other: core__serviceInstances_ServiceClassEntry) => other.id == c.id, after.classes)| == 1
+    ensures c.live == 0 || (exists o :: o in after.objects && o.id == c.live)
+    ensures c.live == 0 || c.registered
+    ensures c.registered == (exists d :: d in after.declarations && d.classId == c.id)
+  {
+    var i :| 0 <= i < |after.classes| && after.classes[i] == c;
+    var before := s.classes[i];
+    assert before in s.classes && before.id == c.id;
+    PluginWithdrawalClassRows(classes, s, i);
+    var byId := (other: core__serviceInstances_ServiceClassEntry) => other.id == c.id;
+    ProofLib.FilterLengthPointwise(byId, byId, s.classes, after.classes);
+    if exists d :: d in after.declarations && d.classId == c.id {
+      var d :| d in after.declarations && d.classId == c.id;
+      PluginWithdrawalDeclarationProjection(classes, s, d);
+      assert d in s.declarations && c == before && c.registered;
+    }
+    if c.registered {
+      assert before.registered && !(exists removed :: removed in classes && removed.id == before.id);
+      var d :| d in s.declarations && d.classId == c.id;
+      PluginWithdrawalDeclarationProjection(classes, s, d);
+    }
+  }
+  forall d | d in after.declarations
+    ensures d.serviceType != "" && core__serviceInstances_serviceClass(after, d.classId).registered
+      && core__serviceInstances_serviceClass(after, d.classId).serviceType == d.serviceType
+  {
+    PluginWithdrawalDeclarationProjection(classes, s, d);
+    PluginWithdrawalLookupProjection(classes, s, d.classId);
+    assert core__serviceInstances_serviceClass(after, d.classId) == core__serviceInstances_serviceClass(s, d.classId);
+  }
+}
+
+lemma PluginWithdrawalPreservesPendingAttemptRules(classes: seq<RetireClass>, s: core__serviceInstances_ServiceInstances)
+  requires core__serviceInstances_inv(s)
+  ensures var after := withdrawRetiringClasses(classes, s);
+    core__serviceInstances_alwaysPendingAttemptsOwned(after) && core__serviceInstances_alwaysAttemptGeneration(after)
+{
+  hide *;
+  reveal core__serviceInstances_inv(), core__serviceInstances_alwaysPendingAttemptsOwned(), core__serviceInstances_alwaysAttemptGeneration();
+  reveal core__serviceInstances_serviceAttempt(), withdrawRetiringClasses(), ProofLib.Filter();
+  var after := withdrawRetiringClasses(classes, s);
+  PluginWithdrawalFoldKeepsClassIdentity(classes, s);
+  assert after.attempts == s.attempts && after.stopped == s.stopped && after.nextAttempt == s.nextAttempt;
+  forall c | c in after.classes && c.pending != 0
+    ensures var a := core__serviceInstances_serviceAttempt(after, c.pending);
+      a.classId == c.id && a.generation == c.generation
+        && (a.phase.StartInvoking? || a.phase.StartObserver? || a.phase.StartLateStop?)
+  {
+    var i :| 0 <= i < |after.classes| && after.classes[i] == c;
+    var before := s.classes[i];
+    assert before in s.classes;
+    PluginWithdrawalClassRows(classes, s, i);
+    assert before.pending == c.pending && before.generation == c.generation && before.id == c.id;
+  }
+  forall a | a in after.attempts
+    ensures a.id > 0 && a.id < after.nextAttempt && a.generation > 0
+    ensures a.generation <= core__serviceInstances_serviceClass(after, a.classId).generation
+    ensures |ProofLib.Filter((other: core__serviceInstances_ServiceAttempt) => other.id == a.id, after.attempts)| == 1
+    ensures !after.stopped && a.phase.StartInvoking? ==>
+      (core__serviceInstances_serviceClass(after, a.classId).pending == a.id &&
+        core__serviceInstances_serviceClass(after, a.classId).live == 0)
+  {
+    assert a in s.attempts;
+    var byId := (other: core__serviceInstances_ServiceAttempt) => other.id == a.id;
+    assert |ProofLib.Filter(byId, s.attempts)| == 1;
+    PluginWithdrawalLookupProjection(classes, s, a.classId);
+  }
+}
+
+lemma PluginRetirementCaptureClassType(s: PluginServices, epochId: int, serviceType: string, c: RetireClass)
+  requires alwaysServiceOwnerEpochExists(s)
+  requires c in retirementClassesForType(s, epochId, serviceType)
+  ensures core__serviceInstances_serviceClass(s.services, c.id).serviceType == serviceType
+{
+  hide *;
+  reveal alwaysServiceOwnerEpochExists(), retirementClassesForType(), ProofLib.Filter();
+  var byType := (owner: OwnedClass) => owner.epochId == epochId && owner.serviceType == serviceType;
+  var owners := ProofLib.Filter(byType, s.ownership);
+  var captured := retirementClassesForType(s, epochId, serviceType);
+  var i :| 0 <= i < |captured| && c == captured[i];
+  var owner := owners[i];
+  assert owner in owners && c.id == owner.classId;
+  ProofLib.FilterMember(byType, s.ownership, owner);
+}
+
+lemma PluginWithdrawalPublicationHasSource(s: core__serviceInstances_ServiceInstances, serviceType: string, removed: seq<int>,
+    p: core__serviceInstances_ServicePublication)
+  requires core__serviceInstances_alwaysPublicationIdentitiesValid(s)
+  requires p in core__serviceInstances_removePublishedInstances(serviceType, removed, s).published
+  ensures p.serviceType != "" && |p.instances| > 0
+  ensures |ProofLib.Filter((other: core__serviceInstances_ServicePublication) => other.serviceType == p.serviceType,
+    core__serviceInstances_removePublishedInstances(serviceType, removed, s).published)| == 1
+  ensures exists prior :: (prior in s.published && prior.serviceType == p.serviceType &&
+    (if p.serviceType == serviceType then
+      p.instances == ProofLib.Filter((id: int) => id !in removed, prior.instances) else p == prior))
+{
+  hide *;
+  reveal core__serviceInstances_alwaysPublicationIdentitiesValid(), core__serviceInstances_removePublishedInstances();
+  reveal core__serviceInstances_replacePublication(), core__serviceInstances_publishedInstances(), core__serviceInstances_absentPublication;
+  reveal ProofLib.Filter();
+  var matchingType := (other: core__serviceInstances_ServicePublication) => other.serviceType == serviceType;
+  var matches := ProofLib.Filter(matchingType, s.published);
+  var retained := (id: int) => id !in removed;
+  var update := ProofLib.Filter(retained, core__serviceInstances_publishedInstances(s, serviceType));
+  var after := core__serviceInstances_removePublishedInstances(serviceType, removed, s);
+  var atType := (other: core__serviceInstances_ServicePublication) => other.serviceType == p.serviceType;
+  if |update| == 0 {
+    var keep := (other: core__serviceInstances_ServicePublication) => other.serviceType != serviceType;
+    ProofLib.FilterMember(keep, s.published, p);
+    assert p in s.published && p.serviceType != serviceType;
+    ProofLib.FilterOfFilterShorter(keep, atType, s.published);
+    ProofLib.FilterMember(atType, after.published, p);
+    assert |ProofLib.Filter(atType, after.published)| == 1;
+  } else {
+    if |matches| == 0 {
+      ProofLib.FilterNil(retained, []);
+      assert false;
+    }
+    var current := matches[0];
+    ProofLib.FilterMember(matchingType, s.published, current);
+    assert current in s.published && current.serviceType == serviceType;
+    assert |after.published| == |s.published|;
+    forall i | 0 <= i < |s.published|
+      ensures atType(s.published[i]) == atType(after.published[i])
+    {}
+    ProofLib.FilterLengthPointwise(atType, atType, s.published, after.published);
+    var i :| 0 <= i < |after.published| && p == after.published[i];
+    var prior := s.published[i];
+    assert prior in s.published && prior.serviceType == p.serviceType;
+    if p.serviceType == serviceType {
+      ProofLib.FilterMember(matchingType, s.published, prior);
+      assert prior in matches && |matches| == 1 && prior == current;
+      assert p.instances == update && update == ProofLib.Filter(retained, prior.instances);
+    } else {
+      assert p == prior;
+    }
+  }
+}
+
+lemma PluginWithdrawalPublishedObjectKeepsClass(s: PluginServices, epochId: int, serviceType: string,
+    p: core__serviceInstances_ServicePublication, prior: core__serviceInstances_ServicePublication, id: int)
+  requires inv(s)
+  requires var classes := retirementClassesForType(s, epochId, serviceType);
+    var captured := captureOwnedInstances(classes, s.services);
+    prior in s.services.published && prior.serviceType == p.serviceType &&
+      (if p.serviceType == serviceType then p.instances == ProofLib.Filter((id: int) => id !in captured, prior.instances) else p == prior)
+  requires id in p.instances
+  ensures id > 0
+  ensures var after := withdrawRetiringClasses(retirementClassesForType(s, epochId, serviceType), s.services);
+    exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id
+{
+  hide *;
+  reveal inv(), alwaysChildLifecyclesValid(), core__serviceInstances_alwaysPublicationIdentitiesValid();
+  reveal core__serviceInstances_alwaysClassAndObjectIdentities(), core__serviceInstances_serviceClass(), ProofLib.Filter();
+  var classes := retirementClassesForType(s, epochId, serviceType);
+  var captured := captureOwnedInstances(classes, s.services);
+  if p.serviceType == serviceType {
+    ProofLib.FilterMember((candidate: int) => candidate !in captured, prior.instances, id);
+  }
+  assert id in prior.instances && id > 0;
+  var c :| c in s.services.classes && c.serviceType == prior.serviceType && c.live == id;
+  if exists capture :: capture in classes && capture.id == c.id {
+    var capture :| capture in classes && capture.id == c.id;
+    var byId := (other: core__serviceInstances_ServiceClassEntry) => other.id == c.id;
+    var matches := ProofLib.Filter(byId, s.services.classes);
+    ProofLib.FilterMember(byId, s.services.classes, c);
+    assert |matches| == 1 && matches[0] == c;
+    PluginRetirementCaptureClassType(s, epochId, serviceType, capture);
+    assert c.serviceType == serviceType && p.serviceType == serviceType;
+    PluginWithdrawalCapturesClassLiveId(classes, s.services, c.id);
+    assert id in captured && id !in captured;
+  }
+  var i :| 0 <= i < |s.services.classes| && s.services.classes[i] == c;
+  PluginWithdrawalClassRows(classes, s.services, i);
+  var after := withdrawRetiringClasses(classes, s.services);
+  assert c == after.classes[i] && c in after.classes;
+}
+
+lemma PluginWithdrawalPreservesPublicationRules(s: PluginServices, epochId: int, serviceType: string)
+  requires inv(s)
+  ensures var before := s.services;
+    var classes := retirementClassesForType(s, epochId, serviceType);
+    var removed := captureOwnedInstances(classes, before);
+    var filtered := core__serviceInstances_removePublishedInstances(serviceType, removed, before);
+    var after := withdrawRetiringClasses(classes, before).(published := filtered.published);
+    core__serviceInstances_alwaysPublicationIdentitiesValid(after)
+      && core__serviceInstances_alwaysStoppedHasNoPublication(after)
+      && core__serviceInstances_alwaysFailedTypeHasNoPublication(after)
+{
+  hide *;
+  reveal inv(), alwaysChildLifecyclesValid();
+  reveal core__serviceInstances_alwaysPublicationIdentitiesValid(), core__serviceInstances_alwaysStoppedHasNoPublication();
+  reveal core__serviceInstances_alwaysFailedTypeHasNoPublication(), core__serviceInstances_hasFailedPublishedType();
+  reveal core__serviceInstances_firstLive(), core__serviceInstances_publishedInstances(), core__serviceInstances_absentPublication;
+  reveal withdrawRetiringClasses(), ProofLib.Filter();
+  var before := s.services;
+  var classes := retirementClassesForType(s, epochId, serviceType);
+  var removed := captureOwnedInstances(classes, before);
+  var filtered := core__serviceInstances_removePublishedInstances(serviceType, removed, before);
+  var after := withdrawRetiringClasses(classes, before).(published := filtered.published);
+  PluginWithdrawalFoldKeepsClassIdentity(classes, before);
+  forall p | p in after.published
+    ensures p.serviceType != "" && |p.instances| > 0
+    ensures |ProofLib.Filter((other: core__serviceInstances_ServicePublication) => other.serviceType == p.serviceType, after.published)| == 1
+    ensures forall id | id in p.instances ::
+      id > 0 && (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id)
+    ensures exists prior :: prior in before.published && prior.serviceType == p.serviceType
+  {
+    PluginWithdrawalPublicationHasSource(before, serviceType, removed, p);
+    var prior :| prior in before.published && prior.serviceType == p.serviceType &&
+      (if p.serviceType == serviceType then p.instances == ProofLib.Filter((id: int) => id !in removed, prior.instances) else p == prior);
+    forall id | id in p.instances
+      ensures id > 0 && (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id)
+    {
+      PluginWithdrawalPublishedObjectKeepsClass(s, epochId, serviceType, p, prior, id);
+    }
+  }
+  if after.stopped {
+    assert before.stopped && |before.published| == 0;
+    if |after.published| != 0 {
+      var p := after.published[0];
+      assert p in after.published;
+      assert exists prior :: prior in before.published && prior.serviceType == p.serviceType;
+      assert false;
+    }
+    forall c | c in after.classes
+      ensures c.live == 0
+    {
+      var i :| 0 <= i < |after.classes| && after.classes[i] == c;
+      assert before.classes[i] in before.classes;
+      PluginWithdrawalClassRows(classes, before, i);
+      assert before.classes[i].live == 0;
+    }
+  }
+  if core__serviceInstances_hasFailedPublishedType(after) {
+    var e :| e in after.typeEntries && e.status.TypeFailed? && core__serviceInstances_firstLive(after, e.serviceType) != 0;
+    var byType := (p: core__serviceInstances_ServicePublication) => p.serviceType == e.serviceType;
+    var current := ProofLib.Filter(byType, after.published);
+    assert |current| > 0;
+    var p := current[0];
+    ProofLib.FilterMember(byType, after.published, p);
+    assert p in after.published && p.serviceType == e.serviceType;
+    var prior :| prior in before.published && prior.serviceType == p.serviceType;
+    var original := ProofLib.Filter(byType, before.published);
+    ProofLib.FilterMember(byType, before.published, prior);
+    assert |original| == 1 && original[0] == prior && |prior.instances| > 0;
+    assert prior.instances[0] in prior.instances && prior.instances[0] > 0;
+    assert e in before.typeEntries && core__serviceInstances_firstLive(before, e.serviceType) > 0;
+    assert false;
+  }
+}
+
+lemma PluginWithdrawalOtherChildRulesAreFramed(before: core__serviceInstances_ServiceInstances, after: core__serviceInstances_ServiceInstances)
+  requires core__serviceInstances_inv(before)
+  requires after.(declarations := before.declarations, classes := before.classes, published := before.published) == before
+  ensures core__serviceInstances_alwaysTypeEntriesUnique(after)
+    && core__serviceInstances_alwaysAggregateAndLoadIdsUnique(after)
+    && core__serviceInstances_alwaysAcquisitionIdsUnique(after)
+    && core__serviceInstances_alwaysInitWaitingHasNoAggregate(after)
+    && core__serviceInstances_alwaysTypeReferencesRetained(after)
+    && core__serviceInstances_alwaysObjectStopOnce(after)
+    && core__serviceInstances_alwaysCapturedAttemptsExist(after)
+{
+  hide *;
+  reveal core__serviceInstances_inv(), core__serviceInstances_alwaysTypeEntriesUnique(), core__serviceInstances_alwaysAggregateAndLoadIdsUnique();
+  reveal core__serviceInstances_alwaysAcquisitionIdsUnique(), core__serviceInstances_alwaysInitWaitingHasNoAggregate();
+  reveal core__serviceInstances_alwaysTypeReferencesRetained(), core__serviceInstances_alwaysObjectStopOnce();
+  reveal core__serviceInstances_alwaysCapturedAttemptsExist(), core__serviceInstances_serviceAttempt(), core__serviceInstances_serviceObject();
+}
+
+lemma PluginWithdrawalPreservesCoreLifecycles(s: PluginServices, epochId: int)
+  requires inv(s) && canWithdrawNextType(s, epochId)
+  ensures alwaysChildLifecyclesValid(withdrawNextType(s, epochId))
+{
+  hide *;
+  reveal inv(), canWithdrawNextType(), withdrawNextType(), core__serviceInstances_inv();
+  reveal core__serviceInstances_removePublishedInstances(), core__serviceInstances_replacePublication(), withdrawRetiringClasses();
+  var after := withdrawNextType(s, epochId);
+  PluginRetirementChildRulesMatchImportedInvariants(s);
+  var row := retirement(s, epochId);
+  assert 0 <= row.cursor < |row.plan|;
+  var serviceType := row.plan[row.cursor];
+  if exists d :: d in s.services.declarations && d.serviceType == serviceType {
+    var classes := retirementClassesForType(s, epochId, serviceType);
+    var removed := captureOwnedInstances(classes, s.services);
+    var withdrawn := withdrawRetiringClasses(classes, s.services);
+    var filtered := core__serviceInstances_removePublishedInstances(serviceType, removed, s.services);
+    PluginWithdrawalFoldKeepsClassIdentity(classes, s.services);
+    assert withdrawn.published == s.services.published;
+    var removedFromWithdrawn := core__serviceInstances_removePublishedInstances(serviceType, removed, withdrawn);
+    assert after.services == removedFromWithdrawn;
+    reveal core__serviceInstances_publishedInstances();
+    assert core__serviceInstances_publishedInstances(withdrawn, serviceType) ==
+      core__serviceInstances_publishedInstances(s.services, serviceType);
+    assert removedFromWithdrawn.published == filtered.published;
+    assert after.services == withdrawn.(published := filtered.published);
+    PluginWithdrawalPreservesClassAndDeclarationRules(classes, s.services);
+    PluginWithdrawalPreservesPendingAttemptRules(classes, s.services);
+    PluginWithdrawalPreservesPublicationRules(s, epochId, serviceType);
+    PluginWithdrawalOtherChildRulesAreFramed(s.services, after.services);
+    reveal core__serviceInstances_alwaysClassAndObjectIdentities(), core__serviceInstances_alwaysClassOwnsKnownObjects();
+    reveal core__serviceInstances_alwaysDeclarationsMatch(), core__serviceInstances_alwaysPendingAttemptsOwned();
+    reveal core__serviceInstances_alwaysAttemptGeneration(), core__serviceInstances_serviceClass(), core__serviceInstances_serviceAttempt();
+    assert core__serviceInstances_inv(after.services);
+  } else {
+    assert after.services == s.services;
+  }
+  PluginRetirementChildRulesMatchImportedInvariants(after);
+}
+
+lemma advanceRetirement_ensures(s: PluginServices)
+  ensures (inv(s) ==> canAdvanceRetirement(s) ==> alwaysLiveClassOwnerUnique(advanceRetirement(s)))
+  ensures (inv(s) ==> canAdvanceRetirement(s) ==> alwaysServiceOwnerEpochExists(advanceRetirement(s)))
+  ensures (inv(s) ==> canAdvanceRetirement(s) ==> alwaysChildLifecyclesValid(advanceRetirement(s)))
+  ensures (inv(s) ==> canAdvanceRetirement(s) ==> alwaysRetirementsFollowTypePlan(advanceRetirement(s)))
+  ensures (inv(s) ==> canAdvanceRetirement(s) ==> alwaysNoOrphanInstance(advanceRetirement(s)))
+  ensures (inv(s) ==> canAdvanceRetirement(s) ==> alwaysRetiredUndeclaredTypeIsUnknown(advanceRetirement(s)))
+  ensures (inv(s) ==> canAdvanceRetirement(s) ==> alwaysStopObservationsFollowSlots(advanceRetirement(s)))
+  ensures (inv(s) ==> canAdvanceRetirement(s) ==> alwaysRetiredEpochHasNoResources(advanceRetirement(s)))
+  ensures (inv(s) ==> canAdvanceRetirement(s) ==> alwaysSealedOwnedClassesStable(advanceRetirement(s)))
+{
+  hide *;
+  reveal inv(), canAdvanceRetirement(), advanceRetirement();
+  if inv(s) && canAdvanceRetirement(s) {
+    var epochId := automaticRetirement(s);
+    if canWithdrawNextType(s, epochId) {
+      withdrawNextType_ensures(s, epochId);
+    } else if canRequestOwnedStops(s, epochId) {
+      requestOwnedStops_ensures(s, epochId);
+    } else if canClaimInstanceStop(s, epochId) {
+      claimInstanceStop_ensures(s, epochId);
+    } else if canObserveInstanceStop(s, epochId) {
+      observeInstanceStop_ensures(s, epochId);
+    } else if canInvokeClassHook(s, epochId) {
+      invokeClassHook_ensures(s, epochId);
+    } else if canFinishClassSlot(s, epochId) {
+      finishClassSlot_ensures(s, epochId);
+    } else if canFinishRetirementGroup(s, epochId) {
+      finishRetirementGroup_ensures(s, epochId);
+    } else if canCleanPlugin(s, epochId) {
+      cleanPlugin_ensures(s, epochId);
     }
   }
 }
