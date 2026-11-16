@@ -1,0 +1,43 @@
+{
+  "sources": [
+    "plugins/plugin-health/src/sleep/circadian-rules.ts",
+    "plugins/plugin-personal-assistant/test/schedule-circadian-newest-sample.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-circadian-newest-sample.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-circadian-newest-sample.mjs",
+  "bounds": "One agent at 23:45 in America/Los_Angeles, inside the overnight window of both rules. Each case replays one source: up to two HID idle samples (5, 1199 or 1200 idle seconds, taken 600 and 30 seconds before the inspection) or up to two paired-iPhone reports (connected or disconnected, 40 and 15 minutes before the inspection). The conformance script replays all 25 generated cases through the production ActivityTrackerService (with the native collector process replaced by its sample callback) or probeContinuityDevices (run as on macOS, with the xcrun devicectl output for one paired iPhone and no Bluetooth data), then LifeOpsService.inspectSchedule on a fresh PGlite-backed runtime per case, and compares whether hid.idleGt20m or continuity.iphoneDisconnected fired and on which report. Samples older than the rules' age limits, the daytime branch of hid.idleGt20m, several iPhones, other sources and the rest of the circadian score are not covered by this model. Under weak fairness of the replay step the inspection runs. Explicit stuttering lets the replay stop before it, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "circadian-newest-sample",
+      "main": "CircadianNewestSample",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "NewestDisconnectFires",
+        "NewestIdleSampleFires",
+        "ReconnectEndsDisconnect",
+        "RecentInputEndsIdle",
+        "TypeOK"
+      ],
+      "temporal": ["ReplayEnds", "ReplayEndsWithoutFairness"],
+      "maxSteps": 8,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "ReplayEnds",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled replay step eventually runs (weak fairness). This checks that the replay then reaches the inspection, not how long the database work takes."
+          ]
+        },
+        {
+          "property": "ReplayEndsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The replay may stop before the inspection, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
