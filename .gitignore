@@ -21,3 +21,5 @@ generated/
 storybook-static/
 .vibe/
 build/
+# A failed exploration's trace, replayed by the next check (SPEC.md, "Exploring the page").
+**/test/__traces__/bombadil/

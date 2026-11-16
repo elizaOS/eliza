@@ -13,32 +13,11 @@ import { acceptReviews, readSpecs, type Result } from "../../spec.ts"
 import { manifestOf, nodesOf } from "../src/doc.ts"
 import { NODE, TOOLS, type Snapshot } from "../src/project.ts"
 import type { ComponentIndex } from "../../stories/emit.ts"
-import { serve, startStudio, type Agent } from "../src/server.vibe"
+import { serve, startStudio } from "../src/server.vibe"
+import { agents, scratch } from "./served.vibe"
 
 const services = Layer.merge(NodeServices.layer, NodeHttpClient.layerNodeHttp)
 const check = (f: () => void) => Effect.try(f)
-
-/** A stand-in for an agent's command line, at its boundary: it runs `script` in the project with the prompt on standard input. */
-const agent = (label: string, script: string): Agent => ({ label, command: () => [NODE, ["-e", script]] })
-const agents = {
-  // It keeps the prompt it was given and answers as Claude Code does.
-  fake: agent("Fake", `let p = ""; process.stdin.on("data", (d) => (p += d)).on("end", () => { require("fs").writeFileSync("prompt.txt", p); console.log(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "synced" }] } })); });`),
-  // Agents that write what only the tools may: the review ledger, and Studio's own state.
-  ledgerEdit: agent("Ledger writer", "require('node:fs').appendFileSync('spec/lock.json', '\\n')"),
-  invalidState: agent("State writer", "const fs = require('node:fs'); fs.rmSync('.studio', { recursive: true }); fs.writeFileSync('.studio', 'invalid')"),
-}
-
-/** A scratch project holding the given files, removed with the scope. */
-effect function scratch(files: Record<string, string>) {
-  const fs = try FileSystem.FileSystem
-  const path = try Path.Path
-  const root = try fs.realPath(try fs.makeTempDirectoryScoped({ prefix: "studio-test-" }))
-  for (const [file, text] of Object.entries(files)) {
-    try fs.makeDirectory(path.dirname(path.join(root, file)), { recursive: true })
-    try fs.writeFileString(path.join(root, file), text)
-  }
-  return root
-}
 
 /** How a page talks to a studio at `url`: an answer's status and body. */
 effect function client(url: string) {
