@@ -39,8 +39,10 @@ pure val observedValues = Set(sampleBody, NonStringWireReturn, JsonRootMissing, 
   SerializerHostThrew({stage: WireCallback}), SerializerHostThrew({stage: ProjectionCallback}),
   SerializerHostThrew({stage: ValidationReflection}), SerializerHostThrew({stage: InitialProjectionFreeze}),
   SerializerHostThrew({stage: JsonStringifyElizaError}))
+pure def hasExactlyOneSerializer(serializer: SerializerChoice): bool =
+  serializer == ProjectionSerializer or serializer == RawWireSerializer
 pure def admittedSerialization(serializer: SerializerChoice, observed: SerializedObservation): BodyAdmission =
-  if (serializer == MissingSerializer or serializer == ConflictingSerializers) InvalidBody
+  if (not(hasExactlyOneSerializer(serializer))) InvalidBody
   else match observed {
     | SerializedText(text) => if (U::validCodeUnits(text.codeUnits)) AdmittedBody({codeUnits: text.codeUnits}) else InvalidBody
     | SerializerHostThrew(failure) =>
