@@ -153,13 +153,14 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
   const said = (ok: boolean, summary: string, detail = "", where?: string, rules: Result["rules"] = []) =>
     results.push({ ok, stage: "proof", summary, detail, ...(where ? { where } : {}), ...(rules.length ? { rules } : {}) });
   try {
-    const dafnyProblem = (await dafnyVersion()).problem;
-    if (dafnyProblem) throw new Error(dafnyProblem);
     const ledger: Record<string, Accepted> = {};
     fs.rmSync(path.join(root, "gen/proof"), { recursive: true, force: true });
     const units = proofUnits(root, models, srcFiles);
-    for (const f of strayProofFiles(root, units))
-      said(false, `${f} belongs to no proof unit: spec/<name>.proof.dfy belongs to spec/<name>.md, and src/<path>.proof.dfy to src/<path>.ts if that file contains //@`, "", f);
+    for (const { file, emptySpec } of strayProofFiles(root, units, models))
+      said(false, emptySpec ? `${file} has nothing to prove: ${emptySpec} defines no type or value; delete the proof file, or write in ${emptySpec} the rules it proves`
+        : `${file} belongs to no proof unit: spec/<name>.proof.dfy belongs to spec/<name>.md, and src/<path>.proof.dfy to src/<path>.ts if that file contains //@`, "", file);
+    const dafnyProblem = units.length > 0 && (await dafnyVersion()).problem;
+    if (dafnyProblem) throw new Error(dafnyProblem);
     const lib = fs.readFileSync(LIB_FILE, "utf8");
     const proved = new Map<string, Proof>();
     // Units are proved at the same time and reported in order. One with a proof file is offered every `_ensures`
