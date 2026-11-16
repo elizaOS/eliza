@@ -948,15 +948,20 @@ lemma ServiceClassMapIncarnations(before: ServiceInstances, after: ServiceInstan
   requires forall i :: 0 <= i < |before.classes| ==>
     (before.classes[i].id == after.classes[i].id && before.classes[i].serviceType == after.classes[i].serviceType &&
       before.classes[i].generation == after.classes[i].generation && before.classes[i].registered == after.classes[i].registered && after.classes[i].pending >= 0)
+  requires forall i | 0 <= i < |before.classes| && !after.classes[i].registered ::
+    after.classes[i].live == 0 || after.classes[i].live == before.classes[i].live
   ensures alwaysClassAndObjectIdentities(after)
   ensures alwaysDeclarationsMatch(before) ==> alwaysDeclarationsMatch(after)
   ensures alwaysAttemptGeneration(before) ==> alwaysAttemptGeneration(after)
 {
+  hide *;
+  reveal alwaysClassAndObjectIdentities(), alwaysDeclarationsMatch(), alwaysAttemptGeneration();
   ServiceObjectIdentityFilters(before);
   ServiceObjectIdentityFilters(after);
   forall cls | cls in after.classes
     ensures cls.id > 0 && cls.generation >= 0 && cls.pending >= 0 && |ProofLib.Filter((other: ServiceClassEntry) => other.id == cls.id, after.classes)| == 1
     ensures alwaysDeclarationsMatch(before) ==> (cls.registered <==> (exists d :: d in after.declarations && d.classId == cls.id))
+    ensures alwaysDeclarationsMatch(before) && cls.live != 0 ==> cls.registered
   {
     var i :| 0 <= i < |after.classes| && after.classes[i] == cls;
     assert before.classes[i] in before.classes;
@@ -1412,6 +1417,8 @@ lemma ServiceAdmitAcquisition(s: ServiceInstances, callId: int, serviceType: str
   ensures inv(admittedAcquire(callId, serviceType, s))
   ensures stepStopIdentityRetained(s, admittedAcquire(callId, serviceType, s))
 {
+  hide *;
+  reveal admittedAcquire(), canAcquireServices(), ProofLib.Filter();
   var absent := s.stopped || s.initialization.InitializationFailed? ||
     (s.initialization.InitializationReady? && !(exists c :: c in s.classes && c.registered && c.serviceType == serviceType));
   var waiting := !absent && s.initialization.InitializationPending? && firstLive(s, serviceType) == 0;
@@ -1429,11 +1436,16 @@ lemma ServiceAdmitAcquisition(s: ServiceInstances, callId: int, serviceType: str
     assert waiting && noStarts && published.aggregates == s.aggregates;
   }
   if !noStarts {
+    assert alwaysDeclarationsMatch(published) && alwaysPendingAttemptsOwned(published) && alwaysClassAndObjectIdentities(published) by {
+      reveal inv();
+    }
     ServiceCapturedCallAttempts(published, serviceType, call.attempts);
   } else {
     assert call.attempts == [];
   }
   ServiceAppendAcquisition(published, call);
+  assert alwaysObjectStopOnce(s) by { reveal inv(); }
+  reveal alwaysObjectStopOnce();
   ServiceStopReferencePreserved(s, after);
 }
 
@@ -2151,6 +2163,18 @@ lemma ServiceReturnedObjectIdentities(s: ServiceInstances, after: ServiceInstanc
     s.objects + [ServiceObject(instanceId, StopPhase.StopNotRequested, 0, false, "")] else s.objects) else after;
   ServiceObjectCreated(s, registrationView, instanceId);
   var classView := s.(classes := after.classes);
+  var changedClass := serviceAttempt(s, attemptId).classId;
+  ServiceClassFind(s, changedClass);
+  forall i | 0 <= i < |s.classes| && !classView.classes[i].registered
+    ensures classView.classes[i].live == s.classes[i].live
+  {
+    if !late && s.classes[i].id == changedClass {
+      assert s.classes[i] in s.classes;
+      assert serviceClass(s, changedClass) == s.classes[i];
+      assert s.classes[i].registered == classView.classes[i].registered;
+      assert false;
+    }
+  }
   ServiceClassMapIncarnations(s, classView);
   ServiceObjectIdentityFilters(classView);
   ServiceObjectIdentityFilters(after);
@@ -2507,6 +2531,35 @@ lemma unregisterClass_ensures(s: ServiceInstances, classId: int)
     ServiceWithdrawnDeclarationOwners(s, after, classId);
     ServiceRetainedClassGenerationsPreserveAttempts(s, after);
     ServiceWithdrawalPreservesPublications(s, after, classId);
+    ServiceUnregisterDuringStopRetainsEmptyPublication(s, classId);
     ServiceOtherFailedTypesRemainUnpublished(s, after, selected.serviceType);
+  }
+}
+
+lemma ServiceUnregisterDuringStopRetainsEmptyPublication(s: ServiceInstances, classId: int)
+  requires alwaysStoppedHasNoPublication(s)
+  requires alwaysPublicationIdentitiesValid(unregisterClass(s, classId))
+  ensures alwaysStoppedHasNoPublication(unregisterClass(s, classId))
+{
+  hide *;
+  reveal alwaysStoppedHasNoPublication(), alwaysPublicationIdentitiesValid(), unregisterClass(), stopObjectOnce();
+  reveal withdrawClass(), reconcileType(), putType(), removePublishedInstances(), replacePublication();
+  var after := unregisterClass(s, classId);
+  if after.stopped {
+    assert s.stopped && |after.classes| == |s.classes|;
+    forall c | c in after.classes
+      ensures c.live == 0
+    {
+      var i :| 0 <= i < |after.classes| && after.classes[i] == c;
+      assert s.classes[i] in s.classes;
+    }
+    if |after.published| > 0 {
+      var publication := after.published[0];
+      assert publication in after.published && |publication.instances| > 0;
+      var published := publication.instances[0];
+      assert published in publication.instances && published > 0;
+      var owner :| owner in after.classes && owner.serviceType == publication.serviceType && owner.live == published;
+      assert false;
+    }
   }
 }
