@@ -105,10 +105,7 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
   /** Why the session refuses `what` now. */
   const notNow = (what: string) => new Refused({ status: 409, message: running() ? `${running()!.label} is still running` : `${what} is not allowed now` })
 
-  const clearManifest = effect {
-    try files.remove(stateFile(root), { force: true })
-    try files.remove(manifestFile(root), { force: true })
-  }
+  const clearManifest = Effect.forEach([stateFile(root), manifestFile(root)], (file) => files.remove(file, { force: true }), { discard: true })
 
   /** Run a program in the project, colours off: `each` hears every line it prints, and whether on standard output. Gives its exit code. */
   effect function spawned([program, args]: [string, string[]], each: (line: string, out: boolean) => void!!, options: { input?: string; env?: Record<string, string> } = {}) {
