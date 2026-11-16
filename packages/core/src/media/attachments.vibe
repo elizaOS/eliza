@@ -1,3 +1,5 @@
+// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"
+import { promised } from "../edge.vibe"
 import type { ContentType, Media } from "../types/primitives.vibe"
 import { fetchRemoteMedia } from "./fetch.vibe"
 
@@ -54,11 +56,11 @@ export interface ResolvedAttachmentBytes {
   fileName?: string
 }
 
-export async function resolveAttachmentBytes(
+export effect function resolveAttachmentBytes(
   url: string,
   opts?: { maxBytes?: number },
-): Promise<ResolvedAttachmentBytes> {
-  const { buffer, contentType, fileName } = await fetchRemoteMedia({
+) {
+  const { buffer, contentType, fileName } = try fetchRemoteMedia({
     url,
     maxBytes: opts?.maxBytes ?? DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
   })
@@ -66,5 +68,6 @@ export async function resolveAttachmentBytes(
     buffer,
     contentType: contentType ?? "application/octet-stream",
     ...(fileName ? { fileName } : {}),
-  }
+  } satisfies ResolvedAttachmentBytes
 }
+export const resolveAttachmentBytesPromise = promised(resolveAttachmentBytes)

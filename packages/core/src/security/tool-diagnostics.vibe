@@ -1,59 +1,237 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
+import { Foreign, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
-import { isSensitiveKeyName, type RedactSensitiveMode, redactSensitiveText } from "./redact.vibe"
+import { type RedactSensitiveMode, redactSensitiveText } from "./redact.vibe"
 
 export const TOOL_DIAGNOSTIC_MASK = "[REDACTED]"
 
-const MAX_TOOL_DIAGNOSTIC_DEPTH = 8
-
-const JSON_SCHEMA_DEFINITION_MAP_KEYS = new Set([
-  "$defs",
-  "definitions",
-  "dependencies",
-  "dependentSchemas",
-  "patternProperties",
-  "properties",
-])
-
-const JSON_SCHEMA_SINGLE_SCHEMA_KEYS = new Set([
-  "additionalProperties",
-  "contains",
-  "else",
-  "if",
-  "items",
-  "not",
-  "propertyNames",
-  "then",
-  "unevaluatedItems",
-  "unevaluatedProperties",
-])
-
-const JSON_SCHEMA_SCHEMA_ARRAY_KEYS = new Set([
-  "allOf",
-  "anyOf",
-  "oneOf",
-  "prefixItems",
-])
-
-const TOOL_DEFINITION_SCHEMA_KEYS = new Set([
-  "inputSchema",
-  "input_schema",
-  "parameters",
-  "responseSchema",
-  "response_schema",
-  "schema",
-])
-
 export type ToolDiagnosticTextRedactor = (text: string) => string
 
-const TOOLS_MODE: { mode: RedactSensitiveMode } = { mode: "tools" }
+module walk {
+  import { ElizaError } from "../errors.vibe"
+  import { isSensitiveKeyName } from "./redact.vibe"
+  import { TOOL_DIAGNOSTIC_MASK, type ToolDiagnosticTextRedactor } from "./tool-diagnostics.vibe"
 
-function isPrivateToolField(key: string): boolean {
-  return (
-    key === "chatIdempotency"
-    || key === "replyRecoveryJson"
-    || isSensitiveKeyName(key)
-  )
+  const MAX_TOOL_DIAGNOSTIC_DEPTH = 8
+  const CYCLE_CODE = "MODEL_TOOL_DATA_CYCLE"
+
+  const JSON_SCHEMA_DEFINITION_MAP_KEYS = new Set([
+    "$defs",
+    "definitions",
+    "dependencies",
+    "dependentSchemas",
+    "patternProperties",
+    "properties",
+  ])
+
+  const JSON_SCHEMA_SINGLE_SCHEMA_KEYS = new Set([
+    "additionalProperties",
+    "contains",
+    "else",
+    "if",
+    "items",
+    "not",
+    "propertyNames",
+    "then",
+    "unevaluatedItems",
+    "unevaluatedProperties",
+  ])
+
+  const JSON_SCHEMA_SCHEMA_ARRAY_KEYS = new Set([
+    "allOf",
+    "anyOf",
+    "oneOf",
+    "prefixItems",
+  ])
+
+  const TOOL_DEFINITION_SCHEMA_KEYS = new Set([
+    "inputSchema",
+    "input_schema",
+    "parameters",
+    "responseSchema",
+    "response_schema",
+    "schema",
+  ])
+
+  interface Walk {
+    readonly redactText: ToolDiagnosticTextRedactor
+    readonly seen: WeakSet<object>
+    readonly complete: boolean
+  }
+
+  function isPrivateToolField(key: string): boolean {
+    return (
+      key === "chatIdempotency"
+      || key === "replyRecoveryJson"
+      || isSensitiveKeyName(key)
+    )
+  }
+
+  function isNameList(value: unknown): boolean {
+    return Array.isArray(value) && value.every((name) => typeof name === "string")
+  }
+
+  function schemaCycle(): ElizaError {
+    return new ElizaError("Model-call schema contains a cycle", { code: CYCLE_CODE })
+  }
+
+  function toolSchemaCycle(): ElizaError {
+    return new ElizaError("Model-call tool schema contains a cycle", { code: CYCLE_CODE })
+  }
+
+  function dataCycle(value: object): ElizaError {
+    return new ElizaError("Model-bound tool data contains a cycle", {
+      code: CYCLE_CODE,
+      context: { valueType: value.constructor?.name ?? "object" },
+    })
+  }
+
+  /** @throws {ElizaError} */
+  function enter(value: object, walk: Walk, depth: number, cycle: (value: object) => ElizaError): boolean {
+    if (walk.seen.has(value)) {
+      if (walk.complete) throw cycle(value)
+      return false
+    }
+    if (!walk.complete && depth >= MAX_TOOL_DIAGNOSTIC_DEPTH) return false
+    walk.seen.add(value)
+    return true
+  }
+
+  function projectError(value: Error, redactText: ToolDiagnosticTextRedactor): Error {
+    const projected = new Error(redactText(value.message))
+    projected.name = value.name
+    projected.stack = value.stack ? redactText(value.stack) : undefined
+    return projected
+  }
+
+  /** @throws {ElizaError} */
+  export function projectData(value: unknown, walk: Walk, depth: number): unknown {
+    if (typeof value === "string") return walk.redactText(value)
+    if (value === null || typeof value !== "object" || value instanceof Date) return value
+    if (!enter(value, walk, depth, dataCycle)) return TOOL_DIAGNOSTIC_MASK
+    try {
+      if (Array.isArray(value)) {
+        let changed = false
+        const projected = value.map((item) => {
+          const next = projectData(item, walk, depth + 1)
+          if (next !== item) changed = true
+          return next
+        })
+        return changed ? projected : value
+      }
+      if (value instanceof Error) return projectError(value, walk.redactText)
+      let changed = false
+      const projected: Record<string, unknown> = {}
+      for (const [key, entry] of Object.entries(value)) {
+        if (isPrivateToolField(key)) {
+          projected[key] = TOOL_DIAGNOSTIC_MASK
+          changed = true
+          continue
+        }
+        const next = projectData(entry, walk, depth + 1)
+        if (next !== entry) changed = true
+        projected[key] = next
+      }
+      return changed || Object.getPrototypeOf(value) !== Object.prototype ? projected : value
+    } finally {
+      walk.seen.delete(value)
+    }
+  }
+
+  function projectDefinitionMap(value: unknown, walk: Walk, depth: number): unknown {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return projectData(value, walk, depth)
+    if (!enter(value, walk, depth, schemaCycle)) return TOOL_DIAGNOSTIC_MASK
+    try {
+      let changed = false
+      const projected: Record<string, unknown> = {}
+      for (const [name, schema] of Object.entries(value)) {
+        const next = isNameList(schema) ? schema : projectSchemaNode(schema, walk, depth + 1)
+        if (next !== schema) changed = true
+        projected[name] = next
+      }
+      return changed ? projected : value
+    } finally {
+      walk.seen.delete(value)
+    }
+  }
+
+  function isNameListMap(value: unknown): boolean {
+    return !!value && typeof value === "object" && !Array.isArray(value) && Object.values(value).every(isNameList)
+  }
+
+  /** @throws {ElizaError} */
+  export function projectSchemaNode(value: unknown, walk: Walk, depth: number): unknown {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return projectData(value, walk, depth)
+    if (!enter(value, walk, depth, schemaCycle)) return TOOL_DIAGNOSTIC_MASK
+    try {
+      let changed = false
+      const projected: Record<string, unknown> = {}
+      for (const [key, entry] of Object.entries(value)) {
+        const next = JSON_SCHEMA_DEFINITION_MAP_KEYS.has(key)
+          ? projectDefinitionMap(entry, walk, depth + 1)
+          : (key === "items" || JSON_SCHEMA_SCHEMA_ARRAY_KEYS.has(key)) && Array.isArray(entry)
+          ? entry.map((item) => projectSchemaNode(item, walk, depth + 1))
+          : JSON_SCHEMA_SINGLE_SCHEMA_KEYS.has(key)
+          ? projectSchemaNode(entry, walk, depth + 1)
+          : key === "required" && isNameList(entry) || key === "dependentRequired" && isNameListMap(entry)
+          ? entry
+          : isPrivateToolField(key)
+          ? TOOL_DIAGNOSTIC_MASK
+          : projectData(entry, walk, depth + 1)
+        if (next !== entry) changed = true
+        projected[key] = next
+      }
+      return changed ? projected : value
+    } finally {
+      walk.seen.delete(value)
+    }
+  }
+
+  /** @throws {ElizaError} */
+  export function projectToolDefinition(value: unknown, walk: Walk, depth: number): unknown {
+    if (!value || typeof value !== "object") return projectData(value, walk, depth)
+    if (!enter(value, walk, depth, toolSchemaCycle)) return TOOL_DIAGNOSTIC_MASK
+    try {
+      let changed = false
+      if (Array.isArray(value)) {
+        const projected = value.map((entry) => {
+          const next = projectToolDefinition(entry, walk, depth + 1)
+          if (next !== entry) changed = true
+          return next
+        })
+        return changed ? projected : value
+      }
+      const projected: Record<string, unknown> = {}
+      for (const [key, entry] of Object.entries(value)) {
+        const next = TOOL_DEFINITION_SCHEMA_KEYS.has(key)
+          ? projectSchemaNode(entry, walk, depth + 1)
+          : key === "function"
+          ? projectToolDefinition(entry, walk, depth + 1)
+          : isPrivateToolField(key)
+          ? TOOL_DIAGNOSTIC_MASK
+          : projectData(entry, walk, depth + 1)
+        if (next !== entry) changed = true
+        projected[key] = next
+      }
+      return changed ? projected : value
+    } finally {
+      walk.seen.delete(value)
+    }
+  }
+
+  /** @throws {never} */
+  export function walkWith(redactText: ToolDiagnosticTextRedactor, complete: boolean): Walk {
+    return { redactText, seen: new WeakSet<object>(), complete }
+  }
+
+  /** @throws {never} */
+  export function projectDiagnostic(value: unknown, redactText: ToolDiagnosticTextRedactor): unknown {
+    return projectData(value, walkWith(redactText, false), 0)
+  }
 }
+import { projectData, projectDiagnostic, projectSchemaNode, projectToolDefinition, walkWith } from walk
+
+const TOOLS_MODE: { mode: RedactSensitiveMode } = { mode: "tools" }
 
 export function composeToolDiagnosticRedactor(runtime?: {
   redactSecrets?(text: string): string
@@ -65,345 +243,21 @@ export function composeToolDiagnosticRedactor(runtime?: {
   return (text) => redactSensitiveText(redactSecrets(text), TOOLS_MODE)
 }
 
-function projectValue(
-  value: unknown,
-  redactText: ToolDiagnosticTextRedactor,
-  seen: WeakSet<object>,
-  depth: number,
-): unknown {
-  if (typeof value === "string") {
-    return redactText(value)
-  }
-  if (value === null || typeof value !== "object") {
-    return value
-  }
-  if (value instanceof Date) {
-    return value
-  }
-  if (depth >= MAX_TOOL_DIAGNOSTIC_DEPTH || seen.has(value)) {
-    return TOOL_DIAGNOSTIC_MASK
-  }
-  seen.add(value)
-  try {
-    if (Array.isArray(value)) {
-      let changed = false
-      const projected = value.map((item) => {
-        const next = projectValue(item, redactText, seen, depth + 1)
-        if (next !== item) {
-          changed = true
-        }
-        return next
-      })
-      return changed ? projected : value
-    }
-    if (value instanceof Error) {
-      const projected = new Error(redactText(value.message))
-      projected.name = value.name
-      projected.stack = value.stack ? redactText(value.stack) : undefined
-      return projected
-    }
-    let changed = false
-    const projected: Record<string, unknown> = {}
-    for (const [key, entry] of Object.entries(value)) {
-      if (isPrivateToolField(key)) {
-        projected[key] = TOOL_DIAGNOSTIC_MASK
-        changed = true
-        continue
-      }
-      const next = projectValue(entry, redactText, seen, depth + 1)
-      if (next !== entry) {
-        changed = true
-      }
-      projected[key] = next
-    }
-
-    if (!changed && Object.getPrototypeOf(value) === Object.prototype) {
-      return value
-    }
-    return projected
-  } finally {
-    seen.delete(value)
-  }
+function modelBoundFailure(cause: unknown): ElizaError | Foreign {
+  return cause instanceof ElizaError ? cause : new Foreign({ cause })
 }
 
-function projectCompleteModelValue(
-  value: unknown,
-  redactText: ToolDiagnosticTextRedactor,
-  ancestors: WeakSet<object>,
-): unknown {
-  if (typeof value === "string") return redactText(value)
-  if (value === null || typeof value !== "object") return value
-  if (value instanceof Date) return value
-  if (ancestors.has(value)) {
-    throw new ElizaError("Model-bound tool data contains a cycle", {
-      code: "MODEL_TOOL_DATA_CYCLE",
-      context: { valueType: value.constructor?.name ?? "object" },
-    })
-  }
-  ancestors.add(value)
-  try {
-    if (Array.isArray(value)) {
-      let changed = false
-      const projected = value.map((entry) => {
-        const next = projectCompleteModelValue(entry, redactText, ancestors)
-        if (next !== entry) changed = true
-        return next
-      })
-      return changed ? projected : value
-    }
-    if (value instanceof Error) {
-      const projected = new Error(redactText(value.message))
-      projected.name = value.name
-      projected.stack = value.stack ? redactText(value.stack) : undefined
-      return projected
-    }
-    let changed = false
-    const projected: Record<string, unknown> = {}
-    for (const [key, entry] of Object.entries(value)) {
-      if (isPrivateToolField(key)) {
-        projected[key] = TOOL_DIAGNOSTIC_MASK
-        changed = true
-        continue
-      }
-      const next = projectCompleteModelValue(entry, redactText, ancestors)
-      if (next !== entry) changed = true
-      projected[key] = next
-    }
-    if (!changed && Object.getPrototypeOf(value) === Object.prototype) {
-      return value
-    }
-    return projected
-  } finally {
-    ancestors.delete(value)
-  }
-}
-
-function projectJsonSchemaDefinitionMap(
-  value: unknown,
-  redactText: ToolDiagnosticTextRedactor,
-  seen: WeakSet<object>,
-  depth: number,
-  complete = false,
-): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return complete
-      ? projectCompleteModelValue(value, redactText, seen)
-      : projectValue(value, redactText, seen, depth)
-  }
-  if (seen.has(value)) {
-    if (complete) {
-      throw new ElizaError("Model-call schema contains a cycle", {
-        code: "MODEL_TOOL_DATA_CYCLE",
-      })
-    }
-    return TOOL_DIAGNOSTIC_MASK
-  }
-  if (!complete && depth >= MAX_TOOL_DIAGNOSTIC_DEPTH) {
-    return TOOL_DIAGNOSTIC_MASK
-  }
-  seen.add(value)
-  try {
-    let changed = false
-    const projected: Record<string, unknown> = {}
-    for (const [propertyName, propertySchema] of Object.entries(value)) {
-      const next = Array.isArray(propertySchema)
-          && propertySchema.every((name) => typeof name === "string")
-        ? propertySchema
-        : projectJsonSchemaNode(
-          propertySchema,
-          redactText,
-          seen,
-          depth + 1,
-          complete,
-        )
-      if (next !== propertySchema) changed = true
-      projected[propertyName] = next
-    }
-    return changed ? projected : value
-  } finally {
-    seen.delete(value)
-  }
-}
-
-function projectJsonSchemaNode(
-  value: unknown,
-  redactText: ToolDiagnosticTextRedactor,
-  seen: WeakSet<object>,
-  depth: number,
-  complete = false,
-): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return complete
-      ? projectCompleteModelValue(value, redactText, seen)
-      : projectValue(value, redactText, seen, depth)
-  }
-  if (seen.has(value)) {
-    if (complete) {
-      throw new ElizaError("Model-call schema contains a cycle", {
-        code: "MODEL_TOOL_DATA_CYCLE",
-      })
-    }
-    return TOOL_DIAGNOSTIC_MASK
-  }
-  if (!complete && depth >= MAX_TOOL_DIAGNOSTIC_DEPTH) {
-    return TOOL_DIAGNOSTIC_MASK
-  }
-  seen.add(value)
-  try {
-    let changed = false
-    const projected: Record<string, unknown> = {}
-    for (const [key, entry] of Object.entries(value)) {
-      let next: unknown
-      if (JSON_SCHEMA_DEFINITION_MAP_KEYS.has(key)) {
-        next = projectJsonSchemaDefinitionMap(
-          entry,
-          redactText,
-          seen,
-          depth + 1,
-          complete,
-        )
-      } else if (JSON_SCHEMA_SINGLE_SCHEMA_KEYS.has(key)) {
-        if (key === "items" && Array.isArray(entry)) {
-          next = entry.map((item) => projectJsonSchemaNode(item, redactText, seen, depth + 1, complete))
-        } else {
-          next = projectJsonSchemaNode(
-            entry,
-            redactText,
-            seen,
-            depth + 1,
-            complete,
-          )
-        }
-      } else if (
-        JSON_SCHEMA_SCHEMA_ARRAY_KEYS.has(key)
-        && Array.isArray(entry)
-      ) {
-        next = entry.map((item) => projectJsonSchemaNode(item, redactText, seen, depth + 1, complete))
-      } else if (
-        key === "required"
-        && Array.isArray(entry)
-        && entry.every((propertyName) => typeof propertyName === "string")
-      ) {
-        next = entry
-      } else if (
-        key === "dependentRequired"
-        && entry
-        && typeof entry === "object"
-        && !Array.isArray(entry)
-        && Object.values(entry).every(
-          (propertyNames) =>
-            Array.isArray(propertyNames)
-            && propertyNames.every(
-              (propertyName) => typeof propertyName === "string",
-            ),
-        )
-      ) {
-        next = entry
-      } else if (isPrivateToolField(key)) {
-        next = TOOL_DIAGNOSTIC_MASK
-      } else {
-        next = complete
-          ? projectCompleteModelValue(entry, redactText, seen)
-          : projectValue(entry, redactText, seen, depth + 1)
-      }
-      if (next !== entry) changed = true
-      projected[key] = next
-    }
-    return changed ? projected : value
-  } finally {
-    seen.delete(value)
-  }
-}
-
-function projectModelToolDefinition(
-  value: unknown,
-  redactText: ToolDiagnosticTextRedactor,
-  seen: WeakSet<object>,
-  depth: number,
-  complete = false,
-): unknown {
-  if (Array.isArray(value)) {
-    if (seen.has(value)) {
-      if (complete) {
-        throw new ElizaError("Model-call tool schema contains a cycle", {
-          code: "MODEL_TOOL_DATA_CYCLE",
-        })
-      }
-      return TOOL_DIAGNOSTIC_MASK
-    }
-    if (!complete && depth >= MAX_TOOL_DIAGNOSTIC_DEPTH) {
-      return TOOL_DIAGNOSTIC_MASK
-    }
-    seen.add(value)
-    try {
-      let changed = false
-      const projected = value.map((entry) => {
-        const next = projectModelToolDefinition(
-          entry,
-          redactText,
-          seen,
-          depth + 1,
-          complete,
-        )
-        if (next !== entry) changed = true
-        return next
-      })
-      return changed ? projected : value
-    } finally {
-      seen.delete(value)
-    }
-  }
-  if (!value || typeof value !== "object") {
-    return complete
-      ? projectCompleteModelValue(value, redactText, seen)
-      : projectValue(value, redactText, seen, depth)
-  }
-  if (seen.has(value)) {
-    if (complete) {
-      throw new ElizaError("Model-call tool schema contains a cycle", {
-        code: "MODEL_TOOL_DATA_CYCLE",
-      })
-    }
-    return TOOL_DIAGNOSTIC_MASK
-  }
-  if (!complete && depth >= MAX_TOOL_DIAGNOSTIC_DEPTH) {
-    return TOOL_DIAGNOSTIC_MASK
-  }
-  seen.add(value)
-  try {
-    let changed = false
-    const projected: Record<string, unknown> = {}
-    for (const [key, entry] of Object.entries(value)) {
-      let next: unknown
-      if (TOOL_DEFINITION_SCHEMA_KEYS.has(key)) {
-        next = projectJsonSchemaNode(
-          entry,
-          redactText,
-          seen,
-          depth + 1,
-          complete,
-        )
-      } else if (key === "function") {
-        next = projectModelToolDefinition(
-          entry,
-          redactText,
-          seen,
-          depth + 1,
-          complete,
-        )
-      } else if (isPrivateToolField(key)) {
-        next = TOOL_DIAGNOSTIC_MASK
-      } else {
-        next = complete
-          ? projectCompleteModelValue(entry, redactText, seen)
-          : projectValue(entry, redactText, seen, depth + 1)
-      }
-      if (next !== entry) changed = true
-      projected[key] = next
-    }
-    return changed ? projected : value
-  } finally {
-    seen.delete(value)
+function overlay(base: Record<string, unknown>) {
+  let next = base
+  return {
+    set(key: string, projected: unknown): void {
+      if (projected === base[key]) return
+      if (next === base) next = { ...base }
+      next[key] = projected
+    },
+    result(): Record<string, unknown> {
+      return next
+    },
   }
 }
 
@@ -411,75 +265,62 @@ export function projectToolDiagnosticValue(
   value: unknown,
   redactText: ToolDiagnosticTextRedactor,
 ): unknown {
-  return projectValue(value, redactText, new WeakSet<object>(), 0)
+  return projectDiagnostic(value, redactText)
 }
 
-export function projectCompleteToolValueForModel(
+export effect function projectCompleteToolValueForModel(
   value: unknown,
   redactText: ToolDiagnosticTextRedactor,
-): unknown {
-  return projectCompleteModelValue(value, redactText, new WeakSet<object>())
+) {
+  return try Effect.try({ try: () => projectData(value, walkWith(redactText, true), 0), catch: modelBoundFailure })
 }
+export const projectCompleteToolValueForModelOrThrow = thrown(projectCompleteToolValueForModel)
 
-export function projectCompleteToolArgsForModel(
+export effect function projectCompleteToolArgsForModel(
   args: Record<string, unknown> | undefined,
   redactText: ToolDiagnosticTextRedactor,
-): Record<string, unknown> | undefined {
+) {
   if (args === undefined) return undefined
-  return projectCompleteToolValueForModel(args, redactText) as Record<
-    string,
-    unknown
-  >
+  return (try projectCompleteToolValueForModel(args, redactText)) as Record<string, unknown>
 }
+export const projectCompleteToolArgsForModelOrThrow = thrown(projectCompleteToolArgsForModel)
 
-export function projectModelCallDiagnosticValue(
+effect function projectModelCallSchemas(
   value: Record<string, unknown>,
   redactText: ToolDiagnosticTextRedactor,
-): Record<string, unknown> {
-  const projected = projectToolDiagnosticValue(value, redactText) as Record<
-    string,
-    unknown
-  >
-  let next = projected
-  for (const schemaKey of ["responseSchema", "response_schema"] as const) {
+  complete: boolean,
+  projected: ReturnType<typeof overlay>,
+) {
+  for (const schemaKey of ["responseSchema", "response_schema"]) {
     if (!(schemaKey in value)) continue
-    const projectedSchema = projectJsonSchemaNode(
-      value[schemaKey],
-      redactText,
-      new WeakSet<object>(),
-      0,
-    )
-    if (projectedSchema !== projected[schemaKey]) {
-      if (next === projected) next = { ...projected }
-      next[schemaKey] = projectedSchema
-    }
+    projected.set(schemaKey, try Effect.try({
+      try: () => projectSchemaNode(value[schemaKey], walkWith(redactText, complete), 0),
+      catch: modelBoundFailure,
+    }))
   }
   if ("tools" in value) {
-    const projectedTools = projectModelToolDefinition(
-      value.tools,
-      redactText,
-      new WeakSet<object>(),
-      0,
-    )
-    if (projectedTools !== projected.tools) {
-      if (next === projected) next = { ...projected }
-      next.tools = projectedTools
-    }
+    projected.set("tools", try Effect.try({
+      try: () => projectToolDefinition(value.tools, walkWith(redactText, complete), 0),
+      catch: modelBoundFailure,
+    }))
   }
-  return next
 }
 
-export function projectProtectedModelCallValue(
+export effect function projectModelCallDiagnosticValue(
   value: Record<string, unknown>,
   redactText: ToolDiagnosticTextRedactor,
-): Record<string, unknown> {
-  const diagnostic = projectModelCallDiagnosticValue(value, redactText)
-  let next = diagnostic
-  const replace = (key: string, projected: unknown): void => {
-    if (projected === diagnostic[key]) return
-    if (next === diagnostic) next = { ...diagnostic }
-    next[key] = projected
-  }
+) {
+  const projected = overlay(projectToolDiagnosticValue(value, redactText) as Record<string, unknown>)
+  try projectModelCallSchemas(value, redactText, false, projected)
+  return projected.result()
+}
+export const projectModelCallDiagnosticValueOrThrow = thrown(projectModelCallDiagnosticValue)
+
+export effect function projectProtectedModelCallValue(
+  value: Record<string, unknown>,
+  redactText: ToolDiagnosticTextRedactor,
+) {
+  const projected = overlay(try projectModelCallDiagnosticValue(value, redactText))
   for (
     const key of [
       "systemPrompt",
@@ -494,35 +335,12 @@ export function projectProtectedModelCallValue(
     ]
   ) {
     if (!(key in value)) continue
-    replace(key, projectCompleteToolValueForModel(value[key], redactText))
+    projected.set(key, try projectCompleteToolValueForModel(value[key], redactText))
   }
-  for (const schemaKey of ["responseSchema", "response_schema"] as const) {
-    if (!(schemaKey in value)) continue
-    replace(
-      schemaKey,
-      projectJsonSchemaNode(
-        value[schemaKey],
-        redactText,
-        new WeakSet<object>(),
-        0,
-        true,
-      ),
-    )
-  }
-  if ("tools" in value) {
-    replace(
-      "tools",
-      projectModelToolDefinition(
-        value.tools,
-        redactText,
-        new WeakSet<object>(),
-        0,
-        true,
-      ),
-    )
-  }
-  return next
+  try projectModelCallSchemas(value, redactText, true, projected)
+  return projected.result()
 }
+export const projectProtectedModelCallValueOrThrow = thrown(projectProtectedModelCallValue)
 
 export function projectToolDiagnosticArgs(
   args: Record<string, unknown> | undefined,

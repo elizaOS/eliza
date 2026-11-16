@@ -1,5 +1,8 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
 import { toActionParameterValue } from "./action-parameter-value.vibe"
 import { testSchemaPattern } from "./actions/validate-tool-args.vibe"
+import { type Foreign, thrown } from "./edge.vibe"
+import type { ElizaError } from "./errors.vibe"
 import type {
   Action,
   ActionExample,
@@ -238,24 +241,14 @@ function formatActionExampleSummary(action: Action): string | null {
   return rendered.length > 0 ? rendered.join("\n") : null
 }
 
-function collectActionSimiles(action: Action): string[] {
+function uniqueTrimmedStrings(values: readonly unknown[] | undefined): string[] {
   return [
     ...new Set(
-      (action.similes ?? [])
-        .filter((simile): simile is string => typeof simile === "string")
-        .map((simile) => simile.trim()),
+      (values ?? [])
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim()),
     ),
-  ].filter((simile) => simile.length > 0)
-}
-
-function collectActionTags(action: Action): string[] {
-  return [
-    ...new Set(
-      (action.tags ?? [])
-        .filter((tag): tag is string => typeof tag === "string")
-        .map((tag) => tag.trim()),
-    ),
-  ].filter((tag) => tag.length > 0 && tag !== "always-include")
+  ].filter((value) => value.length > 0)
 }
 
 export function formatActionNames(actions: Action[], seed = "actions"): string {
@@ -278,8 +271,8 @@ export function formatActions(actions: Action[], seed = "actions"): string {
     params: action.parameters && action.parameters.length > 0
       ? formatActionParameters(action.parameters)
       : "",
-    aliases: collectActionSimiles(action),
-    tags: collectActionTags(action),
+    aliases: uniqueTrimmedStrings(action.similes),
+    tags: uniqueTrimmedStrings(action.tags).filter((tag) => tag !== "always-include"),
     example: formatActionExampleSummary(action) ?? "",
   }))
 
@@ -345,10 +338,10 @@ function formatParameterType(schema: ActionParameterSchema): string {
   }
 }
 
-export function validateActionParams(
+export effect function validateActionParams(
   action: Action,
   extractedParams: ActionParameters | undefined,
-): { valid: boolean; params: ActionParameters | undefined; errors: string[] } {
+): { valid: boolean; params: ActionParameters | undefined; errors: string[] }!(ElizaError | Foreign) {
   const errors: string[] = []
   const params: ActionParameters = {}
 
@@ -357,7 +350,7 @@ export function validateActionParams(
   }
 
   for (const paramDef of action.parameters) {
-    const extractedValue = coerceActionParamValue(
+    const extractedValue = try coerceActionParamValue(
       paramDef,
       extractedParams ? extractedParams[paramDef.name] : undefined,
     )
@@ -387,10 +380,12 @@ export function validateActionParams(
   }
 }
 
-function coerceActionParamValue(
+export const validateActionParamsOrThrow = thrown(validateActionParams)
+
+effect function coerceActionParamValue(
   paramDef: ActionParameter,
   value: ActionParameters[string] | undefined,
-): ActionParameters[string] | undefined {
+): (ActionParameters[string] | undefined)!(ElizaError | Foreign) {
   if (
     paramDef.schema.type === "string"
     && (typeof value === "number" || typeof value === "bigint")
@@ -412,13 +407,9 @@ function coerceActionParamValue(
   }
 
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(trimmed)
-    } catch {
-    }
+    const parsed: unknown = Effect.try(() => JSON.parse(trimmed)) catch () => undefined
     if (Array.isArray(parsed)) {
-      return toActionParameterValue(deepToWellFormedUnicode(parsed))
+      return try toActionParameterValue(try deepToWellFormedUnicode(parsed))
     }
   }
 

@@ -1,3 +1,5 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { foreign, type Foreign } from "../edge.vibe"
 import { isModelProviderFallbackError } from "../security/model-failure.vibe"
 import { LOCAL_MODEL_PROVIDERS } from "../security/secrets.vibe"
 import type { ActionModelClass } from "../types/components.vibe"
@@ -147,33 +149,41 @@ function isLowConfidence(
   return conf < threshold
 }
 
-export async function executeChainWithFallback<TResult>(
+export error EmptyModelChain { message: string }
+
+export effect function executeChainWithFallback<TResult>(
   chain: readonly ResolvedActionModel[],
   threshold: number | undefined,
   invoke: (resolved: ResolvedActionModel) => Promise<TResult>,
-): Promise<TResult> {
+): TResult!(EmptyModelChain | Foreign) {
   if (chain.length === 0) {
-    throw new Error(
-      "executeChainWithFallback: chain is empty — no handlers resolved",
-    )
+    throw new EmptyModelChain({
+      message: "executeChainWithFallback: chain is empty — no handlers resolved",
+    })
   }
-  let attempted = 0
-  let lastError: unknown
-  for (const resolved of chain) {
-    attempted += 1
-    try {
-      const result = await invoke(resolved)
-      if (attempted === chain.length || !isLowConfidence(result, threshold)) {
-        return result
-      }
-      lastError = new Error(
-        `Low-confidence result from ${resolved.modelType} (provider=${resolved.provider}); escalating`,
-      )
-    } catch (err) {
-      if (!isModelProviderFallbackError(err, resolved.modelType)) throw err
-      lastError = err
+  for (const resolved of chain.slice(0, -1)) {
+    const attempt = map(foreign(() => invoke(resolved)), (value): { value: TResult } | undefined => ({ value })) catch effect (failure) => {
+      if (!isModelProviderFallbackError(failure.cause, resolved.modelType)) throw failure
+      return undefined
     }
+    if (attempt && !isLowConfidence(attempt.value, threshold)) return attempt.value
   }
-
-  throw lastError
+  const terminal = chain[chain.length - 1]
+  return try foreign(() => invoke(terminal))
 }
+
+module edge {
+  import { asLegacy, runDetached } from "../edge.vibe"
+  import { executeChainWithFallback, type ResolvedActionModel } from "./action-model-routing.vibe"
+
+  /** @throws {never} */
+  export function executeChainWithFallbackPromise<TResult>(
+    chain: readonly ResolvedActionModel[],
+    threshold: number | undefined,
+    invoke: (resolved: ResolvedActionModel) => Promise<TResult>,
+  ): Promise<TResult> {
+    return runDetached(asLegacy(Error, executeChainWithFallback(chain, threshold, invoke)))
+  }
+}
+import { executeChainWithFallbackPromise } from edge
+export { executeChainWithFallbackPromise }

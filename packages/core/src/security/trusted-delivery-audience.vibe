@@ -1,3 +1,5 @@
+// spec/core/trustedAudience.md, "Story: Renew audience evidence only for the same active turn"; spec/core/trustedAudience.md, "Attestation binds an exact runtime and audience"; spec/core/trustedAudience.md, "Renewal rechecks lease identity and audience after the authority await"; spec/core/trustedAudience.md, "Sensitive-use and suppression evidence stays attached to the exact turn"; spec/core/internalActors.md, "Story: Keep an internal actor registered while any owner still uses it"; spec/core/internalActors.md, "Each disposer removes only its own registration"; spec/core/audienceRegistry.md, "Story: Keep audience authority isolated while allowing exact in-process aliases"; spec/core/audienceRegistry.md, "Renewal validates the shared record after the asynchronous authority lookup"
+import { Foreign, failingAs, foreign, promised } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { resolveCanonicalOwnerIdForMessage } from "../roles.vibe"
 import type { DisclosureGate } from "../types/components.vibe"
@@ -5,6 +7,7 @@ import type { Memory } from "../types/memory.vibe"
 import { ChannelType, type UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { stringToUuid } from "../utils/string-to-uuid.vibe"
+import { InvalidUuidSource } from "../utils/uuid.vibe"
 
 const trustedDeliveryAudienceBrand: unique symbol = Symbol(
   "eliza.trusted-delivery-audience.brand",
@@ -170,11 +173,16 @@ function normalizeTtlMs(ttlMs: number | undefined): number {
   return Math.floor(ttlMs)
 }
 
-async function filterRuntimeInternalParticipants(
+function thrownValue(failure: unknown): unknown {
+  if (failure instanceof InvalidUuidSource) return new TypeError(failure.message)
+  return failure instanceof Foreign ? failure.cause : failure
+}
+
+effect function filterRuntimeInternalParticipants(
   runtime: IAgentRuntime,
   participants: readonly UUID[],
   verifyPersistedMarkers: boolean,
-): Promise<UUID[]> {
+) {
   if (!verifyPersistedMarkers) {
     return [...participants]
   }
@@ -187,31 +195,26 @@ async function filterRuntimeInternalParticipants(
     return processLocalFiltered
   }
   const lookupFailures: unknown[] = []
-  const kept = await Promise.all(
-    processLocalFiltered.map(async (participantId) => {
-      if (participantId === runtime.agentId) {
-        return participantId
-      }
-      try {
-        const entity = await runtime.getEntityById(participantId)
-        const marker = (
-          entity?.metadata as
-            | { triggerEntity?: { triggerId?: unknown } }
-            | undefined
-        )?.triggerEntity
-        if (
-          typeof marker?.triggerId === "string"
-          && marker.triggerId.length > 0
-          && stringToUuid(`trigger-entity:${marker.triggerId}`) === participantId
-        ) {
-          return null
-        }
-      } catch (cause) {
-        lookupFailures.push(cause)
-      }
+  const kept = try Effect.forEach(processLocalFiltered, effect (participantId): (UUID | null)!! => {
+    if (participantId === runtime.agentId) {
       return participantId
-    }),
-  )
+    }
+    const internal = (effect {
+      const entity = try foreign(() => runtime.getEntityById(participantId))
+      const marker = (
+        entity?.metadata as
+          | { triggerEntity?: { triggerId?: unknown } }
+          | undefined
+      )?.triggerEntity
+      return typeof marker?.triggerId === "string"
+        && marker.triggerId.length > 0
+        && (try stringToUuid(`trigger-entity:${marker.triggerId}`)) === participantId
+    }) catch (failure) => {
+      lookupFailures.push(thrownValue(failure))
+      return false
+    }
+    return internal ? null : participantId
+  }, { concurrency: "unbounded" })
   if (lookupFailures.length > 0) {
     runtime.reportError(
       "TrustedDeliveryAudience.filterRuntimeInternalParticipants",
@@ -356,32 +359,35 @@ function bindAudience(
   })
 }
 
-export async function attestDeliveryAudienceFromCanonicalRoom(
+export effect function attestDeliveryAudienceFromCanonicalRoom(
   runtime: IAgentRuntime,
   message: Memory,
   options: { nowMs?: number; ttlMs?: number } = {},
-): Promise<TrustedDeliveryAudience> {
-  const audience = await deriveCanonicalRoomAudience(runtime, message, options)
+) {
+  const audience = try deriveCanonicalRoomAudience(runtime, message, options)
   bindAudience(message, audience, runtime)
   return audience
 }
+export const attestDeliveryAudienceFromCanonicalRoomPromise = promised(
+  failingAs(TypeError, attestDeliveryAudienceFromCanonicalRoom, ElizaError),
+)
 
-async function deriveCanonicalRoomAudience(
+effect function deriveCanonicalRoomAudience(
   runtime: IAgentRuntime,
   message: Memory,
   options: { nowMs?: number; ttlMs?: number },
-): Promise<TrustedDeliveryAudience> {
+) {
   const nowMs = options.nowMs ?? Date.now()
-  const [room, rawParticipants, canonicalOwnerEntityId] = await Promise.all([
-    runtime.getRoom(message.roomId),
-    runtime.getParticipantsForRoom(message.roomId),
+  const [room, rawParticipants, canonicalOwnerEntityId] = try.all [
+    foreign(() => runtime.getRoom(message.roomId)),
+    foreign(() => runtime.getParticipantsForRoom(message.roomId)),
     resolveCanonicalOwnerIdForMessage(runtime, message),
-  ])
+  ]
   const kind = classifyCanonicalRoom(room?.type)
   const ownerPrivateCandidate = canonicalOwnerEntityId !== null
     && message.entityId === canonicalOwnerEntityId
     && (kind === "direct" || kind === "voice_private")
-  const participants = await filterRuntimeInternalParticipants(
+  const participants = try filterRuntimeInternalParticipants(
     runtime,
     rawParticipants,
     ownerPrivateCandidate,
@@ -390,7 +396,7 @@ async function deriveCanonicalRoomAudience(
     kind,
     provenance: "canonical_room",
     actorEntityId: message.entityId,
-    canonicalOwnerEntityId,
+    canonicalOwnerEntityId: canonicalOwnerEntityId as UUID | null,
     agentEntityId: runtime.agentId,
     roomId: message.roomId,
     participantEntityIds: participants,
@@ -399,7 +405,7 @@ async function deriveCanonicalRoomAudience(
   })
 }
 
-export async function attestAuthenticatedApiDeliveryAudience(
+export effect function attestAuthenticatedApiDeliveryAudience(
   runtime: IAgentRuntime,
   message: Memory,
   principal: TrustedApiPrincipal,
@@ -409,8 +415,8 @@ export async function attestAuthenticatedApiDeliveryAudience(
 
     revalidatePrincipal?: TrustedApiPrincipalRevalidator
   } = {},
-): Promise<TrustedDeliveryAudience> {
-  const audience = await deriveApiAudience(
+) {
+  const audience = try deriveApiAudience(
     runtime,
     message,
     principal,
@@ -419,23 +425,26 @@ export async function attestAuthenticatedApiDeliveryAudience(
   bindAudience(message, audience, runtime, options.revalidatePrincipal)
   return audience
 }
+export const attestAuthenticatedApiDeliveryAudiencePromise = promised(
+  failingAs(TypeError, attestAuthenticatedApiDeliveryAudience, ElizaError),
+)
 
-async function deriveApiAudience(
+effect function deriveApiAudience(
   runtime: IAgentRuntime,
   message: Memory,
   principal: TrustedApiPrincipal,
   options: { nowMs?: number; ttlMs?: number },
-): Promise<TrustedDeliveryAudience> {
+) {
   const nowMs = options.nowMs ?? Date.now()
-  const [canonicalOwnerEntityId, rawParticipants] = await Promise.all([
+  const [canonicalOwnerEntityId, rawParticipants] = try.all [
     resolveCanonicalOwnerIdForMessage(runtime, message),
-    runtime.getParticipantsForRoom(message.roomId),
-  ])
+    foreign(() => runtime.getParticipantsForRoom(message.roomId)),
+  ]
   const ownerPrincipal = principal.kind === "owner_session" || principal.kind === "owner_api_token"
   const ownerPrivateCandidate = ownerPrincipal
     && canonicalOwnerEntityId !== null
     && message.entityId === canonicalOwnerEntityId
-  const participants = await filterRuntimeInternalParticipants(
+  const participants = try filterRuntimeInternalParticipants(
     runtime,
     rawParticipants,
     ownerPrivateCandidate,
@@ -444,7 +453,7 @@ async function deriveApiAudience(
     kind: ownerPrincipal ? "api_private" : "api_external",
     provenance: ownerPrincipal ? "authenticated_owner_api" : "service_gateway",
     actorEntityId: message.entityId,
-    canonicalOwnerEntityId,
+    canonicalOwnerEntityId: canonicalOwnerEntityId as UUID | null,
     agentEntityId: runtime.agentId,
     roomId: message.roomId,
     participantEntityIds: participants,
@@ -507,11 +516,11 @@ export type TrustedDeliveryAudienceRenewal =
       | "audience_lookup_failed"
   }
 
-export async function renewTrustedDeliveryAudience(
+export effect function renewTrustedDeliveryAudience(
   runtime: IAgentRuntime,
   message: Memory,
   nowMs = Date.now(),
-): Promise<TrustedDeliveryAudienceRenewal> {
+): TrustedDeliveryAudienceRenewal!! {
   const record = getAudienceRecord(message)
   const lease = record?.turnLease
   if (!record || !lease?.active) {
@@ -534,35 +543,37 @@ export async function renewTrustedDeliveryAudience(
   ) {
     return { renewed: false, reason: "actor_mismatch" }
   }
-  let renewed: TrustedDeliveryAudience
-  try {
+  const revalidateApiPrincipal = record.revalidateApiPrincipal
+  const renewed = (effect {
     if (current.provenance === "canonical_room") {
-      renewed = await deriveCanonicalRoomAudience(runtime, message, { nowMs })
-    } else {
-      if (!record.revalidateApiPrincipal) {
-        return { renewed: false, reason: "verification_unavailable" }
-      }
-      const principal = await record.revalidateApiPrincipal()
-      if (!principal) {
-        return { renewed: false, reason: "principal_revoked" }
-      }
-      renewed = await deriveApiAudience(runtime, message, principal, {
-        nowMs,
-      })
+      return try deriveCanonicalRoomAudience(runtime, message, { nowMs })
     }
-  } catch (cause) {
+    if (!revalidateApiPrincipal) {
+      return "verification_unavailable" as const
+    }
+    const principal = try foreign(() => revalidateApiPrincipal())
+    if (!principal) {
+      return "principal_revoked" as const
+    }
+    return try deriveApiAudience(runtime, message, principal, {
+      nowMs,
+    })
+  }) catch (failure) => {
     runtime.reportError(
       "TrustedDeliveryAudience.renew",
       new ElizaError("Could not renew the owner-private delivery audience.", {
         code: "DELIVERY_AUDIENCE_RENEWAL_FAILED",
-        cause,
+        cause: thrownValue(failure),
         context: {
           attestationId: current.attestationId,
           roomId: message.roomId,
         },
       }),
     )
-    return { renewed: false, reason: "audience_lookup_failed" }
+    return "audience_lookup_failed" as const
+  }
+  if (typeof renewed === "string") {
+    return { renewed: false, reason: renewed }
   }
 
   if (!lease.active || record.turnLease !== lease) {
@@ -577,17 +588,19 @@ export async function renewTrustedDeliveryAudience(
   record.audience = renewed
   return { renewed: true, audience: renewed }
 }
+export const renewTrustedDeliveryAudiencePromise = promised(renewTrustedDeliveryAudience)
 
-export async function renewExpiredTrustedDeliveryAudience(
+export effect function renewExpiredTrustedDeliveryAudience(
   runtime: IAgentRuntime,
   message: Memory | undefined,
   nowMs = Date.now(),
-): Promise<void> {
+) {
   if (!message) return
   const record = getAudienceRecord(message)
   if (!record?.turnLease || record.audience.expiresAtMs > nowMs) return
-  await renewTrustedDeliveryAudience(runtime, message, nowMs)
+  try renewTrustedDeliveryAudience(runtime, message, nowMs)
 }
+export const renewExpiredTrustedDeliveryAudiencePromise = promised(renewExpiredTrustedDeliveryAudience)
 
 export function getTrustedDeliveryAudience(
   message: Memory | undefined,
@@ -743,11 +756,11 @@ export function evaluateOwnerExclusiveDisclosure(
   )
 }
 
-export async function revalidateOwnerExclusiveDisclosure(
+export effect function revalidateOwnerExclusiveDisclosure(
   runtime: IAgentRuntime,
   message: Memory,
   nowMs = Date.now(),
-): Promise<OwnerExclusiveDisclosureDecision> {
+): OwnerExclusiveDisclosureDecision!! {
   const record = getAudienceRecord(message)
   if (!record) {
     return decisionFromAudience(message, undefined, nowMs)
@@ -766,7 +779,7 @@ export async function revalidateOwnerExclusiveDisclosure(
     isRuntimeManagedInternalActor(runtime, message.entityId),
   )
   if (!initial.allowed && initial.reason === "expired_attestation") {
-    const renewal = await renewTrustedDeliveryAudience(runtime, message, nowMs)
+    const renewal = try renewTrustedDeliveryAudience(runtime, message, nowMs)
     if (renewal.renewed) {
       initial = decisionFromAudience(
         message,
@@ -789,44 +802,45 @@ export async function revalidateOwnerExclusiveDisclosure(
     }
   }
   if (!initial.allowed) return initial
+  const allowed = initial
 
-  try {
-    const [rawParticipants, canonicalOwnerEntityId] = await Promise.all([
-      runtime.getParticipantsForRoom(message.roomId),
+  return (effect {
+    const [rawParticipants, canonicalOwnerEntityId] = try.all [
+      foreign(() => runtime.getParticipantsForRoom(message.roomId)),
       resolveCanonicalOwnerIdForMessage(runtime, message),
-    ])
+    ]
 
-    const participants = await filterRuntimeInternalParticipants(
+    const participants = try filterRuntimeInternalParticipants(
       runtime,
       rawParticipants,
-      initial.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+      allowed.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
     )
-    const room = initial.audience.provenance === "canonical_room"
-      ? await runtime.getRoom(message.roomId)
+    const room = allowed.audience.provenance === "canonical_room"
+      ? try foreign(() => runtime.getRoom(message.roomId))
       : undefined
     if (
-      (initial.audience.provenance === "canonical_room"
-        && classifyCanonicalRoom(room?.type) !== initial.audience.kind)
-      || canonicalOwnerEntityId !== initial.audience.canonicalOwnerEntityId
-      || !sameParticipants(participants, initial.audience.participantEntityIds)
+      (allowed.audience.provenance === "canonical_room"
+        && classifyCanonicalRoom(room?.type) !== allowed.audience.kind)
+      || canonicalOwnerEntityId !== allowed.audience.canonicalOwnerEntityId
+      || !sameParticipants(participants, allowed.audience.participantEntityIds)
     ) {
       return {
         allowed: false,
         reason: "audience_changed",
-        audience: initial.audience,
-      }
+        audience: allowed.audience,
+      } satisfies OwnerExclusiveDisclosureDecision
     }
-    return initial
-  } catch (cause) {
+    return allowed
+  }) catch (failure): OwnerExclusiveDisclosureDecision => {
     runtime.reportError(
       "TrustedDeliveryAudience.revalidate",
       new ElizaError(
         "Could not revalidate the owner-private delivery audience.",
         {
           code: "DELIVERY_AUDIENCE_LOOKUP_FAILED",
-          cause,
+          cause: thrownValue(failure),
           context: {
-            attestationId: initial.audience.attestationId,
+            attestationId: allowed.audience.attestationId,
             roomId: message.roomId,
           },
         },
@@ -835,16 +849,17 @@ export async function revalidateOwnerExclusiveDisclosure(
     return {
       allowed: false,
       reason: "audience_lookup_failed",
-      audience: initial.audience,
+      audience: allowed.audience,
     }
   }
 }
+export const revalidateOwnerExclusiveDisclosurePromise = promised(revalidateOwnerExclusiveDisclosure)
 
-export async function authorizeOwnerExclusiveDisclosure(
+export effect function authorizeOwnerExclusiveDisclosure(
   runtime: IAgentRuntime,
   message: Memory,
-): Promise<OwnerExclusiveDisclosureDecision> {
-  const decision = await revalidateOwnerExclusiveDisclosure(runtime, message)
+) {
+  const decision = try revalidateOwnerExclusiveDisclosure(runtime, message)
   if (decision.allowed) {
     const record = getAudienceRecord(message)
     if (record) record.sensitiveUsed = true
@@ -853,6 +868,7 @@ export async function authorizeOwnerExclusiveDisclosure(
   }
   return decision
 }
+export const authorizeOwnerExclusiveDisclosurePromise = promised(authorizeOwnerExclusiveDisclosure)
 
 export function markOwnerExclusiveDisclosureUsed(message: Memory): void {
   const record = getAudienceRecord(message)

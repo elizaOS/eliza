@@ -1,5 +1,6 @@
-import { AsyncLocalStorage } from "node:async_hooks"
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/authorization.md, "Role gates combine exclusions, minimum rank and all required memberships"
 import { audienceAdmissionGateFailure } from "../access-control/audience-disclosure.vibe"
+import { Foreign, foreignSync, promised, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { checkSenderRole } from "../roles.vibe"
 import { disclosureGateFailure, getTrustedDeliveryAudience } from "../security/trusted-delivery-audience.vibe"
@@ -7,6 +8,7 @@ import type { Action } from "../types/components.vibe"
 import type { AgentContext, RoleGateRole } from "../types/contexts.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
+import { processEnv } from "../utils/environment.vibe"
 import { resolveActionRolePolicyRole } from "./action-role-policy.vibe"
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates.vibe"
 
@@ -40,30 +42,38 @@ export interface ActionGateRejection {
   reason: string
 }
 
-const requestPolicy = new AsyncLocalStorage<
-  (action: GateableAction, context: ActionGateContext) => string | undefined
->()
-export function withActionGatePolicy<T>(
-  policy: (
-    action: GateableAction,
-    context: ActionGateContext,
-  ) => string | undefined,
-  run: () => Promise<T>,
-): Promise<T> {
-  const inherited = requestPolicy.getStore()
-  return requestPolicy.run(
-    (action, context) => inherited?.(action, context) ?? policy(action, context),
-    run,
-  )
+module node {
+  import { AsyncLocalStorage } from "node:async_hooks"
+  import type { ActionGateContext, GateableAction } from "./action-gate.vibe"
+
+  type ActionGatePolicy = (action: GateableAction, context: ActionGateContext) => string | undefined
+
+  const requestPolicy = new AsyncLocalStorage<ActionGatePolicy>()
+
+  /** @throws {never} */
+  export function currentRequestPolicy(): ActionGatePolicy | undefined {
+    return requestPolicy.getStore()
+  }
+
+  /** @throws {never} */
+  export function withActionGatePolicy<T>(policy: ActionGatePolicy, run: () => Promise<T>): Promise<T> {
+    const inherited = requestPolicy.getStore()
+    return requestPolicy.run(
+      (action, context) => inherited?.(action, context) ?? policy(action, context),
+      run,
+    )
+  }
 }
+import { currentRequestPolicy, withActionGatePolicy } from node
+export { withActionGatePolicy }
 
 let cachedActionAllowlist:
   | { raw: string; names: ReadonlySet<string> }
   | undefined
 
-export function readActionAllowlist(
-  env: NodeJS.ProcessEnv = process.env,
-): ReadonlySet<string> | null {
+export effect function readActionAllowlist(
+  env: NodeJS.ProcessEnv = processEnv(),
+): (ReadonlySet<string> | null)!ElizaError {
   const raw = env.ELIZA_ACTION_ALLOWLIST
   if (raw === undefined) return null
 
@@ -73,15 +83,14 @@ export function readActionAllowlist(
     })
   }
   if (cachedActionAllowlist?.raw === raw) return cachedActionAllowlist.names
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch (error) {
-    throw new ElizaError("Failed to parse ELIZA_ACTION_ALLOWLIST", {
-      code: "INVALID_ACTION_ALLOWLIST",
-      cause: error,
-    })
-  }
+  const parsed: unknown = try Effect.try({
+    try: () => JSON.parse(raw) as unknown,
+    catch: (error) =>
+      new ElizaError("Failed to parse ELIZA_ACTION_ALLOWLIST", {
+        code: "INVALID_ACTION_ALLOWLIST",
+        cause: error,
+      }),
+  })
   if (
     !Array.isArray(parsed)
     || !parsed.every((name) => typeof name === "string" && name.length > 0)
@@ -91,14 +100,16 @@ export function readActionAllowlist(
       { code: "INVALID_ACTION_ALLOWLIST" },
     )
   }
-  cachedActionAllowlist = { raw, names: new Set(parsed) }
+  cachedActionAllowlist = { raw, names: new Set(parsed as string[]) }
   return cachedActionAllowlist.names
 }
 
-export function assertActionAllowlistMatchesActions(
+export const readActionAllowlistOrThrow = thrown(readActionAllowlist)
+
+export effect function assertActionAllowlistMatchesActions(
   actions: readonly Pick<Action, "name">[],
-): void {
-  const allowlist = readActionAllowlist()
+): void!ElizaError {
+  const allowlist = try readActionAllowlist()
   if (!allowlist) return
   const registered = new Set(actions.map((action) => action.name))
   const unmatched = [...allowlist].filter((name) => !registered.has(name))
@@ -110,10 +121,19 @@ export function assertActionAllowlistMatchesActions(
   }
 }
 
-export function actionGateRejection(
+export const assertActionAllowlistMatchesActionsOrThrow = thrown(assertActionAllowlistMatchesActions)
+
+function roleRejection(action: GateableAction): ActionGateRejection {
+  return {
+    kind: "role",
+    reason: `Action ${action.name} is not allowed for the current role`,
+  }
+}
+
+export effect function actionGateRejection(
   action: GateableAction,
   ctx: ActionGateContext,
-): ActionGateRejection | undefined {
+): (ActionGateRejection | undefined)!(ElizaError | Foreign) {
   if (
     !ctx.skipPrivateGate
     && !privateActionAllowedOnTurn(action, ctx.message)
@@ -138,7 +158,7 @@ export function actionGateRejection(
     }
   }
 
-  const allowlist = readActionAllowlist()
+  const allowlist = try readActionAllowlist()
   if (allowlist && !allowlist.has(action.name)) {
     return {
       kind: "context",
@@ -146,25 +166,19 @@ export function actionGateRejection(
     }
   }
 
-  const requestFailure = requestPolicy.getStore()?.(action, ctx)
+  const requestFailure = try foreignSync(() => currentRequestPolicy()?.(action, ctx))
   if (requestFailure) return { kind: "context", reason: requestFailure }
 
-  const policyRole = resolveActionRolePolicyRole(action)
+  const policyRole = try resolveActionRolePolicyRole(action)
   if (policyRole) {
     return satisfiesRoleGate(ctx.userRoles, { minRole: policyRole })
       ? undefined
-      : {
-        kind: "role",
-        reason: `Action ${action.name} is not allowed for the current role`,
-      }
+      : roleRejection(action)
   }
 
   const contextGateRole = action.contextGate?.roleGate
   if (!satisfiesRoleGate(ctx.userRoles, contextGateRole ?? action.roleGate)) {
-    return {
-      kind: "role",
-      reason: `Action ${action.name} is not allowed for the current role`,
-    }
+    return roleRejection(action)
   }
 
   const contextGate = action.contextGate ?? { contexts: action.contexts }
@@ -176,46 +190,44 @@ export function actionGateRejection(
   }
 
   if (contextGateRole && !satisfiesRoleGate(ctx.userRoles, action.roleGate)) {
-    return {
-      kind: "role",
-      reason: `Action ${action.name} is not allowed for the current role`,
-    }
+    return roleRejection(action)
   }
 
   return undefined
 }
 
-export function actionGateFailure(
+export const actionGateRejectionOrThrow = thrown(actionGateRejection)
+
+export effect function actionGateFailure(
   action: GateableAction,
   ctx: ActionGateContext,
-): string | undefined {
-  return actionGateRejection(action, ctx)?.reason
+): (string | undefined)!(ElizaError | Foreign) {
+  return (try actionGateRejection(action, ctx))?.reason
 }
 
-export function canActionRun(
+export const actionGateFailureOrThrow = thrown(actionGateFailure)
+
+export effect function canActionRun(
   action: GateableAction,
   ctx: ActionGateContext,
-): boolean {
-  return actionGateRejection(action, ctx) === undefined
+): boolean!(ElizaError | Foreign) {
+  return (try actionGateRejection(action, ctx)) === undefined
 }
 
-export async function resolveActionCallerRoles(
+export const canActionRunOrThrow = thrown(canActionRun)
+
+export effect function resolveActionCallerRoles(
   runtime: IAgentRuntime,
   message: Memory,
-): Promise<RoleGateRole[]> {
+): RoleGateRole[]!ElizaError {
   if (message.entityId === runtime.agentId) {
     return ["OWNER"]
   }
 
-  try {
-    const result = await checkSenderRole(runtime, message)
-    if (result?.role) {
-      return [result.role]
-    }
-  } catch (error) {
+  const result = checkSenderRole(runtime, message) catch effect (failure) => {
     throw new ElizaError("Failed to resolve the tool caller's role", {
       code: "ACTION_CALLER_ROLE_LOOKUP_FAILED",
-      cause: error,
+      cause: failure instanceof Foreign ? failure.cause : failure,
       context: {
         messageId: message.id,
         roomId: message.roomId,
@@ -223,19 +235,22 @@ export async function resolveActionCallerRoles(
       },
     })
   }
-
-  return ["GUEST"]
+  return result?.role ? [result.role] : ["GUEST"]
 }
 
-export function actionGateNeedsCallerRoles(action: GateableAction): boolean {
+export const resolveActionCallerRolesPromise = promised(resolveActionCallerRoles)
+
+export effect function actionGateNeedsCallerRoles(action: GateableAction): boolean!ElizaError {
   return Boolean(
     action.roleGate
       || action.contextGate?.roleGate
-      || resolveActionRolePolicyRole(action),
+      || (try resolveActionRolePolicyRole(action)),
   )
 }
 
-export async function resolveActionGateFailure(
+export const actionGateNeedsCallerRolesOrThrow = thrown(actionGateNeedsCallerRoles)
+
+export effect function resolveActionGateFailure(
   runtime: IAgentRuntime,
   action: GateableAction,
   ctx: Omit<ActionGateContext, "message" | "skipPrivateGate"> & {
@@ -243,7 +258,7 @@ export async function resolveActionGateFailure(
 
     evaluateContexts?: boolean
   },
-): Promise<string | undefined> {
+): (string | undefined)!(ElizaError | Foreign) {
   const gated: GateableAction = ctx.evaluateContexts === false
     ? {
       name: action.name,
@@ -256,13 +271,13 @@ export async function resolveActionGateFailure(
         : undefined,
     }
     : action
-  return actionGateFailure(gated, {
-    ...ctx,
-    userRoles: ctx.userRoles?.length || !actionGateNeedsCallerRoles(action)
-      ? ctx.userRoles
-      : await resolveActionCallerRoles(runtime, ctx.message),
-  })
+  const userRoles = ctx.userRoles?.length || !(try actionGateNeedsCallerRoles(action))
+    ? ctx.userRoles
+    : try resolveActionCallerRoles(runtime, ctx.message)
+  return try actionGateFailure(gated, { ...ctx, userRoles })
 }
+
+export const resolveActionGateFailurePromise = promised(resolveActionGateFailure)
 
 function privateActionAllowedOnTurn(
   action: Pick<Action, "private">,

@@ -1,3 +1,4 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
 import type { Plugin } from "../types/plugin.vibe"
 import { registerCoreIncomingMessageSecurityHook } from "./incoming-message-security.vibe"
 

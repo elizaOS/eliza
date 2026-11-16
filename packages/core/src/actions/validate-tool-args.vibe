@@ -1,4 +1,6 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import { toActionParameterValue } from "../action-parameter-value.vibe"
+import { asLegacy, Foreign, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Action } from "../types/components.vibe"
 import { isObjectRecord as isRecord } from "../utils/type-guards.vibe"
@@ -374,10 +376,10 @@ export function validateSchema(
   }
 }
 
-function normalizeModelParameters(
+effect function normalizeModelParameters(
   action: Action,
   args: Record<string, unknown>,
-): Record<string, unknown> {
+) {
   let normalized = args
   for (const parameter of action.parameters ?? []) {
     if (!Object.hasOwn(args, parameter.name)) continue
@@ -390,13 +392,9 @@ function normalizeModelParameters(
         && (schema.oneOf ?? []).every((branch) => branch.type === "object"))
 
     if (requiresObject && typeof suppliedValue === "string") {
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(suppliedValue)
-      } catch {
-      }
+      const parsed = Effect.try(() => JSON.parse(suppliedValue) as unknown) catch () => undefined
       if (isRecord(parsed)) {
-        const value = toActionParameterValue(parsed)
+        const value = try toActionParameterValue(parsed)
         if (normalized === args) normalized = { ...args }
         Object.defineProperty(normalized, parameter.name, {
           value,
@@ -459,24 +457,22 @@ function admitLegacyRequiredAlternatives(
   return { ...schema, required }
 }
 
-export function validateToolArgs(
+export effect function validateToolArgs(
   action: Action,
   args: unknown,
-): ValidateToolArgsResult {
-  let schema: ReturnType<typeof actionToJsonSchema>
-  try {
-    schema = actionToJsonSchema(action)
-  } catch (cause) {
-    throw new ElizaError(
+): ValidateToolArgsResult!(ElizaError | Foreign) {
+  const schema = try Effect.catchCause(asLegacy(Error, actionToJsonSchema(action), ElizaError), (failure) => {
+    const cause = Cause.squash(failure)
+    return Effect.fail(new ElizaError(
       `The definition for action ${action.name} is invalid.`,
       {
         code: "ACTION_DEFINITION_INVALID",
         severity: "fatal",
-        cause,
+        cause: cause instanceof Foreign ? cause.cause : cause,
         context: { actionName: action.name },
       },
-    )
-  }
+    ))
+  })
   const errors: string[] = []
 
   if (!isRecord(args)) {
@@ -487,7 +483,7 @@ export function validateToolArgs(
     }
   }
 
-  const normalizedArgs = normalizeModelParameters(action, args)
+  const normalizedArgs = try normalizeModelParameters(action, args)
   const admissionSchema = admitLegacyRequiredAlternatives(
     action,
     schema,
@@ -510,3 +506,5 @@ export function validateToolArgs(
     ...(invalidParameterNames.length > 0 ? { invalidParameterNames } : {}),
   }
 }
+
+export const validateToolArgsOrThrow = thrown(validateToolArgs)

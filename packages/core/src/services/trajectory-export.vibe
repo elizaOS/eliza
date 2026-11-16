@@ -1,7 +1,9 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { failingAs, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { textFromChatMessageContent } from "../runtime/system-prompt.vibe"
 import { asObjectRecord } from "../utils/type-guards.vibe"
-import { parseTrajectorySemanticStages } from "./trajectory-semantic-stage.vibe"
+import { mapPresent, parseTrajectorySemanticStages } from "./trajectory-semantic-stage.vibe"
 import type {
   ElizaNativeModelBoundary,
   ElizaNativeModelRequestRecord,
@@ -121,44 +123,41 @@ function csvEscape(value: unknown): string {
   return `"${text.replace(/"/g, "\"\"")}"`
 }
 
-function listTrajectorySteps(
+effect function listTrajectorySteps(
   trajectory: TrajectoryDetailRecord,
-): TrajectoryStepRecord[] {
+): TrajectoryStepRecord[]!ElizaError {
   if (Array.isArray(trajectory.steps)) {
-    return trajectory.steps.map(validateStepSemanticStages)
+    return try mapPresent(trajectory.steps, validateStepSemanticStages)
   }
-  if (
-    typeof trajectory.stepsJson !== "string"
-    || trajectory.stepsJson.trim().length === 0
-  ) {
+  const stepsJson = trajectory.stepsJson
+  if (typeof stepsJson !== "string" || stepsJson.trim().length === 0) {
     return []
   }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(trajectory.stepsJson) as unknown
-  } catch (error) {
-    throw new ElizaError("Trajectory steps contain malformed JSON", {
-      code: "TRAJECTORY_STEPS_INVALID",
-      cause: error,
-      context: { trajectoryId: trajectory.trajectoryId },
-    })
-  }
+  const parsed: unknown = try Effect.try({
+    try: () => JSON.parse(stepsJson),
+    catch: (error) =>
+      new ElizaError("Trajectory steps contain malformed JSON", {
+        code: "TRAJECTORY_STEPS_INVALID",
+        cause: error,
+        context: { trajectoryId: trajectory.trajectoryId },
+      }),
+  })
   if (!Array.isArray(parsed)) {
     throw new ElizaError("Trajectory steps must be an array", {
       code: "TRAJECTORY_STEPS_INVALID",
       context: { trajectoryId: trajectory.trajectoryId },
     })
   }
-  return parsed.map((step) => validateStepSemanticStages(step as TrajectoryStepRecord))
+  return try forEach(parsed as TrajectoryStepRecord[], validateStepSemanticStages)
 }
 
-function validateStepSemanticStages(
+effect function validateStepSemanticStages(
   step: TrajectoryStepRecord,
-): TrajectoryStepRecord {
+): TrajectoryStepRecord!ElizaError {
   if (step.semanticStages === undefined) return step
   return {
     ...step,
-    semanticStages: parseTrajectorySemanticStages(step.semanticStages),
+    semanticStages: try parseTrajectorySemanticStages(step.semanticStages),
   }
 }
 
@@ -168,17 +167,19 @@ function listStepLlmCalls(
   return Array.isArray(step.llmCalls) ? step.llmCalls : []
 }
 
-export function summarizeTrajectoryUsage(
+export effect function summarizeTrajectoryUsage(
   trajectory: TrajectoryDetailRecord,
-): TrajectoryUsageTotalsRecord {
-  return usageFromSteps(listTrajectorySteps(trajectory))
+): TrajectoryUsageTotalsRecord!ElizaError {
+  return usageFromSteps(try listTrajectorySteps(trajectory))
 }
+export const summarizeTrajectoryUsageOrThrow = thrown(summarizeTrajectoryUsage)
 
-export function summarizeTrajectoryCache(
+export effect function summarizeTrajectoryCache(
   trajectory: TrajectoryDetailRecord,
-): TrajectoryCacheStatsRecord {
-  return cacheFromSteps(listTrajectorySteps(trajectory))
+): TrajectoryCacheStatsRecord!ElizaError {
+  return cacheFromSteps(try listTrajectorySteps(trajectory))
 }
+export const summarizeTrajectoryCacheOrThrow = thrown(summarizeTrajectoryCache)
 
 function usageFromSteps(
   steps: readonly TrajectoryStepRecord[],
@@ -287,11 +288,12 @@ function resolveTrajectorySource(
   return toOptionalString(asObjectRecord(trajectory.metadata)?.source)
 }
 
-export function iterateTrajectoryLlmCalls(
+export effect function iterateTrajectoryLlmCalls(
   trajectory: TrajectoryDetailRecord,
-): TrajectoryFlattenedLlmCallRecord[] {
-  return flattenLlmCalls(trajectory, listTrajectorySteps(trajectory))
+): TrajectoryFlattenedLlmCallRecord[]!ElizaError {
+  return flattenLlmCalls(trajectory, try listTrajectorySteps(trajectory))
 }
+export const iterateTrajectoryLlmCallsOrThrow = thrown(iterateTrajectoryLlmCalls)
 
 function flattenLlmCalls(
   trajectory: TrajectoryDetailRecord,
@@ -525,15 +527,15 @@ function buildNativeResponse(
   return response
 }
 
-export function buildElizaNativeTrajectoryRows(
+export effect function buildElizaNativeTrajectoryRows(
   trajectories: readonly TrajectoryDetailRecord[],
   options: { includePrompts?: boolean } = {},
-): ElizaNativeTrajectoryRow[] {
+): ElizaNativeTrajectoryRow[]!ElizaError {
   const includePrompts = options.includePrompts !== false
   const out: ElizaNativeTrajectoryRow[] = []
 
   for (const trajectory of trajectories) {
-    const steps = listTrajectorySteps(trajectory)
+    const steps = try listTrajectorySteps(trajectory)
     const trajectoryTotals = trajectory.totals ?? usageFromSteps(steps)
     const cacheStats = cacheFromSteps(steps)
     for (const call of flattenLlmCalls(trajectory, steps)) {
@@ -599,6 +601,7 @@ export function buildElizaNativeTrajectoryRows(
 
   return out
 }
+export const buildElizaNativeTrajectoryRowsOrThrow = thrown(buildElizaNativeTrajectoryRows)
 
 function filterNumericMetrics(
   trajectory: TrajectoryDetailRecord,
@@ -617,13 +620,13 @@ function filterNumericMetrics(
   return out
 }
 
-function buildTrajectoryArtRows(
+effect function buildTrajectoryArtRows(
   trajectories: readonly TrajectoryDetailRecord[],
-  options: { includePrompts?: boolean } = {},
-): TrajectoryArtRow[] {
+  options: { includePrompts?: boolean },
+): TrajectoryArtRow[]!ElizaError {
   const includePrompts = options.includePrompts !== false
-  return trajectories.map((trajectory) => {
-    const steps = listTrajectorySteps(trajectory)
+  return try mapPresent(trajectories, effect (trajectory) => {
+    const steps = try listTrajectorySteps(trajectory)
     const messages: TrajectoryArtMessage[] = []
     let previousSystemPrompt: string | undefined
     for (const call of flattenLlmCalls(trajectory, steps)) {
@@ -687,18 +690,21 @@ function buildTrajectoryArtRows(
   })
 }
 
-export function resolveJsonShape(
-  format: TrajectoryExportOptions["format"],
+export error UnsupportedJsonShape { message: string }
+
+export effect function resolveJsonShape(
+  _format: TrajectoryExportOptions["format"],
   jsonShape: TrajectoryJsonShape | undefined,
-): TrajectoryJsonShape {
-  void format
+): TrajectoryJsonShape!UnsupportedJsonShape {
   if (jsonShape === undefined || jsonShape === ELIZA_NATIVE_TRAJECTORY_FORMAT) {
     return ELIZA_NATIVE_TRAJECTORY_FORMAT
   }
-  throw new Error(
-    `Unsupported trajectory JSON shape: ${String(jsonShape)}. Only ${ELIZA_NATIVE_TRAJECTORY_FORMAT} is supported.`,
-  )
+  throw new UnsupportedJsonShape({
+    message:
+      `Unsupported trajectory JSON shape: ${String(jsonShape)}. Only ${ELIZA_NATIVE_TRAJECTORY_FORMAT} is supported.`,
+  })
 }
+export const resolveJsonShapeOrThrow = thrown(failingAs(Error, resolveJsonShape))
 
 function serializeJsonLines(rows: readonly unknown[]): string {
   if (rows.length === 0) {
@@ -707,7 +713,7 @@ function serializeJsonLines(rows: readonly unknown[]): string {
   return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`
 }
 
-function buildCsvRows(trajectories: readonly TrajectoryDetailRecord[]): string {
+effect function buildCsvRows(trajectories: readonly TrajectoryDetailRecord[]): string!ElizaError {
   const rows = [
     [
       "trajectoryId",
@@ -730,7 +736,7 @@ function buildCsvRows(trajectories: readonly TrajectoryDetailRecord[]): string {
   ]
 
   for (const trajectory of trajectories) {
-    const totals = trajectory.totals ?? summarizeTrajectoryUsage(trajectory)
+    const totals = trajectory.totals ?? try summarizeTrajectoryUsage(trajectory)
     rows.push(
       [
         csvEscape(trajectory.trajectoryId),
@@ -756,36 +762,18 @@ function buildCsvRows(trajectories: readonly TrajectoryDetailRecord[]): string {
   return rows.join("\n")
 }
 
-export function serializeTrajectoryExport(
+export effect function serializeTrajectoryExport(
   trajectories: readonly TrajectoryDetailRecord[],
   options: TrajectoryExportOptions,
-): TrajectoryExportResult {
+): TrajectoryExportResult!(ElizaError | UnsupportedJsonShape) {
   const stamp = Date.now()
-
-  if (options.format === "json") {
-    resolveJsonShape(options.format, options.jsonShape)
-    return {
-      filename: `trajectories-${stamp}.eliza-native.json`,
-      data: JSON.stringify(
-        buildElizaNativeTrajectoryRows(trajectories, {
-          includePrompts: options.includePrompts,
-        }),
-        null,
-        2,
-      ),
-      mimeType: "application/json",
-    }
-  }
+  const rowOptions = { includePrompts: options.includePrompts }
 
   if (options.format === "jsonl") {
-    resolveJsonShape(options.format, options.jsonShape)
+    try resolveJsonShape(options.format, options.jsonShape)
     return {
       filename: `trajectories-${stamp}.eliza-native.jsonl`,
-      data: serializeJsonLines(
-        buildElizaNativeTrajectoryRows(trajectories, {
-          includePrompts: options.includePrompts,
-        }),
-      ),
+      data: serializeJsonLines(try buildElizaNativeTrajectoryRows(trajectories, rowOptions)),
       mimeType: "application/x-ndjson",
     }
   }
@@ -793,7 +781,7 @@ export function serializeTrajectoryExport(
   if (options.format === "csv") {
     return {
       filename: `trajectories-${stamp}.csv`,
-      data: buildCsvRows(trajectories),
+      data: try buildCsvRows(trajectories),
       mimeType: "text/csv",
     }
   }
@@ -801,24 +789,16 @@ export function serializeTrajectoryExport(
   if (options.format === "art") {
     return {
       filename: `trajectories-${stamp}.art.jsonl`,
-      data: serializeJsonLines(
-        buildTrajectoryArtRows(trajectories, {
-          includePrompts: options.includePrompts,
-        }),
-      ),
+      data: serializeJsonLines(try buildTrajectoryArtRows(trajectories, rowOptions)),
       mimeType: "application/x-ndjson",
     }
   }
 
+  if (options.format === "json") try resolveJsonShape(options.format, options.jsonShape)
   return {
     filename: `trajectories-${stamp}.eliza-native.json`,
-    data: JSON.stringify(
-      buildElizaNativeTrajectoryRows(trajectories, {
-        includePrompts: options.includePrompts,
-      }),
-      null,
-      2,
-    ),
+    data: JSON.stringify(try buildElizaNativeTrajectoryRows(trajectories, rowOptions), null, 2),
     mimeType: "application/json",
   }
 }
+export const serializeTrajectoryExportOrThrow = thrown(failingAs(Error, serializeTrajectoryExport, ElizaError))

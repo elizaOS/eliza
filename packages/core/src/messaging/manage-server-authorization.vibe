@@ -1,3 +1,5 @@
+// spec/core/messaging.md, "Story: Dispatch through a selected connector account"; spec/core/authorization.md, "Trusted ownership and deliberate grants determine resolved roles"
+import { foreign, promised, type Foreign } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { getVerifiedRelatedEntityIds, invalidateRelatedEntityIds } from "../identity-clusters.vibe"
 import { hasAtLeastRole, type RolesWorldMetadata, resolveEntityRole } from "../roles.vibe"
@@ -8,12 +10,12 @@ import type {
   MessageConnectorManageServerDestination,
 } from "../types/runtime.vibe"
 
-function deny(
+function denial(
   code: string,
   message: string,
   destination: MessageConnectorManageServerDestination,
-): never {
-  throw new ElizaError(message, {
+): ElizaError {
+  return new ElizaError(message, {
     code,
     context: {
       source: destination.source,
@@ -24,24 +26,24 @@ function deny(
   })
 }
 
-export async function authorizeManageServerDestination(
+export effect function authorizeManageServerDestination(
   runtime: IAgentRuntime,
   requesterEntityId: UUID,
   destination: MessageConnectorManageServerDestination,
-): Promise<MessageConnectorManageServerAuthorization> {
-  const world = await runtime.getWorld(destination.destinationWorldId)
+): MessageConnectorManageServerAuthorization!(ElizaError | Foreign) {
+  const world = try foreign(() => runtime.getWorld(destination.destinationWorldId))
   if (
     !world
     || world.agentId !== runtime.agentId
     || world.messageServerId !== destination.messageServerId
   ) {
-    deny(
+    throw denial(
       "MANAGE_SERVER_DESTINATION_UNBOUND",
       "The requested server is not bound to a durable world for this agent.",
       destination,
     )
   }
-  const serverRooms = (await runtime.getRooms(world.id)).filter(
+  const serverRooms = (try foreign(() => runtime.getRooms(world.id))).filter(
     (room) =>
       room.worldId === world.id
       && room.source === destination.source
@@ -49,7 +51,7 @@ export async function authorizeManageServerDestination(
       && room.messageServerId === destination.messageServerId,
   )
   if (serverRooms.length === 0) {
-    deny(
+    throw denial(
       "MANAGE_SERVER_DESTINATION_UNBOUND",
       "The requested server has no exact persisted room binding.",
       destination,
@@ -57,16 +59,15 @@ export async function authorizeManageServerDestination(
   }
 
   invalidateRelatedEntityIds(runtime, requesterEntityId)
-  const requesterEntityIds = await getVerifiedRelatedEntityIds(
-    runtime,
-    requesterEntityId,
-  )
-  const [requesterRoomLists, agentRoomIds] = await Promise.all([
-    Promise.all(
-      requesterEntityIds.map((entityId) => runtime.getRoomsForParticipant(entityId)),
+  const requesterEntityIds = try getVerifiedRelatedEntityIds(runtime, requesterEntityId)
+  const [requesterRoomLists, agentRoomIds] = try.all [
+    forEach(
+      requesterEntityIds,
+      (entityId) => foreign(() => runtime.getRoomsForParticipant(entityId)),
+      { concurrency: "unbounded" },
     ),
-    runtime.getRoomsForParticipant(runtime.agentId),
-  ])
+    foreign(() => runtime.getRoomsForParticipant(runtime.agentId)),
+  ]
   const agentRooms = new Set(agentRoomIds)
   const destinationRoomIds = new Set(serverRooms.map((room) => room.id))
 
@@ -79,7 +80,7 @@ export async function authorizeManageServerDestination(
       (roomId) => agentRooms.has(roomId) && destinationRoomIds.has(roomId),
     )
     if (sharedDestinationRoomIds.length === 0) continue
-    const role = await resolveEntityRole(
+    const role = try resolveEntityRole(
       runtime,
       world,
       world.metadata as RolesWorldMetadata | undefined,
@@ -95,9 +96,11 @@ export async function authorizeManageServerDestination(
     }
   }
 
-  deny(
+  throw denial(
     "MANAGE_SERVER_DESTINATION_NOT_AUTHORIZED",
     "The verified requester is not an ADMIN or OWNER member of the requested server world.",
     destination,
   )
 }
+
+export const authorizeManageServerDestinationPromise = promised(authorizeManageServerDestination)

@@ -1,3 +1,5 @@
+// spec/core/providers.md, "Story: Share provider work without sharing cancellation"
+import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   CAPABILITY_RISK_LEVELS,
@@ -74,8 +76,8 @@ type Ineligibility =
 function invalidSelectionInput(
   message: string,
   context: Record<string, unknown>,
-): never {
-  throw new ElizaError(message, {
+): ElizaError {
+  return new ElizaError(message, {
     code: "INVALID_ACCOUNT_SELECTION_INPUT",
     context,
     severity: "fatal",
@@ -86,15 +88,15 @@ function isUnitCostMicros(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0
 }
 
-function validateSelectionFacts(
+effect function validateSelectionFacts(
   accounts: readonly ConnectedAccount[],
   policy: AccountSelectionPolicy,
   signals: readonly AccountSelectionSignal[],
   accountIds: ReadonlySet<string>,
   signalsById: ReadonlyMap<string, AccountSelectionSignal>,
-): void {
+) {
   if (!CAPABILITY_RISK_LEVELS.includes(policy.maxRiskLevel)) {
-    invalidSelectionInput("Account selection policy maxRiskLevel is invalid.", {
+    throw invalidSelectionInput("Account selection policy maxRiskLevel is invalid.", {
       maxRiskLevel: policy.maxRiskLevel,
     })
   }
@@ -102,20 +104,20 @@ function validateSelectionFacts(
     policy.maxUnitCostMicros !== null
     && !isUnitCostMicros(policy.maxUnitCostMicros)
   ) {
-    invalidSelectionInput(
+    throw invalidSelectionInput(
       "Account selection policy maxUnitCostMicros must be a nonnegative safe integer.",
       { maxUnitCostMicros: policy.maxUnitCostMicros },
     )
   }
   for (const signal of signals) {
     if (!accountIds.has(signal.accountId)) {
-      invalidSelectionInput(
+      throw invalidSelectionInput(
         "Account selection signal references an unknown accountId.",
         { accountId: signal.accountId },
       )
     }
     if (!isUnitCostMicros(signal.unitCostMicros)) {
-      invalidSelectionInput(
+      throw invalidSelectionInput(
         "Account selection signal unitCostMicros must be a nonnegative safe integer.",
         { accountId: signal.accountId, unitCostMicros: signal.unitCostMicros },
       )
@@ -123,13 +125,13 @@ function validateSelectionFacts(
   }
   for (const account of accounts) {
     if (!CONNECTED_ACCOUNT_STATUSES.includes(account.status)) {
-      invalidSelectionInput("Connected account has an unknown status.", {
+      throw invalidSelectionInput("Connected account has an unknown status.", {
         accountId: account.accountId,
         status: account.status,
       })
     }
     if (!signalsById.has(account.accountId)) {
-      invalidSelectionInput(
+      throw invalidSelectionInput(
         "Every connected account requires a selection signal.",
         { accountId: account.accountId },
       )
@@ -138,7 +140,7 @@ function validateSelectionFacts(
       account.lastUsedAt !== null
       && Number.isNaN(Date.parse(account.lastUsedAt))
     ) {
-      invalidSelectionInput(
+      throw invalidSelectionInput(
         "Connected account lastUsedAt must be a parseable timestamp or null.",
         { accountId: account.accountId, lastUsedAt: account.lastUsedAt },
       )
@@ -147,7 +149,7 @@ function validateSelectionFacts(
       account.capabilities.map((entry) => entry.capabilityId),
     )
     if (capabilityIds.size !== account.capabilities.length) {
-      invalidSelectionInput(
+      throw invalidSelectionInput(
         "Connected account has a duplicate capability grant.",
         { accountId: account.accountId },
       )
@@ -277,26 +279,26 @@ function compareEligible(
   return a.account.accountId < b.account.accountId ? -1 : 1
 }
 
-export function selectConnectedAccount(
+export effect function selectConnectedAccount(
   intent: AccountSelectionIntent,
   accounts: readonly ConnectedAccount[],
   policy: AccountSelectionPolicy,
   signals: readonly AccountSelectionSignal[],
-): AccountSelectionResult {
+): AccountSelectionResult!ElizaError {
   if (intent.capabilityId.trim().length === 0) {
-    invalidSelectionInput(
+    throw invalidSelectionInput(
       "Account selection intent capabilityId must be non-empty.",
       {},
     )
   }
   if (!CAPABILITY_RISK_LEVELS.includes(intent.riskLevel)) {
-    invalidSelectionInput("Account selection intent riskLevel is invalid.", {
+    throw invalidSelectionInput("Account selection intent riskLevel is invalid.", {
       riskLevel: intent.riskLevel,
     })
   }
   const accountIds = new Set(accounts.map((account) => account.accountId))
   if (accountIds.size !== accounts.length) {
-    invalidSelectionInput(
+    throw invalidSelectionInput(
       "Connected accounts contain a duplicate accountId.",
       {},
     )
@@ -305,12 +307,12 @@ export function selectConnectedAccount(
     signals.map((signal) => [signal.accountId, signal]),
   )
   if (signalsById.size !== signals.length) {
-    invalidSelectionInput(
+    throw invalidSelectionInput(
       "Account selection signals contain a duplicate accountId.",
       {},
     )
   }
-  validateSelectionFacts(accounts, policy, signals, accountIds, signalsById)
+  try validateSelectionFacts(accounts, policy, signals, accountIds, signalsById)
 
   if (RISK_RANK[intent.riskLevel] > RISK_RANK[policy.maxRiskLevel]) {
     return {
@@ -425,3 +427,4 @@ export function selectConnectedAccount(
     },
   }
 }
+export const selectConnectedAccountOrThrow = thrown(selectConnectedAccount)

@@ -1,3 +1,5 @@
+// spec/core/hooks.md, "Each phase dispatch captures the current handler identities"; spec/core/hooks.md, "Mutators and serial readers complete before concurrent readers"; spec/core/hooks.md, "A captured hook dispatch eventually settles under fair handlers"; spec/core/concurrentHooks.md, "A call captures exactly the memo visible at its own start"
+import { asLegacy, foreign, Foreign, runDetached } from "../edge.vibe"
 import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.vibe"
 import { sanitizeOutboundText } from "../security/outbound-sanitize.vibe"
 import { EventType } from "../types/events.vibe"
@@ -15,6 +17,7 @@ import type {
   PipelineHookSpec,
   ResolvedPipelineHook,
 } from "../types/pipeline-hooks.vibe"
+import type { UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { isUnavailableLocalModel, TEXT_GENERATION_MODEL_KEYS } from "./model-policy.vibe"
 
@@ -44,6 +47,204 @@ function skipFlagMetadata(ctx: PipelineHookContext): unknown {
     return ctx.memory.content.metadata
   }
   return "message" in ctx ? ctx.message?.content.metadata : undefined
+}
+
+error PipelinePhaseMismatch { message: string }
+error UnknownPipelinePhase { message: string }
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function elapsedMs(startedAt: bigint, endedAt: bigint): number {
+  return Math.round(Number(endedAt - startedAt) / 1_000_000)
+}
+
+effect function runPipelineHook(
+  runtime: IAgentRuntime,
+  entry: ResolvedPipelineHook,
+  phase: PipelineHookPhase,
+  ctx: PipelineHookContext,
+  logLabel: string,
+  pipelineHookTelemetry: boolean,
+  roomId: UUID,
+): void!Foreign {
+  const startedAt = try Clock.monotonicTimeNanos
+  const errorMessage = map(foreign(() => entry.handler(runtime, ctx)), (): string | undefined => undefined) catch effect (failure) => {
+    const error = failure.cause
+    if (
+      ctx.phase === "pre_model"
+      && ctx.provider === "eliza-local-inference"
+      && TEXT_GENERATION_MODEL_KEYS.includes(ctx.resolvedModelKey)
+      && isUnavailableLocalModel(error)
+    ) {
+      throw failure
+    }
+    const message = errorText(error)
+    runtime.logger.error(
+      {
+        src: "agent",
+        agentId: runtime.agentId,
+        hookId: entry.id,
+        phase: entry.phase,
+        error: message,
+      },
+      `${logLabel} threw; continuing`,
+    )
+    runtime.reportError("AgentRuntime.pipelineHook", error, {
+      hookId: entry.id,
+      phase: entry.phase,
+    })
+    return message
+  }
+  const durationMs = elapsedMs(startedAt, try Clock.monotonicTimeNanos)
+  const slow = durationMs >= PIPELINE_HOOK_WARN_MS
+  const fields = {
+    src: "pipeline_hook" as const,
+    agentId: runtime.agentId,
+    hookId: entry.id,
+    phase,
+    roomId,
+    durationMs,
+  }
+  if (pipelineHookTelemetry && durationMs >= PIPELINE_HOOK_DEBUG_LOG_MS) {
+    runtime.logger.debug(fields, "Pipeline hook timing")
+  }
+  if (slow) {
+    runtime.logger.warn(
+      fields,
+      `PIPELINE HOOK SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+    )
+  }
+  if (durationMs >= PIPELINE_HOOK_ERROR_LOG_MS) {
+    runtime.logger.error(
+      fields,
+      `PIPELINE HOOK VERY SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+    )
+  }
+  if (!pipelineHookTelemetry) {
+    return
+  }
+  foreign(() =>
+    runtime.emitEvent(EventType.PIPELINE_HOOK_METRIC, {
+      runtime,
+      source: "runtime",
+      phase,
+      hookId: entry.id,
+      durationMs,
+      roomId,
+      slow,
+      ...(errorMessage !== undefined ? { error: errorMessage } : {}),
+    })
+  ) catch ({ cause: metricError }) => {
+    runtime.logger.debug(
+      {
+        src: "pipeline_hook",
+        agentId: runtime.agentId,
+        hookId: entry.id,
+        phase,
+        error: errorText(metricError),
+      },
+      "PIPELINE_HOOK_METRIC listener failed",
+    )
+    runtime.reportError(
+      "AgentRuntime.pipelineHookMetric",
+      metricError,
+      {
+        hookId: entry.id,
+        phase,
+      },
+    )
+  }
+}
+
+effect function invokeHooks(
+  runtime: IAgentRuntime,
+  hooks: readonly ResolvedPipelineHook[],
+  phase: PipelineHookPhase,
+  ctx: PipelineHookContext,
+  logLabel: string,
+  pipelineHookTelemetry: boolean,
+): void!Foreign {
+  if (hooks.length === 0) return
+  const roomId = pipelineHookMetricRoomId(ctx)
+  const run = (entry: ResolvedPipelineHook) =>
+    runPipelineHook(runtime, entry, phase, ctx, logLabel, pipelineHookTelemetry, roomId)
+  const runTogether = effect (group: readonly ResolvedPipelineHook[]): void!Foreign => {
+    const fibers = try forEach(group, (entry) => forkDetach(run(entry), { startImmediately: true }))
+    for concurrent (const fiber of fibers) {
+      try Fiber.join(fiber)
+    }
+  }
+  if (
+    phase === "parallel_with_should_respond"
+    || phase === "model_stream_chunk"
+  ) {
+    try runTogether(hooks)
+    return
+  }
+  for (const entry of hooks.filter((h) => h.mutatesPrimary)) {
+    try run(entry)
+  }
+  for (const entry of hooks.filter((h) => !h.mutatesPrimary && h.schedule === "serial")) {
+    try run(entry)
+  }
+  try runTogether(hooks.filter((h) => !h.mutatesPrimary && h.schedule === "concurrent"))
+}
+
+effect function applyHooks(
+  runtime: IAgentRuntime,
+  hooks: RuntimePipelineHooks,
+  phase: PipelineHookPhase,
+  ctx: PipelineHookContext,
+  pipelineHookTelemetry: boolean | undefined,
+) {
+  if (ctx.phase !== phase) {
+    throw new PipelinePhaseMismatch({
+      message: `applyPipelineHooks: phase mismatch (expected ${phase}, ctx.phase=${ctx.phase})`,
+    })
+  }
+
+  const hookTelemetry = pipelineHookTelemetry ?? phase !== "model_stream_chunk"
+  if (!Object.hasOwn(PIPELINE_HOOK_LOG_LABELS, phase)) {
+    throw new UnknownPipelinePhase({ message: `Unknown pipeline hook phase: ${String(phase)}` })
+  }
+  const phaseHooks = hooks.hooksForPhase(phase)
+  if (phaseHooks.length > 0) {
+    const skipFlag = PIPELINE_HOOK_SKIP_FLAGS[phase]
+    if (skipFlag) {
+      const metadata = skipFlagMetadata(ctx)
+      if (
+        typeof metadata === "object"
+        && metadata !== null
+        && (metadata as Record<string, unknown>)[skipFlag] === true
+      ) {
+        return
+      }
+    }
+    const messageId = ctx.phase === "incoming_before_compose" ? ctx.message.id : undefined
+    try invokeHooks(
+      runtime,
+      phaseHooks,
+      phase,
+      ctx,
+      PIPELINE_HOOK_LOG_LABELS[phase],
+      hookTelemetry,
+    )
+    if (messageId) {
+      runtime.stateCache.delete(messageId)
+      runtime.stateCache.delete(`${messageId}_action_results`)
+    }
+  }
+  if (ctx.phase === "outgoing_before_deliver") {
+    ctx.content.text = guardOutboundEnvelopeText(
+      runtime,
+      runtime.redactSecrets(
+        try sanitizeOutboundText(String(ctx.content.text ?? "")),
+      ),
+      "outgoing_before_deliver",
+    )
+  }
 }
 
 export class RuntimePipelineHooks {
@@ -80,136 +281,13 @@ export class RuntimePipelineHooks {
     this.pipelineHookEntries.push(entry)
   }
 
-  async invokePipelineHooks(
+  invokePipelineHooks(
     phase: PipelineHookPhase,
     ctx: PipelineHookContext,
     logLabel: string,
     pipelineHookTelemetry = true,
   ): Promise<void> {
-    const hooks = this.hooksForPhase(phase)
-    if (!hooks.length) {
-      return
-    }
-
-    const roomId = pipelineHookMetricRoomId(ctx)
-
-    const runOne = async (entry: ResolvedPipelineHook) => {
-      const t0 = performance.now()
-      let errorMessage: string | undefined
-      try {
-        await entry.handler(this.runtime, ctx)
-      } catch (error) {
-        if (
-          ctx.phase === "pre_model"
-          && ctx.provider === "eliza-local-inference"
-          && TEXT_GENERATION_MODEL_KEYS.includes(ctx.resolvedModelKey)
-          && isUnavailableLocalModel(error)
-        ) {
-          throw error
-        }
-
-        errorMessage = error instanceof Error ? error.message : String(error)
-        this.runtime.logger.error(
-          {
-            src: "agent",
-            agentId: this.runtime.agentId,
-            hookId: entry.id,
-            phase: entry.phase,
-            error: errorMessage,
-          },
-          `${logLabel} threw; continuing`,
-        )
-        this.runtime.reportError("AgentRuntime.pipelineHook", error, {
-          hookId: entry.id,
-          phase: entry.phase,
-        })
-      }
-      const durationMs = Math.round(performance.now() - t0)
-      const slow = durationMs >= PIPELINE_HOOK_WARN_MS
-      const fields = {
-        src: "pipeline_hook" as const,
-        agentId: this.runtime.agentId,
-        hookId: entry.id,
-        phase,
-        roomId,
-        durationMs,
-      }
-      if (pipelineHookTelemetry && durationMs >= PIPELINE_HOOK_DEBUG_LOG_MS) {
-        this.runtime.logger.debug(fields, "Pipeline hook timing")
-      }
-      if (slow) {
-        this.runtime.logger.warn(
-          fields,
-          `PIPELINE HOOK SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
-        )
-      }
-      if (durationMs >= PIPELINE_HOOK_ERROR_LOG_MS) {
-        this.runtime.logger.error(
-          fields,
-          `PIPELINE HOOK VERY SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
-        )
-      }
-      if (!pipelineHookTelemetry) {
-        return
-      }
-      try {
-        await this.runtime.emitEvent(EventType.PIPELINE_HOOK_METRIC, {
-          runtime: this.runtime,
-          source: "runtime",
-          phase,
-          hookId: entry.id,
-          durationMs,
-          roomId,
-          slow,
-          ...(errorMessage !== undefined ? { error: errorMessage } : {}),
-        })
-      } catch (metricError) {
-        this.runtime.logger.debug(
-          {
-            src: "pipeline_hook",
-            agentId: this.runtime.agentId,
-            hookId: entry.id,
-            phase,
-            error: metricError instanceof Error
-              ? metricError.message
-              : String(metricError),
-          },
-          "PIPELINE_HOOK_METRIC listener failed",
-        )
-        this.runtime.reportError(
-          "AgentRuntime.pipelineHookMetric",
-          metricError,
-          {
-            hookId: entry.id,
-            phase,
-          },
-        )
-      }
-    }
-
-    if (
-      phase === "parallel_with_should_respond"
-      || phase === "model_stream_chunk"
-    ) {
-      await Promise.all(hooks.map(runOne))
-      return
-    }
-
-    const mutators = hooks.filter((h) => h.mutatesPrimary)
-    const serialReaders = hooks.filter(
-      (h) => !h.mutatesPrimary && h.schedule === "serial",
-    )
-    const concurrentReaders = hooks.filter(
-      (h) => !h.mutatesPrimary && h.schedule === "concurrent",
-    )
-
-    for (const h of mutators) {
-      await runOne(h)
-    }
-    for (const h of serialReaders) {
-      await runOne(h)
-    }
-    await Promise.all(concurrentReaders.map(runOne))
+    return runDetached(invokeHooks(this.runtime, this.hooksForPhase(phase), phase, ctx, logLabel, pipelineHookTelemetry))
   }
 
   registerPipelineHook(spec: PipelineHookSpec): void {
@@ -230,54 +308,11 @@ export class RuntimePipelineHooks {
     }
   }
 
-  async applyPipelineHooks(
+  applyPipelineHooks(
     phase: PipelineHookPhase,
     ctx: PipelineHookContext,
     pipelineHookTelemetry?: boolean,
   ): Promise<void> {
-    if (ctx.phase !== phase) {
-      throw new Error(
-        `applyPipelineHooks: phase mismatch (expected ${phase}, ctx.phase=${ctx.phase})`,
-      )
-    }
-
-    const hookTelemetry = pipelineHookTelemetry ?? phase !== "model_stream_chunk"
-    if (!Object.hasOwn(PIPELINE_HOOK_LOG_LABELS, phase)) {
-      throw new Error(`Unknown pipeline hook phase: ${String(phase)}`)
-    }
-    const hasHooks = this.hooksForPhase(phase).length > 0
-    if (hasHooks) {
-      const skipFlag = PIPELINE_HOOK_SKIP_FLAGS[phase]
-      if (skipFlag) {
-        const metadata = skipFlagMetadata(ctx)
-        if (
-          typeof metadata === "object"
-          && metadata !== null
-          && (metadata as Record<string, unknown>)[skipFlag] === true
-        ) {
-          return
-        }
-      }
-      const messageId = ctx.phase === "incoming_before_compose" ? ctx.message.id : undefined
-      await this.invokePipelineHooks(
-        phase,
-        ctx,
-        PIPELINE_HOOK_LOG_LABELS[phase],
-        hookTelemetry,
-      )
-      if (messageId) {
-        this.runtime.stateCache.delete(messageId)
-        this.runtime.stateCache.delete(`${messageId}_action_results`)
-      }
-    }
-    if (ctx.phase === "outgoing_before_deliver") {
-      ctx.content.text = guardOutboundEnvelopeText(
-        this.runtime,
-        this.runtime.redactSecrets(
-          sanitizeOutboundText(String(ctx.content.text ?? "")),
-        ),
-        "outgoing_before_deliver",
-      )
-    }
+    return runDetached(asLegacy(Error, applyHooks(this.runtime, this, phase, ctx, pipelineHookTelemetry)))
   }
 }

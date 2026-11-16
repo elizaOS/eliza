@@ -1,11 +1,14 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { failingAs, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
-import { type ContentReference, isContentReference, isReadView } from "../types/content.vibe"
+import { type ContentReference, type InvalidContentContract, isContentReference, isReadView } from "../types/content.vibe"
 import {
   COMPACTION_CONTENT_MANIFEST_MAX_RANGES_PER_REFERENCE,
   COMPACTION_CONTENT_MANIFEST_SCHEMA_VERSION,
   type CompactionContentEntry,
   type CompactionContentManifest,
   type CompactionContentRange,
+  type InvalidContentManifest,
   validateCompactionContentManifest,
 } from "../types/content-manifest.vibe"
 import type { PlannerTrajectory } from "./planner-types.vibe"
@@ -14,10 +17,12 @@ export interface DeriveCompactionContentManifestsOptions {
   lastUsedAt: string
 }
 
-function canonicalTimestamp(value: string, label: string): string {
+export error InvalidTimestamp { message: string }
+
+effect function canonicalTimestamp(value: string, label: string): string!InvalidTimestamp {
   const epoch = Date.parse(value)
   if (!Number.isFinite(epoch) || new Date(epoch).toISOString() !== value) {
-    throw new TypeError(`${label} must be an ISO-8601 UTC timestamp`)
+    throw new InvalidTimestamp({ message: `${label} must be an ISO-8601 UTC timestamp` })
   }
   return value
 }
@@ -30,20 +35,20 @@ function rangeKey(range: CompactionContentRange): string {
   return `${range.unit}:${range.start}:${range.end}`
 }
 
-function collectRestartSafeContentEntries(
+effect function collectRestartSafeContentEntries(
   trajectory: Pick<PlannerTrajectory, "steps" | "archivedSteps">,
   lastUsedAt: string,
-): CompactionContentEntry[] {
+): CompactionContentEntry[]!ElizaError {
   const entries = new Map<
     string,
     CompactionContentEntry & { rangeKeys: Set<string> }
   >()
 
-  const addReference = (
+  const addReference = effect (
     reference: ContentReference,
     reason: string,
     range?: CompactionContentRange,
-  ) => {
+  ): void!ElizaError => {
     if (reference.resumability !== "restart-safe") return
     const key = referenceKey(reference)
     let entry = entries.get(key)
@@ -87,14 +92,14 @@ function collectRestartSafeContentEntries(
     entry.rangesUsed.push(range)
   }
 
-  const visit = (root: unknown, reason: string) => {
+  const visit = effect (root: unknown, reason: string): void!ElizaError => {
     const pending: unknown[] = [root]
     const visited = new WeakSet<object>()
     while (pending.length > 0) {
       const current = pending.pop()
       if (!current) continue
       if (isReadView(current)) {
-        addReference(current.reference, reason, {
+        try addReference(current.reference, reason, {
           unit: current.slice.range.unit,
           start: current.slice.range.start,
           end: current.slice.range.end,
@@ -102,7 +107,7 @@ function collectRestartSafeContentEntries(
         continue
       }
       if (isContentReference(current)) {
-        addReference(current, reason)
+        try addReference(current, reason)
         continue
       }
       if (current === null || typeof current !== "object") {
@@ -123,9 +128,9 @@ function collectRestartSafeContentEntries(
   for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
     if (!step.result) continue
     const reason = `tool:${step.toolCall?.name ?? "unknown"}`
-    if (step.result.data !== undefined) visit(step.result.data, reason)
+    if (step.result.data !== undefined) try visit(step.result.data, reason)
     if (step.result.promptData !== undefined) {
-      visit(step.result.promptData, reason)
+      try visit(step.result.promptData, reason)
     }
   }
   return Array.from(entries.values(), ({ rangeKeys: _rangeKeys, ...entry }) => {
@@ -145,14 +150,12 @@ function manifestFor(contentRefs: CompactionContentEntry[]) {
   }
 }
 
-export function deriveCompactionContentManifests(
+export effect function deriveCompactionContentManifests(
   trajectory: Pick<PlannerTrajectory, "steps" | "archivedSteps">,
   options: DeriveCompactionContentManifestsOptions,
-): CompactionContentManifest[] {
-  const entries = collectRestartSafeContentEntries(
-    trajectory,
-    canonicalTimestamp(options.lastUsedAt, "lastUsedAt"),
-  ).flatMap((entry) => {
+): CompactionContentManifest[]!(ElizaError | InvalidTimestamp | InvalidContentManifest | InvalidContentContract) {
+  const lastUsedAt = try canonicalTimestamp(options.lastUsedAt, "lastUsedAt")
+  const entries = (try collectRestartSafeContentEntries(trajectory, lastUsedAt)).flatMap((entry) => {
     if (entry.rangesUsed.length === 0) return [entry]
     const chunks: CompactionContentEntry[] = []
     for (
@@ -174,18 +177,20 @@ export function deriveCompactionContentManifests(
   let current: CompactionContentEntry[] = []
   for (const entry of entries) {
     current.push(entry)
-    try {
-      validateCompactionContentManifest(manifestFor(current))
-    } catch (error) {
+    const fits = map(validateCompactionContentManifest(manifestFor(current)), () => true) catch effect (error) => {
       if (current.length === 1) throw error
-      current.pop()
-      manifests.push(validateCompactionContentManifest(manifestFor(current)))
-      current = [entry]
-      validateCompactionContentManifest(manifestFor(current))
+      return false
     }
+    if (fits) continue
+    current.pop()
+    manifests.push(try validateCompactionContentManifest(manifestFor(current)))
+    current = [entry]
+    try validateCompactionContentManifest(manifestFor(current))
   }
   if (current.length > 0) {
-    manifests.push(validateCompactionContentManifest(manifestFor(current)))
+    manifests.push(try validateCompactionContentManifest(manifestFor(current)))
   }
   return manifests
 }
+
+export const deriveCompactionContentManifestsOrThrow = thrown(failingAs(TypeError, deriveCompactionContentManifests, ElizaError))

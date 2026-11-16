@@ -1,3 +1,5 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { failingAs, foreignSync, promised, thrown } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 import logger from "./logger.vibe"
 import { unwrapWholeCodeFence } from "./markdown/code.vibe"
@@ -7,7 +9,7 @@ import type { Memory } from "./types/memory.vibe"
 import type { ModelRegistrationMetadata } from "./types/model.vibe"
 import { ContentType, type JsonValue } from "./types/primitives.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
-import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter.vibe"
+import { splitterSettings, splitWithSettings } from "./utils/recursive-character-text-splitter.vibe"
 import { formatTimestamp } from "./utils/time-format.vibe"
 import { toWellFormedUnicode, truncateWellFormed, utf8ByteLength } from "./utils/unicode.vibe"
 
@@ -323,20 +325,21 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
       return null
     }
 
-    const firstBlock = findFirstXmlBlock(text)
+    const firstBlock = scanXmlElements(text, true)?.[0]
     if (!firstBlock) {
       logger.warn({ src: "core:utils" }, "Could not find XML block in text")
       return null
     }
-    xmlContent = firstBlock.content
+    xmlContent = firstBlock.inner
   }
   if (!isUtf8WithinByteBudget(xmlContent, MAX_XML_BODY_BYTES)) return null
 
-  const children = extractDirectXmlChildren(xmlContent)
+  const children = scanXmlElements(xmlContent, false)
 
   if (children === null) return null
   const result: Record<string, unknown> = {}
-  for (const { key, value } of children) {
+  for (const { tag: key, inner } of children) {
+    const value = unescapeBasicXmlEntities(inner).trim()
     const listItemTag = XML_LIST_ITEM_TAGS[key]
     if (listItemTag) {
       const hasXmlTags = value && listItemTag.test(value)
@@ -375,52 +378,14 @@ function isUtf8WithinByteBudget(value: string, maxBytes: number): boolean {
   return value.length * 3 <= maxBytes || utf8ByteLength(value) <= maxBytes
 }
 
-function findFirstXmlBlock(
+function scanXmlElements(
   input: string,
-): { tag: string; content: string } | null {
+  firstOnly: boolean,
+): Array<{ tag: string; inner: string }> | null {
+  const elements: Array<{ tag: string; inner: string }> = []
   let i = 0
-  const length = input.length
   let visits = 0
-  while (i < length) {
-    visits += 1
-    if (visits > MAX_XML_CLOSE_VISITS) return null
-    const openIdx = input.indexOf("<", i)
-    if (openIdx === -1) break
-    if (
-      input.startsWith("</", openIdx)
-      || input.startsWith("<!--", openIdx)
-      || input.startsWith("<?", openIdx)
-    ) {
-      i = openIdx + 1
-      continue
-    }
-
-    const tagInfo = readXmlStartTag(input, openIdx)
-    if (!tagInfo || tagInfo.selfClosing) {
-      i = (tagInfo?.end ?? openIdx) + 1
-      continue
-    }
-
-    const closeIdx = findMatchingXmlClose(input, tagInfo.tag, tagInfo.end + 1)
-    if (closeIdx !== -1) {
-      return {
-        tag: tagInfo.tag,
-        content: input.slice(tagInfo.end + 1, closeIdx),
-      }
-    }
-    i = tagInfo.end + 1
-  }
-  return null
-}
-
-function extractDirectXmlChildren(
-  input: string,
-): Array<{ key: string; value: string }> | null {
-  const pairs: Array<{ key: string; value: string }> = []
-  let i = 0
-  const length = input.length
-  let visits = 0
-  while (i < length) {
+  while (i < input.length) {
     visits += 1
     if (visits > MAX_XML_CLOSE_VISITS) return null
     const openIdx = input.indexOf("<", i)
@@ -446,14 +411,11 @@ function extractDirectXmlChildren(
       continue
     }
 
-    const innerRaw = input.slice(tagInfo.end + 1, closeIdx)
-    pairs.push({
-      key: tagInfo.tag,
-      value: unescapeBasicXmlEntities(innerRaw).trim(),
-    })
+    elements.push({ tag: tagInfo.tag, inner: input.slice(tagInfo.end + 1, closeIdx) })
+    if (firstOnly) break
     i = closeIdx + `</${tagInfo.tag}>`.length
   }
-  return pairs
+  return elements
 }
 
 function isXmlTagNameCode(code: number): boolean {
@@ -578,20 +540,16 @@ export function truncateToCompleteSentence(
   return `${hardTruncated}...`
 }
 
-export async function splitChunks(
-  content: string,
-  chunkSize = 512,
-  bleed = 20,
-): Promise<string[]> {
-  const characterstoTokens = 3.5
-
-  const textSplitter = new RecursiveCharacterTextSplitter({
-    chunkSize: Math.floor(chunkSize * characterstoTokens),
-    chunkOverlap: Math.floor(bleed * characterstoTokens),
+export effect function splitChunks(content: string, chunkSize = 512, bleed = 20) {
+  const charactersPerToken = 3.5
+  const settings = try splitterSettings({
+    chunkSize: Math.floor(chunkSize * charactersPerToken),
+    chunkOverlap: Math.floor(bleed * charactersPerToken),
   })
-
-  return textSplitter.splitText(content)
+  return try splitWithSettings(settings, content)
 }
+
+export const splitChunksPromise = promised(failingAs(Error, splitChunks))
 
 export function parseBooleanFromText(
   value: string | boolean | undefined | null,
@@ -727,11 +685,11 @@ export interface ProviderModelRegistration {
   metadata?: ModelRegistrationMetadata
 }
 
-export function registerProviderModels(
+export effect function registerProviderModels(
   runtime: Pick<IAgentRuntime, "registerModel">,
   provider: string,
   registrations: readonly ProviderModelRegistration[],
-): void {
+) {
   const normalizedProvider = provider.trim()
   if (!normalizedProvider) {
     throw new ElizaError("Model provider name must not be blank", {
@@ -760,12 +718,16 @@ export function registerProviderModels(
     seen.add(modelType)
   }
   for (const registration of registrations) {
-    runtime.registerModel(
-      registration.modelType.trim(),
-      registration.handler,
-      normalizedProvider,
-      registration.priority,
-      registration.metadata,
+    try foreignSync(() =>
+      runtime.registerModel(
+        registration.modelType.trim(),
+        registration.handler,
+        normalizedProvider,
+        registration.priority,
+        registration.metadata,
+      )
     )
   }
 }
+
+export const registerProviderModelsOrThrow = thrown(registerProviderModels)

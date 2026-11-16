@@ -1,4 +1,7 @@
+// spec/core/authorization.md, "Story: Read only the authorized records"; spec/core/authorization.md, "Verified cross-world membership is intersected with the agent membership"
+import { buildAccessContext, buildCrossWorldConversationAccessContext } from "../access-context.vibe"
 import { normalizeConnectorSource } from "../connectors.vibe"
+import { asLegacy, failingAs, Foreign, foreign, promised } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   evaluateOwnerExclusiveDisclosure,
@@ -313,13 +316,11 @@ type CrossRoomRecallGate =
   | { allowed: true }
   | { allowed: false; reason: string }
 
-function assertNever(value: never): never {
-  throw new Error(`Unhandled owner-exclusive disclosure basis: ${value}`)
-}
+error UnhandledDisclosureBasis { message: string }
 
-function deniedCrossRoomGateReason(
+effect function deniedCrossRoomGateReason(
   decision: OwnerExclusiveDisclosureDecision,
-): string {
+) {
   if (!decision.allowed) {
     return `cross-room recall denied by trusted delivery audience: ${decision.reason}`
   }
@@ -328,18 +329,20 @@ function deniedCrossRoomGateReason(
       return "cross-room recall is allowed"
     case INTERNAL_AGENT_TURN_DISCLOSURE_BASIS:
       return "cross-room recall requires a verified owner-private destination, not an internal agent turn"
-    default:
-      return assertNever(decision.basis)
+    default: {
+      const basis: never = decision.basis
+      throw new UnhandledDisclosureBasis({ message: `Unhandled owner-exclusive disclosure basis: ${String(basis)}` })
+    }
   }
 }
 
-function crossRoomRecallGate(
+effect function crossRoomRecallGate(
   decision: OwnerExclusiveDisclosureDecision,
-): CrossRoomRecallGate {
+): CrossRoomRecallGate!UnhandledDisclosureBasis {
   return decision.allowed
       && decision.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
     ? { allowed: true }
-    : { allowed: false, reason: deniedCrossRoomGateReason(decision) }
+    : { allowed: false, reason: try deniedCrossRoomGateReason(decision) }
 }
 
 function evaluateCanonicalRecall(
@@ -468,27 +471,32 @@ function trustedDeliveryTurnDenial(
   }
 }
 
-async function resolveRequesterAccessContext(
-  runtime: IAgentRuntime,
-  deliveryMessage: Memory,
-  crossWorld: boolean,
-): Promise<
-  { ok: true; context: AccessContext } | { ok: false; cause: unknown }
-> {
-  try {
-    const { buildAccessContext, buildCrossWorldConversationAccessContext } = await import("../access-context.vibe")
-    const context = crossWorld
-      ? await buildCrossWorldConversationAccessContext(runtime, deliveryMessage)
-      : await buildAccessContext(runtime, deliveryMessage)
-    return { ok: true, context }
-  } catch (cause) {
-    return { ok: false, cause }
+function unavailableRecall(): CanonicalRecallResult {
+  return {
+    items: [],
+    withheld: [],
+    availability: "unavailable",
+    candidateWindowComplete: false,
   }
 }
 
-export async function searchCanonicalConversationMemories(
+effect function resolveRequesterAccessContext(
+  runtime: IAgentRuntime,
+  deliveryMessage: Memory,
+  crossWorld: boolean,
+) {
+  const built = crossWorld
+    ? buildCrossWorldConversationAccessContext(runtime, deliveryMessage)
+    : buildAccessContext(runtime, deliveryMessage)
+  return Effect.catchDefect(
+    Effect.map(asLegacy(TypeError, built, ElizaError), (context) => ({ ok: true as const, context })),
+    (defect) => Effect.succeed({ ok: false as const, cause: defect }),
+  ) catch (failure) => ({ ok: false as const, cause: failure instanceof Foreign ? failure.cause : failure })
+}
+
+export effect function searchCanonicalConversationMemories(
   input: CanonicalMemorySearchInput,
-): Promise<CanonicalRecallResult> {
+) {
   const { deliveryMessage } = input
   const destinationRoomId = deliveryMessage.roomId
   const deliveryTurnDenial = trustedDeliveryTurnDenial(
@@ -496,15 +504,10 @@ export async function searchCanonicalConversationMemories(
     deliveryMessage,
   )
   if (deliveryTurnDenial) {
-    return {
-      items: [],
-      withheld: [],
-      availability: "unavailable",
-      candidateWindowComplete: false,
-    }
+    return unavailableRecall()
   }
 
-  const revalidated = await revalidateOwnerExclusiveDisclosure(
+  const revalidated = try revalidateOwnerExclusiveDisclosure(
     input.runtime,
     deliveryMessage,
   )
@@ -513,16 +516,11 @@ export async function searchCanonicalConversationMemories(
     && (revalidated.reason === "audience_changed"
       || revalidated.reason === "audience_lookup_failed")
   ) {
-    return {
-      items: [],
-      withheld: [],
-      availability: "unavailable",
-      candidateWindowComplete: false,
-    }
+    return unavailableRecall()
   }
 
-  const crossRoomGate: CrossRoomRecallGate = crossRoomRecallGate(revalidated)
-  const requesterResult = await resolveRequesterAccessContext(
+  const crossRoomGate = try crossRoomRecallGate(revalidated)
+  const requesterResult = try resolveRequesterAccessContext(
     input.runtime,
     deliveryMessage,
     crossRoomGate.allowed,
@@ -539,12 +537,7 @@ export async function searchCanonicalConversationMemories(
         },
       ),
     )
-    return {
-      items: [],
-      withheld: [],
-      availability: "unavailable",
-      candidateWindowComplete: false,
-    }
+    return unavailableRecall()
   }
   const requester = requesterResult.context
 
@@ -567,15 +560,26 @@ export async function searchCanonicalConversationMemories(
   const normalizedSource = input.source
     ? normalizeConnectorSource(input.source)
     : undefined
+  const fromSource = (items: RecalledItem[]): RecalledItem[] =>
+    normalizedSource
+      ? items.filter((item) => item.provenance.source === normalizedSource)
+      : items
+  const evaluate = (candidates: Memory[]) =>
+    evaluateCanonicalRecall({
+      candidates,
+      agentId: input.runtime.agentId,
+      requester,
+      destinationRoomId,
+      crossRoomGate,
+    })
   let allCandidates: Memory[] = []
   const excludedRooms = new Set(input.excludeRoomIds)
   let candidateWindowComplete: boolean
   let roundCount = initialCount
 
   for (;;) {
-    let roundCandidates: Memory[]
-    try {
-      roundCandidates = await input.runtime.searchMemories({
+    const searched = Effect.map(foreign(() =>
+      input.runtime.searchMemories({
         embedding: input.embedding,
         ...(input.includeEmbedding === false
           ? { includeEmbedding: false }
@@ -591,22 +595,19 @@ export async function searchCanonicalConversationMemories(
         ...(roomConstrained ? { roomId: destinationRoomId } : {}),
         accessContext: requester,
       })
-    } catch (cause) {
+    ), (memories) => ({ ok: true as const, memories })) catch (failure) => ({ ok: false as const, cause: failure.cause })
+    if (!searched.ok) {
       input.runtime.reportError(
         "CanonicalRecall.adapter",
         new ElizaError("Canonical conversation recall adapter query failed.", {
           code: "CANONICAL_RECALL_ADAPTER_FAILED",
-          cause,
+          cause: searched.cause,
           context: { roomId: destinationRoomId },
         }),
       )
-      return {
-        items: [],
-        withheld: [],
-        availability: "unavailable",
-        candidateWindowComplete: false,
-      }
+      return unavailableRecall()
     }
+    const roundCandidates = searched.memories
 
     const roundIds = new Set<string>()
     const ranked: Memory[] = []
@@ -623,22 +624,8 @@ export async function searchCanonicalConversationMemories(
     }
     allCandidates = ranked
 
-    let hasEnoughEligible = false
-    if (explicitCount !== undefined) {
-      const evaluated = evaluateCanonicalRecall({
-        candidates: allCandidates,
-        agentId: input.runtime.agentId,
-        requester,
-        destinationRoomId,
-        crossRoomGate,
-      })
-      const accumulatedEligible = normalizedSource
-        ? evaluated.items.filter(
-          (item) => item.provenance.source === normalizedSource,
-        ).length
-        : evaluated.items.length
-      hasEnoughEligible = accumulatedEligible >= explicitCount
-    }
+    const hasEnoughEligible = explicitCount !== undefined
+      && fromSource(evaluate(allCandidates).items).length >= explicitCount
 
     const exhausted = roundCandidates.length < roundCount
     if (hasEnoughEligible || exhausted) {
@@ -658,19 +645,8 @@ export async function searchCanonicalConversationMemories(
     roundCount = Math.min(Number.MAX_SAFE_INTEGER, roundCount * 2)
   }
 
-  const evaluated = evaluateCanonicalRecall({
-    candidates: allCandidates,
-    agentId: input.runtime.agentId,
-    requester,
-    destinationRoomId,
-    crossRoomGate,
-  })
-
-  const eligibleItems = normalizedSource
-    ? evaluated.items.filter(
-      (item) => item.provenance.source === normalizedSource,
-    )
-    : evaluated.items
+  const evaluated = evaluate(allCandidates)
+  const eligibleItems = fromSource(evaluated.items)
   const items = explicitCount === undefined
     ? eligibleItems
     : selectBestRankedRecallItems(eligibleItems, explicitCount)
@@ -692,5 +668,8 @@ export async function searchCanonicalConversationMemories(
     withheld,
     availability,
     candidateWindowComplete,
-  }
+  } satisfies CanonicalRecallResult
 }
+export const searchCanonicalConversationMemoriesPromise = promised(
+  failingAs(Error, searchCanonicalConversationMemories, ElizaError),
+)

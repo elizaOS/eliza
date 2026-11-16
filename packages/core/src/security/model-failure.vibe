@@ -1,3 +1,4 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
 import { TrajectoryLimitExceeded } from "../runtime/limits.vibe"
 import { readActionFailureProvenance } from "../types/action-failure.vibe"
 import { ModelType } from "../types/model.vibe"

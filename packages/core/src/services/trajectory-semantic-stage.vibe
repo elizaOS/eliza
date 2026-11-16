@@ -1,3 +1,5 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { RecordedStage } from "../runtime/trajectory-recorder.vibe"
 import type { JsonValue } from "../types/primitives.vibe"
@@ -77,7 +79,7 @@ function hasOnlyKeys(
   return Object.keys(record).every((key) => allowed.has(key))
 }
 
-function requiredStageId(value: unknown, field: string): string {
+effect function requiredStageId(value: unknown, field: string): string!ElizaError {
   if (
     typeof value !== "string"
     || !value.trim()
@@ -89,10 +91,10 @@ function requiredStageId(value: unknown, field: string): string {
   return value
 }
 
-function requiredFiniteNumber(
+effect function requiredFiniteNumber(
   record: Record<string, unknown>,
   field: "startedAt" | "endedAt" | "latencyMs",
-): number {
+): number!ElizaError {
   const value = record[field]
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     throw invalidSemanticStage(field, value)
@@ -100,10 +102,10 @@ function requiredFiniteNumber(
   return value
 }
 
-function optionalNonNegativeInteger(
+effect function optionalNonNegativeInteger(
   record: Record<string, unknown>,
   field: "iteration" | "retryIdx",
-): number | undefined {
+): (number | undefined)!ElizaError {
   const value = record[field]
   if (value === undefined) return undefined
   if (!Number.isInteger(value) || (value as number) < 0) {
@@ -166,9 +168,9 @@ function createSemanticStageValidationState(): {
   }
 }
 
-export function recordedStageToSemanticStage(
+export effect function recordedStageToSemanticStage(
   stage: RecordedStage,
-): TrajectorySemanticStageRecord {
+): TrajectorySemanticStageRecord!ElizaError {
   const payload = sanitizeTrajectoryJsonObject({
     ...(stage.model ? { model: stage.model } : {}),
     ...(stage.tool ? { tool: stage.tool } : {}),
@@ -180,7 +182,7 @@ export function recordedStageToSemanticStage(
       : {}),
   })
   if (!payload) throw invalidSemanticStage("payload")
-  return parseTrajectorySemanticStage({
+  return try parseTrajectorySemanticStage({
     schemaVersion: TRAJECTORY_SEMANTIC_STAGE_SCHEMA_VERSION,
     stageId: stage.stageId,
     kind: stage.kind,
@@ -193,18 +195,32 @@ export function recordedStageToSemanticStage(
     payload,
   })
 }
+export const recordedStageToSemanticStageOrThrow = thrown(recordedStageToSemanticStage)
 
-export function recordedStagesToSemanticStages(
+export effect function recordedStagesToSemanticStages(
   stages: readonly RecordedStage[],
-): TrajectorySemanticStageRecord[] {
-  const converted = stages.map(recordedStageToSemanticStage)
-  assertUniqueStageIds(converted)
+): TrajectorySemanticStageRecord[]!ElizaError {
+  const converted = try mapPresent(stages, recordedStageToSemanticStage)
+  try assertUniqueStageIds(converted)
   return converted
 }
+export const recordedStagesToSemanticStagesOrThrow = thrown(recordedStagesToSemanticStages)
 
-function assertUniqueStageIds(
+export effect function mapPresent<A, B, E>(
+  items: readonly A[],
+  convert: (item: A) => B!E,
+): B[]!E {
+  const out: B[] = new Array(items.length)
+  for (let index = 0; index < out.length; index++) {
+    if (!(index in items)) continue
+    out[index] = try convert(items[index])
+  }
+  return out
+}
+
+effect function assertUniqueStageIds(
   stages: readonly TrajectorySemanticStageRecord[],
-): void {
+): void!ElizaError {
   const stageIds = new Set<string>()
   for (const stage of stages) {
     if (stageIds.has(stage.stageId)) {
@@ -214,19 +230,20 @@ function assertUniqueStageIds(
   }
 }
 
-export function parseTrajectorySemanticStage(
+export effect function parseTrajectorySemanticStage(
   value: unknown,
-): TrajectorySemanticStageRecord {
-  return parseTrajectorySemanticStageWithState(
+): TrajectorySemanticStageRecord!ElizaError {
+  return try parseTrajectorySemanticStageWithState(
     value,
     createSemanticStageValidationState(),
   )
 }
+export const parseTrajectorySemanticStageOrThrow = thrown(parseTrajectorySemanticStage)
 
-function parseTrajectorySemanticStageWithState(
+effect function parseTrajectorySemanticStageWithState(
   value: unknown,
   validationState: ReturnType<typeof createSemanticStageValidationState>,
-): TrajectorySemanticStageRecord {
+): TrajectorySemanticStageRecord!ElizaError {
   const record = asRecord(value)
   if (!record) throw invalidSemanticStage("stage")
   if (!hasOnlyKeys(record, SEMANTIC_STAGE_KEYS)) {
@@ -235,33 +252,26 @@ function parseTrajectorySemanticStageWithState(
   if (record.schemaVersion !== TRAJECTORY_SEMANTIC_STAGE_SCHEMA_VERSION) {
     throw invalidSemanticStage("schemaVersion", record.schemaVersion)
   }
-  const stageId = requiredStageId(record.stageId, "stageId")
+  const stageId = try requiredStageId(record.stageId, "stageId")
   if (
     typeof record.kind !== "string"
     || !RECORDED_STAGE_KIND_SET.has(record.kind)
   ) {
     throw invalidSemanticStage("kind", record.kind)
   }
-  const startedAt = requiredFiniteNumber(record, "startedAt")
-  const endedAt = requiredFiniteNumber(record, "endedAt")
-  const latencyMs = requiredFiniteNumber(record, "latencyMs")
+  const startedAt = try requiredFiniteNumber(record, "startedAt")
+  const endedAt = try requiredFiniteNumber(record, "endedAt")
+  const latencyMs = try requiredFiniteNumber(record, "latencyMs")
   if (endedAt < startedAt) throw invalidSemanticStage("endedAt", endedAt)
   if (latencyMs !== endedAt - startedAt) {
     throw invalidSemanticStage("latencyMs", latencyMs)
   }
-  const iteration = optionalNonNegativeInteger(record, "iteration")
-  const retryIdx = optionalNonNegativeInteger(record, "retryIdx")
-  const parentStageId = record.parentStageId
-  if (
-    parentStageId !== undefined
-    && (typeof parentStageId !== "string"
-      || !parentStageId.trim()
-      || parentStageId !== parentStageId.trim()
-      || parentStageId === stageId
-      || parentStageId.length > TRAJECTORY_SEMANTIC_STAGE_MAX_ID_CHARS)
-  ) {
-    throw invalidSemanticStage("parentStageId")
-  }
+  const iteration = try optionalNonNegativeInteger(record, "iteration")
+  const retryIdx = try optionalNonNegativeInteger(record, "retryIdx")
+  const parentStageId = record.parentStageId === undefined
+    ? undefined
+    : try requiredStageId(record.parentStageId, "parentStageId")
+  if (parentStageId === stageId) throw invalidSemanticStage("parentStageId")
   const payload = asRecord(record.payload)
   if (
     !payload
@@ -276,7 +286,7 @@ function parseTrajectorySemanticStageWithState(
     kind: record.kind as RecordedStageKind,
     ...(iteration !== undefined ? { iteration } : {}),
     ...(retryIdx !== undefined ? { retryIdx } : {}),
-    ...(typeof parentStageId === "string" ? { parentStageId } : {}),
+    ...(parentStageId !== undefined ? { parentStageId } : {}),
     startedAt,
     endedAt,
     latencyMs,
@@ -284,22 +294,21 @@ function parseTrajectorySemanticStageWithState(
   }
 }
 
-export function parseTrajectorySemanticStages(
+export effect function parseTrajectorySemanticStages(
   value: unknown,
-): TrajectorySemanticStageRecord[] | undefined {
+): (TrajectorySemanticStageRecord[] | undefined)!ElizaError {
   if (value === undefined) return undefined
   if (!Array.isArray(value)) throw invalidSemanticStage("semanticStages")
   const validationState = createSemanticStageValidationState()
   const stageIds = new Set<string>()
-  return value.map((stage) => {
-    const parsed = parseTrajectorySemanticStageWithState(
-      stage,
-      validationState,
-    )
-    if (stageIds.has(parsed.stageId)) {
-      throw invalidSemanticStage("stageId.duplicate", parsed.stageId)
-    }
-    stageIds.add(parsed.stageId)
-    return parsed
-  })
+  const parsed: TrajectorySemanticStageRecord[] = new Array(value.length)
+  for (let index = 0; index < parsed.length; index++) {
+    if (!(index in value)) continue
+    const stage = try parseTrajectorySemanticStageWithState(value[index], validationState)
+    if (stageIds.has(stage.stageId)) throw invalidSemanticStage("stageId.duplicate", stage.stageId)
+    stageIds.add(stage.stageId)
+    parsed[index] = stage
+  }
+  return parsed
 }
+export const parseTrajectorySemanticStagesOrThrow = thrown(parseTrajectorySemanticStages)

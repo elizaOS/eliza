@@ -1,9 +1,10 @@
-import { AsyncLocalStorage } from "node:async_hooks"
+// spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/ambientManagers.md, "A symbol slot is the single source of manager identity"; spec/core/trajectorySources.md, "Story: Apply the current registered training-exclusion policy"; spec/core/trajectorySources.md, "The latest copied metadata record determines exclusion"
 import { getAmbientSingleton } from "./ambient-context.vibe"
+import { asLegacy, Foreign, foreign, foreignSync, failingAs, promised, runDetached, thrown } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 import type { ContextEvent, ContextObject } from "./runtime/context-object.vibe"
 import { stringifyForDiagnostics } from "./runtime/json-output.vibe"
-import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution.vibe"
+import { sha256Hex, type TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution.vibe"
 import { composeToolDiagnosticRedactor, projectToolDiagnosticValue } from "./security/tool-diagnostics.vibe"
 import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker.vibe"
 import { sanitizeTrajectoryJsonObject } from "./services/trajectory-json.vibe"
@@ -18,8 +19,9 @@ import {
   type JsonValue,
   type Trajectory,
 } from "./types/trajectory-export.vibe"
-import { createHash } from "./utils/crypto-compat.vibe"
+import { AsyncContextManager } from "./utils/async-context-manager.vibe"
 import { isTruthyEnvValue } from "./utils/env.vibe"
+import { rawEnv } from "./utils/environment.vibe"
 import { isObjectRecord } from "./utils/type-guards.vibe"
 
 export type TrajectoryFinalStatus =
@@ -466,32 +468,24 @@ type TrajectoryContextWithLlmGuard = {
   [RECORD_LLM_CALL_DEPTH_KEY]?: number
 }
 
-function createLlmInputSubstringAttestationContextManager(): LlmInputSubstringAttestationContextManager {
-  const storage = new AsyncLocalStorage<
-    LlmInputSubstringAttestationStore | undefined
-  >()
-  return {
-    run<T>(
-      store: LlmInputSubstringAttestationStore | undefined,
-      fn: () => T | Promise<T>,
-    ): T | Promise<T> {
-      return storage.run(store, fn)
-    },
-    active(): LlmInputSubstringAttestationStore | undefined {
-      return storage.getStore()
-    },
+error LlmCallOutsideTrajectory { message: string }
+error UnrecordedLlmCall { message: string }
+
+module node {
+  /** @throws {never} */
+  export function monotonicNow(): number {
+    return typeof performance !== "undefined" && typeof performance.now === "function"
+      ? performance.now()
+      : Date.now()
   }
 }
+import { monotonicNow } from node
 
 function getLlmInputSubstringAttestationContextManager(): LlmInputSubstringAttestationContextManager {
   return getAmbientSingleton(
     LLM_INPUT_SUBSTRING_ATTESTATION_CONTEXT_MANAGER_KEY,
-    createLlmInputSubstringAttestationContextManager,
+    () => new AsyncContextManager<LlmInputSubstringAttestationStore | undefined>(),
   )
-}
-
-function sha256Text(value: string): string {
-  return createHash("sha256").update(value).digest("hex")
 }
 
 function countExactSubstring(haystack: string, needle: string): number {
@@ -562,7 +556,7 @@ function modelInputSurfaces(details: RecordLlmCallDetails): string[] {
   return surfaces
 }
 
-export function attestLlmInputSubstring(details: RecordLlmCallDetails): void {
+export effect function attestLlmInputSubstring(details: RecordLlmCallDetails) {
   const store = getLlmInputSubstringAttestationContextManager().active()
   if (!store) return
 
@@ -604,10 +598,12 @@ export function attestLlmInputSubstring(details: RecordLlmCallDetails): void {
   )
 }
 
-export async function runWithLlmInputSubstringAttestation<T>(
+export const attestLlmInputSubstringOrThrow = thrown(attestLlmInputSubstring)
+
+export effect function runWithLlmInputSubstringAttestation<T>(
   expectedText: string,
   fn: () => Promise<T> | T,
-): Promise<{ result: T; attestation: LlmInputSubstringAttestation }> {
+): { result: T; attestation: LlmInputSubstringAttestation }!(ElizaError | Foreign) {
   if (!expectedText) {
     throw new ElizaError(
       "LLM input attestation requires a non-empty expected instruction",
@@ -619,17 +615,15 @@ export async function runWithLlmInputSubstringAttestation<T>(
   }
   const store: LlmInputSubstringAttestationStore = {
     expectedText,
-    expectedSha256: sha256Text(expectedText),
+    expectedSha256: sha256Hex(expectedText),
     modelCallCount: 0,
     matchingCallCount: 0,
     totalOccurrences: 0,
     modelTypeCallCounts: new Map<string, number>(),
     seenLogicalCalls: new WeakSet<RecordLlmCallDetails>(),
   }
-  const result = await getLlmInputSubstringAttestationContextManager().run(
-    store,
-    fn,
-  )
+  const manager = getLlmInputSubstringAttestationContextManager()
+  const result: T = try foreign(() => manager.run(store, fn))
   if (store.modelCallCount === 0) {
     throw new ElizaError(
       "Request completed without reaching an attested LLM input boundary",
@@ -658,7 +652,7 @@ export async function runWithLlmInputSubstringAttestation<T>(
 }
 
 export function isTrajectoryStrictModeEnabled(): boolean {
-  return isTruthyEnvValue(process.env.ELIZA_TRAJECTORY_STRICT)
+  return isTruthyEnvValue(rawEnv("ELIZA_TRAJECTORY_STRICT"))
 }
 
 export function normalizeTrajectoryLlmPurpose(
@@ -713,81 +707,73 @@ function formatLlmGuardContext(context?: TrajectoryLlmGuardContext): string {
   return parts.length > 0 ? ` (${parts.join(", ")})` : ""
 }
 
-export function assertActiveTrajectoryForLlmCall(
-  context?: TrajectoryLlmGuardContext,
-): string | null {
+export effect function assertActiveTrajectoryForLlmCall(context?: TrajectoryLlmGuardContext) {
   const stepId = getActiveTrajectoryStepId()
   if (stepId || !isTrajectoryStrictModeEnabled()) {
     return stepId
   }
 
-  throw new Error(
-    `[trajectory-strict] LLM-like call outside trajectory${
-      formatLlmGuardContext(
-        context,
-      )
+  throw new LlmCallOutsideTrajectory({
+    message: `[trajectory-strict] LLM-like call outside trajectory${
+      formatLlmGuardContext(context)
     }. Wrap raw SDK/fetch generation in recordLlmCall(runtime, details, fn), or start a trajectory with withStandaloneTrajectory(...). Embeddings and tokenizers are exempt.`,
-  )
+  })
 }
 
-function getRecordedLlmCallDepth(): number {
-  const ctx = getTrajectoryContext() as
-    | (TrajectoryContextWithLlmGuard & object)
-    | undefined
+export const assertActiveTrajectoryForLlmCallOrThrow = thrown(failingAs(Error, assertActiveTrajectoryForLlmCall))
+
+function guardedTrajectoryContext(): (TrajectoryContextWithLlmGuard & object) | undefined {
+  return getTrajectoryContext() as (TrajectoryContextWithLlmGuard & object) | undefined
+}
+
+function recordedLlmCallDepth(ctx: TrajectoryContextWithLlmGuard | undefined): number {
   const depth = ctx?.[RECORD_LLM_CALL_DEPTH_KEY]
   return typeof depth === "number" && Number.isFinite(depth)
     ? Math.max(0, depth)
     : 0
 }
 
-async function runInsideRecordedLlmCall<T>(
-  fn: () => Promise<T> | T,
-): Promise<T> {
-  const ctx = getTrajectoryContext() as
-    | (TrajectoryContextWithLlmGuard & object)
-    | undefined
+effect function runInsideRecordedLlmCall<T>(fn: () => Promise<T> | T): T!Foreign {
+  const ctx = guardedTrajectoryContext()
   if (!ctx) {
-    return fn()
+    return try foreign(() => fn())
   }
 
-  ctx[RECORD_LLM_CALL_DEPTH_KEY] = getRecordedLlmCallDepth() + 1
-  try {
-    return await fn()
-  } finally {
-    const nextDepth = getRecordedLlmCallDepth() - 1
-    if (nextDepth > 0) {
-      ctx[RECORD_LLM_CALL_DEPTH_KEY] = nextDepth
-    } else {
-      delete ctx[RECORD_LLM_CALL_DEPTH_KEY]
-    }
-  }
-}
-
-export function assertRecordedLlmCall(
-  context?: TrajectoryLlmGuardContext,
-): void {
-  assertActiveTrajectoryForLlmCall(context)
-  if (!isTrajectoryStrictModeEnabled() || getRecordedLlmCallDepth() > 0) {
-    return
-  }
-
-  throw new Error(
-    `[trajectory-strict] Raw LLM call is not wrapped by recordLlmCall${
-      formatLlmGuardContext(
-        context,
-      )
-    }.`,
+  ctx[RECORD_LLM_CALL_DEPTH_KEY] = recordedLlmCallDepth(ctx) + 1
+  return try ensuring(
+    foreign(() => fn()),
+    sync(() => {
+      const nextDepth = recordedLlmCallDepth(ctx) - 1
+      if (nextDepth > 0) {
+        ctx[RECORD_LLM_CALL_DEPTH_KEY] = nextDepth
+      } else {
+        delete ctx[RECORD_LLM_CALL_DEPTH_KEY]
+      }
+    }),
   )
 }
 
+export effect function assertRecordedLlmCall(context?: TrajectoryLlmGuardContext) {
+  try assertActiveTrajectoryForLlmCall(context)
+  if (!isTrajectoryStrictModeEnabled() || recordedLlmCallDepth(guardedTrajectoryContext()) > 0) {
+    return
+  }
+
+  throw new UnrecordedLlmCall({
+    message: `[trajectory-strict] Raw LLM call is not wrapped by recordLlmCall${formatLlmGuardContext(context)}.`,
+  })
+}
+
+export const assertRecordedLlmCallOrThrow = thrown(failingAs(Error, assertRecordedLlmCall))
+
 export type ModelCallRecordingState = { recorded: boolean }
 
-export async function runWithModelCallRecordingScope<T>(
+export effect function runWithModelCallRecordingScope<T>(
   fn: () => Promise<T> | T,
-): Promise<{ result: T; recordingState: ModelCallRecordingState }> {
+): { result: T; recordingState: ModelCallRecordingState }!Foreign {
   const storage = getModelCallRecordingStorage()
   const store: ModelCallRecordingState = { recorded: false }
-  const result = await storage.run(store, fn)
+  const result: T = try foreign(() => storage.run(store, fn))
   return { result, recordingState: store }
 }
 
@@ -795,21 +781,18 @@ export function runInModelCallRecordingScope<T>(
   recordingState: ModelCallRecordingState,
   fn: () => T | Promise<T>,
 ): T | Promise<T> {
-  const storage = getModelCallRecordingStorage()
-  return storage.run(recordingState, fn)
+  return getModelCallRecordingStorage().run(recordingState, fn)
 }
 
 export function markProviderRecordedCall(): void {
-  const storage = getModelCallRecordingStorage()
-  const store = storage.getStore()
+  const store = getModelCallRecordingStorage().getStore()
   if (store) {
     store.recorded = true
   }
 }
 
 export function isProviderRecordedCall(): boolean {
-  const storage = getModelCallRecordingStorage()
-  return storage.getStore()?.recorded === true
+  return getModelCallRecordingStorage().getStore()?.recorded === true
 }
 
 type ModelCallRecordingStorage = {
@@ -828,10 +811,10 @@ function getModelCallRecordingStorage(): ModelCallRecordingStorage {
 }
 
 function createModelCallRecordingStorage(): ModelCallRecordingStorage {
-  const storage = new AsyncLocalStorage<ModelCallRecordingState>()
+  const manager = new AsyncContextManager<ModelCallRecordingState>()
   return {
-    getStore: () => storage.getStore(),
-    run: (store, fn) => storage.run(store, fn),
+    getStore: () => manager.active(),
+    run: (store, fn) => manager.run(store, fn),
   }
 }
 
@@ -866,13 +849,22 @@ export function resolveTrajectoryLogger(
   return best
 }
 
+effect function isUsableTrajectoryLogger(
+  trajectoryLogger: TrajectoryLoggerLike,
+  required: ReadonlyArray<keyof TrajectoryLoggerLike>,
+) {
+  if (required.some((member) => typeof trajectoryLogger[member] !== "function")) return false
+  return typeof trajectoryLogger.isEnabled !== "function"
+    || Boolean(try foreignSync(() => trajectoryLogger.isEnabled?.()))
+}
+
 export function activateDeferredChildStep(): void {
   const context = getTrajectoryContext()
   const owner = context?.activateChildStep?.()
   if (context && owner) Object.assign(context, owner)
 }
 
-export async function ensureTaskTrajectory(): Promise<void> {
+export effect function ensureTaskTrajectory() {
   activateDeferredChildStep()
   const context = getTrajectoryContext()
   if (
@@ -882,163 +874,160 @@ export async function ensureTaskTrajectory(): Promise<void> {
   ) {
     return
   }
-  const owner = await context.activateTaskCapture()
+  const owner = try foreign(() => context.activateTaskCapture?.())
   if (owner) Object.assign(context, owner)
 }
 
-export async function withStandaloneTrajectory<T>(
+export const ensureTaskTrajectoryPromise = promised(ensureTaskTrajectory)
+
+type TrajectoryOwner = { trajectoryId: string; trajectoryStepId: string }
+
+function closingAfter<A, E, F>(body: A!E!, close: (completed: boolean) => void!F!): A!(E | F)! {
+  return uninterruptibleMask((restore) => effect {
+    const exit = try Effect.exit(restore(body))
+    try close(Exit.isSuccess(exit))
+    return try exit
+  })
+}
+
+export effect function withStandaloneTrajectory<T>(
   runtime: IAgentRuntime | null | undefined,
   options: StandaloneTrajectoryOptions,
   callback: () => Promise<T> | T,
-): Promise<T> {
+): T!Foreign {
   const activeStepId = getTrajectoryContext()?.trajectoryStepId
   if (
     !runtime
     || (typeof activeStepId === "string" && activeStepId.trim() !== "")
   ) {
-    return callback()
+    return try foreign(() => callback())
   }
 
-  const context = { ...getTrajectoryContext() }
-  const capture: { logger: TrajectoryLoggerLike | null } = { logger: null }
+  const context: TrajectoryContext = { ...getTrajectoryContext() }
+  let capturedLogger: TrajectoryLoggerLike | null = null
   let trajectoryId: string | undefined
-  let activation:
-    | Promise<{ trajectoryId: string; trajectoryStepId: string } | undefined>
-    | undefined
+  let activation: Promise<TrajectoryOwner | undefined> | undefined
   let closed = false
-  const initialize = async () => {
-    let trajectoryLogger: TrajectoryLoggerLike | null
-    try {
-      trajectoryLogger = resolveTrajectoryLogger(runtime)
-    } catch (error) {
-      runtime.reportError?.("StandaloneTrajectory.resolve", error, {
+  const initialize = effect {
+    const trajectoryLogger = foreignSync(() => resolveTrajectoryLogger(runtime)) catch (error) => {
+      runtime.reportError?.("StandaloneTrajectory.resolve", error.cause, {
         source: options.source,
         diagnosticOnly: true,
       })
-      return
+      return null
     }
     if (
       !trajectoryLogger
-      || typeof trajectoryLogger.startTrajectory !== "function"
-      || typeof trajectoryLogger.endTrajectory !== "function"
-      || (typeof trajectoryLogger.isEnabled === "function"
-        && !trajectoryLogger.isEnabled())
+      || !(try isUsableTrajectoryLogger(trajectoryLogger, ["startTrajectory", "endTrajectory"]))
     ) {
-      return
+      return undefined
     }
 
-    try {
-      trajectoryId = String(
-        await trajectoryLogger.startTrajectory(runtime.agentId, {
+    const startedId = effect {
+      const started = try foreign(() =>
+        trajectoryLogger.startTrajectory?.(runtime.agentId, {
           source: options.source,
           metadata: options.metadata,
-        }),
-      ).trim()
-    } catch (error) {
-      runtime.reportError("StandaloneTrajectory.start", error, {
+        })
+      )
+      return String(started).trim()
+    } catch (error) => {
+      runtime.reportError("StandaloneTrajectory.start", error.cause, {
         source: options.source,
         diagnosticOnly: true,
       })
-      return
+      return undefined
     }
-    if (!trajectoryId) {
-      return
+    trajectoryId = startedId
+    if (!startedId) {
+      return undefined
     }
 
-    let stepId = trajectoryId
+    let stepId = startedId
     if (typeof trajectoryLogger.startStep === "function") {
-      try {
-        stepId = String(
-          trajectoryLogger.startStep(trajectoryId, {
-            timestamp: Date.now(),
-          }),
-        ).trim() || trajectoryId
-      } catch (error) {
-        runtime.reportError("StandaloneTrajectory.startStep", error, {
-          trajectoryId,
+      stepId = foreignSync(() =>
+        String(trajectoryLogger.startStep?.(startedId, { timestamp: Date.now() })).trim() || startedId
+      ) catch (error) => {
+        runtime.reportError("StandaloneTrajectory.startStep", error.cause, {
+          trajectoryId: startedId,
           diagnosticOnly: true,
         })
+        return startedId
       }
     }
-    capture.logger = trajectoryLogger
-    const owner = { trajectoryId, trajectoryStepId: stepId }
+    capturedLogger = trajectoryLogger
+    const owner: TrajectoryOwner = { trajectoryId: startedId, trajectoryStepId: stepId }
     Object.assign(context, owner)
     return owner
   }
-  context.activateTaskCapture = () => {
+  const activateTaskCapture = () => {
     if (closed) return Promise.resolve(undefined)
-    activation ??= initialize()
+    activation ??= runDetached(initialize)
     return activation
   }
-  if (!options.deferUntilModelCall) await context.activateTaskCapture()
+  context.activateTaskCapture = activateTaskCapture
+  if (!options.deferUntilModelCall) try foreign(() => activateTaskCapture())
 
-  let completed = false
-  try {
-    const result = await runWithTrajectoryContext(context, () => callback())
-    completed = true
-    return result
-  } finally {
+  const close = effect function (completed: boolean) {
     closed = true
-
-    await activation
-    const trajectoryLogger = capture.logger
-    if (trajectoryId && trajectoryLogger) {
-      if (typeof trajectoryLogger.flushWriteQueue === "function") {
-        try {
-          await trajectoryLogger.flushWriteQueue(trajectoryId)
-        } catch (error) {
-          runtime.reportError("StandaloneTrajectory.flush", error, {
-            trajectoryId,
-            diagnosticOnly: true,
-          })
-        }
-      }
-      try {
-        await trajectoryLogger.endTrajectory?.(
-          trajectoryId,
-          completed
-            ? (options.successStatus ?? "completed")
-            : (options.errorStatus ?? "error"),
-        )
-      } catch (error) {
-        runtime.reportError("StandaloneTrajectory.end", error, {
-          trajectoryId,
+    const pending = activation
+    if (pending) try foreign(() => pending)
+    const trajectoryLogger = capturedLogger
+    const id = trajectoryId
+    if (!id || !trajectoryLogger) return
+    if (typeof trajectoryLogger.flushWriteQueue === "function") {
+      foreign(() => trajectoryLogger.flushWriteQueue?.(id)) catch (error) => {
+        runtime.reportError("StandaloneTrajectory.flush", error.cause, {
+          trajectoryId: id,
           diagnosticOnly: true,
         })
-        trajectoryLogger.releaseTrajectoryOwnership?.(trajectoryId)
       }
     }
+    foreign(() =>
+      trajectoryLogger.endTrajectory?.(
+        id,
+        completed ? (options.successStatus ?? "completed") : (options.errorStatus ?? "error"),
+      )
+    ) catch (error) => {
+      runtime.reportError("StandaloneTrajectory.end", error.cause, {
+        trajectoryId: id,
+        diagnosticOnly: true,
+      })
+      trajectoryLogger.releaseTrajectoryOwnership?.(id)
+    }
   }
+
+  return try closingAfter(foreign(() => runWithTrajectoryContext(context, () => callback())), close)
 }
 
-export async function annotateActiveTrajectoryStep(
+export effect function annotateActiveTrajectoryStep(
   runtime: IAgentRuntime | null | undefined,
   params: TrajectoryAnnotateParams,
-): Promise<boolean> {
+) {
   if (!runtime) return false
-  const trajectoryLogger = resolveTrajectoryLogger(runtime)
+  const trajectoryLogger = try foreignSync(() => resolveTrajectoryLogger(runtime))
   if (
     !trajectoryLogger
-    || typeof trajectoryLogger.annotateStep !== "function"
-    || (typeof trajectoryLogger.isEnabled === "function"
-      && !trajectoryLogger.isEnabled())
+    || !(try isUsableTrajectoryLogger(trajectoryLogger, ["annotateStep"]))
   ) {
     return false
   }
-  await trajectoryLogger.annotateStep(params)
+  try foreign(() => trajectoryLogger.annotateStep?.(params))
   return true
 }
 
-export function logActiveTrajectoryLlmCall(
+export const annotateActiveTrajectoryStepPromise = promised(annotateActiveTrajectoryStep)
+
+export effect function logActiveTrajectoryLlmCall(
   runtime: IAgentRuntime | null | undefined,
   details: TrajectoryLlmCallDetails,
-): boolean {
+) {
   if (!runtime) {
     return false
   }
 
   activateDeferredChildStep()
-  const stepId = assertActiveTrajectoryForLlmCall({
+  const stepId = try assertActiveTrajectoryForLlmCall({
     actionType: details.actionType,
     model: details.model,
     purpose: details.purpose,
@@ -1047,71 +1036,71 @@ export function logActiveTrajectoryLlmCall(
     return false
   }
 
-  const trajectoryLogger = resolveTrajectoryLogger(runtime)
+  const trajectoryLogger = try foreignSync(() => resolveTrajectoryLogger(runtime))
   if (
     !trajectoryLogger
-    || typeof trajectoryLogger.logLlmCall !== "function"
-    || (typeof trajectoryLogger.isEnabled === "function"
-      && !trajectoryLogger.isEnabled())
+    || !(try isUsableTrajectoryLogger(trajectoryLogger, ["logLlmCall"]))
   ) {
     return false
   }
 
   const context = getTrajectoryContext()
-  trajectoryLogger.logLlmCall({
-    stepId,
-    ...details,
-    runId: details.runId ?? context?.runId,
-    roomId: details.roomId ?? context?.roomId,
-    messageId: details.messageId ?? context?.messageId,
-    executionTraceId: details.executionTraceId ?? context?.traceId,
-    purpose: context?.purpose ?? details.purpose,
-  })
+  try foreignSync(() =>
+    trajectoryLogger.logLlmCall?.({
+      stepId,
+      ...details,
+      runId: details.runId ?? context?.runId,
+      roomId: details.roomId ?? context?.roomId,
+      messageId: details.messageId ?? context?.messageId,
+      executionTraceId: details.executionTraceId ?? context?.traceId,
+      purpose: context?.purpose ?? details.purpose,
+    })
+  )
 
   markProviderRecordedCall()
 
   return true
 }
 
-function monotonicNow(): number {
-  return typeof performance !== "undefined"
-      && typeof performance.now === "function"
-    ? performance.now()
-    : Date.now()
-}
+export const logActiveTrajectoryLlmCallOrThrow = thrown(failingAs(Error, logActiveTrajectoryLlmCall))
 
-export async function recordLlmCall<T>(
+export effect function recordLlmCall<T>(
   runtime: IAgentRuntime | null | undefined,
   details: RecordLlmCallDetails,
   fn: () => Promise<T> | T,
-): Promise<T> {
-  await ensureTaskTrajectory()
-  assertActiveTrajectoryForLlmCall({
+): T!(ElizaError | Foreign | LlmCallOutsideTrajectory) {
+  try ensureTaskTrajectory()
+  try assertActiveTrajectoryForLlmCall({
     actionType: details.actionType,
     model: details.model,
     purpose: details.purpose,
   })
 
-  attestLlmInputSubstring(details)
+  try attestLlmInputSubstring(details)
 
   const startedAt = monotonicNow()
-  let result: T
-  try {
-    result = await runInsideRecordedLlmCall(fn)
-  } catch (error) {
-    try {
-      const message = error instanceof Error ? error.message : String(error)
-      logActiveTrajectoryLlmCall(runtime, {
-        ...details,
-        response: details.response
-          || `[model call failed] ${composeToolDiagnosticRedactor(runtime ?? undefined)(message)}`,
-        finishReason: "error",
-        latencyMs: Math.max(0, Math.round(monotonicNow() - startedAt)),
+  const result = runInsideRecordedLlmCall(fn) catch effect (failure) => {
+    const logFailedCall = effect {
+      const failedCall: TrajectoryLlmCallDetails = try foreignSync(() => {
+        const message = failure.cause instanceof Error ? failure.cause.message : String(failure.cause)
+        return {
+          ...details,
+          response: details.response
+            || `[model call failed] ${composeToolDiagnosticRedactor(runtime ?? undefined)(message)}`,
+          finishReason: "error",
+          latencyMs: Math.max(0, Math.round(monotonicNow() - startedAt)),
+        }
       })
-    } catch (recordingError) {
-      runtime?.reportError?.("TrajectoryFailedProviderCall", recordingError)
+      return try logActiveTrajectoryLlmCall(runtime, failedCall)
     }
-    throw error
+    asLegacy(Error, logFailedCall, ElizaError) catch (recordingError) => {
+      runtime?.reportError?.(
+        "TrajectoryFailedProviderCall",
+        recordingError instanceof Foreign ? recordingError.cause : recordingError,
+      )
+      return false
+    }
+    throw failure
   }
   const elapsed = monotonicNow() - startedAt
 
@@ -1125,7 +1114,7 @@ export async function recordLlmCall<T>(
 
   const tokenFields = normalizeTokenFieldsFromResult(result, details)
 
-  logActiveTrajectoryLlmCall(runtime, {
+  try logActiveTrajectoryLlmCall(runtime, {
     ...details,
     ...tokenFields,
     response: responseText,
@@ -1179,19 +1168,20 @@ function normalizeTokenFieldsFromResult(
   return out
 }
 
-async function withChildTrajectoryStep<T>(
+effect function withChildTrajectoryStep<T>(
   runtime: IAgentRuntime | null | undefined,
   options: { purpose: string; actionName?: string; evaluatorName?: string },
-  fn: (hasChildStep: boolean) => Promise<T> | T,
-): Promise<T> {
+  fn: () => Promise<T> | T,
+  settleChildStep?: (runtime: IAgentRuntime, result: T) => void,
+): T!(ElizaError | Foreign) {
   if (!runtime) {
-    return fn(false)
+    return try foreign(() => fn())
   }
 
   const parentCtx = getTrajectoryContext()
   const parentStepId = parentCtx?.trajectoryStepId
   if (!(typeof parentStepId === "string" && parentStepId.trim() !== "")) {
-    return fn(false)
+    return try foreign(() => fn())
   }
   const normalizedParentStepId = parentStepId.trim()
   const trajectoryId = typeof parentCtx?.trajectoryId === "string"
@@ -1199,13 +1189,9 @@ async function withChildTrajectoryStep<T>(
     ? parentCtx.trajectoryId.trim()
     : undefined
 
-  const trajectoryLogger = resolveTrajectoryLogger(runtime)
-  if (
-    !trajectoryLogger
-    || (typeof trajectoryLogger.isEnabled === "function"
-      && !trajectoryLogger.isEnabled())
-  ) {
-    return fn(false)
+  const trajectoryLogger = try foreignSync(() => resolveTrajectoryLogger(runtime))
+  if (!trajectoryLogger || !(try isUsableTrajectoryLogger(trajectoryLogger, []))) {
+    return try foreign(() => fn())
   }
 
   let childStepId = normalizedParentStepId
@@ -1283,41 +1269,44 @@ async function withChildTrajectoryStep<T>(
       : { ...parentCtx, purpose: options.purpose }
   }
 
-  try {
-    return await runWithTrajectoryContext(childContext, () => fn(hasChildStep))
-  } finally {
-    closed = true
-    if (trajectoryId || hasChildStep) {
-      const finalizeChild = async (): Promise<void> => {
-        try {
-          if (
-            trajectoryId
-            && typeof trajectoryLogger.flushWriteQueue === "function"
-          ) {
-            await trajectoryLogger.flushWriteQueue(trajectoryId)
-          }
-        } catch (error) {
-          runtime.reportError("TrajectoryChildStep.finalize", error, {
-            trajectoryId,
-            parentStepId: normalizedParentStepId,
-            ...(hasChildStep ? { childStepId } : {}),
-            purpose: options.purpose,
-            diagnosticOnly: true,
-          })
-        }
-      }
-      if (options.purpose === "evaluation") {
-        await finalizeChild()
-      } else {
-        void trackPostDeliveryTask(
-          runtime,
-          `trajectory-child:${options.purpose}:${childStepId}`,
-          finalizeChild,
-          { kind: "diagnostic" },
-        )
+  const finalizeChild = effect {
+    if (trajectoryId && typeof trajectoryLogger.flushWriteQueue === "function") {
+      foreign(() => trajectoryLogger.flushWriteQueue?.(trajectoryId)) catch (error) => {
+        runtime.reportError("TrajectoryChildStep.finalize", error.cause, {
+          trajectoryId,
+          parentStepId: normalizedParentStepId,
+          ...(hasChildStep ? { childStepId } : {}),
+          purpose: options.purpose,
+          diagnosticOnly: true,
+        })
       }
     }
   }
+
+  const close = effect {
+    closed = true
+    if (!trajectoryId && !hasChildStep) return
+    if (options.purpose === "evaluation") {
+      try finalizeChild
+    } else {
+      void (try trackPostDeliveryTask(
+        runtime,
+        `trajectory-child:${options.purpose}:${childStepId}`,
+        () => runDetached(finalizeChild),
+        { kind: "diagnostic" },
+      ))
+    }
+  }
+
+  const startedWithChildStep = hasChildStep
+  const run = effect {
+    const result = try foreign(() => runWithTrajectoryContext(childContext, () => fn()))
+    if (settleChildStep && startedWithChildStep) {
+      try foreignSync(() => runWithTrajectoryContext(childContext, () => settleChildStep(runtime, result)))
+    }
+    return result
+  }
+  return try closingAfter(run, () => close)
 }
 
 function completeActionTrajectoryStep<T extends ActionResult>(
@@ -1340,6 +1329,13 @@ function completeActionTrajectoryStep<T extends ActionResult>(
     return
   }
 
+  const report = (failedPhase: string, error: unknown) =>
+    runtime.reportError(`TrajectoryActionStep.${failedPhase}`, error, {
+      actionName,
+      trajectoryId,
+      stepId,
+      diagnosticOnly: true,
+    })
   let phase: "project" | "normalize" | "complete" = "project"
   try {
     const projectedResult = projectResult?.(result) ?? result
@@ -1357,10 +1353,14 @@ function completeActionTrajectoryStep<T extends ActionResult>(
     const normalizedParameters = sanitizeTrajectoryJsonObject(diagnosticParameters)
     const normalizedResult = sanitizeTrajectoryJsonObject(diagnosticResult)
     if (!normalizedParameters || !normalizedResult) {
-      throw new ElizaError("Action settlement is not JSON serializable", {
-        code: "TRAJECTORY_ACTION_SETTLEMENT_INVALID",
-        context: { actionName, trajectoryId, stepId },
-      })
+      report(
+        phase,
+        new ElizaError("Action settlement is not JSON serializable", {
+          code: "TRAJECTORY_ACTION_SETTLEMENT_INVALID",
+          context: { actionName, trajectoryId, stepId },
+        }),
+      )
+      return
     }
 
     phase = "complete"
@@ -1375,16 +1375,11 @@ function completeActionTrajectoryStep<T extends ActionResult>(
         : {}),
     })
   } catch (error) {
-    runtime.reportError(`TrajectoryActionStep.${phase}`, error, {
-      actionName,
-      trajectoryId,
-      stepId,
-      diagnosticOnly: true,
-    })
+    report(phase, error)
   }
 }
 
-export async function withActionStep<T extends ActionResult>(
+export effect function withActionStep<T extends ActionResult>(
   runtime: IAgentRuntime | null | undefined,
   actionName: string,
   fn: () => Promise<T> | T,
@@ -1392,50 +1387,31 @@ export async function withActionStep<T extends ActionResult>(
     parameters?: Record<string, unknown>
     projectResult?: (result: T) => ActionResult
   } = {},
-): Promise<T> {
-  return withChildTrajectoryStep(
+) {
+  return try withChildTrajectoryStep(
     runtime,
     { purpose: "action", actionName },
-    async (hasChildStep) => {
-      const result = await fn()
-      if (runtime && hasChildStep) {
-        completeActionTrajectoryStep(
-          runtime,
-          actionName,
-          options.parameters,
-          result,
-          options.projectResult,
-        )
-      }
-      return result
-    },
+    fn,
+    (owner, result) => completeActionTrajectoryStep(owner, actionName, options.parameters, result, options.projectResult),
   )
 }
 
-export async function withProviderStep<T>(
+export effect function withProviderStep<T>(
   runtime: IAgentRuntime | null | undefined,
   providerName: string,
   fn: () => Promise<T> | T,
-): Promise<T> {
-  return withChildTrajectoryStep(
-    runtime,
-    { purpose: "provider", actionName: providerName },
-    fn,
-  )
+) {
+  return try withChildTrajectoryStep(runtime, { purpose: "provider", actionName: providerName }, fn)
 }
 
-export async function withEvaluatorStep<T>(
+export effect function withEvaluatorStep<T>(
   runtime: IAgentRuntime | null | undefined,
   evaluatorName: string,
   fn: () => Promise<T> | T,
-): Promise<T> {
-  return withChildTrajectoryStep(
+) {
+  return try withChildTrajectoryStep(
     runtime,
-    {
-      purpose: "evaluation",
-      actionName: evaluatorName,
-      evaluatorName,
-    },
+    { purpose: "evaluation", actionName: evaluatorName, evaluatorName },
     fn,
   )
 }
@@ -1446,38 +1422,157 @@ export type SpawnTrajectoryHandle = {
   linkChild: (childStepId: string) => Promise<boolean>
 }
 
-export async function spawnWithTrajectoryLink<T>(
+effect function linkChildStep(
+  runtime: IAgentRuntime | null | undefined,
+  handle: SpawnTrajectoryHandle,
+  childStepId: string,
+) {
+  const parentStepId = handle.parentStepId
+  if (!parentStepId) return false
+  if (!runtime) return false
+  if (typeof childStepId !== "string" || childStepId.trim() === "") {
+    return false
+  }
+  return annotateActiveTrajectoryStep(runtime, {
+    stepId: parentStepId,
+    appendChildSteps: [childStepId.trim()],
+  }) catch (error) => {
+    runtime.reportError("Trajectory.linkChild", error.cause, {
+      parentStepId: handle.parentStepId,
+      childStepId,
+      diagnosticOnly: true,
+    })
+    return false
+  }
+}
+
+export effect function spawnWithTrajectoryLink<T>(
   runtime: IAgentRuntime | null | undefined,
   _options: { source?: string; metadata?: Record<string, unknown> } | undefined,
   fn: (handle: SpawnTrajectoryHandle) => Promise<T> | T,
-): Promise<T> {
+): T!Foreign {
   const parentStepId = getTrajectoryContext()?.trajectoryStepId
   const handle: SpawnTrajectoryHandle = {
     parentStepId: typeof parentStepId === "string" && parentStepId.trim() !== ""
       ? parentStepId
       : undefined,
-    linkChild: async (childStepId: string) => {
-      if (!handle.parentStepId) return false
-      if (!runtime) return false
-      if (typeof childStepId !== "string" || childStepId.trim() === "") {
-        return false
-      }
-      try {
-        return await annotateActiveTrajectoryStep(runtime, {
-          stepId: handle.parentStepId,
-          appendChildSteps: [childStepId.trim()],
-        })
-      } catch (error) {
-        runtime.reportError("Trajectory.linkChild", error, {
-          parentStepId: handle.parentStepId,
-          childStepId,
-          diagnosticOnly: true,
-        })
-        return false
-      }
-    },
+    linkChild: (childStepId: string) => runDetached(linkChildStep(runtime, handle, childStepId)),
   }
-  return fn(handle)
+  return try foreign(() => fn(handle))
+}
+
+module edge {
+  import { asLegacy, runDetached } from "./edge.vibe"
+  import { ElizaError } from "./errors.vibe"
+  import type { ActionResult } from "./types/components.vibe"
+  import type { IAgentRuntime } from "./types/runtime.vibe"
+  import {
+    recordLlmCall,
+    runWithLlmInputSubstringAttestation,
+    runWithModelCallRecordingScope,
+    spawnWithTrajectoryLink,
+    withActionStep,
+    withEvaluatorStep,
+    withProviderStep,
+    withStandaloneTrajectory,
+    type LlmInputSubstringAttestation,
+    type ModelCallRecordingState,
+    type RecordLlmCallDetails,
+    type SpawnTrajectoryHandle,
+  } from "./trajectory-utils.vibe"
+
+  /** @throws {never} */
+  export function runWithLlmInputSubstringAttestationPromise<T>(
+    expectedText: string,
+    fn: () => Promise<T> | T,
+  ): Promise<{ result: T; attestation: LlmInputSubstringAttestation }> {
+    return runDetached(runWithLlmInputSubstringAttestation<T>(expectedText, fn))
+  }
+
+  /** @throws {never} */
+  export function runWithModelCallRecordingScopePromise<T>(
+    fn: () => Promise<T> | T,
+  ): Promise<{ result: T; recordingState: ModelCallRecordingState }> {
+    return runDetached(runWithModelCallRecordingScope<T>(fn))
+  }
+
+  /** @throws {never} */
+  export function withStandaloneTrajectoryPromise<T>(
+    runtime: IAgentRuntime | null | undefined,
+    options: Parameters<typeof withStandaloneTrajectory>[1],
+    callback: () => Promise<T> | T,
+  ): Promise<T> {
+    return runDetached(withStandaloneTrajectory<T>(runtime, options, callback))
+  }
+
+  /** @throws {never} */
+  export function recordLlmCallPromise<T>(
+    runtime: IAgentRuntime | null | undefined,
+    details: RecordLlmCallDetails,
+    fn: () => Promise<T> | T,
+  ): Promise<T> {
+    return runDetached(asLegacy(Error, recordLlmCall<T>(runtime, details, fn), ElizaError))
+  }
+
+  /** @throws {never} */
+  export function withActionStepPromise<T extends ActionResult>(
+    runtime: IAgentRuntime | null | undefined,
+    actionName: string,
+    fn: () => Promise<T> | T,
+    options: {
+      parameters?: Record<string, unknown>
+      projectResult?: (result: T) => ActionResult
+    } = {},
+  ): Promise<T> {
+    return runDetached(withActionStep<T>(runtime, actionName, fn, options))
+  }
+
+  /** @throws {never} */
+  export function withProviderStepPromise<T>(
+    runtime: IAgentRuntime | null | undefined,
+    providerName: string,
+    fn: () => Promise<T> | T,
+  ): Promise<T> {
+    return runDetached(withProviderStep<T>(runtime, providerName, fn))
+  }
+
+  /** @throws {never} */
+  export function withEvaluatorStepPromise<T>(
+    runtime: IAgentRuntime | null | undefined,
+    evaluatorName: string,
+    fn: () => Promise<T> | T,
+  ): Promise<T> {
+    return runDetached(withEvaluatorStep<T>(runtime, evaluatorName, fn))
+  }
+
+  /** @throws {never} */
+  export function spawnWithTrajectoryLinkPromise<T>(
+    runtime: IAgentRuntime | null | undefined,
+    options: { source?: string; metadata?: Record<string, unknown> } | undefined,
+    fn: (handle: SpawnTrajectoryHandle) => Promise<T> | T,
+  ): Promise<T> {
+    return runDetached(spawnWithTrajectoryLink<T>(runtime, options, fn))
+  }
+}
+import {
+  recordLlmCallPromise,
+  runWithLlmInputSubstringAttestationPromise,
+  runWithModelCallRecordingScopePromise,
+  spawnWithTrajectoryLinkPromise,
+  withActionStepPromise,
+  withEvaluatorStepPromise,
+  withProviderStepPromise,
+  withStandaloneTrajectoryPromise,
+} from edge
+export {
+  recordLlmCallPromise,
+  runWithLlmInputSubstringAttestationPromise,
+  runWithModelCallRecordingScopePromise,
+  spawnWithTrajectoryLinkPromise,
+  withActionStepPromise,
+  withEvaluatorStepPromise,
+  withProviderStepPromise,
+  withStandaloneTrajectoryPromise,
 }
 
 type TrajectorySourceMeta = {

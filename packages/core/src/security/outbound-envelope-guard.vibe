@@ -1,3 +1,5 @@
+// spec/core/outboundEnvelope.md, "Story: Stop forwarding after external envelope material is detected"; spec/core/outboundEnvelope.md, "The first positive detection trips the stream and reports once"
+import { Machine, machine } from "../../gen/core__outboundEnvelope.effect.vibe"
 import type { Media } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.vibe"
@@ -55,20 +57,27 @@ export function guardOutboundEnvelopeAttachments(
   return safe.length === attachments.length ? attachments : safe
 }
 
+effect function envelopeLatch() {
+  provide machine() {
+    return try Machine
+  }
+}
+
 export function createOutboundEnvelopeStreamLatch(
   runtime: Pick<IAgentRuntime, "reportError">,
   seam: string,
 ): (accumulated: string) => boolean {
-  let tripped = false
-  return (accumulated: string): boolean => {
-    if (tripped) {
-      return true
-    }
-    if (!accumulated || !containsExternalEnvelopeMaterial(accumulated)) {
-      return false
-    }
-    tripped = true
-    reportOutboundEnvelopeBlock(runtime, accumulated, seam)
-    return true
-  }
+  const latch = Effect.runSync(envelopeLatch())
+  return (accumulated: string): boolean =>
+    Effect.runSync(orDie(effect {
+      if ((try latch.get()).tripped) {
+        return true
+      }
+      const found = Boolean(accumulated) && containsExternalEnvelopeMaterial(accumulated)
+      const { tripped } = try latch.send({ type: "observe", accumulatedContainsEnvelope: found })
+      if (found) {
+        reportOutboundEnvelopeBlock(runtime, accumulated, seam)
+      }
+      return tripped
+    }))
 }

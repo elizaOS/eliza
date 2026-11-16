@@ -1,3 +1,6 @@
+// spec/core/confirmation.md, "Story: Settle an explicit confirmation from the user's reply"; spec/core/confirmation.md, "A refusal overrides an initial affirmative and an unclear reply stays pending"
+import { initial, step } from "../../gen/core__confirmation.effect.vibe"
+import { type Foreign, foreign, promised } from "../edge.vibe"
 import { unwrapUserMessageText } from "../security/incoming-message-security.vibe"
 import type { HandlerCallback } from "../types/components.vibe"
 import type { Memory } from "../types/memory.vibe"
@@ -103,7 +106,7 @@ const NEGATIVE_SYMBOLS = /[\u{1F44E}\u274C\u274E\u{1F6AB}\u2716]/u
 type ConfirmationReply = "affirmative" | "negative" | "unclear"
 
 function classifyConfirmationReply(message: Memory): ConfirmationReply {
-  const text = readUserText(message)
+  const text = unwrapUserMessageText(message)
     .normalize("NFKC")
     .toLowerCase()
     .replace(/\u2019/g, "'")
@@ -180,17 +183,24 @@ function buildCacheKey(
   return `confirmation:${roomId}:${userId}:${actionName}:${pendingKey}`
 }
 
-function readUserText(message: Memory): string {
-  return unwrapUserMessageText(message)
-}
-
 export function isAffirmativeConfirmationReply(message: Memory): boolean {
   return classifyConfirmationReply(message) === "affirmative"
 }
 
-export async function requireConfirmation(
+function settleReply(reply: ConfirmationReply): ConfirmationStatus {
+  const settled = step(
+    initial,
+    reply === "unclear"
+      ? { type: "answerUnclear" }
+      : { type: "answerClear", refusal: reply === "negative", affirmative: reply === "affirmative" },
+  )
+  if (settled.status === "Waiting") return "pending"
+  return settled.status === "Confirmed" ? "confirmed" : "cancelled"
+}
+
+export effect function requireConfirmation(
   args: RequireConfirmationArgs,
-): Promise<ConfirmationDecision> {
+): ConfirmationDecision!Foreign {
   const ttlMs = typeof args.ttlMs === "number"
       && Number.isFinite(args.ttlMs)
       && args.ttlMs > 0
@@ -203,27 +213,24 @@ export async function requireConfirmation(
     args.pendingKey,
   )
 
-  const existing = await args.runtime.getCache<PendingConfirmation>(cacheKey)
-  if (existing && Date.now() - existing.createdAt <= existing.ttlMs) {
-    const sameMessage = existing.requestMessageId !== undefined
-      && args.message.id !== undefined
-      && String(args.message.id) === existing.requestMessageId
-    if (sameMessage) {
-      return { status: "pending" }
-    }
-    const reply = classifyConfirmationReply(args.message)
-    if (reply !== "unclear") {
-      await args.runtime.deleteCache(cacheKey)
-      return {
-        status: reply === "affirmative" ? "confirmed" : "cancelled",
-        metadata: existing.metadata,
-      }
-    }
-  }
-
+  const existing = try foreign(() => args.runtime.getCache<PendingConfirmation>(cacheKey))
   const live = existing && Date.now() - existing.createdAt <= existing.ttlMs
     ? existing
     : undefined
+  if (live) {
+    const sameMessage = live.requestMessageId !== undefined
+      && args.message.id !== undefined
+      && String(args.message.id) === live.requestMessageId
+    if (sameMessage) {
+      return { status: "pending" }
+    }
+    const status = settleReply(classifyConfirmationReply(args.message))
+    if (status !== "pending") {
+      try foreign(() => args.runtime.deleteCache(cacheKey))
+      return { status, metadata: live.metadata }
+    }
+  }
+
   const record: PendingConfirmation = {
     actionName: args.actionName,
     pendingKey: args.pendingKey,
@@ -233,15 +240,19 @@ export async function requireConfirmation(
     metadata: args.metadata ?? live?.metadata,
     ...(args.message.id ? { requestMessageId: String(args.message.id) } : {}),
   }
-  await args.runtime.setCache(cacheKey, record)
-  if (args.callback) {
-    await args.callback({
-      text: args.prompt,
-      source: args.message.content.source,
-    })
+  try foreign(() => args.runtime.setCache(cacheKey, record))
+  const callback = args.callback
+  if (callback) {
+    try foreign(() =>
+      callback({
+        text: args.prompt,
+        source: args.message.content.source,
+      })
+    )
   }
   return { status: "pending" }
 }
+export const requireConfirmationPromise = promised(requireConfirmation)
 
 export type DestructiveConfirmationGateResult =
   | {
@@ -254,15 +265,13 @@ export type DestructiveConfirmationGateResult =
     readonly metadata?: Record<string, unknown>
   }
 
-export async function gateDestructiveConfirmation(
+export effect function gateDestructiveConfirmation(
   args: RequireConfirmationArgs,
-): Promise<DestructiveConfirmationGateResult> {
-  const decision = await requireConfirmation(args)
-  if (decision.status === "confirmed") {
-    return { status: "confirmed", metadata: decision.metadata }
-  }
+): DestructiveConfirmationGateResult!Foreign {
+  const decision = try requireConfirmation(args)
   if (decision.status === "pending") {
     return { status: "pending" }
   }
-  return { status: "cancelled", metadata: decision.metadata }
+  return { status: decision.status, metadata: decision.metadata }
 }
+export const gateDestructiveConfirmationPromise = promised(gateDestructiveConfirmation)

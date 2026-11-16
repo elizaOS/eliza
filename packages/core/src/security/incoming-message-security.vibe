@@ -1,3 +1,5 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
+import { runDetached, thrown } from "../edge.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { PipelineHookSpec } from "../types/pipeline-hooks.vibe"
 import type { ContentValue } from "../types/primitives.vibe"
@@ -9,7 +11,7 @@ import {
   extractWrappedExternalContent,
   wrapExternalContent,
 } from "./external-content.vibe"
-import { SecretSwapSession } from "./secret-swap.vibe"
+import { SecretSwapSession, substituteSecretText } from "./secret-swap.vibe"
 
 const PUBLIC_CHANNEL_SOURCES = new Set([
   "discord",
@@ -177,12 +179,13 @@ export function hardenIncomingUserMessage(message: Memory): void {
   message.content.metadata = metadata as { [key: string]: ContentValue }
 }
 
-export function scrubIncomingMessageTextForStorage(text: string): string {
+export effect function scrubIncomingMessageTextForStorage(text: string) {
   const session = new SecretSwapSession()
   return session
-    .restoreUserReplyText(session.substituteText(text))
+    .restoreUserReplyText(try substituteSecretText(session, text))
     .replaceAll("[redacted credential]", "***")
 }
+export const scrubIncomingMessageTextForStorageOrThrow = thrown(scrubIncomingMessageTextForStorage)
 
 function resolveRetainedCandidate(message: Memory): string {
   const text = typeof message.content?.text === "string" ? message.content.text : ""
@@ -223,6 +226,33 @@ export function messageHasPromptInjectionFlag(message: Memory): boolean {
   return metadata.promptInjectionSuspected === true
 }
 
+effect function secureIncomingMessage(message: Memory) {
+  hardenIncomingUserMessage(message)
+  const text = typeof message.content.text === "string"
+    ? message.content.text
+    : ""
+  if (text) {
+    message.content.text = try scrubIncomingMessageTextForStorage(text)
+  }
+
+  const connectorText = message.content.currentMessageText
+  if (typeof connectorText === "string" && connectorText) {
+    message.content.currentMessageText = try scrubIncomingMessageTextForStorage(connectorText)
+  }
+  const metadata = message.content.metadata
+  if (typeof metadata === "object" && metadata !== null) {
+    const record = metadata as Record<string, unknown>
+    if (
+      typeof record.userPayloadText === "string"
+      && record.userPayloadText
+    ) {
+      record.userPayloadText = try scrubIncomingMessageTextForStorage(
+        record.userPayloadText,
+      )
+    }
+  }
+}
+
 export function registerCoreIncomingMessageSecurityHook(
   runtime: IAgentRuntime,
 ): void {
@@ -235,30 +265,7 @@ export function registerCoreIncomingMessageSecurityHook(
       if (ctx.phase !== "incoming_before_compose") {
         return
       }
-      hardenIncomingUserMessage(ctx.message)
-      const text = typeof ctx.message.content.text === "string"
-        ? ctx.message.content.text
-        : ""
-      if (text) {
-        ctx.message.content.text = scrubIncomingMessageTextForStorage(text)
-      }
-
-      const connectorText = ctx.message.content.currentMessageText
-      if (typeof connectorText === "string" && connectorText) {
-        ctx.message.content.currentMessageText = scrubIncomingMessageTextForStorage(connectorText)
-      }
-      const metadata = ctx.message.content.metadata
-      if (typeof metadata === "object" && metadata !== null) {
-        const record = metadata as Record<string, unknown>
-        if (
-          typeof record.userPayloadText === "string"
-          && record.userPayloadText
-        ) {
-          record.userPayloadText = scrubIncomingMessageTextForStorage(
-            record.userPayloadText,
-          )
-        }
-      }
+      return runDetached(secureIncomingMessage(ctx.message))
     },
   }
   runtime.registerPipelineHook(spec)

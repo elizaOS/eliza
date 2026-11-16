@@ -1,3 +1,5 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { asLegacy, failingAs, Foreign, foreignSync, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { COMPLETION_CONTEXT_SCHEMA } from "../runtime/completion-context.vibe"
 import type { Action } from "../types/components.vibe"
@@ -138,13 +140,17 @@ export interface PlannerToolDefinition {
   }
 }
 
-export function assertNativeToolName(name: string): void {
+export error InvalidToolName { message: string }
+
+export effect function assertNativeToolName(name: string): void!InvalidToolName {
   if (!NATIVE_TOOL_NAME_PATTERN.test(name)) {
-    throw new Error(
-      `Invalid tool name '${name}'. Native tool names must match ${NATIVE_TOOL_NAME_PATTERN}.`,
-    )
+    throw new InvalidToolName({
+      message: `Invalid tool name '${name}'. Native tool names must match ${NATIVE_TOOL_NAME_PATTERN}.`,
+    })
   }
 }
+
+export const assertNativeToolNameOrThrow = thrown(failingAs(Error, assertNativeToolName))
 
 const HANDLE_RESPONSE_DESCRIPTION =
   "Stage 1: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, contextRequests, intents, completionContext, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack."
@@ -216,14 +222,14 @@ const STOP_TERMINAL_ACTION: PlannerToolActionShape = {
   parameters: [],
 }
 
-function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
-  assertNativeToolName(action.name)
+effect function actionToPlannerTool(action: PlannerToolActionShape) {
+  try assertNativeToolName(action.name)
   const baseDescription = action.description
   const routingHint = action.routingHint?.trim()
   const description = routingHint
     ? `${routingHint}\n${baseDescription}`.trim()
     : baseDescription
-  const parameters = normalizeActionJsonSchema(action)
+  const parameters = try normalizeActionJsonSchema(action)
   return {
     name: action.name,
     description,
@@ -233,18 +239,20 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
       ? { strictWithOptionalProperties: true }
       : {}),
     parameters,
-  }
+  } satisfies ToolDefinition
 }
 
-export function buildPlannerToolsFromActions(
+export effect function buildPlannerToolsFromActions(
   actions: ReadonlyArray<PlannerToolActionShape>,
-): ToolDefinition[] {
+) {
   const tools: ToolDefinition[] = []
   for (const action of actions) {
-    tools.push(actionToPlannerTool(action))
+    tools.push(try actionToPlannerTool(action))
   }
   return statePromotedFamilyDescriptionsOnce(actions, tools)
 }
+
+export const buildPlannerToolsFromActionsOrThrow = thrown(failingAs(Error, buildPlannerToolsFromActions, ElizaError))
 
 function statePromotedFamilyDescriptionsOnce(
   actions: ReadonlyArray<PlannerToolActionShape>,
@@ -350,10 +358,10 @@ function resolveActionLookup(
   return resolved
 }
 
-export function buildPlannerToolsFromTieredActions(
+export effect function buildPlannerToolsFromTieredActions(
   actions: ReadonlyArray<PlannerToolActionShape>,
   options: BuildPlannerToolsFromTieredActionsOptions = {},
-): ToolDefinition[] {
+) {
   const actionLookup = resolveActionLookup(options.actionLookup)
   const requireAuthorizedChild = options.actionLookup !== undefined
 
@@ -363,18 +371,18 @@ export function buildPlannerToolsFromTieredActions(
   const emittedActions: PlannerToolActionShape[] = []
   const emittedNames = new Set<string>()
 
-  const emit = (action: PlannerToolActionShape): void => {
+  const emit = effect (action: PlannerToolActionShape) => {
     const key = toolIdentityKey(action.name)
     if (!key || emittedNames.has(key)) {
       return
     }
     emittedNames.add(key)
-    tools.push(actionToPlannerTool(action))
+    tools.push(try actionToPlannerTool(action))
     emittedActions.push(action)
   }
 
   for (const action of actions) {
-    emit(action)
+    try emit(action)
     if (options.expandSubActions === false) {
       continue
     }
@@ -385,46 +393,51 @@ export function buildPlannerToolsFromTieredActions(
         ? subAction
         : actionLookup.get(subActionName)
       if (!child) {
-        options.onUnresolvedSubAction?.({
-          parentName: action.name,
-          subActionName,
-        })
+        try foreignSync(() =>
+          options.onUnresolvedSubAction?.({
+            parentName: action.name,
+            subActionName,
+          })
+        )
         continue
       }
-      try {
-        emit(child)
-      } catch (error) {
-        throw new ElizaError("Failed to expand planner sub-action", {
+      try Effect.catchCause(asLegacy(Error, emit(child), ElizaError), (failure) => {
+        const error = Cause.squash(failure)
+        return Effect.fail(new ElizaError("Failed to expand planner sub-action", {
           code: "INVALID_SUB_ACTION_TOOL",
-          cause: error,
+          cause: error instanceof Foreign ? error.cause : error,
           context: { actionName: action.name, subActionName },
-        })
-      }
+        }))
+      })
     }
   }
 
   return statePromotedFamilyDescriptionsOnce(emittedActions, tools)
 }
 
-export const CORE_PLANNER_TERMINALS: ReadonlyArray<ToolDefinition> = buildPlannerToolsFromActions([
+export const buildPlannerToolsFromTieredActionsOrThrow = thrown(failingAs(Error, buildPlannerToolsFromTieredActions, ElizaError))
+
+export const CORE_PLANNER_TERMINALS: ReadonlyArray<ToolDefinition> = Effect.runSync(buildPlannerToolsFromActions([
   REPLY_TERMINAL_ACTION,
   IGNORE_TERMINAL_ACTION,
   STOP_TERMINAL_ACTION,
-])
+]))
 
-export function actionToTool(action: Action): PlannerToolDefinition {
-  assertNativeToolName(action.name)
+export effect function actionToTool(action: Action) {
+  try assertNativeToolName(action.name)
 
   return {
     type: "function",
     function: {
       name: action.name,
       description: action.description,
-      parameters: actionToJsonSchema(action),
+      parameters: try actionToJsonSchema(action),
       strict: action.toolSchemaStrict ?? true,
       ...(action.toolSchemaStrict === false
         ? { strictWithOptionalProperties: true }
         : {}),
     },
-  }
+  } satisfies PlannerToolDefinition
 }
+
+export const actionToToolOrThrow = thrown(failingAs(Error, actionToTool, ElizaError))

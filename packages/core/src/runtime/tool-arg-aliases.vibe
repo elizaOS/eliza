@@ -1,3 +1,6 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { failingAs, promised } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
 import { resolveCanonicalOwnerIdForMessage } from "../roles.vibe"
 import type { RoleGateRole } from "../types/contexts.vibe"
 import type { Memory } from "../types/memory.vibe"
@@ -52,26 +55,25 @@ function containsToken(
   return false
 }
 
-export async function buildTurnEntityAliases(
+export effect function buildTurnEntityAliases(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
   userRoles: readonly RoleGateRole[] | undefined,
-): Promise<EntityAliasCapabilityMap> {
+) {
   if (!statePresentsEntityAlias(state, CANONICAL_OWNER_ENTITY_ALIAS)) {
     return EMPTY_ALIASES
   }
   if (!userRoles?.includes("OWNER")) {
     return EMPTY_ALIASES
   }
-  const ownerId = validateUuid(
-    await resolveCanonicalOwnerIdForMessage(runtime, message),
-  )
+  const ownerId = validateUuid(try resolveCanonicalOwnerIdForMessage(runtime, message))
   if (!ownerId) {
     return EMPTY_ALIASES
   }
   return Object.freeze({ [CANONICAL_OWNER_ENTITY_ALIAS]: ownerId })
 }
+export const buildTurnEntityAliasesPromise = promised(failingAs(TypeError, buildTurnEntityAliases, ElizaError))
 
 export function resolveEntityAliasRefs(
   aliases: EntityAliasCapabilityMap,

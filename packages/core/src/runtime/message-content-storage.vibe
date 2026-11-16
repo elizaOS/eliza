@@ -1,4 +1,5 @@
-import { isDeepStrictEqual } from "node:util"
+// spec/core/ingressSnapshots.md, "Binding requires matching message agent room and entity identity"; spec/core/ingressSnapshots.md, "Reuse requires exact redacted content and every projected stored segment"
+import { foreign, Foreign, promised, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { Content, UUID } from "../types/primitives.vibe"
@@ -11,12 +12,22 @@ import {
   MESSAGE_CONTENT_SEGMENT_TABLE,
 } from "./message-content-segments.vibe"
 
+module node {
+  import { isDeepStrictEqual } from "node:util"
+
+  /** @throws {never} */
+  export function deepEqual(left: unknown, right: unknown): boolean {
+    return isDeepStrictEqual(left, right)
+  }
+}
+import { deepEqual } from node
+
 const ingressPersistenceSnapshots = new WeakMap<Memory, Memory>()
 
-export function bindIncomingMessagePersistence(
+export effect function bindIncomingMessagePersistence(
   message: Memory,
   persisted: Memory,
-): void {
+): void!ElizaError {
   if (
     !message.id
     || message.id !== persisted.id
@@ -34,18 +45,20 @@ export function bindIncomingMessagePersistence(
   }
   ingressPersistenceSnapshots.set(message, structuredClone(persisted))
 }
+export const bindIncomingMessagePersistenceOrThrow = thrown(bindIncomingMessagePersistence)
 
-export function inheritIncomingMessagePersistence(
+export effect function inheritIncomingMessagePersistence(
   source: Memory,
   augmented: Memory,
-): void {
+): void!ElizaError {
   const persisted = ingressPersistenceSnapshots.get(source)
-  if (persisted) bindIncomingMessagePersistence(augmented, persisted)
+  if (persisted) try bindIncomingMessagePersistence(augmented, persisted)
 }
+export const inheritIncomingMessagePersistenceOrThrow = thrown(inheritIncomingMessagePersistence)
 
-export function incomingMessagePersistenceSnapshot(
+export effect function incomingMessagePersistenceSnapshot(
   message: Memory,
-): Memory | undefined {
+): (Memory | undefined)!ElizaError {
   const persisted = ingressPersistenceSnapshots.get(message)
   if (!persisted) return undefined
   if (
@@ -61,6 +74,7 @@ export function incomingMessagePersistenceSnapshot(
   }
   return structuredClone(persisted)
 }
+export const incomingMessagePersistenceSnapshotOrThrow = thrown(incomingMessagePersistenceSnapshot)
 
 function contentNeedsNativeSegments(content: Content): boolean {
   if (
@@ -76,12 +90,13 @@ function contentNeedsNativeSegments(content: Content): boolean {
   )
 }
 
-export async function persistMessageMemory(
+export effect function persistMessageMemory(
   runtime: IAgentRuntime,
   memory: Memory,
-): Promise<UUID> {
-  if (runtime.createMessageMemory) {
-    return runtime.createMessageMemory(memory)
+): UUID!(ElizaError | Foreign) {
+  const createMessageMemory = runtime.createMessageMemory
+  if (createMessageMemory) {
+    return try foreign(() => createMessageMemory.call(runtime, memory))
   }
   if (contentNeedsNativeSegments(memory.content)) {
     throw new ElizaError(
@@ -92,24 +107,25 @@ export async function persistMessageMemory(
       },
     )
   }
-  return runtime.createMemory(memory, "messages")
+  return try foreign(() => runtime.createMemory(memory, "messages"))
 }
+export const persistMessageMemoryPromise = promised(persistMessageMemory)
 
-export async function persistIncomingMessageMemory(
+export effect function persistIncomingMessageMemory(
   runtime: IAgentRuntime,
   memory: Memory,
-): Promise<UUID> {
-  if (!memory.id) return persistMessageMemory(runtime, memory)
+): UUID!(ElizaError | Foreign) {
+  if (!memory.id) return try persistMessageMemory(runtime, memory)
   const id = memory.id
-  const assertExisting = async (existing: Memory): Promise<UUID> => {
-    const conflict = () =>
-      new ElizaError(
-        "Incoming message id is bound to different or incomplete content",
-        {
-          code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
-          context: { messageId: id },
-        },
-      )
+  const conflict = () =>
+    new ElizaError(
+      "Incoming message id is bound to different or incomplete content",
+      {
+        code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
+        context: { messageId: id },
+      },
+    )
+  const assertExisting = effect (existing: Memory): UUID!(ElizaError | Foreign) => {
     if (
       existing.id !== id
       || existing.agentId !== (memory.agentId ?? runtime.agentId)
@@ -142,22 +158,21 @@ export async function persistIncomingMessageMemory(
         : {}),
     }
     for (const content of [memory.content, textRedacted, allRedacted]) {
-      if (isDeepStrictEqual(existing.content, content)) return id
-      const projection = buildMessageContentProjection({
+      if (deepEqual(existing.content, content)) return id
+      const projection = try buildMessageContentProjection({
         ...memory,
         id,
         agentId: memory.agentId ?? runtime.agentId,
         content,
       })
-      if (!isDeepStrictEqual(existing.content, projection.content)) continue
+      if (!deepEqual(existing.content, projection.content)) continue
       const expected = projection.segments
-      const rows = await runtime.getMemoriesByIds(
-        expected.map((segment) => {
-          if (!segment.id) throw conflict()
-          return segment.id
-        }),
-        MESSAGE_CONTENT_SEGMENT_TABLE,
-      )
+      const segmentIds: UUID[] = []
+      for (const segment of expected) {
+        if (!segment.id) throw conflict()
+        segmentIds.push(segment.id)
+      }
+      const rows = try foreign(() => runtime.getMemoriesByIds(segmentIds, MESSAGE_CONTENT_SEGMENT_TABLE))
       const byId = new Map(rows.map((row) => [row.id, row]))
       if (
         expected.every((segment) => {
@@ -170,8 +185,8 @@ export async function persistIncomingMessageMemory(
             && row.agentId === segment.agentId
             && row.roomId === segment.roomId
             && row.entityId === segment.entityId
-            && isDeepStrictEqual(row.content, segment.content)
-            && isDeepStrictEqual(storedMetadata, expectedMetadata)
+            && deepEqual(row.content, segment.content)
+            && deepEqual(storedMetadata, expectedMetadata)
           )
         })
       ) {
@@ -181,30 +196,31 @@ export async function persistIncomingMessageMemory(
     }
     throw conflict()
   }
-  const [existing] = await runtime.getMemoriesByIds([id], "messages")
-  if (existing) return assertExisting(existing)
-  try {
-    return await persistMessageMemory(runtime, memory)
-  } catch (error) {
+  const [existing] = try foreign(() => runtime.getMemoriesByIds([id], "messages"))
+  if (existing) return try assertExisting(existing)
+  return persistMessageMemory(runtime, memory) catch effect (error) => {
+    const failure = error instanceof Foreign ? error.cause : error
     if (
-      !(error instanceof ElizaError)
-      || error.code !== "MESSAGE_CONTENT_PUBLICATION_CONFLICT"
+      !(failure instanceof ElizaError)
+      || failure.code !== "MESSAGE_CONTENT_PUBLICATION_CONFLICT"
     ) {
       throw error
     }
-    const [raced] = await runtime.getMemoriesByIds([id], "messages")
+    const [raced] = try foreign(() => runtime.getMemoriesByIds([id], "messages"))
     if (!raced) throw error
-    return assertExisting(raced)
+    return try assertExisting(raced)
   }
 }
+export const persistIncomingMessageMemoryPromise = promised(persistIncomingMessageMemory)
 
-export async function replaceStoredMessageContent(
+export effect function replaceStoredMessageContent(
   runtime: IAgentRuntime,
   messageId: UUID,
   content: Content,
-): Promise<void> {
-  if (runtime.replaceMessageMemoryContent) {
-    await runtime.replaceMessageMemoryContent(messageId, content)
+): void!(ElizaError | Foreign) {
+  const replaceMessageMemoryContent = runtime.replaceMessageMemoryContent
+  if (replaceMessageMemoryContent) {
+    try foreign(() => replaceMessageMemoryContent.call(runtime, messageId, content))
     return
   }
   if (contentNeedsNativeSegments(content)) {
@@ -216,5 +232,6 @@ export async function replaceStoredMessageContent(
       },
     )
   }
-  await runtime.updateMemory({ id: messageId, content })
+  try foreign(() => runtime.updateMemory({ id: messageId, content }))
 }
+export const replaceStoredMessageContentPromise = promised(replaceStoredMessageContent)

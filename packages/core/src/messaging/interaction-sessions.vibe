@@ -1,13 +1,26 @@
-import { createHash } from "node:crypto"
+// spec/core/sessions.md, "Story: Retry an interaction without repeating its external effect"; spec/core/sessions.md, "Creating a session binds its owner and expiration"; spec/core/sessions.md, "A current matching claim commits only before lease and session expiry"; spec/core/sessions.md, "Only the committing owner may invoke and committed ambiguity cannot be reclaimed"; spec/core/sessions.md, "Cleanup retains ambiguous committed sessions and removes only eligible rows"; spec/core/sessionStore.md, "Story: Serialize independent sessions without sharing authority"; spec/core/sessionStore.md, "One admitted transaction owns each atomic map operation"; spec/core/sessionStore.md, "Complete context and claim identities authorize only the selected row"; spec/core/serialisation.md, "Story: Execute queued asynchronous callbacks in invocation order"
+import { foreign, foreignSync, runDetached, thrown, type Foreign } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
+import { sha256Hex } from "../runtime/trajectory-provider-attribution.vibe"
 import type { InteractionBlock, InteractionField, InteractionKind } from "../types/interactions.vibe"
 import { stableStringify } from "../utils/deterministic.vibe"
 import { utf8ByteLength } from "../utils/unicode.vibe"
-import type { ConnectorInteractionCapabilityProfile, InteractionNegotiationContext } from "./interaction-profiles.vibe"
 import {
+  type ConnectorInteractionCapabilityProfile,
+  type InteractionNegotiationContext,
   negotiateInteractionDelivery,
   normalizeConnectorInteractionCapabilityProfile,
 } from "./interaction-profiles.vibe"
+
+module node {
+  /** @throws {never} */
+  export function secureRandomBytes(size: number): Uint8Array {
+    const bytes = new Uint8Array(new ArrayBuffer(size))
+    globalThis.crypto.getRandomValues(bytes)
+    return bytes
+  }
+}
+import { secureRandomBytes } from node
 
 export const MESSAGE_INTERACTION_SESSION_VERSION = 1 as const
 export const MESSAGE_INTERACTION_CALLBACK_PREFIX = "is1:"
@@ -234,31 +247,58 @@ export type MessageInteractionAuthorityConsumeOutcome =
   | { status: "completed" | "replay"; receipt: MessageInteractionReceipt }
   | { status: "in_progress" }
 
-function fail(
+interface MessageInteractionCreateArgs {
+  block: InteractionBlock
+  profile: ConnectorInteractionCapabilityProfile
+  bindings: MessageInteractionBindings
+  purpose: MessageInteractionPurpose
+  flow: MessageInteractionFlow
+  negotiationContext?: InteractionNegotiationContext
+  presetResponse?: MessageInteractionResponse
+  authorization: Omit<
+    MessageInteractionAuthorizationDecision,
+    "state" | "revokedAt"
+  >
+  effect: MessageInteractionEffect
+  expiresAt: string
+}
+
+interface MessageInteractionAuthorityOptions {
+  clock?: () => number
+  referenceFactory?: () => string
+  claimTtlMs?: number
+}
+
+interface SessionRows {
+  readonly sessions: Map<string, MessageInteractionSession>
+  readonly lock: Semaphore.Semaphore
+}
+
+function sessionError(
   code: string,
   message: string,
   context?: Record<string, unknown>,
-): never {
-  throw new ElizaError(message, { code, context })
+): ElizaError {
+  return new ElizaError(message, { code, context })
 }
 
-function requiredText(value: string, path: string): string {
+effect function requiredText(value: string, path: string): string!ElizaError {
   const normalized = value.trim()
   if (!normalized || utf8ByteLength(normalized) > 512) {
-    return fail("INVALID_MESSAGE_INTERACTION_SESSION", `${path} is invalid.`, {
+    throw sessionError("INVALID_MESSAGE_INTERACTION_SESSION", `${path} is invalid.`, {
       path,
     })
   }
   return normalized
 }
 
-function validClock(value: number): number {
+effect function validClock(value: number): number!ElizaError {
   if (
     !Number.isSafeInteger(value)
     || value < 0
     || value > 8_640_000_000_000_000
   ) {
-    return fail(
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_CLOCK",
       "Trusted clock is invalid.",
     )
@@ -281,11 +321,9 @@ function hex(bytes: Uint8Array): string {
 }
 
 function responseDigest(response: MessageInteractionResponse): string {
-  return createHash("sha256")
-    .update(
-      `elizaos:message-interaction-response:v1\n${stableStringify(response)}`,
-    )
-    .digest("hex")
+  return sha256Hex(
+    `elizaos:message-interaction-response:v1\n${stableStringify(response)}`,
+  )
 }
 
 function sameBindings(
@@ -295,31 +333,23 @@ function sameBindings(
   return stableStringify(a) === stableStringify(b)
 }
 
-function cloneSession(
-  session: MessageInteractionSession,
-): MessageInteractionSession {
-  return structuredClone(session)
-}
-
 export function createOpaqueMessageInteractionReference(
-  random: (size: number) => Uint8Array = (size) => {
-    const bytes = new Uint8Array(new ArrayBuffer(size))
-    globalThis.crypto.getRandomValues(bytes)
-    return bytes
-  },
+  random: (size: number) => Uint8Array = secureRandomBytes,
 ): string {
   return hex(random(16))
 }
 
-export function encodeMessageInteractionCallback(reference: string): string {
+export effect function encodeMessageInteractionCallback(reference: string): string!ElizaError {
   if (!/^[a-f0-9]{32}$/.test(reference)) {
-    return fail(
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_REFERENCE",
       "Interaction reference must be a 128-bit opaque token.",
     )
   }
   return `${MESSAGE_INTERACTION_CALLBACK_PREFIX}${reference}`
 }
+
+export const encodeMessageInteractionCallbackOrThrow = thrown(encodeMessageInteractionCallback)
 
 export function decodeMessageInteractionCallback(
   value: unknown,
@@ -356,10 +386,10 @@ function schemaField(
   }
 }
 
-export function responseSchemaForInteraction(
+export effect function responseSchemaForInteraction(
   block: InteractionBlock,
   options: { maxTextResponseBytes?: number } = {},
-): MessageInteractionResponseSchema {
+): MessageInteractionResponseSchema!ElizaError {
   switch (block.kind) {
     case "choice":
       return {
@@ -380,7 +410,7 @@ export function responseSchemaForInteraction(
       }
     case "form":
       if (block.fields.some((field) => field.type === "secret")) {
-        return fail(
+        throw sessionError(
           "INTERACTION_SENSITIVE_FLOW_REQUIRED",
           "Secret fields cannot be persisted in message interaction sessions.",
         )
@@ -415,10 +445,12 @@ export function responseSchemaForInteraction(
   }
 }
 
-function validateAttachment(
+export const responseSchemaForInteractionOrThrow = thrown(responseSchemaForInteraction)
+
+effect function validateAttachment(
   value: MessageInteractionResponseValue,
   field: MessageInteractionResponseField,
-): void {
+): void!ElizaError {
   if (
     typeof value !== "object"
     || value === null
@@ -426,42 +458,41 @@ function validateAttachment(
     || !("mimeType" in value)
     || !("bytes" in value)
   ) {
-    fail(
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_RESPONSE",
       `${field.name} must be a media reference.`,
     )
   }
-  const attachment = value as MessageInteractionAttachmentResponse
-  if (!/^\/api\/media\/[a-f0-9]{64}\.[a-z0-9]+$/.test(attachment.mediaUrl)) {
-    fail(
+  if (!/^\/api\/media\/[a-f0-9]{64}\.[a-z0-9]+$/.test(value.mediaUrl)) {
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_RESPONSE",
       `${field.name} has an invalid media capability URL.`,
     )
   }
   if (
-    !Number.isSafeInteger(attachment.bytes)
-    || attachment.bytes < 0
-    || (field.maxBytes !== undefined && attachment.bytes > field.maxBytes)
+    !Number.isSafeInteger(value.bytes)
+    || value.bytes < 0
+    || (field.maxBytes !== undefined && value.bytes > field.maxBytes)
   ) {
-    fail(
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_RESPONSE",
       `${field.name} exceeds its byte limit.`,
     )
   }
-  if (field.mimeTypes && !field.mimeTypes.includes(attachment.mimeType)) {
-    fail(
+  if (field.mimeTypes && !field.mimeTypes.includes(value.mimeType)) {
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_RESPONSE",
       `${field.name} has an unsupported MIME type.`,
     )
   }
 }
 
-export function validateMessageInteractionResponse(
+export effect function validateMessageInteractionResponse(
   value: MessageInteractionResponse,
   schema: MessageInteractionResponseSchema,
-): MessageInteractionResponse {
+): MessageInteractionResponse!ElizaError {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return fail(
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_RESPONSE",
       "Interaction response must be an object.",
     )
@@ -469,7 +500,7 @@ export function validateMessageInteractionResponse(
   const allowed = new Map(schema.fields.map((field) => [field.name, field]))
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) {
-      return fail(
+      throw sessionError(
         "INVALID_MESSAGE_INTERACTION_RESPONSE",
         `Unexpected interaction response field: ${key}.`,
       )
@@ -479,7 +510,7 @@ export function validateMessageInteractionResponse(
     const responseValue = value[field.name]
     if (responseValue === undefined) {
       if (field.required) {
-        return fail(
+        throw sessionError(
           "INVALID_MESSAGE_INTERACTION_RESPONSE",
           `Missing interaction response field: ${field.name}.`,
         )
@@ -487,25 +518,25 @@ export function validateMessageInteractionResponse(
       continue
     }
     if (field.type === "file" || field.type === "image") {
-      validateAttachment(responseValue, field)
+      try validateAttachment(responseValue, field)
       continue
     }
     if (field.type === "checkbox" || field.type === "acknowledgement") {
       if (typeof responseValue !== "boolean") {
-        return fail(
+        throw sessionError(
           "INVALID_MESSAGE_INTERACTION_RESPONSE",
           `${field.name} must be boolean.`,
         )
       }
     } else if (field.type === "number") {
       if (typeof responseValue !== "number" || !Number.isFinite(responseValue)) {
-        return fail(
+        throw sessionError(
           "INVALID_MESSAGE_INTERACTION_RESPONSE",
           `${field.name} must be a finite number.`,
         )
       }
     } else if (typeof responseValue !== "string") {
-      return fail(
+      throw sessionError(
         "INVALID_MESSAGE_INTERACTION_RESPONSE",
         `${field.name} must be text.`,
       )
@@ -515,13 +546,13 @@ export function validateMessageInteractionResponse(
       && field.maxBytes !== undefined
       && utf8ByteLength(responseValue) > field.maxBytes
     ) {
-      return fail(
+      throw sessionError(
         "INVALID_MESSAGE_INTERACTION_RESPONSE",
         `${field.name} exceeds its UTF-8 byte limit.`,
       )
     }
     if (field.options && !field.options.includes(String(responseValue))) {
-      return fail(
+      throw sessionError(
         "INVALID_MESSAGE_INTERACTION_RESPONSE",
         `${field.name} is not an allowed option.`,
       )
@@ -530,11 +561,13 @@ export function validateMessageInteractionResponse(
   return structuredClone(value)
 }
 
-function assertCurrentContext(
+export const validateMessageInteractionResponseOrThrow = thrown(validateMessageInteractionResponse)
+
+effect function assertCurrentContext(
   session: MessageInteractionSession,
   context: MessageInteractionClaimContext,
   options: { requireActive: boolean } = { requireActive: true },
-): MessageInteractionResponse {
+): MessageInteractionResponse!ElizaError {
   const suppliedBindings: MessageInteractionBindings = {
     actorId: context.actorId,
     audience: context.audience,
@@ -544,64 +577,64 @@ function assertCurrentContext(
     sourceMessageId: context.sourceMessageId,
   }
   if (!sameBindings(session.bindings, suppliedBindings)) {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_BINDING_MISMATCH",
       "Interaction callback belongs to another actor, audience, agent, account, room, or source message.",
       { reference: session.reference },
     )
   }
   if (options.requireActive && session.authorization.state !== "active") {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_AUTHORIZATION_REVOKED",
       "Interaction authorization was revoked after render.",
     )
   }
   if (options.requireActive && Date.parse(session.expiresAt) <= context.now) {
-    return fail("MESSAGE_INTERACTION_EXPIRED", "Interaction session expired.")
+    throw sessionError("MESSAGE_INTERACTION_EXPIRED", "Interaction session expired.")
   }
   const response = session.presetResponse ?? context.response
   if (!response) {
-    return fail(
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_RESPONSE",
       "Interaction response is required.",
     )
   }
   if (session.presetResponse && context.response) {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_TAMPERED",
       "Preset callbacks cannot override their stored response.",
     )
   }
-  return validateMessageInteractionResponse(response, session.responseSchema)
+  return try validateMessageInteractionResponse(response, session.responseSchema)
 }
 
-export function applyMessageInteractionClaim(
+export effect function applyMessageInteractionClaim(
   sessionValue: MessageInteractionSession,
   context: MessageInteractionClaimContext,
-): MessageInteractionClaimResult {
-  const session = cloneSession(sessionValue)
-  validClock(context.now)
+): MessageInteractionClaimResult!ElizaError {
+  const session = structuredClone(sessionValue)
+  try validClock(context.now)
   if (context.reference !== session.reference) {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_REFERENCE_MISMATCH",
       "Interaction claim reference does not match the stored session.",
     )
   }
-  requiredText(context.replayKey, "replayKey")
-  requiredText(context.claimId, "claimId")
+  try requiredText(context.replayKey, "replayKey")
+  try requiredText(context.claimId, "claimId")
   if (!Number.isSafeInteger(context.claimTtlMs) || context.claimTtlMs < 1) {
-    return fail(
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_CLAIM_TTL",
       "Interaction claim lease must be a positive safe integer.",
     )
   }
   if (context.claimTtlMs > 8_640_000_000_000_000 - context.now) {
-    return fail(
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_CLAIM_TTL",
       "Interaction claim lease exceeds the supported clock range.",
     )
   }
-  const response = assertCurrentContext(session, context, {
+  const response = try assertCurrentContext(session, context, {
     requireActive: session.consume.state !== "committed"
       && session.consume.state !== "completed",
   })
@@ -611,7 +644,7 @@ export function applyMessageInteractionClaim(
       session.consume.replayKey !== context.replayKey
       || session.consume.responseDigest !== digest
     ) {
-      return fail(
+      throw sessionError(
         "MESSAGE_INTERACTION_ALREADY_CONSUMED",
         "Interaction was already consumed by another response.",
       )
@@ -623,7 +656,7 @@ export function applyMessageInteractionClaim(
       session.consume.replayKey !== context.replayKey
       || session.consume.responseDigest !== digest
     ) {
-      return fail(
+      throw sessionError(
         "MESSAGE_INTERACTION_ALREADY_COMMITTED",
         "Interaction already committed a different response.",
       )
@@ -635,7 +668,7 @@ export function applyMessageInteractionClaim(
       session.consume.replayKey !== context.replayKey
       || session.consume.responseDigest !== digest
     ) {
-      return fail(
+      throw sessionError(
         "MESSAGE_INTERACTION_ALREADY_CLAIMED",
         "Interaction is claimed by another response.",
       )
@@ -668,27 +701,29 @@ export function applyMessageInteractionClaim(
   return { status: "acquired", session }
 }
 
-export function applyMessageInteractionCompletion(
+export const applyMessageInteractionClaimOrThrow = thrown(applyMessageInteractionClaim)
+
+export effect function applyMessageInteractionCompletion(
   sessionValue: MessageInteractionSession,
   context: MessageInteractionCompleteContext,
-): MessageInteractionSession {
-  const session = cloneSession(sessionValue)
-  validClock(context.now)
+): MessageInteractionSession!ElizaError {
+  const session = structuredClone(sessionValue)
+  try validClock(context.now)
   if (context.reference !== session.reference) {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_REFERENCE_MISMATCH",
       "Interaction completion reference does not match the stored session.",
     )
   }
-  requiredText(context.claimId, "claimId")
-  requiredText(context.replayKey, "replayKey")
-  requiredText(context.receipt.receiptId, "receipt.receiptId")
+  try requiredText(context.claimId, "claimId")
+  try requiredText(context.replayKey, "replayKey")
+  try requiredText(context.receipt.receiptId, "receipt.receiptId")
   const receiptCompletedAt = parseCanonicalIso(context.receipt.completedAt)
   if (
     !Number.isFinite(receiptCompletedAt)
     || receiptCompletedAt > context.now
   ) {
-    return fail(
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_RECEIPT",
       "Effect receipt has an invalid or future completion time.",
     )
@@ -700,7 +735,7 @@ export function applyMessageInteractionCompletion(
     ) {
       return session
     }
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_ALREADY_CONSUMED",
       "A different effect already completed this interaction.",
     )
@@ -710,7 +745,7 @@ export function applyMessageInteractionCompletion(
     || session.consume.claimId !== context.claimId
     || session.consume.replayKey !== context.replayKey
   ) {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_STALE_CLAIM",
       "Interaction completion does not own the current claim.",
     )
@@ -719,7 +754,7 @@ export function applyMessageInteractionCompletion(
     context.receipt.idempotencyKey !== context.replayKey
     || context.receipt.status !== "completed"
   ) {
-    return fail(
+    throw sessionError(
       "INVALID_MESSAGE_INTERACTION_RECEIPT",
       "Effect receipt does not bind the replay key.",
     )
@@ -740,48 +775,52 @@ export function applyMessageInteractionCompletion(
   return session
 }
 
-export function applyMessageInteractionReconciliation(
+export const applyMessageInteractionCompletionOrThrow = thrown(applyMessageInteractionCompletion)
+
+export effect function applyMessageInteractionReconciliation(
   sessionValue: MessageInteractionSession,
   context: MessageInteractionReconcileContext,
-): MessageInteractionSession {
-  const session = cloneSession(sessionValue)
+): MessageInteractionSession!ElizaError {
+  const session = structuredClone(sessionValue)
   if (session.consume.state !== "committed") {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_NOT_COMMITTED",
       "Only a committed ambiguous interaction can be reconciled.",
     )
   }
   if (session.consume.replayKey !== context.replayKey) {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_REPLAY_KEY_MISMATCH",
       "Reconciliation receipt belongs to another replay key.",
     )
   }
-  return applyMessageInteractionCompletion(session, {
+  return try applyMessageInteractionCompletion(session, {
     ...context,
     claimId: session.consume.claimId,
   })
 }
 
-export function applyMessageInteractionCommit(
+export const applyMessageInteractionReconciliationOrThrow = thrown(applyMessageInteractionReconciliation)
+
+export effect function applyMessageInteractionCommit(
   sessionValue: MessageInteractionSession,
   context: MessageInteractionCommitContext,
-): MessageInteractionSession {
-  const session = cloneSession(sessionValue)
-  validClock(context.now)
+): MessageInteractionSession!ElizaError {
+  const session = structuredClone(sessionValue)
+  try validClock(context.now)
   if (
     session.reference !== context.reference
     || session.consume.state !== "claimed"
     || session.consume.claimId !== context.claimId
     || session.consume.replayKey !== context.replayKey
   ) {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_STALE_CLAIM",
       "Interaction effect commitment does not own the current claim.",
     )
   }
   if (session.authorization.state !== "active") {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_AUTHORIZATION_REVOKED",
       "Interaction authorization was revoked before effect commitment.",
     )
@@ -791,7 +830,7 @@ export function applyMessageInteractionCommit(
     Date.parse(session.consume.claimExpiresAt) <= context.now
     || Date.parse(session.expiresAt) <= context.now
   ) {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_EXPIRED",
       "Interaction claim or session expired before effect commitment.",
     )
@@ -810,21 +849,23 @@ export function applyMessageInteractionCommit(
   return session
 }
 
-export function applyMessageInteractionRevocation(
+export const applyMessageInteractionCommitOrThrow = thrown(applyMessageInteractionCommit)
+
+export effect function applyMessageInteractionRevocation(
   sessionValue: MessageInteractionSession,
   decisionId: string,
   now: number,
-): MessageInteractionSession {
-  const session = cloneSession(sessionValue)
+): MessageInteractionSession!ElizaError {
+  const session = structuredClone(sessionValue)
   if (session.authorization.decisionId !== decisionId) {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_AUTHORIZATION_MISMATCH",
       "Authorization decision does not match this session.",
     )
   }
   if (session.authorization.state === "revoked") return session
   if (session.consume.state === "committed") {
-    return fail(
+    throw sessionError(
       "MESSAGE_INTERACTION_EFFECT_COMMITTED",
       "Interaction revocation is pending an already committed effect outcome.",
     )
@@ -832,391 +873,401 @@ export function applyMessageInteractionRevocation(
   session.authorization = {
     ...session.authorization,
     state: "revoked",
-    revokedAt: new Date(validClock(now)).toISOString(),
+    revokedAt: new Date(try validClock(now)).toISOString(),
   }
   session.revision += 1
   return session
 }
 
-export class InMemoryMessageInteractionSessionStore implements MessageInteractionSessionStore {
-  private readonly sessions = new Map<string, MessageInteractionSession>()
-  private queue: Promise<void> = Promise.resolve()
+export const applyMessageInteractionRevocationOrThrow = thrown(applyMessageInteractionRevocation)
 
-  private async atomic<T>(operation: () => T | Promise<T>): Promise<T> {
-    let release: () => void = () => undefined
-    const previous = this.queue
-    this.queue = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    await previous
-    try {
-      return await operation()
-    } finally {
-      release()
+effect function atomically<A, E>(rows: SessionRows, operation: A!E): A!E {
+  try promise(() => Promise.resolve())
+  return try rows.lock.withPermits(1)(operation)
+}
+
+effect function insertSession(rows: SessionRows, session: MessageInteractionSession): void!ElizaError {
+  return try atomically(rows, effect {
+    if (rows.sessions.has(session.reference)) {
+      throw sessionError(
+        "MESSAGE_INTERACTION_REFERENCE_COLLISION",
+        "Interaction reference already exists.",
+      )
     }
-  }
+    rows.sessions.set(session.reference, structuredClone(session))
+  })
+}
 
-  async create(session: MessageInteractionSession): Promise<void> {
-    await this.atomic(() => {
-      if (this.sessions.has(session.reference)) {
-        return fail(
-          "MESSAGE_INTERACTION_REFERENCE_COLLISION",
-          "Interaction reference already exists.",
-        )
+effect function readSession(rows: SessionRows, reference: string): (MessageInteractionSession | null)!! {
+  return try atomically(rows, sync(() => {
+    const session = rows.sessions.get(reference)
+    return session ? structuredClone(session) : null
+  }))
+}
+
+effect function updateSession<T>(
+  rows: SessionRows,
+  reference: string,
+  apply: (current: MessageInteractionSession) => T!ElizaError,
+  next: (result: T) => MessageInteractionSession,
+): T!ElizaError {
+  return try atomically(rows, effect {
+    const current = rows.sessions.get(reference)
+    if (!current) {
+      throw sessionError(
+        "MESSAGE_INTERACTION_NOT_FOUND",
+        "Interaction session was not found.",
+      )
+    }
+    const result = try apply(current)
+    rows.sessions.set(reference, structuredClone(next(result)))
+    return result
+  })
+}
+
+effect function listCommittedSessions(
+  rows: SessionRows,
+  args: { committedBefore: number; limit: number },
+): MessageInteractionSession[]!ElizaError {
+  try validClock(args.committedBefore)
+  if (!Number.isSafeInteger(args.limit) || args.limit < 1) {
+    throw sessionError(
+      "INVALID_MESSAGE_INTERACTION_RECONCILIATION_LIMIT",
+      "Reconciliation limit must be a positive safe integer.",
+    )
+  }
+  return try atomically(rows, sync(() =>
+    [...rows.sessions.values()]
+      .filter(
+        (session) =>
+          session.consume.state === "committed"
+          && Date.parse(session.consume.committedAt) <= args.committedBefore,
+      )
+      .sort((a, b) => a.reference.localeCompare(b.reference))
+      .slice(0, args.limit)
+      .map((session) => structuredClone(session))
+  ))
+}
+
+effect function deleteExpiredSessions(rows: SessionRows, before: number): number!ElizaError {
+  try validClock(before)
+  return try atomically(rows, sync(() => {
+    let deleted = 0
+    for (const [reference, session] of rows.sessions) {
+      if (session.consume.state === "committed") continue
+      const terminalAt = session.consume.state === "completed"
+        ? Date.parse(session.consume.completedAt)
+        : Date.parse(session.expiresAt)
+      if (terminalAt <= before) {
+        rows.sessions.delete(reference)
+        deleted += 1
       }
-      this.sessions.set(session.reference, cloneSession(session))
-    })
+    }
+    return deleted
+  }))
+}
+
+export class InMemoryMessageInteractionSessionStore implements MessageInteractionSessionStore {
+  private readonly rows: SessionRows = { sessions: new Map(), lock: Semaphore.makeUnsafe(1) }
+
+  create(session: MessageInteractionSession): Promise<void> {
+    return runDetached(insertSession(this.rows, session))
   }
 
-  async get(reference: string): Promise<MessageInteractionSession | null> {
-    return this.atomic(() => {
-      const session = this.sessions.get(reference)
-      return session ? cloneSession(session) : null
-    })
+  get(reference: string): Promise<MessageInteractionSession | null> {
+    return runDetached(readSession(this.rows, reference))
   }
 
-  private update<T>(
-    reference: string,
-    apply: (current: MessageInteractionSession) => T,
-    next: (result: T) => MessageInteractionSession,
-  ): Promise<T> {
-    return this.atomic(() => {
-      const current = this.sessions.get(reference)
-      if (!current) {
-        return fail(
-          "MESSAGE_INTERACTION_NOT_FOUND",
-          "Interaction session was not found.",
-        )
-      }
-      const result = apply(current)
-      this.sessions.set(reference, cloneSession(next(result)))
-      return result
-    })
-  }
-
-  async claimIfCurrent(
+  claimIfCurrent(
     context: MessageInteractionClaimContext,
   ): Promise<MessageInteractionClaimResult> {
-    return this.update(
+    return runDetached(updateSession(
+      this.rows,
       context.reference,
       (current) => applyMessageInteractionClaim(current, context),
       (result) => result.session,
-    )
+    ))
   }
 
-  async completeIfClaimed(
+  completeIfClaimed(
     context: MessageInteractionCompleteContext,
   ): Promise<MessageInteractionSession> {
-    return this.update(
+    return runDetached(updateSession(
+      this.rows,
       context.reference,
       (current) => applyMessageInteractionCompletion(current, context),
       (session) => session,
-    )
+    ))
   }
 
-  async listCommitted(args: {
+  listCommitted(args: {
     committedBefore: number
     limit: number
   }): Promise<MessageInteractionSession[]> {
-    validClock(args.committedBefore)
-    if (!Number.isSafeInteger(args.limit) || args.limit < 1) {
-      return fail(
-        "INVALID_MESSAGE_INTERACTION_RECONCILIATION_LIMIT",
-        "Reconciliation limit must be a positive safe integer.",
-      )
-    }
-    return this.atomic(() =>
-      [...this.sessions.values()]
-        .filter(
-          (session) =>
-            session.consume.state === "committed"
-            && Date.parse(session.consume.committedAt) <= args.committedBefore,
-        )
-        .sort((a, b) => a.reference.localeCompare(b.reference))
-        .slice(0, args.limit)
-        .map(cloneSession)
-    )
+    return runDetached(listCommittedSessions(this.rows, args))
   }
 
-  async reconcileCommitted(
+  reconcileCommitted(
     context: MessageInteractionReconcileContext,
   ): Promise<MessageInteractionSession> {
-    return this.update(
+    return runDetached(updateSession(
+      this.rows,
       context.reference,
       (current) => applyMessageInteractionReconciliation(current, context),
       (session) => session,
-    )
+    ))
   }
 
-  async commitIfClaimed(
+  commitIfClaimed(
     context: MessageInteractionCommitContext,
   ): Promise<MessageInteractionSession> {
-    return this.update(
+    return runDetached(updateSession(
+      this.rows,
       context.reference,
       (current) => applyMessageInteractionCommit(current, context),
       (session) => session,
-    )
+    ))
   }
 
-  async revokeAuthorization(args: {
+  revokeAuthorization(args: {
     reference: string
     decisionId: string
     now: number
   }): Promise<MessageInteractionSession> {
-    return this.update(
+    return runDetached(updateSession(
+      this.rows,
       args.reference,
       (current) => applyMessageInteractionRevocation(current, args.decisionId, args.now),
       (session) => session,
-    )
+    ))
   }
 
-  async deleteExpired(before: number): Promise<number> {
-    validClock(before)
-    return this.atomic(() => {
-      let deleted = 0
-      for (const [reference, session] of this.sessions) {
-        if (session.consume.state === "committed") continue
-        const terminalAt = session.consume.state === "completed"
-          ? Date.parse(session.consume.completedAt)
-          : Date.parse(session.expiresAt)
-        if (terminalAt <= before) {
-          this.sessions.delete(reference)
-          deleted += 1
-        }
-      }
-      return deleted
-    })
+  deleteExpired(before: number): Promise<number> {
+    return runDetached(deleteExpiredSessions(this.rows, before))
   }
+}
+
+effect function trustedNow(options: MessageInteractionAuthorityOptions): number!(ElizaError | Foreign) {
+  return try validClock(try foreignSync(() => options.clock?.() ?? Date.now()))
+}
+
+effect function createSession(
+  store: MessageInteractionSessionStore,
+  options: MessageInteractionAuthorityOptions,
+  args: MessageInteractionCreateArgs,
+): { session: MessageInteractionSession; callbackData: string }!(ElizaError | Foreign) {
+  const now = try trustedNow(options)
+  const profile = try normalizeConnectorInteractionCapabilityProfile(args.profile)
+  if (
+    profile.connector.source !== args.bindings.connector.source
+    || profile.connector.accountId !== args.bindings.connector.accountId
+    || profile.target.kind !== args.bindings.audience.kind
+    || profile.target.id !== args.bindings.audience.id
+  ) {
+    throw sessionError(
+      "MESSAGE_INTERACTION_PROFILE_BINDING_MISMATCH",
+      "Capability profile belongs to another account or target.",
+    )
+  }
+  const expiry = parseCanonicalIso(args.expiresAt)
+  if (
+    !Number.isFinite(expiry)
+    || expiry <= now
+    || expiry - now > profile.blocks[args.block.kind].maxSessionTtlMs
+  ) {
+    throw sessionError(
+      "INVALID_MESSAGE_INTERACTION_EXPIRY",
+      "Interaction expiry exceeds negotiated capability.",
+    )
+  }
+  if (args.block.kind === "secret" && args.flow !== "sensitive-request") {
+    throw sessionError(
+      "INTERACTION_SENSITIVE_FLOW_REQUIRED",
+      "Secret/OAuth interactions require the sensitive-request flow.",
+    )
+  }
+  if (args.block.kind !== "secret" && args.flow === "sensitive-request") {
+    throw sessionError(
+      "INVALID_MESSAGE_INTERACTION_FLOW",
+      "Ordinary interactions cannot use the sensitive-request flow.",
+    )
+  }
+  const delivery = try negotiateInteractionDelivery(args.block, profile, {
+    ...args.negotiationContext,
+    callbackBytes: MESSAGE_INTERACTION_CALLBACK_BYTES,
+  })
+  if (delivery.mode !== args.flow) {
+    throw sessionError(
+      "INTERACTION_FLOW_NOT_NEGOTIATED",
+      "Interaction flow does not match the negotiated delivery for this payload.",
+      {
+        requested: args.flow,
+        negotiated: delivery.mode,
+        limitations: delivery.limitations,
+      },
+    )
+  }
+  if (args.purpose === "auth" && args.block.kind !== "secret") {
+    throw sessionError(
+      "INTERACTION_SENSITIVE_FLOW_REQUIRED",
+      "Authentication input must use a dedicated sensitive request.",
+    )
+  }
+  const reference = (try foreignSync(() => options.referenceFactory?.()))
+    ?? createOpaqueMessageInteractionReference()
+  const callbackData = try encodeMessageInteractionCallback(reference)
+  const schema = try responseSchemaForInteraction(args.block, {
+    maxTextResponseBytes: profile.limits.text.maxMessageBytes,
+  })
+  const presetResponse = args.presetResponse
+    ? try validateMessageInteractionResponse(args.presetResponse, schema)
+    : null
+  const session: MessageInteractionSession = {
+    sessionVersion: MESSAGE_INTERACTION_SESSION_VERSION,
+    reference,
+    purpose: args.purpose,
+    blockKind: args.block.kind,
+    flow: args.flow,
+    profileId: profile.profileId,
+    bindings: structuredClone(args.bindings),
+    responseSchema: schema,
+    presetResponse,
+    authorization: {
+      ...args.authorization,
+      state: "active",
+      revokedAt: null,
+    },
+    effect: structuredClone(args.effect),
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(expiry).toISOString(),
+    consume: { state: "pending" },
+    revision: 0,
+  }
+  const authorizationTime = parseCanonicalIso(session.authorization.decidedAt)
+  if (!Number.isFinite(authorizationTime) || authorizationTime > now) {
+    throw sessionError(
+      "INVALID_MESSAGE_INTERACTION_AUTHORIZATION",
+      "Authorization decision time is invalid.",
+    )
+  }
+  for (
+    const [path, value] of Object.entries({
+      ...session.bindings,
+      audienceKind: session.bindings.audience.kind,
+      audienceId: session.bindings.audience.id,
+      connectorSource: session.bindings.connector.source,
+      connectorAccountId: session.bindings.connector.accountId,
+      authorizationDecisionId: session.authorization.decisionId,
+      policyRevision: session.authorization.policyRevision,
+      effectKind: session.effect.kind,
+    })
+  ) {
+    if (typeof value === "string") try requiredText(value, path)
+  }
+  if (
+    /secret|token|password|oauth.*code|api.?key/i.test(
+      stableStringify(session.effect.metadata ?? {}),
+    )
+  ) {
+    throw sessionError(
+      "MESSAGE_INTERACTION_SECRET_FORBIDDEN",
+      "Interaction effect metadata appears to contain secret material.",
+    )
+  }
+  try foreign(() => store.create(session))
+  return { session: structuredClone(session), callbackData }
+}
+
+effect function consumeSession(
+  store: MessageInteractionSessionStore,
+  options: MessageInteractionAuthorityOptions,
+  args: MessageInteractionConsumeArgs,
+): MessageInteractionAuthorityConsumeOutcome!(ElizaError | Foreign) {
+  const reference = decodeMessageInteractionCallback(args.callbackData)
+  if (!reference) {
+    throw sessionError(
+      "INVALID_MESSAGE_INTERACTION_REFERENCE",
+      "Callback is not an opaque interaction reference.",
+    )
+  }
+  const now = try trustedNow(options)
+  const replayKey = try requiredText(args.replayKey, "replayKey")
+  const claim = try foreign(() => store.claimIfCurrent({
+    ...args.bindings,
+    reference,
+    replayKey,
+    response: args.response,
+    claimId: createOpaqueMessageInteractionReference(),
+    now,
+    claimTtlMs: options.claimTtlMs ?? 30_000,
+  }))
+  if (claim.status === "replay") {
+    return { status: "replay", receipt: claim.receipt }
+  }
+  if (claim.status === "in_progress") return { status: "in_progress" }
+  if (claim.session.consume.state !== "claimed") {
+    throw sessionError(
+      "MESSAGE_INTERACTION_STORE_PROTOCOL",
+      "Store returned an unclaimed session.",
+    )
+  }
+  const claimId = claim.session.consume.claimId
+  const commitNow = try trustedNow(options)
+  const committed = try foreign(() => store.commitIfClaimed({ reference, claimId, replayKey, now: commitNow }))
+  if (committed.consume.state !== "committed") {
+    throw sessionError(
+      "MESSAGE_INTERACTION_STORE_PROTOCOL",
+      "Store did not retain the effect commitment.",
+    )
+  }
+  const response = committed.consume.response
+  const receipt = try foreign(() => args.executor.execute({
+    idempotencyKey: replayKey,
+    effect: committed.effect,
+    response,
+    session: committed,
+  }))
+  const completeNow = try trustedNow(options)
+  const completed = try foreign(() => store.completeIfClaimed({ reference, claimId, replayKey, receipt, now: completeNow }))
+  if (completed.consume.state !== "completed") {
+    throw sessionError(
+      "MESSAGE_INTERACTION_STORE_PROTOCOL",
+      "Store did not retain the completion receipt.",
+    )
+  }
+  return { status: "completed", receipt: completed.consume.receipt }
+}
+
+effect function consumeReceipt(
+  store: MessageInteractionSessionStore,
+  options: MessageInteractionAuthorityOptions,
+  args: MessageInteractionConsumeArgs,
+): (MessageInteractionReceipt | { status: "in_progress" })!(ElizaError | Foreign) {
+  const outcome = try consumeSession(store, options, args)
+  return outcome.status === "in_progress" ? outcome : outcome.receipt
 }
 
 export class MessageInteractionSessionAuthority {
   constructor(
     private readonly store: MessageInteractionSessionStore,
-    private readonly options: {
-      clock?: () => number
-      referenceFactory?: () => string
-      claimTtlMs?: number
-    } = {},
+    private readonly options: MessageInteractionAuthorityOptions = {},
   ) {}
 
-  private now(): number {
-    return validClock(this.options.clock?.() ?? Date.now())
+  create(
+    args: MessageInteractionCreateArgs,
+  ): Promise<{ session: MessageInteractionSession; callbackData: string }> {
+    return runDetached(createSession(this.store, this.options, args))
   }
 
-  async create(args: {
-    block: InteractionBlock
-    profile: ConnectorInteractionCapabilityProfile
-    bindings: MessageInteractionBindings
-    purpose: MessageInteractionPurpose
-    flow: MessageInteractionFlow
-    negotiationContext?: InteractionNegotiationContext
-    presetResponse?: MessageInteractionResponse
-    authorization: Omit<
-      MessageInteractionAuthorizationDecision,
-      "state" | "revokedAt"
-    >
-    effect: MessageInteractionEffect
-    expiresAt: string
-  }): Promise<{ session: MessageInteractionSession; callbackData: string }> {
-    const now = this.now()
-    const profile = normalizeConnectorInteractionCapabilityProfile(
-      args.profile,
-    )
-    if (
-      profile.connector.source !== args.bindings.connector.source
-      || profile.connector.accountId !== args.bindings.connector.accountId
-      || profile.target.kind !== args.bindings.audience.kind
-      || profile.target.id !== args.bindings.audience.id
-    ) {
-      return fail(
-        "MESSAGE_INTERACTION_PROFILE_BINDING_MISMATCH",
-        "Capability profile belongs to another account or target.",
-      )
-    }
-    const expiry = parseCanonicalIso(args.expiresAt)
-    if (
-      !Number.isFinite(expiry)
-      || expiry <= now
-      || expiry - now > profile.blocks[args.block.kind].maxSessionTtlMs
-    ) {
-      return fail(
-        "INVALID_MESSAGE_INTERACTION_EXPIRY",
-        "Interaction expiry exceeds negotiated capability.",
-      )
-    }
-    if (args.block.kind === "secret" && args.flow !== "sensitive-request") {
-      return fail(
-        "INTERACTION_SENSITIVE_FLOW_REQUIRED",
-        "Secret/OAuth interactions require the sensitive-request flow.",
-      )
-    }
-    if (args.block.kind !== "secret" && args.flow === "sensitive-request") {
-      return fail(
-        "INVALID_MESSAGE_INTERACTION_FLOW",
-        "Ordinary interactions cannot use the sensitive-request flow.",
-      )
-    }
-    const delivery = negotiateInteractionDelivery(args.block, profile, {
-      ...args.negotiationContext,
-      callbackBytes: MESSAGE_INTERACTION_CALLBACK_BYTES,
-    })
-    if (delivery.mode !== args.flow) {
-      return fail(
-        "INTERACTION_FLOW_NOT_NEGOTIATED",
-        "Interaction flow does not match the negotiated delivery for this payload.",
-        {
-          requested: args.flow,
-          negotiated: delivery.mode,
-          limitations: delivery.limitations,
-        },
-      )
-    }
-    if (args.purpose === "auth" && args.block.kind !== "secret") {
-      return fail(
-        "INTERACTION_SENSITIVE_FLOW_REQUIRED",
-        "Authentication input must use a dedicated sensitive request.",
-      )
-    }
-    const reference = this.options.referenceFactory?.()
-      ?? createOpaqueMessageInteractionReference()
-    encodeMessageInteractionCallback(reference)
-    const schema = responseSchemaForInteraction(args.block, {
-      maxTextResponseBytes: profile.limits.text.maxMessageBytes,
-    })
-    const presetResponse = args.presetResponse
-      ? validateMessageInteractionResponse(args.presetResponse, schema)
-      : null
-    const session: MessageInteractionSession = {
-      sessionVersion: MESSAGE_INTERACTION_SESSION_VERSION,
-      reference,
-      purpose: args.purpose,
-      blockKind: args.block.kind,
-      flow: args.flow,
-      profileId: profile.profileId,
-      bindings: structuredClone(args.bindings),
-      responseSchema: schema,
-      presetResponse,
-      authorization: {
-        ...args.authorization,
-        state: "active",
-        revokedAt: null,
-      },
-      effect: structuredClone(args.effect),
-      createdAt: new Date(now).toISOString(),
-      expiresAt: new Date(expiry).toISOString(),
-      consume: { state: "pending" },
-      revision: 0,
-    }
-    const authorizationTime = parseCanonicalIso(
-      session.authorization.decidedAt,
-    )
-    if (!Number.isFinite(authorizationTime) || authorizationTime > now) {
-      return fail(
-        "INVALID_MESSAGE_INTERACTION_AUTHORIZATION",
-        "Authorization decision time is invalid.",
-      )
-    }
-    for (
-      const [path, value] of Object.entries({
-        ...session.bindings,
-        audienceKind: session.bindings.audience.kind,
-        audienceId: session.bindings.audience.id,
-        connectorSource: session.bindings.connector.source,
-        connectorAccountId: session.bindings.connector.accountId,
-        authorizationDecisionId: session.authorization.decisionId,
-        policyRevision: session.authorization.policyRevision,
-        effectKind: session.effect.kind,
-      })
-    ) {
-      if (typeof value === "string") requiredText(value, path)
-    }
-    if (
-      /secret|token|password|oauth.*code|api.?key/i.test(
-        stableStringify(session.effect.metadata ?? {}),
-      )
-    ) {
-      return fail(
-        "MESSAGE_INTERACTION_SECRET_FORBIDDEN",
-        "Interaction effect metadata appears to contain secret material.",
-      )
-    }
-    await this.store.create(session)
-    return {
-      session: cloneSession(session),
-      callbackData: encodeMessageInteractionCallback(reference),
-    }
-  }
-
-  async consumeWithOutcome(
+  consumeWithOutcome(
     args: MessageInteractionConsumeArgs,
   ): Promise<MessageInteractionAuthorityConsumeOutcome> {
-    const reference = decodeMessageInteractionCallback(args.callbackData)
-    if (!reference) {
-      return fail(
-        "INVALID_MESSAGE_INTERACTION_REFERENCE",
-        "Callback is not an opaque interaction reference.",
-      )
-    }
-    const now = this.now()
-    const replayKey = requiredText(args.replayKey, "replayKey")
-    const claimId = createOpaqueMessageInteractionReference()
-    const claim = await this.store.claimIfCurrent({
-      ...args.bindings,
-      reference,
-      replayKey,
-      response: args.response,
-      claimId,
-      now,
-      claimTtlMs: this.options.claimTtlMs ?? 30_000,
-    })
-    if (claim.status === "replay") {
-      return { status: "replay", receipt: claim.receipt }
-    }
-    if (claim.status === "in_progress") return { status: "in_progress" }
-    if (claim.session.consume.state !== "claimed") {
-      return fail(
-        "MESSAGE_INTERACTION_STORE_PROTOCOL",
-        "Store returned an unclaimed session.",
-      )
-    }
-    const committed = await this.store.commitIfClaimed({
-      reference,
-      claimId: claim.session.consume.claimId,
-      replayKey,
-      now: this.now(),
-    })
-    if (committed.consume.state !== "committed") {
-      return fail(
-        "MESSAGE_INTERACTION_STORE_PROTOCOL",
-        "Store did not retain the effect commitment.",
-      )
-    }
-    const receipt = await args.executor.execute({
-      idempotencyKey: replayKey,
-      effect: committed.effect,
-      response: committed.consume.response,
-      session: committed,
-    })
-    const completed = await this.store.completeIfClaimed({
-      reference,
-      claimId: claim.session.consume.claimId,
-      replayKey,
-      receipt,
-      now: this.now(),
-    })
-    if (completed.consume.state !== "completed") {
-      return fail(
-        "MESSAGE_INTERACTION_STORE_PROTOCOL",
-        "Store did not retain the completion receipt.",
-      )
-    }
-    return { status: "completed", receipt: completed.consume.receipt }
+    return runDetached(consumeSession(this.store, this.options, args))
   }
 
-  async consume(
+  consume(
     args: MessageInteractionConsumeArgs,
   ): Promise<MessageInteractionReceipt | { status: "in_progress" }> {
-    const outcome = await this.consumeWithOutcome(args)
-    return outcome.status === "in_progress" ? outcome : outcome.receipt
+    return runDetached(consumeReceipt(this.store, this.options, args))
   }
 }

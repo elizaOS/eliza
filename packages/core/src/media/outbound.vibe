@@ -1,3 +1,5 @@
+// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
+import { foreign, promised } from "../edge.vibe"
 import type { PinnedLookupFetchLike } from "../network/fetch-guard.vibe"
 import type { LookupFn } from "../network/ssrf.vibe"
 import { DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES, type ResolvedAttachmentBytes } from "./attachments.vibe"
@@ -16,6 +18,30 @@ export type ResolveOutboundAttachmentOptions = {
 }
 
 const DEFAULT_OUTBOUND_TIMEOUT_MS = 30_000
+
+module node {
+  import { Buffer } from "node:buffer"
+  import type { FetchLike } from "./fetch.vibe"
+
+  /** @throws {never} */
+  export async function dataUrlBytes(url: string, payload: string, isBase64: boolean): Promise<Buffer> {
+    if (isBase64) {
+      return Buffer.from(decodeURIComponent(payload).replace(/\s+/g, ""), "base64")
+    }
+    return Buffer.from(await (await fetch(url)).arrayBuffer())
+  }
+
+  /** @throws {never} */
+  export function platformFetch(): FetchLike | undefined {
+    return globalThis.fetch
+  }
+
+  /** @throws {never} */
+  export async function fetchWithTimeout(fetcher: FetchLike, href: string, timeoutMs: number): Promise<Response> {
+    return await fetcher(href, { signal: AbortSignal.timeout(timeoutMs) })
+  }
+}
+import { dataUrlBytes, fetchWithTimeout, platformFetch } from node
 
 function isDataUrl(url: string): boolean {
   return url.trim().slice(0, 5).toLowerCase() === "data:"
@@ -47,10 +73,10 @@ export function summarizeOutboundAttachmentUrl(url: string): {
   }
 }
 
-async function decodeDataUrl(
+effect function decodeDataUrl(
   url: string,
   maxBytes: number,
-): Promise<ResolvedAttachmentBytes> {
+) {
   const comma = url.indexOf(",")
   if (!isDataUrl(url) || comma < 0) {
     throw new MediaFetchError("fetch_failed", "malformed data URL")
@@ -64,21 +90,11 @@ async function decodeDataUrl(
     ?.trim()
     .toLowerCase() || "application/octet-stream"
 
-  let buffer: Buffer
-  try {
-    if (isBase64) {
-      buffer = Buffer.from(
-        decodeURIComponent(payload).replace(/\s+/g, ""),
-        "base64",
-      )
-    } else {
-      buffer = Buffer.from(await (await fetch(url)).arrayBuffer())
-    }
-  } catch (error) {
+  const buffer = foreign(() => dataUrlBytes(url, payload, isBase64)) catch effect (failure) => {
     throw new MediaFetchError(
       "fetch_failed",
       "failed to decode data URL",
-      error,
+      failure.cause,
     )
   }
   if (buffer.length === 0) {
@@ -95,32 +111,27 @@ async function decodeDataUrl(
     buffer,
     contentType: mime,
     ...(ext ? { fileName: `attachment${ext}` } : {}),
-  }
+  } satisfies ResolvedAttachmentBytes
 }
 
-async function fetchLocalMediaStoreBytes(
+effect function fetchLocalMediaStoreBytes(
   localUrl: URL,
   opts: ResolveOutboundAttachmentOptions,
   maxBytes: number,
   timeoutMs: number,
-): Promise<ResolvedAttachmentBytes> {
-  const fetcher = opts.localFetch ?? globalThis.fetch
+) {
+  const fetcher = opts.localFetch ?? platformFetch()
   if (typeof fetcher !== "function") {
     throw new MediaFetchError(
       "fetch_failed",
       "local media-store fetch is not available",
     )
   }
-  let response: Response
-  try {
-    response = await fetcher(localUrl.href, {
-      signal: AbortSignal.timeout(timeoutMs),
-    })
-  } catch (error) {
+  const response = foreign(() => fetchWithTimeout(fetcher, localUrl.href, timeoutMs)) catch effect (failure) => {
     throw new MediaFetchError(
       "fetch_failed",
       `local media-store fetch failed for ${localUrl.pathname}`,
-      error,
+      failure.cause,
     )
   }
   if (!response.ok) {
@@ -129,7 +140,7 @@ async function fetchLocalMediaStoreBytes(
       `local media-store fetch failed (HTTP ${response.status}) for ${localUrl.pathname}`,
     )
   }
-  const buffer = await readResponseWithLimit(response, maxBytes)
+  const buffer = try readResponseWithLimit(response, maxBytes)
   const contentType = response.headers.get("content-type")?.split(";")[0]?.trim()
     || "application/octet-stream"
   const fileName = localUrl.pathname.split("/").pop()
@@ -137,13 +148,13 @@ async function fetchLocalMediaStoreBytes(
     buffer,
     contentType,
     ...(fileName ? { fileName } : {}),
-  }
+  } satisfies ResolvedAttachmentBytes
 }
 
-export async function resolveOutboundAttachmentBytes(
+export effect function resolveOutboundAttachmentBytes(
   url: string,
   opts: ResolveOutboundAttachmentOptions = {},
-): Promise<ResolvedAttachmentBytes> {
+) {
   const trimmed = url.trim()
   if (!trimmed) {
     throw new MediaFetchError(
@@ -155,32 +166,24 @@ export async function resolveOutboundAttachmentBytes(
   const timeoutMs = opts.timeoutMs ?? DEFAULT_OUTBOUND_TIMEOUT_MS
 
   if (isDataUrl(trimmed)) {
-    return decodeDataUrl(trimmed, maxBytes)
+    return try decodeDataUrl(trimmed, maxBytes)
   }
 
-  const localUrl = trustedLocalMediaUrl(trimmed)
+  const localUrl = try trustedLocalMediaUrl(trimmed)
   if (localUrl) {
-    return fetchLocalMediaStoreBytes(localUrl, opts, maxBytes, timeoutMs)
+    return try fetchLocalMediaStoreBytes(localUrl, opts, maxBytes, timeoutMs)
   }
 
-  let parsed: URL
-  try {
-    parsed = new URL(trimmed)
-  } catch (error) {
-    throw new MediaFetchError(
-      "fetch_failed",
-      "outbound attachment URL is not a data URL, media-store handle, or http(s) URL",
-      error,
-    )
-  }
+  const notSupported = "outbound attachment URL is not a data URL, media-store handle, or http(s) URL"
+  const parsed = try Effect.try({
+    try: () => new URL(trimmed),
+    catch: (error) => new MediaFetchError("fetch_failed", notSupported, error),
+  })
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new MediaFetchError(
-      "fetch_failed",
-      "outbound attachment URL is not a data URL, media-store handle, or http(s) URL",
-    )
+    throw new MediaFetchError("fetch_failed", notSupported)
   }
 
-  const fetched = await fetchRemoteMedia({
+  const fetched = try fetchRemoteMedia({
     url: trimmed,
     maxBytes,
     timeoutMs,
@@ -192,5 +195,6 @@ export async function resolveOutboundAttachmentBytes(
     buffer: fetched.buffer,
     contentType: fetched.contentType ?? "application/octet-stream",
     ...(fetched.fileName ? { fileName: fetched.fileName } : {}),
-  }
+  } satisfies ResolvedAttachmentBytes
 }
+export const resolveOutboundAttachmentBytesPromise = promised(resolveOutboundAttachmentBytes)

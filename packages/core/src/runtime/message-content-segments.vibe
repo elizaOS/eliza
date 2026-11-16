@@ -1,13 +1,14 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/ingressSnapshots.md, "Reuse requires exact redacted content and every projected stored segment"
 import {
   artifactDisclosureRecordFromMemory,
   resolveArtifactDisclosure,
 } from "../access-control/artifact-disclosure.vibe"
+import { Foreign, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { AccessContext } from "../types/access-context.vibe"
 import type { MessageContentSourceSelector } from "../types/database.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { Content, ContentValue, Media, UUID } from "../types/primitives.vibe"
-import { createHash } from "../utils/crypto-compat.vibe"
 import { sha256Hex } from "./trajectory-provider-attribution.vibe"
 
 export const MESSAGE_CONTENT_SEGMENT_VERSION = 1 as const
@@ -63,6 +64,25 @@ interface ReconstructedMessageContentPage {
   sourceQueryCount: number
 }
 
+module node {
+  import { Buffer } from "node:buffer"
+  import { createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function nameBasedUuid(namespaceHex: string, name: string): string {
+    const digest = createHash("sha1")
+      .update(Buffer.from(namespaceHex, "hex"))
+      .update(name)
+      .digest()
+    const id = Buffer.from(digest.subarray(0, 16))
+    id[6] = (id[6] & 0x0f) | 0x50
+    id[8] = (id[8] & 0x3f) | 0x80
+    const hex = id.toString("hex")
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  }
+}
+import { nameBasedUuid } from node
+
 const encoder = new TextEncoder()
 
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
@@ -107,7 +127,7 @@ export function canonicalAttachmentText(attachment: Media): string {
     .trim()
 }
 
-function safeUtf8End(source: Uint8Array, start: number): number {
+effect function safeUtf8End(source: Uint8Array, start: number): number!ElizaError {
   let end = Math.min(start + MESSAGE_CONTENT_SEGMENT_MAX_BYTES, source.length)
   while (end > start && end < source.length && (source[end] & 0xc0) === 0x80) {
     end--
@@ -123,39 +143,36 @@ function safeUtf8End(source: Uint8Array, start: number): number {
   return end
 }
 
-export function messageContentSegmentId(args: {
+interface SegmentLocator {
   messageId: UUID
   kind: MessageContentSourceKind
   revision: string
   ordinal: number
   attachmentHash?: string
-}): UUID {
-  const name = [
+}
+
+function segmentId(args: SegmentLocator): UUID {
+  return nameBasedUuid(MESSAGE_CONTENT_SEGMENT_NAMESPACE_HEX, [
     "message-content-segment-v1",
     args.messageId,
     args.kind,
     args.attachmentHash ?? "message",
     args.revision,
     String(args.ordinal),
-  ].join(":")
-
-  const digest = createHash("sha1")
-    .update(Buffer.from(MESSAGE_CONTENT_SEGMENT_NAMESPACE_HEX, "hex"))
-    .update(name)
-    .digest()
-  const id = Buffer.from(digest.subarray(0, 16))
-  id[6] = (id[6] & 0x0f) | 0x50
-  id[8] = (id[8] & 0x3f) | 0x80
-  const hex = id.toString("hex")
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as UUID
+  ].join(":")) as UUID
 }
 
-function buildSource(args: {
+export effect function messageContentSegmentId(args: SegmentLocator): UUID!! {
+  return segmentId(args)
+}
+export const messageContentSegmentIdOrThrow = thrown(messageContentSegmentId)
+
+effect function buildSource(args: {
   text: string
   message: Memory & { id: UUID }
   kind: MessageContentSourceKind
   attachmentHash?: string
-}): { descriptor: MessageContentSourceDescriptor; segments: Memory[] } {
+}): { descriptor: MessageContentSourceDescriptor; segments: Memory[] }!(ElizaError | Foreign) {
   const source = bytes(args.text)
   const digest = sha256Hex(source)
   const revision = `rev:${digest}`
@@ -171,7 +188,7 @@ function buildSource(args: {
   }
   const segments: Memory[] = []
   for (let start = 0, ordinal = 0; start < source.length; ordinal++) {
-    const end = safeUtf8End(source, start)
+    const end = try safeUtf8End(source, start)
     const segmentBytes = source.subarray(start, end)
     const metadata: MessageContentSegmentMetadata = {
       type: "message-content-segment",
@@ -187,7 +204,7 @@ function buildSource(args: {
       timestamp: args.message.createdAt ?? Date.now(),
     }
     segments.push({
-      id: messageContentSegmentId({
+      id: segmentId({
         messageId: args.message.id,
         kind: args.kind,
         revision,
@@ -198,7 +215,12 @@ function buildSource(args: {
       roomId: args.message.roomId,
       entityId: args.message.entityId,
       worldId: args.message.worldId,
-      content: { text: decoder.decode(segmentBytes) },
+      content: {
+        text: try Effect.try({
+          try: () => decoder.decode(segmentBytes),
+          catch: (cause) => new Foreign({ cause }),
+        }),
+      },
       metadata: metadata as unknown as Memory["metadata"],
     })
     start = end
@@ -209,9 +231,9 @@ function buildSource(args: {
   return { descriptor, segments }
 }
 
-export function buildMessageContentProjection(
+export effect function buildMessageContentProjection(
   message: Memory & { id: UUID },
-): MessageContentProjection {
+): MessageContentProjection!(ElizaError | Foreign) {
   const segments: Memory[] = []
   const content: Content = { ...message.content }
   const messageText = content.text
@@ -219,7 +241,7 @@ export function buildMessageContentProjection(
     typeof messageText === "string"
     && bytes(messageText).length > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
   ) {
-    const source = buildSource({
+    const source = try buildSource({
       text: messageText,
       message,
       kind: "message-text",
@@ -229,16 +251,23 @@ export function buildMessageContentProjection(
     content.messageTextSource = source.descriptor
   }
   if (Array.isArray(content.attachments)) {
-    content.attachments = content.attachments.map((attachment) => {
+    const attachments = content.attachments
+    const length = attachments.length
+    const projectedAttachments: Media[] = attachments.slice(0, 0)
+    projectedAttachments.length = length
+    for (let index = 0; index < length; index++) {
+      if (!(index in attachments)) continue
+      const attachment = attachments[index]
       const canonical = canonicalAttachmentText(attachment)
       if (
         canonical.length === 0
         || bytes(canonical).length <= MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
       ) {
-        return { ...attachment }
+        projectedAttachments[index] = { ...attachment }
+        continue
       }
       const hash = hashAttachmentIdForLocator(attachment.id)
-      const source = buildSource({
+      const source = try buildSource({
         text: canonical,
         message,
         kind: "attachment-text",
@@ -251,11 +280,13 @@ export function buildMessageContentProjection(
       delete projected.text
       delete projected.description
       projected.textSource = source.descriptor
-      return projected
-    })
+      projectedAttachments[index] = projected
+    }
+    content.attachments = projectedAttachments
   }
   return { content, segments }
 }
+export const buildMessageContentProjectionOrThrow = thrown(buildMessageContentProjection)
 
 export function isMessageContentSourceDescriptor(
   value: unknown,
@@ -302,10 +333,10 @@ export function attachmentTextSourceDescriptor(
     : null
 }
 
-export function resolveMessageContentSourceDescriptor(
+export effect function resolveMessageContentSourceDescriptor(
   content: Content,
   selector: MessageContentSourceSelector,
-): MessageContentSourceDescriptor | null {
+): (MessageContentSourceDescriptor | null)!ElizaError {
   if (selector.kind === "message-text") {
     return messageTextSourceDescriptor(content)
   }
@@ -327,15 +358,16 @@ export function resolveMessageContentSourceDescriptor(
   }
   return match
 }
+export const resolveMessageContentSourceDescriptorOrThrow = thrown(resolveMessageContentSourceDescriptor)
 
-export function authorizeMessageContentRead(args: {
+export effect function authorizeMessageContentRead(args: {
   parent: Memory
   authorizedRoomId: UUID
   requester: AccessContext
   agentId: UUID
   participantCurrent: boolean
   selector: MessageContentSourceSelector
-}): boolean {
+}): boolean!ElizaError {
   if (
     args.parent.agentId !== args.agentId
     || args.parent.roomId !== args.authorizedRoomId
@@ -355,10 +387,10 @@ export function authorizeMessageContentRead(args: {
   if (disclosure !== "full") return false
   if (args.selector.kind === "message-text") return true
   if (
-    resolveMessageContentSourceDescriptor(
+    (try resolveMessageContentSourceDescriptor(
       args.parent.content,
       args.selector,
-    ) !== null
+    )) !== null
   ) {
     return true
   }
@@ -368,6 +400,7 @@ export function authorizeMessageContentRead(args: {
       === args.selector.attachmentIdHash,
   )
 }
+export const authorizeMessageContentReadOrThrow = thrown(authorizeMessageContentRead)
 
 export function messageContentRequiresSegments(content: Content): boolean {
   if (messageTextSourceDescriptor(content)) return true
@@ -388,7 +421,7 @@ export function collectMessageContentSegmentIds(
   )
   return descriptors.flatMap((descriptor) =>
     Array.from({ length: descriptor.segmentCount }, (_, ordinal) =>
-      messageContentSegmentId({
+      segmentId({
         messageId,
         kind: descriptor.kind,
         revision: descriptor.revision,
@@ -404,14 +437,14 @@ function safeInteger(value: unknown): number | null {
     : null
 }
 
-export function readMessageContentProjection(args: {
+export effect function readMessageContentProjection(args: {
   descriptor: MessageContentSourceDescriptor
   segments: Memory[]
   messageId: UUID
   offset: number
   limit: number
   sourceQueryCount?: number
-}): ReconstructedMessageContentPage {
+}): ReconstructedMessageContentPage!ElizaError {
   if (
     !Number.isSafeInteger(args.offset)
     || args.offset < 0
@@ -561,16 +594,15 @@ export function readMessageContentProjection(args: {
   }
   const pageBytes = combined.subarray(localStart, localEnd)
   const end = args.offset + pageBytes.length
-  let text: string
-  try {
-    text = decoder.decode(pageBytes)
-  } catch (cause) {
-    throw new ElizaError("Message content page is not valid UTF-8", {
-      code: "MESSAGE_CONTENT_INVALID_UTF8_BOUNDARY",
-      cause,
-      context: { messageId: args.messageId, offset: args.offset },
-    })
-  }
+  const text = try Effect.try({
+    try: () => decoder.decode(pageBytes),
+    catch: (cause) =>
+      new ElizaError("Message content page is not valid UTF-8", {
+        code: "MESSAGE_CONTENT_INVALID_UTF8_BOUNDARY",
+        cause,
+        context: { messageId: args.messageId, offset: args.offset },
+      }),
+  })
   return {
     text,
     start: args.offset,
@@ -584,3 +616,4 @@ export function readMessageContentProjection(args: {
     sourceQueryCount: args.sourceQueryCount ?? 0,
   }
 }
+export const readMessageContentProjectionOrThrow = thrown(readMessageContentProjection)

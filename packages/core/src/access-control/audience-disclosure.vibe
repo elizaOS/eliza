@@ -1,3 +1,4 @@
+// spec/core/authorization.md, "Story: Read only the authorized records"; spec/core/authorization.md, "Memory and artifact scopes preserve their distinct compatibility decisions"
 import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audience.vibe"
 import type { AccessContext } from "../types/access-context.vibe"
 import type { DisclosureSubject } from "../types/memory.vibe"

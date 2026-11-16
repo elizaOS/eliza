@@ -1,4 +1,19 @@
+// spec/core/requestIssuer.md, "Only a matching live original can create or use its issuer"; spec/core/requestIssuer.md, "A contradictory repeated commit permanently taints the issuer"; spec/core/requestCompletions.md, "Resolving a second different mutation invalidates an attempt"; spec/core/requestCompletions.md, "Result fingerprints and invalidation persist across projection"; spec/core/requestCompletions.md, "Denial projection needs the exact attempt and an unexecuted zero-effect failure"; spec/core/requestAuthorityRegistry.md, "Object identity and current request fields determine the active issuer"; spec/core/requestAuthorityRegistry.md, "State.data aliases share one exact view while serialized copies carry no view"; spec/core/requestAuthorityRegistry.md, "Attempts and result objects belong to one issuer across every map"; spec/core/context.md, "A historical evidence projection requires exact validated source binding"
+import {
+  type Event,
+  type Interpretation,
+  Machine,
+  machine,
+  type NoteOperation,
+  type Rejected,
+  type RequestClassification,
+  type RequestIssuer,
+  restriction,
+  validIssuer as issuerHolds,
+} from "../../gen/core__requestIssuer.effect.vibe"
 import { getAmbientSingleton } from "../ambient-context.vibe"
+import { failingAs, foreignSync, thrown } from "../edge.vibe"
+import { own, type Owned } from "../owned.vibe"
 import { completionContextSources, selectHistoricalNavigation } from "../runtime/completion-context.vibe"
 import { hashStableJson } from "../runtime/context-hash.vibe"
 import type { ContextObject } from "../runtime/context-object.vibe"
@@ -28,6 +43,13 @@ type Binding = {
   extractionProjectionAuthorized: boolean
   issuer?: RequestOperationIssuer
 }
+function orUndefined<A>(run: A!unknown): A | undefined {
+  return match (runSyncExit(run)) {
+    when Exit.Success(let value): value;
+    default: undefined;
+  }
+}
+
 const key = Symbol.for("eliza.task-extraction-context")
 const bindings = () => getAmbientSingleton(key, () => new WeakMap<object, Binding>())
 const stateFingerprint = (state: State) =>
@@ -46,9 +68,10 @@ export function bindTaskExtractionContext(
   runtime?: RequestOperationRuntime,
   issuer?: RequestOperationIssuer,
 ): void {
-  if (state.data) bindings().delete(state.data)
+  const data = state.data
+  if (data) bindings().delete(data)
   if (
-    !state.data
+    !data
     || !message.id
     || !message.roomId
     || !message.entityId
@@ -57,41 +80,50 @@ export function bindTaskExtractionContext(
   ) {
     return
   }
-  try {
-    const sources = completionContextSources(original).sources
-    const sourceIds = new Set(sources.map(({ event }) => event.id))
-    const included = new Set(
-      projected.events
-        .filter((event) => sourceIds.has(event.id))
-        .map((event) => event.id),
-    )
+  const binding = orUndefined(viewBinding(state, message, original, projected, runtime, issuer))
+  if (binding) bindings().set(data, binding)
+}
 
-    const extractionProjectionAuthorized = sources.length > 0 && included.size !== sources.length
+effect function viewBinding(
+  state: State,
+  message: Memory,
+  original: ContextObject,
+  projected: ContextObject,
+  runtime?: RequestOperationRuntime,
+  issuer?: RequestOperationIssuer,
+) {
+  const sources = (try completionContextSources(original)).sources
+  const sourceIds = new Set(sources.map(({ event }) => event.id))
+  const included = new Set(
+    projected.events
+      .filter((event) => sourceIds.has(event.id))
+      .map((event) => event.id),
+  )
 
-    const expected = extractionProjectionAuthorized
-      ? {
-        ...original,
-        events: selectHistoricalNavigation(original, included).events.filter(
-          (event) => !sourceIds.has(event.id) || included.has(event.id),
-        ),
-      }
-      : original
+  const extractionProjectionAuthorized = sources.length > 0 && included.size !== sources.length
 
-    const exact = hashStableJson(expected) === hashStableJson(projected)
-    const view = exact ? projected : original
-    bindings().set(state.data, {
-      original,
-      projected: view,
-      sourceHash: hashStableJson(original),
-      projectionHash: hashStableJson(view),
-      requestHash: hashStableJson(message),
-      stateHash: stateFingerprint(state),
-      extractionProjectionAuthorized: exact && extractionProjectionAuthorized,
-      ...(runtime && issuer && validIssuer(issuer, runtime, message)
-        ? { issuer }
-        : {}),
-    })
-  } catch {
+  const expected = extractionProjectionAuthorized
+    ? {
+      ...original,
+      events: selectHistoricalNavigation(original, included).events.filter(
+        (event) => !sourceIds.has(event.id) || included.has(event.id),
+      ),
+    }
+    : original
+
+  const exact = (try hashStableJson(expected)) === (try hashStableJson(projected))
+  const view = exact ? projected : original
+  return {
+    original,
+    projected: view,
+    sourceHash: try hashStableJson(original),
+    projectionHash: try hashStableJson(view),
+    requestHash: try hashStableJson(message),
+    stateHash: try stateFingerprint(state),
+    extractionProjectionAuthorized: exact && extractionProjectionAuthorized,
+    ...(runtime && issuer && validIssuer(issuer, runtime, message)
+      ? { issuer }
+      : {}),
   }
 }
 
@@ -102,19 +134,17 @@ function readBinding(
   if (!state?.data || !message) return undefined
   const binding = bindings().get(state.data)
   if (!binding) return undefined
-  try {
+  return orUndefined(effect {
     if (
-      binding.requestHash !== hashStableJson(message)
-      || binding.stateHash !== stateFingerprint(state)
-      || binding.sourceHash !== hashStableJson(binding.original)
-      || binding.projectionHash !== hashStableJson(binding.projected)
+      binding.requestHash !== (try hashStableJson(message))
+      || binding.stateHash !== (try stateFingerprint(state))
+      || binding.sourceHash !== (try hashStableJson(binding.original))
+      || binding.projectionHash !== (try hashStableJson(binding.projected))
     ) {
       return undefined
     }
     return binding
-  } catch {
-    return undefined
-  }
+  })
 }
 
 export function readTaskExtractionRequestIntents(
@@ -153,7 +183,7 @@ export function readTaskExtractionContext(
 ): { text: string; originalText: string; system?: string } | undefined {
   const binding = readBinding(state, message)
   if (!binding?.extractionProjectionAuthorized) return undefined
-  try {
+  return orUndefined(effect {
     const system = binding.original.staticPrefix?.systemPrompt?.content
 
     const separateSystem = typeof system === "string"
@@ -173,10 +203,10 @@ export function readTaskExtractionContext(
       )
 
     const rendered = render(
-      projectDeferredProviders(binding.projected).context,
+      (try projectDeferredProviders(binding.projected)).context,
     )
     return {
-      text: compactHistoricalReceiptSegments(rendered.promptSegments)
+      text: (try compactHistoricalReceiptSegments(rendered.promptSegments))
         .map(segmentBlock)
         .join("\n\n"),
       originalText: render(binding.original)
@@ -184,18 +214,16 @@ export function readTaskExtractionContext(
         .join("\n\n"),
       ...(separateSystem ? { system } : {}),
     }
-  } catch {
-    return undefined
-  }
+  })
 }
 
-export function readTaskExtractionUserSources(
+export effect function readTaskExtractionUserSources(
   state: State | undefined,
   message: Memory | undefined,
-): readonly { id: string; text: string }[] | undefined {
+) {
   const binding = readBinding(state, message)
   if (!binding || !message) return undefined
-  return completionContextSources(binding.projected).sources.flatMap(
+  return (try completionContextSources(binding.projected)).sources.flatMap<{ readonly id: string; readonly text: string }>(
     ({ event }) => {
       if (event.type !== "segment" || event.source !== "prior-dialogue") {
         return []
@@ -223,6 +251,8 @@ export function readTaskExtractionUserSources(
   )
 }
 
+export const readTaskExtractionUserSourcesOrThrow = thrown(failingAs(TypeError, readTaskExtractionUserSources))
+
 declare const issuerBrand: unique symbol
 declare const attemptBrand: unique symbol
 export interface RequestOperationIssuer {
@@ -246,24 +276,26 @@ export type NotesRequestInterpretation = {
   readonly status: "explicit" | "unavailable" | "contradictory"
   readonly operations: readonly NotesRequestOperation[]
 }
+type CommittedSource = {
+  source?: unknown
+  currentSource?: () => unknown
+}
 type Issuer = {
   runtime: RequestOperationRuntime
   message: Memory
   current: () => boolean
   agentId: string
-  messageId: string
-  roomId: string
-  entityId: string
-  requestHash: string
-  classification: RequestOperationClassification
+  messageId: Memory["id"]
+  roomId: Memory["roomId"]
+  entityId: Memory["entityId"]
+  lifecycle: Owned<RequestIssuer, Event, RequestIssuer, Rejected, CommittedSource>
+}
+type IssuerView = Issuer & {
+  state: RequestIssuer
   committed: boolean
-  tainted: boolean
   revision: number
+  classification: RequestOperationClassification
   interpretation?: NotesRequestInterpretation
-  interpretationHash?: string
-  source?: unknown
-  sourceHash?: string
-  currentSource?: () => unknown
 }
 type Attempt = {
   issuer: RequestOperationIssuer
@@ -314,7 +346,7 @@ type CompletionFact = {
 type ResultAssociation = {
   attempt: BoundRequestOperationAttempt
   fingerprint: string
-  shape: ReturnType<typeof completionShape>
+  shape: CompletionShape
   completion?: CompletionFact
   changed?: boolean
   projectionOwner?: RequestOperationIssuer
@@ -347,7 +379,7 @@ const resultAttempts = () =>
 export function normalizeNotesRequestInterpretation(
   value: unknown,
 ): NotesRequestInterpretation | undefined {
-  try {
+  return orUndefined(effect {
     if (
       !value
       || typeof value !== "object"
@@ -355,7 +387,7 @@ export function normalizeNotesRequestInterpretation(
       || (Object.getPrototypeOf(value) !== Object.prototype
         && Object.getPrototypeOf(value) !== null)
     ) {
-      return
+      return undefined
     }
     const keys = Reflect.ownKeys(value)
     if (
@@ -363,17 +395,17 @@ export function normalizeNotesRequestInterpretation(
       || !keys.includes("status")
       || !keys.includes("operations")
     ) {
-      return
+      return undefined
     }
-    const status = ownData(value, "status")
+    const status = try ownData(value, "status")
     if (
       status !== "explicit"
       && status !== "unavailable"
       && status !== "contradictory"
     ) {
-      return
+      return undefined
     }
-    const operations = plainSnapshot(ownData(value, "operations"))
+    const operations = try plainSnapshot(try ownData(value, "operations"))
     if (
       !Array.isArray(operations)
       || operations.length > NOTES_REQUEST_OPERATIONS.length
@@ -385,7 +417,7 @@ export function normalizeNotesRequestInterpretation(
       || new Set(operations).size !== operations.length
       || (status !== "explicit" && operations.length !== 0)
     ) {
-      return
+      return undefined
     }
     return Object.freeze({
       status,
@@ -393,11 +425,9 @@ export function normalizeNotesRequestInterpretation(
         NOTES_REQUEST_OPERATIONS.filter((operation) => operations.includes(operation)),
       ),
     })
-  } catch {
-    return undefined
-  }
+  })
 }
-function definition(action: Action): Definition {
+effect function definition(action: Action) {
   return Object.freeze({
     name: action.name,
     handler: action.handler,
@@ -406,7 +436,7 @@ function definition(action: Action): Definition {
     parameters: action.parameters,
     contextGate: action.contextGate,
     roleGate: action.roleGate,
-    hash: hashStableJson({
+    hash: try hashStableJson({
       parameters: action.parameters,
       contexts: action.contexts,
       contextGate: action.contextGate,
@@ -421,8 +451,8 @@ function definition(action: Action): Definition {
     }),
   })
 }
-function sameDefinition(action: Action, saved: Definition): boolean {
-  const current = definition(action)
+effect function sameDefinition(action: Action, saved: Definition) {
+  const current = try definition(action)
   return (
     current.name === saved.name
     && current.handler === saved.handler
@@ -438,8 +468,8 @@ function registeredOperation(
   runtime: RequestOperationRuntime,
   action: Action | undefined,
 ): RegisteredOperation | undefined {
-  try {
-    if (!action || !runtime.actions?.includes(action)) return
+  return orUndefined(effect {
+    if (!action || !runtime.actions?.includes(action)) return undefined
     const promoted = promotedSubactionDescription(action)
     const family = promoted
       ? runtime.actions.find(
@@ -448,32 +478,28 @@ function registeredOperation(
           && !promotedSubactionDescription(candidate),
       )
       : action
-    if (!family) return
+    if (!family) return undefined
     return Object.freeze({
       action,
       family,
-      actionDefinition: definition(action),
-      familyDefinition: definition(family),
+      actionDefinition: try definition(action),
+      familyDefinition: try definition(family),
     })
-  } catch {
-    return undefined
-  }
+  })
 }
 
 function currentRegistration(
   runtime: RequestOperationRuntime,
   registration: RegisteredOperation,
 ): boolean {
-  try {
+  return orUndefined(effect {
     return (
       runtime.actions?.includes(registration.action) === true
       && runtime.actions.includes(registration.family)
-      && sameDefinition(registration.action, registration.actionDefinition)
-      && sameDefinition(registration.family, registration.familyDefinition)
+      && (try sameDefinition(registration.action, registration.actionDefinition))
+      && (try sameDefinition(registration.family, registration.familyDefinition))
     )
-  } catch {
-    return false
-  }
+  }) ?? false
 }
 function canonicalDispatch(
   runtime: RequestOperationRuntime,
@@ -529,21 +555,23 @@ const completionFields = [
   "effectReceipts",
   "receipt",
 ]
-function ownData(object: object, key: string): unknown {
+error InvalidCompletionEvidence { message: string }
+
+effect function ownData(object: object, key: string): unknown!InvalidCompletionEvidence {
   const descriptor = Object.getOwnPropertyDescriptor(object, key)
   if (!descriptor) return undefined
   if (!("value" in descriptor)) {
-    throw new Error("Accessor is not completion evidence")
+    throw new InvalidCompletionEvidence({ message: "Accessor is not completion evidence" })
   }
   return descriptor.value
 }
-function plainSnapshot(
+effect function plainSnapshot(
   value: unknown,
   depth = 0,
   budget = { nodes: 0 },
-): unknown {
+): unknown!InvalidCompletionEvidence {
   if (++budget.nodes > 2048 || depth > 12) {
-    throw new Error("Completion evidence limit")
+    throw new InvalidCompletionEvidence({ message: "Completion evidence limit" })
   }
   if (
     value === undefined
@@ -555,121 +583,109 @@ function plainSnapshot(
   }
   if (typeof value === "number" && Number.isFinite(value)) return value
   if (!value || typeof value !== "object") {
-    throw new Error("Invalid completion evidence")
+    throw new InvalidCompletionEvidence({ message: "Invalid completion evidence" })
   }
   if (Array.isArray(value)) {
-    const length = ownData(value, "length")
+    const length = try ownData(value, "length")
     if (
       typeof length !== "number"
       || !Number.isInteger(length)
       || length < 0
       || length > 256
     ) {
-      throw new Error("Completion evidence limit")
+      throw new InvalidCompletionEvidence({ message: "Completion evidence limit" })
     }
-    return Array.from({ length }, (_, index) => plainSnapshot(ownData(value, String(index)), depth + 1, budget))
+    const items: unknown[] = []
+    for (let index = 0; index < length; index++) {
+      items.push(try plainSnapshot(try ownData(value, String(index)), depth + 1, budget))
+    }
+    return items
   }
   if (
     Object.getPrototypeOf(value) !== Object.prototype
     && Object.getPrototypeOf(value) !== null
   ) {
-    throw new Error("Nonplain completion evidence")
+    throw new InvalidCompletionEvidence({ message: "Nonplain completion evidence" })
   }
   const result: Record<string, unknown> = Object.create(null)
   for (const key of Reflect.ownKeys(value)) {
     if (typeof key !== "string") {
-      throw new Error("Symbol is not completion evidence")
+      throw new InvalidCompletionEvidence({ message: "Symbol is not completion evidence" })
     }
-    result[key] = plainSnapshot(ownData(value, key), depth + 1, budget)
+    result[key] = try plainSnapshot(try ownData(value, key), depth + 1, budget)
   }
   return result
 }
-function completionShape(result: object): {
+function plainRecord(value: unknown): value is object {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+function nonplain(original: unknown, record: object): boolean {
+  return (
+    original != null
+    && (record !== original
+      || (Object.getPrototypeOf(record) !== Object.prototype
+        && Object.getPrototypeOf(record) !== null))
+  )
+}
+type CompletionRow = Record<string, unknown>
+type CompletionShape = {
   success: unknown
   errorPresent: boolean
   failureProvenance: unknown
   effectReceipts: unknown
-  top: Record<string, unknown>
-  data: Record<string, unknown>
-  values: Record<string, unknown>
-  nestedValues: Record<string, unknown>
-} {
-  const dataValue = ownData(result, "data")
-  const data = dataValue && typeof dataValue === "object" && !Array.isArray(dataValue)
-    ? dataValue
-    : {}
-  if (
-    dataValue != null
-    && (data !== dataValue
-      || (Object.getPrototypeOf(data) !== Object.prototype
-        && Object.getPrototypeOf(data) !== null))
-  ) {
-    throw new Error("Nonplain result data")
+  top: CompletionRow
+  data: CompletionRow
+  values: CompletionRow
+  nestedValues: CompletionRow
+}
+effect function completionField(row: object, key: string): unknown!InvalidCompletionEvidence {
+  const value = try ownData(row, key)
+  if (key === "receipt") return value === undefined ? undefined : true
+  if (key === "effects" || key === "effectReceipts") {
+    if (value === undefined) return undefined
+    return Array.isArray(value) && (try ownData(value, "length")) === 0 ? [] : true
   }
-  const valuesValue = ownData(result, "values")
-  const nestedValue = ownData(data, "values")
-  const values = valuesValue
-      && typeof valuesValue === "object"
-      && !Array.isArray(valuesValue)
-    ? valuesValue
-    : {}
-  const nestedValues = nestedValue
-      && typeof nestedValue === "object"
-      && !Array.isArray(nestedValue)
-    ? nestedValue
-    : {}
-  if (
-    valuesValue != null
-    && (values !== valuesValue
-      || (Object.getPrototypeOf(values) !== Object.prototype
-        && Object.getPrototypeOf(values) !== null))
-  ) {
-    throw new Error("Nonplain result values")
-  }
-  if (
-    nestedValue != null
-    && (nestedValues !== nestedValue
-      || (Object.getPrototypeOf(nestedValues) !== Object.prototype
-        && Object.getPrototypeOf(nestedValues) !== null))
-  ) {
-    throw new Error("Nonplain nested result values")
-  }
-  const fieldValue = (row: object, key: string): unknown => {
-    const value = ownData(row, key)
-    if (key === "receipt") return value === undefined ? undefined : true
-    if (key === "effects" || key === "effectReceipts") {
-      if (value === undefined) return undefined
-      return Array.isArray(value) && ownData(value, "length") === 0 ? [] : true
-    }
-    return plainSnapshot(value)
-  }
-  const fields = (row: object) => ({
-    ...Object.fromEntries(
-      completionFields.map((key) => [key, fieldValue(row, key)]),
-    ),
-    lifeDraftPresent: ownData(row, "lifeDraft") !== undefined,
-  })
+  return try plainSnapshot(value)
+}
+effect function completionRow(row: object, keys: readonly string[]): CompletionRow!InvalidCompletionEvidence {
+  const entries: [string, unknown][] = []
+  for (const key of keys) entries.push([key, try completionField(row, key)])
   return {
-    success: ownData(result, "success"),
-    errorPresent: ownData(result, "error") != null,
-    failureProvenance: plainSnapshot(ownData(result, "failureProvenance")),
-    effectReceipts: plainSnapshot(ownData(result, "effectReceipts")),
-    top: {
-      ...Object.fromEntries(
-        completionFields
-          .filter((key) => key !== "error" && key !== "effectReceipts")
-          .map((key) => [key, fieldValue(result, key)]),
-      ),
-      lifeDraftPresent: ownData(result, "lifeDraft") !== undefined,
-    },
-    data: fields(data),
-    values: fields(values),
-    nestedValues: fields(nestedValues),
+    ...Object.fromEntries(entries),
+    lifeDraftPresent: (try ownData(row, "lifeDraft")) !== undefined,
   }
 }
-function projectionFingerprint(
-  shape: ReturnType<typeof completionShape>,
-): string {
+effect function completionShape(result: object): CompletionShape!InvalidCompletionEvidence {
+  const dataValue = try ownData(result, "data")
+  const data = plainRecord(dataValue) ? dataValue : {}
+  if (nonplain(dataValue, data)) {
+    throw new InvalidCompletionEvidence({ message: "Nonplain result data" })
+  }
+  const valuesValue = try ownData(result, "values")
+  const nestedValue = try ownData(data, "values")
+  const values = plainRecord(valuesValue) ? valuesValue : {}
+  const nestedValues = plainRecord(nestedValue) ? nestedValue : {}
+  if (nonplain(valuesValue, values)) {
+    throw new InvalidCompletionEvidence({ message: "Nonplain result values" })
+  }
+  if (nonplain(nestedValue, nestedValues)) {
+    throw new InvalidCompletionEvidence({ message: "Nonplain nested result values" })
+  }
+  return {
+    success: try ownData(result, "success"),
+    errorPresent: (try ownData(result, "error")) != null,
+    failureProvenance: try plainSnapshot(try ownData(result, "failureProvenance")),
+    effectReceipts: try plainSnapshot(try ownData(result, "effectReceipts")),
+    top: try completionRow(
+      result,
+      completionFields.filter((key) => key !== "error" && key !== "effectReceipts"),
+    ),
+    data: try completionRow(data, completionFields),
+    values: try completionRow(values, completionFields),
+    nestedValues: try completionRow(nestedValues, completionFields),
+  }
+}
+effect function projectionFingerprint(shape: CompletionShape) {
   const merged: Record<string, unknown> = Object.create(null)
   const conflicts: string[] = []
   for (
@@ -683,7 +699,7 @@ function projectionFingerprint(
     if (top === undefined) merged[key] = nested
     else if (
       nested === undefined
-      || hashStableJson(top) === hashStableJson(nested)
+      || (try hashStableJson(top)) === (try hashStableJson(nested))
     ) {
       merged[key] = top
     } else {
@@ -692,22 +708,18 @@ function projectionFingerprint(
     }
   }
   const { values: _top, nestedValues: _nested, ...common } = shape
-  return hashStableJson({
+  return try hashStableJson({
     ...common,
     values: merged,
     valueConflicts: conflicts,
   })
 }
 function fingerprintResult(result: object): string | undefined {
-  try {
-    return hashStableJson(completionShape(result))
-  } catch {
-    return undefined
-  }
+  return orUndefined(effect {
+    return try hashStableJson(try completionShape(result))
+  })
 }
-function unclassifiedEffects(
-  shape: ReturnType<typeof completionShape>,
-): boolean {
+function unclassifiedEffects(shape: CompletionShape): boolean {
   return (
     [shape.top, shape.data, shape.values, shape.nestedValues].some(
       (row) =>
@@ -722,8 +734,6 @@ function unclassifiedEffects(
     )
   )
 }
-type CompletionShape = ReturnType<typeof completionShape>
-type CompletionRow = CompletionShape["top"]
 function awaitsPrerequisite(row: CompletionRow): boolean {
   return (
     row.requiresInput === true
@@ -743,9 +753,7 @@ function hasUnknownOutcome(shape: CompletionShape): boolean {
         && row.reconciliationRequired !== false),
   )
 }
-function rejectedBeforeExecution(
-  shape: ReturnType<typeof completionShape>,
-): boolean {
+function rejectedBeforeExecution(shape: CompletionShape): boolean {
   const provenance = shape.failureProvenance as
     | { retryable?: unknown }
     | undefined
@@ -785,7 +793,7 @@ function validIssuer(
   token: unknown,
   runtime?: RequestOperationRuntime,
   message?: Memory,
-): Issuer | undefined {
+): IssuerView | undefined {
   if (!token || typeof token !== "object") return
   const value = issuers().get(token)
   if (
@@ -795,31 +803,72 @@ function validIssuer(
   ) {
     return
   }
-  try {
+  return orUndefined(effect {
     if (
       activeIssuers().get(value.runtime)?.get(value.message) !== token
-      || !value.current()
+      || !(try foreignSync(() => value.current()))
       || value.runtime.agentId !== value.agentId
       || value.message.id !== value.messageId
       || value.message.roomId !== value.roomId
       || value.message.entityId !== value.entityId
       || value.message.agentId !== value.agentId
-      || hashStableJson(value.message) !== value.requestHash
     ) {
-      return
+      return undefined
     }
+    const requestHash = try hashStableJson(value.message)
+    const [held, committed] = try value.lifecycle.read((state, payload) => [state, payload] as const)
+    const currentSourceHash = requestHash === held.requestHash && held.committed && committed.currentSource
+      ? try observedSourceHash(value, held, committed)
+      : held.currentSourceHash
+    const state = try value.lifecycle.step(
+      { type: "observeCurrent", live: true, currentRequestHash: requestHash, currentSourceHash },
+      (payload, next) => [next, payload] as const,
+    )
+    return issuerHolds(state) ? issuerView(value, state) : undefined
+  })
+}
 
-    if (
-      value.committed
-      && value.currentSource
-      && (hashStableJson(value.currentSource()) !== value.sourceHash
-        || hashStableJson(value.source) !== value.sourceHash)
-    ) {
-      return
-    }
-    return value
-  } catch {
-    return
+effect function observedSourceHash(value: Issuer, held: RequestIssuer, committed: CommittedSource) {
+  const view = issuerView(value, held)
+  const interpretationHash = try hashStableJson(view.interpretation)
+  const current = try hashStableJson(try foreignSync(() =>
+    committed.currentSource?.call({
+      ...view,
+      interpretationHash,
+      source: committed.source,
+      currentSource: committed.currentSource,
+      sourceHash: held.sourceHash,
+      requestHash: held.requestHash,
+      tainted: held.tainted,
+    })
+  ))
+  return current !== held.sourceHash ? current : try hashStableJson(committed.source)
+}
+
+function issuerView(value: Issuer, state: RequestIssuer): IssuerView {
+  return {
+    ...value,
+    state,
+    committed: state.committed,
+    revision: state.revision,
+    classification: CLASSIFICATIONS[state.classification],
+    interpretation: state.committed
+      ? {
+        status: STATUSES[state.interpretation.status],
+        operations: state.interpretation.operations.map((operation) => OPERATIONS[operation]),
+      }
+      : undefined,
+  }
+}
+
+effect function issuerLifecycle(requestHash: string) {
+  provide machine() {
+    const lifecycle = try own(try Machine, {} satisfies CommittedSource as CommittedSource)
+    try lifecycle.step(
+      { type: "beginIssuer", identityValid: true, live: true, requestHash },
+      (payload) => [undefined, payload] as const,
+    )
+    return lifecycle
   }
 }
 
@@ -840,8 +889,8 @@ export function beginRequestOperationIssuer(input: {
   ) {
     return
   }
-  try {
-    if (!current()) return
+  return orUndefined(effect {
+    if (!(try foreignSync(() => current()))) return undefined
     let rooms = activeIssuers().get(runtime)
     if (!rooms) {
       rooms = new WeakMap()
@@ -861,17 +910,11 @@ export function beginRequestOperationIssuer(input: {
       messageId: message.id,
       roomId: message.roomId,
       entityId: message.entityId,
-      requestHash: hashStableJson(message),
-      classification: "unresolved",
-      committed: false,
-      tainted: false,
-      revision: 0,
+      lifecycle: try issuerLifecycle(try hashStableJson(message)),
     })
     rooms.set(message, token)
     return token
-  } catch {
-    return
-  }
+  })
 }
 
 export function getRequestOperationIssuer(
@@ -893,67 +936,79 @@ export function commitNotesRequestRestriction(
 ): boolean {
   const value = validIssuer(token)
   if (!value || typeof input.currentSource !== "function") return false
-  try {
-    let classification: RequestOperationClassification = input.classification === "read_only"
+  return orUndefined(effect {
+    const classification = input.classification === "read_only"
         || input.classification === "mutation_requested"
       ? input.classification
       : "unresolved"
-    let interpretation = input.interpretation === undefined
+    const interpretation = input.interpretation === undefined
       ? normalizeNotesRequestInterpretation({
         status: "unavailable",
         operations: [],
       })
       : normalizeNotesRequestInterpretation(input.interpretation)
-    const mutations = interpretation?.operations.some(
-      (operation) => operation !== "get" && operation !== "list",
-    ) === true
-    if (
-      !interpretation
-      || interpretation.status === "contradictory"
-      || (interpretation.status === "explicit"
-        && ((classification === "read_only" && mutations)
-          || (classification === "mutation_requested" && !mutations)
-          || (classification === "unresolved"
-            && interpretation.operations.length > 0)))
-    ) {
-      classification = "unresolved"
-      interpretation = normalizeNotesRequestInterpretation({
-        status: "contradictory",
-        operations: [],
-      })
-    }
-    const interpretationHash = hashStableJson(interpretation)
-    const sourceHash = hashStableJson(input.source)
-    if (hashStableJson(input.currentSource()) !== sourceHash) return false
-    if (value.committed) {
-      if (
-        value.tainted
-        || value.classification !== classification
-        || value.sourceHash !== sourceHash
-        || value.interpretationHash !== interpretationHash
-      ) {
-        value.tainted = true
-        value.classification = "unresolved"
-        value.interpretation = normalizeNotesRequestInterpretation({
-          status: "contradictory",
-          operations: [],
-        })
-        value.revision++
-        return false
-      }
-      return true
-    }
-    value.classification = classification
-    value.interpretation = interpretation
-    value.interpretationHash = interpretationHash
-    value.source = input.source
-    value.sourceHash = sourceHash
-    value.currentSource = input.currentSource
-    value.committed = true
-    value.revision++
-    return true
-  } catch {
-    return false
+    const sourceHash = try hashStableJson(input.source)
+    if ((try hashStableJson(try foreignSync(() => input.currentSource()))) !== sourceHash) return false
+    try value.lifecycle.step(
+      {
+        type: "observeCurrent",
+        live: value.state.live,
+        currentRequestHash: value.state.currentRequestHash,
+        currentSourceHash: value.state.currentSourceHash,
+      },
+      (payload) => [undefined, payload] as const,
+    )
+    return try value.lifecycle.step(
+      {
+        type: "commitRestriction",
+        classification: MODEL_CLASSIFICATIONS[classification],
+        interpretation: interpretation
+          ? modelInterpretation(interpretation)
+          : { status: "ContradictoryInterpretation", operations: [] },
+        sourceHash,
+        observedSourceHash: sourceHash,
+      },
+      (payload, next) => [
+        !next.tainted,
+        payload.currentSource ? payload : { source: input.source, currentSource: input.currentSource },
+      ] as const,
+    )
+  }) ?? false
+}
+
+const MODEL_CLASSIFICATIONS = {
+  read_only: "ReadOnlyRequest",
+  mutation_requested: "MutationRequest",
+  unresolved: "UnresolvedRequest",
+} as const satisfies Record<RequestOperationClassification, RequestClassification>
+
+const MODEL_STATUSES = {
+  explicit: "ExplicitInterpretation",
+  unavailable: "UnavailableInterpretation",
+  contradictory: "ContradictoryInterpretation",
+} as const satisfies Record<NotesRequestInterpretation["status"], Interpretation["status"]>
+
+const MODEL_OPERATIONS = {
+  get: "GetNote",
+  list: "ListNotes",
+  create: "CreateNote",
+  update: "UpdateNote",
+  patch: "PatchNote",
+  delete: "DeleteNote",
+} as const satisfies Record<NotesRequestOperation, NoteOperation>
+
+function inverse<K extends string, V extends string>(table: Readonly<Record<K, V>>): Readonly<Record<V, K>> {
+  return Object.fromEntries(Object.entries(table).map(([key, value]) => [value, key])) as Record<V, K>
+}
+
+const CLASSIFICATIONS = inverse(MODEL_CLASSIFICATIONS)
+const STATUSES = inverse(MODEL_STATUSES)
+const OPERATIONS = inverse(MODEL_OPERATIONS)
+
+function modelInterpretation(interpretation: NotesRequestInterpretation): Interpretation {
+  return {
+    status: MODEL_STATUSES[interpretation.status],
+    operations: interpretation.operations.map((operation) => MODEL_OPERATIONS[operation]),
   }
 }
 export function readTaskExtractionNotesRestriction(
@@ -963,9 +1018,7 @@ export function readTaskExtractionNotesRestriction(
 ): RequestOperationClassification {
   const binding = readBinding(state, message)
   const value = binding?.issuer && validIssuer(binding.issuer, runtime, message)
-  return value?.committed && !value.tainted
-    ? value.classification
-    : "unresolved"
+  return value ? CLASSIFICATIONS[restriction(value.state)] : "unresolved"
 }
 
 export function beginRequestOperationAttempt(input: {
@@ -1132,40 +1185,38 @@ function notStartedFailure(result: object, proof: Denial): boolean {
     && row.data.receipt === undefined
   )
 }
-export class BoundRequestOperationError extends Error {
+export class BoundRequestOperationError extends Data.TaggedError("BoundRequestOperationError")<{
   readonly code:
     | "REQUEST_OPERATION_RESTRICTED"
     | "REQUEST_OPERATION_UNRESOLVED"
-  readonly executionStatus = "not_started" as const
+  readonly executionStatus: "not_started"
+}> {
   constructor(decision: Extract<BoundOperationDecision, { allowed: false }>) {
     const proof = currentDenial(decision)
-    super(
-      proof?.classification === "read_only"
-        ? "Operation denied by the current read-only request constraint."
-        : "The current request operation is unresolved.",
-    )
+    const readOnly = proof?.classification === "read_only"
+    super({
+      code: readOnly ? "REQUEST_OPERATION_RESTRICTED" : "REQUEST_OPERATION_UNRESOLVED",
+      executionStatus: "not_started",
+    })
+    this.message = readOnly
+      ? "Operation denied by the current read-only request constraint."
+      : "The current request operation is unresolved."
     this.name = "BoundRequestOperationError"
-    this.code = proof?.classification === "read_only"
-      ? "REQUEST_OPERATION_RESTRICTED"
-      : "REQUEST_OPERATION_UNRESOLVED"
     if (proof) denials().set(this, { ...proof, kind: "error" })
   }
 }
 
-export function bindRequestOperationResult(
+export effect function bindRequestOperationResult(
   result: object,
   token: BoundRequestOperationAttempt,
-): boolean {
+) {
   const attempt = currentAttempt(token),
     value = attempt && validIssuer(attempt.issuer)
   if (!attempt || !value || !attempt.resolved) return false
-  let shape: ReturnType<typeof completionShape>
-  try {
-    shape = completionShape(result)
-  } catch {
-    return false
-  }
-  const fingerprint = hashStableJson(shape)
+  const resolved = attempt.resolved
+  const shape = orUndefined(completionShape(result))
+  if (!shape) return false
+  const fingerprint = try hashStableJson(shape)
   const previous = resultAttempts().get(result)
   if (previous) {
     if (previous.fingerprint !== fingerprint) previous.changed = true
@@ -1175,8 +1226,7 @@ export function bindRequestOperationResult(
       && previous.fingerprint === fingerprint
     )
   }
-  let completion: CompletionFact | undefined
-  try {
+  const completion: CompletionFact | undefined = orUndefined(effect {
     if (
       value.classification === "mutation_requested"
       && attempt.registeredOperation
@@ -1197,7 +1247,7 @@ export function bindRequestOperationResult(
           (row) =>
             row.op === undefined
             || row.op === attempt.registeredOperation
-            || row.op === attempt.resolved,
+            || row.op === resolved,
         )
 
       const requested = value.interpretation?.status === "explicit"
@@ -1205,19 +1255,19 @@ export function bindRequestOperationResult(
           attempt.registeredOperation,
         )
           || (attempt.registeredOperation === "patch"
-            && attempt.resolved === "update"
+            && resolved === "update"
             && value.interpretation.operations.includes("update"))
         : undefined
       if (dispatch && canonicalChild) {
-        completion = Object.freeze({
+        return Object.freeze({
           issuer: attempt.issuer,
           revision: attempt.revision,
           registration: attempt.registration,
           operation: attempt.registeredOperation,
-          permissionOperation: attempt.resolved,
+          permissionOperation: resolved,
           dispatch: Object.freeze(dispatch),
           canonicalChild,
-          childDefinition: definition(canonicalChild),
+          childDefinition: try definition(canonicalChild),
           requested,
           rejected: requested === true && noEffectRejection,
           outsideRequestRejection: requested === false && noEffectRejection,
@@ -1225,9 +1275,8 @@ export function bindRequestOperationResult(
         })
       }
     }
-  } catch {
-    completion = undefined
-  }
+    return undefined
+  })
   resultAttempts().set(result, {
     attempt: token,
     fingerprint,
@@ -1237,11 +1286,13 @@ export function bindRequestOperationResult(
   return true
 }
 
-export function bindRequestOperationProjection(
+export const bindRequestOperationResultOrThrow = thrown(failingAs(TypeError, bindRequestOperationResult))
+
+export effect function bindRequestOperationProjection(
   source: object,
   target: object,
   consumer: RequestOperationIssuer | undefined,
-): boolean {
+) {
   const association = resultAttempts().get(source),
     fact = association?.completion
   if (
@@ -1253,18 +1304,14 @@ export function bindRequestOperationProjection(
   ) {
     return false
   }
-  let shape: ReturnType<typeof completionShape>
-  try {
-    shape = completionShape(target)
-  } catch {
-    return false
-  }
-  const fingerprint = hashStableJson(shape)
+  const shape = orUndefined(completionShape(target))
+  if (!shape) return false
+  const fingerprint = try hashStableJson(shape)
   if (fingerprintResult(source) !== association.fingerprint) {
     association.changed = true
   }
   const changed = association.changed === true
-    || projectionFingerprint(shape) !== projectionFingerprint(association.shape)
+    || (try projectionFingerprint(shape)) !== (try projectionFingerprint(association.shape))
 
   resultAttempts().set(target, {
     attempt: association.attempt,
@@ -1275,10 +1322,13 @@ export function bindRequestOperationProjection(
   })
   return !changed
 }
-export function copyRequestOperationResult(
+
+export const bindRequestOperationProjectionOrThrow = thrown(failingAs(TypeError, bindRequestOperationProjection))
+
+export effect function copyRequestOperationResult(
   source: object,
   target: object,
-): boolean {
+) {
   const association = resultAttempts().get(source),
     owned = resultAttempts().get(target)
   const fact = association?.completion
@@ -1298,8 +1348,8 @@ export function copyRequestOperationResult(
     association.changed
     || owned.changed
     || fingerprintResult(target) !== owned.fingerprint
-    || projectionFingerprint(owned.shape)
-      !== projectionFingerprint(association.shape)
+    || (try projectionFingerprint(owned.shape))
+      !== (try projectionFingerprint(association.shape))
   ) {
     return false
   }
@@ -1311,6 +1361,8 @@ export function copyRequestOperationResult(
   })
   return true
 }
+
+export const copyRequestOperationResultOrThrow = thrown(failingAs(TypeError, copyRequestOperationResult))
 export type NotesMutationCompletion = {
   rejected: boolean
   requested?: boolean
@@ -1352,9 +1404,8 @@ export function readNotesMutationCompletion(
   }
   const attempt = currentAttempt(association.attempt),
     value = validIssuer(consumer)
-  let current = false
-  try {
-    current = !!(
+  const current = orUndefined(effect {
+    return !!(
       attempt
       && value
       && value.revision === fact.revision
@@ -1364,11 +1415,9 @@ export function readNotesMutationCompletion(
       && !attempt.conflicted
       && currentRegistration(value.runtime, fact.registration)
       && value.runtime.actions?.includes(fact.canonicalChild) === true
-      && sameDefinition(fact.canonicalChild, fact.childDefinition)
+      && (try sameDefinition(fact.canonicalChild, fact.childDefinition))
     )
-  } catch {
-    current = false
-  }
+  }) ?? false
   if (!current && originalAttempt) {
     originalAttempt.completionInvalidated = "stale"
   }

@@ -1,3 +1,5 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { foreign, foreignSync, Foreign, promised, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   projectCompleteToolArgsForModel,
@@ -382,7 +384,7 @@ export function cloneTrajectoryValue<T>(value: T): T {
   return sanitizeForRecord(value) as T
 }
 
-export function encodeTrajectoryFieldValue(value: unknown): string {
+export effect function encodeTrajectoryFieldValue(value: unknown): string!ElizaError {
   if (typeof value === "string") return value
   if (value === undefined || value === null) return ""
   const serialized = JSON.stringify(sanitizeForRecord(value))
@@ -393,6 +395,7 @@ export function encodeTrajectoryFieldValue(value: unknown): string {
   }
   return serialized
 }
+export const encodeTrajectoryFieldValueOrThrow = thrown(encodeTrajectoryFieldValue)
 
 export interface ToolStageIOInput {
   input?: unknown
@@ -406,47 +409,49 @@ export interface ToolStageIOCapture {
   errorText?: string
 }
 
-export function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture {
+export effect function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture!ElizaError {
   const out: ToolStageIOCapture = {}
   if (args.input !== undefined) {
-    out.input = encodeWellFormedTrajectoryField(args.input)
+    out.input = try encodeWellFormedTrajectoryField(args.input)
   }
   if (args.output !== undefined) {
-    out.output = encodeWellFormedTrajectoryField(args.output)
+    out.output = try encodeWellFormedTrajectoryField(args.output)
   }
   if (args.error !== undefined) {
-    out.errorText = encodeWellFormedTrajectoryField(args.error)
+    out.errorText = try encodeWellFormedTrajectoryField(args.error)
   }
   return out
 }
+export const captureToolStageIOOrThrow = thrown(captureToolStageIO)
 
-function encodeWellFormedTrajectoryField(value: unknown): string {
+effect function encodeWellFormedTrajectoryField(value: unknown): string!ElizaError {
   return typeof value === "string"
     ? toWellFormedUnicode(value)
-    : encodeTrajectoryFieldValue(value)
+    : try encodeTrajectoryFieldValue(value)
 }
 
-export function projectRecordedStageToolDiagnostics(
+export effect function projectRecordedStageToolDiagnostics(
   stage: RecordedStage,
   redactText: ToolDiagnosticTextRedactor,
-): void {
+): void!(ElizaError | Foreign) {
+  const redact = (text: string) => foreignSync(() => redactText(text))
   if (stage.tool) {
-    stage.tool.args = projectCompleteToolArgsForModel(stage.tool.args, redactText) ?? {}
-    stage.tool.result = projectCompleteToolValueForModel(
+    stage.tool.args = (try projectCompleteToolArgsForModel(stage.tool.args, redactText)) ?? {}
+    stage.tool.result = try projectCompleteToolValueForModel(
       stage.tool.result,
       redactText,
     )
     if (typeof stage.tool.error === "string") {
-      stage.tool.error = redactText(stage.tool.error)
+      stage.tool.error = try redact(stage.tool.error)
     }
     if (stage.tool.input !== undefined) {
-      stage.tool.input = redactText(stage.tool.input)
+      stage.tool.input = try redact(stage.tool.input)
     }
     if (stage.tool.output !== undefined) {
-      stage.tool.output = redactText(stage.tool.output)
+      stage.tool.output = try redact(stage.tool.output)
     }
     if (stage.tool.errorText !== undefined) {
-      stage.tool.errorText = redactText(stage.tool.errorText)
+      stage.tool.errorText = try redact(stage.tool.errorText)
     }
   }
   if (stage.model) {
@@ -455,23 +460,23 @@ export function projectRecordedStageToolDiagnostics(
       prompt: stage.model.prompt,
     })
     if (stage.model.toolCalls?.length) {
-      stage.model.toolCalls = stage.model.toolCalls.map((toolCall) => ({
+      stage.model.toolCalls = try forEach(stage.model.toolCalls, effect (toolCall) => ({
         ...toolCall,
         ...(toolCall.args !== undefined
-          ? { args: projectCompleteToolArgsForModel(toolCall.args, redactText) }
+          ? { args: try projectCompleteToolArgsForModel(toolCall.args, redactText) }
           : {}),
       }))
     }
 
     if (typeof stage.model.prompt === "string") {
-      stage.model.prompt = redactText(stage.model.prompt)
+      stage.model.prompt = try redact(stage.model.prompt)
     }
-    stage.model.response = redactText(stage.model.response)
+    stage.model.response = try redact(stage.model.response)
     if (Array.isArray(stage.model.messages)) {
-      stage.model.messages = projectCompleteToolValueForModel(
+      stage.model.messages = (try projectCompleteToolValueForModel(
         stage.model.messages,
         redactText,
-      ) as RecordedModelCall["messages"]
+      )) as RecordedModelCall["messages"]
     }
     const attributionInputAfter = canonicalPromptForModelCall({
       messages: stage.model.messages,
@@ -487,12 +492,13 @@ export function projectRecordedStageToolDiagnostics(
     }
   }
   if (stage.evaluation) {
-    stage.evaluation = projectCompleteToolValueForModel(
+    stage.evaluation = (try projectCompleteToolValueForModel(
       stage.evaluation,
       redactText,
-    ) as RecordedEvaluationStage
+    )) as RecordedEvaluationStage
   }
 }
+export const projectRecordedStageToolDiagnosticsOrThrow = thrown(projectRecordedStageToolDiagnostics)
 
 export interface FinalizeTrajectoryRecordingOptions {
   recorder: TrajectoryRecorder
@@ -506,22 +512,22 @@ export interface FinalizeTrajectoryRecordingOptions {
   ) => void
 }
 
-export async function finalizeTrajectoryRecording(
+export effect function finalizeTrajectoryRecording(
   opts: FinalizeTrajectoryRecordingOptions,
-): Promise<void> {
-  try {
-    await opts.recorder.endTrajectory(opts.trajectoryId, opts.status)
-  } catch (err) {
-    opts.logger?.warn?.(
+): void!Foreign {
+  foreign(() => opts.recorder.endTrajectory(opts.trajectoryId, opts.status)) catch effect (failure) => {
+    const err = failure.cause
+    try foreignSync(() => opts.logger?.warn?.(
       {
         err: err instanceof Error ? err.message : String(err),
         trajectoryId: opts.trajectoryId,
       },
       "[TrajectoryRecorder] endTrajectory failed",
-    )
-    opts.reportError?.("TrajectoryRecorder.finalize", err, {
+    ))
+    try foreignSync(() => opts.reportError?.("TrajectoryRecorder.finalize", err, {
       trajectoryId: opts.trajectoryId,
       status: opts.status,
-    })
+    }))
   }
 }
+export const finalizeTrajectoryRecordingPromise = promised(finalizeTrajectoryRecording)

@@ -1,5 +1,8 @@
+// spec/core/authorization.md, "Trusted ownership and deliberate grants determine resolved roles"
+import { failingAs, Foreign, foreign, promised, thrown } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 import { deterministicOwnerEntityId, hasConfiguredCanonicalOwner, resolveOwnerEntityIdOrDefault } from "./roles.vibe"
+import type { UUID } from "./types/primitives.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 import { validateUuid } from "./utils/uuid.vibe"
 
@@ -7,49 +10,49 @@ type WorldMetadataShape = {
   ownership?: { ownerId?: string }
 }
 
-export function resolveFallbackOwnerEntityId(
-  runtime: Pick<IAgentRuntime, "agentId">,
-): string {
-  return deterministicOwnerEntityId(runtime.agentId)
+export effect function resolveFallbackOwnerEntityId(runtime: Pick<IAgentRuntime, "agentId">) {
+  return try deterministicOwnerEntityId(runtime.agentId)
 }
 
-export async function resolveOwnerEntityId(
-  runtime: IAgentRuntime,
-): Promise<string | null> {
-  if (hasConfiguredCanonicalOwner(runtime)) {
-    return resolveOwnerEntityIdOrDefault(runtime)
+export const resolveFallbackOwnerEntityIdOrThrow = thrown(failingAs(TypeError, resolveFallbackOwnerEntityId))
+
+export effect function resolveOwnerEntityId(runtime: IAgentRuntime) {
+  if (try hasConfiguredCanonicalOwner(runtime)) {
+    return try resolveOwnerEntityIdOrDefault(runtime)
   }
 
   let phase = "rooms"
   let roomId: string | undefined
   let worldId: string | undefined
-  try {
-    const roomIds = await runtime.getRoomsForParticipant(runtime.agentId)
+  const scan = effect {
+    const roomIds = try foreign(() => runtime.getRoomsForParticipant(runtime.agentId))
     for (const candidateRoomId of roomIds) {
       phase = "room"
       roomId = candidateRoomId
       worldId = undefined
-      const room = await runtime.getRoom(candidateRoomId)
+      const room = try foreign(() => runtime.getRoom(candidateRoomId))
       if (!room?.worldId) continue
       phase = "world"
       worldId = room.worldId
-      const world = await runtime.getWorld(room.worldId)
+      const world = try foreign(() => runtime.getWorld(room.worldId as UUID))
       const metadata = (world?.metadata ?? {}) as WorldMetadataShape
-
       const candidateOwnerId = validateUuid(metadata.ownership?.ownerId)
       if (candidateOwnerId) return candidateOwnerId
     }
-  } catch (cause) {
-    throw new ElizaError(
-      "Owner identity lookup failed; restore storage access and retry.",
-      {
-        code: "OWNER_ENTITY_LOOKUP_FAILED",
-        cause,
-        context: { agentId: runtime.agentId, phase, roomId, worldId },
-        severity: "ephemeral",
-      },
-    )
+    return null
   }
+  const worldOwnerId = try Effect.catchCause(scan, (cause): never!(Foreign | ElizaError)! => {
+    if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause)
+    const thrown = Cause.squash(cause)
+    return Effect.fail(new ElizaError("Owner identity lookup failed; restore storage access and retry.", {
+      code: "OWNER_ENTITY_LOOKUP_FAILED",
+      cause: thrown instanceof Foreign ? thrown.cause : thrown,
+      context: { agentId: runtime.agentId, phase, roomId, worldId },
+      severity: "ephemeral",
+    }))
+  })
 
-  return resolveFallbackOwnerEntityId(runtime)
+  return worldOwnerId ?? (try resolveFallbackOwnerEntityId(runtime))
 }
+
+export const resolveOwnerEntityIdPromise = promised(failingAs(TypeError, resolveOwnerEntityId, ElizaError))

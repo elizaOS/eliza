@@ -1,3 +1,5 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { foreign, runDetached } from "../edge.vibe"
 import { isSensitiveKeyName, redactSensitiveText } from "../security/redact.vibe"
 import { getTrajectoryContext } from "../trajectory-context.vibe"
 import type { IAgentRuntime, OwnerToolExecutionObservation } from "../types/runtime.vibe"
@@ -34,7 +36,7 @@ export function observeOwnerToolExecution(
     try {
       const returned: unknown = invoke(event)
       if (returned !== undefined) {
-        void Promise.resolve(returned).catch(() => {})
+        void runDetached(ignore(foreign(() => returned)))
       }
     } catch {
     }
@@ -125,30 +127,32 @@ export function observeOwnerToolExecution(
     }
     return Object.freeze(out)
   }
-  try {
-    if (!secretLookupAvailable) {
-      throw new Error("OWNER_OBSERVATION_SECRET_SCOPE_UNAVAILABLE")
+  const observed = (): Readonly<OwnerToolExecutionObservation> | undefined => {
+    if (!secretLookupAvailable) return undefined
+    try {
+      const original = value()
+      const args = original.args === undefined ? undefined : clone(original.args)
+      const result = original.result === undefined ? undefined : clone(original.result)
+      return Object.freeze({
+        phase: original.phase,
+        gate: original.gate,
+        gateOutcome: original.gateOutcome,
+        actionName: redact(original.actionName),
+        ...(original.executionId ? { executionId: original.executionId } : {}),
+        ...(original.toolCallId
+          ? { toolCallId: redact(original.toolCallId) }
+          : {}),
+        ...(original.args !== undefined ? { args } : {}),
+        ...(original.result !== undefined ? { result } : {}),
+        ...stats,
+      })
+    } catch {
+      return undefined
     }
-    const original = value()
-    const args = original.args === undefined ? undefined : clone(original.args)
-    const result = original.result === undefined ? undefined : clone(original.result)
-    const event = Object.freeze({
-      phase: original.phase,
-      gate: original.gate,
-      gateOutcome: original.gateOutcome,
-      actionName: redact(original.actionName),
-      ...(original.executionId ? { executionId: original.executionId } : {}),
-      ...(original.toolCallId
-        ? { toolCallId: redact(original.toolCallId) }
-        : {}),
-      ...(original.args !== undefined ? { args } : {}),
-      ...(original.result !== undefined ? { result } : {}),
-      ...stats,
-    })
-    dispatch(event)
-  } catch {
-    dispatch(
-      Object.freeze({
+  }
+  dispatch(
+    observed()
+      ?? Object.freeze({
         phase: "omitted",
         gate: "execution",
         gateOutcome: "unknown",
@@ -157,6 +161,5 @@ export function observeOwnerToolExecution(
         redactedStrings: 0,
         omittedFields: 1,
       }),
-    )
-  }
+  )
 }

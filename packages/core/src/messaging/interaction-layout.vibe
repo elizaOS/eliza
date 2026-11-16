@@ -1,3 +1,5 @@
+// spec/core/messaging.md, "Story: Dispatch through a selected connector account"
+import { failingAs, foreignSync, thrown, type Foreign } from "../edge.vibe"
 import type { InteractionBlock, InteractionOption } from "../types/interactions.vibe"
 import type { Content } from "../types/primitives.vibe"
 import { trimEndCharacters } from "../utils/string-boundaries.vibe"
@@ -53,12 +55,14 @@ function firstNonBlankText(
   return undefined
 }
 
-function resolveButtonsPerRow(value: number | undefined): number {
+error InvalidButtonsPerRow { message: string }
+
+effect function resolveButtonsPerRow(value: number | undefined): number!InvalidButtonsPerRow {
   if (value === undefined) return 3
   if (!Number.isInteger(value) || value < 1) {
-    throw new RangeError(
-      "maxButtonsPerRow must be a finite integer of at least 1",
-    )
+    throw new InvalidButtonsPerRow({
+      message: "maxButtonsPerRow must be a finite integer of at least 1",
+    })
   }
   return value
 }
@@ -94,11 +98,11 @@ function optionButtons(
   }
 }
 
-export function toNeutralLayout(
+export effect function toNeutralLayout(
   block: InteractionBlock,
   opts: LayoutOptions = {},
-): NeutralLayout {
-  const perRow = resolveButtonsPerRow(opts.maxButtonsPerRow)
+): NeutralLayout!(InvalidButtonsPerRow | Foreign) {
+  const perRow = try resolveButtonsPerRow(opts.maxButtonsPerRow)
   const resolveUrl = opts.resolveUrl
   const maxCallbackBytes = opts.maxCallbackBytes
 
@@ -119,7 +123,7 @@ export function toNeutralLayout(
       const buttons: NeutralButton[] = []
       for (const o of block.options) {
         if (o.kind === "navigate") {
-          const url = opts.resolveNavigateUrl?.(o.payload)
+          const url = try foreignSync(() => opts.resolveNavigateUrl?.(o.payload))
           if (url) {
             buttons.push({ label: o.label, url, style: "secondary" })
             continue
@@ -135,7 +139,7 @@ export function toNeutralLayout(
       return { rows: buttonRows(buttons, perRow) }
     }
     case "task": {
-      const url = resolveUrl?.(block)
+      const url = try foreignSync(() => resolveUrl?.(block))
       return {
         text: url ? block.title : "",
         rows: url
@@ -145,7 +149,7 @@ export function toNeutralLayout(
       }
     }
     case "form": {
-      const url = resolveUrl?.(block)
+      const url = try foreignSync(() => resolveUrl?.(block))
       if (url) {
         return {
           text: firstNonBlankText(block.title, block.description),
@@ -173,7 +177,7 @@ export function toNeutralLayout(
       }
     }
     case "secret": {
-      const url = resolveUrl?.(block) ?? block.url
+      const url = (try foreignSync(() => resolveUrl?.(block))) ?? block.url
       const label = block.secretKind === "oauth"
         ? `Connect ${block.provider ?? "account"}`
         : (block.submitLabel ?? "Provide securely")
@@ -189,6 +193,8 @@ export function toNeutralLayout(
     }
   }
 }
+
+export const toNeutralLayoutOrThrow = thrown(failingAs(RangeError, toNeutralLayout))
 
 export function toPlainTextFallback(
   block: InteractionBlock,

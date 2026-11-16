@@ -1,3 +1,5 @@
+// spec/core/messaging.md, "Story: Dispatch through a selected connector account"
+import { thrown } from "../edge.vibe"
 import {
   createConnectorInteractionCapabilityProfile,
   type InteractionProfileTemplate,
@@ -227,11 +229,12 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
   },
 ] as const satisfies readonly FirstPartyInteractionConnectorAuditEntry[]
 
-export function renderFirstPartyInteractionCapabilityMatrix(): string {
-  const profiles = FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.filter(
-    (entry) => entry.profileFamily !== "read-only",
-  ).map((entry) =>
-    createConnectorInteractionCapabilityProfile({
+export effect function renderFirstPartyInteractionCapabilityMatrix() {
+  const profiles = try forEach(
+    FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.filter(
+      (entry) => entry.profileFamily !== "read-only",
+    ),
+    (entry) => createConnectorInteractionCapabilityProfile({
       template: entry.profileFamily === "button-native"
         ? BUTTON_INTERACTION_PROFILE
         : CONVERSATIONAL_INTERACTION_PROFILE,
@@ -239,14 +242,14 @@ export function renderFirstPartyInteractionCapabilityMatrix(): string {
       accountId: "<account>",
       targetKind: entry.targetKind,
       targetId: "<target>",
-    })
+    }),
   )
   return [
     "# First-party interaction capability baseline",
     "",
     "This generated baseline is conservative. Each runtime registration materializes the family for its concrete account and target; #24288 may advertise stronger limits only with adapter tests.",
     "",
-    renderInteractionCapabilityMatrix(profiles),
+    try renderInteractionCapabilityMatrix(profiles),
     "",
     "## Read-only registrations",
     "",
@@ -261,3 +264,5 @@ export function renderFirstPartyInteractionCapabilityMatrix(): string {
     ),
   ].join("\n")
 }
+
+export const renderFirstPartyInteractionCapabilityMatrixOrThrow = thrown(renderFirstPartyInteractionCapabilityMatrix)
