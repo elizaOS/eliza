@@ -197,7 +197,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -212,7 +212,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -230,7 +230,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -245,7 +245,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -260,7 +260,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -278,7 +278,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -293,7 +293,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -308,7 +308,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -347,7 +347,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -365,7 +365,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -383,7 +383,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2166,7 +2166,7 @@
       "rules": [
         "Replay is idempotent and histories reject conflicting duplicates or gaps",
         "A generation owns its pending read and every publish boundary rechecks it",
-        "Original delivery precedes its failure diagnostics",
+        "Original fanout precedes its diagnostic reports",
         "Each callback has one current generation per channel",
         "Heartbeat status determines its indicator and stop clears subscriptions",
         "An admitted event eventually finishes its listeners and diagnostics",
@@ -2423,7 +2423,7 @@
       "source": "packages/core/src/read-memo.ts",
       "spec": "spec/core/memo.md",
       "rules": [
-        "A late rejection evicts only its own resident promise",
+        "A rejection affects only its captured key and promise identity",
         "A selected in-flight caller eventually receives a settled promise"
       ],
       "classification": "exact-declaration-or-data-contract",
@@ -2537,7 +2537,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2552,7 +2552,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2570,7 +2570,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2585,7 +2585,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2603,7 +2603,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2621,7 +2621,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2639,7 +2639,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2654,7 +2654,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2672,7 +2672,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2690,7 +2690,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2708,7 +2708,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2726,7 +2726,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2741,7 +2741,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2759,7 +2759,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2774,7 +2774,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2789,7 +2789,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2804,7 +2804,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2822,7 +2822,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2856,7 +2856,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2874,7 +2874,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2892,7 +2892,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2910,7 +2910,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2928,7 +2928,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2947,7 +2947,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2965,7 +2965,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2980,7 +2980,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -2998,7 +2998,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3016,7 +3016,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3034,7 +3034,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3052,7 +3052,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3070,7 +3070,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3104,7 +3104,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3122,7 +3122,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3137,7 +3137,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3155,7 +3155,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3173,7 +3173,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3188,7 +3188,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3206,7 +3206,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3224,7 +3224,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3265,7 +3265,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3301,7 +3301,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3319,7 +3319,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3385,7 +3385,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3403,7 +3403,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3421,7 +3421,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3465,7 +3465,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3497,7 +3497,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3515,7 +3515,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3530,7 +3530,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3548,7 +3548,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3563,7 +3563,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3581,7 +3581,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3596,7 +3596,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3611,7 +3611,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3626,7 +3626,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3641,7 +3641,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3683,7 +3683,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3698,7 +3698,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
@@ -3716,7 +3716,7 @@
       "spec": "spec/core/execution.md",
       "rules": [
         "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires applied receipts and matching canonical text",
+        "Mutation delivery requires bound receipts and matching canonical text",
         "An invoked handler eventually settles under fair completion",
         "Every callback from a finished source reaches delivery settlement"
       ],
