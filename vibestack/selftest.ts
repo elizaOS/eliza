@@ -2106,8 +2106,9 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
       fs.writeFileSync(path.join(directory, "z3"), `#!/bin/sh\n${name === "changed" ? "# a different solver build\n" : ""}printf 'Z3 version 4.12.1\\n'\n`, { mode: 0o755 });
       fs.writeFileSync(path.join(directory, "Dafny.dll"), name === "assemblies" ? "another verifier" : "the verifier");
       fs.writeFileSync(path.join(directory, "System.Private.CoreLib.dll"), "the self-contained runtime");
+      fs.writeFileSync(path.join(directory, "Support.dll"), "a supporting assembly");
     }
-    const script = `const fs = await import("node:fs"); const { entry, toolchainFingerprint } = await import(${JSON.stringify(path.join(project, "vibestack/cache.ts"))}); const proof = async () => (await entry(".", "prove", ["same obligation"])).name; const tests = (await entry(".", "tests", ["same"])).name; const before = await proof(); if (process.env.REINSTALL) fs.writeFileSync(process.env.REINSTALL, "the verifier, reinstalled"); console.log(JSON.stringify({ proof: before, tests, task: await toolchainFingerprint(), reinstalled: await proof() }));`;
+    const script = `const fs = await import("node:fs"); const { entry, toolchainFingerprint } = await import(${JSON.stringify(path.join(project, "vibestack/cache.ts"))}); const proof = async () => (await entry(".", "prove", ["same obligation"])).name; const tests = (await entry(".", "tests", ["same"])).name; const before = await proof(); const unchanged = await proof(); const file = process.env.REINSTALL; const original = file && fs.existsSync(file) ? fs.readFileSync(file) : undefined; if (file) fs.writeFileSync(file, "the verifier, reinstalled"); const task = await toolchainFingerprint(); const reinstalled = await proof(); if (file) { if (original) fs.writeFileSync(file, original); else fs.rmSync(file); } console.log(JSON.stringify({ proof: before, unchanged, tests, task, reinstalled, restored: await proof() }));`;
     const said = path.join(root, "cache/vibestack/toolchain.json");
     const keyed = async (name: string, reinstall?: string) => {
       const result = await exec(process.execPath, ["--input-type=module", "--eval", script], root,
@@ -2140,8 +2141,12 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.match(keys[0].task.node.digest, /^[a-f0-9]{64}$/);
     assert.match(keys[0].task.vibelang.digest, /^[a-f0-9]{64}$/);
     assert.equal(keys[0].reinstalled, keys[0].proof);
-    const watched = await keyed("first", path.join(root, "first/Dafny.dll"));
-    assert.notEqual(watched.reinstalled, watched.proof, "a process that outlives a reinstall of Dafny, as watch does, keys by the Dafny installed now");
+    for (const file of ["Dafny.dll", "System.Private.CoreLib.dll", "Support.dll", "Added.dll"]) {
+      const watched = await keyed("first", path.join(root, "first", file));
+      assert.equal(watched.unchanged, watched.proof, "an unchanged installation keeps the proof key within one process");
+      assert.notEqual(watched.reinstalled, watched.proof, `a process that outlives a change to ${file}, as watch does, keys by the Dafny installed now`);
+      assert.equal(watched.restored, watched.proof, `restoring ${file}, or removing it when it was added, restores the original proof key`);
+    }
   });
 
   test("the shared task cache restores artifacts and metadata and refuses unauthorized or oversized writes", async () => {

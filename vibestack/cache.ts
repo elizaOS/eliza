@@ -122,9 +122,10 @@ function perDafny<T>(read: () => Promise<T>, kept: (value: T) => boolean = () =>
   return () => {
     let at: string;
     try {
-      const { launchers, assemblies } = dafnyInstallation();
+      const files = dafnyFiles();
+      if (!files) return read();
       const z3 = onPath("z3");
-      at = stamp([...launchers, path.join(assemblies, "Dafny.dll"), ...z3 ? [z3, fs.realpathSync(z3)] : []]);
+      at = [...files, ...z3 ? [z3, fs.realpathSync(z3)] : []].map((file) => `${file}=${stamp([file])}`).join("\0");
     } catch (e) {
       at = (e as Error).message;
     }
