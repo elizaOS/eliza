@@ -142,9 +142,11 @@ A failed forget does not notify the abandoned view. Returning to
 Files does not revive the old version. Device visibility by itself
 does not invalidate a direct tap. The agent additionally requires
 visible Files, a current filter snapshot for positional opens, an
-unaborted request, and current storage access before dispatch. The shell samples those facts at dispatch and reply.
-After opening a preview, the agent rechecks before its own success
-receipt. `Open with` dispatches a separate chooser while preserving
+unaborted request, and current storage access before dispatch. After
+the access read, after selection returns, and after opening the preview,
+the agent rechecks visible Files, the view epoch, cancellation, and the
+captured filter snapshot for positional opens before its success receipt.
+`Open with` dispatches a separate chooser while preserving
 the current local selection. A positional request with a folder at
 that exact displayed position instead navigates within Files.
 
