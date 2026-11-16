@@ -27,7 +27,7 @@ public final class CloudSignInConfig {
   * requests exactly these, and the host's disclosure reads the same list (status() reports it as
   * `googleScopes`). Empty: Google sign-in connects no Google account. A non-empty list includes an
   * identity scope (`email` or `userinfo.email`), because Cloud reads the account's address with the
-  * granted token before it keeps the connection.
+  * granted token before it keeps the connection. Browser mode asks Google for no scopes, so it takes none.
   */
  public final List<String> googleScopes;
  /** Tag of the one bounded Google diagnostic line. */
@@ -62,6 +62,7 @@ public final class CloudSignInConfig {
   }
   if (!scopes.isEmpty() && !scopes.contains("email") && !scopes.contains("https://www.googleapis.com/auth/userinfo.email"))
    throw new IllegalArgumentException("Google scopes need an identity scope");
+  if (!scopes.isEmpty() && googleSignInMode.equals("browser")) throw new IllegalArgumentException("Browser Google sign-in asks Google for no scopes");
   googleScopes = Collections.unmodifiableList(scopes);
   logTag = required(builder.logTag, "[A-Za-z][A-Za-z0-9_]{0,22}", "log tag");
   readinessPreferences = required(builder.readinessPreferences, "[A-Za-z0-9._:-]{1,200}", "readiness preferences");

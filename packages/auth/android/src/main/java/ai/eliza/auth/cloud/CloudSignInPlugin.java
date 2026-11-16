@@ -707,7 +707,7 @@ public abstract class CloudSignInPlugin extends Plugin {
    Response answer = get(next.environment.api() + "/api/v1/app-auth/mobile/google");
    String clientId = answer.data.optString("serverClientId", "");
    if (answer.status == 200 && Boolean.TRUE.equals(answer.data.opt("configured")) && clientId.matches("[0-9]+-[A-Za-z0-9_-]+\\.apps\\.googleusercontent\\.com")) return clientId;
-   next.gmail = gmailRefused(answer.status == 200 || answer.status == 404 ? "google_not_configured" : "google_unavailable");
+   next.gmail = gmailRefused("google_not_configured".equals(answer.data.optString("code", null)) ? "google_not_configured" : "google_unavailable");
   } catch (Exception unavailable) { next.gmail = gmailRefused("google_unavailable"); }
   return null;
  }
@@ -1145,10 +1145,13 @@ public abstract class CloudSignInPlugin extends Plugin {
    CloudCredentialSlots owned = credentials(() -> { if (destroyed) throw new IllegalStateException("Sign-in closed"); guard.run(); });
    String slot = config().credentialSlot(environment), saved = owned.read(slot);
    JSONObject record = null;
-   try { record = saved == null ? null : new JSONObject(saved); } catch (Exception damaged) { /* Removed with nothing owed. */ }
+   try { record = saved == null ? null : new JSONObject(saved); } catch (Exception damaged) { record = null; }
    token = record == null ? null : CloudKeyRevocation.bearer(record.optString("token", null));
    synchronized (duties) {
-    if (token != null) owned.write(config().retiringSlot(environment), new JSONObject().put("token", token).put("expiresAt", record.opt("expiresAt")).put("signOut", true).toString());
+    if (token != null) {
+     String retiring = config().retiringSlot(environment);
+     owned.write(retiring, owedAbove(owned.read(retiring), new JSONObject().put("token", token).put("expiresAt", record.opt("expiresAt")).put("signOut", true)));
+    }
     owned.remove(slot);
    }
    owned.remove(config().receiptSlot(environment));
@@ -1899,12 +1902,33 @@ public abstract class CloudSignInPlugin extends Plugin {
   try {
    CloudCredentialSlots slots = store();
    String retiring = config().retiringSlot(environment), duty = slots.read(retiring);
-   JSONObject stored = duty == null ? null : new JSONObject(duty);
-   if (stored != null && replaced.equals(stored.optString("token", null))
-     && (successor == null ? Boolean.TRUE.equals(stored.opt("signOut")) : successor.equals(stored.optString("successor", null)))) slots.compareExchange(retiring, duty, null);
+   if (duty == null) return true;
+   String rest = text(without(new JSONObject(duty), owed -> replaced.equals(owed.optString("token", null))
+     && (successor == null ? Boolean.TRUE.equals(owed.opt("signOut")) : successor.equals(owed.optString("successor", null)))));
+   if (!duty.equals(rest)) slots.compareExchange(retiring, duty, rest);
   } catch (Exception kept) { /* Asked again on a later start; Cloud then answers 401 and the duty goes. */ }
   return true;
  }
+ /**
+  * The retiring slot holds one duty and, under `earlier`, the duties still owed from before it. A
+  * sign-out stores its duty above them, without those that have lapsed, so a second sign-out while
+  * Cloud is unreachable never drops the first one's key.
+  */
+ private static String owedAbove(String owed, JSONObject duty) throws org.json.JSONException {
+  JSONObject earlier;
+  try { earlier = owed == null ? null : without(new JSONObject(owed), stored -> instant(stored.opt("expiresAt")) <= System.currentTimeMillis()); }
+  catch (Exception damaged) { earlier = null; }
+  return earlier == null ? duty.toString() : duty.put("earlier", earlier).toString();
+ }
+ /** The duties in `owed` that `gone` does not take, in the same order. */
+ private static JSONObject without(JSONObject owed, java.util.function.Predicate<JSONObject> gone) throws org.json.JSONException {
+  if (owed == null) return null;
+  JSONObject earlier = without(owed.optJSONObject("earlier"), gone);
+  owed.remove("earlier");
+  if (gone.test(owed)) return earlier;
+  return earlier == null ? owed : owed.put("earlier", earlier);
+ }
+ private static String text(JSONObject owed) { return owed == null ? null : owed.toString(); }
  /** Two more tries in this process, on the renewal worker. Unlike a sign-in's replaced key, the duty is also stored. A null successor is a sign-out's duty. */
  private void retryRetirement(CloudSignInEnvironment environment, String replaced, String successor, int round) {
   if (round >= REVOCATION_RETRY_MS.length) return;
@@ -1920,37 +1944,44 @@ public abstract class CloudSignInPlugin extends Plugin {
   * still the saved one (the renewal or the sign-out ended before its removal), that has expired, or a
   * renewal's duty that does not name the key it was renewed into is dropped without a request: the
   * saved, working key is never revoked here, and a renewal's request that names no successor would
-  * end the renewed key with the replaced one. A sign-out's duty sends the bare request.
+  * end the renewed key with the replaced one. A sign-out's duty sends the bare request. The duties
+  * beneath the newest are settled the same way, in turn, while Cloud answers.
   */
  private void retireStored() {
   try {
    renewer.execute(() -> {
     for (CloudSignInEnvironment environment : config().environments()) {
-     try {
-      if (destroyed) return;
-      CloudCredentialSlots slots = store();
-      final String replaced, successor;
-      synchronized (duties) {
-       String retiring = config().retiringSlot(environment), duty = slots.read(retiring);
-       if (duty == null) continue;
-       JSONObject stored = new JSONObject(duty);
-       boolean signedOut = Boolean.TRUE.equals(stored.opt("signOut"));
-       replaced = stored.optString("token", null);
-       successor = signedOut ? null : CloudKeyRevocation.renewedCredential(stored.optString("successor", null));
-       String saved = slots.read(config().credentialSlot(environment)), receiptRaw = slots.read(config().receiptSlot(environment));
-       if (receiptRaw != null && CloudKeyRenewal.Receipt.isRenewal(new JSONObject(receiptRaw))) {
-        CloudKeyRenewal.Receipt receipt = CloudKeyRenewal.Receipt.parse(receiptRaw, config(), environment);
-        // The duty can precede an interrupted selected-key write. Repair publication first.
-        if (replaced != null && replaced.equals(receipt.previousToken) && !receipt.matchesSuccessor(saved)) continue;
-       }
-       boolean stillSaved = saved != null && replaced != null && replaced.equals(new JSONObject(saved).optString("token", null));
-       if (stillSaved || !signedOut && successor == null || !CloudSignInFlow.validMobileSecret(replaced) || instant(stored.opt("expiresAt")) <= System.currentTimeMillis()) { slots.compareExchange(retiring, duty, null); continue; }
-      }
-      retireReplaced(environment, replaced, successor);
-     } catch (Exception unavailable) { /* Kept for a later check. */ }
+     try { while (!destroyed && retireOwed(environment)); }
+     catch (Exception unavailable) { /* Kept for a later check. */ }
     }
    });
   } catch (java.util.concurrent.RejectedExecutionException closed) { /* Activity teardown. */ }
+ }
+ /** Settles the newest stored duty. True when it is gone and the one beneath it can be tried. */
+ private boolean retireOwed(CloudSignInEnvironment environment) throws Exception {
+  CloudCredentialSlots slots = store();
+  String retiring = config().retiringSlot(environment);
+  final String replaced, successor;
+  synchronized (duties) {
+   String duty = slots.read(retiring);
+   if (duty == null) return false;
+   JSONObject stored = new JSONObject(duty);
+   boolean signedOut = Boolean.TRUE.equals(stored.opt("signOut"));
+   replaced = stored.optString("token", null);
+   successor = signedOut ? null : CloudKeyRevocation.renewedCredential(stored.optString("successor", null));
+   String saved = slots.read(config().credentialSlot(environment)), receiptRaw = slots.read(config().receiptSlot(environment));
+   if (receiptRaw != null && CloudKeyRenewal.Receipt.isRenewal(new JSONObject(receiptRaw))) {
+    CloudKeyRenewal.Receipt receipt = CloudKeyRenewal.Receipt.parse(receiptRaw, config(), environment);
+    // The duty can precede an interrupted selected-key write. Repair publication first.
+    if (replaced != null && replaced.equals(receipt.previousToken) && !receipt.matchesSuccessor(saved)) return false;
+   }
+   boolean stillSaved = saved != null && replaced != null && replaced.equals(new JSONObject(saved).optString("token", null));
+   if (stillSaved || !signedOut && successor == null || !CloudSignInFlow.validMobileSecret(replaced) || instant(stored.opt("expiresAt")) <= System.currentTimeMillis())
+    return slots.compareExchange(retiring, duty, text(stored.optJSONObject("earlier")));
+  }
+  if (!retireReplaced(environment, replaced, successor)) return false;
+  String next = slots.read(retiring);
+  return next != null && !replaced.equals(new JSONObject(next).optString("token", null));
  }
 
  // ── Outcomes and transport ───────────────────────────────────────────────────────────────────

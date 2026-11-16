@@ -1375,6 +1375,16 @@ public class CloudSignInChainTest {
   CloudSignInChainTest next=new CloudSignInChainTest();next.observable=false;next.renewSaved();next.drainRenewal();
   check(revoked.equals(List.of(OLD))&&!Cloud.accepts(OLD)&&!slots.containsKey(RETIRING)&&next.requests==0,"the next start ends the key from storage and forgets the duty");
 
+  CloudSignInChainTest twice=signedIn();CloudKeyRevocation.unanswered=true;signOutCall(twice,"production");
+  Cloud.known.add(NEW);Cloud.active.add(NEW);Cloud.ids.put(NEW,ID);Cloud.confirmedAt.put(NEW,Cloud.now());
+  slots.put("cloud:production",new JSONObject().put("token",NEW).put("credentialId",ID).put("expiresAt",System.currentTimeMillis()+5*DAY).toString());
+  PluginCall second=signOutCall(twice,"production");
+  JSONObject owed=new JSONObject(slots.get(RETIRING));
+  check("unconfirmed".equals(second.result.getString("revocation"))&&NEW.equals(owed.getString("token"))&&OLD.equals(owed.getJSONObject("earlier").getString("token"))&&owed.getJSONObject("earlier").getBoolean("signOut"),"a second sign-out while Cloud is unreachable stores its duty above the first one's");
+  CloudKeyRevocation.unanswered=false;
+  CloudSignInChainTest restarted=new CloudSignInChainTest();restarted.observable=false;restarted.renewSaved();restarted.drainRenewal();
+  check(CloudKeyRevocation.signOuts.equals(List.of(OLD,NEW,NEW,OLD))&&!Cloud.accepts(OLD)&&!Cloud.accepts(NEW)&&!slots.containsKey(RETIRING),"the next start ends both keys, newest first, and forgets both duties");
+
   CloudSignInChainTest damaged=signedIn();slots.put("cloud:production","{damaged");
   PluginCall cleared=signOutCall(damaged,"production");
   check(cleared.result.length()==2&&!slots.containsKey("cloud:production")&&!slots.containsKey(RETIRING)&&CloudKeyRevocation.signOuts.isEmpty(),"a damaged saved record is removed with nothing owed");
@@ -1420,6 +1430,6 @@ public class CloudSignInChainTest {
   renewalScenarios();retirementScenarios();sessionScenarios();
   System.out.println("PASS silent key renewal (20 scenario groups)");
   googleScenarios();googleActivationPending();signOutScenarios();
-  System.out.println("PASS native Google sign-in with Gmail and sign-out (13 scenarios)");
+  System.out.println("PASS native Google sign-in with Gmail and sign-out (14 scenarios)");
  }
 }

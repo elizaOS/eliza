@@ -324,7 +324,7 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     assert.match(output, /^PASS silent key renewal \(20 scenario groups\)$/m);
     assert.match(
       output,
-      /^PASS native Google sign-in with Gmail and sign-out \(13 scenarios\)$/m,
+      /^PASS native Google sign-in with Gmail and sign-out \(14 scenarios\)$/m,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });

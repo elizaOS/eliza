@@ -6,9 +6,9 @@
     "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest.java.txt"
   ],
   "bounds": {
-    "domain": "One Android deployment whose saved record is a working key or damaged, with its receipt and the pending record, and a sign-in in progress. One sign-out, process restarts at any point, Cloud answers 2xx, 401 or nothing, the key may lapse, and one newer sign-in may follow the removal.",
+    "domain": "One Android deployment whose saved record is a working key or damaged, with its receipt and the pending record, and a sign-in in progress. A sign-out, process restarts at any point, Cloud answers 2xx, 401 or nothing, each key may lapse, and one newer sign-in may follow the removal and be signed out of while the first key is still owed.",
     "assumptions": "The host's credential intent fence orders the sign-out's writes after the attempt it ends. Storage writes and removals are durable when they return. The two in-memory retries are projected to a budget; the hourly check is the same step as a start.",
-    "limitations": "A storage failure that refuses the sign-out, other deployments' slots, a renewal running beside the sign-out and the Google picker state are outside this model; the JVM fixture runs the exact signOut, retireReplaced, retryRetirement and retireStored methods for them."
+    "limitations": "A storage failure that refuses the sign-out, other deployments' slots, a renewal running beside the sign-out (its duty waits until the sign-out duties above it settle) and the Google picker state are outside this model; the JVM fixture runs the exact signOut, retireReplaced, retryRetirement and retireStored methods for them. The start-up check is modelled as settling the owed duties in any order; the code settles the newest first and stops at the first one Cloud does not answer."
   },
   "conformance": "packages/auth/quint/check-native-android-sign-in.mjs",
   "cases": [
@@ -21,15 +21,27 @@
         "OwedUntilEnded",
         "SavedKeyKept",
         "NewerKeyKept",
+        "OnlySignedOutKeysEnd",
         "DamagedOwesNothing",
         "AttemptEnded",
         "RemovedTogether",
         "RevokedMeansEnded",
         "RetryBudget"
       ],
-      "temporal": [],
-      "maxSteps": 20,
-      "samples": 1000
+      "temporal": [
+        "DutiesSettle"
+      ],
+      "maxSteps": 24,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "DutiesSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the sign-out's storing and removal steps and of a start-up check that Cloud answers with 2xx. No sign-in, sign-out or restart is required."
+          ]
+        }
+      ]
     }
   ]
 }
