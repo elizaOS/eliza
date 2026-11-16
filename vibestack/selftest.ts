@@ -23,7 +23,7 @@ import { canonical, check as conformanceCheck, ConformanceError, departure, repl
 import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
 import { mirrorGen } from "./units.ts";
 import { conformance as checkTraces, conformanceFound } from "./conform.ts";
-import { explore, explored } from "./explore.ts";
+import { explore, explored, pageInputs } from "./explore.ts";
 import { harnessFiles, search } from "./simulate.ts";
 import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./spec.ts";
 
@@ -666,7 +666,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.deepEqual(headed.failed, [], headed.text);
   });
 
-  test("a test pass is remembered for what the tests read, a typecheck's for what the compiler read, and an exploration for what the page serves; runner receipts allow reuse but a forged Turbo environment does not; unchecked specs are noted", async () => {
+  test("a test pass is remembered for what the tests read and a typecheck's for what the compiler read; runner receipts allow reuse but a forged Turbo environment does not; unchecked specs are noted", async () => {
     const ran = path.join(scratch({}), "ran");
     const root = fixtures(["door"], (f) => Object.assign(f, {
       "package.json": JSON.stringify({ scripts: { test: `echo x >> ${JSON.stringify(ran)}` } }),
@@ -710,7 +710,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
         "test/fixtures/p/a.ts", "apps/other/package.json", "apps/other/a.ts", "kit/package.json", "kit/a.ts", "kit/spec/a.md", "kit/nested/package.json", "kit/nested/a.ts", "notes.md", "gen/a.qnt"].map((f) => [f, "{}"])) });
     fs.mkdirSync(path.join(workspace, "node_modules"));
     fs.symlinkSync("../kit", path.join(workspace, "node_modules/kit"), "dir");
-    const inputs = () => (["tests", "page", "types"] as const).map((read) => testInputs(workspace, "normal", read));
+    const inputs = () => (["tests", "types"] as const).map((read) => testInputs(workspace, "normal", read));
     const changed = (file: string) => {
       const before = inputs();
       fs.appendFileSync(path.join(workspace, file), " ");
@@ -718,11 +718,49 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     };
     assert.deepEqual(Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts",
       "test/fixtures/p/a.ts", "apps/other/a.ts", "kit/a.ts", "kit/package.json", "kit/spec/a.md", "kit/nested/a.ts", ".DS_Store", "notes.md", "gen/a.qnt"].map((f) => [f, changed(f)])), {
-      "src/a.ts": [true, true, true], "test/a.test.ts": [true, false, true], "test/drivers/a.ts": [true, false, true], "test/traces/a.jsonl": [true, false, true],
-      "test/counterexamples/a.json": [true, false, true], "test/bombadil.ts": [true, true, true], "test/fixtures/p/a.ts": [true, true, true], "apps/other/a.ts": [false, false, false],
-      "kit/a.ts": [true, true, true], "kit/package.json": [true, true, true], "kit/spec/a.md": [false, false, false], "kit/nested/a.ts": [false, false, false], ".DS_Store": [false, false, false],
-      "notes.md": [true, true, false], "gen/a.qnt": [true, true, false],
-    }, "the tests read the package, its test fixtures and what its workspace dependencies ship; the page leaves out the tests, drivers, traces and counterexamples; the typecheck leaves out Markdown and Quint");
+      "src/a.ts": [true, true], "test/a.test.ts": [true, true], "test/drivers/a.ts": [true, true], "test/traces/a.jsonl": [true, true],
+      "test/counterexamples/a.json": [true, true], "test/bombadil.ts": [true, true], "test/fixtures/p/a.ts": [true, true], "apps/other/a.ts": [false, false],
+      "kit/a.ts": [true, true], "kit/package.json": [true, true], "kit/spec/a.md": [false, false], "kit/nested/a.ts": [false, false], ".DS_Store": [false, false],
+      "notes.md": [true, false], "gen/a.qnt": [true, false],
+    }, "the tests read the package, its test fixtures and what its workspace dependencies ship; the typecheck leaves out Markdown and Quint");
+  });
+
+  test("an exploration is remembered under what its page reads: its code and what that names, what a workspace package it imports or runs offers, the generated modules it imports wherever the rules they cite move, and no test, contract, proof, spec or tool it does not run", () => {
+    const cite = (line: number) => `/** Story: Open / The door opens (spec/a.md:${line}) */\nexport const a = 1;\n`;
+    const workspace = scratch({
+      "app/package.json": JSON.stringify({ scripts: { dev: "vite", serve: "served-cli", copy: "cp ../shared/copied.txt ." }, dependencies: { kit: "workspace:*", served: "workspace:*" }, devDependencies: { unused: "workspace:*" } }),
+      "app/index.html": '<script type="module" src="/src/main.ts"></script>\n',
+      "app/src/main.ts": 'import { b } from "kit";\nimport "../../shared/b.ts";\nimport { a } from "../gen/a.ts";\nexport const page = a + b;\n',
+      "app/gen/b.ts": "export const b = 1;\n", "aliased/package.json": "{}\n", "aliased/src/main.ts": 'import { a } from "@gen/a.ts";\nexport const page = a;\n', "aliased/gen/a.ts": "export const a = 1;\n",
+      "app/src/main.css": '@source "../../kit/scanned";\n',
+      "app/src/a.contract.ts": 'import "unused";\n', "app/src/a.proof.dfy": "lemma A() {}\n", "app/spec/a.md": "# A\n", "app/test/a.test.ts": 'import "unused";\n',
+      "app/vitest.config.ts": 'import "unused";\n', "app/test/bombadil.ts": "export {};\n", "app/gen/a.ts": cite(3), "app/gen/a.qnt": "module a {}\n",
+      "kit/package.json": JSON.stringify({ exports: { ".": "./src/index.ts" } }), "kit/src/index.ts": 'export * from "./b.ts";\n', "kit/src/b.ts": "export const b = 1;\n",
+      "kit/src/c.ts": "export const c = 1;\n", "kit/README.md": "# Kit\n", "kit/scanned/x.ts": 'import "unused";\n',
+      "served/package.json": JSON.stringify({ bin: { "served-cli": "./cli.js" } }), "served/cli.js": "\n",
+      "unused/package.json": JSON.stringify({ exports: "./index.ts" }), "unused/index.ts": "\n",
+      "shared/b.ts": "export const b = 1;\n", "shared/c.ts": "export const c = 1;\n", "shared/copied.txt": "\n",
+    });
+    fs.mkdirSync(path.join(workspace, "app/node_modules"));
+    for (const dependency of ["kit", "served", "unused"]) fs.symlinkSync(`../../${dependency}`, path.join(workspace, "app/node_modules", dependency), "dir");
+    const page = path.join(workspace, "app");
+    const changed = (file: string, edit = (text: string) => `${text} `) => {
+      const before = pageInputs(page);
+      fs.writeFileSync(path.join(workspace, file), edit(fs.readFileSync(path.join(workspace, file), "utf8")));
+      return pageInputs(page) !== before;
+    };
+    assert.deepEqual({
+      ...Object.fromEntries(["app/src/main.ts", "app/src/main.css", "app/src/a.contract.ts", "app/src/a.proof.dfy", "app/spec/a.md", "app/test/a.test.ts", "app/vitest.config.ts",
+        "app/test/bombadil.ts", "app/gen/a.qnt", "kit/src/b.ts", "kit/src/c.ts", "kit/README.md", "kit/scanned/x.ts", "served/cli.js", "unused/index.ts",
+        "shared/b.ts", "shared/c.ts", "shared/copied.txt"].map((f) => [f, changed(f)])),
+      "app/gen/a.ts, a rule moved": changed("app/gen/a.ts", () => cite(4)), "app/gen/a.ts": changed("app/gen/a.ts", (text) => text.replace("= 1", "= 2")), "app/gen/b.ts": changed("app/gen/b.ts"),
+      "aliased/gen/a.ts": (() => { const before = pageInputs(path.join(workspace, "aliased")); fs.appendFileSync(path.join(workspace, "aliased/gen/a.ts"), " "); return pageInputs(path.join(workspace, "aliased")) !== before; })(),
+    }, {
+      "app/src/main.ts": true, "app/src/main.css": true, "app/src/a.contract.ts": false, "app/src/a.proof.dfy": false, "app/spec/a.md": false, "app/test/a.test.ts": false,
+      "app/vitest.config.ts": false, "app/test/bombadil.ts": true, "app/gen/a.qnt": false, "kit/src/b.ts": true, "kit/src/c.ts": false, "kit/README.md": false,
+      "kit/scanned/x.ts": true, "served/cli.js": true, "unused/index.ts": false, "shared/b.ts": true, "shared/c.ts": false, "shared/copied.txt": true,
+      "app/gen/a.ts, a rule moved": false, "app/gen/a.ts": true, "app/gen/b.ts": false, "aliased/gen/a.ts": true,
+    }, "the page reads its code, the files and directories it names, what the packages it imports or runs export, and the generated modules it imports, or all of them where it names none; not what only its checks read, nor what a file it only scans imports");
   });
 
   test("a rule whose prose or model changed names the code that cites it, for a person to read again", () => {
@@ -1831,11 +1869,11 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(fs.existsSync(path.join(root, "gen/proof/highest/verify")), "Dafny verified the unit");
     const remembered = () => fs.readdirSync(path.join(root, ".spec-cache")).filter((f) => f.startsWith("prove-")).join();
     const proved = remembered();
-    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\n// A change to the tools that the prover does not run.\n");
+    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\nexport {};\n");
     const tooled = await runCli(script, root, "check", "--json");
     assert.ok(answer(tooled.stdout).results.some((r: Result) => r.stage === "proof" && r.ok), tooled.stdout + tooled.stderr);
     assert.equal(remembered(), proved, "a change to tools the prover does not run proves nothing again");
-    fs.appendFileSync(path.join(root, "vibestack/scan.ts"), "\n// A change to the tools the prover runs that leaves the Dafny alone.\n");
+    fs.appendFileSync(path.join(root, "vibestack/scan.ts"), "\nexport {};\n");
     const rescanned = await runCli(script, root, "check", "--json");
     assert.ok(answer(rescanned.stdout).results.some((r: Result) => r.stage === "proof" && r.ok), rescanned.stdout + rescanned.stderr);
     assert.notEqual(remembered(), proved, "a change to the prover's code proves again");
@@ -1876,9 +1914,9 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(!fs.existsSync(path.join(root, ".spec-cache/lock")));
   });
 
-  test("a check remembers its results under the tools it loaded, and nothing when they changed as it loaded them", async () => {
+  test("a check remembers its results under the code of the tools it loaded, not their comments, and nothing when they changed as it loaded them", async () => {
     const root = toolchain(scratch({}));
-    const touch = `fs.appendFileSync(${JSON.stringify(path.join(root, "vibestack/parse.ts"))}, "\\n");`;
+    const touch = `fs.appendFileSync(${JSON.stringify(path.join(root, "vibestack/parse.ts"))}, "\\nexport {};\\n");`;
     const load = `const { entry, store } = await import(${JSON.stringify(path.join(root, "vibestack/cache.ts"))});`;
     const remember = 'const at = await entry(".", "simulate", ["same"]); store({ root: ".", fresh: false, used: new Set() }, at, 1); console.log(JSON.stringify({ name: at.name, kept: fs.existsSync(at.file) }));';
     const checked = async (...steps: string[]) => {
@@ -1890,19 +1928,35 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.equal(loaded.kept, true, "a tool changed after a check loaded it leaves that check's results remembered");
     assert.notEqual((await checked(load, remember)).name, loaded.name, "under the code that computed them, not the code there now");
     assert.equal((await checked(touch, load, remember)).kept, false, "a tool changed while a check loaded it leaves nothing remembered");
-    const names = 'console.log(JSON.stringify(Object.fromEntries(await Promise.all(["simulate", "tests"].map(async (stage) => [stage, (await entry(".", stage, ["same"])).name])))));';
-    const named = async (tool: string) => {
+    const names = 'console.log(JSON.stringify(Object.fromEntries(await Promise.all(["simulate", "tests", "explore", "action"].map(async (stage) => [stage, (await entry(".", stage, ["same"])).name])))));';
+    const named = async (tool: string, appended = "\nexport {};\n") => {
       const before = await checked(load, names);
-      fs.appendFileSync(path.join(root, "vibestack", tool), "\n");
+      fs.appendFileSync(path.join(root, "vibestack", tool), appended);
       return { before, after: await checked(load, names) };
     };
+    const reworded = await named("run.ts", "\n\n// A comment, two lines below the code.\n");
+    assert.deepEqual(reworded.after, reworded.before, "rewording a comment in a tool every stage and every run of a tool rests on keys nothing anew");
+    const rerun = await named("run.ts");
+    assert.ok(Object.keys(rerun.before).every((stage) => rerun.after[stage] !== rerun.before[stage]), "a change to its code keys every one anew");
     const outside = await named("explore.ts");
     assert.equal(outside.after.simulate, outside.before.simulate, "a simulation is not keyed by tools it does not run");
     assert.notEqual(outside.after.tests, outside.before.tests, "tests may run any of the tools");
+    assert.notEqual(outside.after.explore, outside.before.explore, "an exploration is keyed by the code that explores");
+    const proving = await named("prove.ts");
+    assert.deepEqual([proving.after.tests !== proving.before.tests, proving.after.explore !== proving.before.explore], [true, false], "an exploration is not keyed by a tool it does not run");
     for (const tool of ["units.ts", "gen/harness.ts", "testing/profile.ts"]) {
       const { before, after } = await named(tool);
       assert.notEqual(after.simulate, before.simulate, `a simulation is keyed by ${tool}, which it runs`);
     }
+    for (const [page, main] of [["runs", 'import "../../vibestack/spec.ts";\n'], ["plain", "export {};\n"]]) {
+      fs.mkdirSync(path.join(root, page, "src"), { recursive: true });
+      fs.writeFileSync(path.join(root, page, "package.json"), "{}\n");
+      fs.writeFileSync(path.join(root, page, "src/main.ts"), main);
+    }
+    const pages = `const { pageInputs } = await import(${JSON.stringify(path.join(root, "vibestack/explore.ts"))}); console.log(JSON.stringify(["runs", "plain"].map((page) => pageInputs(page))));`;
+    const keys = await checked(pages);
+    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\n");
+    assert.deepEqual((await checked(pages)).map((key: string, i: number) => key !== keys[i]), [true, false], "a page that runs one of the tools reads them all, and a page that runs none reads none");
   });
 
   test("a process that outlives a reinstall of Quint, as watch does, keys what it runs and simulates by the Quint installed now, and remembers its runs again", { skip: process.platform === "win32" }, async () => {
@@ -1952,7 +2006,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.match(first.broken?.summary ?? "", /"Story \/ Small" \(spec\/index\.md:5\)/, JSON.stringify(first.broken));
     assert.deepEqual([...new Set(first.ran)].sort(), ["run", "typecheck"]);
     assert.deepEqual((await checked()).ran, []);
-    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\n// A change to the tools that leaves the Quint alone.\n");
+    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\nexport {};\n");
     const tooled = await checked();
     assert.deepEqual(tooled, { broken: first.broken, ran: [] });
     fs.writeFileSync(path.join(root, "spec/index.md"), read("spec/index.md", root).replace("### Small\n", "Prose above the rule.\n\n### Small\n"));

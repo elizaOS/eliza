@@ -199,20 +199,18 @@ function addVitest(root: string): string {
 }
 
 /**
- * What a fingerprint covers: what a package's tests read; what its page serves, which leaves out the tests, drivers,
- * traces and counterexamples; or what its typecheck may read, which leaves out the Markdown, Quint and Dafny no
- * TypeScript compiler reads.
+ * What a fingerprint covers: what a package's tests read, or what its typecheck may read, which leaves out the
+ * Markdown, Quint and Dafny no TypeScript compiler reads. What its page reads is explore.ts's `pageInputs`.
  */
-export type Inputs = "tests" | "page" | "types";
+export type Inputs = "tests" | "types";
 
 /**
- * A fingerprint of what a package's tests, its page or its typecheck read: its files and the top of its gen/ (an owner's is
+ * A fingerprint of what a package's tests or its typecheck read: its files and the top of its gen/ (an owner's is
  * mirrored from the root's), the fixtures nested under its test/, the workspace packages it depends on without their
  * spec/ or the packages nested in them, the lock file and the fuzzing budget.
  */
 export function testInputs(root: string, mode: TestProfile = "normal", read: Inputs = "tests"): string {
   const hash = createHash("sha256").update(JSON.stringify(["tests-v3", read, process.versions.node, process.platform, process.arch, profile(mode)]));
-  const served = (file: string) => !isTestFile(file) && ![DRIVERS, TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`));
   const pending = [{ directory: root, name: "." }];
   const seen = new Set<string>();
   for (const { directory, name } of pending) {
@@ -228,7 +226,7 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
     const own = name === ".";
     const gen = path.join(from, "gen");
     const top = fs.existsSync(gen) ? fs.readdirSync(gen, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `gen/${e.name}`) : [];
-    const keep = (file: string) => (own || !file.startsWith("spec/")) && ({ tests: true, page: served(file), types: !/\.(?:md|qnt|dfy)$/.test(file) } satisfies Record<Inputs, boolean>)[read];
+    const keep = (file: string) => (own || !file.startsWith("spec/")) && ({ tests: true, types: !/\.(?:md|qnt|dfy)$/.test(file) } satisfies Record<Inputs, boolean>)[read];
     for (const file of [...packageFiles(from, keep, "", own), ...top.filter(keep)]) {
       const bytes = fs.readFileSync(path.join(from, file));
       hash.update(`${file}\0${bytes.length}\0`).update(bytes);
@@ -261,7 +259,7 @@ export function danglingCitations(root: string, specs: Spec[], dir = ""): string
  * (such as `.cache/`) or `.DS_Store`, nor the packages nested in it, which are checked on their own, except, with
  * `fixtures`, those under a test/ directory, which its tests read.
  */
-function packageFiles(root: string, keep: (file: string) => boolean, dir = "", fixtures = false): string[] {
+export function packageFiles(root: string, keep: (file: string) => boolean, dir = "", fixtures = false): string[] {
   return fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => {
     const rel = dir ? `${dir}/${e.name}` : e.name;
     if (e.name === ".git" || e.name === ".DS_Store") return [];
@@ -275,7 +273,7 @@ function packageFiles(root: string, keep: (file: string) => boolean, dir = "", f
 const packageCode = (root: string) => packageFiles(root, (file) => /\.(?:[cm]?[jt]sx?|vibex?)$/.test(file) && !SIDECAR.test(file));
 
 /** A test of a package: test/**\/*.test.*, but not a driver, which the traces stage runs. */
-const isTestFile = (file: string) => /^test\/(?!drivers\/).*\.test\.[^/.]+$/.test(file);
+export const isTestFile = (file: string) => /^test\/(?!drivers\/).*\.test\.[^/.]+$/.test(file);
 const testFiles = (root: string) => packageCode(root).filter(isTestFile);
 
 /** Where a package keeps its drivers, the traces they replay and the counterexamples the simulator found (SPEC.md, "Conformance"). */
@@ -284,7 +282,7 @@ export const TRACES = "test/traces", DRIVERS = "test/drivers", COUNTEREXAMPLES =
 /** A token of a script, and how many brackets it sits in. */
 interface Token { text: string; pos: number; start: number; depth: number; fresh: boolean }
 /** A script's tokens, or nothing if its brackets do not balance; TypeScript's scanner reads VibeLang's too. */
-function tokenize(text: string): Token[] | undefined {
+export function tokenize(text: string): Token[] | undefined {
   const K = ts.SyntaxKind;
   const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, text);
   const out: Token[] = [];

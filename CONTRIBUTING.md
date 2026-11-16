@@ -134,7 +134,9 @@ and each simulation and proof result under a fingerprint of a spec and its
 imports, the versions of the programs beneath (Quint and Node for a
 simulation; Node, LemmaScript, Dafny and Z3 for a proof, whose key holds the
 whole unit) and the code of only the tools that stage runs: `simulate.ts`,
-`units.ts` and what they import, or `prove.ts` and what it imports. A
+`units.ts` and what they import, or `prove.ts` and what it imports, each read
+as its tokens and line breaks, so that rewording a comment in a tool runs
+nothing again. A
 simulation cites each rule at the line it is on now, so prose that only moves
 the rules simulates nothing again. The programs and their versions are read
 for each key, so a process that outlives a reinstall, as `watch` does, runs and
@@ -146,8 +148,11 @@ to a proof file only checks and verifies the Dafny it changes. A unit offered
 what the units it imports proved is proved once when their results are
 remembered, and meanwhile, to be proved again if they fail, only while one of
 them is still being proved. A test run
-or an exploration may run any tool, as Studio's do, so it is keyed by all of
-them, and with a typecheck and a driver's run by VibeLang's version and bytes.
+may run any tool, as Studio's do, so it is keyed by all of them, and with a
+typecheck, a driver's run and an exploration by VibeLang's version and bytes.
+An exploration is keyed by the code that explores and what its page reads
+(`pageInputs` in `vibestack/explore.ts`), which holds every tool when the
+page runs one, as Studio's does.
 It also remembers a package's passing test run under a hash of what its tests
 read; a driver's passing run under the same hash and the events the simulator
 found; and a passing typecheck under the package's files without its Markdown,
