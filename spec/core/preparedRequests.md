@@ -106,8 +106,17 @@ For a host failure the adapter propagates the original thrown value from the
 reported stage. Both forms of serialization failure leave no guard. When
 there is no tokenizer, the diagnostic count is the UTF-8 length of the admitted
 UTF-16 sequence. An estimate remains diagnostic. The adapter is responsible
-for passing the exact serialized body to the reported tokenizer and for
-establishing whether its encoding is exact for the selected provider.
+for supplying the exact serialized body to the count callback and establishing
+how the reported count describes the selected provider's input.
+
+The AOSP fused loader tokenizes the final prompt once in the loaded context.
+It copies the native result into an owned token vector and reports that
+vector's length to the guard. Each stream attempt, including the one-time
+cache fallback, uses the same context and prefill vector. The guard separately
+checks the serialized projection before dispatch. The adapter must establish
+that the counted vector is the one submitted to native prefill. Device
+conformance must exercise tokenization and prefill on the loaded model and
+native library. [Pinned AOSP source](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/plugins/plugin-native-inference/src/aosp-local-inference-bootstrap.ts#L3075-L3176)
 
 ```quint
 pure val preparationValues = Set(
@@ -187,6 +196,13 @@ Omitted context uses 128,000 tokens. Omitted output reserve is the smaller
 of 10,000 and the context less one, with one as the floor. The dispatch
 threshold is at least one. A provider tokenizer can reject at or above the
 threshold only when both limits were explicitly supplied.
+
+For AOSP text generation, the adapter explicitly reserves one output token
+when the caller leaves the output cap omitted. The decoder can still use its
+calculated remaining context. The preliminary AOSP budget calculation can
+accept an exact fit. The prepared guard rejects that case under its strict
+threshold when the supplied context and reserve equal the calculation inputs.
+[Pinned AOSP budget calculation](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/plugins/plugin-native-inference/src/aosp-local-inference-bootstrap.ts#L552-L596)
 
 The adapter identifies missing, invalid and positive finite numeric inputs.
 A positive fraction is floored for the reported budget, including fractions
