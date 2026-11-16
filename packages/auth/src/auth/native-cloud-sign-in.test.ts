@@ -459,13 +459,13 @@ describe("native Cloud sign-in renderer contract", () => {
   it("reads the registered Google scopes a disclosure shows from status", () => {
     const scopes = ["email", "https://www.googleapis.com/auth/gmail.readonly"];
     expect(nativeSignInGoogleScopes({ googleScopes: scopes })).toEqual(scopes);
+    expect(nativeSignInGoogleScopes({})).toEqual([]);
     for (const value of [
       { googleScopes: ["https://mail.google.com/"] },
       { googleScopes: "email" },
-      {},
       null,
     ])
-      expect(nativeSignInGoogleScopes(value)).toEqual([]);
+      expect(() => nativeSignInGoogleScopes(value)).toThrow("unavailable");
   });
 
   it("reads a readiness change only for this deployment and only from explicit booleans", () => {

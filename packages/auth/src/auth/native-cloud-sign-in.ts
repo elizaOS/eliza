@@ -652,17 +652,22 @@ export function nativeSignInActivationPending(value: unknown): boolean {
 
 /**
  * `status().googleScopes`: the Google scopes the host's registration asks for, the one list a
- * sign-in disclosure shows. An absent or malformed list is empty: Google connects no account.
+ * sign-in disclosure shows. A plugin that predates the list reports none and asks Google for none
+ * (empty); a malformed status or list is a fault, not an empty disclosure.
  */
 export function nativeSignInGoogleScopes(value: unknown): string[] {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new NativeCloudSignInError("unavailable");
   const scopes = (value as Record<string, unknown>).googleScopes;
-  return Array.isArray(scopes) &&
-    scopes.every(
+  if (scopes === undefined) return [];
+  if (
+    !Array.isArray(scopes) ||
+    !scopes.every(
       (scope) => typeof scope === "string" && GOOGLE_SCOPE.test(scope),
     )
-    ? [...(scopes as string[])]
-    : [];
+  )
+    throw new NativeCloudSignInError("unavailable");
+  return [...(scopes as string[])];
 }
 
 /**
