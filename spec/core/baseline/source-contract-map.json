@@ -2341,7 +2341,11 @@
         "Duplicate callers share the registration outcome",
         "Cleanup removes only owned contributions",
         "Service start remains owned across rollback and unload",
-        "Cleanup eventually finishes under fair service and disposal completion"
+        "Cleanup eventually finishes under fair service and disposal completion",
+        "Plugin epochs own declaration receipts while classes share instance identity",
+        "Teardown processes each service type after disposal",
+        "Captured instance stops and class hooks settle in source order",
+        "A sealed request set eventually settles under fair external completion"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "80c0394b7f625052e1d55112cee6d295ec76c0f7465dd81dbe38843fa946f9a8",
@@ -2349,7 +2353,10 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/plugin-lifecycle.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/plugins.md"
+        "spec/core/plugins.md",
+        "spec/core/pluginRegistry.md",
+        "spec/core/pluginServices.md",
+        "spec/core/serviceInstances.md"
       ]
     },
     {
@@ -2519,7 +2526,9 @@
         "Only open ingress admits new turns",
         "Stop closes admissions and prepares services once",
         "Strict retirement succeeds only when original work is drained",
-        "Owned runtime work eventually drains under fair settlement"
+        "Owned runtime work eventually drains under fair settlement",
+        "Acquisition snapshots keep each class and attempt generation",
+        "Instance stop promises retain identity across every caller"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "f3ade6aaabd9d42a20b7497a87c0e1d1eb9d4ba2f8ef0f3ac4d566a4a4a78455",
@@ -2527,7 +2536,8 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/runtime.md"
+        "spec/core/runtime.md",
+        "spec/core/serviceInstances.md"
       ]
     },
     {
@@ -3237,6 +3247,7 @@
       "spec": "spec/core/preparedRequests.md",
       "rules": [
         "A request guard captures its exact admitted serialization",
+        "Preparation checks serializer and tokenizer configuration before calling either serializer",
         "Only the admitted body can supply its input token count",
         "Rejection authority uses explicit limits and reservation uses the original output argument",
         "Every dispatched attempt rechecks bytes counts and lease authority",

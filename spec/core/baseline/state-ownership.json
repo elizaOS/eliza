@@ -10447,6 +10447,7 @@
             "plugins",
             "services",
             "ownership",
+            "liveOwners",
             "retirements",
             "requestsClosed"
           ],
@@ -10471,9 +10472,26 @@
             "finishLateStart",
             "cleanPlugin",
             "stopServices",
-            "sealRequests"
+            "sealRequests",
+            "resolveNextStart",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "settleTypeAggregate",
+            "clearTypeAggregate",
+            "withdrawNextType",
+            "invokeClassHook",
+            "finishClassHook",
+            "finishRetirementGroup",
+            "skipMissingStop",
+            "claimInstanceStop",
+            "observeInstanceStop",
+            "finishClassSlot",
+            "finishNextPluginDisposal",
+            "finishNextRegistration",
+            "finishNextClassHook",
+            "advanceRetirement"
           ],
-          "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+          "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
         },
         "associatedModels": [
           {
@@ -10483,6 +10501,7 @@
               "plugins",
               "services",
               "ownership",
+              "liveOwners",
               "retirements",
               "requestsClosed"
             ],
@@ -10507,9 +10526,26 @@
               "finishLateStart",
               "cleanPlugin",
               "stopServices",
-              "sealRequests"
+              "sealRequests",
+              "resolveNextStart",
+              "finishNextObserver",
+              "finishNextLateStart",
+              "settleTypeAggregate",
+              "clearTypeAggregate",
+              "withdrawNextType",
+              "invokeClassHook",
+              "finishClassHook",
+              "finishRetirementGroup",
+              "skipMissingStop",
+              "claimInstanceStop",
+              "observeInstanceStop",
+              "finishClassSlot",
+              "finishNextPluginDisposal",
+              "finishNextRegistration",
+              "finishNextClassHook",
+              "advanceRetirement"
             ],
-            "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+            "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
           },
           {
             "spec": "spec/core/serviceInstances.md",
@@ -10519,11 +10555,16 @@
               "classes",
               "attempts",
               "objects",
+              "published",
               "calls",
               "nextAttempt",
               "initialization",
               "stopped",
-              "observerErrors"
+              "observerErrors",
+              "typeEntries",
+              "loadPromises",
+              "aggregates",
+              "nextLoad"
             ],
             "transitions": [
               "registerClass",
@@ -10539,15 +10580,21 @@
               "settleObjectStop",
               "finishLateStart",
               "unregisterClass",
-              "stopRuntime"
+              "stopRuntime",
+              "clearTypeAggregate",
+              "settleTypeAggregate",
+              "finishNextObserver",
+              "finishNextLateStart",
+              "resolveNextStart"
             ],
-            "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+            "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
           }
         ],
         "mappedStateFields": [
           "plugins",
           "services",
           "ownership",
+          "liveOwners",
           "retirements",
           "requestsClosed"
         ],
@@ -10560,7 +10607,7 @@
       "id": "packages/core/src/plugin-lifecycle.ts#withdrawnConnectorOwners@144",
       "line": 144,
       "scope": "module",
-      "classification": "state-projection",
+      "classification": "partial-state-projection",
       "declaration": "withdrawnConnectorOwners = new WeakSet<PluginOwnership>()",
       "mutations": [
         {
@@ -10574,11 +10621,11 @@
         "spec/core/pluginServices.md",
         "spec/core/serviceInstances.md"
       ],
-      "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
-      "sourceClassification": "modeled-owned-state",
+      "verification": "Source ownership is identified; exact-owner connector publication guard conformance remains required.",
+      "sourceClassification": "owned-global-registry",
       "coverage": {
-        "classification": "state-projection",
-        "representation": "One authoritative instance state is composed with plugin epochs, ordered duplicate declaration aliases, captured retirement receipts and shared object stop identities. ServiceRegistry is a pure projection library. Cross-runtime product refinement remains unproved.",
+        "classification": "partial-state-projection",
+        "representation": "The associated models describe surrounding plugin epochs and service retirement. The withdrawn connector-owner latch has a separate publication lifetime and is not projected by the service class liveOwners mapping.",
         "model": {
           "spec": "spec/core/pluginServices.md",
           "stateType": "PluginServices",
@@ -10586,6 +10633,7 @@
             "plugins",
             "services",
             "ownership",
+            "liveOwners",
             "retirements",
             "requestsClosed"
           ],
@@ -10610,9 +10658,26 @@
             "finishLateStart",
             "cleanPlugin",
             "stopServices",
-            "sealRequests"
+            "sealRequests",
+            "resolveNextStart",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "settleTypeAggregate",
+            "clearTypeAggregate",
+            "withdrawNextType",
+            "invokeClassHook",
+            "finishClassHook",
+            "finishRetirementGroup",
+            "skipMissingStop",
+            "claimInstanceStop",
+            "observeInstanceStop",
+            "finishClassSlot",
+            "finishNextPluginDisposal",
+            "finishNextRegistration",
+            "finishNextClassHook",
+            "advanceRetirement"
           ],
-          "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+          "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
         },
         "associatedModels": [
           {
@@ -10622,6 +10687,7 @@
               "plugins",
               "services",
               "ownership",
+              "liveOwners",
               "retirements",
               "requestsClosed"
             ],
@@ -10646,9 +10712,26 @@
               "finishLateStart",
               "cleanPlugin",
               "stopServices",
-              "sealRequests"
+              "sealRequests",
+              "resolveNextStart",
+              "finishNextObserver",
+              "finishNextLateStart",
+              "settleTypeAggregate",
+              "clearTypeAggregate",
+              "withdrawNextType",
+              "invokeClassHook",
+              "finishClassHook",
+              "finishRetirementGroup",
+              "skipMissingStop",
+              "claimInstanceStop",
+              "observeInstanceStop",
+              "finishClassSlot",
+              "finishNextPluginDisposal",
+              "finishNextRegistration",
+              "finishNextClassHook",
+              "advanceRetirement"
             ],
-            "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+            "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
           },
           {
             "spec": "spec/core/serviceInstances.md",
@@ -10658,11 +10741,16 @@
               "classes",
               "attempts",
               "objects",
+              "published",
               "calls",
               "nextAttempt",
               "initialization",
               "stopped",
-              "observerErrors"
+              "observerErrors",
+              "typeEntries",
+              "loadPromises",
+              "aggregates",
+              "nextLoad"
             ],
             "transitions": [
               "registerClass",
@@ -10678,20 +10766,19 @@
               "settleObjectStop",
               "finishLateStart",
               "unregisterClass",
-              "stopRuntime"
+              "stopRuntime",
+              "clearTypeAggregate",
+              "settleTypeAggregate",
+              "finishNextObserver",
+              "finishNextLateStart",
+              "resolveNextStart"
             ],
-            "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+            "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
           }
         ],
-        "mappedStateFields": [
-          "plugins",
-          "services",
-          "ownership",
-          "retirements",
-          "requestsClosed"
-        ],
-        "unmodeledState": null,
-        "closureStatus": "state-modeled-with-explicit-refinement-boundary",
+        "mappedStateFields": [],
+        "unmodeledState": "The exact PluginOwnership reference is added to withdrawnConnectorOwners after awaited disposal at pinned plugin-lifecycle.ts:863. Send-handler, message-connector and post-connector publication must consult that same latch at lines 1187, 1195 and 1207, including callbacks that resume before and after disposal. The current service and epoch models do not represent this connector admission latch.",
+        "closureStatus": "partial-state-with-explicit-adapter-boundary",
         "verification": "Model checks and implementation refinement are separate evidence."
       }
     },
@@ -13268,11 +13355,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -13288,9 +13380,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -13343,11 +13440,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -13363,9 +13465,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14168,11 +14275,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14188,9 +14300,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14243,11 +14360,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14263,9 +14385,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14332,11 +14459,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14352,9 +14484,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14400,11 +14537,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14420,9 +14562,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14468,11 +14615,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14488,9 +14640,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14536,11 +14693,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14556,9 +14718,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14611,11 +14778,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14631,9 +14803,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -18888,9 +19065,10 @@
             "openTurnLease",
             "closeTurnLease",
             "closeAllowance",
-            "advanceAllowanceClock"
+            "dispatchUnchanged",
+            "setAllowanceClock"
           ],
-          "specSha256": "210e9c8667d07587be79425bbf3c364fed1ff11937a3d40670410ae832f39e70"
+          "specSha256": "74c7ce24eda4357fc77356cf72dbbbad788c3956fe3299b9ef7200ad0a8b6c68"
         },
         "mappedStateFields": [
           "guards",
@@ -21846,11 +22024,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -21866,9 +22049,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -49366,14 +49554,21 @@
   ],
   "summary": {
     "static-or-derived-value": 559,
-    "state-projection": 361,
+    "state-projection": 360,
     "immutable-construction-input": 148,
     "derived-cache-boundary": 20,
     "external-composition-reference": 39,
-    "dynamic-scope-delegation": 6
+    "dynamic-scope-delegation": 6,
+    "partial-state-projection": 1
   },
   "mappingErrors": [],
-  "modelGaps": [],
+  "modelGaps": [
+    {
+      "id": "packages/core/src/plugin-lifecycle.ts#withdrawnConnectorOwners@144",
+      "classification": "partial-state-projection",
+      "unmodeledState": "The exact PluginOwnership reference is added to withdrawnConnectorOwners after awaited disposal at pinned plugin-lifecycle.ts:863. Send-handler, message-connector and post-connector publication must consult that same latch at lines 1187, 1195 and 1207, including callbacks that resume before and after disposal. The current service and epoch models do not represent this connector admission latch."
+    }
+  ],
   "groups": [
     {
       "id": "access-control/audience-disclosure.ts#LEVEL_RANK",
@@ -52243,7 +52438,9 @@
         "spec/core/serviceInstances.md"
       ],
       "missingState": [],
-      "partialState": []
+      "partialState": [
+        "packages/core/src/plugin-lifecycle.ts#withdrawnConnectorOwners@144"
+      ]
     },
     {
       "id": "plugin-lifecycle.ts#generalFallbackWarnedProviders",
