@@ -2480,6 +2480,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
       manifest.pnpm.overrides[`${sourceManifest.name}@${sourceManifest.version}>${name}`] = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8")).version;
       return directory;
     });
+    dependencyDirectories.push(...Object.keys({ ...manifest.dependencies, ...manifest.devDependencies }).map((name) => fs.realpathSync(path.join(nodeModules, name))));
     const visited = new Set<string>();
     for (const directory of dependencyDirectories) {
       if (visited.has(directory)) continue;
@@ -2499,7 +2500,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     fs.writeFileSync(path.join(scaffold, "package.json"), JSON.stringify(manifest));
     fs.writeFileSync(path.join(scaffold, ".agents/skills/sync/SKILL.md"), "My installed project instructions.\n");
     for (const alias of [...harnessSkillPaths, "CLAUDE.md", ".claude/settings.json"]) fs.unlinkSync(path.join(scaffold, alias));
-    const reinstalled = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["install", "--offline", "--ignore-workspace"], scaffold);
+    const reinstalled = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["install", "--prefer-offline", "--ignore-workspace", `--config.cache-dir=${scratch({})}`], scaffold);
     assert.equal(reinstalled.status, 0, reinstalled.stdout + reinstalled.stderr);
     for (const alias of harnessSkillPaths) assert.equal(fs.realpathSync(path.join(scaffold, alias)), path.join(scaffold, ".agents/skills"));
     assert.equal(fs.readlinkSync(path.join(scaffold, "CLAUDE.md")), "AGENTS.md");
