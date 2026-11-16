@@ -172,8 +172,12 @@ const load = (f: string) => {
 };
 ["", "gen"].flatMap((dir) => fs.readdirSync(path.join(import.meta.dirname, dir)).map((f) => path.join(dir, f)))
   .filter((f) => f.endsWith(ext) && f !== `selftest${ext}`).sort().forEach(load);
+/** The code of these scripts, by their names and tokens. */
+const code = (files: string[]) => sha(...files.sort().map((f) => `${f}\0${tools.get(f)?.code}`)).slice(0, 12);
 /** Every tool's script, where it is: a page that runs one of them may run any (explore.ts, `pageInputs`). */
 export const toolScripts = () => [...tools.keys()].map((f) => path.join(import.meta.dirname, f));
+/** The code of every tool, which such a page reads. */
+export const toolsCode = () => code([...tools.keys()]);
 /** The scripts that run when these do. */
 const closure = (...roots: string[]) => {
   const reached = new Set(roots.map((f) => f + ext));
@@ -210,7 +214,6 @@ function toolchainId(stage: Stage): Promise<string> {
   let id = toolchains.get(known);
   if (id) return id;
   toolchains.set(known, (id = (async () => {
-    const code = (files: string[]) => sha(...files.sort().map((f) => `${f}\0${tools.get(f)?.code}`)).slice(0, 12);
     if (stage === "action") return `${stage} ${code([`action${ext}`, `run${ext}`])}`;
     const node = `node@${process.versions.node}:${process.platform}:${process.arch}`;
     if (stage === "prove") {

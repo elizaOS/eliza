@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
-import { toolScripts } from "./cache.ts";
+import { toolScripts, toolsCode } from "./cache.ts";
 import { bin, exec, startGroup } from "./run.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
 import { appScript, COLOUR, COUNTEREXAMPLES, DRIVERS, filesUnder, indent, isTestFile, manifest, packageFiles, packageManager, servedAt, TRACES, type Remember, type Reported } from "./util.ts";
@@ -75,7 +75,7 @@ function offered(dir: string): string[] {
  * scans as text; what each workspace package its code imports, or its scripts run, offers; and, in turn, what those
  * name. The generated modules it imports are read without the lines the rules they cite are on; where its code names
  * none, as through an alias, all of them are. A page that runs one of these tools may run any of them, as Studio's
- * does, and reads them all.
+ * does, and reads the code of them all, as the stages do (cache.ts).
  */
 export function pageInputs(root: string, mode: TestProfile = "normal"): string {
   const base = fs.realpathSync(root);
@@ -130,9 +130,9 @@ export function pageInputs(root: string, mode: TestProfile = "normal"): string {
     for (const e of fs.readdirSync(gen, { withFileTypes: true })) if (e.isFile() && !e.name.endsWith(".qnt")) read(path.join(gen, e.name), true);
     walk();
   }
-  if ([...tools].some((tool) => reads.has(tool))) for (const tool of tools) read(tool, false);
-  const hash = createHash("sha256").update(JSON.stringify(["page-v1", process.versions.node, process.platform, process.arch, profile(mode)]));
-  for (const [name, file] of [...reads.keys()].map((file) => [path.relative(base, file).split(path.sep).join("/"), file]).sort(([a], [b]) => a.localeCompare(b))) {
+  const runsTools = [...tools].some((tool) => reads.has(tool));
+  const hash = createHash("sha256").update(JSON.stringify(["page-v1", process.versions.node, process.platform, process.arch, profile(mode), runsTools && toolsCode()]));
+  for (const [name, file] of [...reads.keys()].filter((file) => !tools.has(file)).map((file) => [path.relative(base, file).split(path.sep).join("/"), file]).sort(([a], [b]) => a.localeCompare(b))) {
     const bytes = path.dirname(file) === gen ? Buffer.from(fs.readFileSync(file, "utf8").replace(CITED_LINE, "$1$2")) : fs.readFileSync(file);
     hash.update(`${name}\0${bytes.length}\0`).update(bytes);
   }

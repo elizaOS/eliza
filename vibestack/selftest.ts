@@ -1955,8 +1955,11 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     }
     const pages = `const { pageInputs } = await import(${JSON.stringify(path.join(root, "vibestack/explore.ts"))}); console.log(JSON.stringify(["runs", "plain"].map((page) => pageInputs(page))));`;
     const keys = await checked(pages);
-    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\n");
-    assert.deepEqual((await checked(pages)).map((key: string, i: number) => key !== keys[i]), [true, false], "a page that runs one of the tools reads them all, and a page that runs none reads none");
+    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\n// A comment, two lines below the code.\n");
+    const commented = await checked(pages);
+    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\nexport {};\n");
+    assert.deepEqual([commented, await checked(pages)].map((after) => after.map((key: string, i: number) => key !== keys[i])), [[false, false], [true, false]],
+      "a page that runs one of the tools reads the code of them all, not their comments, and a page that runs none reads none");
   });
 
   test("a process that outlives a reinstall of Quint, as watch does, keys what it runs and simulates by the Quint installed now, and remembers its runs again", { skip: process.platform === "win32" }, async () => {
