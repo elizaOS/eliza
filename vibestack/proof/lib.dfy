@@ -3,7 +3,7 @@
 // only the declarations the proof file calls and those they use (`libraryFor`
 // in vibestack/prove.ts), and verify it there; call its lemmas as ProofLib.<Name>(...).
 //
-// How proof files use it: .claude/skills/prove/SKILL.md, "Proof files".
+// How proof files use it: .agents/skills/prove/SKILL.md, "Proof files".
 //
 // Dafny makes the module's import visible as ProofLib.Seq; proof files may not
 // use it (vibestack/prove.ts refuses any ProofLib.<name> this file does not declare),

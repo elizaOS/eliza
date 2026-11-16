@@ -2,7 +2,7 @@
 
 The spec format, the generated code and the code built on it. The procedure
 is [AGENTS.md](AGENTS.md); the agent's loop is the
-[`sync` skill](.claude/skills/sync/SKILL.md); the stages of
+[`sync` skill](.agents/skills/sync/SKILL.md); the stages of
 `pnpm check` are [below](#stages-of-pnpm-check).
 
 A path under `vibestack/` names a file of the
@@ -24,7 +24,7 @@ with the reason.
 | `always` | `always` rules and laws hold on simulated traces; `leadsTo` rules on fair runs | the spec is not a valid model |
 | `sometimes` | each `sometimes` goal is reached, and each event happens in some simulated state | the model is invalid, or simulation stopped at an `always` failure |
 | `replay` | the generated TypeScript agrees with Quint on the simulated traces | as `sometimes` |
-| `types` | the `vibelang` compiler checks `src/`, the tests and `gen/` ([shell skill](.claude/skills/shell/SKILL.md)) | a stage above failed; without a `tsconfig.json` it passes as skipped only when there is no `src/` or `test/` |
+| `types` | the `vibelang` compiler checks `src/`, the tests and `gen/` ([shell skill](.agents/skills/shell/SKILL.md)) | a stage above failed; without a `tsconfig.json` it passes as skipped only when there is no `src/` or `test/` |
 | `proof` | Dafny proves each unit's obligations, or `spec/lock.json` records them as simulated only | a stage above `types` failed; it runs beside `types` |
 | `tests` | the package's [tests](AGENTS.md#tests) pass, each cites a story or rule the spec has and reaches past `gen/`, and its drivers import `gen/` as types only | a stage above failed |
 | `traces` | the application, through its drivers, `driver:` programs and recorded traces, agrees with the spec ([Conformance](#conformance)) | a stage above failed |
@@ -154,7 +154,7 @@ or another prefix the generated module uses for itself (`GENERATED` in
 and near-misses of the conventions above such as `alwayspaid` or `CanPay`.
 A state machine is also refused the names of its Effect adapter: `Rejected`,
 `NotAnEvent`, `NotAState`, `NotASender`, `Machine`, `machine`, `machineOver`,
-`stored`, `apply`, `decodeEvent`, `decodeState` and `decodeSender` ([shell skill](.claude/skills/shell/SKILL.md)).
+`stored`, `apply`, `decodeEvent`, `decodeState` and `decodeSender` ([shell skill](.agents/skills/shell/SKILL.md)).
 
 ### Using one spec from another
 
@@ -398,7 +398,7 @@ the state marked.
 
 `pnpm accept` records a fingerprint of everything a person has
 reconciled; `review` lists what differs. Each status, and what it
-asks of the agent, is in the [`sync` skill](.claude/skills/sync/SKILL.md).
+asks of the agent, is in the [`sync` skill](.agents/skills/sync/SKILL.md).
 
 | What | Recorded in, under | Fingerprint of |
 |---|---|---|
@@ -468,7 +468,7 @@ line.
   (`machineOver(start, keep)`), of the Effect adapter
   `gen/<name>.effect.vibe`, which use `enabled` and `step`; a React component
   goes through `useMachine` of `gen/<name>.react.ts`
-  ([shell skill](.claude/skills/shell/SKILL.md)).
+  ([shell skill](.agents/skills/shell/SKILL.md)).
 - `gen/` is rebuilt by `pnpm gen` and `pnpm check`, and by
   `pnpm install` when every spec is valid.
 

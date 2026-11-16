@@ -56,9 +56,9 @@
   },
   "files": [
     "dist",
-    ".claude/skills",
+    ".agents/skills",
     "vibestack/reference/typereferences.md",
-    ".claude/settings.json",
+    ".agents/claude-settings.json",
     "README.md",
     "AGENTS.md",
     "SPEC.md",
