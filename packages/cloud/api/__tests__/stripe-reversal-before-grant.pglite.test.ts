@@ -401,3 +401,18 @@ test("a dispute delivered before a Stripe payment-request settlement is retried"
   expect(await processStripeEvent(dispute)).toBe("ack");
   expect(await balance(request.org)).toBe(0);
 });
+
+test("a refund that read no grant just before the payment-request settlement committed is retried", async () => {
+  const request = await pendingPaymentRequest(2500);
+  // The queue found no grant, then the settlement committed before the
+  // payment request was read, so the request already reads settled.
+  await pg().query(
+    "UPDATE payment_requests SET status='settled' WHERE organization_id=$1",
+    [request.org],
+  );
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${randomUUID()}`, 2500, request.paymentIntentId),
+    ),
+  ).toBe("retry");
+});

@@ -1793,20 +1793,18 @@ function chargePaymentIntentId(charge: Stripe.Charge): string | undefined {
 async function topUpGrantPending(paymentIntentId: string): Promise<boolean> {
   const stripe = requireStripe();
   // A Stripe payment request is credited by its own settlement webhook, keyed
-  // on this payment intent. Settlement credits whatever the request status, so
-  // only a settled request (whose grant the caller already looked up) is done.
+  // on this payment intent. The caller found no grant, so retry: an unsettled
+  // request will grant, and a request that settled after the caller's lookup
+  // has granted already, so the retry finds the grant and claws it back.
   const paymentRequestPending = async (id: string | null | undefined) => {
     if (!id) return undefined;
     const [request] = await dbRead
-      .select({
-        provider: paymentRequests.provider,
-        status: paymentRequests.status,
-      })
+      .select({ provider: paymentRequests.provider })
       .from(paymentRequests)
       .where(eq(paymentRequests.id, id))
       .limit(1);
     if (!request) return undefined;
-    return request.provider === "stripe" && request.status !== "settled";
+    return request.provider === "stripe";
   };
   const sessions = await stripe.checkout.sessions.list({
     payment_intent: paymentIntentId,
