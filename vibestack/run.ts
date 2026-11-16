@@ -73,10 +73,10 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
 export const NEEDS_DAFNY = "the proof stage needs Dafny 4.11 on the PATH";
 
 /** Run a tool from the toolchain, or Dafny, and return whether it succeeded and all it wrote. */
-export async function run(cmd: string, args: string[], cwd: string, input?: string): Promise<{ ok: boolean; out: string }> {
+export async function run(cmd: string, args: string[], cwd: string, input?: string): Promise<{ ok: boolean; out: string; status: number; stderr: string }> {
   const exe = cmd === "dafny" ? cmd : bin(cmd, cwd);
   const r = await exec(exe, args, cwd, undefined, input).catch((e: Error) => {
     throw new Error(`${cmd} could not be run (${exe}): ${e.message}${cmd === "dafny" ? `; ${NEEDS_DAFNY}` : "; run pnpm install"}`);
   });
-  return { ok: r.status === 0 && !r.stopped, out: `${r.stdout}${r.stderr}${r.stopped ? `\n${r.stopped}\n` : ""}` };
+  return { ok: r.status === 0 && !r.stopped, out: `${r.stdout}${r.stderr}${r.stopped ? `\n${r.stopped}\n` : ""}`, status: r.status, stderr: r.stderr };
 }

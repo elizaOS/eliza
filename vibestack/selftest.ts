@@ -313,6 +313,36 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.equal((await run(root)).said("always", /./)?.detail, trace!.detail, "the normal profile retains its own seed and remembered result");
   });
 
+  test("Quint's violation on stderr counts, while the same text in a failed run's state does not", async () => {
+    const quiet = toolchain(oneRule("index", "The counter stays zero", [
+      "pure val initial: int = 0",
+      "pure def increment(n: int): int = n + 1",
+      "pure def alwaysZero(n: int): bool = n == 0",
+    ].join("\n")), "quint");
+    const win = process.platform === "win32";
+    const relative = path.join(".bin", win ? "quint.cmd" : "quint");
+    const bin = path.join(quiet, "node_modules", relative);
+    const quint = path.join(nodeModules, relative);
+    fs.unlinkSync(bin);
+    fs.writeFileSync(bin, win
+      ? `@if "%~1"=="run" (call "${quint}" %* --verbosity 0) else (call "${quint}" %*)\r\n`
+      : `#!/bin/sh\nif [ "$1" = run ]; then set -- "$@" --verbosity 0; fi\nexec '${quint.replaceAll("'", "'\\''")}' "$@"\n`,
+    { mode: 0o755 });
+    const witness = await runCli(path.join(quiet, "vibestack/spec.ts"), quiet, "check", "--json");
+    const broken = answer(witness.stdout).results.find((r: Result) => r.stage === "always");
+    assert.match(broken?.summary ?? "", /a reachable state breaks/, witness.stdout + witness.stderr);
+    assert.match(broken?.detail ?? "", /increment\s+-> state = 1/);
+
+    const runtime = await run(oneRule("index", "The counter can be checked", [
+      "type Counter = { count: int, message: str }",
+      'pure val initial: Counter = { count: 0, message: "error: Invariant violated" }',
+      "pure def increment(c: Counter): Counter = { count: c.count + 1, message: c.message }",
+      "pure def alwaysChecked(c: Counter): bool = if (c.count == 0) true else c.count / (c.count - c.count) == 1",
+    ].join("\n")));
+    const error = runtime.said("always", /the simulator could not run/);
+    assert.match(error?.detail ?? "", /message: "error: Invariant violated"[\s\S]*Division by zero/, runtime.text);
+  });
+
   test("a rule set that holds in simulation but is not inductive is caught by the proof, and the deleted rule awaits review", async () => {
     const { failed, said, text } = await run(copyOfProject("spec/index.md", notInductive));
     assert.deepEqual(failed, ["proof", "review"], text);
