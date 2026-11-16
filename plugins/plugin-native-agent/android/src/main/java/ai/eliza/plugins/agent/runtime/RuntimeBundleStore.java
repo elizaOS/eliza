@@ -51,6 +51,11 @@ public class RuntimeBundleStore {
   }
 
   /** A prepared bundle. When the launch used a seal, verify() still owes the full hash. */
+  /** The device has too little free space to unpack a complete runtime. */
+  public static final class InsufficientSpace extends IOException {
+    InsufficientSpace() { super("Insufficient space for a complete runtime"); }
+  }
+
   public static final class Prepared {
     public final Path bundle;
     /** True when the hash was skipped; the host must call verify() and stop the runtime if it throws. */
@@ -156,7 +161,7 @@ public class RuntimeBundleStore {
       }
       long bytes = 0;
       for (Entry entry : entries) if ("asset".equals(entry.kind)) bytes = Math.addExact(bytes, entry.size);
-      if (durability.usableSpace(root) < bytes + 64L * 1024 * 1024) throw new IOException("Insufficient space for a complete runtime");
+      if (durability.usableSpace(root) < bytes + 64L * 1024 * 1024) throw new InsufficientSpace();
       Path staging = root.resolve(".staging-" + UUID.randomUUID());
       privateDirectory(staging);
       faults.boundary("staging-created");
