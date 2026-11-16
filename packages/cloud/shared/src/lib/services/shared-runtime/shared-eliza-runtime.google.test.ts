@@ -93,7 +93,7 @@ async function exercise(
   process.env.NODE_ENV = "production";
   globalThis.fetch = (async (input, init) => {
     const url = input instanceof Request ? input.url : String(input);
-    if (url === "https://search.parallel.ai/mcp") {
+    if (url === "https://mcp.parallel.ai/mcp") {
       publicCalls += 1;
       const requestText =
         input instanceof Request ? await input.clone().text() : String(init?.body ?? "");
@@ -559,7 +559,7 @@ async function mixedWeatherAndNews(articleRead: boolean) {
         },
       });
     }
-    if (url === "https://search.parallel.ai/mcp") {
+    if (url === "https://mcp.parallel.ai/mcp") {
       const call = JSON.parse(text).params as { name: string; arguments: unknown };
       const mcp = (payload: unknown) =>
         Response.json({
