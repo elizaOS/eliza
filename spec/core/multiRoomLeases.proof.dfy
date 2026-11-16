@@ -2006,3 +2006,609 @@ lemma RoomAdvanceRetainsAuthorityAndTerminalFacts(s: MultiRoomLeases, caller: in
     RoomAdvanceKeepsHeldRoomsWithoutMatchingGrant(s, caller, c.id);
   }
 }
+
+lemma releaseBatchRoom_ensures(s: MultiRoomLeases, caller: int)
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysNestedReuseExact(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysQueueInvariant(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysBatchIdentitiesUnique(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysBatchesHaveValidPosition(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysStoredResultFollowsPhase(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysQueueConfiguredForCalls(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysLeasesBelongToBatch(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysWaiterHasOwner(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysHeldPrefixMatchesRequests(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysInvocationHoldsAllRooms(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysWaiterMatchesNextRoom(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysWaitsAboveHeldRooms(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysDoneHasNoLease(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysAcquiringQueueAuthority(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysReverseReleaseRank(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> alwaysBatchProgressOrTerminal(releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> stepNestedDoesNotAcquire(s, "releaseBatchRoom", releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> stepClosedAdmissionCannotGrow(s, releaseBatchRoom(s, caller)))
+  ensures (inv(s) ==> canReleaseBatchRoom(s, caller) ==> stepReleasedAfterWriteSettlement(s, releaseBatchRoom(s, caller)))
+{
+  if inv(s) && canReleaseBatchRoom(s, caller) {
+    var after := releaseBatchRoom(s, caller);
+    RoomReleaseFrame(s, caller);
+    RoomReleaseQueueFootprint(s, caller);
+    RoomBatchMapIdentities(s, after);
+    RoomReleaseKeepsBatchPlans(s, caller);
+    RoomReleaseKeepsWaitersWithTheirBatches(s, caller);
+    RoomReleaseKeepsLeaseOwners(s, caller);
+    RoomReleaseKeepsQueuedRoomOwners(s, caller);
+    RoomReleaseRetainsQueueAuthority(s, caller);
+    RoomReleaseKeepsTerminalBatchesEmpty(s, caller);
+    RoomReleaseKeepsAdmittedWriteSettlement(s, caller);
+    RoomBatchProgress(after);
+  }
+}
+
+lemma RoomReleaseOnlyItsSettledLease(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures var room := releaseRoomId(s, caller);
+    (exists lease :: lease in s.queue.leases && lease.caller == caller && lease.room == room &&
+      !lease.acceptingWrites && lease.writes == 0) &&
+    (forall lease | lease in s.queue.leases && lease.room == room ::
+      lease.caller == caller && !lease.acceptingWrites && lease.writes == 0) &&
+    (forall lease | lease in core__concurrency_releaseRoom(s.queue, caller, room).leases :: lease.room != room)
+{
+  reveal canReleaseBatchRoom(), core__concurrency_canReleaseRoom();
+  var room := releaseRoomId(s, caller);
+  var removed :| removed in s.queue.leases && removed.caller == caller && removed.room == room &&
+    !removed.acceptingWrites && removed.writes == 0;
+  var inRoom := (lease: core__concurrency_Lease) => lease.room == room;
+  var matches := ProofLib.Filter(inRoom, s.queue.leases);
+  ProofLib.FilterMember(inRoom, s.queue.leases, removed);
+  assert |matches| == 1 && matches[0] == removed;
+  forall lease | lease in s.queue.leases && lease.room == room
+    ensures lease == removed
+  {
+    ProofLib.FilterMember(inRoom, s.queue.leases, lease);
+    assert lease in matches;
+  }
+  reveal core__concurrency_releaseRoom();
+  var retained := (lease: core__concurrency_Lease) => lease.caller != caller || lease.room != room;
+  forall lease | lease in core__concurrency_releaseRoom(s.queue, caller, room).leases
+    ensures lease.room != room
+  {
+    ProofLib.FilterMember(retained, s.queue.leases, lease);
+  }
+}
+
+lemma RoomReleaseFrame(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures var room := releaseRoomId(s, caller);
+    var waiters := ProofLib.Filter((w: core__concurrency_RoomWaiter) => w.room == room, s.queue.waiting);
+    var after := releaseBatchRoom(s, caller);
+    var released := core__concurrency_releaseRoom(s.queue, caller, room);
+    after.queue == (if |waiters| > 0 then core__concurrency_grantRoom(released, room) else released) &&
+    after.nested == s.nested && after.closeCause == s.closeCause &&
+    |after.calls| == |s.calls| &&
+    (forall i | 0 <= i < |s.calls| ::
+      var before := s.calls[i];
+      var next := after.calls[i];
+      next.id == before.id && next.wanted == before.wanted &&
+      (|waiters| == 0 || before.id != waiters[0].caller ==> next == before) &&
+      (|waiters| > 0 && before.id == waiters[0].caller ==> (
+        next.position == before.position + 1 && next.resultKind == before.resultKind &&
+        next.phase == (if next.position == |next.wanted| then BatchLeasePhase.BatchInvoking else BatchLeasePhase.BatchAcquiring)
+      ))) &&
+    (|waiters| > 0 ==> waiters[0] in s.queue.waiting && waiters[0].caller != caller)
+  ensures alwaysQueueInvariant(releaseBatchRoom(s, caller))
+{
+  RoomReleaseOnlyItsSettledLease(s, caller);
+  reveal canReleaseBatchRoom(), releaseBatchRoom(), grantAvailable();
+  reveal core__concurrency_releaseRoom(), core__concurrency_canGrantRoom();
+  var room := releaseRoomId(s, caller);
+  var inRoom := (w: core__concurrency_RoomWaiter) => w.room == room;
+  var waiters := ProofLib.Filter(inRoom, s.queue.waiting);
+  var released := core__concurrency_releaseRoom(s.queue, caller, room);
+  var after := releaseBatchRoom(s, caller);
+  RoomBatchQueueState(s);
+  core__concurrency_releaseRoom_ensures(s.queue, caller, room);
+  if |waiters| > 0 {
+    ProofLib.FilterMember(inRoom, s.queue.waiting, waiters[0]);
+    assert waiters[0] in released.waiting && waiters[0].room == room;
+    assert batchAt(s, waiters[0].caller).phase.BatchWaiting? && batchAt(s, caller).phase.BatchReleasing?;
+    core__concurrency_grantRoom_ensures(released, room);
+  } else {
+    forall w | w in released.waiting ensures w.room != room {
+      ProofLib.FilterMember(inRoom, s.queue.waiting, w);
+    }
+  }
+}
+
+lemma RoomReleaseQueueFootprint(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures var room := releaseRoomId(s, caller);
+    var after := releaseBatchRoom(s, caller);
+    var released := core__concurrency_releaseRoom(s.queue, caller, room);
+    var waiters := ProofLib.Filter((w: core__concurrency_RoomWaiter) => w.room == room, s.queue.waiting);
+    released.leases == ProofLib.Filter((lease: core__concurrency_Lease) => lease.caller != caller || lease.room != room, s.queue.leases) &&
+    after.queue.leases == (if |waiters| > 0 then released.leases + [core__concurrency_Lease(waiters[0].caller, room, true, 0)] else released.leases) &&
+    after.queue.waiting == (if |waiters| > 0 then
+      ProofLib.Filter((w: core__concurrency_RoomWaiter) => w.ticket != waiters[0].ticket, s.queue.waiting) else s.queue.waiting) &&
+    after.queue.configured == s.queue.configured && after.queue.closed == s.queue.closed &&
+    after.queue.cancelled == s.queue.cancelled && after.queue.sealedCallers == s.queue.sealedCallers &&
+    after.queue.finishedCallers == s.queue.finishedCallers
+{
+  RoomReleaseFrame(s, caller);
+  reveal core__concurrency_releaseRoom(), core__concurrency_grantRoom();
+}
+
+lemma RoomFiltersCommute<T>(items: seq<T>, keep: T -> bool, belongs: T -> bool)
+  ensures ProofLib.Filter(belongs, ProofLib.Filter(keep, items)) ==
+    ProofLib.Filter(keep, ProofLib.Filter(belongs, items))
+  decreases |items|
+{
+  if |items| == 0 {
+    ProofLib.FilterNil(keep, items);
+    ProofLib.FilterNil(belongs, items);
+  } else {
+    var first := items[0];
+    var rest := items[1..];
+    var kept := ProofLib.Filter(keep, rest);
+    var owned := ProofLib.Filter(belongs, rest);
+    ProofLib.FilterCons(keep, items);
+    ProofLib.FilterCons(belongs, items);
+    RoomFiltersCommute(rest, keep, belongs);
+    var fromKept := ProofLib.Filter(keep, items);
+    var fromOwned := ProofLib.Filter(belongs, items);
+    if keep(first) {
+      assert fromKept == [first] + kept && fromKept[0] == first && fromKept[1..] == kept;
+      ProofLib.FilterCons(belongs, fromKept);
+      assert ProofLib.Filter(belongs, fromKept) ==
+        (if belongs(first) then [first] else []) + ProofLib.Filter(belongs, kept);
+    } else {
+      assert fromKept == kept;
+    }
+    if belongs(first) {
+      assert fromOwned == [first] + owned && fromOwned[0] == first && fromOwned[1..] == owned;
+      ProofLib.FilterCons(keep, fromOwned);
+      assert ProofLib.Filter(keep, fromOwned) ==
+        (if keep(first) then [first] else []) + ProofLib.Filter(keep, owned);
+    } else {
+      assert fromOwned == owned;
+    }
+    assert (if keep(first) && belongs(first) then [first] else []) ==
+      (if belongs(first) && keep(first) then [first] else []);
+  }
+}
+
+lemma RoomFilterRetainedRanks(leases: seq<core__concurrency_Lease>, removed: int)
+  ensures var ranks := seq(|leases|, i requires 0 <= i < |leases| => leases[i].room);
+    var retained := ProofLib.Filter((l: core__concurrency_Lease) => l.room != removed, leases);
+    ProofLib.Filter((r: int) => r != removed, ranks) ==
+      seq(|retained|, i requires 0 <= i < |retained| => retained[i].room)
+  decreases |leases|
+{
+  var ranks := seq(|leases|, i requires 0 <= i < |leases| => leases[i].room);
+  var keepLease := (lease: core__concurrency_Lease) => lease.room != removed;
+  var keepRank := (rank: int) => rank != removed;
+  if |leases| == 0 {
+    ProofLib.FilterNil(keepLease, leases);
+    ProofLib.FilterNil(keepRank, ranks);
+  } else {
+    var first := leases[0];
+    var tail := leases[1..];
+    var tailRanks := seq(|tail|, i requires 0 <= i < |tail| => tail[i].room);
+    assert ranks[..1] == [first.room];
+    forall i | 0 <= i < |tail| ensures ranks[i + 1] == tailRanks[i] {}
+    assert ranks[1..] == tailRanks;
+    ProofLib.FilterCons(keepLease, leases);
+    ProofLib.FilterCons(keepRank, ranks);
+    RoomFilterRetainedRanks(tail, removed);
+    if keepLease(first) {
+      var tailRetained := ProofLib.Filter(keepLease, tail);
+      var retained := ProofLib.Filter(keepLease, leases);
+      assert retained == [first] + tailRetained;
+      var after := seq(|retained|, i requires 0 <= i < |retained| => retained[i].room);
+      var suffix := seq(|tailRetained|, i requires 0 <= i < |tailRetained| => tailRetained[i].room);
+      forall i | 0 <= i < |suffix| ensures after[i + 1] == suffix[i] {}
+      assert after[..1] == [first.room] && after[1..] == suffix;
+      assert after == [first.room] + suffix;
+    }
+  }
+}
+
+lemma RoomRetainAllOwnedLeases(leases: seq<core__concurrency_Lease>, caller: int, retired: int, room: int)
+  requires caller != retired
+  requires forall lease | lease in leases :: lease.caller == caller
+  ensures ProofLib.Filter((lease: core__concurrency_Lease) => lease.caller != retired || lease.room != room, leases) == leases
+  decreases |leases|
+{
+  var keep := (lease: core__concurrency_Lease) => lease.caller != retired || lease.room != room;
+  if |leases| == 0 {
+    ProofLib.FilterNil(keep, leases);
+  } else {
+    var first := leases[0];
+    var rest := leases[1..];
+    assert first in leases && keep(first);
+    assert leases == [first] + rest;
+    ProofLib.FilterCons(keep, leases);
+    RoomRetainAllOwnedLeases(rest, caller, retired, room);
+  }
+}
+
+lemma RoomHeldAfterLeaseRetirement(before: MultiRoomLeases, after: MultiRoomLeases,
+                                 releasedCaller: int, room: int, other: int)
+  requires after.queue.leases ==
+    ProofLib.Filter((lease: core__concurrency_Lease) => lease.caller != releasedCaller || lease.room != room, before.queue.leases)
+  ensures heldRooms(after, other) == (
+    if other == releasedCaller then ProofLib.Filter((rank: int) => rank != room, heldRooms(before, other))
+    else heldRooms(before, other)
+  )
+{
+  var owns := (lease: core__concurrency_Lease) => lease.caller == other;
+  var keep := (lease: core__concurrency_Lease) => lease.caller != releasedCaller || lease.room != room;
+  var matching := ProofLib.Filter(owns, before.queue.leases);
+  var retained := ProofLib.Filter(owns, after.queue.leases);
+  RoomBatchHeldProjection(before, other);
+  RoomBatchHeldProjection(after, other);
+  RoomFiltersCommute(before.queue.leases, keep, owns);
+  forall lease | lease in matching ensures lease.caller == other {
+    ProofLib.FilterMember(owns, before.queue.leases, lease);
+  }
+  if other == releasedCaller {
+    var keepRoom := (lease: core__concurrency_Lease) => lease.room != room;
+    forall i | 0 <= i < |matching| ensures keep(matching[i]) == keepRoom(matching[i]) {
+      assert matching[i] in matching;
+    }
+    ProofLib.FilterSamePredicate(keep, keepRoom, matching);
+    RoomFilterRetainedRanks(matching, room);
+  } else {
+    RoomRetainAllOwnedLeases(matching, other, releasedCaller, room);
+    assert matching == retained;
+  }
+}
+
+lemma RoomRetiredRankPreservesOrder(plan: seq<int>, retired: int)
+  requires roomRanksAscending(plan)
+  ensures roomRanksAscending(ProofLib.Filter((rank: int) => rank != retired, plan))
+{
+  reveal roomRanksAscending();
+  var keep := (rank: int) => rank != retired;
+  var retained := ProofLib.Filter(keep, plan);
+  RoomBatchAscendingFold(plan, emptyHeldRoomOrder);
+  FilterKeepsRoomRanks(keep, plan);
+  forall i | 0 <= i < |retained| ensures retained[i] > 0 {
+    ProofLib.FilterMember(keep, plan, retained[i]);
+    var j :| 0 <= j < |plan| && plan[j] == retained[i];
+  }
+  RoomBatchAscendingFromRanks(retained);
+}
+
+lemma RoomReleaseChangesOnlyTheTwoLeaseOwners(s: MultiRoomLeases, caller: int, other: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures var room := releaseRoomId(s, caller);
+    var waiting := ProofLib.Filter((w: core__concurrency_RoomWaiter) => w.room == room, s.queue.waiting);
+    var result := heldRooms(releaseBatchRoom(s, caller), other);
+    (other == caller ==> result == ProofLib.Filter((rank: int) => rank != room, heldRooms(s, caller))) &&
+    (other != caller ==> (
+      result == (if |waiting| > 0 && waiting[0].caller == other
+        then heldRooms(s, other) + [room] else heldRooms(s, other))
+    ))
+{
+  RoomReleaseFrame(s, caller);
+  RoomReleaseQueueFootprint(s, caller);
+  var room := releaseRoomId(s, caller);
+  var waiting := ProofLib.Filter((w: core__concurrency_RoomWaiter) => w.room == room, s.queue.waiting);
+  var removed := s.(queue := core__concurrency_releaseRoom(s.queue, caller, room));
+  var after := releaseBatchRoom(s, caller);
+  RoomHeldAfterLeaseRetirement(s, removed, caller, room, other);
+  if |waiting| > 0 {
+    RoomBatchHeldAfterLeaseAppend(removed, after, core__concurrency_Lease(waiting[0].caller, room, true, 0), other);
+  } else {
+    RoomBatchHeldProjection(removed, other);
+    RoomBatchHeldProjection(after, other);
+  }
+}
+
+lemma RoomAddedLeaseAdvancesExactPlan(before: MultiRoomLeases, after: MultiRoomLeases,
+                                    prior: BatchLeaseCall, next: BatchLeaseCall)
+  requires inv(before) && prior in before.calls
+  requires prior.phase.BatchAcquiring? || prior.phase.BatchWaiting?
+  requires next.id == prior.id && next.wanted == prior.wanted && next.position == prior.position + 1
+  requires next.phase == (if next.position == |next.wanted| then BatchLeasePhase.BatchInvoking else BatchLeasePhase.BatchAcquiring)
+  requires heldRooms(after, next.id) == heldRooms(before, prior.id) + [wantedRoom(prior)]
+  ensures 0 <= next.position <= |next.wanted|
+  ensures heldRooms(after, next.id) == next.wanted[..next.position]
+  ensures roomRanksAscending(heldRooms(after, next.id))
+  ensures next.phase.BatchAcquiring? ==> (
+    next.position < |next.wanted| && wantedRoom(next) > 0 &&
+    (forall room | room in heldRooms(after, next.id) :: room < wantedRoom(next))
+  )
+  ensures next.phase.BatchInvoking? ==> next.position == |next.wanted| && heldRooms(after, next.id) == next.wanted
+{
+  RoomHeldRoomsAreTheExactPlanPrefix(before, prior);
+  reveal wantedRoom();
+  assert prior.wanted[..next.position] == prior.wanted[..prior.position] + [wantedRoom(prior)];
+  RoomPlanRanksHoldForEveryPrefix(next.wanted, next.position);
+}
+
+lemma RoomReleaseSelectsWaitingBatch(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures var room := releaseRoomId(s, caller);
+    var waiters := ProofLib.Filter((w: core__concurrency_RoomWaiter) => w.room == room, s.queue.waiting);
+    |waiters| > 0 ==> (
+      var selected := batchAt(s, waiters[0].caller);
+      waiters[0] in s.queue.waiting && waiters[0].room == room &&
+      selected in s.calls && selected.id == waiters[0].caller &&
+      selected.phase.BatchWaiting? && wantedRoom(selected) == room
+    )
+{
+  RoomReleaseFrame(s, caller);
+  var room := releaseRoomId(s, caller);
+  var inRoom := (w: core__concurrency_RoomWaiter) => w.room == room;
+  var candidates := ProofLib.Filter(inRoom, s.queue.waiting);
+  if |candidates| > 0 {
+    var w := candidates[0];
+    ProofLib.FilterMember(inRoom, s.queue.waiting, w);
+    assert batchAt(s, w.caller).phase.BatchWaiting?;
+    RoomBatchLookupRetainsNonterminalIdentity(s, w.caller);
+  }
+}
+
+lemma RoomReleaseKeepsBatchPlans(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures alwaysBatchesHaveValidPosition(releaseBatchRoom(s, caller))
+  ensures alwaysStoredResultFollowsPhase(releaseBatchRoom(s, caller))
+  ensures alwaysHeldPrefixMatchesRequests(releaseBatchRoom(s, caller))
+  ensures alwaysInvocationHoldsAllRooms(releaseBatchRoom(s, caller))
+  ensures alwaysWaitsAboveHeldRooms(releaseBatchRoom(s, caller))
+  ensures alwaysReverseReleaseRank(releaseBatchRoom(s, caller))
+{
+  RoomReleaseFrame(s, caller);
+  RoomReleaseSelectsWaitingBatch(s, caller);
+  reveal canReleaseBatchRoom();
+  var after := releaseBatchRoom(s, caller);
+  var room := releaseRoomId(s, caller);
+  var waiters := ProofLib.Filter((w: core__concurrency_RoomWaiter) => w.room == room, s.queue.waiting);
+  forall next | next in after.calls
+    ensures 0 <= next.position <= |next.wanted|
+    ensures (next.phase.BatchAcquiring? || next.phase.BatchWaiting?) ==> next.position < |next.wanted|
+    ensures (next.phase.BatchReleasing? || next.phase.BatchDone?) == !next.resultKind.BatchPending?
+    ensures (next.phase.BatchAcquiring? || next.phase.BatchWaiting?) ==> (
+      |heldRooms(after, next.id)| == next.position &&
+      (forall held | held in heldRooms(after, next.id) :: held in next.wanted)
+    )
+    ensures next.phase.BatchInvoking? ==> heldRooms(after, next.id) == next.wanted && next.position == |next.wanted|
+    ensures roomRanksAscending(next.wanted) && roomRanksAscending(heldRooms(after, next.id))
+    ensures (next.phase.BatchAcquiring? || next.phase.BatchWaiting?) ==> (
+      wantedRoom(next) > 0 && (forall held | held in heldRooms(after, next.id) :: held < wantedRoom(next))
+    )
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == next;
+    var prior := s.calls[i];
+    assert prior in s.calls && prior.id == next.id && prior.wanted == next.wanted;
+    RoomReleaseChangesOnlyTheTwoLeaseOwners(s, caller, prior.id);
+    if |waiters| > 0 && waiters[0].caller == prior.id {
+      RoomBatchIdentityLookup(s, prior);
+      assert prior.phase.BatchWaiting? && wantedRoom(prior) == room;
+      RoomAddedLeaseAdvancesExactPlan(s, after, prior, next);
+    } else if prior.id == caller {
+      RoomBatchIdentityLookup(s, prior);
+      assert next == prior && prior.phase.BatchReleasing?;
+      RoomRetiredRankPreservesOrder(heldRooms(s, prior.id), room);
+    } else {
+      assert next == prior && heldRooms(after, next.id) == heldRooms(s, prior.id);
+    }
+  }
+}
+
+lemma RoomWaiterKeysIdentify(queue: core__concurrency_RoomState,
+                           left: core__concurrency_RoomWaiter, right: core__concurrency_RoomWaiter)
+  requires core__concurrency_alwaysWaitersUnique(queue)
+  requires left in queue.waiting && right in queue.waiting
+  requires left.ticket == right.ticket || left.caller == right.caller
+  ensures left == right
+{
+  if left.ticket == right.ticket {
+    var withTicket := (w: core__concurrency_RoomWaiter) => w.ticket == left.ticket;
+    var matches := ProofLib.Filter(withTicket, queue.waiting);
+    ProofLib.FilterMember(withTicket, queue.waiting, left);
+    ProofLib.FilterMember(withTicket, queue.waiting, right);
+    assert |matches| == 1 && matches[0] == left && matches[0] == right;
+  } else {
+    var withCaller := (w: core__concurrency_RoomWaiter) => w.caller == left.caller;
+    var matches := ProofLib.Filter(withCaller, queue.waiting);
+    ProofLib.FilterMember(withCaller, queue.waiting, left);
+    ProofLib.FilterMember(withCaller, queue.waiting, right);
+    assert |matches| == 1 && matches[0] == left && matches[0] == right;
+  }
+}
+
+lemma RoomReleaseWaiterRetained(s: MultiRoomLeases, caller: int, w: core__concurrency_RoomWaiter)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures var room := releaseRoomId(s, caller);
+    var waiters := ProofLib.Filter((entry: core__concurrency_RoomWaiter) => entry.room == room, s.queue.waiting);
+    w in releaseBatchRoom(s, caller).queue.waiting <==>
+      w in s.queue.waiting && (|waiters| == 0 || waiters[0].caller != w.caller)
+{
+  RoomReleaseQueueFootprint(s, caller);
+  RoomReleaseSelectsWaitingBatch(s, caller);
+  var room := releaseRoomId(s, caller);
+  var waiters := ProofLib.Filter((entry: core__concurrency_RoomWaiter) => entry.room == room, s.queue.waiting);
+  if |waiters| > 0 {
+    var selected := waiters[0];
+    var remains := (entry: core__concurrency_RoomWaiter) => entry.ticket != selected.ticket;
+    ProofLib.FilterMember(remains, s.queue.waiting, w);
+    if w in s.queue.waiting && (w.ticket == selected.ticket || w.caller == selected.caller) {
+      RoomWaiterKeysIdentify(s.queue, w, selected);
+    }
+  }
+}
+
+lemma RoomReleaseKeepsWaitersWithTheirBatches(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  requires alwaysBatchIdentitiesUnique(releaseBatchRoom(s, caller))
+  ensures alwaysWaiterMatchesNextRoom(releaseBatchRoom(s, caller))
+  ensures stepClosedAdmissionCannotGrow(s, releaseBatchRoom(s, caller))
+{
+  RoomReleaseFrame(s, caller);
+  var after := releaseBatchRoom(s, caller);
+  var room := releaseRoomId(s, caller);
+  var waiters := ProofLib.Filter((entry: core__concurrency_RoomWaiter) => entry.room == room, s.queue.waiting);
+  forall w | w in after.queue.waiting
+    ensures w in s.queue.waiting && batchAt(after, w.caller).phase.BatchWaiting? && wantedRoom(batchAt(after, w.caller)) == w.room
+  {
+    RoomReleaseWaiterRetained(s, caller, w);
+    var prior := batchAt(s, w.caller);
+    assert prior.phase.BatchWaiting?;
+    RoomBatchLookupRetainsNonterminalIdentity(s, w.caller);
+    var i :| 0 <= i < |s.calls| && s.calls[i] == prior;
+    assert after.calls[i] == prior && prior in after.calls;
+    RoomBatchIdentityLookup(after, prior);
+  }
+  forall next | next in after.calls && next.phase.BatchWaiting?
+    ensures (exists w :: w in after.queue.waiting && w.caller == next.id && w.room == wantedRoom(next))
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == next;
+    var prior := s.calls[i];
+    assert next == prior && prior in s.calls && (|waiters| == 0 || waiters[0].caller != prior.id);
+    var w :| w in s.queue.waiting && w.caller == prior.id && w.room == wantedRoom(prior);
+    RoomReleaseWaiterRetained(s, caller, w);
+  }
+}
+
+lemma RoomReleaseRetainsUnrelatedLease(s: MultiRoomLeases, caller: int, lease: core__concurrency_Lease)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  requires lease in s.queue.leases && (lease.caller != caller || lease.room != releaseRoomId(s, caller))
+  ensures lease in releaseBatchRoom(s, caller).queue.leases
+{
+  RoomReleaseQueueFootprint(s, caller);
+  var room := releaseRoomId(s, caller);
+  var retain := (prior: core__concurrency_Lease) => prior.caller != caller || prior.room != room;
+  ProofLib.FilterMember(retain, s.queue.leases, lease);
+}
+
+lemma RoomReleaseKeepsAdmittedWriteSettlement(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures stepReleasedAfterWriteSettlement(s, releaseBatchRoom(s, caller))
+{
+  RoomReleaseOnlyItsSettledLease(s, caller);
+  reveal canReleaseBatchRoom();
+  var room := releaseRoomId(s, caller);
+  var after := releaseBatchRoom(s, caller);
+  forall lease | lease in s.queue.leases
+    ensures (exists retained :: retained in after.queue.leases && retained.room == lease.room && retained.caller == lease.caller)
+      || (!lease.acceptingWrites && lease.writes == 0 && batchAt(s, lease.caller).phase.BatchReleasing?)
+  {
+    if lease.caller != caller || lease.room != room {
+      RoomReleaseRetainsUnrelatedLease(s, caller, lease);
+    }
+  }
+}
+
+lemma RoomReleaseKeepsLeaseOwners(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures alwaysLeasesBelongToBatch(releaseBatchRoom(s, caller))
+{
+  RoomReleaseFrame(s, caller);
+  RoomReleaseQueueFootprint(s, caller);
+  RoomReleaseSelectsWaitingBatch(s, caller);
+  var room := releaseRoomId(s, caller);
+  var after := releaseBatchRoom(s, caller);
+  var waiters := ProofLib.Filter((w: core__concurrency_RoomWaiter) => w.room == room, s.queue.waiting);
+  var retain := (prior: core__concurrency_Lease) => prior.caller != caller || prior.room != room;
+  forall lease | lease in after.queue.leases
+    ensures (exists c :: c in after.calls && c.id == lease.caller && !c.phase.BatchDone? && lease.room in c.wanted)
+  {
+    if lease in s.queue.leases {
+      var prior :| prior in s.calls && prior.id == lease.caller && !prior.phase.BatchDone? && lease.room in prior.wanted;
+      var i :| 0 <= i < |s.calls| && s.calls[i] == prior;
+      assert after.calls[i] in after.calls && !after.calls[i].phase.BatchDone?;
+    } else {
+      ProofLib.FilterMember(retain, s.queue.leases, lease);
+      assert |waiters| > 0 && lease == core__concurrency_Lease(waiters[0].caller, room, true, 0);
+      var selected := batchAt(s, waiters[0].caller);
+      reveal wantedRoom();
+      assert 0 <= selected.position < |selected.wanted| && room in selected.wanted;
+      var i :| 0 <= i < |s.calls| && s.calls[i] == selected;
+      assert after.calls[i] in after.calls && !after.calls[i].phase.BatchDone?;
+    }
+  }
+}
+
+lemma RoomReleaseKeepsQueuedRoomOwners(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures alwaysWaiterHasOwner(releaseBatchRoom(s, caller))
+{
+  RoomReleaseQueueFootprint(s, caller);
+  var room := releaseRoomId(s, caller);
+  var after := releaseBatchRoom(s, caller);
+  var inRoom := (w: core__concurrency_RoomWaiter) => w.room == room;
+  var waiters := ProofLib.Filter(inRoom, s.queue.waiting);
+  forall w | w in after.queue.waiting
+    ensures (exists lease :: lease in after.queue.leases && lease.room == w.room)
+  {
+    RoomReleaseWaiterRetained(s, caller, w);
+    if w.room == room {
+      ProofLib.FilterMember(inRoom, s.queue.waiting, w);
+      assert |waiters| > 0;
+      assert core__concurrency_Lease(waiters[0].caller, room, true, 0) in after.queue.leases;
+    } else {
+      var owner :| owner in s.queue.leases && owner.room == w.room;
+      RoomReleaseRetainsUnrelatedLease(s, caller, owner);
+    }
+  }
+}
+
+lemma RoomReleaseRetainsQueueAuthority(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures alwaysAcquiringQueueAuthority(releaseBatchRoom(s, caller))
+{
+  RoomReleaseFrame(s, caller);
+  RoomReleaseQueueFootprint(s, caller);
+  RoomReleaseSelectsWaitingBatch(s, caller);
+  var room := releaseRoomId(s, caller);
+  var after := releaseBatchRoom(s, caller);
+  var waiters := ProofLib.Filter((w: core__concurrency_RoomWaiter) => w.room == room, s.queue.waiting);
+  forall id | id in after.queue.cancelled
+    ensures (exists c :: c in after.calls && c.id == id)
+  {
+    var prior :| prior in s.calls && prior.id == id;
+    var i :| 0 <= i < |s.calls| && s.calls[i] == prior;
+    assert after.calls[i] in after.calls;
+  }
+  forall c | c in after.calls && c.phase.BatchAcquiring?
+    ensures c.id !in after.queue.cancelled
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == c;
+    var prior := s.calls[i];
+    assert prior in s.calls;
+    if |waiters| > 0 && waiters[0].caller == prior.id {
+      assert waiters[0].caller !in s.queue.cancelled;
+    } else {
+      assert prior == c;
+    }
+  }
+}
+
+lemma RoomReleaseKeepsTerminalBatchesEmpty(s: MultiRoomLeases, caller: int)
+  requires inv(s) && canReleaseBatchRoom(s, caller)
+  ensures alwaysDoneHasNoLease(releaseBatchRoom(s, caller))
+{
+  RoomReleaseFrame(s, caller);
+  reveal canReleaseBatchRoom();
+  var room := releaseRoomId(s, caller);
+  var after := releaseBatchRoom(s, caller);
+  var waiters := ProofLib.Filter((w: core__concurrency_RoomWaiter) => w.room == room, s.queue.waiting);
+  forall c | c in after.calls && c.phase.BatchDone?
+    ensures |heldRooms(after, c.id)| == 0 && !c.resultKind.BatchPending?
+    ensures forall w | w in after.queue.waiting :: w.caller != c.id
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == c;
+    var prior := s.calls[i];
+    assert prior == c && prior in s.calls && (|waiters| == 0 || waiters[0].caller != c.id);
+    if c.id == caller {
+      RoomBatchIdentityLookup(s, prior);
+      assert false;
+    }
+    RoomReleaseChangesOnlyTheTwoLeaseOwners(s, caller, c.id);
+    forall w | w in after.queue.waiting ensures w.caller != c.id {
+      RoomReleaseWaiterRetained(s, caller, w);
+    }
+  }
+}
