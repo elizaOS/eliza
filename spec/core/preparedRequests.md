@@ -8,16 +8,20 @@ As a provider I serialize a request once and prove that retries preserve its mod
 
 ### A request guard captures its exact admitted serialization
 
-Creation receives one correlated request and budget record. Simulation exercises exact admission and rejection, estimate-only admission, malformed exact authority and issued turn contexts; all well-typed records remain eligible for the same guards. The provider adapter supplies a successful graph or raw-wire serialization and tokenizer result. Provider estimates remain diagnostic. With no tokenizer, the diagnostic count equals the UTF-8 length derived from the complete UTF-16 sequence.
+The guard derives its retained body and count from one preparation observation. The provider adapter reports the completed validation walk for a projection or the exact raw-wire serialization. The guard is created only when preparation succeeds and the budget and lease context permit it.
 
 ```quint
 import modelAttemptLeases as L from "./modelAttemptLeases"
+import preparedRequestSerialization as S from "./preparedRequestSerialization"
 import unicode as U from "./unicode"
 type CountSource = ProviderTokenizer | TokenizerEstimate | Utf8UpperBound
 type GuardPhase = GuardReady | GuardRejected
 type LimitObservation = {supplied: bool, positiveFinite: bool, roundedDown: int, safeInteger: bool}
 type PreparationLimits = {contextWindow: LimitObservation, outputReserve: LimitObservation}
-type RequestGuardInput = {provider: str, model: str, route: str, codeUnits: List[int], inputCount: int, countSource: CountSource, limits: PreparationLimits, leaseId: int, messageId: str}
+type TokenObservation = NoTokenizer | TokenizerFailed | TokenizerCount({body: List[int], roundedUp: int, exact: bool})
+type PreparationObservation = {walk: S::Validation, serializer: S::SerializerChoice, serialized: S::SerializedObservation, tokens: TokenObservation}
+type RequestPreparation = Prepared({request: RequestObservation}) | SerializationFailed | TokenizationFailed
+type RequestGuardInput = {provider: str, model: str, route: str, preparation: PreparationObservation, limits: PreparationLimits, leaseId: int, messageId: str}
 type RequestObservation = {codeUnits: List[int], inputCount: int, countSource: CountSource}
 type PreparedGuard = {id: int, phase: GuardPhase, provider: str, model: str, route: str, codeUnits: List[int], inputCount: int, countSource: CountSource, threshold: int, exactAuthority: bool, contextTokens: int, outputTokens: int, reservationTokens: int, leaseId: int, messageId: str, attempts: int, errorCode: str}
 type PreparedRequests = {guards: List[PreparedGuard], leases: L::ModelLeases}
@@ -40,15 +44,21 @@ pure val fractionalLimit: LimitObservation = {supplied: true, positiveFinite: tr
 pure val outputReserveValues = Set(absentLimit, badLimit, integerLimit(1), fractionalLimit)
 pure val limitValues = outputReserveValues
 pure val limitsValues = Set(exactLimits, diagnosticLimits, defaultLimits, {contextWindow: integerLimit(11), outputReserve: fractionalLimit})
+pure def wirePreparation(body: List[int], count: int, source: CountSource): PreparationObservation =
+  {walk: S::initial, serializer: S::serializerChoice(false, true), serialized: S::SerializedText({codeUnits: body}), tokens: if (source == Utf8UpperBound) NoTokenizer else TokenizerCount({body: body, roundedUp: count, exact: source == ProviderTokenizer})}
+pure val projectionPreparation: PreparationObservation =
+  { ...wirePreparation(admittedCodeUnits, 1, ProviderTokenizer), serializer: S::serializerChoice(true, false) }
 pure val requestInputValues = Set(
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer, limits: exactLimits, leaseId: 1, messageId: "turn-a"},
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer, limits: exactLimits, leaseId: 2, messageId: "turn-b"},
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 10, countSource: providerTokenizer, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
-  {provider: "beta", model: "large", route: "text", codeUnits: admittedCodeUnits, inputCount: 20, countSource: tokenizerEstimate, limits: diagnosticLimits, leaseId: 0, messageId: "turn-b"},
-  {provider: "beta", model: "large", route: "missing", codeUnits: changedCodeUnits, inputCount: 5, countSource: utf8UpperBound, limits: defaultLimits, leaseId: 0, messageId: "turn-b"},
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 20, countSource: providerTokenizer, limits: {contextWindow: integerLimit(11), outputReserve: absentLimit}, leaseId: 0, messageId: "turn-a"},
-  {provider: "alpha", model: "small", route: "text", codeUnits: admittedCodeUnits, inputCount: 1, countSource: tokenizerEstimate, limits: {contextWindow: badLimit, outputReserve: integerLimit(1)}, leaseId: 0, messageId: "turn-a"})
+  {provider: "alpha", model: "small", route: "text", preparation: projectionPreparation, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
+  {provider: "alpha", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 1, providerTokenizer), limits: exactLimits, leaseId: 1, messageId: "turn-a"},
+  {provider: "alpha", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 1, providerTokenizer), limits: exactLimits, leaseId: 2, messageId: "turn-b"},
+  {provider: "alpha", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 10, providerTokenizer), limits: exactLimits, leaseId: 0, messageId: "turn-a"},
+  {provider: "beta", model: "large", route: "text", preparation: wirePreparation(admittedCodeUnits, 20, tokenizerEstimate), limits: diagnosticLimits, leaseId: 0, messageId: "turn-b"},
+  {provider: "beta", model: "large", route: "missing", preparation: wirePreparation(changedCodeUnits, 5, utf8UpperBound), limits: defaultLimits, leaseId: 0, messageId: "turn-b"},
+  {provider: "alpha", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 20, providerTokenizer), limits: {contextWindow: integerLimit(11), outputReserve: absentLimit}, leaseId: 0, messageId: "turn-a"},
+  {provider: "alpha", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 1, tokenizerEstimate), limits: {contextWindow: badLimit, outputReserve: integerLimit(1)}, leaseId: 0, messageId: "turn-a"},
+  {provider: "p1", model: "small", route: "text", preparation: { ...projectionPreparation, walk: { ...S::initial, ancestors: List(1) } }, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
+  {provider: "p1", model: "small", route: "text", preparation: { ...projectionPreparation, tokens: TokenizerCount({body: changedCodeUnits, roundedUp: 1, exact: true}) }, limits: exactLimits, leaseId: 0, messageId: "turn-a"})
 pure val observedValues = Set(
   {codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer},
   {codeUnits: changedCodeUnits, inputCount: 1, countSource: providerTokenizer},
@@ -61,20 +71,88 @@ pure val noGuard: PreparedGuard = {id: 0, phase: GuardRejected, provider: "", mo
 pure def alwaysGuardIdsUnique(s: PreparedRequests): bool = s.guards.every(g => g.id > 0 and s.guards.select(other => other.id == g.id).length() == 1)
 pure def preparedGuard(s: PreparedRequests, guardId: int): PreparedGuard = s.guards.select(g => g.id == guardId).nthOr(0, noGuard)
 pure def canCreateRequestGuard(s: PreparedRequests, guardId: int, requestInput: RequestGuardInput): bool =
-  guardId > 0 and requestInput.provider != "" and requestInput.model != "" and U::validCodeUnits(requestInput.codeUnits) and requestInput.inputCount >= 0 and (requestInput.countSource == Utf8UpperBound implies requestInput.inputCount == U::utf8Length(requestInput.codeUnits)) and validPreparationLimits(requestInput.limits) and not(s.guards.some(g => g.id == guardId)) and (requestInput.leaseId == 0 or L::leaseContextValid(s.leases, requestInput.leaseId, requestInput.messageId))
-pure def buildRequestGuard(guardId: int, requestInput: RequestGuardInput): PreparedGuard = {
+  guardId > 0 and requestInput.provider != "" and requestInput.model != "" and preparationSucceeded(requestInput.preparation) and validPreparationLimits(requestInput.limits) and not(s.guards.some(g => g.id == guardId)) and (requestInput.leaseId == 0 or L::leaseContextValid(s.leases, requestInput.leaseId, requestInput.messageId))
+pure def buildCountedRequestGuard(guardId: int, requestInput: RequestGuardInput, request: RequestObservation): PreparedGuard = {
   val limits = requestInput.limits
   val contextTokens = preparedContext(limits)
   val outputTokens = preparedReserve(limits)
   val threshold = atLeastOne(contextTokens - outputTokens)
-  val exactAuthority = hasRejectionAuthority(requestInput.countSource, limits)
-  val overBudget = exactAuthority and requestInput.inputCount >= threshold
-  {id: guardId, phase: if (overBudget) GuardRejected else GuardReady, provider: requestInput.provider, model: requestInput.model, route: requestInput.route, codeUnits: requestInput.codeUnits, inputCount: requestInput.inputCount, countSource: requestInput.countSource, threshold: threshold, exactAuthority: exactAuthority, contextTokens: contextTokens, outputTokens: outputTokens, reservationTokens: qualifiedReservationTokens(limits.outputReserve), leaseId: requestInput.leaseId, messageId: requestInput.messageId, attempts: 0, errorCode: if (overBudget) "MODEL_INPUT_OVER_BUDGET" else ""}
+  val exactAuthority = hasRejectionAuthority(request.countSource, limits)
+  val overBudget = exactAuthority and request.inputCount >= threshold
+  {id: guardId, phase: if (overBudget) GuardRejected else GuardReady, provider: requestInput.provider, model: requestInput.model, route: requestInput.route, codeUnits: request.codeUnits, inputCount: request.inputCount, countSource: request.countSource, threshold: threshold, exactAuthority: exactAuthority, contextTokens: contextTokens, outputTokens: outputTokens, reservationTokens: qualifiedReservationTokens(limits.outputReserve), leaseId: requestInput.leaseId, messageId: requestInput.messageId, attempts: 0, errorCode: if (overBudget) "MODEL_INPUT_OVER_BUDGET" else ""}
+}
+pure def buildRequestGuard(guardId: int, requestInput: RequestGuardInput): PreparedGuard = {
+  val preparation = prepareObservation(requestInput.preparation)
+  match preparation {
+    | Prepared(prepared) => buildCountedRequestGuard(guardId, requestInput, prepared.request)
+    | _ => noGuard
+  }
 }
 pure def createRequestGuard(s: PreparedRequests, guardId: int, requestInput: RequestGuardInput): PreparedRequests = { ...s, guards: s.guards.append(buildRequestGuard(guardId, requestInput)) }
 pure def alwaysExactBudgetAdmission(s: PreparedRequests): bool = s.guards.every(g => g.phase == GuardReady and g.exactAuthority implies g.inputCount < g.threshold)
 pure def alwaysGuardAttemptsNonnegative(s: PreparedRequests): bool = s.guards.every(g => g.attempts >= 0)
 pure def sometimesEstimateAboveThresholdAdmitted(s: PreparedRequests): bool = s.guards.some(g => not(g.exactAuthority) and g.inputCount >= g.threshold and g.phase == GuardReady)
+```
+
+### Only the admitted body can supply its input token count
+
+An invalid or unfinished serialization fails before tokenization. A failed
+tokenizer or a count for a different serialized body leaves no guard. The
+adapter reports a thrown tokenizer or an invalid numeric count as tokenization
+failure, and rounds a successful finite nonnegative count upward. When there
+is no tokenizer, the diagnostic count is the UTF-8 length of the admitted
+UTF-16 sequence. An estimate remains diagnostic. The adapter is responsible
+for passing the exact serialized body to the reported tokenizer and for
+establishing whether its encoding is exact for the selected provider.
+
+```quint
+pure val preparationValues = Set(
+  projectionPreparation,
+  wirePreparation(changedCodeUnits, 0, Utf8UpperBound),
+  { ...projectionPreparation, walk: { ...S::initial, ancestors: List(1) } },
+  { ...projectionPreparation, serialized: S::SerializationThrew },
+  { ...projectionPreparation, tokens: TokenizerFailed },
+  { ...projectionPreparation, tokens: TokenizerCount({body: changedCodeUnits, roundedUp: 1, exact: true}) })
+pure def prepareObservation(preparation: PreparationObservation): RequestPreparation = {
+  val serialization = S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized)
+  val tokens = preparation.tokens
+  match serialization {
+    | AdmittedBody(body) =>
+      match tokens {
+        | NoTokenizer => Prepared({request: {codeUnits: body.codeUnits, inputCount: U::utf8Length(body.codeUnits), countSource: Utf8UpperBound}})
+        | TokenizerCount(counted) =>
+          if (counted.body == body.codeUnits and counted.roundedUp >= 0)
+            Prepared({request: {codeUnits: body.codeUnits, inputCount: counted.roundedUp, countSource: if (counted.exact) ProviderTokenizer else TokenizerEstimate}})
+          else TokenizationFailed
+        | _ => TokenizationFailed
+      }
+    | _ => SerializationFailed
+  }
+}
+pure def preparationSucceeded(preparation: PreparationObservation): bool = {
+  val result = prepareObservation(preparation)
+  match result {
+    | Prepared(_) => true
+    | _ => false
+  }
+}
+pure def lawFailedSerializationPrecedesTokenizer(preparation: PreparationObservation): bool =
+  S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized) == S::InvalidBody implies
+    prepareObservation(preparation) == SerializationFailed
+pure def lawPreparationRetainsAdmittedBody(preparation: PreparationObservation): bool = {
+  val result = prepareObservation(preparation)
+  match result {
+    | Prepared(ready) => S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized) ==
+        S::AdmittedBody({codeUnits: ready.request.codeUnits})
+    | _ => true
+  }
+}
+pure def lawCountMustDescribeTheAdmittedBody(preparation: PreparationObservation, body: List[int]): bool = {
+  val edited = { ...preparation, tokens: TokenizerCount({body: body, roundedUp: 0, exact: true}) }
+  S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized) != S::InvalidBody and
+    S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized) != S::AdmittedBody({codeUnits: body}) implies
+    prepareObservation(edited) == TokenizationFailed
+}
 ```
 
 ### Rejection authority uses explicit limits and reservation uses the original output argument
