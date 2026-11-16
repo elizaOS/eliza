@@ -57,8 +57,13 @@ export function satisfiesRoleGate(
   if (!gate) {
     return true
   }
-  const normalizedRoles = new Set((userRoles ?? []).map(normalizeGateRole))
-  const highestRank = Math.max(0, ...[...normalizedRoles].map((role) => CANONICAL_ROLE_RANK[role] ?? 0))
+  const normalizedRoles = new Set<RoleGateRole>()
+  let highestRank = 0
+  for (const userRole of userRoles ?? []) {
+    const role = normalizeGateRole(userRole)
+    normalizedRoles.add(role)
+    highestRank = Math.max(highestRank, CANONICAL_ROLE_RANK[role] ?? 0)
+  }
   const hasRole = (role: RoleGateRole) => normalizedRoles.has(normalizeGateRole(role))
   if (gate.noneOf?.some(hasRole)) {
     return false
