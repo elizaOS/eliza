@@ -108,7 +108,8 @@
       "kind": "private-test-import",
       "consumer": "plugins/plugin-elizacloud/__tests__/native-application-slot-authority.test.ts",
       "symbol": "createPreparedModelRequestGuard",
-      "targetContract": "Classify this as an internal fixture dependency. Its import path is not a published export. Preserve its guard behavior and adapt the fixture through an explicitly selected test entry point during implementation."
+      "targetImportPath": "@elizaos/core",
+      "targetContract": "Change the fixture to the existing public root export used by the Cloud text handler. Preserve the blank-model rejection before dispatch and the admitted default-model case. Retain the existing package export map."
     },
     {
       "id": "cloud-implicit-type-imports",

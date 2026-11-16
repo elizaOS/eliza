@@ -7,9 +7,12 @@ Current entrypoints include the Node runtime root and renderer-safe `protocol`, 
 The [consumer resolution notes](./baseline/compatibility-decisions.json)
 distinguish a JSON default import from TypeScript export declarations, and
 record the one private test import and cloud imports used only as types.
-The restart asset retains its exported JSON shape and exit code. The
-private test fixture needs an explicit adapter decision in the implementation
-phase so it can exercise the same prepared request guard.
+The restart asset retains its exported JSON shape and exit code. During
+implementation the Cloud native application slot fixture switches to
+`createPreparedModelRequestGuard` from `@elizaos/core`, the public entry
+already used by the Cloud text handler. The fixture must retain its
+blank-model rejection before dispatch and its admitted default-model case.
+The private source subpath stays outside the package exports.
 
 ## Story: Consume the replacement through existing imports
 
