@@ -298,9 +298,11 @@ const ANY_RUNTIME_TYPES: readonly RuntimeParameterType[] = [
   "object",
   "array",
 ];
-// Levels nested deeper than this are admitted as any value; the server still
-// validates them.
-const MAX_SHAPE_DEPTH = 16;
+// Levels nested deeper than this are admitted as a scalar or an object; the
+// server still validates them. OpenAI strict mode allows 10 levels of nesting,
+// and its adapter turns an open object into a key/value list three levels
+// deep, so the deepest open object ends at level 9.
+const MAX_SHAPE_DEPTH = 4;
 const OPEN_OBJECT: ParameterSchema = { type: "object", additionalProperties: true };
 
 function isSchemaObject(value: unknown): value is JsonSchemaProperty {
@@ -313,7 +315,7 @@ function declaresType(prop: JsonSchemaProperty, type: "object" | "array"): boole
 
 /**
  * A value of any type. Core has no untyped schema, so list every type; an
- * array in it holds values of any type except a further array.
+ * array in it holds values of any type, down to the depth limit.
  */
 function anyValueShape(depth: number): ParameterSchema {
   return {
@@ -323,14 +325,16 @@ function anyValueShape(depth: number): ParameterSchema {
       { type: "boolean" },
       { type: "null" },
       OPEN_OBJECT,
-      ...(depth === 0 ? [{ type: "array" as const, items: anyValueShape(1) }] : []),
+      ...(depth < MAX_SHAPE_DEPTH
+        ? [{ type: "array" as const, items: anyValueShape(depth + 1) }]
+        : []),
     ],
   };
 }
 
 /** The type-level shape of a nested property, including null where it is allowed. */
 function nestedShape(prop: unknown, depth: number): ParameterSchema {
-  if (!isSchemaObject(prop) || depth > MAX_SHAPE_DEPTH) return anyValueShape(0);
+  if (!isSchemaObject(prop) || depth > MAX_SHAPE_DEPTH) return anyValueShape(depth);
   const nullOnly = prop.type !== undefined && [prop.type].flat().every((name) => name === "null");
   const branches = nullOnly
     ? []
@@ -377,7 +381,7 @@ function shapeBranch(
       declaresType(prop, "array") && !prop.prefixItems && isSchemaObject(prop.items)
         ? prop.items
         : undefined;
-    return { type, items: items ? nestedShape(items, depth + 1) : anyValueShape(0) };
+    return { type, items: items ? nestedShape(items, depth + 1) : anyValueShape(depth + 1) };
   }
   return { type };
 }
