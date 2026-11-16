@@ -17,6 +17,7 @@ import { exec, run as tool } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
 import { filesUnder, packageScripts, testInputs, testReceipt } from "./util.ts";
 import { profile } from "./testing/profile.ts";
+import { bigNumberInteger } from "./gen/types.ts";
 import { canonical, check as conformanceCheck, ConformanceError, departure, replay as replayTrace } from "./conformance.ts";
 import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
 import { mirrorGen } from "./units.ts";
@@ -2519,4 +2520,14 @@ assert.deepEqual(await Promise.all([undefined, "1", "2", "7", "{"].map((before) 
     assert.ok(!init(own).includes(".claude/settings.json"));
     assert.equal(read(".claude/settings.json", own), "{}\n");
   });
+});
+
+test("a trace integer of 16 or more digits that Quint wrote as a BigNumber decodes to the same integer", () => {
+  const n = (x: number | string) => ({ "#bigint": String(x) });
+  // What quint 0.33.1 writes for the integer 10^15.
+  assert.equal(bigNumberInteger({ s: n(1), e: n(15), c: [n(10)] }), 10n ** 15n);
+  assert.equal(bigNumberInteger({ s: n(-1), e: n(19), c: [n(123456), n(78901234560000)] }), -12345678901234560000n);
+  assert.equal(bigNumberInteger({ s: n(1), e: n(29), c: [n(10), n(0), n(1)] }), 10n ** 29n + 1n);
+  assert.equal(bigNumberInteger({ s: n(1), e: n(0), c: [n(15)] }), undefined, "1.5 is not an integer");
+  assert.equal(bigNumberInteger({ s: n(1), e: n(15), c: [n(10)], d: n(0) }), undefined, "a record with other fields is not a BigNumber");
 });
