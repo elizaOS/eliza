@@ -11,7 +11,7 @@ import android.media.PlaybackParams;
  * to storage; the track's buffer is flushed on abort.
  */
 public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Output {
- /** Platform buffer target: about 200 ms, never below the device minimum. */
+ /** Platform buffer target: about 200 ms, never below the device minimum, both scaled up by a faster pace. */
  public static final int BUFFER_MS=200;
  /** Frames written before a stopped track starts playing (API 31+): about 40 ms instead of the whole buffer. */
  public static final int START_MS=40;
@@ -26,7 +26,7 @@ public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Out
   try{android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);}catch(RuntimeException ignored){/* Default priority still plays. */}
   int minimum=AudioTrack.getMinBufferSize(rate,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_FLOAT);
   if(minimum<=0)throw new IllegalStateException("Float speech output unsupported");
-  int bytes=Math.max(minimum,rate*4*BUFFER_MS/1000);
+  int bytes=(int)Math.ceil(Math.max(minimum,rate*4*BUFFER_MS/1000)*Math.max(1f,pace)/4)*4;
   AudioTrack track=new AudioTrack.Builder()
    .setAudioAttributes(SpeechAudioFocus.ATTRIBUTES)
    .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
@@ -36,9 +36,10 @@ public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Out
    .setPerformanceMode(pace==1f?AudioTrack.PERFORMANCE_MODE_LOW_LATENCY:AudioTrack.PERFORMANCE_MODE_NONE)
    .build();
   if(track.getState()!=AudioTrack.STATE_INITIALIZED){track.release();throw new IllegalStateException("Speech output unavailable");}
-  if(pace!=1f)try{track.setPlaybackParams(new PlaybackParams().setSpeed(pace).setPitch(1f));}catch(RuntimeException unsupported){track.release();throw new IllegalStateException("Speech pace unsupported");}
+  float speed=pace;
+  if(pace!=1f)try{track.setPlaybackParams(new PlaybackParams().setSpeed(pace).setPitch(1f));}catch(RuntimeException unsupported){speed=1f;/* An output that refuses the pace still speaks at the normal pace. */}
   if(android.os.Build.VERSION.SDK_INT>=31)try{track.setStartThresholdInFrames(Math.max(1,rate*START_MS/1000));}catch(RuntimeException ignored){/* The default threshold (the whole buffer) still plays. */}
-  return new AudioTrackSpeechOutput(track,Math.round(rate*pace));
+  return new AudioTrackSpeechOutput(track,Math.round(rate*speed));
  }
  public void play(){track.play();}
  public int write(float[] samples,int offset,int length){

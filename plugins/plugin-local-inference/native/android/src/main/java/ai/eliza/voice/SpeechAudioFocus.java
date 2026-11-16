@@ -10,7 +10,7 @@ import java.util.concurrent.Executor;
 
 /**
  * Android glue for {@link SpeechAudioFocusPolicy}: transient, duckable audio focus for assistant
- * speech (USAGE_ASSISTANT, CONTENT_TYPE_SPEECH), held only while an utterance plays, plus the
+ * speech (USAGE_ASSISTANT, CONTENT_TYPE_SPEECH), held while the owner speaks or listens, plus the
  * telephony/VoIP mode checks that keep speech and assistant capture off an active call.
  */
 public final class SpeechAudioFocus {
@@ -55,6 +55,8 @@ public final class SpeechAudioFocus {
  }
  public SpeechAudioFocusPolicy.Mode mode(){return audio==null?SpeechAudioFocusPolicy.Mode.OTHER:mode(audio.getMode());}
  public boolean callActive(){return SpeechAudioFocusPolicy.callActive(mode());}
+ /** Another app holds a duckable loss: new speech starts lowered. */
+ public boolean ducked(){return policy.ducked();}
  /** Null once focus is held (requested now or already held); otherwise the refusal code. Main thread. */
  public String acquire(){
   String refusal=SpeechAudioFocusPolicy.admission(mode());
@@ -63,7 +65,7 @@ public final class SpeechAudioFocus {
   if(audio==null)return SpeechAudioFocusPolicy.FOCUS_DENIED;
   return policy.granted(audio.requestAudioFocus(request)==AudioManager.AUDIOFOCUS_REQUEST_GRANTED)?null:SpeechAudioFocusPolicy.FOCUS_DENIED;
  }
- /** The utterance ended or was stopped. Main thread. */
+ /** The owner neither speaks nor listens any more. Main thread. */
  public void release(){
   if(policy.released()&&audio!=null)try{audio.abandonAudioFocusRequest(request);}catch(RuntimeException ignored){/* Nothing held. */}
  }
