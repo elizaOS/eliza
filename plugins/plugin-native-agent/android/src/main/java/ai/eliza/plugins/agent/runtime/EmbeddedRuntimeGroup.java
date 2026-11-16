@@ -65,7 +65,9 @@ public final class EmbeddedRuntimeGroup {
     List<String> redactions = new ArrayList<>(secrets);
     redactions.add(token);
     scope.check();
-    Process process = scope.start("agent",agentCommand.create(selected),log,redactions);
+    Process process;
+    try { process = scope.start("agent",agentCommand.create(selected),log,redactions); }
+    catch (java.io.IOException spawn) { throw new RuntimeStartFailure(RuntimeStartFailure.Cause.AGENT,spawn.getMessage(),spawn); }
     await(scope,process,RuntimeStartFailure.Cause.AGENT,null,null,() -> readiness.ready(selected,false),agentBudget);
   }
 

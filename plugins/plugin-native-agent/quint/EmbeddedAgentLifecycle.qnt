@@ -2,8 +2,9 @@
 // The same lifecycle runs on the device (EmbeddedAgentService) and in development
 // (embeddedAgentDevelopment). A start checks its data, payload and credential before
 // any child exists; a child that exits before readiness fails the start with
-// "agent"; a running child that exits is restarted within the budget, then the
-// lifecycle fails with "crashed".
+// "agent", as does a spawn that fails; a running child that exits is restarted
+// within the budget, then the lifecycle fails with "crashed"; a failure the
+// supervisor cannot classify is "runtime".
 module EmbeddedAgentLifecycle {
   pure val MAX_RESTARTS = 2
   pure val CHECKS = Set("config", "payload", "storage", "credential")
@@ -39,6 +40,7 @@ module EmbeddedAgentLifecycle {
     s' = { ...s, state: "running", phase: "running", ready: true }
   }
   action timeout = all { s.state == "starting", s.phase == "spawned", settle("agent") }
+  action failUnclassified = all { s.state == "starting", settle("runtime") }
   action observeStartupExit = all {
     s.state == "starting", s.phase == "spawned", not(s.childLive), settle("agent")
   }
@@ -48,7 +50,8 @@ module EmbeddedAgentLifecycle {
   }
   action childExits = all { s.childLive, s' = { ...s, childLive: false } }
   action advance = any {
-    refuse, spawnAgent, spawnFails, observeReady, timeout, observeStartupExit, observeCrash
+    refuse, spawnAgent, spawnFails, observeReady, timeout, observeStartupExit, observeCrash,
+    failUnclassified
   }
   action step = any { advance, start, restart, stop, childExits, s' = s }
 
@@ -73,6 +76,8 @@ module EmbeddedAgentLifecycle {
     .expect(s.state == "failed" and CHECKS.contains(s.failure) and not(s.childLive) and safety)
   run missingExecutableFailsAgentTest = init.then(start).then(spawnFails)
     .expect(s.failure == "agent" and safety)
+  run unclassifiedFailureIsRuntimeTest = init.then(start).then(spawnAgent).then(failUnclassified)
+    .expect(s.failure == "runtime" and not(s.childLive) and safety)
   run exitBeforeReadinessIsNotRestartedTest = init.then(start).then(spawnAgent).then(childExits)
     .then(observeStartupExit).expect(s.failure == "agent" and s.attempt == 0 and safety)
   run crashRestartsWithinBudgetTest = init.then(start).then(spawnAgent).then(observeReady)
