@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { filesUnder, sha, writeWhole } from "./util.ts";
-import { dafnyVersion, executableDigest, solver } from "./run.ts";
+import { NEEDS_DAFNY, exec, onPath, solver } from "./run.ts";
 
 /** Load an operator's publishing credential only for the exact cache endpoint it belongs to. */
 export function cacheCredentials(env: NodeJS.ProcessEnv, args: string[], declared: string | undefined, credentials: { apiUrl: string; writeToken: string }): NodeJS.ProcessEnv {
@@ -25,41 +27,110 @@ const packageVersion = (dep: string) => {
   return dep;
 };
 
-/** Runtime files are keyed by relative name and bytes, never their installation directory. */
-const treeDigest = (directory: string) => sha(...filesUnder(directory, ".").filter((file) => fs.statSync(path.join(directory, file)).isFile())
-  .map((file) => `${file}\0${executableDigest(path.join(directory, file))}`));
+/**
+ * What was said of installed files, remembered across processes while each is unchanged: the same device, inode, size,
+ * and modification and change times, which a copy or an archive cannot set back. An unchanged toolchain is not read again.
+ */
+const LASTING = path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"), "vibestack", "toolchain.json");
+type Said = Record<string, { files: string[]; stamp: string; value: string }>;
+const readSaid = (): Said => {
+  try {
+    const said: unknown = JSON.parse(fs.readFileSync(LASTING, "utf8"));
+    return said && typeof said === "object" ? said as Said : {};
+  } catch {
+    return {};
+  }
+};
+let said: Said | undefined;
+const learned: Said = {};
+const keepSaid = () => {
+  try {
+    writeWhole(LASTING, JSON.stringify(Object.fromEntries(Object.entries({ ...readSaid(), ...learned }).filter(([, k]) => k.files?.every((f) => fs.existsSync(f))))));
+    return true;
+  } catch {
+    return false;
+  }
+};
+function lasting(key: string, files: string[]) {
+  const stamp = files.map((f) => { const s = fs.statSync(f, { bigint: true }); return `${s.dev}:${s.ino}:${s.size}:${s.mtimeNs}:${s.ctimeNs}`; }).join(" ");
+  const known = (said ??= readSaid())[key];
+  return {
+    value: known?.stamp === stamp ? known.value : undefined,
+    keep: (value: string) => {
+      if (!Object.keys(learned).length) process.once("exit", keepSaid);
+      (said ??= readSaid())[key] = learned[key] = { files, stamp, value };
+      return value;
+    },
+  };
+}
 
-/** The verifier's launcher, managed assemblies, and any separately installed .NET host: read once, being 142 MB. */
-let verifier: ReturnType<typeof readDafnyIdentity> | undefined;
-export const dafnyIdentity = () => (verifier ??= readDafnyIdentity().catch((e) => { verifier = undefined; throw e; }));
-async function readDafnyIdentity() {
-  const extensions = process.platform === "win32" ? [".exe", ".cmd", ""] : [""];
-  const launcher = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
-    .flatMap((dir) => extensions.map((ext) => path.join(dir, `dafny${ext}`)))
-    .find((file) => {
-      try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile(); } catch { return false; }
-    });
+/** The executable's bytes, independent of the directory its installation lives in. */
+export function executableDigest(file: string): string {
+  const { value, keep } = lasting(`sha256 ${file}`, [file]);
+  return value ?? keep(createHash("sha256").update(fs.readFileSync(file)).digest("hex"));
+}
+
+const treeFiles = (directory: string) => filesUnder(directory, ".").filter((file) => fs.statSync(path.join(directory, file)).isFile());
+/** Runtime files are keyed by relative name and bytes, never their installation directory. */
+const treeDigest = (directory: string) => sha(...treeFiles(directory).map((file) => `${file}\0${executableDigest(path.join(directory, file))}`));
+
+/** Where the verifier runs from: its launcher and the runtime launchers it starts, its managed assemblies, and any separately installed .NET host. */
+function dafnyInstallation() {
+  const launcher = onPath("dafny");
   if (!launcher) throw new Error("Dafny is not on PATH; the task cache needs its toolchain fingerprint");
   const real = fs.realpathSync(launcher);
   const assemblies = [path.dirname(real), path.resolve(path.dirname(real), "../libexec")]
     .find((dir) => fs.existsSync(path.join(dir, "Dafny.dll")));
   if (!assemblies) throw new Error("Dafny.dll is not beside Dafny or in ../libexec; the task cache cannot fingerprint this installation");
-  const launchers: string[] = [];
-  let host = real;
+  const launchers = [real];
   for (;;) {
-    const bytes = fs.readFileSync(host);
-    launchers.push(executableDigest(host));
+    const bytes = fs.readFileSync(launchers[launchers.length - 1]);
     const next = bytes.subarray(0, 2).toString() === "#!" ? bytes.toString().match(/\bexec\s+"([^"\n]*[\\/]dotnet(?:\.exe)?)"/)?.[1] : undefined;
     if (!next) break;
-    host = fs.realpathSync(next);
-    fs.accessSync(host, fs.constants.X_OK);
-    if (launchers.length > 4) throw new Error("Dafny's runtime launcher chain does not terminate");
+    launchers.push(fs.realpathSync(next));
+    fs.accessSync(launchers[launchers.length - 1], fs.constants.X_OK);
+    if (launchers.length > 5) throw new Error("Dafny's runtime launcher chain does not terminate");
   }
-  const runtime = ["host", "shared"].filter((dir) => fs.existsSync(path.join(path.dirname(host), dir)))
-    .map((dir) => [dir, treeDigest(path.join(path.dirname(host), dir))]);
+  const runtime = ["host", "shared"].map((dir) => path.join(path.dirname(launchers[launchers.length - 1]), dir)).filter((dir) => fs.existsSync(dir));
   if (!runtime.length && !fs.existsSync(path.join(assemblies, "System.Private.CoreLib.dll")))
     throw new Error("Dafny's external .NET runtime cannot be fingerprinted; use a self-contained release or an explicit dotnet launcher");
-  return { version: (await dafnyVersion()).version, launchers, assemblies: treeDigest(assemblies), runtime };
+  return { launchers, assemblies, runtime };
+}
+const dafnyFiles = () => {
+  try {
+    const { launchers, assemblies, runtime } = dafnyInstallation();
+    return [...launchers, ...[assemblies, ...runtime].flatMap((dir) => treeFiles(dir).map((file) => path.join(dir, file)))];
+  } catch {
+    return undefined;
+  }
+};
+
+const dafnySaid = (version: string | undefined, stopped?: string, out = "") => {
+  const problem = !version ? `Dafny could not be run (${out.trim().split("\n")[0] || "it printed no version"})`
+    : !version.startsWith("4.11.") ? `this is Dafny ${version}, and LemmaScript targets Dafny 4.11.x` : undefined;
+  return { version, problem: stopped ?? (problem && `${problem}: ${NEEDS_DAFNY} (see README, "Getting started")`) };
+};
+/** The version of Dafny on the PATH, read once it is read without a problem, or why it could not be read: asked of Dafny only when its installation changed. */
+let dafny: Promise<{ version?: string; problem?: string }> | undefined;
+export function dafnyVersion(): Promise<{ version?: string; problem?: string }> {
+  return (dafny ??= (async () => {
+    const files = dafnyFiles();
+    const installed = files && lasting(`dafny --version ${files[0]}`, files);
+    if (installed?.value) return dafnySaid(installed.value);
+    const r = await exec("dafny", ["--version"], process.cwd());
+    const version = r.status === 0 ? r.stdout.match(/\d+\.\d+\.\d+/)?.[0] : undefined;
+    if (version && !r.stopped) installed?.keep(version);
+    return dafnySaid(version, r.stopped, `${r.stdout}${r.stderr}`);
+  })().catch((e: Error) => ({ problem: `Dafny could not be run (${e.message}): ${NEEDS_DAFNY} (see README, "Getting started")` }))
+    .then((r) => { if (r.problem) dafny = undefined; return r; }));
+}
+
+/** The verifier's launchers, managed assemblies, and any separately installed .NET host, by their bytes. */
+let verifier: ReturnType<typeof readDafnyIdentity> | undefined;
+export const dafnyIdentity = () => (verifier ??= readDafnyIdentity().catch((e) => { verifier = undefined; throw e; }));
+async function readDafnyIdentity() {
+  const { launchers, assemblies, runtime } = dafnyInstallation();
+  return { version: (await dafnyVersion()).version, launchers: launchers.map(executableDigest), assemblies: treeDigest(assemblies), runtime: runtime.map((dir) => [path.basename(dir), treeDigest(dir)]) };
 }
 
 /** The native toolchain that a Turbo task's inputs cannot read from the repository. */
@@ -79,13 +150,29 @@ export async function toolchainFingerprint() {
 }
 
 const ext = path.extname(import.meta.filename);
+/** A tool's imports of other tools that run with it: `import type` and `export type` load nothing. */
+const IMPORT = /^(?:import\s+(?!type\b)(?:[^;"]*?\bfrom\s+)?|export\s+(?!type\b)[^;"]*?\bfrom\s+)"(\.\.?\/[^"$]+)"/gm;
 /**
  * The tools' own scripts, as source or as built: this directory and gen/, never the projects below it (examples,
- * Studio), whose checks rewrite their gen/ while this one reads. Read once, as this process loads them, so that a key
- * names the code that runs, however the files change after.
+ * Studio), whose checks rewrite their gen/ while this one reads, and every script they import. Read once, as this
+ * process loads them, so that a key names the code that runs, however the files change after.
  */
-const tools = new Map(["", "gen"].flatMap((dir) => fs.readdirSync(path.join(import.meta.dirname, dir)).map((f) => path.join(dir, f)))
-  .filter((f) => f.endsWith(ext) && f !== `selftest${ext}`).sort().map((f) => [f, fs.readFileSync(path.join(import.meta.dirname, f), "utf8")]));
+const tools = new Map<string, { text: string; imports: string[] }>();
+const load = (f: string) => {
+  if (tools.has(f)) return;
+  const text = fs.readFileSync(path.join(import.meta.dirname, f), "utf8");
+  const imports = [...text.matchAll(IMPORT)].map(([, to]) => path.join(path.dirname(f), to.replace(/\.ts$/, ext)));
+  tools.set(f, { text, imports });
+  imports.forEach(load);
+};
+["", "gen"].flatMap((dir) => fs.readdirSync(path.join(import.meta.dirname, dir)).map((f) => path.join(dir, f)))
+  .filter((f) => f.endsWith(ext) && f !== `selftest${ext}`).sort().forEach(load);
+/** The scripts that run when these do. */
+const closure = (...roots: string[]) => {
+  const reached = new Set(roots.map((f) => f + ext));
+  for (const f of reached) for (const to of tools.get(f)?.imports ?? []) reached.add(to);
+  return [...reached];
+};
 
 /**
  * Whether a tool, or the set of them, changed between the start of this process and the reading above: then the code it
@@ -99,26 +186,26 @@ const STAGES = ["simulate", "prove", "tests", "explore", "action"] as const;
 type Stage = (typeof STAGES)[number];
 
 /**
- * What a remembered result of one stage was produced by: a different Quint, Node or version of these tools must not
- * reuse a simulation, and a proof also depends on LemmaScript, Dafny and the prover's own code. Each stage has its own,
- * so that a change that matters only to the proof (prove.ts, Dafny, LemmaScript) does not simulate everything again.
- * The part of the proof library a proof file calls (prove.ts, `libraryFor`) is part of its unit's key. An action
- * depends only on the code that runs a tool and keeps what it said: its key names the tool and all the tool reads.
+ * What a remembered result of one stage was produced by: the code that runs it, the scripts it imports, and the
+ * programs beneath. A simulation depends on Quint, Node and the code that simulates and generates the model it
+ * simulates; a proof on Node, LemmaScript, Dafny, Z3 and the prover's code, since its unit's key holds all the unit
+ * says, whichever code generated it. The part of the proof library a proof file calls (prove.ts, `libraryFor`) is part
+ * of that key too. Tests and an exploration may run any of these tools, as Studio's do, so they depend on all of them.
+ * An action depends only on the code that runs a tool and keeps what it said: its key names the tool and all the tool reads.
  */
 const toolchains = new Map<string, Promise<string>>();
 function toolchainId(stage: Stage): Promise<string> {
   let id = toolchains.get(stage);
   if (id) return id;
   toolchains.set(stage, (id = (async () => {
-    const code = (files: string[]) => sha(...files.map((f) => `${f}\0${tools.get(f)}`)).slice(0, 12);
+    const code = (files: string[]) => sha(...files.sort().map((f) => `${f}\0${tools.get(f)?.text}`)).slice(0, 12);
     if (stage === "action") return `${stage} ${code([`action${ext}`, `run${ext}`])}`;
-    // Only the prover's own file is left out of what a simulation depends on: anything else may be used by both.
-    const parts = [stage, packageVersion("@informalsystems/quint"), `node@${process.versions.node}:${process.platform}:${process.arch}`, code([...tools.keys()].filter((f) => stage === "prove" || f !== `prove${ext}`))];
+    const node = `node@${process.versions.node}:${process.platform}:${process.arch}`;
     if (stage === "prove") {
       const z3 = await solver();
-      parts.push(packageVersion("lemmascript"), `dafny@${JSON.stringify(await dafnyIdentity())}`, `z3@${z3.version}:${executableDigest(z3.path)}`);
+      return [stage, node, code(closure("prove")), packageVersion("lemmascript"), `dafny@${JSON.stringify(await dafnyIdentity())}`, `z3@${z3.version}:${executableDigest(z3.path)}`].join(" ");
     }
-    return parts.join(" ");
+    return [stage, packageVersion("@informalsystems/quint"), node, code(stage === "simulate" ? closure("simulate", "units") : [...tools.keys()])].join(" ");
   })()));
   // A failed probe is not remembered: the next check probes again.
   id.catch(() => toolchains.delete(stage));

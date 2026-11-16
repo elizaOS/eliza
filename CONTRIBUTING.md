@@ -131,13 +131,21 @@ bytes change and remove outputs whose sources have gone. `.spec-cache/`
 remembers each run of Quint, and of Dafny on a proof, under the program as installed, its arguments and
 the files it reads, without their prose, comments and layout (`vibestack/action.ts`),
 and each simulation and proof result under a fingerprint of a spec and its
-imports together with Quint, Dafny, Z3, LemmaScript, Node and tool versions.
-It also remembers a package's passing test run under a hash of what its tests
-read.
+imports, the versions of the programs beneath (Quint and Node for a
+simulation; Node, LemmaScript, Dafny and Z3 for a proof, whose key holds the
+whole unit) and the code of only the tools that stage runs: `simulate.ts`,
+`units.ts` and what they import, or `prove.ts` and what it imports. A test run
+or an exploration may run any tool, as Studio's do, so it is keyed by all of
+them. It also remembers a package's passing test run under a hash of what its
+tests read.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
-and their runtime files before Turbo hashes its inputs. Generated stories,
+and their runtime files before Turbo hashes its inputs. What it reads of an
+installed file, and Dafny's version, is remembered across processes in
+`$XDG_CACHE_HOME/vibestack` (`~/.cache/vibestack` by default) while the file's
+device, inode, size and modification and change times stay the same, so an
+unchanged toolchain is not read again. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
 are restored with their owning task. `check` is never skipped whole: it runs
 the real application in `traces`. Standalone examples install and check

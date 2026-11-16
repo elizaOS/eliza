@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { dafnyIdentity, entry, recall, store, type Memory } from "./cache.ts";
-import { NEEDS_DAFNY, bin, exec, executableDigest, solver } from "./run.ts";
+import { dafnyIdentity, entry, executableDigest, recall, store, type Memory } from "./cache.ts";
+import { NEEDS_DAFNY, bin, exec, solver } from "./run.ts";
 
 /** A file a tool reads: its text, and what of the text decides the run, which is what the run is remembered under. */
 export interface Input { text: string; key: string }

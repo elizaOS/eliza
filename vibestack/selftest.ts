@@ -1761,18 +1761,24 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.match(JSON.stringify(renamed.said("always", /the law .* is false/)), /The price is one/, renamed.text);
   });
 
-  test("proof caching follows library changes, verifies nothing again for a change to the tools that leaves the Dafny alone, and compiler failure waits for proof completion", async () => {
+  test("proof caching follows library changes and the prover's own code, verifies nothing again for a change to the tools that leaves the Dafny alone, and compiler failure waits for proof completion", async () => {
     const root = toolchain(fixtures(["highest"], (f) => { f["package.json"] = '{"type":"module"}'; }), "quint", "lsc");
     const script = path.join(root, "vibestack/spec.ts");
     const first = await runCli(script, root, "check", "--json");
     const checked = answer(first.stdout);
     assert.ok(checked.results.some((r: Result) => r.stage === "proof" && r.ok), first.stdout + first.stderr);
     assert.ok(fs.existsSync(path.join(root, "gen/proof/highest/verify")), "Dafny verified the unit");
-    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\n// A change to the tools that leaves the proof alone.\n");
+    const remembered = () => fs.readdirSync(path.join(root, ".spec-cache")).filter((f) => f.startsWith("prove-")).join();
+    const proved = remembered();
+    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\n// A change to the tools that the prover does not run.\n");
     const tooled = await runCli(script, root, "check", "--json");
     assert.ok(answer(tooled.stdout).results.some((r: Result) => r.stage === "proof" && r.ok), tooled.stdout + tooled.stderr);
+    assert.equal(remembered(), proved, "a change to tools the prover does not run proves nothing again");
+    fs.appendFileSync(path.join(root, "vibestack/scan.ts"), "\n// A change to the tools the prover runs that leaves the Dafny alone.\n");
+    const rescanned = await runCli(script, root, "check", "--json");
+    assert.ok(answer(rescanned.stdout).results.some((r: Result) => r.stage === "proof" && r.ok), rescanned.stdout + rescanned.stderr);
+    assert.notEqual(remembered(), proved, "a change to the prover's code proves again");
     assert.ok(!["verify", "audit"].some((run) => fs.existsSync(path.join(root, "gen/proof/highest", run))), "a remembered run of Dafny is not run again");
-    const remembered = () => fs.readdirSync(path.join(root, ".spec-cache")).filter((f) => f.startsWith("prove-")).join();
     const before = remembered();
     const marker = "// A distinct proof-library version for this scratch project.";
     fs.appendFileSync(path.join(root, "vibestack/proof/lib.dfy"), `\n${marker}\n`);
@@ -1822,6 +1828,19 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.equal(loaded.kept, true, "a tool changed after a check loaded it leaves that check's results remembered");
     assert.notEqual((await checked(load, remember)).name, loaded.name, "under the code that computed them, not the code there now");
     assert.equal((await checked(touch, load, remember)).kept, false, "a tool changed while a check loaded it leaves nothing remembered");
+    const names = 'console.log(JSON.stringify(Object.fromEntries(await Promise.all(["simulate", "tests"].map(async (stage) => [stage, (await entry(".", stage, ["same"])).name])))));';
+    const named = async (tool: string) => {
+      const before = await checked(load, names);
+      fs.appendFileSync(path.join(root, "vibestack", tool), "\n");
+      return { before, after: await checked(load, names) };
+    };
+    const outside = await named("explore.ts");
+    assert.equal(outside.after.simulate, outside.before.simulate, "a simulation is not keyed by tools it does not run");
+    assert.notEqual(outside.after.tests, outside.before.tests, "tests may run any of the tools");
+    for (const tool of ["units.ts", "gen/harness.ts", "testing/profile.ts"]) {
+      const { before, after } = await named(tool);
+      assert.notEqual(after.simulate, before.simulate, `a simulation is keyed by ${tool}, which it runs`);
+    }
   });
 
   test("a change to the tools or the prose that leaves the Quint alone runs no Quint again, and its results cite the rules where they now are", { skip: process.platform === "win32" }, async () => {
@@ -1858,7 +1877,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.equal(changed.said("always", /alwaysSame|"Story \/ Same"/)?.ok, false, changed.text);
   });
 
-  test("proof and task cache identity follows verifier and compiler bytes rather than installation directories", { skip: process.platform === "win32" }, async () => {
+  test("proof and task cache identity follows verifier and compiler bytes rather than installation directories, read again only once they change", { skip: process.platform === "win32" }, async () => {
     const credentials = { apiUrl: "https://trusted-cache.example", writeToken: "test-only-publisher" };
     const trusted = { TURBO_API: credentials.apiUrl, TURBO_TOKEN: credentials.writeToken };
     const cases: [NodeJS.ProcessEnv, string[], string | undefined, NodeJS.ProcessEnv][] = [
@@ -1884,23 +1903,40 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     for (const name of names) {
       const directory = path.join(root, name);
       fs.mkdirSync(directory);
-      fs.writeFileSync(path.join(directory, "dafny"), "#!/bin/sh\nprintf '4.11.0\\n'\n", { mode: 0o755 });
+      fs.writeFileSync(path.join(directory, "dafny"), "#!/bin/sh\necho >> \"$(dirname \"$0\").asked\"\nprintf '4.11.0\\n'\n", { mode: 0o755 });
       fs.writeFileSync(path.join(directory, "z3"), `#!/bin/sh\n${name === "changed" ? "# a different solver build\n" : ""}printf 'Z3 version 4.12.1\\n'\n`, { mode: 0o755 });
       fs.writeFileSync(path.join(directory, "Dafny.dll"), name === "assemblies" ? "another verifier" : "the verifier");
       fs.writeFileSync(path.join(directory, "System.Private.CoreLib.dll"), "the self-contained runtime");
     }
     const script = `const { entry, toolchainFingerprint } = await import(${JSON.stringify(path.join(project, "vibestack/cache.ts"))}); console.log(JSON.stringify({ proof: (await entry(".", "prove", ["same obligation"])).name, task: await toolchainFingerprint() }));`;
-    const keys = await Promise.all(names.map(async (name) => {
+    const said = path.join(root, "cache/vibestack/toolchain.json");
+    const keyed = async (name: string) => {
       const result = await exec(process.execPath, ["--input-type=module", "--eval", script], root,
-        { ...process.env, PATH: `${path.join(root, name)}${path.delimiter}${process.env.PATH ?? ""}` });
+        { ...process.env, XDG_CACHE_HOME: path.join(root, "cache"), PATH: `${path.join(root, name)}${path.delimiter}${process.env.PATH ?? ""}` });
       assert.equal(result.status, 0, result.stderr);
       return JSON.parse(result.stdout);
-    }));
+    };
+    const keys = [];
+    for (const name of names) keys.push(await keyed(name));
     assert.deepEqual(keys[0], keys[1], "moving the same tools preserves proof and task results");
     for (const other of keys.slice(2)) {
       assert.notEqual(keys[0].proof, other.proof, "different verifier bytes invalidate a proof even at the same version");
       assert.notDeepEqual(keys[0].task, other.task, "different verifier bytes invalidate a task even at the same version");
     }
+    const asked = () => read("first.asked", root).length;
+    const remembered = JSON.parse(fs.readFileSync(said, "utf8"));
+    const solver = Object.keys(remembered).find((key) => key.endsWith(`${path.sep}first${path.sep}z3`))!;
+    fs.writeFileSync(said, JSON.stringify({ ...remembered, [solver]: { ...remembered[solver], value: "f".repeat(64) } }));
+    const before = asked();
+    const warm = await keyed("first");
+    assert.equal(warm.task.z3.digest, "f".repeat(64), "a later process reuses what an earlier one read of an unchanged installation");
+    assert.equal(asked(), before, "and does not ask Dafny its version again");
+    fs.writeFileSync(path.join(root, "first/Dafny.dll"), "the verifieR");
+    fs.writeFileSync(path.join(root, "first/z3"), read("first/z3", root).replace("printf", "printf "));
+    const rewritten = await keyed("first");
+    assert.notEqual(rewritten.proof, keys[0].proof, "a verifier rewritten in place, at the same size, is read again");
+    assert.notEqual(rewritten.task.z3.digest, "f".repeat(64), "and so is a solver");
+    assert.equal(asked(), before + 1, "and Dafny is asked its version again");
     assert.match(keys[0].task.node.digest, /^[a-f0-9]{64}$/);
     assert.match(keys[0].task.vibelang.digest, /^[a-f0-9]{64}$/);
   });

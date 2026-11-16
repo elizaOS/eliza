@@ -572,7 +572,9 @@ under `src/`.
   checks and the Dafny and Z3 installed. Each
   simulation result, a failing one too (its seed is fixed), and each passing
   proof result is kept beside them, under a fingerprint of the spec's Quint
-  without its comments, everything it imports and the versions of the tools.
+  without its comments, everything it imports and the versions of the tools
+  that compute it, so a change to the tools reruns only the stages that run
+  the changed code.
   The specs are simulated at once.
 - **The spec covers the rules, not the plumbing.** Chat, HTTP and storage stay
   hand-written around the generated core, as `vibestack/examples/dashboard/src/notify.vibe`

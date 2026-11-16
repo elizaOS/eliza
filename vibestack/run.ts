@@ -1,6 +1,5 @@
 // Shared bounded execution for the Quint, TypeScript, test and proof stages.
 import { execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { availableParallelism } from "node:os";
 import path from "node:path";
@@ -13,8 +12,11 @@ const OUTPUT_LIMIT = 1 << 28;
 /** How long a tool may run before it is stopped: long enough that only a tool that hangs is stopped. */
 const TOOL_TIMEOUT = 60 * 60 * 1000;
 
-/** The executable's bytes, independent of the directory its installation lives in. */
-export const executableDigest = (file: string): string => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+/** The executable named `name` that the PATH finds first. */
+export const onPath = (name: string) => (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
+  .flatMap((dir) => (WINDOWS ? [".exe", ".cmd", ""] : [""]).map((ext) => path.join(dir, name + ext))).find((file) => {
+    try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile(); } catch { return false; }
+  });
 
 /** An executable from the toolchain's dependencies, wherever npm put it: beside the tools, or in the project. */
 export function bin(cmd: string, root: string): string {
@@ -102,11 +104,6 @@ export async function run(cmd: string, args: string[], cwd: string, input?: stri
 let selected: Promise<{ path: string; version: string }> | undefined;
 export function solver(): Promise<{ path: string; version: string }> {
   return selected ??= (async () => {
-    const extensions = process.platform === "win32" ? [".exe", ".cmd", ""] : [""];
-    const onPath = (name: string) => (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
-      .flatMap((dir) => extensions.map((ext) => path.join(dir, name + ext))).find((file) => {
-        try { return fs.statSync(file).isFile(); } catch { return false; }
-      });
     const candidates: string[] = [];
     const dafny = onPath("dafny");
     if (dafny) {
@@ -130,16 +127,4 @@ export function solver(): Promise<{ path: string; version: string }> {
     }
     throw new Error("the proof stage needs the Z3 solver bundled with Dafny or on the PATH");
   })().catch((e) => { selected = undefined; throw e; });
-}
-
-/** The version of Dafny on the PATH, read once it is read without a problem, or why it could not be read. */
-let dafny: Promise<{ version?: string; problem?: string }> | undefined;
-export function dafnyVersion(): Promise<{ version?: string; problem?: string }> {
-  return (dafny ??= exec("dafny", ["--version"], process.cwd()).then((r) => {
-    const version = r.status === 0 ? r.stdout.match(/\d+\.\d+\.\d+/)?.[0] : undefined;
-    const problem = !version ? `Dafny could not be run (${`${r.stdout}${r.stderr}`.trim().split("\n")[0] || "it printed no version"})`
-      : !version.startsWith("4.11.") ? `this is Dafny ${version}, and LemmaScript targets Dafny 4.11.x` : undefined;
-    return { version, problem: r.stopped ?? (problem && `${problem}: ${NEEDS_DAFNY} (see README, "Getting started")`) };
-  }, (e: Error) => ({ problem: `Dafny could not be run (${e.message}): ${NEEDS_DAFNY} (see README, "Getting started")` }))
-    .then((r) => { if (r.problem) dafny = undefined; return r; }));
 }
