@@ -1,12 +1,10 @@
-# Maps observation and camera ownership
+# Maps observation
 
 What the agent observes of the Maps screen must be what the screen
 shows now. A captured search observation names the exact search source
-it saw, and it validates only while that source is unchanged. The camera
-has several owners: the person's gestures, a selection, a route, the
-following mode and a new set of result pins, and only the last fits the
-camera to results. A cancelled locate can never restore its old origin
-or replace a fix that was accepted later. [Maps navigation](./navigation.md)
+it saw, and it validates only while that source is unchanged. A
+cancelled locate can never restore its old origin or replace a fix that
+was accepted later. [Maps navigation](./navigation.md)
 owns routes and guidance.
 
 ## Story: Let the agent see only what the Maps screen shows now
@@ -55,63 +53,6 @@ pure def stepAcceptedObservationMatchesSource(before: MapsObservation, via: str,
   via == "validateObservation" and after.search.lastAccepted implies after.search.receiptSource == after.search.source
 pure def sometimesObservationAccepted(s: MapsObservation): bool = s.search.lastAccepted and s.search.revision == 0
 pure def sometimesChangedSourceRefused(s: MapsObservation): bool = s.search.captured and not(s.search.lastAccepted) and s.search.revision > s.search.receiptRevision
-```
-
-## Story: Keep the camera where I put it
-
-> As the owner, I want the map to stay where I moved it, and to fit new
-> results only when they are new results.
-
-### Following stops on a gesture and resumes only on recenter
-
-The camera follows the person until they move the map by hand.
-Recentering resumes following. A move the app makes itself does not
-change whether the camera follows.
-
-```quint
-type CameraMove = Gesture | Recenter | ProgrammaticMove
-pure def followingAfter(following: bool, cameraMove: CameraMove): bool =
-  if (cameraMove == Gesture) false else if (cameraMove == Recenter) true else following
-pure def lawGestureStopsFollowing(following: bool): bool = not(followingAfter(following, Gesture))
-pure def lawProgrammaticMoveKeepsIntent(following: bool): bool = followingAfter(following, ProgrammaticMove) == following
-```
-
-### Only a changed set of result pins fits the camera, and only with worldwide coverage
-
-The camera fits to results only when the result pins changed, are not
-empty, the provider covers the whole world, and the update came from the
-results. An update from a selection, a route or following never fits
-the camera, and the same pins never fit it twice. The opening view is
-the host's only when coverage is worldwide and the host chose one.
-
-```quint
-type CameraOwner = ResultsOwner | SelectionOwner | RouteOwner | FollowingOwner
-pure def fitsToResults(previousPins: int, pins: int, worldwide: bool, cameraOwner: CameraOwner): bool =
-  pins != previousPins and pins != 0 and worldwide and cameraOwner == ResultsOwner
-pure def opensAtHostView(worldwide: bool, hostOpening: bool): bool = worldwide and hostOpening
-pure def lawOtherOwnerNeverFits(previousPins: int, pins: int, worldwide: bool, cameraOwner: CameraOwner): bool =
-  cameraOwner != ResultsOwner implies not(fitsToResults(previousPins, pins, worldwide, cameraOwner))
-pure def lawSamePinsNeverFitTwice(pins: int, worldwide: bool): bool = not(fitsToResults(pins, pins, worldwide, ResultsOwner))
-pure val pinsValues = Set(0, 1, 2)
-pure val previousPinsValues = Set(0, 1, 2)
-```
-
-### A deferred first search runs only if it is still the visible search
-
-A search typed before the provider is known waits for it. When the
-provider becomes available the waiting search runs only if the screen is
-still open and still waiting on that same query; typing alone never
-submits it, and a failed discovery drops it.
-
-```quint
-pure def resumesInitialSearch(live: bool, providerReady: bool, waiting: bool, query: int, queuedQuery: int): bool =
-  live and providerReady and waiting and query == queuedQuery and queuedQuery > 0
-pure def lawReplacedQueryDoesNotResume(live: bool, providerReady: bool, waiting: bool, query: int, queuedQuery: int): bool =
-  query != queuedQuery implies not(resumesInitialSearch(live, providerReady, waiting, query, queuedQuery))
-pure def lawHiddenSearchDoesNotResume(providerReady: bool, waiting: bool, query: int, queuedQuery: int): bool =
-  not(resumesInitialSearch(false, providerReady, waiting, query, queuedQuery))
-pure val queryValues = Set(1, 2)
-pure val queuedQueryValues = Set(0, 1)
 ```
 
 ## Story: Locate me without an old locate getting in the way

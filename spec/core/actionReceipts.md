@@ -1,7 +1,16 @@
 # Action settlement with concrete receipt bindings
 
-Sources are `packages/core/src/runtime/action-handler-settlement.ts:195-260,300-570`, `runtime/effect-delivery.ts` and `types/effects.ts:575-677` at `72fed7e4069ecd35d61d886ab6eec5c02c137517`. This composition uses the settlement machine for the serialized callback queue and the receipt module's committed-evidence predicate. Queue processing, actual callback invocation and confirmation are separate facts.
+Sources are `packages/core/src/runtime/action-handler-settlement.ts:195-260,300-570`, `runtime/effect-delivery.ts` and `types/effects.ts:575-677`. This composition uses the settlement machine for the serialized callback queue and the receipt module's committed-evidence predicate. Queue processing, actual callback invocation and confirmation are separate facts.
 
+## Story: Drain action callbacks with exact receipt evidence
+
+> As a caller I receive each eligible canonical callback after result
+> normalization. A preview, failure or ordinary no-op can produce an
+> informational reply without claiming application. Duplicate mutation
+> callbacks share a delivery key, including failed transport attempts, and
+> never invoke the same canonical delivery twice.
+
+### Callback binding resolves every declared ID against retained receipts
 
 Discovered by the proof: each embedded machine must retain its complete safety
 invariant before the composition can rely on that machine's transition lemmas.
@@ -9,12 +18,6 @@ Callback IDs are positive and unique. The queue's nonmutation mode is permanent
 because receipt binding belongs to this composition. Before queue settlement,
 every emitted callback is still queued. A sending callback owns the latest
 in-flight index. Before any handoff, every callback remains untouched. Applied evidence retains the resolved receipt binding through transport.
-
-## Story: Drain action callbacks with exact receipt evidence
-
-As a caller I receive each eligible canonical callback after result normalization. A preview, failure or ordinary no-op can produce an informational reply without claiming application. Duplicate mutation callbacks share a delivery key, including failed transport attempts, and never invoke the same canonical delivery twice.
-
-### Callback binding resolves every declared ID against retained receipts
 
 The boundary supplies normalized text and receipt records. Normalization rejects conflicting duplicate receipt IDs and malformed evidence before this transition. The result's verified flag is core-normalized provenance, not a model-authored assertion. The queue uses its nonmutation mode because this composition owns the richer per-callback receipt gate.
 

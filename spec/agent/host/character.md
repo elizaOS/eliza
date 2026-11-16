@@ -5,10 +5,7 @@ lives in the host's configuration. A product that builds on the host may
 supply its own character; it is kept in a scope of its own and restored
 from there at boot, so it never overwrites what the owner configured. When
 the owner renames the agent, the new name is written to the configuration
-before a receipt confirms it. The research baseline is
-`packages/agent/src/runtime/{build-character-config,prepare-product-character-config}.ts`,
-`services/{character-persistence,character-history,owner-name}.ts` and
-`api/character-routes.ts`.
+before a receipt confirms it.
 
 ## Story: Boot and persist the agent's character
 

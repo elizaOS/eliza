@@ -1,6 +1,6 @@
 # Voice interruption receipt custody
 
-The voice sources' `voice-turn-routes.ts` report what an interrupted reply
+When a spoken reply is interrupted, the turn routes report what of it
 actually reached the person. The [voice endpoint](./endpoint.md) owns
 submission and [audio playback](./playback.md) owns what was heard.
 

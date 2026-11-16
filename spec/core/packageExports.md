@@ -1,12 +1,17 @@
 # Core package exports for consumer builds
 
 A consumer imports `@elizaos/core` through the published export map, or
-through a source projection of its own. The [core package contract](./contracts.md)
-owns the published names and signatures, and the [npm release](./release.md)
+through a source projection of its own. The
+[public surface baseline](./baseline/core-public-surface.json) records the
+published names and signatures, and the [npm release](./release.md)
 owns the freshness of release evidence. This spec owns which entry a
 consumer's import reaches, which evidence may certify it, and which
 browser-safe leaves the package declares and packs. Source, TypeScript
 declaration and packed ESM resolution are separate observations.
+A compatibility projection keeps every required field and its exact
+discriminant; Effect environment requirements stay internal, and a public
+Promise entry point keeps the typed outcome (see the
+[core introduction](./index.md)).
 
 ## Story: Preserve the imported core surface in the consumer build and the npm package
 
@@ -101,59 +106,44 @@ pure def lawPackedBrowserValueCannotLoadHostCode(candidate: str, evidence: Impor
 > exactly as declared and free of host-only code, so that my bundle never
 > pulls the Node runtime in.
 
-### Each browser-safe leaf that consumers import has an owning spec
+Each browser-safe leaf names the core spec whose rules own its behavior:
 
-The leaves are logging, the read memo, view interaction, speech, schema
-types, the protocol, events, errors, spoken text, the language catalog of
-i18n, log redaction, the single-flight memo, the `types/*` and `views/*`
-leaves, the embedding vector space, task widgets and the restart exit code
-asset. Each names the core spec whose rules own its behavior.
+| Leaf | Owner |
+| --- | --- |
+| logging | [log listeners](./logging/index.md) |
+| read memo | [read memo](./memo.md) |
+| single-flight memo | [concurrent memo readers](./memoConcurrency.md) |
+| view interaction | [views](./views.md) |
+| `views/*` | [view navigation](./viewNavigation.md) |
+| speech, spoken text | [speech](./voice.md) |
+| protocol, schema types, task widgets | [protocol values](./protocols.md) |
+| events | [event streams](./events.md) |
+| log redaction | [content and outbound security](./security.md) |
+| embedding vector space | [embedding identity](./embeddingSpace.md) |
+| errors, the i18n language catalog, `types/*`, the restart exit code asset | [public surface baseline](./baseline/core-public-surface.json) |
+
+### An admitted pack serves exactly the declared leaves, each free of host-only code
+
+A leaf's resolved static import closure is observed once, at pack time:
+browser-safe leaves load only other browser-safe modules. A pack is admitted
+only when every declared leaf is in the packed export map, the packed map
+exports nothing undeclared, and no packed leaf's closure reaches a host-only
+module. A missing leaf breaks its consumers, an undeclared one is an unowned
+public surface, and a host-only closure pulls the Node runtime into a
+browser bundle.
 
 ```quint
 type CoreLeaf = LoggingLeaf | ReadMemoLeaf | ViewInteractionLeaf | SpeechLeaf | SchemaTypesLeaf | ProtocolLeaf | EventsLeaf
   | ErrorsLeaf | SpokenTextLeaf | LanguageLeaf | LogRedactionLeaf | SingleFlightMemoLeaf | TypesLeaves | ViewsLeaves
   | EmbeddingVectorSpaceLeaf | TaskWidgetsLeaf | RestartExitCodeLeaf
-pure def leafOwner(leaf: CoreLeaf): str =
-  if (leaf == LoggingLeaf) "spec/core/logListeners.md"
-  else if (leaf == ReadMemoLeaf) "spec/core/memo.md"
-  else if (leaf == ViewInteractionLeaf) "spec/core/views.md"
-  else if (leaf == SpeechLeaf or leaf == SpokenTextLeaf) "spec/core/voice.md"
-  else if (leaf == ProtocolLeaf) "spec/core/protocols.md"
-  else if (leaf == EventsLeaf) "spec/core/events.md"
-  else if (leaf == LogRedactionLeaf) "spec/core/security.md"
-  else if (leaf == SingleFlightMemoLeaf) "spec/core/memoConcurrency.md"
-  else if (leaf == ViewsLeaves) "spec/core/viewNavigation.md"
-  else if (leaf == EmbeddingVectorSpaceLeaf) "spec/core/embeddingSpace.md"
-  else "spec/core/contracts.md"
-pure val leafOwnerSpecs: Set[str] = Set("spec/core/logListeners.md", "spec/core/memo.md", "spec/core/views.md",
-  "spec/core/voice.md", "spec/core/protocols.md", "spec/core/events.md", "spec/core/security.md",
-  "spec/core/memoConcurrency.md", "spec/core/viewNavigation.md", "spec/core/embeddingSpace.md", "spec/core/contracts.md")
-pure def lawEveryLeafHasAnOwner(leaf: CoreLeaf): bool = leafOwnerSpecs.contains(leafOwner(leaf))
-```
-
-### A browser-safe leaf never reaches host-only code
-
-A leaf's resolved static import closure is classified once: browser-safe
-leaves load only other browser-safe modules. A leaf whose closure reaches a
-host-only module cannot be declared browser-safe.
-
-```quint
 type ClosureModule = BrowserModule | HostOnlyModule
-pure def browserSafeClosure(closure: Set[ClosureModule]): bool = not(closure.contains(HostOnlyModule))
-pure def lawHostOnlyClosureIsNotBrowserSafe(closure: Set[ClosureModule]): bool =
-  closure.contains(HostOnlyModule) implies not(browserSafeClosure(closure))
-```
-
-### The packed export set equals the declared set
-
-A pack is admitted only when every declared leaf is in the packed export map
-and the packed map exports nothing undeclared: a missing leaf breaks its
-consumers, and an undeclared one is an unowned public surface.
-
-```quint
-pure def packAdmitted(declared: Set[CoreLeaf], packed: Set[CoreLeaf]): bool = declared.subseteq(packed) and packed.subseteq(declared)
-pure def lawUndeclaredPackedLeafRefusesThePack(declared: Set[CoreLeaf], packed: Set[CoreLeaf], leaf: CoreLeaf): bool =
-  (packed.contains(leaf) and not(declared.contains(leaf))) implies not(packAdmitted(declared, packed))
-pure def lawMissingDeclaredLeafRefusesThePack(declared: Set[CoreLeaf], packed: Set[CoreLeaf], leaf: CoreLeaf): bool =
-  (declared.contains(leaf) and not(packed.contains(leaf))) implies not(packAdmitted(declared, packed))
+type PackedLeaf = { leaf: CoreLeaf, closure: List[ClosureModule] }
+pure def browserSafeClosure(closure: List[ClosureModule]): bool = not(closure.includes(HostOnlyModule))
+pure def packAdmitted(declared: Set[CoreLeaf], packed: List[PackedLeaf]): bool =
+  declared.forall(leaf => packed.some(p => p.leaf == leaf)) and packed.every(p => declared.contains(p.leaf) and browserSafeClosure(p.closure))
+pure val packedValues = Set(List(), List({ leaf: LoggingLeaf, closure: List(BrowserModule) }),
+  List({ leaf: LoggingLeaf, closure: List(BrowserModule, HostOnlyModule) }),
+  List({ leaf: LoggingLeaf, closure: List(BrowserModule) }, { leaf: EventsLeaf, closure: List() }))
+pure def lawAdmittedPackServesExactlyTheDeclaredSafeLeaves(declared: Set[CoreLeaf], packed: List[PackedLeaf], leaf: CoreLeaf): bool =
+  packAdmitted(declared, packed) implies (declared.contains(leaf) iff packed.some(p => p.leaf == leaf and browserSafeClosure(p.closure)))
 ```

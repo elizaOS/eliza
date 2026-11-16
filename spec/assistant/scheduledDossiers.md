@@ -6,13 +6,15 @@ owner was actually active that day: the owner's device reports a
 foreground or unlock signal, the server authenticates it as the owner's,
 and the signal is admitted against the dossier's control state. The
 control state is written in the same conditional write as each edit,
-dismissal, reopening or migration of the task, and the automatic fire
+dismissal or reopening of the task, and the automatic fire
 consumes the admission in the same claim that fires it. A manual refresh
 or a read consumes nothing.
 
 The owner day is the civil day in the owner's zone with its own boundary
 minute: activity before the boundary counts for the day before. Times
 here are minutes on the owner's clock, and days are numbered from 1.
+This spec owns when the daily digest fires; [hosted digests](../workflow/hostedDigest.md)
+own its delivery and the offer of a missed run.
 
 ## Story: Prepare my day once, after I am up
 

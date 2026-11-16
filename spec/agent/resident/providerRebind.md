@@ -1,8 +1,8 @@
 # Resident provider rebind queue
 
-A consumer defers Cloud rebind behind owner sign-in and other blocking
-operations by installing `ResidentRebindQueue` from `cloud-resident-binding.ts`.
-[Resident Cloud admission](../../auth/native/residentBinding.md) decides
+The resident defers rebinding its Cloud inference provider until owner
+sign-in and other blocking work release their slot.
+[Resident Cloud admission](./cloudAdmission.md) decides
 whether the inference provider should bind, keep, or clear its
 configuration. The queue tracks promise ownership and does not start or
 stop the resident.
@@ -20,8 +20,7 @@ A host's flag-only request requires explicit resume. Draining a deferred
 request chooses its latest callback. Explicit resume or an immediate
 request can service the queued promise with the host's chosen callback.
 Success and failure both release the active slot and settle the promise
-served by that run. The host supplies its blocker result at each entry.
-The sampled callback numbers identify closures, not credential data.
+served by that run. The host supplies whether it is blocked at each entry.
 
 ```quint
 type Rebind = { serial: int, requested: bool, queued: int, queueCallback: int, running: int, runCallback: int, serving: int, completed: int, served: int, successful: bool }

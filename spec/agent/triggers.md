@@ -1,7 +1,6 @@
 # Triggers
 
-A trigger is a saved task that the agent runs on a schedule or on request:
-`packages/agent/src/triggers/` with its runtime routes. The
+A trigger is a saved task that the agent runs on a schedule or on request. The
 [core scheduling](../core/scheduling.md) spec owns when an occurrence is due;
 this spec owns one owned trigger: its saved revision, a run in progress, and
 the recovery calls that archive or restore it.

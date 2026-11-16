@@ -23,6 +23,6 @@ lemma lawEachShownWidgetMatches_ensures(batch: ChoiceBatch)
   ensures (lawEachShownWidgetMatches(batch) == true)
 {
   if batchHeadersValid(batch) {
-    ChoiceFoldChecksEveryWidget(batch, showChoicesDecision, batch.widgets);
+    ChoiceFoldChecksEveryWidget(batch, ShowChoices, batch.widgets);
   }
 }

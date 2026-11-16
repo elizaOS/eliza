@@ -1,10 +1,15 @@
 # Active prompt traces and run indexes
 
-The source is `packages/core/src/runtime/active-prompt-traces.ts` at `72fed7e4069ecd35d61d886ab6eec5c02c137517`. The model stores one insertion-ordered list and derives the active ID and per-run views from it. Cross-run identity reuse fails before mutation. Same-run re-recording replaces trace content without moving its insertion slot. This corrects the source alias bug documented in the baseline: source re-recording can retain old run aliases and allow one run deletion to erase another run's trace.
+The source is `runtime/active-prompt-traces.ts`. The model stores one insertion-ordered list and derives the active ID and per-run views from it, so no run index can alias another run's trace. Cross-run identity reuse fails before mutation. Same-run re-recording replaces trace content without moving its insertion slot.
 
 ## Story: Retain enrich and retire active trace records
 
-As a runtime I record complete trace identities and score-signal references, enrich all selected active traces in a run index, and retire expired records without discarding unexpired peers. The five-minute TTL is fixed. Every admitted record attempt increments the purge counter, including a trace whose run ID is empty. Cross-run reuse returns the typed `TraceIdentityConflict` failure without changing stored records, indexes or the purge cadence. Every hundredth record purges before inserting the new trace.
+> As a runtime, I want to record trace identities and score-signal
+> references, enrich every selected active trace of a run, and retire
+> expired records, so that scoring reaches the right trace without
+> discarding unexpired peers.
+
+The five-minute TTL is fixed. Every admitted record attempt increments the purge counter, including a trace whose run ID is empty, and nothing else changes it. Cross-run reuse returns the typed `TraceIdentityConflict` failure without changing stored records, indexes or the purge cadence. Every hundredth record purges before inserting the new trace.
 
 ### Recording preserves the insertion position of a replacement in its run
 
@@ -17,8 +22,6 @@ stay attached to the selected trace.
 ```quint
 type Trace = {id: str, runId: str, createdAt: int, signals: List[str], enrichedAt: int}
 type TraceRecordResult = NoRecordResult | TraceRecorded | TraceIgnored | TraceIdentityConflict
-pure val recordedResult: TraceRecordResult = TraceRecorded
-pure val ignoredResult: TraceRecordResult = TraceIgnored
 type TraceState = {now: int, purgeCounter: int, traces: List[Trace], lastResult: TraceRecordResult, rejectedId: str, registeredRun: str, requestedRun: str, lastEnrichedRun: str}
 pure val initial: TraceState = {now: 0, purgeCounter: 0, traces: List(), lastResult: NoRecordResult, rejectedId: "", registeredRun: "", requestedRun: "", lastEnrichedRun: ""}
 pure val traceValues = Set({id: "trace-a", runId: "run-a", createdAt: 0, signals: List(), enrichedAt: 0}, {id: "trace-a", runId: "run-b", createdAt: 0, signals: List(), enrichedAt: 0}, {id: "trace-b", runId: "run-a", createdAt: 1, signals: List("existing"), enrichedAt: 0}, {id: "ignored", runId: "", createdAt: 0, signals: List(), enrichedAt: 0})
@@ -53,7 +56,7 @@ pure def installTrace(base: List[Trace], trace: Trace): List[Trace] =
   else base.append(trace)
 pure def recordTrace(s: TraceState, trace: Trace): TraceState =
   { ...s, traces: installTrace(recordBase(s), trace), purgeCounter: s.purgeCounter + 1,
-    lastResult: if (trace.runId == "") ignoredResult else recordedResult,
+    lastResult: if (trace.runId == "") TraceIgnored else TraceRecorded,
     rejectedId: "", registeredRun: "", requestedRun: "" }
 pure def enrichTraces(s: TraceState, runId: str, id: str, signal: str): TraceState =
   { ...s, lastEnrichedRun: runId, traces: s.traces.listMap(t =>
@@ -64,8 +67,7 @@ pure def finalizeRun(s: TraceState, runId: str): TraceState =
 pure def purgeTraces(s: TraceState): TraceState = { ...s, traces: purgeAt(s.traces, s.now) }
 pure def setClock(s: TraceState, now: int): TraceState = { ...s, now: now }
 pure def alwaysTraceIdentitiesUnique(s: TraceState): bool = s.traces.every(t => s.traces.select(other => other.id == t.id).length() == 1)
-pure def alwaysPurgeCounterNonnegative(s: TraceState): bool = s.purgeCounter >= 0
-pure def stepRecordCountsEveryAttempt(before: TraceState, via: str, after: TraceState): bool = via == "recordTrace" implies after.purgeCounter == before.purgeCounter + 1
+pure def stepRecordCountsEveryAttempt(before: TraceState, via: str, after: TraceState): bool = after.purgeCounter == before.purgeCounter + (if (via == "recordTrace") 1 else 0)
 pure def traceIds(traces: List[Trace]): List[str] = traces.listMap(trace => trace.id)
 pure def stepEnrichmentStaysInOneRun(before: TraceState, via: str, after: TraceState): bool =
   via == "enrichTraces" implies traceIds(before.traces) == traceIds(after.traces) and
@@ -81,10 +83,6 @@ pure def sometimesTwoTracesInOneRun(s: TraceState): bool =
 pure def sometimesTraceEnriched(s: TraceState): bool = s.traces.some(t => t.signals.length() > 0 and t.enrichedAt == s.now)
 pure def sometimesTraceAtTtlRetained(s: TraceState): bool = s.traces.some(t => s.now - t.createdAt == 300000)
 pure def sometimesAllTracesFinalized(s: TraceState): bool = s.purgeCounter > 0 and s.traces.length() == 0
-pure val tracesValues = Set(List(), List(emptyTrace))
-pure val sValues = Set(initial, { ...initial, traces: List({ ...emptyTrace, id: "trace-a", runId: "run-a" }) })
-pure def lawRunViewKeepsOwners(s: TraceState, runId: str): bool =
-  runTraces(s, runId).every(trace => trace.runId == runId)
 pure def stepConflictPreservesTraces(before: TraceState, via: str, after: TraceState): bool =
   via == "rejectTrace" implies after.traces == before.traces and after.purgeCounter == before.purgeCounter
 pure def sometimesCrossRunReuseRejected(s: TraceState): bool =

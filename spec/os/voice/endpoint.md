@@ -1,9 +1,8 @@
 # Voice endpoint decisions and interruption receipts
 
-The voice sources' `voice-endpoint-chain.ts`, `voice-assistant-session.ts`
-and `voice-turn-routes.ts` decide when a voice utterance is sent. The
-[speech request](./speechRequest.md) owns the native cancellation signal.
-[Audio playback](./playback.md) owns the sentences the person heard, and
+The voice endpoint decides when a spoken utterance is sent. The
+[speech stream](./speechStream.md) owns the native cancellation signal,
+[audio playback](./playback.md) the sentences the person heard, and
 [heard receipts](./heardReceipts.md) amend an interrupted reply's history.
 
 ## Story: Submit one utterance after the person finishes speaking
@@ -20,10 +19,8 @@ error otherwise. An optional cloud endpoint stage needs both its host
 enable switch and an authenticated client. Its gate may refuse this turn. It
 sends text without audio at a maximum of 2,000 UTF-16 units, with a
 default 300 ms stage deadline distinct from the overall endpoint
-deadline. The earlier source sent at most six structurally valid recent
-turns and only their speaker and text. The replacement checks the full
-selected context and returns an explicit unavailable result when a
-bounded provider cannot accept it. The session then uses its long gap.
+deadline. It checks the full selected context and returns an explicit
+unavailable result when a bounded provider cannot accept it. The session then uses its long gap.
 The provider result must have the exact turn kind and a boolean complete
 value. If supplied, the probability must be finite, within zero and
 one and consistent with the 0.5 threshold. Encoding and provider payload

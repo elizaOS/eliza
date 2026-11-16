@@ -1,10 +1,18 @@
 # Model selection and cancellation
 
-Model invocation retains the ordered registration list and complete request identity. Sources include [model-dispatch.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/model-dispatch.ts), [model-policy.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/model-policy.ts), [ModelProviderFailover.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/ModelProviderFailover.qnt) and [TurnCancellation.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/TurnCancellation.qnt). The host supplies the registered providers in priority and registration order.
+Model invocation retains the ordered registration list and complete
+request identity. The host supplies the registered providers in priority
+and registration order. [Diagnostic writes](./modelDiagnostics.md) drain
+before storage closes.
 
 ## Story: Dispatch a complete admitted request
 
-As a caller I receive a result from the selected capability with original provider evidence.
+> As a caller, I want a model result from the capability that was
+> selected, with the provider's original evidence, so I know what
+> answered.
+
+As a caller I receive a result from the selected capability with original
+provider evidence.
 
 ### Admission checks the complete request without changing its source bytes
 
@@ -41,7 +49,7 @@ pure def sometimesOverflowRejectedBeforeProvider(s: Dispatch): bool = s.phase ==
 
 Funding, policy, request errors, speech and cancellation terminate dispatch. Exhausted provider identities remove all of that provider's remaining registrations.
 
-Discovered by the proof. Configuration has no prior attempts. Every active
+Configuration has no prior attempts. Every active
 registration has a distinct identity and has yet to be attempted. This makes
 the replacement provider chain disjoint from the attempt history.
 
@@ -96,7 +104,7 @@ pure def sometimesProviderAbortEndsChain(s: Dispatch): bool = s.providerAborted 
 
 The cancellation observer eventually runs after an authoritative same-turn or provider abort.
 
-Discovered by simulation: dispatch checks the signal before its policy and
+Dispatch checks the signal before its policy and
 request admission checks. A configured request with an observed abort settles
 as cancelled even if admission would otherwise reject it.
 

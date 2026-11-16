@@ -1,56 +1,73 @@
 # Product composition
 
-A consumer composes its product on one device profile the os package
-admits: a physical phone kept on its stock factory vendor partition, or a
-virtual Cuttlefish target. The [source lock](./sourceLock.md) pins the
-source the profile builds from, the [launcher staging](./launcher.md)
-places the consumer's home app, and the
-[image capabilities](./capabilities.md) declare what the image stages.
-Composition is staging output: only a boot of the built image shows that
-the device honors it.
+A consumer composes its product from a descriptor it supplies over one
+device profile the os package admits: a physical phone kept on its stock
+factory vendor partition, or a virtual Cuttlefish target. The os package
+names no product. The [source lock](./sourceLock.md) verifies the source
+the profile builds from, the [launcher staging](./launcher.md) places the
+consumer's home app, and the [image capabilities](./capabilities.md)
+declare what the image stages. Composition is staging output: only a boot
+of the built image shows that the device honors it.
 
 ## Story: Compose a product on a supported device profile
 
-> As a consumer, I want to compose my product on a device profile the os
-> package supports, so that the image keeps the system clock and secure
-> camera every device needs and my launcher never shows over the lock
-> screen when I say it must not.
+> As a consumer, I want to build my branded Android image by handing the
+> os package a descriptor of my product, so that it serves any product
+> without knowing mine, every image keeps the system clock and secure
+> camera, and nothing unreviewed or half-configured reaches production.
 
-### A product names one admitted device profile and the source profile pinned for it
+### A product names one admitted device profile, the source profile pinned for it, and a verified source lock
 
-A physical profile builds from its pinned source profile, and its
-platform must declare the same board API level as the stock vendor; a
-virtual target builds from its own source profile. A profile the os
-package does not admit, or a source profile other than the one pinned for
-the device, refuses composition.
+The descriptor names the consumer's vendor directory, product name,
+launcher package, wake listener package, whether the system updater is
+included, whether lock-screen surfaces are refused, and the device and
+source profiles it builds on. The os package supplies the device profiles
+and the source profile pinned for each; the source profile of a physical
+device pins its factory archive and vendor board API level, so its lock
+verdict covers them. A profile the os package does not admit, a source
+profile other than the one pinned for the device, or a source lock that
+has not matched refuses composition.
 
 ```quint
+import sourceLock as Lock from "./sourceLock"
 type DeviceKind = PhysicalDevice | VirtualDevice | UnknownDevice
+type DeviceProfile = { name: str, kind: DeviceKind, pinnedSource: str }
+type ProductDescriptor = {
+  vendorDirectory: str, productName: str, launcherPackage: str, listenerPackage: str,
+  systemUpdater: bool, refuseLockScreen: bool, deviceProfile: str, sourceProfile: str
+}
 type Composition = {
-  kind: DeviceKind, sourceProfileMatches: bool, vendorApiMatches: bool,
-  refuseLockScreen: bool, launcherOverKeyguard: bool, launcherHandlesSecureCapture: bool,
-  clockIncluded: bool, secureCameraVerified: bool
+  descriptor: ProductDescriptor, profile: DeviceProfile, lock: Lock::LockVerdict,
+  launcherOverKeyguard: bool, launcherHandlesSecureCapture: bool, clockIncluded: bool, secureCameraVerified: bool
 }
-type CompositionDecision = Composed | UnknownProfile | SourceProfileMismatch | VendorApiMismatch | LockScreenSurface | MissingClock | MissingSecureCamera
+type CompositionDecision = Composed | UnknownProfile | SourceProfileMismatch | SourceUnverified | LockScreenSurface | MissingClock | MissingSecureCamera
 pure def profileDecision(c: Composition): CompositionDecision =
-  if (c.kind == UnknownDevice) UnknownProfile
-  else if (not(c.sourceProfileMatches)) SourceProfileMismatch
-  else if (c.kind == PhysicalDevice and not(c.vendorApiMatches)) VendorApiMismatch
+  if (c.profile.kind == UnknownDevice or c.descriptor.deviceProfile != c.profile.name) UnknownProfile
+  else if (c.descriptor.sourceProfile == "" or c.descriptor.sourceProfile != c.profile.pinnedSource) SourceProfileMismatch
+  else if (c.lock != Lock::LockMatched) SourceUnverified
   else Composed
-pure val composedPhone: Composition = {
-  kind: PhysicalDevice, sourceProfileMatches: true, vendorApiMatches: true,
-  refuseLockScreen: true, launcherOverKeyguard: false, launcherHandlesSecureCapture: false,
-  clockIncluded: true, secureCameraVerified: true
+pure val exampleDescriptor: ProductDescriptor = {
+  vendorDirectory: "vendor/acme", productName: "acme_phone", launcherPackage: "com.acme.home",
+  listenerPackage: "com.acme.listener", systemUpdater: false, refuseLockScreen: true, deviceProfile: "phone", sourceProfile: "phone-source"
 }
-pure val cValues = Set(composedPhone, { ...composedPhone, kind: VirtualDevice, vendorApiMatches: false },
-  { ...composedPhone, kind: UnknownDevice }, { ...composedPhone, sourceProfileMatches: false },
-  { ...composedPhone, vendorApiMatches: false }, { ...composedPhone, launcherOverKeyguard: true },
-  { ...composedPhone, refuseLockScreen: false, launcherOverKeyguard: true }, { ...composedPhone, clockIncluded: false },
+pure val phoneProfile: DeviceProfile = { name: "phone", kind: PhysicalDevice, pinnedSource: "phone-source" }
+pure val composedPhone: Composition = {
+  descriptor: exampleDescriptor, profile: phoneProfile, lock: Lock::LockMatched,
+  launcherOverKeyguard: false, launcherHandlesSecureCapture: false, clockIncluded: true, secureCameraVerified: true
+}
+pure val cValues = Set(composedPhone,
+  { ...composedPhone, profile: { name: "phone", kind: VirtualDevice, pinnedSource: "phone-source" } },
+  { ...composedPhone, profile: { ...phoneProfile, kind: UnknownDevice } },
+  { ...composedPhone, descriptor: { ...exampleDescriptor, deviceProfile: "other" } },
+  { ...composedPhone, descriptor: { ...exampleDescriptor, sourceProfile: "" } },
+  { ...composedPhone, lock: Lock::LockMismatched },
+  { ...composedPhone, descriptor: { ...exampleDescriptor, productName: "UNSET" } },
+  { ...composedPhone, launcherOverKeyguard: true },
+  { ...composedPhone, descriptor: { ...exampleDescriptor, refuseLockScreen: false }, launcherOverKeyguard: true },
+  { ...composedPhone, clockIncluded: false },
   { ...composedPhone, secureCameraVerified: false })
-pure def lawPhysicalProfileKeepsTheVendorApi(c: Composition): bool =
-  (profileDecision(c) == Composed and c.kind == PhysicalDevice) implies c.sourceProfileMatches and c.vendorApiMatches
-pure def lawUnknownProfileNeverComposes(c: Composition): bool =
-  c.kind == UnknownDevice implies profileDecision(c) == UnknownProfile
+pure def lawUnadmittedProfileNeverComposes(c: Composition): bool =
+  (c.profile.kind == UnknownDevice or c.descriptor.deviceProfile != c.profile.name) implies profileDecision(c) == UnknownProfile
 ```
 
 ### A launcher shows nothing over the lock screen when the descriptor refuses lock-screen surfaces
@@ -64,9 +81,7 @@ refusal off.
 
 ```quint
 pure def lockScreenAdmitted(c: Composition): bool =
-  not(c.refuseLockScreen) or not(c.launcherOverKeyguard or c.launcherHandlesSecureCapture)
-pure def lawRefusedLockScreenKeepsLauncherOff(c: Composition): bool =
-  (c.refuseLockScreen and lockScreenAdmitted(c)) implies not(c.launcherOverKeyguard) and not(c.launcherHandlesSecureCapture)
+  not(c.descriptor.refuseLockScreen) or not(c.launcherOverKeyguard or c.launcherHandlesSecureCapture)
 ```
 
 ### The system clock and the verified secure camera are present before composition
@@ -86,8 +101,41 @@ pure def composition(c: Composition): CompositionDecision =
   else Composed
 pure def requireClock(clockLines: int): int = if (clockLines >= 1) clockLines else 1
 pure val clockLinesValues = Set(0, 1, 2)
-pure def lawComposedImageKeepsClockAndCamera(c: Composition): bool =
-  composition(c) == Composed implies c.clockIncluded and c.secureCameraVerified and lockScreenAdmitted(c)
 pure def lawClockRequirementIsIdempotent(clockLines: int): bool =
   requireClock(clockLines) >= 1 and requireClock(requireClock(clockLines)) == requireClock(clockLines)
+```
+
+### Production staging refuses an unset or placeholder identity field
+
+An empty value or the literal placeholder `UNSET` in any identity field of
+the descriptor refuses production staging. A development build may stage
+a descriptor with placeholders; a production one never does.
+
+```quint
+pure def placeholder(value: str): bool = value == "" or value == "UNSET"
+pure def identityComplete(d: ProductDescriptor): bool =
+  not(placeholder(d.vendorDirectory)) and not(placeholder(d.productName)) and not(placeholder(d.launcherPackage)) and
+  not(placeholder(d.listenerPackage)) and not(placeholder(d.deviceProfile)) and not(placeholder(d.sourceProfile))
+pure def productionStagingAdmitted(c: Composition): bool = identityComplete(c.descriptor) and composition(c) == Composed
+pure def lawPlaceholderNeverReachesProduction(c: Composition): bool =
+  placeholder(c.descriptor.productName) implies not(productionStagingAdmitted(c))
+```
+
+### Every staged artifact is bound to the descriptor digest
+
+Each artifact staged for a product records the digest of the descriptor
+it was staged from. A staging set mixing artifacts of two descriptors, or
+holding one with no descriptor digest, is refused.
+
+```quint
+type StagedArtifact = { path: str, descriptorDigest: str }
+pure def stagedForDescriptor(digest: str, artifacts: List[StagedArtifact]): bool =
+  digest != "" and artifacts.every(a => a.descriptorDigest == digest)
+pure val artifactsValues = Set(List(), List({ path: "launcher", descriptorDigest: "d1" }),
+  List({ path: "launcher", descriptorDigest: "d1" }, { path: "listener", descriptorDigest: "d2" }),
+  List({ path: "updater", descriptorDigest: "" }))
+pure val digestValues = Set("", "d1", "d2")
+pure def lawMixedOrUnboundArtifactsAreRefused(digest: str, artifacts: List[StagedArtifact]): bool =
+  (digest == "" or artifacts.some(a => a.descriptorDigest != digest or a.descriptorDigest == "")) implies
+    not(stagedForDescriptor(digest, artifacts))
 ```

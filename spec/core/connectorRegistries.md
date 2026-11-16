@@ -4,6 +4,10 @@
 
 ## Story: Register targets and stable capability profiles
 
+> As a plugin author, I want registering a target source or capability
+> profile to be predictable, so that a later registration never silently
+> replaces the one consumers already rely on.
+
 ### Target sources replace in place and profile collisions preserve the incumbent
 
 Target source registration uses exact platform strings, without implicit trimming or case folding. Replacing a key preserves its insertion position; deleting and re-registering appends it. Stop clears all target sources but does not disable subsequent registration. Profile registration canonicalizes and fingerprints before mutation, returns a fresh clone, accepts identical replay, and rejects a changed body under an existing ID. Canonical profile schema and stable serialization are explicit boundary contracts in the pinned source.

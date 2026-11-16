@@ -2,10 +2,8 @@
 
 When the browser hands the person a credential through the clipboard, it
 takes a lease: it writes the secret with one clipboard backend and erases it
-when the lease ends. Ported from the browser package's clipboard lease
-binding model (`credential-clipboard.ts`). The two backends stand for the
-command and environment pairs a host may select, such as a different
-display or executable path.
+when the lease ends. A backend is the command and environment pair a host
+selects, such as a different display or executable path.
 
 ## Story: A copied credential is erased by the command that wrote it
 

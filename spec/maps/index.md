@@ -10,4 +10,4 @@ data comes from the Cloud's [maps](../cloud/maps.md) service.
 | --- | --- |
 | Planning and guidance | [Planning and navigation](./navigation.md), [guidance speech](./guidanceVoice.md), [guidance recovery](./guidanceRecovery.md), [screen-off guidance](./navigationService.md) |
 | Provider | [Cloud Maps connection](./cloudConnection.md), [request pause](./requests.md), [attribution](./attribution.md) |
-| What the agent sees | [Observation and camera](./observation.md) |
+| What the agent sees | [Observation and locate](./observation.md) |

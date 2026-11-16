@@ -6,12 +6,10 @@ explicit source, and binds every billing read to the credential that made
 it. Promotional grants carry a stamp that is honored only while the primary
 grant policy still authorizes it, and each plan bounds request rate with
 paired token buckets. The entitlement audience is the deployment's
-configuration ([deployment profile](./deployment.md)). The rule that an
-answer belongs to the account that asked is stated for every account
-service in [account authority](../auth/accountAuthority.md); the billing
-read below is its application to billing. Ported from the develop SDK
-`subscription-entitlement` and `cloud-account-billing` decisions and the
-models `GrantPolicyStampAdmission` and `plan_request_buckets`.
+configuration ([deployment profile](./deployment.md)). A billing answer
+belongs to the account that asked, as
+[account authority](../auth/accountAuthority.md) checks for billing: it
+refuses a session for a different user or organization.
 
 ## Story: Read my plan without substituting a different account or source
 
@@ -24,11 +22,10 @@ models `GrantPolicyStampAdmission` and `plan_request_buckets`.
 The token verifier admits supported ES256 tokens of the entitlement type
 without an unrecognized critical extension. The issuer must match and the
 audience must equal the deployment's configured entitlement audience.
-Subject and organization IDs compare ignoring UUID letter case. Canonical
-values represent that comparison. Validity cannot exceed one hour. The
+Subject and organization IDs compare ignoring UUID letter case. Validity
+cannot exceed one hour. The
 issued and not-before checks allow up to one minute of clock skew. Expiry
-is strict. Signature, JWKS selection and shape validation are boundary
-evidence supplied by the verifier.
+is strict.
 
 ```quint
 type TokenEvidence = { supportedHeader: bool, issuerMatches: bool, audience: str, subjectMatches: bool, organizationMatches: bool, validSignature: bool, validClaims: bool, issuedAt: int, notBefore: int, expiresAt: int }
@@ -86,7 +83,6 @@ re-reads the identity after transport and discards a changed or expired
 account. When a method asks for the exact binding, the current binding
 must match too. A cancelled operation reports cancellation. The host
 never projects a failed HTTP response as a successful billing snapshot.
-These decisions are parameterized by post-transport evidence.
 
 ```quint
 type BillingCredential = { id: str, bindingKey: str, hasExpiry: bool, expiresAt: int }

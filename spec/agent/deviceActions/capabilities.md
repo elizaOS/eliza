@@ -1,14 +1,13 @@
 # Device capability vocabulary and negotiation
 
 A device advertises what it can do as capability names from one closed,
-versioned vocabulary, defined with the device action contracts in
-`plugins/plugin-assistant/src/services/device-actions/` and the
+versioned vocabulary, shared with the
 [device review contracts](../../contracts/deviceReviews.md). A name ends in
 its version, and a newer operation never runs on an older capability (the
-[clock](./clock.md) and [reminder](./reminderJournal.md) routing is one
-example). Each request carries the capability header the enrolled device
-negotiated; the [approval queue](./index.md) owns the proposal itself, and
-neither the transport nor the header grants review or proves an effect.
+[clock and reminder](./clock.md) routing is one example). Each request
+carries the capability header the enrolled device negotiated; the
+[approval queue](./index.md) owns the proposal itself, and neither the
+transport nor the header grants review or proves an effect.
 
 ## Story: Offer the agent only what my device advertised
 

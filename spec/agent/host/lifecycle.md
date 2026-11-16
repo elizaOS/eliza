@@ -3,12 +3,8 @@
 The host's lifecycle routes start, restart, pause, resume, stop and reset
 the one live runtime. A restart keeps serving the old runtime while the
 replacement builds; only when the replacement is ready does the host close
-admission, wait for the turns already admitted and publish the
-replacement. A stop is refused while a boot is in progress. The research
-baseline is `packages/agent/src/api/{agent-lifecycle-routes,agent-admin-routes,runtime-replacement-ownership}.ts`,
-`runtime/eliza.ts` and the `api-lifecycle` and `runtime-lifecycle` models
-(`api_runtime_replacement`, `runtime_restore_replacement` and
-`runtime_adapter_retirement`). Booting one runtime is in
+admission, wait for the turns already admitted and publish the replacement.
+A stop is refused while a boot is in progress. Booting one runtime is in
 [boot and teardown](./boot.md).
 
 ## Story: Restart without dropping the conversation

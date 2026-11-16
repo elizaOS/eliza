@@ -8,10 +8,6 @@ host may arrive after the host was replaced or the view torn down, and only
 the current one may change what the user sees. Disconnecting, capability
 routing, stream completion and warmup are stated as laws.
 
-Develop sources: the plugin-elizacloud `CloudAuthClear`, `CloudCapabilities`,
-`CloudStreamCompletion` and `CloudWarmup` models, and the ui
-`CloudSessionProjection` model (with both of its fences).
-
 ## Story: See my cloud session as it is now
 
 > As a device owner, I want the app to show whether I am signed in to the
@@ -125,21 +121,18 @@ pure def disconnectReply(saveSucceeded: bool): DisconnectReply = if (saveSucceed
 pure def lawSuccessMeansSaved(saveSucceeded: bool): bool = disconnectReply(saveSucceeded) == DisconnectSucceeded implies saveSucceeded
 ```
 
-### A stream completes only with text and no error, and is never resent
+### A stream completes only with text and no error
 
 A completion stream completes only when it delivered text and ended
 without an error. An empty stream or an error, with or without a message,
-fails; partial text already shown stays shown; and a failed stream is never
-sent again as a fallback request.
+fails, and partial text already shown stays shown.
 
 ```quint
 type StreamResult = StreamCompleted | StreamFailed
 type CompletionStream = { deliveredText: bool, endedInError: bool }
 pure def streamResult(completionStream: CompletionStream): StreamResult = if (completionStream.deliveredText and not(completionStream.endedInError)) StreamCompleted else StreamFailed
-pure def fallbackRequests(completionStream: CompletionStream): int = 0
 pure def lawErrorNeverCompletes(completionStream: CompletionStream): bool = completionStream.endedInError implies streamResult(completionStream) == StreamFailed
 pure def lawEmptyStreamNeverCompletes(completionStream: CompletionStream): bool = not(completionStream.deliveredText) implies streamResult(completionStream) == StreamFailed
-pure def lawFailedStreamIsNotResent(completionStream: CompletionStream): bool = fallbackRequests(completionStream) == 0
 pure val completionStreamValues = Set({ deliveredText: false, endedInError: false }, { deliveredText: true, endedInError: false }, { deliveredText: true, endedInError: true }, { deliveredText: false, endedInError: true })
 ```
 

@@ -1,18 +1,18 @@
 # Browser document and private-session custody
 
-A consumer's renderer browser adapter imports Eliza's
-`BrowserTabSession`, `BrowserPageBinding`, `BrowserTabState`, session
-persistence and reading contracts from
-`plugins/plugin-native-browser-surface/src/{tab-host,browsing-session,page-reading}.ts`.
-The [native browser handoff](./externalLinks.md) owns native tap and popup
-link transport authority. This model covers a registered renderer tab and
-its committed document. Set membership, scroll/focus behavior, tab limits,
-URL normalization and storage publication are additional adapter duties.
+The consumer's renderer browser adapter registers each tab with the
+native host and binds its committed document. This spec covers one
+registered tab: who owns it, which document it shows, whether it is
+private, and when that document may be read or saved.
+[Page requests](./surface/pageRequests.md) owns native link handoff,
+[page reading](./reading.md) what is read, and [storage](./storage.md)
+what is saved.
 
 ## Story: Read the page I chose without retaining a stale or private document
 
-> As the person, I want to read the page I chose without retaining a
-> stale or private document.
+> As the person, I want only the document I am looking at read, and
+> nothing from a private tab saved, so that a stale page never answers
+> for the current one and private browsing leaves no trace.
 
 ### Only a later event from this live tab can replace its displayed document
 
@@ -24,8 +24,7 @@ regress the native event sequence. A new navigation clears commit and
 advances the renderer revision before the native result arrives. A
 nonempty changed URL or transition into loading also advances revision.
 Only a settled internal success with a URL and native navigation number
-can be bound for reading. The caller supplies live tab/session identity
-after validation. Tab capacity has the configured bound, eight by default.
+can be bound for reading.
 
 ```quint
 type BrowserTab = { session: int, tab: int, creating: bool, owned: bool, retired: bool, privacy: bool, seqNum: int, revision: int, navId: int, url: str, secureScheme: bool, loading: bool, error: bool, committed: bool, external: bool }
@@ -69,25 +68,21 @@ pure val observationValues = Set(
 
 ### A tab can reserve identity only in an established session
 
-Discovered by the proof: a fabricated empty record with an invalid
-session could otherwise reserve a tab. The session constructor supplies a
-valid identity before any operation. Tab failures and disposal retain it.
+Discovered by the proof: without it, a record with no session could
+reserve a tab. A session has its identity before any operation, and tab
+failures and disposal keep it.
 
 ```quint
 pure def alwaysSessionIsEstablished(s: BrowserTab): bool = s.session > 0
 ```
 
-### Reading and persistence have distinct admission rules
+### A captured page is current only for the selected foreground tab, its navigation and its revision
 
-A captured page remains current only for the selected tab, settled
-canonical URL, native navigation and renderer revision. Reading requires
-HTTPS when configured and a nonsensitive view and content policy. Turning
-away, loading a new page, retirement or owner change fences publication.
-Only a known nonprivate tab with a permitted URL can contribute a saved
-URL or history entry. Restoring normal tabs cannot expose private tabs.
-The pinned browser answer uses an explicit bounded excerpt; full selected
-source restoration is a distinct path. Its replacement must preserve
-complete authorized source bytes and report hard limits explicitly.
+A captured page stays current only for the selected foreground tab, the
+settled URL, the native navigation and the renderer revision it was
+captured at, on HTTPS when the consumer requires it, and a view the
+sensitive classifier passes. Turning
+away, loading a new page, retirement or an owner change fences it.
 
 ```quint
 pure def boundPage(s: BrowserTab, requireHttps: bool): bool =
@@ -95,11 +90,23 @@ pure def boundPage(s: BrowserTab, requireHttps: bool): bool =
 pure def isCurrentPage(s: BrowserTab, page: PageIdentity, selected: int, foreground: bool, nonsensitive: bool): bool =
   boundPage(s, true) and foreground and nonsensitive and selected == s.tab and page.sessionId == s.session and page.tabId == s.tab and
   page.navId == s.navId and page.url == s.url and page.revision == s.revision
-pure def mayPersist(s: BrowserTab, validSavedUrl: bool): bool = boundPage(s, false) and not(s.privacy) and validSavedUrl
-pure def lawPrivateTabCannotPersist(s: BrowserTab, validSavedUrl: bool): bool = s.privacy implies not(mayPersist(s, validSavedUrl))
 pure def lawChangedDocumentCannotPublish(s: BrowserTab, page: PageIdentity, selected: int, foreground: bool, nonsensitive: bool): bool =
   page.revision != s.revision or page.navId != s.navId or page.tabId != s.tab implies not(isCurrentPage(s, page, selected, foreground, nonsensitive))
 pure val pageValues = Set({ sessionId: 1, tabId: 1, navId: 1, url: "https://example.test", revision: 1 }, { sessionId: 2, tabId: 1, navId: 1, url: "https://example.test", revision: 1 })
 pure def sometimesCanRead(s: BrowserTab): bool = boundPage(s, true)
-pure def sometimesPrivatePageCannotPersist(s: BrowserTab): bool = s.privacy and boundPage(s, true) and not(mayPersist(s, true))
+```
+
+### Only a bound nonprivate tab whose address the storage codec admits contributes to the saved session
+
+A tab contributes a saved URL or history entry only while its document is
+bound, it is not private, and its address passes the storage codec's
+saved-address check. Restoring normal tabs therefore never exposes a
+private one.
+
+```quint
+import storage as St from "./storage"
+pure def mayPersist(s: BrowserTab, address: St::WebAddress): bool = boundPage(s, false) and not(s.privacy) and St::savedAddress(address)
+pure def lawPrivateTabCannotPersist(s: BrowserTab, address: St::WebAddress): bool = s.privacy implies not(mayPersist(s, address))
+pure val addressValues = Set(St::publicAddress, { ...St::publicAddress, userInfo: true })
+pure def sometimesPrivatePageCannotPersist(s: BrowserTab): bool = s.privacy and boundPage(s, true) and not(mayPersist(s, St::publicAddress))
 ```

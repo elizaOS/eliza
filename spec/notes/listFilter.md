@@ -3,8 +3,7 @@
 The agent can propose a filter for the owner's canonical Notes list. A
 filter only changes what the list shows: it never moves, edits or
 deletes a note. It applies only to the exact list the owner reviewed it
-on, and only when the agent advertised the capability. Previous Notes,
-the editor, Trash and private views are never filtered this way. The
+on, and only when the agent advertised the capability. The editor, Trash and private views are never filtered this way. The
 proposal travels as a [device action](../agent/deviceActions/capabilities.md).
 
 ## Story: Let the agent narrow my Notes list only after I review it
@@ -20,7 +19,7 @@ and the filter is valid. A filter that would choose a folder or change
 a note is not valid. Anything else ends the proposal without a review.
 
 ```quint
-type NotesScope = CanonicalList | PreviousNotes | EditorOrTrash | PrivateView
+type NotesScope = CanonicalList | EditorOrTrash | PrivateView
 type FilterPhase = FilterProposed | FilterReviewed | FilterEnded
 type ListFilter = { phase: FilterPhase, started: bool, scope: NotesScope, epoch: int, reviewedEpoch: int, currentOwner: bool,
   capable: bool, validFilter: bool, proposalAdmitted: bool, applied: bool }

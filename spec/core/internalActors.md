@@ -1,8 +1,14 @@
 # Runtime-managed internal actor references
 
-The source is `packages/core/src/security/trusted-delivery-audience.ts` at the pinned baseline. Each runtime/actor registration returns an idempotent disposer. Overlapping trigger deliveries retain independent ownership, and another runtime cannot borrow their trust.
+Each runtime and actor registration returns an idempotent disposer.
+Overlapping trigger deliveries retain independent ownership, and another
+runtime cannot borrow their trust.
 
 ## Story: Keep an internal actor registered while any owner still uses it
+
+> As a runtime, I want each owner of an internal actor to release only its
+> own registration, so overlapping deliveries keep their trust until the
+> last owner is done.
 
 ### Each disposer removes only its own registration
 

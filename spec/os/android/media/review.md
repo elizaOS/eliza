@@ -1,32 +1,23 @@
 # Android permitted Photos mutation review
 
-A consumer installs Eliza's `PhotosPlugin` and `DeviceLibraryPlugin`
-through its photos plugins. Its camera adapter calls the single-item
-flag, batch and selected permanent-delete methods. Its photo-library
-adapter confirms agent-proposed changes via the shared
-`DeviceLibraryPlugin.requestChange` method. These bridges share the
+A consumer installs Eliza's `PhotosPlugin` and `DeviceLibraryPlugin` when its
+media descriptor grants photo writes. Its camera adapter calls the
+single-item flag, batch and selected permanent-delete methods, and its
+photo-library adapter confirms agent-proposed changes through
+`DeviceLibraryPlugin.requestChange`. These bridges share the
 `PermittedMediaReview` launcher and `PermittedMediaCatalog` in
 `plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media`.
-A consumer on the read-only `PermittedPhotosPlugin` has none of this.
-This ports the producer's `NativePhotosReviewSelection` model.
-[Media permissions](./permissionEpochs.md) govern catalog reads.
-[Photos view receipts](../../../agent/deviceActions/photos.md) govern the renderer's
-review handoff. [Owned trash](./trash.md) governs a
-separate direct-write path. [Photo replacement](./photoReplace.md)
-owns the continuation after a write grant for one edited still image.
-
-Eliza's `test/native-host/permitted-catalog.node.mjs` transplants the
-pinned deletion and review method bodies into controlled JVM provider,
-launcher and Activity lifecycle fixtures. The Photos fixture checks
-the immutable selected list, two approvals waiting for resume, expiry,
-decline, destruction, partial row results, and one dispatch per
-accepted request. The source fixture does not deliver Android's
-permission grant or run MediaStore.
+[Media permissions](./permissionEpochs.md) govern catalog reads,
+[Photos view receipts](../../../agent/deviceActions/photos.md) the review
+handoff, and [owned trash](./trash.md) the separate direct-write path.
+[Photo replacement](./photoReplace.md) owns the continuation after a write
+grant for one edited still image.
 
 ## Story: Review the exact permitted media before asking Android to authorize a change
 
-> As the person, I want to review the exact permitted media before
-> asking Android to authorize a change.
+> As the person, I want to see exactly which photos a change will touch
+> before Android asks me to allow it, so that I never approve more than I
+> reviewed.
 
 ### The launcher captures one valid selection and local confirmation precedes the Android grant
 
@@ -39,14 +30,12 @@ explicit native editor Replace request is limited to one untrashed
 still image. No permitted-library entry point takes an empty
 selection as authority to delete the whole trash.
 
-The native Photos renderer uses the 500-row limit when every
-selected key is permitted. Every other selection uses 20-row chunks
-in original order. The chunker does not partition by key kind.
-If a mixed chunk reaches `PhotosPlugin`, the presence of an `m:`
-ID selects the permitted reviewer for the whole input. Owned
-numeric keys then fail the typed catalog lookup. A permitted key
-can denote an app-owned item as seen through the permitted catalog.
-It is the key form, not the item's owner flag, that selects this route.
+A selection of only permitted keys uses the 500-row limit. A mixed
+selection is first partitioned by key kind: permitted `m:` keys go to this
+reviewer and owned numeric keys to [owned trash](./trash.md), each part in
+20-row chunks in original order, so no chunk mixes kinds. A permitted key
+can denote an app-owned item; the key form, not the owner flag, selects
+the route.
 
 The native port parses the typed key, verifies the volume and reads the
 published row under current authority. The mutation revision includes
@@ -107,6 +96,12 @@ pure def lawPermittedEraseNamesPublishedTrashedItems(input: MediaReviewInput, ro
   validMediaReview(input) and input.operation == MediaErase and input.rows.includes(row) implies
     input.route == NativePhotoBatch and input.rows.length() <= 20 and row.typedKey and row.readable and
       row.revisionCurrent and row.trashed
+pure def permittedPart(rows: List[ReviewedMedia]): List[ReviewedMedia] = rows.select(row => row.typedKey)
+pure def ownedPart(rows: List[ReviewedMedia]): List[ReviewedMedia] = rows.select(row => not(row.typedKey))
+pure def lawPartitionSendsEachRowToOneRoute(rows: List[ReviewedMedia]): bool =
+  permittedPart(rows).length() + ownedPart(rows).length() == rows.length() and
+    permittedPart(rows).every(row => row.typedKey) and ownedPart(rows).every(row => not(row.typedKey))
+pure val rowsValues = Set(List(), List(gardenPhoto), List(gardenPhoto, { ...porchPhoto, typedKey: false }))
 pure def lawAgentMediaReviewOnlyAdmitsItsThreeActions(input: MediaReviewInput): bool =
   validMediaReview(input) and input.route == AgentPhotoBatch implies
     favoriteReview(input.operation) or input.operation == MediaTrash

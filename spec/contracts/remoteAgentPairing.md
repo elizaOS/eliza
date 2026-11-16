@@ -22,7 +22,17 @@ case.
 > connect only to the origin and agent process the link names, and never
 > to receive a credential through the link.
 
-### A pairing origin is a bare HTTPS origin
+### A link is read only when it is exactly the canonical link
+
+The link is at most 2048 characters, has the client's scheme, host
+`remote` and path `/agent-pair`, nothing else on the outer URL (no user
+name, port or fragment), version 1, and each of the four fields exactly
+once with no other field, so a bearer token or a repeated field makes it
+unreadable. Its origin is a bare HTTPS origin: no user name, path, query or
+fragment. Anything else is not a pairing link. A readable link is not
+trust: before it pairs, the phone applies its own trust decision to the
+origin and checks that the agent's public status names the same process
+instance as the link.
 
 ```quint
 type PairingOriginInput = { https: bool, originUserInfo: bool, originQuery: bool, originFragment: bool, pathless: bool }
@@ -32,16 +42,6 @@ pure val bareOrigin: PairingOriginInput = { https: true, originUserInfo: false, 
 pure val originValues: Set[PairingOriginInput] = List(
   bareOrigin, { ...bareOrigin, https: false }, { ...bareOrigin, originUserInfo: true }, { ...bareOrigin, pathless: false }, { ...bareOrigin, originQuery: true }
 ).foldl(Set(), (acc, o) => acc.union(Set(o)))
-```
-
-### A link is read only when it is exactly the canonical link
-
-The link is at most 2048 characters, has the client's scheme, host
-`remote` and path `/agent-pair`, nothing else on the outer URL (no user
-name, port or fragment), version 1, and each of the four fields exactly
-once with no other field. Anything else is not a pairing link.
-
-```quint
 pure val pairingMaxLength = 2048
 pure val pairingVersion = 1
 type PairingFields = { versionCount: int, urlCount: int, codeCount: int, instanceCount: int, otherCount: int }
@@ -62,25 +62,12 @@ pure val linkValues: Set[PairingLink] = List(
   { ...canonicalLink, linkLength: 2049 },
   { ...canonicalLink, codeValid: false }
 ).foldl(Set(), (acc, l) => acc.union(Set(l)))
-```
-
-### A link never carries a token or any other extra field
-
-A bearer token, or any field beyond the four, makes the link unreadable,
-as does any field given twice.
-
-```quint
+pure def pairingAllowed(link: PairingLink, originTrusted: bool, statusInstanceMatches: bool): bool =
+  pairingLinkAccepted(link) and originTrusted and statusInstanceMatches
 pure def lawExtraFieldIsRefused(link: PairingLink): bool =
   link.fields.otherCount > 0 implies not(pairingLinkAccepted(link))
 pure def lawRepeatedFieldIsRefused(link: PairingLink): bool =
   (link.fields.versionCount > 1 or link.fields.urlCount > 1 or link.fields.codeCount > 1 or link.fields.instanceCount > 1) implies not(pairingLinkAccepted(link))
-```
-
-### The phone connects only to an HTTPS origin
-
-```quint
-pure def lawOnlyHttpsOriginsPair(link: PairingLink): bool =
-  pairingLinkAccepted(link) implies link.origin.https
 ```
 
 ### A built link reads back as the same origin, code and instance
@@ -96,17 +83,4 @@ pure val linkLengthValues = Set(0, 160, 2048, 2049)
 pure def lawBuiltLinkReadsBack(origin: PairingOriginInput, codeValid: bool, instanceValid: bool, linkLength: int): bool =
   (pairingLinkBuildable(origin, codeValid, instanceValid) and linkLength > 0 and linkLength <= pairingMaxLength) implies
     pairingLinkAccepted(buildPairingLink(origin, codeValid, instanceValid, linkLength))
-```
-
-### Pairing starts only with a trusted origin and the same agent process
-
-A readable link is not trust. Before it pairs, the phone applies its own
-trust decision to the origin and checks that the agent's public status
-names the same process instance as the link.
-
-```quint
-pure def pairingAllowed(link: PairingLink, originTrusted: bool, statusInstanceMatches: bool): bool =
-  pairingLinkAccepted(link) and originTrusted and statusInstanceMatches
-pure def lawPairingNeedsTrustAndTheSameProcess(link: PairingLink, originTrusted: bool, statusInstanceMatches: bool): bool =
-  pairingAllowed(link, originTrusted, statusInstanceMatches) implies (originTrusted and statusInstanceMatches)
 ```

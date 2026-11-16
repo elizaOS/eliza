@@ -3,10 +3,8 @@
 The agent drives a browser it does not host: the browser surface mounted in
 the device's app, and a browser on a device the owner paired with a hosted
 agent. Both run a command only against the tab and grant it was bound to,
-and neither turns an unverified outcome into success. The browser package's
-`native-client-command.ts` parses history commands for a mounted surface;
-`remote-control/browser-controller.ts` dispatches commands to a paired
-device through Cloud. [Request grounding](./requestGrounding.md) decides
+and neither turns an unverified outcome into success; a paired device is
+reached through Cloud. [Request grounding](./requestGrounding.md) decides
 which destination a message may open; [arbitration](./arbitration.md)
 decides which local browser peer receives a task operation.
 

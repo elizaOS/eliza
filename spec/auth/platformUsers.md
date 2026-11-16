@@ -8,10 +8,8 @@ after, and a deactivation whose answer was lost is reconciled before it is
 tried again. A sign-in subject (a Google account, a phone) that belongs to
 one user is never linked to another because an email address matches.
 
-New in v4, from develop cloud `lib/services/*-platform-users.ts` and
-`*-user-migration.ts` and the identity deactivation phases of the cloud
-account-deletion models. [Cloud accounts](../cloud/accounts.md) imports this
-machine for the deletion order of a closed account.
+[Cloud accounts](../cloud/accounts.md) imports this machine for the deletion
+order of a closed account.
 
 ## Story: The cloud provisions, deactivates, reactivates and deletes the identity behind a cloud user
 

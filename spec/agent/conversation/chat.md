@@ -1,10 +1,7 @@
 # Chat prompts and idempotent replies
 
-The agent's chat routes (`packages/agent/src/api/conversation-routes.ts`,
-`packages/agent/src/api/server.ts`) send a prompt to one conversation and
-stream one reply for it. The chat idempotency service
-(`packages/agent/src/services/chat-idempotency-service.ts`) makes a repeated
-request with the same key share the first request's reply. Conversation
+The agent's chat routes send a prompt to one conversation and stream one
+reply for it, and the chat idempotency service makes a repeated request with the same key share the first request's reply. Conversation
 records and their mutation queue are in [conversations](./conversations.md);
 turn cancellation is in [turns](./turns.md); the stream frames are in
 [events](./events.md). A device host reaches these routes through the

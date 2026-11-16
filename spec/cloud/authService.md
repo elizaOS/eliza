@@ -7,9 +7,7 @@ attests the client's address; the service trusts an attested address only
 when the attestation verifies, and limits sign-in attempts with an atomic
 sliding window. There is no second login service and no other mount path.
 Sessions, challenges, tenants and accounts are specified in the auth
-package; this spec covers the hosted deployment around them. Derived from
-the develop login Worker (`client-ip`, `rate-limit`) and the cloud's auth
-mount and request signing.
+package; this spec covers the hosted deployment around them.
 
 ## Story: Serve sign-in from one hosted auth service
 
@@ -101,7 +99,6 @@ pure val maxRequests = 2
 pure val initial: RateLimits = { now: 0, events: List(), lastAdmitted: false }
 pure def recent(s: RateLimits, key: str): List[RateEvent] = s.events.select(e => e.key == key and e.at > s.now - windowLength)
 pure def requestValid(keyLength: int, window: int, limit: int): bool = keyLength >= 1 and keyLength <= 512 and window > 0 and limit > 0
-pure def lawInvalidRateRequestRefused(keyLength: int, window: int, limit: int): bool = (keyLength == 0 or keyLength > 512 or window <= 0 or limit <= 0) implies not(requestValid(keyLength, window, limit))
 pure val keyValues = Set("address-1", "email-1")
 pure def canAttempt(s: RateLimits, key: str): bool = key != ""
 pure def attempt(s: RateLimits, key: str): RateLimits = {

@@ -577,7 +577,7 @@ lemma beginIssuer_ensures(s: RequestRegistry, by_: RegistryCaller, runtimeId: in
   }
 }
 
-lemma commitRestriction_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: int, classification: core__requestIssuer_RequestClassification, interpretation: core__requestIssuer_Interpretation, sourceHash: string, observedSourceHash: string)
+lemma commitRestriction_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: int, classification: core__requestCompletions_RequestClass, interpretation: core__requestIssuer_Interpretation, sourceHash: string, observedSourceHash: string)
   ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysDenialOwnershipIsUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
   ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysSourceObjectIdentitiesAreUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
   ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysActivePairsAreUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
@@ -1014,7 +1014,7 @@ lemma checkOperation_ensures(s: RequestRegistry, stateObject: int, messageObject
     if owner.id != 0 && owner.messageObject == messageObject && boundViewCurrent(s,stateObject,messageObject) && viewAt(s,stateObject).issuerId == owner.id {
       RequestAttemptLookup(s,attemptId);
       assert a in s.owners;
-      core__requestCompletions_observeAuthority_ensures(a.completions,a.issuer.revision,ownerCurrent(a,s) && a.issuer.committed,completionClass(core__requestIssuer_restriction(a.issuer)));
+      core__requestCompletions_observeAuthority_ensures(a.completions,a.issuer.revision,ownerCurrent(a,s) && a.issuer.committed,core__requestIssuer_restriction(a.issuer));
       var c := owner.completions;
       assert core__requestCompletions_inv(c);
       core__requestCompletions_checkOperation_ensures(c,attemptId,operation,registered,denialId);
@@ -1064,7 +1064,7 @@ lemma RequestFreshResultAssociation(s: RequestRegistry, t: RequestRegistry, a: I
   RequestTargetResultAvailable(s,a,resultId);
   var owner := refreshedOwner(a,s);
   var c := owner.completions;
-  core__requestCompletions_observeAuthority_ensures(a.completions,a.issuer.revision,ownerCurrent(a,s) && a.issuer.committed,completionClass(core__requestIssuer_restriction(a.issuer)));
+  core__requestCompletions_observeAuthority_ensures(a.completions,a.issuer.revision,ownerCurrent(a,s) && a.issuer.committed,core__requestIssuer_restriction(a.issuer));
   assert core__requestCompletions_inv(c);
   RequestLeafBindResult(c,resultId,attemptId,fingerprint,projectionHash,observation, child);
   var updated := core__requestCompletions_bindResult(c,resultId,attemptId,fingerprint,projectionHash,observation, child);

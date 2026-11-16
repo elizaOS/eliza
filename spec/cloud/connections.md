@@ -9,10 +9,6 @@ organization started. One intent and one provider connection are the state
 machine. Proof verification of the provider's reply and delivery of the
 callback to a client are separate protocols.
 
-Develop sources: the cloud `authorization_intents` model, for both
-authorization intents and approval requests, and the provider-connection
-routes of the cloud API, which develop did not model.
-
 ## Story: Decide an authorization once, within its lifetime
 
 > As a user granting or refusing access, I want my decision recorded once,

@@ -129,6 +129,27 @@ lemma ContributorLookupMatches(r: Registry, candidate: Entry)
   assert ProofLib.Filter((entry: Entry) => (entry.id == id), r.entries) == [candidate];
 }
 
+lemma EntryPartition(entries: seq<Entry>, position: int)
+  ensures |ProofLib.Filter((existing: Entry) => (existing.position <= position), entries)| + |ProofLib.Filter((existing: Entry) => (existing.position > position), entries)| == |entries|
+  decreases |entries|
+{
+  if |entries| == 0 {
+    ProofLib.FilterNil((existing: Entry) => (existing.position <= position), entries);
+    ProofLib.FilterNil((existing: Entry) => (existing.position > position), entries);
+  } else {
+    ProofLib.FilterCons((existing: Entry) => (existing.position <= position), entries);
+    ProofLib.FilterCons((existing: Entry) => (existing.position > position), entries);
+    EntryPartition(entries[1..], position);
+  }
+}
+
+lemma lawInsertionKeepsExistingContributors_ensures(entries: seq<Entry>, candidate: Entry)
+  ensures (lawInsertionKeepsExistingContributors(entries, candidate) == true)
+{
+  assert |inserted(entries, candidate)| == |ProofLib.Filter((existing: Entry) => (existing.position <= candidate.position), entries)| + 1 + |ProofLib.Filter((existing: Entry) => (existing.position > candidate.position), entries)|;
+  EntryPartition(entries, candidate.position);
+}
+
 lemma RegistrationParts(r: Registry, id: string, position: int, ttl: int, trusted: bool, events: seq<string>)
   ensures registerContributor(r, id, position, ttl, trusted, events).entries == ProofLib.Filter((existing: Entry) => (existing.position <= position), r.entries) + [Entry(id, position, ttl, trusted, events, core__awareness_initial)] + ProofLib.Filter((existing: Entry) => (existing.position > position), r.entries)
 {}

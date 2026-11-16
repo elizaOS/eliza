@@ -16,6 +16,7 @@ Identity service:
 [code sign-in](./codeSignIn.md),
 [Google sign-in](./googleSignIn.md),
 [second factor](./mfa.md),
+[MFA completion](./mfaCompletion.md),
 [sessions](./sessions.md),
 [account sign-in methods](./accountMethods.md),
 [tenants](./tenants.md),
@@ -33,11 +34,12 @@ Trusted host and device:
 [sign-in receipts](./native/receipt.md),
 [browser sign-in return](./native/browserReturn.md),
 [deep links](./native/deepLinks.md),
-[resident binding](./native/residentBinding.md),
-[resident credential](./native/residentCredential.md),
-[Google access file](./native/googleAccessFile.md),
 [Android sign-in](./native/android/signIn.md),
+[Android sign-in requests](./native/android/signInRequests.md),
+[Android sign-in cancel](./native/android/signInCancel.md),
+[Android sign-in resend](./native/android/signInResend.md),
 [Android activation](./native/android/activation.md),
+[Android activation at startup](./native/android/activationRecovery.md),
 [Android readiness](./native/android/readiness.md),
 [Android return adoption](./native/android/returnAdoption.md),
 [Android key renewal](./native/android/keyRenewal.md).
@@ -52,6 +54,8 @@ Agent credential custody:
 [device vault](./vault.md),
 [key management](./kms.md).
 
+Times are in seconds throughout.
+
 ## Story: Sign in to a branded cloud from a registered application
 
 > As a person using an application built on Eliza, I want to sign in to that
@@ -60,13 +64,16 @@ Agent credential custody:
 
 ### Every code, verifier and session stays in the trusted host, and a renderer receives only non-secret receipts
 
+Codes, verifiers and session tokens are secret types, so `model` refuses any
+path by which one reaches a receipt.
+
 ```quint
-type HostSignInResult = { requestId: int, attemptId: int, credentialId: int, sessionToken: int, verifier: int, code: int }
+type SecretSessionToken = int
+type SecretVerifier = int
+type SecretCode = int
+type HostSignInResult = { requestId: int, attemptId: int, credentialId: int, sessionToken: SecretSessionToken, verifier: SecretVerifier, code: SecretCode }
 type RendererReceipt = { requestId: int, attemptId: int, credentialId: int }
 pure def receiptFor(r: HostSignInResult): RendererReceipt = { requestId: r.requestId, attemptId: r.attemptId, credentialId: r.credentialId }
-pure def lawReceiptCarriesNoSecret(r: HostSignInResult, other: int): bool =
-  receiptFor(r) == receiptFor({ ...r, sessionToken: other, verifier: other, code: other })
-pure val rValues = Set({ requestId: 1, attemptId: 2, credentialId: 3, sessionToken: 7, verifier: 8, code: 9 })
 ```
 
 ### A registered application binding is checked before any network sign-in work
@@ -76,21 +83,14 @@ return address; a binding that does not match the deployment's tenant
 refuses the sign-in before anything is sent.
 
 ```quint
-type AppBinding = { clientRegistered: bool, deploymentMatches: bool, redirectListed: bool, branding: str }
+type AppBinding = { clientRegistered: bool, deploymentMatches: bool, redirectListed: bool }
 type SignInStep = CheckBinding | RefuseSignIn | ContactIdentityService
 pure def bindingValid(b: AppBinding): bool = b.clientRegistered and b.deploymentMatches and b.redirectListed
 pure def signInPlan(b: AppBinding): List[SignInStep] = if (bindingValid(b)) List(CheckBinding, ContactIdentityService) else List(CheckBinding, RefuseSignIn)
 pure def lawBindingCheckedFirst(b: AppBinding): bool = signInPlan(b).nthOr(0, RefuseSignIn) == CheckBinding
-pure def lawInvalidBindingSendsNothing(b: AppBinding): bool = not(bindingValid(b)) implies not(signInPlan(b).includes(ContactIdentityService))
+pure def lawInvalidBindingSendsNothing(b: AppBinding): bool = not(bindingValid(b)) implies signInPlan(b).select(planned => planned == ContactIdentityService).length() == 0
 pure val bValues = Set(
-  { clientRegistered: true, deploymentMatches: true, redirectListed: true, branding: "a" },
-  { clientRegistered: true, deploymentMatches: false, redirectListed: true, branding: "a" },
-  { clientRegistered: false, deploymentMatches: true, redirectListed: true, branding: "b" })
-```
-
-### The package names no product: branding is configuration and never changes the sign-in
-
-```quint
-pure def lawBrandingNeverChangesSignIn(b: AppBinding, branding: str): bool = signInPlan({ ...b, branding: branding }) == signInPlan(b)
-pure val brandingValues = Set("a", "b", "")
+  { clientRegistered: true, deploymentMatches: true, redirectListed: true },
+  { clientRegistered: true, deploymentMatches: false, redirectListed: true },
+  { clientRegistered: false, deploymentMatches: true, redirectListed: true })
 ```

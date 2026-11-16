@@ -1,30 +1,28 @@
 # Maps screen-off guidance and location custody
 
-A consumer uses the maps client's Maps screen, background navigation and
-native location modules. The device's Maps transport bridge and
-navigation service supply the native side. [Maps navigation](./navigation.md)
-owns the reviewed route, fix precision for planning, reroute ownership
-and resident relay. This contract begins with the person's explicit
-Start on a selected route.
+Guidance can continue with the screen off through the device's navigation
+service, which holds the location watch. [Maps navigation](./navigation.md)
+owns the reviewed route, fix precision for planning, reroute ownership and
+resident relay. This spec begins with the owner's explicit start on a
+selected route.
 
 ## Story: Keep guiding with the screen off when the exact native session can continue
 
-> As the owner, I want to keep guiding with the screen off when the exact native session can continue.
+> As the owner, I want guidance to continue with the screen off for the
+> route I started, and to stop when that route ends.
 
 ### Pending native startup, confirmed startup and a live permission prompt keep distinct authority
 
 Start requires a selected place and ready route. It initializes one
 screen session, starts continuous location and requests screen-off
 support concurrently. A new request retires its previous generation.
-The background client sets aside an exact native reservation after the
-prior Stop barrier. Its `active` method includes that reservation before
-availability and listener setup have settled. The screen reports
-background running only after `startNavigation` resolves. A nonnative
-surface, missing service, listener failure, start refusal or exact stop
-before completion cannot confirm screen-off guidance. The bridge attaches
-its stop listener before starting the service.
+After the prior stop settles, the screen reserves an exact device session,
+which counts as active before its setup settles. Screen-off guidance is
+reported only after the device confirms the start; a missing service, a
+listener failure, a refusal or a stop before completion never confirms
+it. The stop listener is attached before the service starts.
 
-Hiding the page first retires active sharing. Guidance may keep the
+Hiding the screen first retires active sharing. Guidance may keep the
 screen controller when there is an exact native reservation, even before
 start confirmation, or when either location path owns an OS permission
 prompt or waits for foreground following its grant. Without either
@@ -38,16 +36,12 @@ instead of falling back. Explicit End, provider replacement or disposal
 retire the screen state and watch. Arrival retires both native work ports
 while retaining the arrival presentation until End or another Start.
 Leaving for another app view retires view work and agent location while
-keeping existing guidance. Document `pagehide`, provider replacement
-and disposal release it. A hidden foreground-only route does not resume
-of its own accord.
-
-This machine models the renderer and native-reservation handshake.
-The consumer's active view requires both a visible document and Maps selected.
-Document visibility can change after Maps left the foreground view.
-Native Activity focus and dispatch belong to the platform boundary.
+keeping existing guidance. Unloading the page, provider replacement and
+disposal release it. A hidden foreground-only route does not resume of
+its own accord.
 
 ```quint
+import navigation as N from "./navigation"
 type GuidancePhase = NoGuidance | LiveGuidance | Arrival
 type BackgroundPhase = NoBackground | Reserving | AwaitingNative | ScreenOff
 type StopReason = NotificationStop | ServiceLost
@@ -123,28 +117,23 @@ The renderer emits native updates only for changed title or text. An
 instruction that changes during a pending Start is kept for the exact
 reservation and sent after its acknowledgement. Update false, throw or
 invalid readback loses only the still-current session that sent it.
-A matching native `navigationStopped` notification retires that
-listener and cannot cause a duplicate native Stop. Stopping while
-`startNavigation` is held can reach Android before the service acquires
-the session. A later successful acknowledgement stops that *retired ID*
-again, leaving any successor. A listener whose subscription resolves
-after retirement is removed by its own cleanup barrier. The tested
-projection abstracts those handles and payloads as exact reservation IDs.
+A matching stop notice from the device retires that listener and cannot
+cause a duplicate stop. A stop issued while the start is pending can
+reach the device before the service holds the session; a later successful
+acknowledgement stops that retired session again, leaving any successor.
+A listener whose subscription resolves after retirement removes itself.
 
-Android availability names a declared location-type foreground service.
+The device needs a declared location foreground service.
 Start requires a live bridge, declared service, a canonical 8–80
 character session ID and coarse or fine location permission. This
 admission supplies no fresh precise fix. The service uses its own random
 authority along with the session ID and bridge owner. Old updates and
 notification Stop commands cannot affect the current owner. A stale
-queued START may have to satisfy Android's service protocol, but only
-publishes the current notification. Task removal retires the service
+queued start may still run, but only publishes the current notification. Task removal retires the service
 only for the exact recorded root Activity, and service destruction or
-renderer destruction cannot retire a successor. A failed exact STOP
-may fall back to unscoped stop only when there is no successor.
-Starting a new route remains explicit. The model checks ownership and
-fallback admission; notification presentation and Android deadlines
-remain platform effects.
+renderer destruction cannot retire a successor. A failed exact stop
+may fall back to an unscoped stop only when there is no successor.
+Starting a new route remains explicit.
 
 ```quint
 type NativeStartFacts = { declared: bool, locationGranted: bool, bridgeLive: bool, validSessionText: bool }
@@ -171,32 +160,31 @@ pure def lawTaskRemovalNeedsExactRoot(active: NativeOwner, removedRoot: int): bo
 
 ## Story: Keep one location watch and clean up stale callbacks and handles
 
-> As the owner, I want navigation to keep one location watch and clean up stale callbacks and handles, so a stopped session never moves my map.
+> As the owner, I want navigation to keep one location watch, so that a
+> stopped session never moves my map.
 
 ### Location events require the live watch attempt and cleanup preserves failures
 
-Each `NativeMapsLocation` instance admits only one start setup at a time.
+The location watch admits only one start setup at a time.
 It increments generation before asynchronous cleanup and waits for the
 previous registered listeners and watch to settle. Explicit Stop retires
 its current attempt before cleanup. A rejected unregister or clear is
 reported as unconfirmed cleanup. Native permission prompts cannot be
-cancelled through the browser request API. A web permission request is
-cancelled with its exact request ID. Cancellation also releases the
+cancelled by the app; a web permission request is cancelled with its
+exact request ID. Cancellation also releases the
 post-permission foreground wait. A late permission reply cannot open a
 watch for a retired attempt. A permission grant received while hidden
 continues waiting until visible. An already granted permission bypasses
 that explicit prompt-handoff wait.
 
-The fix listener and error listener are registered before creating
-`watchPosition` with high accuracy, at least 1,000 ms between fixes and
-minimum distance zero. A listener received after retirement is removed.
+The fix and error listeners are registered before the high-accuracy
+watch is created, with at least one second between fixes. A listener received after retirement is removed.
 A late watch ID is cleared even if that attempt never became current.
-The upstream fix event has no watch ID. Its callback is bound to the
-registration's captured owner. A stale callback cannot publish. The
+A fix callback is bound to the owner of the registration that created it. A stale callback cannot publish. The
 watch rejects invalid coordinates, negative or nonfinite accuracy,
-nonfinite time, fixes older than 30 seconds and fixes more than five
-seconds in the future. Approximate or unknown precision can be reported
-by the watch and is then rejected by turn guidance, which pauses voice
+nonfinite time and a fix outside [navigation](./navigation.md)'s freshness
+window. Approximate or unknown precision can be reported by the watch and
+is then rejected by turn guidance, which applies navigation's fix quality, pauses voice
 and waits for a fresh precise fix. A native location error or invalid
 fix from the current listener requests cleanup; if this was still the
 screen session it also ends guidance. One-shot location ends after its
@@ -216,8 +204,8 @@ pure def nextWatch(inputs: WatchInputs): WatchNext =
 pure def finishWatch(sameAttempt: bool, exactWatchId: bool): WatchNext =
   if (not(exactWatchId)) RefuseWatch else if (sameAttempt) AdoptWatch else ClearLateWatch
 pure def reportableFix(fix: LocationFix): bool = fix.exactCallback and fix.coordinateValid and fix.finiteAccuracy and fix.finiteTime and
-  fix.reportedAccuracy >= 0 and fix.age >= -5000 and fix.age <= 30000
-pure def guidesFix(fix: LocationFix): bool = reportableFix(fix) and fix.precise and fix.reportedAccuracy <= 50
+  fix.reportedAccuracy >= 0 and N::freshFix(fix.age)
+pure def guidesFix(fix: LocationFix): bool = reportableFix(fix) and N::guidanceQuality(fix.precise, fix.age, fix.reportedAccuracy)
 pure val inputsValues = Set({ sameAttempt: true, admittedSetup: true, bridgeAvailable: true, cleanupConfirmed: true,
     permissionGranted: true, justPrompted: true, hidden: true },
   { sameAttempt: true, admittedSetup: true, bridgeAvailable: true, cleanupConfirmed: true,

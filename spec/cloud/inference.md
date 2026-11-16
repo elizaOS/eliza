@@ -3,15 +3,11 @@
 The cloud admits each metered inference request against the organization's
 current policy and credit, sends it to a provider at most once, and charges
 it exactly once, even when the caller loses a reply. One request is the
-state machine. Credential checks, the split of a charge across credit
-grants, request adaptation and stream settlement are the boundaries around
-it and are stated as laws. Provider truth, HTTP transport and pricing tables
+state machine. Credential checks, the admission gate's reopening, request
+adaptation and stream settlement are the boundaries around it and are
+stated as laws. How a charge is split across credit grants is
+[credits](./credits.md). Provider truth, HTTP transport and pricing tables
 are outside the model.
-
-Develop sources: the cloud `StandardInferenceAdmission`,
-`DeferredCredentialDispatch`, `inference_budget`, `InferenceCredentialCache`,
-`ResponsesAdaptation`, `ChatSdkStreamSettlement`, `sse_segmentation` and
-`tokenizer_cache` models.
 
 ## Story: Admit a metered request exactly once
 
@@ -159,38 +155,6 @@ pure val weight_acceptAck = 4
 pure val weight_invokeProvider = 4
 ```
 
-### A charge is split across credit grants within what each still offers
-
-An organization's credit comes in grants. A reservation draws from the
-first grant as far as it can and the rest from the second, never more than
-either offers. Settlement charges at most what was held, from the same
-grants in the same order, and returns the rest. An expired or sealed grant
-offers nothing to a new reservation, and a grant is sealed only when no
-lease or unacknowledged settlement still draws on it.
-
-```quint
-type GrantSplit = { first: int, second: int }
-pure def minOf(a: int, b: int): int = if (a < b) a else b
-pure def reserveSplit(firstAvailable: int, secondAvailable: int, maximum: int): GrantSplit =
-  { first: minOf(firstAvailable, maximum), second: maximum - minOf(firstAvailable, maximum) }
-pure def chargeSplit(held: GrantSplit, cost: int): GrantSplit = { first: minOf(cost, held.first), second: cost - minOf(cost, held.first) }
-pure def grantOffers(remaining: int, sealed: bool, expired: bool): int = if (sealed or expired) 0 else remaining
-pure def sealable(activeLeases: int, unacknowledged: int): bool = activeLeases == 0 and unacknowledged == 0
-pure def lawReservationDrawsWithinGrants(firstAvailable: int, secondAvailable: int, maximum: int): bool = {
-  val split = reserveSplit(firstAvailable, secondAvailable, maximum)
-  (firstAvailable >= 0 and secondAvailable >= 0 and maximum >= 1 and firstAvailable + secondAvailable >= maximum) implies
-    (split.first + split.second == maximum and split.first >= 0 and split.first <= firstAvailable and split.second >= 0 and split.second <= secondAvailable)
-}
-pure def lawChargeStaysWithinHold(held: GrantSplit, cost: int): bool = {
-  val charged = chargeSplit(held, cost)
-  (held.first >= 0 and held.second >= 0 and cost >= 0 and cost <= held.first + held.second) implies
-    (charged.first + charged.second == cost and charged.first >= 0 and charged.first <= held.first and charged.second >= 0 and charged.second <= held.second)
-}
-pure def lawClosedGrantOffersNothing(remaining: int, sealed: bool, expired: bool): bool = (sealed or expired) implies grantOffers(remaining, sealed, expired) == 0
-pure def lawSealingWaitsForOpenWork(activeLeases: int, unacknowledged: int): bool = sealable(activeLeases, unacknowledged) implies activeLeases == 0 and unacknowledged == 0
-pure val heldValues = Set({ first: 0, second: 0 }, { first: 1, second: 0 }, { first: 1, second: 2 }, { first: 2, second: 1 })
-```
-
 ### Every finished request passed exactly one credential boundary
 
 A request through the combined proxy is either admitted there, with its
@@ -242,6 +206,32 @@ pure val keyCheckValues = Set(
   { cached: CacheEmpty, revocationGate: true, expired: false, originAllows: true, gateAllows: false },
   { cached: CacheForeign, revocationGate: false, expired: false, originAllows: true, gateAllows: false },
   { cached: FreshAllow, revocationGate: false, expired: false, originAllows: false, gateAllows: true })
+```
+
+## Story: Reopen the inference gate only after its own cooldown
+
+> As an operator, the inference admission gate reopens after a cache
+> failure only when the cooldown timer of that same failure has elapsed,
+> so a late timer from an earlier failure cannot reopen it early.
+
+### The gate reopens only on a ready record whose owning timer elapsed for the current failure generation
+
+Each failure generation arms one timer owner; a duplicate arm for a live
+or completed generation keeps the original owner. The durable ready record
+names the owner and generation; a response delivered late, or from an
+earlier generation, does not count. The gate's clock route answers only a
+POST from its own clock identity on its own path.
+
+```quint
+type ReadyRecord = { generation: int, owner: int, ready: bool }
+type TimerFacts = { ownerElapsed: bool, ownerGeneration: int }
+pure def mayReopen(open: bool, record: ReadyRecord, currentGeneration: int, timer: TimerFacts): bool =
+  open and record.ready and record.generation == currentGeneration and timer.ownerElapsed and timer.ownerGeneration == currentGeneration
+pure def clockRouteStatus(clockIdentity: bool, clockPath: bool, post: bool): int = if (clockIdentity and clockPath and post) 200 else 404
+pure val recordValues = Set({ generation: 1, owner: 1, ready: true }, { generation: 2, owner: 2, ready: true }, { generation: 2, owner: 1, ready: false })
+pure val timerValues = Set({ ownerElapsed: true, ownerGeneration: 1 }, { ownerElapsed: true, ownerGeneration: 2 }, { ownerElapsed: false, ownerGeneration: 2 })
+pure val currentGenerationValues = Set(1, 2)
+pure def lawOldGenerationNeverReopens(open: bool, record: ReadyRecord, currentGeneration: int, timer: TimerFacts): bool = (record.generation != currentGeneration or timer.ownerGeneration != currentGeneration) implies not(mayReopen(open, record, currentGeneration, timer))
 ```
 
 ## Story: Adapt and settle provider responses faithfully
@@ -356,6 +346,4 @@ pure def cacheAfterRejection(cachedLoad: int, rejectedLoad: int): int = if (cach
 pure def servesFromCache(cachedEncoding: int, wantedEncoding: int): bool = cachedEncoding >= 0 and cachedEncoding == wantedEncoding
 pure def lawRejectionClearsOnlyItsOwnLoad(cachedLoad: int, rejectedLoad: int): bool =
   cachedLoad != rejectedLoad implies cacheAfterRejection(cachedLoad, rejectedLoad) == cachedLoad
-pure def lawCallerGetsTheEncodingItAskedFor(cachedEncoding: int, wantedEncoding: int): bool =
-  servesFromCache(cachedEncoding, wantedEncoding) implies cachedEncoding == wantedEncoding
 ```

@@ -1,11 +1,8 @@
 # Conversation records
 
 The agent keeps each conversation as a room with metadata. Three paths
-change it: the raw mutation queue of
-`packages/agent/src/api/conversation-connection-readiness.ts`, the create
-route of `conversation-routes.ts`, and the restore of
-`conversation-restore.ts` that republishes rooms read back from the
-database. Prompts and replies are in [chat](./chat.md); which owner may use
+change it: the raw mutation queue, the create route, and the restore that
+republishes rooms read back from the database. Prompts and replies are in [chat](./chat.md); which owner may use
 a conversation through a device gateway is in [ownership](./ownership.md).
 Connector health probes belong to [connectors](../connectors.md).
 

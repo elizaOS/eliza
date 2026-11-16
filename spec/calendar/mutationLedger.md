@@ -5,10 +5,8 @@ its attempt. The calendar package's mutation ledger claims the attempt,
 records the provider's receipt, and quarantines a claim whose outcome is
 unknown until reconciliation or the owner settles it. A replay after a
 restart reads the durable receipt and never calls the provider again.
-The reviewed request binding and the validity of a readable receipt are
-preconditions from [reviewed reads](./reviewedReads.md) and the approval
-service; provider calls, SQL failures and the approval queue's own
-decisions are outside this model.
+The reviewed request binding comes from [reviewed reads](./reviewedReads.md)
+and the approval service.
 
 ## Story: Run a reviewed Calendar change at most once and know what happened
 
@@ -19,9 +17,8 @@ decisions are outside this model.
 ### The approval and attempt rows always describe the same stage
 
 An approved request has no attempt yet. An expired approval belongs to
-an invalidated attempt. An executing attempt has an executing approval.
-A retryable attempt leaves the approval retryable, or executing when an
-older version left it so. The approval is done exactly when the attempt
+an invalidated attempt. An executing attempt has an executing approval,
+and a retryable attempt a retryable one. The approval is done exactly when the attempt
 succeeded or the owner confirmed the outcome without a receipt, and it
 requires reconciliation exactly when the attempt is ambiguous and the
 owner has not confirmed it.
@@ -42,10 +39,8 @@ pure val initial: MutationLedger = {
 pure def alwaysPairedDurableRows(s: MutationLedger): bool =
   (s.attempt == Absent iff s.approval == Approved) and
   (s.attempt == Invalidated iff s.approval == Expired) and
-  (s.attempt == Executing implies s.approval == ApprovalExecuting) and
-  (s.approval == ApprovalExecuting implies (s.attempt == Executing or s.attempt == FailedRetryable)) and
-  (s.attempt == FailedRetryable implies (s.approval == Retryable or s.approval == ApprovalExecuting)) and
-  (s.approval == Retryable implies s.attempt == FailedRetryable) and
+  (s.attempt == Executing iff s.approval == ApprovalExecuting) and
+  (s.attempt == FailedRetryable iff s.approval == Retryable) and
   (s.approval == Done iff (s.attempt == Succeeded or s.ownerConfirmed)) and
   (s.approval == ReconciliationRequired iff (s.attempt == Ambiguous and not(s.ownerConfirmed)))
 ```
@@ -55,9 +50,7 @@ pure def alwaysPairedDurableRows(s: MutationLedger): bool =
 A request can be claimed when it has no attempt and is approved, or
 when its attempt failed in a retryable way. The claim marks both rows
 executing and takes the next generation as its token. An unclaimed
-request can instead be invalidated, which expires the approval. An
-older retry row whose approval was left retryable reads as executing.
-Only a live claim holds a token: the token of an executing, ambiguous
+request can instead be invalidated, which expires the approval. Only a live claim holds a token: the token of an executing, ambiguous
 or succeeded attempt is the latest generation, and an attempt that is
 absent, retryable or invalidated holds none. An ambiguous attempt can
 never be claimed again.
@@ -65,15 +58,13 @@ never be claimed again.
 ```quint
 pure def claimable(s: MutationLedger): bool =
   (s.attempt == Absent and s.approval == Approved) or
-  (s.attempt == FailedRetryable and (s.approval == Retryable or s.approval == ApprovalExecuting))
+  (s.attempt == FailedRetryable and s.approval == Retryable)
 pure def canClaim(s: MutationLedger): bool = claimable(s)
 pure def claim(s: MutationLedger): MutationLedger =
   { ...s, attempt: Executing, approval: ApprovalExecuting, generation: s.generation + 1,
     token: s.generation + 1, reconciliationAttempt: false }
 pure def canInvalidateBeforeClaim(s: MutationLedger): bool = claimable(s)
 pure def invalidateBeforeClaim(s: MutationLedger): MutationLedger = { ...s, attempt: Invalidated, approval: Expired }
-pure def canReadLegacyRetry(s: MutationLedger): bool = s.attempt == FailedRetryable and s.approval == Retryable
-pure def readLegacyRetry(s: MutationLedger): MutationLedger = { ...s, approval: ApprovalExecuting }
 pure def alwaysExactClaimToken(s: MutationLedger): bool =
   ((s.attempt == Executing or s.attempt == Ambiguous or s.attempt == Succeeded) implies s.token == s.generation and s.token > 0) and
   ((s.attempt == Absent or s.attempt == FailedRetryable or s.attempt == Invalidated) implies s.token == 0) and

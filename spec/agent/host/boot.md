@@ -3,11 +3,10 @@
 The host boots the agent runtime through a fixed pipeline of blocking
 phases. Work that may finish after boot, such as connector warm-up or a
 first index build, is deferred: each deferred task registers with the boot
-owner, which waits for it before it disposes of the runtime. The research
-baseline is `packages/agent/src/runtime/{boot-pipeline,deferred-boot-owner,process-lifecycle}.ts`
-and its `runtime-lifecycle` model. Restart and replacement of a running
-runtime are in [start, restart, stop and reset](./lifecycle.md); process
-signals are in [process signals](./process.md).
+owner, which waits for it before it disposes of the runtime. Restart and
+replacement of a running runtime are in [start, restart, stop and
+reset](./lifecycle.md); process signals are in [process
+signals](./process.md).
 
 ## Story: Run an agent host for one owner
 

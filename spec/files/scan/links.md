@@ -1,14 +1,14 @@
 # Reviewed scan links
 
-A consumer's scan link review uses the files package's scan links
-module. [Local OCR](../localOcr.md) supplies its starting text, and
-[external links](../../os/browser/externalLinks.md) governs the bridge.
-This contract governs which exact URLs the current scan offers and when
+[Local OCR](../localOcr.md) supplies a scan's text, and [browser page
+requests](../../os/browser/surface/pageRequests.md) govern the
+external-link bridge. This spec governs which exact URLs the current scan offers and when
 a click or completion can act on that review.
 
 ## Story: Review links in my scanned text and open the one I choose
 
-> As the owner, I want to review links in my scanned text and open the one I choose.
+> As the owner, I want links found in a scan to open only when I choose
+> one, at exactly the address I reviewed.
 
 ### Only recognized explicit URL tokens enter the review list
 
@@ -20,12 +20,10 @@ trailing period, comma and semicolon and excess closing parentheses,
 brackets or braces. An explicit scheme followed immediately by slash,
 question mark or hash is refused. Reject a candidate over 2,048 units
 or one containing backslash or ASCII control characters. Prepend
-`https://` for the recognized `www.` form. The URL codec must supply an
+`https://` for the recognized `www.` form. The parsed address must be an
 HTTP or HTTPS address with a hostname and empty username and password.
 Show the first ten distinct serialized addresses in encounter order.
-Invalid candidates stay in the editable text. The exact delimiter
-pattern, balanced punctuation and WHATWG URL serialization belong to
-the codec port.
+Invalid candidates stay in the editable text.
 
 ```quint
 type ScanUrlFacts = { textString: bool, textUnits: int, explicitPrefix: bool, boundaryRecognized: bool,
@@ -59,43 +57,37 @@ It hides the list when empty. A click rechecks that the review is
 active, no native request is already pending, and the displayed
 exact address still occurs in the current normalized list. On web,
 a valid link opens in a new context with no opener and no referrer.
-On native, prevent the browser default and send the exact address
-to DailyApps. Only one native request can be pending. Receive its
-status or rejection, clear the busy flag, and publish feedback only
-when the review is still active and the generation matches dispatch.
-An edit can clear the visual status while the original request stays
-busy. A dispatched handoff can settle after closing. This
-model takes current review activity and parsed exact membership as
-caller observations.
+On the device, the exact address goes to the device's external link
+handler. Only one such request can be pending. Its result clears the
+busy flag and is shown only when the review is still active and the text
+is the one it was dispatched from. An edit clears the shown result while
+the original request stays pending, and a dispatched handoff can settle
+after closing.
 
 ```quint
-type ScanLinkReview = { generation: int, flight: int, status: str }
-pure val initial: ScanLinkReview = { generation: 1, flight: 0, status: "" }
+type LinkStatus = NoLinkStatus | LinkOpening | LinkOpened | LinkFailed
+type ScanLinkReview = { generation: int, flight: int, status: LinkStatus }
+pure val initial: ScanLinkReview = { generation: 1, flight: 0, status: NoLinkStatus }
 pure def canRefreshLinks(s: ScanLinkReview): bool = s.generation > 0
-pure def refreshLinks(s: ScanLinkReview): ScanLinkReview = { ...s, generation: s.generation + 1, status: "" }
+pure def refreshLinks(s: ScanLinkReview): ScanLinkReview = { ...s, generation: s.generation + 1, status: NoLinkStatus }
 pure def allowsScanLinkClick(s: ScanLinkReview, active: bool, exactAddress: bool): bool =
   active and exactAddress and s.flight == 0
 pure def canOpenNativeScanLink(s: ScanLinkReview, active: bool, exactAddress: bool): bool =
   allowsScanLinkClick(s,active,exactAddress)
 pure def openNativeScanLink(s: ScanLinkReview, active: bool, exactAddress: bool): ScanLinkReview =
-  { ...s, flight: s.generation, status: "opening" }
+  { ...s, flight: s.generation, status: LinkOpening }
 pure def canFinishNativeScanLink(s: ScanLinkReview, token: int): bool = token > 0 and token == s.flight
 pure def finishNativeScanLink(s: ScanLinkReview, token: int, active: bool, opened: bool): ScanLinkReview =
-  { ...s, flight: 0, status: if (active and token == s.generation) (if (opened) "opened" else "failed") else s.status }
+  { ...s, flight: 0, status: if (active and token == s.generation) (if (opened) LinkOpened else LinkFailed) else s.status }
 pure def alwaysScanLinkFlightInHistory(s: ScanLinkReview): bool =
   s.generation >= 1 and s.flight >= 0 and s.flight <= s.generation
 pure def stepScanLinkRefreshKeepsPending(before: ScanLinkReview, via: str, after: ScanLinkReview): bool =
-  via == "refreshLinks" implies after.flight == before.flight and after.status == ""
+  via == "refreshLinks" implies after.flight == before.flight and after.status == NoLinkStatus
 pure def stepOldLinkCompletionLeavesReview(before: ScanLinkReview, via: str, after: ScanLinkReview): bool =
   via == "finishNativeScanLink" and before.flight != before.generation implies after.status == before.status
 pure def lawInactiveLinkIsRefused(s: ScanLinkReview, exactAddress: bool): bool =
   not(allowsScanLinkClick(s,false,exactAddress))
-pure def sometimesShowsOpenedScanLink(s: ScanLinkReview): bool = s.status == "opened"
+pure def sometimesShowsOpenedScanLink(s: ScanLinkReview): bool = s.status == LinkOpened
 pure def sometimesEditedWhileLinkPending(s: ScanLinkReview): bool = s.flight > 0 and s.flight < s.generation
 pure val tokenValues = Set(1, 2, 3, 4)
 ```
-
-Pinned `test/browser/scan-links.spec.ts` exercises edited current text,
-an explicit native Open, blocked input, and distinct normalized
-destinations in order. Native handler receipt and device browser
-selection follow the linked browser handoff.

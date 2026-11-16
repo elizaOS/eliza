@@ -4,6 +4,10 @@ The baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`, `packa
 
 ## Story: Dispatch only after current policy authority is consumed once
 
+> As a provider adapter, I want to act only on a request whose current
+> policy was consumed exactly once, so that a stale or competing caller
+> can never authorize an effect.
+
 As a provider adapter, I receive an exact account-bound request whose policy and optional confirmation were consumed together. A competing caller, stale account snapshot, expired policy or changed request cannot create another authorized object. A policy which expires during consumption remains consumed and reports failure.
 
 ### Policy registration binds every request field and its issue time
@@ -69,6 +73,10 @@ pure def sometimesConsumeAfterClockRewind(s: Authority): bool = s.grantPresent a
 ```
 
 ## Story: Reject copied authority while checking an exact effect receipt
+
+> As a caller, I want a receipt checked against the original authorized
+> object, so that a copied or serialized authorization never vouches for
+> an effect.
 
 As a caller, I can normalize multiple receipts against the original authorized object. Serialized or spread copies lack its WeakSet identity. Each receipt binds authorization ID, policy ID and digest, optional confirmation ID and digest, request digest, account, capability, operation and input digest. The effect's operation and idempotency key must independently match. Observed, commit and rollback times are checked against the actual post-consumption authorization time.
 

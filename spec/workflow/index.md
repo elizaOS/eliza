@@ -1,6 +1,6 @@
 # Workflows
 
-The workflow package (`packages/workflow`) lets an owner author a typed
+`@elizaos/plugin-workflow` lets an owner author a typed
 workflow, review it, activate it on a schedule, run it, approve its steps and
 remove it. Every run is bound to the exact version the owner reviewed.
 
@@ -9,7 +9,7 @@ remove it. Every run is bound to the exact version the owner reviewed.
 | Authoring and review | [Typed authoring](./authoring.md), [source publication](./sourcePublication.md), [worker provenance](./worker.md) |
 | Admission | [Reviewed admission](./admission.md), [request archive](./intents.md), [lifecycle](./lifecycle.md) |
 | Running | [Schedule occurrences](./schedule.md), [execution and wakeups](./execution.md), [approvals](./approvals.md), [run scope](./runScope.md) |
-| Hosted digests | [Offers and delivery](./hostedDigest.md), [device result inbox](./hostedResultInbox.md) |
+| Hosted digests | [Offers and delivery](./hostedDigest.md) |
 
 The client and agent keep separate records. The [request archive](./intents.md)
 owns the local revision. The [workflow definition](./admission.md) owns

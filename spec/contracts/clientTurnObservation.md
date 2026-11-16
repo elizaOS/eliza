@@ -25,9 +25,13 @@ canonical JSON form.
 
 Every field must be a known one. The view name and each identifier must
 match its pattern, the revision must not be negative, and a stated time
-zone must be one the platform knows. Nothing is truncated or summarized:
-an observation that fails any check is dropped, and the message goes on
-without one.
+zone must be one the platform knows. A screen for credentials, unlocking
+or a vault reports itself as sensitive and names no selected record. The
+civil day in view is a lookup bound, never authority over a record or a
+write: it is accepted only on the calendar view, stated not sensitive, in
+the observation's own time zone. The canonical form is at most 2048 bytes.
+Nothing is truncated or summarized: an observation that fails any check is
+dropped, and the message goes on without one.
 
 ```quint
 pure val observationMaxBytes = 2048
@@ -52,32 +56,10 @@ pure val oValues: Set[ObservationInput] = List(
   { ...calendarView, revision: -1 },
   { ...calendarView, onlyKnownFields: false }
 ).foldl(Set(), (acc, o) => acc.union(Set(o)))
-```
-
-### A sensitive screen shares no selection
-
-A screen for credentials, unlocking or a vault reports itself as
-sensitive and names no selected record.
-
-```quint
 pure def lawSensitiveScreenSharesNoSelection(o: ObservationInput): bool =
   (acceptObservation(o) and o.sensitive) implies not(o.selection.selected)
-```
-
-### A calendar day is reported only from the non-sensitive calendar in the same time zone
-
-The civil day in view is a lookup bound, never authority over a record or
-a write. It is accepted only when the view is the calendar, the screen is
-stated not sensitive, and the day's time zone is the observation's own.
-
-```quint
 pure def lawCalendarDayNeedsTheCalendarView(o: ObservationInput): bool =
   (acceptObservation(o) and o.day.dayShown) implies (o.viewName == "calendar" and not(o.sensitive) and o.zone == o.day.dayZone)
-```
-
-### An observation larger than 2048 bytes is refused
-
-```quint
 pure def lawOversizedObservationIsRefused(o: ObservationInput): bool =
   o.bytes > observationMaxBytes implies not(acceptObservation(o))
 ```

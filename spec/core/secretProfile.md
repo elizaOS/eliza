@@ -1,10 +1,14 @@
 # Runtime configured-secret profile identity
 
-The source is `packages/core/src/runtime.ts:4479-4505`, with eligibility constants from `security/redact.ts:27`, at the pinned baseline. The runtime caches the SHA-256 signature of the sorted, deduplicated, eligible configured-secret values and a monotonic revision. This module represents signature equality by equality of its canonical preimage set. Hashing, UTF-16 lengths and configured-credential classification are exact input boundaries; cryptographic collision resistance is an explicit assumption. Names, value order and duplicate values do not participate in that preimage. `declassifyProfileRevision` releases only the source-defined monotonic change metadata, never configured secret values.
+The configured-secret profile of `runtime.ts`, with eligibility from `security/redact.ts`: the SHA-256 signature of the sorted, deduplicated eligible secret values and a monotonic revision. Signature equality is modelled as equality of the canonical preimage set; hashing, UTF-16 lengths and credential classification are boundary inputs, and collision resistance is assumed. Names, order and duplicates do not count. `declassifyProfileRevision` releases only the change revision, never a secret value.
 
 ## Story: Invalidate fragment taint only when its secret profile changes
 
-A host receiving fragment taint also receives the runtime-local profile revision. The first query initializes revision one even when there are no eligible secrets. Every change to the eligible value set increments it. Repeated queries and changes only to ineligible short or noncredential values retain it.
+> As a host receiving fragment taint, I want the runtime-local profile
+> revision to change exactly when the eligible secret set changes, so that
+> taint is invalidated only when it must be.
+
+The first query initializes revision one even when there are no eligible secrets. Every change to the eligible value set increments it. Repeated queries and changes only to ineligible short or noncredential values retain it.
 
 ### The first query initializes the canonical signature and later changes advance it
 

@@ -21,15 +21,11 @@ The renderer counts only acknowledged `moved` or `trashed` rows in its
 reviewed action summary. The Android plugin serializes calls within each
 bridge instance.
 
-The producer's `StorageBrowserTest.java` fixture covers paths, reviewed
-replacements, collision handling, copy failure, Trash restore, retention
-and deletion; `StorageLegacyAccessInstrumentedTest` and
-`StorageCategoriesInstrumentedTest` are Android evidence lanes.
-
 ## Story: Change only the reviewed file in the selected volume
 
-> As the person, I want to change only the reviewed file in the selected
-> volume.
+> As the person, I want a copy, move, rename or trash to touch only the
+> files I reviewed, as they were when I reviewed them, so that a file
+> changed or swapped since is never overwritten or moved.
 
 ### Review and dispatch bind to the granted, mounted volume and ordered selection
 
@@ -38,7 +34,7 @@ defaulting to primary when no volume is supplied. The path adapter
 uses canonical volume-relative paths, excludes the hidden Trash
 root and refuses symlink components. Its host facts represent real
 path resolution and mounted-volume checks. Android 10 needs both
-legacy storage permissions. Android 11 and later use all-files access.
+storage read and write permissions. Android 11 and later use all-files access.
 The launcher and browser policy remain outside this port.
 
 The plugin takes 1–500 distinct path strings. Review is foreground
@@ -67,8 +63,6 @@ pure def admittedFilesDispatch(access: FilesStorageAccess, batch: SelectionFacts
 pure def issuesFilesReview(access: FilesStorageAccess, batch: SelectionFacts, allIdentitiesAvailable: bool): bool =
   access.workerLive and access.storageGranted and access.volumeMounted and access.focused and
     batch.pathCount >= 1 and batch.pathCount <= 500 and batch.distinctPaths and allIdentitiesAvailable
-pure def lawEverySelectedFileMustBeVerifiable(access: FilesStorageAccess, batch: SelectionFacts, allIdentitiesAvailable: bool): bool =
-  issuesFilesReview(access, batch, allIdentitiesAvailable) implies access.focused and allIdentitiesAvailable
 pure val liveStorage: FilesStorageAccess = { workerLive: true, storageGranted: true, volumeMounted: true, focused: true }
 pure val reviewedBatch: SelectionFacts = { pathCount: 2, distinctPaths: true, reviewed: true,
   tokenCount: 2, tokensValid: true, exactVolume: true }
@@ -105,9 +99,10 @@ rename calls the native rename once and returns the observed new
 path only when it succeeds. Folder creation uses the free-name
 policy and requires an existing parent directory. The shell supplies
 canonical path, filename, collision and operation readback evidence.
-The same-path Move receipt grants no mutation authority. Source
-identity is read just before an admitted effect. The pinned code has
-no atomic inode comparison at the rename or copy syscall.
+The same-path Move receipt grants no mutation authority. The port
+compares the reviewed source identity atomically with the rename or copy
+itself; a port that cannot make that comparison at the effect refuses the
+reviewed write rather than checking first and writing later.
 
 ```quint
 type FilesChange = NativeCopy | NativeMove | NativeTrash
@@ -165,8 +160,8 @@ reports failure and does not certify rollback or retry automatically.
 A rename acknowledgement stands on the native operation, and a
 fallback move acknowledgement requires both a complete copy and
 confirmed source deletion. The complete destination reflects the
-provider input read by that operation. The pinned file-length check
-supplies no hash proof or assurance about an earlier version.
+provider input read by that operation. The file-length check supplies
+no hash proof or assurance about an earlier version.
 
 ```quint
 type EntryPresence = EntryMissing | EntryComplete | EntryIncomplete
@@ -208,8 +203,8 @@ The model follows one already selected volume and one unique
 trash ID. The port owns record read and creation, exact volume and
 ID selection, and a snapshot of file presence. Once a record
 commits the operation moves exactly its associated data. File and
-record cleanup receipts describe one worker's operation. The pinned
-bridge does not supply a cross-instance filesystem lock. External file
+record cleanup receipts describe one worker's operation. The bridge
+supplies no cross-instance filesystem lock. External file
 changes remain provider observations.
 
 ```quint
@@ -250,7 +245,8 @@ pure def sometimesFilesFailedMoveStillHasRecoverableCopy(s: NativeTrashCustody):
 
 ## Story: Restore or erase the exact Files Trash entry
 
-> As the person, I want to restore or erase the exact Files Trash entry.
+> As the person, I want Restore and Delete Forever to act on exactly the
+> Trash entry I chose, so that no other file is restored over or erased.
 
 ### Restore uses the recorded origin and confirms only a completed move
 
@@ -353,8 +349,6 @@ pure val selectedErase: ExplicitErase = { confirmed: true, uniqueIds: true, idCo
 pure val requestValues = Set(selectedErase, { ...selectedErase, confirmed: false },
   { ...selectedErase, requestedId: false }, { ...selectedErase, exactVolume: false },
   { ...selectedErase, idCount: 0 }, { ...selectedErase, safeEntries: false })
-pure def lawFilesEraseRequiresThisReviewedVolumeAndId(request: ExplicitErase): bool =
-  matchesNativeErase(request) implies request.confirmed and request.requestedId and request.exactVolume
 pure def canEraseNativeTrash(s: NativeTrashCustody, request: ExplicitErase, cleanup: TrashCleanup): bool =
   not(s.writing) and matchesNativeErase(request) and (s.record or s.payload == EntryMissing)
 pure def eraseNativeTrash(s: NativeTrashCustody, request: ExplicitErase, cleanup: TrashCleanup): NativeTrashCustody = {
@@ -364,12 +358,6 @@ pure def eraseNativeTrash(s: NativeTrashCustody, request: ExplicitErase, cleanup
     reply: if (counted) TrashErased else TrashEraseFailed, removedCount: s.removedCount + (if (counted) 1 else 0) }
 }
 pure val atValues = Set(0, 2592000000, 2592000001, 5184000000)
-pure val weight_commitFilesTrashRecord = 6
-pure val weight_completeFilesTrashMove = 12
-pure val weight_observeInterruptedTrashMove = 4
-pure val weight_restoreNativeTrash = 12
-pure val weight_listNativeTrash = 15
-pure val weight_eraseNativeTrash = 7
 pure def stepFilesTrashErasureCountsOnlyAfterBothRemovals(before: NativeTrashCustody, via: str, after: NativeTrashCustody): bool =
   after.removedCount > before.removedCount implies via == "eraseNativeTrash" and
     after.removedCount == before.removedCount + 1 and not(after.record) and after.payload == EntryMissing

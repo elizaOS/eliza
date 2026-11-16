@@ -1,10 +1,9 @@
-# Native credential broker admission and account fencing
+# Credential broker
 
-The native agent plugin's `LocalCredentialBroker` binds to loopback and
-accepts a private HTTP JSON request from the authenticated native client.
-A consumer's runtime creates it in verified mode and supplies its guard for
-verified account and task-key operations. It checks launch ownership before
-and after verified work under the guard lock. The renderer has a distinct
+The native credential broker binds to loopback and accepts a private HTTP
+JSON request from the authenticated native client. A consumer's runtime
+supplies its guard for account and task-key operations, and the broker
+checks launch ownership before and after that work under the guard lock. The renderer has a distinct
 request transport and never reaches the vault through this broker. The
 [secure slots](./secureSlots.md) are the storage it fronts.
 
@@ -19,35 +18,32 @@ request transport and never reaches the vault through this broker. The
 The broker accepts authenticated POST requests at the private route.
 It refuses browser-origin and transfer-encoding headers, duplicates
 of Authorization or Content-Length, and invalid or oversize bodies.
-Its maximum body bytes are 20,000 in legacy mode and 40,000 in verified
-mode. Verified account and task-key requests require an open broker,
-a configured guarded port, and matching launch ownership.
+Its maximum body is 40,000 bytes. Account and task-key requests require an
+open broker, a configured guarded port, and matching launch ownership.
 The pending enrollment store remains available to the authenticated
-native client. Verified mode forbids legacy primary writes and clears.
+native client.
 
 ```quint
-type BrokerMode = LegacyPrimary | VerifiedPrimary
-type BrokerOperation = ReadPrimary | WritePrimary | ClearPrimary | ReadVerified | ExchangeVerified | ReadPending | WritePending | ClearPending | ReadTaskKey | CreateTaskKey | RemoveTaskKey | ReadStrandedKey | CompleteStrandedKey
+type BrokerOperation = ReadVerified | ExchangeVerified | ReadPending | WritePending | ClearPending | ReadTaskKey | CreateTaskKey | RemoveTaskKey | ReadStrandedKey | CompleteStrandedKey
 type BrokerAdmission = BrokerAllowed | ForbiddenWire | InvalidLength | UnavailablePort | RetiredLaunch
 type CredentialEnvelope = { postCredentialRoute: bool, exactBearer: bool, forbiddenHeaders: bool, bodyLength: int }
-type BrokerBinding = { mode: BrokerMode, accountConfigured: bool, taskKeysConfigured: bool, launchCurrent: bool, serverOpen: bool }
+type BrokerBinding = { accountConfigured: bool, taskKeysConfigured: bool, launchCurrent: bool, serverOpen: bool }
 pure def taskOperation(op: BrokerOperation): bool =
   op == ReadTaskKey or op == CreateTaskKey or op == RemoveTaskKey or op == ReadStrandedKey or op == CompleteStrandedKey
-pure def guardedAccount(binding: BrokerBinding, op: BrokerOperation): bool =
-  op == ReadVerified or op == ExchangeVerified or (op == ReadPrimary and binding.mode == VerifiedPrimary)
+pure val maxBodyBytes = 40000
+pure def guardedAccount(op: BrokerOperation): bool = op == ReadVerified or op == ExchangeVerified
 pure def acceptsWire(envelope: CredentialEnvelope): bool =
   envelope.postCredentialRoute and envelope.exactBearer and not(envelope.forbiddenHeaders)
 pure def brokerAdmission(binding: BrokerBinding, envelope: CredentialEnvelope, op: BrokerOperation): BrokerAdmission =
   if (not(acceptsWire(envelope))) ForbiddenWire
-  else if (envelope.bodyLength < 0 or envelope.bodyLength > (if (binding.mode == VerifiedPrimary) 40000 else 20000)) InvalidLength
-  else if (binding.mode == VerifiedPrimary and (op == WritePrimary or op == ClearPrimary)) UnavailablePort
-  else if ((guardedAccount(binding, op) and not(binding.accountConfigured)) or (taskOperation(op) and not(binding.taskKeysConfigured))) UnavailablePort
-  else if ((guardedAccount(binding, op) or taskOperation(op)) and (not(binding.serverOpen) or not(binding.launchCurrent))) RetiredLaunch
+  else if (envelope.bodyLength < 0 or envelope.bodyLength > maxBodyBytes) InvalidLength
+  else if ((guardedAccount(op) and not(binding.accountConfigured)) or (taskOperation(op) and not(binding.taskKeysConfigured))) UnavailablePort
+  else if ((guardedAccount(op) or taskOperation(op)) and (not(binding.serverOpen) or not(binding.launchCurrent))) RetiredLaunch
   else BrokerAllowed
 pure val bindingValues = Set(
-  {mode: VerifiedPrimary, accountConfigured: true, taskKeysConfigured: true, launchCurrent: true, serverOpen: true},
-  {mode: VerifiedPrimary, accountConfigured: true, taskKeysConfigured: true, launchCurrent: false, serverOpen: false},
-  {mode: LegacyPrimary, accountConfigured: false, taskKeysConfigured: false, launchCurrent: true, serverOpen: true}
+  {accountConfigured: true, taskKeysConfigured: true, launchCurrent: true, serverOpen: true},
+  {accountConfigured: true, taskKeysConfigured: true, launchCurrent: false, serverOpen: false},
+  {accountConfigured: false, taskKeysConfigured: false, launchCurrent: true, serverOpen: true}
 )
 pure val envelopeValues = Set(
   {postCredentialRoute: true, exactBearer: true, forbiddenHeaders: false, bodyLength: 200},
@@ -58,10 +54,8 @@ pure val envelopeValues = Set(
 pure def lawNoStorageWithoutNativeWireAuthority(binding: BrokerBinding, envelope: CredentialEnvelope, op: BrokerOperation): bool =
   brokerAdmission(binding, envelope, op) == BrokerAllowed implies acceptsWire(envelope)
 pure def lawGuardedOperationOwnsCurrentLaunch(binding: BrokerBinding, envelope: CredentialEnvelope, op: BrokerOperation): bool =
-  brokerAdmission(binding, envelope, op) == BrokerAllowed and (guardedAccount(binding, op) or taskOperation(op)) implies
+  brokerAdmission(binding, envelope, op) == BrokerAllowed and (guardedAccount(op) or taskOperation(op)) implies
     binding.serverOpen and binding.launchCurrent
-pure def lawVerifiedPrimaryRejectsLegacyMutation(binding: BrokerBinding, envelope: CredentialEnvelope, op: BrokerOperation): bool =
-  binding.mode == VerifiedPrimary and (op == WritePrimary or op == ClearPrimary) implies brokerAdmission(binding, envelope, op) != BrokerAllowed
 ```
 
 ### Exact account exchange refuses a stale record and never reports through a retired launch

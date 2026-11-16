@@ -1,5 +1,5 @@
 lemma ShutdownWorkFilters(s: Shutdown)
-  ensures alwaysPendingWorkIdentitiesUnique(s) == (forall w :: w in s.pending ==> w.id > 0 && w.id in s.usedWorkIds && |ProofLib.Filter((other: RetirementWork) => (other.id == w.id), s.pending)| == 1)
+  ensures alwaysPendingWorkIdentitiesUnique(s) == (forall w :: w in s.pending ==> w.id > 0 && w.id in s.usedWorkIds && |ProofLib.Filter((other: OwnedWork) => (other.id == w.id), s.pending)| == 1)
 {}
 
 lemma ShutdownAttemptFilters(s: Shutdown)
@@ -10,18 +10,18 @@ lemma ShutdownCallerFilters(s: Shutdown)
   ensures alwaysPublishedStopOwnership(s) == (((exists a :: a in s.attempts && (a.phase.StoppingServices? || a.phase.StopSucceeded?)) ==> s.runtimeStopped) && ((s.runtimeStopped || s.activeAttempt != 0 || !s.strictPhase.NoStrictStop?) ==> s.admissionClosed) && (forall c :: c in s.callers ==> c.id > 0 && |ProofLib.Filter((other: StopCaller) => (other.id == c.id), s.callers)| == 1 && (c.strict ==> !s.strictPhase.NoStrictStop?)))
 {}
 
-lemma AppendShutdownWork(s: Shutdown, after: Shutdown, workId: int, kind: RetirementKind)
+lemma AppendShutdownWork(s: Shutdown, after: Shutdown, workId: int, kind: OwnedWorkKind)
   requires alwaysPendingWorkIdentitiesUnique(s)
   requires workId > 0 && workId !in s.usedWorkIds
-  requires after.pending == s.pending + [RetirementWork(workId, kind, false)] && after.usedWorkIds == s.usedWorkIds + [workId]
+  requires after.pending == s.pending + [OwnedWork(workId, kind, false)] && after.usedWorkIds == s.usedWorkIds + [workId]
   ensures alwaysPendingWorkIdentitiesUnique(after)
 {
   ShutdownWorkFilters(s); ShutdownWorkFilters(after);
   forall w | w in after.pending
-    ensures w.id > 0 && w.id in after.usedWorkIds && |ProofLib.Filter((other: RetirementWork) => (other.id == w.id), after.pending)| == 1
+    ensures w.id > 0 && w.id in after.usedWorkIds && |ProofLib.Filter((other: OwnedWork) => (other.id == w.id), after.pending)| == 1
   {
-    ProofLib.FilterAppend((other: RetirementWork) => (other.id == w.id), s.pending, RetirementWork(workId, kind, false));
-    if w.id == workId { ProofLib.FilterNone((other: RetirementWork) => (other.id == w.id), s.pending); }
+    ProofLib.FilterAppend((other: OwnedWork) => (other.id == w.id), s.pending, OwnedWork(workId, kind, false));
+    if w.id == workId { ProofLib.FilterNone((other: OwnedWork) => (other.id == w.id), s.pending); }
     else { assert w in s.pending; }
   }
 }
@@ -34,15 +34,15 @@ lemma MapShutdownWork(s: Shutdown, after: Shutdown)
 {
   ShutdownWorkFilters(s); ShutdownWorkFilters(after);
   forall w | w in after.pending
-    ensures w.id > 0 && w.id in after.usedWorkIds && |ProofLib.Filter((other: RetirementWork) => (other.id == w.id), after.pending)| == 1
+    ensures w.id > 0 && w.id in after.usedWorkIds && |ProofLib.Filter((other: OwnedWork) => (other.id == w.id), after.pending)| == 1
   {
     var i :| 0 <= i < |after.pending| && after.pending[i] == w;
-    ProofLib.FilterLengthPointwise((other: RetirementWork) => (other.id == w.id), (other: RetirementWork) => (other.id == w.id), s.pending, after.pending);
+    ProofLib.FilterLengthPointwise((other: OwnedWork) => (other.id == w.id), (other: OwnedWork) => (other.id == w.id), s.pending, after.pending);
   }
 }
 
 lemma RemoveShutdownWork(s: Shutdown, workId: int, teardownFailed: bool)
-  ensures completeOwnedWork(s, workId, teardownFailed).pending == ProofLib.Filter((w: RetirementWork) => (w.id != workId), s.pending)
+  ensures completeOwnedWork(s, workId, teardownFailed).pending == ProofLib.Filter((w: OwnedWork) => (w.id != workId), s.pending)
 {}
 
 lemma AppendShutdownAttempt(s: Shutdown, after: Shutdown, added: StopAttempt)
@@ -161,7 +161,7 @@ lemma BeginStopRecords(s: Shutdown, fast: bool)
   }
 }
 
-lemma admitOwnedWork_ensures(s: Shutdown, workId: int, kind: RetirementKind)
+lemma admitOwnedWork_ensures(s: Shutdown, workId: int, kind: OwnedWorkKind)
   ensures (inv(s) ==> canAdmitOwnedWork(s, workId, kind) ==> alwaysOneActiveAttempt(admitOwnedWork(s, workId, kind)))
   ensures (inv(s) ==> canAdmitOwnedWork(s, workId, kind) ==> alwaysPreparationOnce(admitOwnedWork(s, workId, kind)))
   ensures (inv(s) ==> canAdmitOwnedWork(s, workId, kind) ==> alwaysClosedIngressAbortsTurns(admitOwnedWork(s, workId, kind)))
@@ -179,7 +179,7 @@ lemma admitOwnedWork_ensures(s: Shutdown, workId: int, kind: RetirementKind)
   if inv(s) && canAdmitOwnedWork(s, workId, kind) { AppendShutdownWork(s, admitOwnedWork(s, workId, kind), workId, kind); }
 }
 
-lemma spawnRetirementChild_ensures(s: Shutdown, parentId: int, workId: int, kind: RetirementKind)
+lemma spawnRetirementChild_ensures(s: Shutdown, parentId: int, workId: int, kind: OwnedWorkKind)
   ensures (inv(s) ==> canSpawnRetirementChild(s, parentId, workId, kind) ==> alwaysOneActiveAttempt(spawnRetirementChild(s, parentId, workId, kind)))
   ensures (inv(s) ==> canSpawnRetirementChild(s, parentId, workId, kind) ==> alwaysPreparationOnce(spawnRetirementChild(s, parentId, workId, kind)))
   ensures (inv(s) ==> canSpawnRetirementChild(s, parentId, workId, kind) ==> alwaysClosedIngressAbortsTurns(spawnRetirementChild(s, parentId, workId, kind)))
@@ -216,13 +216,13 @@ lemma completeOwnedWork_ensures(s: Shutdown, workId: int, teardownFailed: bool)
     var after := completeOwnedWork(s, workId, teardownFailed);
     RemoveShutdownWork(s, workId, teardownFailed);
     ShutdownWorkFilters(s); ShutdownWorkFilters(after);
-    ProofLib.FilterSubset((w: RetirementWork) => (w.id != workId), s.pending);
+    ProofLib.FilterSubset((w: OwnedWork) => (w.id != workId), s.pending);
     forall w | w in after.pending
-      ensures w.id > 0 && w.id in after.usedWorkIds && |ProofLib.Filter((other: RetirementWork) => (other.id == w.id), after.pending)| == 1
+      ensures w.id > 0 && w.id in after.usedWorkIds && |ProofLib.Filter((other: OwnedWork) => (other.id == w.id), after.pending)| == 1
     {
       assert w in s.pending;
-      ProofLib.FilterOfFilterShorter((w: RetirementWork) => (w.id != workId), (other: RetirementWork) => (other.id == w.id), s.pending);
-      ProofLib.FilterMember((other: RetirementWork) => (other.id == w.id), after.pending, w);
+      ProofLib.FilterOfFilterShorter((w: OwnedWork) => (w.id != workId), (other: OwnedWork) => (other.id == w.id), s.pending);
+      ProofLib.FilterMember((other: OwnedWork) => (other.id == w.id), after.pending, w);
     }
     ShutdownProgress(after);
   }

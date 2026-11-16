@@ -1,9 +1,9 @@
 # Android bridge composition and authority
 
 Each consumer describes its Android host in a consumer-owned host
-descriptor and generates it with Eliza's Android host generator at
-`packages/app/scripts/mobile/android/consumer-host.mjs`. Explicit
-registration is in each consumer's `MainActivity.java`. The build emits
+descriptor and generates it with Eliza's
+[Android host generator](../build/consumerHost.md). Explicit registration is
+in each consumer's `MainActivity.java`. The build emits
 settings, variants, source sets and Gradle wiring from the consumer
 identity and modules. A consumer may independently select `upstream`,
 `patchedNative`, `consumer` and `dependencies` roots, and then rejects
@@ -15,7 +15,7 @@ unadmitted native patch staging before Gradle assembles its modules.
 | Contacts, calendar, photos | the contacts, calendar and media plugins |
 | Files, location, communications | the filesystem, location, Wi-Fi, messages and phone plugins, the action journal |
 | Device and notification actions | the notifications, reminders and system plugins |
-| Credentials and voice | the speech and voice plugins, the secure store, passwords, an optional password-transfer plugin |
+| Credentials and voice | the speech and voice plugins, the secure store, passwords |
 
 The table describes the producer modules; which of them a consumer
 compiles is its own declaration. Per-method data schemas and lifecycles
@@ -31,98 +31,51 @@ Effect port validated at its entry.
 ### Build inclusion, registration and per-operation permission are separate evidence
 
 A staged module does not itself establish that an Activity registers a
-bridge. Each consumer declares which gated bridges it registers. A
-consumer that gates passwords behind a build switch registers the
-password bridge only when the switch is on. Telephony registration
-depends on the consumer declaring telephony and on the image capability
-check, which is repeated for every telephony operation. The optional
-password-transfer registration depends on the consumer declaring it, the
-class being present and the development test-mock build gate. These are
+bridge. Each consumer's descriptor declares whether it registers the
+password and telephony bridges; an undeclared one is unavailable.
+Telephony also needs the image capability check, which is repeated for
+every telephony operation. These are
 registration and operation criteria. An operation that separately needs a
 device permission is refused until the Android broker supplies that
 permission. A renderer string or an unchecked WebView route cannot attest
 either.
 
 ```quint
-type Feature = SystemBridge | CameraBridge | BrowserBridge | ContactsBridge | CalendarBridge | MediaBridge | VoiceBridge | PasswordBridge | TransferBridge | TelephonyBridge
-type ConsumerBridges = { declaresTelephony: bool, declaresTransfer: bool, gatesPasswords: bool }
-type Installation = { consumer: ConsumerBridges, feature: Feature, built: bool, activityRegistered: bool, passwordsEnabled: bool, transferClassPresent: bool, developmentMocks: bool, imageVerified: bool }
+type Feature = SystemBridge | CameraBridge | BrowserBridge | ContactsBridge | CalendarBridge | MediaBridge | VoiceBridge | PasswordBridge | TelephonyBridge
+type ConsumerBridges = { declaresTelephony: bool, declaresPasswords: bool }
+type Installation = { consumer: ConsumerBridges, feature: Feature, built: bool, activityRegistered: bool, imageVerified: bool }
 type Admission = BridgeReady | BridgeUnavailable | PermissionRequired | OwnerRetired
 pure def eligibleRegistration(binding: Installation): bool =
   if (binding.feature == TelephonyBridge) binding.consumer.declaresTelephony and binding.imageVerified
-  else if (binding.feature == TransferBridge) binding.consumer.declaresTransfer and binding.developmentMocks and binding.transferClassPresent
-  else if (binding.feature == PasswordBridge and binding.consumer.gatesPasswords) binding.passwordsEnabled
+  else if (binding.feature == PasswordBridge) binding.consumer.declaresPasswords
   else true
 pure def bridgeAdmission(binding: Installation, ownerLive: bool, needsPermission: bool, permissionGranted: bool): Admission =
   if (not(ownerLive)) OwnerRetired
   else if (not(binding.built) or not(binding.activityRegistered) or not(eligibleRegistration(binding))) BridgeUnavailable
   else if (needsPermission and not(permissionGranted)) PermissionRequired
   else BridgeReady
-pure val gatedConsumer: ConsumerBridges = { declaresTelephony: false, declaresTransfer: false, gatesPasswords: true }
-pure val telephonyConsumer: ConsumerBridges = { declaresTelephony: true, declaresTransfer: true, gatesPasswords: false }
-pure val bindingValues = Set(
-  { consumer: gatedConsumer, feature: SystemBridge, built: true, activityRegistered: true, passwordsEnabled: false, transferClassPresent: false, developmentMocks: false, imageVerified: false },
-  { consumer: gatedConsumer, feature: PasswordBridge, built: true, activityRegistered: true, passwordsEnabled: false, transferClassPresent: false, developmentMocks: false, imageVerified: false },
-  { consumer: gatedConsumer, feature: TelephonyBridge, built: true, activityRegistered: true, passwordsEnabled: false, transferClassPresent: false, developmentMocks: false, imageVerified: true },
-  { consumer: telephonyConsumer, feature: TelephonyBridge, built: true, activityRegistered: true, passwordsEnabled: true, transferClassPresent: false, developmentMocks: false, imageVerified: false },
-  { consumer: telephonyConsumer, feature: TelephonyBridge, built: true, activityRegistered: true, passwordsEnabled: true, transferClassPresent: false, developmentMocks: false, imageVerified: true },
-  { consumer: telephonyConsumer, feature: TransferBridge, built: true, activityRegistered: true, passwordsEnabled: true, transferClassPresent: true, developmentMocks: true, imageVerified: true }
-)
-pure def lawReadyNeedsEvidence(binding: Installation, ownerLive: bool, needsPermission: bool, permissionGranted: bool): bool =
-  bridgeAdmission(binding, ownerLive, needsPermission, permissionGranted) == BridgeReady implies
-    binding.built and binding.activityRegistered and eligibleRegistration(binding) and ownerLive and
-    (not(needsPermission) or permissionGranted)
+pure val passwordConsumer: ConsumerBridges = { declaresTelephony: false, declaresPasswords: true }
+pure val telephonyConsumer: ConsumerBridges = { declaresTelephony: true, declaresPasswords: false }
+pure val systemBinding: Installation = { consumer: passwordConsumer, feature: SystemBridge, built: true, activityRegistered: true, imageVerified: false }
+pure val bindingValues = Set(systemBinding, { ...systemBinding, feature: PasswordBridge }, { ...systemBinding, consumer: telephonyConsumer, feature: PasswordBridge },
+  { ...systemBinding, feature: TelephonyBridge, imageVerified: true },
+  { ...systemBinding, consumer: telephonyConsumer, feature: TelephonyBridge },
+  { ...systemBinding, consumer: telephonyConsumer, feature: TelephonyBridge, imageVerified: true },
+  { ...systemBinding, activityRegistered: false })
 pure def lawTelephonyNeedsDeclarationAndVerifiedImage(binding: Installation, ownerLive: bool, needsPermission: bool, permissionGranted: bool): bool =
   binding.feature == TelephonyBridge and bridgeAdmission(binding, ownerLive, needsPermission, permissionGranted) == BridgeReady implies
     binding.consumer.declaresTelephony and binding.imageVerified
-pure def lawGatedPasswordsNeedReleaseSwitch(binding: Installation, ownerLive: bool, needsPermission: bool, permissionGranted: bool): bool =
-  binding.consumer.gatesPasswords and binding.feature == PasswordBridge and bridgeAdmission(binding, ownerLive, needsPermission, permissionGranted) == BridgeReady implies binding.passwordsEnabled
+pure def lawPasswordsNeedDeclaration(binding: Installation, ownerLive: bool, needsPermission: bool, permissionGranted: bool): bool =
+  binding.feature == PasswordBridge and bridgeAdmission(binding, ownerLive, needsPermission, permissionGranted) == BridgeReady implies
+    binding.consumer.declaresPasswords
 ```
 
-## Story: Produce the Android host from authenticated source inputs
+## Story: Activate a staged resident tree only with its provenance
 
-> As a consumer, I want my Android host produced only from source inputs
-> whose identity was checked.
-
-### Generation writes only under an admitted consumer output root
-
-The upstream generator requires a consumer-owned output directory
-outside the upstream source. It checks real paths for declared source
-containment, refuses symlink output ancestors and preserves authored
-inputs in an in-place output. The consumer supplies application identity,
-SDK ordering, native modules, source references, flavors and signing
-configuration. The generator checks the identity and version shape,
-requires explicit release minification, and rejects duplicate module or
-output names. The model starts after these configuration types have
-been decoded. The filesystem port must perform the canonical-path and
-output-ownership checks before it writes.
-
-```quint
-type BuildInput = {
-  schema: int, minimumSdk: int, targetSdk: int, compileSdk: int,
-  versionCode: int, identityValid: bool, releasePolicyExplicit: bool,
-  insideConsumer: bool, distinctOutput: bool, outsideUpstream: bool,
-  noSymlinkAncestors: bool, resolvedInputsOwned: bool, uniqueModuleAndFileNames: bool,
-  overwriteOwned: bool
-}
-pure def admitsAndroidHost(input: BuildInput): bool =
-  input.schema == 1 and input.minimumSdk > 0 and input.minimumSdk <= input.targetSdk and
-  input.targetSdk <= input.compileSdk and input.versionCode > 0 and input.versionCode <= 2100000000 and
-  input.identityValid and input.releasePolicyExplicit and input.insideConsumer and input.distinctOutput and
-  input.outsideUpstream and input.noSymlinkAncestors and input.resolvedInputsOwned and
-  input.uniqueModuleAndFileNames and input.overwriteOwned
-pure val inputValues = Set(
-  {schema: 1, minimumSdk: 29, targetSdk: 36, compileSdk: 36, versionCode: 1, identityValid: true, releasePolicyExplicit: true,
-    insideConsumer: true, distinctOutput: true, outsideUpstream: true, noSymlinkAncestors: true, resolvedInputsOwned: true, uniqueModuleAndFileNames: true, overwriteOwned: true},
-  {schema: 1, minimumSdk: 36, targetSdk: 29, compileSdk: 36, versionCode: 1, identityValid: true, releasePolicyExplicit: true,
-    insideConsumer: true, distinctOutput: true, outsideUpstream: true, noSymlinkAncestors: true, resolvedInputsOwned: false, uniqueModuleAndFileNames: true, overwriteOwned: true}
-)
-pure def lawHostOutputStaysOwned(input: BuildInput): bool =
-  admitsAndroidHost(input) implies input.insideConsumer and input.outsideUpstream and input.distinctOutput and
-  input.noSymlinkAncestors and input.resolvedInputsOwned and input.overwriteOwned
-pure def lawHostKeepsSdkOrder(input: BuildInput): bool =
-  admitsAndroidHost(input) implies input.minimumSdk > 0 and input.minimumSdk <= input.targetSdk and input.targetSdk <= input.compileSdk
-```
+> As a consumer, I want the resident tree my Android host runs to be the
+> one whose source identity was checked, so that a failed publication never
+> leaves an unverified tree live. Host generation itself is
+> [consumer host](../build/consumerHost.md).
 
 ### A staged resident tree is activated only with its provenance receipt
 

@@ -4,7 +4,9 @@ Source `utils/streaming.ts` exports `PassthroughExtractor`, `MarkableExtractor`,
 
 ## Story: Track completion and retry text without changing a chunk
 
-As a streaming host, I want completion, reset and accumulated retry text to agree with the exact text delivered to my callback.
+> As a streaming host, I want completion, reset and accumulated retry text
+> to agree with the exact text delivered to my callback, so that a retry
+> resumes from what the user actually saw.
 
 ### Bare push echoes its input and the context gates completed delivery
 

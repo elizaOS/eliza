@@ -1,6 +1,9 @@
 # Task request and view codecs
 
-A consumer builds and calls Eliza `7743504b7c936a764b3938a44cad918808b621df` through `packages/agent/src/services/interactive-task-http.ts` and `packages/host/native-host/task-runtime-gateway.mjs`. Its task lifecycle client consumes `packages/ui/src/api/task-lifecycle.ts` at the same pin. The [owner fence](./ownerFence.md) owns authentication, dispatch and response publication. [Task lifecycle](../client/taskLifecycle.md) owns stale client replies. [Task events](../../core/taskEventReader.md) owns the event records and merge. This codec supplies typed routes and detached task views to those models.
+What a task command, an event query and a task view must look like on the
+wire. The [owner fence](./ownerFence.md) owns authentication, dispatch and
+publication, [task lifecycle](../client/taskLifecycle.md) the client's
+requests, and [task events](../../core/taskEventReader.md) the event records.
 
 ## Story: Admit only the renderer's documented task commands
 
@@ -8,85 +11,91 @@ A consumer builds and calls Eliza `7743504b7c936a764b3938a44cad918808b621df` thr
 > documents, with exactly the fields it needs; anything malformed changes
 > nothing.
 
-### Task IDs and goal references retain their exact grammar
+### Task IDs and goal references follow one bounded grammar, and only references allow a slash
 
-Match JavaScript UTF-16 units without Unicode case folding. An ID or reference begins with an ASCII letter or digit and has at most 256 units. The tail permits ASCII letters, digits, underscore, dot, colon, at and hyphen. Only goal references also permit slash. Route matching uses `URL.pathname` without percent-decoding segments, so a percent-encoded character is outside both grammars.
+An ID or reference has 1 to 256 characters, begins with an ASCII letter or
+digit, and continues with ASCII letters, digits, underscore, dot, colon, at
+and hyphen; a goal reference may also contain a slash. A route segment is
+matched without percent-decoding, so an encoded character is outside both.
 
 ```quint
-pure def taskAsciiDigit(unit: int): bool = unit >= 48 and unit <= 57
-pure def taskAsciiAlnum(unit: int): bool = taskAsciiDigit(unit) or (unit >= 65 and unit <= 90) or (unit >= 97 and unit <= 122)
-pure def taskRefTail(unit: int, allowSlash: bool): bool = taskAsciiAlnum(unit) or unit == 95 or unit == 46 or unit == 58 or unit == 64 or unit == 45 or (allowSlash and unit == 47)
-pure def taskReference(units: List[int], allowSlash: bool): bool = units.length() >= 1 and units.length() <= 256 and taskAsciiAlnum(units.nthOr(0, -1)) and units.every(unit => taskRefTail(unit, allowSlash))
-pure def lawTaskIdsAreGoalReferences(units: List[int]): bool = taskReference(units, false) implies taskReference(units, true)
-pure def lawTaskReferenceStartsWithAsciiAlnum(units: List[int], allowSlash: bool): bool = taskReference(units, allowSlash) implies taskAsciiAlnum(units.nthOr(0, -1))
-pure def lawTaskReferenceLengthIsBounded(units: List[int], allowSlash: bool): bool = taskReference(units, allowSlash) implies units.length() > 0 and units.length() <= 256
-pure val unitsValues = Set(List(), List(65), List(65, 47), List(65, 37, 51, 70), List(65, 10), List(47, 65), List(65, 95, 46, 58, 64, 45), List(233))
+import numbers as Num from "../../core/numbers"
+type ReferenceShape = { length: int, startsAlnum: bool, tailAllowed: bool, hasSlash: bool }
+pure def taskReference(ref: ReferenceShape, allowSlash: bool): bool =
+  ref.length >= 1 and ref.length <= 256 and ref.startsAlnum and ref.tailAllowed and (allowSlash or not(ref.hasSlash))
+pure val plainRef: ReferenceShape = { length: 8, startsAlnum: true, tailAllowed: true, hasSlash: false }
+pure val refValues = Set(plainRef, { ...plainRef, hasSlash: true }, { ...plainRef, length: 257 }, { ...plainRef, length: 0 },
+  { ...plainRef, startsAlnum: false }, { ...plainRef, tailAllowed: false })
+pure def lawTaskIdsAreGoalReferences(ref: ReferenceShape): bool = taskReference(ref, false) implies taskReference(ref, true)
+pure def lawOnlyGoalReferencesHoldSlash(ref: ReferenceShape): bool = ref.hasSlash implies not(taskReference(ref, false))
 ```
 
-### JSON and field admission precede mutation
+### A malformed, oversized or unexpected body changes nothing
 
-The framework supplies wire bytes, stream failure, fatal UTF-8 decode and JSON value shape. Match `application/json` case insensitively, either alone or followed by ECMAScript whitespace and a semicolon. This media-type test does not interpret the parameter text. A body is present and has at most 2,048 actual bytes. These checks precede an exact object field count. Start has only `goalRef`. Pause current has no fields or only `reason: "close"`. Pause by ID has the nonnegative safe integer `expectedRevision` and optionally `reason: "close"`. Resume, cancel and acknowledge unknown have only `expectedRevision`. Acknowledge unreadable has an empty object. The two acknowledgement routes belong to the native gateway and a malformed input never invokes their store methods.
+A body is JSON (`application/json`, optionally with parameters), present,
+at most 2,048 bytes, valid UTF-8 and an object, before its fields are read.
+Each command then has an exact field set: start has only `goalRef`; pause
+current has none, or only `reason: "close"`; pause by ID has
+`expectedRevision`, a nonnegative safe integer, and optionally
+`reason: "close"`; resume, cancel and acknowledging an unknown outcome have
+only `expectedRevision`; acknowledging an unreadable record has none.
+Anything else is refused before the store is touched.
 
 ```quint
 type TaskCommand = StartTask | PauseCurrent | PauseById | ResumeById | CancelById | AcknowledgeUnknown | AcknowledgeUnreadable
-type TaskBody = { contentType: List[int], present: bool, byteCount: int, validUtf8: bool, objectJson: bool, keyCount: int, hasReason: bool, closeReason: bool, hasGoalString: bool, goalUnits: List[int], hasRevisionInteger: bool, revision: int }
-pure val jsonMedia: List[int] = List(97, 112, 112, 108, 105, 99, 97, 116, 105, 111, 110, 47, 106, 115, 111, 110)
-pure def lowerMedia(unit: int): int = if (unit >= 65 and unit <= 90) unit + 32 else unit
-pure def mediaWhitespace(unit: int): bool = (unit >= 9 and unit <= 13) or unit == 32 or unit == 160 or unit == 5760 or (unit >= 8192 and unit <= 8202) or unit == 8232 or unit == 8233 or unit == 8239 or unit == 8287 or unit == 12288 or unit == 65279
-type MediaWalk = { offset: int, prefix: bool, stillWhitespace: bool, semicolon: bool }
-pure def jsonContentType(media: List[int]): bool = {
-  val seen = media.foldl({ offset: 0, prefix: true, stillWhitespace: true, semicolon: false }, (walk, unit) =>
-    if (walk.offset < 16) { ...walk, offset: walk.offset + 1, prefix: walk.prefix and lowerMedia(unit) == jsonMedia.nthOr(walk.offset, -1) }
-    else { ...walk, offset: walk.offset + 1, stillWhitespace: walk.stillWhitespace and mediaWhitespace(unit), semicolon: walk.semicolon or (walk.stillWhitespace and unit == 59) })
-  seen.prefix and (seen.offset == 16 or seen.semicolon)
-}
-pure def taskNonnegativeSafe(number: int): bool = number >= 0 and number <= 9007199254740991
-pure def bodyEnvelope(input: TaskBody): bool = jsonContentType(input.contentType) and input.present and input.byteCount > 0 and input.byteCount <= 2048 and input.validUtf8 and input.objectJson
+type TaskBody = { jsonMedia: bool, present: bool, byteCount: int, validUtf8: bool, objectJson: bool, keyCount: int,
+  hasReason: bool, closeReason: bool, hasGoal: bool, goal: ReferenceShape, hasRevisionInteger: bool, revision: int }
+pure def taskNonnegativeSafe(number: int): bool = number >= 0 and number <= Num::maxSafeInteger
+pure def bodyEnvelope(input: TaskBody): bool =
+  input.jsonMedia and input.present and input.byteCount > 0 and input.byteCount <= 2048 and input.validUtf8 and input.objectJson
 pure def bodyRevision(input: TaskBody): bool = input.hasRevisionInteger and taskNonnegativeSafe(input.revision)
 pure def taskBodyAdmitted(command: TaskCommand, input: TaskBody): bool = bodyEnvelope(input) and (
-  if (command == StartTask) input.keyCount == 1 and input.hasGoalString and taskReference(input.goalUnits, true)
+  if (command == StartTask) input.keyCount == 1 and input.hasGoal and taskReference(input.goal, true)
   else if (command == PauseCurrent) input.keyCount == 0 or (input.keyCount == 1 and input.hasReason and input.closeReason)
   else if (command == AcknowledgeUnreadable) input.keyCount == 0
   else if (command == PauseById and input.hasReason) input.keyCount == 2 and input.closeReason and bodyRevision(input)
   else input.keyCount == 1 and bodyRevision(input))
 pure def lawInvalidEnvelopeCannotMutate(command: TaskCommand, input: TaskBody): bool = not(bodyEnvelope(input)) implies not(taskBodyAdmitted(command, input))
-pure def lawCloseRemainsAnExplicitPause(command: TaskCommand, input: TaskBody): bool = taskBodyAdmitted(command, input) and (command == PauseCurrent or command == PauseById) and input.hasReason and input.keyCount > 0 implies input.closeReason
-pure def lawRevisionRequiredOnMutationById(command: TaskCommand, input: TaskBody): bool = taskBodyAdmitted(command, input) and command != AcknowledgeUnreadable and command != PauseCurrent and command != StartTask implies bodyRevision(input)
-pure val normalBody: TaskBody = { contentType: jsonMedia, present: true, byteCount: 22, validUtf8: true, objectJson: true, keyCount: 1, hasReason: false, closeReason: false, hasGoalString: false, goalUnits: List(), hasRevisionInteger: true, revision: 0 }
-pure val inputValues = Set(normalBody, { ...normalBody, byteCount: 2048 }, { ...normalBody, byteCount: 2049 }, { ...normalBody, keyCount: 0, hasRevisionInteger: false }, { ...normalBody, hasReason: true, closeReason: true, keyCount: 2 }, { ...normalBody, hasReason: true }, { ...normalBody, validUtf8: false }, { ...normalBody, contentType: List(97) }, { ...normalBody, hasGoalString: true, goalUnits: List(103, 47, 48), hasRevisionInteger: false })
+pure def lawCloseRemainsAnExplicitPause(command: TaskCommand, input: TaskBody): bool =
+  taskBodyAdmitted(command, input) and (command == PauseCurrent or command == PauseById) and input.hasReason implies input.closeReason
+pure def lawRevisionRequiredOnMutationById(command: TaskCommand, input: TaskBody): bool =
+  taskBodyAdmitted(command, input) and command != AcknowledgeUnreadable and command != PauseCurrent and command != StartTask implies bodyRevision(input)
+pure val normalBody: TaskBody = { jsonMedia: true, present: true, byteCount: 22, validUtf8: true, objectJson: true, keyCount: 1,
+  hasReason: false, closeReason: false, hasGoal: false, goal: plainRef, hasRevisionInteger: true, revision: 0 }
+pure val inputValues = Set(normalBody, { ...normalBody, byteCount: 2048 }, { ...normalBody, byteCount: 2049 },
+  { ...normalBody, keyCount: 0, hasRevisionInteger: false }, { ...normalBody, hasReason: true, closeReason: true, keyCount: 2 },
+  { ...normalBody, hasReason: true }, { ...normalBody, validUtf8: false }, { ...normalBody, jsonMedia: false },
+  { ...normalBody, hasGoal: true, goal: { ...plainRef, hasSlash: true }, hasRevisionInteger: false })
 ```
 
-### An event cursor preserves the default and refuses rounding
+### An event cursor is absent, -1 or a safe nonnegative integer no greater than the revision
 
-An event query has zero entries, or exactly one decoded `after` entry. Missing `after` and the literal `-1` both start before sequence zero. The remaining accepted spellings are `0` or an unsigned decimal starting with 1–9. Accumulate digits only while the result is a safe integer. Malformed or unsafe cursors produce `TASK_INVALID` before an event page is admitted. The pinned HTTP layer parses decimal syntax first and its event store separately rejects unsafe values and cursors beyond the current revision. Other core task routes reject a nonempty query. The gateway's owner record routes match on pathname before the product extension and do not impose the core query rule.
+An event query has no entries, or exactly one `after`. A missing cursor and
+`-1` both start before the first event; otherwise the cursor is `0` or a
+decimal without a leading zero, a safe integer no greater than the task's
+revision. Anything else is `TASK_INVALID` and admits no page. Other task
+routes refuse any query.
 
 ```quint
-type TaskQueryEntry = { name: str, value: List[int] }
+type CursorQuery = { entries: int, namedAfter: bool, canonicalDecimal: bool, safeInteger: bool, after: int }
 type Cursor = { valid: bool, after: int }
 pure val badCursor: Cursor = { valid: false, after: -1 }
 pure val firstCursor: Cursor = { valid: true, after: -1 }
-pure def cursorDigit(cursor: Cursor, unit: int): Cursor =
-  if (not(cursor.valid) or not(taskAsciiDigit(unit)) or cursor.after > 900719925474099 or (cursor.after == 900719925474099 and unit > 49)) badCursor
-  else { valid: true, after: cursor.after * 10 + (unit - 48) }
-pure def decodeCursor(value: List[int]): Cursor =
-  if (value == List(45, 49)) firstCursor
-  else if (value == List(48)) { valid: true, after: 0 }
-  else if (value.nthOr(0, -1) < 49 or value.nthOr(0, -1) > 57) badCursor
-  else value.foldl({ valid: true, after: 0 }, cursorDigit)
-pure def taskEventCursor(query: List[TaskQueryEntry]): Cursor = {
-  val first = query.nthOr(0, { name: "", value: List() })
-  if (query.length() == 0) firstCursor
-  else if (query.length() != 1 or first.name != "after") badCursor
-  else decodeCursor(first.value)
-}
-pure def taskCursorAllowed(query: List[TaskQueryEntry], revision: int): bool = {
+pure def taskEventCursor(query: CursorQuery): Cursor =
+  if (query.entries == 0) firstCursor
+  else if (query.entries != 1 or not(query.namedAfter) or not(query.canonicalDecimal)) badCursor
+  else if (query.after == -1 or (query.safeInteger and taskNonnegativeSafe(query.after))) { valid: true, after: query.after }
+  else badCursor
+pure def taskCursorAllowed(query: CursorQuery, revision: int): bool = {
   val cursor = taskEventCursor(query)
   cursor.valid and cursor.after <= revision
 }
-pure def lawAbsentCursorStartsAtFirst(query: List[TaskQueryEntry]): bool = query.length() == 0 implies taskEventCursor(query) == firstCursor
-pure def lawRepeatedQueryCannotAdmitPage(query: List[TaskQueryEntry], revision: int): bool = query.length() > 1 implies not(taskCursorAllowed(query, revision))
-pure def lawCursorNeverSkipsPastHead(query: List[TaskQueryEntry], revision: int): bool = taskCursorAllowed(query, revision) implies taskEventCursor(query).after <= revision
-pure val queryValues = Set(List(), List({ name: "after", value: List(45, 49) }), List({ name: "after", value: List(48, 49) }), List({ name: "after", value: List(49) }, { name: "after", value: List(48) }), List({ name: "other", value: List(49) }), List({ name: "after", value: List(49, 50, 56) }))
+pure val firstQuery: CursorQuery = { entries: 1, namedAfter: true, canonicalDecimal: true, safeInteger: true, after: 1 }
+pure val queryValues = Set(firstQuery, { ...firstQuery, entries: 0 }, { ...firstQuery, entries: 2 }, { ...firstQuery, namedAfter: false },
+  { ...firstQuery, canonicalDecimal: false }, { ...firstQuery, after: -1 }, { ...firstQuery, safeInteger: false })
+pure def lawAbsentCursorStartsAtFirst(query: CursorQuery): bool = query.entries == 0 implies taskEventCursor(query) == firstCursor
+pure def lawRepeatedQueryCannotAdmitPage(query: CursorQuery, revision: int): bool = query.entries > 1 implies not(taskCursorAllowed(query, revision))
+pure def lawUnsafeCursorIsRefused(query: CursorQuery, revision: int): bool = (query.entries == 1 and not(query.safeInteger)) implies not(taskCursorAllowed(query, revision))
 ```
 
 ## Story: Deliver only a detached view of the task the host returned
@@ -96,27 +105,34 @@ pure val queryValues = Set(List(), List({ name: "after", value: List(45, 49) }),
 
 ### A renderer receives six public fields or an explicit null
 
-The pinned host projects `schemaVersion`, `id`, `revision`, `epoch`, `status`, and `hasUnknownOutcome` only. `hasUnknownOutcome` is derived from the existence of an operation whose status is `unknown`. The shared UI checks that a reply has a `task` member. A null task means no task. A value requires version 1, a valid ID, two nonnegative safe integers, one of six status strings and a boolean unknown-outcome flag. The UI copies those six fields and ignores extras in the incoming object. The original string is supplied with its exact UTF-16 encoding. Type observations at this seam come from native JSON for real requests.
+The host projects only the schema version, ID, revision, epoch, status and
+whether any operation's outcome is unknown. A reply must have a `task`
+member: null means no task, and a value needs version 1, a valid task ID,
+two nonnegative safe integers, one of six statuses and a boolean flag. The
+client copies those six fields and ignores the rest; anything else is
+invalid, never absence.
 
 ```quint
-type TaskView = { schemaVersion: int, id: str, revision: int, epoch: int, status: str, hasUnknownOutcome: bool }
-type TaskViewWire = { hasTask: bool, nullTask: bool, objectTask: bool, idString: bool, idUnits: List[int], revisionInteger: bool, epochInteger: bool, unknownBoolean: bool, value: TaskView }
+type TaskStatus = TaskActive | TaskPaused | TaskBlocked | TaskWaiting | TaskCompleted | TaskCancelled
+type TaskView = { schemaVersion: int, id: str, revision: int, epoch: int, status: TaskStatus, hasUnknownOutcome: bool }
+type TaskViewWire = { hasTask: bool, nullTask: bool, objectTask: bool, idShape: ReferenceShape, statusKnown: bool, unknownBoolean: bool, value: TaskView }
 type TaskViewResult = TaskViewInvalid | TaskViewAbsent | TaskViewPresent(TaskView)
-pure val invalidTaskViewResult: TaskViewResult = TaskViewInvalid
-pure val absentTaskViewResult: TaskViewResult = TaskViewAbsent
-pure def taskStatus(status: str): bool = status == "active" or status == "paused" or status == "blocked" or status == "waiting" or status == "completed" or status == "cancelled"
-pure def projectTask(version: int, id: str, revision: int, epoch: int, status: str, operationStatuses: List[str]): TaskView = { schemaVersion: version, id: id, revision: revision, epoch: epoch, status: status, hasUnknownOutcome: operationStatuses.some(operation => operation == "unknown") }
-pure def validTaskView(wire: TaskViewWire): bool = wire.objectTask and wire.value.schemaVersion == 1 and wire.idString and taskReference(wire.idUnits, false) and wire.revisionInteger and taskNonnegativeSafe(wire.value.revision) and wire.epochInteger and taskNonnegativeSafe(wire.value.epoch) and taskStatus(wire.value.status) and wire.unknownBoolean
+pure def projectTask(version: int, id: str, revision: int, epoch: int, status: TaskStatus, operationStatuses: List[str]): TaskView =
+  { schemaVersion: version, id: id, revision: revision, epoch: epoch, status: status, hasUnknownOutcome: operationStatuses.some(operation => operation == "unknown") }
+pure def validTaskView(wire: TaskViewWire): bool =
+  wire.objectTask and wire.value.schemaVersion == 1 and taskReference(wire.idShape, false) and
+    taskNonnegativeSafe(wire.value.revision) and taskNonnegativeSafe(wire.value.epoch) and wire.statusKnown and wire.unknownBoolean
 pure def admitTaskView(wire: TaskViewWire): TaskViewResult =
   if (not(wire.hasTask)) TaskViewInvalid
   else if (wire.nullTask) TaskViewAbsent
   else if (validTaskView(wire)) TaskViewPresent({ schemaVersion: 1, id: wire.value.id, revision: wire.value.revision, epoch: wire.value.epoch, status: wire.value.status, hasUnknownOutcome: wire.value.hasUnknownOutcome })
   else TaskViewInvalid
-pure def lawUnknownOutcomeComesFromEvidence(version: int, id: str, revision: int, epoch: int, status: str, operationStatuses: List[str]): bool = projectTask(version, id, revision, epoch, status, operationStatuses).hasUnknownOutcome == operationStatuses.some(operation => operation == "unknown")
-pure def lawMalformedTaskDoesNotBecomeAbsence(wire: TaskViewWire): bool = not(wire.hasTask) or (not(wire.nullTask) and not(validTaskView(wire))) implies admitTaskView(wire) == invalidTaskViewResult
-pure def lawExplicitNullIsAbsent(wire: TaskViewWire): bool = wire.hasTask and wire.nullTask implies admitTaskView(wire) == absentTaskViewResult
-pure val sampleView: TaskView = { schemaVersion: 1, id: "A", revision: 0, epoch: 0, status: "active", hasUnknownOutcome: false }
-pure val sampleViewWire: TaskViewWire = { hasTask: true, nullTask: false, objectTask: true, idString: true, idUnits: List(65), revisionInteger: true, epochInteger: true, unknownBoolean: true, value: sampleView }
-pure val wireValues = Set(sampleViewWire, { ...sampleViewWire, nullTask: true }, { ...sampleViewWire, hasTask: false }, { ...sampleViewWire, idUnits: List(65, 47) }, { ...sampleViewWire, epochInteger: false }, { ...sampleViewWire, value: { ...sampleView, revision: -1 } }, { ...sampleViewWire, value: { ...sampleView, status: "unknown" } }, { ...sampleViewWire, unknownBoolean: false })
-pure val operationStatusesValues = Set(List(), List("succeeded"), List("unknown"), List("cancelled", "unknown"))
+pure def lawMalformedTaskDoesNotBecomeAbsence(wire: TaskViewWire): bool =
+  not(wire.hasTask) or (not(wire.nullTask) and not(validTaskView(wire))) implies admitTaskView(wire) == TaskViewInvalid
+pure def lawExplicitNullIsAbsent(wire: TaskViewWire): bool = wire.hasTask and wire.nullTask implies admitTaskView(wire) == TaskViewAbsent
+pure val sampleView: TaskView = { schemaVersion: 1, id: "A", revision: 0, epoch: 0, status: TaskActive, hasUnknownOutcome: false }
+pure val sampleViewWire: TaskViewWire = { hasTask: true, nullTask: false, objectTask: true, idShape: plainRef, statusKnown: true, unknownBoolean: true, value: sampleView }
+pure val wireValues = Set(sampleViewWire, { ...sampleViewWire, nullTask: true }, { ...sampleViewWire, hasTask: false },
+  { ...sampleViewWire, idShape: { ...plainRef, hasSlash: true } }, { ...sampleViewWire, value: { ...sampleView, revision: -1 } },
+  { ...sampleViewWire, statusKnown: false }, { ...sampleViewWire, unknownBoolean: false })
 ```

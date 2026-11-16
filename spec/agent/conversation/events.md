@@ -1,12 +1,10 @@
 # Request waiters, event streams and status heartbeats
 
 The agent API answers some requests later than it receives them. A pending
-request map (`packages/agent/src/api/pending-request-map.ts`) holds the
-waiter for each request generation. Chat replies and other long responses
-stream frames through a writer that honours backpressure
-(`chat-stream-writer.ts`), and a WebSocket client that reconnects replays
-events from its cursor (`ws-event-replay.ts`). A pending OAuth sign-in
-reports its status over server-sent events (`accounts-routes.ts`).
+request map holds the waiter for each request generation. Long responses
+stream frames through a writer that honours backpressure, a WebSocket client
+that reconnects replays events from its cursor, and a pending OAuth sign-in
+reports its status over server-sent events.
 [Chat](./chat.md) owns what a reply says; this spec owns how its frames and
 waiters behave.
 

@@ -6,9 +6,6 @@ deadline whether or not the load has finished, and keeps an interrupted
 turn in the history before anyone reads it. One room is the state machine.
 The in-memory cache the runtime uses is a boundary stated as laws.
 
-Develop sources: the cloud `SharedHistoryHydration`,
-`SharedInterruptedTurn` and `in_memory_lru` models.
-
 ## Story: Serve readers while the room's history loads
 
 > As a member of a shared room, I want an answer by the warming deadline,

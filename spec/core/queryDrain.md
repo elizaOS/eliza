@@ -1,10 +1,13 @@
 # Scheduler query ownership across replacement
 
-The baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`, `packages/core/src/services/task-scheduler.ts`, and `TaskScheduler{,QueryDrain}.qnt`. Query ownership lasts until the actual adapter await settles. Registration identity controls dispatch separately. A handoff records both adapter handles against pending queries. The machine supplies fresh monotonic query tickets to represent distinct source promise identities and preserves multi-agent batch ordering across each worker await.
+Scheduler query ownership in `services/task-scheduler.ts`. A query owns its storage until the actual adapter await settles; registration identity controls dispatch separately. A handoff records both adapter handles against pending queries. Fresh monotonic query tickets stand for distinct promise identities, and multi-agent batch order is kept across each worker await.
 
 ## Story: Replace services without dispatching stale results or closing active storage
 
-As a host, I can replace a service or adapter while old queries drain. Old results cannot run a replacement registration. Closing an adapter or service waits for every query that actually owns it. A newer scheduler generation proceeds while old generations settle.
+> As a host, I want to replace a service or adapter while old queries drain,
+> so that stale results never dispatch and active storage is never closed.
+
+Old results cannot run a replacement registration. Closing an adapter or service waits for every query that actually owns it. A newer scheduler generation proceeds while old generations settle.
 
 ### Queries capture every selected registration and their adapter ownership
 
@@ -137,8 +140,8 @@ pure def sometimesClosedAfterHandoff(s: Drain): bool = s.closedAdapters.contains
 
 Pending external reads and worker passes are assumed to return, including
 failures. An enabled close requires every actual query/worker owner to release
-the handle. Fair progress selects captured queries by real insertion order,
-and closes eligible retired handles without relying on sampled identities.
+the handle. Fair progress selects captured queries by insertion order and
+closes eligible retired handles.
 The host still owns poll timing and the liveness of any task returned repeatedly
 by an external store. Fair ticks eventually capture each attached dirty
 registration or observe its detachment. Capturing a dirty registration does

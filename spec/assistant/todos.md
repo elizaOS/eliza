@@ -111,16 +111,3 @@ pure def sometimesAmbiguousChangeMissed(s: Todos): bool = s.lastOutcome == Misse
 pure def sometimesClearedAfterConfirmation(s: Todos): bool = s.mutations.some(m => m.request.op == ConfirmClearOp and m.request.affirmed) and s.todos.length() == 0 and s.nextId > 2
 pure def sometimesCompleted(s: Todos): bool = s.todos.some(t => t.todoStatus == TodoCompleted)
 ```
-
-### To-dos survive the move to their own store
-
-To-dos and their mutation records that an earlier version kept in the
-shared assistant store are copied once into the to-do store, under the
-[goals' rule for such moves](./goals.md).
-
-```quint
-import goals as G from "./goals"
-pure def todoMove(sourcePresent: bool, targetEmpty: bool, moveReceipt: bool): G::MoveOutcome = G::moveOutcome(sourcePresent, targetEmpty, moveReceipt)
-pure def lawTodoMoveNeverOverwrites(sourcePresent: bool, targetEmpty: bool, moveReceipt: bool): bool =
-  todoMove(sourcePresent, targetEmpty, moveReceipt) == G::MovedCopied implies (targetEmpty and not(moveReceipt))
-```

@@ -1,10 +1,14 @@
 # Task scheduling and retirement
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/services/task.ts`, `services/task-scheduler.ts`, `types/task.ts`, `utils/task-scheduling.ts`, and the TaskService, TaskScheduler, TaskSchedulerQueryDrain and TaskRetirement Quint models. The aggregate machine models one task, one service registration and its current query. Existing concurrency models retain the multiple-runner and detached-generation interleavings as separate reference obligations.
+Task scheduling and retirement for one task, one service registration and its current query, from `services/task.ts`, `services/task-scheduler.ts`, `types/task.ts` and `utils/task-scheduling.ts`. Multiple runners and detached generations are [query drain](./queryDrain.md) and the [process scheduler](./processScheduler.md).
 
 ## Story: Execute due work within its owning agent
 
-As a host, I use the existing process scheduler or drive due work directly. The scheduler queries the requested agent set, verifies generation and registration identity after awaits, and dispatches each task only to its owning agent. One-shots and blocking repeats have exclusive execution across timer, daemon, runDueTasks, executeTaskById and resumeTask paths.
+> As a host, I want due work run only within its owning agent, whether the
+> process scheduler or I drive it, so that no task runs twice or for another
+> agent.
+
+The scheduler queries the requested agent set, verifies generation and registration identity after awaits, and dispatches each task only to its owning agent. One-shots and blocking repeats have exclusive execution across timer, daemon, runDueTasks, executeTaskById and resumeTask paths.
 
 ### A query captures its generation and registration before awaiting storage
 
@@ -84,7 +88,7 @@ pure val weight_elapse = 12
 
 ### Retirement fences new admission and drains actual storage ownership
 
-Stopping detaches scheduler generation immediately. Closing waits for the query and active execution. A detached query retains storage ownership until settlement, and a replacement registration cannot be removed by the old service's disposer. These facts extend to adapter handoff through the legacy multi-query model.
+Stopping detaches scheduler generation immediately. Closing waits for the query and active execution. A detached query retains storage ownership until settlement, and a replacement registration cannot be removed by the old service's disposer. [Query drain](./queryDrain.md) extends these facts to adapter handoff across several queries.
 
 ```quint
 pure def canStop(s: Schedule): bool = not(s.closing)
@@ -98,7 +102,10 @@ pure def sometimesQueryDrainsAfterStop(s: Schedule): bool = s.closed and s.captu
 
 ## Story: Preserve concurrent operator metadata changes
 
-As an operator, my pause and unrelated metadata survive worker bookkeeping. The adapter's key-level patch applies only explicitly set and unset fields. An adapter without atomic patch support keeps its documented fallback behavior and must declare that capability before the host relies on concurrent patch isolation.
+> As an operator, I want my pause and unrelated metadata to survive worker
+> bookkeeping, so that concurrent changes are never lost.
+
+The adapter's key-level patch applies only explicitly set and unset fields. An adapter without atomic patch support keeps its documented fallback behavior and must declare that capability before the host relies on concurrent patch isolation.
 
 ### Worker bookkeeping changes its keys while retaining the operator pause
 

@@ -1,17 +1,16 @@
 # Linked Calendar event reconciliation and dispatch recovery
 
-The resident Calendar service instantiates `LinkedCalendarReconciler`
-from the calendar linked-sync contract. It supplies local compare and
-set, retained checkpoint and provider ports.
-[Calendar sync control](./linkedSync.md) owns dispatch barrier and manual
-commands. The [managed feed](./managedFeed.md) owns admission to
-reconciliation from a feed. This contract owns the per-link decision,
-including read-only recovery. The provider owns its exact durable write
-and declared result semantics.
+The resident calendar reconciles each event linked to a provider
+calendar. [Sync control](./linkedSync.md) owns the dispatch barrier and
+manual commands, and the [managed feed](./managedFeed.md) owns admission
+to reconciliation from a feed. This spec owns the per-link decision,
+including read-only recovery.
 
 ## Story: Bring the two versions together without overwriting an independent edit
 
-> As the owner, I want to bring the two versions together without overwriting an independent edit.
+> As the owner, I want my resident and provider calendars kept in step,
+> so that an edit on either side arrives on the other, and a change made
+> independently on both is shown to me rather than overwritten.
 
 ### The current checkpoint distinguishes clean, changed, missing and conflicting readings
 
@@ -34,10 +33,7 @@ cases, or the local event changed with differing semantics, proceed to the
 push decision. An otherwise clean row refreshes its checkpoint only when
 its retained state, hash, local revision or provider etag differs.
 
-The pin's semantic digest preserves relevant body, attendee and recurrence
-data and accepts its documented legacy all-day hash where applicable. Hash,
-timestamp and compare-and-set evidence are explicit inputs. Calendar
-permission and side binding are the caller and provider port's responsibility.
+The semantic comparison covers the event body, attendees and recurrence.
 
 ```quint
 type CalendarLinkPhase = LinkClean | LinkDirty | LinkPaused | LinkLocalOnly | LinkConflicted | LinkQuarantined
@@ -86,7 +82,7 @@ snapshot chooses update, otherwise it chooses create. The engine saves its
 dirty operation and local revision before dispatch unless that exact
 operation was already retained in dirty state. Create carries the held
 idempotency key. Conditional update and delete use the provider's held event
-identity and etag. The managed provider port rechecks account capabilities.
+identity and etag. The managed provider rechecks account capabilities.
 It checks response version, exact calendar and declared delivery semantics.
 A create also checks private visibility and disabled reminders. Create and
 update read back the expected snapshot and match its semantic content.
@@ -96,10 +92,8 @@ outcome keeps it dirty, and precondition failure records a conflict and
 clears the pending operation. Other mutation errors or unconfirmed
 results quarantine the link with the pending operation retained. Retained
 delete with a missing local row settles to paused. On the local
-tombstone push path, a successful delete settles to clean. Pending and
-checkpoint writes must be observed by the caller before a receipt can be
-presented. This rule classifies provider outcomes; it does not authorize
-release of the resident dispatch barrier.
+tombstone push path, a successful delete settles to clean. A receipt is
+presented only after the pending and checkpoint writes are observed.
 
 ```quint
 type LinkWriteEvidence = ExactLinkWrite | DefiniteLinkRefusal | LinkPreconditionChanged | UncertainLinkWrite
@@ -123,7 +117,9 @@ pure def lawConditionalFailureNeedsConflict(nextOperation: CalendarLinkOperation
 
 ## Story: Recover a held dispatch from evidence and resolve an explicit disagreement
 
-> As the owner, I want to recover a held dispatch from evidence and resolve an explicit disagreement.
+> As the owner, I want a change whose result was unclear to be settled
+> only from what both calendars now show, and a disagreement I resolve to
+> apply to the versions I saw.
 
 ### Recovery observes both stores before releasing a held dispatch
 
@@ -140,8 +136,7 @@ yield not-landed only when the same live provider identity and etag
 still exist. The resulting dirty row preserves the operation, key and
 precondition for separately authorized resume. A later differing etag
 or changed contents do not prove retry safe. Landed updates
-checkpoint exact current revisions. The local store, the provider
-and the caller supply identity, deadline and authoritative absence.
+checkpoint exact current revisions.
 
 ```quint
 type LinkedRecoveryEvidence = { pendingLink: CalendarLinkOperation, localLive: bool, providerPresent: bool,
@@ -178,19 +173,20 @@ pure val recoveryValues = Set(recoverUpdate,{ ...recoverUpdate,sameEtag:true },
 
 ### An explicit conflict choice rereads each side and uses the observed revision
 
-Keeping Eliza or Google applies only to a conflicted link. If both rows are
-missing, pause the link. If Eliza is missing and its deletion wins, retain
-a delete at the provider's fresh revision. If Google wins, restore the local
-row through its owned restoration port or quarantine if unavailable.
-If only Google's row is missing, keeping Google deletes the local row
-under its current revision. Keeping Eliza recreates the provider copy with
-a new deterministic key derived from the previous key and checkpoint time.
-With two live rows, keeping Google performs a local CAS. Keeping Eliza
-stages a provider update using the provider's fresh etag, or quarantines
-when that etag is missing. All local port rejections remain explicit.
+Keeping the resident or the provider version applies only to a conflicted
+link. If both rows are missing, pause the link. If the resident row is
+missing and its deletion wins, retain a delete at the provider's fresh
+revision; if the provider wins, restore the resident row, or quarantine
+when it cannot be restored. If only the provider row is missing, keeping
+the provider deletes the resident row under its current revision, and
+keeping the resident recreates the provider copy under a new
+deterministic key. With two live rows, keeping the provider writes the
+resident row by compare and set, and keeping the resident stages a
+provider update at the provider's fresh etag, or quarantines when that
+etag is missing.
 
 ```quint
-type PreferredCalendarSide = PreferElizaCalendar | PreferGoogleCalendar
+type PreferredCalendarSide = PreferResidentCalendar | PreferProviderCalendar
 type LinkedResolution = UseOrdinaryReconcile | PauseEmptyLink | StageReviewedProviderDelete | RestoreLocalCalendar |
   QuarantineMissingRestore | DeleteLocalCalendar | StageReviewedProviderCreate | ReplaceLocalCalendar |
   StageReviewedProviderUpdate | QuarantineMissingLinkedRevision
@@ -199,14 +195,14 @@ pure def linkConflictResolution(conflicted: bool, localExists: bool, providerLiv
   if (not(conflicted)) UseOrdinaryReconcile
   else if (not(localExists or providerLive)) PauseEmptyLink
   else if (not(localExists))
-    (if (preferred == PreferElizaCalendar) StageReviewedProviderDelete else
+    (if (preferred == PreferResidentCalendar) StageReviewedProviderDelete else
       if (restoreSupported) RestoreLocalCalendar else QuarantineMissingRestore)
   else if (not(providerLive))
-    (if (preferred == PreferGoogleCalendar) DeleteLocalCalendar else StageReviewedProviderCreate)
-  else if (preferred == PreferGoogleCalendar) ReplaceLocalCalendar
+    (if (preferred == PreferProviderCalendar) DeleteLocalCalendar else StageReviewedProviderCreate)
+  else if (preferred == PreferProviderCalendar) ReplaceLocalCalendar
   else if (freshEtag) StageReviewedProviderUpdate else QuarantineMissingLinkedRevision
 pure def lawLinkResolutionUsesFreshUpdateRevision(conflicted: bool, localExists: bool, providerLive: bool,
   restoreSupported: bool, freshEtag: bool, preferred: PreferredCalendarSide): bool =
   linkConflictResolution(conflicted,localExists,providerLive,restoreSupported,freshEtag,preferred) == StageReviewedProviderUpdate implies
-    conflicted and localExists and providerLive and freshEtag and preferred == PreferElizaCalendar
+    conflicted and localExists and providerLive and freshEtag and preferred == PreferResidentCalendar
 ```

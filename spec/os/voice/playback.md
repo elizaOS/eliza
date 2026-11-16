@@ -1,14 +1,12 @@
 # Voice assistant playback ownership and heard receipts
 
-The voice assistant session (`voice-assistant-session.ts` in the voice
-sources) owns ordered sentence playback for one reply. Its `playSentence`
-publishes first audio on a current callback and advances the heard prefix
-only after guarded playback completion. `reportInterrupted` reports heard
-and unheard text, and `release` waits for both the send/ack continuation
-and the drained playback promises before asking
-[capture](./capture.md) to reopen. One sentence's audio element is
-[segment playback](./segmentPlayback.md); the history correction that
-follows an interruption is [heard receipts](./heardReceipts.md).
+The voice assistant session plays one reply's sentences in order: first
+audio is published on a current callback, the heard prefix advances only
+after guarded playback completion, an interruption reports heard and
+unheard text, and release waits for the send acknowledgement and the
+drained playback before asking [capture](./capture.md) to reopen. One
+sentence's audio is [segment playback](./segmentPlayback.md); the history
+correction after an interruption is [heard receipts](./heardReceipts.md).
 
 ## Story: Preserve only the playback the listener actually heard
 

@@ -1,8 +1,7 @@
 # PGlite device store
 
-On the device the agent's database is PGlite, opened by
-`plugins/plugin-sql/src/pglite/manager.ts` over one data directory and evolved
-by the runtime migrator in `plugins/plugin-sql/src/runtime-migrator/`. The
+On the device the agent's database is PGlite, opened over one data
+directory and evolved by the runtime migrator. The
 rules the [SQL storage](./sql.md) installs apply to it, except row-level
 security, which PGlite lacks. This spec owns the store's lifecycle while an
 export archive is taken and the store is closed, and how the migrator evolves

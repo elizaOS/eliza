@@ -1,10 +1,12 @@
 # Shared shutdown attempts and quiescence
 
-This model retains caller and attempt identities across reentrant stop, bounded failure, retry, late child work and strict retirement. Sources include [runtime.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime.ts), [retirement.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/retirement.ts) and [RuntimeLifecycle.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/RuntimeLifecycle.qnt).
+Caller and attempt identities across reentrant stop, bounded failure, retry, late child work and strict retirement of one [runtime](./runtime.md). Sources: `runtime.ts`, `runtime/retirement.ts`.
 
 ## Story: Join one active shutdown attempt
 
-As a caller I observe the exact stop operation I joined, including its failure, while another caller may retry a failed bounded attempt.
+> As a caller, I want to observe the exact stop operation I joined,
+> including its failure, so that another caller can retry a failed bounded
+> attempt.
 
 ### Stop ownership is published before service preparation
 
@@ -16,14 +18,14 @@ wait retains the real attempt it joined. Active attempt transitions require a po
 cannot be produced by registration or the preceding shutdown transition.
 
 ```quint
-type RetirementKind = RoomWork | DeliveryWork | ServiceStartWork | ServiceStopWork | PluginWork | BeforeCloseWork
-type RetirementWork = { id: int, kind: RetirementKind, aborted: bool }
+type OwnedWorkKind = RoomWork | DeliveryWork | ServiceStartWork | ServiceStopWork | PluginWork | BeforeCloseWork
+type OwnedWork = { id: int, kind: OwnedWorkKind, aborted: bool }
 type StopAttemptPhase = DrainingRooms | WaitingStarts | StoppingServices | StopSucceeded | StopFailed
 type StopAttempt = { id: int, phase: StopAttemptPhase, fast: bool }
 type StopCallResult = WaitingCall | SuccessfulCall | FailedCall
 type StopCaller = { id: int, attempt: int, strict: bool, resultKind: StopCallResult }
 type StrictPhase = NoStrictStop | StrictAwaitingAttempt | StrictDraining | StrictSucceeded | StrictFailed
-type Shutdown = { admissionClosed: bool, runtimeStopped: bool, prepareCalls: int, pending: List[RetirementWork], usedWorkIds: List[int], attempts: List[StopAttempt], nextAttempt: int, activeAttempt: int, callers: List[StopCaller], retirementFailed: bool, strictPhase: StrictPhase, strictAttempt: int }
+type Shutdown = { admissionClosed: bool, runtimeStopped: bool, prepareCalls: int, pending: List[OwnedWork], usedWorkIds: List[int], attempts: List[StopAttempt], nextAttempt: int, activeAttempt: int, callers: List[StopCaller], retirementFailed: bool, strictPhase: StrictPhase, strictAttempt: int }
 pure val initial: Shutdown = { admissionClosed: false, runtimeStopped: false, prepareCalls: 0, pending: List(), usedWorkIds: List(), attempts: List(), nextAttempt: 1, activeAttempt: 0, callers: List(), retirementFailed: false, strictPhase: NoStrictStop, strictAttempt: 0 }
 pure val callerValues = Set(1, 2, 3)
 pure val workIdValues = Set(1, 2, 3, 4)
@@ -31,8 +33,8 @@ pure val parentIdValues = Set(1, 2, 3)
 pure val attemptIdValues = Set(1, 2, 3)
 pure val missingAttempt: StopAttempt = {id: 0, phase: StopSucceeded, fast: false}
 pure def stopAttempt(s: Shutdown, attemptId: int): StopAttempt = s.attempts.select(a => a.id == attemptId).nthOr(0, missingAttempt)
-pure def canAdmitOwnedWork(s: Shutdown, workId: int, kind: RetirementKind): bool = not(s.admissionClosed) and workId > 0 and not(s.usedWorkIds.includes(workId))
-pure def admitOwnedWork(s: Shutdown, workId: int, kind: RetirementKind): Shutdown = { ...s, pending: s.pending.append({id: workId, kind: kind, aborted: false}), usedWorkIds: s.usedWorkIds.append(workId) }
+pure def canAdmitOwnedWork(s: Shutdown, workId: int, kind: OwnedWorkKind): bool = not(s.admissionClosed) and workId > 0 and not(s.usedWorkIds.includes(workId))
+pure def admitOwnedWork(s: Shutdown, workId: int, kind: OwnedWorkKind): Shutdown = { ...s, pending: s.pending.append({id: workId, kind: kind, aborted: false}), usedWorkIds: s.usedWorkIds.append(workId) }
 pure def beginStopOperation(fast: bool, s: Shutdown): Shutdown = {
   if (s.activeAttempt != 0 or s.runtimeStopped) s
   else { ...s, admissionClosed: true, prepareCalls: 1, activeAttempt: s.nextAttempt, nextAttempt: s.nextAttempt + 1,
@@ -74,15 +76,17 @@ pure def sometimesFailedAttemptRetried(s: Shutdown): bool = s.attempts.some(a =>
 
 ## Story: Establish strict quiescence after bounded shutdown
 
-As a host I wait for every original and spawned operation and retain teardown failures across repeated strict calls.
+> As a host, I want to wait for every original and spawned operation and
+> keep teardown failures across repeated strict calls, so that strict
+> retirement never hides work or failure.
 
 ### Owned child work remains tracked after ingress closes
 
 Only already-owned work may spawn a retirement child after shutdown admission closes. Completed work IDs are never reused.
 
 ```quint
-pure def canSpawnRetirementChild(s: Shutdown, parentId: int, workId: int, kind: RetirementKind): bool = s.pending.some(w => w.id == parentId) and workId > 0 and not(s.usedWorkIds.includes(workId)) and kind != RoomWork
-pure def spawnRetirementChild(s: Shutdown, parentId: int, workId: int, kind: RetirementKind): Shutdown = { ...s, pending: s.pending.append({id: workId, kind: kind, aborted: false}), usedWorkIds: s.usedWorkIds.append(workId) }
+pure def canSpawnRetirementChild(s: Shutdown, parentId: int, workId: int, kind: OwnedWorkKind): bool = s.pending.some(w => w.id == parentId) and workId > 0 and not(s.usedWorkIds.includes(workId)) and kind != RoomWork
+pure def spawnRetirementChild(s: Shutdown, parentId: int, workId: int, kind: OwnedWorkKind): Shutdown = { ...s, pending: s.pending.append({id: workId, kind: kind, aborted: false}), usedWorkIds: s.usedWorkIds.append(workId) }
 pure def canCompleteOwnedWork(s: Shutdown, workId: int, teardownFailed: bool): bool = s.pending.some(w => w.id == workId)
 pure def completeOwnedWork(s: Shutdown, workId: int, teardownFailed: bool): Shutdown = { ...s, pending: s.pending.select(w => w.id != workId), retirementFailed: s.retirementFailed or teardownFailed }
 pure def alwaysPendingWorkIdentitiesUnique(s: Shutdown): bool = s.pending.every(w => w.id > 0 and s.usedWorkIds.includes(w.id) and s.pending.select(other => other.id == w.id).length() == 1)

@@ -1,13 +1,12 @@
 # View installations and renderer claims
 
 The agent installs views for its owner and lets a renderer claim an
-interaction with one (`/api/views/interact` and `/api/views/interact-claim`
-in `packages/agent/src/api/views-routes.ts`). Identity values stand for
-unforgeable in-process handles; a string alone never authorizes.
-[Core views](../../core/views.md) own view declarations and completed-action
-handoffs, and [view navigation](../../core/viewNavigation.md) owns the
-renderer's navigation fences. [Native views](./nativeViews.md) own the
-native renderer and its turn timing.
+interaction with one. Identity values stand for unforgeable in-process
+handles; a string alone never authorizes. [Core views](../../core/views.md)
+own view declarations and completed-action handoffs, and
+[view navigation](../../core/viewNavigation.md) owns the renderer's
+navigation fences. [Native views](./nativeViews.md) own the native renderer
+and its turn timing.
 
 ## Story: Interact with the view that is installed now
 

@@ -13,16 +13,15 @@ and deletes, leaving them to the device calendar editor.
 
 ## Story: Review the exact event, series or single occurrence before queueing deletion
 
-> As the person, I want to review the exact event, series or single
-> occurrence before queueing deletion.
+> As the person, I want to see whether a deletion removes one event, a
+> whole series or a single occurrence before it is queued, so that I never
+> delete more than I meant.
 
 ### The provider resolves the selected instance and decides the permitted scope
 
-The version 2 identity is `delete2:<parent>:event`,
-`delete2:<parent>:series` or `delete2:<parent>:occurrence:<original-start>`.
-IDs are canonical decimal signed-long strings with positive event IDs
-and nonnegative starts. Only the occurrence form has an original start.
-A positive numeric legacy ID authorizes only the old one-event path.
+A deletion identity names a positive parent event and a scope: the
+event, the whole series, or one occurrence by its nonnegative original
+start, which only the occurrence scope carries.
 The provider supplies the relationship from selected row to parent. For a
 moved exception, its original instance time is the identity, while its
 actual begin and end are the range the user sees. A null requested scope
@@ -39,11 +38,9 @@ start. A live exception for the selected original start must be unique,
 match the selected row, and remain uncancelled. Provider evidence includes
 separately bounded lists of 2,048 event-family rows, attendees and
 reminders, and at most 2 Mi UTF-16 units in the serialized revision input.
-The model uses exact ID and revision identities and the port validates
-the grammar, including signed-long range, before issuing its wire evidence.
-Synthetic integer identities in the model stay in the exactly representable
-range of generated TypeScript. Provider IDs use exact decimal strings at
-the consumer boundary.
+The port decodes the identity's wire form, including its signed-long
+range, before issuing evidence; the model uses exact ID and revision
+identities.
 
 ```quint
 type CalendarScope = SingleEvent | OneOccurrence | WholeSeries
@@ -242,7 +239,7 @@ pure def sometimesHeldInspectionRetired(s: ScopedReview): bool = s.inspectReply 
 
 ### A claimed dispatch uses one atomic provider assertion batch and scope-specific readback
 
-The dispatch boundary accepts the version 2 target and its exact durable
+The dispatch boundary accepts the reviewed target and its exact durable
 claim from the journal, including the source and both revisions. The
 bridge checks permission, binds the wire identity to the canonical
 provider parent, original start and scope, and rereads the target. A

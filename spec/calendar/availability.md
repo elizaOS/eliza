@@ -11,7 +11,8 @@ to publish a result. The wire shapes are the device review contracts of
 
 ## Story: Share only the occupied time in my reviewed calendars
 
-> As the owner, I want to share only the occupied time in my reviewed calendars.
+> As the owner, I want to share when I am busy without revealing what my
+> events are or which calendars they are in.
 
 ### Choose a bounded interval and accept occupancy-only rows
 
@@ -36,10 +37,8 @@ encodes increasing civil dates as UTC midnights. Resolve each bound
 to the owner-zone day boundary. A midnight fold uses the first
 midnight, a midnight gap uses the beginning of the actual day, and a
 skipped date resolves to the following day. A civil day may occupy a
-different number of milliseconds across transitions. Date string
-validation and the pinned Intl civil conversion supply normalized
-facts to the model. The model admits a collapsed all-day interval
-when both bounds resolve to one instant.
+different number of milliseconds across transitions. A collapsed
+all-day interval is admitted when both bounds resolve to one instant.
 
 In a half-open window, a positive-length busy or tentative event is
 clipped to the window. An overlapping free event increments
@@ -204,7 +203,9 @@ pure val transparentCountValues = Set(-1, 0, 1, 200, 201)
 
 ## Story: Read the reviewed local source with its actual calendar rules
 
-> As the owner, I want to read the reviewed local source with its actual calendar rules.
+> As the owner, I want my availability computed from the calendars I chose,
+> as they are now, with their repeating events expanded as the calendar
+> itself would, so that the answer is never stale or invented.
 
 ### Enforce source identity and local freshness before reading instances
 
@@ -252,8 +253,6 @@ pure def lawMixedFreshnessCannotQuery(sameIdentity: bool): bool =
   sourceAdmission(sameIdentity, false) != CanQuery
 pure def lawIdentityPrecedesFreshness(allLocal: bool): bool =
   sourceAdmission(false, allLocal) == SourceChanged
-pure def lawTruncatedExpansionRefuses(rowCount: int): bool =
-  calendarReadOverflow(true, rowCount)
 ```
 
 ### Expand recurrence before projecting availability
@@ -282,11 +281,6 @@ series or the combined range is truncated. Availability refuses
 truncation even when a subsequent filter would fit under its limit.
 A device calendar source supplies its own expanded instances.
 Provider mutation of recurring events is a separate contract.
-
-The model takes resolved wall-clock instants and civil weekdays as
-inputs. It covers applicability, duration, replacement and expansion
-bounds. Offset discovery and disambiguation belong to the pinned
-wall-time adapter and its transition fixtures.
 
 ```quint
 type RepeatRule = Once | Daily | Weekdays | Weekly

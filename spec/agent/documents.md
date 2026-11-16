@@ -1,11 +1,10 @@
 # Documents
 
 The knowledge plugin, folded into the agent, stores the documents the agent
-can search and cite through `plugins/plugin-knowledge/src/routes.ts`;
-persistence and search are the runtime's document service. This spec owns
+can search and cite through its routes; persistence and search are the runtime's document service. This spec owns
 who may write or delete a document in each scope, the upload size limit, the
 exact text round trip of an admitted document, and what a bounded search
-returns. [Core retrieval](../core/retrievalIndex.md) owns ranking.
+returns. [Core retrieval](../core/retrieval.md) owns ranking.
 
 ## Story: Keep a document exactly as I saved it, and let only its owner change it
 

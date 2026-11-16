@@ -3,13 +3,14 @@
 A consumer uses Eliza's browser-safe
 `plugins/plugin-native-reminders/src/occurrence.ts`. Its Android
 equivalent is the native reminder store. The agent's
-[reminder journal](../../agent/deviceActions/reminderJournal.md) owns
+[device action custody](../../agent/deviceActions/execution.md) owns
 revision-bound writes and recovery.
 
 ## Story: Complete or snooze the current reminder occurrence
 
-> As the person, I want to complete or snooze the current reminder
-> occurrence.
+> As the person, I want Done to finish the reminder in front of me and
+> Snooze to only move its alert, so that a repeating reminder never skips
+> or loses an occurrence.
 
 ### Done owns recurrence advancement and snooze owns only the alert
 
@@ -77,7 +78,7 @@ pure def sometimesSnoozed(r: ActiveOccurrence): bool = r.snoozed
 
 ### An exact alarm needs the capability at check and at arm, and the store never asks for it
 
-Ported from the producer's `NativeReminderAlarm` model. Arming happens
+Arming happens
 under the store lock. The store checks the exact-alarm capability, and
 the capability can be withdrawn before the Android call; an exact alarm
 is armed only when it was held at both points, otherwise the alarm is

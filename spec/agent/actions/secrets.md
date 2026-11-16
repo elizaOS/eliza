@@ -6,9 +6,7 @@ one value, and listing shows names and a mask, never a value. A plugin that
 needs a secret it does not have yet waits: the plugin activator polls for
 its requirements and activates the plugin once they are present. Stopping
 the activator retires its timer and polls, so a late answer cannot activate
-a plugin after stop; a callback that already began may still finish. The
-research baseline is `plugins/plugin-assistant` `features/secrets`,
-`PluginActivatorService` and the `PluginActivatorLifecycle` model. Device
+a plugin after stop; a callback that already began may still finish. Device
 credential storage is in [auth secure slots](../../auth/secureSlots.md).
 
 ## Story: Keep the owner's secrets
@@ -27,7 +25,7 @@ type Activation = Idle | Scheduled | Running | Finished | Cancelled
 type RegistrationPhase = NotRegistered | Checking | Registered | Retired | CheckFailed
 type PollPhase = PollIdle | Polling | Activating
 type ActivatorPhase = Open | Stopping | Stopped
-type Secrets = { names: List[str], values: str -> SecretValue, listed: List[str], required: str, phase: ActivatorPhase, generation: int, registration: RegistrationPhase, registrationGeneration: int, pending: bool, timer: bool, poll: PollPhase, pollGeneration: int, pollFailures: int, activation: Activation, callbacks: int, lateCallback: bool }
+type Secrets = { names: List[str], values: str -> SecretValue, listed: List[ListedSecret], required: str, phase: ActivatorPhase, generation: int, registration: RegistrationPhase, registrationGeneration: int, pending: bool, timer: bool, poll: PollPhase, pollGeneration: int, pollFailures: int, activation: Activation, callbacks: int, lateCallback: bool }
 pure val ownerId = 1
 pure val initial: Secrets = { names: List(), values: Map(), listed: List(), required: "apiKey", phase: Open, generation: 0, registration: NotRegistered, registrationGeneration: -1, pending: false, timer: false, poll: PollIdle, pollGeneration: -1, pollFailures: 0, activation: Idle, callbacks: 0, lateCallback: false }
 pure val nameValues = Set("apiKey", "token")
@@ -47,10 +45,18 @@ pure def sometimesTwoSecretsHeld(s: Secrets): bool = s.names.length() == 2
 
 ### Listing shows names and a mask, never a value
 
+Each held name is listed with the same fixed mask in place of its value.
+
 ```quint
+type ListedSecret = { name: str, mask: str }
 pure def declassifyMasked(value: SecretValue): str = "****"
-pure def listSecrets(s: Secrets): Secrets = { ...s, listed: s.names }
-pure def alwaysListingShowsOnlyNames(s: Secrets): bool = s.listed.every(n => n != "")
+pure def heldValue(s: Secrets, name: str): SecretValue = if (s.values.keys().contains(name)) s.values.get(name) else ""
+pure def maskedListing(s: Secrets): List[ListedSecret] =
+  s.names.foldl(List(), (entries, n) => entries.append({ name: n, mask: declassifyMasked(heldValue(s, n)) }))
+pure def listSecrets(s: Secrets): Secrets = { ...s, listed: maskedListing(s) }
+pure def alwaysListingShowsOnlyNames(s: Secrets): bool = s.listed.every(e => e.name != "" and e.mask == "****")
+pure def stepListingIsExactlyTheHeldNames(before: Secrets, via: str, after: Secrets): bool =
+  via == "listSecrets" implies after.listed == maskedListing(before)
 pure def sometimesListed(s: Secrets): bool = s.listed.length() > 0
 ```
 

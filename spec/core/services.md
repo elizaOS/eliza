@@ -1,10 +1,12 @@
 # Service acquisition and retirement
 
-A service class owns one startup and one resulting instance. Parallel classes use this protocol independently and the declaration list determines lookup order. Sources include [service-lifecycle.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/service-lifecycle.ts), [service.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/types/service.ts) and [ServiceLifecycle.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/ServiceLifecycle.qnt). What particular services do is in their own specs: trajectory recording in [trajectories](./trajectories.md), the runtime capability service in [capability routing](./capabilityRouting.md), the device bridge in [device bridge](./deviceBridge.md) and PII scrubbing in [privacy service](./privacyService.md).
+A service class owns one startup and one resulting instance. Parallel classes use this protocol independently and the declaration list determines lookup order. Sources are [service-lifecycle.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/service-lifecycle.ts) and [service.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/types/service.ts). What particular services do is in their own specs: trajectory recording in [trajectories](./trajectories.md), the runtime capability service in [capability routing](./capabilityRouting.md), the device bridge in [device bridge](./deviceBridge.md) and PII scrubbing in [privacy service](./privacyService.md).
 
 ## Story: Acquire a declared service
 
-As a plugin I share startup and receive a truthful instance or typed failure.
+> As a plugin, I want to share a service's startup and receive its instance
+> or a typed failure, so that I never start a second copy or act on a
+> service that failed.
 
 ### Concurrent acquisition joins the original startup
 
@@ -42,7 +44,9 @@ pure def sometimesObserverFailureKeepsInstance(s: ServiceState): bool = s.observ
 
 ## Story: Stop a late or removed service once
 
-As a host I retire every created instance, including one completing after unload or stop.
+> As a host, I want every created instance retired, including one whose
+> start completes after unload or stop, so that no service outlives its
+> runtime.
 
 ### Late startup enters retirement without publication
 

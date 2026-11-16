@@ -1,11 +1,11 @@
 # SQL storage
 
-The SQL plugin, folded into the agent, is the agent's database layer:
-`plugins/plugin-sql/src/` with its PostgreSQL and [PGlite](./pglite.md)
-adapters. This spec owns the one-time carve-out migration that copies rows
-into a new table under a receipt, the task wake patch, and the database rules
-the plugin installs: row-level isolation, the membership evidence window and
-the append-only identity link attestations.
+The SQL plugin, folded into the agent, is the agent's database layer, with
+PostgreSQL and [PGlite](./pglite.md) adapters. This spec owns the one-time
+carve-out migration that copies rows into a new table under a receipt, the
+task wake patch, and the database rules the plugin installs: row-level
+isolation, the membership evidence window and the append-only identity link
+attestations.
 
 ## Story: Move rows into a new table once, without bringing deleted rows back
 
@@ -15,7 +15,7 @@ the append-only identity link attestations.
 
 ### A carve-out copies, verifies and records its receipt in one transaction
 
-`database-utils/carve-out-migration.ts` claims the receipt, locks the source,
+The carve-out claims the receipt, locks the source,
 copies the missing rows, verifies their projection and completes the receipt
 in one transaction held by one caller. Until it commits, the target table is
 as it was. A completed receipt makes every later run a skip; a receipt left
@@ -76,7 +76,7 @@ pure def sometimesPriorRunBlocksCopy(c: CarveOut): bool = c.prior == PriorRunnin
 
 ### A wake patch keeps the earliest outstanding time and only consumes what was read
 
-`stores/task-wake.ts` patches the task row atomically. A request advances the
+The task wake patches the task row atomically. A request advances the
 row's revision and keeps the earlier of the existing and requested times. A
 consume clears the wake only if the row is still at the revision the consumer
 read; otherwise a newer request survives it.
@@ -102,7 +102,7 @@ pure def lawConsumeOfTheReadRevisionClears(wakeRow: WakeRow): bool = consumeWake
 
 ### Row-level security isolates servers and entities
 
-On PostgreSQL, `rls.ts` installs policies on every table: a row is visible
+On PostgreSQL, the plugin installs policies on every table: a row is visible
 only to the server it belongs to, and, where the table is entity-scoped, only
 to that entity. PGlite has no row-level security; the device store holds one
 server's data.
@@ -122,7 +122,7 @@ pure def lawAnotherEntitysScopedRowIsHidden(rowServer: str, currentServer: str, 
 
 ### Membership evidence counts for 24 hours from its observation
 
-`membership-authority-ttl-constraints.ts` makes the database refuse membership
+A constraint makes the database refuse membership
 authority whose evidence is older than 24 hours relative to its observation,
 or observed in the future.
 
@@ -137,7 +137,7 @@ pure def lawFutureEvidenceIsRefused(observedAt: int, now: int): bool = observedA
 
 ### Identity link attestations are append-only
 
-`identity-person-link-attestation-guard.ts` installs a trigger that refuses
+A trigger refuses
 updates and deletes of authenticated person-link evidence; only inserts are
 allowed.
 

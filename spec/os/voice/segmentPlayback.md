@@ -1,10 +1,9 @@
 # Reply audio segment playback
 
-The segmented player (`segmented-speech-playback.ts`) and its progressive
-attachment (`progressive-speech-playback.ts`) play one complete sentence
-of a reply at a time for a consumer. [Playback](./playback.md) owns the
-order of sentences and what was heard; [reply streaming](../../agent/client/replyStreaming.md)
-owns the written reply; [voice capture](./capture.md) owns the microphone.
+The segmented player and its progressive attachment play one complete
+sentence of a reply at a time. [Playback](./playback.md) owns the order of
+sentences and what was heard, [reply streaming](../../agent/client/replyStreaming.md)
+the written reply, and [voice capture](./capture.md) the microphone.
 
 ## Story: Hear the current reply and stop it at any time
 
@@ -121,9 +120,3 @@ pure def lawFallbackReadyNeedsExplicitEnd(firstNonemptyAppend: bool, stillOwned:
 pure def lawDoneSourceAvoidsCancel(disposed: bool): bool =
   not(shouldCancelSource(disposed, true))
 ```
-
-The player's own `run-progressive-speech.mjs` verifies real Chromium
-MediaSource and complete-clip playback with a synthetic MP3, held EOF,
-cancellation during a held pull and a source failure. Device audio, live
-synthesis and the separate speech timing provider remain external
-evidence.

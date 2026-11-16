@@ -1,11 +1,10 @@
 # Push notifications
 
-The agent delivers notices to the user's devices through
-`packages/agent/src/services/push/notification-push-service.ts` and
-`push-token-registry.ts`. The [core notifications](../core/notifications.md)
-own the notice records; this spec owns the push service's attachment to the
-runtime's notification bus and the device token it delivers to. The
-platform transports themselves are outside the model.
+The agent's push service delivers notices to the user's devices. The
+[core notifications](../core/notifications/) own the notice records; this
+spec owns the push service's attachment to the runtime's notification bus
+and the device token it delivers to. Platform transports are outside the
+model.
 
 ## Story: Get each notice once on my device, and nothing after the service stops
 

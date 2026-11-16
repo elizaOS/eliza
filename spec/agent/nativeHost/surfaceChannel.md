@@ -1,35 +1,35 @@
-# Account-bound website command transport
+# Page command channel
 
-A consumer uses `createSurfaceCommandChannel` and
-`connectSurfaceCommandClient` from
-`packages/agent/native-host/surface-channel.mjs` and `surface-client.mjs`.
-This transport sits beneath a consumer's website guidance and the
+The native host carries page commands to a browser page over an owner-bound
+channel. This transport sits beneath the agent's browser tasks and the
 [browser command receiver](../../os/browser/commandReceiver.md). The
 owner-bound command channel cannot supply task or page authorization. The
 receiver makes those checks again before acting. A change of owner retires
 the connection, so a reply from the old owner cannot settle a command of
 the new one.
 
-## Story: Retire delivered website commands without repeating a possible effect
+## Story: Retire delivered page commands without repeating a possible effect
 
-> As a user, a command sent to a website page runs at most once, and if it
+> As a user, a command sent to a browser page runs at most once, and if it
 > might have run I am told its outcome is uncertain rather than seeing it
 > repeated.
 
 ### A command is delivered once to its current connection
 
-Connect selects a fresh connection identity and an increasing renderer
-epoch. Retirement retains the highest epoch. Pull and reply present the
-exact connection and obtain a fresh owner check. The idle pull may wait
-up to ten seconds, and the connection refreshes its fifteen-second TTL.
-The actual channel holds up to sixteen pending commands, chooses the
-oldest undelivered command, and permits one waiting pull. This model
-tracks one command and its exact scope and deadline. The sender consumes
-delivery before returning the pull response, so a lost response cannot
-cause a replay. Retirement after delivery makes an effect uncertain.
-An undelivered or read-only command can instead be reported stale. The
-host decoder checks the exact route, command fields, bounded UTF-8 JSON
-and typed result/error shape before applying these transitions.
+A connection has a fresh identity and a renderer epoch higher than any
+before it, and lives fifteen seconds past its last delivery. Pull and
+reply present the exact connection and are checked against the current
+owner. A command, with a timeout of at most thirty seconds, is delivered
+once: delivery is consumed before the pull answers, so a lost answer
+cannot replay it. Retiring the connection after an effectful command was
+delivered makes its outcome uncertain; an undelivered or read-only
+command is reported stale instead.
+
+The channel holds at most sixteen pending commands and delivers the oldest
+undelivered one first; at most one pull waits, for at most ten seconds,
+and this model follows one command. Before any transition, the host's
+decoder checks the exact route, the command fields, UTF-8 JSON within its
+size bound and the typed result or error shape.
 
 ```quint
 type CommandPhase = NoCommand | QueuedCommand | DeliveredCommand | SettledCommand | StaleCommand | UncertainCommand

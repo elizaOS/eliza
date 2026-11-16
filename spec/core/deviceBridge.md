@@ -1,6 +1,6 @@
 # Device bridge
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. The source is `packages/core/src/mobile-device-bridge-service.ts`. Core declares the bridge generically: a host plugin registers the bridge service through the ordinary service registry, paired devices connect to it declaring what they can do, and the runtime relays calls such as on-device inference to them. The registry and its lifecycle are [services](./services.md) and [service registry](./serviceRegistry.md); what a particular device implements belongs to the package that hosts it.
+The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. The source is `packages/core/src/mobile-device-bridge-service.ts`. Core declares the bridge generically: a host plugin registers the bridge service through the ordinary service registry, paired devices connect to it declaring what they can do, and the runtime relays calls such as on-device inference to them. The registry and its lifecycle are [services](./services.md) and [service instances](./serviceInstances.md); what a particular device implements belongs to the package that hosts it.
 
 ## Story: Generic device bridge declaration
 

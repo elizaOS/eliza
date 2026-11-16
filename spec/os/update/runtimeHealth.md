@@ -1,12 +1,11 @@
 # Installed runtime health observations
 
-A consumer's health service extends `NativeHealthService.java` in the
-native agent plugin's health package and uses `LocalRuntimeHealth.java`,
-guarded by the consumer's own signature permission. This service reports
-evidence from the installed app. The [UI observer](./uiHealth.md) owns its
-three fields, and the [installation journal](./install.md) owns installed
-artifact verification and probation. Neither a service response nor a
-disposable SQLite probe can by itself qualify an installation.
+The installed app answers the updater's health requests through a health
+service guarded by the consumer's own signature permission. It reports
+evidence from the running app: the runtime and its agent and gateway, a
+disposable storage diagnostic, and the [UI observer's](./uiHealth.md)
+three fields. The [installation journal](./install.md) owns qualification
+against a plan; no service response by itself qualifies an installation.
 
 ## Story: Ask the installed product for a bounded authenticated observation
 
@@ -14,29 +13,37 @@ disposable SQLite probe can by itself qualify an installation.
 > observation over an authenticated channel, so that only the updater can
 > request health evidence and no request runs unbounded.
 
-### The actual Messenger sender and exact request shape gate a single worker
+### The actual sender and exact request shape gate a single worker
 
-The manifest admits a caller with the signature permission. For each message the service reads Android's actual sending UID. That UID must resolve to exactly one package, the configured supervisor package, which must match the product process's signer. A different package with the same signer gets `403 unauthorized` before message parsing. Bind permission and per-message identity are separate checks.
-
-A request has message kind 1 and exactly three Bundle entries. `nonce` is a string of exactly 64 lowercase hex digits, `versionCode` and `deadlineElapsed` are boxed longs, and the version equals the installed product version. The deadline is strictly in the future on the Android elapsed clock and no more than 20,000 ms ahead. The UI budget is 1,500 ms and the service caps that observation at the enclosing deadline. One worker can execute with one waiting request. Closed service, malformed request and a rejected enqueue give `400 invalid_or_busy` to the authorized sender. An absent reply port or failed Messenger delivery yields no delivered reply. Destroy closes admission and stops or removes queued work. `NativeHealthService.java:16–44`.
+For each message the service reads Android's actual sending UID. It must
+resolve to exactly one package, the configured supervisor package, signed
+like the product; any other sender is refused as unauthorized before the
+message is parsed. A request has the health message kind, exactly its
+three entries (a nonce, the version code and a deadline) with their exact
+types, a well-formed nonce, the installed version, and a deadline strictly
+in the future and at most 20,000 ms ahead. The UI observation gets at most
+1,500 ms, capped by that deadline. One worker runs with one waiting
+request; a closed service, a malformed request or a full queue answers the
+authorized sender invalid or busy.
 
 ```quint
 type HealthEnvelope = { senderPackages: int, supervisorPackageMatches: bool, signatureMatches: bool, closed: bool, requestKind: int, exactBundleKeys: bool, exactValueTypes: bool, nonceSyntax: bool, versionMatches: bool, now: int, deadline: int, workerAdmitted: bool }
+type HealthAdmission = HealthUnauthorized | HealthInvalidOrBusy | HealthQueued
+pure val maxDeadlineMs = 20000
+pure val uiBudgetMs = 1500
 pure def senderAuthorized(req: HealthEnvelope): bool = req.senderPackages == 1 and req.supervisorPackageMatches and req.signatureMatches
 pure def validHealthEnvelope(req: HealthEnvelope): bool =
   not(req.closed) and req.requestKind == 1 and req.exactBundleKeys and req.exactValueTypes and req.nonceSyntax and req.versionMatches and
-  req.deadline > req.now and req.deadline - req.now <= 20000
-pure def healthAdmission(req: HealthEnvelope): str =
-  if (not(senderAuthorized(req))) "403 unauthorized"
-  else if (not(validHealthEnvelope(req) and req.workerAdmitted)) "400 invalid_or_busy"
-  else "queued"
-pure def uiDeadline(now: int, deadline: int): int = if (now + 1500 < deadline) now + 1500 else deadline
-pure def lawAdmittedHealthRequestIsOwnerBound(req: HealthEnvelope): bool =
-  healthAdmission(req) == "queued" implies senderAuthorized(req) and validHealthEnvelope(req)
+  req.deadline > req.now and req.deadline - req.now <= maxDeadlineMs
+pure def healthAdmission(req: HealthEnvelope): HealthAdmission =
+  if (not(senderAuthorized(req))) HealthUnauthorized
+  else if (not(validHealthEnvelope(req) and req.workerAdmitted)) HealthInvalidOrBusy
+  else HealthQueued
+pure def uiDeadline(now: int, deadline: int): int = if (now + uiBudgetMs < deadline) now + uiBudgetMs else deadline
 pure def lawUnauthorizedPrecedesRequestValidation(req: HealthEnvelope): bool =
-  not(senderAuthorized(req)) implies healthAdmission(req) == "403 unauthorized"
+  not(senderAuthorized(req)) implies healthAdmission(req) == HealthUnauthorized
 pure def lawUiBudgetStaysInsideObservation(now: int, deadline: int): bool =
-  uiDeadline(now, deadline) <= deadline and uiDeadline(now, deadline) <= now + 1500
+  uiDeadline(now, deadline) <= deadline and uiDeadline(now, deadline) <= now + uiBudgetMs
 pure val requestedHealth: HealthEnvelope = { senderPackages: 1, supervisorPackageMatches: true, signatureMatches: true, closed: false, requestKind: 1, exactBundleKeys: true, exactValueTypes: true, nonceSyntax: true, versionMatches: true, now: 10, deadline: 110, workerAdmitted: true }
 pure val reqValues = Set({ ...requestedHealth, now: 0, deadline: 100 }, { ...requestedHealth, now: 10, deadline: 100 }, requestedHealth, { ...requestedHealth, senderPackages: 2 }, { ...requestedHealth, supervisorPackageMatches: false }, { ...requestedHealth, signatureMatches: false }, { ...requestedHealth, versionMatches: false }, { ...requestedHealth, exactBundleKeys: false }, { ...requestedHealth, exactValueTypes: false }, { ...requestedHealth, workerAdmitted: false }, { ...requestedHealth, closed: true }, { ...requestedHealth, deadline: 10 }, { ...requestedHealth, deadline: 20010 }, { ...requestedHealth, deadline: 20011 })
 pure val nowValues = Set(0, 10, 2000)
@@ -51,40 +58,35 @@ pure val deadlineValues = Set(0, 10, 100, 2100, 20010)
 
 ### The agent and gateway probes are independent and task storage requires the qualified gateway
 
-When the service instance is absent, read returns `runtimeInstance: none`, state `stopped`, epoch zero, both responsiveness fields false and `taskStorage: unavailable` without a probe. Otherwise it samples the runtime owner object, launch instance, epoch, lifecycle state, stopping flag and the agent and gateway process objects. The service uses a 750 ms budget for each local HTTP exchange. Only a running, nonstopping runtime probes. Each probe requires its child's current liveness at the point of dispatch. The agent uses authenticated loopback GET `/api/status`; HTTP 200 is sufficient here. The gateway uses authenticated loopback GET `/local-health` and needs 200, schema version 1, `gatewayResponsive` and `ownershipLoaded`. That gateway route requires its native inbound bearer credential, no origin, GET and no query; it waits for hydrated ownership and does not query inference, Cloud or task storage.
-
-Only after a qualified gateway reply does the observer read `/local-storage` through the gateway. That route uses the same local request restrictions and returns version 1 with `ok`, `unavailable` or `deferred`, defaulting to unavailable on failed or unrecognized storage inspection. These three words report task storage, independently of the disposable diagnostic. Ordinary `IOException` on a probe is absorbed as unavailable evidence. Other exceptions, including malformed JSON shape reached by a successful exchange, can fail the outer observation. The gateway's ordinary OPTIONS path and recognized browser preflights can return 204 without health evidence. The model's probe facts are decoded at that boundary. Runtime sampling does not start or repair a process. `EmbeddedRuntimeService.java:79–88,117–120`, `LocalRuntimeHealth.java:37–56`, `packages/agent/native-host/gateway.mjs:637–702`.
+With no runtime the observation reports no instance, stopped, epoch zero,
+no responsive child and unavailable task storage, without a probe.
+Otherwise only a running, nonstopping runtime probes, and each probe
+needs its child alive when it is sent. The agent answers its status
+route; the gateway's [local health route](../../agent/nativeHost/gateway.md)
+reports gateway responsiveness and loaded ownership. Only after a
+qualified gateway reply is task storage read through the gateway, as one
+of ok, unavailable or deferred; anything else is unavailable. Sampling
+never starts or repairs a process.
 
 ```quint
-type LocalHealthRequest = { expectsNativeToken: bool, bearerMatches: bool, callerAllowed: bool, hasOrigin: bool, methodGet: bool, methodOptions: bool, corsPreflight: bool, hasQuery: bool, ownershipLoaded: bool }
-pure def localHealthRoute(localRequest: LocalHealthRequest): str =
-  if (localRequest.corsPreflight) (if (localRequest.callerAllowed) "204" else "403")
-  else if (localRequest.expectsNativeToken and not(localRequest.bearerMatches)) "401"
-  else if (not(localRequest.callerAllowed)) "403"
-  else if (localRequest.methodOptions) "204"
-  else if (not(localRequest.ownershipLoaded)) "ownership-unavailable"
-  else if (not(localRequest.expectsNativeToken) or localRequest.hasOrigin) "403"
-  else if (not(localRequest.methodGet)) "405"
-  else if (localRequest.hasQuery) "400"
-  else "200"
-pure def lawHealthSuccessNeedsNativeBearer(localRequest: LocalHealthRequest): bool =
-  localHealthRoute(localRequest) == "200" implies localRequest.expectsNativeToken and localRequest.bearerMatches and localRequest.callerAllowed and not(localRequest.hasOrigin) and localRequest.methodGet and not(localRequest.hasQuery) and localRequest.ownershipLoaded
-pure val nativeGet: LocalHealthRequest = { expectsNativeToken: true, bearerMatches: true, callerAllowed: true, hasOrigin: false, methodGet: true, methodOptions: false, corsPreflight: false, hasQuery: false, ownershipLoaded: true }
-pure val localRequestValues = Set(nativeGet, { ...nativeGet, bearerMatches: false }, { ...nativeGet, hasOrigin: true }, { ...nativeGet, hasQuery: true }, { ...nativeGet, methodGet: false }, { ...nativeGet, ownershipLoaded: false }, { ...nativeGet, expectsNativeToken: false }, { ...nativeGet, methodGet: false, methodOptions: true, corsPreflight: true })
-type RuntimeObservation = { present: bool, serviceId: int, instanceId: int, epoch: int, runtimeState: str, stopping: bool, agentRef: int, gatewayRef: int, agentAlive: bool, gatewayAlive: bool }
-type RuntimeProbe = { agentHttpOk: bool, gatewayHttpOk: bool, gatewaySchemaOne: bool, gatewayResponsive: bool, ownershipLoaded: bool, storageHttpOk: bool, storageSchemaOne: bool, storageWord: str }
-pure def probeRunning(observed: RuntimeObservation): bool = observed.present and observed.runtimeState == "running" and not(observed.stopping)
+type RuntimeState = RuntimeStopped | RuntimeStarting | RuntimeRunning
+type TaskStorage = StorageOk | StorageUnavailable | StorageDeferred
+type StorageWord = WordOk | WordUnavailable | WordDeferred | WordUnrecognized
+type RuntimeObservation = { present: bool, serviceId: int, instanceId: int, epoch: int, runtimeState: RuntimeState, stopping: bool, agentRef: int, gatewayRef: int, agentAlive: bool, gatewayAlive: bool }
+type RuntimeProbe = { agentHttpOk: bool, gatewayHttpOk: bool, gatewaySchemaOne: bool, gatewayResponsive: bool, ownershipLoaded: bool, storageHttpOk: bool, storageSchemaOne: bool, storageWord: StorageWord }
+pure def probeRunning(observed: RuntimeObservation): bool = observed.present and observed.runtimeState == RuntimeRunning and not(observed.stopping)
 pure def agentProbeRead(observed: RuntimeObservation): bool = probeRunning(observed) and observed.agentAlive
 pure def gatewayProbeRead(observed: RuntimeObservation): bool = probeRunning(observed) and observed.gatewayAlive
 pure def storageProbeRead(observed: RuntimeObservation, portFacts: RuntimeProbe): bool =
   gatewayProbeRead(observed) and portFacts.gatewayHttpOk and portFacts.gatewaySchemaOne and portFacts.gatewayResponsive and portFacts.ownershipLoaded
-pure def storageWordValid(word: str): bool = word == "ok" or word == "unavailable" or word == "deferred"
+pure def storageReading(word: StorageWord): TaskStorage =
+  if (word == WordOk) StorageOk else if (word == WordDeferred) StorageDeferred else StorageUnavailable
 pure def sameSample(before: RuntimeObservation, after: RuntimeObservation): bool =
   before.present and after.present and before.serviceId == after.serviceId and before.instanceId == after.instanceId and
   before.epoch == after.epoch and before.runtimeState == after.runtimeState and before.stopping == after.stopping and before.agentRef == after.agentRef and before.gatewayRef == after.gatewayRef
-type RuntimeEvidence = { failed: bool, processId: int, instanceId: int, epoch: int, runtimeState: str, agentResponsive: bool, gatewayResponsive: bool, taskStorage: str }
+type RuntimeEvidence = { failed: bool, processId: int, instanceId: int, epoch: int, runtimeState: RuntimeState, agentResponsive: bool, gatewayResponsive: bool, taskStorage: TaskStorage }
 pure def absentEvidence(processId: int): RuntimeEvidence =
-  { failed: false, processId: processId, instanceId: 0, epoch: 0, runtimeState: "stopped", agentResponsive: false, gatewayResponsive: false, taskStorage: "unavailable" }
+  { failed: false, processId: processId, instanceId: 0, epoch: 0, runtimeState: RuntimeStopped, agentResponsive: false, gatewayResponsive: false, taskStorage: StorageUnavailable }
 pure def sampleEvidence(processId: int, before: RuntimeObservation, after: RuntimeObservation, portFacts: RuntimeProbe): RuntimeEvidence = {
   val gatewayReady = storageProbeRead(before, portFacts) and after.gatewayAlive
   if (not(before.present)) absentEvidence(processId)
@@ -92,30 +94,34 @@ pure def sampleEvidence(processId: int, before: RuntimeObservation, after: Runti
   else {
     failed: false, processId: processId, instanceId: before.instanceId, epoch: before.epoch, runtimeState: before.runtimeState,
     agentResponsive: agentProbeRead(before) and portFacts.agentHttpOk and after.agentAlive, gatewayResponsive: gatewayReady,
-    taskStorage: if (gatewayReady and portFacts.storageHttpOk and portFacts.storageSchemaOne and storageWordValid(portFacts.storageWord)) portFacts.storageWord else "unavailable"
+    taskStorage: if (gatewayReady and portFacts.storageHttpOk and portFacts.storageSchemaOne) storageReading(portFacts.storageWord) else StorageUnavailable
   }
 }
 pure def lawStorageEvidenceRequiresLiveGateway(processId: int, before: RuntimeObservation, after: RuntimeObservation, portFacts: RuntimeProbe): bool =
-  sampleEvidence(processId, before, after, portFacts).taskStorage != "unavailable" implies
+  sampleEvidence(processId, before, after, portFacts).taskStorage != StorageUnavailable implies
   sameSample(before, after) and storageProbeRead(before, portFacts) and after.gatewayAlive and portFacts.storageHttpOk and portFacts.storageSchemaOne
 pure def lawMissingRuntimeUsesNoProbes(observed: RuntimeObservation, portFacts: RuntimeProbe): bool =
   not(observed.present) implies not(agentProbeRead(observed) or gatewayProbeRead(observed) or storageProbeRead(observed, portFacts))
-pure val runningRuntime: RuntimeObservation = { present: true, serviceId: 1, instanceId: 1, epoch: 1, runtimeState: "running", stopping: false, agentRef: 1, gatewayRef: 2, agentAlive: true, gatewayAlive: true }
-pure val absentRuntime: RuntimeObservation = { ...runningRuntime, present: false, instanceId: 0, epoch: 0, runtimeState: "stopped", agentAlive: false, gatewayAlive: false }
-pure val readyProbe: RuntimeProbe = { agentHttpOk: true, gatewayHttpOk: true, gatewaySchemaOne: true, gatewayResponsive: true, ownershipLoaded: true, storageHttpOk: true, storageSchemaOne: true, storageWord: "ok" }
+pure val runningRuntime: RuntimeObservation = { present: true, serviceId: 1, instanceId: 1, epoch: 1, runtimeState: RuntimeRunning, stopping: false, agentRef: 1, gatewayRef: 2, agentAlive: true, gatewayAlive: true }
+pure val absentRuntime: RuntimeObservation = { ...runningRuntime, present: false, instanceId: 0, epoch: 0, runtimeState: RuntimeStopped, agentAlive: false, gatewayAlive: false }
+pure val readyProbe: RuntimeProbe = { agentHttpOk: true, gatewayHttpOk: true, gatewaySchemaOne: true, gatewayResponsive: true, ownershipLoaded: true, storageHttpOk: true, storageSchemaOne: true, storageWord: WordOk }
 pure val beforeValues = Set(runningRuntime, absentRuntime, { ...runningRuntime, stopping: true }, { ...runningRuntime, gatewayAlive: false }, { ...runningRuntime, agentAlive: false })
 pure val afterValues = Set(runningRuntime, absentRuntime, { ...runningRuntime, epoch: 2 }, { ...runningRuntime, gatewayRef: 3 }, { ...runningRuntime, gatewayAlive: false }, { ...runningRuntime, agentAlive: false })
 pure val observedValues = Set(runningRuntime, absentRuntime, { ...runningRuntime, stopping: true }, { ...runningRuntime, gatewayAlive: false })
-pure val portFactsValues = Set(readyProbe, { ...readyProbe, agentHttpOk: false }, { ...readyProbe, gatewaySchemaOne: false }, { ...readyProbe, ownershipLoaded: false }, { ...readyProbe, storageSchemaOne: false }, { ...readyProbe, storageWord: "invented" }, { ...readyProbe, storageWord: "deferred" })
+pure val portFactsValues = Set(readyProbe, { ...readyProbe, agentHttpOk: false }, { ...readyProbe, gatewaySchemaOne: false }, { ...readyProbe, ownershipLoaded: false }, { ...readyProbe, storageSchemaOne: false }, { ...readyProbe, storageWord: WordUnrecognized }, { ...readyProbe, storageWord: WordDeferred })
 pure val processIdValues = Set(1, 2)
-pure val wordValues = Set("ok", "deferred", "unavailable", "invented")
 ```
 
 ### A later check compares the exact observation fields and keeps liveness claims honest
 
-After the data probes the observer resamples and compares the service object, runtime instance, epoch, state, stopping flag and both process identities. It fails on a mismatch. It then checks liveness of those same captured children again. If the gateway has exited, the observation reports no gateway response and drops even previously qualified storage. The model represents those final liveness facts in the second observation.
-
-After diagnostic storage and the UI port finish, the service runs a different, narrower revalidation against the returned evidence. The product process identity must match. A current absent runtime matches a previous `none` instance. Otherwise the runtime instance, epoch and state must match. Only previously responsive children must still be alive and not stopping. The second check uses the published identity and does not compare the earlier service or process object references, nor does it promote an initially unresponsive child. The model uses positive runtime/process identity symbols and instance zero for `none`. `LocalRuntimeHealth.java:52–67` and `NativeHealthService.java:33–38`.
+After the probes the observer samples again and fails on any change of
+service, runtime instance, epoch, state, stopping flag or process
+identity. A gateway that has exited by then reports no response and drops
+its storage reading. Before the reply the service revalidates the
+published evidence: the product process must match, an absent runtime
+matches only an absent instance, otherwise instance, epoch and state must
+match, and every child reported responsive must still be alive and not
+stopping. An initially unresponsive child is never promoted.
 
 ```quint
 pure def runtimeUnchanged(evidence: RuntimeEvidence, processId: int, currentRuntime: RuntimeObservation): bool =
@@ -127,9 +133,11 @@ pure def runtimeUnchanged(evidence: RuntimeEvidence, processId: int, currentRunt
   )
 pure def lawPublishedResponsiveChildStillLives(evidence: RuntimeEvidence, processId: int, currentRuntime: RuntimeObservation): bool =
   currentRuntime.present and runtimeUnchanged(evidence, processId, currentRuntime) implies
-  (evidence.agentResponsive implies currentRuntime.agentAlive and not(currentRuntime.stopping)) and
-  (evidence.gatewayResponsive implies currentRuntime.gatewayAlive and not(currentRuntime.stopping))
-pure val healthySample: RuntimeEvidence = { failed: false, processId: 1, instanceId: 1, epoch: 1, runtimeState: "running", agentResponsive: true, gatewayResponsive: true, taskStorage: "ok" }
+    (evidence.agentResponsive implies currentRuntime.agentAlive and not(currentRuntime.stopping)) and
+    (evidence.gatewayResponsive implies currentRuntime.gatewayAlive and not(currentRuntime.stopping))
+pure def lawRevalidationRefusesAChangedProcess(evidence: RuntimeEvidence, processId: int, currentRuntime: RuntimeObservation): bool =
+  evidence.processId != processId implies not(runtimeUnchanged(evidence, processId, currentRuntime))
+pure val healthySample: RuntimeEvidence = { failed: false, processId: 1, instanceId: 1, epoch: 1, runtimeState: RuntimeRunning, agentResponsive: true, gatewayResponsive: true, taskStorage: StorageOk }
 pure val evidenceValues = Set(healthySample, absentEvidence(1), { ...healthySample, processId: 2 }, { ...healthySample, agentResponsive: false }, { ...healthySample, gatewayResponsive: false }, { ...healthySample, failed: true })
 pure val currentRuntimeValues = Set(runningRuntime, absentRuntime, { ...runningRuntime, epoch: 2 }, { ...runningRuntime, stopping: true }, { ...runningRuntime, gatewayAlive: false }, { ...runningRuntime, agentAlive: false })
 ```
@@ -142,41 +150,45 @@ pure val currentRuntimeValues = Set(runningRuntime, absentRuntime, { ...runningR
 
 ### Diagnostic result, UI observation and runtime revalidation precede successful delivery
 
-The worker silently drops a request if closed or expired on entry. It reads runtime evidence, adds schema version 5, exact nonce, installed version and distribution, then checks isolated storage. The disposable probe uses `ota-storage-diagnostic` under no-backup storage, at most 16 entries and a 1 MiB SQLite file. It locks the directory's private diagnostic lease, validates all entries before cleaning owned orphans, writes a random value in a synchronous transaction, reopens read-only for exact integrity and nonce readback, and cleans up. User databases and encrypted tasks are separate. The positive diagnostic bit appears after this call returns.
-
-The service copies only `activityState`, `rendererResponsive` and `contentPresent` from the independently deadline-bounded UI port. It requires the runtime revalidation and checks current close and deadline before returning a successful body with its elapsed observation time. An exception at any reached worker stage sends `503 observation_unavailable`, even when the deadline passed or the service closed while that stage was pending. Normal completion after close or expiry sends no success or error. The caller can also time out independently. This machine follows one admitted request and does not simulate Android queue cancellation or reply transport. `NativeStorageDiagnostic.java:15–55`, `NativeHealthService.java:30–44`.
+The worker drops a request that is closed or expired when it starts. It
+then reads runtime evidence, runs the disposable storage diagnostic (a
+private write, integrity check and readback, cleaned up afterwards and
+separate from user data), takes the UI observation and revalidates the
+runtime. A failure at any stage answers that the observation is
+unavailable. A success is sent only if the service is still open and the
+deadline has not passed; otherwise nothing is sent. This machine follows
+one admitted request.
 
 ```quint
-type HealthWork = { phase: str, closed: bool, deadline: int, clockNow: int, completedAt: int }
-pure val initial: HealthWork = { phase: "idle", closed: false, deadline: 0, clockNow: 0, completedAt: -1 }
+type HealthStage = HealthIdle | HealthQueuedStage | HealthRuntime | HealthDiagnostic | HealthUi | HealthRevalidate | HealthObserved | HealthUnavailable | HealthDropped
+type HealthWork = { phase: HealthStage, closed: bool, deadline: int, clockNow: int, completedAt: int }
+pure val initial: HealthWork = { phase: HealthIdle, closed: false, deadline: 0, clockNow: 0, completedAt: -1 }
 pure def canQueueHealth(work: HealthWork, req: HealthEnvelope): bool =
-  work.phase == "idle" and not(work.closed) and healthAdmission(req) == "queued" and req.now == work.clockNow
-pure def queueHealth(work: HealthWork, req: HealthEnvelope): HealthWork = { ...work, phase: "queued", deadline: req.deadline }
-pure def canBeginHealth(work: HealthWork): bool = work.phase == "queued"
+  work.phase == HealthIdle and not(work.closed) and healthAdmission(req) == HealthQueued and req.now == work.clockNow
+pure def queueHealth(work: HealthWork, req: HealthEnvelope): HealthWork = { ...work, phase: HealthQueuedStage, deadline: req.deadline }
+pure def canBeginHealth(work: HealthWork): bool = work.phase == HealthQueuedStage
 pure def beginHealth(work: HealthWork): HealthWork =
-  { ...work, phase: if (work.closed or work.clockNow >= work.deadline) "dropped" else "runtime" }
-type HealthResult = { succeeded: bool }
+  { ...work, phase: if (work.closed or work.clockNow >= work.deadline) HealthDropped else HealthRuntime }
 pure def canFinishHealthStage(work: HealthWork): bool =
-  work.phase == "runtime" or work.phase == "diagnostic" or work.phase == "ui" or work.phase == "revalidate"
-pure def finishHealthStage(work: HealthWork, report: HealthResult): HealthWork =
-  if (not(report.succeeded)) { ...work, phase: "unavailable" }
-  else if (work.phase == "runtime") { ...work, phase: "diagnostic" }
-  else if (work.phase == "diagnostic") { ...work, phase: "ui" }
-  else if (work.phase == "ui") { ...work, phase: "revalidate" }
-  else if (work.closed or work.clockNow >= work.deadline) { ...work, phase: "dropped" }
-  else { ...work, phase: "observed", completedAt: work.clockNow }
+  work.phase == HealthRuntime or work.phase == HealthDiagnostic or work.phase == HealthUi or work.phase == HealthRevalidate
+pure def finishHealthStage(work: HealthWork, succeeded: bool): HealthWork =
+  if (not(succeeded)) { ...work, phase: HealthUnavailable }
+  else if (work.phase == HealthRuntime) { ...work, phase: HealthDiagnostic }
+  else if (work.phase == HealthDiagnostic) { ...work, phase: HealthUi }
+  else if (work.phase == HealthUi) { ...work, phase: HealthRevalidate }
+  else if (work.closed or work.clockNow >= work.deadline) { ...work, phase: HealthDropped }
+  else { ...work, phase: HealthObserved, completedAt: work.clockNow }
 pure def canAdvanceHealthClock(work: HealthWork, later: int): bool = later >= work.clockNow
 pure def advanceHealthClock(work: HealthWork, later: int): HealthWork = { ...work, clockNow: later }
 pure def closeHealthService(work: HealthWork): HealthWork = { ...work, closed: true }
 pure def alwaysSuccessfulObservationWasOnTime(work: HealthWork): bool =
-  work.phase == "observed" implies work.completedAt >= 0 and work.completedAt < work.deadline and work.completedAt <= work.clockNow
+  work.phase == HealthObserved implies work.completedAt >= 0 and work.completedAt < work.deadline and work.completedAt <= work.clockNow
 pure def alwaysHealthClockValid(work: HealthWork): bool = work.clockNow >= 0
 pure def stepNewHealthSuccessRequiresRevalidation(before: HealthWork, via: str, after: HealthWork): bool =
-  via == "finishHealthStage" and after.phase == "observed" implies
-  before.phase == "revalidate" and not(before.closed) and before.clockNow < before.deadline
-pure def sometimesHealthObserved(work: HealthWork): bool = work.phase == "observed"
-pure def sometimesLateHealthDropped(work: HealthWork): bool = work.phase == "dropped" and work.clockNow >= work.deadline
-pure val reportValues = Set({ succeeded: true }, { succeeded: false })
+  via == "finishHealthStage" and after.phase == HealthObserved implies
+  before.phase == HealthRevalidate and not(before.closed) and before.clockNow < before.deadline
+pure def sometimesHealthObserved(work: HealthWork): bool = work.phase == HealthObserved
+pure def sometimesLateHealthDropped(work: HealthWork): bool = work.phase == HealthDropped and work.clockNow >= work.deadline
 pure val laterValues = Set(0, 10, 100, 1000, 20010)
 pure val weight_queueHealth = 8
 pure val weight_beginHealth = 8

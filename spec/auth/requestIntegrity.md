@@ -6,13 +6,7 @@ nonce, and optionally an idempotency key. The service verifies the request
 first and commits it in a separate atomic step against the shared replay
 store, so the request may expire, or a duplicate may race it, between the
 two. The replay store is configured, and when it is unavailable the service
-refuses rather than remembering nonces somewhere else. Times are in seconds.
-
-New in v4. The one-use nonce with an expiry race is ported from develop
-`packages/auth/quint/ExecutionAuthorization.qnt`, whose execution
-authorization itself (agent custody) is not part of Eliza; the signing,
-replay and rate rules come from develop cloud `lib/*/sign.ts` and the
-identity service's request middleware.
+refuses rather than remembering nonces somewhere else.
 
 ## Story: Accept a mutating request only once, recently, from a signed caller
 
@@ -25,7 +19,6 @@ identity service's request middleware.
 ```quint
 type SignedRequest = { signatureValid: bool, coversCanonicalParts: bool, timestamp: int, nonce: int, idempotencyKey: int, clientIp: int }
 pure def signatureAccepted(request: SignedRequest): bool = request.signatureValid and request.coversCanonicalParts
-pure def lawPartialSignatureRefused(request: SignedRequest): bool = not(request.coversCanonicalParts) implies not(signatureAccepted(request))
 type IntegrityResult = NoRequest | Verified | Executed | ReplayedFirstResult | BadSignature | RequestExpired | ClockSkew | NonceReused | StoreUnavailable | RateLimited
 type ReplayStore = StoreUp | StoreDown
 type ExecutionRecord = { nonce: int, key: int, timestamp: int, committedAt: int }
@@ -69,10 +62,11 @@ The commit checks the window again, so a request verified in time but
 committed after its window has passed is refused.
 
 ```quint
+pure val unknownRequest: SignedRequest = { signatureValid: false, coversCanonicalParts: false, timestamp: 0, nonce: 0, idempotencyKey: 0, clientIp: 0 }
 pure def stillFresh(s: RequestIntegrity, request: SignedRequest): bool = s.now < request.timestamp + requestWindow and request.timestamp <= s.now + maxClockSkew
 pure def canCommitRequest(s: RequestIntegrity, nonce: int): bool = s.verified.some(r => r.nonce == nonce)
 pure def commitRequest(s: RequestIntegrity, nonce: int): RequestIntegrity = {
-  val request = s.verified.select(r => r.nonce == nonce).nthOr(0, { signatureValid: false, coversCanonicalParts: false, timestamp: 0, nonce: 0, idempotencyKey: 0, clientIp: 0 })
+  val request = s.verified.select(r => r.nonce == nonce).nthOr(0, unknownRequest)
   val rest = s.verified.select(r => r.nonce != nonce)
   if (s.store == StoreDown) { ...s, verified: rest, result: StoreUnavailable }
   else if (s.usedNonces.contains(nonce)) { ...s, verified: rest, result: NonceReused }

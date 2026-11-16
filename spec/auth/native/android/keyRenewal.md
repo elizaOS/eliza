@@ -1,10 +1,10 @@
-# Android device key renewal
+# Android key renewal
 
-The Android sign-in plugin renews the device's Cloud key without a new
+The Android sign-in plugin renews the device's cloud key without a new
 sign-in. The custody chain is: an exclusive encrypted renewal request, the
-successor's secret and proof, Cloud's exact acknowledgement, a durable
+successor's secret and proof, the cloud's exact acknowledgement, a durable
 confirmation, a durable duty to retire the predecessor, and only then the
-successor selected as the saved key. The Cloud side, which issues the
+successor selected as the saved key. The cloud side, which issues the
 successor and retires the predecessor, is
 [native clients](../../../cloud/nativeClients.md). Keys are numbered: `1`
 is the key the device holds, `2` its successor and `3` a key a newer
@@ -136,7 +136,9 @@ predecessor, then selects the successor. A partial host write can leave no
 key selected; the confirmed receipt and the duty are enough to repair it
 under the same generation. The receipt is cleaned up and the old key is
 revoked only once the successor is the saved key, and the renewal is
-announced only then. A working key stays saved until it is replaced.
+announced only then. A working key stays saved until it is replaced. A
+renewal can run to the end, with the successor saved and the old key
+retired.
 
 ```quint
 type Publication = PublishStored | PublishFailed | PublishPartial
@@ -169,6 +171,19 @@ pure def alwaysWorkingKeyKept(k: KeyRenewal): bool =
 pure def alwaysSavedKeyAcceptedOrReportedRefused(k: KeyRenewal): bool =
   (k.saved == oldKey and k.supersededSaved == -1 and not(k.keyRefused)) implies k.oldAccepted
 pure def sometimesPartialPublicationLeavesNoKey(k: KeyRenewal): bool = k.partialWrite and k.saved == 0 and k.duty
+pure def sometimesRenewed(k: KeyRenewal): bool = k.verdict == RenewDone and k.saved == successorKey
+pure val weight_check = 40
+pure val weight_claim = 40
+pure val weight_dispatch = 40
+pure val weight_renewReply = 40
+pure val weight_tokenReply = 40
+pure val weight_stage = 40
+pure val weight_ackReply = 40
+pure val weight_confirmSuccessor = 40
+pure val weight_retirementDuty = 40
+pure val weight_publish = 40
+pure val weight_cleanup = 40
+pure val weight_revokeOld = 40
 ```
 
 ### A newer credential action, a restart or a sign-in wins over a renewal
@@ -194,50 +209,4 @@ pure val replacementValues = Set(0, 3)
 pure def alwaysNewerActionWins(k: KeyRenewal): bool = k.supersededSaved != -1 implies k.saved == k.supersededSaved
 pure def alwaysNewerJournalPreserved(k: KeyRenewal): bool = k.foreignJournal implies k.journal == JournalForeign
 pure def sometimesNewerIntentFencedRecovery(k: KeyRenewal): bool = k.supersededSaved == 3 and k.successorConfirmed
-```
-
-### A renewal that meets no failure installs the successor and retires the old key
-
-When every write is stored and Cloud answers each request as hoped, the
-same steps renew the key: the request is claimed and dispatched, the
-successor is minted, staged and acknowledged, the confirmation and the
-retirement duty are stored, the successor is selected, the receipt is
-cleaned up and the old key is revoked.
-
-```quint
-pure def canCheckDue(k: KeyRenewal): bool = canCheck(k)
-pure def checkDue(k: KeyRenewal): KeyRenewal = check(k, true, true)
-pure def canClaimStored(k: KeyRenewal): bool = canClaim(k)
-pure def claimStored(k: KeyRenewal): KeyRenewal = claim(k, true)
-pure def canDispatchStored(k: KeyRenewal): bool = canDispatch(k)
-pure def dispatchStored(k: KeyRenewal): KeyRenewal = dispatch(k, true)
-pure def canCodeIssued(k: KeyRenewal): bool = canRenewReply(k)
-pure def codeIssued(k: KeyRenewal): KeyRenewal = renewReply(k, RenewCode)
-pure def canSuccessorMinted(k: KeyRenewal): bool = canTokenReply(k)
-pure def successorMinted(k: KeyRenewal): KeyRenewal = tokenReply(k, true)
-pure def canStageStored(k: KeyRenewal): bool = canStage(k)
-pure def stageStored(k: KeyRenewal): KeyRenewal = stage(k, true)
-pure def canSuccessorAcknowledged(k: KeyRenewal): bool = canAckReply(k)
-pure def successorAcknowledged(k: KeyRenewal): KeyRenewal = ackReply(k, AckAcknowledged)
-pure def canConfirmationStored(k: KeyRenewal): bool = canConfirmSuccessor(k)
-pure def confirmationStored(k: KeyRenewal): KeyRenewal = confirmSuccessor(k, true)
-pure def canDutyStored(k: KeyRenewal): bool = canRetirementDuty(k)
-pure def dutyStored(k: KeyRenewal): KeyRenewal = retirementDuty(k, true)
-pure def canSuccessorSelected(k: KeyRenewal): bool = canPublish(k)
-pure def successorSelected(k: KeyRenewal): KeyRenewal = publish(k, PublishStored)
-pure def canReceiptCleaned(k: KeyRenewal): bool = canCleanup(k)
-pure def receiptCleaned(k: KeyRenewal): KeyRenewal = cleanup(k, true)
-pure val weight_checkDue = 10
-pure val weight_claimStored = 10
-pure val weight_dispatchStored = 10
-pure val weight_codeIssued = 10
-pure val weight_successorMinted = 10
-pure val weight_stageStored = 10
-pure val weight_successorAcknowledged = 10
-pure val weight_confirmationStored = 10
-pure val weight_dutyStored = 10
-pure val weight_successorSelected = 10
-pure val weight_receiptCleaned = 10
-pure val weight_revokeOld = 10
-pure def sometimesRenewed(k: KeyRenewal): bool = k.verdict == RenewDone and k.saved == successorKey
 ```

@@ -1,9 +1,8 @@
 # Browser request grounding
 
-A consumer grounds browser requests with
-`packages/contracts/src/browser-request-grounding.ts`. The device
-[browser document custody](../os/browser/documentCustody.md) owns browser
-visits. This contract owns admission from the current message.
+The browser opens a destination only when the current message grounds it.
+The device's [browser document custody](../os/browser/documentCustody.md)
+owns browser visits; this spec owns admission from the current message.
 
 ## Story: Open a destination stated in this message
 
@@ -25,10 +24,7 @@ same authored path and query, then a bare address of the same hostname,
 then a bare address with equivalent leading-www normalization. Result
 spelling always comes from the selected user address. A bare host cannot
 grant a model-invented path. Typed file-extension-like suffixes require
-the producer's affirmative web signal. The model projects syntax,
-normalization and order from a decoder. The concrete recognizer still
-needs fixture replay, including unreadable control characters, Unicode
-dots, and negation around quoted or formatted host words.
+the producer's affirmative web signal.
 
 ```quint
 type GroundedAddress = { authoredHref: str, qualifies: bool, rank: int }

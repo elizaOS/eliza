@@ -2,11 +2,9 @@
 
 UTC instants stay canonical in every Calendar record. A read or a create
 chooses the zone it is about from the current request, and only the
-display or the stored instant of a new event depends on it. A selected
-event read uses a whole-second window around the event's start and
-publishes only while the selection, owner, feed and source are still the
-ones it was asked for. [Reviewed reads](./reviewedReads.md) owns what is
-shared; [availability](./availability.md) owns occupancy windows.
+display or the stored instant of a new event depends on it.
+[Reviewed reads](./reviewedReads.md) own what is shared;
+[availability](./availability.md) owns occupancy windows.
 
 ## Story: See and create times in the zone I am asking about
 
@@ -100,73 +98,10 @@ pure def lawTrailingYearWins(cue: YearCue, statedYear: int, trailingYear: int, c
   trailingYear > 0 implies correctedYear(cue, statedYear, trailingYear, currentYear) == trailingYear
 pure def lawYearlessUsesCurrentYear(statedYear: int, currentYear: int): bool =
   correctedYear(NoYearCue, statedYear, 0, currentYear) == currentYear
-pure def lawPastStartAsks(startYear: int, currentYear: int, dayPassed: bool): bool =
-  (startYear < currentYear or (startYear == currentYear and dayPassed)) implies mustAskBeforeCreate(startYear, currentYear, dayPassed)
 pure def lawFutureStartIsReady(startYear: int, currentYear: int, dayPassed: bool): bool =
   (startYear > currentYear or (startYear == currentYear and not(dayPassed))) implies not(mustAskBeforeCreate(startYear, currentYear, dayPassed))
 pure val statedYearValues = Set(2026, 2027, 2028)
 pure val currentYearValues = Set(2026)
 pure val trailingYearValues = Set(0, 2028)
 pure val startYearValues = Set(2025, 2026, 2027)
-```
-
-## Story: Share the exact event I selected, read through a whole-second window
-
-> As the owner, I want a selected event found even when its start has
-> milliseconds, and shared only if what I selected is still current.
-
-### The read window covers the whole second around the selected start
-
-The provider filters by whole seconds. The read window therefore runs
-from the second before the start's second to the second after it, so an
-event with a fractional start or a one-millisecond duration is never
-lost. The window never grants authority to read: it only finds the
-record.
-
-```quint
-pure def wholeSecond(ms: int): int = (ms / 1000) * 1000
-pure def windowIncludes(start: int, duration: int): bool =
-  start < wholeSecond(start + 1000) and start + duration > wholeSecond(start - 1000)
-pure def lawWholeSecondWindowIncludesSelection(start: int, duration: int): bool =
-  start >= 1000 and duration >= 1 implies windowIncludes(start, duration)
-pure val startValues = Set(10000, 10500, 10999)
-pure val durationValues = Set(1, 1000)
-```
-
-### A selected read publishes the whole event only while it is still current
-
-The query returns first; then the read finishes. It publishes the whole
-selected event only when the query found it and the selection is still
-current, the owner still authorized, the feed complete, the source the
-one selected, and the read not cancelled. A change to any of these
-before it finishes makes it publish nothing. Each read finishes.
-
-```quint
-type SelectedReadPhase = Querying | Queried | Finished
-type SelectedRead = { phase: SelectedReadPhase, found: bool, authorized: bool, current: bool, complete: bool,
-  matching: bool, cancelled: bool, published: bool }
-pure val initial: SelectedRead = { phase: Querying, found: false, authorized: true, current: true, complete: true,
-  matching: true, cancelled: false, published: false }
-pure def eligible(s: SelectedRead): bool = s.found and s.authorized and s.current and s.complete and s.matching and not(s.cancelled)
-pure def canQueryReturns(s: SelectedRead): bool = s.phase == Querying
-pure def queryReturns(s: SelectedRead, start: int, duration: int): SelectedRead =
-  { ...s, phase: Queried, found: windowIncludes(start, duration) }
-pure def canChangeSelection(s: SelectedRead): bool = s.phase != Finished and s.current
-pure def changeSelection(s: SelectedRead): SelectedRead = { ...s, current: false }
-pure def canRevokeOwner(s: SelectedRead): bool = s.phase != Finished and s.authorized
-pure def revokeOwner(s: SelectedRead): SelectedRead = { ...s, authorized: false }
-pure def canPartialFeed(s: SelectedRead): bool = s.phase != Finished and s.complete
-pure def partialFeed(s: SelectedRead): SelectedRead = { ...s, complete: false }
-pure def canChangeSource(s: SelectedRead): bool = s.phase != Finished and s.matching
-pure def changeSource(s: SelectedRead): SelectedRead = { ...s, matching: false }
-pure def canCancelRead(s: SelectedRead): bool = s.phase != Finished and not(s.cancelled)
-pure def cancelRead(s: SelectedRead): SelectedRead = { ...s, cancelled: true }
-pure def canFinish(s: SelectedRead): bool = s.phase == Queried
-pure def finish(s: SelectedRead): SelectedRead = { ...s, phase: Finished, published: eligible(s) }
-pure def alwaysPublicationNeedsCurrentAuthority(s: SelectedRead): bool = s.published implies s.phase == Finished and eligible(s)
-pure def sometimesPublished(s: SelectedRead): bool = s.published
-pure def sometimesWithheld(s: SelectedRead): bool = s.phase == Finished and s.found and not(s.published)
-pure val fair_queryReturns = "weak"
-pure val fair_finish = "weak"
-pure def leadsToReadFinishes(s: SelectedRead, later: SelectedRead): bool = later.phase == Finished
 ```

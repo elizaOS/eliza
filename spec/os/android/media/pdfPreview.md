@@ -10,8 +10,9 @@ private PNG from the selected-document registry for its own renderer.
 
 ## Story: Render a selected file one page at a time on this device
 
-> As the person, I want to render a selected file one page at a time on
-> this device.
+> As the person, I want a PDF I selected previewed page by page on this
+> device, so that only the file I picked is rendered and only for the view
+> I am on.
 
 ### The worker renders a bounded private copy and accepts only its own reply
 
@@ -109,7 +110,7 @@ slot. Older completions can arrive and are checked independently.
 An applied response also replaces the selection object. The shell
 supplies the one-shot callback's captured request and object revision.
 
-The pinned renderer accepts a rendered result with a file URI on
+The renderer accepts a rendered result with a file URI on
 Android, or additionally a blob URI on web, and integer page and
 count. It relies on native validation for actual page identity and
 bounds. Its local asset URL gains the requested page and a fresh
@@ -167,9 +168,3 @@ pure val receiptValues = Set(completePng, { ...completePng, uriKind: BlobPreview
   { ...completePng, integerCount: false })
 pure val requestedPageValues = Set(-1,0,1,499,500)
 ```
-
-The pinned `SelectedDocumentViewer.qnt` and renderer refinement check
-selection changes with held replies. The installed
-`SelectedDocumentInstrumentedTest.realSelectedPdfRendersActualPagesAndRejectsMalformedBytes`
-drives real Android provider files and verifies both page navigation and
-typed refusal for malformed bytes.

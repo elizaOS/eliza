@@ -5,8 +5,8 @@ profile: every project revision, every local override and every generated
 file, and for a physical device the stock factory archive whose vendor
 partition the image keeps. Verification reads the checkout and the archive
 and reports problems; it never repairs them. The
-[product composition](./product.md) refuses a profile whose source does
-not verify.
+[product composition](./product.md) refuses a profile whose lock verdict
+has not matched.
 
 ## Story: Build from exactly the pinned device source and factory archive
 
@@ -18,21 +18,28 @@ not verify.
 
 The verifier compares every project revision, every override and every
 generated file of the checkout, and the factory archive's digest, with
-the lock profile. One mismatch fails the verdict; the verdict lists every
-problem it found.
+the lock profile. The lock profile of a physical device also requires the
+platform's board API level to match the stock vendor's, as the last rule
+below defines; a virtual device keeps no vendor partition and has no such
+check. One mismatch fails the verdict; the verdict lists every problem it
+found.
 
 ```quint
 type LockVerdict = Unverified | LockMatched | LockMismatched
-type LockFacts = { revisionsMatch: bool, overridesMatch: bool, generatedMatch: bool, archiveMatches: bool, vendorApiMatches: bool }
+type LockFacts = { physical: bool, revisionsMatch: bool, overridesMatch: bool, generatedMatch: bool, archiveMatches: bool, boardApi: int, vendorApi: int }
 type SourceLock = { checkout: int, archive: int, verdict: LockVerdict, verifiedCheckout: int, verifiedArchive: int, facts: LockFacts }
-pure val noFacts: LockFacts = { revisionsMatch: false, overridesMatch: false, generatedMatch: false, archiveMatches: false, vendorApiMatches: false }
+pure val noFacts: LockFacts = { physical: true, revisionsMatch: false, overridesMatch: false, generatedMatch: false, archiveMatches: false, boardApi: 0, vendorApi: 0 }
 pure val initial: SourceLock = { checkout: 1, archive: 1, verdict: Unverified, verifiedCheckout: 0, verifiedArchive: 0, facts: noFacts }
-pure def lockMatches(f: LockFacts): bool = f.revisionsMatch and f.overridesMatch and f.generatedMatch and f.archiveMatches and f.vendorApiMatches
+pure def boardApiMatchesVendor(boardApi: int, vendorApi: int): bool = boardApi >= 100000 and boardApi <= 999999 and boardApi == vendorApi
+pure def lockMatches(f: LockFacts): bool =
+  f.revisionsMatch and f.overridesMatch and f.generatedMatch and f.archiveMatches and
+  (not(f.physical) or boardApiMatchesVendor(f.boardApi, f.vendorApi))
 pure def verifyLock(s: SourceLock, observed: LockFacts): SourceLock =
   { ...s, verdict: if (lockMatches(observed)) LockMatched else LockMismatched, verifiedCheckout: s.checkout, verifiedArchive: s.archive, facts: observed }
-pure val allMatch: LockFacts = { revisionsMatch: true, overridesMatch: true, generatedMatch: true, archiveMatches: true, vendorApiMatches: true }
+pure val allMatch: LockFacts = { physical: true, revisionsMatch: true, overridesMatch: true, generatedMatch: true, archiveMatches: true, boardApi: 202504, vendorApi: 202504 }
 pure val observedValues = Set(allMatch, { ...allMatch, revisionsMatch: false }, { ...allMatch, overridesMatch: false },
-  { ...allMatch, generatedMatch: false }, { ...allMatch, archiveMatches: false }, { ...allMatch, vendorApiMatches: false })
+  { ...allMatch, generatedMatch: false }, { ...allMatch, archiveMatches: false }, { ...allMatch, vendorApi: 202404 },
+  { ...allMatch, boardApi: 0, vendorApi: 0 }, { ...allMatch, physical: false, boardApi: 0, vendorApi: 202404 })
 pure def alwaysMatchedVerdictHasEveryFact(s: SourceLock): bool = s.verdict == LockMatched implies lockMatches(s.facts)
 pure def sometimesSourceMatched(s: SourceLock): bool = s.verdict == LockMatched
 pure def sometimesSourceMismatched(s: SourceLock): bool = s.verdict == LockMismatched and s.facts.revisionsMatch
@@ -59,15 +66,13 @@ pure def sometimesSyncRetiresVerdict(s: SourceLock): bool = s.verdict == Unverif
 
 ### A physical device's platform declares the stock vendor's board API level
 
-A product keeps the factory vendor partition, so the platform's single
+A physical product keeps the factory vendor partition, so the platform's single
 board API level must be a six-digit level equal to the vendor's VINTF
 sepolicy version. A mismatched release is corrected in the build
 configuration, never by rewriting the vendor manifest.
 
 ```quint
-pure def boardApiMatchesVendor(boardApi: int, vendorApi: int): bool = boardApi >= 100000 and boardApi <= 999999 and boardApi == vendorApi
-pure val boardApiValues = Set(0, 202404, 202504)
-pure val vendorApiValues = Set(202404, 202504)
-pure def lawVendorApiIsExact(boardApi: int, vendorApi: int): bool =
-  boardApiMatchesVendor(boardApi, vendorApi) implies boardApi == vendorApi and boardApi >= 100000
+pure def lawPhysicalLockKeepsTheVendorApi(observed: LockFacts): bool =
+  (observed.physical and lockMatches(observed)) implies boardApiMatchesVendor(observed.boardApi, observed.vendorApi)
+pure def sometimesVirtualSourceMatched(s: SourceLock): bool = s.verdict == LockMatched and not(s.facts.physical)
 ```

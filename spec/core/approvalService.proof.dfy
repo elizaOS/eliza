@@ -87,6 +87,7 @@ lemma elapse_ensures(s: ApprovalServiceState, elapsed: int)
   ensures (inv(s) ==> canElapse(s, elapsed) ==> alwaysRetirementDrainsEveryApproval(elapse(s, elapsed)))
   ensures (inv(s) ==> canElapse(s, elapsed) ==> alwaysPendingMapOwnsExactlyPending(elapse(s, elapsed)))
   ensures (inv(s) ==> canElapse(s, elapsed) ==> alwaysArmedTimersBelongToPending(elapse(s, elapsed)))
+  ensures (inv(s) ==> canElapse(s, elapsed) ==> stepWorkerNamesAreRetained(s, elapse(s, elapsed)))
 {
  if inv(s) && canElapse(s, elapsed) {
   var t := elapse(s, elapsed);
@@ -117,6 +118,7 @@ lemma stop_ensures(s: ApprovalServiceState)
   ensures (inv(s) ==> canStop(s) ==> alwaysRetirementDrainsEveryApproval(stop(s)))
   ensures (inv(s) ==> canStop(s) ==> alwaysPendingMapOwnsExactlyPending(stop(s)))
   ensures (inv(s) ==> canStop(s) ==> alwaysArmedTimersBelongToPending(stop(s)))
+  ensures (inv(s) ==> canStop(s) ==> stepWorkerNamesAreRetained(s, stop(s)))
 {
  if inv(s) && canStop(s) {
   var t := stop(s);
@@ -143,6 +145,7 @@ lemma retire_ensures(s: ApprovalServiceState)
   ensures (inv(s) ==> canRetire(s) ==> alwaysRetirementDrainsEveryApproval(retire(s)))
   ensures (inv(s) ==> canRetire(s) ==> alwaysPendingMapOwnsExactlyPending(retire(s)))
   ensures (inv(s) ==> canRetire(s) ==> alwaysArmedTimersBelongToPending(retire(s)))
+  ensures (inv(s) ==> canRetire(s) ==> stepWorkerNamesAreRetained(s, retire(s)))
 {
  if inv(s) && canRetire(s) {
   var t := retire(s);
@@ -173,6 +176,7 @@ lemma claim_ensures(s: ApprovalServiceState, id: string, desired: core__approval
   ensures (inv(s) ==> canClaim(s, id, desired) ==> alwaysRetirementDrainsEveryApproval(claim(s, id, desired)))
   ensures (inv(s) ==> canClaim(s, id, desired) ==> alwaysPendingMapOwnsExactlyPending(claim(s, id, desired)))
   ensures (inv(s) ==> canClaim(s, id, desired) ==> alwaysArmedTimersBelongToPending(claim(s, id, desired)))
+  ensures (inv(s) ==> canClaim(s, id, desired) ==> stepWorkerNamesAreRetained(s, claim(s, id, desired)))
 {
  if inv(s) && canClaim(s, id, desired) {
   var t := claim(s, id, desired);
@@ -224,6 +228,7 @@ lemma callback_ensures(s: ApprovalServiceState, id: string, succeeded: bool)
   ensures (inv(s) ==> canCallback(s, id, succeeded) ==> alwaysRetirementDrainsEveryApproval(callback(s, id, succeeded)))
   ensures (inv(s) ==> canCallback(s, id, succeeded) ==> alwaysPendingMapOwnsExactlyPending(callback(s, id, succeeded)))
   ensures (inv(s) ==> canCallback(s, id, succeeded) ==> alwaysArmedTimersBelongToPending(callback(s, id, succeeded)))
+  ensures (inv(s) ==> canCallback(s, id, succeeded) ==> stepWorkerNamesAreRetained(s, callback(s, id, succeeded)))
 {
  if inv(s) && canCallback(s, id, succeeded) {
   var t := callback(s, id, succeeded);
@@ -269,6 +274,7 @@ lemma legacyCancel_ensures(s: ApprovalServiceState, id: string)
   ensures (inv(s) ==> canLegacyCancel(s, id) ==> alwaysRetirementDrainsEveryApproval(legacyCancel(s, id)))
   ensures (inv(s) ==> canLegacyCancel(s, id) ==> alwaysPendingMapOwnsExactlyPending(legacyCancel(s, id)))
   ensures (inv(s) ==> canLegacyCancel(s, id) ==> alwaysArmedTimersBelongToPending(legacyCancel(s, id)))
+  ensures (inv(s) ==> canLegacyCancel(s, id) ==> stepWorkerNamesAreRetained(s, legacyCancel(s, id)))
 {
  if inv(s) && canLegacyCancel(s, id) {
   var t := legacyCancel(s, id);
@@ -320,6 +326,7 @@ lemma finishWrite_ensures(s: ApprovalServiceState, id: string, succeeded: bool)
   ensures (inv(s) ==> canFinishWrite(s, id, succeeded) ==> alwaysRetirementDrainsEveryApproval(finishWrite(s, id, succeeded)))
   ensures (inv(s) ==> canFinishWrite(s, id, succeeded) ==> alwaysPendingMapOwnsExactlyPending(finishWrite(s, id, succeeded)))
   ensures (inv(s) ==> canFinishWrite(s, id, succeeded) ==> alwaysArmedTimersBelongToPending(finishWrite(s, id, succeeded)))
+  ensures (inv(s) ==> canFinishWrite(s, id, succeeded) ==> stepWorkerNamesAreRetained(s, finishWrite(s, id, succeeded)))
 {
  if inv(s) && canFinishWrite(s, id, succeeded) {
   var t := finishWrite(s, id, succeeded);
@@ -371,6 +378,7 @@ lemma deleteResult_ensures(s: ApprovalServiceState, id: string, succeeded: bool)
   ensures (inv(s) ==> canDeleteResult(s, id, succeeded) ==> alwaysRetirementDrainsEveryApproval(deleteResult(s, id, succeeded)))
   ensures (inv(s) ==> canDeleteResult(s, id, succeeded) ==> alwaysPendingMapOwnsExactlyPending(deleteResult(s, id, succeeded)))
   ensures (inv(s) ==> canDeleteResult(s, id, succeeded) ==> alwaysArmedTimersBelongToPending(deleteResult(s, id, succeeded)))
+  ensures (inv(s) ==> canDeleteResult(s, id, succeeded) ==> stepWorkerNamesAreRetained(s, deleteResult(s, id, succeeded)))
 {
  if inv(s) && canDeleteResult(s, id, succeeded) {
   var t := deleteResult(s, id, succeeded);
@@ -458,12 +466,13 @@ lemma admit_ensures(s: ApprovalServiceState, id: string, name: string, callbackR
   ensures (inv(s) ==> canAdmit(s, id, name, callbackRequired, registrationSucceeds, timeoutMs) ==> alwaysRetirementDrainsEveryApproval(admit(s, id, name, callbackRequired, registrationSucceeds, timeoutMs)))
   ensures (inv(s) ==> canAdmit(s, id, name, callbackRequired, registrationSucceeds, timeoutMs) ==> alwaysPendingMapOwnsExactlyPending(admit(s, id, name, callbackRequired, registrationSucceeds, timeoutMs)))
   ensures (inv(s) ==> canAdmit(s, id, name, callbackRequired, registrationSucceeds, timeoutMs) ==> alwaysArmedTimersBelongToPending(admit(s, id, name, callbackRequired, registrationSucceeds, timeoutMs)))
+  ensures (inv(s) ==> canAdmit(s, id, name, callbackRequired, registrationSucceeds, timeoutMs) ==> stepWorkerNamesAreRetained(s, admit(s, id, name, callbackRequired, registrationSucceeds, timeoutMs)))
 {
   if inv(s) && canAdmit(s, id, name, callbackRequired, registrationSucceeds, timeoutMs) {
     var t := admit(s, id, name, callbackRequired, registrationSucceeds, timeoutMs);
-    core__approvalWorkers_ensureWorker_ensures(s.workers, name, registrationSucceeds);
+    EnsureWorkerRetains(s.workers, name, registrationSucceeds);
     assert forall n :: n in s.workers.registered ==> n in t.workers.registered;
-    if core__approvalWorkers_taskMayPersist(t.workers, name) {
+    if taskMayPersist(t.workers, name) {
       var r := t.records[|s.records|];
       core__approvals_write_ensures(core__approvals_initial, callbackRequired);
       ApprovalAdmittedRecords(s, t, r);
@@ -485,4 +494,9 @@ lemma admit_ensures(s: ApprovalServiceState, id: string, name: string, callbackR
       ApprovalUniqueBridge(t);
     }
   }
+}
+
+lemma EnsureWorkerRetains(workers: ApprovalWorkers, name: string, registrationSucceeds: bool)
+  ensures forall n :: n in workers.registered ==> n in ensureWorker(workers, name, registrationSucceeds).registered
+{
 }

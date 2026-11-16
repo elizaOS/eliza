@@ -1,10 +1,13 @@
 # Persistence and immutable source publication
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/database.ts`, `types/database.ts`, `types/environment.ts`, `types/memory.ts`, `database/document-source-segments.ts`, `database/world-metadata-cas.ts`, and `database/cache-cas.ts`. Concrete adapters own transactions and durable I/O. The replacement preserves batch-first CRUD for agents, entities, components, worlds, rooms, participants, relationships, memories, logs, tasks, pairing and connector accounts. Optional unsupported capabilities retain observable failure outcomes. The model below specifies publication and query consistency shared by those records.
+Sources are `database.ts`, `types/database.ts`, `types/environment.ts`, `types/memory.ts`, `database/document-source-segments.ts`, `database/world-metadata-cas.ts`, and `database/cache-cas.ts`. Concrete adapters own transactions and durable I/O. The replacement preserves batch-first CRUD for agents, entities, components, worlds, rooms, participants, relationships, memories, logs, tasks, pairing and connector accounts. Optional unsupported capabilities retain observable failure outcomes. The model below specifies publication and query consistency shared by those records.
 
 ## Story: Publish complete immutable source revisions
 
-As a reader, I observe a head only after every referenced immutable dependency exists. A concurrent replacement cannot overwrite the revision I read. Byte, line and fragment pagination restores exact authorized source data and reauthorizes the parent on every page. Media remains content-addressed and source rows retain their references.
+> As a reader, I want to see a source revision only once everything it
+> references exists, so that I never read a partial or overwritten revision.
+
+A concurrent replacement cannot overwrite the revision I read. Byte, line and fragment pagination restores exact authorized source data and reauthorizes the parent on every page. Media remains content-addressed and source rows retain their references.
 
 ### A transaction stages dependencies while the visible head stays unchanged
 
@@ -47,31 +50,49 @@ pure def sometimesConcurrentConflict(s: Store): bool = s.phase == Conflicted
 
 ### Every page read checks current authorization and expected revision
 
-A stale or unauthorized request exposes no source page. Authorization evidence comes from the current storage boundary. Ordering, ranking and pagination happen only after scope filtering. Legacy context omission remains a separately authorized caller mode.
+A stale or unauthorized request, or one with a negative limit or offset, exposes no source page. Authorization evidence comes from the current storage boundary. Ordering, ranking and pagination happen only after scope filtering. Legacy context omission remains a separately authorized caller mode.
 
 ```quint
-pure def read(s: Store, authorized: bool, expectedRevision: int): Store =
-  if (authorized and expectedRevision == s.revision and s.revision > 0) { ...s, authorizedRead: true, exposedRevision: s.revision }
+pure def validPagination(limit: int, offset: int): bool = limit >= 0 and offset >= 0
+pure def revisionMatches(stored: int, supplied: int): bool = stored >= 0 and supplied >= 0 and stored == supplied
+pure def read(s: Store, authorized: bool, expectedRevision: int, limit: int, offset: int): Store =
+  if (authorized and revisionMatches(s.revision, expectedRevision) and s.revision > 0 and validPagination(limit, offset)) { ...s, authorizedRead: true, exposedRevision: s.revision }
   else { ...s, authorizedRead: false, exposedRevision: 0 }
 pure val expectedRevisionValues = Set(-1, 0, 1, 2, 3)
+pure val limitValues = Set(-1, 0, 10)
+pure val offsetValues = Set(-1, 0, 10)
 pure def alwaysExposedPageHasCurrentAuthority(s: Store): bool = s.exposedRevision > 0 implies (s.authorizedRead and s.exposedRevision == s.revision)
 pure def sometimesAuthorizedPage(s: Store): bool = s.exposedRevision > 0
 ```
 
 ## Story: Preserve storage compatibility without hiding unsupported operations
 
-As an adapter author, I can implement the canonical batch contract and declare atomic capabilities explicitly. Empty results remain valid successful reads. Operational failure remains typed failure. Legacy rows with missing revisions start at zero. Malformed revisions and stale whole-world writes fail before mutation. Component natural keys retain entity, type, world and source entity.
+> As an adapter author, I want to implement the canonical batch contract
+> and declare atomic capabilities explicitly, so that unsupported
+> operations fail visibly instead of silently.
 
-### Revisions and pagination reject invalid numeric inputs
+Empty results remain valid successful reads. Operational failure remains typed failure. Legacy rows with missing revisions start at zero. Malformed revisions and stale whole-world writes fail before mutation. Component natural keys retain entity, type, world and source entity.
+
+### A stale or malformed revision, or invalid pagination, exposes no page
+
+A supplied revision matches only when it and the stored revision are both
+nonnegative and equal. A read whose expected revision does not match the
+stored one, or whose limit or offset is negative, exposes nothing, whatever
+its authorization.
 
 ```quint
-pure def validPagination(limit: int, offset: int): bool = limit >= 0 and offset >= 0
-pure def revisionMatches(stored: int, supplied: int): bool = stored >= 0 and supplied >= 0 and stored == supplied
-pure def lawNegativePaginationIsRejected(offset: int): bool = not(validPagination(-1, offset))
-pure def lawStaleRevisionIsRejected(stored: int, supplied: int): bool = stored != supplied implies not(revisionMatches(stored, supplied))
+pure val sValues: Set[Store] = Set(initial, { ...initial, revision: 1 }, { ...initial, revision: 2, phase: Published })
+pure def lawStaleRevisionExposesNoPage(s: Store, authorized: bool, expectedRevision: int, limit: int, offset: int): bool =
+  not(revisionMatches(s.revision, expectedRevision)) implies read(s, authorized, expectedRevision, limit, offset).exposedRevision == 0
+pure def lawInvalidPaginationExposesNoPage(s: Store, authorized: bool, expectedRevision: int, limit: int, offset: int): bool =
+  not(validPagination(limit, offset)) implies read(s, authorized, expectedRevision, limit, offset).exposedRevision == 0
 ```
 
 ### Composite component identity keeps worlds and source entities distinct
+
+A component is identified by its entity, type, world and source entity
+together, so two components that differ in world or in source entity are
+different components.
 
 ```quint
 type ComponentKey = { entityId: str, componentType: str, worldId: str, sourceEntityId: str }

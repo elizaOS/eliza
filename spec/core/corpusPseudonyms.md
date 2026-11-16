@@ -4,6 +4,10 @@ The source is `packages/core/src/security/pii-pseudonym-map.ts` at the pinned ba
 
 ## Story: Preserve one pseudonym per verified cluster across corpus writes
 
+> As a user whose data is pseudonymized, I want each verified person to keep
+> one stable pseudonym across writes, so that the model never sees my real
+> identifiers or confuses two people.
+
 ### Assignment keeps platform identity ownership unique and aliases explicitly ambiguous
 
 Each atomic assignment unions aliases and identity keys into the existing cluster. A new pseudonym must avoid all current aliases and other pseudonyms. Remint proposals cover existing pseudonyms that collide with newly learned real aliases, with prior pseudonyms retained for artifact repair.

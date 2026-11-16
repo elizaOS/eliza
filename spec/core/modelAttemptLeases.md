@@ -1,10 +1,18 @@
 # Host model attempt allowances
 
-The host issues a session allowance and unforgeable per-turn leases. Each qualified request atomically debits its conservative reservation and consumes an attempt, including failed transport attempts. Sources include [streaming-context.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/streaming-context.ts) and [prepared-model-request.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/prepared-model-request.ts). The arithmetic helpers compare affordability before multiplying values that can exceed the safe integer range.
+The host issues a session allowance and unforgeable per-turn leases. Each
+qualified request atomically debits its conservative reservation and
+consumes an attempt, including failed transport attempts. The arithmetic
+helpers compare affordability before multiplying values that can exceed
+the safe integer range.
 
 ## Story: Issue a turn-scoped model allowance
 
-As a host I authorize bounded model attempts with a concrete provider tariff, expiry and output cap.
+> As a host, I want each model attempt authorized against a concrete
+> tariff, expiry and output cap, so no attempt can spend beyond its lease.
+
+As a host I authorize bounded model attempts with a concrete provider
+tariff, expiry and output cap.
 
 ### Only host-issued leases bind an existing allowance to a turn
 
@@ -68,7 +76,7 @@ pure def sometimesIndependentTurnLeases(s: ModelLeases): bool = s.leases.some(a 
 
 Reservation receives the complete serialized UTF-16 sequence with its captured route and turn authority. Provider, model and route match the first qualified tariff. The UTF-8 length of that sequence fits its conservative input bound and an explicit output count fits the allowance cap. Each code unit must fit the unsigned 16-bit range. Funds and attempts are never refunded.
 
-Discovered by the proof. Every retained allowance has a positive distinct identity, so a lease can resolve its captured allowance after an unrelated allowance update.
+Every retained allowance has a positive distinct identity, so a lease can resolve its captured allowance after an unrelated allowance update.
 
 ```quint
 type ChargePart = {within: bool, whole: int, remainder: int}

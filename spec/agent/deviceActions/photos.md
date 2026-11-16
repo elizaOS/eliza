@@ -1,15 +1,11 @@
 # Photo library and Photos view receipts
 
-A device client's photo library runtime re-exports Eliza's
-pinned `photo-library-contract.ts`. Its native adapter
-also imports
-`photos-view-contract.ts`. These contracts share opaque media IDs
-and describe two separate capabilities. The pinned
-`DevicePhotosFilter.qnt` checks reviewed proposal authority,
-receipt identity, and explicit recovery from an uncertain result.
-The [device execution journal](./execution.md) owns
-claim and retry, while the [photo permission owner](../../os/android/media/permissionEpochs.md)
-fences access to actual media.
+The photo library and the Photos view: two capabilities that share opaque
+media IDs. A proposal needs reviewed authority, a receipt names its exact
+media, and an uncertain result is recovered explicitly.
+[Device action custody](./execution.md) owns claim and retry, and the
+[photo permission owner](../../os/android/media/permissionEpochs.md) fences
+access to actual media.
 
 ## Story: Filter or open the current Photos view with minimal disclosure
 
@@ -53,9 +49,8 @@ pure val rValues = Set(
   {operation: SharePhotos, exactShape: true, reviewOpened: false, count: 2, missing: 0}
 )
 pure val selectedValues = Set(0, 1, 2)
-pure def lawPhotosDirectRequiresBothGrants(c: PhotosContext, operation: PhotosOperation): bool =
-  permitsDirectPhotos(c, operation) implies c.libraryGrant and c.viewGrant and c.ownerMessage and not(c.sensitive) and
-    (operation == FilterPhotos or operation == OpenPhoto)
+pure def lawPhotosDirectNeedsTheViewGrant(c: PhotosContext, operation: PhotosOperation): bool =
+  not(c.viewGrant) implies not(permitsDirectPhotos(c, operation))
 pure def lawPhotosMutationReceiptIsReviewOnly(operation: PhotosOperation, selected: int, r: PhotosActionReceipt): bool =
   validPhotosReceipt(operation, selected, r) and (operation == CreateAlbum or operation == SharePhotos) implies
     r.reviewOpened and r.count + r.missing == selected
@@ -77,8 +72,8 @@ the requested IDs into selected and missing. A review accepts
 unfavorite, trash or share. The native revision remains local.
 When the host resolves the opaque revision, qualification requires
 the exact current native row before Android may review the action.
-The shared `reviewCurrent` predicate expires a prepared review
-at two minutes. A consumer's pinned confirmation handler revalidates
+The shared review check expires a prepared review
+at two minutes. A consumer's confirmation handler revalidates
 rows and the live review object, but it does not call that expiry
 predicate. The model keeps the shared cutoff separate from that
 consumer-specific confirmation path.
@@ -105,11 +100,9 @@ pure val libraryQualified: LibraryReviewEvidence = {
   selectionCount: 2, revisionsKnown: true, exactCurrentRows: true, openedAt: 1, checkedAt: 1000, libraryAction: TrashItem
 }
 pure val libraryReceiptValues = Set(libraryQualified, {...libraryQualified, checkedAt: 120001}, {...libraryQualified, exactCurrentRows: false})
-pure def lawLibraryReviewCannotUseStaleRows(libraryReceipt: LibraryReviewEvidence, libraryAction: LibraryAction, count: int, reviewOpened: bool): bool =
-  discloseLibraryReviewAllowed(libraryReceipt, libraryAction, count, reviewOpened) implies
-    libraryReceipt.revisionsKnown and libraryReceipt.exactCurrentRows
-pure def lawSharedReviewCutoff(libraryReceipt: LibraryReviewEvidence): bool =
-  currentLibraryReview(libraryReceipt) implies libraryReceipt.checkedAt < libraryReceipt.openedAt + 120000
+pure def lawStaleReviewIsRefused(libraryReceipt: LibraryReviewEvidence, libraryAction: LibraryAction, count: int, reviewOpened: bool): bool =
+  (libraryReceipt.checkedAt >= libraryReceipt.openedAt + 120000 implies not(currentLibraryReview(libraryReceipt))) and
+  (not(libraryReceipt.exactCurrentRows) implies not(discloseLibraryReviewAllowed(libraryReceipt, libraryAction, count, reviewOpened)))
 pure val countValues = Set(0, 1, 2, 20, 21)
 ```
 

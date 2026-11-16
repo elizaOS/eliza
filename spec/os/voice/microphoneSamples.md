@@ -1,11 +1,10 @@
 # Microphone sample and preview custody
 
-The browser capture (`microphone-capture.ts`, its
-`microphone-samples.worklet.mjs` worklet and `pcm-wave.ts`) feeds a
-consumer's live transcription and its device-hearing setup from one shared
-microphone. [Recorded transcription](./recordedTranscription.md) owns the
-final utterance, and the [voice endpoint](./endpoint.md) owns turn
-admission. Both belong to [voice capture](./capture.md).
+The browser capture graph feeds a consumer's live transcription and its
+device-hearing setup from one shared microphone.
+[Recorded transcription](./recordedTranscription.md) owns the final
+utterance and the [voice endpoint](./endpoint.md) turn admission; both
+belong to [voice capture](./capture.md).
 
 ## Story: Share one microphone context with the meter and retain the right samples
 
@@ -157,8 +156,3 @@ pure val totalSamplesValues = Set(0, 1, 127999, 128000, 128001, 560000)
 pure val weight_offerPreview = 7
 pure val weight_settlePreview = 7
 ```
-
-The capture's own `microphone-capture.test.ts` exercises owned and shared
-contexts, rate mismatch, continued block observation, synchronous
-receiver failure and snapshots. Audio permission, native recognition and
-provider results are effect inputs.

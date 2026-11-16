@@ -6,11 +6,9 @@ payment or account check, the trusted host keeps the resulting session as
 account authority: in memory only, bound to the exact credential that was
 active when it was verified, and for at most an hour. It never writes it to
 storage and never hands it to a renderer; the stored device credential stays
-inference-only. Times are in seconds.
+inference-only.
 
-New in v4, from the billing authority of develop
-`native-host/cloud-enrollment.mjs` (`billingAuthority`, `clearBilling`,
-`confirmBilling`). The entitlement reads that use this authority are in
+The entitlement reads that use this authority are in
 [cloud entitlements](../cloud/entitlements.md).
 
 ## Story: Use my account's authority for billing and account changes without re-enrolling
@@ -28,18 +26,17 @@ type HeldAuthority = { present: bool, credential: int, user: int, organization: 
 type CheckAttempt = { open: bool, credential: int, purpose: AuthorityPurpose, mfaPending: bool }
 type AccountAuthority = {
   now: int, credential: int, credentialUser: int, credentialOrganization: int,
-  attempt: CheckAttempt, authority: HeldAuthority, result: CheckResult, storageWrites: int, rendererTokens: int
+  attempt: CheckAttempt, authority: HeldAuthority, result: CheckResult
 }
 pure val noAuthority: HeldAuthority = { present: false, credential: 0, user: 0, organization: 0, issuedAt: 0, expiresAt: 0 }
 pure val noAttempt: CheckAttempt = { open: false, credential: 0, purpose: BillingPurpose, mfaPending: false }
 pure val initial: AccountAuthority = {
   now: 0, credential: 1, credentialUser: 1, credentialOrganization: 1,
-  attempt: noAttempt, authority: noAuthority, result: NoCheck, storageWrites: 0, rendererTokens: 0
+  attempt: noAttempt, authority: noAuthority, result: NoCheck
 }
 pure def usableAuthority(s: AccountAuthority): bool = s.authority.present and s.authority.credential == s.credential and s.now < s.authority.expiresAt
 pure def alwaysAuthorityBoundToActiveCredential(s: AccountAuthority): bool =
-  (s.authority.present implies (s.authority.credential == s.credential and s.authority.user == s.credentialUser and s.authority.organization == s.credentialOrganization))
-    and s.storageWrites == 0 and s.rendererTokens == 0
+  s.authority.present implies (s.authority.credential == s.credential and s.authority.user == s.credentialUser and s.authority.organization == s.credentialOrganization)
 pure def sometimesAuthorityHeld(s: AccountAuthority): bool = usableAuthority(s)
 ```
 

@@ -7,8 +7,11 @@ call stack exposes synchronous reentry through token callbacks.
 
 ## Story: Replace and cancel the active voice turn by room
 
-As a host, I cancel the captured previous token before constructing and
-publishing a replacement. A callback may reenter the registry. The outer
+> As a host, I want arming a room's voice turn to cancel the previous one
+> before publishing the replacement, so that a room never has two live
+> voice turns.
+
+A callback may reenter the registry. The outer
 call subsequently resumes with its original captured objects. Cleanup
 removes a binding only while it still refers to that exact token.
 
@@ -119,12 +122,14 @@ pure def sometimesBulkAbortReturns(r: VoiceRegistry): bool = r.returnedBulk.some
 
 ### A captured operation retains its kind and owned room
 
-Discovered by the proof: a fabricated arm frame could point its created
-identity at another room, or a bulk frame could enter an arm-only phase.
-Call construction fixes the operation kind, non-active reason and created
-room before these handoffs become possible. Only an arm operation can own
-a newly created token; bulk traversal may subsequently change its current
-room without carrying an unrelated created identity.
+A call keeps the kind and non-active reason it began with and moves only
+through that kind's phases. Only an arm operation creates a token, and the
+token belongs to the arm's room; bulk traversal may change its current
+room but never carries a created token.
+
+Without these facts an arm call could publish a
+token created for another room, and a bulk abort could enter an arm-only
+phase.
 
 ```quint
 pure def alwaysCallKindsAndReason(r: VoiceRegistry): bool = r.calls.every(frame => frame.reason != V::Active and (frame.kind != ArmOperation implies frame.created == 0) and

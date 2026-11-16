@@ -11,42 +11,43 @@ The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c1
 
 ### Action names are unique in the registry
 
-A plugin registers an action under a name, with the subactions its umbrella handler dispatches and the lowest caller role allowed to run it. A second registration of the same name is refused, so a planned call names exactly one declaration.
+A plugin registers an action under a name, with the subactions its umbrella handler dispatches and the lowest caller [role](./authorization.md) allowed to run it, ranked as authorization ranks the caller's resolved role. A second registration of the same name is refused, so a planned call names exactly one declaration.
 
 ```quint
-type ActionDecl = { name: str, subactions: List[str], minRole: int }
+import authorization as Z from "./authorization"
+type ActionDecl = { name: str, subactions: List[str], minRole: Z::Role }
 type CallPhase = Planned | Validated | Rejected | Invoked | Succeeded | Failed
 type RejectReason = NotRejected | UnknownAction | UnknownSubaction | NotPermitted | InvalidArguments
-type PlannedCall = { id: int, actionName: str, parent: int, role: int, argsValid: bool, phase: CallPhase, reason: RejectReason }
+type PlannedCall = { id: int, actionName: str, parent: int, role: Z::Role, argsValid: bool, phase: CallPhase, reason: RejectReason }
 type Planning = { registry: List[ActionDecl], calls: List[PlannedCall] }
 pure val initial: Planning = { registry: List(), calls: List() }
-pure val declValues = Set({ name: "reply", subactions: List(), minRole: 0 }, { name: "manage", subactions: List("create", "remove"), minRole: 1 })
+pure val declValues = Set({ name: "reply", subactions: List(), minRole: Z::Guest }, { name: "manage", subactions: List("create", "remove"), minRole: Z::Admin })
 pure def registered(s: Planning, name: str): bool = s.registry.some(d => d.name == name)
-pure val noDecl: ActionDecl = { name: "", subactions: List(), minRole: 0 }
+pure val noDecl: ActionDecl = { name: "", subactions: List(), minRole: Z::Unresolved }
 pure def declOf(s: Planning, name: str): ActionDecl = s.registry.select(d => d.name == name).nthOr(0, noDecl)
-pure def canRegisterAction(s: Planning, decl: ActionDecl): bool = decl.name != "" and decl.minRole >= 0 and not(registered(s, decl.name))
+pure def canRegisterAction(s: Planning, decl: ActionDecl): bool = decl.name != "" and not(registered(s, decl.name))
 pure def registerAction(s: Planning, decl: ActionDecl): Planning = { ...s, registry: s.registry.append(decl) }
 pure def alwaysActionNamesUnique(s: Planning): bool = s.registry.every(d => d.name != "" and s.registry.select(other => other.name == d.name).length() == 1)
 ```
 
 ### Only a registered action with valid arguments and a permitted role is invoked
 
-A planned call is validated before anything runs. An unknown action, a caller below the action's role, or arguments that fail the action's parameter schema reject the call with that reason. A rejected call never invokes a handler.
+A planned call carries the caller's resolved gate role, one of Guest, User, Admin and Owner (`packages/core/src/runtime/action-gate.ts`): the agent's own message resolves to Owner, a sender with no stored role to Guest, and a failed role lookup plans no call. A planned call is validated before anything runs. An unknown action, a caller below the action's role, or arguments that fail the action's parameter schema reject the call with that reason. A rejected call never invokes a handler.
 
 ```quint
 pure val idValues = Set(1, 2, 3)
-pure val roleValues = Set(0, 1)
+pure val roleValues = Set(Z::Guest, Z::Admin)
 pure val actionNameValues = Set("reply", "manage", "create")
-pure val noCall: PlannedCall = { id: 0, actionName: "", parent: 0, role: 0, argsValid: false, phase: Rejected, reason: UnknownAction }
+pure val noCall: PlannedCall = { id: 0, actionName: "", parent: 0, role: Z::Unresolved, argsValid: false, phase: Rejected, reason: UnknownAction }
 pure def callAt(s: Planning, id: int): PlannedCall = s.calls.select(c => c.id == id).nthOr(0, noCall)
 pure def knownCall(s: Planning, id: int): bool = s.calls.some(c => c.id == id)
-pure def canPlanCall(s: Planning, id: int, actionName: str, role: int): bool = id > 0 and not(knownCall(s, id)) and role >= 0
-pure def planCall(s: Planning, id: int, actionName: str, role: int): Planning =
+pure def canPlanCall(s: Planning, id: int, actionName: str, role: Z::Role): bool = id > 0 and not(knownCall(s, id)) and Z::rank(role) > 0
+pure def planCall(s: Planning, id: int, actionName: str, role: Z::Role): Planning =
   { ...s, calls: s.calls.append({ id: id, actionName: actionName, parent: 0, role: role, argsValid: false, phase: Planned, reason: NotRejected }) }
 pure def verdict(s: Planning, call: PlannedCall, argsValid: bool): RejectReason =
   if (call.parent != 0) (if (declOf(s, callAt(s, call.parent).actionName).subactions.includes(call.actionName)) (if (argsValid) NotRejected else InvalidArguments) else UnknownSubaction)
   else if (not(registered(s, call.actionName))) UnknownAction
-  else if (call.role < declOf(s, call.actionName).minRole) NotPermitted
+  else if (Z::rank(call.role) < Z::rank(declOf(s, call.actionName).minRole)) NotPermitted
   else if (not(argsValid)) InvalidArguments
   else NotRejected
 pure def canValidateCall(s: Planning, id: int, argsValid: bool): bool = knownCall(s, id) and callAt(s, id).phase == Planned
@@ -55,7 +56,7 @@ pure def validateCall(s: Planning, id: int, argsValid: bool): Planning = {
   { ...s, calls: s.calls.listMap(c => if (c.id == id) { ...c, argsValid: argsValid, reason: reason, phase: if (reason == NotRejected) Validated else Rejected } else c) }
 }
 pure def permitted(s: Planning, c: PlannedCall): bool =
-  c.argsValid and (if (c.parent == 0) registered(s, c.actionName) and c.role >= declOf(s, c.actionName).minRole else declOf(s, callAt(s, c.parent).actionName).subactions.includes(c.actionName))
+  c.argsValid and (if (c.parent == 0) registered(s, c.actionName) and Z::rank(c.role) >= Z::rank(declOf(s, c.actionName).minRole) else declOf(s, callAt(s, c.parent).actionName).subactions.includes(c.actionName))
 pure def ran(c: PlannedCall): bool = c.phase == Invoked or c.phase == Succeeded or c.phase == Failed
 pure def alwaysOnlyPermittedCallsRun(s: Planning): bool = s.calls.every(c => (ran(c) or c.phase == Validated) implies permitted(s, c))
 pure def alwaysRejectionNamesItsReason(s: Planning): bool = s.calls.every(c => (c.phase == Rejected) iff (c.reason != NotRejected))

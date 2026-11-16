@@ -4,7 +4,9 @@ Source `canonical-json.ts` preserves existing digest bytes while guarding reflec
 
 ## Story: Hash the same snapshot safely and deterministically
 
-As a backup or integrity consumer, I want stable bytes from a descriptor-only snapshot without executing getters or confusing a shared reference with a cycle.
+> As a backup or integrity consumer, I want stable bytes from a snapshot
+> without running its getters, so that the same data always hashes the
+> same way.
 
 ### Every traversal reserves its work before inspecting a new container
 

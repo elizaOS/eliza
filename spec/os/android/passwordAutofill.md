@@ -8,20 +8,17 @@ own-browser mode. The Eliza path is
 Its service calls `AutofillStructures`, `PasswordFormPolicy` and
 `PasswordRequests`, then `PasswordFillActivity` or `PasswordSaveActivity`.
 `PasswordMatching`, `PasswordVaultAccess` and `PasswordUnlock` own matching
-and native authentication. A consumer may gate the same classes behind a
-release switch with a separate debug-only fixture build
-([bridge composition](./bridge.md)); its owner and vault erasure rules are
-then its own. [The Password Manager boundary](./passwords.md) owns the
-renderer visit, metadata and manual editor. The older native-only
-`PasswordAutofillRequest`, `PasswordAutofillSessions`, `PasswordAutofillOffer`
-and `PasswordAutofillCompletion` classes have separate fixture callers.
-The installed service uses its own request and dataset path. It shares the
+and native authentication. They are present only when the consumer's
+descriptor declares passwords ([bridge composition](./bridge.md)).
+[The Password Manager boundary](./passwords.md) owns the renderer visit,
+metadata and manual editor. The service shares the
 `PasswordAutofillPolicy.FIELD_ORIGIN` metadata key with browser-surface.
 
 ## Story: Fill an exact website or app only after native unlock and selection
 
-> As the person, I want to fill an exact website or app only after
-> native unlock and selection.
+> As the person, I want a saved password filled only into the exact
+> website or app it belongs to, after I unlock and pick it, so that no
+> look-alike page or app can collect it.
 
 ### Framework and browser evidence identify a fillable form and its credential facet
 
@@ -100,8 +97,8 @@ The service responds with an authentication-gated framework dataset with
 null field values. `PasswordRequests` keeps only the admitted target and
 framework field IDs for filling. The once-only immutable Activity intent
 carries the configured scheme and a 48-lowercase-hex opaque token. Fill
-is current until strictly before 120,000 elapsed milliseconds after
-its creation. A matching take marks it taken even if it has expired.
+is current through its deadline, 120,000 elapsed milliseconds after its
+creation. A matching take marks it taken even if it has expired.
 A replacement fill offer overwrites it. Cancellation of an older token
 keeps the current offer. A malformed or cancelled request that fails
 before producing a replacement leaves the prior request unchanged. A
@@ -138,7 +135,7 @@ pure val initial: NativeAutofill = { elapsed: 0, fill: NoFill, fillToken: 0, fil
   save: NoSave, saveToken: 0, saveFacet: "", pendingSaveToken: 0, pendingSaveCreated: 0, pendingSaveFacet: "",
   nextToken: 0, auth: 0, prompt: 0, fillAuth: 0, saveAuth: 0,
   claimed: 0, saved: 0 }
-pure def fresh(created: int, elapsed: int, ttl: int): bool = elapsed >= created and elapsed - created < ttl
+pure def fresh(created: int, elapsed: int, ttl: int): bool = elapsed >= created and elapsed - created <= ttl
 pure def canOfferFill(s: NativeAutofill, validForm: bool, facet: str, fieldBinding: str): bool = validForm and facet != "" and fieldBinding != ""
 pure def offerFill(s: NativeAutofill, validForm: bool, facet: str, fieldBinding: str): NativeAutofill =
   { ...s, fill: OfferedFill, fillToken: s.nextToken + 1, nextToken: s.nextToken + 1, fillCreated: s.elapsed, fillFacet: facet,
@@ -169,10 +166,6 @@ pure val facetValues = Set("", "https://first.test", "https://first.test:8443")
 pure val matchedTargetValues = Set("", "https://first.test", "https://first.test:8443")
 pure val fieldBindingValues = Set("", "android-field-set", "replaced-field-set")
 pure val elapsedValues = Set(0, 100, 120000, 120001, 300000, 300001)
-pure val weight_offerFill = 4
-pure val weight_openFill = 14
-pure val weight_unlockFill = 22
-pure val weight_deliverFill = 30
 pure def alwaysActiveFillHasExactGrantIdentity(s: NativeAutofill): bool =
   (s.fill == UnlockingFill or s.fill == ActiveFill) implies s.fillAuth > 0 and s.fillToken > 0 and s.fillFacet != "" and s.fillFields != ""
 pure def alwaysOfferedFillHasNoGrant(s: NativeAutofill): bool = s.fill == OfferedFill implies s.fillAuth == 0
@@ -182,14 +175,15 @@ pure def alwaysRequestClockAndSerialAdvance(s: NativeAutofill): bool = s.auth >=
 pure def stepClaimConsumesExactFill(before: NativeAutofill, via: str, after: NativeAutofill): bool =
   after.claimed > before.claimed implies via == "deliverFill" and before.fill == ActiveFill and before.auth == before.fillAuth and
     fresh(before.fillCreated, before.elapsed, 120000) and after.fill == NoFill and after.fillToken == 0
-pure def lawExactDeadlineExpiresFill(created: int): bool = not(fresh(created, created + 120000, 120000))
+pure def lawFillDeadlineIsInclusive(created: int): bool =
+  fresh(created, created + 120000, 120000) and not(fresh(created, created + 120001, 120000))
 pure def sometimesClaimsFill(s: NativeAutofill): bool = s.claimed > 0
 ```
 
 ## Story: Save a captured password only by choosing Save and authenticating
 
-> As the person, I want to save a captured password only by choosing
-> Save and authenticating.
+> As the person, I want a password I typed saved only when I choose Save
+> and authenticate, so that nothing is stored behind my back.
 
 ### A save capture keeps the proved facet and cannot recover from a consumed intent
 
@@ -197,8 +191,8 @@ The service validates the captured form at the save request. For an app it
 reads the current signer before recording its package and certificate
 facet. Missing or ambiguous signer, missing capture or malformed form
 returns no save activity. A save token is independent from the fill
-token. It remains single-use until strictly before 300,000 elapsed
-milliseconds. Taking a matching token removes it even on expiry. The
+token. It remains single-use through its deadline, 300,000 elapsed
+milliseconds after capture. Taking a matching token removes it even on expiry. The
 Activity holds the captured value in memory after a successful take.
 The deadline gates that transfer to the Activity. It does not restart
 and does not impose a second deadline on the opened save review. The
@@ -260,11 +254,6 @@ pure def loseProcess(s: NativeAutofill): NativeAutofill =
   { ...s, auth: s.auth + 1, prompt: 0, fill: NoFill, fillToken: 0, fillFacet: "", fillFields: "", fillAuth: 0,
     save: NoSave, saveToken: 0, saveFacet: "", saveAuth: 0, pendingSaveToken: 0, pendingSaveFacet: "" }
 pure val capturedFacetValues = Set("https://first.test", "https://first.test:8443")
-pure val weight_offerSave = 5
-pure val weight_openSave = 16
-pure val weight_reviewSave = 24
-pure val weight_finishSavePrompt = 28
-pure val weight_settleSave = 38
 pure def alwaysSaveWriteHasFreshGrantIdentity(s: NativeAutofill): bool =
   (s.save == UnlockingSave or s.save == WritingSave) implies s.saveAuth > 0 and s.saveToken > 0 and s.saveFacet != ""
 pure def alwaysSaveReviewHasCapturedFacet(s: NativeAutofill): bool = s.save != NoSave implies s.saveToken > 0 and s.saveFacet != ""
@@ -273,8 +262,8 @@ pure def alwaysPendingSaveHasCapturedFacet(s: NativeAutofill): bool = s.pendingS
 
 ### The pending save challenge remains the current native prompt
 
-Discovered by the proof: a save-review phase with an unrelated current
-prompt would permit a stale native callback to stand in for the original
+While a save is unlocking, the current native prompt is the save's own
+challenge, so a stale native callback can never stand in for the original
 confirmation. The installed grant service reserves only one prompt and
 matches its generation until completion, cancellation or lock.
 
@@ -282,7 +271,8 @@ matches its generation until completion, cancellation or lock.
 pure def alwaysSaveChallengeOwnsPrompt(s: NativeAutofill): bool = s.save == UnlockingSave implies s.prompt == s.saveAuth and s.prompt == s.auth
 pure def stepSavedNeedsConfirmedWrite(before: NativeAutofill, via: str, after: NativeAutofill): bool =
   after.saved > before.saved implies via == "settleSave" and before.save == WritingSave and before.auth == before.saveAuth and after.save == NoSave
-pure def lawExactDeadlineExpiresSave(created: int): bool = not(fresh(created, created + 300000, 300000))
+pure def lawSaveDeadlineIsInclusive(created: int): bool =
+  fresh(created, created + 300000, 300000) and not(fresh(created, created + 300001, 300000))
 pure def lawSaveUpdateRequiresFacetAndUsername(entryHasFacet: bool, exactUsername: bool): bool =
   saveChoice(entryHasFacet, exactUsername) == UpdateEntry implies entryHasFacet and exactUsername
 pure def sometimesPersistsSave(s: NativeAutofill): bool = s.saved > 0

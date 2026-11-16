@@ -1,10 +1,14 @@
 # Exact retained state of line-field streams
 
-`StructuredFieldStreamExtractor` in `utils/streaming.ts` retains the complete line buffer, independent streamed/tracked field pointers, per-field raw content and emitted content, validation status, start/done identities and stream revision. This model supplies those states to the higher-level [stream contract](./streamStructured.md), using [UTF-16 operations](./streamUnits.md).
+`StructuredFieldStreamExtractor` in `utils/streaming.ts` retains the complete line buffer, independent streamed and tracked field pointers, per-field raw and emitted content, validation status, start and done identities and stream revision. This model specifies all of them with [UTF-16 operations](./streamUnits.md); observers read field lengths, validation and missing, invalid or incomplete fields directly from these records.
 
-The line decoder is a named pure boundary: its input is exactly the extracted line; a header follows `STRUCTURED_TOP_LEVEL_FIELD_RE`, strips its bracket/brace suffix, and decodes the trimmed inline scalar with the source JSON/single-quote fallback. A continuation strips exactly two leading spaces or one tab. Header recognition/JSON parsing require future decoder refinement; no external decoder may change or omit the extracted input units. Its exact [input/output/refusal contracts](./baseline/stream-decoder-contracts.json) link executed [source fixtures](./baseline/stream-decoder-fixtures.json), including malformed headers, incomplete input and raw escape fallbacks. All subsequent retained-state transitions are defined here.
+The line decoder is a pure boundary given exactly the extracted line. A header follows `STRUCTURED_TOP_LEVEL_FIELD_RE`, strips its bracket or brace suffix, and decodes the trimmed inline scalar with the source JSON and single-quote fallback; a continuation strips exactly two leading spaces or one tab. The decoder never changes or omits the extracted units. Its [contracts](./baseline/stream-decoder-contracts.json) and [source fixtures](./baseline/stream-decoder-fixtures.json) cover malformed headers, incomplete input and raw escape fallbacks.
 
 ## Story: Preserve complete field contents across arbitrary chunk boundaries
+
+> As a streaming host, I want every line-field value kept whole however the
+> response is chunked, with each field started, validated and finished once
+> per attempt, so that partial output never loses or repeats a field.
 
 ### Newline extraction preserves every unit and separates CRLF correctly
 
@@ -38,9 +42,6 @@ pure def extractLine(s: StructuredState): StructuredState = {
 ### Field pointers, emitted prefixes and first done values remain independent
 
 Every header closes the previous streamed field and tracked field. A selected inline field validates immediately; unselected inline content completes its status without entering the validated set. An unselected multiline field remains partial in source diagnostic state even when its done callback fires. Repeated headers append with a newline, while start/done callbacks remain once per field per revision. Levels zero/one emit on field completion; levels two/three wait for flush.
-Discovered by the proof: the active streamed field must be selected. Before
-configuration, all input buffers, field records and callback identities remain
-empty, so a constructor cannot inherit a field from another configuration.
 
 ```quint
 pure def completedFields(fieldRows: List[FieldRecord], name: str, level: int): List[FieldRecord] = if (name == "") fieldRows else putField(fieldRows, { ...fieldAt(fieldRows, name), status: CompleteField, hasEmitted: fieldAt(fieldRows, name).hasEmitted or (level <= 1 and fieldAt(fieldRows, name).content.length() > 0), emitted: if (level <= 1 and fieldAt(fieldRows, name).content.length() > 0) fieldAt(fieldRows, name).content else fieldAt(fieldRows, name).emitted })
@@ -85,8 +86,6 @@ pure def reset(s: StructuredState, revision: int): StructuredState = { ...initia
 pure def alwaysFieldKeysUnique(s: StructuredState): bool = s.fieldRows.every(entry => s.fieldRows.select(other => other.name == entry.name).length() == 1)
 pure def alwaysDoneValuesUnique(s: StructuredState): bool = s.doneValues.every(entry => s.done.contains(entry.name) and s.doneValues.select(other => other.name == entry.name).length() == 1)
 pure def alwaysEmissionNamesSelected(s: StructuredState): bool = s.chunks.every(chunk => s.selected.includes(chunk.name))
-pure def alwaysActiveFieldSelected(s: StructuredState): bool = s.currentField == "" or s.selected.includes(s.currentField)
-pure def alwaysUnconfiguredEmpty(s: StructuredState): bool = s.configured or (s.schema.length() == 0 and s.selected.length() == 0 and s.revision == 0 and s.buffer.length() == 0 and not(s.hasLine) and s.line.length() == 0 and s.currentField == "" and s.currentTracked == "" and s.fieldRows.length() == 0 and s.validated.size() == 0 and s.started.size() == 0 and s.done.size() == 0 and s.doneValues.length() == 0 and s.chunks.length() == 0 and not(s.flushing))
 pure def sometimesExactContinuationRetained(s: StructuredState): bool = s.fieldRows.some(entry => entry.content.length() > 0 and entry.emitted.length() == 0)
 pure val nameValues = Set("reply", "thought")
 pure val schemaValues = Set(List("reply", "thought"))
@@ -95,4 +94,16 @@ pure val levelValues = Set(0, 2)
 pure val revisionValues = Set(1, 2)
 pure val unitsValues = Set(List(65), List(13, 10), List(65, 10, 66))
 pure val decodedValueValues = Set(List(), List(65), List(66))
+```
+
+### Only a selected field streams, and an unconfigured extractor holds nothing
+
+Without these facts, a header could leave an
+unselected field as the active streamed field, and a fresh configuration
+could inherit buffers, field records or callback identities from a state
+that was never configured.
+
+```quint
+pure def alwaysActiveFieldSelected(s: StructuredState): bool = s.currentField == "" or s.selected.includes(s.currentField)
+pure def alwaysUnconfiguredEmpty(s: StructuredState): bool = s.configured or (s.schema.length() == 0 and s.selected.length() == 0 and s.revision == 0 and s.buffer.length() == 0 and not(s.hasLine) and s.line.length() == 0 and s.currentField == "" and s.currentTracked == "" and s.fieldRows.length() == 0 and s.validated.size() == 0 and s.started.size() == 0 and s.done.size() == 0 and s.doneValues.length() == 0 and s.chunks.length() == 0 and not(s.flushing))
 ```

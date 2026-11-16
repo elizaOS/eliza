@@ -1,8 +1,6 @@
 # Canonical Notes client
 
-A consumer's Notes screen and adapters use the notes package's client
-controller, snapshot state, editor and API, and the canonical workspace
-types. The agent owns durable Notes. The editor preserves a draft's
+The agent owns the owner's durable Notes; the client reads and edits them. The editor preserves a draft's
 token, authored fields and revision. It uses the mutation reply's target
 rather than inferring a creation from a collection diff.
 [Search and selected reads](./read.md) and [Trash](./trash.md) have
@@ -10,7 +8,8 @@ their own specifications.
 
 ## Story: Read and save a note under the current connection
 
-> As the owner, I want to read and save a note under the current connection.
+> As the owner, I want my notes read and saved under the account I am
+> signed in as, and a save never to overwrite a newer edit.
 
 ### Late reads and old owner snapshots cannot replace the current collection
 
@@ -25,14 +24,9 @@ an explicit recovery phase.
 
 ```quint
 type NotesStatus = Detached | Loading | Ready | Saving | Review | Retired
-pure val loadingStatus: NotesStatus = Loading
-pure val savingStatus: NotesStatus = Saving
-pure val reviewStatus: NotesStatus = Review
-pure val readyStatus: NotesStatus = Ready
-pure val retiredStatus: NotesStatus = Retired
 type NoteView = { owner: int, ticket: int, status: NotesStatus, revision: int, invalidated: bool, reload: bool, draftToken: int, draftRevision: int, draftVersion: int, draftAuthored: bool, capturedToken: int, capturedVersion: int, queuedVersion: int, committedTarget: str }
 pure val initial: NoteView = { owner: 0, ticket: 0, status: Detached, revision: -1, invalidated: false, reload: false, draftToken: 0, draftRevision: -1, draftVersion: 0, draftAuthored: false, capturedToken: 0, capturedVersion: 0, queuedVersion: -1, committedTarget: "" }
-pure def resetNoteView(ownerId: int, s: NoteView): NoteView = { ...initial, owner: ownerId, ticket: s.ticket + 1, status: if (ownerId == 0) retiredStatus else loadingStatus }
+pure def resetNoteView(ownerId: int, s: NoteView): NoteView = { ...initial, owner: ownerId, ticket: s.ticket + 1, status: if (ownerId == 0) Retired else Loading }
 pure def canBind(s: NoteView, ownerId: int): bool = ownerId > 0 and ownerId != s.owner
 pure def bind(s: NoteView, ownerId: int): NoteView = resetNoteView(ownerId, s)
 pure def canRetire(s: NoteView): bool = s.owner > 0
@@ -41,15 +35,15 @@ pure def canRefresh(s: NoteView): bool = s.owner > 0
 pure def refresh(s: NoteView): NoteView =
   if (s.status == Saving) { ...s, invalidated: true }
   else if (s.status == Loading) s
-  else { ...s, ticket: s.ticket + 1, status: loadingStatus, reload: false, invalidated: false }
+  else { ...s, ticket: s.ticket + 1, status: Loading, reload: false, invalidated: false }
 pure def canInvalidate(s: NoteView, revision: int): bool = s.owner > 0 and (revision == -1 or revision > s.revision)
 pure def invalidate(s: NoteView, revision: int): NoteView =
   if (s.status == Saving or s.status == Loading) { ...s, invalidated: true }
-  else { ...s, ticket: s.ticket + 1, status: loadingStatus, reload: false, invalidated: false }
+  else { ...s, ticket: s.ticket + 1, status: Loading, reload: false, invalidated: false }
 pure def canFinishRead(s: NoteView, ownerId: int, ticket: int): bool = s.status == Loading and s.owner > 0 and ownerId == s.owner and ticket == s.ticket
 pure def finishRead(s: NoteView, ownerId: int, ticket: int, revision: int, success: bool): NoteView = {
   val accepted = success and revision >= 0 and revision >= s.revision
-  { ...s, revision: if (accepted) revision else s.revision, reload: s.invalidated, invalidated: false, status: if (accepted) readyStatus else reviewStatus }
+  { ...s, revision: if (accepted) revision else s.revision, reload: s.invalidated, invalidated: false, status: if (accepted) Ready else Review }
 }
 pure val ownerIdValues = Set(1, 2)
 pure val ticketValues = Set(1, 2, 3, 4, 5, 6)
@@ -74,10 +68,7 @@ If the original draft was edited during its save, the acknowledgement
 updates its target and base revision but preserves authored data. Clean
 same-token success adopts the returned canonical fields. The successful
 same-token save may start a newer queued edit. Failure keeps authored
-content and avoids retrying an uncertain mutation. The model tracks
-identity/version and whether an authored value exists. Format validation,
-exact cloning/framing, snapshot payload admission and request effects
-require implementation conformance.
+content and avoids retrying an uncertain mutation.
 
 ```quint
 pure def canOpenDraft(s: NoteView, token: int): bool = s.owner > 0 and s.revision >= 0 and token > 0 and token != s.draftToken and token != s.capturedToken
@@ -90,8 +81,8 @@ pure def closeDraft(s: NoteView): NoteView = { ...s, draftToken: 0, draftRevisio
 pure def canSave(s: NoteView): bool = s.owner > 0 and s.draftToken > 0
 pure def save(s: NoteView): NoteView =
   if (s.status == Saving) { ...s, queuedVersion: s.draftVersion }
-  else if (s.revision != s.draftRevision or not(s.draftAuthored)) { ...s, status: reviewStatus }
-  else { ...s, ticket: s.ticket + 1, status: savingStatus, capturedToken: s.draftToken, capturedVersion: s.draftVersion,
+  else if (s.revision != s.draftRevision or not(s.draftAuthored)) { ...s, status: Review }
+  else { ...s, ticket: s.ticket + 1, status: Saving, capturedToken: s.draftToken, capturedVersion: s.draftVersion,
     queuedVersion: -1, invalidated: s.invalidated or s.status == Loading }
 pure def canFinishSave(s: NoteView, ownerId: int, ticket: int): bool = s.status == Saving and s.owner > 0 and ownerId == s.owner and ticket == s.ticket
 pure def finishSave(s: NoteView, ownerId: int, ticket: int, revision: int, target: str, observed: bool): NoteView = {
@@ -102,7 +93,7 @@ pure def finishSave(s: NoteView, ownerId: int, ticket: int, revision: int, targe
   val rebased = accepted and same
   { ...s, revision: if (accepted) revision else s.revision, reload: s.invalidated and not(queued),
     invalidated: s.invalidated and queued, ticket: if (queued) s.ticket + 1 else s.ticket,
-    status: if (queued) savingStatus else if (accepted) readyStatus else reviewStatus,
+    status: if (queued) Saving else if (accepted) Ready else Review,
     capturedToken: if (queued) s.draftToken else 0, capturedVersion: if (queued) s.draftVersion else 0,
     queuedVersion: -1, committedTarget: if (rebased) target else s.committedTarget,
     draftRevision: if (rebased) revision else s.draftRevision,

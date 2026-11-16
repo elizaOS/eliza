@@ -1,19 +1,10 @@
 # Model providers
 
 Model providers are thin plugins that reach a hosted model with a
-credential, or the cloud's inference routing. A provider is admitted only
-with a usable credential, and the provider precedence is applied again
-after every additive registration. A provisioned cloud credential alone
-does not make the cloud the inference owner: the active inference topology
-must route to it, and it must hold a usable key or a managed container,
-before it displaces a direct provider. A provider's tokenizer encoders are
-loaded lazily and cached per encoding: callers waiting on the same encoding
-share one load, and a failed load is evicted from its own slot only, so
-the next caller retries. The research baseline is
-`plugins/plugin-openai/utils/tokenization.ts`, `plugins/plugin-anthropic`,
-the provider precedence in `packages/agent/src/runtime/plugin-collector.ts`
-and the `OpenAITokenizerCache` model. Choosing among admitted providers is
-in [model selection](../host/models.md).
+credential, or the cloud's inference routing, and count tokens with lazily
+loaded encoders. Provider precedence is applied again after every additive
+registration; choosing among admitted providers is in
+[model selection](../host/models.md).
 
 ## Story: Admit model providers by credential and routing
 
@@ -23,12 +14,18 @@ in [model selection](../host/models.md).
 
 ### A provider is admitted only with a usable credential
 
+A credential that is present but unusable admits nothing.
+
 ```quint
 pure def providerAdmitted(credentialPresent: bool, credentialUsable: bool): bool = credentialPresent and credentialUsable
-pure def lawNoProviderWithoutCredential(credentialUsable: bool): bool = not(providerAdmitted(false, credentialUsable))
+pure def lawUnusableCredentialAdmitsNothing(credentialPresent: bool): bool =
+  not(providerAdmitted(credentialPresent, false))
 ```
 
 ### The cloud displaces a direct provider only when routing uses it and it holds a usable key or a managed container
+
+A provisioned cloud credential alone does not make the cloud the inference
+owner: the active inference topology must route to it as well.
 
 ```quint
 pure def cloudInferenceOwnsProvider(topologyUsesCloud: bool, usableKey: bool, managedContainer: bool): bool =
@@ -45,6 +42,9 @@ pure def lawProvisionedCredentialAloneIsNotOwnership(topologyUsesCloud: bool): b
 > and one failed load does not break counting for good.
 
 ### Callers of one encoding share its pending load, and each caller's result is its load's result
+
+Encoders are loaded lazily and cached per encoding: callers waiting on the
+same encoding share one load and see its result.
 
 ```quint
 type LoadPhase = LoadPending | LoadRejecting | LoadReady | LoadFailed
@@ -82,7 +82,8 @@ pure def sometimesTwoCallersShareALoad(t: Tokenizers): bool = t.waits.some(a => 
 
 ### A slot names only a live load of its own encoding, and every live load is its encoding's slot
 
-A rejected load is evicted only after its rejection handler ran; a caller
+A failed load is evicted from its own slot only, so the next caller
+retries. A rejected load is evicted only after its rejection handler ran; a caller
 that joined the rejected load in between still sees the failure.
 
 ```quint

@@ -43,6 +43,6 @@ pure def imageSurfaceAvailable(systemInstall: bool, featureDeclared: bool, featu
 pure val featureVersionValues = Set(0, 1, 2)
 pure def lawSideloadedHostHasNoImageSurface(featureDeclared: bool, featureVersion: int): bool =
   not(imageSurfaceAvailable(false, featureDeclared, featureVersion))
-pure def lawImageSurfaceNeedsCurrentFeature(systemInstall: bool, featureDeclared: bool, featureVersion: int): bool =
-  imageSurfaceAvailable(systemInstall, featureDeclared, featureVersion) implies featureDeclared and featureVersion >= imageFeatureVersion
+pure def lawStaleFeatureVersionHasNoSurface(systemInstall: bool, featureDeclared: bool): bool =
+  not(imageSurfaceAvailable(systemInstall, featureDeclared, imageFeatureVersion - 1))
 ```

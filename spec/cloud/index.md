@@ -15,25 +15,10 @@ it.
 | Area | Specifications |
 | --- | --- |
 | Accounts and billing | [Deployment profile](./deployment.md), [accounts and deletion](./accounts.md), [registered native clients](./nativeClients.md), [command-line login](./cliLogin.md), [remote agent pairing](./remotePairing.md), [credits](./credits.md), [subscriptions](./subscriptions.md), [entitlements and plan limits](./entitlements.md), [host operations](./hostOperations.md), [cache and circuit infrastructure](./infrastructure.md), [hosted auth service](./authService.md) |
-| Runtime services | [Inference](./inference.md), [agent hosting](./agentHosting.md), [shared runtime](./sharedRuntime.md), [hosted backups](./backups.md), [background jobs](./jobs.md), [provider connections](./connections.md), [speech](./speech.md), [maps](./maps.md), [object storage](./storage.md), [document execution](./documentExecution.md), [cloud client](./client.md) |
-| Managed Google | [Connection](./managedGoogle/connection.md), [Gmail](./managedGoogle/gmail.md), [calendar reads](./managedGoogle/calendarRead.md), [calendar sync](./managedGoogle/calendarSync.md) |
+| Runtime services | [Inference](./inference.md), [agent hosting](./agentHosting.md), [shared runtime](./sharedRuntime.md), [hosted backups](./backups.md), [background jobs](./jobs.md), [provider connections](./connections.md), [speech](./speech.md), [maps](./maps.md), [object storage](./storage.md), [cloud client](./client.md) |
+| Managed Google | [Connection](./managedGoogle/connection.md), [Gmail](./managedGoogle/gmail.md), [calendar reads](./managedGoogle/calendarRead.md), [calendar sync](./managedGoogle/calendarSync.md), [write switches](./managedGoogle/accessSwitches.md) |
 
-Cloud-hosted user applications are not part of Eliza and are not modeled:
-the app registry and its routes, app containers and frontends, app
-deployment, custom domains with their purchase and health rotation, app
-ingress and hosted frontends, app credits and app billing commands, and app
-delegation of sign-in. Only a registered native client's Google delegation
-remains, in [registered native clients](./nativeClients.md), and that
-registry depends on no app record.
-
-These develop features are dropped with no replacement: legacy checkout
-settlement and legacy payment-provider adoption, the speech host cutover,
-the in-process database protocol ownership, advertising refunds, press
-submission, on-chain sweeps and the crypto-sweep phase of account deletion,
-agent-to-agent task storage, hosted tool-server argument admission and
-discovery, generation object versions, video settlement, the hosted vertex
-job observer and GPU worker supervisor, trajectory object retention, the
-anonymous chat gate, the hosted onboarding product, the community welcome
-queue, held webhook retries, cloud action-review suggestions,
-trusted-execution attestation, personal shared consent, and web-push and
-device-bus notifications.
+Cloud-hosted user applications are not part of Eliza. Only a registered
+native client's Google delegation remains, in
+[registered native clients](./nativeClients.md), and that registry depends on
+no app record.

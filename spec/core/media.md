@@ -1,10 +1,14 @@
 # Media fetch and content handles
 
-Sources are `media/{fetch,local-store,attachments,mime,outbound,image-description-cache}.ts` and `network/{ssrf,fetch-guard,node-pinned-fetch}.ts`. Keep their filename, MIME, decoder, image-cache, outgoing-media and metadata contracts from the baseline inventory. Runtime authority applies only to canonical content-addressed local handles. Remote media uses screened DNS results pinned through transport and redirects.
+Filename, MIME, decoder, image-cache, outgoing-media and metadata
+contracts follow the [public surface](./baseline/core-public-surface.json).
+Runtime authority applies only to canonical content-addressed local
+handles. Remote media uses screened DNS results pinned through transport
+and redirects.
 
 ## Story: Fetch an attachment through its correct trust boundary
 
-As a plugin, I want media bytes fetched with cancellation, byte limits and endpoint validation before the bytes reach a model.
+> As a plugin, I want media bytes fetched with cancellation, byte limits and endpoint validation before the bytes reach a model.
 
 ### Fetching requires a screened endpoint and finishing requires complete bounded bytes
 
@@ -37,7 +41,7 @@ pure def sometimesMediaCancelled(m: MediaFetch): bool = m.phase == Cancelled
 
 ### Transport host spelling preserves DNS and IP certificate semantics
 
-The transport receives the exact bare hostname, and its default HTTP Host header retains the URL hostname spelling (bracketed for IPv6). TLS SNI is the exact bare hostname only for HTTPS DNS names. The certificate identity defaults to the same bare hostname when SNI is absent. The `PinnedTransportHost.qnt` success case assumes a certificate that matches that identity and a functioning pinned connection; the model does not guarantee a live connection or a valid certificate. URL parsing, IP classification, custom Host headers, and adapter execution remain boundary contracts.
+The transport receives the exact bare hostname, and its default HTTP Host header retains the URL hostname spelling (bracketed for IPv6). TLS SNI is the exact bare hostname only for HTTPS DNS names. The certificate identity defaults to the same bare hostname when SNI is absent. The success case assumes a certificate that matches that identity and a functioning pinned connection; the model does not guarantee a live connection or a valid certificate. URL parsing, IP classification, custom Host headers, and adapter execution remain boundary contracts.
 
 ```quint
 type TransportHost = DnsName | IPv4 | IPv6
@@ -56,7 +60,7 @@ pure val hostValues: Set[HostSpelling] = Set({ kind: DnsName, bare: "localhost",
 
 ## Story: Infer media type with the established precedence
 
-As an attachment consumer, I want a detected container type to retain a more specific filename format.
+> As an attachment consumer, I want a detected container type to retain a more specific filename format.
 
 ### Specific sniffed types win and generic containers defer to a known extension
 

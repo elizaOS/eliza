@@ -1,6 +1,9 @@
 # Safe native host refusals
 
-A consumer uses `packages/host/native-host/errors.mjs` and `sensitive-text.mjs`. Task input and view shapes are in the [task codecs](../tasks/http.md). This model specifies which failure facts cross the boundary. The JavaScript brand, normalized text, fingerprint keys and secret spans stay private to their source services.
+The native host decides which facts of a failure reach the renderer and
+which text may reach the model. Task input and view shapes are in the
+[task codecs](../tasks/http.md); normalized text, fingerprint keys and
+secret spans stay private to the services that hold them.
 
 ## Story: Keep private task failures out of the renderer
 
@@ -9,9 +12,15 @@ A consumer uses `packages/host/native-host/errors.mjs` and `sensitive-text.mjs`.
 
 ### A recognized failure projects only its exact machine code
 
-A `TaskHostError` constructor requires a nonempty string code. It sets the same process-wide `ElizaError` brand used by the task bundle. `interactive-task-http.ts` tests that brand and does not rely on a thrown error's `status`. It sends `{code}` with `Cache-Control: no-store`. An ordinary exception, even one with a string code, becomes 503 `TASK_UNAVAILABLE`. The native gateway's owner-record helper instead recognizes a string beginning `TASK_` and delegates `NativeHostError` to its outer handler. A legitimate code outside `TASK_` can cross the core error path if the exception carries the shared brand.
-
-`TASK_NOT_FOUND`, `TASK_INVALID` and `TASK_ACTION_DENIED` map to 404, 400 and 403. `TASK_CLEANUP_UNCONFIRMED` and every prefix match of `TASK_STORAGE` map to 503. Other codes map to 409. The storage check includes the bare prefix and is case-sensitive. The model consumes the exact UTF-16 units of the code. It projects the original code and excludes exception messages, stacks, causes, context and caller-provided statuses. A JavaScript value posing as a brand with an invalid code is outside the typed producer contract.
+A task error carries a nonempty code and the shared error brand. A
+branded error crosses as its code alone, never its message, stack, cause
+or a caller's status, and is not cached; any other exception becomes 503
+`TASK_UNAVAILABLE`. The owner-record path passes on a code beginning
+`TASK_` and hands a native host error to its outer handler.
+`TASK_NOT_FOUND`, `TASK_INVALID` and `TASK_ACTION_DENIED` map to 404, 400
+and 403; `TASK_CLEANUP_UNCONFIRMED` and every code beginning
+`TASK_STORAGE` (case-sensitive) map to 503; other codes map to 409. Codes
+are compared by their exact UTF-16 units.
 
 ```quint
 type ErrorReply = { statusCode: int, errorCode: str }
@@ -47,12 +56,6 @@ pure def ownerRecordRefusal(error: CodedTaskError): OwnerErrorDisposition =
 pure def lawPrivateExceptionBecomesGeneric(error: CodedTaskError): bool = not(error.elizaBranded) implies taskRefusal(error) == genericTaskFailure
 pure def lawBrandedTaskErrorPreservesCode(error: CodedTaskError): bool = error.elizaBranded and error.hasCodeString implies taskRefusal(error).errorCode == error.code
 pure def lawOwnerRecordEscalatesNativeError(error: CodedTaskError): bool = error.nativeHost implies ownerRecordRefusal(error) == escalateOwnerError
-pure def lawExactTypedCodesHaveStableStatus(codeUnits: List[int]): bool =
-  (codeUnits == notFoundCode implies hostStatus(codeUnits) == 404) and
-  (codeUnits == invalidCode implies hostStatus(codeUnits) == 400) and
-  (codeUnits == deniedCode implies hostStatus(codeUnits) == 403) and
-  ((codeUnits == cleanupCode or storageCodePrefix(codeUnits)) implies hostStatus(codeUnits) == 503)
-pure val codeUnitsValues = Set(notFoundCode, invalidCode, deniedCode, cleanupCode, storagePrefix, List(), List(84))
 pure val hostError: CodedTaskError = { code: "HOST_GOAL_NO_PAGE", codeUnits: List(72, 79, 83, 84, 95, 71, 79, 65, 76, 95, 78, 79, 95, 80, 65, 71, 69), hasCodeString: true, elizaBranded: true, nativeHost: true }
 pure val errorValues = Set(hostError, { ...hostError, elizaBranded: false, nativeHost: false }, { ...hostError, code: "TASK_NOT_FOUND", codeUnits: notFoundCode, nativeHost: false, elizaBranded: false }, { ...hostError, code: "TASK_STORAGE", codeUnits: storagePrefix }, { ...hostError, code: "TASK_STORAGE_CORRUPT", codeUnits: storagePrefix.append(95).append(67).append(79).append(82).append(82).append(85).append(80).append(84) }, { ...hostError, code: "", codeUnits: List(), hasCodeString: false })
 ```
@@ -64,7 +67,15 @@ pure val errorValues = Set(hostError, { ...hostError, elizaBranded: false, nativ
 
 ### The outcome preserves the typed scope of refusal and capacity handling
 
-The matcher rejects nonstrings with 400 `INVALID_TEXT`, then normalizes a string to NFKC, removes zero-width characters and recognizes written and spoken credential forms. A consumer may extend it with its own financial and identity terms and spoken digits. The stateless `requireNonSensitiveText` rejects a current match as 422 `SENSITIVE_TEXT`. The stateful gate remembers detected values using keyed in-memory fingerprints and rejects subsequent texts that carry a remembered value even without a naming word. The default scrubber propagates 422 `SENSITIVE_TEXT_CAPACITY` after full-memory refusal. A consumer that configures `passwordWords: "credential"` and `onFull: "forget"` clears full memory and retries remembering rather than refusing every later message. The current matched submission still receives a refusal. A separate display and diagnostic scrubber replaces matches with `[removed]`. Classification and fingerprint storage are supplied by their owning services.
+Text that is not a string is refused as 400 `INVALID_TEXT`. Text is
+normalized and checked for written and spoken credential forms, which a
+consumer may extend with its own terms. The stateless gate refuses a
+present match as 422 `SENSITIVE_TEXT`. The stateful gate also remembers
+detected values by keyed fingerprint and refuses later text carrying one,
+even without a naming word; when its memory is full it refuses as 422
+`SENSITIVE_TEXT_CAPACITY`, or, configured to forget, clears its memory and
+still refuses the matched text. Display and diagnostics replace matches
+with `[removed]`.
 
 ```quint
 type TextFacts = { stringInput: bool, currentMatch: bool, rememberedMatch: bool, capacityRefused: bool }

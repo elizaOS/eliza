@@ -10,9 +10,6 @@ response stay at the ports. Transport decoding, the downstream cache and the
 mapping pull are [the managed calendar feed](../../calendar/managedFeed.md);
 keeping a synced copy current is [calendar sync](./calendarSync.md).
 
-Develop sources: the app's managed Google agent host and its calendar read
-timing checks.
-
 ## Story: Read a chosen Calendar source while its Google grant remains current
 
 > As an owner, I want my agent to read only the calendar I chose, through the
@@ -27,17 +24,14 @@ The owner-account key is that credential digest. A calendar-list key
 also binds the actual connected Google grant ID. Owner and calendar
 lookups do not share responses across keys or with another credential.
 
-A lookup is young while the greater of its wall and monotonic age is
-less than five seconds from the lookup's start. Both source discovery
-and feed reads can join a young in-flight lookup. A feed can also reuse
-a young completed lookup. A source list always starts its own read when
-only a completed entry exists. A joining caller tries its own read if
-the shared promise rejects. That fallback does not install a cache entry.
-Ordinary success marks the exact entry completed and schedules eviction
-after five seconds. Rejection or timer removes the entry only if the
-slot still contains that exact promise. A previous owner's live promise
-cannot evict its successor. The model represents one lookup slot, one
-current authority and the identity of the installed promise.
+A lookup is young while both its wall and monotonic ages are under five
+seconds. Source discovery and feed reads can join a young in-flight
+lookup, and a feed can also reuse a young completed one; a source list
+otherwise starts its own read. A joining caller whose shared read rejects
+reads on its own without installing an entry. Success marks the exact entry
+completed and evicts it after five seconds; rejection or that timer removes
+the entry only if the slot still holds that exact read, so a previous
+owner's read never evicts its successor.
 
 ```quint
 type LookupPhase = LookupEmpty | LookupPending | LookupCompleted
@@ -109,8 +103,6 @@ pure def selectCalendar(scopeExact: bool, readableCalendar: bool, freshLookupTri
   if (not(scopeExact)) FeedSelectionRefused
   else if (readableCalendar) FeedUsesSelectedCalendar
   else if (freshLookupTried) FeedSelectionRefused else RefreshCalendarList
-pure def lawFeedCannotUseAnotherScope(readableCalendar: bool, freshLookupTried: bool): bool =
-  selectCalendar(false, readableCalendar, freshLookupTried) == FeedSelectionRefused
 pure def lawMissingCalendarRefreshesOnce(scopeExact: bool): bool =
   selectCalendar(scopeExact, false, true) == FeedSelectionRefused
 ```

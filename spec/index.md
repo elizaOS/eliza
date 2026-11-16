@@ -14,10 +14,6 @@ needs is stated as a generic capability of the package that owns it, and
 [consumer contracts](./core/consumerContracts.md) state how a consumer's
 recorded imports are traced to an owning rule.
 
-The research baseline is elizaOS/eliza commit
-`72fed7e4069ecd35d61d886ab6eec5c02c137517`. The toolchain is vendored from
-the Vibestack consolidation at `7d18b1c`.
-
 | Package | Specification |
 | --- | --- |
 | `@elizaos/core` | [Kernel](./core/) |
@@ -37,4 +33,5 @@ the Vibestack consolidation at `7d18b1c`.
 | `@elizaos/plugin-local-inference` | [Local inference](./localInference/) |
 
 Eliza has no shared user interface, training, benchmark, testing or script
-package. Cloud-hosted user applications are not part of Eliza.
+package; `packages/ui` and `packages/design-system` are the toolchain's
+private React components and design tokens, not a published Eliza package. Cloud-hosted user applications are not part of Eliza.

@@ -1,9 +1,8 @@
 # Native gateway
 
-A device host runs the agent behind a native gateway
-(`packages/agent/native-host/gateway.mjs`, started by `startGatewayLifecycle`).
-The gateway acquires its resources, listens, admits each conversation turn
-for the current owner and reset epoch, streams the reply back through a
+A device host runs the agent behind a native gateway. The gateway
+acquires its resources, listens, admits each conversation turn for the
+current owner and reset epoch, streams the reply back through a
 start, pull and cancel protocol, and drains before it cleans up. Which
 conversation a request may use is [ownership](../conversation/ownership.md);
 how the renderer pulls previews is [reply streaming](../client/replyStreaming.md);
@@ -11,9 +10,9 @@ the commands sent to a page are the [surface channel](./surfaceChannel.md).
 
 ## Story: Start and stop the gateway without leaking a resource
 
-> As a device host, the gateway I start either serves requests or cleans up
-> everything it acquired, and stopping it never cuts off a request in
-> progress.
+> As a device owner, the gateway serving my agent either serves requests or
+> cleans up everything it acquired, and stopping it never cuts off a
+> request in progress.
 
 ### Resources are acquired in order and released once each, in reverse order
 
@@ -93,6 +92,35 @@ pure val fair_finishConnection = "weak"
 pure val fair_receiveHttpClose = "weak"
 pure val fair_disposeResource = "weak"
 pure val fair_finishGateway = "weak"
+```
+
+### The local health route answers only an authenticated native GET
+
+The gateway's local health route answers an authenticated native GET with
+no origin and no query once ownership is loaded. A CORS preflight carries
+no health, a missing or wrong native bearer is unauthenticated, and a
+disallowed caller is forbidden. The [device updater's runtime
+probe](../../os/update/runtimeHealth.md) reads it.
+
+```quint
+type LocalHealthRequest = { expectsNativeToken: bool, bearerMatches: bool, callerAllowed: bool, hasOrigin: bool, methodGet: bool, methodOptions: bool, corsPreflight: bool, hasQuery: bool, ownershipLoaded: bool }
+type LocalHealthResponse = LocalNoContent | LocalUnauthenticated | LocalForbidden | LocalOwnershipUnavailable | LocalMethodNotAllowed | LocalBadRequest | LocalHealthy
+pure def localHealthRoute(localRequest: LocalHealthRequest): LocalHealthResponse =
+  if (localRequest.corsPreflight) (if (localRequest.callerAllowed) LocalNoContent else LocalForbidden)
+  else if (localRequest.expectsNativeToken and not(localRequest.bearerMatches)) LocalUnauthenticated
+  else if (not(localRequest.callerAllowed)) LocalForbidden
+  else if (localRequest.methodOptions) LocalNoContent
+  else if (not(localRequest.ownershipLoaded)) LocalOwnershipUnavailable
+  else if (not(localRequest.expectsNativeToken) or localRequest.hasOrigin) LocalForbidden
+  else if (not(localRequest.methodGet)) LocalMethodNotAllowed
+  else if (localRequest.hasQuery) LocalBadRequest
+  else LocalHealthy
+pure val nativeGet: LocalHealthRequest = { expectsNativeToken: true, bearerMatches: true, callerAllowed: true, hasOrigin: false, methodGet: true, methodOptions: false, corsPreflight: false, hasQuery: false, ownershipLoaded: true }
+pure val localRequestValues = Set(nativeGet, { ...nativeGet, bearerMatches: false }, { ...nativeGet, hasOrigin: true }, { ...nativeGet, hasQuery: true }, { ...nativeGet, methodGet: false }, { ...nativeGet, ownershipLoaded: false }, { ...nativeGet, expectsNativeToken: false }, { ...nativeGet, methodGet: false, methodOptions: true, corsPreflight: true })
+pure def lawPreflightCarriesNoHealth(localRequest: LocalHealthRequest): bool =
+  localRequest.corsPreflight implies localHealthRoute(localRequest) != LocalHealthy
+pure def lawHealthSuccessNeedsNativeBearer(localRequest: LocalHealthRequest): bool =
+  localHealthRoute(localRequest) == LocalHealthy implies localRequest.expectsNativeToken and localRequest.bearerMatches and localRequest.callerAllowed and not(localRequest.hasOrigin) and localRequest.methodGet and not(localRequest.hasQuery) and localRequest.ownershipLoaded
 ```
 
 ## Story: Answer a turn only for the owner who sent it

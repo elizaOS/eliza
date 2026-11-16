@@ -3,14 +3,15 @@
 A consumer's camera adapter composes Eliza
 `plugins/plugin-native-camera/src/session.ts` and `host-ports.ts` with the
 foreground Camera, native `ElizaCamera` or browser camera, and its media
-library. `scripts/prepare-client-features.ts` stages both files. The system
-lock-screen camera has its own owner. The [assistant shutter and saved
+library. The system lock-screen camera has its own owner. The [assistant shutter and saved
 photo receipt](../../agent/deviceActions/camera.md) uses this viewfinder and its exclusive
-capture slot. The [scan document](./documentScan.md) owns scan review.
+capture slot. The [scan document](../../files/scan/review.md) owns scan review.
 
 ## Story: Resume and operate the viewfinder I opened
 
-> As the person, I want to resume and operate the viewfinder I opened.
+> As the person, I want the viewfinder I opened to come back when I return
+> to it, and never a stale one, so that what I see is what the camera
+> captures.
 
 ### Only the current foreground start can publish ready
 
@@ -23,8 +24,6 @@ settles its slot and a subsequent start resets native camera state. The
 model tracks whether that queue has drained. A consumer may also allow its
 in-flight photo writer to settle for up to ten seconds before releasing
 preview; storage read-back is handled inside its capture port.
-Discovered by the proof: the first armed preview has a positive epoch.
-The initial off state uses epoch zero.
 
 ```quint
 type PreviewPhase = PreviewOff | PreviewStarting | PreviewReady | PreviewError
@@ -61,9 +60,6 @@ pure def stopView(s: CameraView): CameraView =
     work: if (s.work == RecordingActive) RecordingFinishing else if (s.work == CameraControl) CameraIdle else s.work }
 pure val ticketValues = Set(0, 1, 2, 3, 4, 5, 6)
 pure val answerValues = Set(PreviewStarted, ExplicitCameraDenial, PreviewFailed)
-pure val weight_startView = 5
-pure val weight_dispatchPreview = 8
-pure val weight_observePreview = 16
 pure def alwaysDispatchedHasStartingOwner(s: CameraView): bool = s.previewPending implies s.phase == PreviewStarting and s.foreground
 pure def alwaysPreviewUsesPositiveEpoch(s: CameraView): bool = s.epoch >= 0 and (ownsPreview(s) implies s.epoch > 0)
 pure def alwaysPreviewHasForegroundOwner(s: CameraView): bool = ownsPreview(s) implies s.foreground
@@ -108,9 +104,6 @@ failure enters the preview error path. Concurrent finish requests share
 the in-flight finalization. A repeated stop without an owned recording
 does not issue a fresh native recording stop. A consumer's focus-point
 hint can run alongside capture. Its marker does not confirm autofocus.
-Discovered by the proof: a pending recording start that still owns the
-view can only have come from a ready preview. A stop retired its epoch
-before a closed view could be reopened.
 
 ```quint
 pure def canReserveWork(s: CameraView, work: Work): bool =
@@ -131,17 +124,24 @@ pure def canFinishVideo(s: CameraView): bool = s.work == RecordingActive
 pure def finishVideo(s: CameraView): CameraView = { ...s, work: RecordingFinishing }
 pure val workValues = Set(CameraControl, CameraCapture, RecordingStarting, RecordingActive)
 pure val videoAnswerValues = Set(VideoStarted, ExplicitMicrophoneDenial, VideoStartFailed, StartLostPreview)
-pure val weight_reserveWork = 10
-pure val weight_readVideoStart = 16
-pure val weight_finishVideo = 16
 pure def alwaysRecordingIndicatorHasCurrentReadyPreview(s: CameraView): bool =
   s.work == RecordingActive implies s.phase == PreviewReady and ownsTicket(s, s.workEpoch)
-pure def alwaysCurrentVideoStartHasReadyPreview(s: CameraView): bool =
-  (s.work == RecordingStarting and s.epoch == s.workEpoch) implies s.foreground and s.phase == PreviewReady
 pure def alwaysWorkDoesNotComeFromFuture(s: CameraView): bool = s.workEpoch <= s.epoch
 pure def stepStopCarriesOwnedVideoToFinishing(before: CameraView, via: str, after: CameraView): bool =
   (via == "stopView" and before.work == RecordingActive) implies after.work == RecordingFinishing
 pure def sometimesRetiredVideoFinalizes(s: CameraView): bool = not(s.foreground) and s.work == RecordingFinishing
+```
+
+### A pending recording start that still owns the view came from a ready preview
+
+A recording start still pending under the view's current epoch belongs to
+a foreground view whose preview is ready: a stop retires the epoch before a
+closed view can reopen, so a recording never starts on a preview that was
+never ready.
+
+```quint
+pure def alwaysCurrentVideoStartHasReadyPreview(s: CameraView): bool =
+  (s.work == RecordingStarting and s.epoch == s.workEpoch) implies s.foreground and s.phase == PreviewReady
 ```
 
 ### Video confirmation requires a complete bridge receipt and host read-back
@@ -169,7 +169,6 @@ pure val receiptValues = Set(
   { pathPresent: true, durationPositiveFinite: true, sizePositiveFinite: true, ownedReadback: false },
   { pathPresent: false, durationPositiveFinite: false, sizePositiveFinite: false, ownedReadback: false }
 )
-pure val weight_observeVideoFinish = 16
 pure def lawMissingReadbackIsUnconfirmed(receipt: VideoReceipt): bool = not(receipt.ownedReadback) implies not(completeVideoReceipt(receipt))
 pure def stepRecordingConfirmationFollowsFinalization(before: CameraView, via: str, after: CameraView): bool =
   (before.finished != RecordingConfirmed and after.finished == RecordingConfirmed) implies via == "observeVideoFinish" and before.work == RecordingFinishing

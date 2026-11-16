@@ -1,15 +1,15 @@
 # Canonical Calendar occurrence grouping and source projection
 
-A consumer uses the resident aggregate Calendar feed and its exact
-source identity for selection. This contract follows
-`mergeAggregatedCalendarFeedEvents` in the calendar service. The
-[managed feed](./managedFeed.md) owns source admission, cache drain and
-mapped pull before merge. The consumer's renderer owns display and
-next-event freshness.
+The resident calendar merges the events of every connected source into
+one feed, keeping each event's exact source identity. The [managed
+feed](./managedFeed.md) owns source admission, cache drain and mapped
+pull before merge.
 
 ## Story: See one occurrence with its precise source evidence
 
-> As the owner, I want to see one occurrence with its precise source evidence.
+> As the owner, I want an event that several of my calendars carry to
+> appear once, with every source it came from, so that I can tell where
+> it lives and which copies disagree.
 
 ### Exact link revisions or portable occurrence identity determine which copies can share a row
 
@@ -24,8 +24,8 @@ UTC. A failed time or time-zone conversion leaves portable identity absent.
 A moved exception therefore groups by original occurrence, and timed
 and all-day instances have different keys.
 
-A link joins only the Eliza owner row with the exact agent, local ID and
-revision to a Google owner row with the exact agent, connector account,
+A link joins only the resident owner row with the exact agent, local ID and
+revision to a provider owner row with the exact agent, connector account,
 calendar, provider event ID and etag. An exact clean link must have no
 pending operation. A dirty link qualifies only during pending update.
 The link joins its local and provider rows under the remote portable
@@ -34,8 +34,7 @@ override a candidate's portable group. A candidate with neither uses
 its provider, side, grant, connector account, calendar and event ID as
 one structural source identity. Missing grant and connector account
 use the containing source's values. Equal titles or times contribute
-no linking evidence. URL-independent metadata decoding, canonical
-time conversion and exact comparison facts come from the value ports.
+no linking evidence.
 
 ```quint
 type PortableCalendarOccurrence = { uid: str, occurrenceKey: str, allDay: bool, conversionSucceeded: bool }
@@ -57,8 +56,6 @@ pure def calendarMergeGroup(link: CompleteCalendarLink, remote: PortableCalendar
   else if (portableCalendarIdentity(candidate))
     { groupKind: PortableGroup, firstIdentity: candidate.uid, secondIdentity: candidate.occurrenceKey, allDay: candidate.allDay }
   else { groupKind: OriginalSourceGroup, firstIdentity: exactSourceKey, secondIdentity: "", allDay: false }
-pure def lawLinkNeedsBothRevisions(link: CompleteCalendarLink): bool =
-  canonicalMappingPairs(link) implies link.localAgentAndRevision and link.exactProviderSnapshot
 pure def lawWithoutPortableOrLinkKeepSource(link: CompleteCalendarLink, remote: PortableCalendarOccurrence,
   candidate: PortableCalendarOccurrence, exactSourceKey: str): bool =
   val grouping = calendarMergeGroup(link,remote,candidate,exactSourceKey)
@@ -88,11 +85,10 @@ access role, provider rank, and sync time in that order, higher first.
 Missing or nonfinite numbers contribute zero. Sequence comes from the
 first finite numeric or numeric-string `icsSequence` or `sequence`.
 Access ranks range from owner, writer, reader, free-busy reader, other,
-to none. Provider rank is Eliza, Google and Microsoft together, Apple,
-then ICS. A remaining tie uses the ascending locale order of event IDs,
-with an exact tie retaining the earlier candidate. The shell provides
-parsed numbers and locale order as comparator observations. The model
-uses integer comparison classes and retains earlier candidates on ties.
+to none. Provider rank is the resident calendar and the account
+providers together, then the device calendar, then ICS. A remaining tie
+uses the ascending locale order of event IDs, with an exact tie retaining
+the earlier candidate.
 
 Each selected event carries its actual source properties. Existing event
 values take precedence, using the source grant, account, address or
@@ -102,7 +98,7 @@ records every source reference and the fields whose string values differ:
 title, status, start, end, location and description. A linked local winner
 with a pending update preserves all original event snapshots under the
 link ID. The final list sorts by event start and then event ID.
-Linked lookups and grouping use the pinned event ID namespace. Distinct
+Linked lookups and grouping use one event ID namespace. Distinct
 source identities cannot establish linkage just because their display
 fields match.
 

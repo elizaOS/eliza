@@ -1,14 +1,14 @@
 # Reviewed scan perspective correction
 
-A consumer's scan screen invokes `reviewScanCorrection`, whose producer
-is the files package's scan correction module.
-[Document scan review](../../os/android/documentScan.md) owns the parent
+A scan page can be corrected for perspective before it replaces the page.
+[Document scan review](./review.md) owns the parent
 operation, page order, durable draft and export. Here one correction
 session belongs to one selected page. Pixels and Blob bytes are effects.
 
 ## Story: Preview a perspective correction and decide whether to replace my page
 
-> As the owner, I want to preview a perspective correction and decide whether to replace my page.
+> As the owner, I want to see a corrected scan before it replaces my page,
+> so that a bad correction never overwrites a good page.
 
 ### Correction admits only a supported image and a valid convex selection
 
@@ -17,21 +17,12 @@ corner triple the turn cross product must exceed 0.0001 in clockwise
 image coordinates. Each edge length is at least 0.02 and the signed
 shoelace sum must be at least 0.02, equivalent to area of 0.01. A
 crossing, flipped or very small quadrilateral fails before image decode.
-Accepted inputs are nonempty JPEG, PNG and WebP up to 16 MiB. Decoded
-dimensions must be positive and cover at most 32 million pixels.
-
-The producer scales the source canvas to a maximum axis of 2,048 pixels,
-with a minimum axis of two. It determines output axes from averages of
-opposite edge lengths, uses the same maximum and minimum, and maps each
-output pixel through a perspective transform with clamped bilinear
-sampling. It composites against white and encodes a JPEG at quality
-0.92. The producer checks cancellation before decoding, after decoding,
-at row zero and every 32 rows thereafter, before writing the output pixels and after
-encoding. The decoded bitmap closes in the decode-processing scope's
-finally block. The model receives the geometry predicates from the
-numerical implementation and preserves its admission thresholds.
+Inputs meet the [shared image bounds](../images.md), and the corrected
+page fits them. Correction checks for cancellation throughout decoding, transforming and
+encoding.
 
 ```quint
+import images.* from "../images"
 type Selection = { normalizedFour: bool, positiveTurns: bool, minimumEdges: bool, minimumArea: bool }
 type ImageEvidence = { supported: bool, bytes: int, width: int, height: int }
 pure val selectionValues = Set(
@@ -51,15 +42,10 @@ pure val imageValues = Set(
 pure def allowsCorners(selection: Selection): bool =
   selection.normalizedFour and selection.positiveTurns and selection.minimumEdges and selection.minimumArea
 pure def admitsDecode(selection: Selection, image: ImageEvidence, aborted: bool): bool =
-  not(aborted) and allowsCorners(selection) and image.supported and image.bytes > 0 and image.bytes <= 16777216
-pure def admitsDecodedImage(image: ImageEvidence): bool =
-  image.width > 0 and image.height > 0 and image.width * image.height <= 32000000
+  not(aborted) and allowsCorners(selection) and admitsImageBytes(image.supported, image.bytes)
+pure def admitsDecodedImage(image: ImageEvidence): bool = admitsDecodedPixels(image.width, image.height)
 pure def lawInvalidCornersStopBeforeDecode(selection: Selection, image: ImageEvidence, aborted: bool): bool =
   not(allowsCorners(selection)) implies not(admitsDecode(selection, image, aborted))
-pure def lawOversizeImageStopsBeforeDecode(selection: Selection, image: ImageEvidence, aborted: bool): bool =
-  image.bytes > 16777216 implies not(admitsDecode(selection, image, aborted))
-pure def lawOversizeDecodedRefused(image: ImageEvidence): bool =
-  image.width * image.height > 32000000 implies not(admitsDecodedImage(image))
 ```
 
 ### A preview belongs to its current corners and active review
@@ -147,7 +133,7 @@ and preview generation never write the document or draft.
 
 ```quint
 pure def replacementAllowed(parentCurrent: bool, pageAdmitted: bool, completeBytes: int): bool =
-  parentCurrent and pageAdmitted and completeBytes > 0 and completeBytes <= 67108864
+  parentCurrent and pageAdmitted and completeBytes > 0 and completeBytes <= maxPageSetBytes
 pure val completeBytesValues = Set(0, 10, 67108864, 67108865)
 pure def canAdoptCorrection(s: Correction): bool = s.phase == PreviewReady and s.previewUrl and s.previewCorners == s.corners
 pure def adoptCorrection(s: Correction, parentCurrent: bool, pageAdmitted: bool, completeBytes: int): Correction = {
@@ -163,12 +149,6 @@ pure def stepReplacementDropsOnlySelectedText(before: Correction, via: str, afte
   via == "adoptCorrection" and after.pageRevision != before.pageRevision implies not(after.hasText)
 pure def lawStaleParentCannotReplace(completeBytes: int): bool = not(replacementAllowed(false, true, completeBytes))
 pure def lawOversizeReplacementPreservesOriginal(completeBytes: int): bool =
-  completeBytes > 67108864 implies not(replacementAllowed(true, true, completeBytes))
+  completeBytes > maxPageSetBytes implies not(replacementAllowed(true, true, completeBytes))
 pure def sometimesAdoptableText(s: Correction): bool = canAdoptCorrection(s) and s.hasText
 ```
-
-A consumer's browser journeys run the actual renderer and producer on
-Chromium, including perspective output, invalid corners,
-cancellation during decode, URL cleanup and selected-page text ownership.
-The numerical homography, encoded JPEG bytes and installed WebView can
-be checked through those platform boundaries independently of the model.

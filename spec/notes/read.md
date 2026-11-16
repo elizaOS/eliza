@@ -1,18 +1,14 @@
 # Notes search, selected read and content contracts
 
-The agent adapter exposes the `notes.query.v1` operation through the
-notes query executor, the shared Notes client and the selected-record
-receipt validator. It opens device-local candidates from the home
-screen or Notes under the current owner after the user selects Previous
-Notes and the agent advertises the capability. Canonical Notes has
-separate authored-format and selected-source semantics in the notes
-package's note format and authored modules. The
-[canonical editor](./client.md) owns its save lifecycle and
-[Trash](./trash.md) owns deletion.
+The agent searches the owner's canonical Notes through the
+`notes.query.v1` operation, and shares only the note the owner selects
+and reviews. The [canonical editor](./client.md) owns the save lifecycle
+and [Trash](./trash.md) owns deletion.
 
 ## Story: Search private notes and share only what I select
 
-> As the owner, I want to search private notes and share only what I select.
+> As the owner, I want the agent to find a note by title or recency, but
+> to see only the one note I choose to share, as it is now.
 
 ### Local title and chronology selection is distinct from sharing
 
@@ -28,20 +24,17 @@ remain, with the same unverified basis. One saved note has only-note
 basis for a latest query. Even a sole candidate needs review.
 
 The selected-read target binds collection source, source revision,
-note and note revision. The client rechecks its stable raw snapshot
-and the exact current owner, scope, Home or Notes context, foreground
-and permission before selection, after review and after read. Pending
-or failed Notes storage and a sensitive screen are ineligible. A
-foreign, blank or checklist record cannot pass this legacy query's
-share step. A no-match receipt needs a successful current read.
+note and note revision. The client rechecks its snapshot and the exact
+current owner, scope, Notes context, foreground and permission before
+selection, after review and after read. Pending or failed Notes storage
+and a sensitive screen are ineligible. A foreign, blank or checklist
+record cannot pass the share step. A no-match receipt needs a successful current read.
 Cancel, source drift, an extra field or a different result identity
 refuses the publication. The approved single record is returned only
 with the exact original query and correct basis.
 
-The reducer treats owner, query and receipt scope as normalized facts
-and tracks the generation and candidate identity. It does not model the
-JavaScript NFKC or UTC parser. Confirmation cannot be reused in a new
-view or under a newly admitted query.
+Confirmation cannot be reused in a new view or under a newly admitted
+query.
 
 ```quint
 type QueryKind = ByTitle | ByLatest
@@ -105,20 +98,16 @@ but is not repeated in the result. Update or delete receipts carry no
 fields. Delete and selected read retain the exact reviewed note revision.
 An update returns its newly stored revision.
 
-The renderer's local content filter matches title, body, checklist
-items, voice lines and transcript, summaries, actions, link domain
-and clips. These inputs stay local. The imported source contains an
-additional `notes_search` executor for content or titles and a named
-mutation helper. The pinned release does not advertise or call those
-executor functions. The shared titles contract allows 1–50 entries,
+The local content filter matches title, body, checklist items, voice
+lines and transcript, summaries, actions, link domain and clips, and its
+inputs stay on the device. The shared titles contract allows 1–50 entries,
 with each reviewed title at most 500 units, an explicit truncated flag
 when more titles exist, and no note bodies.
 
 Canonical rich format uses exact kind and data fields. Kinds are text,
 list, voice and link. JSON data is copied without coercion, with limits
 of 10,000 nodes, depth 24 and 262,144 serialized UTF-16 units.
-Only ordinary or null-prototype objects and finite numbers are accepted.
-Prototype-changing keys are rejected. Its authored projection keeps only
+Only plain objects and finite numbers are accepted. Its authored projection keeps only
 per-kind authored text arrays, original indexes and valid checklist
 state. Speaker IDs, attached audio, source and attachment handles
 are excluded. A rich replacement compares the index, expected exact

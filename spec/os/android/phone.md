@@ -3,10 +3,8 @@
 A consumer that declares telephony registers the phone plugin from
 `plugins/plugin-native-phone/android`, whose Android `InCallService`
 reports the device's calls ([bridge composition](./bridge.md)). This spec
-ports the producer's `NativeCallRegistry` and `NativeCallContactLookup`
-models: which calls the service owns, when their ongoing-call
-notification may be published, and when a caller's contact name may be
-shown. Dialing stays the person's action in Android's own dialer; the
+owns which calls the service tracks, when their ongoing-call notification
+may be published, and when a caller's contact name may be shown. Dialing stays the person's action in Android's own dialer; the
 agent's [telephony review](../../agent/deviceActions/telephonyReview.md)
 owns any handoff to it.
 
@@ -73,7 +71,6 @@ name.
 ```quint
 type CallerLookup = { serviceLive: bool, callPresent: bool, grantHeld: bool }
 pure def lookupAdmitted(lookup: CallerLookup): bool = lookup.serviceLive and lookup.callPresent and lookup.grantHeld
-pure def callerNamePublished(atPublish: CallerLookup): bool = lookupAdmitted(atPublish)
 pure def cachedNamePublished(cached: bool, atRefresh: CallerLookup): bool = cached and lookupAdmitted(atRefresh)
 pure val lookupValues = Set(
   { serviceLive: true, callPresent: true, grantHeld: true },
@@ -82,7 +79,7 @@ pure val lookupValues = Set(
   { serviceLive: false, callPresent: false, grantHeld: true }
 )
 pure def lawRetiredCallerNeverShown(lookup: CallerLookup): bool =
-  not(lookup.serviceLive and lookup.callPresent) implies not(callerNamePublished(lookup))
+  not(lookup.serviceLive and lookup.callPresent) implies not(lookupAdmitted(lookup))
 pure def lawWithdrawnGrantHidesCachedName(cached: bool, lookup: CallerLookup): bool =
   not(lookup.grantHeld) implies not(cachedNamePublished(cached, lookup))
 ```

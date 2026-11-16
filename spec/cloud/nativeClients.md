@@ -7,10 +7,7 @@ acknowledges the key before using it, then renews the key without the
 browser until an absolute cap. The registry is the deployment's own record
 of native clients and depends on no hosted-application record. The device
 half of this protocol is [native enrollment](../auth/native/enrollment.md)
-and [Android key renewal](../auth/native/android/keyRenewal.md). Ported from
-the develop models `MobileAppClientRegistration` (with
-`AndroidAssociationPublication`), `MobileClientCompatibility`,
-`MobileAppCredential`, `MobileAppGrantCleanup` and `MobileAppKeyRenewal`.
+and [Android key renewal](../auth/native/android/keyRenewal.md).
 
 ## Story: Admit only a registered native client
 
@@ -27,7 +24,10 @@ flag is not enabled), in a valid environment, with a valid exact callback
 and a valid code lifetime. Exchange and renewal also require the grant to
 match the client. Only the association statement requires a valid Android
 association, so a broken association never revokes existing credentials.
-A database outage refuses.
+A database outage refuses. An installed client may still present a former
+registration name; it is accepted only when the current registration
+declares that alias, is enabled and binds the same signing authority, and
+the alias does not chain to another alias.
 
 ```quint
 type Entrypoint = RegistrationEntry | CredentialEntry | RenewalEntry | CallbackEntry | AssociationEntry
@@ -38,7 +38,8 @@ pure def clientAdmitted(policy: ClientPolicy, entry: Entrypoint): bool =
   and (entry == AssociationEntry implies policy.associationValid)
 pure val validPolicy: ClientPolicy = { databaseAvailable: true, clientPresent: true, clientEnabled: true, enabledExactly: true, environmentValid: true, callbackValid: true, exactCallbackAllowed: true, ttlValid: true, grantMatches: true, associationValid: true }
 pure val policyValues = Set(validPolicy, { ...validPolicy, clientEnabled: false }, { ...validPolicy, grantMatches: false }, { ...validPolicy, associationValid: false }, { ...validPolicy, databaseAvailable: false }, { ...validPolicy, enabledExactly: false })
-pure def lawDisabledClientRefusedEverywhere(policy: ClientPolicy, entry: Entrypoint): bool = not(policy.clientEnabled) implies not(clientAdmitted(policy, entry))
+type AliasEvidence = { declared: bool, enabled: bool, sameBinding: bool, chained: bool }
+pure def aliasAccepted(a: AliasEvidence): bool = a.declared and a.enabled and a.sameBinding and not(a.chained)
 pure def lawRenewalNeedsMatchingGrant(policy: ClientPolicy): bool = not(policy.grantMatches) implies not(clientAdmitted(policy, RenewalEntry))
 pure def lawBrokenAssociationKeepsCredentials(policy: ClientPolicy): bool = clientAdmitted({ ...policy, associationValid: false }, CredentialEntry) == clientAdmitted({ ...policy, associationValid: true }, CredentialEntry)
 ```
@@ -62,20 +63,6 @@ pure val signersValues = Set(
   List({ signer: "s1", handlesLinks: false, sharesCredentials: false }))
 pure def lawStatementKeepsSignerPairs(signers: List[SignerRelations]): bool =
   associationStatement(signers).every(pair => signers.some(x => x.signer == pair.signer and ((pair.relation == HandleLinks and x.handlesLinks) or (pair.relation == ShareCredentials and x.sharesCredentials))))
-```
-
-### A renamed client is accepted only through one explicit alias of the same authority
-
-An installed client may still present a former registration name. It is
-accepted only when the current registration declares that alias, is
-enabled, binds the same signing authority, and the alias does not chain to
-another alias.
-
-```quint
-type AliasEvidence = { declared: bool, enabled: bool, sameBinding: bool, chained: bool }
-pure def aliasAccepted(a: AliasEvidence): bool = a.declared and a.enabled and a.sameBinding and not(a.chained)
-pure val aValues = Set({ declared: true, enabled: true, sameBinding: true, chained: false }, { declared: false, enabled: true, sameBinding: true, chained: false }, { declared: true, enabled: true, sameBinding: false, chained: false }, { declared: true, enabled: true, sameBinding: true, chained: true })
-pure def lawAliasNeverChains(a: AliasEvidence): bool = a.chained implies not(aliasAccepted(a))
 ```
 
 ## Story: Sign a native client in and keep its key renewed
@@ -173,12 +160,11 @@ pure def renewed(s: SignIn, k: int): bool = s.grants.some(g => g.from == k and g
 pure def canRequestRenewal(s: SignIn, k: int): bool =
   usable(s, k) and s.clientOk and s.ownerOk and s.clock <= keyOf(s, k).start + cap and keyOf(s, k).expires < keyOf(s, k).start + cap
 pure def revokeAll(s: SignIn): List[Key] = s.keys.listMap(k => if (k.status == KeyActive or k.status == KeyMinted) { ...k, status: KeyRevoked } else k)
-pure def issueGrant(s: SignIn, k: int): SignIn = {
-  val voided = s.grants.listMap(g => if (g.from == k and (g.status == GrantPending or g.status == GrantExchanged)) { ...g, status: GrantVoid, cipher: false } else g)
-  { ...s, grants: voided.append({ id: s.grants.length() + 1, status: GrantPending, from: k, issuedAt: s.clock, start: keyOf(s, k).start, cipher: false, reveals: 0, redeemedAt: 0 }) }
-}
+pure def successorGrants(s: SignIn, k: int): List[Grant] =
+  s.grants.listMap(g => if (g.from == k and (g.status == GrantPending or g.status == GrantExchanged)) { ...g, status: GrantVoid, cipher: false } else g)
+    .append({ id: s.grants.length() + 1, status: GrantPending, from: k, issuedAt: s.clock, start: keyOf(s, k).start, cipher: false, reveals: 0, redeemedAt: 0 })
 pure def requestRenewal(s: SignIn, k: int): SignIn =
-  if (renewed(s, k)) { ...s, keys: revokeAll(s), ended: true } else issueGrant(s, k)
+  if (renewed(s, k)) { ...s, keys: revokeAll(s), ended: true } else { ...s, grants: successorGrants(s, k) }
 pure def alwaysSignInTimeNeverMoves(s: SignIn): bool = s.grants.every(g => g.start == signInStart(s)) and s.keys.every(k => k.start == signInStart(s))
 pure def alwaysNoCodeAfterCap(s: SignIn): bool = s.grants.every(g => g.issuedAt <= g.start + cap)
 pure def alwaysOneLiveSuccessor(s: SignIn): bool = s.keys.every(k => s.grants.select(g => g.from == k.id and (g.status == GrantPending or g.status == GrantExchanged or g.status == GrantAcknowledged)).length() <= 1)

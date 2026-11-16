@@ -1,8 +1,12 @@
 # Approval service aggregate
 
-The source is `packages/core/src/services/approval.ts:153-209,233-375,588-659`. This aggregate owns the pending-approval ID map, in-flight request records, service-wide retirement and the [worker-name registry](./approvalWorkers.md). Each approval record embeds the [single approval protocol](./approvals.md); those components have no independently running owner when composed here. Claimed callbacks leave the pending map immediately but their in-flight records remain until completion.
+The source is `packages/core/src/services/approval.ts:153-209,233-375,588-659`. This aggregate owns the pending-approval ID map, in-flight request records, service-wide retirement and the names of the task workers it registered. Each approval record embeds the [single approval protocol](./approvals.md); those components have no independently running owner when composed here. Claimed callbacks leave the pending map immediately but their in-flight records remain until completion.
 
 ## Story: Drain every approval without crossing identities
+
+> As an owner, I want every approval I was asked for settled by its own
+> answer and drained when the service stops, so that no answer settles
+> another request.
 
 ### Admission and callback ownership compose under one service stop
 
@@ -12,13 +16,11 @@ Discovered by the proof: even an empty retired service must already be stopping.
 
 ```quint
 import approvals as A from "./approvals"
-import approvalWorkers as W from "./approvalWorkers"
 type ServiceApproval = { id: str, name: str, timeoutMs: int, createdAt: int, expiresAt: int, timeoutRemaining: int, timeoutArmed: bool, approval: A::Approval }
-type ApprovalServiceState = { now: int, records: List[ServiceApproval], pendingIds: Set[str], workers: W::ApprovalWorkers, stopping: bool, retired: bool, lastRejectedId: str }
-pure val initial: ApprovalServiceState = { now: 0, records: List(), pendingIds: Set(), workers: W::initial, stopping: false, retired: false, lastRejectedId: "" }
+type ApprovalServiceState = { now: int, records: List[ServiceApproval], pendingIds: Set[str], workers: ApprovalWorkers, stopping: bool, retired: bool, lastRejectedId: str }
+pure val initial: ApprovalServiceState = { now: 0, records: List(), pendingIds: Set(), workers: noWorkers, stopping: false, retired: false, lastRejectedId: "" }
 pure val absent: ServiceApproval = { id: "", name: "", timeoutMs: 0, createdAt: 0, expiresAt: 0, timeoutRemaining: 0, timeoutArmed: false, approval: A::initial }
 pure val idValues = Set("approval1", "approval2", "unknown")
-pure val nameValues = W::nameValues
 pure val desiredValues = A::desiredValues
 pure val timeoutMsValues = Set(0, 1, 10)
 pure val elapsedValues = Set(0, 1, 10)
@@ -31,8 +33,8 @@ pure def approvalAt(s: ApprovalServiceState, id: str): ServiceApproval = s.recor
 pure def replaceApproval(record: ServiceApproval, s: ApprovalServiceState): ApprovalServiceState = { ...s, records: s.records.listMap(existing => if (existing.id == record.id) record else existing) }
 pure def canAdmit(s: ApprovalServiceState, id: str, name: str, callbackRequired: bool, registrationSucceeds: bool, timeoutMs: int): bool = not(s.stopping) and id != "" and not(s.records.some(record => record.id == id))
 pure def admit(s: ApprovalServiceState, id: str, name: str, callbackRequired: bool, registrationSucceeds: bool, timeoutMs: int): ApprovalServiceState = {
-  val workers = W::ensureWorker(s.workers, name, registrationSucceeds)
-  if (W::taskMayPersist(workers, name)) { ...s, workers: workers, records: s.records.append({ id: id, name: name, timeoutMs: timeoutMs, createdAt: 0, expiresAt: 0, timeoutRemaining: 0, timeoutArmed: false, approval: A::write(A::initial, callbackRequired) }) }
+  val workers = ensureWorker(s.workers, name, registrationSucceeds)
+  if (taskMayPersist(workers, name)) { ...s, workers: workers, records: s.records.append({ id: id, name: name, timeoutMs: timeoutMs, createdAt: 0, expiresAt: 0, timeoutRemaining: 0, timeoutArmed: false, approval: A::write(A::initial, callbackRequired) }) }
   else { ...s, workers: workers, lastRejectedId: id }
 }
 pure def canFinishWrite(s: ApprovalServiceState, id: str, succeeded: bool): bool = approvalAt(s, id).approval.phase == A::Writing
@@ -61,7 +63,7 @@ pure def alwaysPendingMapOwnsExactlyPending(s: ApprovalServiceState): bool = s.r
 pure def alwaysArmedTimersBelongToPending(s: ApprovalServiceState): bool = s.now >= 0 and s.records.every(record => record.timeoutArmed implies record.approval.phase == A::Pending and not(s.stopping) and record.timeoutMs > 0 and record.timeoutRemaining >= 0 and record.expiresAt == record.createdAt + record.timeoutMs)
 pure def alwaysCancellableRecordsKeepDeadline(s: ApprovalServiceState): bool = s.records.every(record => ((record.approval.phase == A::Pending or record.approval.phase == A::Cancelling) and record.timeoutMs > 0) implies record.expiresAt == record.createdAt + record.timeoutMs)
 pure def alwaysApprovalRecordsAreUnique(s: ApprovalServiceState): bool = s.records.every(record => record.id != "" and s.records.select(other => other.id == record.id).length() == 1 and s.workers.registered.contains(record.name))
-pure def alwaysAllComponentsRetainSafety(s: ApprovalServiceState): bool = W::alwaysCountMatchesDistinctWorkers(s.workers) and s.records.every(record => A::validApproval(record.approval) and record.approval.stopping == s.stopping)
+pure def alwaysAllComponentsRetainSafety(s: ApprovalServiceState): bool = s.records.every(record => A::validApproval(record.approval) and record.approval.stopping == s.stopping)
 pure def alwaysRetirementDrainsEveryApproval(s: ApprovalServiceState): bool = s.retired implies s.stopping and s.pendingIds.size() == 0 and s.records.every(record => record.approval.retired)
 pure def sometimesTwoPendingApprovals(s: ApprovalServiceState): bool = s.pendingIds.size() > 1
 pure val fair_finishWrite = "weak"
@@ -69,4 +71,30 @@ pure val fair_callback = "weak"
 pure val fair_deleteResult = "weak"
 pure val fair_retire = "weak"
 pure def leadsToServiceRetires(s: ApprovalServiceState, later: ApprovalServiceState): bool = s.stopping implies later.retired
+```
+
+## Story: Register each approval type once before creating its task
+
+> As a host, I want each approval type's worker registered once before its
+> task is created, so that no approval task persists without a worker to
+> run it.
+
+An admitted approval creation first ensures its named worker exists. A runtime registration exception leaves the local name unregistered and prevents task persistence. Successful repeated ensures are no-ops. The service keeps the names of workers it registered through the runtime, retained when it stops; a new service instance starts with none. The runtime's task-worker registry remains the sole execution owner. A registered worker owns role-aware canExecute and runs the existing selection handler under service admission, then deletes the handled task; those permission and task outcomes remain in [Approvals](./approvals.md), [Authorization](./authorization.md) and [Scheduling](./scheduling.md).
+
+### Successful registrations retain one name and failed registrations retain none
+
+```quint
+type ApprovalWorkers = { registered: Set[str], ensured: str, registrationFailed: bool }
+pure val noWorkers: ApprovalWorkers = { registered: Set(), ensured: "", registrationFailed: false }
+pure val nameValues = Set("permission", "tool-confirmation", "")
+pure val workersValues: Set[ApprovalWorkers] = Set(noWorkers, { registered: Set("permission"), ensured: "permission", registrationFailed: false })
+pure def ensureWorker(workers: ApprovalWorkers, name: str, registrationSucceeds: bool): ApprovalWorkers =
+  if (workers.registered.contains(name)) { ...workers, ensured: name, registrationFailed: false }
+  else if (registrationSucceeds) { ...workers, registered: workers.registered.union(Set(name)), ensured: name, registrationFailed: false }
+  else { ...workers, ensured: "", registrationFailed: true }
+pure def taskMayPersist(workers: ApprovalWorkers, name: str): bool = not(workers.registrationFailed) and workers.ensured == name and workers.registered.contains(name)
+pure def lawFailedRegistrationPreventsTask(workers: ApprovalWorkers, name: str): bool = not(workers.registered.contains(name)) implies not(taskMayPersist(ensureWorker(workers, name, false), name))
+pure def lawRepeatEnsureDoesNotRegister(workers: ApprovalWorkers, name: str): bool = workers.registered.contains(name) implies ensureWorker(workers, name, true).registered.subseteq(workers.registered)
+pure def stepWorkerNamesAreRetained(before: ApprovalServiceState, after: ApprovalServiceState): bool = before.workers.registered.subseteq(after.workers.registered)
+pure def sometimesSeveralApprovalTypes(s: ApprovalServiceState): bool = s.workers.registered.size() > 1
 ```

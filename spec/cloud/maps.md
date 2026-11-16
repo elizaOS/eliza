@@ -4,12 +4,11 @@ The cloud answers maps requests for an organization: place lookups, routes
 and map tiles. Each request is admitted once against the organization's
 request allowance and its credit, its provider cost is observed as it
 happens, and it is settled once, conservatively when the provider's answer
-was lost. One request is the state machine. The rate buckets, the place
-lookup order and tile caching are stated as laws. The device's use of these
+was lost. One request is the state machine. The place lookup order and
+tile caching are stated as laws. Maps traffic also has its own burst and
+sustained buckets, separate from the plan's, which spend and refuse exactly
+as [a plan's request buckets](./entitlements.md) do. The device's use of these
 services is [the maps cloud connection](../maps/cloudConnection.md).
-
-Develop sources: the cloud `maps_request_receipts`, `maps_credit_funding`,
-`maps_request_buckets`, `MapsPlaceLookup` and `MapsTileCache` models.
 
 ## Story: Admit and pay for a maps request once
 
@@ -120,26 +119,10 @@ pure def stepRecordedOutcomeStands(before: MapsRequest, after: MapsRequest): boo
 pure def sometimesOutcomeRecorded(m: MapsRequest): bool = m.receipt == ReceiptSucceeded and m.funding == FundingSettled
 ```
 
-## Story: Keep maps requests within the provider's rate and terms
+## Story: Keep maps requests within the provider's terms
 
-> As an operator, I want maps traffic to stay within a burst and a sustained
-> rate, lookups to try the cheapest useful provider call, and tiles never
-> kept where the provider forbids it.
-
-### A request needs a full token in both the burst and the sustained bucket
-
-Each bucket refills at its own rate up to its capacity. A request is
-admitted only when both buckets hold a full token of four units, and then
-takes one from each; a refused request is told a retry time no earlier than
-the bucket's own time.
-
-```quint
-pure def refill(tokens: int, elapsed: int, rate: int, capacity: int): int = if (tokens + elapsed * rate > capacity) capacity else tokens + elapsed * rate
-pure def bucketsAdmit(burst: int, sustained: int): bool = burst >= 4 and sustained >= 4
-pure def lawRefillNeverExceedsCapacity(tokens: int, elapsed: int, rate: int, capacity: int): bool =
-  (tokens <= capacity and elapsed >= 0 and rate >= 0) implies refill(tokens, elapsed, rate, capacity) <= capacity
-pure def lawAdmissionLeavesNoNegativeBucket(burst: int, sustained: int): bool = bucketsAdmit(burst, sustained) implies (burst - 4 >= 0 and sustained - 4 >= 0)
-```
+> As an operator, I want lookups to try the cheapest useful provider call,
+> and tiles never kept where the provider forbids it.
 
 ### A place lookup asks for nearby places first only when preferred
 

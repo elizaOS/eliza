@@ -5,10 +5,8 @@ keyed by the call and the version of the tool's descriptor. The memory tier
 never holds what the disk tier no longer holds, a lookup hits only a fresh
 entry of the requested version, and an entry is redacted before it is
 written to disk. Concurrent misses for the same key share one execution.
-Invalidation deletes entries; it does not cancel a call in flight, which may
-fill the cache again when it completes. The research baseline is
-`packages/agent/src/runtime/tool-call-cache/{cache,disk-store,lru,key,redact,registry}.ts`
-and the `runtime-cache` model.
+Invalidation deletes entries; it does not cancel a call in flight, which
+may fill the cache again when it completes.
 
 ## Story: Reuse a tool result only while it is valid
 
@@ -19,8 +17,8 @@ and the `runtime-cache` model.
 ### A lookup hits only a fresh entry of the requested descriptor version
 
 ```quint
-type ToolCache = { requested: int, memory: int, disk: int, diskRedacted: bool, inflight: Set[int], expired: bool, hit: int, executions: int }
-pure val initial: ToolCache = { requested: 0, memory: -1, disk: -1, diskRedacted: true, inflight: Set(), expired: false, hit: -1, executions: 0 }
+type ToolCache = { requested: int, memory: int, disk: int, diskEntry: str, inflight: Set[int], expired: bool, hit: int, executions: int }
+pure val initial: ToolCache = { requested: 0, memory: -1, disk: -1, diskEntry: "", inflight: Set(), expired: false, hit: -1, executions: 0 }
 pure val versionValues = Set(0, 1)
 pure def canSelectVersion(c: ToolCache, version: int): bool = version >= 0 and version != c.requested
 pure def selectVersion(c: ToolCache, version: int): ToolCache = { ...c, requested: version, hit: -1 }
@@ -36,7 +34,7 @@ pure def sometimesHit(c: ToolCache): bool = c.hit >= 0
 
 ```quint
 pure def canInvalidate(c: ToolCache): bool = c.disk != -1 or c.memory != -1
-pure def invalidate(c: ToolCache): ToolCache = { ...c, memory: -1, disk: -1, hit: -1 }
+pure def invalidate(c: ToolCache): ToolCache = { ...c, memory: -1, disk: -1, diskEntry: "", hit: -1 }
 pure def alwaysTiersConsistent(c: ToolCache): bool = c.memory == -1 or c.memory == c.disk
 ```
 
@@ -54,10 +52,16 @@ pure def sometimesBothVersionsInFlight(c: ToolCache): bool = c.inflight.size() =
 
 ### A completed call is redacted before it is written, and may refill the cache after an invalidation
 
+A call's result is secret as it arrives; only its redacted output is
+written to the disk entry.
+
 ```quint
+type SecretToolResult = { output: str, credential: str }
+pure def declassifyRedacted(result: SecretToolResult): str = result.output
 pure def canComplete(c: ToolCache, version: int): bool = c.inflight.contains(version)
-pure def complete(c: ToolCache, version: int): ToolCache =
-  { ...c, inflight: c.inflight.exclude(Set(version)), memory: version, disk: version, diskRedacted: true, expired: false, hit: -1 }
-pure def alwaysDiskEntryRedacted(c: ToolCache): bool = c.disk != -1 implies c.diskRedacted
+pure def complete(c: ToolCache, version: int, result: SecretToolResult): ToolCache =
+  { ...c, inflight: c.inflight.exclude(Set(version)), memory: version, disk: version, diskEntry: declassifyRedacted(result), expired: false, hit: -1 }
+pure val resultValues = Set({ output: "forecast", credential: "token" }, { output: "rates", credential: "key" })
+pure def alwaysDiskEntryOnlyInDiskTier(c: ToolCache): bool = c.disk == -1 implies c.diskEntry == ""
 pure def sometimesRefilledAfterInvalidation(c: ToolCache): bool = c.disk >= 0 and c.executions >= 2
 ```

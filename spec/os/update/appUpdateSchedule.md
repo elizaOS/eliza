@@ -2,16 +2,14 @@
 
 While the app is in the foreground, the renderer asks the native updater
 to check for and prepare an app update on a timer. One scheduler owns the
-timer and at most one native call; native package admission, network
-success and device acceptance are separate obligations of the
-[installation journal](./install.md) and
-[app update admission](./appAdmission.md). Before a new renderer mounts,
-it also reads the native journal back so that it never mounts over an
-activation the installer still owns.
-
-The model's time unit is abstract: the retry base is 1 and the interval
-is 4, so a failed check retries after 1, 2 and then 4 units, and the
-deployed scheduler's base and interval keep the same ratio or less.
+timer and at most one native call; admission and installation belong to
+[app update admission](./appAdmission.md) and the
+[installation journal](./install.md). Before a new renderer mounts, it
+reads the native journal back so that it never mounts over an activation
+the installer still owns. Time is counted in abstract units: the retry
+base is 1 and the interval 4. The deployed base and interval keep that
+ratio or less, so the delay doubles from the base before it reaches the
+interval.
 
 ## Story: Check for app updates on a bounded schedule while the app is in the foreground
 
@@ -47,8 +45,9 @@ pure def sometimesDisposedDuringCheck(s: UpdateSchedule): bool = s.disposed and 
 
 ### A failed check retries after a doubling delay up to the interval, and a success waits the full interval
 
-The failure count saturates at 20 and resets on success. The retry delay
-starts at the base and doubles up to the interval.
+The failure count saturates at 20 and resets on success. A successful
+check waits the full interval. A failed one retries after the base, then
+twice the base, then the full interval.
 
 ```quint
 pure val retryBase = 1

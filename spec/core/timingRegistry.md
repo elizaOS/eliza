@@ -1,24 +1,23 @@
 # Timing registry and histogram retention
 
 The source is `InferenceTimingRegistry`, `BoundedHistogram` and
-`nextInferenceTurnId` in `packages/core/src/inference-timing.ts` at
-`72fed7e4069ecd35d61d886ab6eec5c02c137517`.
+`nextInferenceTurnId` in `inference-timing.ts`.
 
 ## Story: Retain recent telemetry with explicit missing measurements
 
-As an operator, I retain the latest 64 turn summaries and latest 256 finite
-measurements per histogram. A process counter differentiates turn IDs
-created at the same clock time. Historical summaries keep a missing trace
-ID instead of minting replacement evidence.
+> As an operator, I want the latest 64 turn summaries and the latest 256
+> finite measurements per histogram, with a missing measurement or trace ID
+> left missing, so that timing telemetry is bounded and never invented.
+
+A process counter differentiates turn IDs created at the same clock time.
 
 ### Histogram admission keeps finite samples in arrival order
 
 Recording a summary updates its span histograms and all present derived
 measurements atomically. A missing measurement supplies no sample.
 Span names and derived measurement names have separate namespaces. The
-numeric boundary rejects nonfinite samples before this integer model.
-Fractional-millisecond representation and nearest-rank arithmetic retain
-their explicit numeric contracts in the baseline.
+numeric boundary rejects nonfinite samples and owns fractional
+milliseconds and nearest-rank arithmetic.
 
 ```quint
 type MetricNamespace = SpanMetric | DerivedMetric

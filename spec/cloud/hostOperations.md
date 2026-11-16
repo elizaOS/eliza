@@ -4,11 +4,11 @@ A native host on the device reaches the cloud through host routes that keep
 the cloud credential on the host and expose only projected data and
 receipts. The deployment's environment and the registered authority are
 inputs to these contracts. Billing mutations are reviewed before they are
-sent, checkout and renewal results keep their declared presentation, task
-reads are fenced by the authority captured when they began, and the host's
-paid-access check is a coalesced, generation-fenced cache. Moved from the
-native cloud host contract; the paid-access cache is ported from the
-develop models `NativePaidAccessCache` and `native_access_coalescing`.
+sent, checkout and renewal results keep their declared presentation, and
+the host's paid-access check is a coalesced, generation-fenced cache. A
+task's Google reads are fenced by [the managed Google
+connection](./managedGoogle/connection.md) and its document reads by
+[PDF interpretation](../files/pdfInterpretation.md).
 
 ## Story: Review an account operation before allowing its effect
 
@@ -18,17 +18,17 @@ develop models `NativePaidAccessCache` and `native_access_coalescing`.
 
 ### Subscription mutations retain their review and idempotency scope
 
-A native cancel or undo requires verified interactive billing authority.
-An eligible current control must match subscription, revision and action.
-Undo includes the reviewed renewal terms digest. Only an exactly matching
-prior command in FAILED status permits a new retry ID. The stable command
-key's exact preimage joins subscription ID, positive revision, action,
-undo terms when applicable, and optional confirmed failed command ID.
-The cloud owns transaction admission, execution, and reconciliation
-([subscriptions](./subscriptions.md)). The client checks returned identity
-and revision and then checks that the host's authority generation is
-current. An unknown outcome needs status recovery. The facts record
-represents validated inputs and the projected review.
+A native cancel or undo is sent only with verified interactive billing
+authority that is still current, and only while an eligible control matches
+the reviewed subscription, revision and action; an undo also needs valid
+reviewed renewal terms. A retry is allowed only for an exactly matching
+prior command that failed. The command key is stable for the subscription,
+its positive revision, the action, the undo terms and the failed command
+being retried. The cloud
+admits, runs and reconciles the command
+([subscriptions](./subscriptions.md)). The client checks the returned
+identity and revision, and then that the host's authority generation is
+still current; an unknown outcome needs status recovery.
 
 ```quint
 type SubscriptionAction = CancelSubscription | UndoSubscription
@@ -56,15 +56,14 @@ pure def lawAdmissionKeepsReviewAndAuthority(operation: SubscriptionAction, fact
 
 ### Checkout and renewal responses preserve the declared presentation
 
-Checkout projects open, completed, expired, and stale intent independently.
-An open embedded checkout requires the embedded mode and validated
-provider session, client and publisher fields plus a nonnegative USD
-monthly amount. The shared link requires HTTPS on the payment provider's
-checkout host and no URL credentials. Expiry or stale intent retires the
-local operation. The host never infers entitlement from the form. A
-renewal review retains its exact identity, revision, public terms digest,
-price and dates. The snapshot validity checks use millisecond wall time and
-exact integer cents.
+An open checkout is shown embedded only in embedded mode with a validated
+provider session, client and publisher and a nonnegative monthly amount in
+the payment catalog's currency, and as a shared link only over HTTPS on the
+payment provider's checkout host with no credentials in the URL. An open
+checkout never confirms a payment, and the host never infers entitlement
+from the form; expiry or stale intent retires the local operation. A
+renewal review keeps its exact identity, revision, public terms digest,
+price and dates, with amounts in whole minor units of the currency.
 
 ```quint
 type CheckoutStatus = CheckoutOpen | CheckoutComplete | CheckoutExpired | CheckoutStale | CheckoutUnknown
@@ -79,37 +78,6 @@ pure def checkoutProjection(status: CheckoutStatus, embedded: bool, validEmbedde
   else InvalidCheckout
 pure def lawOpenPaymentIsNeverConfirmed(embedded: bool, validEmbedded: bool, validSharedLink: bool): bool = checkoutProjection(CheckoutOpen, embedded, validEmbedded, validSharedLink) != PaymentConfirmed
 pure def lawSharedCheckoutNeedsVerifiedLink(status: CheckoutStatus, validEmbedded: bool, validSharedLink: bool): bool = checkoutProjection(status, false, validEmbedded, validSharedLink) == ShowPaymentLink implies validSharedLink
-```
-
-## Story: Run a task against its selected Google grant or document account
-
-> As a person whose agent reads my mail or describes my documents, each
-> result comes from the account and grant I selected when the task began,
-> or the task fails; it never silently switches to another one.
-
-### Each result is fenced by the captured host and provider authority
-
-Managed Google and mailbox task reads bind the actor, cloud credential,
-Google generation and selected owner grant. They use GET and do not
-fall back to a different grant. Only a timeout, 429, or 5xx permits a
-bounded read retry. Refusal and an over-size response are explicit
-failures. Gmail effect preparation checks the current grant, necessary
-scope and proposal. Dispatch checks the exact reviewed request ID,
-kind and digest on the receipt. Loss after dispatch reports an unknown
-outcome. Document vision requires the configured account authority and
-no ambient application attribution. It checks owner and cancellation
-before and after inference. Its trusted artifact verifies the source
-commit, canvas version, and bundle SHA-256 before import.
-
-```quint
-type HostAuthority = { hostEpoch: int, googleEpoch: int, actor: str, grant: str }
-pure def sameHost(captured: HostAuthority, observed: HostAuthority): bool = captured.hostEpoch == observed.hostEpoch and captured.actor != "" and captured.actor == observed.actor
-pure def sameGoogleGrant(captured: HostAuthority, observed: HostAuthority): bool = sameHost(captured, observed) and captured.googleEpoch == observed.googleEpoch and captured.grant != "" and captured.grant == observed.grant
-pure def visionPublishable(captured: HostAuthority, observed: HostAuthority, cancelled: bool, outboundAllowed: bool, exactAuthority: bool, ambientAttribution: bool): bool = sameHost(captured, observed) and not(cancelled) and outboundAllowed and exactAuthority and not(ambientAttribution)
-pure val capturedValues = Set({ hostEpoch: 1, googleEpoch: 1, actor: "owner", grant: "grant" })
-pure val observedValues = Set({ hostEpoch: 1, googleEpoch: 1, actor: "owner", grant: "grant" }, { hostEpoch: 1, googleEpoch: 2, actor: "owner", grant: "replacement" }, { hostEpoch: 2, googleEpoch: 1, actor: "another", grant: "grant" })
-pure def lawGoogleReadCannotFollowGrantChange(captured: HostAuthority, observed: HostAuthority): bool = captured.grant != observed.grant implies not(sameGoogleGrant(captured, observed))
-pure def lawVisionDoesNotPublishAfterAccountChange(captured: HostAuthority, observed: HostAuthority, cancelled: bool, outboundAllowed: bool, exactAuthority: bool, ambientAttribution: bool): bool = visionPublishable(captured, observed, cancelled, outboundAllowed, exactAuthority, ambientAttribution) implies sameHost(captured, observed) and not(cancelled) and exactAuthority and not(ambientAttribution)
 ```
 
 ## Story: Check paid access quickly without granting it to the wrong account

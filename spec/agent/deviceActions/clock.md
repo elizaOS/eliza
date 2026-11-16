@@ -1,13 +1,9 @@
-# Clock handoff and reminder journal
+# Clock and reminders
 
-A device client's renderer projects `clock-contract.ts`, `clock-handoff.ts`,
-`clock-handoff-history.ts`, `clock-review-executor.ts`,
-`reminder-contract.ts`, `reminder-create-contract.ts`, and
-`reminder-journal.ts` from `plugins/plugin-assistant/src/services/device-actions/`
-at Eliza `c518127a025ab173874af9c7d304f26b25213b0d`. The host owns native
-effects, exact approval identity, receipt validation, and scheduling. The
-renderer owns custody of its durable request and refuses mismatched host
-evidence before presenting a result.
+Which capability a clock or reminder operation needs, how clock history is
+saved, and how a clock review settles. The host owns native effects,
+approval identity and scheduling; [device action custody](./execution.md)
+owns the reminder write's journal and its readback.
 
 ## Story: Open Clock with the capability and consent I reviewed
 

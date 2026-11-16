@@ -9,8 +9,9 @@ recovery of an interrupted truncating write.
 
 ## Story: Replace only the original I reviewed and preserve it across interrupted writes
 
-> As the person, I want to replace only the original I reviewed and
-> preserve it across interrupted writes.
+> As the person, I want Replace to overwrite only the original I reviewed,
+> and an interrupted write to leave me either the edit or the original,
+> so that a crash never costs me the photo.
 
 ### Consent, source identity and two durable backups precede the live write
 
@@ -19,7 +20,7 @@ written directly. Another app's photo needs Android 11 or later,
 with app-wide file access or a matching per-item write consent.
 A saved operation is consulted before a new consent request. An
 existing operation must be a Replace with the exact rotation, crop
-and filter. An unchanged edit returns `unchanged`; a changed source
+and filter, and a crop must be one of the editor's crop identities. An unchanged edit returns `unchanged`; a changed source
 returns `stale`. Both allow the original to remain untouched.
 
 An admitted edit reserves an `incomplete` record. Read the original
@@ -70,13 +71,12 @@ pure val preparationValues = Set(preparedReplacement, { ...preparedReplacement, 
 
 ### An edit operation's receipt stays bound to the crop it first reserved
 
-Ported from the producer's `PhotoCropReceipt` model. A crop names one of
-the editor's crop identities; an area outside them is refused and
-reserves nothing. The first valid save reserves the operation with its
-crop and publishes once. Replaying the same crop returns the saved
-receipt without publishing again. A different crop, including the
-centered crop after a rectangle, cannot reuse the receipt, and the
-reserved crop survives cancel and restart.
+A crop names one of the editor's crop identities; an area outside them is
+refused and reserves nothing. The first valid save reserves the operation
+with its crop and publishes once. Replaying the same crop returns the saved
+receipt without publishing again. A different crop, including the centered
+crop after a rectangle, cannot reuse the receipt, and the reserved crop
+survives cancel and restart.
 
 ```quint
 type CropReceipt = { reserved: bool, crop: int, published: int }
@@ -84,8 +84,7 @@ type CropSave = CropRefused | CropSaved
 pure val cropIdentities = 4
 pure def validCrop(crop: int): bool = crop >= 0 and crop < cropIdentities
 pure def saveCrop(receipt: CropReceipt, crop: int): CropReceipt =
-  if (not(validCrop(crop)) or (receipt.reserved and receipt.crop != crop)) receipt
-  else if (receipt.reserved) receipt
+  if (not(validCrop(crop)) or receipt.reserved) receipt
   else { reserved: true, crop: crop, published: 1 }
 pure def cropOutcome(receipt: CropReceipt, crop: int): CropSave =
   if (not(validCrop(crop)) or (receipt.reserved and receipt.crop != crop)) CropRefused else CropSaved
@@ -96,7 +95,7 @@ pure def lawCropReceiptPublishesOnce(receipt: CropReceipt, crop: int): bool =
 pure def lawChangedCropCannotReuseReceipt(receipt: CropReceipt, crop: int): bool =
   receipt.reserved and crop != receipt.crop implies cropOutcome(receipt, crop) == CropRefused and saveCrop(receipt, crop) == receipt
 pure def lawInvalidCropNeverReserves(receipt: CropReceipt, crop: int): bool =
-  not(validCrop(crop)) implies saveCrop(receipt, crop) == receipt
+  not(validCrop(crop)) implies saveCrop(receipt, crop) == receipt and cropOutcome(receipt, crop) == CropRefused
 ```
 
 ### Recovery recognizes complete versions and restores only damage it can attribute
@@ -106,10 +105,9 @@ It includes a new revision only when the rescan observed it. An
 exact `stale` record returns stale. A reserved operation that never
 entered writing settles failed after committing that result.
 A `writing` record needs the named regular original backup, the
-original digest and readable bytes for the same target. A legacy
-record can recognize the complete original or edit without a
-stored URI if the digest agrees. A restore write requires its exact
-stored URI.
+original digest and readable bytes for the same target. A record
+without a stored URI can still recognize the complete original or edit
+by digest, but a restore write requires its exact stored URI.
 
 The complete edit digest settles saved. The complete original
 digest settles failed. Otherwise verify the original backup's
@@ -126,7 +124,6 @@ writing record retryable. Backup removal after a settled recovery
 is best effort and checks exact file digests. A successful direct
 replacement can already return saved when its final receipt commit
 fails. Backup evidence stays available for a later result read.
-This spec keeps copy and replacement receipt types distinct.
 
 ```quint
 type PhotoBytes = FullEditedPhoto | FullOriginalPhoto | ExactRecordedDamage | PrefixOfEdit | PrefixOfOriginal | OtherPhotoBytes
@@ -199,10 +196,4 @@ pure val completeRestore: RestoreSettlement = { markerCommitted: true, digestAnd
 pure val settlementValues = Set(completeRestore, { ...completeRestore, markerCommitted: false },
   { ...completeRestore, digestAndUriRechecked: false }, { ...completeRestore, originalDigestRead: false },
   { ...completeRestore, receiptCommitted: false })
-pure val weight_inspectReplacement = 8
 ```
-
-The pinned `PhotoReplaceInstrumentedTest` exercises interrupted writes
-and restores, partial and unrelated bytes, changed backup content and a
-completed write followed by close error. The native detector depends on
-the Android provider and private file implementation.

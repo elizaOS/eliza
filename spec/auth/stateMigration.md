@@ -9,11 +9,11 @@ then accepts only tokens of the v4 issuer, so every v3 session ends. A
 device starting v4 deletes the v3 session state it finds without reading it
 as a v4 session, and the person signs in again.
 
-New in v4. The rename table (routes, storage keys, cookies, the
-`session.auth_token` secure slot, columns `auth_user_id`, `auth_tenant_id`
-and `auth_tenant_api_key`, the `auth` issuer and claims) is in the v4
-implementation plan; [secure slots](./secureSlots.md) and
-[platform users](./platformUsers.md) hold the renamed state.
+The renamed state is the service's routes, token issuer and claims (`auth`),
+the columns `auth_user_id`, `auth_tenant_id` and `auth_tenant_api_key`, the
+browser storage keys and cookies, and the device's `session.auth_token`
+secure slot. [Secure slots](./secureSlots.md) and
+[platform users](./platformUsers.md) hold it.
 
 ## Story: Move every installation to the v4 identity names without splitting an account
 
@@ -33,12 +33,14 @@ type Issuer = LegacyIssuer | AuthIssuer
 type DeviceSession = NoDeviceSession | LegacySession | AuthSession
 type Device = { id: int, version: int, legacyToken: bool, legacyCookie: bool, legacySlot: bool, session: DeviceSession }
 type TokenCheck = { issuer: Issuer, accepted: bool, phase: ServerPhase }
-type StateMigration = { server: ServerPhase, columns: ColumnNames, mappings: List[AccountMapping], devices: List[Device], checks: List[TokenCheck], failedMigrations: int }
+type NameGeneration = V3Name | V4Name
+type NameLookup = { name: NameGeneration, found: bool, phase: ServerPhase }
+type StateMigration = { server: ServerPhase, columns: ColumnNames, mappings: List[AccountMapping], devices: List[Device], checks: List[TokenCheck], lookups: List[NameLookup], failedMigrations: int }
 pure val initial: StateMigration = {
   server: ServingV3, columns: LegacyColumns,
   mappings: List({ cloudUser: 1, identityUser: 11, organization: 1, tenant: 21 }, { cloudUser: 2, identityUser: 12, organization: 1, tenant: 21 }),
   devices: List({ id: 1, version: 3, legacyToken: true, legacyCookie: true, legacySlot: true, session: LegacySession }, { id: 2, version: 3, legacyToken: false, legacyCookie: true, legacySlot: false, session: LegacySession }),
-  checks: List(), failedMigrations: 0
+  checks: List(), lookups: List(), failedMigrations: 0
 }
 pure def canBeginMigration(s: StateMigration): bool = s.server == ServingV3
 pure def beginMigration(s: StateMigration): StateMigration = { ...s, server: Migrating }
@@ -82,7 +84,10 @@ A request to a v3 route prefix, or a lookup of a v3 storage key or cookie,
 finds nothing in v4.
 
 ```quint
-type NameGeneration = V3Name | V4Name
 pure def servedInV4(name: NameGeneration): bool = name == V4Name
-pure def lawNoAliasForV3Names(name: NameGeneration): bool = name == V3Name implies not(servedInV4(name))
+pure def nameServed(server: ServerPhase, name: NameGeneration): bool = (server == ServingV3 and name == V3Name) or (server == ServingV4 and servedInV4(name))
+pure def lookUpName(s: StateMigration, name: NameGeneration): StateMigration = { ...s, lookups: s.lookups.append({ name: name, found: nameServed(s.server, name), phase: s.server }) }
+pure val nameValues = Set(V3Name, V4Name)
+pure def alwaysV3NamesFindNothingInV4(s: StateMigration): bool = s.lookups.every(l => (l.phase == ServingV4 and l.name == V3Name) implies not(l.found))
+pure def sometimesV3NameMissedAfterCutover(s: StateMigration): bool = s.lookups.some(l => l.phase == ServingV4 and l.name == V3Name)
 ```

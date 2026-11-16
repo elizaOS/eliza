@@ -59,37 +59,34 @@ pure def sometimesWriteRefused(s: Checkin): bool = s.checkinPhase == CheckinFail
 > provider changed the event recently, not that my device refreshed its
 > copy.
 
-### A synced event's change time is the provider's own clock, and an unreadable one stays unknown
+### A recent check-in keeps an event that is today or whose provider change is recent
 
-For an event synced from a calendar provider, the change time is the
-provider's update time, else its alternate update time, else its creation
-time; refreshing the local copy never counts as a change. Malformed
-metadata, or an invalid time in the field chosen, leaves the change time
-unknown and reports partial coverage, without falling back to another
-field. A locally written event uses its writer's clock. The check-in keeps
-an event that happens today or whose known change time is recent.
+A synced event's change time is [the calendar's event change
+time](../calendar/managedFeed.md); refreshing the local copy never counts
+as a change. Malformed metadata or an unreadable time leaves the change
+time unknown and reports partial coverage. A locally written event uses
+its writer's clock. The check-in keeps an event that happens today or
+whose known change time is recent.
 
 ```quint
-type ChangeClock = ClockAbsent | ClockOld | ClockRecent | ClockInvalid
-type EventClocks = { synced: bool, malformed: bool, primaryClock: ChangeClock, alternateClock: ChangeClock, createdClock: ChangeClock, copyClock: ChangeClock, today: bool }
-type ChangeProjection = { changeClock: ChangeClock, included: bool, partial: bool }
-pure def providerClock(e: EventClocks): ChangeClock =
-  if (e.primaryClock != ClockAbsent) e.primaryClock else if (e.alternateClock != ClockAbsent) e.alternateClock else e.createdClock
+import managedFeed as MF from "../calendar/managedFeed"
+type EventClocks = { synced: bool, malformed: bool, editedClock: MF::ChangeClock, createdClock: MF::ChangeClock, copyClock: MF::ChangeClock, today: bool }
+type ChangeProjection = { changeClock: MF::ChangeClock, included: bool, partial: bool }
 pure def projectChange(e: EventClocks): ChangeProjection = {
-  val unreadable = e.synced and (e.malformed or providerClock(e) == ClockInvalid)
-  val clock = if (not(e.synced)) e.copyClock else if (unreadable) ClockAbsent else providerClock(e)
-  { changeClock: clock, included: e.today or clock == ClockRecent, partial: unreadable }
+  val unreadable = e.synced and (e.malformed or MF::providerClock(e.editedClock, e.createdClock) == MF::ClockInvalid)
+  val clock = if (not(e.synced)) e.copyClock else if (unreadable) MF::ClockAbsent else MF::eventChangeTime(e.editedClock, e.createdClock)
+  { changeClock: clock, included: e.today or clock == MF::ClockRecent, partial: unreadable }
 }
-pure val oldSynced: EventClocks = { synced: true, malformed: false, primaryClock: ClockOld, alternateClock: ClockAbsent, createdClock: ClockAbsent, copyClock: ClockRecent, today: false }
+pure val oldSynced: EventClocks = { synced: true, malformed: false, editedClock: MF::ClockOld, createdClock: MF::ClockAbsent, copyClock: MF::ClockRecent, today: false }
 pure val eValues: Set[EventClocks] = List(
-  oldSynced, { ...oldSynced, primaryClock: ClockAbsent, today: true }, { ...oldSynced, primaryClock: ClockInvalid, alternateClock: ClockRecent },
-  { ...oldSynced, primaryClock: ClockAbsent, createdClock: ClockRecent }, { ...oldSynced, synced: false, malformed: true },
-  { ...oldSynced, malformed: true, primaryClock: ClockRecent }
+  oldSynced, { ...oldSynced, editedClock: MF::ClockAbsent, today: true }, { ...oldSynced, editedClock: MF::ClockInvalid, createdClock: MF::ClockRecent },
+  { ...oldSynced, editedClock: MF::ClockAbsent, createdClock: MF::ClockRecent }, { ...oldSynced, synced: false, malformed: true },
+  { ...oldSynced, malformed: true, editedClock: MF::ClockRecent }
 ).foldl(Set(), (acc, e) => acc.union(Set(e)))
 pure def lawRefreshIsNotAChange(e: EventClocks): bool =
-  (e.synced and providerClock(e) != ClockRecent) implies (projectChange(e).included == e.today)
+  (e.synced and MF::eventChangeTime(e.editedClock, e.createdClock) != MF::ClockRecent) implies (projectChange(e).included == e.today)
 pure def lawInvalidMetadataStaysUnknown(e: EventClocks): bool =
-  (e.synced and (e.malformed or providerClock(e) == ClockInvalid)) implies (projectChange(e).changeClock == ClockAbsent and projectChange(e).partial)
+  (e.synced and (e.malformed or MF::providerClock(e.editedClock, e.createdClock) == MF::ClockInvalid)) implies (projectChange(e).changeClock == MF::ClockAbsent and projectChange(e).partial)
 pure def lawTodayOrRecentIsKept(e: EventClocks): bool =
-  projectChange(e).included == (e.today or projectChange(e).changeClock == ClockRecent)
+  projectChange(e).included == (e.today or projectChange(e).changeClock == MF::ClockRecent)
 ```

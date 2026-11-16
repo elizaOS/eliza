@@ -78,29 +78,3 @@ pure def sometimesAnsweredOnTrack(s: Goal): bool = s.status == GoalActive and s.
 pure def sometimesPausedWithoutCheckins(s: Goal): bool = s.status == GoalPaused and s.cadence != NoCadence
 pure def sometimesResumedWithoutTheDismissedSlot(s: Goal): bool = s.status == GoalActive and s.dismissedSlots.contains(1) and s.liveSlots.contains(2)
 ```
-
-## Story: Keep my goals when the assistant's storage is reorganized
-
-> As an owner upgrading my agent, I want the goals, reminders and to-dos I
-> already had to be there afterwards, and nothing I deleted since to come
-> back.
-
-### Records move once, and only into an empty store
-
-When a record kind moves from the shared assistant store to a store of its
-own, its rows are copied on first start only when the new store is empty
-and no receipt of an earlier move exists; the receipt is written with the
-copy, so rows the owner deletes later are never copied again. The old
-store is never dropped or changed. Goal definitions are copied before the
-links that refer to them, so a reader never sees a link to a goal not yet
-copied.
-
-```quint
-type MoveOutcome = MovedCopied | MoveSourceMissing | MoveTargetNotEmpty | MoveAlreadyDone
-pure def moveOutcome(sourcePresent: bool, targetEmpty: bool, moveReceipt: bool): MoveOutcome =
-  if (moveReceipt) MoveAlreadyDone else if (not(sourcePresent)) MoveSourceMissing else if (not(targetEmpty)) MoveTargetNotEmpty else MovedCopied
-pure def lawMoveCopiesOnlyIntoAnEmptyStore(sourcePresent: bool, targetEmpty: bool, moveReceipt: bool): bool =
-  moveOutcome(sourcePresent, targetEmpty, moveReceipt) == MovedCopied implies (sourcePresent and targetEmpty and not(moveReceipt))
-pure def lawMoveRunsOnce(sourcePresent: bool, targetEmpty: bool): bool =
-  moveOutcome(sourcePresent, targetEmpty, true) == MoveAlreadyDone
-```

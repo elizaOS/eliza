@@ -1,31 +1,26 @@
 # Resident child startup and retirement
 
-`EmbeddedRuntimeGroup.java` under the native agent plugin's Android runtime
-sources implements `EmbeddedRuntimeGroup.launch`. A consumer either runs
-that paired launch or stages `ElizaAgentService` and follows the
-[resident adoption](./adoption.md) and shutdown rules. This model describes
-the paired launch path that installs both agent and gateway under a
-`NativeRuntimeSession.Scope`, with the host supplying startup failure and
-lifecycle observations.
+A launch of the [resident](./lifecycle.md) starts the agent and its gateway
+together under one owned scope; a failure of either stops both. The scope
+reaches serving only through authenticated readiness of both children,
+which is the health the resident lifecycle waits for. Retiring the scope
+fences its requests at once, while only an observed process exit proves
+that a child stopped.
 
 ## Story: Start the agent and gateway under a single owned runtime scope
 
-> As a device host, the agent and its gateway start together under one
-> scope, and a failure of either stops both.
+> As a device owner, my agent and its gateway start together, and a
+> failure of either stops both.
 
 ### The selected profile controls when the scope publishes and probes
 
-The parallel profile publishes the agent token, gateway token and
-credential binding before spawning the agent. The broker opens and attaches its close
-callback before the gateway starts. The agent and gateway readiness
-observations follow both spawns.
-
-The sequential profile starts the agent and waits for its readiness before publishing
-the same three bootstrap values. It opens the broker and starts the
-gateway only after those publications. Both profiles publish the
-binding before the gateway starts and require authenticated readiness
-of the exact endpoints before serving. Endpoint visibility alone
-confers no permission to issue requests.
+The parallel profile publishes the agent token, the gateway token and the
+credential binding before it spawns the agent, and opens the broker before
+the gateway starts; both readiness probes follow both spawns. The
+sequential profile starts the agent and waits for its readiness before it
+publishes the same three values, then opens the broker and starts the
+gateway. Either way the binding is published before the gateway starts,
+and the scope serves only after authenticated readiness of both children.
 
 ```quint
 type StartupProfile = ParallelPair | SequentialPair
@@ -66,12 +61,11 @@ pure def sometimesSequentialPairServes(s: ScopeLaunch): bool = s.phase == Servin
 
 ### Scope retirement and physical process exit are separate receipts
 
-Lifecycle retirement fences request publication immediately. A close
-attempt may fail, leaving the broker or child running. An acknowledged
-close releases the broker and requests child destruction. Only the
-native process exit observation establishes that a child stopped.
-Automatic restart policy and the new scope's epoch belong to the
-resident runtime host.
+Retirement fences the scope at once. A close attempt may fail and leave
+the broker or a child running; an acknowledged close releases the broker
+and asks for the children to be destroyed. Only an observed process exit
+establishes that a child stopped. Restarting and the next launch's epoch
+belong to the [resident lifecycle](./lifecycle.md).
 
 ```quint
 pure def activeScope(s: ScopeLaunch): bool = s.phase != Retiring and s.phase != ScopeClosed and s.phase != CleanupFailed

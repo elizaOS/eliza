@@ -3,17 +3,17 @@
 A consumer's photos plugin imports Eliza's `PhotosPlugin`, `OwnedAlbums`,
 `OwnedMediaLibrary`, `OwnedMediaSelection` and `PermittedMediaCatalog` in
 `plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media`.
-The installed preferences are a consumer-named owned-albums file with JSON
-key `albums`. A consumer on the read-only `PermittedPhotosPlugin` has no
-custom-album bridge. [Photo view review](../../../agent/deviceActions/photos.md)
+The consumer names the owned-albums preferences file, and only a consumer
+whose media descriptor grants photo writes has the custom-album bridge.
+[Photo view review](../../../agent/deviceActions/photos.md)
 owns agent admission to the editor. [Photo permission epochs](./permissionEpochs.md)
 own the native permission fence. This contract begins with exact native
 album arguments.
 
 ## Story: Change the album I reviewed without changing the underlying photo
 
-> As the person, I want to change the album I reviewed without changing
-> the underlying photo.
+> As the person, I want album edits to change only the album I reviewed,
+> never the photos in it, so that organizing never alters a photo.
 
 ### A change uses the listed album revision and current member revision
 
@@ -106,8 +106,9 @@ pure def sometimesAlbumWriteUnconfirmed(s: AlbumWrite): bool = s.answer == Album
 
 ## Story: List only current album members under the current media fence
 
-> As the person, I want to list only current album members under the
-> current media fence.
+> As the person, I want an album to show only members I may still see,
+> without dropping the others from the album, so that a revoked or
+> replaced photo neither leaks nor disappears for good.
 
 ### Missing or replaced media is withheld without modifying album membership
 
@@ -131,9 +132,9 @@ with any permitted member uses the mixed cursor even when that
 member is inaccessible. The cursor binds the exact album revision and
 catalog fence identity, with an offset from zero to 200. Its metadata
 sorts lexically by media key before choosing up to 24 rows. A mismatched
-cursor is refused. Owned-only reads capture the fence but the pinned
-`list` implementation does not recheck it in that branch. The host
-keeps the two cursor codecs and permission checks distinct.
+cursor is refused. Every read, owned-only included, rechecks the
+permission fence it captured before returning data, so an owned cursor
+also binds that fence.
 
 ```quint
 type MemberEvidence = { member: bool, exactIdentity: bool, publishedAndLive: bool, ownerExact: bool, currentlyPermitted: bool }
@@ -145,7 +146,7 @@ pure def visibleMember(source: MemberKind, facts: MemberEvidence): bool =
 pure def admitsAlbumCursor(mixed: bool, cursor: AlbumCursor): bool =
   cursor.form == FirstPage or
     (if (mixed) cursor.form == MixedCursor and cursor.matchingAlbum and cursor.matchingFence and cursor.offset >= 0 and cursor.offset <= 200
-      else cursor.form == OwnedCursor and cursor.positiveId)
+      else cursor.form == OwnedCursor and cursor.positiveId and cursor.matchingFence)
 pure def mixedPageEnd(offset: int, visibleRows: int): int =
   if (visibleRows - offset < 24) visibleRows else offset + 24
 pure def permitsMixedPreview(catalogMetadataCurrent: bool, exactIdentity: bool, thumbnailReceived: bool, revisionRetained: bool): bool =
@@ -153,6 +154,7 @@ pure def permitsMixedPreview(catalogMetadataCurrent: bool, exactIdentity: bool, 
 pure val factsValues = Set({ member: true, exactIdentity: true, publishedAndLive: true, ownerExact: true, currentlyPermitted: true },
   { member: true, exactIdentity: false, publishedAndLive: true, ownerExact: true, currentlyPermitted: false })
 pure val cursorValues = Set({ form: FirstPage, positiveId: false, matchingAlbum: false, matchingFence: false, offset: 0 },
+  { form: OwnedCursor, positiveId: true, matchingAlbum: false, matchingFence: true, offset: 0 },
   { form: OwnedCursor, positiveId: true, matchingAlbum: false, matchingFence: false, offset: 0 },
   { form: MixedCursor, positiveId: false, matchingAlbum: true, matchingFence: true, offset: 24 },
   { form: MixedCursor, positiveId: false, matchingAlbum: true, matchingFence: false, offset: 24 })
@@ -160,6 +162,8 @@ pure def lawReplacedMediaIsHidden(source: MemberKind, facts: MemberEvidence): bo
   not(facts.exactIdentity) implies not(visibleMember(source, facts))
 pure def lawMixedNoninitialCursorBindsExactFence(cursor: AlbumCursor): bool =
   admitsAlbumCursor(true, cursor) and cursor.form != FirstPage implies cursor.matchingAlbum and cursor.matchingFence
+pure def lawEveryNoninitialCursorBindsTheFence(mixed: bool, cursor: AlbumCursor): bool =
+  admitsAlbumCursor(mixed, cursor) and cursor.form != FirstPage implies cursor.matchingFence
 pure def lawMixedPageUsesMetadataRows(offset: int, visibleRows: int): bool =
   offset >= 0 and offset <= visibleRows implies mixedPageEnd(offset, visibleRows) >= offset and mixedPageEnd(offset, visibleRows) - offset <= 24
 ```

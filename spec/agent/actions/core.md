@@ -6,10 +6,8 @@ thread), and CHOOSE_OPTION answers a choice the agent offered earlier. A
 turn takes exactly one of them. A choice is answered only by the person it
 was offered to, only with one of its offered options, and only once.
 Cancelling a choice that guards an approval is in
-[choice cancellation](./approvals.md); the kernel's planning and execution
-of other actions is in [action planning](../../core/actionPlanning.md). The
-research baseline is the core action set of `plugins/plugin-assistant`
-(`features/basic-capabilities`, `actions/choice.ts`).
+[choice cancellation](./choiceCancellation.md); the kernel's planning and execution
+of other actions is in [action planning](../../core/actionPlanning.md).
 
 ## Story: End each turn with one core action
 

@@ -4,20 +4,17 @@ A consumer that declares telephony registers its telephony plugin only on
 a verified system image ([bridge composition](./bridge.md)). The plugin
 subclasses Eliza's `TelephonyPlugin` from
 `plugins/plugin-native-messages/android`. Its owner and Android role
-policy remain consumer supplied. The first story ports the producer's
-`NativeSmsReviewOwnership` model: an owned journal lookup, main queue
-review, recorded invocation and cancellation, for one admitted SMS or MMS
-review and its settlement. It treats Android permissions, image evidence,
-role and destination validation as host admission. It does not infer
-carrier delivery. The second story ports `NativeMessageNotice`: marking a
-conversation read from its incoming-message notice. The agent's
+policy remain consumer supplied. Android permissions, image evidence, role
+and destination validation are host admission, and carrier delivery is never
+inferred. The agent's
 [telephony review](../../agent/deviceActions/telephonyReview.md) decides
 what reaches this review.
 
 ## Story: Review one message and cancel before native invocation
 
-> As the person, I want to review one message and cancel before native
-> invocation.
+> As the person, I want to review a message before it is sent and be able
+> to cancel it until Android takes it, so that nothing is sent I did not
+> approve.
 
 ### Native confirmation and current ownership must precede dispatch
 
@@ -103,14 +100,15 @@ second, and dismisses the notice only after both providers acknowledge.
 Without the role it dismisses the notice and writes nothing. A partial
 provider failure keeps the notice for a retry. Each conversation keeps
 its own full identity, so colliding hashed IDs never redirect a write.
-Reply opens the compose screen; no notice action can call the reviewed
-send owner, and every worker run releases the held receiver.
+Reply opens the compose screen. A notice action's only effects are
+marking read in the providers and opening compose, so none can send, and every worker
+run releases the held receiver.
 
 ```quint
 type NoticeTicket = { captured: int, current: int, visible: int, roleHeld: bool }
 type NoticeWork = SkipStaleNotice | DismissWithoutWrite | MarkConversationRead
 type NoticeAction = NoticeMarkRead | NoticeReply
-type NoticeEffect = ProviderReadWrite | OpenCompose | SendMessage
+type NoticeEffect = ProviderReadWrite | OpenCompose
 pure def noticeWork(ticket: NoticeTicket): NoticeWork =
   if (ticket.captured == 0 or ticket.captured != ticket.current or ticket.captured != ticket.visible) SkipStaleNotice
   else if (not(ticket.roleHeld)) DismissWithoutWrite
@@ -118,7 +116,6 @@ pure def noticeWork(ticket: NoticeTicket): NoticeWork =
 pure def noticeDismissed(work: NoticeWork, smsAcknowledged: bool, mmsAcknowledged: bool): bool =
   work == DismissWithoutWrite or (work == MarkConversationRead and smsAcknowledged and mmsAcknowledged)
 pure def noticeEffect(noticeAction: NoticeAction): NoticeEffect = if (noticeAction == NoticeReply) OpenCompose else ProviderReadWrite
-pure def noticeTarget(chosenThread: int, threadTargets: List[int]): int = threadTargets.nthOr(chosenThread, 0)
 pure val ticketValues = Set(
   { captured: 1, current: 1, visible: 1, roleHeld: true },
   { captured: 1, current: 1, visible: 1, roleHeld: false },
@@ -132,8 +129,4 @@ pure def lawStaleNoticeNeverWrites(ticket: NoticeTicket): bool =
 pure def lawLostRoleNeverWrites(ticket: NoticeTicket): bool = not(ticket.roleHeld) implies noticeWork(ticket) != MarkConversationRead
 pure def lawPartialProviderFailureKeepsNotice(work: NoticeWork): bool =
   work == MarkConversationRead implies not(noticeDismissed(work, true, false)) and not(noticeDismissed(work, false, true))
-pure def lawNoticeActionsNeverSend(noticeAction: NoticeAction): bool = noticeEffect(noticeAction) != SendMessage
-pure def lawConversationTargetIsItsOwn(chosenThread: int): bool =
-  chosenThread >= 0 and chosenThread < 3 implies noticeTarget(chosenThread, List(0, 1, 2)) == chosenThread
-pure val chosenThreadValues = Set(0, 1, 2)
 ```

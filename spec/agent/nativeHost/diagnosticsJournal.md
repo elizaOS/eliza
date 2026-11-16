@@ -1,18 +1,13 @@
 # Sealed diagnostics journal storage
 
-A device host attaches its installed task journal to the account slot's
-encrypted file ports, using the shared file operations of
-`packages/host/native-host/task-storage-sealing.mjs`. This model owns
-atomic sealed file replacement and the durable handoff of journal records.
+A device host keeps its diagnostics journal in the account slot's
+encrypted files. This spec owns atomic sealed replacement of the journal
+file and the durable handoff of its records.
 [Task storage custody](../tasks/storageCustody.md) owns key derivation and
-account binding. The journal's diagnostic event, redaction and export
-schemas, its capture timer and its flush schedule belong to the consumer
-that records diagnostics. An opaque journal value represents the full text
-selected by that journal for persistence.
-
-The shared sealing tests use actual sealed files, fsync failures and
-verification refusal. A replacement must preserve readable authenticated
-data and guarantee loss-free, duplicate-free recovery.
+account binding; what a diagnostic event contains, how it is redacted and
+exported, and when it is captured and flushed belong to the consumer that
+records diagnostics. An opaque journal value stands for the full text the
+journal persists.
 
 ## Story: Publish an entire sealed journal under the current storage generation
 
@@ -21,11 +16,18 @@ data and guarantee loss-free, duplicate-free recovery.
 
 ### Only a sealed and synchronized stage can replace the old file
 
-The installed gateway selects `diagnostics/accounts/<slot>/task-journal.json`. Its synchronous read, write and remove ports bind purpose `diagnostics-journal` to the account slot's file sealer. Reading trims trailing whitespace and authenticates that line. Missing files retain ENOENT. Other read failures, including an invalid envelope or wrong key, propagate to the journal as unreadable. Writes seal the whole text before file I/O and append one newline. The shared synchronous writer creates the missing directory at mode 0700, exclusively creates an owner-only 0600 temporary file in the same directory, writes and fsyncs that file and closes it before replacement. An optional supplied verifier sees the actual staged UTF-8 bytes after file sync and before rename. A sealed port need not supply a verifier. An asynchronous path follows the same staging rules and checks the captured generation immediately before synchronous rename on the same event-loop turn. If superseded, it removes the staged file and reports no publication. A successful rename then requires a directory sync attempt. EINVAL, ENOTSUP, EOPNOTSUPP and EISDIR, or a directory-sync error on Windows, are tolerated in the respective shared or consumer sync adapter. A close error can still propagate. Another error such as EIO after rename reports failure even though the new complete file can now be visible. That error does not show that the old file remains or that the replacement survives a crash.
-
-Startup with an available account slot removes diagnostics entries whose names start with `task-journal.json.` and end with `.tmp`. It leaves the main and `.unsaved` names alone during that sweep. Sweep failure propagates. The storage custody contract separately covers a key loss that removes the entire slot's unreadable data.
-
-Source: `packages/host/native-host/task-storage-sealing.mjs`.
+A read distinguishes a missing file, an unreadable or unauthenticated one
+and a malformed journal; only an authenticated, decodable file is read. A
+write seals the whole text, writes it to an exclusive owner-only temporary
+file in the same directory, syncs and closes it, passes any supplied
+verifier, and is renamed over the journal only while the storage
+generation it captured is still current; a superseded write removes its
+stage and publishes nothing. After the rename the directory is synced. A
+directory sync that the platform does not support (`EINVAL`, `ENOTSUP`,
+`EOPNOTSUPP`, `EISDIR`, or any error on Windows) is tolerated; any other
+failure is reported even though the complete new file may already be
+visible. Startup removes stale journal temporary files and leaves the
+journal itself alone.
 
 ```quint
 type FileRead = { present: bool, readSucceeded: bool, authenticated: bool, decodedJournal: bool }
@@ -63,9 +65,15 @@ pure val writeFactsValues = Set(readyPublish, { ...readyPublish, fileWrittenSync
 
 ### Assign a stable identity and reconcile only authenticated exact copies
 
-For the replacement, assign each new record a stable identity before staging its first write. The identity is a unique journal launch ID plus that launch's monotonic sequence number. Retries and copies keep both the identity and complete admitted payload. Two different records must not share an identity. Read both authenticated copies in source order and emit the record at most once for its identity. A duplicate with identical full payload needs no new write. Two authenticated copies with the same identity and different payloads produce a conflict, with both stored copies retained. If either relevant file is unreadable, return a typed recovery refusal and retain its bytes. A positively established missing file is distinct from unreadable. Do not assume a malformed ciphertext or corrupt payload contains no records.
-
-Legacy rows have no stable record identity. Keep the original authenticated legacy material during import. Deduplicate only where a trusted identity establishes the same logical record. Preserve unresolved legacy copy ambiguity instead of inferring sameness from a timestamp, task ID or payload hash. The guarantee below applies to records written with replacement identities. The model projects one identity and uses a positive payload reference only for an exact, complete admitted payload.
+Each record gets a stable identity, a journal launch and a sequence
+number, before its first write, and keeps it and its whole payload through
+retries and copies. Recovery reads both authenticated copies and yields a
+record at most once per identity: identical copies are one record, and
+copies of one identity with different payloads are a conflict that keeps
+both. An unreadable copy refuses recovery and keeps its bytes; it is never
+treated as missing or empty. Legacy rows without an identity are imported
+as they are and deduplicated only by a trusted identity, never by a
+timestamp, task or payload hash.
 
 ```quint
 type RecoveryRead = { mainReadable: bool, fragmentReadable: bool, mainPayload: int, fragmentPayload: int }
@@ -96,9 +104,16 @@ pure val observedValues = Set(
 
 ### A handoff deletes a fragment only after the same record is durable in main
 
-A replacement uses independently staged fragments. Select a new exact name only for a positively established absent entry. Never write over an unread fragment. Existing copies accept only a retry of that same exact identity and payload. A successful durable receipt requires sealing, file sync, publication and a successful directory sync. If a platform cannot establish directory durability, report an unconfirmed write. Keep its fragment available through later recovery. Main consolidation writes the exact authenticated record, and retirement can begin only after the matching main copy is directory-durable. It retires only that exact fragment. If removal fails or crash recovery exposes a fragment again, its exact duplicate copy remains harmless. Retrying a conflicting or unread recovery cannot retire either copy.
-
-The laws project durable presence, with zero for a positively established missing reference. A failed durability operation leaves the durable projection unchanged. This is a storage safety obligation conditional on reported durable syncs by the underlying host. A device may also lose the key, and process death can still lose entries for which no durable receipt was returned. The rules make no claim that a receipt forces future I/O to complete.
+A record is first written as its own fragment, only under a name known
+to be absent and never over an unread fragment; an existing copy accepts
+only a retry of the same identity and payload. A write is acknowledged
+only after sealing, file sync, publication and directory sync; without
+directory durability it is unconfirmed and its fragment is kept. The
+record is then written into the main file, and only once that copy is
+durable is the exact fragment removed. A failed removal leaves a harmless
+exact duplicate, and a conflicting or unread recovery retires neither
+copy. These guarantees hold as far as the host's reported syncs do; a
+lost key, or a crash before a receipt, can still lose a record.
 
 ```quint
 type DurableJournalCopies = { mainPayload: int, fragmentPayload: int }

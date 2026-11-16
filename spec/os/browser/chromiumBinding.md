@@ -1,20 +1,17 @@
 # Chromium binding and trust lifecycle
 
-A consumer's resident runtime service starts and closes the shared
-`ChromiumBrowserConnection` from
-`plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface`.
-`OwnedBrowser.java` uses the same producer package and certificate
-identity check for guide selection. Google sign-in additionally
-requires Custom Tabs support. The resident service pins the binding for
-its lifetime; `ChromiumBindingDemand.java` adds per-hold demand, so a
-binding with no pin and no open hold is released once idle. A consumer
-whose browser plugin inherits the native tab host does not use this
-binding owner.
+The consumer's resident runtime service binds and warms the owned Chromium
+browser it guides websites in, only from the expected package and signer.
+The service pins the binding for its lifetime and each browser task holds
+it, so a binding nobody pins or holds is released once idle. A consumer
+whose browser runs only in the native tab host's WebView surfaces does not
+use this binding.
 
 ## Story: Keep the trusted browser available while the resident runtime serves
 
-> As the device, I want the trusted browser bound and warmed only from
-> the expected package and signer while the resident runtime serves.
+> As a consumer's resident runtime, I want the trusted browser bound and
+> warmed only from the expected package and signer, so that website
+> guidance never drives an impostor browser.
 
 ### Android binds and warms only the expected package and signer
 
@@ -67,9 +64,9 @@ pure def sometimesBindRetryScheduled(b: BrowserBinding): bool = b.retryPending a
 
 ## Story: Bind the trusted browser only while something holds it
 
-> As the device, I want the browser binding held while the resident runtime
-> or a browser task needs it, and released once nothing does, so an idle
-> phone does not keep a browser service alive.
+> As the person, I want the browser binding held while the resident
+> runtime or a browser task needs it, and released once nothing does, so
+> that an idle phone does not keep a browser service alive.
 
 ### Each ready callback fires at most once, and only for an open hold that registered it
 

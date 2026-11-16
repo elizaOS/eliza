@@ -1,16 +1,15 @@
 # Browser protection feeds and temporary exceptions
 
-A consumer binds its reviewed phishing and threat feeds to
-`packages/os/browser/protection/policy.mjs`. Both the Chromium extension
-build and the native lookup use the selected feed records. Provenance
-records and retained notices come from the consumer's pinned tree. The
-consumer's website-guidance state owns the task and the user's active
-browser command.
+A consumer binds its reviewed phishing and threat feeds to the browser's
+protection policy; both the Chromium extension build and the native
+lookup use the selected feed records. The consumer's website guidance
+owns the task and the person's active browser command.
 
 ## Story: Apply the selected protection feeds and preserve their scope
 
-> As the person, I want to apply the selected protection feeds and
-> preserve their scope.
+> As the person, I want the browser to block known threats from the feeds
+> my consumer reviewed, and a temporary exception to allow only the page I
+> reviewed, so that protection neither silently weakens nor spreads.
 
 ### Feed and rule admission refuses an incomplete or oversize list
 
@@ -43,8 +42,6 @@ pure def lawOversizeFeedRefused(ok: bool, bytes: int, uniqueDomains: int, invali
   bytes > 25165824 implies not(admitsFeed(ok, bytes, uniqueDomains, invalidLines))
 pure def lawReadyListDoesNotAgeOut(recorded: int, now: int): bool =
   recorded <= now implies savedFeedClock(true, recorded, now)
-pure def lawProtectionCannotReplaceOtherRule(id: int): bool =
-  (id < 10000 or id >= 12000) implies not(ownsDynamicRule(id))
 ```
 
 ### A temporary exception matches only the reviewed tab and exact HTTP request
@@ -62,8 +59,6 @@ pure def exceptionAdmitted(webScheme: bool, hasCredentials: bool, urlUnits: int,
   webScheme and not(hasCredentials) and urlUnits >= 0 and urlUnits <= 800 and tabId >= 0
 pure def exceptionMatches(requestTab: int, reviewedTab: int, exactUrl: bool, topLevel: bool, getRequest: bool): bool =
   requestTab == reviewedTab and exactUrl and topLevel and getRequest
-pure def lawExceptionKeepsTab(requestTab: int, reviewedTab: int, exactUrl: bool, topLevel: bool, getRequest: bool): bool =
-  exceptionMatches(requestTab, reviewedTab, exactUrl, topLevel, getRequest) implies requestTab == reviewedTab
 pure def lawExceptionRefusesOtherRequest(requestTab: int, reviewedTab: int, exactUrl: bool, topLevel: bool, getRequest: bool): bool =
   (not(exactUrl) or not(topLevel) or not(getRequest)) implies not(exceptionMatches(requestTab, reviewedTab, exactUrl, topLevel, getRequest))
 ```
@@ -71,11 +66,12 @@ pure def lawExceptionRefusesOtherRequest(requestTab: int, reviewedTab: int, exac
 ## Story: Check a site against the feed snapshots the native host has loaded
 
 > As the person, I want a site checked against the protection feeds the
-> device has actually loaded.
+> device has actually loaded, so that a feed that failed to load is
+> reported rather than read as safe.
 
 ### A hit blocks and missing snapshots remain visible
 
-The native `reputation.mjs` loader requires one to eight distinct reviewed
+The native reputation loader requires one to eight distinct reviewed
 feed IDs. Cache admission checks version, source URL, body size, timestamp,
 and digest. Per-feed refresh is single-flight. A refresh failure retains a
 valid snapshot and waits one minute before retry. Six hours controls

@@ -1,13 +1,8 @@
 # Camera operation and saved photo receipt
 
-A device client's camera adapter imports the exact
-`camera-contract.ts` from the agent's device actions.
-The consumer calls `captureAgentPhoto` for the
-`camera_capture_photo` operation. Capability is
-`camera.capture-photo.v1`. The staged
-`client-coordinator.ts` rejects a successful camera result without
-an exact saved photo receipt. Its durable [claim and receipt
-owner](./execution.md) handles repeat admission.
+Taking a photo with the device camera (`camera.capture-photo.v1`). A
+successful capture counts only with the exact saved-photo receipt, and
+[device action custody](./execution.md) handles claim and repeat admission.
 
 ## Story: Take the requested photo only from the current foreground Camera
 

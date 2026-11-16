@@ -1,20 +1,18 @@
-# Native Cloud enrollment and credential custody
+# Native enrollment
 
-A trusted host enrolls the device's Cloud credential through
-`createNativeCloudAuth` of the auth package's native host
-(`native-host/cloud-enrollment.mjs`), beside the Cloud SDK's native host
-routes. A consumer's renderer uses the native config, start, verify, MFA,
-resume and cancel routes; a consumer may turn off the generic Google and
-browser routes and install its own API-only Google return. The
-enrollment epoch, pending receipt, active credential, verified owner and
-revocation receipt are separate pieces of state. `/cloud/native/cancel`
-maps to `cancel()` and `/cloud/logout` to `cancel({ disconnect: true })`.
-The Cloud side of issuance and acknowledgement is
-[native clients](../../cloud/nativeClients.md).
+A trusted host enrolls the device's cloud credential through the auth
+package's native host, beside the cloud SDK's native host routes. A
+consumer's renderer uses the native config, start, verify, MFA, resume and
+cancel routes; a consumer may turn off the generic Google and browser
+routes and install its own API-only Google return. The enrollment epoch,
+pending receipt, active credential, verified owner and revocation receipt
+are separate pieces of state. The cancel route cancels the enrollment, and
+logout cancels it and disconnects. The cloud side of issuance and
+acknowledgement is [native clients](../../cloud/nativeClients.md).
 
 ## Story: Recover enrollment safely after a lost acknowledgement
 
-> As a person enrolling this device with my Cloud account, I want a sign-in
+> As a person enrolling this device with my cloud account, I want a sign-in
 > that lost its last reply to finish when I try again, and a cancel or
 > sign-out to retire exactly the key it names.
 
@@ -27,7 +25,7 @@ the mobile acknowledgement endpoint. The returned credential ID and
 expiry must match the receipt contract. Recovery uses the saved proof
 for the same application binding. A lost reply can be retried even
 past the original acknowledgement deadline because a landed ack is
-replayable. The Cloud decides whether the grant can still be acknowledged.
+replayable. The cloud decides whether the grant can still be acknowledged.
 In verified-account mode (`activateVerified`) the host resolves the exact authority origin,
 user and organization with the acknowledged credential. It checks the
 stored verified owner, persists and reads back a new owner receipt if
@@ -91,10 +89,10 @@ exact, valid revocation response. A lost or invalid response leaves the
 revocation journal pending. Ordinary cancellation can clear an active
 credential if it is the same key already journaled by that incomplete
 attempt. It preserves an unrelated active credential. Logout clears an
-active credential, journaling it first when it is a revocable Cloud key.
+active credential, journaling it first when it is a revocable cloud key.
 A different pending receipt must finish before that logout can proceed.
 This slice starts at the host's serialized point after waiting for
-outstanding work and abstracts a validated Cloud key by a nonempty ID.
+outstanding work and abstracts a validated cloud key by a nonempty ID.
 
 ```quint
 pure def canBeginCancel(e: Enrollment, disconnect: bool): bool = e.phase != WaitingForRevocation and (not(disconnect) or e.activeCredential == "" or e.receipt == "" or e.receipt == e.activeCredential)
@@ -137,7 +135,7 @@ pure def sometimesRestartLeavesPendingRevocation(e: Enrollment): bool =
   e.phase == EnrollmentIdle and e.journal == PendingRevocation and e.reply == EnrollmentNoReply
 ```
 
-### A credential becomes active only after Cloud acknowledged it and its owner was stored
+### A credential becomes active only after the cloud acknowledged it and its owner was stored
 
 The only step that installs an active credential is the compare-exchange
 of an activation that followed an exact acknowledgement and a stored
@@ -161,7 +159,7 @@ pure def stepRevocationJournalClearsOnlyOnConfirmation(before: Enrollment, via: 
 
 ### A refused or mismatched configuration answers unavailable; other failures still fail
 
-The host's `answerUnavailableConfig` reads the Cloud's answer to the
+The host reads the cloud's answer to the
 configuration request; `answerConfig` is that decision. A 400, 401 or 403 status, or a deployment whose application
 binding does not match, is a definite answer: native sign-in is
 unavailable here, and the renderer shows the other methods. Any other

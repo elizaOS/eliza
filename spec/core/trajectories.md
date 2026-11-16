@@ -1,6 +1,6 @@
 # Turn trajectories
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/runtime/trajectory-recorder.ts`, `trajectory-usage-rollup.ts`, `trajectory-gate.ts`, `trajectory-provider-attribution.ts`, `trajectory-semantic-stage-sink.ts` and `trace-correlation.ts`, and `packages/core/src/services/trajectory-json.ts`, `trajectory-semantic-stage.ts` and `trajectory-types.ts`. A trajectory is the record of one turn: the model calls and actions it made, bound to the run that made them, and the token usage they spent. The process-wide export exclusion of a source is [trajectory sources](./trajectorySources.md); the active trace index that enriches a run's traces is [traces](./traces.md). A trajectory is diagnostic evidence kept on the device that recorded it; nothing here exports it for training.
+Sources are `runtime/trajectory-recorder.ts`, `trajectory-usage-rollup.ts`, `trajectory-gate.ts`, `trajectory-provider-attribution.ts`, `trajectory-semantic-stage-sink.ts` and `trace-correlation.ts`, and `services/trajectory-json.ts`, `trajectory-semantic-stage.ts` and `trajectory-types.ts`. A trajectory is the record of one turn: the model calls and actions it made, bound to the run that made them, and the token usage they spent. The active trace index that enriches a run's traces is [traces](./traces.md). A trajectory is diagnostic evidence kept on the device that recorded it. It leaves the runtime only when the operator explicitly exports it, for example in a diagnostic bundle; there is no export for training.
 
 ## Story: Record a turn's trajectory
 
@@ -14,13 +14,12 @@ The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c1
 The operator's persistence setting, resolved by the precedence order below, decides whether a turn records a trajectory at all. A later change of the setting affects only trajectories started after it. Each trajectory has a fresh positive identity and names the run and the source that started it.
 
 ```quint
-import trajectorySources as TS from "./trajectorySources"
 type TrajectoryStatus = Running | Finished | Errored
 type StepKind = ModelCall | ActionCall
 type TrajectoryStep = { kind: StepKind, runId: str, promptTokens: int, completionTokens: int }
 type Trajectory = { id: int, runId: str, source: str, status: TrajectoryStatus, steps: List[TrajectoryStep], promptTokens: int, completionTokens: int, exported: bool }
-type Trajectories = { persistence: bool, sources: TS::TrajectorySources, trajectories: List[Trajectory] }
-pure val initial: Trajectories = { persistence: false, sources: TS::initial, trajectories: List() }
+type Trajectories = { persistence: bool, sources: str -> bool, trajectories: List[Trajectory] }
+pure val initial: Trajectories = { persistence: false, sources: Map(), trajectories: List() }
 pure val idValues = Set(1, 2)
 pure val runIdValues = Set("run-a", "run-b")
 pure val sourceValues = Set("live-chat", "synthetic")
@@ -81,23 +80,37 @@ pure def alwaysUsageIsTheSumOfSteps(s: Trajectories): bool =
   s.trajectories.every(t => t.promptTokens == promptSum(t.steps) and t.completionTokens == completionSum(t.steps))
 ```
 
-### A trajectory from an excluded source is never exported
+### The latest copied metadata record determines exclusion
 
-Export reads the source's exclusion as currently registered. Only an ended trajectory whose source is not excluded at that moment may leave the runtime, once. Registering an exclusion later does not recall a trajectory already exported.
+One process-wide map, shared by every runtime and module copy in the process (`trajectory-utils.ts`), holds each source's export exclusion. Registering a nonempty trimmed name replaces its earlier record and applies to later reads from any runtime; restarting one runtime does not reset it, and there is no unregister. A source is known exactly when the map holds its name; an unknown or empty name is not excluded.
 
 ```quint
-pure def registerSource(s: Trajectories, name: str, excludeExport: bool): Trajectories = { ...s, sources: TS::register(s.sources, name, excludeExport) }
+pure val nameValues = Set("", "live-chat", "synthetic")
+pure def registerSource(s: Trajectories, name: str, excludeExport: bool): Trajectories = if (name == "") s else { ...s, sources: s.sources.put(name, excludeExport) }
+pure def excluded(s: Trajectories, name: str): bool = name != "" and s.sources.getOr(name, false)
+pure def alwaysEmptyNameHasNoMetadata(s: Trajectories): bool = not(s.sources.keys().contains(""))
+pure def lawLatestRegistrationWins(s: Trajectories, name: str, excludeExport: bool): bool = name == "" or excluded(registerSource(s, name, excludeExport), name) == excludeExport
+pure def lawUnknownSourceIsIncluded(s: Trajectories, name: str): bool = not(s.sources.keys().contains(name)) implies not(excluded(s, name))
+pure def lawEmptySourceIsIncluded(s: Trajectories): bool = not(excluded(s, ""))
+pure def sometimesSyntheticIsExcluded(s: Trajectories): bool = excluded(s, "synthetic")
+```
+
+### A trajectory from an excluded source is never exported
+
+Export is the operator's explicit request to copy one trajectory out of the runtime, such as into a diagnostic bundle. It reads the source's exclusion as currently registered. Only an ended trajectory whose source is not excluded at that moment may leave the runtime, once. Registering an exclusion later does not recall a trajectory already exported.
+
+```quint
 pure def canExportTrajectory(s: Trajectories, id: int): bool = {
   val t = trajectoryAt(s, id)
-  known(s, id) and t.status != Running and not(t.exported) and not(TS::excluded(s.sources, t.source))
+  known(s, id) and t.status != Running and not(t.exported) and not(excluded(s, t.source))
 }
 pure def exportTrajectory(s: Trajectories, id: int): Trajectories =
   { ...s, trajectories: s.trajectories.listMap(t => if (t.id == id) { ...t, exported: true } else t) }
 pure def stepExportOnlyIncludedSources(before: Trajectories, via: str, after: Trajectories): bool =
-  via == "exportTrajectory" implies after.trajectories.every(t => not(t.exported) or before.trajectories.some(b => b.id == t.id and (b.exported or not(TS::excluded(before.sources, b.source)))))
+  via == "exportTrajectory" implies after.trajectories.every(t => not(t.exported) or before.trajectories.some(b => b.id == t.id and (b.exported or not(excluded(before, b.source)))))
 pure def alwaysExportedTrajectoryHasEnded(s: Trajectories): bool = s.trajectories.every(t => t.exported implies t.status != Running)
 pure def sometimesExported(s: Trajectories): bool = s.trajectories.some(t => t.exported and t.status == Finished and t.steps.length() > 0)
-pure def sometimesExcludedStaysLocal(s: Trajectories): bool = s.trajectories.some(t => t.status == Finished and not(t.exported) and TS::excluded(s.sources, t.source))
+pure def sometimesExcludedStaysLocal(s: Trajectories): bool = s.trajectories.some(t => t.status == Finished and not(t.exported) and excluded(s, t.source))
 ```
 
 ### Every started trajectory reaches a terminal status
@@ -120,6 +133,10 @@ pure def leadsToTrajectoryEnds(s: Trajectories, later: Trajectories): bool =
 > host's policy boundary and must be supplied before publication.
 
 ### Trajectory persistence follows the existing precedence order
+
+Hard disable turns persistence off whatever else is set. Otherwise an
+explicit setting decides, and without one, protected, test and production
+profiles default off and development defaults on.
 
 ```quint
 type LoggingChoice = Unspecified | Enabled | Disabled

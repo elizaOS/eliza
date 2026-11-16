@@ -4,9 +4,8 @@ The owner's client and the device's updater both ask the host whether it is
 healthy. Readiness is reported only from evidence gathered on the runtime
 binding that is current: when a new runtime is bound, the old evidence no
 longer counts. Reading status is a pure query: it never starts inference
-and never reads the logs. The device updater's use of this answer is in
-the [device image's runtime health check](../../os/update/runtimeHealth.md).
-The research baseline is `packages/agent/src/api/{health-routes,status-routes}.ts`.
+and never reads the logs. The device updater's use of this answer is in the
+[device image's runtime health check](../../os/update/runtimeHealth.md).
 
 ## Story: Report health and readiness to the owner and the device updater
 

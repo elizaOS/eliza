@@ -2,13 +2,14 @@
 
 A consumer uses the files package's scan PDF and scan text layer
 modules. [Local OCR](../localOcr.md) supplies the optional initial
-positions. [Scan review](../../os/android/documentScan.md) owns edits
+positions. [Scan review](./review.md) owns edits
 and the exact ordered export draft. This specification owns the PDF
 conversion and admission before the destination is asked to write.
 
 ## Story: Save the reviewed text beside the image of its own page
 
-> As the owner, I want to save the reviewed text beside the image of its own page.
+> As the owner, I want a searchable PDF whose text is what I reviewed, each
+> page's text on its own page, so that searching finds the right page.
 
 ### The layer keeps validated top-left positions and complete reviewed lines
 
@@ -18,11 +19,8 @@ Reject CR, LF, NUL through backspace and vertical tab through U+001F,
 allowing ordinary tab. Position numbers are finite. Origins are
 nonnegative, width and height positive, and right and bottom edges
 at most 1.000001. The values refer to the unchanged ordered image
-snapshot. Decimal validation and exact edges are computed by the
-JavaScript codec, with their verdict represented here. Do not admit
-an invalid line by clamping or trimming it. The OCR producer trims
-its own initial strings before exposing them. Later person edits are
-the strings the PDF builder validates and uses.
+snapshot. An invalid line is refused, never clamped or trimmed. The
+person's edited strings are what the PDF uses.
 
 ```quint
 type PdfLineEvidence = { isLine: bool, isText: bool, textUnits: int, cleanText: bool, finitePosition: bool,
@@ -33,7 +31,7 @@ pure def pdfLineAdmitted(line: PdfLineEvidence): bool =
 pure def pdfLayerAdmitted(isArray: bool, lineCount: int, textUnits: int, allLinesAdmitted: bool): bool =
   isArray and lineCount >= 0 and lineCount <= 2000 and textUnits >= 0 and textUnits <= 100000 and allLinesAdmitted
 pure def lawPdfLayerKeepsEveryLine(isArray: bool, lineCount: int, textUnits: int, allLinesAdmitted: bool): bool =
-  pdfLayerAdmitted(isArray,lineCount,textUnits,allLinesAdmitted) implies
+  pdfLayerAdmitted(isArray, lineCount, textUnits, allLinesAdmitted) implies
     allLinesAdmitted and lineCount <= 2000 and textUnits <= 100000
 pure def lawPdfLineCannotLeaveBounds(line: PdfLineEvidence): bool =
   pdfLineAdmitted(line) implies line.nonnegativeOrigin and line.positiveSize and line.fitsRight and line.fitsBottom
@@ -55,9 +53,7 @@ An unsupported string refuses before preparing image pages. Empty
 layer arrays for a page and blank line records are allowed. Blank text,
 or text with zero natural width, contributes no positioned operator.
 
-Require one through 20 images and at most 64 MiB total. Apply the
-same supported image formats, per-image 16 MiB limit, 32 million
-pixel bound and 2,048 pixel maximum side as local OCR. Each bitmap
+The images meet the [shared image bounds](../images.md). Each bitmap
 is closed after conversion. The canvas encodes JPEG at quality 0.9.
 Pages are A4 portrait or landscape based on the converted image,
 with a 24-point margin. Fit and center the image. The text box uses
@@ -65,15 +61,14 @@ the fitted image width and height, converts top-left to bottom-left
 with one minus top and height, and squeezes character spacing to
 the reported line width. Graphics scope contains the invisible text
 operator. Searchable and image-only output render the same image pixels. Each text
-operator belongs to its reviewed page. Codec precision, font
-measurement and the canvas and PDF effects are supplied by the ports.
+operator belongs to its reviewed page.
 
 ```quint
+import images.* from "../images"
 type PdfInput = { imageCount: int, totalImageBytes: int, layersSupplied: bool, layerCount: int,
   layersAdmitted: bool, allTextEncodable: bool, allImagesAdmitted: bool, aborted: bool }
 pure def pdfInputAdmitted(bundle: PdfInput): bool =
-  not(bundle.aborted) and bundle.imageCount >= 1 and bundle.imageCount <= 20 and
-    bundle.totalImageBytes >= 0 and bundle.totalImageBytes <= 67108864 and bundle.allImagesAdmitted and
+  not(bundle.aborted) and admitsPageSet(bundle.imageCount, bundle.totalImageBytes) and bundle.allImagesAdmitted and
     (not(bundle.layersSupplied) or
       (bundle.layerCount == bundle.imageCount and bundle.layersAdmitted and bundle.allTextEncodable))
 pure def placesPdfText(layersSupplied: bool, matchedPage: bool, contentNonblank: bool, hasNaturalWidth: bool): bool =

@@ -1,49 +1,32 @@
 # Managed Calendar provider feed, cache drain and mapped pull
 
-A consumer uses the resident Calendar route. The calendar package's
-managed calendar read checks the private host response; the resident
-Calendar service owns aggregate read admission, canonical cache
-persistence and managed mapped-event pulls. The consumer's renderer owns
-presentation freshness. [Linked control](./linkedSync.md) owns user
-commands and control receipts. The Cloud side of the read is
-[managed calendar read](../cloud/managedGoogle/calendarRead.md). Exact
-effectful provider reconciliation and the general provider merge
-algorithm are refined in [reconciliation](./linkedReconcile.md).
+The resident calendar reads a managed account's calendar through the
+device's private broker, caches what it read under its exact source, and
+pulls provider edits of mapped events. [Linked control](./linkedSync.md)
+owns user commands and control receipts, the Cloud side of the read is
+[managed calendar read](../cloud/managedGoogle/calendarRead.md), and
+[reconciliation](./linkedReconcile.md) owns the per-link merge.
 
 ## Story: Read the connected Calendar and keep its source information intact
 
-> As the owner, I want to read the connected Calendar and keep its source information intact.
+> As the owner, I want my connected calendar read only from the source and
+> window I selected, and its imported copy removed completely when I ask.
 
 ### The resident accepts only complete broker data for the exact selected source and window
 
-The private endpoint uses HTTP loopback at 127.0.0.1 with a port and exact
-path `/__owner-gmail`, with no query, fragment or user information.
-Its bearer token is 64 ASCII URL-safe characters. Requests are POST with
-JSON, disallow redirects, and combine parent cancellation with a 30-second
-deadline. Sources and ordinary responses have a 256 KiB byte limit. A feed
-has a 512 KiB limit. The response must be HTTP success, provide a readable
-body and parse to a JSON object. Closed diagnostic evidence for typed read
-errors describes the attempt without granting source authority. An
-operation-bound classified broker header is used only for a read HTTP 409.
-Malformed JSON propagates its parser failure. Endpoint construction errors
-carry no read-attempt diagnostics.
+The broker is reached only on the device's private loopback endpoint
+with its bearer token and a deadline. Sources and ordinary responses have
+a 256 KiB byte limit and a feed 512 KiB. A response must succeed and parse
+to a JSON object; diagnostics of a failed read describe the attempt
+without granting source authority. A source catalog holds at most 1,000
+rows, each of the owner side with a grant equal to the connector account.
+The resident checks the request grant before calling the broker.
 
-A source catalog contains at most 1,000 rows. Rows have Google owner side,
-a lowercase 64-hex `owner-google:` grant whose value equals the connector
-account, and string calendar ID and summary. The pinned decoder tests
-the string conversion of access against reader, writer and owner, while
-retaining the original value. An invalid optional connection UUID is
-omitted from the retained summary. The resident checks the request grant
-before calling the broker. The caller owns request window and zone syntax.
-
-A feed echoes the exact calendar ID and request window strings, declares
-complete synced coverage, supplies a parsed synchronization time and
-carries exactly one fresh health row with the selected grant, calendar,
-provider and side. Every event has the same grant, calendar, provider and
-side, string ID and title, and parseable timestamp strings. This decoder
-does not compare the two event timestamp values or require a particular
-provider-supplied agent ID. The resident overwrites that ID with its own.
-The decoder checks the source result before canonical cache persistence.
+A feed echoes the exact calendar ID and request window, declares complete
+synced coverage and carries exactly one fresh health row for the selected
+grant, calendar, provider and side; every event belongs to the same
+grant, calendar, provider and side. The resident sets the agent ID itself
+and checks the source result before persisting the cache.
 
 ```quint
 type BrokerCalendarCall = CalendarSourcesCall | CalendarFeedCall | CalendarOtherCall
@@ -74,7 +57,7 @@ Reads share four service-wide permits, including across simultaneous
 aggregate queries. Same-calendar reads serialize. Different calendars
 can hold permits concurrently. A grant's admission lock covers
 registration of its calendar work. During imported-data removal for the
-exact Google owner grant and connector account, this lock prevents new
+exact owner grant and connector account, this lock prevents new
 admission until all calendar work registered for that grant has
 settled, including writes already in progress on cancelled requests.
 Another grant remains eligible, subject to the shared limit.
@@ -85,14 +68,8 @@ projection for its agent, provider, side, grant and connector account.
 A failed purge does not return a success receipt. A later explicitly
 admitted read can import again if access still permits. Read cancellation
 before each cache write prevents another write, and a write already
-awaiting commit may finish without returning a successful read.
-Discovered by the proof: a successful read can exist only in the
-settled phase. An active read cannot already hold its success receipt.
-
-This machine projects one old read and one unrelated grant's cache.
-Actions represent registration, broker admission, one cache write and
-purge over a retained generation. The surrounding port owns actual
-slots, grant namespaces and per-calendar serialization.
+awaiting commit may finish without returning a successful read. A read
+holds its success receipt only once it has settled.
 
 ```quint
 type ManagedReadPhase = ManagedReadIdle | ManagedBrokerReading | ManagedCacheWriting | ManagedReadSettled
@@ -151,7 +128,8 @@ pure val weight_settleManagedPurge = 8
 
 ## Story: Show one checked copy of a mapped event after a provider read
 
-> As the owner, I want to show one checked copy of a mapped event after a provider read.
+> As the owner, I want an event I linked to show once, as the provider now
+> has it, and only after the provider was actually read.
 
 ### A successful provider feed only offers pull for an exact clean mapping
 
@@ -193,8 +171,6 @@ pure def lawManagedPullNeedsExactCleanMap(pull: ManagedMappedPull): bool =
     pull.currentDestination and not(pull.paused or pull.dispatchHeld)
 pure def lawManagedAbsenceRequiresRelevantLocalWindow(pull: ManagedMappedPull): bool =
   shouldOfferManagedPull(pull) and not(pull.remoteVisible) implies pull.localIntersectsWindow
-pure def lawManagedPullProjectsOnlyAfterReadback(localReadback: bool): bool =
-  mayPublishManagedPull(true,localReadback) implies localReadback
 pure def lawPartialComponentCannotClaimComplete(allHealthFresh: bool, usableSource: bool): bool =
   managedAggregateState(allHealthFresh,false,usableSource) != ManagedAggregateComplete
 pure val matchingPull: ManagedMappedPull = { recordPolicy: true, paused: false, dispatchHeld: false, currentDestination:true,
@@ -206,7 +182,9 @@ pure val pullValues = Set(matchingPull,{ ...matchingPull, paused:true },{ ...mat
 
 ## Story: Keep each cached copy under its own source and its provider's edit time
 
-> As the owner, I want to keep each cached copy under its own source and its provider's edit time.
+> As the owner, I want each cached event kept under the account and
+> calendar it came from, so that one source's copy never overwrites
+> another's and a refresh never looks like an edit.
 
 ### A cache write for another identity leaves the stored copy unchanged
 
@@ -240,18 +218,21 @@ pure val cachedValues = Set(
 pure val payloadValues = Set(11, 17)
 ```
 
-### A cached event revision is the provider's edit time, never the refresh time
+### An event's change time is the provider's edit time, never the refresh time
 
-The cache records an event's revision from the provider's edit time, or
-from its older edit field when only that is present. Only when the
-provider supplies neither does the time the feed was refreshed stand in.
-A refresh never replaces a provider edit time with the refresh time.
+A synced event's change time is the provider's edit time, else its
+creation time. When the provider supplies neither, or the chosen field is
+unreadable, the change time is unknown; refreshing the local copy never
+stands in for it.
 
 ```quint
-pure def cachedEventRevision(primary: int, legacy: int, refreshed: int): int =
-  if (primary >= 0) primary else if (legacy >= 0) legacy else refreshed
-pure def lawProviderEditTimeWins(primary: int, legacy: int, refreshed: int): bool =
-  primary >= 0 implies cachedEventRevision(primary, legacy, refreshed) == primary
-pure def lawOlderEditFieldBeforeRefresh(primary: int, legacy: int, refreshed: int): bool =
-  primary < 0 and legacy >= 0 implies cachedEventRevision(primary, legacy, refreshed) == legacy
+type ChangeClock = ClockAbsent | ClockOld | ClockRecent | ClockInvalid
+pure def providerClock(edited: ChangeClock, created: ChangeClock): ChangeClock =
+  if (edited != ClockAbsent) edited else created
+pure def eventChangeTime(edited: ChangeClock, created: ChangeClock): ChangeClock =
+  if (providerClock(edited, created) == ClockInvalid) ClockAbsent else providerClock(edited, created)
+pure def lawProviderEditTimeWins(edited: ChangeClock, created: ChangeClock): bool =
+  (edited != ClockAbsent and edited != ClockInvalid) implies eventChangeTime(edited, created) == edited
+pure def lawUnreadableTimeStaysUnknown(edited: ChangeClock, created: ChangeClock): bool =
+  providerClock(edited, created) == ClockInvalid implies eventChangeTime(edited, created) == ClockAbsent
 ```

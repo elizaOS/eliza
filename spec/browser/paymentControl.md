@@ -72,8 +72,6 @@ pure def hasMoneyHandoff(fromAgent: bool, convertedToPerson: bool, pressOrFollow
 pure def lawHandoffStaysMoney(guide: GuidanceEvidence, paymentFacts: PaymentEvidence): bool = guide.handedMoneyForRef implies personConsequence(guide, paymentFacts) == GuideMoney
 pure def lawAbsentSnapshotWithoutPositiveWordsIsUnclear(guide: GuidanceEvidence, paymentFacts: PaymentEvidence): bool =
   not(guide.rawReadable or guide.handedMoneyForRef) and renderedConsequence(guide, paymentFacts) == GuideNone implies personConsequence(guide, paymentFacts) == GuideUnclear
-pure def lawDocumentedHandoffRequiresExactControl(fromAgent: bool, convertedToPerson: bool, pressOrFollow: bool, floorMoney: bool, sameControlRef: bool): bool =
-  hasMoneyHandoff(fromAgent, convertedToPerson, pressOrFollow, floorMoney, sameControlRef) implies sameControlRef and fromAgent and convertedToPerson
 pure val directSubmit: GuidanceEvidence = { controlPresent: true, controlKind: GuideButton, ownViewsOnlyOnward: false, narrowMoneyWords: false, narrowSectionWords: false, narrowSubmits: true, narrowSendWords: false, narrowOwnCode: false, ownNamePresent: true, rawReadable: true, handedMoneyForRef: false }
 pure val guideValues = Set(directSubmit, { ...directSubmit, handedMoneyForRef: true }, { ...directSubmit, rawReadable: false }, { ...directSubmit, ownNamePresent: false }, { ...directSubmit, narrowMoneyWords: true }, { ...directSubmit, narrowSendWords: true }, { ...directSubmit, ownViewsOnlyOnward: true }, { ...directSubmit, controlKind: GuideLink }, { ...directSubmit, controlKind: GuideField })
 ```

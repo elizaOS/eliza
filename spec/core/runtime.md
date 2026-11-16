@@ -1,10 +1,12 @@
 # Agent runtime lifecycle
 
-The host supplies persistence, model providers and assistant behavior. This model retains initialization, ingress, bounded shutdown, strict retirement and adapter-close boundaries. It projects the runtime lifecycle and service work owned by one runtime. Sources include [runtime.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime.ts), [retirement.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/retirement.ts) and [RuntimeLifecycle.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/RuntimeLifecycle.qnt).
+One agent runtime's initialization, ingress, bounded shutdown, strict retirement and adapter close. The host supplies persistence, model providers and assistant behavior. [Shutdown attempts](./runtimeShutdown.md) detail stop with caller and attempt identities, and the [retirement tracker](./retirementTracker.md) owns retirement promises. Sources: `runtime.ts`, `runtime/retirement.ts`.
 
 ## Story: Initialize an explicit host composition
 
-As a host I start one agent with stable identity and observe initialization failure before admitting work.
+> As a host, I want to start one agent with stable identity and see
+> initialization fail before any work is admitted, so that no work runs on a
+> half-built runtime.
 
 ### Initialization releases waiters on success and failure
 
@@ -46,7 +48,9 @@ pure def alwaysWorkCounts(s: Runtime): bool = s.activeTurns >= 0 and s.pendingDe
 
 ## Story: Retire every owned operation
 
-As a host I stop ingress once and distinguish a bounded stop from successful strict retirement.
+> As a host, I want ingress stopped once and a bounded stop told apart from
+> successful strict retirement, so that I know when the runtime is really
+> quiet.
 
 ### Stop closes admissions and prepares services once
 

@@ -8,11 +8,11 @@ candidate containing both specification and implementation inputs.
 
 ## Story: Install the replacement through existing npm entry points
 
-As a package consumer, I install a packed ESM package whose declarations,
-exports and runtime behavior satisfy the recorded compatibility contract.
-The public facade adapts Effect to the established Promise interfaces.
-Type-only and browser-safe entry points retain their supported dependency
-closures. The Node runtime root retains its host-independent boundary.
+> As a package consumer, I want to install a packed ESM package whose
+> declarations, exports and runtime behavior satisfy the recorded
+> compatibility contract, so that upgrading needs no change to my imports.
+
+The public facade adapts Effect to the established Promise interfaces. Type-only and browser-safe entry points retain their supported dependency closures. The Node runtime root retains its host-independent boundary.
 
 ### Every release check names the candidate it actually examined
 

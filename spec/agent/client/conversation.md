@@ -1,13 +1,11 @@
 # Client conversation turns and Stop receipts
 
-A consumer imports `ConversationTurnController` and
-`admitConversationStopReceipt` from the client turn controller
-(`packages/ui/src/api/conversation-turn-controller.ts` in the reference
-source), or `findStoppedUserTurn` with its own transport and turn
-presentation. The client controller owns binding and publication. The
+The client turn controller binds a send to the current conversation and
+publishes its turns, and admits Stop receipts; a consumer may use only its
+stopped-turn lookup with its own transport. The
 [core server turn registry](../../core/turnControllers.md) owns server work.
-A matching Stop acknowledges cancellation signaling. Server cleanup and
-committed effect receipts have independent lifetimes.
+A matching Stop acknowledges cancellation signaling; server cleanup and
+committed effect receipts have their own lifetimes.
 
 ## Story: Stop a reply without sending the next message against an uncertain room
 
@@ -115,5 +113,6 @@ pure def lawDifferentIdentifiedUserDoesNotMatch(row: HistoryRow, seek: HistoryMa
 pure def lawLegacyRowNeedsText(row: HistoryRow, seek: HistoryMatch): bool =
   (not(row.hasClientId) and not(row.hasText)) implies rememberStopped(List(row), seek) == 0
 pure def admitsStopReceipt(validRecord: bool, aborted: bool, expectedRoom: str, reportedRoom: str, expectedReason: str, reportedReason: str): bool = validRecord and aborted and expectedRoom == reportedRoom and expectedReason == reportedReason
-pure def lawStopPreservesTarget(expectedRoom: str, reportedRoom: str, expectedReason: str, reportedReason: str): bool = admitsStopReceipt(true, true, expectedRoom, reportedRoom, expectedReason, reportedReason) implies expectedRoom == reportedRoom and expectedReason == reportedReason
+pure def lawForeignStopReceiptRefused(expectedRoom: str, reportedRoom: str, expectedReason: str, reportedReason: str): bool =
+  (expectedRoom != reportedRoom or expectedReason != reportedReason) implies not(admitsStopReceipt(true, true, expectedRoom, reportedRoom, expectedReason, reportedReason))
 ```

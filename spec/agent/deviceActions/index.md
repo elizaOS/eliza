@@ -1,25 +1,19 @@
 # Device actions
 
 The agent proposes actions that run on the user's device: calendar, SMS,
-phone, contacts, photos, notes, files, camera, reminders and the clock. The
-server side is `packages/agent/src/api/device-action-routes.ts` with its SQL
-approval queue, and `packages/agent/src/api/maps-navigation-relay.ts` for the
-relay of a device request to the enrolled device. The generic approval list
-has no device authority and never shows these records. This spec owns one
-device request on the server: its approval, its single delivery to the
-device, and how its outcome is classified. The device side is specified
-separately:
+phone, contacts, photos, notes, files, camera, reminders and the clock. This
+spec owns one device request on the server: its approval, its single
+delivery to the device, and how its outcome is classified. The generic
+approval list has no device authority and never shows these records. The
+device side:
 
 - [Capability vocabulary and negotiation](./capabilities.md)
-- [Renderer attempt identity](./attempts.md)
-- [Claim and receipt custody](./execution.md)
-- [Executor refusal and settlement](./executorRefusal.md)
-- [Foreground review scope and receipts](./review.md)
-- [Original read completion](./readCompletion.md) and its
-  [answer](./readCompletionAnswer.md)
-- [Camera](./camera.md), [Photos](./photos.md), [Clock](./clock.md),
-  [reminders](./reminderJournal.md) and
-  [phone, messages and contacts](./telephonyReview.md)
+- [Device action custody](./execution.md): journal, claim, executor call
+  and receipt
+- [Device effect authority and SMS bounds](./telephonyReview.md)
+- [Original read completion](./readCompletion.md)
+- [Camera](./camera.md), [Photos](./photos.md) and
+  [Clock and reminders](./clock.md)
 
 ## Story: Approve a device request once and learn exactly what happened
 

@@ -5,14 +5,9 @@ token for one account. A token that will outlive the requested buffer is
 returned at once. Otherwise the request waits its turn in a first-in,
 first-out queue for that account in its process, reads the account again,
 and only then spends the refresh grant with the provider. The refreshed
-credential is committed through the [storage generation rule](./accountStorage.md):
-only if nobody replaced, removed or reset the account meanwhile. Times are
-in seconds.
-
-Ported from develop `packages/auth/quint/AccessTokenResolution.qnt`
-(`getAccessToken` in `src/auth/credentials.ts`) and `RefreshMutex.qnt`
-(`KeyedMutex`). A policy epoch of -2 stands for a caller that captured no
-storage policy.
+credential is committed only if nobody replaced, removed or reset the account
+meanwhile, under the generation that [account storage](./accountStorage.md)
+gives each replacement.
 
 ## Story: Get a usable provider access token without duplicate refreshes
 
@@ -28,10 +23,12 @@ provider and storage answer the one request that queue has admitted.
 
 ```quint
 type TokenRecord = { root: int, generation: int, token: int, grant: int, expires: int, refreshable: bool }
+type CapturedEpoch = { epoch: int }
+type CapturedPolicy = NoPolicy | Policy(CapturedEpoch)
 type ResolutionPhase = AtStart | Queued | AtProvider | Committing | ResolutionDone
 type ResolutionOutcome = Pending | TokenOk | NeedsAuth | Transient | Insufficient | PolicyError | StorageError
 type Resolution = {
-  id: int, root: int, process: int, policyEpoch: int, buffer: int, phase: ResolutionPhase, observedGeneration: int, issuedGrant: int,
+  id: int, root: int, process: int, policy: CapturedPolicy, buffer: int, phase: ResolutionPhase, observedGeneration: int, issuedGrant: int,
   responseToken: int, responseGrant: int, responseLifetime: int, outcome: ResolutionOutcome, resultToken: int, resultGeneration: int, resultExpires: int,
   decidedAt: int, refreshed: bool, published: bool, committedGeneration: int
 }
@@ -43,7 +40,7 @@ pure val initial: AccessTokens = {
 }
 pure val noRecord: TokenRecord = { root: 0, generation: 0, token: 0, grant: 0, expires: 0, refreshable: false }
 pure val noRequest: Resolution = {
-  id: 0, root: 0, process: 0, policyEpoch: 0, buffer: 1, phase: ResolutionDone, observedGeneration: 0, issuedGrant: 0,
+  id: 0, root: 0, process: 0, policy: Policy({ epoch: 0 }), buffer: 1, phase: ResolutionDone, observedGeneration: 0, issuedGrant: 0,
   responseToken: 0, responseGrant: 0, responseLifetime: 0, outcome: Pending, resultToken: 0, resultGeneration: 0, resultExpires: 0,
   decidedAt: 0, refreshed: false, published: false, committedGeneration: 0
 }
@@ -51,7 +48,10 @@ pure def recordOf(s: AccessTokens, root: int): TokenRecord = s.records.select(r 
 pure def present(s: AccessTokens, root: int): bool = s.records.some(r => r.root == root)
 pure def requestOf(s: AccessTokens, id: int): Resolution = s.requests.select(r => r.id == id).nthOr(0, noRequest)
 pure def epochOf(s: AccessTokens, root: int): int = s.epochs.nthOr(root - 1, 0)
-pure def policyValid(s: AccessTokens, r: Resolution): bool = r.policyEpoch == -2 or r.policyEpoch == epochOf(s, r.root)
+pure def policyValid(s: AccessTokens, r: Resolution): bool = {
+  val policy = r.policy
+  match policy { | NoPolicy => true | Policy(captured) => captured.epoch == epochOf(s, r.root) }
+}
 pure def usable(expires: int, now: int, buffer: int): bool = expires > now + buffer
 pure def queueOf(s: AccessTokens, process: int, root: int): KeyQueue = s.queues.select(q => q.process == process and q.root == root).nthOr(0, { process: process, root: root, waiting: List(), active: 0 })
 pure def withRequest(id: int, change: Resolution, s: AccessTokens): List[Resolution] = s.requests.listMap(r => if (r.id == id) change else r)
@@ -75,7 +75,7 @@ pure def admit(s: AccessTokens, process: int, root: int): AccessTokens = {
   if (not(policyValid(s, r))) finished(id, StorageError, 0, 0, 0, false, s2)
   else if (not(present(s, r.root))) finished(id, NeedsAuth, 0, 0, 0, false, s2)
   else if (usable(record.expires, s.now, r.buffer)) finished(id, TokenOk, record.token, record.generation, record.expires, false, s2)
-  else if (r.policyEpoch == -2) finished(id, PolicyError, 0, 0, 0, false, s2)
+  else if (r.policy == NoPolicy) finished(id, PolicyError, 0, 0, 0, false, s2)
   else { ...s2, requests: withRequest(id, { ...reread, phase: AtProvider, issuedGrant: record.grant }, s2),
     queues: s2.queues.listMap(q => if (q.process == r.process and q.root == r.root) { ...q, active: id } else q) }
 }
@@ -96,9 +96,9 @@ pure def sometimesQueuedCallerUsesRotatedToken(s: AccessTokens): bool = s.reques
 A requested buffer below one second counts as one second.
 
 ```quint
-pure def canRequestToken(s: AccessTokens, root: int, process: int, policyEpoch: int, buffer: int): bool = root >= 1 and root <= 2 and process > 0
-pure def requestToken(s: AccessTokens, root: int, process: int, policyEpoch: int, buffer: int): AccessTokens = {
-  val r = { ...noRequest, id: s.nextId, root: root, process: process, policyEpoch: policyEpoch, buffer: if (buffer > 1) buffer else 1, phase: AtStart, outcome: Pending }
+pure def canRequestToken(s: AccessTokens, root: int, process: int, policy: CapturedPolicy, buffer: int): bool = root >= 1 and root <= 2 and process > 0
+pure def requestToken(s: AccessTokens, root: int, process: int, policy: CapturedPolicy, buffer: int): AccessTokens = {
+  val r = { ...noRequest, id: s.nextId, root: root, process: process, policy: policy, buffer: if (buffer > 1) buffer else 1, phase: AtStart, outcome: Pending }
   val record = recordOf(s, root)
   val s2 = { ...s, nextId: s.nextId + 1, requests: s.requests.append({ ...r, observedGeneration: record.generation }) }
   if (not(policyValid(s, r))) finished(r.id, StorageError, 0, 0, 0, false, s2)
@@ -113,14 +113,14 @@ pure def requestToken(s: AccessTokens, root: int, process: int, policyEpoch: int
 }
 pure val rootValues = Set(1, 2)
 pure val processValues = Set(1, 2)
-pure val policyEpochValues = Set(-2, 0, 1)
+pure val policyValues = Set(NoPolicy, Policy({ epoch: 0 }), Policy({ epoch: 1 }))
 pure val bufferValues = Set(-1, 1, 3)
 pure def canElapse(s: AccessTokens, seconds: int): bool = seconds > 0
 pure def elapse(s: AccessTokens, seconds: int): AccessTokens = { ...s, now: s.now + seconds }
 pure val secondsValues = Set(1, 3)
 pure def alwaysTokenMatchesOutcome(s: AccessTokens): bool =
   s.requests.every(r => (r.outcome == TokenOk iff r.resultToken > 0) and (r.outcome == TokenOk implies (r.resultGeneration > 0 and r.resultExpires > r.decidedAt + r.buffer)) and r.buffer >= 1)
-pure def alwaysExplicitPolicyBeforeGrant(s: AccessTokens): bool = s.requests.every(r => r.issuedGrant == 0 or r.policyEpoch != -2)
+pure def alwaysExplicitPolicyBeforeGrant(s: AccessTokens): bool = s.requests.every(r => r.issuedGrant == 0 or r.policy != NoPolicy)
 pure def sometimesInsufficientLifetime(s: AccessTokens): bool = s.requests.some(r => r.outcome == Insufficient)
 pure def sometimesMissingPolicyRefusedWithoutGrant(s: AccessTokens): bool = s.requests.some(r => r.outcome == PolicyError and r.issuedGrant == 0)
 ```

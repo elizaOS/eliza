@@ -6,8 +6,7 @@ timer and sends again. One escalation runs per agent at a time, the levels
 and resends are bounded, and the resolution is recorded before its timer is
 cancelled, so a restart never re-escalates what was already resolved.
 Shutting down cancels the timer but keeps an unresolved escalation for the
-next run. The research baseline is `packages/agent/src/services/escalation.ts`
-and the `services-escalation` model.
+next run.
 
 ## Story: Get the owner's attention without nagging
 

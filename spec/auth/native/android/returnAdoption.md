@@ -1,12 +1,11 @@
-# Android browser return adoption
+# Android return adoption
 
 A browser Google sign-in can return to a process that did not start it:
 Android may end the host while the browser is in front. The Android sign-in
-plugin (`CloudSignInPlugin.captureCallback` and `adoptReturn`) then adopts
-the return only through the host's durable credential generation
-(`CredentialIntentFence.attach`, `generation` and `adopt` of the secure
-store). The pending record carries the generation recorded when its attempt
-reserved its credential intent. The renderer side of a browser return is
+plugin then adopts the return only through the host's durable credential
+generation, kept by the secure store's credential intent fence. The pending
+record carries the generation recorded when its attempt reserved its
+credential intent. The renderer side of a browser return is
 [browser return](../browserReturn.md).
 
 ## Story: Complete a browser sign-in after Android restarted the app

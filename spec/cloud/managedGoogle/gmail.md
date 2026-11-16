@@ -6,12 +6,8 @@ metadata. The cloud owns route authorization and Google normalization; the
 client decodes what the cloud returns and refuses anything it cannot
 account for. A reviewed star change is sent once, for the owner, scope and
 message revision that were reviewed. Paging across replies, saved reads and
-cache custody are [the mailbox list](../../inbox/mailboxList.md); the agent
+cache custody are [the mailbox reads](../../inbox/reads.md); the agent
 broker and reviewed sends are [the managed Google connection](./connection.md).
-
-Develop sources: the inbox plugin's managed Gmail client, types and links,
-the cloud's Gmail search and read routes and Google connector, and the cloud
-`MailboxStarMutation` model.
 
 ## Story: Read my Gmail results through the connected owner account
 
@@ -213,38 +209,22 @@ pure val mimeValues = Set("", "text/plain", "image/webp", "Application/PDF", "ap
 
 ### Oversize presentation data leaves the plain body available
 
-Links absent means an empty list. A present field must be an array
-with at most 200 entries. Each invalid link row is discarded. An
-admitted row has an object, string href of at most 2,048 UTF-16
-units and string label. WHATWG URL parsing must produce an absolute
-HTTP or HTTPS URL with hostname and no credentials. Keep serialized
-canonical hrefs, deduplicating first in order. Replace ASCII
-control runs with spaces in labels, collapse whitespace, trim,
-and slice to 200 UTF-16 units. Use host name when the label is
-empty. Return the first 50 distinct accepted links and include
-an omitted count only when at least one additional safe link
-was left out. The renderer later exposes HTTPS in reviewed link
-controls. Rendering the wire links performs no request.
+Absent links are an empty list; a present links field is an array of at
+most 200 rows, and an invalid row is dropped. A row is kept only with a
+string href of at most 2,048 UTF-16 units that parses as an absolute HTTP
+or HTTPS URL with a host and no credentials, and a string label, which is
+cleaned of control characters, trimmed to 200 units and falls back to the
+host name. The first 50 distinct links are shown, and the count of the rest
+is reported only when some were left out. Rendering the links makes no
+request.
 
-`bodyHtml` absent, null or empty leaves only plain text. A
-nonstring present value is invalid. A nonempty string through
-524,288 UTF-8 bytes is kept whole at this boundary, otherwise
-omit it and set `bodyHtmlOmitted: true`. Plain text is returned
-whole as given by the renderer route, including when HTML is
-omitted. Cloud's owner HTML extraction can already return null
-with a separate status. The renderer ignores that status when
-normalizing the wire. The renderer applies HTML sanitization and
-restrictive document policy later in `mail-html.ts`. Remote
-HTTPS images require the current display choice or saved opt-in.
-That DOM policy and upstream MIME extraction are source fixture
-boundaries of this model.
-
-The agent broker's marked partial 32,000 UTF-16 behavior and the
-replacement's explicit oversize refusal remain in the managed
-Google contract. The renderer read has no such plain-text cap.
-Its HTML display limit does not truncate the model-facing body.
-UTF-8 byte measurements, URL parse facts and label cleaning are
-supplied by the corresponding adapters.
+Absent, null or empty HTML leaves only the plain text; any other non-string
+is invalid. HTML up to 524,288 UTF-8 bytes is kept whole and larger HTML is
+omitted and marked so. The plain text is always returned whole, and the
+renderer read has no plain-text cap; the agent's body cap is [the managed
+Google connection](./connection.md)'s. The renderer sanitizes the HTML, and
+shows remote HTTPS images only with the current display choice or a saved
+opt-in.
 
 ```quint
 type HtmlProjection = NoHtml | CompleteHtml | OmittedHtml | InvalidHtml

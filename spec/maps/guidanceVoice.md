@@ -1,15 +1,15 @@
 # Maps foreground guidance speech
 
-A consumer passes its navigation voice into the Maps screen, extending
-the maps client's navigation voice. The screen supplies the instruction
-key and text. [Maps navigation](./navigation.md) owns route and offer
-custody. [Screen-off guidance](./navigationService.md) owns the location
-watch and screen-off service. This rule starts where the foreground Maps
-screen supplies an instruction.
+The Maps screen speaks the current turn instruction while it is in front.
+[Maps navigation](./navigation.md) owns route and offer custody, and
+[screen-off guidance](./navigationService.md) owns the location watch and
+screen-off service. This spec starts where the screen supplies an
+instruction.
 
 ## Story: Hear the newest turn instruction when my current route can speak
 
-> As the owner, I want to hear the newest turn instruction when my current route can speak.
+> As the owner, I want to hear the current turn instruction of the route I
+> am following, never a stale one or one from a route I left.
 
 ### Each instruction key owns one attempt until the voice is paused or muted
 
@@ -17,21 +17,14 @@ The shared speaker keeps the latest key and text. It starts at most
 once for a given consecutive key, including when the text changes
 under that key. A different key replaces the previous speech request
 and aborts it. The latest instruction has its own identity and
-changes when the key or text changes. The route screen uses the route
-ID plus step index and distance band, with separate keys for arrival
-and off-route guidance. Invalid location, reroute and Stop clear the
-speaker. Those decisions belong to the route screen.
+changes when the key or text changes. A key names the route, step and
+distance band, with separate keys for arrival and off-route guidance.
+Invalid location, reroute and stop clear the speaker.
 
-The product checks that foreground voice is allowed before adopting
-an instruction. A hidden document holds the instruction for later.
-The playback port selects the application or on-device speaker.
-The device path checks readiness, then checks abort and permission
-again before speaking. Instruction, playback attempt and connection
-identities are symbolic. The model records confirmed control-flow
-starts, before any promise of audio output.
-Discovered by the proof: the empty instruction has no key, text or
-authority. This guarantees that an offer with a valid key and text
-cannot reuse the empty instruction as its speech owner.
+An instruction is adopted only while foreground voice is allowed; while
+the screen is hidden it is held for later. The device checks readiness,
+cancellation and permission again before speaking. The empty instruction
+has no key, text or authority, so no offer can speak under it.
 
 ```quint
 type GuidanceInstruction = { instructionId: int, maneuverKey: int, textId: int, authorityId: int }
@@ -88,18 +81,13 @@ pure val weight_offerGuidance = 7
 ### A visibility interruption owes only the exact current instruction
 
 Owing an instruction requires its identity to be the latest, voice
-enabled and a current speech context. The context compares the
-session object, inference mode, provider revision, Cloud environment,
-session and credential IDs, connection mode and a closed connection
-sheet. The model takes the full context equality as a symbolic
-identity and keeps the sheet condition separately.
-
-The visibility listener removes itself at the first visible return
-and consumes the owed instruction. It reissues only that instruction
+enabled and the same speech context: session, inference mode, provider
+revision, Cloud account and connection, with the connection sheet closed.
+The first return to the screen consumes the owed instruction. It reissues only that instruction
 under the still-current context, then records a new attempt.
 While a speech is in progress, hiding records an interruption
-condition without assuming the speaker stopped. A current
-`AbortError` after a hidden interval can owe the instruction if the
+condition without assuming the speaker stopped. A current abort
+rejection after a hidden interval can owe the instruction if the
 speech signal itself remains live and the context is still current.
 If the same-key text changed while that speech ran, the exact older
 instruction is ineligible to be owed. A visible return after a
@@ -158,8 +146,3 @@ pure val weight_hideGuidance = 4
 pure val weight_showGuidance = 4
 pure val weight_settleGuidance = 4
 ```
-
-A consumer's journey exercises its own and the maps client's classes
-with a controlled application speaker and connection. Its named scenarios, witness traces and random walks
-do not exercise actual Android text-to-speech, the user's device
-speaker or a live provider.

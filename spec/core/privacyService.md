@@ -1,8 +1,12 @@
 # PII service queue and promise ownership
 
-The source is `packages/core/src/services/pii-scrub.ts:58-61,89-134,138-198,203-317,404-452`. This aggregate owns the actual [BatchQueue](./batchQueue.md), all content/ruleset job identities, the shared committed-marker set, lazy drain-start and stop promise identities. Every job embeds [PII scrub settlement](./privacy.md) for its own marker/pseudonym/notification outcome; the component's lifecycle fields are driven only by this service. The queue's per-item processor permits two simultaneous jobs, including two initial misses for the same content key. Keys represent complete content/ruleset identity, not raw private text.
+The PII scrub service of `services/pii-scrub.ts`: the [batch queue](./batchQueue.md), every content/ruleset job, the shared committed-marker set and the lazy start and stop promises. Each job embeds one [PII scrub](./privacy.md) settlement. The per-item processor permits two simultaneous jobs, including two initial misses for one key. Keys stand for complete content/ruleset identity, never raw private text.
 
 ## Story: Share service startup while keeping independent scrub attempts
+
+> As an operator, I want one shared service startup and stop while each
+> content/ruleset job keeps its own scrub attempt, so that concurrent jobs
+> neither block nor overwrite each other.
 
 ### Each marker lookup captures its own result before queue admission
 
@@ -43,11 +47,11 @@ pure def startResult(s: PrivacyService, ok: bool): PrivacyService = { ...s, queu
 
 ### Each processor attempt preserves its own marker and retry ownership
 
-Source review correction: attempt failure is possible only before the marker is acknowledged. A later observer failure cannot revoke the committed marker or reopen processing.
+Attempt failure is possible only before the marker is acknowledged. A later observer failure cannot revoke the committed marker or reopen processing.
 
 Discovered by the proof: starting an urgent flush item and settling a processor ticket require the same queued or running job owner. A missing lookup or an already disposed local job cannot advance work. The model checks the shared marker again when a queued attempt starts. Earlier simultaneous misses may both already be active and can both finish. Terminal queue rejection records failure without inventing a committed marker. Publication becomes shared only after the exact marker acknowledgement.
 
-Discovered by simulation: late bookkeeping belongs to collection of the detached processor result, not an independent public event. An in-flight scrub retains its work during detachment. The collector disposes only after the batch records that ticket's terminal processor outcome, the job is idle, and no further fallback owns that job. Settled counts and marker evidence remain.
+Late bookkeeping belongs to collection of the detached processor result, not an independent public event. An in-flight scrub retains its work during detachment. The collector disposes only after the batch records that ticket's terminal processor outcome, the job is idle, and no further fallback owns that job. Settled counts and marker evidence remain.
 
 ```quint
 pure def terminalFailure(failureCount: int, work: P::Privacy): P::Privacy = { ...work, phase: P::Idle, failed: failureCount, attempts: 0 }

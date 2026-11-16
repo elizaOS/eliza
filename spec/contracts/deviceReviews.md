@@ -82,8 +82,9 @@ pure def lawAvailabilityReadIsBounded(windowStart: int, windowEnd: int, calendar
 An event marked free never makes the owner busy; it is only counted. A
 tentative event makes the owner busy and is flagged. An event of no length
 occupies no time. Each busy interval is cut to the window, and the owner
-is busy exactly when some interval remains. The calendars read are counted,
-never named.
+is busy exactly when some interval remains. The answer repeats the
+requested start, end and timezone. The calendars read are counted, never
+named.
 
 ```quint
 type AvailabilityKind = BusyTime | FreeTime | TentativeTime
@@ -111,6 +112,17 @@ pure def lawBusyIntervalsStayInsideTheWindow(windowStart: int, windowEnd: int, e
 pure def lawTentativeEventsAreBusyAndFlagged(windowStart: int, windowEnd: int, e: AvailabilityEvent): bool =
   (e.availability == TentativeTime and occupiesWindow(windowStart, windowEnd, e)) implies
     busyIntervals(windowStart, windowEnd, List(e)) == List({ busyFrom: if (e.startsAt > windowStart) e.startsAt else windowStart, busyUntil: if (e.endsAt < windowEnd) e.endsAt else windowEnd, tentative: true })
+type AvailabilityAnswer = { answerStart: int, answerEnd: int, answerZone: str, answerBusy: bool, intervals: List[BusyInterval] }
+pure def availabilityAnswerValid(windowStart: int, windowEnd: int, zone: str, events: List[AvailabilityEvent], fb: AvailabilityAnswer): bool =
+  zone != "" and fb.answerStart == windowStart and fb.answerEnd == windowEnd and fb.answerZone == zone and
+  fb.intervals == busyIntervals(windowStart, windowEnd, events) and fb.answerBusy == ownerBusy(windowStart, windowEnd, events)
+pure val zoneValues = Set("UTC", "")
+pure val fbValues: Set[AvailabilityAnswer] = Set(
+  { answerStart: 0, answerEnd: 60, answerZone: "UTC", answerBusy: true, intervals: List({ busyFrom: 0, busyUntil: 60, tentative: false }) },
+  { answerStart: 0, answerEnd: 60, answerZone: "UTC", answerBusy: false, intervals: List() },
+  { answerStart: 0, answerEnd: 60, answerZone: "UTC", answerBusy: true, intervals: List() })
+pure def lawAnswerIsBusyExactlyWhenItHasIntervals(windowStart: int, windowEnd: int, zone: str, e: AvailabilityEvent, fb: AvailabilityAnswer): bool =
+  availabilityAnswerValid(windowStart, windowEnd, zone, List(e), fb) implies fb.answerBusy == (fb.intervals.length() > 0)
 ```
 
 ### A notes search shares only the note the owner chose, or only the titles the owner reviewed
@@ -179,19 +191,27 @@ pure def lawResolvedFieldsComeFromTheProposal(t: NamedTarget, chosen: str): bool
 ### A named-edit answer keeps the reviewed scope and the resolved operation
 
 The answer names the same review, action and record name as the request.
-It either reports no match, or reports the owner's choice with exactly the
-operation the request resolves to on the chosen record.
+It either reports no match, with no operation and no record, or reports the
+owner's choice of a record with exactly the operation the request resolves
+to on it.
 
 ```quint
 type NamedAnswer = { answerReview: DeviceReviewType, answerAction: NamedAction, answerName: str, ownerChosen: bool, exact: ExactOperation }
+pure val noSelection: ExactOperation = { operation: "", target: "", exactFields: "" }
 pure def namedAnswerValid(t: NamedTarget, answer: NamedAnswer): bool =
   namedTargetValid(t) and answer.answerReview == t.targetReview and answer.answerAction == t.namedAction and answer.answerName == t.recordName and
-  (not(answer.ownerChosen) or answer.exact == resolveNamedTarget(t, answer.exact.target))
+  (if (answer.ownerChosen) answer.exact.target != "" and answer.exact == resolveNamedTarget(t, answer.exact.target)
+  else answer.exact == noSelection)
 pure val answerValues: Set[NamedAnswer] = Set(
   { answerReview: NotesNamedReview, answerAction: UpdateNamed, answerName: "Groceries", ownerChosen: true, exact: { operation: "notes_update", target: "note7", exactFields: "milk" } },
   { answerReview: NotesNamedReview, answerAction: UpdateNamed, answerName: "Groceries", ownerChosen: true, exact: { operation: "notes_update", target: "note7", exactFields: "eggs" } },
   { answerReview: NotesNamedReview, answerAction: DeleteNamed, answerName: "Groceries", ownerChosen: true, exact: { operation: "notes_delete", target: "note7", exactFields: "" } },
-  { answerReview: NotesNamedReview, answerAction: UpdateNamed, answerName: "Groceries", ownerChosen: false, exact: { operation: "", target: "", exactFields: "" } })
+  { answerReview: NotesNamedReview, answerAction: UpdateNamed, answerName: "Groceries", ownerChosen: false, exact: noSelection },
+  { answerReview: NotesNamedReview, answerAction: UpdateNamed, answerName: "Groceries", ownerChosen: false, exact: { operation: "notes_update", target: "note7", exactFields: "milk" } })
+pure def lawNoMatchCarriesNoRecord(t: NamedTarget, answer: NamedAnswer): bool =
+  (namedAnswerValid(t, answer) and not(answer.ownerChosen)) implies answer.exact == noSelection
+pure def lawSelectedRecordNeedsOwnerChoice(t: NamedTarget, answer: NamedAnswer): bool =
+  (namedAnswerValid(t, answer) and answer.exact.target != "") implies answer.ownerChosen
 pure def lawAnswerCannotChangeTheReviewedEdit(t: NamedTarget, answer: NamedAnswer): bool =
   (namedAnswerValid(t, answer) and answer.ownerChosen) implies
     (answer.exact.operation == exactOperationType(t) and answer.answerName == t.recordName and (t.namedAction == UpdateNamed implies answer.exact.exactFields == t.proposedFields))

@@ -6,6 +6,7 @@ lemma dispatchHandoff_ensures(s: Navigation, id: string, handledByShell: bool, h
   ensures (inv(s) ==> alwaysViewQueueBounded(dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler)))
   ensures (inv(s) ==> alwaysViewClaimResolvedOnce(dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler)))
   ensures (inv(s) ==> alwaysQueuedViewRequestsWait(dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler)))
+  ensures (inv(s) ==> alwaysOnlyMountedListenersHoldRequests(dispatchHandoff(s, id, handledByShell, handlerNavigates, pathAfterHandler)))
 {
   if inv(s) {
     var prior := pendingAt(s, id);
@@ -118,4 +119,65 @@ lemma NavigationDropOneKeepsKeys<T, K>(rows: seq<T>, kept: seq<T>, key: T -> K)
       assert kept[i] == rows[i+1] && kept[j] == rows[j+1];
     }
   }
+}
+
+lemma unmountListener_ensures(s: Navigation, listener: int)
+  ensures (inv(s) ==> canUnmountListener(s, listener) ==> alwaysBoundedNavigationIndexes(unmountListener(s, listener)))
+  ensures (inv(s) ==> canUnmountListener(s, listener) ==> alwaysUniqueNavigationIndexes(unmountListener(s, listener)))
+  ensures (inv(s) ==> canUnmountListener(s, listener) ==> alwaysViewClaimsNumbered(unmountListener(s, listener)))
+  ensures (inv(s) ==> canUnmountListener(s, listener) ==> alwaysViewQueueDistinct(unmountListener(s, listener)))
+  ensures (inv(s) ==> canUnmountListener(s, listener) ==> alwaysViewQueueBounded(unmountListener(s, listener)))
+  ensures (inv(s) ==> canUnmountListener(s, listener) ==> alwaysViewClaimResolvedOnce(unmountListener(s, listener)))
+  ensures (inv(s) ==> canUnmountListener(s, listener) ==> alwaysQueuedViewRequestsWait(unmountListener(s, listener)))
+  ensures (inv(s) ==> canUnmountListener(s, listener) ==> alwaysOnlyMountedListenersHoldRequests(unmountListener(s, listener)))
+{
+  if inv(s) && canUnmountListener(s, listener) {
+    var after := unmountListener(s, listener);
+    assert |after.views.requests| == |s.views.requests|;
+    forall i | 0 <= i < |s.views.requests|
+      ensures after.views.requests[i].request == s.views.requests[i].request && waiting(after.views.requests[i]) == waiting(s.views.requests[i])
+    {}
+    ViewNumberedFilter(s); ViewNumberedFilter(after);
+    forall c | c in after.views.requests
+      ensures c.request >= 1 && c.request <= after.views.admitted && |ProofLib.Filter((other: ViewClaim) => (other.request == c.request), after.views.requests)| == 1
+    {
+      var i :| 0 <= i < |after.views.requests| && after.views.requests[i] == c;
+      assert s.views.requests[i] in s.views.requests;
+      ProofLib.FilterLengthPointwise((other: ViewClaim) => (other.request == c.request), (other: ViewClaim) => (other.request == c.request), s.views.requests, after.views.requests);
+    }
+    forall request | request in after.views.queue
+      ensures waiting(claimAt(after.views, request))
+    {
+      ViewClaimsKeepWaiting(s.views, after.views, request);
+    }
+    ViewActiveAfterUnmount(s, listener);
+    forall a | a in after.views.attempts && a.phase.Awaiting?
+      ensures a.listener in after.views.active
+    {
+      var i :| 0 <= i < |after.views.attempts| && after.views.attempts[i] == a;
+      assert s.views.attempts[i] in s.views.attempts;
+      ProofLib.FilterMember((set_x: int) => !((set_x in [listener])), s.views.active, a.listener);
+    }
+  }
+}
+
+lemma ViewActiveAfterUnmount(s: Navigation, listener: int)
+  ensures unmountListener(s, listener).views.active == ProofLib.Filter((set_x: int) => !((set_x in [listener])), s.views.active)
+{}
+
+lemma ViewNumberedFilter(s: Navigation)
+  ensures alwaysViewClaimsNumbered(s) == ((forall c :: c in s.views.requests ==> c.request >= 1 && c.request <= s.views.admitted && |ProofLib.Filter((other: ViewClaim) => (other.request == c.request), s.views.requests)| == 1) && (forall request :: request in s.views.queue ==> request >= 1 && request <= s.views.admitted))
+{}
+
+lemma ViewClaimLookup(v: ViewClaims, request: int)
+  ensures claimAt(v, request) == (if 0 < |ProofLib.Filter((c: ViewClaim) => (c.request == request), v.requests)| then ProofLib.Filter((c: ViewClaim) => (c.request == request), v.requests)[0] else emptyClaim)
+{}
+
+lemma ViewClaimsKeepWaiting(before: ViewClaims, after: ViewClaims, request: int)
+  requires |before.requests| == |after.requests|
+  requires forall i :: 0 <= i < |before.requests| ==> after.requests[i].request == before.requests[i].request && waiting(after.requests[i]) == waiting(before.requests[i])
+  ensures waiting(claimAt(after, request)) == waiting(claimAt(before, request))
+{
+  ViewClaimLookup(before, request); ViewClaimLookup(after, request);
+  ProofLib.FilterPointwise((c: ViewClaim) => (c.request == request), (c: ViewClaim) => (c.request == request), (x: ViewClaim, y: ViewClaim) => waiting(x) == waiting(y), before.requests, after.requests);
 }

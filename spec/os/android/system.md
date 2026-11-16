@@ -1,22 +1,22 @@
 # Native system contracts
 
 A consumer's host descriptor admits `eliza-system` from
-`plugins/plugin-native-system/android` ([bridge composition](./bridge.md)).
-`MainActivity` registers the consumer's system, reset and device plugins.
-The Android Settings routes, native reset and problem log are release
-routes. Android shade dispatch is launcher only. The browser shade
-stand-in requires the development surfaces flag. The wake listener's own
-entry authority is [voice wake](../voice/wake.md); this spec owns the
-stop evidence the system bridge reports for it.
+`plugins/plugin-native-system/android` ([bridge composition](./bridge.md)),
+and its `MainActivity` registers the system, reset and device plugins. The
+Android Settings routes, native reset and problem log ship in release
+builds; Android shade dispatch only in builds that manage the device.
+[Voice wake](../voice/wake.md) owns the wake listener's entry, status and
+the stop the system bridge requests at startup.
 
 ## Story: Review and erase the app's installed data safely
 
-> As the person, I want to review and erase the app's installed data
-> safely.
+> As the person, I want to erase the app's data on this device only after
+> I reviewed it and proved it is me, so that a reset is never accidental
+> and never half done.
 
 ### A confirmed reset keeps old startup fenced until Android clears the app
 
-The consumer's Settings requests the native `review()` bridge. Only one review
+Settings requests the native `review()` bridge. Only one review
 can be open. Native disclosure and a fresh successful Android device
 credential challenge must belong to that review and the same live
 Activity. Cancellation, Activity destruction, an obsolete callback or
@@ -25,8 +25,8 @@ accepts cancelled or unavailable with a nonblank message of at most
 500 characters. A rejected or malformed bridge response is unavailable.
 A renderer result never proves deletion.
 
-The installed reset marker and attempt file, named for the consumer,
-live in device-protected no-backup storage. The app can reject before
+The reset marker and attempt file live in device-protected no-backup
+storage. The app can reject before
 creating the marker when a trusted listener is
 installed but cannot be reached. After the marker is durable, other
 app startup stops before providers or background workers. The
@@ -39,22 +39,18 @@ There are at most three automatic attempts per 60-second window. The person
 can retry through the native recovery surface. Preserve the marker and
 scope bytes when the listener has not acknowledged or Android refuses.
 
-The app's bounded pre-dispatch work handles its local Calendar and
-device Cloud sign-in while credentials still exist. Interactive
-dispatch is scheduled once, by worker completion or an 8-second
-deadline. Visible startup recovery budgets up to 4 seconds before
-dispatch and background startup does not wait on the network.
-Listener reset acknowledgement is required immediately before calling
+Bounded pre-dispatch cleanup runs while credentials still exist, and
+background startup never waits on the network for it. Listener reset
+acknowledgement is required immediately before calling
 Android's package and user scoped clear. Android acceptance is a
 dispatch receipt. A replacement process confirms fresh storage only
 from the removed marker and fresh scope. Android resets the app alone
 and leaves other apps, device-wide files and Cloud data untouched.
 
-The model abstracts a successful durable marker write and a serialized
-attempt reservation as separate steps. It records a surviving OPEN marker
-after a process exit when Android accepted but did not clear the scope. Filesystem atomicity, process
-exits, parallel worker scheduling and restart visibility are adapter
-obligations. The consumer's reference model is `ResetRecovery`.
+The model takes the durable marker write and the serialized attempt
+reservation as separate steps, and records a surviving OPEN marker after a
+process exit when Android accepted but did not clear the scope. Filesystem
+atomicity, process exits and restart visibility are adapter obligations.
 
 ```quint
 type ResetPhase = Resting | Disclosure | Credential | Confirmed | PendingReset | AttemptOpen | Recover | Dispatched | Fresh
@@ -106,23 +102,17 @@ pure def sometimesResetRecovery(s: Reset): bool = s.phase == Recover and s.marke
 pure def sometimesFreshAfterDispatch(s: Reset): bool = s.phase == Fresh and not(s.marker)
 pure val reviewIdValues = Set(1, 2, 3, 4)
 pure val attemptIdValues = Set(2, 3, 4, 5, 6)
-pure val weight_confirmDisclosure = 6
-pure val weight_credentialResult = 6
-pure val weight_recordMarker = 6
-pure val weight_reserveAttempt = 6
-pure val weight_closeAttempt = 6
-pure val weight_observeFresh = 6
 ```
 
 ## Story: See why the app failed without exposing personal data
 
-> As the person, I want to see why the app failed without exposing
-> personal data.
+> As the person, I want to see why the app failed without the log
+> exposing anything I said or stored, so that I can share it safely.
 
 ### Problem entries are projected through the native and renderer allowlists
 
 The main application process installs the native log and delegates to
-the previous uncaught handler. The consumer's device bridge routes reads,
+the previous uncaught handler. The device bridge routes reads,
 renderer failure records and clear through a serialized diagnostics worker.
 A retired worker rejects unavailable. Native records include uncaught
 class and root class, safe process suffix and main/background thread;
@@ -131,7 +121,7 @@ include an Android reason and safe process label. Input, display and
 export pass allowlists. Messages, stacks, URLs, component trees and user
 content have no output fields. At most 50 entries are retained for
 30 days. The native file read cap is 256 KiB. The renderer accepts usable
-timestamps up to 30 days ahead under its pinned clock policy and
+timestamps up to 30 days ahead and
 normalizes Java and JavaScript class names. It suppresses matching
 renderer kind/class repeats within a minute of the last record.
 A consumer may also permit a finite v1 Cloud inference diagnostic vocabulary,
@@ -142,10 +132,8 @@ Native clear removes journal rows and keeps the last exit cursor so an
 old Android exit does not reappear. Clear success also needs
 the browser copy write, while preserving the last seen inference time.
 An unavailable read in Settings is distinct from an observed empty log.
-The reference `NativeCrashJournal` models native append, exit ingest,
-redaction, restart and clear. This specification establishes field
-observation and retention policy. Actual journal encoding, ordering,
-exit history APIs and clear durability require the native fixtures.
+Journal encoding, ordering, exit history and clear durability are
+adapter obligations.
 
 ```quint
 type CrashEntrySource = RendererFailure | NativeUncaught | AndroidExit | CloudInference | UnknownEntry
@@ -171,7 +159,8 @@ pure def lawNativeClearRequiresBoth(clearedNative: bool, clearedLocal: bool): bo
 ## Story: Open the actual Android surface and see what Android reports
 
 > As the person, I want a settings shortcut to open the real Android
-> screen and show what Android reports.
+> screen and show only what Android reports, so that the app never claims
+> a system change it did not see.
 
 ### Android Settings and shade hand off without claiming a completed system change
 
@@ -182,26 +171,17 @@ a separate explicit system Settings home. Specific launch succeeds
 before any fallback. Only mobile, airplane and dnd may try their
 allowlisted broader page when the first fails. Notification Settings
 carries the app's package extra and privacy uses the app's package URI.
-The launcher opens specific page handoffs in a separate Android task.
+A device-managing build opens specific page handoffs in a separate Android task.
 The host serializes slider handoffs and suppresses repeated events inside
-a two-second window. A rejected launch
-has no opened receipt. A successful launch identifies the page and
-whether the actual destination was specific. Existing role and switch
-labels never infer off or absence from a missing read. Browser settings
-simulators cannot grant native system permission.
+a two-second window. A rejected launch has no opened receipt; a successful
+one identifies the page and whether it was the specific destination. A
+missing read never shows a role or switch as off or absent.
 
-An eligible empty Home pull starts at or below 44 canvas pixels, with
-no edit, keyboard, scroll offset, app, drawer, lock, assistant or
-expanded chat or voice. Downward motion strictly exceeds 46 pixels and
-one and a half times its horizontal magnitude. This rule complements
-the consumer's shell gesture arbitration. The launcher can
-also ask through its visible native control. The native side rechecks a
-present Activity and its focus on the UI thread. A standalone build
-does not ask. The renderer waits five seconds for a response and ignores
-a late reply. A launcher needs EXPAND_STATUS_BAR, then Android's native
-status bar service must accept the call. Opened is dispatch acceptance
-and every refusal renders the fallback. The development simulation
-never substitutes for the Android shade in a native build.
+Opening the Android shade rechecks a present, focused Activity on the UI
+thread; a build that does not manage the device never asks. It needs
+EXPAND_STATUS_BAR, and then Android's status bar service must accept the
+call. Opened means only that Android accepted the dispatch, and every
+refusal shows the fallback.
 
 ```quint
 type SettingsPage = SystemHome | Accounts | Wifi | Bluetooth | Mobile | Airplane | Location | Display | Sound | Battery | About | Developer | AppNotifications | AppPrivacy | DefaultApps | Dnd | UnsupportedPage
@@ -211,47 +191,12 @@ pure def settingsHandoff(page: SettingsPage, primaryStarted: bool, fallbackStart
   if (page == UnsupportedPage) UnavailablePage else if (primaryStarted) SpecificPage
   else if (allowsBroader(page) and fallbackStarted) BroaderPage else UnavailablePage
 type ShadeDispatch = NotInFront | Standalone | PermissionMissing | ShadeUnsupported | ShadeOpened
-pure def shadeDispatch(focused: bool, launcherBuild: bool, hasPermission: bool, androidAccepted: bool): ShadeDispatch =
-  if (not(focused)) NotInFront else if (not(launcherBuild)) Standalone else if (not(hasPermission)) PermissionMissing
+pure def shadeDispatch(focused: bool, managesDevice: bool, hasPermission: bool, androidAccepted: bool): ShadeDispatch =
+  if (not(focused)) NotInFront else if (not(managesDevice)) Standalone else if (not(hasPermission)) PermissionMissing
   else if (androidAccepted) ShadeOpened else ShadeUnsupported
 pure def lawBroaderOnlyAfterSpecificFailure(page: SettingsPage, primaryStarted: bool, fallbackStarted: bool): bool =
   settingsHandoff(page, primaryStarted, fallbackStarted) == BroaderPage implies allowsBroader(page) and not(primaryStarted) and fallbackStarted
-pure def lawShadeOnlyReportsAccepted(focused: bool, launcherBuild: bool, hasPermission: bool, androidAccepted: bool): bool =
-  shadeDispatch(focused, launcherBuild, hasPermission, androidAccepted) == ShadeOpened implies
-    focused and launcherBuild and hasPermission and androidAccepted
-```
-
-## Story: Turn the wake listener off and know whether it really stopped
-
-> As the person, I want the app to tell me the wake listener is off only
-> when the listener confirmed it, and never to start listening on its own.
-
-### Only a confirmed absent listener or a saved OFF receipt counts as stopped
-
-Ported from the producer's `ListenerStopEvidence` model. App startup asks
-the installed listener to turn off, with one native request per stop.
-Only a reply in time that reports the listener absent, or a saved OFF
-receipt with both listening and microphoneOpen false, confirms the stop.
-Bridge absence, timeout, failure, an unknown, active or contradictory
-reply, and a reply after the stop settled leave a visible unconfirmed
-stop. The system bridge can read status, pause, turn off and hand off to
-the installed listener's own settings. It never enables or resumes
-capture. The trusted native package must match its signer and control
-permission, and an enabled exported settings activity must belong to
-that package and UID.
-
-```quint
-type ListenerReply = ListenerAbsent | ListenerSavedOff | ListenerUnknown | ListenerActive | ListenerContradictory
-type StopSettlement = StopByReply | StopTimedOut | StopFailed
-type ListenerControl = ReadListener | PauseListener | TurnListenerOff | OpenListenerSettings
-pure def listenerStopConfirmed(settlement: StopSettlement, reply: ListenerReply, listening: bool, microphoneOpen: bool): bool =
-  settlement == StopByReply and (reply == ListenerAbsent or (reply == ListenerSavedOff and not(listening or microphoneOpen)))
-pure def controlStartsCapture(control: ListenerControl): bool = false
-pure def lawUnsafeReplyNeverConfirms(settlement: StopSettlement, reply: ListenerReply, listening: bool, microphoneOpen: bool): bool =
-  (reply == ListenerUnknown or reply == ListenerActive or reply == ListenerContradictory) implies not(listenerStopConfirmed(settlement, reply, listening, microphoneOpen))
-pure def lawTimeoutNeverConfirms(reply: ListenerReply, listening: bool, microphoneOpen: bool): bool =
-  not(listenerStopConfirmed(StopTimedOut, reply, listening, microphoneOpen)) and not(listenerStopConfirmed(StopFailed, reply, listening, microphoneOpen))
-pure def lawNoStopClaimWithOpenMicrophone(reply: ListenerReply, listening: bool): bool =
-  reply != ListenerAbsent implies not(listenerStopConfirmed(StopByReply, reply, listening, true))
-pure def lawSystemBridgeNeverStartsCapture(control: ListenerControl): bool = not(controlStartsCapture(control))
+pure def lawShadeOnlyReportsAccepted(focused: bool, managesDevice: bool, hasPermission: bool, androidAccepted: bool): bool =
+  shadeDispatch(focused, managesDevice, hasPermission, androidAccepted) == ShadeOpened implies
+    focused and managesDevice and hasPermission and androidAccepted
 ```

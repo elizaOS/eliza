@@ -8,14 +8,14 @@ or hosted, and it stores the owner's records in the agent's database.
 
 The scheduled-task runner, the agent's approvals and the device's native
 reminders are owned elsewhere ([agent scheduled tasks](../agent/scheduledTasks.md),
-[device reminder journal](../agent/deviceActions/reminderJournal.md),
+[device action custody](../agent/deviceActions/execution.md),
 [device reminders](../os/android/reminders.md)); the specs here say what
 the assistant asks of them and what it keeps itself. Household, family,
 travel, health, bill and blocking services are not part of this package.
 
 | Area | Specification |
 | --- | --- |
-| Creating reminders the owner asked for | [Reminders](./reminders.md) |
+| Creating reminders the owner asked for | [Reminders](./reminders.md), [reminder presentation](./reminderPresentation.md) |
 | The owner's local time zone | [Time zone](./timezone.md) |
 | Follow-ups on open approvals | [Follow-ups](./followups.md) |
 | Check-in summaries | [Check-ins](./checkin.md) |
@@ -23,3 +23,4 @@ travel, health, bill and blocking services are not part of this package.
 | To-dos | [To-dos](./todos.md) |
 | Routines and their occurrences | [Routines](./routines.md) |
 | The daily dossier | [Scheduled dossiers](./scheduledDossiers.md) |
+| Evaluating finished turns in batches | [Evaluator runner](./evaluatorRunner.md), [durable progress](./evaluatorProgress.md), [evidence pages](./evaluatorEvidencePages.md) |

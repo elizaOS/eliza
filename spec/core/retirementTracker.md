@@ -1,10 +1,13 @@
 # Retirement promise identities and failures
 
-The source is `packages/core/src/runtime/retirement.ts` at `72fed7e4069ecd35d61d886ab6eec5c02c137517`. This owner retains the exact pending promise identities, before-close classification, append-only failure records and run-admission generation. Rejection of a run does not itself record a retirement failure; callers explicitly call recordFailure.
+Retirement promise identities of `runtime/retirement.ts`: pending work, before-close classification, append-only failure records and the run-admission generation. Rejecting a run records no failure by itself; callers call `recordFailure`.
 
 ## Story: Drain every owned retirement operation and report retained failures
 
-As a shutdown caller I wait for original operations and work they spawn. A before-close drain considers only before-close work and failures. Every run increments generation before invoking user code; completion and recorded failures do not increment it.
+> As a shutdown caller, I want to wait for original operations and the work
+> they spawn, so that shutdown reports every retained failure.
+
+A before-close drain considers only before-close work and failures. Every run increments generation before invoking user code; completion and recorded failures do not increment it.
 
 ### Promise publication precedes invocation and drains re-snapshot after settlement
 

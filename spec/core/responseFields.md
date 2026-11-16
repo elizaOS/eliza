@@ -1,10 +1,56 @@
 # Response-field registry and dispatch
 
-Source `runtime/response-handler-fields.ts` defines registration, schema caching, prompt slices, activation, parsing and ordered field handlers. Its implementation records ordinary parse/activation/handler failures and continues siblings. `TurnAbortedError` escapes immediately. The preserved field traces and `fieldErrors` expose these failures to the caller.
+Structured response fields of `runtime/response-handler-fields.ts`: which lines are outer fields, registration, schema caching, activation, parsing and ordered handlers. Ordinary parse, activation and handler failures are recorded and siblings continue; `TurnAbortedError` escapes at once. Field traces and `fieldErrors` expose the failures to the caller.
+
+## Story: Parse outer fields only
+
+> As a model-output consumer, I want fenced examples kept as content while
+> genuine outer response fields stay readable, so that quoted instructions
+> are never promoted to fields.
+
+The shell recognizes each Markdown line, keeping fence character, opening length, closing-line syntax and info-string behavior.
+
+### Only a matching fence of sufficient length closes quoted content
+
+Backtick and tilde fences close only with their own delimiter and at least the opening length. Inline markers, shorter closers, other fence kinds and content lines preserve the active fence. Only fields encountered outside a fence belong to the response envelope.
+
+```quint
+type FenceKind = NoFence | Backtick | Tilde
+type FenceLine = { marker: FenceKind, length: int, opens: bool, closes: bool, name: str, text: str }
+type FenceParser = { loaded: bool, kind: FenceKind, width: int, lines: List[FenceLine], cursor: int, outerFields: List[FenceLine], quotedFields: List[FenceLine] }
+pure val idleFences: FenceParser = { loaded: false, kind: NoFence, width: 0, lines: List(), cursor: 0, outerFields: List(), quotedFields: List() }
+pure val noLine: FenceLine = { marker: NoFence, length: 0, opens: false, closes: false, name: "", text: "" }
+pure def canLoadLines(f: FieldDispatch): bool = not(f.fences.loaded)
+pure def loadLines(f: FieldDispatch, lines: List[FenceLine]): FieldDispatch = { ...f, fences: { ...idleFences, loaded: true, lines: lines } }
+pure def afterLine(p: FenceParser): FenceParser = {
+  val line = p.lines.nthOr(p.cursor, noLine)
+  val opening = p.kind == NoFence and line.opens and line.marker != NoFence and line.length >= 3
+  val closing = p.kind != NoFence and line.closes and line.marker == p.kind and line.length >= p.width
+  { ...p, cursor: p.cursor + 1, kind: if (opening) line.marker else if (closing) NoFence else p.kind, width: if (opening) line.length else if (closing) 0 else p.width, outerFields: if (line.name != "" and p.kind == NoFence and not(opening)) p.outerFields.append(line) else p.outerFields, quotedFields: if (line.name != "" and p.kind != NoFence and not(closing)) p.quotedFields.append(line) else p.quotedFields }
+}
+pure def canConsumeLine(f: FieldDispatch): bool = f.fences.loaded and f.fences.cursor < f.fences.lines.length()
+pure def consumeLine(f: FieldDispatch): FieldDispatch = { ...f, fences: afterLine(f.fences) }
+pure def alwaysFenceWidthMatchesKind(f: FieldDispatch): bool = (f.fences.kind == NoFence and f.fences.width == 0) or (f.fences.kind != NoFence and f.fences.width >= 3)
+pure def alwaysCursorBounded(f: FieldDispatch): bool = f.fences.cursor >= 0 and f.fences.cursor <= f.fences.lines.length()
+pure def stepQuotedFieldNeverBecomesOuter(before: FieldDispatch, via: str, after: FieldDispatch): bool = via == "consumeLine" and before.fences.kind != NoFence implies after.fences.outerFields == before.fences.outerFields
+pure def sometimesOuterField(f: FieldDispatch): bool = f.fences.outerFields.length() > 0
+pure def sometimesQuotedField(f: FieldDispatch): bool = f.fences.quotedFields.length() > 0
+pure val backFour: FenceLine = { ...noLine, marker: Backtick, length: 4, opens: true, closes: true }
+pure val backThree: FenceLine = { ...backFour, length: 3 }
+pure val tildeThree: FenceLine = { ...backThree, marker: Tilde }
+pure val infoThree: FenceLine = { ...backThree, closes: false, text: "lang" }
+pure val outerLine: FenceLine = { ...noLine, name: "reply", text: "outside" }
+pure val quotedLine: FenceLine = { ...noLine, name: "reply", text: "quoted" }
+pure val linesValues: Set[List[FenceLine]] = Set(List(noLine, outerLine), List(backFour, backThree, quotedLine, backFour, outerLine), List(backThree, infoThree, quotedLine, backThree, outerLine), List(backThree, tildeThree, quotedLine, backThree, outerLine), List(tildeThree, quotedLine, tildeThree, outerLine))
+pure val fair_consumeLine = "weak"
+pure def leadsToLoadedLinesConsumed(f: FieldDispatch, later: FieldDispatch): bool = f.fences.loaded implies later.fences.cursor == f.fences.lines.length()
+```
 
 ## Story: Extend structured responses without hiding sibling failures
 
-As a plugin, I want one named field contribution, a stable required schema and handlers that see all parsed sibling values.
+> As a plugin, I want one named field contribution, a stable required schema
+> and handlers that see all parsed sibling values, so that one field's
+> failure never hides another's.
 
 ### Valid registration is first-wins and invalidates full-schema caches only when changed
 
@@ -12,8 +58,8 @@ Registration validates name, description and truthy object schema before duplica
 
 ```quint
 type ParseOutcome = ParsedOk | InactiveField | SoftParseFailure | HardParseFailure | CancelledField
-type FieldDispatch = { registered: Set[str], definitions: str -> int, priorities: str -> int, cacheValid: bool, inFlight: bool, snapshot: Set[str], snapshotPriorities: str -> int, pending: Set[str], ready: Set[str], attempted: Set[str], handled: Set[str], errors: Set[str], preempted: bool, aborted: bool }
-pure val initial: FieldDispatch = { registered: Set(), definitions: Map(), priorities: Map(), cacheValid: false, inFlight: false, snapshot: Set(), snapshotPriorities: Map(), pending: Set(), ready: Set(), attempted: Set(), handled: Set(), errors: Set(), preempted: false, aborted: false }
+type FieldDispatch = { registered: Set[str], definitions: str -> int, priorities: str -> int, cacheValid: bool, inFlight: bool, snapshot: Set[str], snapshotPriorities: str -> int, pending: Set[str], ready: Set[str], attempted: Set[str], handled: Set[str], errors: Set[str], preempted: bool, aborted: bool, fences: FenceParser }
+pure val initial: FieldDispatch = { registered: Set(), definitions: Map(), priorities: Map(), cacheValid: false, inFlight: false, snapshot: Set(), snapshotPriorities: Map(), pending: Set(), ready: Set(), attempted: Set(), handled: Set(), errors: Set(), preempted: false, aborted: false, fences: idleFences }
 pure def canRegisterField(f: FieldDispatch, name: str, descriptionPresent: bool, schemaObject: bool): bool = name != "" and descriptionPresent and schemaObject
 pure def registerField(f: FieldDispatch, name: str, descriptionPresent: bool, schemaObject: bool, definition: int, priority: int): FieldDispatch = if (f.registered.contains(name)) f else { ...f, registered: f.registered.union(Set(name)), definitions: f.definitions.put(name, definition), priorities: f.priorities.put(name, priority), cacheValid: false }
 pure def unregisterField(f: FieldDispatch, name: str): FieldDispatch = if (f.registered.contains(name)) { ...f, registered: f.registered.exclude(Set(name)), cacheValid: false } else f

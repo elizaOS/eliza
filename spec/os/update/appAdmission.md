@@ -1,15 +1,11 @@
 # Android app update admission and commit freshness
 
 An installed app update is admitted by the os package's update trust
-owner. Its lane floors and decisions are the authority the native trust
-binding exposes to the updater, and it replaces the earlier Go
-implementation. The [installation journal](./install.md) separately checks
-package signer, digests, versions, ABI and the exact prepared pair before
-calling freshness. This model starts at authenticated descriptor,
-qualified observation and enrollment validation. A single lane is an
-instantiable owner, so refreshes of one channel do not advance another:
-each lane's floor and refresh bound are only ever changed by that lane's
-own events.
+owner, one instance per update lane, so refreshes of one channel never
+advance another. The [installation journal](./install.md) checks package
+signer, digests, versions and the exact prepared pair before it asks for
+freshness; this spec starts at an authenticated descriptor, a qualified
+observation and a validated enrollment.
 
 ## Story: Remember an authenticated release without rolling back a lane
 
@@ -225,69 +221,51 @@ pure val eValues = Set(qualifiedRelease, { ...qualifiedRelease, pairRevoked: tru
   { ...qualifiedRelease, paused: true }, { ...qualifiedRelease, laneMatches: false },
   { ...qualifiedRelease, candidateVersion: 1 }, { ...qualifiedRelease, pairSignerMatches: false },
   { ...qualifiedRelease, protocolsCompatible: false }, { ...qualifiedRelease, inCohort: false })
-pure def lawPreparationRequiresQualifiedPair(e: AdmissionEvidence): bool =
-  preparationDecision(e) == PrepareEligible implies e.repositoryMatches and e.laneMatches and e.distributionMatches and
-    e.metadataQualified and not(e.paused) and e.qualifiedWindow and not(e.pairRevoked) and e.securityQualified and
-    not(e.quarantined) and e.candidateSignerMatches and e.pairSignerMatches and not(e.exactInstalledIdentity) and
-    e.candidateVersion > e.installedVersion and e.originAllowed and e.androidQualified and e.installerAuthorized and
-    e.protocolsCompatible and e.databaseCompatible and e.diskReserve and e.safetySupported and e.inCohort
+pure def lawPausedOrRevokedNeverPrepares(e: AdmissionEvidence): bool =
+  (e.paused or e.pairRevoked or e.quarantined) implies preparationDecision(e) != PrepareEligible
 ```
 
-## Story: Admit an in-place APK update only for the same signer and a qualified voice route
+## Story: Admit an in-place APK update only for the same signer and its declared qualifications
 
 > As a device owner, I want an app update installed over my app only when
-> it comes from the same signer, is newer and ships a qualified voice
-> route, so that an update never replaces my app with a foreign or
-> voiceless build.
+> it is a release from the same signer, is newer, and passed every
+> qualification its consumer declares for that exact build, so that an
+> update never replaces my app with a foreign or unqualified build.
 
-### An APK update keeps the installed signer, raises the version code and carries a qualified voice route
+### An APK update keeps the installed signer, raises the version code and passes every declared qualification for its digest
 
-The shared APK release judgement compares the installed and candidate
-APK: the candidate is a signed release without test mocks, its signer
-equals the installed signer, and its version code is strictly higher. Its
-runtime profile decides the voice route it ships. The native profile
-packages on-device voice whose bytes match the voice-host record and whose
-device qualification passed. The cloud profile packages no on-device voice
-and carries a passed cloud voice qualification bound to this exact APK
-digest, from the configured speech provider, with every check recorded.
-An unknown profile is refused. An empty list of blockers is the only
-admissible answer.
+The candidate is a signed [release APK](../build/manifestAdmission.md)
+whose signer equals the installed signer, and its version code is
+strictly higher. The installed app's record declares the qualifications
+its consumer requires, such as a voice route qualified on the device or
+by a cloud provider. The candidate must carry, for each declared name, a
+qualification of that name that passed for this exact APK digest; one
+it leaves out, one that failed, or one recorded for another digest
+blocks it. An empty list of blockers is the only admissible answer.
 
 ```quint
-type VoiceProfile = NativeVoiceProfile | CloudVoiceProfile | UnknownVoiceProfile
+import manifestAdmission.* from "../build/manifestAdmission"
+type Qualification = { name: str, passed: bool, apkDigest: str }
 type ApkCandidate = {
-  signed: bool, testMocks: bool, signerMatchesInstalled: bool, versionCode: int, profile: VoiceProfile,
-  voicePackaged: bool, voiceBytesMatch: bool, voiceQualified: bool,
-  cloudQualificationPassed: bool, cloudQualificationBoundToApk: bool, cloudProviderConfigured: bool, cloudChecksComplete: bool
+  signed: bool, manifest: ManifestPolicyFacts, signerMatchesInstalled: bool, versionCode: int, apkDigest: str,
+  qualifications: List[Qualification]
 }
-pure def voiceRouteQualified(c: ApkCandidate): bool =
-  if (c.profile == NativeVoiceProfile) c.voicePackaged and c.voiceBytesMatch and c.voiceQualified
-  else if (c.profile == CloudVoiceProfile)
-    not(c.voicePackaged) and c.voiceBytesMatch and c.cloudQualificationPassed and c.cloudQualificationBoundToApk and
-      c.cloudProviderConfigured and c.cloudChecksComplete
-  else false
-pure def apkUpdateAdmitted(installedVersion: int, c: ApkCandidate): bool =
-  c.signed and not(c.testMocks) and c.signerMatchesInstalled and c.versionCode > installedVersion and voiceRouteQualified(c)
-pure val nativeCandidate: ApkCandidate = {
-  signed: true, testMocks: false, signerMatchesInstalled: true, versionCode: 3, profile: NativeVoiceProfile,
-  voicePackaged: true, voiceBytesMatch: true, voiceQualified: true,
-  cloudQualificationPassed: false, cloudQualificationBoundToApk: false, cloudProviderConfigured: false, cloudChecksComplete: false
+pure def passedFor(c: ApkCandidate, name: str): bool =
+  c.qualifications.some(q => q.name == name and q.passed and q.apkDigest == c.apkDigest)
+pure def apkUpdateAdmitted(installedVersion: int, declared: Set[str], c: ApkCandidate): bool =
+  c.signed and releaseApk(c.manifest, c.signerMatchesInstalled) and c.versionCode > installedVersion and c.apkDigest != "" and
+  declared.forall(name => passedFor(c, name))
+pure val voiceQualified: Qualification = { name: "voice", passed: true, apkDigest: "apk3" }
+pure val releaseCandidate: ApkCandidate = {
+  signed: true, manifest: cleanRelease, signerMatchesInstalled: true, versionCode: 3, apkDigest: "apk3", qualifications: List(voiceQualified)
 }
-pure val cloudCandidate: ApkCandidate = {
-  ...nativeCandidate, profile: CloudVoiceProfile, voicePackaged: false, voiceQualified: false,
-  cloudQualificationPassed: true, cloudQualificationBoundToApk: true, cloudProviderConfigured: true, cloudChecksComplete: true
-}
-pure val cValues = Set(nativeCandidate, cloudCandidate, { ...nativeCandidate, signerMatchesInstalled: false },
-  { ...nativeCandidate, voiceQualified: false }, { ...cloudCandidate, cloudQualificationBoundToApk: false },
-  { ...cloudCandidate, voicePackaged: true }, { ...nativeCandidate, profile: UnknownVoiceProfile },
-  { ...nativeCandidate, testMocks: true })
+pure val cValues = Set(releaseCandidate, { ...releaseCandidate, qualifications: List() },
+  { ...releaseCandidate, signerMatchesInstalled: false }, { ...releaseCandidate, manifest: { ...cleanRelease, testMocks: true } },
+  { ...releaseCandidate, qualifications: List({ ...voiceQualified, passed: false }) },
+  { ...releaseCandidate, qualifications: List({ ...voiceQualified, apkDigest: "apk2" }) })
 pure val installedVersionValues = Set(1, 2, 3)
-pure def lawApkUpdateKeepsSignerAndMovesForward(installedVersion: int, c: ApkCandidate): bool =
-  apkUpdateAdmitted(installedVersion, c) implies c.signed and not(c.testMocks) and c.signerMatchesInstalled and c.versionCode > installedVersion
-pure def lawCloudVoiceQualificationIsForThisApk(installedVersion: int, c: ApkCandidate): bool =
-  (apkUpdateAdmitted(installedVersion, c) and c.profile == CloudVoiceProfile) implies
-    c.cloudQualificationPassed and c.cloudQualificationBoundToApk and c.cloudChecksComplete and not(c.voicePackaged)
-pure def lawNativeVoiceIsQualifiedOnDevice(installedVersion: int, c: ApkCandidate): bool =
-  (apkUpdateAdmitted(installedVersion, c) and c.profile == NativeVoiceProfile) implies
-    c.voicePackaged and c.voiceBytesMatch and c.voiceQualified
+pure val declaredValues = Set(Set(), Set("voice"), Set("voice", "storage"))
+pure def lawEveryDeclaredQualificationPassedForThisApk(installedVersion: int, declared: Set[str], c: ApkCandidate): bool =
+  declared.exists(name => c.qualifications.every(q => q.name != name or not(q.passed) or q.apkDigest != c.apkDigest)) implies
+    not(apkUpdateAdmitted(installedVersion, declared, c))
 ```

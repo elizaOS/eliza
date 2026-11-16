@@ -5,8 +5,6 @@ owner by echoing a short code the host issued. The owner the code is for is
 captured when it is issued and never changes. The code is consumed before
 the asynchronous identity write, so a slow write cannot be raced with the
 same code. An expired code and a code whose attempts ran out fail closed.
-The research baseline is `packages/agent/src/services/owner-binding.ts` and
-the `services-owner-pairing` model.
 
 ## Story: Bind a connector account to the owner
 

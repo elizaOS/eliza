@@ -1,10 +1,13 @@
 # Per-turn pseudonym namespace
 
-The source is `packages/core/src/security/pii-pseudonymizer.ts` at the pinned baseline. PseudonymSession owns exact real-value and surrogate maps, normalized collision sets, retired surrogate identities, the complete learned corpus and lazily rebuilt replacers. Inputs below use canonical case-folded strings supplied by the existing string normalization boundary. Corpus substrings denote the complete substring closure of the accumulated lowercased source, not whitespace-separated tokens. A span decomposition splits out every current or retired surrogate occurrence and classifies the entire remaining text as Unicode punctuation/whitespace or real text; this exact lexical decomposition is an external boundary. Candidate generation is an external pure algorithm whose output must satisfy the collision guard.
+Per-turn pseudonyms of `security/pii-pseudonymizer.ts`: exact real-value and surrogate maps, normalized collision sets, retired surrogates, the learned corpus and lazily rebuilt replacers. Inputs are canonical case-folded strings. Corpus substrings are the complete substring closure of the accumulated lowercased source. The shell supplies the span decomposition, which splits out every current or retired surrogate and classifies the rest as punctuation/whitespace or real text, and candidate generation, whose output must satisfy the collision guard.
 
 ## Story: Keep substitutions reversible across repeated model calls
 
-As an agent, I reuse the same surrogate for a known value. New real values may collide with old surrogates, so those entries are reminted and the retired surrogate is retained as a known fictional token. Replacement tables are invalidated by every mapping change and rebuilt before use. The private defensive remint helper is retained as a pure operation, rather than an externally selectable event: current learning rejects surrogate-only incoming values and candidate generation excludes the full incoming namespace, so ordinary admission cannot manufacture that collision.
+> As an agent, I want the same surrogate for a known value across repeated
+> model calls, so that substitutions stay reversible.
+
+New real values may collide with old surrogates, so those entries are reminted and the retired surrogate is retained as a known fictional token. Replacement tables are invalidated by every mapping change and rebuilt before use. The private defensive remint helper is retained as a pure operation, rather than an externally selectable event: current learning rejects surrogate-only incoming values and candidate generation excludes the full incoming namespace, so ordinary admission cannot manufacture that collision.
 
 ### Learning real values precedes publishing collision-free mappings
 

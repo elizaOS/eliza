@@ -1,18 +1,12 @@
 # Plugin profile
 
-A host boots with a profile: the set of plugin capability classes a
-deployment admits. The profile is chosen from the platform (Android, iOS)
-and, on a server or desktop, from whether a lean chat host was asked for;
-a deployment may deny further plugins by name. Only a plugin that the
-profile admits and nobody denied is ever registered, and denying the
-required message service is a typed boot failure. Registering one plugin is
-serialized and fenced by generation across its schema migration, so a
-plugin unloaded mid-registration never publishes. When two plugins declare
-the same action, the first registered owns it. The research baseline is
-`packages/agent/src/runtime/{core-plugins,plugin-collector,assistant-plugins,plugin-lifecycle,blocking-core-boot,plugin-resolver,view-scoped-actions}.ts`
-and the `runtime-plugins` model. The [kernel's plugin registry](../../core/plugins.md)
-owns initialization and shutdown once the host has chosen its inputs;
-provider admission is in [model providers](./modelProviders.md).
+A host boots with a profile: the plugin capability classes a deployment
+admits, and the plugins it denies by name. The
+[kernel's plugin registry](../../core/plugins.md) owns initialization and
+shutdown once the host has chosen its inputs; provider admission is in
+[model providers](./modelProviders.md). Action name ownership and the role
+check are [action planning](../../core/actionPlanning.md)'s, and the host
+allowlist is the [chat gateway](../conversation/chatGateway.md)'s.
 
 ## Story: Boot with the admitted plugin profile
 
@@ -78,8 +72,8 @@ pure def lawCalendarRequiresScheduler(candidate: bool, reminderPresent: bool, sc
 
 ```quint
 type PluginPhase = Absent | Migrating | Registering | Ready | Unloading
-type Registration = { chosen: bool, profile: HostProfile, plugin: CapabilityClass, denied: bool, bootFailed: bool, phase: PluginPhase, inGeneration: bool, roles: bool, schema: bool, published: bool, closed: bool, actionOwner: int }
-pure val initial: Registration = { chosen: false, profile: FullHost, plugin: MessageCore, denied: false, bootFailed: false, phase: Absent, inGeneration: true, roles: false, schema: false, published: false, closed: false, actionOwner: 0 }
+type Registration = { chosen: bool, profile: HostProfile, plugin: CapabilityClass, denied: bool, bootFailed: bool, phase: PluginPhase, inGeneration: bool, roles: bool, schema: bool, published: bool, closed: bool }
+pure val initial: Registration = { chosen: false, profile: FullHost, plugin: MessageCore, denied: false, bootFailed: false, phase: Absent, inGeneration: true, roles: false, schema: false, published: false, closed: false }
 pure def admitted(profile: HostProfile, plugin: CapabilityClass, denied: bool): bool = bundleAllows(profile, plugin) and not(denied)
 pure val pluginValues = Set(MessageCore, BrowserCore, FullAssistant, WorkflowPlugin, UnbundledPlugin)
 pure def canChooseBoot(r: Registration, profile: HostProfile, plugin: CapabilityClass, denied: bool): bool = not(r.chosen)
@@ -120,34 +114,10 @@ pure def sometimesPluginReady(r: Registration): bool = r.published
 
 ```quint
 pure def canInvalidate(r: Registration): bool = r.phase != Absent and r.phase != Unloading
-pure def invalidate(r: Registration): Registration = { ...r, inGeneration: false, published: false, phase: Unloading, actionOwner: 0 }
+pure def invalidate(r: Registration): Registration = { ...r, inGeneration: false, published: false, phase: Unloading }
 pure def canRollBack(r: Registration): bool = r.phase == Migrating or r.phase == Registering or r.phase == Unloading
 pure def rollBack(r: Registration): Registration = { ...r, phase: Absent, published: false, schema: false, roles: false }
 pure def canCloseRegistry(r: Registration): bool = not(r.closed)
-pure def closeRegistry(r: Registration): Registration = { ...r, closed: true, published: false, inGeneration: false, actionOwner: 0, phase: if (r.phase == Absent) Absent else Unloading }
+pure def closeRegistry(r: Registration): Registration = { ...r, closed: true, published: false, inGeneration: false, phase: if (r.phase == Absent) Absent else Unloading }
 pure def sometimesInvalidatedMidMigration(r: Registration): bool = r.phase == Absent and not(r.inGeneration) and not(r.closed)
-```
-
-### When two plugins declare the same action, the first registered owns it
-
-```quint
-pure val pluginIdValues = Set(1, 2)
-pure def canClaimAction(r: Registration, pluginId: int): bool = r.published and pluginId > 0
-pure def claimAction(r: Registration, pluginId: int): Registration = if (r.actionOwner == 0) { ...r, actionOwner: pluginId } else r
-pure def stepActionOwnerKept(before: Registration, after: Registration): bool =
-  (before.actionOwner != 0 and after.actionOwner != 0) implies after.actionOwner == before.actionOwner
-pure def sometimesActionOwned(r: Registration): bool = r.actionOwner != 0
-```
-
-## Story: Offer a caller only the actions it may use
-
-> As the owner, a view or a caller sees only the actions allowed for it,
-> and someone with a lower role cannot run an action meant for me.
-
-### An action is available only when the view allows it and the caller's role is high enough
-
-```quint
-pure def actionAvailable(allowlisted: bool, callerRank: int, requiredRank: int): bool = allowlisted and callerRank >= requiredRank
-pure def lawUnlistedActionUnavailable(callerRank: int, requiredRank: int): bool = not(actionAvailable(false, callerRank, requiredRank))
-pure def lawLowerRoleRefused(callerRank: int, requiredRank: int): bool = callerRank < requiredRank implies not(actionAvailable(true, callerRank, requiredRank))
 ```

@@ -252,7 +252,7 @@ lemma admitEvent_ensures(s: EventState, input: EventInput)
   ensures (inv(s) ==> canAdmitEvent(s) ==> stepEventStopClearsIndexes(s, "admitEvent", admitEvent(s, input)))
 {
   if inv(s) && canAdmitEvent(s) {
-    EventPushAgent(s, input, agentEmission, top(s).envelope.emissionId, 0);
+    EventPushAgent(s, input, AgentEmission, top(s).envelope.emissionId, 0);
   }
 }
 
@@ -385,7 +385,7 @@ lemma beginListener_ensures(s: EventState)
     ProofLib.FilterMember(key, s.listeners, chosen);
     EventListenerFacts(s);
     assert 0 < chosen.generation < s.nextGeneration;
-    assert frame.phase == visitingListeners;
+    assert frame.phase == VisitingListeners;
   }
 }
 
@@ -412,12 +412,12 @@ lemma finishOriginal_ensures(s: EventState)
     ProofLib.FilterNil(keep, [added][1..]);
     assert added in after.fanoutFinished;
     forall entry | entry in after.frames
-      ensures (entry.kind == agentWarning ==> entry.parent in after.fanoutFinished) &&
-        (entry.kind != heartbeatEmission && entry.phase != visitingListeners ==> entry.envelope.emissionId in after.fanoutFinished)
+      ensures (entry.kind == AgentWarning ==> entry.parent in after.fanoutFinished) &&
+        (entry.kind != HeartbeatEmission && entry.phase != VisitingListeners ==> entry.envelope.emissionId in after.fanoutFinished)
     {
       if entry in s.frames {
-        assert entry.kind == agentWarning ==> entry.parent in s.fanoutFinished;
-        assert entry.kind != heartbeatEmission && entry.phase != visitingListeners ==> entry.envelope.emissionId in s.fanoutFinished;
+        assert entry.kind == AgentWarning ==> entry.parent in s.fanoutFinished;
+        assert entry.kind != HeartbeatEmission && entry.phase != VisitingListeners ==> entry.envelope.emissionId in s.fanoutFinished;
       } else {
         assert entry == top(after);
         assert frame in s.frames;
@@ -447,7 +447,7 @@ lemma emitListenerWarning_ensures(s: EventState, timestamp: int)
     var frame := top(s);
     var input := EventInput(frame.envelope.runId, frame.envelope.requestedSession, "error", 0, "", "", timestamp);
     var prior := withTop(frame.(warningStarted := true), s);
-    EventPushAgent(prior, input, agentWarning, frame.envelope.emissionId, |frame.failures|);
+    EventPushAgent(prior, input, AgentWarning, frame.envelope.emissionId, |frame.failures|);
   }
 }
 
@@ -469,11 +469,11 @@ lemma reportListenerError_ensures(s: EventState, timestamp: int, canForward: boo
     var frame := top(s);
     var fault := frame.failures[frame.reportCursor];
     var cursor := frame.reportCursor + 1;
-    var phase := if frame.kind == heartbeatEmission then visitingListeners else if cursor < |frame.failures| then reportingErrors else readyToFinish;
+    var phase := if frame.kind == HeartbeatEmission then VisitingListeners else if cursor < |frame.failures| then ReportingErrors else ReadyToFinish;
     var progressed := withTop(frame.(reportCursor := cursor, phase := phase), s);
     var observed := progressed.(reported := s.reported + [fault]);
-    var runId := if frame.kind == heartbeatEmission then "runtime" else frame.envelope.runId;
+    var runId := if frame.kind == HeartbeatEmission then "runtime" else frame.envelope.runId;
     var input := EventInput(runId, "", "error", fault.errorRef, "", "", timestamp);
-    EventPushAgent(observed, input, agentDiagnostic, frame.envelope.emissionId, 0);
+    EventPushAgent(observed, input, AgentDiagnostic, frame.envelope.emissionId, 0);
   }
 }

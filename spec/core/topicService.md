@@ -1,8 +1,12 @@
 # Whole-service topic retirement
 
-`services/channel-topics.ts` has one stopping flag across every room queue. The [room lifecycle](./channelTopics.md) owns each queue and local/durable ordered topic values. This product closes admission for all rooms at once, including room IDs that have never been seen, while already admitted operations finish independently.
+`services/channel-topics.ts` has one stopping flag across every room queue. The [room lifecycle](./channelTopics.md) owns each queue and local/durable ordered topic values. This spec closes admission for all rooms at once, including room IDs that have never been seen, while already admitted operations finish independently.
 
 ## Story: Retire all room queues before clearing the service cache
+
+> As a host, I want stopping the topic service to refuse new work in every
+> room and clear its caches only after admitted work finishes, so that no
+> topic update is lost or applied after shutdown.
 
 ### Stop blocks every new room admission and joins the complete room snapshot
 

@@ -4,6 +4,10 @@ This composes [hook dispatch](./hooks.md) with one shared runtime registry. The 
 
 ## Story: Replace hooks while independent phase calls are in flight
 
+> As a plugin, I want to change a registry without changing the callbacks
+> older calls captured, so that each call runs with the hooks it started
+> with.
+
 As a plugin I change a runtime registry without changing callbacks captured by older calls. Several calls may execute or fail independently.
 
 ### A call captures exactly the memo visible at its own start

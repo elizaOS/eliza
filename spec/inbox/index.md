@@ -9,6 +9,6 @@ accounts reach the provider through the Cloud's
 
 | Area | Specifications |
 | --- | --- |
-| Reading | [Mailbox list and bodies](./mailboxList.md), [saved reads](./grants.md), [managed inbox read](./managedRead.md) |
+| Reading | [Mailbox reads and caches](./reads.md), [managed inbox read](./managedRead.md) |
 | Writing | [Drafts and provider review](./drafts.md) |
 | Notices | [Background notices](./backgroundNotices.md) |

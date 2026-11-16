@@ -3,9 +3,6 @@
 The cloud's shared cache client protects every caller from a failing cache
 backend with a circuit breaker, reports deletions it could not confirm,
 and refreshes stale values in the background with one loader per key.
-The inference admission gate reopens its own circuit only on a timer of the
-failure generation it belongs to. Ported from the develop models
-`cache_breaker_receipts`, `cache_swr_lifecycle` and `worker_cache_circuit`.
 
 ## Story: Keep serving when the cache backend fails
 
@@ -126,32 +123,4 @@ pure def alwaysDeliveredOrTimedOutNotBoth(c: Cache): bool = c.published.every(n 
 pure def alwaysWritingLoaderOwnsKey(c: Cache): bool = c.deliveries.every(d => d.delivery == DeliveryWriting implies c.owner == d.load)
 pure def sometimesTimedOutLoaderStillOwns(c: Cache): bool = c.owner > 0 and deliveryOf(c, c.owner) == DeliveryTimedOut and c.active.includes(c.owner)
 pure def sometimesRefreshPublished(c: Cache): bool = c.published.length() > 0 and c.owner == 0
-```
-
-## Story: Reopen the inference gate only after its own cooldown
-
-> As an operator, the inference admission gate reopens after a cache
-> failure only when the cooldown timer of that same failure has elapsed,
-> so a late timer from an earlier failure cannot reopen it early.
-
-### The gate reopens only on a ready record whose owning timer elapsed for the current failure generation
-
-Each failure generation arms one timer owner; a duplicate arm for a live
-or completed generation keeps the original owner. The durable ready record
-names the owner and generation; a response delivered late, or from an
-earlier generation, does not count. The gate's clock route answers only a
-POST from its own clock identity on its own path.
-
-```quint
-type ReadyRecord = { generation: int, owner: int, ready: bool }
-type TimerFacts = { ownerElapsed: bool, ownerGeneration: int }
-pure def mayReopen(open: bool, record: ReadyRecord, currentGeneration: int, timer: TimerFacts): bool =
-  open and record.ready and record.generation == currentGeneration and timer.ownerElapsed and timer.ownerGeneration == currentGeneration
-pure def clockRouteStatus(clockIdentity: bool, clockPath: bool, post: bool): int = if (clockIdentity and clockPath and post) 200 else 404
-pure val recordValues = Set({ generation: 1, owner: 1, ready: true }, { generation: 2, owner: 2, ready: true }, { generation: 2, owner: 1, ready: false })
-pure val timerValues = Set({ ownerElapsed: true, ownerGeneration: 1 }, { ownerElapsed: true, ownerGeneration: 2 }, { ownerElapsed: false, ownerGeneration: 2 })
-pure val currentGenerationValues = Set(1, 2)
-pure def lawOldGenerationNeverReopens(open: bool, record: ReadyRecord, currentGeneration: int, timer: TimerFacts): bool = (record.generation != currentGeneration or timer.ownerGeneration != currentGeneration) implies not(mayReopen(open, record, currentGeneration, timer))
-pure def lawReopenNeedsElapsedTimer(open: bool, record: ReadyRecord, currentGeneration: int, timer: TimerFacts): bool = mayReopen(open, record, currentGeneration, timer) implies timer.ownerElapsed
-pure def lawClockRouteIsPrivate(clockIdentity: bool, clockPath: bool, post: bool): bool = clockRouteStatus(clockIdentity, clockPath, post) == 200 implies (clockIdentity and clockPath and post)
 ```

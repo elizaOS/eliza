@@ -6,10 +6,7 @@ order, and the process exits only after all of them settled: with code 0
 when all succeeded, with code 1 after reporting a failure. Only an explicit
 external kill ends the process with a partial cleanup. The HTTP server's
 resources follow the same discipline: closing is established before any
-disposer runs, and a resource offered after close is refused. The research
-baseline is `packages/agent/src/runtime/process-lifecycle.ts`,
-`api/server-resources.ts` and the `process-signal-drain` and
-`api-resources` models.
+disposer runs, and a resource offered after close is refused.
 
 ## Story: Stop the host cleanly
 
@@ -31,9 +28,6 @@ pure def alwaysRunningUntilSignalled(p: Process): bool = (p.phase == Running) ==
 ```
 
 ### A repeated signal during the drain starts no second cleanup and does not exit
-
-Discovered in the research baseline: a once-only listener handed the second
-signal back to the operating system, which ended the process mid-cleanup.
 
 ```quint
 pure def canRepeatSignal(p: Process, signal: Signal): bool = p.phase == Draining and p.repeated == NoSignal and signal != NoSignal

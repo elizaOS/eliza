@@ -4,16 +4,13 @@
 
 ## Story: Preserve callback and migration order after rejection
 
+> As a connector author, I want operations on one account to run one at a
+> time in the order they were asked, even after one fails, so that a
+> failure never lets a later operation overtake an earlier one.
+
 ### Each scope runs one operation in admission order and removes only its own tail
 
-Invocation appends a unique ticket. A callback rejection settles that ticket and releases its successor. Callback queue cleanup removes the map entry only if its completing tail is still current. A stale completion cannot delete a newer tail. Facade operations include backend selection, migration, and invocation in one queued callback. External operations must eventually settle for the explicit fairness assumption to hold.
-Discovered by simulation: scheduler progress must select the actual oldest
-eligible or running ticket from retained state. Fairness over a finite set of
-sample ticket numbers otherwise lets a newly allocated ticket stall forever.
-Explicit ticket operations still admit every allowed cross-scope interleaving.
-Allocated tickets remain positive, unique and below the next serial number;
-a settled entry cannot still be running. These source allocation facts also
-exclude duplicate-ticket states from the preservation proof.
+Invocation appends a unique ticket. A callback rejection settles that ticket and releases its successor. Callback queue cleanup removes the map entry only if its completing tail is still current. A stale completion cannot delete a newer tail. Facade operations include backend selection, migration, and invocation in one queued callback. The next operation to start is the oldest eligible ticket, and every admitted operation eventually settles, whether it succeeds or fails, assuming its external I/O settles. Allocated tickets remain positive, unique and below the next serial number; a settled entry cannot still be running.
 
 ```quint
 type QueueScope = { owner: str, provider: str }

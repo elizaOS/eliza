@@ -27,7 +27,8 @@ address-shaped; either is rejected instead when it holds an `@`. A host
 with a numeric port is an address, never a scheme. Address-shaped text that
 does not parse is rejected, except a bracketed literal that only looked
 like IPv6, which is a search. A parsed address opens only with HTTP or
-HTTPS and without a user name or password.
+HTTPS and without a user name or password; one typed without a scheme
+opens with the host's default protocol.
 
 ```quint
 type AddressScheme = HttpScheme | HttpsScheme | OtherScheme
@@ -68,52 +69,32 @@ pure val inputValues: Set[AddressInput] = List(
   { ...plainWords, bracketed: true, hostPort: true, parses: true },
   { ...plainWords, domain: true }
 ).foldl(Set(), (acc, input) => acc.union(Set(input)))
-```
-
-### Only an HTTP or HTTPS address is ever opened
-
-```quint
-pure def lawOnlyWebAddressesOpen(input: AddressInput, fallback: DefaultProtocol): bool =
-  classifyAddress(input, fallback).addressKind == UrlAddress implies
-    (classifyAddress(input, fallback).protocol == HttpScheme or classifyAddress(input, fallback).protocol == HttpsScheme)
-```
-
-### A typed scheme other than HTTP or HTTPS never becomes an address
-
-`javascript:`, `file:` and every other scheme the person types is refused
-as an address, whatever protocol the host assumes by default.
-
-```quint
-pure def lawDisallowedSchemeNeverOpens(input: AddressInput, fallback: DefaultProtocol): bool =
-  (explicitScheme(input) and input.scheme == OtherScheme) implies classifyAddress(input, fallback).addressKind != UrlAddress
-```
-
-### Credentials are never sent: an address with a user name never opens and a search never holds an `@`
-
-A bracketed IPv6-shaped literal holds only hexadecimal digits, dots, colons
-and percent signs, so it never holds an `@`.
-
-```quint
-pure def wellFormedAddressInput(input: AddressInput): bool = input.bracketed implies (not(input.at) and not(input.protocolRelative))
-pure def lawCredentialsNeverOpen(input: AddressInput, fallback: DefaultProtocol): bool =
-  input.userInfo implies classifyAddress(input, fallback).addressKind != UrlAddress
-pure def lawSearchHoldsNoCredentials(input: AddressInput, fallback: DefaultProtocol): bool =
-  (wellFormedAddressInput(input) and classifyAddress(input, fallback).addressKind == SearchAddress) implies not(input.at)
-```
-
-### An address typed without a scheme opens with the host's default protocol
-
-```quint
+pure def lawBlankIsRejected(input: AddressInput, fallback: DefaultProtocol): bool =
+  input.blank implies classifyAddress(input, fallback).reason == EmptyAddress
+pure def lawControlCharactersAreRejected(input: AddressInput, fallback: DefaultProtocol): bool =
+  (input.control and not(input.blank)) implies classifyAddress(input, fallback).reason == InvalidAddressInput
 pure def lawImplicitAddressUsesDefaultProtocol(input: AddressInput, fallback: DefaultProtocol): bool =
   (classifyAddress(input, fallback).addressKind == UrlAddress and not(explicitScheme(input))) implies
     classifyAddress(input, fallback).protocol == (if (fallback == DefaultHttp) HttpScheme else HttpsScheme)
 ```
 
-### Blank text and text with control characters are rejected
+### Only an HTTP or HTTPS address without credentials is ever opened
+
+`javascript:`, `file:` and every other typed scheme is refused as an
+address, whatever protocol the host assumes, and so is an address with a
+user name or password. A search never holds an `@`; a bracketed
+IPv6-shaped literal holds only hexadecimal digits, dots, colons and percent
+signs, so it never holds one either.
 
 ```quint
-pure def lawBlankIsRejected(input: AddressInput, fallback: DefaultProtocol): bool =
-  input.blank implies classifyAddress(input, fallback).reason == EmptyAddress
-pure def lawControlCharactersAreRejected(input: AddressInput, fallback: DefaultProtocol): bool =
-  (input.control and not(input.blank)) implies classifyAddress(input, fallback).reason == InvalidAddressInput
+pure def wellFormedAddressInput(input: AddressInput): bool = input.bracketed implies (not(input.at) and not(input.protocolRelative))
+pure def lawOnlyWebAddressesOpen(input: AddressInput, fallback: DefaultProtocol): bool =
+  classifyAddress(input, fallback).addressKind == UrlAddress implies
+    (classifyAddress(input, fallback).protocol == HttpScheme or classifyAddress(input, fallback).protocol == HttpsScheme)
+pure def lawDisallowedSchemeNeverOpens(input: AddressInput, fallback: DefaultProtocol): bool =
+  (explicitScheme(input) and input.scheme == OtherScheme) implies classifyAddress(input, fallback).addressKind != UrlAddress
+pure def lawCredentialsNeverOpen(input: AddressInput, fallback: DefaultProtocol): bool =
+  input.userInfo implies classifyAddress(input, fallback).addressKind != UrlAddress
+pure def lawSearchHoldsNoCredentials(input: AddressInput, fallback: DefaultProtocol): bool =
+  (wellFormedAddressInput(input) and classifyAddress(input, fallback).addressKind == SearchAddress) implies not(input.at)
 ```

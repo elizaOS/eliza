@@ -4,7 +4,9 @@ Source `utils/type-guards.ts` defines strict plain records and loose non-array o
 
 ## Story: Narrow untrusted values without changing their meaning
 
-As a plugin, I want predictable structural type guards at public boundaries.
+> As a plugin, I want predictable structural type guards and boolean
+> parsing at public boundaries, so that untrusted values are narrowed
+> without changing their meaning.
 
 ### Plain records require the intrinsic object prototype or a null prototype
 

@@ -1,168 +1,132 @@
-# Native browser session, bookmarks and origin-scoped storage
+# Browser session, bookmarks and origin-scoped storage
 
-A consumer's browser plugin extends Eliza's `BrowserTabHostPlugin` with
-its own stores. Its renderer adapter calls `browsingState`,
-`saveBrowsingState`, `bookmarks`, `setBookmark`, `clearBrowsingData`,
-`clearSiteData` and `purgeProfiles` on the native host. A consumer that
-stages only the browser-surface module uses the Chromium package
-admission path and makes no session or bookmark bridge call; the shared
-Java policy covers both. [Renderer session restore](./sessionRestore.md)
-owns the adapter queues, the renderer limits of eight tabs, 100 history
-entries and 200 title characters, and the merge into a running view.
+The native browser host keeps the saved browsing session, bookmarks and
+site data of its normal profile, and purges keyed profiles. Every saved
+session, native or renderer, goes through the one codec and the one
+origin parser below. [Session restore](./sessionRestore.md) owns the
+renderer's save queue and the merge into a running view, and
+[document custody](./documentCustody.md) decides which tab may contribute.
 
-## Story: Restore the full native normal-profile snapshot permitted by the stored format
+## Story: Restore my saved normal-profile session
 
-> As the person, I want my normal browsing profile restored in full, as
-> far as its stored format allows.
+> As the person, I want my normal browsing tabs and history restored as I
+> left them, so that a restart loses nothing I chose to keep and never
+> brings back a private tab.
 
-### Native session normalization retains every valid first occurrence
+### An address is saved or bookmarked only when the origin parser admits it
 
-`BrowserSessionPolicy.java` and `BrowserSessionStore.java` have identical
-blobs at both pins. Java normalizes both read and write of the
-`{history,tabs,cur}` record. A tab needs an ASCII `A–Z`, `a–z`, `0–9`,
-underscore or dash ID of length 1–80 and an admissible storage address.
-Null, invalid, private and duplicate tab rows are dropped. Filtering
-invalid and private rows precedes deduplication, so they do not reserve
-an ID. Keep the first valid row for an ID and first occurrence of each
-exact admitted history address in input order. A selected ID survives
-only when its tab is retained. The Java title replaces ASCII controls
-and DEL with spaces and trims its end whitespace. It retains the rest
-of the title without clipping. Native has no count cap for valid tabs
-or history. The same-profile storage ingress must never supply private
-history: Java receives history as strings without a privacy marker.
-Its separate `recordVisit` helper takes an explicit ephemeral flag and
-keeps history unchanged on an ephemeral or invalid visit. It otherwise
-moves the exact visited address to the front and removes one prior
-occurrence. The intended history input for that helper is canonical.
-
-The port supplies selected Java URL admission independently of the
-renderer parser. The model preserves full sanitized title tokens and
-stable input sequence. The sealed native budget is an explicit storage
-write outcome, separate from the renderer's count and title limits.
+The origin parser allows HTTP and HTTPS only, requires a host without
+credentials and with no space, control character, backslash or DEL, and
+parses only the scheme and authority, with an optional port of at most
+65,535; the port a scheme implies is omitted. It bounds its input at
+8,192 units, a saved address at 4,096, and a bookmark must be HTTPS.
+Site filtering compares the canonical host with the exact site or a
+dot-delimited subdomain of it; scheme and port do not matter there.
 
 ```quint
-type NativeTabRow = { id: str, address: str, title: str, ephemeral: bool, validId: bool, validAddress: bool }
-type NativeHistoryRow = { address: str, valid: bool }
-type VisitMove = { skipped: bool, kept: List[str] }
-type NativeSnapshot = { tabs: List[NativeTabRow], history: List[str], selected: str }
-pure val emptySnapshot: NativeSnapshot = { tabs: List(), history: List(), selected: "" }
-pure def containsTab(tabs: List[NativeTabRow], id: str): bool = tabs.foldl(false, (found, row) => found or row.id == id)
-pure def mayKeepTab(row: NativeTabRow): bool = not(row.ephemeral) and row.validId and row.validAddress and row.id != "" and row.address != ""
-pure def keepFirstTab(tabs: List[NativeTabRow], row: NativeTabRow): List[NativeTabRow] =
-  if (mayKeepTab(row) and not(containsTab(tabs, row.id))) tabs.append(row) else tabs
-pure def keepFirstAddress(rows: List[str], visit: NativeHistoryRow): List[str] =
-  if (visit.valid and visit.address != "" and not(rows.includes(visit.address))) rows.append(visit.address) else rows
-pure def normalizeSnapshot(tabs: List[NativeTabRow], incomingHistory: List[NativeHistoryRow], selected: str): NativeSnapshot = {
-  val retainedTabs = tabs.foldl(List(), keepFirstTab)
-  { tabs: retainedTabs, history: incomingHistory.foldl(List(), keepFirstAddress), selected: if (containsTab(retainedTabs, selected)) selected else "" }
-}
-pure def visitHistory(history: List[str], address: str, valid: bool, ephemeral: bool): List[str] = {
-  val relocatedVisit: VisitMove = history.foldl({ skipped: false, kept: List(address) }, (walk, prior) =>
-    if (not(walk.skipped) and prior == address) { ...walk, skipped: true } else { ...walk, kept: walk.kept.append(prior) })
-  if (ephemeral or not(valid) or address == "") history else relocatedVisit.kept
-}
-pure val rowValues = Set(
-  { id: "tab", address: "https://example.test/", title: "A complete title", ephemeral: false, validId: true, validAddress: true },
-  { id: "tab", address: "https://example.test/private", title: "private", ephemeral: true, validId: true, validAddress: true },
-  { id: "tab", address: "https://example.test/history", title: "second", ephemeral: false, validId: true, validAddress: true },
-  { id: "invalid", address: "file:///local", title: "invalid", ephemeral: false, validId: true, validAddress: false }
-)
-pure val visitValues = Set({ address: "https://example.test/", valid: true }, { address: "https://other.test/", valid: true }, { address: "file:///local", valid: false })
-pure val tabsValues = Set(List()).union(rowValues.map(row => List(row)))
-pure val incomingHistoryValues = Set(List()).union(visitValues.map(visit => List(visit)))
-pure val selectedValues = Set("", "tab", "invalid")
-pure def lawPrivateTabNeverAdded(tabs: List[NativeTabRow], row: NativeTabRow): bool = row.ephemeral implies keepFirstTab(tabs, row) == tabs
-pure def lawFirstQualifiedTabKeepsFullTitle(tabs: List[NativeTabRow], row: NativeTabRow): bool =
-  (mayKeepTab(row) and not(containsTab(tabs, row.id))) implies keepFirstTab(tabs, row) == tabs.append(row)
-pure def lawNewQualifiedHistoryHasNoCountCutoff(rows: List[str], visit: NativeHistoryRow): bool =
-  (visit.valid and visit.address != "" and not(rows.includes(visit.address))) implies keepFirstAddress(rows, visit) == rows.append(visit.address)
-pure def lawPrivateVisitLeavesHistory(history: List[str], address: str, valid: bool): bool = visitHistory(history, address, valid, true) == history
-```
-
-### Origin extraction and stored URL admission follow their pinned parser
-
-Both origin helpers allow HTTP and HTTPS only, require a host without
-credentials and produce lowercase `scheme://host[:port]`, omitting
-port 80 for HTTP or 443 for HTTPS. They reject null, empty, control/DEL,
-unsupported schemes and ports above 65,535. The origin helper bounds its
-input at 8,192 characters. Session and policy bookmark URLs impose 4,096.
-The older `BrowserWebOrigin.of` parses the full address with Java
-`URI`, so malformed path/query escapes or raw Java URI punctuation can
-reject it. The authority parser first rejects global whitespace and backslash and then
-parses only scheme and authority, ignoring path/query/fragment grammar.
-Raw Chromium delimiters such as `|`, braces, brackets or a literal `%`
-after the host can be accepted. The authority parser allows an optional numeric port of
-at most five digits. An empty port normalizes like an omitted one. The
-same-origin comparison requires matching scheme, canonical host and port
-from valid origin parses. Site filtering compares the canonical host to
-the lowercased exact site or a dot-delimited subdomain. Scheme and port
-are irrelevant to this filter. The Java helper needs a site string from
-the caller, and does not derive registrable domains itself.
-
-```quint
-type OriginPin = FullUriOrigin | AuthorityOrigin
 type WebScheme = ClearHttp | SecureHttps | OtherScheme
-type OriginFacts = { length: int, scheme: WebScheme, hostQualified: bool, userInfo: bool, cleanControls: bool,
-  cleanText: bool, fullUriParses: bool, authorityParses: bool, port: int }
+type WebAddress = { raw: str, units: int, scheme: WebScheme, hostQualified: bool, userInfo: bool, cleanText: bool, authorityParses: bool, port: int }
 type SiteRelation = ExactHost | DotSubdomain | DifferentHost
-pure def webOriginAllowed(pin: OriginPin, facts: OriginFacts): bool =
-  facts.length > 0 and facts.length <= 8192 and facts.scheme != OtherScheme and facts.hostQualified and not(facts.userInfo) and facts.cleanControls and facts.port <= 65535 and
-  (if (pin == FullUriOrigin) facts.fullUriParses else facts.cleanText and facts.authorityParses)
-pure def sessionAddressAllowed(pin: OriginPin, facts: OriginFacts): bool = facts.length <= 4096 and webOriginAllowed(pin, facts)
-pure def policyBookmarkAllowed(pin: OriginPin, facts: OriginFacts): bool = sessionAddressAllowed(pin, facts) and facts.scheme == SecureHttps
+pure val originUnitsLimit = 8192
+pure val savedAddressUnitsLimit = 4096
+pure def webOriginAllowed(address: WebAddress): bool =
+  address.units > 0 and address.units <= originUnitsLimit and address.scheme != OtherScheme and address.hostQualified and
+  not(address.userInfo) and address.cleanText and address.authorityParses and address.port <= 65535
+pure def savedAddress(address: WebAddress): bool = address.raw != "" and address.units <= savedAddressUnitsLimit and webOriginAllowed(address)
+pure def bookmarkAddress(address: WebAddress): bool = savedAddress(address) and address.scheme == SecureHttps
 pure def effectivePort(scheme: WebScheme, port: int): int =
   if (port < 0 or (scheme == SecureHttps and port == 443) or (scheme == ClearHttp and port == 80)) -1 else port
 pure def siteMatches(originUsable: bool, sitePresent: bool, relation: SiteRelation): bool = originUsable and sitePresent and relation != DifferentHost
-pure val factsValues = Set(
-  { length: 40, scheme: SecureHttps, hostQualified: true, userInfo: false, cleanControls: true, cleanText: true, fullUriParses: true, authorityParses: true, port: 443 },
-  { length: 40, scheme: SecureHttps, hostQualified: true, userInfo: false, cleanControls: true, cleanText: true, fullUriParses: false, authorityParses: true, port: -1 },
-  { length: 40, scheme: SecureHttps, hostQualified: true, userInfo: false, cleanControls: true, cleanText: false, fullUriParses: true, authorityParses: true, port: -1 },
-  { length: 40, scheme: ClearHttp, hostQualified: true, userInfo: false, cleanControls: true, cleanText: true, fullUriParses: true, authorityParses: true, port: 8443 },
-  { length: 4097, scheme: SecureHttps, hostQualified: true, userInfo: false, cleanControls: true, cleanText: true, fullUriParses: true, authorityParses: true, port: -1 },
-  { length: 40, scheme: SecureHttps, hostQualified: true, userInfo: true, cleanControls: true, cleanText: true, fullUriParses: true, authorityParses: true, port: -1 }
-)
-pure def lawNativeSessionRefusesCredentialedOrOversized(pin: OriginPin, facts: OriginFacts): bool =
-  (facts.userInfo or facts.length > 4096) implies not(sessionAddressAllowed(pin, facts))
-pure def lawBookmarkPolicyRequiresHttps(pin: OriginPin, facts: OriginFacts): bool = policyBookmarkAllowed(pin, facts) implies facts.scheme == SecureHttps
+pure val publicAddress: WebAddress = { raw: "https://example.test", units: 20, scheme: SecureHttps, hostQualified: true, userInfo: false, cleanText: true, authorityParses: true, port: -1 }
+pure val addressValues = Set(publicAddress, { ...publicAddress, raw: "https://other.test" }, { ...publicAddress, userInfo: true },
+  { ...publicAddress, units: 4097 }, { ...publicAddress, cleanText: false }, { ...publicAddress, scheme: ClearHttp, port: 8443 },
+  { ...publicAddress, raw: "file:///local", scheme: OtherScheme })
+pure def lawCredentialsNeverPersist(address: WebAddress): bool = address.userInfo implies not(savedAddress(address))
+pure def lawOversizedAddressNeverPersists(address: WebAddress): bool = address.units > savedAddressUnitsLimit implies not(savedAddress(address))
+pure def lawBookmarkRequiresHttps(address: WebAddress): bool = address.scheme != SecureHttps implies not(bookmarkAddress(address))
 pure def lawDifferentDomainNeverMatches(originUsable: bool, sitePresent: bool): bool = not(siteMatches(originUsable, sitePresent, DifferentHost))
+```
+
+### A saved session keeps the first valid row of each tab and address
+
+Reading and writing the saved `{history, tabs, selected}` record both go
+through one codec. A tab needs an ID of 1 to 80 letters, digits,
+underscores or dashes and a saved address; a private, invalid or
+duplicate row is dropped, and dropping precedes deduplication, so a
+dropped row reserves no ID. The first valid row of each ID is kept, and
+history keeps the first occurrence of each admitted address, in order.
+The native host keeps every such tab with its full title and every such
+address: its only bound is the sealed write budget. The renderer keeps at
+most eight tabs, cuts each title to 200 units and keeps at most 100
+history entries. The selection survives only when its tab does. A visit
+recorded natively moves the exact address to the front; a private or
+invalid visit leaves history unchanged.
+
+```quint
+type SavedTab = { id: str, validId: bool, address: WebAddress, titleUnits: int, privateTab: bool }
+type SavedSession = { history: List[str], tabs: List[SavedTab], selected: str }
+type VisitMove = { skipped: bool, kept: List[str] }
+type SessionCodec = NativeCodec | RendererCodec
+pure val maxSavedTabs = 8
+pure val maxSavedHistory = 100
+pure val maxTitleUnits = 200
+pure def underCap(codec: SessionCodec, count: int, cap: int): bool = codec == NativeCodec or count < cap
+pure def savedTitle(codec: SessionCodec, units: int): int = if (codec == RendererCodec and units > maxTitleUnits) maxTitleUnits else units
+pure def hasTab(tabs: List[SavedTab], id: str): bool = tabs.some(t => t.id == id)
+pure def mayKeepTab(tabs: List[SavedTab], row: SavedTab): bool =
+  not(row.privateTab) and row.validId and savedAddress(row.address) and not(hasTab(tabs, row.id))
+pure def keepTab(codec: SessionCodec, tabs: List[SavedTab], row: SavedTab): List[SavedTab] =
+  if (underCap(codec, tabs.length(), maxSavedTabs) and mayKeepTab(tabs, row)) tabs.append({ ...row, titleUnits: savedTitle(codec, row.titleUnits) }) else tabs
+pure def keepVisit(codec: SessionCodec, visits: List[str], url: str): List[str] =
+  if (underCap(codec, visits.length(), maxSavedHistory) and url != "" and not(visits.includes(url))) visits.append(url) else visits
+pure def keepAddress(codec: SessionCodec, visits: List[str], address: WebAddress): List[str] = if (savedAddress(address)) keepVisit(codec, visits, address.raw) else visits
+pure def normalizeSession(codec: SessionCodec, history: List[WebAddress], tabs: List[SavedTab], preferred: str): SavedSession = {
+  val kept = tabs.foldl(List(), (rows, row) => keepTab(codec, rows, row))
+  { history: history.foldl(List(), (visits, address) => keepAddress(codec, visits, address)), tabs: kept, selected: if (hasTab(kept, preferred)) preferred else "" }
+}
+pure def recordVisit(visits: List[str], url: str, valid: bool, ephemeral: bool): List[str] = {
+  val relocatedVisit: VisitMove = visits.foldl({ skipped: false, kept: List(url) }, (walk, prior) =>
+    if (not(walk.skipped) and prior == url) { ...walk, skipped: true } else { ...walk, kept: walk.kept.append(prior) })
+  if (ephemeral or not(valid) or url == "") visits else relocatedVisit.kept
+}
+pure val publicTab: SavedTab = { id: "public", validId: true, address: publicAddress, titleUnits: 250, privateTab: false }
+pure val rowValues = Set(publicTab, { ...publicTab, id: "private", privateTab: true }, { ...publicTab, address: { ...publicAddress, userInfo: true } })
+pure val tabsValues = Set(List(), List(publicTab), List({ ...publicTab, id: "private", privateTab: true }, publicTab, publicTab))
+pure val historyValues = Set(List(), List(publicAddress), List(publicAddress, publicAddress))
+pure val preferredValues = Set("", "public", "private")
+pure val visitsValues = Set(List(), List("https://example.test"))
+pure val urlValues = Set("https://example.test", "https://other.test")
+pure val codecValues = Set(NativeCodec, RendererCodec)
+pure def lawPrivateTabNeverSaved(codec: SessionCodec, tabs: List[SavedTab], row: SavedTab): bool = row.privateTab implies keepTab(codec, tabs, row) == tabs
+pure def lawNativeKeepsEveryFirstTabWithItsFullTitle(tabs: List[SavedTab], row: SavedTab): bool =
+  mayKeepTab(tabs, row) implies keepTab(NativeCodec, tabs, row) == tabs.append(row)
+pure def lawNativeHistoryHasNoCountCutoff(visits: List[str], url: str): bool =
+  (url != "" and not(visits.includes(url))) implies keepVisit(NativeCodec, visits, url) == visits.append(url)
+pure def lawRendererTitleIsBounded(tabs: List[SavedTab], row: SavedTab): bool = keepTab(RendererCodec, tabs, row).every(t => tabs.includes(t) or t.titleUnits <= maxTitleUnits)
+pure def lawSelectedRowSurvivesCodec(codec: SessionCodec, history: List[WebAddress], tabs: List[SavedTab], preferred: str): bool = {
+  val record = normalizeSession(codec, history, tabs, preferred)
+  record.selected != "" implies hasTab(record.tabs, record.selected)
+}
+pure def lawPrivateVisitLeavesHistory(visits: List[str], url: str, valid: bool): bool = recordVisit(visits, url, valid, true) == visits
 ```
 
 ## Story: Keep bookmarks durable and clear only the browser data I selected
 
-> As the person, I want to keep bookmarks durable and clear only the
-> browser data I selected.
+> As the person, I want my bookmarks kept intact and only the browsing
+> data I chose cleared, so that a damaged store or a partial clear never
+> costs me what I meant to keep.
 
-### Installed session and bookmark transactions keep their existing identifiers
+### A bookmark list is read and written whole, and only a sealed commit is stored
 
-The consumer's host keeps one consumer-named normal WebView profile and
-uses a private prefix for private profiles and a public prefix for retired
-legacy ephemeral profiles. It binds a session and a bookmarks preferences
-file and their respective versioned Android Keystore aliases; the names
-are the consumer's deployed data and never change once installed. Both use the `sealed` value for state, with website
-permission decisions in `permissions` within the session preferences.
-The storage frame uses AES-GCM and Base64 IV plus ciphertext, separated
-by a colon. The plaintext limits are 2,000,000 UTF-8 bytes for session
-and 800,000 for bookmarks. A synchronous commit is required for a saved
-receipt. Unavailable encryption, failed commit or oversized frame does
-not qualify a proposed value. Absent session reads normalize an empty
-JSON object. An unreadable or invalid JSON session rejects. Malformed
-session rows can be sanitized inside an otherwise readable object.
-Missing or damaged permission data grants nothing; a subsequent request
-asks again rather than deriving a grant from corrupt bytes.
-
-The Java policy exposes a strict whole-bookmark-list helper, and
-the consumer's active `BrowserBookmarkStore.java` implements the same whole-list
-integrity rule with its own Android `Uri` URL predicate. That predicate
-checks HTTPS, host, no user info, at most 4,096 characters and excludes
-ASCII control/space/DEL. Android URL interpretation is a port fact and
-is not interchangeable with Java `BrowserWebOrigin.of`. A missing
-record reads as an empty list. A damaged/unopened record, a duplicate,
-or a list over 100 rejects the entire read and prevents a write from
-substituting a new list. A present valid bookmark can move to the front
-even when at capacity; a new addition at capacity rejects. Removal uses
-exact URL identity. Explicit bookmarks may originate in a private tab
-if the host offers the action. The model stores receipt facts and count;
-the port owns validation of the ordered complete list and atomic seal.
+The session and the bookmarks are each sealed and committed synchronously;
+only a committed seal within its plaintext limit, 2,000,000 bytes for the
+session and 800,000 for bookmarks, is a saved receipt. A missing session
+reads as empty; an unreadable one is refused. Missing or damaged website
+permission data grants nothing. A missing bookmark record reads as an
+empty list; a damaged record, a duplicate or a list over 100 refuses the
+whole read and any write that would replace it. A present bookmark can
+move to the front even at capacity; a new one at capacity is refused.
+Removal uses the exact URL.
 
 ```quint
 type BookmarkInput = { readable: bool, unique: bool, allAddressesAdmitted: bool, count: int }
@@ -203,27 +167,17 @@ pure def lawReceiptRequiresSealedCommit(limit: int, seal: StorageSeal): bool = w
 
 ### A normal-profile clear retires session state while selected-site clearing uses the exact live tab
 
-The native bridge binds the saved-data calls to its current opaque session.
-The first admitted bookmark or storage call can bind a nonempty session
-up to 100 characters. A different session is refused. Normal-profile
-Clear requires WebView multi-profile and delete-browsing-data support.
-Its in-progress latch refuses overlapping native session writes and
-second clears. The clear first closes normal native tabs, clears session
-and permissions and download history, then requests persistent WebView
-cookie/storage deletion. Private tabs and bookmarks remain. These
-actions are ordered but are not one atomic transaction: a reject can
-follow a completed earlier step. Renderer save retirement and merge
-rules are in its separate model.
-
-Selected-site clear requires the current session, a live safe tab and
-the exact tab URL supplied with the command. AndroidX deletes the named
-site's data from that tab's profile. The native host clears matching
-download entries and, only for normal profile, matching permission
-decisions. Native does not rewrite history or bookmarks on this bridge
-method. `BrowserSessionPolicy.withoutSite` is a pure URL-list helper,
-covered by JVM fixtures, and is unused by this host path. The model
-represents one native storage slot: a failed clear returned after local
-deletion keeps that local deletion and its failed overall verdict.
+The saved-data calls are bound to the native bridge's current session; a
+different session is refused. Clearing the normal profile needs WebView
+multi-profile and delete-browsing-data support and refuses an overlapping
+clear or session write. It closes normal tabs, clears the session,
+permissions and download history, then asks WebView to delete persistent
+cookies and storage; private tabs and bookmarks remain. The steps are
+ordered, not atomic: a failure after local deletion keeps that deletion
+and reports the clear failed. Clearing one site needs the current
+session, a live safe tab and that tab's exact URL; it deletes the site's
+data from the tab's profile, its downloads and, in the normal profile,
+its permission decisions, and never rewrites history or bookmarks.
 
 ```quint
 type NativeStoragePhase = StoreServing | StoreClearing | StoreClearSucceeded | StoreClearFailed

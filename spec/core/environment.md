@@ -1,12 +1,14 @@
 # Process environment cache
 
-The source is `packages/core/src/utils/environment.ts` at
-`72fed7e4069ecd35d61d886ab6eec5c02c137517`. This is an explicitly
-process-scoped host utility. Ordinary per-agent `getSetting` remains
-independent of it. The singleton and separately created `Environment`
-instances use the same cache semantics with their own cache contents.
+This is an explicitly process-scoped host utility. Ordinary per-agent
+`getSetting` remains independent of it. The singleton and separately
+created `Environment` instances use the same cache semantics with their own
+cache contents.
 
 ## Story: Cache environment reads with explicit invalidation
+
+> As a host, I want environment reads cached until the owner invalidates
+> them, so a value is stable but never silently stale after a write.
 
 As a host, I can cache a present or absent raw environment value. A direct
 process-environment change leaves a cached value intact until invalidation.
@@ -21,14 +23,13 @@ trim-and-empty normalization afterward.
 
 ```quint
 type EnvValue = AbsentValue | PresentValue({ text: str })
-pure val absentEnvironment: EnvValue = AbsentValue
 type EnvEntry = { key: str, value: EnvValue }
 type Environment = { processValues: List[EnvEntry], cachedValues: List[EnvEntry] }
 type EnvObservation = ReadValue({ key: str, value: EnvValue })
 type EnvRead = { state: Environment, out: List[EnvObservation] }
 pure val initial: Environment = { processValues: List(), cachedValues: List() }
 pure def containsKey(entries: List[EnvEntry], key: str): bool = entries.some(entry => entry.key == key)
-pure def valueAt(entries: List[EnvEntry], key: str): EnvValue = entries.select(entry => entry.key == key).nthOr(0, { key: key, value: absentEnvironment }).value
+pure def valueAt(entries: List[EnvEntry], key: str): EnvValue = entries.select(entry => entry.key == key).nthOr(0, { key: key, value: AbsentValue }).value
 pure def absentValue(value: EnvValue): bool = match value { | AbsentValue => true | _ => false }
 pure def fallback(value: EnvValue, defaultValue: EnvValue): EnvValue = if (absentValue(value)) defaultValue else value
 pure def readEnvironment(s: Environment, key: str, defaultValue: EnvValue): EnvRead = {
@@ -40,7 +41,6 @@ pure def externalEnvironmentChange(s: Environment, key: str, value: EnvValue): E
 pure def clearEnvironmentCache(s: Environment): Environment = { ...s, cachedValues: List() }
 pure val valueValues = Set(AbsentValue, PresentValue({ text: "" }), PresentValue({ text: "first" }), PresentValue({ text: "second" }))
 pure val defaultValueValues = valueValues
-pure val entriesValues = Set(List(), List({ key: "key", value: absentEnvironment }), List({ key: "key", value: PresentValue({ text: "first" }) }))
 pure def alwaysKeysAreUnique(s: Environment): bool = s.processValues.every(entry => s.processValues.select(other => other.key == entry.key).length() == 1) and s.cachedValues.every(entry => s.cachedValues.select(other => other.key == entry.key).length() == 1)
 pure def stepExternalWriteLeavesCacheIntact(before: Environment, via: str, after: Environment, out: List[EnvObservation]): bool = via == "externalEnvironmentChange" implies after.cachedValues == before.cachedValues
 pure def sometimesAbsenceIsCached(s: Environment): bool = s.cachedValues.some(entry => absentValue(entry.value))

@@ -1,15 +1,17 @@
 # Android video playback capabilities
 
-A consumer installs a consumer-named owned-video playback prefix through
-its photos plugin and media configuration. Eliza's `PhotosPlugin.read` issues an opaque same-origin URL through
-`plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedVideoPlayback.java`.
+A consumer names its video playback prefix in its media descriptor. Eliza's
+`PhotosPlugin.read` issues an opaque same-origin URL through
+`OwnedVideoPlayback.java` under `plugins/plugin-native-media/android`, and
+each capability owns one source URI and one request path.
 [Photos permission epochs](./permissionEpochs.md) own permitted item
-admission. The consumer's video edit review consumes the stream. The capability owns one source URI and one request path.
+admission.
 
 ## Story: Play or seek the exact video that Photos admitted
 
-> As the person, I want to play or seek the exact video that Photos
-> admitted.
+> As the person, I want to play and seek a video Photos opened, and no
+> page or other video to reach it, so that playback never leaks my
+> library.
 
 ### A capability is scoped to the WebView origin and its current grant
 
@@ -90,10 +92,9 @@ A nonempty readable object uses inclusive ranges. With no Range
 header serve status 200 and the entire object. One numeric closed,
 open-ended or suffix range is supported. Clamp the end to the
 last byte and a large suffix to the whole file. A zero suffix, a
-start past the object, an inverted range, an unsupported header
-shape or multiple ranges returns 416. A numeric conversion error
-after parsing the header shape, including overflow or both digit
-fields empty, follows the producer's 404 exception path.
+start past the object, an inverted range, multiple ranges, or a header
+that does not parse, including a numeric overflow or empty digit fields,
+returns 416.
 
 A valid range returns 206 with Content-Range. The successful
 response sets no-store, Accept-Ranges bytes and nosniff. HEAD has an
@@ -107,7 +108,7 @@ safe JavaScript integers require validated range normalization
 at the native port.
 
 ```quint
-type PlaybackRange = WholeVideo | ClosedVideoRange | OpenVideoRange | SuffixVideoRange | UnsupportedVideoRange | UnreadableVideoRange
+type PlaybackRange = WholeVideo | ClosedVideoRange | OpenVideoRange | SuffixVideoRange | UnparsableVideoRange
 type VideoRangeInput = { kind: PlaybackRange, offset: int, requestedEnd: int, tailBytes: int }
 type VideoRangeReply = { status: int, firstByte: int, lastByte: int, hasContentRange: bool }
 pure def missingVideoRange(status: int): VideoRangeReply = { status: status, firstByte: 0, lastByte: 0, hasContentRange: false }
@@ -115,8 +116,8 @@ pure def videoRange(total: int, bounds: VideoRangeInput): VideoRangeReply = {
   val firstByte = if (bounds.kind == SuffixVideoRange and bounds.tailBytes > 0 and bounds.tailBytes < total) total - bounds.tailBytes
     else if (bounds.kind == SuffixVideoRange) 0 else bounds.offset
   val lastByte = if (total <= 0) 0 else if (bounds.kind == ClosedVideoRange and bounds.requestedEnd < total) bounds.requestedEnd else total - 1
-  if (total <= 0 or bounds.kind == UnreadableVideoRange) missingVideoRange(404)
-  else if (bounds.kind == UnsupportedVideoRange) missingVideoRange(416)
+  if (total <= 0) missingVideoRange(404)
+  else if (bounds.kind == UnparsableVideoRange) missingVideoRange(416)
   else if (bounds.kind == WholeVideo) { status: 200, firstByte: 0, lastByte: lastByte, hasContentRange: false }
   else if (firstByte < 0 or firstByte >= total or lastByte < firstByte or (bounds.kind == SuffixVideoRange and bounds.tailBytes <= 0))
     missingVideoRange(416)
@@ -132,16 +133,13 @@ pure def initialStreamLimit(total: int, bounds: VideoRangeInput, method: Request
 }
 pure def lawVideoHeadHasEmptyStream(total: int, bounds: VideoRangeInput): bool =
   initialStreamLimit(total,bounds,VideoHead) == 0
+pure def lawUnparsableRangeIsUnsatisfiable(total: int, bounds: VideoRangeInput): bool =
+  total > 0 and bounds.kind == UnparsableVideoRange implies videoRange(total,bounds).status == 416
 pure val plainRange: VideoRangeInput = { kind: WholeVideo, offset: 0, requestedEnd: 0, tailBytes: 0 }
 pure val boundsValues = Set(plainRange, { ...plainRange, kind: ClosedVideoRange, offset: 8, requestedEnd: 23 },
   { ...plainRange, kind: ClosedVideoRange, offset: 24, requestedEnd: 23 },
   { ...plainRange, kind: OpenVideoRange, offset: 8 }, { ...plainRange, kind: SuffixVideoRange, tailBytes: 8 },
   { ...plainRange, kind: SuffixVideoRange, tailBytes: 128 }, { ...plainRange, kind: SuffixVideoRange },
-  { ...plainRange, kind: UnsupportedVideoRange }, { ...plainRange, kind: UnreadableVideoRange })
+  { ...plainRange, kind: UnparsableVideoRange })
 pure val totalValues = Set(0,1,8,24,128)
 ```
-
-The producer's `VideoInstrumentedTest`
-tests the installed WebView, including an actual Range fetch and
-playback. Files, media decoding, provider permissions and Chromium's
-range loader are external to the model.

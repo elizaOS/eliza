@@ -5,9 +5,7 @@ origins, tenant and entitlement audience of its production and staging
 environments, the native clients it registers, its payment catalog and the
 capabilities it enables. The values belong to the deployment and stay with
 it; this spec states what any profile must satisfy before a build, a device
-or a server uses it. Validation, the credential storage namespace and the
-native-client callback registration follow the develop deployment check;
-the catalog release follows `StagingStripeBindings.qnt`.
+or a server uses it.
 
 ## Story: Configure a branded cloud from one reviewed profile
 
@@ -17,14 +15,28 @@ the catalog release follows `StagingStripeBindings.qnt`.
 > description, so that no component trusts an authority the profile does
 > not name.
 
-### A profile names exactly production and staging, each with canonical HTTPS origins, a valid tenant and a valid audience
+### A profile names exactly production and staging, each with canonical HTTPS origins, a valid tenant and audience, and its own API origin
 
 The API, web and services origins are HTTPS origins with no path, no
 credentials and the default port; the API and web origins are DNS host
 names. The tenant identifier is 1 to 64 letters, digits, `-` or `_`; the
 entitlement audience is 1 to 128 letters, digits, `.`, `_` or `-`; a display
 name, when given, is trimmed, at most 80 characters and has no control or
-format characters. URL parsing and pattern matching are boundary evidence.
+format characters. Production and staging use distinct API origins, so a
+staging build can never reach the production API by configuration alone.
+
+Everything else derives from the profile. Each registered native client
+names its environment, a non-empty package identifier and a clean display
+name, and returns only to the profile's callback path on that environment's
+web origin. An agent's base for cloud inference and services is the API
+origin of the environment it was built for, never a second authority. A
+route of a capability the profile does not enable answers that it is not
+available, without reading the request further; each area's routes belong
+to one capability: inference, agent hosting with its shared runtime and
+background jobs, speech, maps, managed Google, billing (credits,
+subscriptions and entitlements), hosted backups, remote pairing,
+command-line login, object storage, provider connections and document
+interpretation.
 
 ```quint
 type Environment = Production | Staging
@@ -33,7 +45,6 @@ type EnvironmentRow = { api: str, web: str, services: str, tenant: str, audience
 type Profile = { exactEnvironments: bool, production: EnvironmentRow, staging: EnvironmentRow, callbackPath: str }
 pure def originValid(o: OriginEvidence, needsDnsHost: bool): bool = o.https and o.canonical and o.credentialFree and o.defaultPort and (not(needsDnsHost) or o.dnsHost)
 pure def rowValid(r: EnvironmentRow): bool = originValid(r.apiOrigin, true) and originValid(r.webOrigin, true) and originValid(r.servicesOrigin, false) and r.tenantValid and r.audienceValid and r.nameValid
-pure def rowOf(p: Profile, e: Environment): EnvironmentRow = if (e == Production) p.production else p.staging
 pure val goodOrigin: OriginEvidence = { https: true, canonical: true, credentialFree: true, defaultPort: true, dnsHost: true }
 pure val productionRow: EnvironmentRow = { api: "https://api.one", web: "https://www.one", services: "https://agents.one", tenant: "tenant-one", audience: "cloud-subscription", apiOrigin: goodOrigin, webOrigin: goodOrigin, servicesOrigin: goodOrigin, tenantValid: true, audienceValid: true, nameValid: true }
 pure val stagingRow: EnvironmentRow = { ...productionRow, api: "https://api.staging.one", web: "https://www.staging.one", services: "https://agents.staging.one" }
@@ -43,24 +54,23 @@ pure val pValues = Set(
   { ...sampleProfile, staging: { ...stagingRow, api: "https://api.one" } },
   { ...sampleProfile, production: { ...productionRow, apiOrigin: { ...goodOrigin, credentialFree: false } } },
   { ...sampleProfile, exactEnvironments: false })
-pure def lawValidRowUsesHttps(p: Profile, e: Environment): bool = rowValid(rowOf(p, e)) implies rowOf(p, e).apiOrigin.https and rowOf(p, e).webOrigin.https
-```
-
-### Production and staging use distinct API origins
-
-A staging build can never reach the production API by configuration alone.
-
-```quint
 pure def profileValid(p: Profile): bool = p.exactEnvironments and rowValid(p.production) and rowValid(p.staging) and p.production.api != p.staging.api
 pure def lawSharedApiOriginRefused(p: Profile): bool = p.production.api == p.staging.api implies not(profileValid(p))
+type Redirect = { origin: str, path: str }
+type NativeRegistration = { environment: Environment, packageId: str, displayNameClean: bool, redirect: Redirect }
+pure def rowOf(p: Profile, e: Environment): EnvironmentRow = if (e == Production) p.production else p.staging
+pure def registrationValid(p: Profile, reg: NativeRegistration): bool =
+  profileValid(p) and reg.packageId != "" and reg.displayNameClean and reg.redirect == { origin: rowOf(p, reg.environment).web, path: p.callbackPath }
+pure def agentBaseAccepted(p: Profile, e: Environment, base: str): bool = profileValid(p) and base == rowOf(p, e).api
+type Capability = InferenceCapability | AgentHostingCapability | SpeechCapability | MapsCapability | ManagedGoogleCapability | BillingCapability | BackupsCapability | RemotePairingCapability | CliLoginCapability | StorageCapability | ConnectionsCapability | DocumentsCapability
+pure def routeAdmitted(offered: Set[Capability], c: Capability): bool = offered.contains(c)
 ```
 
 ### Stored credentials are namespaced by every authority of both environments
 
 A device keeps its cloud credentials under a namespace derived from the API,
-web and services origins, tenant and audience of both environments; the
-deployment publishes a digest of that tuple, which the model represents by
-the tuple itself. Changing any authority, even one of staging alone, moves
+web and services origins, tenant and audience of both environments (the
+deployment publishes a digest of that tuple). Changing any authority, even one of staging alone, moves
 the namespace, so credentials stored for the old authorities are no longer
 read. A deployment that changes the namespace must ship a migration for the
 credentials already on devices.
@@ -73,50 +83,6 @@ pure val apiValues = Set("https://api.one", "https://api.staging.one", "https://
 pure def lawStagingChangeRetiresStoredCredentials(p: Profile, api: str): bool =
   api != p.staging.api implies not(credentialReadable(storageNamespace(p), { ...p, staging: { ...p.staging, api: api } }))
 pure def lawUnchangedProfileKeepsCredentials(p: Profile): bool = credentialReadable(storageNamespace(p), p)
-```
-
-### A registered native client returns only to the exact callback on its environment's web origin
-
-Each registered native client names its environment, a non-empty package
-identifier and a clean display name; its redirect is the profile's callback
-path on that environment's web origin and nothing else.
-
-```quint
-type Redirect = { origin: str, path: str }
-type NativeRegistration = { environment: Environment, packageId: str, displayNameClean: bool, redirect: Redirect }
-pure def registrationValid(p: Profile, reg: NativeRegistration): bool =
-  profileValid(p) and reg.packageId != "" and reg.displayNameClean and reg.redirect.origin == rowOf(p, reg.environment).web and reg.redirect.path == p.callbackPath
-pure val regValues = Set(
-  { environment: Production, packageId: "client.one", displayNameClean: true, redirect: { origin: "https://www.one", path: "/auth/native/callback" } },
-  { environment: Staging, packageId: "client.one", displayNameClean: true, redirect: { origin: "https://www.one", path: "/auth/native/callback" } },
-  { environment: Production, packageId: "", displayNameClean: true, redirect: { origin: "https://www.one", path: "/auth/native/callback" } },
-  { environment: Production, packageId: "client.one", displayNameClean: true, redirect: { origin: "https://www.one", path: "/other" } })
-pure def lawRedirectIsExact(p: Profile, reg: NativeRegistration): bool =
-  registrationValid(p, reg) implies reg.redirect == { origin: rowOf(p, reg.environment).web, path: p.callbackPath }
-```
-
-### An agent's cloud base is the configured API origin of its environment
-
-The base an agent uses for cloud inference and services is the API origin
-of the environment it was built for, never a second authority.
-
-```quint
-pure def agentBaseAccepted(p: Profile, e: Environment, base: str): bool = profileValid(p) and base == rowOf(p, e).api
-pure val baseValues = Set("https://api.one", "https://api.staging.one", "https://elsewhere.one")
-pure def lawAgentBaseIsConfiguredApi(p: Profile, e: Environment, base: str): bool = agentBaseAccepted(p, e, base) implies base == rowOf(p, e).api
-```
-
-### A capability the profile does not enable refuses its routes
-
-The profile lists the capabilities the deployment offers. A route of any
-other capability answers that it is not available, without reading the
-request further.
-
-```quint
-type Capability = InferenceCapability | AgentHostingCapability | SpeechCapability | MapsCapability | ManagedGoogleCapability | BillingCapability | BackupsCapability | RemotePairingCapability | CliLoginCapability
-pure def routeAdmitted(offered: Set[Capability], c: Capability): bool = offered.contains(c)
-pure val offeredValues = Set(Set(), Set(InferenceCapability, BillingCapability), Set(SpeechCapability))
-pure def lawDisabledCapabilityRefused(offered: Set[Capability], c: Capability): bool = not(offered.contains(c)) implies not(routeAdmitted(offered, c))
 ```
 
 ## Story: Release a payment catalog all at once or not at all

@@ -1,17 +1,21 @@
 # Terminal run ownership
 
-Sources are `packages/core/src/runtime/run-terminal-owner.ts`, `types/effects.ts` and `services/post-delivery-task-tracker.ts` at `72fed7e4069ecd35d61d886ab6eec5c02c137517`. One owner retains every pending child promise, the merged normalized receipt records, the first complete terminal request and its task identity. Each delivery-dependent child captures its own room-settlement promise identity, so later room-boundary replacement cannot retarget it. New child tracking after request reports `RUN_TASK_AFTER_TERMINAL` and returns a fulfilled no-op without invoking the child.
+Sources are `runtime/run-terminal-owner.ts`, `types/effects.ts` and `services/post-delivery-task-tracker.ts`. One owner retains every pending child promise, the merged normalized receipt records, the first complete terminal request and its task identity. Each delivery-dependent child captures its own room-settlement promise identity, so later room-boundary replacement cannot retarget it. New child tracking after request reports `RUN_TASK_AFTER_TERMINAL` and returns a fulfilled no-op without invoking the child.
 
 ## Story: Finalize one run after all admitted child work
 
-As a host I preserve the first terminal request's complete outcome and error, wait for every captured child and terminal subscriber, and emit one RUN_ENDED event. A schedule failure clears the request so a caller may retry. Work failure is diagnosed and the child promise then fulfills; it does not overwrite the terminal outcome.
+> As a host, I want a run to end once, with its first terminal outcome and
+> error, after every captured child and terminal subscriber has finished,
+> so that RUN_ENDED is emitted exactly once and reports what happened.
+
+A schedule failure clears the request so a caller may retry. Work failure is diagnosed and the child promise then fulfills; it does not overwrite the terminal outcome.
 
 ### Every child and effect retains identity until the terminal snapshot is captured
 
-Discovered by the proof: work and delivery promise identities must stay unique,
-and a delivery-dependent child can run or finish only after its captured promise
-succeeds. These facts prevent an unrelated duplicate identity or an impossible
-pending-delivery state from invalidating a settled child.
+Without unique work and delivery identities, and
+without a delivery-dependent child running only after its captured
+delivery succeeded, a duplicate identity or a still-pending delivery could
+invalidate a child that had already settled.
 
 ```quint
 import receipts as R from "./receipts"
@@ -82,12 +86,10 @@ pure def sometimesFailureRetainsReceipt(s: TerminalState): bool = s.request.resu
 
 ### Terminal emission waits for captured children and every subscriber
 
-Discovered by the proof: once draining begins, every active child belongs to the
-captured work list. Subscriber identities remain unique, and every failed
-subscriber records the first failure before terminal return. These are the
-relations maintained by snapshotting and the synchronous settlement callback.
-Discovered by the proof: subscriber identities must also be positive, as their
-registration guard requires; identity zero is the distinct no-failure sentinel.
+Without these facts an active child could escape
+the drain's captured list, and a failed subscriber could go unreported,
+because a duplicate or zero subscriber identity, zero being the
+no-failure sentinel, would hide which subscriber failed first.
 
 ```quint
 pure def canRegisterSubscriber(s: TerminalState, subscriber: int): bool = subscriber > 0 and s.phase != EmittingTask and s.phase != ReturnedTask and not(s.subscribers.some(h => h.id == subscriber))

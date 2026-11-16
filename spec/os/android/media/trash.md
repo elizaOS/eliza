@@ -2,24 +2,17 @@
 
 A consumer's photos plugin extends Eliza's `PhotosPlugin.java` and imports
 its `OwnedMediaLibrary`, `OwnedMediaSelection` and `TrashDeleteRequest`
-through the native-media Gradle project; its camera adapter is the
-caller. A consumer on the read-only `PermittedPhotosPlugin` with the image
-profile has none of this. [Photos view receipts](../../../agent/deviceActions/photos.md)
-govern agent-initiated review. [Android photo access](./permissionEpochs.md)
-governs the separate permitted-library path. This model owns the
-consumer's native app-owned rows.
-
-Eliza's `test/native-host/trash-request.node.mjs` exercises
-`TrashDeleteRequestTest.java` and checks the overload's explicit intent.
-`test/native-host/owned-media.node.mjs` checks the native configuration,
-selection and readback helpers. Eliza's `test/android-consumer` fixture
-`OwnedLibraryConsumerTest.java` exercises restore and token replay
-rejection. Instrumentation cases define Android acceptance evidence
-separately from the host fixtures and the transition model.
+through the native-media Gradle project when its media descriptor grants
+photo writes; its camera adapter is the caller.
+[Photos view receipts](../../../agent/deviceActions/photos.md) govern
+agent-initiated review, and [photo permission epochs](./permissionEpochs.md)
+the separate permitted-library path. This spec owns the app's own rows.
 
 ## Story: Trash or restore the exact item I selected
 
-> As the person, I want to trash or restore the exact item I selected.
+> As the person, I want Trash and Restore to change exactly the items I
+> selected, as they were when I selected them, so that a changed or
+> different item is never moved.
 
 ### An owned mutation needs the listed row and a supported Android API
 
@@ -83,8 +76,6 @@ pure val verifiedFlag: FlagEvidence = { android11: true, liveAtItem: true, query
 pure val factsValues = Set(verifiedFlag, { ...verifiedFlag, alreadyDesired: true, updatedRows: 0 },
   { ...verifiedFlag, updatedRows: 0 }, { ...verifiedFlag, desiredReadback: false },
   { ...verifiedFlag, versionCommitted: false }, { ...verifiedFlag, liveAtItem: false })
-pure def lawOwnedBatchReviewBound(items: List[OwnedReview]): bool =
-  validOwnedSelection(items) implies items.length() >= 1 and items.length() <= 20
 pure def lawOwnedConfirmedFlagBindsExactRow(operation: OwnedChange, facts: FlagEvidence): bool =
   flagConfirmed(ownedFlagReply(operation, facts)) implies facts.android11 and facts.liveAtItem and facts.queryKnown and facts.exactRow
 pure def lawOwnedChangedFlagUsesReadbackAndCommit(operation: OwnedChange, facts: FlagEvidence): bool =
@@ -96,8 +87,8 @@ pure def lawOwnedCompleteBatchHasConfirmedRows(outcomes: List[FlagReply], reply:
 
 ## Story: Permanently remove only the owned trash I confirmed
 
-> As the person, I want to permanently remove only the owned trash I
-> confirmed.
+> As the person, I want Empty Trash to delete only the trashed items I
+> confirmed, so that nothing added or restored since is lost.
 
 ### Preparation snapshots the requested trashed rows and gives the worker one expiring token
 
@@ -108,12 +99,10 @@ The provider must return the full reviewed selection, including the
 exact mutation revisions for named rows. It reads only published owned
 trash. A catalog scan that would exceed 500 rows refuses the prepare
 and keeps earlier tickets intact. A successful explicit all over an
-empty trash may return count zero. The consumer cancels that token and shows
-the empty state. It also cancels newly returned tokens for a
-discarded view. A large named selection stays bound to reviewed
-revisions and is split into batches of up to 20 after the UI confirms.
-The Android-permitted library and browser adapters have separate
-confirmation contracts.
+empty trash may return count zero; the caller cancels that token, and
+any token returned to a discarded view. A large named selection stays
+bound to reviewed revisions and is split into batches of up to 20 after
+confirmation.
 
 The native worker stores the frozen typed key and MediaStore generation
 of each target. No MediaStore write runs during preparation. The opaque
@@ -195,9 +184,8 @@ condition race between inspection and the typed delete can also yield
 a skipped row when the provider count is not one. A null cursor or a
 provider exception reports a failed row. A count of one appends the
 deleted ID, removes its version entry and revokes video playback.
-The pinned wrapper appends that ID before cleanup, so an exception in
-cleanup also appends it to the failed list. Both receipts for that ID
-are retained in the model. The successful delete receipt rests on the
+The ID is appended before cleanup, so an exception in cleanup also
+lists it as failed, and both receipts for that ID are kept. The successful delete receipt rests on the
 provider count. The plugin reports `partial` if any row is skipped
 or failed. Otherwise it reports `deleted`, including an empty snapshot.
 

@@ -2,13 +2,12 @@
 
 A device pairs with one selected agent instance in two ways. Directly, the
 agent's host issues a short code that the device redeems for a revocable
-session; the wire shape of the pairing link is the
+session. The pairing link, and the device's trust decision on its origin and
+instance before it pairs, are the
 [remote agent pairing contract](../contracts/remoteAgentPairing.md). Through
 the cloud, a registered host creates a pairing session that a controller
 claims, confirms and commits before the host accepts its commands; revoking
-the host ends its sessions and settles its commands. The direct half
-follows the agent host's pairing routes; the cloud half is ported from the
-develop models `RemoteSessionPairing` and `RemoteHostRevocation`.
+the host ends its sessions and settles its commands.
 
 ## Story: Pair a device with the exact selected agent instance
 
@@ -16,44 +15,15 @@ develop models `RemoteSessionPairing` and `RemoteHostRevocation`.
 > after checking that I trust its origin, and the code I was shown can be
 > used once.
 
-### A link provides reviewed pairing inputs and requires an origin trust decision
-
-The link is at most 2,048 UTF-16 units and has the selected scheme,
-host `remote`, and path `/agent-pair`. It carries one each of version,
-origin, code, and instance, with no extra fields. Authority credentials,
-ports on the outer link, and a fragment are rejected. The embedded URL
-must normalize to a credential-free HTTPS origin without a path, query,
-or fragment. The accepted code is trimmed, uppercased and checked
-against the producer's alphabet and group count. The UUID normalizes
-to lowercase. HTTPS parsing and identifier shape are decoder evidence.
-Before pairing, a consumer must trust the resulting origin and compare
-the server's public status with the selected instance.
-
-```quint
-pure def pairLinkValid(uriLength: int, routeExact: bool, authorityClean: bool, fieldsExact: bool, versionOne: bool, httpsOrigin: bool, codeValid: bool, instanceValid: bool): bool =
-  uriLength > 0 and uriLength <= 2048 and routeExact and authorityClean and fieldsExact and versionOne and httpsOrigin and codeValid and instanceValid
-pure def requestPairing(linkValid: bool, trustedOrigin: bool, sameInstance: bool): bool =
-  linkValid and trustedOrigin and sameInstance
-pure def lawPairingNeedsTrust(linkValid: bool, trustedOrigin: bool, sameInstance: bool): bool =
-  requestPairing(linkValid, trustedOrigin, sameInstance) implies trustedOrigin and sameInstance
-pure def lawPairLinkCannotCarryExtraField(uriLength: int, routeExact: bool, authorityClean: bool, versionOne: bool, httpsOrigin: bool, codeValid: bool, instanceValid: bool): bool =
-  not(pairLinkValid(uriLength, routeExact, authorityClean, false, versionOne, httpsOrigin, codeValid, instanceValid))
-```
-
 ### The agent host consumes a code only after admitting session minting
 
-Public status reveals readiness and issuing instance. Reading the owner
-code requires a trusted operator and a deployment with pairing enabled that
-is not managed. Pairing requires the exact current instance and a known peer
-address. An expired code reports 410. Invalid attempts consume rate limit
-budget. Owner and guest codes authorize distinct identities. A missing
-session store returns a retryable 503 and preserves an otherwise valid
-code. After readiness, the host consumes the code before awaiting identity
-and session creation. Failed minting reports 500 and cannot restore the
-consumed code. A successful result represents a session ID and owner or
-guest access. Network delivery and database lifetime are external. This
-machine projects one issued code and one request racing an attempt to
-reuse it.
+Only a trusted operator of a deployment with pairing enabled, and not
+managed, reads the owner or guest code. Redeeming it needs the exact current
+instance and a known peer address; an expired code is refused, invalid
+attempts spend the rate limit, and a missing session store asks the device
+to retry and keeps the code. Once ready, the host consumes the code before it
+mints the session, so a failed mint cannot restore it; a success issues a
+session with the code's owner or guest access.
 
 ```quint
 type PairAccess = PairedOwner | PairedGuest

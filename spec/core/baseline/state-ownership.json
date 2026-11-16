@@ -1681,7 +1681,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -1716,7 +1716,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -1749,7 +1749,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "derived-transparent-cache",
@@ -2025,7 +2025,7 @@
       "declaration": "RISK_RANK: Readonly<Record<CapabilityRiskLevel, number>> = Object.freeze({ R0: 0, R1: 1, R2: 2, R3: 3, })",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -2045,7 +2045,7 @@
       "declaration": "ACCOUNT_STATUS_UNAVAILABILITY: Readonly< Record< Exclude<ConnectedAccountStatus, \"connected\">, { code: CapabilityUnavailableCode; retryable: boolean } > > = Object.freeze({ disabled: { code: \"account_disabled\", retryable: false }, error: { code: \"account_error\", retryable: true }, reauth_required: { code: \"needs_scope\", retryable: false }, revoked: { code: \"account_revoked\", retryable: false }, unavailable: { code: \"provider_unavailable\", retryable: true }, })",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -2065,7 +2065,7 @@
       "declaration": "UNAVAILABLE_RETRYABLE: Readonly< Record<CapabilityUnavailableCode, boolean> > = Object.freeze({ account_disabled: false, account_error: true, account_revoked: false, cost_blocked: false, needs_admin: false, needs_review: false, needs_scope: false, not_configured: false, provider_unavailable: true, unsupported: false, })",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -2085,7 +2085,7 @@
       "declaration": "UNAVAILABLE_PRECEDENCE: readonly CapabilityUnavailableCode[] = Object.freeze([ \"needs_scope\", \"needs_admin\", \"needs_review\", \"account_revoked\", \"account_disabled\", \"cost_blocked\", \"account_error\", \"provider_unavailable\", \"unsupported\", \"not_configured\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -2105,7 +2105,7 @@
       "declaration": "SURFACE_CAPABILITIES: ReadonlySet<string> = new Set<SurfaceCapability>([ \"wallpaper\", \"background:apply\", \"navigate\", \"storage\", \"agent-surface\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -2125,7 +2125,7 @@
       "declaration": "REMOTE_SERVICE_RESERVED_METHODS = new Set([ \"callRemote\", \"constructor\", \"hasOwnProperty\", \"isPrototypeOf\", \"propertyIsEnumerable\", \"toLocaleString\", \"toString\", \"valueOf\", \"__defineGetter__\", \"__defineSetter__\", \"__lookupGetter__\", \"__lookupSetter__\", \"__proto__\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -2153,7 +2153,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2181,7 +2181,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2209,7 +2209,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2237,7 +2237,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2265,7 +2265,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2293,7 +2293,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2321,7 +2321,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2349,7 +2349,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2377,7 +2377,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2397,7 +2397,7 @@
       "declaration": "readonly environment: CapabilityEnvironment = \"unknown\"",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -2417,7 +2417,7 @@
       "declaration": "private readonly reason = \"Capability router is not available.\"",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -2445,7 +2445,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2473,7 +2473,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2501,7 +2501,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2529,7 +2529,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2557,7 +2557,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2585,7 +2585,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -2613,7 +2613,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -4473,7 +4473,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/oauthSecrets.md"
+        "spec/core/oauth/verifiers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -4481,7 +4481,7 @@
         "classification": "state-projection",
         "representation": "Provider/flow key owns verifier identity and optional expiry; process restart clears it.",
         "model": {
-          "spec": "spec/core/oauthSecrets.md",
+          "spec": "spec/core/oauth/verifiers.md",
           "stateType": "OAuthSecrets",
           "stateFields": [
             "entries",
@@ -4720,9 +4720,9 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/oauthBridge.md",
+        "spec/core/oauth/bridge.md",
         "spec/core/connectorStorage.md",
-        "spec/core/oauthSecrets.md"
+        "spec/core/oauth/verifiers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -4730,7 +4730,7 @@
         "classification": "state-projection",
         "representation": "Full canonical account/flow values, captured mirror/adapter outcomes and payload-preserving handoff state replace opaque bodies and count-only migration. Exact schema/codec/adapter refinement remains required before implementation acceptance.",
         "model": {
-          "spec": "spec/core/oauthBridge.md",
+          "spec": "spec/core/oauth/bridge.md",
           "stateType": "OAuthBridge",
           "stateFields": [
             "mirror",
@@ -4765,7 +4765,7 @@
         },
         "associatedModels": [
           {
-            "spec": "spec/core/oauthBridge.md",
+            "spec": "spec/core/oauth/bridge.md",
             "stateType": "OAuthBridge",
             "stateFields": [
               "mirror",
@@ -4823,7 +4823,7 @@
             "specSha256": "241e1b57de20c0942953c9a9835bf5061c54f2d2e54c0235dc40b76fd28828e0"
           },
           {
-            "spec": "spec/core/oauthSecrets.md",
+            "spec": "spec/core/oauth/verifiers.md",
             "stateType": "OAuthSecrets",
             "stateFields": [
               "entries",
@@ -4906,9 +4906,9 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/oauthBridge.md",
+        "spec/core/oauth/bridge.md",
         "spec/core/connectorStorage.md",
-        "spec/core/oauthSecrets.md"
+        "spec/core/oauth/verifiers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -4916,7 +4916,7 @@
         "classification": "state-projection",
         "representation": "Full canonical account/flow values, captured mirror/adapter outcomes and payload-preserving handoff state replace opaque bodies and count-only migration. Exact schema/codec/adapter refinement remains required before implementation acceptance.",
         "model": {
-          "spec": "spec/core/oauthBridge.md",
+          "spec": "spec/core/oauth/bridge.md",
           "stateType": "OAuthBridge",
           "stateFields": [
             "mirror",
@@ -4951,7 +4951,7 @@
         },
         "associatedModels": [
           {
-            "spec": "spec/core/oauthBridge.md",
+            "spec": "spec/core/oauth/bridge.md",
             "stateType": "OAuthBridge",
             "stateFields": [
               "mirror",
@@ -5009,7 +5009,7 @@
             "specSha256": "241e1b57de20c0942953c9a9835bf5061c54f2d2e54c0235dc40b76fd28828e0"
           },
           {
-            "spec": "spec/core/oauthSecrets.md",
+            "spec": "spec/core/oauth/verifiers.md",
             "stateType": "OAuthSecrets",
             "stateFields": [
               "entries",
@@ -5109,9 +5109,9 @@
       "declaration": "private oauthFallback = new InMemoryConnectorAccountStorage();",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/oauthBridge.md",
+        "spec/core/oauth/bridge.md",
         "spec/core/connectorStorage.md",
-        "spec/core/oauthSecrets.md"
+        "spec/core/oauth/verifiers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "owned-field-or-construction-state",
@@ -5119,7 +5119,7 @@
         "classification": "state-projection",
         "representation": "Full canonical account/flow values, captured mirror/adapter outcomes and payload-preserving handoff state replace opaque bodies and count-only migration. Exact schema/codec/adapter refinement remains required before implementation acceptance.",
         "model": {
-          "spec": "spec/core/oauthBridge.md",
+          "spec": "spec/core/oauth/bridge.md",
           "stateType": "OAuthBridge",
           "stateFields": [
             "mirror",
@@ -5154,7 +5154,7 @@
         },
         "associatedModels": [
           {
-            "spec": "spec/core/oauthBridge.md",
+            "spec": "spec/core/oauth/bridge.md",
             "stateType": "OAuthBridge",
             "stateFields": [
               "mirror",
@@ -5212,7 +5212,7 @@
             "specSha256": "241e1b57de20c0942953c9a9835bf5061c54f2d2e54c0235dc40b76fd28828e0"
           },
           {
-            "spec": "spec/core/oauthSecrets.md",
+            "spec": "spec/core/oauth/verifiers.md",
             "stateType": "OAuthSecrets",
             "stateFields": [
               "entries",
@@ -5260,13 +5260,13 @@
       "mutations": [],
       "ownerSpecs": [
         "spec/core/connectorStorage.md",
-        "spec/core/connectorMigration.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorBackends.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
-        "spec/core/oauthSecrets.md",
-        "spec/core/oauthStart.md",
-        "spec/core/oauthLifecycle.md"
+        "spec/core/oauth/verifiers.md",
+        "spec/core/oauth/index.md",
+        "spec/core/oauth/index.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -5287,13 +5287,13 @@
       "mutations": [],
       "ownerSpecs": [
         "spec/core/connectorStorage.md",
-        "spec/core/connectorMigration.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorBackends.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
-        "spec/core/oauthSecrets.md",
-        "spec/core/oauthStart.md",
-        "spec/core/oauthLifecycle.md"
+        "spec/core/oauth/verifiers.md",
+        "spec/core/oauth/index.md",
+        "spec/core/oauth/index.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -5314,13 +5314,13 @@
       "mutations": [],
       "ownerSpecs": [
         "spec/core/connectorStorage.md",
-        "spec/core/connectorMigration.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorBackends.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
-        "spec/core/oauthSecrets.md",
-        "spec/core/oauthStart.md",
-        "spec/core/oauthLifecycle.md"
+        "spec/core/oauth/verifiers.md",
+        "spec/core/oauth/index.md",
+        "spec/core/oauth/index.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -5407,7 +5407,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorHandoff.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -5415,7 +5415,7 @@
         "classification": "state-projection",
         "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
         "model": {
-          "spec": "spec/core/connectorBackends.md",
+          "spec": "spec/core/connectorHandoff.md",
           "stateType": "BackendCache",
           "stateFields": [
             "serial",
@@ -5461,7 +5461,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorHandoff.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -5469,7 +5469,7 @@
         "classification": "state-projection",
         "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
         "model": {
-          "spec": "spec/core/connectorBackends.md",
+          "spec": "spec/core/connectorHandoff.md",
           "stateType": "BackendCache",
           "stateFields": [
             "serial",
@@ -5515,7 +5515,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorHandoff.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -5523,7 +5523,7 @@
         "classification": "state-projection",
         "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
         "model": {
-          "spec": "spec/core/connectorBackends.md",
+          "spec": "spec/core/connectorHandoff.md",
           "stateType": "BackendCache",
           "stateFields": [
             "serial",
@@ -5569,7 +5569,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorHandoff.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -5577,7 +5577,7 @@
         "classification": "state-projection",
         "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
         "model": {
-          "spec": "spec/core/connectorBackends.md",
+          "spec": "spec/core/connectorHandoff.md",
           "stateType": "BackendCache",
           "stateFields": [
             "serial",
@@ -5623,7 +5623,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorHandoff.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -5631,7 +5631,7 @@
         "classification": "state-projection",
         "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
         "model": {
-          "spec": "spec/core/connectorBackends.md",
+          "spec": "spec/core/connectorHandoff.md",
           "stateType": "BackendCache",
           "stateFields": [
             "serial",
@@ -5867,7 +5867,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/connectorBackends.md"
+        "spec/core/connectorHandoff.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -5875,7 +5875,7 @@
         "classification": "state-projection",
         "representation": "Models stable facade identity, current adapter memo, lazy fallback and sticky warning; injected storage identities supplied as inputs.",
         "model": {
-          "spec": "spec/core/connectorBackends.md",
+          "spec": "spec/core/connectorHandoff.md",
           "stateType": "BackendCache",
           "stateFields": [
             "serial",
@@ -7974,7 +7974,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/logListeners.md"
+        "spec/core/logging/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -7982,7 +7982,7 @@
         "classification": "state-projection",
         "representation": "Source listener Set and warning WeakSet map to exact live/snapshot listener model; global memory sink uses bounded ordered ring.",
         "model": {
-          "spec": "spec/core/logListeners.md",
+          "spec": "spec/core/logging/index.md",
           "stateType": "LogSink",
           "stateFields": [
             "logs",
@@ -8038,7 +8038,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/logListeners.md"
+        "spec/core/logging/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -8046,7 +8046,7 @@
         "classification": "state-projection",
         "representation": "Source listener Set and warning WeakSet map to exact live/snapshot listener model; global memory sink uses bounded ordered ring.",
         "model": {
-          "spec": "spec/core/logListeners.md",
+          "spec": "spec/core/logging/index.md",
           "stateType": "LogSink",
           "stateFields": [
             "logs",
@@ -8262,7 +8262,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -8270,7 +8270,7 @@
         "classification": "state-projection",
         "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
         "model": {
-          "spec": "spec/core/logFiles.md",
+          "spec": "spec/core/logging/files.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
@@ -8331,7 +8331,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -8339,7 +8339,7 @@
         "classification": "state-projection",
         "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
         "model": {
-          "spec": "spec/core/logFiles.md",
+          "spec": "spec/core/logging/files.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
@@ -8394,7 +8394,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -8402,7 +8402,7 @@
         "classification": "state-projection",
         "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
         "model": {
-          "spec": "spec/core/logFiles.md",
+          "spec": "spec/core/logging/files.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
@@ -8463,7 +8463,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -8471,7 +8471,7 @@
         "classification": "state-projection",
         "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
         "model": {
-          "spec": "spec/core/logFiles.md",
+          "spec": "spec/core/logging/files.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
@@ -8532,7 +8532,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -8540,7 +8540,7 @@
         "classification": "state-projection",
         "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
         "model": {
-          "spec": "spec/core/logFiles.md",
+          "spec": "spec/core/logging/files.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
@@ -8595,7 +8595,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -8603,7 +8603,7 @@
         "classification": "state-projection",
         "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
         "model": {
-          "spec": "spec/core/logFiles.md",
+          "spec": "spec/core/logging/files.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
@@ -8658,7 +8658,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/logListeners.md"
+        "spec/core/logging/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -8666,7 +8666,7 @@
         "classification": "state-projection",
         "representation": "Source listener Set and warning WeakSet map to exact live/snapshot listener model; global memory sink uses bounded ordered ring.",
         "model": {
-          "spec": "spec/core/logListeners.md",
+          "spec": "spec/core/logging/index.md",
           "stateType": "LogSink",
           "stateFields": [
             "logs",
@@ -10074,7 +10074,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -10549,7 +10549,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -10589,7 +10589,7 @@
       "declaration": "DEFAULT_OPTIONS = { k1: 1.2, b: 0.75, minLength: 2, stopWords: /* @__PURE__ */ new Set<string>([ \"a\", \"an\", \"and\", \"are\", \"as\", \"at\", \"be\", \"by\", \"for\", \"from\", \"has\", \"he\", \"in\", \"is\", \"it\", \"its\", \"of\", \"on\", \"that\", \"the\", \"to\", \"was\", \"were\", \"will\", \"with\", ]), stemming: false, }",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -10617,7 +10617,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -10645,7 +10645,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -10673,7 +10673,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -10701,7 +10701,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -10721,7 +10721,7 @@
       "declaration": "static readonly DEFAULT_OPTIONS: Required<TokenizerOptions> = { stopWords: /* @__PURE__ */ new Set<string>(), minLength: 2, stemming: false, stemmingRules: [], };",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -10749,7 +10749,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -10777,7 +10777,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -10805,7 +10805,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -10861,7 +10861,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -10869,7 +10869,7 @@
         "classification": "state-projection",
         "representation": "Document corpus/token multiset and insertion term order derive document frequency, lengths and IDF inputs; float/Uint32 calculations have exact fixtures.",
         "model": {
-          "spec": "spec/core/retrievalIndex.md",
+          "spec": "spec/core/retrieval.md",
           "stateType": "Corpus",
           "stateFields": [
             "documents",
@@ -10932,7 +10932,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -10940,7 +10940,7 @@
         "classification": "state-projection",
         "representation": "Document corpus/token multiset and insertion term order derive document frequency, lengths and IDF inputs; float/Uint32 calculations have exact fixtures.",
         "model": {
-          "spec": "spec/core/retrievalIndex.md",
+          "spec": "spec/core/retrieval.md",
           "stateType": "Corpus",
           "stateFields": [
             "documents",
@@ -10996,7 +10996,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -11004,7 +11004,7 @@
         "classification": "state-projection",
         "representation": "Document corpus/token multiset and insertion term order derive document frequency, lengths and IDF inputs; float/Uint32 calculations have exact fixtures.",
         "model": {
-          "spec": "spec/core/retrievalIndex.md",
+          "spec": "spec/core/retrieval.md",
           "stateType": "Corpus",
           "stateFields": [
             "documents",
@@ -11081,7 +11081,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -11089,7 +11089,7 @@
         "classification": "state-projection",
         "representation": "Document corpus/token multiset and insertion term order derive document frequency, lengths and IDF inputs; float/Uint32 calculations have exact fixtures.",
         "model": {
-          "spec": "spec/core/retrievalIndex.md",
+          "spec": "spec/core/retrieval.md",
           "stateType": "Corpus",
           "stateFields": [
             "documents",
@@ -11145,7 +11145,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -11153,7 +11153,7 @@
         "classification": "state-projection",
         "representation": "Document corpus/token multiset and insertion term order derive document frequency, lengths and IDF inputs; float/Uint32 calculations have exact fixtures.",
         "model": {
-          "spec": "spec/core/retrievalIndex.md",
+          "spec": "spec/core/retrieval.md",
           "stateType": "Corpus",
           "stateFields": [
             "documents",
@@ -11188,7 +11188,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -11237,7 +11237,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -11245,7 +11245,7 @@
         "classification": "state-projection",
         "representation": "Document corpus/token multiset and insertion term order derive document frequency, lengths and IDF inputs; float/Uint32 calculations have exact fixtures.",
         "model": {
-          "spec": "spec/core/retrievalIndex.md",
+          "spec": "spec/core/retrieval.md",
           "stateType": "Corpus",
           "stateFields": [
             "documents",
@@ -12236,7 +12236,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/responseEvaluators.md"
+        "spec/core/responseEvaluation.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -12244,7 +12244,7 @@
         "classification": "state-projection",
         "representation": "Response-handler evaluator array has exact-name first-wins registration, trimmed removal, retained callback references and insertion ordering. Distinct from ordinary evaluator and response-field registries.",
         "model": {
-          "spec": "spec/core/responseEvaluators.md",
+          "spec": "spec/core/responseEvaluation.md",
           "stateType": "ResponseEvaluators",
           "stateFields": [
             "entries"
@@ -12257,7 +12257,7 @@
         },
         "associatedModels": [
           {
-            "spec": "spec/core/responseEvaluators.md",
+            "spec": "spec/core/responseEvaluation.md",
             "stateType": "ResponseEvaluators",
             "stateFields": [
               "entries"
@@ -12528,7 +12528,6 @@
           ],
           "transitions": [
             "configureRooms",
-            "reuseLease",
             "queueRoom",
             "grantRoom",
             "beginWrite",
@@ -12576,7 +12575,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/pluginRegistry.md"
+        "spec/core/pluginServices.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -12584,7 +12583,7 @@
         "classification": "state-projection",
         "representation": "Plugin epochs retain registration/retirement ownership; plugin object contents remain source ABI.",
         "model": {
-          "spec": "spec/core/pluginRegistry.md",
+          "spec": "spec/core/pluginServices.md",
           "stateType": "PluginEpochs",
           "stateFields": [
             "epochs",
@@ -12828,7 +12827,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -13419,7 +13418,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/runtimeExtensions.md"
+        "spec/core/registries.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -13427,7 +13426,7 @@
         "classification": "state-projection",
         "representation": "Exact worker and category keys retain registration semantics; hook object replacement stores current reference.",
         "model": {
-          "spec": "spec/core/runtimeExtensions.md",
+          "spec": "spec/core/registries.md",
           "stateType": "RuntimeExtensions",
           "stateFields": [
             "workers",
@@ -13470,7 +13469,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/runtimeExtensions.md"
+        "spec/core/registries.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -13478,7 +13477,7 @@
         "classification": "state-projection",
         "representation": "Exact worker and category keys retain registration semantics; hook object replacement stores current reference.",
         "model": {
-          "spec": "spec/core/runtimeExtensions.md",
+          "spec": "spec/core/registries.md",
           "stateType": "RuntimeExtensions",
           "stateFields": [
             "workers",
@@ -13581,7 +13580,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/runtimeExtensions.md"
+        "spec/core/registries.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -13589,7 +13588,7 @@
         "classification": "state-projection",
         "representation": "Exact worker and category keys retain registration semantics; hook object replacement stores current reference.",
         "model": {
-          "spec": "spec/core/runtimeExtensions.md",
+          "spec": "spec/core/registries.md",
           "stateType": "RuntimeExtensions",
           "stateFields": [
             "workers",
@@ -15137,7 +15136,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -15216,7 +15215,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -15665,7 +15664,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/routingRegistries.md"
+        "spec/core/registries.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -15673,7 +15672,7 @@
         "classification": "state-projection",
         "representation": "Ordered callback identities and exact disposer semantics retained in per-runtime registry lists.",
         "model": {
-          "spec": "spec/core/routingRegistries.md",
+          "spec": "spec/core/registries.md",
           "stateType": "RoutingRegistries",
           "stateFields": [
             "localized",
@@ -15839,7 +15838,7 @@
       "declaration": "private readonly runtime: IAgentRuntime",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/pluginRegistry.md"
+        "spec/core/pluginServices.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -16178,7 +16177,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -16391,7 +16390,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/routingRegistries.md"
+        "spec/core/registries.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -16399,7 +16398,7 @@
         "classification": "state-projection",
         "representation": "Ordered callback identities and exact disposer semantics retained in per-runtime registry lists.",
         "model": {
-          "spec": "spec/core/routingRegistries.md",
+          "spec": "spec/core/registries.md",
           "stateType": "RoutingRegistries",
           "stateFields": [
             "localized",
@@ -17572,7 +17571,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/routingRegistries.md"
+        "spec/core/registries.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -17580,7 +17579,7 @@
         "classification": "state-projection",
         "representation": "Ordered callback identities and exact disposer semantics retained in per-runtime registry lists.",
         "model": {
-          "spec": "spec/core/routingRegistries.md",
+          "spec": "spec/core/registries.md",
           "stateType": "RoutingRegistries",
           "stateFields": [
             "localized",
@@ -17847,7 +17846,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/runtimeExtensions.md"
+        "spec/core/registries.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -17855,7 +17854,7 @@
         "classification": "state-projection",
         "representation": "Most recently resolved provider name retained independently by model type.",
         "model": {
-          "spec": "spec/core/runtimeExtensions.md",
+          "spec": "spec/core/registries.md",
           "stateType": "RuntimeExtensions",
           "stateFields": [
             "workers",
@@ -18765,7 +18764,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -18792,7 +18791,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -18819,7 +18818,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -18854,7 +18853,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -18882,7 +18881,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -21373,7 +21372,7 @@
       "declaration": "EAGER_SERVICE_START_RETRY_DELAYS_MS: readonly number[] = [ 2_000, 5_000, 10_000, ]",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/serviceRegistry.md"
+        "spec/core/serviceInstances.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -21401,7 +21400,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/serviceRegistry.md"
+        "spec/core/serviceInstances.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "modeled-owned-state",
@@ -21534,7 +21533,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/serviceRegistry.md"
+        "spec/core/serviceInstances.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "modeled-owned-state",
@@ -21554,7 +21553,7 @@
       "declaration": "private readonly retirement: RuntimeRetirement",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/serviceRegistry.md"
+        "spec/core/serviceInstances.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -21812,7 +21811,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "modeled-owned-state",
@@ -21832,7 +21831,7 @@
       "declaration": "private readonly lifecycle: { hasProviderSelectionHooks: () => boolean; ensureServiceStarted: ( serviceType: ServiceTypeName | string, ) => Promise<Service | null>; isStopping: () => boolean; }",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -21867,7 +21866,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providerExecutions.md"
+        "spec/core/providers/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -21875,7 +21874,7 @@
         "classification": "state-projection",
         "representation": "Full composite provider key includes message, room, selected provider names, trusted audience identity and deferred-reference mode; maps retain independent executions.",
         "model": {
-          "spec": "spec/core/providerExecutions.md",
+          "spec": "spec/core/providers/index.md",
           "stateType": "ProviderExecutions",
           "stateFields": [
             "domains",
@@ -21934,7 +21933,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providerExecutions.md"
+        "spec/core/providers/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -21942,7 +21941,7 @@
         "classification": "state-projection",
         "representation": "Full composite provider key includes message, room, selected provider names, trusted audience identity and deferred-reference mode; maps retain independent executions.",
         "model": {
-          "spec": "spec/core/providerExecutions.md",
+          "spec": "spec/core/providers/index.md",
           "stateType": "ProviderExecutions",
           "stateFields": [
             "domains",
@@ -22001,7 +22000,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/providerExecutions.md"
+        "spec/core/providers/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -22009,7 +22008,7 @@
         "classification": "state-projection",
         "representation": "Full composite provider key includes message, room, selected provider names, trusted audience identity and deferred-reference mode; maps retain independent executions.",
         "model": {
-          "spec": "spec/core/providerExecutions.md",
+          "spec": "spec/core/providers/index.md",
           "stateType": "ProviderExecutions",
           "stateFields": [
             "domains",
@@ -23668,7 +23667,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "derived-transparent-cache",
@@ -24264,7 +24263,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -25768,7 +25767,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -27439,7 +27438,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/voiceRewrite.md"
+        "spec/core/outboundStyle.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -27447,7 +27446,7 @@
         "classification": "state-projection",
         "representation": "Exact LRU keys and order; one state row per caller preserves detached original/output and settlement identity. Parallel same-key misses do not join; late success overwrites its cache value in place.",
         "model": {
-          "spec": "spec/core/voiceRewrite.md",
+          "spec": "spec/core/outboundStyle.md",
           "stateType": "VoiceRewrite",
           "stateFields": [
             "cache",
@@ -28366,7 +28365,7 @@
       ],
       "ownerSpecs": [
         "spec/core/approvalService.md",
-        "spec/core/approvalWorkers.md",
+        "spec/core/approvalService.md",
         "spec/core/approvals.md",
         "spec/core/approvalRetirement.md"
       ],
@@ -28427,7 +28426,7 @@
             "specSha256": "80392b553a71627bd18f2a68f61f3ab45de5f8d7855066b8b256616a41579949"
           },
           {
-            "spec": "spec/core/approvalWorkers.md",
+            "spec": "spec/core/approvalService.md",
             "stateType": "ApprovalWorkers",
             "stateFields": [
               "registered",
@@ -28535,7 +28534,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/approvalWorkers.md"
+        "spec/core/approvalService.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -28543,7 +28542,7 @@
         "classification": "state-projection",
         "representation": "Worker-kind Set is updated only after successful synchronous registration; failed registration remains retryable.",
         "model": {
-          "spec": "spec/core/approvalWorkers.md",
+          "spec": "spec/core/approvalService.md",
           "stateType": "ApprovalWorkers",
           "stateFields": [
             "registered",
@@ -28602,7 +28601,7 @@
       ],
       "ownerSpecs": [
         "spec/core/approvalService.md",
-        "spec/core/approvalWorkers.md",
+        "spec/core/approvalService.md",
         "spec/core/approvals.md",
         "spec/core/approvalRetirement.md"
       ],
@@ -28663,7 +28662,7 @@
             "specSha256": "80392b553a71627bd18f2a68f61f3ab45de5f8d7855066b8b256616a41579949"
           },
           {
-            "spec": "spec/core/approvalWorkers.md",
+            "spec": "spec/core/approvalService.md",
             "stateType": "ApprovalWorkers",
             "stateFields": [
               "registered",
@@ -30982,7 +30981,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/notificationRecoveryOwners.md"
+        "spec/core/notifications/recoveryOwners.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -30990,7 +30989,7 @@
         "classification": "state-projection",
         "representation": "Shared runtime recovery owner and availability state preserve map replacement while old waiters finish.",
         "model": {
-          "spec": "spec/core/notificationRecoveryOwners.md",
+          "spec": "spec/core/notifications/recoveryOwners.md",
           "stateType": "Owners",
           "stateFields": [
             "availability",
@@ -31038,7 +31037,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/notificationRecoveryOwners.md"
+        "spec/core/notifications/recoveryOwners.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -31046,7 +31045,7 @@
         "classification": "state-projection",
         "representation": "Shared runtime recovery owner and availability state preserve map replacement while old waiters finish.",
         "model": {
-          "spec": "spec/core/notificationRecoveryOwners.md",
+          "spec": "spec/core/notifications/recoveryOwners.md",
           "stateType": "Owners",
           "stateFields": [
             "availability",
@@ -31087,8 +31086,8 @@
       "declaration": "NATIVE_DEEP_LINKS: ReadonlySet<string> = new Set([ \"/chat\", \"/automations\", \"/clock\", \"/notes\", \"/calendar\", \"/reminders\", \"/tasks\", \"/apps/tasks\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/notificationRecovery.md",
-        "spec/core/notifications.md"
+        "spec/core/notifications/recovery.md",
+        "spec/core/notifications/index.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -31108,8 +31107,8 @@
       "declaration": "readonly code: string",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/notificationRecovery.md",
-        "spec/core/notifications.md"
+        "spec/core/notifications/recovery.md",
+        "spec/core/notifications/index.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -31129,8 +31128,8 @@
       "declaration": "readonly status = 400",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/notificationRecovery.md",
-        "spec/core/notifications.md"
+        "spec/core/notifications/recovery.md",
+        "spec/core/notifications/index.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -31150,8 +31149,8 @@
       "declaration": "static serviceType: string = ServiceType.NOTIFICATION;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/notificationRecovery.md",
-        "spec/core/notifications.md"
+        "spec/core/notifications/recovery.md",
+        "spec/core/notifications/index.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -31171,8 +31170,8 @@
       "declaration": "capabilityDescription = \"Creates, persists, and fans out user-facing notifications across every client surface\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/notificationRecovery.md",
-        "spec/core/notifications.md"
+        "spec/core/notifications/recovery.md",
+        "spec/core/notifications/index.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -31277,7 +31276,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/notifications.md"
+        "spec/core/notifications/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -31285,7 +31284,7 @@
         "classification": "state-projection",
         "representation": "Write-tail single-flight represented as phase; stopped-to-active impossible preserved, but promise identity requires serial queue refinement.",
         "model": {
-          "spec": "spec/core/notifications.md",
+          "spec": "spec/core/notifications/index.md",
           "stateType": "Inbox",
           "stateFields": [
             "now",
@@ -31330,7 +31329,7 @@
         },
         "associatedModels": [
           {
-            "spec": "spec/core/notifications.md",
+            "spec": "spec/core/notifications/index.md",
             "stateType": "Inbox",
             "stateFields": [
               "now",
@@ -31416,7 +31415,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/notifications.md"
+        "spec/core/notifications/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -31424,7 +31423,7 @@
         "classification": "state-projection",
         "representation": "Write-tail single-flight represented as phase; stopped-to-active impossible preserved, but promise identity requires serial queue refinement.",
         "model": {
-          "spec": "spec/core/notifications.md",
+          "spec": "spec/core/notifications/index.md",
           "stateType": "Inbox",
           "stateFields": [
             "now",
@@ -31469,7 +31468,7 @@
         },
         "associatedModels": [
           {
-            "spec": "spec/core/notifications.md",
+            "spec": "spec/core/notifications/index.md",
             "stateType": "Inbox",
             "stateFields": [
               "now",
@@ -31569,7 +31568,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/notifications.md"
+        "spec/core/notifications/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -31577,7 +31576,7 @@
         "classification": "state-projection",
         "representation": "Write-tail single-flight represented as phase; stopped-to-active impossible preserved, but promise identity requires serial queue refinement.",
         "model": {
-          "spec": "spec/core/notifications.md",
+          "spec": "spec/core/notifications/index.md",
           "stateType": "Inbox",
           "stateFields": [
             "now",
@@ -31622,7 +31621,7 @@
         },
         "associatedModels": [
           {
-            "spec": "spec/core/notifications.md",
+            "spec": "spec/core/notifications/index.md",
             "stateType": "Inbox",
             "stateFields": [
               "now",
@@ -31729,7 +31728,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/notifications.md"
+        "spec/core/notifications/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -31737,7 +31736,7 @@
         "classification": "state-projection",
         "representation": "Write-tail single-flight represented as phase; stopped-to-active impossible preserved, but promise identity requires serial queue refinement.",
         "model": {
-          "spec": "spec/core/notifications.md",
+          "spec": "spec/core/notifications/index.md",
           "stateType": "Inbox",
           "stateFields": [
             "now",
@@ -31782,7 +31781,7 @@
         },
         "associatedModels": [
           {
-            "spec": "spec/core/notifications.md",
+            "spec": "spec/core/notifications/index.md",
             "stateType": "Inbox",
             "stateFields": [
               "now",
@@ -31875,7 +31874,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/notifications.md"
+        "spec/core/notifications/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -31883,7 +31882,7 @@
         "classification": "state-projection",
         "representation": "Write-tail single-flight represented as phase; stopped-to-active impossible preserved, but promise identity requires serial queue refinement.",
         "model": {
-          "spec": "spec/core/notifications.md",
+          "spec": "spec/core/notifications/index.md",
           "stateType": "Inbox",
           "stateFields": [
             "now",
@@ -31928,7 +31927,7 @@
         },
         "associatedModels": [
           {
-            "spec": "spec/core/notifications.md",
+            "spec": "spec/core/notifications/index.md",
             "stateType": "Inbox",
             "stateFields": [
               "now",
@@ -32014,7 +32013,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/notifications.md"
+        "spec/core/notifications/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -32022,7 +32021,7 @@
         "classification": "state-projection",
         "representation": "Write-tail single-flight represented as phase; stopped-to-active impossible preserved, but promise identity requires serial queue refinement.",
         "model": {
-          "spec": "spec/core/notifications.md",
+          "spec": "spec/core/notifications/index.md",
           "stateType": "Inbox",
           "stateFields": [
             "now",
@@ -32067,7 +32066,7 @@
         },
         "associatedModels": [
           {
-            "spec": "spec/core/notifications.md",
+            "spec": "spec/core/notifications/index.md",
             "stateType": "Inbox",
             "stateFields": [
               "now",
@@ -32153,7 +32152,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/notifications.md"
+        "spec/core/notifications/index.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -32161,7 +32160,7 @@
         "classification": "state-projection",
         "representation": "Write-tail single-flight represented as phase; stopped-to-active impossible preserved, but promise identity requires serial queue refinement.",
         "model": {
-          "spec": "spec/core/notifications.md",
+          "spec": "spec/core/notifications/index.md",
           "stateType": "Inbox",
           "stateFields": [
             "now",
@@ -32206,7 +32205,7 @@
         },
         "associatedModels": [
           {
-            "spec": "spec/core/notifications.md",
+            "spec": "spec/core/notifications/index.md",
             "stateType": "Inbox",
             "stateFields": [
               "now",
@@ -32284,10 +32283,10 @@
       "declaration": "static serviceType = ServiceType.PAIRING;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/pairing.md",
-        "spec/core/pairingAdmission.md",
-        "spec/core/pairingReplies.md",
-        "spec/core/pairingGrants.md"
+        "spec/core/pairing/index.md",
+        "spec/core/pairing/admission.md",
+        "spec/core/pairing/replies.md",
+        "spec/core/pairing/grants.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -32307,10 +32306,10 @@
       "declaration": "capabilityDescription = \"Manages secure DM access via pairing codes for messaging channels\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/pairing.md",
-        "spec/core/pairingAdmission.md",
-        "spec/core/pairingReplies.md",
-        "spec/core/pairingGrants.md"
+        "spec/core/pairing/index.md",
+        "spec/core/pairing/admission.md",
+        "spec/core/pairing/replies.md",
+        "spec/core/pairing/grants.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -32338,10 +32337,10 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/pairing.md",
-        "spec/core/pairingAdmission.md",
-        "spec/core/pairingReplies.md",
-        "spec/core/pairingGrants.md"
+        "spec/core/pairing/index.md",
+        "spec/core/pairing/admission.md",
+        "spec/core/pairing/replies.md",
+        "spec/core/pairing/grants.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -32383,7 +32382,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/pairingReplies.md"
+        "spec/core/pairing/replies.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -32391,7 +32390,7 @@
         "classification": "state-projection",
         "representation": "Finite 4096 oldest-first TTL claims prevent duplicate replies; configured TTL supplied by policy.",
         "model": {
-          "spec": "spec/core/pairingReplies.md",
+          "spec": "spec/core/pairing/replies.md",
           "stateType": "PairingReplies",
           "stateFields": [
             "configured",
@@ -32434,7 +32433,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/pairingAdmission.md"
+        "spec/core/pairing/admission.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -32442,7 +32441,7 @@
         "classification": "state-projection",
         "representation": "Unbounded FIFO waiting tickets, one active owner after older settlement, request clock captured at serial entry preceding storage read, captured rows preserved across the await, and exact per-ticket typed receipts release the next caller even after rejection.",
         "model": {
-          "spec": "spec/core/pairingAdmission.md",
+          "spec": "spec/core/pairing/admission.md",
           "stateType": "PairingAdmission",
           "stateFields": [
             "configured",
@@ -32500,10 +32499,10 @@
       "declaration": "private static readonly MAX_PAIRING_REPLY_CLAIMS = 4096;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/pairing.md",
-        "spec/core/pairingAdmission.md",
-        "spec/core/pairingReplies.md",
-        "spec/core/pairingGrants.md"
+        "spec/core/pairing/index.md",
+        "spec/core/pairing/admission.md",
+        "spec/core/pairing/replies.md",
+        "spec/core/pairing/grants.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -33704,7 +33703,7 @@
       "declaration": "static override serviceType = CAPABILITY_ROUTER_SERVICE_TYPE;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -33724,7 +33723,7 @@
       "declaration": "override capabilityDescription = \"Unified capability router. Dispatches fs / pty / git / model / plugin \" + \"invocations to whichever strategy (local remote-mode plugin or remote \" + \"HTTPS endpoint) is configured for the capability.\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -38067,7 +38066,7 @@
       "declaration": "PI_CODING_ACTION_PROFILE: PiCodingActionProfile = Object.freeze({ kind: \"pi\", })",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38087,7 +38086,7 @@
       "declaration": "static override readonly serviceType = \"commands\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38107,7 +38106,7 @@
       "declaration": "HOOK_MODES: readonly ActionMode[] = [ ActionMode.ALWAYS_BEFORE, ActionMode.RESPONSE_HANDLER_BEFORE, ActionMode.RESPONSE_HANDLER_DURING, ActionMode.RESPONSE_HANDLER_AFTER, ActionMode.CONTEXT_BEFORE, ActionMode.CONTEXT_DURING, ActionMode.CONTEXT_AFTER, ActionMode.ALWAYS_DURING, ActionMode.ALWAYS_AFTER, ]",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38127,7 +38126,7 @@
       "declaration": "MANIFEST_KEYS = new Set([ \"schemaVersion\", \"contentRefs\", \"modifiedFiles\", \"pendingProcesses\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38147,7 +38146,7 @@
       "declaration": "ENTRY_KEYS = new Set([ \"reference\", \"revision\", \"reason\", \"rangesUsed\", \"lastUsedAt\", \"retained\", \"expiresAt\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38167,7 +38166,7 @@
       "declaration": "RANGE_KEYS = new Set([\"unit\", \"start\", \"end\"])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38187,7 +38186,7 @@
       "declaration": "MODIFIED_FILE_KEYS = new Set([\"reference\", \"revision\"])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38207,7 +38206,7 @@
       "declaration": "PENDING_PROCESS_KEYS = new Set([\"id\", \"outputReference\", \"offset\"])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38227,7 +38226,7 @@
       "declaration": "RANGE_UNITS = new Set<string>(READ_RANGE_UNITS)",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38247,7 +38246,7 @@
       "declaration": "CONTENT_REFERENCE_KIND_SET = new Set<string>(CONTENT_REFERENCE_KINDS)",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38267,7 +38266,7 @@
       "declaration": "CONTENT_REFERENCE_RESUMABILITY_SET = new Set<string>( CONTENT_REFERENCE_RESUMABILITY_VALUES, )",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38287,7 +38286,7 @@
       "declaration": "READ_RANGE_UNIT_SET = new Set<string>(READ_RANGE_UNITS)",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38307,7 +38306,7 @@
       "declaration": "READ_COMPLETENESS_SET = new Set<string>(READ_COMPLETENESS_VALUES)",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38327,7 +38326,7 @@
       "declaration": "CONTENT_REFERENCE_KEYS = new Set([ \"kind\", \"ref\", \"revision\", \"resumability\", \"expiresAt\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38347,7 +38346,7 @@
       "declaration": "READ_RANGE_KEYS = new Set([\"unit\", \"start\", \"end\", \"total\"])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38367,7 +38366,7 @@
       "declaration": "READ_SLICE_KEYS = new Set([ \"range\", \"hasPrevious\", \"hasMore\", \"nextOffset\", \"revision\", \"completeness\", \"sliceSha256\", \"sourceSha256\", \"reason\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38387,7 +38386,7 @@
       "declaration": "READ_VIEW_KEYS = new Set([\"reference\", \"slice\"])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38407,7 +38406,7 @@
       "declaration": "EFFECT_OUTCOMES = new Set<EffectReceipt[\"outcome\"]>([ \"applied\", \"preview\", \"noop\", \"failed\", \"rolled_back\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38427,7 +38426,7 @@
       "declaration": "MUTATING_EFFECT_CAPABILITY_TAGS: ReadonlySet<string> = new Set([ \"capability:write\", \"capability:update\", \"capability:delete\", \"capability:schedule\", \"capability:send\", \"capability:delegate\", \"capability:execute\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38447,7 +38446,7 @@
       "declaration": "static override readonly serviceType = ServiceType.PRINCIPAL;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38467,7 +38466,7 @@
       "declaration": "public readonly capabilityDescription = \"Owns principals, identity evidence, and reversible identity mutations.\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38487,7 +38486,7 @@
       "declaration": "static override readonly serviceType = ServiceType.MEMBERSHIP;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38507,7 +38506,7 @@
       "declaration": "public readonly capabilityDescription = \"Owns bounded publisher-fenced connector-room membership evidence.\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38527,7 +38526,7 @@
       "declaration": "MODEL_CANONICAL_CONTEXT: unique symbol = Symbol.for( \"elizaos.modelCanonicalContext\", )",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38547,7 +38546,7 @@
       "declaration": "TEXT_GENERATION_MODEL_TYPE_SET: ReadonlySet<string> = new Set( TEXT_GENERATION_MODEL_TYPES, )",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38567,7 +38566,7 @@
       "declaration": "MODEL_PROVIDER_ATTEMPTS: unique symbol = Symbol.for( \"eliza.modelProviderAttempts\", )",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38587,7 +38586,7 @@
       "declaration": "MODEL_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = { [ModelType.TEXT_NANO]: [ ModelType.TEXT_NANO, ModelType.TEXT_SMALL, ModelType.TEXT_MEDIUM, ModelType.TEXT_LARGE, ], [ModelType.TEXT_SMALL]: [ ModelType.TEXT_SMALL, ModelType.TEXT_MEDIUM, ModelType.TEXT_LARGE, ], [ModelType.TEXT_MEDIUM]: [ ModelType.TEXT_MEDIUM, ModelType.TEXT_SMALL, ModelType.TEXT_LARGE, ], [ModelType.TEXT_LARGE]: [ ModelType.TEXT_LARGE, ModelType.TEXT_MEDIUM, ModelType.TEXT_SMALL, ], [ModelType.TEXT_MEGA]: [ ModelType.TEXT_MEGA, ModelType.TEXT_LARGE, ModelType.TEXT_MEDIUM, ], [ModelType.RESPONSE_HANDLER]: [ ModelType.RESPONSE_HANDLER, ModelType.TEXT_NANO, ModelType.TEXT_SMALL, ModelType.TEXT_MEDIUM, ModelType.TEXT_LARGE, ], [ModelType.ACTION_PLANNER]: [ ModelType.ACTION_PLANNER, ModelType.TEXT_MEDIUM, ModelType.TEXT_SMALL, ModelType.TEXT_LARGE, ], }",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38607,7 +38606,7 @@
       "declaration": "DEFAULT_PAIRING_CONFIG: Required<PairingConfig> = { maxPendingRequests: 3, requestTtlMs: 60 * 60 * 1000, // 1 hour codeLength: 8, }",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38627,7 +38626,7 @@
       "declaration": "PAIRING_ID_LABELS: Record<string, string> = { telegram: \"userId\", whatsapp: \"phoneNumber\", signal: \"phoneNumber\", discord: \"userId\", slack: \"userId\", imessage: \"phoneOrEmail\", googlechat: \"email\", msteams: \"userId\", }",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38647,7 +38646,7 @@
       "declaration": "PENDING_USER_ACTION_WEIGHT: Readonly< Record<PendingUserActionKind, number> > = { approval: 9, task_approval: 9, choice: 9, credential: 8, credential_request: 8, clarifying_question: 7, blocked_task: 10, prompt: 6, pending_prompt: 6, }",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38667,7 +38666,7 @@
       "declaration": "PIPELINE_PHASE_CONCURRENT_DEFAULT = new Set<PipelineHookPhase>([ \"parallel_with_should_respond\", \"model_stream_chunk\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38687,7 +38686,7 @@
       "declaration": "PIPELINE_PHASE_MUTATES_PRIMARY_DEFAULT = new Set<PipelineHookPhase>([ \"incoming_before_compose\", \"compose_state_providers\", \"outgoing_before_deliver\", \"pre_model\", \"post_model\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38707,7 +38706,7 @@
       "declaration": "readonly capability: string",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38727,7 +38726,7 @@
       "declaration": "readonly requested: unknown",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -38747,7 +38746,7 @@
       "declaration": "readonly granted: unknown",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39171,7 +39170,7 @@
       "declaration": "getAmbientSingleton(registryKey, () => new WeakSet<object>())",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/reminderPresentation.md"
+        "spec/assistant/reminderPresentation.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "owned-global-registry",
@@ -39179,7 +39178,7 @@
         "classification": "state-projection",
         "representation": "Issued object WeakSet represented by immutable reference-tagged presentation records.",
         "model": {
-          "spec": "spec/core/reminderPresentation.md",
+          "spec": "spec/assistant/reminderPresentation.md",
           "stateType": "ReminderAuthority",
           "stateFields": [
             "issued"
@@ -39203,7 +39202,7 @@
       "declaration": "registryKey = Symbol.for(\"eliza.saved-reminder-presentation.authority\")",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/reminderPresentation.md"
+        "spec/assistant/reminderPresentation.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39231,7 +39230,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -39259,7 +39258,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration",
@@ -39279,7 +39278,7 @@
       "declaration": "static override readonly serviceType = ServiceType.CONTROL_TRANSPORT;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39299,7 +39298,7 @@
       "declaration": "public readonly capabilityDescription = \"Dispatches backend control messages to interactive clients.\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39319,7 +39318,7 @@
       "declaration": "static override readonly serviceType = ServiceType.TOKEN_DATA;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39339,7 +39338,7 @@
       "declaration": "static override readonly allowsMultiple = true;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39359,7 +39358,7 @@
       "declaration": "public readonly capabilityDescription = \"Provides standardized access to token market data.\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39379,7 +39378,7 @@
       "declaration": "static override readonly serviceType = ServiceType.WALLET;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39399,7 +39398,7 @@
       "declaration": "static override readonly allowsMultiple = true;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39419,7 +39418,7 @@
       "declaration": "public readonly capabilityDescription = \"Provides standardized access to wallet balances and portfolios.\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39439,7 +39438,7 @@
       "declaration": "static override readonly serviceType = \"lp_pool\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39459,7 +39458,7 @@
       "declaration": "static override readonly allowsMultiple = true;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39479,7 +39478,7 @@
       "declaration": "public readonly capabilityDescription = \"Provides standardized access to DEX liquidity pools.\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39499,7 +39498,7 @@
       "declaration": "static override readonly serviceType = ServiceType.TRANSCRIPTION;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39519,7 +39518,7 @@
       "declaration": "public readonly capabilityDescription = \"Audio transcription and speech processing capabilities\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39539,7 +39538,7 @@
       "declaration": "static override readonly serviceType = ServiceType.VIDEO;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39559,7 +39558,7 @@
       "declaration": "public readonly capabilityDescription = \"Video download, processing, and conversion capabilities\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39579,7 +39578,7 @@
       "declaration": "static override readonly serviceType = ServiceType.MEDIA_GENERATION;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39599,7 +39598,7 @@
       "declaration": "public readonly capabilityDescription: string = \"Generates image, video, and audio media from prompts.\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39619,7 +39618,7 @@
       "declaration": "static override readonly serviceType = ServiceType.SCREEN_CAPTURE;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39639,7 +39638,7 @@
       "declaration": "public readonly capabilityDescription = \"Desktop screen/frame capture for live streaming\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39659,7 +39658,7 @@
       "declaration": "static override readonly serviceType = ServiceType.REMOTE_FILES;",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39679,7 +39678,7 @@
       "declaration": "public readonly capabilityDescription: string = \"Content-addressed file storage: store, serve, list, and delete attachment bytes\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39807,7 +39806,7 @@
       "declaration": "RECEIPT_KEYS: ReadonlySet<string> = new Set([ \"version\", \"kind\", \"scope\", \"outcome\", \"observedAt\", \"operation\", \"beforeFingerprint\", \"afterFingerprint\", \"reasonCode\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39827,7 +39826,7 @@
       "declaration": "SCOPE_KEYS: ReadonlySet<string> = new Set([ \"kind\", \"root\", \"rootId\", \"executionDomainId\", \"coverage\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39847,7 +39846,7 @@
       "declaration": "OPERATION_KEYS: ReadonlySet<string> = new Set([ \"kind\", \"handle\", \"status\", ])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -39867,7 +39866,7 @@
       "declaration": "OPERATION_STATUSES: ReadonlySet<unknown> = new Set< WorkspaceDeltaOperation[\"status\"] >([\"running\", \"terminating\", \"exited\", \"killed\", \"error\"])",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -41702,7 +41701,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "pure-algorithm-state-boundary",
@@ -42323,7 +42322,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "derived-transparent-cache",
@@ -42550,7 +42549,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "derived-transparent-cache",
@@ -42818,8 +42817,8 @@
       ],
       "ownerSpecs": [
         "spec/core/streamMarkable.md",
-        "spec/core/streamStructured.md",
-        "spec/core/streamSkeleton.md",
+        "spec/core/structuredStreamState.md",
+        "spec/core/skeletonStreamState.md",
         "spec/core/streamRevisions.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -42849,8 +42848,8 @@
       ],
       "ownerSpecs": [
         "spec/core/streamMarkable.md",
-        "spec/core/streamStructured.md",
-        "spec/core/streamSkeleton.md",
+        "spec/core/structuredStreamState.md",
+        "spec/core/skeletonStreamState.md",
         "spec/core/streamRevisions.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -43925,8 +43924,8 @@
       ],
       "ownerSpecs": [
         "spec/core/streamMarkable.md",
-        "spec/core/streamStructured.md",
-        "spec/core/streamSkeleton.md",
+        "spec/core/structuredStreamState.md",
+        "spec/core/skeletonStreamState.md",
         "spec/core/streamRevisions.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -44298,8 +44297,8 @@
       "mutations": [],
       "ownerSpecs": [
         "spec/core/streamMarkable.md",
-        "spec/core/streamStructured.md",
-        "spec/core/streamSkeleton.md",
+        "spec/core/structuredStreamState.md",
+        "spec/core/skeletonStreamState.md",
         "spec/core/streamRevisions.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -46489,8 +46488,8 @@
       ],
       "ownerSpecs": [
         "spec/core/streamMarkable.md",
-        "spec/core/streamStructured.md",
-        "spec/core/streamSkeleton.md",
+        "spec/core/structuredStreamState.md",
+        "spec/core/skeletonStreamState.md",
         "spec/core/streamRevisions.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -46520,8 +46519,8 @@
       ],
       "ownerSpecs": [
         "spec/core/streamMarkable.md",
-        "spec/core/streamStructured.md",
-        "spec/core/streamSkeleton.md",
+        "spec/core/structuredStreamState.md",
+        "spec/core/skeletonStreamState.md",
         "spec/core/streamRevisions.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -46551,8 +46550,8 @@
       ],
       "ownerSpecs": [
         "spec/core/streamMarkable.md",
-        "spec/core/streamStructured.md",
-        "spec/core/streamSkeleton.md",
+        "spec/core/structuredStreamState.md",
+        "spec/core/skeletonStreamState.md",
         "spec/core/streamRevisions.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -47509,8 +47508,8 @@
       "mutations": [],
       "ownerSpecs": [
         "spec/core/streamMarkable.md",
-        "spec/core/streamStructured.md",
-        "spec/core/streamSkeleton.md",
+        "spec/core/structuredStreamState.md",
+        "spec/core/skeletonStreamState.md",
         "spec/core/streamRevisions.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -47589,8 +47588,8 @@
       "mutations": [],
       "ownerSpecs": [
         "spec/core/streamMarkable.md",
-        "spec/core/streamStructured.md",
-        "spec/core/streamSkeleton.md",
+        "spec/core/structuredStreamState.md",
+        "spec/core/skeletonStreamState.md",
         "spec/core/streamRevisions.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -49571,7 +49570,7 @@
         "packages/core/src/actions/to-tool.ts#ActionLookup.loose@430"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49582,7 +49581,7 @@
         "packages/core/src/actions/validate-tool-args.ts#compiledPatterns@50"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49662,7 +49661,7 @@
         "packages/core/src/capabilities/account-selection.ts#RISK_RANK@27"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49673,7 +49672,7 @@
         "packages/core/src/capabilities/account-selection.ts#ACCOUNT_STATUS_UNAVAILABILITY@182"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49684,7 +49683,7 @@
         "packages/core/src/capabilities/account-selection.ts#UNAVAILABLE_RETRYABLE@195"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49695,7 +49694,7 @@
         "packages/core/src/capabilities/account-selection.ts#UNAVAILABLE_PRECEDENCE@215"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49706,7 +49705,7 @@
         "packages/core/src/capabilities/decoder.ts#SURFACE_CAPABILITIES@494"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49717,7 +49716,7 @@
         "packages/core/src/capabilities/decoder.ts#REMOTE_SERVICE_RESERVED_METHODS@974"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49731,7 +49730,7 @@
         "packages/core/src/capabilities/protocol.ts#CapabilityError.details@50"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49746,7 +49745,7 @@
         "packages/core/src/capabilities/router.ts#UnavailableCapabilityRouter.plugin@139"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49757,7 +49756,7 @@
         "packages/core/src/capabilities/router.ts#environment@142"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49768,7 +49767,7 @@
         "packages/core/src/capabilities/router.ts#reason@143"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -49785,7 +49784,7 @@
         "packages/core/src/capabilities/router.ts#RuntimeBrokerCapabilityRouter.invokeRuntime@334"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -50655,7 +50654,7 @@
         "packages/core/src/connectors/account-manager.ts#oauthCodeVerifierSecrets@382"
       ],
       "modelSpecs": [
-        "spec/core/oauthSecrets.md"
+        "spec/core/oauth/verifiers.md"
       ],
       "missingState": [],
       "partialState": []
@@ -50681,8 +50680,8 @@
       ],
       "modelSpecs": [
         "spec/core/connectorStorage.md",
-        "spec/core/oauthBridge.md",
-        "spec/core/oauthSecrets.md"
+        "spec/core/oauth/bridge.md",
+        "spec/core/oauth/verifiers.md"
       ],
       "missingState": [],
       "partialState": []
@@ -50694,8 +50693,8 @@
       ],
       "modelSpecs": [
         "spec/core/connectorStorage.md",
-        "spec/core/oauthBridge.md",
-        "spec/core/oauthSecrets.md"
+        "spec/core/oauth/bridge.md",
+        "spec/core/oauth/verifiers.md"
       ],
       "missingState": [],
       "partialState": []
@@ -50706,14 +50705,14 @@
         "packages/core/src/connectors/account-manager.ts#adapter@806"
       ],
       "modelSpecs": [
-        "spec/core/connectorBackends.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorMigration.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
         "spec/core/connectorStorage.md",
-        "spec/core/oauthLifecycle.md",
-        "spec/core/oauthSecrets.md",
-        "spec/core/oauthStart.md"
+        "spec/core/oauth/index.md",
+        "spec/core/oauth/verifiers.md",
+        "spec/core/oauth/index.md"
       ],
       "missingState": [],
       "partialState": []
@@ -50734,15 +50733,15 @@
         "packages/core/src/connectors/account-manager.ts#ConnectorAccountManager.warnedFallback@1320"
       ],
       "modelSpecs": [
-        "spec/core/connectorBackends.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorMigration.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
         "spec/core/connectorStorage.md",
-        "spec/core/oauthLifecycle.md",
-        "spec/core/oauthSecrets.md",
-        "spec/core/oauthStart.md"
+        "spec/core/oauth/index.md",
+        "spec/core/oauth/verifiers.md",
+        "spec/core/oauth/index.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51210,7 +51209,7 @@
         "packages/core/src/logger.ts#logListeners@89"
       ],
       "modelSpecs": [
-        "spec/core/logListeners.md"
+        "spec/core/logging/index.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51221,7 +51220,7 @@
         "packages/core/src/logger.ts#warnedLogListeners@90"
       ],
       "modelSpecs": [
-        "spec/core/logListeners.md"
+        "spec/core/logging/index.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51320,7 +51319,7 @@
         "packages/core/src/logger.ts#_fileLogState@309"
       ],
       "modelSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51331,7 +51330,7 @@
         "packages/core/src/logger.ts#_fileLogFd@310"
       ],
       "modelSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51342,7 +51341,7 @@
         "packages/core/src/logger.ts#_fileLogWriteErrorWarned@313"
       ],
       "modelSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51353,7 +51352,7 @@
         "packages/core/src/logger.ts#_promptLogFd@314"
       ],
       "modelSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51364,7 +51363,7 @@
         "packages/core/src/logger.ts#_chatLogFd@315"
       ],
       "modelSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51375,7 +51374,7 @@
         "packages/core/src/logger.ts#_promptLogCounter@316"
       ],
       "modelSpecs": [
-        "spec/core/logFiles.md"
+        "spec/core/logging/files.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51386,7 +51385,7 @@
         "packages/core/src/logger.ts#globalInMemoryDestination@719"
       ],
       "modelSpecs": [
-        "spec/core/logListeners.md"
+        "spec/core/logging/index.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51835,7 +51834,7 @@
         "packages/core/src/network/fetch-guard.ts#nodePinnedFetchDefaults@133"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51947,7 +51946,7 @@
         "packages/core/src/plugin-lifecycle.ts#generalFallbackWarnedProviders@411"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51969,7 +51968,7 @@
         "packages/core/src/retrieval.ts#DEFAULT_OPTIONS@773"
       ],
       "modelSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51984,7 +51983,7 @@
         "packages/core/src/retrieval.ts#Tokenizer.DEFAULT_OPTIONS@876"
       ],
       "modelSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "missingState": [],
       "partialState": []
@@ -52004,7 +52003,7 @@
         "packages/core/src/retrieval.ts#BM25.documents@1150"
       ],
       "modelSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ],
       "missingState": [],
       "partialState": []
@@ -52137,14 +52136,14 @@
         "spec/core/concurrency.md",
         "spec/core/concurrentConnectors.md",
         "spec/core/contextRegistry.md",
-        "spec/core/contracts.md",
+        "spec/core/packageExports.md",
         "spec/core/diagnostics.md",
-        "spec/core/pluginRegistry.md",
+        "spec/core/pluginServices.md",
         "spec/core/registries.md",
-        "spec/core/responseEvaluators.md",
+        "spec/core/responseEvaluation.md",
         "spec/core/responseFields.md",
         "spec/core/runtime.md",
-        "spec/core/runtimeExtensions.md",
+        "spec/core/registries.md",
         "spec/core/runtimeRunContext.md",
         "spec/core/secretProfile.md",
         "spec/core/serviceInstances.md",
@@ -52171,7 +52170,7 @@
         "packages/core/src/runtime/action-gate.ts#cachedActionAllowlist@89"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -52204,7 +52203,7 @@
         "packages/core/src/runtime/action-role-policy.ts#cachedActionRolePolicy@33"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -52262,7 +52261,7 @@
         "packages/core/src/runtime/candidate-action-backstop.ts#rules@39"
       ],
       "modelSpecs": [
-        "spec/core/routingRegistries.md"
+        "spec/core/registries.md"
       ],
       "missingState": [],
       "partialState": []
@@ -52328,7 +52327,7 @@
         "packages/core/src/runtime/connector-registry.ts#runtime@58"
       ],
       "modelSpecs": [
-        "spec/core/pluginRegistry.md"
+        "spec/core/pluginServices.md"
       ],
       "missingState": [],
       "partialState": []
@@ -52406,7 +52405,7 @@
         "packages/core/src/runtime/context-renderer.ts#displayZoneFormatters@80"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -52494,7 +52493,7 @@
         "packages/core/src/runtime/direct-action-routing.ts#rules@63"
       ],
       "modelSpecs": [
-        "spec/core/routingRegistries.md"
+        "spec/core/registries.md"
       ],
       "missingState": [],
       "partialState": []
@@ -52728,7 +52727,7 @@
         "packages/core/src/runtime/localized-examples-provider.ts#providers@63"
       ],
       "modelSpecs": [
-        "spec/core/routingRegistries.md"
+        "spec/core/registries.md"
       ],
       "missingState": [],
       "partialState": []
@@ -52785,7 +52784,7 @@
       ],
       "modelSpecs": [
         "spec/core/modelDiagnostics.md",
-        "spec/core/runtimeExtensions.md"
+        "spec/core/registries.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53086,7 +53085,7 @@
         "packages/core/src/runtime/response-grammar.ts#stage1Cache@850"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53097,7 +53096,7 @@
         "packages/core/src/runtime/response-grammar.ts#plannerCache@1206"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53108,7 +53107,7 @@
         "packages/core/src/runtime/response-grammar.ts#plannerStrictCache@1207"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53120,7 +53119,7 @@
         "packages/core/src/runtime/response-grammar.ts#GbnfBuilder.rootParts@799"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53342,7 +53341,7 @@
         "packages/core/src/runtime/service-lifecycle.ts#EAGER_SERVICE_START_RETRY_DELAYS_MS@46"
       ],
       "modelSpecs": [
-        "spec/core/serviceRegistry.md"
+        "spec/core/serviceInstances.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53353,7 +53352,7 @@
         "packages/core/src/runtime/service-lifecycle.ts#runtime@88"
       ],
       "modelSpecs": [
-        "spec/core/serviceRegistry.md"
+        "spec/core/serviceInstances.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53364,7 +53363,7 @@
         "packages/core/src/runtime/service-lifecycle.ts#host@89"
       ],
       "modelSpecs": [
-        "spec/core/serviceRegistry.md"
+        "spec/core/serviceInstances.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53375,7 +53374,7 @@
         "packages/core/src/runtime/service-lifecycle.ts#retirement@90"
       ],
       "modelSpecs": [
-        "spec/core/serviceRegistry.md"
+        "spec/core/serviceInstances.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53432,7 +53431,7 @@
         "packages/core/src/runtime/state-composition.ts#runtime@53"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53443,7 +53442,7 @@
         "packages/core/src/runtime/state-composition.ts#lifecycle@54"
       ],
       "modelSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53456,7 +53455,7 @@
         "packages/core/src/runtime/state-composition.ts#ProviderStateComposer.providerExecutionsActive@80"
       ],
       "modelSpecs": [
-        "spec/core/providerExecutions.md"
+        "spec/core/providers/index.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53895,7 +53894,7 @@
         "packages/core/src/security/injection-primitives.ts#keywordPatternCache@116"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -54203,7 +54202,7 @@
         "packages/core/src/security/pii-detectors.ts#IBAN_CANDIDATE@202"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -54436,7 +54435,7 @@
         "packages/core/src/security/redact.ts#SECRET_REGEX_CACHE@207"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -54805,7 +54804,7 @@
         "packages/core/src/security/voice-gate.ts#voiceCache@56"
       ],
       "modelSpecs": [
-        "spec/core/voiceRewrite.md"
+        "spec/core/outboundStyle.md"
       ],
       "missingState": [],
       "partialState": []
@@ -54911,7 +54910,7 @@
       ],
       "modelSpecs": [
         "spec/core/approvalService.md",
-        "spec/core/approvalWorkers.md",
+        "spec/core/approvalService.md",
         "spec/core/approvals.md"
       ],
       "missingState": [],
@@ -54985,7 +54984,7 @@
         "packages/core/src/services/notification.ts#recoveryByRuntime@86"
       ],
       "modelSpecs": [
-        "spec/core/notificationRecoveryOwners.md"
+        "spec/core/notifications/recoveryOwners.md"
       ],
       "missingState": [],
       "partialState": []
@@ -54996,7 +54995,7 @@
         "packages/core/src/services/notification.ts#availabilityByRuntime@90"
       ],
       "modelSpecs": [
-        "spec/core/notificationRecoveryOwners.md"
+        "spec/core/notifications/recoveryOwners.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55007,8 +55006,8 @@
         "packages/core/src/services/notification.ts#NATIVE_DEEP_LINKS@165"
       ],
       "modelSpecs": [
-        "spec/core/notificationRecovery.md",
-        "spec/core/notifications.md"
+        "spec/core/notifications/recovery.md",
+        "spec/core/notifications/index.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55019,8 +55018,8 @@
         "packages/core/src/services/notification.ts#code@195"
       ],
       "modelSpecs": [
-        "spec/core/notificationRecovery.md",
-        "spec/core/notifications.md"
+        "spec/core/notifications/recovery.md",
+        "spec/core/notifications/index.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55031,8 +55030,8 @@
         "packages/core/src/services/notification.ts#status@197"
       ],
       "modelSpecs": [
-        "spec/core/notificationRecovery.md",
-        "spec/core/notifications.md"
+        "spec/core/notifications/recovery.md",
+        "spec/core/notifications/index.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55051,8 +55050,8 @@
         "packages/core/src/services/notification.ts#NotificationService.stopped@221"
       ],
       "modelSpecs": [
-        "spec/core/notificationRecovery.md",
-        "spec/core/notifications.md"
+        "spec/core/notifications/recovery.md",
+        "spec/core/notifications/index.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55068,10 +55067,10 @@
         "packages/core/src/services/pairing.ts#PairingService.MAX_PAIRING_REPLY_CLAIMS@85"
       ],
       "modelSpecs": [
-        "spec/core/pairing.md",
-        "spec/core/pairingAdmission.md",
-        "spec/core/pairingGrants.md",
-        "spec/core/pairingReplies.md"
+        "spec/core/pairing/index.md",
+        "spec/core/pairing/admission.md",
+        "spec/core/pairing/grants.md",
+        "spec/core/pairing/replies.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55150,7 +55149,7 @@
       ],
       "modelSpecs": [
         "spec/core/capabilityStrategies.md",
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55754,7 +55753,7 @@
         "packages/core/src/types/coding.ts#PI_CODING_ACTION_PROFILE@16"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55765,7 +55764,7 @@
         "packages/core/src/types/commands.ts#CommandRegistryService.serviceType@193"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55776,7 +55775,7 @@
         "packages/core/src/types/components.ts#HOOK_MODES@338"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55787,7 +55786,7 @@
         "packages/core/src/types/content-manifest.ts#MANIFEST_KEYS@51"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55798,7 +55797,7 @@
         "packages/core/src/types/content-manifest.ts#ENTRY_KEYS@57"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55809,7 +55808,7 @@
         "packages/core/src/types/content-manifest.ts#RANGE_KEYS@66"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55820,7 +55819,7 @@
         "packages/core/src/types/content-manifest.ts#MODIFIED_FILE_KEYS@67"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55831,7 +55830,7 @@
         "packages/core/src/types/content-manifest.ts#PENDING_PROCESS_KEYS@68"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55842,7 +55841,7 @@
         "packages/core/src/types/content-manifest.ts#RANGE_UNITS@69"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55853,7 +55852,7 @@
         "packages/core/src/types/content.ts#CONTENT_REFERENCE_KIND_SET@90"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55864,7 +55863,7 @@
         "packages/core/src/types/content.ts#CONTENT_REFERENCE_RESUMABILITY_SET@91"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55875,7 +55874,7 @@
         "packages/core/src/types/content.ts#READ_RANGE_UNIT_SET@94"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55886,7 +55885,7 @@
         "packages/core/src/types/content.ts#READ_COMPLETENESS_SET@95"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55897,7 +55896,7 @@
         "packages/core/src/types/content.ts#CONTENT_REFERENCE_KEYS@98"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55908,7 +55907,7 @@
         "packages/core/src/types/content.ts#READ_RANGE_KEYS@105"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55919,7 +55918,7 @@
         "packages/core/src/types/content.ts#READ_SLICE_KEYS@106"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55930,7 +55929,7 @@
         "packages/core/src/types/content.ts#READ_VIEW_KEYS@117"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55941,7 +55940,7 @@
         "packages/core/src/types/effects.ts#EFFECT_OUTCOMES@138"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55952,7 +55951,7 @@
         "packages/core/src/types/effects.ts#MUTATING_EFFECT_CAPABILITY_TAGS@147"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55964,7 +55963,7 @@
         "packages/core/src/types/identity.ts#PrincipalService.capabilityDescription@415"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55976,7 +55975,7 @@
         "packages/core/src/types/membership.ts#MembershipService.capabilityDescription@183"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55987,7 +55986,7 @@
         "packages/core/src/types/model.ts#MODEL_CANONICAL_CONTEXT@16"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -55998,7 +55997,7 @@
         "packages/core/src/types/model.ts#TEXT_GENERATION_MODEL_TYPE_SET@144"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56009,7 +56008,7 @@
         "packages/core/src/types/model.ts#MODEL_PROVIDER_ATTEMPTS@628"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56020,7 +56019,7 @@
         "packages/core/src/types/model.ts#MODEL_FALLBACK_CHAINS@1418"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56031,7 +56030,7 @@
         "packages/core/src/types/pairing.ts#DEFAULT_PAIRING_CONFIG@208"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56042,7 +56041,7 @@
         "packages/core/src/types/pairing.ts#PAIRING_ID_LABELS@223"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56053,7 +56052,7 @@
         "packages/core/src/types/pending-user-action.ts#PENDING_USER_ACTION_WEIGHT@99"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56064,7 +56063,7 @@
         "packages/core/src/types/pipeline-hooks.ts#PIPELINE_PHASE_CONCURRENT_DEFAULT@281"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56075,7 +56074,7 @@
         "packages/core/src/types/pipeline-hooks.ts#PIPELINE_PHASE_MUTATES_PRIMARY_DEFAULT@292"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56086,7 +56085,7 @@
         "packages/core/src/types/plugin.ts#capability@945"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56097,7 +56096,7 @@
         "packages/core/src/types/plugin.ts#requested@946"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56108,7 +56107,7 @@
         "packages/core/src/types/plugin.ts#granted@947"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56168,7 +56167,7 @@
         "packages/core/src/types/reminder-presentation.ts#ambient:issued@12"
       ],
       "modelSpecs": [
-        "spec/core/reminderPresentation.md"
+        "spec/assistant/reminderPresentation.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56179,7 +56178,7 @@
         "packages/core/src/types/reminder-presentation.ts#registryKey@10"
       ],
       "modelSpecs": [
-        "spec/core/reminderPresentation.md"
+        "spec/assistant/reminderPresentation.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56191,7 +56190,7 @@
         "packages/core/src/types/search.ts#SearchCategoryRegistryError.category@66"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56203,7 +56202,7 @@
         "packages/core/src/types/service-interfaces.ts#IControlTransportService.capabilityDescription@121"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56216,7 +56215,7 @@
         "packages/core/src/types/service-interfaces.ts#ITokenDataService.capabilityDescription@130"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56229,7 +56228,7 @@
         "packages/core/src/types/service-interfaces.ts#IWalletService.capabilityDescription@160"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56242,7 +56241,7 @@
         "packages/core/src/types/service-interfaces.ts#ILpService.capabilityDescription@178"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56254,7 +56253,7 @@
         "packages/core/src/types/service-interfaces.ts#ITranscriptionService.capabilityDescription@218"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56266,7 +56265,7 @@
         "packages/core/src/types/service-interfaces.ts#IVideoService.capabilityDescription@258"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56278,7 +56277,7 @@
         "packages/core/src/types/service-interfaces.ts#IMediaGenerationService.capabilityDescription@326"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56290,7 +56289,7 @@
         "packages/core/src/types/service-interfaces.ts#IScreenCaptureService.capabilityDescription@360"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56302,7 +56301,7 @@
         "packages/core/src/types/service-interfaces.ts#IFileStorageService.capabilityDescription@405"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56328,7 +56327,7 @@
         "packages/core/src/types/workspace-delta.ts#RECEIPT_KEYS@55"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56339,7 +56338,7 @@
         "packages/core/src/types/workspace-delta.ts#SCOPE_KEYS@66"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56350,7 +56349,7 @@
         "packages/core/src/types/workspace-delta.ts#OPERATION_KEYS@73"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56361,7 +56360,7 @@
         "packages/core/src/types/workspace-delta.ts#OPERATION_STATUSES@78"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56706,7 +56705,7 @@
         "packages/core/src/utils/deterministic.ts#state@35"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56875,7 +56874,7 @@
         "packages/core/src/utils/log-prefix.ts#cachedPrefix@6"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -56996,7 +56995,7 @@
         "packages/core/src/utils/reasoning-tags.ts#tagRegexCache@26"
       ],
       "modelSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ],
       "missingState": [],
       "partialState": []
@@ -57069,8 +57068,8 @@
       "modelSpecs": [
         "spec/core/streamMarkable.md",
         "spec/core/streamRevisions.md",
-        "spec/core/streamSkeleton.md",
-        "spec/core/streamStructured.md"
+        "spec/core/skeletonStreamState.md",
+        "spec/core/structuredStreamState.md"
       ],
       "missingState": [],
       "partialState": []
@@ -57105,8 +57104,8 @@
       "modelSpecs": [
         "spec/core/streamMarkable.md",
         "spec/core/streamRevisions.md",
-        "spec/core/streamSkeleton.md",
-        "spec/core/streamStructured.md",
+        "spec/core/skeletonStreamState.md",
+        "spec/core/structuredStreamState.md",
         "spec/core/structuredStreamState.md"
       ],
       "missingState": [],
@@ -57121,8 +57120,8 @@
       "modelSpecs": [
         "spec/core/streamMarkable.md",
         "spec/core/streamRevisions.md",
-        "spec/core/streamSkeleton.md",
-        "spec/core/streamStructured.md"
+        "spec/core/skeletonStreamState.md",
+        "spec/core/structuredStreamState.md"
       ],
       "missingState": [],
       "partialState": []
@@ -57156,8 +57155,8 @@
         "spec/core/skeletonStreamState.md",
         "spec/core/streamMarkable.md",
         "spec/core/streamRevisions.md",
-        "spec/core/streamSkeleton.md",
-        "spec/core/streamStructured.md"
+        "spec/core/skeletonStreamState.md",
+        "spec/core/structuredStreamState.md"
       ],
       "missingState": [],
       "partialState": []
@@ -57181,8 +57180,8 @@
       "modelSpecs": [
         "spec/core/streamMarkable.md",
         "spec/core/streamRevisions.md",
-        "spec/core/streamSkeleton.md",
-        "spec/core/streamStructured.md"
+        "spec/core/skeletonStreamState.md",
+        "spec/core/structuredStreamState.md"
       ],
       "missingState": [],
       "partialState": []

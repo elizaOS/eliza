@@ -1,13 +1,13 @@
 # Renderer handoff deduplication and navigation fences
 
-Source `views/completed-action-navigation.ts` owns per-renderer pending and handled handoff indexes, a navigation epoch and its observed window. Each index retains at most 256 identities. This is a separate lifecycle from the interaction request in `views.md`.
+Source `views/completed-action-navigation.ts` owns per-renderer pending and handled handoff indexes, a navigation epoch and its observed window. Each index retains at most 256 identities. This is a separate lifecycle from the interaction request in [views](./views.md).
 
-The renderer's navigate-view requests, from `events/index.ts` of the user interface package at the pinned baseline, wait in a bounded queue until a mounted view listener claims one. Their claims are kept in the same renderer state, in its `views` field.
+The renderer's navigate-view requests, from `events/index.ts` of the user interface package, wait in a bounded queue until a mounted view listener claims one. Their claims are kept in the same renderer state, in its `views` field.
 
 ## Story: Respect navigation made while a completed-action handoff is pending
 
 > As a user, I want a late response to preserve navigation I made after the
-> original request.
+> original request, so that a slow handoff never takes me back.
 
 ### Pending handoffs capture the pre-dispatch epoch and path
 
@@ -68,7 +68,7 @@ number is queued twice, and every queued number was admitted.
 ```quint
 type ClaimResolution = ClaimPending | ClaimApplied | ClaimRejected | ClaimDropped
 type ViewClaim = { request: int, live: bool, claimed: bool, applying: bool, declined: Set[int], resolution: ClaimResolution, resolutions: int, effects: int }
-type AttemptPhase = Invoking | Awaiting | Settled
+type AttemptPhase = Invoking | Awaiting | Settled | Released
 type ListenerAttempt = { attempt: int, request: int, listener: int, admittedAt: int, phase: AttemptPhase, effected: bool }
 type ViewClaims = { admitted: int, queue: List[int], mounted: Set[int], active: Set[int], requests: List[ViewClaim], attempts: List[ListenerAttempt] }
 pure val noViewClaims: ViewClaims = { admitted: 0, queue: List(), mounted: Set(), active: Set(), requests: List(), attempts: List() }
@@ -141,7 +141,13 @@ pure def canMountListener(s: Navigation, listener: int): bool = not(s.views.moun
 pure def mountListener(s: Navigation, listener: int): Navigation =
   { ...s, views: { ...s.views, mounted: s.views.mounted.union(Set(listener)), active: s.views.active.union(Set(listener)) } }
 pure def canUnmountListener(s: Navigation, listener: int): bool = s.views.active.contains(listener)
-pure def unmountListener(s: Navigation, listener: int): Navigation = { ...s, views: { ...s.views, active: s.views.active.exclude(Set(listener)) } }
+pure def unmountListener(s: Navigation, listener: int): Navigation = {
+  val v = s.views
+  val released = v.attempts.select(a => a.listener == listener and a.phase == Awaiting).listMap(a => a.request)
+  { ...s, views: { ...v, active: v.active.exclude(Set(listener)),
+    attempts: v.attempts.listMap(a => if (a.listener == listener and a.phase == Awaiting) { ...a, phase: Released } else a),
+    requests: v.requests.listMap(c => if (released.includes(c.request)) { ...c, applying: false } else c) } }
+}
 pure def canInvokeListener(s: Navigation, listener: int): bool = {
   val first = claimAt(s.views, s.views.queue.nthOr(0, 0))
   s.views.queue.length() > 0 and s.views.active.contains(listener) and first.live and not(first.claimed) and not(first.applying) and not(first.declined.contains(listener))
@@ -156,8 +162,9 @@ pure def invokeListener(s: Navigation, listener: int): Navigation = {
 ### A listener's answer applies the request, declines it or holds it while a promise settles
 
 A listener that returns "applied" commits the request. One that declines or
-throws leaves it for another listener. One that returns a promise marks the
-request as being applied until the promise settles. A settled promise
+throws leaves it for another listener. A mounted listener that returns a
+promise marks the request as being applied until the promise settles; a
+promise from a listener that unmounted during the call holds nothing. A settled promise
 commits the request only if its listener is still mounted and it applied;
 otherwise the request is released, and a listener that is still mounted and
 was offered the request since the last admission is recorded as having
@@ -171,9 +178,10 @@ pure def canReturnFromListener(s: Navigation, attempt: int): bool = {
 }
 pure def returnFromListener(s: Navigation, attempt: int, verdict: ListenerOutcome): Navigation = {
   val a = attemptAt(s.views, attempt)
-  val returned = withAttempt(s.views, { ...a, phase: if (verdict == ListenerPromised) Awaiting else Settled })
+  val holding = verdict == ListenerPromised and s.views.active.contains(a.listener)
+  val returned = withAttempt(s.views, { ...a, phase: if (holding) Awaiting else Settled })
   val updated =
-    if (verdict == ListenerPromised) withClaim(returned, { ...claimAt(returned, a.request), applying: true })
+    if (holding) withClaim(returned, { ...claimAt(returned, a.request), applying: true })
     else if (verdict == ListenerApplied) commitClaim(returned, a.request, ClaimApplied)
     else returned
   { ...s, views: updated }
@@ -224,7 +232,9 @@ pure def alwaysQueuedViewRequestsWait(s: Navigation): bool = s.views.queue.every
 
 A mounted listener can apply part of a request, once per attempt, while the
 request is live and unclaimed, before its callback or its promise reports
-back.
+back. A request that a listener partly applied and then declined, threw on
+or gave up by unmounting is offered again, and the next attempt applies it
+again, so a view listener's effect must be idempotent.
 
 ```quint
 pure def canApplyViewEffect(s: Navigation, attempt: int): bool = {
@@ -237,25 +247,19 @@ pure def applyViewEffect(s: Navigation, attempt: int): Navigation = {
   val c = claimAt(s.views, a.request)
   { ...s, views: withClaim(withAttempt(s.views, { ...a, effected: true }), { ...c, effects: c.effects + 1 }) }
 }
-```
-
-### A listener that unmounts while applying can leave its partial effect to be repeated
-
-Nothing makes an arbitrary listener's effect happen exactly once: a listener
-can apply part of a request and unmount before its promise settles, and the
-request then stays available to the next listener, which applies it again.
-
-```quint
 pure def sometimesViewEffectRepeated(s: Navigation): bool = s.views.requests.some(c => c.effects >= 2)
 ```
 
-### A promise left by an unmounted listener keeps holding its request
+### Unmounting a listener releases the request its promise holds
 
-No settlement is assumed of a promise whose listener has unmounted: until it
-settles, the request stays marked as being applied and no other listener is
-offered it.
+A listener that unmounts before its promise settles gives up the request:
+the attempt is released, the request is no longer being applied, and the
+next mounted listener can be offered it. A released attempt never settles,
+so a later settlement of that promise changes nothing.
 
 ```quint
-pure def sometimesUnmountedPromiseHoldsRequest(s: Navigation): bool =
-  s.views.attempts.some(a => a.phase == Awaiting and not(s.views.active.contains(a.listener)) and claimAt(s.views, a.request).applying)
+pure def alwaysOnlyMountedListenersHoldRequests(s: Navigation): bool =
+  s.views.attempts.every(a => a.phase == Awaiting implies s.views.active.contains(a.listener))
+pure def sometimesUnmountReleasesRequest(s: Navigation): bool =
+  s.views.attempts.some(a => a.phase == Released and claimAt(s.views, a.request).live and not(claimAt(s.views, a.request).applying) and claimAt(s.views, a.request).effects > 0)
 ```

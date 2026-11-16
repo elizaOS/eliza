@@ -1,16 +1,11 @@
 # Installed WebView health evidence
 
-A consumer's main activity calls its UI probe on resume, pause, renderer
-loss and destruction. The probe uses `WebViewHealthObserver.java` in the
-native agent plugin's health package (`ai.eliza.plugins.agent.health`). The
-health service takes the UI observation through the observer with a UI
-deadline capped at 1,500 milliseconds and by the enclosing request
-deadline, and exposes the result as three fields of native health
-evidence. [Installation health](./install.md) owns qualification against a
-specific installation and recovery plan. This model ends at the three UI
-fields. The authenticated request, installed package identity, runtime and
-storage observations, and final probation verdict belong to the surrounding
-[runtime health service](./runtimeHealth.md) and updater.
+A consumer's main activity reports resume, pause, renderer loss and
+destruction to its UI health observer, which reads the installed app's
+WebView without changing what the person sees. The result is three fields
+of native health evidence, read within a UI deadline the
+[runtime health service](./runtimeHealth.md) caps; the
+[installation journal](./install.md) qualifies them against a plan.
 
 ## Story: Observe the installed UI without bringing another screen to the foreground
 
@@ -25,39 +20,30 @@ resume. A new resume retires the current evaluation, even when the
 Activity identity stays the same. Only the current Activity's pause,
 renderer loss, or destruction can retire that binding's evaluation.
 Pause retains the weak references and marks the binding background.
-Destroy clears them. A detached Activity yields `absent`. An Activity
-with no live renderer, no active resume, a finishing or destroyed state,
-or a view without visibility or focus yields `background`. Neither
-receipt says the renderer responded or content was present. The observer
-does not launch, resume, or repair the UI.
-
-The native shell provides Activity, WebView and request identities
-from actual object references and lifecycle callbacks. It samples
-weak-reference presence and foreground facts on the main thread when
-dispatching a read. Callback identity cannot come from page data.
-An off-main reader posts to the main loop, where admission rejects
-a deadline that has already arrived, then reads the current binding.
-Blocking the main thread is refused. The model uses the main-loop
-admission step to sample facts, with an elapsed monotonic clock and
-process-local counters that stand for native identities.
-
-Discovered by the proof: only positive identities represent actual
-native objects. Admission treats an absent identity as missing and
-never lets an invalid counter qualify a foreground lease.
+Destroy clears them. A detached Activity yields absent. An Activity with
+no live renderer, no active resume, a finishing or destroyed state, or a
+view without visibility or focus yields background. Neither says the
+renderer responded or content was present. The observer does not launch,
+resume or repair the UI. Activity, WebView and request identities come
+from native object references and lifecycle callbacks, never from page
+data; a read posted from off the main thread is admitted on the main loop
+against an elapsed monotonic clock, and blocking the main thread is
+refused.
 
 ```quint
 type UiReply = NoUiReply | UiAbsent | UiBackground | UiForegroundEmpty | UiForegroundContent |
   UiMainThread | UiExpired | UiBusy | UiWrongOrigin | UiBindingChanged | UiInvalidAnswer | UiEvaluationFailed | UiEnded
-type UiProjection = { activityState: str, rendererResponsive: bool, contentPresent: bool }
+type ActivityState = ActivityUnknown | ActivityAbsent | ActivityBackground | ActivityForeground
+type UiProjection = { activityState: ActivityState, rendererResponsive: bool, contentPresent: bool }
 pure def uiEvidence(reply: UiReply): UiProjection =
-  if (reply == UiAbsent) { activityState: "absent", rendererResponsive: false, contentPresent: false }
-  else if (reply == UiBackground) { activityState: "background", rendererResponsive: false, contentPresent: false }
+  if (reply == UiAbsent) { activityState: ActivityAbsent, rendererResponsive: false, contentPresent: false }
+  else if (reply == UiBackground) { activityState: ActivityBackground, rendererResponsive: false, contentPresent: false }
   else if (reply == UiForegroundEmpty or reply == UiForegroundContent)
-    { activityState: "foreground", rendererResponsive: true, contentPresent: reply == UiForegroundContent }
-  else { activityState: "", rendererResponsive: false, contentPresent: false }
+    { activityState: ActivityForeground, rendererResponsive: true, contentPresent: reply == UiForegroundContent }
+  else { activityState: ActivityUnknown, rendererResponsive: false, contentPresent: false }
 pure def lawUiContentRequiresForegroundRenderer(reply: UiReply): bool =
   uiEvidence(reply).contentPresent implies
-    uiEvidence(reply).activityState == "foreground" and uiEvidence(reply).rendererResponsive
+    uiEvidence(reply).activityState == ActivityForeground and uiEvidence(reply).rendererResponsive
 pure def lawBackgroundHealthCarriesNoRendererEvidence(reply: UiReply): bool =
   reply == UiAbsent or reply == UiBackground implies
     not(uiEvidence(reply).rendererResponsive or uiEvidence(reply).contentPresent)
@@ -93,13 +79,23 @@ pure val elapsedValues = Set(1, 1499, 1500, 1501, 3000)
 pure def alwaysObservationLeaseKeepsCurrentBinding(s: UiHealth): bool =
   s.pending.id > 0 implies s.pending.binding == s.binding and s.binding.resumed and
     s.binding.activityRef > 0 and s.binding.viewRef > 0
+pure def stepLifecycleRetiresTheWebViewEvaluation(before: UiHealth, via: str, after: UiHealth): bool =
+  via == "resumeUi" or via == "leaveUi" implies
+    after.pending.id == 0 and after.binding.epoch == before.binding.epoch + 1
+```
+
+### Only an issued positive identity stands for a native object
+
+Discovered by the proof: without it, an absent identity or a counter
+never issued could qualify a foreground lease. Every lease, admission and
+settlement names an identity no greater than the last one issued, and
+zero means none.
+
+```quint
 pure def alwaysUiLeaseIdentityIsAllocated(s: UiHealth): bool =
   s.issued >= 0 and s.pending.id >= 0 and s.pending.id <= s.issued and
     s.admission.leaseId >= 0 and s.admission.leaseId <= s.issued and
     s.settled.leaseId >= 0 and s.settled.leaseId <= s.issued
-pure def stepLifecycleRetiresTheWebViewEvaluation(before: UiHealth, via: str, after: UiHealth): bool =
-  via == "resumeUi" or via == "leaveUi" implies
-    after.pending.id == 0 and after.binding.epoch == before.binding.epoch + 1
 ```
 
 ### A foreground read admits one exact-origin evaluation ahead of its deadline
@@ -109,20 +105,15 @@ WebView bound to a resumed Activity. A previous unexpired evaluation
 makes another eligible read busy. An expired evaluation is retired
 before the next eligible read may take its place. The URL observed
 before evaluation must have the configured HTTPS scheme and exact
-encoded authority, for example `https://localhost`. It may contain a path.
-The observer captures the full original URL for the callback check.
-The shell checks URL parsing and encoded authority against the configured
-origin. Invalid configuration and non-native lifecycle calls are rejected
-by the native port before invoking this model.
+encoded authority, for example `https://localhost`; it may contain a path,
+and the full URL is captured for the callback check.
 
-The native helper instruments a read-only script. The script first requires
-the exact JavaScript origin, then the health DOM policy requires a visible
-`#root main` with nonblank text and a visible button, input, textarea, or
-link with an `href`. The shared visibility check rejects a hidden, collapsed,
-`display:none`, or zero-opacity ancestor and requires a nonempty bounding
-rectangle that intersects the viewport. The model consumes these DOM facts
-from evaluation in the captured WebView. The renderer returns a literal
-boolean result and supplies no health authority beyond those observations.
+A read-only script first requires the exact JavaScript origin; the health
+DOM policy then requires a visible main region with nonblank text and a
+visible button, input, textarea or link. A visible element is present,
+has no hidden ancestor, and has a nonempty rectangle that intersects the
+viewport. The renderer returns a literal boolean and supplies no health
+authority beyond those observations.
 
 ```quint
 type UiReadFacts = { offMain: bool, activityAlive: bool, viewAlive: bool, activityUsable: bool,
@@ -176,8 +167,6 @@ pure def domPolicyAnswer(dom: UiDomFacts): bool =
 pure val healthyDom: UiDomFacts = { exactJavaScriptOrigin: true, mainVisible: true, mainTextPresent: true, actionVisible: true }
 pure val domValues = Set(healthyDom, { ...healthyDom, mainVisible: false }, { ...healthyDom, actionVisible: false },
   { ...healthyDom, exactJavaScriptOrigin: false })
-pure def lawDomPolicyNeedsVisibleInteraction(dom: UiDomFacts): bool =
-  domPolicyAnswer(dom) implies dom.exactJavaScriptOrigin and dom.mainVisible and dom.mainTextPresent and dom.actionVisible
 ```
 
 ## Story: Keep delayed renderer replies from changing another health observation
@@ -231,9 +220,8 @@ pure val callbackValues = Set(firstCallback, { ...firstCallback, rawAnswer: "fal
   { ...firstCallback, leaseId: 2, currentView: 12 }, { ...firstCallback, focused: false },
   { ...firstCallback, leaseId: 3 }, { ...firstCallback, leaseId: 4 })
 pure val leaseIdValues = Set(0, 1, 2, 3, 4)
-pure val weight_resumeUi = 8
-pure val weight_inspectUi = 18
-pure val weight_deliverUiCallback = 18
+pure val weight_inspectUi = 8
+pure val weight_deliverUiCallback = 8
 pure def lawUiReplyRequiresTheUnchangedWebView(s: UiHealth, callback: UiCallback): bool =
   ownsUiEvaluation(s, callback.leaseId) and uiEvidence(classifyUiCallback(s, callback)).rendererResponsive implies
     s.clock < s.pending.deadline and s.pending.binding == s.binding and s.binding.resumed and callback.focused and

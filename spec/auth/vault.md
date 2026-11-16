@@ -8,10 +8,8 @@ a failed read as a failure, never as an empty slot, so it never replaces a
 key it merely could not read, and it acknowledges a write only after
 reading the written value back.
 
-New in v4, from develop `src/vault/` and the vault rule of develop
-`packages/agent/quint/api-wallet-keys.qnt` (a failed read is not absence),
-generalized from wallet keys to any vault secret: wallets and signing are not
-part of Eliza. Key derivation is in [key management](./kms.md).
+Wallets and signing are not part of Eliza. Key derivation is in
+[key management](./kms.md).
 
 ## Story: Keep secrets encrypted on the device and read them back exactly
 

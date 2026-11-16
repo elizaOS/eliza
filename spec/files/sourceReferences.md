@@ -1,17 +1,15 @@
 # Document source references and verified reopening
 
-A consumer uses the files package's source link validators. Its Notes
-and selected-file review adapters use a mail attachments bridge that
-binds the native media module's `SourceReferenceStore`,
-`SelectedDocuments` and `DocumentBytes`. Browser Files binds the
-corresponding browser attachment review. The dialog checks the live
-note, selected source and review identity. The
-[scan contract](../os/android/documentScan.md) owns the separate PDF
-export.
+A note or answer can keep a link to the document it came from, and the
+owner can reopen that exact document later. The device keeps a reference
+to the selected file and its read grant while a saved or restorable note
+still links to it. The [scan contract](./scan/review.md)
+owns the separate PDF export.
 
 ## Story: Keep a source link and reopen the exact document I reviewed
 
-> As the owner, I want to keep a source link and reopen the exact document I reviewed.
+> As the owner, I want a note or answer to keep a link to the document it
+> came from, and opening it to show that exact document or say it changed.
 
 ### Link metadata names approved content without authorizing a read
 
@@ -20,35 +18,24 @@ It accepts PDF, PNG, JPEG, WebP or plain text, a nonempty name no longer
 than 120 UTF-16 units without path separators, C0 controls or DEL, and
 an integral size from zero through 5 MiB. The normalized descriptor
 drops extra properties and strips a malformed optional reference while
-preserving the file identity. The admitted reference strings are
-`a1:` plus 64 lowercase hex digits, and `b1:` plus 36 lowercase hex or
-hyphen characters. The second pattern is lexical and does not assert
-that the browser file still exists. The native key is derived from the
-UTF-8 content URI, so its digest is separate from the digest of the
-document bytes.
+preserving the file identity. A device reference is derived from the
+file's content URI and a browser reference from its local file ID;
+neither asserts that the file still exists, and neither is the digest of
+the document bytes.
 
 The byte review checks the safe filename, extension, MIME and leading
 signature or UTF-8 bytes. Text requires fatal UTF-8 decoding and no
-NUL. Text need not be nonempty. The browser also requires canonical
-base64 and imposes a 7 MiB bound on the encoded string. Native streaming
-reads the full selected content and rejects any input beyond 5 MiB.
-A compatible limit failure is explicit. A retained browser link
-reselects its local Files ID and forgets the temporary selection after
-it settles. A native link resolves only when the mapped content URI
-still has persisted document or covering tree read permission. A
-linked source with no retained capability can still ask the user to
-pick matching bytes.
+NUL. Text need not be nonempty. Reading rejects any input beyond 5 MiB
+explicitly. A device link resolves only while its content URI still has
+a persisted document or covering tree read permission; a link with no
+retained capability can still ask the owner to pick matching bytes.
 
 The bridge independently rechecks hash, byte count and MIME on reopening.
 The newly read display name can differ when the bytes and type match.
-The producer rejects generation drift before the viewer handoff and
-requires a focused window at native dispatch. The native viewer receives
-a temporary read-only copy, with expiry after 15 minutes and cancellation
-or destruction cleanup. It reports dispatch rather than whether the
-person viewed the file. The browser keeps its renderer dialog and blob
-under its lifecycle fence. The model takes already-validated name, MIME,
-hash and encoding facts from platform decoders. It does not parse their
-bytes or grant access itself.
+A changed review generation is refused before the viewer handoff, which
+requires a focused window. The viewer receives a temporary read-only copy
+that expires after 15 minutes, and the handoff reports dispatch, not that
+the owner viewed the file.
 
 ```quint
 type SourceMime = Pdf | Png | Jpeg | Webp | PlainText | Unsupported
@@ -82,33 +69,21 @@ pure def lawOversizedSourceCannotBeLinked(descriptor: SourceDescriptor): bool = 
 
 ### Reconciliation keeps live and restorable links, picker leases and covering tree grants
 
-Android stores references in `note-source-references` and retain times
-in `note-source-reference-times`. It writes the time before the mapping.
-A new reference can be kept only with an eligible persisted read grant,
+The device stores each reference with its retain time, writing the time
+before the mapping. A new reference can be kept only with an eligible persisted read grant,
 a bounded content URI, and room in the 128-entry store. Retaining an
 existing reference refreshes its time even when there is no room for a
 new entry. A failed mapping commit cannot produce a retained receipt.
 A stored time without a mapping is cleanup data.
 
-Reconciliation requires the complete validated keep set. The
-bridge allows at most 20,000 input identities and the whole command
-fails if any identity is invalid. The Notes adapter collects deduplicated
-valid `a1:` links from saved notes and restorable Trash under its
-deletion lock. A reference without a keep entry survives for three
+Reconciliation requires the complete validated keep set of at most
+20,000 identities, and fails whole if any is invalid. Notes collects the
+links of saved notes and restorable Trash under its deletion lock. A reference without a keep entry survives for three
 days after retain. A missing or future timestamp is seeded with now
-before pruning, giving an old-format or rewound clock a full
-three-day hold. Only after reference removal commits can the host try to
+before pruning, giving a rewound clock a full three-day hold. Only after reference removal commits can the host try to
 release the exact URI grant. It rechecks all remaining references to
 the URI and all picker selections. A covering tree grant must survive.
 An already-revoked permission need not produce a release receipt.
-
-The reducer models one reference with another same-URI reference as
-an observed fact, one picker lease, and separate direct and covering
-grants. Its serialized events refine one reconciliation pass. The
-pinned bridge workers serialize per instance. Cross-instance retain
-and reconcile ordering and persistence failures between preferences
-and the resolver still need host evidence. Pure policy and renderer
-tests cannot establish actual Android permission behavior.
 
 ```quint
 type SourceStore = { picker: bool, directGrant: bool, treeGrant: bool, retained: bool, liveLink: bool, trashLink: bool, otherRef: bool, retainTime: int, clock: int }

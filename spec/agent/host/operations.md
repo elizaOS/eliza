@@ -4,14 +4,10 @@ A runtime operation is a reload, a model swap or another change the host
 applies to its running runtime. Operations go through one start lane: the
 request is recorded durably before it runs, the cheapest available strategy
 tier at or above the one requested executes it, and a health check decides
-success. Records found on disk at startup belong to the process
-incarnation that wrote them. Runtime-management proposals are files that
-two consumers may race to claim; the claim is checked again after the
-atomic rename. The research baseline is
-`packages/agent/src/runtime/operations/{manager,repository,classifier,health}.ts`,
-`api/runtime-proposals.ts` and the `runtime-operations`,
-`runtime-operation-tiers`, `runtime-operation-recovery` and `api-proposals`
-models. Tiers 0, 1 and 2 are hot, warm and cold.
+success. Strategy tiers are numbered from the cheapest, 0, to the most
+thorough, 2. Records found on disk at startup belong to the process
+incarnation that wrote them. Who may act on a proposed operation is in
+[runtime-management proposals](./proposals.md).
 
 ## Story: Apply a runtime operation once
 
@@ -25,9 +21,8 @@ models. Tiers 0, 1 and 2 are hot, warm and cold.
 type OpStatus = OpIdle | Selecting | OpRunning | Checking | OpSucceeded | OpFailed
 type OpFailure = NoFailure | TierUnavailable | StrategyFailed | HealthFailed | Reclaimed
 type OpOwner = NoOwner | ThisProcess | EarlierIncarnation | DeadLocalProcess | RemoteExecutor | UnversionedRecord
-type ProposalFile = NoProposal | LiveProposal | ClaimedProposal | ConsumedProposal
-type Operations = { status: OpStatus, key: int, recorded: bool, strategies: Set[int], requested: int, cursor: int, selected: int, applied: bool, healthy: bool, failure: OpFailure, owner: OpOwner, stale: bool, proposal: ProposalFile, proposalExpired: bool, proposalMatches: bool, checkedBy: Set[int], claimedBy: int, granted: Set[int] }
-pure val initial: Operations = { status: OpIdle, key: -1, recorded: false, strategies: Set(0, 1, 2), requested: -1, cursor: -1, selected: -1, applied: false, healthy: false, failure: NoFailure, owner: NoOwner, stale: false, proposal: NoProposal, proposalExpired: false, proposalMatches: true, checkedBy: Set(), claimedBy: 0, granted: Set() }
+type Operations = { status: OpStatus, key: int, recorded: bool, strategies: Set[int], requested: int, cursor: int, selected: int, applied: bool, healthy: bool, failure: OpFailure, owner: OpOwner, stale: bool }
+pure val initial: Operations = { status: OpIdle, key: -1, recorded: false, strategies: Set(0, 1, 2), requested: -1, cursor: -1, selected: -1, applied: false, healthy: false, failure: NoFailure, owner: NoOwner, stale: false }
 pure val keyValues = Set(0, 1)
 pure val tierValues = Set(0, 1, 2)
 pure def canSubmit(o: Operations, key: int, tier: int): bool = o.status == OpIdle and key >= 0 and tier >= 0 and tier <= 2
@@ -116,41 +111,4 @@ pure def canRestartProcess(o: Operations): bool = o.owner == ThisProcess and o.s
 pure def restartProcess(o: Operations): Operations = { ...o, owner: EarlierIncarnation }
 pure def stepOwnerChangesOnlyByRestartOrNewRecord(before: Operations, via: str, after: Operations): bool =
   (before.owner != after.owner) implies (via == "restartProcess" or via == "submit" or via == "hydrate" or via == "prune")
-```
-
-## Story: Claim a runtime-management proposal
-
-> As the owner, when two consumers race for the same proposal, at most one
-> is granted it, and never after it expired or stopped matching.
-
-### At most one consumer is granted a proposal, and only after the claimed file is consumed
-
-```quint
-pure val consumerValues = Set(1, 2)
-pure def canCreateProposal(o: Operations): bool = o.proposal == NoProposal
-pure def createProposal(o: Operations): Operations = { ...o, proposal: LiveProposal }
-pure def canExpireProposal(o: Operations): bool = o.proposal != NoProposal and not(o.proposalExpired)
-pure def expireProposal(o: Operations): Operations = { ...o, proposalExpired: true }
-pure def canMismatchProposal(o: Operations): bool = o.proposal != NoProposal and o.proposalMatches
-pure def mismatchProposal(o: Operations): Operations = { ...o, proposalMatches: false }
-pure def canCheckProposal(o: Operations, consumer: int): bool = o.proposal == LiveProposal and not(o.proposalExpired) and o.proposalMatches and consumer > 0
-pure def checkProposal(o: Operations, consumer: int): Operations = { ...o, checkedBy: o.checkedBy.union(Set(consumer)) }
-pure def canClaimProposal(o: Operations, consumer: int): bool = o.proposal == LiveProposal and o.checkedBy.contains(consumer)
-pure def claimProposal(o: Operations, consumer: int): Operations = { ...o, proposal: ClaimedProposal, claimedBy: consumer }
-pure def alwaysAtMostOneGrant(o: Operations): bool =
-  o.granted.size() <= 1 and (o.granted.size() > 0 implies o.proposal == ConsumedProposal and o.granted.contains(o.claimedBy))
-```
-
-### A claim is granted only if the proposal still matches and has not expired after the rename
-
-```quint
-pure def canValidateClaim(o: Operations): bool = o.proposal == ClaimedProposal
-pure def validateClaim(o: Operations): Operations =
-  { ...o, proposal: ConsumedProposal, granted: if (o.proposalMatches and not(o.proposalExpired)) o.granted.union(Set(o.claimedBy)) else o.granted }
-pure def canDiscardExpired(o: Operations): bool = o.proposal == LiveProposal and o.proposalExpired
-pure def discardExpired(o: Operations): Operations = { ...o, proposal: ConsumedProposal }
-pure def stepGrantNeedsValidProposal(before: Operations, after: Operations): bool =
-  after.granted.size() > before.granted.size() implies before.proposalMatches and not(before.proposalExpired)
-pure def sometimesGranted(o: Operations): bool = o.granted.size() == 1
-pure def sometimesExpiredAfterCheckNotGranted(o: Operations): bool = o.proposal == ConsumedProposal and o.granted.size() == 0 and o.checkedBy.size() > 0
 ```

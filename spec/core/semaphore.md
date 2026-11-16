@@ -1,10 +1,12 @@
 # Cancellable semaphore ownership
 
-A configured positive permit count controls concurrency without reducing the set of possible caller identities. Sources include [task-scheduling.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/utils/task-scheduling.ts) and [Semaphore.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/Semaphore.qnt).
+A cancellable semaphore from `utils/task-scheduling.ts`: a configured positive permit count limits concurrency without limiting caller identities.
 
 ## Story: Acquire cancellable capacity
 
-As an asynchronous caller I acquire in FIFO order and an aborted queued request never receives a permit.
+> As an asynchronous caller, I want permits granted in FIFO order and none
+> granted to an aborted queued request, so that capacity is fair and
+> cancellation is final.
 
 ### A permit is always available or owned by one caller
 

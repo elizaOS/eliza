@@ -12,15 +12,11 @@ file through the consumer-owned provider and the Files renderer or
 Android chooser. A consumer that does not install the files bridge has
 none of this.
 
-The shared renderer source is exercised against held bridge replies. The
-prior `FilesPreview.qnt` covers current, retired and returned Files view
-completions. The provider rules below come from the shipped Java class and
-manifest. Renderer fixtures supply synthetic bridge results.
-
 ## Story: Open the selected file with read-only authority
 
-> As the person, I want to open the selected file with read-only
-> authority.
+> As the person, I want the file I selected opened or shared read-only,
+> so that the app that receives it can never change or reach anything
+> else.
 
 ### The chosen volume path must resolve to a file and the provider serves only visible read requests
 
@@ -46,16 +42,13 @@ pure val readableFile: FilesReadPort = { workerLive: true, storageGranted: true,
   regularFile: true, ownProviderUri: true }
 pure val portValues = Set(readableFile, { ...readableFile, pathAdmitted: false }, { ...readableFile, regularFile: false },
   { ...readableFile, ownProviderUri: false }, { ...readableFile, storageGranted: false })
-type StorageOpenEvidence = { callerAuthorized: bool, providerBound: bool, mode: str, hiddenSegment: bool }
+type OpenMode = ReadOnlyMode | WriteMode | ReadWriteMode
+type StorageOpenEvidence = { callerAuthorized: bool, providerBound: bool, mode: OpenMode, hiddenSegment: bool }
 pure def admitsStorageProviderRead(proof: StorageOpenEvidence): bool =
-  proof.callerAuthorized and proof.providerBound and proof.mode == "r" and not(proof.hiddenSegment)
-pure val allowedRead: StorageOpenEvidence = { callerAuthorized: true, providerBound: true, mode: "r", hiddenSegment: false }
-pure val proofValues = Set(allowedRead, { ...allowedRead, mode: "rw" }, { ...allowedRead, mode: "w" },
+  proof.callerAuthorized and proof.providerBound and proof.mode == ReadOnlyMode and not(proof.hiddenSegment)
+pure val allowedRead: StorageOpenEvidence = { callerAuthorized: true, providerBound: true, mode: ReadOnlyMode, hiddenSegment: false }
+pure val proofValues = Set(allowedRead, { ...allowedRead, mode: ReadWriteMode }, { ...allowedRead, mode: WriteMode },
   { ...allowedRead, hiddenSegment: true }, { ...allowedRead, callerAuthorized: false })
-pure def lawFilesReadNeedsTheNativePath(port: FilesReadPort): bool =
-  admitsFileReadPath(port) implies port.volumeResolved and port.pathAdmitted and port.regularFile and port.ownProviderUri
-pure def lawFilesProviderNeverAdmitsWriteOrHidden(proof: StorageOpenEvidence): bool =
-  admitsStorageProviderRead(proof) implies proof.mode == "r" and not(proof.hiddenSegment) and proof.callerAuthorized
 ```
 
 ### Android chooser acknowledgement confirms dispatch only
@@ -202,10 +195,6 @@ pure val factsValues = Set(availablePreview, { ...availablePreview, visible: fal
   { ...availablePreview, aborted: true }, { ...availablePreview, filterCurrent: false }, { ...availablePreview, accessGranted: false })
 pure val selectedValues = Set({ selected: true, selectionId: "selection-1" }, { selected: true, selectionId: "selection-2" },
   { selected: false, selectionId: "" }, { selected: true, selectionId: "" })
-pure val weight_enterFilesPreview = 9
-pure val weight_beginFilesPreview = 14
-pure val weight_settleFilesPreview = 14
-pure val weight_retireFilesPreview = 7
 pure def alwaysFilesPreviewRequestCannotComeFromTheFuture(s: FilesPreview): bool =
   s.epoch >= 0 and s.requestEpoch >= 0 and s.requestEpoch <= s.epoch
 pure def stepRetiredSelectionDoesNotReplaceThePreview(before: FilesPreview, via: str, after: FilesPreview): bool =

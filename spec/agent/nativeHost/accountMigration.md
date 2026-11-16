@@ -2,11 +2,10 @@
 
 Before the [runtime supervisor](./runtimeSupervisor.md) launches an
 account's child, the native host removes a selected credential string from
-that account's configuration files (`packages/agent/native-host/account-state.mjs`).
-It visits the files in a fixed order, writes each replacement to a private
-temporary file and publishes it by atomic rename. A file that is absent or
-already lacks the string is retained as it is. Bytes, directories and
-credential hashing are checked by real disk scenarios rather than modeled.
+that account's configuration files. It visits the files in a fixed
+order, writes each replacement to a private temporary file and publishes
+it by atomic rename. A file that is absent or
+already lacks the string is retained as it is.
 
 ## Story: Upgrade an account's files without losing or half-writing one
 
@@ -25,16 +24,16 @@ type FileState = Dirty | Retained | Invalid | Clean
 type MigrationPhase = MigrationIdle | Inspecting | Writing | Renaming | MigrationDone | MigrationFailed
 type AccountFiles = { files: int -> FileState, cursor: int, phase: MigrationPhase, attempts: int }
 pure val fileCount = 3
+pure val slots = List(0, 1, 2)
 pure val initial: AccountFiles = { files: Map(0 -> Dirty, 1 -> Invalid, 2 -> Retained), cursor: 0, phase: MigrationIdle, attempts: 0 }
 pure def fileAt(files: int -> FileState, slot: int): FileState = if (files.keys().contains(slot)) files.get(slot) else Retained
 pure def settledFile(fileState: FileState): bool = fileState == Retained or fileState == Clean
-pure def nextFile(cursor: int): int = cursor + 1
 pure def canBeginMigration(a: AccountFiles): bool = a.phase == MigrationIdle or a.phase == MigrationDone or a.phase == MigrationFailed
 pure def beginMigration(a: AccountFiles): AccountFiles = { ...a, cursor: 0, phase: Inspecting, attempts: a.attempts + 1 }
 pure def canInspectFile(a: AccountFiles): bool = a.phase == Inspecting
 pure def inspectFile(a: AccountFiles): AccountFiles = {
   val fileState = fileAt(a.files, a.cursor)
-  if (settledFile(fileState)) { ...a, cursor: nextFile(a.cursor), phase: if (a.cursor == fileCount - 1) MigrationDone else Inspecting }
+  if (settledFile(fileState)) { ...a, cursor: a.cursor + 1, phase: if (a.cursor == fileCount - 1) MigrationDone else Inspecting }
   else if (fileState == Dirty) { ...a, phase: Writing }
   else { ...a, phase: MigrationFailed }
 }
@@ -42,7 +41,7 @@ pure def alwaysVisitedFilesAreSettled(a: AccountFiles): bool =
   a.cursor >= 0 and a.cursor <= fileCount and
   ((a.phase == Inspecting or a.phase == Writing or a.phase == Renaming) implies a.cursor < fileCount) and
   (a.phase == MigrationDone implies a.cursor == fileCount) and
-  (a.cursor > 0 implies settledFile(fileAt(a.files, 0))) and (a.cursor > 1 implies settledFile(fileAt(a.files, 1))) and (a.cursor > 2 implies settledFile(fileAt(a.files, 2)))
+  slots.every(slot => slot < a.cursor implies settledFile(fileAt(a.files, slot)))
 pure def sometimesMigrationSucceeded(a: AccountFiles): bool = a.phase == MigrationDone and a.attempts > 1
 ```
 
@@ -57,12 +56,10 @@ pure def canStageFile(a: AccountFiles): bool = a.phase == Writing
 pure def stageFile(a: AccountFiles): AccountFiles = { ...a, phase: Renaming }
 pure def canPublishFile(a: AccountFiles): bool = a.phase == Renaming
 pure def publishFile(a: AccountFiles): AccountFiles =
-  { ...a, files: a.files.put(a.cursor, Clean), cursor: nextFile(a.cursor), phase: if (a.cursor == fileCount - 1) MigrationDone else Inspecting }
+  { ...a, files: a.files.put(a.cursor, Clean), cursor: a.cursor + 1, phase: if (a.cursor == fileCount - 1) MigrationDone else Inspecting }
 pure def alwaysOnlyDirtyFilesAreStaged(a: AccountFiles): bool = (a.phase == Writing or a.phase == Renaming) implies fileAt(a.files, a.cursor) == Dirty
 pure def stepCleanFilesStayClean(before: AccountFiles, after: AccountFiles): bool =
-  (fileAt(before.files, 0) == Clean implies fileAt(after.files, 0) == Clean) and
-  (fileAt(before.files, 1) == Clean implies fileAt(after.files, 1) == Clean) and
-  (fileAt(before.files, 2) == Clean implies fileAt(after.files, 2) == Clean)
+  slots.every(slot => fileAt(before.files, slot) == Clean implies fileAt(after.files, slot) == Clean)
 pure def sometimesEarlierFileCleanedBeforeFailure(a: AccountFiles): bool = a.phase == MigrationFailed and fileAt(a.files, 0) == Clean
 ```
 
@@ -71,7 +68,8 @@ pure def sometimesEarlierFileCleanedBeforeFailure(a: AccountFiles): bool = a.pha
 An I/O failure while inspecting, writing or renaming ends the attempt with
 the files unchanged; a staged replacement is never published. A file the
 migration cannot parse fails the attempt and is never replaced by it; the
-host repairs it in a separate step, after which a new attempt can clean it.
+host repairs it in a separate step, after which a new attempt can clean it;
+a repair names one of the account's files, and any other slot is refused.
 Assuming inspection, staging and publication settle, every attempt ends.
 
 ```quint
@@ -82,10 +80,10 @@ pure def repairConfiguration(a: AccountFiles, slot: int): AccountFiles = { ...a,
 pure val slotValues = Set(0, 1, 2, 3)
 pure def stepFailureChangesNoFile(before: AccountFiles, via: str, after: AccountFiles): bool =
   (after.phase == MigrationFailed and before.phase != MigrationFailed) implies
-    (fileAt(after.files, 0) == fileAt(before.files, 0) and fileAt(after.files, 1) == fileAt(before.files, 1) and fileAt(after.files, 2) == fileAt(before.files, 2))
+    slots.every(slot => fileAt(after.files, slot) == fileAt(before.files, slot))
 pure def stepOnlyRepairTouchesInvalidFiles(before: AccountFiles, via: str, after: AccountFiles): bool =
   (via != "repairConfiguration") implies
-    ((fileAt(before.files, 0) == Invalid implies fileAt(after.files, 0) == Invalid) and (fileAt(before.files, 1) == Invalid implies fileAt(after.files, 1) == Invalid) and (fileAt(before.files, 2) == Invalid implies fileAt(after.files, 2) == Invalid))
+    slots.every(slot => fileAt(before.files, slot) == Invalid implies fileAt(after.files, slot) == Invalid)
 pure def leadsToMigrationSettles(a: AccountFiles, later: AccountFiles): bool =
   (a.phase == Inspecting or a.phase == Writing or a.phase == Renaming) implies (later.phase == MigrationDone or later.phase == MigrationFailed)
 pure val fair_inspectFile = "weak"

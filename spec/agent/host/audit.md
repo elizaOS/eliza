@@ -7,10 +7,8 @@ durable sink; until one is attached, records wait in an outbox. A record is
 acknowledged only when no required sink failed and, where durability is
 required, a durable sink accepted it. A failed append may still have
 committed its row, and a restart keeps every committed row while records
-not yet delivered are lost, never acknowledged. Escape hatches that once
-weakened the host's security have been retired and cannot be turned back
-on. The research baseline is `packages/agent/src/security/{audit-log,protected-profile,sql-readonly-guard}.ts`
-and the `AuditOutbox` and `SecurityEscapeRetirement` models.
+not yet delivered are lost, never acknowledged.
+Stored settings keys are [core key management](../../core/settingsKeys.md).
 
 ## Story: Keep an audit trail that survives a crash
 
@@ -119,52 +117,4 @@ pure def stepCrashKeepsCommittedRows(before: Audit, via: str, after: Audit): boo
 pure def stepSettledRecordsStaySettled(before: Audit, after: Audit): bool =
   before.entries.every(e => (e.stage == Acknowledged or e.stage == Refused) implies after.entries.includes(e))
 pure def sometimesRowsSurviveCrash(a: Audit): bool = a.crashes > 0 and a.rows.length() > 0 and a.entries.some(e => e.stage == Lost)
-```
-
-## Story: Keep retired security escape hatches retired
-
-> As the owner, no setting can bring back an insecure behaviour that my
-> agent's host no longer allows.
-
-### In production, stored settings are encrypted only with a configured key
-
-A missing salt or the historical built-in salt is refused in production.
-Outside production a key is generated per process, so a restart cannot read
-what an earlier process stored.
-
-```quint
-type Salt = MissingSalt | HistoricalSalt | ConfiguredSalt
-type KeySource = NoKey | ConfiguredKey | ProcessKey
-type SettingsKey = { source: KeySource, process: int }
-pure def settingsKey(production: bool, salt: Salt, process: int): SettingsKey =
-  if (salt == ConfiguredSalt) { source: ConfiguredKey, process: 0 }
-  else if (production) { source: NoKey, process: 0 }
-  else { source: ProcessKey, process: process }
-pure def lawProductionNeedsConfiguredKey(salt: Salt, process: int): bool =
-  settingsKey(true, salt, process).source == (if (salt == ConfiguredSalt) ConfiguredKey else NoKey)
-```
-
-### A stored setting reads back only under the key that stored it
-
-```quint
-pure def readsBack(storedKey: SettingsKey, presentKey: SettingsKey): bool = storedKey.source != NoKey and storedKey == presentKey
-pure def lawRestartCannotInventARead(salt: Salt): bool = salt != ConfiguredSalt implies not(readsBack(settingsKey(false, salt, 0), settingsKey(false, salt, 1)))
-pure def lawConfiguredKeySurvivesRestart(production: bool): bool = readsBack(settingsKey(production, ConfiguredSalt, 0), settingsKey(production, ConfiguredSalt, 1))
-```
-
-### The dashboard bootstrap never publishes an API token or writes local storage
-
-```quint
-type BootstrapField = PublicSetting | ApiToken | LocalStorageWrite
-pure def bootstrapFields(tokenConfigured: bool): Set[BootstrapField] = Set(PublicSetting)
-pure def lawBootstrapPublishesNoCapability(tokenConfigured: bool): bool =
-  not(bootstrapFields(tokenConfigured).contains(ApiToken)) and not(bootstrapFields(tokenConfigured).contains(LocalStorageWrite))
-```
-
-### The read-only database action admits only read statements
-
-```quint
-type Statement = ReadStatement | WriteStatement | SchemaStatement | MultipleStatements
-pure def readOnlyAdmits(statement: Statement): bool = statement == ReadStatement
-pure def lawReadOnlyRefusesWrites(statement: Statement): bool = readOnlyAdmits(statement) implies statement == ReadStatement
 ```

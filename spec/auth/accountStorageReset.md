@@ -10,12 +10,10 @@ calling the host again; if the reset fails before it publishes the epoch,
 it restores what it deleted. Writes are admitted only while no reset or
 recovery holds the storage and no intent is pending.
 
-Ported from develop `packages/auth/quint/AccountStorageReset.qnt` (source
-`src/auth/account-storage.ts`: `resetAccountCredentialStorage`,
-`recoverCredentialResetUnlocked`). The [storage lock](./accountStorageLock.md)
-serializes these steps with every other storage call. Artifacts 1 and 2
-exist before the reset; artifact 3 is written by a writer holding the old
-policy, artifact 4 by a writer that captured a policy later.
+The [storage lock](./accountStorageLock.md) serializes these steps with
+every other storage call. Artifacts 1 and 2 exist before the reset; artifact
+3 is written by a writer holding the old policy, artifact 4 by a writer that
+captured a policy later.
 
 ## Story: Reset all stored provider credentials, even across a crash
 

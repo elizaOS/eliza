@@ -10,8 +10,8 @@ Eliza's `IsolatedPdfViewerActivity`, `IsolatedPdfRenderService` and
 
 ## Story: Open the reviewed PDF when Android has no viewer
 
-> As the person, I want to open the reviewed PDF when Android has no
-> viewer.
+> As the person, I want a reviewed PDF attachment to open even when
+> Android has no PDF viewer, without handing the file to anything else.
 
 ### Dispatch grants temporary read access to the exact reviewed attachment
 
@@ -60,8 +60,9 @@ pure val reviewValues = Set(readyHandoff, { ...readyHandoff, reviewed: false }, 
 
 ## Story: Read one bounded page at a time in the isolated viewer
 
-> As the person, I want to read one bounded page at a time in the
-> isolated viewer.
+> As the person, I want the fallback viewer to show one page at a time
+> from an isolated renderer, so that a hostile PDF cannot reach my data
+> or the network.
 
 ### A worker accepts one read-only descriptor within its rendering limits
 
@@ -76,8 +77,8 @@ document. Both cases require a positive known descriptor size.
 Parsing and rendering run in the service. Admit 1 to 500 pages, a
 requested index within the document, and original edges 1 to 20,000
 PDF points. The fitted ARGB page has positive edges and at most
-1,500,000 pixels, with width at most 1024 and height at most 1536 when
-produced by the renderer. The service makes shared memory read-only
+1,500,000 pixels, with width at most 1024 and height at most 1536; the
+renderer and the viewer use this one bound. The service makes shared memory read-only
 before send. The process watchdog is armed at 10 seconds and samples
 PSS every 250 ms, killing above 131,072 KiB. Unbind destroys the
 isolated process. Android owns the actual watchdog delivery, UID and
@@ -96,9 +97,7 @@ pure def pageWithinPdfLimit(pageCount: int, pageIndex: int): bool =
 pure def pdfPointSizeFits(pointWidth: int, pointHeight: int): bool =
   pointWidth >= 1 and pointWidth <= 20000 and pointHeight >= 1 and pointHeight <= 20000
 pure def pdfPixelSizeFits(pixelWidth: int, pixelHeight: int): bool =
-  pixelWidth >= 1 and pixelHeight >= 1 and pixelWidth <= 1536 and pixelHeight <= 1536 and pixelWidth * pixelHeight <= 1500000
-pure def rendererPixelSizeFits(pixelWidth: int, pixelHeight: int): bool =
-  pixelWidth <= 1024 and pdfPixelSizeFits(pixelWidth,pixelHeight)
+  pixelWidth >= 1 and pixelHeight >= 1 and pixelWidth <= 1024 and pixelHeight <= 1536 and pixelWidth * pixelHeight <= 1500000
 pure def workerShouldExit(isolated: bool, watchdogDelivered: bool, busy: bool, pssKiB: int, unbound: bool): bool =
   isolated and (watchdogDelivered or unbound or (busy and pssKiB > 131072))
 pure def lawBusyWorkerRefuses(what: int, replyPort: bool, isolated: bool, descriptor: bool, requestLength: int, pageIndex: int): bool =
@@ -120,20 +119,17 @@ activity recreation. The modeled initial index is the first page.
 Android supplies a fresh descriptor and a request identity for each
 send, with a 12-second viewer timeout.
 
-Before mapping pixels, the viewer requires the reply UUID, isolated and
-network-denied process, different UID, the requested index within the
-page count, positive bounded pixel dimensions and exactly four bytes
-per pixel. The viewer accepts width up to 1536, while its producer caps
-width at 1024. Mapping or copying failure, a renderer error, current
-service failure, descriptor/send failure or timeout clears the image
-and releases the binding. Stopping also retires outstanding tickets.
-The native receive path decodes the pixel parcel type before checking
-the ticket, so a malformed parcel type can clear a current view even
-when it would have been an unmatched reply. An ordinary stale reply
-can only release its received memory. Status changes while stopped
-have no visible page and are outside the active view projection.
-The model abstracts cleanup and
-the platform's process and SharedMemory implementation.
+The viewer checks the reply's ticket before decoding anything else, so
+any reply that is not for the pending ticket, malformed or not, only
+releases its received memory. For the pending ticket it requires an
+isolated, network-denied process with a different UID, the requested
+index within the page count, pixel dimensions within the shared bound and
+exactly four bytes per pixel. Mapping or copying failure, a renderer error,
+service failure, send failure or timeout clears the image and releases the
+binding, and stopping retires outstanding tickets. A reply carries one page
+of pixels with its dimensions and ticket, never extracted text. The model
+abstracts cleanup and the platform's process and shared-memory
+implementation.
 
 ```quint
 type PdfStage = ViewerStopped | ViewerBinding | ViewerPending | ViewerDisplaying | ViewerFailed
@@ -166,8 +162,7 @@ pure def canTurnPdfPage(view: PdfViewer, requestedPage: int): bool =
 pure def turnPdfPage(view: PdfViewer, requestedPage: int): PdfViewer =
   { ...view, stage: ViewerPending, pageIndex: requestedPage, lastTicket: view.lastTicket + 1, pendingTicket: view.lastTicket + 1 }
 pure def canReceivePdfReply(view: PdfViewer, reply: PdfReply): bool =
-  (view.stage == ViewerPending and view.pendingTicket == reply.ticket) or
-  (view.stage != ViewerStopped and not(reply.pixelParcelTyped))
+  view.stage == ViewerPending and view.pendingTicket == reply.ticket
 pure def receivePdfReply(view: PdfViewer, reply: PdfReply): PdfViewer =
   if (view.stage == ViewerPending and replyPixelsAdmitted({ ticket: view.pendingTicket, requestedPage: view.pageIndex },reply) and reply.mappingSucceeded)
     { ...view, stage: ViewerDisplaying, pendingTicket: 0, pageCount: reply.pageCount, displayedTicket: reply.ticket }
@@ -187,8 +182,8 @@ pure def stepFreshPdfBitmapWasPending(before: PdfViewer, after: PdfViewer): bool
   before.stage == ViewerPending and after.displayedTicket == before.pendingTicket
 pure def lawPdfReplyKeepsPage(request: PdfRequest, reply: PdfReply): bool =
   replyPixelsAdmitted(request,reply) implies reply.ticket == request.ticket and reply.pageIndex == request.requestedPage
-pure def lawWellFormedStalePdfReplyDoesNotSettle(view: PdfViewer, reply: PdfReply): bool =
-  reply.pixelParcelTyped and reply.ticket != view.pendingTicket implies not(canReceivePdfReply(view,reply))
+pure def lawStalePdfReplyDoesNotSettle(view: PdfViewer, reply: PdfReply): bool =
+  reply.ticket != view.pendingTicket implies not(canReceivePdfReply(view,reply))
 pure def sometimesPdfPageShown(view: PdfViewer): bool = view.stage == ViewerDisplaying
 pure def sometimesPdfTurnPending(view: PdfViewer): bool = view.stage == ViewerPending and view.displayedTicket > 0
 pure def sometimesPdfFailure(view: PdfViewer): bool = view.stage == ViewerFailed
@@ -205,15 +200,4 @@ pure val whatValues = Set(0,1)
 pure val requestLengthValues = Set(0,35,36,37)
 pure val sourceBytesValues = Set(0,1,5242880,5242881,20971520,20971521)
 pure val pssKiBValues = Set(0,131071,131072,131073)
-pure val weight_startPdfView = 4
-pure val weight_bindPdfWorker = 5
-pure val weight_receivePdfReply = 7
-pure val weight_turnPdfPage = 5
 ```
-
-The original `IsolatedPdfInstrumentedTest` exercises real Android
-descriptor transport, page rendering, read-only shared memory, renderer
-termination after unbind, watchdog termination, and a fresh connection.
-The `PdfPageLimits` class is also executable without Android for
-boundary comparison. The fallback's output contract is one page of
-pixels plus dimensions and ticket, with no extracted text.

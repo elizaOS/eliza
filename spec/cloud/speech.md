@@ -9,10 +9,6 @@ session is the state machine. The organization's daily speech quota and the
 first-sentence cache key are stated as laws. The device's half of the
 session is [cloud speech on the device](../os/voice/cloudSpeech.md).
 
-Develop sources: the cloud `speech_prepared_consent`, `speech_continuity`,
-`speech_deferred_opening` and `VoiceUsage` models, and the voice package's
-first-sentence snip.
-
 ## Story: Start a speech session only from a prepared consent
 
 > As a device owner, I want a speech session started only by me, once, from

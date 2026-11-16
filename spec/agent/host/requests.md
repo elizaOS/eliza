@@ -7,9 +7,7 @@ still uploading is not reset. Calls are admitted from a per-principal token
 bucket, and a budget write that conflicts is retried a bounded number of
 times. The recent API log is a small bounded buffer that keeps the newest
 entries and any insufficient-credits warning still inside its lookback, so
-a reply can still explain why the model refused. The research baseline is
-`packages/agent/src/api/{hono-mount,server-state,chat-routes}.ts` and the
-`api-http-body`, `api-budgets` and `ApiLogRetention` models.
+a reply can still explain why the model refused.
 
 ## Story: Refuse what a request may not cost
 
@@ -25,10 +23,10 @@ discarding at once; a chunked body starts when the cap is crossed.
 ```quint
 type Response = NoResponse | Accepted | TooLarge
 type LogEntry = { id: int, credit: bool, at: int }
-type Requests = { received: int, retained: int, oversized: bool, requestDone: bool, dispatched: bool, response: Response, flushed: bool, closed: bool, peerAborted: bool, tokens: int, admittedCalls: int, casAttempts: int, casCommitted: bool, nextLog: int, now: int, history: List[LogEntry], buffer: List[LogEntry] }
+type Requests = { received: int, retained: int, oversized: bool, requestDone: bool, dispatched: bool, response: Response, flushed: bool, closed: bool, peerAborted: bool, tokens: int -> int, admittedCalls: int -> int, casAttempts: int, casCommitted: bool, nextLog: int, now: int, history: List[LogEntry], buffer: List[LogEntry] }
 pure val bodyCap = 2
 pure val bucketSize = 2
-pure val initial: Requests = { received: 0, retained: 0, oversized: false, requestDone: false, dispatched: false, response: NoResponse, flushed: false, closed: false, peerAborted: false, tokens: bucketSize, admittedCalls: 0, casAttempts: 0, casCommitted: false, nextLog: 0, now: 0, history: List(), buffer: List() }
+pure val initial: Requests = { received: 0, retained: 0, oversized: false, requestDone: false, dispatched: false, response: NoResponse, flushed: false, closed: false, peerAborted: false, tokens: Map(1 -> bucketSize, 2 -> bucketSize), admittedCalls: Map(1 -> 0, 2 -> 0), casAttempts: 0, casCommitted: false, nextLog: 0, now: 0, history: List(), buffer: List() }
 pure def canDeclareTooLarge(r: Requests): bool = r.received == 0 and r.response == NoResponse and not(r.closed or r.requestDone or r.oversized)
 pure def declareTooLarge(r: Requests): Requests = { ...r, oversized: true }
 pure def canReceiveChunk(r: Requests): bool = not(r.closed or r.requestDone)
@@ -61,9 +59,6 @@ pure def sometimesAccepted(r: Requests): bool = r.response == Accepted and r.clo
 
 ### The connection closes only after the request ended and the response was flushed, unless the peer aborted
 
-Discovered in the research baseline: closing as soon as a rejection was
-queued reset peers that were still uploading, and they never saw the 413.
-
 ```quint
 pure def canFlush(r: Requests): bool = r.response != NoResponse and not(r.closed) and not(r.flushed)
 pure def flush(r: Requests): Requests = { ...r, flushed: true }
@@ -75,15 +70,26 @@ pure def alwaysCloseAfterFlush(r: Requests): bool = (r.closed and not(r.peerAbor
 pure def sometimesPeerAbortedBeforeAnswer(r: Requests): bool = r.peerAborted and not(r.flushed)
 ```
 
-### Calls are admitted from a bucket of two tokens, and a refused call spends nothing
+### Each principal's calls are admitted from its own bucket of two tokens, and a refused call spends nothing
+
+One principal's calls and refills never touch another principal's bucket.
 
 ```quint
-pure def canAdmitCall(r: Requests): bool = r.tokens > 0
-pure def admitCall(r: Requests): Requests = { ...r, tokens: r.tokens - 1, admittedCalls: r.admittedCalls + 1 }
-pure def canRefill(r: Requests): bool = r.tokens < bucketSize
-pure def refill(r: Requests): Requests = { ...r, tokens: bucketSize, admittedCalls: 0 }
-pure def alwaysBucketBalanced(r: Requests): bool = r.tokens >= 0 and r.tokens <= bucketSize and r.tokens + r.admittedCalls == bucketSize
-pure def sometimesBucketEmpty(r: Requests): bool = r.tokens == 0
+pure val principals = Set(1, 2)
+pure val principalValues = principals
+pure def tokensOf(r: Requests, principal: int): int = r.tokens.getOr(principal, 0)
+pure def admittedOf(r: Requests, principal: int): int = r.admittedCalls.getOr(principal, 0)
+pure def canAdmitCall(r: Requests, principal: int): bool = principals.contains(principal) and tokensOf(r, principal) > 0
+pure def admitCall(r: Requests, principal: int): Requests =
+  { ...r, tokens: r.tokens.put(principal, tokensOf(r, principal) - 1), admittedCalls: r.admittedCalls.put(principal, admittedOf(r, principal) + 1) }
+pure def canRefill(r: Requests, principal: int): bool = principals.contains(principal) and tokensOf(r, principal) < bucketSize
+pure def refill(r: Requests, principal: int): Requests =
+  { ...r, tokens: r.tokens.put(principal, bucketSize), admittedCalls: r.admittedCalls.put(principal, 0) }
+pure def alwaysBucketBalanced(r: Requests): bool =
+  principals.forall(p => tokensOf(r, p) >= 0 and tokensOf(r, p) <= bucketSize and tokensOf(r, p) + admittedOf(r, p) == bucketSize)
+pure def stepBucketsAreIndependent(before: Requests, after: Requests): bool =
+  principals.filter(p => tokensOf(before, p) != tokensOf(after, p)).size() <= 1
+pure def sometimesOneBucketEmptyOtherFull(r: Requests): bool = tokensOf(r, 1) == 0 and tokensOf(r, 2) == bucketSize
 ```
 
 ### A budget write retries a conflict at most three times
@@ -140,12 +146,34 @@ pure def alwaysLogBounded(r: Requests): bool =
 
 ### A credit warning inside the lookback survives a burst of later entries
 
-Discovered in the research baseline: evicting by count alone dropped a
-still-recent warning, and the reply lost its explanation.
-
 ```quint
 pure def alwaysRecentCreditWarningRetained(r: Requests): bool = recentCredit(r.history, r.now) == recentCredit(r.buffer, r.now)
 pure def replyMentionsCredits(r: Requests): bool = recentCredit(r.buffer, r.now) >= 0
 pure def sometimesWarningSurvivesBurst(r: Requests): bool = replyMentionsCredits(r) and r.history.length() >= logCapacity + 2 and r.buffer.length() == logCapacity
 pure def sometimesOldWarningExpired(r: Requests): bool = r.history.some(e => e.credit) and not(replyMentionsCredits(r))
+```
+
+## Story: Serve a route the same behind any proxy
+
+> As a user reaching the agent through proxies, a route builds the same
+> base address for my request as it would without them.
+
+### The route reads the first forwarded scheme
+
+A route's base address uses the Host header and the first value of
+`X-Forwarded-Proto`: proxies append hops, and repeated header lines are
+joined with a comma. The header decoder splits and trims the values. An
+absent, empty or unrecognised first value means the request's own scheme,
+so every request is served with an HTTP or HTTPS base address.
+
+```quint
+pure val forwardedValues = Set(List(), List(""), List("https"), List("http", "https"), List("https", "http"), List("ftp", "https"), List("", "https"))
+pure val ownSchemeValues = Set("http", "https")
+pure val servedSchemes = Set("http", "https")
+pure def firstForwardedScheme(forwarded: List[str], ownScheme: str): str =
+  if (servedSchemes.contains(forwarded.nthOr(0, ""))) forwarded.nthOr(0, "") else ownScheme
+pure def lawEveryProxiedRequestIsServed(forwarded: List[str], ownScheme: str): bool =
+  servedSchemes.contains(ownScheme) implies servedSchemes.contains(firstForwardedScheme(forwarded, ownScheme))
+pure def lawAbsentForwardingUsesOwnScheme(ownScheme: str): bool =
+  firstForwardedScheme(List(), ownScheme) == ownScheme and firstForwardedScheme(List(""), ownScheme) == ownScheme
 ```

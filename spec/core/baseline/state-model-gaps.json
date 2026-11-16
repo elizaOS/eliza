@@ -955,7 +955,7 @@
       ],
       "currentModels": [
         {
-          "spec": "spec/core/oauthBridge.md",
+          "spec": "spec/core/oauth/bridge.md",
           "sha256": "1e241c4732a31d38a22197ef8fe219124381344db5c3ec8ba1e9bd32b3c07a2c",
           "definitions": [
             "initial",
@@ -1091,7 +1091,7 @@
           ]
         },
         {
-          "spec": "spec/core/oauthSecrets.md",
+          "spec": "spec/core/oauth/verifiers.md",
           "sha256": "2b4f748caccf566aa4755461542add6f2cc114e6fe8e40efea2b706f12b76383",
           "definitions": [
             "initial",
@@ -1274,7 +1274,7 @@
           ]
         },
         {
-          "spec": "spec/core/connectorMigration.md",
+          "spec": "spec/core/connectorHandoff.md",
           "sha256": "92f694bc84b8bcdafddec7feebefd9a61399a36cebf47e40e333337d842c5c67",
           "definitions": [
             "observe",
@@ -1866,7 +1866,7 @@
           ]
         },
         {
-          "spec": "spec/core/serviceRegistry.md",
+          "spec": "spec/core/serviceInstances.md",
           "sha256": "80fa7f7df4f7307aa3e8be8ef8dbe4b9ae5ad91259bed21820858a1932a6a33b",
           "definitions": [
             "registeredTypeStatus",
@@ -2139,7 +2139,7 @@
       ],
       "currentModels": [
         {
-          "spec": "spec/core/responseEvaluators.md",
+          "spec": "spec/core/responseEvaluation.md",
           "sha256": "d602bfd7d13f77faef4e0ba763ac516cb20e08f5995612107fcdfc67201a82fb",
           "definitions": [
             "initial",
@@ -4162,7 +4162,7 @@
           ]
         },
         {
-          "spec": "spec/core/approvalWorkers.md",
+          "spec": "spec/core/approvalService.md",
           "sha256": "383daf2e4b1e2475b37a2d48b88197ceabbb59a235829abeeef70b30008b113f",
           "definitions": [
             "initial",
@@ -5097,7 +5097,7 @@
       ],
       "currentModels": [
         {
-          "spec": "spec/core/notifications.md",
+          "spec": "spec/core/notifications/index.md",
           "sha256": "7480e89eed108440741e8d6b4a2d31323725e41e009f0c2d0912eca30b125822",
           "definitions": [
             "emptyInput",
@@ -7672,7 +7672,7 @@
           ]
         },
         {
-          "spec": "spec/core/streamStructured.md",
+          "spec": "spec/core/structuredStreamState.md",
           "sha256": "12eef4562053e87514716557cd92d84407b7ecabca9a1232ac8773ef6090ccd0",
           "definitions": [
             "observeField",
@@ -8718,7 +8718,7 @@
           ]
         },
         {
-          "spec": "spec/core/streamSkeleton.md",
+          "spec": "spec/core/skeletonStreamState.md",
           "sha256": "2f06e486b84a9f206c72724e5d9f6ee47a68407f594f1828417ef1f4edc0908d",
           "definitions": [
             "observe",
@@ -9619,7 +9619,7 @@
       "status": "state-modeled-with-explicit-refinement-boundary",
       "currentModels": [
         {
-          "spec": "spec/core/voiceRewrite.md",
+          "spec": "spec/core/outboundStyle.md",
           "sha256": "bcb28210e42b46c3bdb05329fe28fcff5536723f929ce8bf5a27e41179e7f6c6",
           "definitions": [
             "emptyKey",

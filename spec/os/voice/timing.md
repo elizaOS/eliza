@@ -1,13 +1,12 @@
 # Voice turn timing
 
-Each voice turn keeps one in-memory timing record (`voice-turn-timing.ts`
-in the voice sources): when recording began, when its transcript was ready
-and when the turn was sent. Marks change only the record in memory; a
-deferred flush, or an explicit one, writes it to diagnostic storage. The
-timing is for diagnostics: it never decides whether or when a turn is sent,
+Each voice turn keeps one in-memory timing record: when recording began,
+when its transcript was ready and when the turn was sent. Marks change
+only the record in memory; a deferred or explicit flush writes it to
+diagnostic storage. Timing never decides whether or when a turn is sent,
 which is the [voice endpoint](./endpoint.md)'s job, and a storage failure
-may lose unsaved timing by design. A [live session](./liveSession.md)
-produces the turns it times.
+may lose unsaved timing. A [live session](./liveSession.md) produces the
+turns it times.
 
 ## Story: See where time went in a voice turn
 

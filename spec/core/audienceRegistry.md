@@ -4,6 +4,10 @@ The source is `packages/core/src/security/trusted-delivery-audience.ts:182-187,3
 
 ## Story: Keep audience authority isolated while allowing exact in-process aliases
 
+> As an owner, I want each message's delivery audience to keep its own
+> lease even when copies of the message share it, so that one copy's
+> renewal never widens what another may disclose.
+
 ### Binding objects share one global sequence and retain their own lease
 
 Discovered by the proof: even an empty registry retains a positive next binding identity. An unbound message has identity zero and cannot consume or update another message's binding.

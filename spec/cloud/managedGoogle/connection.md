@@ -7,11 +7,8 @@ scoped provider account by the owner's binding and Google grants, and every
 read, preparation and send is bound to the exact environment, user,
 organization, session and credential that admitted it. Native credential
 ownership is [native enrollment](../../auth/native/enrollment.md), mailbox
-paging is [the mailbox list](../../inbox/mailboxList.md), and the mail wire
+paging is [the mailbox reads](../../inbox/reads.md), and the mail wire
 is [Gmail](./gmail.md).
-
-Develop sources: the app's managed Google agent host and the managed parts of
-the Google workspace plugin.
 
 ## Story: Send a reviewed email once and recover its receipt
 
@@ -89,32 +86,50 @@ pure def sometimesRecoversUnknown(s: GmailSend): bool = s.recovered
 pure def sometimesUnconfirmed(s: GmailSend): bool = s.phase == Unknown
 ```
 
-### Agent reads retain scoped authority and apply an explicit size policy
+## Story: Read through the grant I chose when the task began
 
-Gmail search accepts a limit in `1..51`, with 51 for the overflow probe.
-The complete composed query must fit 2048 code units. If a second page
-is needed, a missing initial history ID or a changed history ID refuses
-the read. Paged reads remove duplicated provider IDs. Calendar sources
-can return an empty contribution when the optional credential is absent;
-connected-owner and provider errors remain explicit. The follow-up feed
-serves only the exact grant and calendar, with current grant recheck,
-and rejects a serialized result over 256 KiB.
+> As a person whose agent reads my mail, each result comes from the account
+> and grant I selected when the task began, or the task fails; it never
+> silently switches to another one.
 
-A message body over 32,000 UTF-16 code units is refused explicitly at
-that hard limit rather than handed to the model in part; a body within the
-limit is delivered whole. User-visible strings and lexical and UTF-16
-parsing are conformance at the broker boundary.
+### Agent reads stay on the captured grant and refuse an oversize body
+
+A Google read is bound to the host epoch, actor, Google generation and
+grant captured when the task began, and never falls back to a different
+grant. Only a timeout, a rate limit or a server error permits a bounded
+retry; a refusal and an oversize response are explicit failures. An agent search
+asks for 1 to 51 results, one more than the largest page so it can tell that
+more exist, and its composed query fits 2,048 code units. A later page is
+read only under the history ID of the first: a missing first history ID or a
+changed one refuses the read, unlike [the mailbox
+reads](../../inbox/reads.md), which mark such a page shifted. Later pages add
+only unseen message IDs. A message
+body over 32,000 UTF-16 code units is refused at that limit rather than
+handed to the model in part; a body within it is delivered whole. Calendar
+reads are [managed calendar reads](./calendarRead.md).
 
 ```quint
+type HostAuthority = { hostEpoch: int, googleEpoch: int, actor: str, grant: str }
 type GmailBodyDelivery = FullBody | HardLimitRefusal
+pure def sameGoogleGrant(captured: HostAuthority, observed: HostAuthority): bool =
+  captured.hostEpoch == observed.hostEpoch and captured.actor != "" and captured.actor == observed.actor and
+  captured.googleEpoch == observed.googleEpoch and captured.grant != "" and captured.grant == observed.grant
 pure def replacementBodyDelivery(units: int): GmailBodyDelivery = if (units > 32000) HardLimitRefusal else FullBody
+pure val capturedValues = Set({ hostEpoch: 1, googleEpoch: 1, actor: "owner", grant: "grant" })
+pure val observedValues = Set({ hostEpoch: 1, googleEpoch: 1, actor: "owner", grant: "grant" }, { hostEpoch: 1, googleEpoch: 2, actor: "owner", grant: "replacement" }, { hostEpoch: 2, googleEpoch: 1, actor: "another", grant: "grant" })
+pure def lawGoogleReadCannotFollowGrantChange(captured: HostAuthority, observed: HostAuthority): bool = captured.grant != observed.grant implies not(sameGoogleGrant(captured, observed))
+pure val agentPageLimit = 50
+pure def validGmailRead(limit: int, queryLength: int): bool = limit >= 1 and limit <= agentPageLimit + 1 and queryLength >= 0 and queryLength <= 2048
+pure def validLaterPage(historyId: str, laterHistoryId: str): bool = historyId != "" and historyId == laterHistoryId
+pure val limitValues = Set(0, 1, 50, 51, 52)
+pure val queryLengthValues = Set(0, 2048, 2049)
+pure val historyIdValues = Set("", "7", "8")
+pure val laterHistoryIdValues = Set("", "7", "8")
+pure def lawAgentCanProbeForMore(queryLength: int): bool = (queryLength >= 0 and queryLength <= 2048) implies validGmailRead(agentPageLimit + 1, queryLength)
+pure def lawOversizeSearchIsRefused(limit: int, queryLength: int): bool = (limit > agentPageLimit + 1 or queryLength > 2048) implies not(validGmailRead(limit, queryLength))
+pure def lawLaterPageCannotCrossHistory(historyId: str, laterHistoryId: str): bool = (historyId == "" or historyId != laterHistoryId) implies not(validLaterPage(historyId, laterHistoryId))
 pure def lawReadBodyOverLimitIsExplicit(units: int): bool = units > 32000 implies replacementBodyDelivery(units) == HardLimitRefusal
 pure def lawWithinBudgetBodyRemainsComplete(units: int): bool = units >= 0 and units <= 32000 implies replacementBodyDelivery(units) == FullBody
-pure def validGmailRead(limit: int, queryLength: int): bool = limit >= 1 and limit <= 51 and queryLength >= 0 and queryLength <= 2048
-pure def validLaterPage(historyId: str, laterHistoryId: str): bool = historyId != "" and historyId == laterHistoryId
-pure def lawLaterPageCannotCrossHistory(historyId: str, laterHistoryId: str): bool = validLaterPage(historyId, laterHistoryId) implies historyId != "" and historyId == laterHistoryId
-pure def admitCalendarResult(bytes: int, exactScope: bool, trailingGrant: bool): bool = bytes >= 0 and bytes <= 262144 and exactScope and trailingGrant
-pure def lawCalendarResultRequiresCurrentGrant(bytes: int, exactScope: bool, trailingGrant: bool): bool = admitCalendarResult(bytes, exactScope, trailingGrant) implies exactScope and trailingGrant
 ```
 
 ## Story: Revoke a Google connection without waiting on calendar cleanup

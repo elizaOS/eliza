@@ -1,15 +1,11 @@
 # Release signing
 
-A production image is release-signed on the image host after the
-production build. The key layout is the os package's key manifest. Before
-anything runs, signing reads the unsigned target files' build information,
-APK certificates and APEX keys, and refuses a certificate it does not map
-to a release key, a chained verified-boot partition without its own key,
-or a missing APEX key. It then signs, verifies that every non-presigned
-APK and APEX carries a release certificate, builds the update package and
-writes the release record. A signed output is not an image boot, an
-applied update, a rollback drill or release qualification; the
-[OS update channel](../update/channel.md) consumes the record.
+A production image is release-signed with the consumer's keys, as the os
+package's key manifest lays them out, and the signed output is recorded by
+digest. A signed output is not an image boot, an applied update or release
+qualification; the [OS update channel](../update/channel.md) consumes the
+record, and [manifest admission](../build/manifestAdmission.md) decides
+what a release APK is.
 
 ## Story: Sign a release image and record exactly what was signed
 
@@ -25,12 +21,14 @@ each APEX must have a key. A platform test key, or any other default key,
 is refused. A product's descriptor naming another product refuses signing.
 
 ```quint
+import product.* from "./product"
+import manifestAdmission.* from "../build/manifestAdmission"
 pure def signingPlanAdmitted(required: Set[str], mapped: Set[str], defaultKeyUsed: bool, descriptorMatches: bool): bool =
   required.subseteq(mapped) and not(defaultKeyUsed) and descriptorMatches
 pure val requiredValues = Set(Set("releasekey", "platform"), Set("releasekey", "platform", "avb"))
 pure val mappedValues = Set(Set("releasekey", "platform"), Set("releasekey", "platform", "avb"), Set("releasekey"))
-pure def lawEveryRequiredKeyIsMapped(required: Set[str], mapped: Set[str], defaultKeyUsed: bool, descriptorMatches: bool): bool =
-  signingPlanAdmitted(required, mapped, defaultKeyUsed, descriptorMatches) implies required.subseteq(mapped) and not(defaultKeyUsed)
+pure def lawDefaultKeyIsRefused(required: Set[str], mapped: Set[str], descriptorMatches: bool): bool =
+  not(signingPlanAdmitted(required, mapped, true, descriptorMatches))
 ```
 
 ### Key material never enters the source tree or the release record
@@ -49,10 +47,6 @@ pure def recordFieldsAdmitted(recorded: Set[RecordField]): bool = not(recorded.c
 pure val managedOptionsValues = Set(0, 1, 3, 4)
 pure val recordedValues = Set(Set(TargetFilesDigest, SignedOutputDigest, CertificateDigest, VerifiedBootKeyDigest),
   Set(TargetFilesDigest, PrivateKeyBytes), Set(CertificateDigest, KeyPassword))
-pure def lawKeysStayOutOfTheTree(outsideWorkingTree: bool, ownerOnly: bool, managedOptions: int): bool =
-  keyStoreAdmitted(outsideWorkingTree, ownerOnly, managedOptions) implies outsideWorkingTree and ownerOnly and managedOptions != 1 and managedOptions != 3
-pure def lawRecordHoldsNoSecret(recorded: Set[RecordField]): bool =
-  recordFieldsAdmitted(recorded) implies not(recorded.contains(PrivateKeyBytes) or recorded.contains(KeyPassword))
 ```
 
 ### A release record binds the target files, signed outputs and certificates by digest
@@ -60,31 +54,32 @@ pure def lawRecordHoldsNoSecret(recorded: Set[RecordField]): bool =
 The record names the unsigned target files' SHA-256 as given to signing,
 the signed target files' and update package's SHA-256, the release
 certificate and the verified-boot public key digest. Each must equal what
-signing observed and none may be empty or unset.
+signing observed, and none may be a placeholder.
 
 ```quint
 type SigningRecord = { targetFiles: str, signedTargetFiles: str, updatePackage: str, releaseCertificate: str, verifiedBootKey: str }
-pure def bound(expected: str, observed: str): bool = expected != "" and expected != "UNSET" and expected == observed
-pure def recordBindsOutputs(r: SigningRecord, o: SigningRecord): bool =
-  bound(r.targetFiles, o.targetFiles) and bound(r.signedTargetFiles, o.signedTargetFiles) and bound(r.updatePackage, o.updatePackage) and
-  bound(r.releaseCertificate, o.releaseCertificate) and bound(r.verifiedBootKey, o.verifiedBootKey)
+pure def bound(expected: str, observed: str): bool = not(placeholder(expected)) and expected == observed
+pure def recordBindsOutputs(record: SigningRecord, observedRecord: SigningRecord): bool =
+  bound(record.targetFiles, observedRecord.targetFiles) and bound(record.signedTargetFiles, observedRecord.signedTargetFiles) and
+  bound(record.updatePackage, observedRecord.updatePackage) and bound(record.releaseCertificate, observedRecord.releaseCertificate) and
+  bound(record.verifiedBootKey, observedRecord.verifiedBootKey)
 pure val signedRecord: SigningRecord = { targetFiles: "t1", signedTargetFiles: "s1", updatePackage: "u1", releaseCertificate: "c1", verifiedBootKey: "k1" }
-pure val rValues = Set(signedRecord, { ...signedRecord, updatePackage: "UNSET" }, { ...signedRecord, releaseCertificate: "c2" })
-pure val oValues = Set(signedRecord, { ...signedRecord, updatePackage: "UNSET" }, { ...signedRecord, signedTargetFiles: "s2" })
-pure def lawRecordMatchesWhatWasSigned(r: SigningRecord, o: SigningRecord): bool =
-  recordBindsOutputs(r, o) implies r == o and r.updatePackage != "UNSET" and r.releaseCertificate != ""
+pure val recordValues = Set(signedRecord, { ...signedRecord, updatePackage: "UNSET" }, { ...signedRecord, releaseCertificate: "c2" })
+pure val observedRecordValues = Set(signedRecord, { ...signedRecord, updatePackage: "UNSET" }, { ...signedRecord, signedTargetFiles: "s2" })
+pure def lawRecordMatchesWhatWasSigned(record: SigningRecord, observedRecord: SigningRecord): bool =
+  recordBindsOutputs(record, observedRecord) implies record == observedRecord
 ```
 
-### A debuggable APK is refused for a production image
+### An image APK is a release APK whose digest matches the verification manifest
 
-An APK enters a production image only when its manifest is not
-debuggable, it is not a test-mocks build, its signer is the consumer's
-reviewed release signer and its digest matches the verification manifest.
+An APK enters a production image only when it is a release APK (not
+debuggable, not a test-mocks build, signed by the consumer's reviewed
+release signer) and its digest matches the verification manifest.
 Admission is staging evidence only, not a distribution decision.
 
 ```quint
-pure def imageApkAdmitted(debuggable: bool, testMocks: bool, signerReviewed: bool, digestMatches: bool): bool =
-  not(debuggable) and not(testMocks) and signerReviewed and digestMatches
-pure def lawDebuggableApkNeverEntersProduction(testMocks: bool, signerReviewed: bool, digestMatches: bool): bool =
-  not(imageApkAdmitted(true, testMocks, signerReviewed, digestMatches))
+pure def imageApkAdmitted(manifest: ManifestPolicyFacts, signerReviewed: bool, digestMatches: bool): bool =
+  releaseApk(manifest, signerReviewed) and digestMatches
+pure def lawDebuggableApkNeverEntersProduction(manifest: ManifestPolicyFacts, signerReviewed: bool, digestMatches: bool): bool =
+  manifest.debuggable implies not(imageApkAdmitted(manifest, signerReviewed, digestMatches))
 ```

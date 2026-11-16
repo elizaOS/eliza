@@ -1,12 +1,17 @@
 # Shared scheduler timer and host process tasks
 
-`services/task-scheduler.ts` has one process timer shared by database queue ticks and registered host tasks. Query ownership and generation fences are specified in [queryDrain](./queryDrain.md). This unit specifies the timer, active-tick promise identity and named process-task callbacks that were not part of that query model.
+The one process timer of `services/task-scheduler.ts`, shared by database queue ticks and registered host tasks: its active-tick identity and named process-task callbacks. Query ownership and generation fences are [query drain](./queryDrain.md).
 
 ## Story: Reuse one timer and drain the exact disposed task
+
+> As a host, I want one shared timer and disposal that drains exactly the
+> task it removed, so that a replacement task with the same name keeps
+> running.
 
 ### Process task names are unique only while registered and stale disposers preserve replacements
 
 Registration rejects an occupied name and installs an independent AbortController. Each timer callback queues at most one run per registered task. Before entering the deferred callback, the abort signal is rechecked. Disposal removes only the identical registration, aborts it, and waits for its queued/running callback. A replacement with the same name can run while the former task drains. Callback errors are logged and release the active latch for a later tick.
+
 Discovered by the proof: disposal retains the abort/detach facts until its
 callback joins, and every allocated task or tick identity remains below the
 next allocation serial. Distinct task identities keep a stale disposer from
@@ -48,9 +53,7 @@ pure val idValues = Set(1, 2, 3, 4)
 
 Starting the same adapter while the timer exists is idempotent. A new adapter or restarted timer increments generation and detaches the active-tick pointer, allowing its old uncancellable query to finish separately. A late tick finally clears the active pointer only if that pointer still names itself. Stopping the database scheduler keeps the timer when process tasks remain.
 
-Discovered by simulation: disposal progress must select a retained task identity
-from state. A later registration can have an identity outside the simulator's
-integer samples. The fair disposer settles the oldest outstanding disposal;
+Disposal progress selects a retained task identity from state. The fair disposer settles the oldest outstanding disposal;
 when the selected callback is running this assumes its external work returns
 or throws, and never asserts success.
 

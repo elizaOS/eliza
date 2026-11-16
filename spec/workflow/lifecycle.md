@@ -1,10 +1,8 @@
 # Workflow removal, restoration and definition receipts
 
-A consumer's workflow screen uses `WorkflowClient` metadata and lifecycle
-methods. `EmbeddedWorkflowService.changeLifecycle` and `changeMetadata`
-are the producer. This model uses one definition and an unbounded retained
-lifecycle mutation index; [admission](./admission.md) owns the runs. Workflow versions in the model are ordinals for
-fresh UUIDs.
+The owner removes and restores a workflow definition and edits its
+metadata; [admission](./admission.md) owns the runs. This model follows one
+definition and its retained lifecycle mutations.
 
 ## Story: Remove a workflow only when its runs are settled and restore it safely
 
@@ -28,13 +26,12 @@ type LifecycleAction = RemoveDefinition | RestoreDefinition
 type LifecycleReply = NoLifecycleReply | SavedLifecycle | ReplayedLifecycle | RefusedLifecycle | AmbiguousLifecycle
 type LifecycleReceipt = { mutation: str, operation: LifecycleAction, fromVersion: int, toVersion: int }
 type Lifecycle = { owner: str, version: int, active: bool, removed: bool, cleaned: bool, unfinished: bool, receipts: List[LifecycleReceipt], reply: LifecycleReply, replyVersion: int, replyKey: str }
-pure val removeDefinition: LifecycleAction = RemoveDefinition
 pure val initial: Lifecycle = { owner: "", version: 0, active: false, removed: false, cleaned: false, unfinished: false, receipts: List(), reply: NoLifecycleReply, replyVersion: 0, replyKey: "" }
 pure def canSelectDefinition(l: Lifecycle, by: str): bool = l.owner == "" and by != ""
 pure def selectDefinition(l: Lifecycle, by: str): Lifecycle = { ...l, owner: by, version: 1, active: true }
 pure def canObserveRuns(l: Lifecycle): bool = l.owner != ""
 pure def observeRuns(l: Lifecycle, unfinished: bool): Lifecycle = { ...l, unfinished: unfinished }
-pure val noReceipt: LifecycleReceipt = { mutation: "", operation: removeDefinition, fromVersion: 0, toVersion: 0 }
+pure val noReceipt: LifecycleReceipt = { mutation: "", operation: RemoveDefinition, fromVersion: 0, toVersion: 0 }
 pure def lifecycleReceipt(l: Lifecycle, mutation: str): LifecycleReceipt = l.receipts.select(row => row.mutation == mutation).nthOr(0, noReceipt)
 pure def lifecycleReply(result: LifecycleReply, version: int, key: str, l: Lifecycle): Lifecycle = { ...l, reply: result, replyVersion: version, replyKey: key }
 pure def changeLifecycle(l: Lifecycle, by: str, mutation: str, operation: LifecycleAction, expected: int): Lifecycle = {

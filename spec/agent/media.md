@@ -1,13 +1,11 @@
 # Media store and redaction
 
-The agent stores uploaded and generated media content-addressed, through
-`packages/agent/src/api/media-routes.ts` and the media effect adapters
-(audio redaction, generation and connector delivery) in
-`packages/agent/src/services/`. [Core media](../core/media.md) owns the
-media records. This spec owns one stored object: its streamed publication
-under its content hash, and one redaction run on it through the effect
-pipeline. Hash computation, bytes, MIME parsing and the provider's algorithm
-are outside the model; their checked results enter as inputs.
+The agent stores uploaded and generated media content-addressed, through its
+media routes and effect adapters (audio redaction, generation and connector
+delivery). [Core media](../core/media.md) owns the media records. This spec
+owns one stored object: its streamed publication under its content hash, and
+one redaction run on it through the effect pipeline. Hashing, bytes, MIME
+parsing and the provider's algorithm enter as checked inputs.
 
 ## Story: Store my media only once its content is verified, and redact it without pretending
 

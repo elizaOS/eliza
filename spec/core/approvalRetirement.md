@@ -4,6 +4,9 @@ Source `services/approval.ts:153-209,470-503,663-725` uses the same `RuntimeReti
 
 ## Story: Stop waits for approvals and their independent queries
 
+> As a host, I want stopping to wait for approval queries in flight, so
+> that no approval read outlives the runtime that issued it.
+
 A room-list request queries that room; an agent-wide list queries all rooms for the same agent. Both use the approval and awaiting-choice tags. Worker permission reads use the given room and agent, find the named task, and may await room and role resolution. A matching task without a role list passes; a missing task denies. Provider failure rejects that caller and still releases its retirement ownership.
 
 ### Query identity is published before the storage or permission await
@@ -13,7 +16,6 @@ The query record names scope and current phase, while the retirement tracker is 
 ```quint
 import approvalService as AS from "./approvalService"
 import approvals as A from "./approvals"
-import approvalWorkers as W from "./approvalWorkers"
 import retirementTracker as R from "./retirementTracker"
 type ApprovalReadKind = RoomPendingList | AgentPendingList | WorkerPermission
 type ApprovalReadPhase = AwaitTasks | AwaitRoom | AwaitRole | ReadReturned | ReadDenied | ReadRejected

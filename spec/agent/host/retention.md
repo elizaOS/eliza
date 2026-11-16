@@ -4,9 +4,7 @@ The host deletes memories and logs past their retention period with a
 worker that the kernel's task service runs on a schedule. The worker is
 published once when the service starts and its task is installed
 asynchronously. Stopping waits for an installation still in flight and for
-a sweep in progress, and leaves no worker or task behind. The research
-baseline is `packages/agent/src/runtime/{retention-task,memory-retention-service,logs-retention-service}.ts`
-and the `runtime-retention` model.
+a sweep in progress, and leaves no worker or task behind.
 
 ## Story: Sweep expired memories and logs on a schedule
 
@@ -42,9 +40,6 @@ pure def sometimesSwept(r: Retention): bool = r.sweeps > 0
 ```
 
 ### Stopping waits for an installation in flight and a sweep in progress, and leaves nothing behind
-
-Discovered in the research baseline: the old stop did not wait for the
-installation, which then published a task after the service had stopped.
 
 ```quint
 pure def canStop(r: Retention): bool = r.phase != Stopped and r.phase != Stopping

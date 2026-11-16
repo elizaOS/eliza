@@ -4,6 +4,10 @@
 
 ## Story: Reconcile overlapping records without lost in-process updates
 
+> As a connector author, I want overlapping record updates in one process
+> to take their locks in one order, so that none is lost and none
+> deadlocks.
+
 ### A batch acquires deduplicated recordKeys in one strict lexical order
 
 The source sorts unique string recordKeys before nested acquisition. The boundary supplies an order rank that preserves that exact lexical order; the model checks strictly increasing ranks. The reconciliation callback starts only after acquiring every key. Rejection still settles all owned queue tickets. Each acquired key owns its own one-shot 30-second warning timer, keyed by the acquired queue ticket. The host supplies monotonic timer coordinates and may deliver a due timer late. Its delivery logs the exact adapter/key and cannot release ownership or cancel the database write. When a nested operation returns it clears its timer before settling its ticket; the subsequent independent cleanup microtask deletes the registry tail only if it still names that ticket. A predecessor cleanup can observe an already-installed successor tail, but its registered promise reaction runs before the successor enters the same key. Reactions for other keys can proceed independently. An adapter registry disappears only when its last current tail is removed.

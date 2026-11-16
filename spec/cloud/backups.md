@@ -9,10 +9,6 @@ booted and probed. One agent's capture, spool and restore are the state
 machine. Cleanup of a failed restore and the rotation of cleanup work are
 stated as laws. Local, on-device backup is not part of this package.
 
-Develop sources: the cloud `agent_backup_capture_handoff`,
-`agent_backup_spool_cleanup`, `RestoreLease`, `RestorePublication`,
-`exact_restore_recovery` and `restore_cleanup_rotation` models.
-
 ## Story: Publish a complete backup
 
 > As an organization with a hosted agent, I want each backup to be either

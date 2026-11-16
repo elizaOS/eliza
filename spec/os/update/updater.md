@@ -1,16 +1,69 @@
 # System updater
 
 The system updater is an optional privileged app in the image that
-installs OS updates through Android's A/B update engine. It follows one
-enrolled device and one candidate at a time. A job starts it, downloads
-the candidate into the updater's private cache, verifies the payload
-against the enrolled certificate, applies it, and reboots into the target
-slot when the device's conditions allow. Its journal records each intent
-before its effect, so a process death never repeats an apply or a reboot.
-Offer observations, cryptographic acceptance and the update engine's own
-result are external facts. [Updater staging](./staging.md) decides whether
-the image includes the app at all, and the
-[OS update channel](./channel.md) is the operator's path.
+installs OS updates through Android's A/B update engine, for one enrolled
+device and one candidate at a time. Its journal records each intent before
+its effect, so a process death never repeats an apply or a reboot. Offer
+observations, cryptographic acceptance and the update engine's own result
+are external facts. The [product descriptor](../image/product.md) decides
+whether the image includes it, and the [OS update channel](./channel.md)
+is the operator's path and owns the boot checks.
+
+## Story: Include the system updater only when selected, and keep it inactive until enrolled
+
+> As a consumer, I want the system updater in my image only when I ask for
+> it, staged from reviewed sources with its policy, and active only after
+> my device is enrolled in an update channel, so that an image never
+> carries an updater that installs from nowhere.
+
+### The updater is staged only when the descriptor selects it, its reviewed sources and policy match, and its destination is free
+
+The product descriptor's `systemUpdater` flag selects it. Admission
+checks every reviewed source digest, including the SELinux policy and the
+permission allow-lists. Staging publishes the updater once into a
+destination it owns: an existing file at its destination refuses staging
+and is left as it was, so a refused staging writes nothing. An updater the
+consumer did not select is never staged, so its absence installs nothing.
+
+```quint
+import product as P from "../image/product"
+import channel as C from "./channel"
+type UpdaterSources = { sourcesMatch: bool, policyPresent: bool, destinationExists: bool }
+type UpdaterStaging = { staged: bool, writes: int, existingKept: bool }
+pure def updaterAdmitted(descriptor: P::ProductDescriptor, sources: UpdaterSources): bool =
+  descriptor.systemUpdater and sources.sourcesMatch and sources.policyPresent and not(sources.destinationExists)
+pure def updaterStaging(descriptor: P::ProductDescriptor, sources: UpdaterSources): UpdaterStaging =
+  if (updaterAdmitted(descriptor, sources)) { staged: true, writes: 1, existingKept: false }
+  else { staged: false, writes: 0, existingKept: sources.destinationExists }
+pure val reviewedSources: UpdaterSources = { sourcesMatch: true, policyPresent: true, destinationExists: false }
+pure val descriptorValues = Set(P::exampleDescriptor, { ...P::exampleDescriptor, systemUpdater: true })
+pure val sourcesValues = Set(reviewedSources, { ...reviewedSources, sourcesMatch: false }, { ...reviewedSources, policyPresent: false },
+  { ...reviewedSources, destinationExists: true })
+pure def lawUnselectedUpdaterIsNeverStaged(descriptor: P::ProductDescriptor, sources: UpdaterSources): bool =
+  not(descriptor.systemUpdater) implies updaterStaging(descriptor, sources) == { staged: false, writes: 0, existingKept: sources.destinationExists }
+pure def lawStagedUpdaterIsAdmittedAndWrittenOnce(descriptor: P::ProductDescriptor, sources: UpdaterSources): bool =
+  updaterStaging(descriptor, sources).staged implies updaterAdmitted(descriptor, sources) and updaterStaging(descriptor, sources).writes == 1
+pure def lawExistingDestinationIsLeftAsItWas(descriptor: P::ProductDescriptor, sources: UpdaterSources): bool =
+  sources.destinationExists implies updaterStaging(descriptor, sources) == { staged: false, writes: 0, existingKept: true }
+```
+
+### A staged updater stays inactive until the device is enrolled
+
+Staging never enables the updater. The device is enrolled on the same
+condition the [operator's channel](./channel.md) uses: a channel that
+refuses downgrades and an installed record that qualifies for it. Until
+then the updater starts no job, so it downloads, applies and reboots
+nothing.
+
+```quint
+pure def canEnroll(s: SystemUpdate, channel: C::UpdateChannel, installed: C::ReleaseRecord): bool =
+  not(s.enrolled) and C::enrollmentQualifies(channel, installed)
+pure def enroll(s: SystemUpdate, channel: C::UpdateChannel, installed: C::ReleaseRecord): SystemUpdate = { ...s, enrolled: true }
+pure val channelValues = C::channelValues
+pure val installedValues = C::installedValues
+pure def alwaysInactiveUntilEnrolled(s: SystemUpdate): bool =
+  not(s.enrolled) implies (s.phase == HostIdle and not(s.active) and s.applyCalls == 0 and s.reboots == 0)
+```
 
 ## Story: Download, verify and apply an OS update on the device
 
@@ -27,22 +80,22 @@ job. A rejected payload that was never applied may be replaced by a new
 download.
 
 ```quint
-type HostPhase = HostIdle | Downloading | VerifiedUpdate | Applying | ReadyToReboot | RebootIntent | UpdateComplete | SourceRetained | UpdateFailed | OutcomeUnknown
+type HostPhase = HostIdle | Downloading | VerifiedUpdate | Applying | ReadyToReboot | RebootIntent | TargetBooted | UpdateComplete | RevertedToSource | SourceRetained | UpdateFailed | OutcomeUnknown
 type ScratchFile = NoScratch | OwnedScratch | ForeignScratch
 type OfferHold = NotHeld | NoOffer | DifferentOffer | OfferUnavailable
 type ProgressStage = NoStage | Installing | VerifyingStage | Finishing
 type SystemUpdate = {
-  phase: HostPhase, active: bool, eligible: bool, stopped: bool, verified: bool, checked: bool,
+  enrolled: bool, phase: HostPhase, active: bool, eligible: bool, stopped: bool, verified: bool, checked: bool,
   storageReady: bool, scratch: ScratchFile, writing: bool, applyCalls: int, reboots: int, offerHold: OfferHold,
   viewOpen: bool, viewGeneration: int, viewStage: ProgressStage, viewPercent: int
 }
 pure val initial: SystemUpdate = {
-  phase: HostIdle, active: false, eligible: true, stopped: false, verified: false, checked: false,
+  enrolled: false, phase: HostIdle, active: false, eligible: true, stopped: false, verified: false, checked: false,
   storageReady: true, scratch: NoScratch, writing: false, applyCalls: 0, reboots: 0, offerHold: NotHeld,
   viewOpen: false, viewGeneration: 0, viewStage: NoStage, viewPercent: -1
 }
 pure def canStart(s: SystemUpdate): bool =
-  not(s.active) and (s.phase == HostIdle or s.phase == Downloading or s.phase == VerifiedUpdate or s.phase == ReadyToReboot)
+  s.enrolled and not(s.active) and (s.phase == HostIdle or s.phase == Downloading or s.phase == VerifiedUpdate or s.phase == ReadyToReboot)
 pure def start(s: SystemUpdate): SystemUpdate = { ...s, active: true, stopped: false, checked: false, offerHold: NotHeld }
 pure def canDownload(s: SystemUpdate): bool = s.active and s.phase == HostIdle and s.eligible
 pure def download(s: SystemUpdate): SystemUpdate = { ...s, phase: Downloading }
@@ -70,7 +123,8 @@ downloading or verifying. The reboot intent is likewise journaled once.
 
 ```quint
 pure def appliedPhase(p: HostPhase): bool =
-  p == Applying or p == ReadyToReboot or p == RebootIntent or p == UpdateComplete or p == SourceRetained or p == OutcomeUnknown
+  p == Applying or p == ReadyToReboot or p == RebootIntent or p == TargetBooted or p == UpdateComplete or p == RevertedToSource or
+    p == SourceRetained or p == OutcomeUnknown
 pure def canApplySettled(s: SystemUpdate, succeeded: bool): bool = s.phase == Applying
 pure def applySettled(s: SystemUpdate, succeeded: bool): SystemUpdate =
   { ...s, phase: if (succeeded) ReadyToReboot else UpdateFailed, active: false }
@@ -78,7 +132,8 @@ pure def alwaysAppliesAndRebootsOnce(s: SystemUpdate): bool =
   s.applyCalls >= 0 and s.applyCalls <= 1 and s.reboots >= 0 and s.reboots <= 1 and
   (appliedPhase(s.phase) implies s.applyCalls == 1) and
   (s.applyCalls == 1 implies (appliedPhase(s.phase) or s.phase == UpdateFailed)) and
-  (s.reboots == 1 implies (s.phase == RebootIntent or s.phase == UpdateComplete or s.phase == SourceRetained))
+  (s.reboots == 1 implies (s.phase == RebootIntent or s.phase == TargetBooted or s.phase == UpdateComplete or
+    s.phase == RevertedToSource or s.phase == SourceRetained))
 pure def sometimesApplyFailed(s: SystemUpdate): bool = s.phase == UpdateFailed and s.applyCalls == 1
 pure val weight_start = 4
 pure val weight_download = 4
@@ -96,7 +151,8 @@ A process death while applying leaves the outcome unknown, and a death
 after the reboot intent leaves the source slot retained; neither is
 evidence of a rollback. A callback for another payload also makes the
 outcome unknown. An unknown outcome is never resumed as active work and
-never applied again; only booting into the target resolves it.
+never applied again; only booting into the target resolves it, and the
+boot checks below decide whether that boot is kept.
 
 ```quint
 pure def canStopJob(s: SystemUpdate): bool = s.active
@@ -110,7 +166,7 @@ pure def crash(s: SystemUpdate): SystemUpdate =
 pure def canForeignApplyCallback(s: SystemUpdate): bool = s.phase == Applying
 pure def foreignApplyCallback(s: SystemUpdate): SystemUpdate = { ...s, phase: OutcomeUnknown, active: false }
 pure def canObserveTarget(s: SystemUpdate): bool = s.phase == RebootIntent or s.phase == SourceRetained or s.phase == OutcomeUnknown
-pure def observeTarget(s: SystemUpdate): SystemUpdate = { ...s, phase: UpdateComplete, active: false }
+pure def observeTarget(s: SystemUpdate): SystemUpdate = { ...s, phase: TargetBooted, active: false }
 pure def alwaysUnknownNeverActive(s: SystemUpdate): bool = s.phase == OutcomeUnknown implies not(s.active)
 pure def sometimesApplyOutcomeUnknown(s: SystemUpdate): bool = s.phase == OutcomeUnknown
 pure def sometimesSourceRetained(s: SystemUpdate): bool = s.phase == SourceRetained
@@ -141,7 +197,25 @@ pure def rebootToTarget(s: SystemUpdate): SystemUpdate = { ...s, phase: RebootIn
 pure def alwaysOfferHoldKeepsApplied(s: SystemUpdate): bool =
   s.offerHold == NotHeld or (s.phase == ReadyToReboot and not(s.active) and not(s.checked) and s.applyCalls == 1 and s.reboots == 0)
 pure def sometimesDifferentOfferHeld(s: SystemUpdate): bool = s.offerHold == DifferentOffer
+```
+
+### A booted target is marked successful only after the channel's boot checks pass
+
+After the reboot the updater reads the booted device with the same checks
+the operator's channel uses: the slot switched, SELinux enforces, a locked
+bootloader stayed locked, verified boot is no weaker and the security
+patch matches. Only then is the boot marked successful; otherwise the
+device falls back to the source slot. Neither outcome is applied again.
+
+```quint
+pure def canVerifyTargetBoot(s: SystemUpdate, check: C::BootCheck): bool = s.phase == TargetBooted
+pure def verifyTargetBoot(s: SystemUpdate, check: C::BootCheck): SystemUpdate =
+  { ...s, phase: if (C::bootVerified(check)) UpdateComplete else RevertedToSource }
+pure val checkValues = Set(C::passingCheck, { ...C::passingCheck, slotSwitched: false }, { ...C::passingCheck, verifiedBootNotWeaker: false })
+pure def stepCompletionNeedsVerifiedBoot(before: SystemUpdate, via: str, after: SystemUpdate): bool =
+  (after.phase == UpdateComplete and before.phase != UpdateComplete) implies via == "verifyTargetBoot" and before.phase == TargetBooted
 pure def sometimesUpdateComplete(s: SystemUpdate): bool = s.phase == UpdateComplete and s.reboots == 1
+pure def sometimesTargetRevertedToSource(s: SystemUpdate): bool = s.phase == RevertedToSource
 ```
 
 ### Low storage defers a download without losing it, and scratch bytes are never applied

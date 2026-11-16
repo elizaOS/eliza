@@ -1,20 +1,22 @@
 # Android edited still-photo copy and recovery
 
-A consumer's Photos adapter reaches its photos plugin. The shared Android
-`PhotosPlugin.java` delegates still-photo Save copy and `editResult` to
-`OwnedPhotoEdits.java` under `plugins/plugin-native-media/android`. The
-consumer's media configuration supplies the installed edit-results
-preferences name, the `Pictures/<consumer>/Edits/` path and the
-`<consumer>-edit-<operation>.png` name. A consumer on the read-only
-`PermittedPhotosPlugin` does not expose these edits.
-[Photo permission epochs](./permissionEpochs.md) own read publication.
-Video copying and in-place Replace have separate mutation paths. This
-spec owns still-photo Save copy and native result reconciliation.
+A consumer's Photos adapter reaches the shared Android `PhotosPlugin.java`,
+which delegates still-photo Save copy and `editResult` to
+`OwnedPhotoEdits.java` under `plugins/plugin-native-media/android`, when the
+consumer's media descriptor grants photo writes. The descriptor supplies the
+edit-results preferences name, the `Pictures/<consumer>/Edits/` path and the
+`<consumer>-edit-<operation>.png` name.
+[Photo permission epochs](./permissionEpochs.md) own read publication. This spec owns
+the pending-row copy journal: reserve an operation, insert one owned pending
+MediaStore row, publish it, and recover by an exact owner and display-name
+lookup. [Video copy](./videoCopy.md) reuses it;
+[in-place Replace](./photoReplace.md) has its own path.
 
 ## Story: Save one copy of the exact edit and recover it after interruption
 
-> As the person, I want to save one copy of the exact edit and recover
-> it after interruption.
+> As the person, I want Save to make exactly one copy of the edit I
+> reviewed, so that an interrupted save never leaves duplicates or loses
+> the copy.
 
 ### Only the reviewed source and a reserved edit identity may publish a new copy
 
@@ -25,7 +27,9 @@ its active session, not cancelled, unchanged revision and unchanged
 byte digest before transform, before inserting the copy, and again
 before publication. An unchanged transform returns `unchanged` with
 no reserved operation. An admitted rotation, exact crop and filter
-combination is recorded on the session's token. A matching retry reads
+combination, whose crop is one of the editor's crop identities
+([crop receipt](./photoReplace.md)), is
+recorded on the session's token. A matching retry reads
 the existing operation. Different parameters or a Replace receipt under
 the same token are refused. Recovery may still query the exact token
 after the native edit session is gone.
@@ -42,11 +46,8 @@ commit fails. In that case a later result query reconciles the
 published copy. Failed direct writes may attempt best-effort cleanup
 of an observed pending row and reject. They do not assert a terminal
 `failed` receipt. A provider outcome can be unknown when the caller
-sees an exception. The model separates those port outcomes and follows
-one exact operation. Full decoded image bytes stay in the native port.
-
-Discovered by the proof: an active writer holds its reservation without
-a terminal reply. Otherwise a failed copy could appear to start an insert.
+sees an exception. The model follows one exact operation; full decoded
+image bytes stay in the native port.
 
 ```quint
 type CopyAdmission = RejectCopy | ReadExistingCopy | NoChangeCopy | ReserveCopy
@@ -88,12 +89,7 @@ pure def canLoseCopyWriter(s: PhotoCopy): bool = s.live
 pure def loseCopyWriter(s: PhotoCopy, pendingCleanupConfirmed: bool): PhotoCopy =
   { ...s, live: false, row: if (s.row == PendingCopyRow and pendingCleanupConfirmed) NoCopyRow else s.row, reply: CopyUnconfirmed }
 pure val countAppliedValues = Set(0, 1, 2)
-pure val weight_reservePhotoCopy = 8
-pure val weight_insertPhotoCopy = 10
-pure val weight_writePhotoCopy = 12
-pure val weight_publishPhotoCopy = 12
 pure def alwaysCopyHasAtMostOneInsertion(s: PhotoCopy): bool = s.insertions >= 0 and s.insertions <= 1
-pure def alwaysOpenWriterHasReservation(s: PhotoCopy): bool = s.live implies s.journal == IncompleteCopy and s.reply == NoCopyReply
 pure def stepOnlyReservedWriterCanInsert(before: PhotoCopy, via: str, after: PhotoCopy): bool =
   after.insertions > before.insertions implies via == "insertPhotoCopy" and before.live and before.journal == IncompleteCopy
 pure def stepPublicationKeepsBytes(before: PhotoCopy, via: str, after: PhotoCopy): bool =
@@ -101,14 +97,24 @@ pure def stepPublicationKeepsBytes(before: PhotoCopy, via: str, after: PhotoCopy
 pure def sometimesPublishedBeforeReceipt(s: PhotoCopy): bool = s.row == PublishedCopyRow and s.journal == IncompleteCopy and s.reply == CopySaved
 ```
 
+### An active writer holds its reservation and has not replied
+
+While a writer is live, the journal holds its incomplete reservation and
+no reply has been sent, so a failed copy never appears to start an insert.
+
+```quint
+pure def alwaysOpenWriterHasReservation(s: PhotoCopy): bool = s.live implies s.journal == IncompleteCopy and s.reply == NoCopyReply
+```
+
 ### Recovery observes the unique owned row before reporting a result or confirming cleanup
 
 Without a receipt the native query returns `not-started` without a
 provider lookup. A saved receipt with an ID is a historical answer.
 Otherwise it queries including pending rows, filtering by exact app
-owner package and operation-derived display name. A null cursor or
-multiple matching rows rejects with outcome unconfirmed and performs
-no mutation. The recovery query uses the provider-reported numeric
+owner package and operation-derived display name. A lookup resolves only
+when it is available and unique and, when the writer recorded a pending ID,
+it found that same ID; an unresolved lookup rejects with outcome
+unconfirmed and performs no mutation. The recovery query uses the provider-reported numeric
 identity. A unique published row confirms the copy if the saved receipt
 commit succeeds. A unique pending row from an incomplete operation can
 be deleted by exact ID only while `is_pending=1`, with an exact one-row
@@ -117,21 +123,23 @@ An absent row can settle failed after the same receipt commit. A saved
 receipt lacking an ID remains a historical save if a lookup finds
 only pending or absent data. It never deletes pending data.
 
-Both installed `incomplete` and historical `writing` statuses follow the
-same recovery branch. The producer's portable `PhotoCopyRecovery.qnt`
-and `photo-copy-recovery.node.mjs` exercise this branch. The model uses
-a port result for exact lookup, a conditional delete count, and the
-receipt commit. Only the non-recovery write path can insert. The
-renderer separately retires only an exact terminal intent and fences
-view publication after its source or editor changes.
+The model uses a port result for exact lookup, a conditional delete count
+and the receipt commit. Only the non-recovery write path can insert.
 
 ```quint
 type CopyLookup = LookupAbsent | LookupPending | LookupPublished | LookupUnavailable | LookupAmbiguous
 type RecoveryPlan = ReadOnlyNotStarted | ReadHistoricalSave | SettleExistingSave | CheckPendingCleanup | SettleMissingCopy | AwaitCopyEvidence
+pure def lookupResolves(lookup: CopyLookup, recordedId: int, matchedId: int): bool =
+  lookup != LookupUnavailable and lookup != LookupAmbiguous and
+    (recordedId == 0 or (lookup != LookupAbsent and matchedId == recordedId))
+pure def lawRecordedPendingIdMustBeFound(lookup: CopyLookup, recordedId: int, matchedId: int): bool =
+  recordedId > 0 and (lookup == LookupAbsent or matchedId != recordedId) implies not(lookupResolves(lookup, recordedId, matchedId))
+pure val recordedIdValues = Set(0, 1)
+pure val matchedIdValues = Set(1, 2)
 pure def recoveryPlan(journal: CopyJournal, historicalId: bool, lookup: CopyLookup): RecoveryPlan =
   if (journal == NoCopyReceipt) ReadOnlyNotStarted
   else if (journal == SavedCopyReceipt and historicalId) ReadHistoricalSave
-  else if (lookup == LookupUnavailable or lookup == LookupAmbiguous) AwaitCopyEvidence
+  else if (not(lookupResolves(lookup, 0, 0))) AwaitCopyEvidence
   else if (lookup == LookupPublished) SettleExistingSave
   else if (journal == SavedCopyReceipt) ReadHistoricalSave
   else if (lookup == LookupPending) CheckPendingCleanup else SettleMissingCopy
@@ -151,7 +159,6 @@ pure def recoverPhotoCopy(s: PhotoCopy, available: bool, unique: bool, cleanupCo
   else { ...s, reply: CopyUnconfirmed }
 }
 pure val cleanupCountValues = Set(0, 1, 2)
-pure val weight_recoverPhotoCopy = 10
 pure def alwaysFailedCopyHasNoPendingRow(s: PhotoCopy): bool = s.reply == CopyFailed implies s.row == NoCopyRow
 pure def stepRecoveryNeverInserts(before: PhotoCopy, via: str, after: PhotoCopy): bool =
   via == "recoverPhotoCopy" implies before.insertions == after.insertions

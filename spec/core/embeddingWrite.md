@@ -1,10 +1,19 @@
 # Embedding write settlement
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are the embedding generation service, `packages/core/src/runtime/embeddings.ts`, `types/database.ts` and `quint/EmbeddingWriteSettlement.qnt`. The storage adapter compares the exact agent, entity, room and original text before updating its embedding. The model's source revision abstracts that exact tuple. Logging and notification failures follow the storage receipt and cannot reopen committed work.
+The storage adapter compares the exact agent, entity, room and original
+text before updating its embedding. The model's source revision abstracts
+that exact tuple. Logging and notification failures follow the storage
+receipt and cannot reopen committed work.
 
 ## Story: Finish embedding work against its exact source
 
-As an agent, I retry an unsuccessful inference or storage attempt within its explicit retry policy. A stored or stale receipt settles the attempt. Only stored vectors emit completion notification. Updating a source while inference runs makes its old result stale.
+> As an agent, I want each memory's embedding written once for its current
+> content, so retries never store a stale vector.
+
+As an agent, I retry an unsuccessful inference or storage attempt within its
+explicit retry policy. A stored or stale receipt settles the attempt. Only
+stored vectors emit completion notification. Updating a source while
+inference runs makes its old result stale.
 
 ### An attempt captures its source before inference
 

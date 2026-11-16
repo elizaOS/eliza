@@ -1,60 +1,56 @@
 # Scan draft storage
 
-A consumer binds its scan draft store to the files package's scan draft
-module. Its IndexedDB database, named with the consumer's own prefix and
-`scan-draft.v1`, has schema version 1, object store `drafts`, key path
-`id` and one row keyed by `document`.
-[Scan review](../../os/android/documentScan.md) owns the in-memory
-draft, queued automatic saves and cleanup. This contract governs the
-storage port used by those operations.
+The device keeps one scan draft, its pages and its edited text, in local
+storage. [Scan review](./review.md) owns the
+in-memory draft, queued automatic saves and cleanup; this spec governs
+the stored row.
 
 ## Story: Restore the same scan and edits after reopening the app
 
-> As the owner, I want to restore the same scan and edits after reopening the app.
+> As the owner, I want a scan I was working on, with my edits, to be there
+> when I come back to the app.
 
-### Both stored formats decode to complete, ordered pages
+### A stored draft decodes to complete, ordered pages
 
-A missing row returns undefined. An existing row needs the exact
-document ID, a nonempty revision, finite update time and valid pages.
-A row with no format discriminator reads Blob pages. A format-2 row
-reads an ArrayBuffer and string MIME type for each page and reconstructs
-ordered Blobs. Other formats and wrong page representations fail.
-Each draft holds 1 through 20 nonempty JPEG, PNG or WebP Blobs, at
-most 16 MiB each and 64 MiB together. The decoder checks Blob properties
-without decoding pixels. A supplied text-layer array has one entry per
+A missing row reads as absent. An existing row needs the exact document
+ID, a nonempty revision, a finite update time and valid pages, each page
+stored as its bytes and image type, in order; any other representation
+fails. Each draft holds a page set within the [shared image
+bounds](../images.md). A supplied text-layer array has one entry per
 page, with null for a page without edited text. Each non-null entry
 uses [the scan line rules](./searchablePdf.md). Keep only the line's
 text and four position fields in a fresh record. Missing text layers
 remain missing.
 
 ```quint
-type DraftPageCodec = LegacyBlobs | BufferRecords | UnknownDraftCodec
-type DraftRow = { exists: bool, envelopeValid: bool, codec: DraftPageCodec, representationMatches: bool,
+import images.* from "../images"
+type DraftRow = { exists: bool, envelopeValid: bool, representationMatches: bool,
   pageCount: int, totalBytes: int, pagesAdmitted: bool, layersPresent: bool, layerCount: int, layersAdmitted: bool }
 pure def validDraftPageSet(row: DraftRow): bool =
-  row.pageCount >= 1 and row.pageCount <= 20 and row.totalBytes > 0 and row.totalBytes <= 67108864 and row.pagesAdmitted
+  admitsPageSet(row.pageCount, row.totalBytes) and row.pagesAdmitted
 pure def validDraftLayers(row: DraftRow): bool =
   not(row.layersPresent) or (row.layerCount == row.pageCount and row.layersAdmitted)
 pure def validDraftRow(row: DraftRow): bool =
-  row.exists and row.envelopeValid and row.codec != UnknownDraftCodec and row.representationMatches and
+  row.exists and row.envelopeValid and row.representationMatches and
     validDraftPageSet(row) and validDraftLayers(row)
-pure def scanReadOutcome(row: DraftRow): str =
-  if (not(row.exists)) "absent" else if (validDraftRow(row)) "restored" else "read-failed"
+type ScanRead = DraftAbsent | DraftRestored | DraftReadFailed
+pure def scanReadOutcome(row: DraftRow): ScanRead =
+  if (not(row.exists)) DraftAbsent else if (validDraftRow(row)) DraftRestored else DraftReadFailed
 pure def lawBrokenStoredScanRemainsAnError(row: DraftRow): bool =
-  row.exists and not(validDraftRow(row)) implies scanReadOutcome(row) == "read-failed"
+  row.exists and not(validDraftRow(row)) implies scanReadOutcome(row) == DraftReadFailed
 pure def lawStoredReviewMatchesPageCount(row: DraftRow): bool =
   validDraftRow(row) and row.layersPresent implies row.layerCount == row.pageCount and row.layersAdmitted
-pure val legacyDraft: DraftRow = { exists: true, envelopeValid: true, codec: LegacyBlobs, representationMatches: true,
+pure val storedDraft: DraftRow = { exists: true, envelopeValid: true, representationMatches: true,
   pageCount: 2, totalBytes: 616, pagesAdmitted: true, layersPresent: true, layerCount: 2, layersAdmitted: true }
-pure val rowValues = Set(legacyDraft, { ...legacyDraft, exists: false }, { ...legacyDraft, codec: BufferRecords },
-  { ...legacyDraft, codec: UnknownDraftCodec }, { ...legacyDraft, representationMatches: false },
-  { ...legacyDraft, layerCount: 1 }, { ...legacyDraft, layersPresent: false, layersAdmitted: false },
-  { ...legacyDraft, totalBytes: 67108865 }, { ...legacyDraft, envelopeValid: false })
+pure val rowValues = Set(storedDraft, { ...storedDraft, exists: false }, { ...storedDraft, representationMatches: false },
+  { ...storedDraft, layerCount: 1 }, { ...storedDraft, layersPresent: false, layersAdmitted: false },
+  { ...storedDraft, totalBytes: 67108865 }, { ...storedDraft, envelopeValid: false })
 ```
 
 ## Story: Save or delete a specific revision and know whether storage committed
 
-> As the owner, I want to save or delete a specific revision and know whether storage committed.
+> As the owner, I want saving or deleting a scan to act on the version I
+> saw, and to know whether it was stored.
 
 ### A save snapshots bytes before the transaction and compares the latest stored revision
 
@@ -65,12 +61,9 @@ serialization, compare inside the write transaction. An expected
 absence matches only an absent row. An existing row must decode for
 save and its revision must match exactly. A peer can finish while
 serialization is still open, making the expected revision stale.
-New writes store format 2 with a new revision and update time. A delete
-compares the raw row's revision inside the write transaction. It can
-remove an exact revision even if that row's other fields fail decoding.
-The caller supplies whether the stored revision exactly matches the
-expected value. UUID generation, timing, binary reads and IndexedDB
-are port effects.
+A write stores a new revision and update time. A delete compares the
+raw row's revision inside the write transaction, so it can remove an
+exact revision even if that row's other fields fail decoding.
 
 ```quint
 type DraftMutation = SaveDraftRow | DeleteDraftRow
@@ -98,15 +91,11 @@ pure val writeFactsValues = Set(exactWrite, { ...exactWrite, bytesComplete: fals
 
 ### Mutations acknowledge only the committed transaction
 
-The IndexedDB get and put or delete requests queue work. A request
-success is provisional. Only the transaction's complete event resolves
+A queued write is provisional. Only the committed transaction resolves
 the operation and returns its receipt. An abort or storage error
-before commit rejects and preserves the prior row. An abort observed
-after commit cannot reverse durable storage. A blocked database open
-reports failure. Close the database handle and retire the listener
-after transaction completion or failure. The transaction observer
-begins after the database handle opens. It models one write operation,
-with IndexedDB supplying the actual serialized settlement.
+before commit rejects and preserves the prior row, and an abort
+observed after commit cannot reverse durable storage. A store that
+cannot open reports failure.
 
 ```quint
 type DraftTxPhase = AwaitingDraftMutation | DraftRequestQueued | DraftTxCommitted | DraftTxRejected
@@ -130,8 +119,3 @@ pure def sometimesScanDraftIsWritten(s: DraftTx): bool = s.acknowledged and s.ki
 pure def sometimesScanDraftIsDeleted(s: DraftTx): bool = s.acknowledged and s.kind == DeleteDraftRow
 ```
 
-Pinned Chromium fixtures `test/browser/scan-draft.spec.ts` and
-`test/browser/scan-text-draft.spec.ts` cover format migration, exact
-binary order, edited text restoration, peers saving during
-serialization, quota refusal, and cancellation after a put or delete
-was queued.

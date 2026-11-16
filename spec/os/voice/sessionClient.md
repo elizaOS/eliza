@@ -1,11 +1,10 @@
 # Realtime voice client state
 
-The interface's `voice-session-state.ts` and `voice-session-client-core.ts`
-project a realtime voice session for a consumer's renderer. The decoder and
-socket owner establish current session authority.
-[Playback](./playback.md) owns the audible queue and its drain. The
+The interface projects a realtime voice session for a consumer's renderer;
+the decoder and socket owner establish the current session authority.
+[Playback](./playback.md) owns the audible queue and its drain, the
 interface's reducer owns turn presentation and ephemeral progress, and
-[the voice session](./session.md) keeps approvals off the voice channel.
+[the voice session](../../agent/actions/voiceApproval.md) keeps approvals off the voice channel.
 
 ## Story: Show the current voice turn without reopening the microphone early
 
@@ -13,7 +12,7 @@ interface's reducer owns turn presentation and ephemeral progress, and
 > is listening, thinking or speaking, and the microphone to reopen only
 > once it has finished.
 
-### Commit, audible playback and displayed progress have separate evidence
+### The shown phase follows the current turn, and only authoritative speaking end releases speaking
 
 Connecting is a client action. A valid server ready event establishes
 the session. Starting capture moves ready or complete to listening.
@@ -27,11 +26,7 @@ and blocks later progress for that trace. A matching terminal or usage
 event clears progress without releasing audible speaking. Authoritative
 speaking end and interruption settle playback presentation; the shell
 can loop to listening after its local queue drains. Reply reconciliation,
-navigation, and overlap telemetry have separate external effects.
-The model treats decoded IDs as positive ordinals and projects display
-phase, transcript presence and progress presence. The port must also
-copy complete strings, reasons, error code, retryable flag and exact
-payload fields from the wire.
+navigation and overlap telemetry are separate effects.
 
 ```quint
 type VoicePhase = VoiceIdle | VoiceConnecting | VoiceReady | VoiceListening | VoiceTranscribing | VoiceThinking | VoiceSpeaking | VoiceInterrupted | VoiceComplete

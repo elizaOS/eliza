@@ -1,52 +1,29 @@
-# Android runtime installation identity
+# Runtime installation identity
 
-A consumer's device host selects the state subdirectory for the effective
-launch credential, including the local slot, and calls
-`RuntimeInstallationIdentity.java` before spawning the resident process.
-The resident-host service checks canonical app-data containment and calls
-the same class before process launch; its exception leaves the service
-`extract-failed`, and an embedded host aborts that launch. Both copies use
-the same publication and readback policy. The selected state directory is
-the unit of identity. Separate consumers, account state directories or
-sandbox owners have independent identities. This identity becomes
-`AgentRuntime.runtimeInstanceId`. [Startup](./startup.md) owns readiness of
-the paired processes. [Installation](../../os/update/install.md) owns the
-OTA plan and release identity.
+Before the [resident](./lifecycle.md) launches, the host gives the agent
+the identity of its selected private state directory, which becomes the
+runtime's instance identity. Each state directory, and so each consumer,
+account or sandbox, has its own. One writer creates the identity, under a
+lock on the directory, and the agent's reader only verifies what it
+wrote. [Installation](../../os/update/install.md) owns the update plan and
+the release identity.
 
-## Story: Restart the installed agent with the same runtime identity
+## Story: Restart the agent with the same runtime identity
 
-> As an Android host, I can reuse the identity of the selected private
-> state directory across launches and discover corrupt state before the
-> agent starts using it.
+> As a device owner, my agent keeps the same identity across restarts,
+> and damaged identity state stops the launch instead of being used.
 
-### Lock the selected directory and reuse only a valid existing identity
+### An existing valid identity is reused unchanged
 
-The Java port checks a real, non-symlink selected directory within the
-host's private storage. The check of app-data containment is in the
-resident-host caller. An embedded host builds the slot path under its
-private runtime root.
-A process-local synchronized call and a process-shared file lock on
-`.runtime-installation-id.lock` serialize publication and readback. The
-lock is opened for write and creation without following a symlink, with
-`0600` permissions when created. One transition below selects one locked
-observation. `PathMissing` requires an absent directory entry as seen
-without following links. A dangling symlink, non-regular file, malformed
-UUID or failed read causes a launch error. A malformed or linked entry
-stays in place. Existing text is trimmed and parsed as a UUID with version
-nibble `1` through `8`, variant nibble `8`, `9`, `a` or `b`, and case-insensitive
-hex digits. Tokens in the model are the lowercase equality identities of
-those strings. The native class reads the original casing and its callers
-use only successful completion. All filesystem evidence comes from the
-Effect port. One machine covers the same trusted directory across retries
-while the directory entry remains under those cooperating writers.
-An absent observation can become a visible UUID on a later lock
-acquisition if another launcher published between the two attempts.
-Once a launcher observes the installed UUID, reopening that selected
-state directory must return the same identity. A subsequent launch
-discards its prior runtime construction receipt and reads the file again.
+Under the directory lock, an identity file holding a valid UUID is reused
+as it is. A missing file leads to a new identity; a damaged, linked or
+unreadable entry fails the launch and is left in place. Once an identity
+is seen, every later observation of that directory returns the same one,
+and each launch reads it again.
 
 ```quint
-type IdentityPath = PathUnknown | PathMissing | PathInvalid | PathUuid({ identity: str })
+type ObservedUuid = { identity: str }
+type IdentityPath = PathUnknown | PathMissing | PathInvalid | PathUuid(ObservedUuid)
 type PathKind = UnknownEntry | AbsentEntry | InvalidEntry | UuidEntry
 type IdentityPhase = InspectingPath | WritingCandidate | PublishingCandidate | SyncingDirectory | RereadingTarget | NativeIdentityReady | IdentityFailed | RuntimeIdentityReady
 type InstallationIdentity = { phase: IdentityPhase, target: IdentityPath, candidate: str, publishedHere: bool, directorySynced: bool, runtimeId: str }
@@ -72,30 +49,20 @@ pure def reopenIdentity(i: InstallationIdentity): InstallationIdentity = { ...i,
 pure val entryValues = Set(PathUnknown, PathMissing, PathInvalid, PathUuid({ identity: "identity-one" }), PathUuid({ identity: "identity-two" }))
 pure val firstEntryValues = entryValues
 pure val secondEntryValues = entryValues
-pure def lawUnknownPathCannotYieldIdentity(entry: IdentityPath): bool =
-  pathKind(entry) != UuidEntry implies not(usableIdentity(entry))
 pure def lawSamePathObservationKeepsExactUuid(firstEntry: IdentityPath, secondEntry: IdentityPath): bool =
   (samePathObservation(firstEntry, secondEntry) and usableIdentity(firstEntry)) implies usableIdentity(secondEntry) and observedUuid(firstEntry) == observedUuid(secondEntry)
+pure def stepPublishedIdentityStaysPinned(before: InstallationIdentity, after: InstallationIdentity): bool =
+  (usableIdentity(before.target) or pathKind(before.target) == InvalidEntry) implies samePathObservation(after.target, before.target)
+pure def sometimesNativeRejectsMalformedTarget(i: InstallationIdentity): bool = i.phase == IdentityFailed and pathKind(i.target) == InvalidEntry
 ```
 
-### A saved candidate is published once and requires qualified readback
+### A new identity is published by atomic rename and read back before use
 
-Under the same lock, choose a random version 4 UUID and write it plus a
-newline to an exclusive `.runtime-installation-id.*.tmp` file with `0600`
-permissions. Fully write and sync the file before atomically moving the
-candidate to `runtime-installation-id`. Atomic move failure leaves the
-selected destination absent under the cooperating-writer assumption. Sync
-the directory after the move and read the resulting file before reporting
-success. The source removes its own temporary path in `finally` and can
-still throw during cleanup or resource close. Failure before the move does
-not publish a target. Failure afterward can leave the UUID visible even
-when directory durability was unconfirmed. A later locked read of that
-same visible entry may succeed without resyncing the directory, matching
-the existing-entry path. The durability flag records only a confirmed
-sync from this machine. A device power loss can change a directory whose
-sync was unconfirmed. The next boot then starts from a fresh observed
-filesystem. Nothing in an unconfirmed publication promises that the file
-survives such a loss. No raw account key or credential enters the model.
+A fresh UUID is written and synced to a private temporary file, renamed
+over the missing target, the directory is synced, and the file is read
+back before the identity counts. A failure before the rename publishes
+nothing. A failure after it may leave the identity visible without
+confirmed durability, and a later launch may reuse that visible identity.
 
 ```quint
 pure def canPrepareIdentity(i: InstallationIdentity): bool = i.phase == WritingCandidate
@@ -122,8 +89,6 @@ pure def alwaysPublicationPhasesHaveIdentity(i: InstallationIdentity): bool =
   ((i.phase == NativeIdentityReady or i.phase == RuntimeIdentityReady or i.publishedHere) implies usableIdentity(i.target)) and
     ((i.phase == SyncingDirectory or i.phase == RereadingTarget or i.directorySynced) implies i.publishedHere) and
     (i.phase == SyncingDirectory implies not(i.directorySynced)) and (i.phase == RereadingTarget implies i.directorySynced)
-pure def stepPublishedIdentityStaysPinned(before: InstallationIdentity, after: InstallationIdentity): bool =
-  (usableIdentity(before.target) or pathKind(before.target) == InvalidEntry) implies samePathObservation(after.target, before.target)
 pure def stepDurablePublicationStaysRecorded(before: InstallationIdentity, after: InstallationIdentity): bool =
   (before.publishedHere implies after.publishedHere) and (before.directorySynced implies after.directorySynced)
 pure def stepRenamePrecedesDurability(before: InstallationIdentity, via: str, after: InstallationIdentity): bool =
@@ -131,57 +96,31 @@ pure def stepRenamePrecedesDurability(before: InstallationIdentity, via: str, af
     pathKind(before.target) == AbsentEntry and observedUuid(after.target) == before.candidate and not(after.directorySynced)
 pure def sometimesNativeCanReuseWithoutConfirmedSync(i: InstallationIdentity): bool =
   i.phase == NativeIdentityReady and i.publishedHere and not(i.directorySynced)
-pure def sometimesNativeRejectsMalformedTarget(i: InstallationIdentity): bool = i.phase == IdentityFailed and pathKind(i.target) == InvalidEntry
 pure def sometimesNewIdentityIsSyncedAndRead(i: InstallationIdentity): bool = i.phase == NativeIdentityReady and i.directorySynced
 ```
 
-## Story: Construct the agent only after the Android identity checks complete
+### The runtime is constructed only with the identity read back, never after cancellation
 
-> As an Android host, the agent is constructed only after its installation
-> identity has been checked and published.
-
-### The agent reader verifies sandbox ownership and checks cancellation after identity I/O
-
-The common pinned reader `packages/agent/src/runtime/runtime-installation-id.ts`
-uses the Android platform indicator and absolute `ELIZA_ANDROID_APP_DATA_DIR`
-provided by the native launchers. It checks lexical and resolved sandbox
-containment. An Android-owned alias such as `/data/user/0` is admissible
-with lexical and resolved ownership evidence. File and controlling
-directory descriptors must still match the observed device and inode.
-The target must be a regular non-symlink file owned by the runtime UID
-when that UID is available, with exactly one link. The reader uses a
-no-follow open. A non-`0600` file can still qualify only after changing
-its mode and syncing it, then checking that the path and descriptor are
-still the same regular, owned, single-link `0600` file. The UUID is
-validated and normalized before construction. Failed identity I/O,
-directory or target revalidation, or an abort after the read prevents
-this invocation from constructing a runtime. In these product launches
-the native producer has already published or read a UUID. The generic
-agent loader's missing-file creation branch, desktop trust and Windows
-credential storage have separate platform owners. The guard's comparison
-of normalized identities expresses the cooperating-writer boundary, since
-the pinned caller does not pass the Java return value into the agent.
+The agent's reader verifies that the file is the writer's: inside the
+app's private storage, a regular owner-only file that is not a symbolic
+link and has exactly one hard link, reached through trusted directories
+and still the file it opened. The runtime is
+constructed only when that verified read returns the identity the writer
+settled on, and not if the launch was cancelled after the read.
 
 ```quint
-type AndroidIdentityRead = { insideAppData: bool, trustedDirectoryChain: bool, regularNoFollowOwner: bool, oneLink: bool, privateAndSyncedIfChanged: bool, finalPathMatchesDescriptor: bool, identity: str }
-pure def verifiedAndroidRead(reader: AndroidIdentityRead): bool =
-  reader.insideAppData and reader.trustedDirectoryChain and reader.regularNoFollowOwner and reader.oneLink and
-    reader.privateAndSyncedIfChanged and reader.finalPathMatchesDescriptor and reader.identity != ""
-pure def canConstructAndroidRuntime(i: InstallationIdentity, reader: AndroidIdentityRead, cancelled: bool): bool =
-  i.phase == NativeIdentityReady and verifiedAndroidRead(reader) and reader.identity == observedUuid(i.target) and not(cancelled)
-pure def constructAndroidRuntime(i: InstallationIdentity, reader: AndroidIdentityRead, cancelled: bool): InstallationIdentity =
+type IdentityRead = { verified: bool, identity: str }
+pure def canConstructAndroidRuntime(i: InstallationIdentity, reader: IdentityRead, cancelled: bool): bool =
+  i.phase == NativeIdentityReady and reader.verified and reader.identity != "" and reader.identity == observedUuid(i.target) and not(cancelled)
+pure def constructAndroidRuntime(i: InstallationIdentity, reader: IdentityRead, cancelled: bool): InstallationIdentity =
   { ...i, phase: RuntimeIdentityReady, runtimeId: reader.identity }
 pure val readerValues = Set(
-  { insideAppData: true, trustedDirectoryChain: true, regularNoFollowOwner: true, oneLink: true, privateAndSyncedIfChanged: true, finalPathMatchesDescriptor: true, identity: "identity-one" },
-  { insideAppData: true, trustedDirectoryChain: true, regularNoFollowOwner: true, oneLink: true, privateAndSyncedIfChanged: true, finalPathMatchesDescriptor: true, identity: "identity-two" },
-  { insideAppData: true, trustedDirectoryChain: true, regularNoFollowOwner: true, oneLink: true, privateAndSyncedIfChanged: true, finalPathMatchesDescriptor: false, identity: "identity-one" },
-  { insideAppData: false, trustedDirectoryChain: true, regularNoFollowOwner: true, oneLink: true, privateAndSyncedIfChanged: true, finalPathMatchesDescriptor: true, identity: "identity-one" })
+  { verified: true, identity: "identity-one" },
+  { verified: true, identity: "identity-two" },
+  { verified: false, identity: "identity-one" })
 pure def alwaysRuntimeUsesVerifiedIdentity(i: InstallationIdentity): bool =
   if (i.phase == RuntimeIdentityReady) i.runtimeId != "" and i.runtimeId == observedUuid(i.target) else i.runtimeId == ""
-pure def lawReaderRequiresStableOwnedPath(reader: AndroidIdentityRead): bool =
-  verifiedAndroidRead(reader) implies reader.insideAppData and reader.trustedDirectoryChain and reader.regularNoFollowOwner and
-    reader.oneLink and reader.privateAndSyncedIfChanged and reader.finalPathMatchesDescriptor
-pure def lawCannotConstructAfterAbort(i: InstallationIdentity, reader: AndroidIdentityRead): bool =
+pure def lawCannotConstructAfterAbort(i: InstallationIdentity, reader: IdentityRead): bool =
   not(canConstructAndroidRuntime(i, reader, true))
 pure def sometimesAndroidRuntimeConstructs(i: InstallationIdentity): bool = i.phase == RuntimeIdentityReady
 ```

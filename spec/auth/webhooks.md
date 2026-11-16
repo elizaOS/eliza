@@ -9,10 +9,6 @@ settles. On shutdown the service closes its listener first, then stops the
 worker from claiming more, and releases the database only after every
 claimed or immediate delivery has settled.
 
-Ported from develop `packages/auth/quint/LoginWebhookTimer.qnt` (both its
-modules: the timer registration and the immediate fan-out); the refusal of
-private-network endpoints is new, from develop `src/server/webhooks/`.
-
 ## Story: Deliver login events and drain them at shutdown
 
 > As a deployment, I want every sign-in event delivered to my webhook and
@@ -96,7 +92,6 @@ pure def emitImmediate(s: Webhooks, count: int): Webhooks = { ...s, immediateInF
 pure val countValues = Set(1, 2)
 pure def canSettleImmediate(s: Webhooks): bool = s.immediateInFlight > 0 and s.storageOpen
 pure def settleImmediate(s: Webhooks): Webhooks = { ...s, immediateInFlight: s.immediateInFlight - 1 }
-pure def alwaysImmediateCountValid(s: Webhooks): bool = s.immediateInFlight >= 0
 pure def sometimesDrainingWithImmediateDeliveries(s: Webhooks): bool = s.service == Draining and s.immediateInFlight > 0
 ```
 
@@ -123,5 +118,4 @@ pure val fair_settleImmediate = "weak"
 pure val fair_closeService = "weak"
 pure def leadsToShutdownCompletes(s: Webhooks, later: Webhooks): bool =
   (s.service == ClosingListener or s.service == Draining) implies later.service == ServiceClosed
-pure def sometimesQueuedCallbackAbandonedAtClose(s: Webhooks): bool = s.service == ServiceClosed and s.claims == 0 and s.generation == 1
 ```

@@ -1,6 +1,6 @@
 # Website manual activity
 
-A host's website guide composes its helper with the guided website workflow of the agent's native host. The browser supplies evidence of form submits and recording gaps. The guide decides when to ask and when an observed event can belong to a form step it showed the person. The evidence never proves the site accepted a submission or that the person authorized a new action. [Payment controls](./paymentControl.md) own payment classification; dispatch and result reconciliation belong to the [website goal](../agent/tasks/websiteGoal.md).
+A host's website guide composes its helper with the guided website workflow of the agent's native host. The browser supplies evidence of form submits and recording gaps. The guide decides when to ask and when an observed event can belong to a form step it showed the person. The evidence never proves the site accepted a submission or that the person authorized a new action. [Payment controls](./paymentControl.md) own payment classification; dispatch and result reconciliation belong to the [website goal](./websiteGoal.md).
 
 ## Story: Ask about manual activity when the browser's record leaves it uncertain
 
@@ -14,10 +14,11 @@ An absent evidence record calls for no activity question. A present record has a
 A valid record asks about overflow, gaps that remain unexplained, or an earlier-epoch noncredential submit on the current page origin. The upstream question key covers every event in supplied order, including events that did not trigger a question, the overflow bit and unresolved gaps. The gap component includes this epoch, document and the exact gap ID list, using an anonymous entry when IDs are unavailable. An exact existing answer suppresses its question. An answer to this question is task-scoped, with any explicitly stale epoch on receipt still refused. No form values enter the key or the model.
 
 ```quint
+import numbers as Num from "../core/numbers"
 type BrowserSubmit = { formSubmit: bool, originString: bool, documentString: bool, origin: str, documentId: str, epoch: int, observedAt: int, credentialMarkerValid: bool, credential: bool, idPresent: bool, eventId: str }
 type GapId = { idString: bool, idUnits: int, lowerHexOrHyphen: bool }
 type Activity = { present: bool, eventsArray: bool, events: List[BrowserSubmit], overflowBoolean: bool, overflow: bool, gapBoolean: bool, captureGap: bool, idsPresent: bool, idsArray: bool, gapIds: List[GapId] }
-pure def safeBrowserInt(number: int): bool = number >= -9007199254740991 and number <= 9007199254740991
+pure def safeBrowserInt(number: int): bool = number >= -Num::maxSafeInteger and number <= Num::maxSafeInteger
 pure def admissibleSubmit(submit: BrowserSubmit): bool = submit.formSubmit and submit.originString and submit.documentString and safeBrowserInt(submit.epoch) and safeBrowserInt(submit.observedAt) and submit.credentialMarkerValid
 pure def activityValid(activity: Activity): bool =
   activity.eventsArray and activity.events.length() <= 256 and activity.events.every(admissibleSubmit) and activity.overflowBoolean and activity.gapBoolean and
@@ -101,8 +102,6 @@ pure def pointedOnly(activity: Activity, windows: List[SubmitWindow], origin: st
   val attributed = activity.events.foldl(noAttribution, (walk, submit) => attributeSubmit(walk, submit, windows, origin, epoch))
   activity.present and activityValid(activity) and sameTaskOrigin and not(activity.overflow or activity.captureGap) and activity.gapIds.length() == 0 and attributed.sawEarlier and not(attributed.unassigned)
 }
-pure def lawEventMustAppearWithinWindow(submit: BrowserSubmit, window: SubmitWindow): bool =
-  fitsWindow(submit, window) implies window.afterIds.includes(submit.eventId) and not(window.beforeIds.includes(submit.eventId)) and window.closed and not(window.poisoned)
 pure def lawSameDocumentUnsafeCloseIsPoisoned(window: SubmitWindow, shown: ShownFormStep): bool =
   closesWindow(window, shown) and window.epoch == shown.epoch and window.documentId == shown.documentId and (not(shown.quiet) or shown.commits) implies closeForStep(window, shown).poisoned
 pure def lawOverflowOrGapCannotBeAttributed(activity: Activity, windows: List[SubmitWindow], origin: str, epoch: int, sameTaskOrigin: bool): bool =

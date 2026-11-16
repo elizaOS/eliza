@@ -8,14 +8,8 @@ request under a request id and reports it (`dialogRequested`,
 `externalLinkRequested`, `identityProviderRequested`); the consumer's
 renderer answers through `answerDialog`, `answerFileChooser`,
 `answerSitePermission`, `saveDownload`, `openExternalLink` and
-`openIdentityProvider` of `plugins/plugin-native-browser-surface`. The
-answering methods `answerFileChooser`, `answerSitePermission`,
-`saveDownload` and `openIdentityProvider` are specified here first, ahead
-of their producer code. This spec ports the producer's
-`BrowserSitePermissionPresentation`, `BrowserDownloadPublication` and
-`BrowserExternalHandoff` models. [Surface lifecycle](./lifecycle.md) owns
-which surfaces exist; [external links](../externalLinks.md) owns the
-link parser and the older bridge.
+`openIdentityProvider`. [Surface lifecycle](./lifecycle.md) owns which
+surfaces exist.
 
 ## Story: Answer what a website asks only for the page I am looking at
 
@@ -36,12 +30,16 @@ settles once.
 type RequestKind = DialogAsk | FileChooserAsk | SitePermissionAsk | DownloadAsk | ExternalLinkAsk | IdentityProviderAsk
 type RequestOutcome = Pending | Accepted | Declined | PickerOpened | NoFile | Granted | SiteDenied | AndroidDenied | PermissionWithdrawn | Ended
   | Saving | Saved | SaveFailed | SaveUnconfirmed | SaveCancelled | Dispatched | ExternalAppUnavailable | BrowserUnavailable
-type PageRequest = { surface: int, requestId: int, kind: RequestKind, page: int, verdict: RequestOutcome, resolvable: bool }
+type LinkKind = PhoneLink | MailLink | TextLink | MapLink | StoreLink | ForeignIntent | InvalidLink
+type PageRequest = { surface: int, requestId: int, kind: RequestKind, page: int, verdict: RequestOutcome, resolvable: bool, link: LinkKind }
 type SurfacePage = { surface: int, page: int, visible: bool, holdsRequests: bool }
-type PageRequests = { pages: List[SurfacePage], requests: List[PageRequest] }
-pure val initial: PageRequests = { pages: List({ surface: 1, page: 1, visible: true, holdsRequests: true }, { surface: 2, page: 1, visible: false, holdsRequests: false }), requests: List() }
+type PageRequests = { pages: List[SurfacePage], requests: List[PageRequest], popupGestureSpent: Set[int] }
+pure val initial: PageRequests = {
+  pages: List({ surface: 1, page: 1, visible: true, holdsRequests: true }, { surface: 2, page: 1, visible: false, holdsRequests: false }),
+  requests: List(), popupGestureSpent: Set()
+}
 pure val noPage: SurfacePage = { surface: 0, page: 0, visible: false, holdsRequests: false }
-pure val noRequest: PageRequest = { surface: 0, requestId: 0, kind: DialogAsk, page: 0, verdict: Ended, resolvable: false }
+pure val noRequest: PageRequest = { surface: 0, requestId: 0, kind: DialogAsk, page: 0, verdict: Ended, resolvable: false, link: InvalidLink }
 pure def pageOf(s: PageRequests, surface: int): SurfacePage = s.pages.select(p => p.surface == surface).nthOr(0, noPage)
 pure def requestOf(s: PageRequests, surface: int, requestId: int): PageRequest =
   s.requests.select(r => r.surface == surface and r.requestId == requestId).nthOr(0, noRequest)
@@ -49,12 +47,13 @@ pure def held(s: PageRequests, surface: int, requestId: int, kind: RequestKind):
   s.requests.some(r => r.surface == surface and r.requestId == requestId and r.kind == kind and r.verdict == Pending)
 pure def resolve(surface: int, s: PageRequests, requestId: int, verdict: RequestOutcome): PageRequests =
   { ...s, requests: s.requests.listMap(r => if (r.surface == surface and r.requestId == requestId) { ...r, verdict: verdict } else r) }
-pure def canAsk(s: PageRequests, surface: int, requestId: int, kind: RequestKind, resolvable: bool): bool =
+pure def canAsk(s: PageRequests, surface: int, requestId: int, kind: RequestKind, resolvable: bool, link: LinkKind): bool =
   pageOf(s, surface).surface > 0 and requestId > 0 and not(s.requests.some(r => r.surface == surface and r.requestId == requestId))
-pure def ask(s: PageRequests, surface: int, requestId: int, kind: RequestKind, resolvable: bool): PageRequests = {
+pure def ask(s: PageRequests, surface: int, requestId: int, kind: RequestKind, resolvable: bool, link: LinkKind): PageRequests = {
   val p = pageOf(s, surface)
   { ...s, requests: s.requests.append({ surface: surface, requestId: requestId, kind: kind, page: p.page,
-    verdict: if (p.visible and p.holdsRequests) Pending else Ended, resolvable: resolvable }) }
+    verdict: if (p.visible and p.holdsRequests) Pending else Ended, resolvable: resolvable,
+    link: if (kind == ExternalLinkAsk) link else InvalidLink }) }
 }
 pure def canAnswerDialog(s: PageRequests, surface: int, requestId: int, accept: bool): bool = held(s, surface, requestId, DialogAsk)
 pure def answerDialog(s: PageRequests, surface: int, requestId: int, accept: bool): PageRequests =
@@ -72,6 +71,7 @@ pure def stepOutcomeNeverReturnsToPending(before: PageRequests, after: PageReque
 pure def sometimesDialogAccepted(s: PageRequests): bool = s.requests.some(r => r.verdict == Accepted)
 pure val surfaceValues = Set(1, 2)
 pure val requestIdValues = Set(1, 2, 3)
+pure val linkValues = Set(PhoneLink, StoreLink, InvalidLink)
 ```
 
 ### A page that starts, or a surface I stop seeing, ends what it asked and never accepts it
@@ -87,10 +87,10 @@ pure def endHeld(s: PageRequests, surface: int): List[PageRequest] =
   s.requests.listMap(r => if (r.surface == surface and r.verdict == Pending) { ...r, verdict: Ended } else r)
 pure def canStartPage(s: PageRequests, surface: int): bool = pageOf(s, surface).surface > 0
 pure def startPage(s: PageRequests, surface: int): PageRequests =
-  { pages: s.pages.listMap(p => if (p.surface == surface) { ...p, page: p.page + 1 } else p), requests: endHeld(s, surface) }
+  { ...s, pages: s.pages.listMap(p => if (p.surface == surface) { ...p, page: p.page + 1 } else p), requests: endHeld(s, surface) }
 pure def canSetPageVisible(s: PageRequests, surface: int, visible: bool): bool = pageOf(s, surface).surface > 0 and pageOf(s, surface).visible != visible
 pure def setPageVisible(s: PageRequests, surface: int, visible: bool): PageRequests =
-  { pages: s.pages.listMap(p => if (p.surface == surface) { ...p, visible: visible } else p),
+  { ...s, pages: s.pages.listMap(p => if (p.surface == surface) { ...p, visible: visible } else p),
     requests: if (visible) s.requests else endHeld(s, surface) }
 pure def alwaysHeldRequestIsOnItsVisiblePage(s: PageRequests): bool =
   s.requests.every(r => r.verdict != Pending or (pageOf(s, r.surface).page == r.page and pageOf(s, r.surface).visible and pageOf(s, r.surface).holdsRequests))
@@ -187,21 +187,60 @@ pure def sometimesDownloadSaved(s: PageRequests): bool = s.requests.some(r => r.
 pure def sometimesDownloadUnconfirmed(s: PageRequests): bool = s.requests.some(r => r.verdict == SaveUnconfirmed)
 ```
 
-### Another app opens only for the link I tapped, and an unresolvable link reports that no app is available
+### Another app opens only for the link I tapped on the selected tab, with a fixed review action
 
-`openExternalLink` opens a held other-app request (`tel:`, `mailto:`,
-`sms:`, `geo:`, `market:` or `intent:`) with a fresh intent and a fixed
-review action; it never calls or sends by itself, and it rejects any
-other address. When no app resolves the intent it fails with
-`EXTERNAL_APP_UNAVAILABLE` and the page stays where it is.
+`openExternalLink` opens a held other-app request only from the current,
+live, foreground tab: a direct tab needs to be selected and to carry a
+native gesture. A fresh popup, created by a gesture and not yet committed
+to a page, carries its opener's gesture once, while the opener or popup is
+selected; the first attempt spends that allowance even when no app can
+handle the link. The intent is rebuilt from the held request's own
+address, for a supported destination with a fixed review action: dial for a phone link, compose for mail or text, view for
+a map, store or app link. It never calls or sends by itself; that stays
+the person's action in Android. When the host itself is the handler, only
+a phone, mail, text or map link is reviewed. When no app resolves the
+intent it fails with `EXTERNAL_APP_UNAVAILABLE` and the page stays where
+it is.
 
 ```quint
-pure def canOpenExternalLink(s: PageRequests, surface: int, requestId: int): bool = held(s, surface, requestId, ExternalLinkAsk)
-pure def openExternalLink(s: PageRequests, surface: int, requestId: int): PageRequests =
-  resolve(surface, s, requestId, if (requestOf(s, surface, requestId).resolvable) Dispatched else ExternalAppUnavailable)
-pure def alwaysDispatchedLinkWasResolvable(s: PageRequests): bool =
-  s.requests.every(r => r.kind == ExternalLinkAsk and r.verdict == Dispatched implies r.resolvable)
+type ReviewAction = NoReview | DialReview | ComposeReview | ViewReview
+type TabHostLinkContext = { tabLive: bool, foreground: bool, tabCurrent: bool, tabSelected: bool, gesture: bool, popupFresh: bool, openerSelected: bool, ownHandler: bool }
+pure def systemLink(kind: LinkKind): bool =
+  kind == PhoneLink or kind == MailLink or kind == TextLink or kind == MapLink
+pure def reviewAction(kind: LinkKind): ReviewAction =
+  if (kind == PhoneLink) DialReview
+  else if (kind == MailLink or kind == TextLink) ComposeReview
+  else if (kind == MapLink or kind == StoreLink or kind == ForeignIntent) ViewReview
+  else NoReview
+pure def tabHostGesture(c: TabHostLinkContext): bool =
+  if (c.popupFresh) c.tabSelected or c.openerSelected else c.tabSelected and c.gesture
+pure def tabHostReview(c: TabHostLinkContext, kind: LinkKind): ReviewAction =
+  if (not(c.tabLive) or not(c.foreground) or not(c.tabCurrent) or not(tabHostGesture(c))) NoReview
+  else if (c.ownHandler and not(systemLink(kind))) NoReview
+  else reviewAction(kind)
+pure def canOpenExternalLink(s: PageRequests, surface: int, requestId: int, context: TabHostLinkContext): bool =
+  held(s, surface, requestId, ExternalLinkAsk) and tabHostReview(context, requestOf(s, surface, requestId).link) != NoReview and
+  not(context.popupFresh and s.popupGestureSpent.contains(surface))
+pure def openExternalLink(s: PageRequests, surface: int, requestId: int, context: TabHostLinkContext): PageRequests = {
+  val opened = resolve(surface, s, requestId, if (requestOf(s, surface, requestId).resolvable) Dispatched else ExternalAppUnavailable)
+  if (context.popupFresh) { ...opened, popupGestureSpent: s.popupGestureSpent.union(Set(surface)) } else opened
+}
+pure val contextValues = Set(
+  {tabLive: true, foreground: true, tabCurrent: true, tabSelected: true, gesture: true, popupFresh: false, openerSelected: false, ownHandler: true},
+  {tabLive: true, foreground: true, tabCurrent: true, tabSelected: false, gesture: true, popupFresh: true, openerSelected: true, ownHandler: false},
+  {tabLive: true, foreground: true, tabCurrent: true, tabSelected: false, gesture: false, popupFresh: true, openerSelected: false, ownHandler: false},
+  {tabLive: true, foreground: false, tabCurrent: true, tabSelected: true, gesture: true, popupFresh: false, openerSelected: false, ownHandler: false},
+  {tabLive: true, foreground: true, tabCurrent: true, tabSelected: true, gesture: false, popupFresh: false, openerSelected: false, ownHandler: false}
+)
+pure def lawLinkReviewNeedsTheCurrentTabGesture(context: TabHostLinkContext, kind: LinkKind): bool =
+  tabHostReview(context, kind) != NoReview implies context.tabLive and context.foreground and context.tabCurrent and tabHostGesture(context)
+pure def lawOwnHandlerReviewsOnlySystemLinks(context: TabHostLinkContext, kind: LinkKind): bool =
+  context.ownHandler and tabHostReview(context, kind) != NoReview implies systemLink(kind)
+pure def stepSpentPopupGestureNeverReturns(before: PageRequests, after: PageRequests): bool =
+  before.popupGestureSpent.subseteq(after.popupGestureSpent)
 pure def sometimesExternalAppUnavailable(s: PageRequests): bool = s.requests.some(r => r.verdict == ExternalAppUnavailable)
+pure def sometimesPopupGestureSpentWithoutHandler(s: PageRequests): bool =
+  s.popupGestureSpent.size() > 0 and s.requests.some(r => r.verdict == ExternalAppUnavailable)
 ```
 
 ### A sign-in page that refuses embedded browsers opens in a full browser only when I choose to

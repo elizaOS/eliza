@@ -1,19 +1,17 @@
-# Android sign-in method readiness
+# Android sign-in readiness
 
-The Android sign-in plugin tells the sign-in screen which methods Cloud is
-ready for (`CloudSignInPlugin.status`, `probe`, `readinessMeasured`,
-`watchLink` and `handleOnResume`, with the policy in
-`CloudSignInReadiness`). Email and SMS are measured by one probe; Google is
-ready only once Android has verified the browser return link. The model
-keeps one deployment, and abstracts the clock into the events that end
-each wait: the short time to live of a "not ready" answer, the growing
-wait for unasked measurements (30 seconds, 2 minutes, 10 minutes, then
-hourly) and the six-hour life of a ready answer.
+The Android sign-in plugin tells the sign-in screen which methods the cloud
+is ready for. Email and SMS are measured by one probe; Google is ready only
+once Android has verified the browser return link. The model keeps one
+deployment, and abstracts the clock into the events that end each wait:
+the short time to live of a "not ready" answer, the growing wait for
+unasked measurements (30 seconds, 2 minutes, 10 minutes, then hourly) and
+the six-hour life of a ready answer.
 
-## Story: Show only the sign-in methods Cloud is ready for
+## Story: Show only the sign-in methods the cloud is ready for
 
 > As a person opening sign-in, I want to see the methods that work right
-> away, without waiting on a check, and without the app polling Cloud
+> away, without waiting on a check, and without the app polling the cloud
 > while I am not signing in.
 
 ### A fresh cached answer is served at once, and a "not ready" one is measured again behind it

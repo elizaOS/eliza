@@ -1,14 +1,11 @@
-# Native speech stream transport
+# Native speech request and stream
 
-A consumer imports `createNativeSpeechStream`, `SpeechRenderingInput` and
-`SpeechAudioFrame` from the cloud SDK's `native-speech-stream.ts`. Its
-port is `(path, body) => Promise<unknown>`. It opens, pulls and cancels
-private JSON sessions using `/voice/tts/stream/{start,pull,cancel}`. The
-caller's cache, Android capacity retries, progressive playback and local
-fallback have separate owners ([segment playback](./segmentPlayback.md),
-[local speech](./localSpeech.md)). The stream consumes a fixed request ID
-and immutable rendering input across retries. This state projects one
-request ID. [Speech requests](./speechRequest.md) own its cancellation.
+One native speech request speaks one reply through the selected native or
+paired endpoint: it captures the endpoint binding and the caller's abort
+signal, and streams the rendered audio from the host under one fixed
+request ID and immutable rendering input across retries. The caller's
+cache, capacity retries, progressive playback and local fallback belong to
+[segment playback](./segmentPlayback.md) and [local speech](./localSpeech.md).
 
 ## Story: Retry streaming speech without skipping or duplicating audio
 
@@ -17,25 +14,25 @@ request ID. [Speech requests](./speechRequest.md) own its cancellation.
 
 ### One request retains its original cursor across failed transport calls
 
-Opening and pulling are single-flight. The native host returns
-batches, each with its requested cursor and contiguous audio frames.
-The source separates accepted batch data from frames delivered to the
-caller. A transport failure leaves the cursor and stream binding
-unchanged. An invalid successful payload permanently stops the stream
-and requests cancellation. A current-state check at or beyond the
-600,000 ms lifetime also stops the stream, including while a
-response is outstanding. This is an observation of monotonic
-time, with no independent expiry timer in the source. The source accepts frames internally as it
-validates a batch. It makes none visible if later validation fails
-and cannot reuse the private counters thereafter.
+Opening and pulling are single-flight. The native host returns batches,
+each with its requested cursor and contiguous audio frames, kept apart
+from the frames already delivered to the caller. A transport failure
+leaves the cursor and stream binding unchanged. An invalid successful
+payload stops the stream for good and requests cancellation. A stream
+holds at most 2,048 frames, 8,388,608 audio bytes and 50,000 characters,
+and an observation of monotonic time at or beyond its 600,000 ms lifetime
+stops it, even while a response is outstanding.
 
 ```quint
 type StreamPhase = Unopened | OpeningStream | OpenStream | PullingStream | CompletedStream | StoppedStream
 type StartReceipt = { streamId: int, decoded: bool }
 type BatchReceipt = { boundStream: int, atCursor: int, frames: int, bytes: int, characters: int, decoded: bool, done: bool }
-type SpeechStream = { elapsedMs: int, phase: StreamPhase, streamId: int, cursor: int, audioBytes: int, characters: int, buffered: int, endBuffered: bool }
+type SpeechPhase = BeforeSpeech | Working | Succeeded | SpeechRejected | SpeechFailed
+type RequestAuthority = { phase: SpeechPhase, bindingLive: bool, callerAborted: bool, ownedAborted: bool, watched: bool, cancellations: int }
+type SpeechStream = { elapsedMs: int, phase: StreamPhase, streamId: int, cursor: int, audioBytes: int, characters: int, buffered: int, endBuffered: bool, authority: RequestAuthority }
 pure val initial: SpeechStream = {
-  elapsedMs: 0, phase: Unopened, streamId: 0, cursor: 0, audioBytes: 0, characters: 0, buffered: 0, endBuffered: false
+  elapsedMs: 0, phase: Unopened, streamId: 0, cursor: 0, audioBytes: 0, characters: 0, buffered: 0, endBuffered: false,
+  authority: { phase: BeforeSpeech, bindingLive: true, callerAborted: false, ownedAborted: false, watched: false, cancellations: 0 }
 }
 pure def canObserveStreamTime(s: SpeechStream, elapsedMs: int): bool = elapsedMs >= s.elapsedMs
 pure def observeStreamTime(s: SpeechStream, elapsedMs: int): SpeechStream = {
@@ -86,16 +83,10 @@ pure def sometimesBatchIsBuffered(s: SpeechStream): bool = s.buffered > 1
 
 ### End delivery requires validated nonempty audio and follows all buffered frames
 
-The JSON boundary validates the stream ID shape, open state and
-rendered speed. Audio requires the exact frame sequence and
-`audio/mpeg`, valid bounded base64 and valid optional ordered timing
-arrays. A completion frame is last in its batch and declares exact
-received frame and byte totals. In the model the decoder's
-`decoded` evidence attests those wire checks. The model independently
-enforces aggregate caps, ordering of accepted batches and nonempty
-audio completion. The pull that accepts a batch also returns its first
-frame in the source. Acceptance and draining are separate observations
-here so all retained frame custody is explicit.
+A batch is accepted only when its decoder vouches for the wire format:
+the exact frame sequence, MPEG audio, and a completion frame that comes
+last and declares the exact frame and byte totals. Completion needs
+nonempty audio, and the end is delivered only after every buffered frame.
 
 ```quint
 pure def canDeliverAudio(s: SpeechStream): bool = s.phase == OpenStream and s.buffered > 0
@@ -117,19 +108,63 @@ pure def sometimesInvalidBatchStopsDelivery(s: SpeechStream): bool = s.phase == 
 ## Story: Expire a stream without adopting a late response
 
 > As a person, I want a stream that ran out of time to stay stopped, even
-> if a late answer arrives.
+> if a late answer arrives, so that a stale reply is never spoken.
 
 ### A deadline observation irrevocably closes the request
 
-A stream freezes its expiry at creation. In the implementation the
-monotonic observation is part of entering open or pull and returning
-from native I/O. At the deadline the check throws the expiry error and
-initiates cancellation by the original request ID, even when the
-host has not returned a stream ID. Later replies never reopen it.
+A stream fixes its expiry when it is created and observes the clock on
+entering open or pull and on every native reply. At the deadline it stops
+and asks the host to cancel by the original request ID, even before the
+host has returned a stream ID. Later replies never reopen it.
 
 ```quint
 pure def alwaysExpiredStreamStops(s: SpeechStream): bool =
   s.elapsedMs >= 600000 implies s.phase == StoppedStream
 pure def sometimesExpiredOpening(s: SpeechStream): bool =
   s.phase == StoppedStream and s.elapsedMs >= 600000 and s.streamId == 0
+```
+
+## Story: Speak using the selected native or paired endpoint
+
+> As a person switching between the device's own voice and a paired one,
+> I want a reply spoken only by the endpoint still selected, and a
+> cancelled reply never spoken late.
+
+### The captured binding and caller signal control publication and cancellation
+
+The request captures the endpoint binding and the caller's signal when it
+starts. While its work is in flight it owns a cancellation signal and
+aborts it exactly once when the binding changes or the caller aborts; a
+stale or aborted request rejects when its work settles. The request stops
+watching at settlement, so a late notification never cancels a completed
+request. The work is expected to honor the owned signal.
+
+```quint
+pure def canBeginSpeech(s: SpeechStream): bool = s.authority.phase == BeforeSpeech
+pure def beginSpeech(s: SpeechStream): SpeechStream =
+  if (s.authority.bindingLive and not(s.authority.callerAborted)) { ...s, authority: { ...s.authority, phase: Working, watched: true } }
+  else { ...s, authority: { ...s.authority, phase: SpeechRejected } }
+pure def ownedSignalAborted(a: RequestAuthority): bool = a.ownedAborted or a.watched
+pure def cancellationCount(a: RequestAuthority): int =
+  a.cancellations + (if (a.watched and not(a.ownedAborted)) 1 else 0)
+pure def invalidateBinding(s: SpeechStream): SpeechStream =
+  { ...s, authority: { ...s.authority, bindingLive: false, ownedAborted: ownedSignalAborted(s.authority), cancellations: cancellationCount(s.authority) } }
+pure def abortCaller(s: SpeechStream): SpeechStream =
+  { ...s, authority: { ...s.authority, callerAborted: true, ownedAborted: ownedSignalAborted(s.authority), cancellations: cancellationCount(s.authority) } }
+pure def canFinishWork(s: SpeechStream): bool = s.authority.phase == Working
+pure def finishWork(s: SpeechStream, workSucceeded: bool): SpeechStream = {
+  val a = s.authority
+  { ...s, authority: { ...a, watched: false,
+    phase: if (not(a.bindingLive) or a.callerAborted or a.ownedAborted) SpeechRejected else if (workSucceeded) Succeeded else SpeechFailed } }
+}
+pure def alwaysCancellationAtMostOnce(s: SpeechStream): bool =
+  s.authority.cancellations == (if (s.authority.ownedAborted) 1 else 0)
+pure def alwaysOnlyPendingObserves(s: SpeechStream): bool = s.authority.watched == (s.authority.phase == Working)
+pure def stepPublishNeedsLiveBinding(before: SpeechStream, via: str, after: SpeechStream): bool =
+  via == "finishWork" and after.authority.phase == Succeeded implies
+    before.authority.bindingLive and not(before.authority.callerAborted) and not(before.authority.ownedAborted)
+pure def stepInvalidationIsPermanent(before: SpeechStream, after: SpeechStream): bool =
+  not(before.authority.bindingLive) implies not(after.authority.bindingLive)
+pure def sometimesSpeechPublished(s: SpeechStream): bool = s.authority.phase == Succeeded
+pure def sometimesWorkCancelled(s: SpeechStream): bool = s.authority.phase == SpeechRejected and s.authority.cancellations == 1
 ```

@@ -7,11 +7,9 @@ short-lived App Link code bound to the verifier, the redirect and the
 tenant. The device hands the return to the host, which checks the state and
 exchanges the code with its verifier at `POST /auth/oauth/exchange`. The
 service redeems a code once, under a short lock, before it answers with a
-session or an MFA challenge. Times are in seconds.
+session or an MFA challenge.
 
-Ported from develop `packages/auth/quint/OAuthAppLinkRedemption.qnt` (the
-exchange route) and `NativeGoogleAdmission.qnt` (the host's admission of the
-return and its cancellation fence). MFA completion is in [MFA](./mfa.md);
+An admitted MFA challenge is finished in [MFA completion](./mfaCompletion.md);
 the durable credential that follows a session is in
 [native enrollment](./native/enrollment.md).
 
@@ -23,30 +21,39 @@ the durable credential that follows a session is in
 
 ### Authorize requires S256 PKCE, an allowlisted redirect and a known tenant
 
-The attempt's state lives five minutes.
+The redirect must equal an entry of the tenant's allowlist, as
+[tenants](./tenants.md) accepts it. The attempt's state lives five minutes.
 
 ```quint
+import tenants as T from "./tenants"
 type CodeChallengeMethod = S256 | PlainChallenge
-type AuthorizeRequest = { method: CodeChallengeMethod, redirectAllowlisted: bool, tenantKnown: bool }
-pure def authorizeAccepted(request: AuthorizeRequest): bool = request.method == S256 and request.redirectAllowlisted and request.tenantKnown
+type AuthorizeRequest = { method: CodeChallengeMethod, redirect: str, tenantKnown: bool }
+pure val tenantRedirects = Set("https://app.example.org/auth", "http://127.0.0.1:8123/cb")
+pure def authorizeAccepted(request: AuthorizeRequest): bool = request.method == S256 and T::redirectAccepted(tenantRedirects, request.redirect) and request.tenantKnown
 pure val stateLifetime = 300
-pure def lawPlainChallengeRefused(request: AuthorizeRequest): bool = request.method == PlainChallenge implies not(authorizeAccepted(request))
-pure def lawUnlistedRedirectRefused(request: AuthorizeRequest): bool = not(request.redirectAllowlisted) implies not(authorizeAccepted(request))
 ```
 
 ### A native Google ID token is accepted only for an audience the tenant's app client lists
 
-The token's signature, issuer and expiry are checked by the verifier and
-supplied as evidence.
+The device account picker hands the host a Google ID token, which signs
+the person in directly when no browser attempt is under way. The token's
+signature, issuer and expiry are checked by the verifier and supplied as
+evidence; its audience must be one of the native client ids the tenant
+lists for this app client.
 
 ```quint
 type IdTokenEvidence = { signatureValid: bool, issuerIsGoogle: bool, unexpired: bool, audienceListed: bool }
 pure def idTokenAccepted(token: IdTokenEvidence): bool = token.signatureValid and token.issuerIsGoogle and token.unexpired and token.audienceListed
-pure def lawForeignAudienceRefused(token: IdTokenEvidence): bool = not(token.audienceListed) implies not(idTokenAccepted(token))
+pure def canPresentIdToken(s: GoogleSignIn, token: IdTokenEvidence): bool = s.phase == NoAttempt and not(s.exchangeInFlight) and not(s.cancelling) and s.lockOwner == 0
+pure def presentIdToken(s: GoogleSignIn, token: IdTokenEvidence): GoogleSignIn =
+  if (idTokenAccepted(token)) { ...s, idToken: token, phase: SignedIn, ticket: s.epoch, lastResult: IdTokenSignedIn }
+  else { ...s, idToken: token, lastResult: IdTokenRefused }
 pure val tokenValues = Set(
   { signatureValid: true, issuerIsGoogle: true, unexpired: true, audienceListed: true },
-  { signatureValid: true, issuerIsGoogle: true, unexpired: true, audienceListed: false },
-  { signatureValid: true, issuerIsGoogle: true, unexpired: false, audienceListed: true })
+  { signatureValid: true, issuerIsGoogle: true, unexpired: true, audienceListed: false })
+pure def alwaysIdTokenSignInHadListedAudience(s: GoogleSignIn): bool = s.lastResult == IdTokenSignedIn implies (idTokenAccepted(s.idToken) and s.phase == SignedIn)
+pure def sometimesForeignAudienceRefused(s: GoogleSignIn): bool = s.lastResult == IdTokenRefused and not(s.idToken.audienceListed)
+pure def sometimesSignedInWithIdToken(s: GoogleSignIn): bool = s.lastResult == IdTokenSignedIn
 ```
 
 ### The host starts one attempt at a time with its own state and verifier
@@ -58,7 +65,7 @@ payload expiry; both are checked.
 ```quint
 type AttemptPhase = NoAttempt | AwaitingReturn | Exchanging | AttemptSpent | MfaAdmitted | SignedIn
 type ReturnForm = MalformedReturn | MalformedCode | FailureLink | CodeReturned
-type HostResult = NothingYet | ReturnBusy | ReturnUnavailable | ReturnMalformed | StateMismatch | CodeMalformed | GoogleSignInFailed | ExchangeDispatched | ExchangeFailed | ReplyAfterCancel | CancelRequested | CancelSettled
+type HostResult = NothingYet | ReturnBusy | ReturnUnavailable | ReturnMalformed | StateMismatch | CodeMalformed | GoogleSignInFailed | ExchangeDispatched | ExchangeFailed | ReplyAfterCancel | CancelRequested | CancelSettled | IdTokenSignedIn | IdTokenRefused
 type Lane = SessionLane | MfaLane
 type Binding = AllBindingsMatch | WrongVerifier | WrongRedirect | WrongTenant | PolicyRefusal
 type RedemptionPhase = Peeked | Validated | Locked | CodeConsumed | CodeMissing | RedemptionRefused | LockBusy | GrantedSession | GrantedMfa
@@ -67,13 +74,14 @@ type GoogleSignIn = {
   now: int, attempt: int, phase: AttemptPhase, attemptExpiresAt: int, verifierLive: bool, epoch: int, ticket: int,
   exchangeInFlight: bool, cancelling: bool, exchanges: List[int], lastResult: HostResult,
   codeFor: int, lane: Lane, codePresent: bool, payloadExpiresAt: int, storeExpiresAt: int,
-  lockOwner: int, spentBy: int, spentAt: int, redemptions: List[Redemption], nextRedemption: int
+  lockOwner: int, spentBy: int, spentAt: int, redemptions: List[Redemption], nextRedemption: int, idToken: IdTokenEvidence
 }
 pure val initial: GoogleSignIn = {
   now: 0, attempt: 0, phase: NoAttempt, attemptExpiresAt: 0, verifierLive: false, epoch: 0, ticket: 0,
   exchangeInFlight: false, cancelling: false, exchanges: List(), lastResult: NothingYet,
   codeFor: 0, lane: SessionLane, codePresent: false, payloadExpiresAt: 0, storeExpiresAt: 0,
-  lockOwner: 0, spentBy: 0, spentAt: -1, redemptions: List(), nextRedemption: 1
+  lockOwner: 0, spentBy: 0, spentAt: -1, redemptions: List(), nextRedemption: 1,
+  idToken: { signatureValid: false, issuerIsGoogle: false, unexpired: false, audienceListed: false }
 }
 pure val codeLifetime = 60
 pure def canStartAttempt(s: GoogleSignIn, request: AuthorizeRequest): bool =
@@ -81,7 +89,8 @@ pure def canStartAttempt(s: GoogleSignIn, request: AuthorizeRequest): bool =
 pure def startAttempt(s: GoogleSignIn, request: AuthorizeRequest): GoogleSignIn =
   { ...s, attempt: s.attempt + 1, phase: AwaitingReturn, attemptExpiresAt: s.now + stateLifetime, verifierLive: true, lastResult: NothingYet,
     codeFor: 0, codePresent: false, spentBy: 0, spentAt: -1, redemptions: List(), nextRedemption: 1 }
-pure val requestValues = Set({ method: S256, redirectAllowlisted: true, tenantKnown: true }, { method: PlainChallenge, redirectAllowlisted: true, tenantKnown: true })
+pure val requestValues = Set({ method: S256, redirect: "https://app.example.org/auth", tenantKnown: true },
+  { method: PlainChallenge, redirect: "https://app.example.org/auth", tenantKnown: true }, { method: S256, redirect: "https://app.example.org/auth/other", tenantKnown: true })
 pure def canProviderApproves(s: GoogleSignIn, lane: Lane, storeSlack: int): bool = s.phase == AwaitingReturn and s.codeFor != s.attempt and storeSlack >= 0
 pure def providerApproves(s: GoogleSignIn, lane: Lane, storeSlack: int): GoogleSignIn =
   { ...s, codeFor: s.attempt, lane: lane, codePresent: true, payloadExpiresAt: s.now + codeLifetime, storeExpiresAt: s.now + codeLifetime + storeSlack }

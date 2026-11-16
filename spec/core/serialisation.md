@@ -1,10 +1,12 @@
 # Serialized asynchronous work
 
-This model migrates `quint/Serialise.qnt` and the `createSerialise` contract in `utils/task-scheduling.ts`. Invocation appends synchronously to the promise chain. Callback settlement releases the successor for both success and failure.
+The source is `createSerialise` in `utils/task-scheduling.ts`. Invocation appends synchronously to the promise chain. Callback settlement releases the successor for both success and failure.
 
 ## Story: Execute queued asynchronous callbacks in invocation order
 
-As a service, I want per-owner work to execute one callback at a time and recover after a callback rejects.
+> As a service, I want per-owner work to run one callback at a time in
+> invocation order, so that a rejected callback never blocks or reorders
+> the work queued behind it.
 
 ### Only the head callback executes and every settlement releases its successor
 

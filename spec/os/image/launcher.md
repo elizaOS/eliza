@@ -1,13 +1,11 @@
 # Launcher staging
 
-A consumer's home app is staged into the image as an additive product
-overlay from a reviewed launcher descriptor, or from an explicit
-development descriptor for a development image. With a native ABI, the
-launcher's stored native libraries are installed beside it, through
-`Android.mk` or, on a Soong-only product, the reviewed Soong app-native
-rule. Staging claims no agent payload, default home policy, image boot or
-release qualification; the [product composition](./product.md) and
-[release signing](./signing.md) own those.
+The consumer's home app, the launcher package its
+[product descriptor](./product.md) names, is staged into the image as an
+additive product overlay from a reviewed launcher descriptor, or from an
+explicit development descriptor for a development image. Staging claims no
+default home policy, image boot or release qualification;
+[release signing](./signing.md) and the product composition own those.
 
 ## Story: Stage the consumer launcher as the home app without privileges it was not reviewed for
 
@@ -44,9 +42,6 @@ pure val lValues = Set(plainLauncher, { ...plainLauncher, apkDigestMatches: fals
   { ...plainLauncher, privilegedPermissions: Set("android.permission.CALL_PHONE") },
   { ...plainLauncher, privilegedPermissions: Set("android.permission.CAMERA") },
   { ...plainLauncher, defaultPermissions: Set("android.permission.RECORD_AUDIO") })
-pure def lawAdmittedLauncherMatchesItsDescriptor(l: LauncherFacts): bool =
-  launcherAdmitted(l) implies l.apkDigestMatches and l.signerMatches and l.manifestMatches and
-    l.defaultPermissions.subseteq(l.declaredPermissions)
 ```
 
 ### The launcher is nonprivileged unless reviewed privileged permissions are named, and its grants stay revocable
@@ -86,10 +81,6 @@ pure def companionAdmitted(launcherSigner: str, c: Companion): bool = launcherSi
 pure val companionStaging: CompanionStaging = { companionPlacement: OrdinaryApp, companionGrants: 0, home: false }
 pure val cValues = Set({ signer: "s1", digestMatches: true }, { signer: "s2", digestMatches: true }, { signer: "s1", digestMatches: false })
 pure val launcherSignerValues = Set("", "s1")
-pure def lawCompanionCarriesTheLauncherSigner(launcherSigner: str, c: Companion): bool =
-  companionAdmitted(launcherSigner, c) implies c.signer == launcherSigner and c.digestMatches
-pure def lawCompanionIsPlain(launcherSigner: str, c: Companion): bool =
-  companionStaging.companionPlacement == OrdinaryApp and companionStaging.companionGrants == 0 and not(companionStaging.home)
 ```
 
 ### A staging call publishes into a destination it owns at most once

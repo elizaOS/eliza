@@ -1,16 +1,20 @@
 # Structured diagnostics
 
-The baseline is `runtime.ts` methods `reportError` and
-`getRecentReportedErrors`, `errors.ts`, `security/redact.ts` and
-`security/log-redaction.ts` at
-`72fed7e4069ecd35d61d886ab6eec5c02c137517`.
+Runtime error reporting keeps a bounded ring of recent reports and emits an
+error event for each report not raised by a subscriber. The logging sink
+redacts fields as [content and outbound security](./security.md) says.
+[Integration telemetry](./integrationTelemetry.md) keeps its own once-only
+latch.
 
 ## Story: Observe a failure without failing the reporting path
+
+> As an operator, I want every runtime failure reported with its original
+> identity, so a failing diagnostic subscriber never hides it or loops.
 
 As an operator, I receive the original failure code, severity, scope,
 context and cause. Diagnostic subscriber failures remain observable and
 cannot cause recursive event emission. The recent-error ring retains the
-newest 200 entries in order, as in the current runtime.
+newest 200 entries in order.
 
 ### A structured failure retains its identity and an unclassified one gets a code
 
@@ -51,32 +55,4 @@ pure def alwaysDeliveryAccounted(d: Diagnostics): bool = d.pendingEvents >= 0 an
 pure def stepReentryKeepsOriginalRecord(before: Diagnostics, via: str, after: Diagnostics): bool = via == "reenterReporting" implies after.entries == before.entries and after.emittedEvents == before.emittedEvents
 pure def sometimesSubscriberFailureRecorded(d: Diagnostics): bool = d.entries.length() > d.emittedEvents
 pure def sometimesDeliveryFailureWarned(d: Diagnostics): bool = d.completedEvents > 0 and d.warnings > 0
-```
-
-## Story: Redact untrusted diagnostic fields at the sink
-
-As an operator, I can inspect diagnostic structure while credentials and
-unreadable properties are replaced before transport. Concrete pattern
-matching retains the existing credential pattern corpus, exact literal
-replacement, longest-secret-first ordering, Unicode boundaries and
-hostile-getter handling. Those parser details require adapter tests.
-
-### A credential field emits only a replacement marker
-
-This field model is the sink contract after key and pattern classification.
-Classification remains a separately tested boundary and cannot be supplied
-by a diagnostic caller as authority to bypass masking.
-
-```quint
-type SecretText = str
-type LogField = PublicField({ name: str, text: str }) | CredentialField({ name: str, credential: SecretText }) | UnreadableField({ name: str })
-type SafeField = { name: str, text: str }
-pure def redactField(logValue: LogField): SafeField = match logValue {
-  | PublicField(v) => { name: v.name, text: v.text }
-  | CredentialField(v) => { name: v.name, text: "[REDACTED]" }
-  | UnreadableField(v) => { name: v.name, text: "[REDACTION_FAILED]" }
-}
-pure val logValueValues = Set(PublicField({ name: "scope", text: "storage" }), CredentialField({ name: "token", credential: "secret-material" }), UnreadableField({ name: "hostile" }))
-pure def lawCredentialIsMasked(name: str, credential: SecretText): bool = redactField(CredentialField({ name: name, credential: credential })).text == "[REDACTED]"
-pure def lawUnreadableFieldIsMasked(name: str): bool = redactField(UnreadableField({ name: name })).text == "[REDACTION_FAILED]"
 ```

@@ -1,19 +1,17 @@
 # Native photo permission epochs
 
-A consumer's photos plugin uses the producer's `PermittedPhotosPlugin`
-and `PermittedMediaCatalog` from `plugin-native-media/android`. The
-producer's `NativePhotosOwnership` model has separate publication and
-native review halves; this file ports the publication fence shared by
-every consumer, and [permitted media review](./review.md) ports the
-review half. This isolated request crosses worker admission and
-main-thread delivery. The owner maintains the permission epoch
-across arrivals, so replacing or adding another read cannot refresh
-this request's ticket.
+A consumer's photos plugin uses `PermittedMediaCatalog` from
+`plugin-native-media/android`. This spec owns the publication fence every
+photo read shares, from worker admission to main-thread delivery;
+[permitted media review](./review.md) owns the review half. The owner keeps
+the permission epoch across arrivals, so replacing or adding another read
+cannot refresh this request's ticket.
 
 ## Story: Publish a photo only through the permission that admitted the read
 
-> As the person, I want to publish a photo only through the permission
-> that admitted the read.
+> As the person, I want a photo shown only while the permission that let
+> the app read it still holds, so that revoking access or locking the
+> phone hides it at once.
 
 ### Scope changes and lifecycle retirement revoke both queued and completed reads
 

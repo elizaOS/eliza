@@ -9,10 +9,6 @@ deadlines and the fence on dependent provider writes are stated as laws.
 Provider effects already sent are outside the model: cancelling a job never
 retracts them. Cloud-hosted application jobs are not part of this package.
 
-Develop sources: the cloud `JobExecutionLease`, `JobRetryBudgets`,
-`JobSharedCapacity`, `job_time_authority` and `provisioning_execution`
-models.
-
 ## Story: Run a job under exactly one current lease
 
 > As an operator, I want every job run by one worker at a time, and a worker
@@ -170,15 +166,21 @@ pure def lawClaimsStayWithinTheLimit(requested: int, running: int): bool =
 
 ### Deadlines come from the database clock read after the lock
 
-A retry deadline is the database's clock plus the delay, whatever the host's
-clock says. A renewal reads the clock after it holds the job's lock, so a
-renewal that waited for the lock still ends in the future.
+A retry is due at the database's clock plus the delay; the host's clock
+is not an input. A renewal reads the clock only after it holds the job's
+lock, so a renewal that waited for the lock still ends in the future.
 
 ```quint
 pure def retryDueAt(databaseNow: int, delay: int): int = databaseNow + delay
 pure def renewedExpiry(lockedAt: int, lease: int): int = lockedAt + lease
-pure def lawRetryDeadlineIgnoresTheHostClock(databaseNow: int, delay: int, hostOffset: int): bool = retryDueAt(databaseNow, delay) == databaseNow + delay
-pure def lawRenewalEndsAfterTheLock(lockedAt: int, lease: int): bool = lease > 0 implies renewedExpiry(lockedAt, lease) > lockedAt
+pure val databaseNowValues = Set(0, 5)
+pure val delayValues = Set(0, 1, 30)
+pure val requestedAtValues = Set(0, 5)
+pure val lockedAtValues = Set(0, 5, 9)
+pure val leaseValues = Set(1, 30)
+pure def lawRetryIsNeverDueBeforeTheDatabaseClock(databaseNow: int, delay: int): bool = delay >= 0 implies retryDueAt(databaseNow, delay) >= databaseNow
+pure def lawRenewalOutlivesItsWait(requestedAt: int, lockedAt: int, lease: int): bool =
+  (lease > 0 and lockedAt >= requestedAt) implies renewedExpiry(lockedAt, lease) > lockedAt and renewedExpiry(lockedAt, lease) > requestedAt
 ```
 
 ### A provider result is written back only while the job still owns its lease

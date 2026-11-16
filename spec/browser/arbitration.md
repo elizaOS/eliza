@@ -1,63 +1,70 @@
 # Website browser arbitration
 
-A host that guides the person through a website composes two browser peers from the browser package: `native-socket-target.ts` for an owned Chromium and `native-surface-target.ts` for the embedded WebView, with `packages/os/browser/src/task-bindings.mjs` for browser-side authority. This contract governs which of those peers receives the host's task operations. The [interactive task kernel](../core/interactiveTask.md) owns task epochs, the [surface channel](../agent/nativeHost/surfaceChannel.md) owns command delivery, and each browser checks its own bindings and receipts.
+A host that guides the person through a website has two browser peers: an owned Chromium and the embedded web view, each holding its own task bindings. This spec governs which peer receives the host's task operations. The [interactive task kernel](../core/interactiveTask.md) owns task epochs, the [surface channel](../agent/nativeHost/surfaceChannel.md) owns command delivery, and each browser checks its own bindings and receipts.
 
 ## Story: Follow the browser the person can see
 
-> As the person, I want the guide to act in the browser I can see.
+> As the person being guided, I want every step to happen in the browser
+> on my screen, so that what the guide reads and does matches what I see.
 
 ### A trusted owned browser can participate on-device, and the visible WebView is read first
 
-Development uses the owned target. The native composition requires the WebView target and uses it alone unless the native layer reports the owned browser as exactly `trusted`. In the dual-target composition, embedded startup runs first and must succeed. Owned startup failure is diagnostic and leaves the embedded route available. Connection presence and visible selection are distinct. Before an observation, status, profile and capabilities delegate to the last selected target with a connected profile, then to the connected owned browser, then to the embedded target.
+Without a native host only the owned browser is used. A native host requires the embedded view and uses it alone unless the device reports the owned browser as trusted; then both run, the embedded one first, and an owned startup failure leaves the embedded route available. Status and capabilities come from the last selected peer with a connected profile, then the connected owned browser, then the embedded view.
 
-A current-page read checks the embedded profile first. A page from that profile selects the embedded target, even with a connected owned browser. No embedded profile, a null page, or an explicit `UNAVAILABLE` in either error field permits fallback to a connected owned browser. Any other embedded failure propagates and leaves selection unchanged. The owned read may itself fail or have no page. The routing result below identifies the chosen port and leaves the owned read result to that port.
+A current-page read checks the embedded view first, and a page from it selects the embedded peer even when the owned browser is connected. Only an absent embedded profile, no page, or an explicit unavailable answer falls back to the owned browser; any other embedded failure propagates and leaves the selection unchanged.
 
 ```quint
-pure def guideComposition(nativeHost: bool, embeddedConstructor: bool, trustValue: str): str =
-  if (not(nativeHost)) "owned"
-  else if (not(embeddedConstructor)) "missing-embedded"
-  else if (trustValue == "trusted") "dual"
-  else "embedded"
-pure def activePeer(lastPeer: str, ownedProfile: bool, embeddedProfile: bool): str =
-  if (lastPeer == "embedded" and embeddedProfile) "embedded"
-  else if (ownedProfile) "owned"
-  else "embedded"
+import numbers as Num from "../core/numbers"
+type BrowserPeer = NoPeer | OwnedPeer | EmbeddedPeer | UnreadablePeer
+type GuideComposition = OwnedOnly | MissingEmbedded | DualTargets | EmbeddedOnly
+type PageRead = PropagateRead | EmbeddedPage | ReadOwned | NoPage
+pure def guideComposition(nativeHost: bool, embeddedConstructor: bool, trustValue: str): GuideComposition =
+  if (not(nativeHost)) OwnedOnly
+  else if (not(embeddedConstructor)) MissingEmbedded
+  else if (trustValue == "trusted") DualTargets
+  else EmbeddedOnly
+pure def activePeer(lastPeer: BrowserPeer, ownedProfile: bool, embeddedProfile: bool): BrowserPeer =
+  if (lastPeer == EmbeddedPeer and embeddedProfile) EmbeddedPeer
+  else if (ownedProfile) OwnedPeer
+  else EmbeddedPeer
 type PageRoute = { embeddedProfile: bool, ownedProfile: bool, gotPage: bool, failed: bool, errorKind: str, errorCode: str }
-pure def pageRoute(reading: PageRoute): str =
-  if (reading.embeddedProfile and reading.failed and reading.errorKind != "UNAVAILABLE" and reading.errorCode != "UNAVAILABLE") "propagate"
-  else if (reading.embeddedProfile and not(reading.failed) and reading.gotPage) "embedded-page"
-  else if (reading.ownedProfile) "read-owned"
-  else "no-page"
+pure def pageRoute(reading: PageRoute): PageRead =
+  if (reading.embeddedProfile and reading.failed and reading.errorKind != "UNAVAILABLE" and reading.errorCode != "UNAVAILABLE") PropagateRead
+  else if (reading.embeddedProfile and not(reading.failed) and reading.gotPage) EmbeddedPage
+  else if (reading.ownedProfile) ReadOwned
+  else NoPage
 pure def lawNativeOwnedRequiresExactTrust(nativeHost: bool, embeddedConstructor: bool, trustValue: str): bool =
-  nativeHost and guideComposition(nativeHost, embeddedConstructor, trustValue) == "dual" implies trustValue == "trusted" and embeddedConstructor
+  nativeHost and guideComposition(nativeHost, embeddedConstructor, trustValue) == DualTargets implies trustValue == "trusted" and embeddedConstructor
 pure def lawVisibleReadErrorNeverFallsThrough(reading: PageRoute): bool =
-  reading.embeddedProfile and reading.failed and reading.errorKind != "UNAVAILABLE" and reading.errorCode != "UNAVAILABLE" implies pageRoute(reading) == "propagate"
+  reading.embeddedProfile and reading.failed and reading.errorKind != "UNAVAILABLE" and reading.errorCode != "UNAVAILABLE" implies pageRoute(reading) == PropagateRead
 pure def lawVisibleWebViewWins(reading: PageRoute): bool =
-  reading.embeddedProfile and not(reading.failed) and reading.gotPage implies pageRoute(reading) == "embedded-page"
+  reading.embeddedProfile and not(reading.failed) and reading.gotPage implies pageRoute(reading) == EmbeddedPage
 pure val visible: PageRoute = { embeddedProfile: true, ownedProfile: true, gotPage: true, failed: false, errorKind: "", errorCode: "" }
 pure val readingValues = Set(visible, { ...visible, gotPage: false }, { ...visible, failed: true, errorKind: "STALE_REF" }, { ...visible, failed: true, errorCode: "UNAVAILABLE" }, { ...visible, embeddedProfile: false }, { ...visible, gotPage: false, ownedProfile: false })
 pure val trustValueValues = Set("trusted", "1", "")
-pure val lastPeerValues = Set("", "embedded", "owned")
+pure val lastPeerValues = Set(NoPeer, EmbeddedPeer, OwnedPeer)
 ```
 
 ### An operation uses the target it found before awaiting a visibility read
 
-The host keys bindings by actor, account, agent, task and epoch. An ordinary operation first captures its bound target. After refreshing the visible page, that operation can go only to the captured target and only if it is still the active target. A read failure propagates. A missing matching binding or a changed transport returns `STALE_REF`. Cleanup guidance of kind `hide` or `pause` goes to the bound target without a visibility read and leaves its binding in place. The host captures the target before awaiting visibility and does not reload the binding map afterwards. A concurrent local revoke may therefore remove the binding before the host sends a command to the captured target. The peer's scope, lease and observation checks determine whether that command is admissible there. These rules model routing rather than the peer's execution receipt.
+Bindings are keyed by actor, account, agent, task and epoch. An ordinary operation captures its bound peer, refreshes the visible page, and then goes only to that peer and only while it is still the active one. A read failure propagates; a missing binding or a changed transport is a stale reference. Hide and pause cleanup go to the bound peer without a visibility read and keep the binding. The peer's own scope, lease and observation checks decide whether a command it receives is admissible.
 
 ```quint
-type OperationRoute = { matchedPeer: str, cleanup: bool, readFailed: bool, observedPeer: str }
-pure def operationRoute(command: OperationRoute): str =
-  if (command.matchedPeer == "") "STALE_REF"
-  else if (command.cleanup) command.matchedPeer
-  else if (command.readFailed) "propagate"
-  else if (command.observedPeer != command.matchedPeer) "STALE_REF"
-  else command.matchedPeer
+type OperationRoute = { matchedPeer: BrowserPeer, cleanup: bool, readFailed: bool, observedPeer: BrowserPeer }
+type PeerTarget = { peer: BrowserPeer }
+type OperationDispatch = StaleRef | PropagateFailure | SendTo(PeerTarget)
+pure def operationRoute(command: OperationRoute): OperationDispatch =
+  if (command.matchedPeer == NoPeer) StaleRef
+  else if (command.cleanup) SendTo({ peer: command.matchedPeer })
+  else if (command.readFailed) PropagateFailure
+  else if (command.observedPeer != command.matchedPeer) StaleRef
+  else SendTo({ peer: command.matchedPeer })
 pure def lawDifferentObservedPeerCannotTakeOperation(command: OperationRoute): bool =
-  command.matchedPeer != "" and not(command.cleanup or command.readFailed) and command.observedPeer != command.matchedPeer implies operationRoute(command) == "STALE_REF"
+  command.matchedPeer != NoPeer and not(command.cleanup or command.readFailed) and command.observedPeer != command.matchedPeer implies operationRoute(command) == StaleRef
 pure def lawCleanupKeepsOriginalPeer(command: OperationRoute): bool =
-  command.matchedPeer != "" and command.cleanup implies operationRoute(command) == command.matchedPeer
-pure val operationRequest: OperationRoute = { matchedPeer: "owned", cleanup: false, readFailed: false, observedPeer: "owned" }
-pure val commandValues = Set(operationRequest, { ...operationRequest, observedPeer: "embedded" }, { ...operationRequest, matchedPeer: "" }, { ...operationRequest, readFailed: true }, { ...operationRequest, cleanup: true, observedPeer: "embedded" })
+  command.matchedPeer != NoPeer and command.cleanup implies operationRoute(command) == SendTo({ peer: command.matchedPeer })
+pure val operationRequest: OperationRoute = { matchedPeer: OwnedPeer, cleanup: false, readFailed: false, observedPeer: OwnedPeer }
+pure val commandValues = Set(operationRequest, { ...operationRequest, observedPeer: EmbeddedPeer }, { ...operationRequest, matchedPeer: NoPeer }, { ...operationRequest, readFailed: true }, { ...operationRequest, cleanup: true, observedPeer: EmbeddedPeer })
 ```
 
 ## Story: Keep task binding authority on its original browser
@@ -67,67 +74,66 @@ pure val commandValues = Set(operationRequest, { ...operationRequest, observedPe
 
 ### A delayed binding response cannot restore a superseded or revoked numeric epoch
 
-For a safe nonnegative integer epoch, the host checks that it is at least the latest bound epoch and strictly above the last revoked epoch. It then captures any previous target for the exact binding key and awaits a page read. A previous target different from the active target stops before calling the peer. If the peer accepts, the host repeats the numeric fence check before updating the local map. A higher completed bind supersedes older local binds. Revocation records the maximum revoked-through epoch before the peer calls, even when all peers refuse.
-
-The pure fence is the host's verified epoch fence. The machine follows one task identity, one pending numbered bind and any intervening numbered bind, revoke or stop. `otherBind` represents a competing call after its own peer acceptance, with its prior target already captured. Two calls at the same epoch can both capture no previous target during overlap. Acceptance of an earlier reply can then replace the host's same-epoch route even after a different peer's reply was recorded first. The second check only reads the numeric fence. Peer authority, observation and later visibility still apply at dispatch.
+A bind needs a nonnegative integer epoch at least the newest bound epoch and above the newest revoked one. A previous peer for the same key that differs from the active peer stops the bind before the peer is called. After the peer accepts, the fence is checked again before the binding is recorded, so a competing bind or revoke that completed meanwhile wins. Revocation raises the revoked-through epoch before calling any peer, even when every peer refuses.
 
 ```quint
 type EpochFence = { newestBound: int, revokedThrough: int }
 pure val vacantFence: EpochFence = { newestBound: -1, revokedThrough: -1 }
-pure def numberedEpoch(epoch: int): bool = epoch >= 0 and epoch <= 9007199254740991
+pure def numberedEpoch(epoch: int): bool = epoch >= 0 and epoch <= Num::maxSafeInteger
 pure def admitsEpoch(fence: EpochFence, epoch: int): bool = epoch >= fence.newestBound and epoch > fence.revokedThrough
 pure def keepsEpoch(fence: EpochFence, epoch: int): bool = epoch == fence.newestBound and epoch > fence.revokedThrough
 pure def revokeFence(fence: EpochFence, epoch: int): EpochFence =
   if (epoch > fence.revokedThrough) { ...fence, revokedThrough: epoch } else fence
-pure def previousPeerMatches(captured: str, active: str): bool = captured == "" or captured == active
-type BrowserArbitration = { fence: EpochFence, boundPeer: str, phase: str, requested: int, previousPeer: str, chosenPeer: str }
-pure val initial: BrowserArbitration = { fence: vacantFence, boundPeer: "", phase: "idle", requested: -1, previousPeer: "", chosenPeer: "" }
+pure def previousPeerMatches(captured: BrowserPeer, active: BrowserPeer): bool = captured == NoPeer or captured == active
+type BindPhase = BindIdle | NeedPage | PeerCall | ReadFailed | WrongPeer | PeerRefused | Overtaken | Bound
+type BrowserArbitration = { fence: EpochFence, boundPeer: BrowserPeer, phase: BindPhase, requested: int, previousPeer: BrowserPeer, chosenPeer: BrowserPeer }
+pure val initial: BrowserArbitration = { fence: vacantFence, boundPeer: NoPeer, phase: BindIdle, requested: -1, previousPeer: NoPeer, chosenPeer: NoPeer }
 pure def canBeginBind(route: BrowserArbitration, epoch: int): bool =
-  route.phase != "need-page" and route.phase != "peer-call" and numberedEpoch(epoch) and admitsEpoch(route.fence, epoch)
+  route.phase != NeedPage and route.phase != PeerCall and numberedEpoch(epoch) and admitsEpoch(route.fence, epoch)
 pure def beginBind(route: BrowserArbitration, epoch: int): BrowserArbitration =
-  { ...route, phase: "need-page", requested: epoch, previousPeer: if (epoch == route.fence.newestBound) route.boundPeer else "", chosenPeer: "" }
-pure def canChoosePeer(route: BrowserArbitration): bool = route.phase == "need-page"
-pure def choosePeer(route: BrowserArbitration, active: str): BrowserArbitration =
-  if (active != "owned" and active != "embedded") { ...route, phase: "read-failed" }
-  else if (not(previousPeerMatches(route.previousPeer, active))) { ...route, phase: "wrong-peer" }
-  else { ...route, phase: "peer-call", chosenPeer: active }
-pure def canFinishBind(route: BrowserArbitration): bool = route.phase == "peer-call"
+  { ...route, phase: NeedPage, requested: epoch, previousPeer: if (epoch == route.fence.newestBound) route.boundPeer else NoPeer, chosenPeer: NoPeer }
+pure def canChoosePeer(route: BrowserArbitration): bool = route.phase == NeedPage
+pure def choosePeer(route: BrowserArbitration, active: BrowserPeer): BrowserArbitration =
+  if (active != OwnedPeer and active != EmbeddedPeer) { ...route, phase: ReadFailed }
+  else if (not(previousPeerMatches(route.previousPeer, active))) { ...route, phase: WrongPeer }
+  else { ...route, phase: PeerCall, chosenPeer: active }
+pure def canFinishBind(route: BrowserArbitration): bool = route.phase == PeerCall
 pure def finishBind(route: BrowserArbitration, peerAccepted: bool): BrowserArbitration =
-  if (not(peerAccepted)) { ...route, phase: "peer-refused" }
-  else if (not(admitsEpoch(route.fence, route.requested))) { ...route, phase: "overtaken" }
-  else { ...route, phase: "bound", boundPeer: route.chosenPeer, fence: { ...route.fence, newestBound: route.requested } }
-type CompetingBinding = { epoch: int, capturedPeer: str, settledPeer: str }
+  if (not(peerAccepted)) { ...route, phase: PeerRefused }
+  else if (not(admitsEpoch(route.fence, route.requested))) { ...route, phase: Overtaken }
+  else { ...route, phase: Bound, boundPeer: route.chosenPeer, fence: { ...route.fence, newestBound: route.requested } }
+type CompetingBinding = { epoch: int, capturedPeer: BrowserPeer, settledPeer: BrowserPeer }
 pure def canOtherBind(route: BrowserArbitration, competitor: CompetingBinding): bool =
   numberedEpoch(competitor.epoch) and admitsEpoch(route.fence, competitor.epoch) and
-  (competitor.settledPeer == "owned" or competitor.settledPeer == "embedded") and previousPeerMatches(competitor.capturedPeer, competitor.settledPeer)
+  (competitor.settledPeer == OwnedPeer or competitor.settledPeer == EmbeddedPeer) and previousPeerMatches(competitor.capturedPeer, competitor.settledPeer)
 pure def otherBind(route: BrowserArbitration, competitor: CompetingBinding): BrowserArbitration =
   { ...route, boundPeer: competitor.settledPeer, fence: { ...route.fence, newestBound: competitor.epoch } }
 pure def canRevokeBrowser(route: BrowserArbitration, epoch: int): bool = numberedEpoch(epoch)
 pure def revokeBrowser(route: BrowserArbitration, epoch: int): BrowserArbitration = {
   val updated = revokeFence(route.fence, epoch)
-  { ...route, fence: updated, boundPeer: if (keepsEpoch(updated, updated.newestBound)) route.boundPeer else "" }
+  { ...route, fence: updated, boundPeer: if (keepsEpoch(updated, updated.newestBound)) route.boundPeer else NoPeer }
 }
-pure def stopTargets(route: BrowserArbitration): BrowserArbitration = { ...route, boundPeer: "" }
+pure def stopTargets(route: BrowserArbitration): BrowserArbitration = { ...route, boundPeer: NoPeer }
 pure def alwaysRecordedNumericBindingIsCurrent(route: BrowserArbitration): bool =
-  route.boundPeer != "" implies route.fence.newestBound >= 0 and keepsEpoch(route.fence, route.fence.newestBound)
+  route.boundPeer != NoPeer implies route.fence.newestBound >= 0 and keepsEpoch(route.fence, route.fence.newestBound)
 pure def alwaysPendingPeerWasChosen(route: BrowserArbitration): bool =
-  route.phase == "peer-call" implies (route.chosenPeer == "owned" or route.chosenPeer == "embedded") and numberedEpoch(route.requested)
-pure def alwaysPendingRequestIsNumbered(route: BrowserArbitration): bool = route.phase == "need-page" implies numberedEpoch(route.requested)
+  route.phase == PeerCall implies (route.chosenPeer == OwnedPeer or route.chosenPeer == EmbeddedPeer) and numberedEpoch(route.requested)
+pure def alwaysPendingRequestIsNumbered(route: BrowserArbitration): bool = route.phase == NeedPage implies numberedEpoch(route.requested)
 pure def stepFencesNeverRegress(before: BrowserArbitration, after: BrowserArbitration): bool =
   after.fence.newestBound >= before.fence.newestBound and after.fence.revokedThrough >= before.fence.revokedThrough
-pure def sometimesBoundEmbedded(route: BrowserArbitration): bool = route.phase == "bound" and route.boundPeer == "embedded"
+pure def sometimesBoundEmbedded(route: BrowserArbitration): bool = route.phase == Bound and route.boundPeer == EmbeddedPeer
 pure def sometimesRevokedDuringPeerCall(route: BrowserArbitration): bool =
-  route.phase == "overtaken" and route.requested <= route.fence.revokedThrough
+  route.phase == Overtaken and route.requested <= route.fence.revokedThrough
 pure val epochValues = Set(-1, 0, 1, 2)
-pure val activeValues = Set("owned", "embedded", "read-error")
-pure val competitorValues = Set({ epoch: 0, capturedPeer: "", settledPeer: "owned" }, { epoch: 1, capturedPeer: "", settledPeer: "embedded" }, { epoch: 2, capturedPeer: "owned", settledPeer: "embedded" })
+pure val activeValues = Set(OwnedPeer, EmbeddedPeer, UnreadablePeer)
+pure val competitorValues = Set({ epoch: 0, capturedPeer: NoPeer, settledPeer: OwnedPeer }, { epoch: 1, capturedPeer: NoPeer, settledPeer: EmbeddedPeer }, { epoch: 2, capturedPeer: OwnedPeer, settledPeer: EmbeddedPeer })
 ```
 
 ### Bounded local records and malformed numbers do not substitute for peer authority
 
-A recorded bind refreshes the binding's insertion order. The host holds at most sixteen binding keys and removes the oldest on overflow. A numbered fence write refreshes the task's fence order, retaining at most sixty-four fences. Evicting a fence removes that task's remaining binding entries. Dropping a binding alone retains its fence. Stop clears every binding, preserves fences, asks both peers to stop, and waits for both outcomes without propagating stop failure or fabricating revoke receipts. A pending bind can still settle after stop under the same numeric fence if its peer reports acceptance. The pinned peers separately end their connections and stale work.
+A recorded bind refreshes the binding's insertion order. The host holds at most sixteen binding keys and removes the oldest on overflow. A numbered fence write refreshes the task's fence order, retaining at most sixty-four fences. Evicting a fence removes that task's remaining binding entries. Dropping a binding alone retains its fence. Stop clears every binding, preserves fences, asks both peers to stop, and waits for both outcomes without propagating stop failure or fabricating revoke receipts. A pending bind can still settle after stop under the same numeric fence if its peer reports acceptance.
 
-An invalid epoch is sent to the peer for its own decision without creating or moving a numeric fence. For malformed but comparable values, the host's fallback removes older local bindings after an accepted unnumbered bind and removes older or equal local bindings on an unnumbered revoke before peer results. NaN does not compare and positive infinity can remove all finite bindings of the task. The local host's malformed branch must not be used as evidence a peer accepted. The list functions below apply to ordered unique keys from the host maps and the comparison facts come from the JavaScript boundary.
+An invalid epoch is sent to the peer for its own decision without creating or moving a numeric fence, and the host's handling of it is never evidence that a peer accepted. After an accepted unnumbered bind the host removes older local bindings, and on an unnumbered revoke it removes older or equal ones before the peer results.
 
 ```quint
 pure def refreshKey(order: List[str], key: str): List[str] = order.select(held => held != key).append(key)
@@ -149,7 +155,7 @@ pure val capacityValues = Set(0, 1, 16, 64)
 
 ### Revocation keeps the local fence and forwards the peer outcomes
 
-The host sends revoke to each target that currently reports a profile, in owned-then-embedded order, and waits for all reached peers. With no peer it returns `STALE_REF`. In the result ordering, a rejection with kind or fallback code outside `STALE_REF`, `POLICY_BLOCKED`, and `SESSION_GONE` wins over any acknowledgement. Otherwise the first fulfilled reply supplies the actual value. If all reached peers only report an unknown binding, return the first refusal. The model names a winning peer and disposition, and the host uses that peer's unchanged value or error. A rejected same-epoch revoke may already have retired the local route while the browser still retains the binding. The caller receives the actual refusal.
+Revoke goes to every peer that reports a profile, owned first, and waits for all of them; with no peer it is a stale reference. A refusal other than stale reference, policy block or gone session wins over any acknowledgement; otherwise the first acknowledgement is returned, and if every peer only reports an unknown binding the first refusal is returned. The caller receives the winning peer's answer unchanged, while the local fence stays raised.
 
 ```quint
 type RevokePeer = { reached: bool, accepted: bool, kindPresent: bool, kind: str, code: str }
@@ -157,19 +163,20 @@ pure def hardRevokeFailure(peer: RevokePeer): bool = {
   val failure = if (peer.kindPresent) peer.kind else peer.code
   peer.reached and not(peer.accepted) and not(Set("STALE_REF", "POLICY_BLOCKED", "SESSION_GONE").contains(failure))
 }
-pure def revokeResult(owned: RevokePeer, embedded: RevokePeer): str =
-  if (hardRevokeFailure(owned)) "owned-refusal"
-  else if (hardRevokeFailure(embedded)) "embedded-refusal"
-  else if (owned.reached and owned.accepted) "owned-accepted"
-  else if (embedded.reached and embedded.accepted) "embedded-accepted"
-  else if (owned.reached) "owned-refusal"
-  else if (embedded.reached) "embedded-refusal"
-  else "STALE_REF"
+type RevokeOutcome = OwnedRefusal | EmbeddedRefusal | OwnedAccepted | EmbeddedAccepted | NoPeerReached
+pure def revokeResult(owned: RevokePeer, embedded: RevokePeer): RevokeOutcome =
+  if (hardRevokeFailure(owned)) OwnedRefusal
+  else if (hardRevokeFailure(embedded)) EmbeddedRefusal
+  else if (owned.reached and owned.accepted) OwnedAccepted
+  else if (embedded.reached and embedded.accepted) EmbeddedAccepted
+  else if (owned.reached) OwnedRefusal
+  else if (embedded.reached) EmbeddedRefusal
+  else NoPeerReached
 pure def lawHardRevokeFailureTakesPrecedence(owned: RevokePeer, embedded: RevokePeer): bool =
-  hardRevokeFailure(owned) or hardRevokeFailure(embedded) implies revokeResult(owned, embedded) == "owned-refusal" or revokeResult(owned, embedded) == "embedded-refusal"
+  hardRevokeFailure(owned) or hardRevokeFailure(embedded) implies revokeResult(owned, embedded) == OwnedRefusal or revokeResult(owned, embedded) == EmbeddedRefusal
 pure def lawRevocationCannotInventAcknowledgement(owned: RevokePeer, embedded: RevokePeer): bool =
-  (revokeResult(owned, embedded) == "owned-accepted" implies owned.reached and owned.accepted) and
-  (revokeResult(owned, embedded) == "embedded-accepted" implies embedded.reached and embedded.accepted)
+  (revokeResult(owned, embedded) == OwnedAccepted implies owned.reached and owned.accepted) and
+  (revokeResult(owned, embedded) == EmbeddedAccepted implies embedded.reached and embedded.accepted)
 pure val peerAbsent: RevokePeer = { reached: false, accepted: false, kindPresent: false, kind: "", code: "" }
 pure val ownedValues = Set(peerAbsent, { ...peerAbsent, reached: true, accepted: true }, { ...peerAbsent, reached: true, kindPresent: true, kind: "POLICY_BLOCKED" }, { ...peerAbsent, reached: true, code: "SESSION_GONE" }, { ...peerAbsent, reached: true, kindPresent: true, kind: "UNCERTAIN_OUTCOME" }, { ...peerAbsent, reached: true, kindPresent: true, kind: "UNCERTAIN_OUTCOME", code: "STALE_REF" }, { ...peerAbsent, reached: true, kindPresent: true, code: "STALE_REF" })
 pure val embeddedValues = Set(peerAbsent, { ...peerAbsent, reached: true, accepted: true }, { ...peerAbsent, reached: true, kindPresent: true, kind: "POLICY_BLOCKED" }, { ...peerAbsent, reached: true, code: "SESSION_GONE" }, { ...peerAbsent, reached: true, kindPresent: true, kind: "UNCERTAIN_OUTCOME" }, { ...peerAbsent, reached: true, kindPresent: true, kind: "UNCERTAIN_OUTCOME", code: "STALE_REF" }, { ...peerAbsent, reached: true, kindPresent: true, code: "STALE_REF" })

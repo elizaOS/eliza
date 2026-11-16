@@ -50,7 +50,8 @@ pure val laterValues = clockValues
 
 A clock whose continuity differs from the deadline's, that runs behind the
 review, or a deadline that is not exactly ten seconds long, means the clock
-changed: the deletion is neither open nor expired.
+changed: the deletion is neither open nor expired. Wall time never decides
+the window.
 
 ```quint
 type WindowState = WindowOpen | WindowExpired | ClockChanged
@@ -62,11 +63,6 @@ pure def deletionWindow(deadline: DeletionDeadline, later: DeletionClock): Windo
 pure def lawWindowOpenForTenSeconds(clock: DeletionClock, later: DeletionClock): bool =
   (clockUsable(clock) and clockUsable(later) and later.continuity == clock.continuity) implies
     ((deletionWindow(deletionDeadline(clock), later) == WindowOpen) iff (later.elapsed >= clock.elapsed and later.elapsed < clock.elapsed + deleteUndoMs))
-```
-
-### Wall time never decides expiry
-
-```quint
 pure def lawWallTimeNeverDecidesExpiry(clock: DeletionClock, later: DeletionClock, wall: int): bool =
   (later.wall >= 0 and wall >= 0) implies deletionWindow(deletionDeadline(clock), later) == deletionWindow(deletionDeadline(clock), { ...later, wall: wall })
 pure val wallValues = Set(0, 1, 99999)
@@ -79,7 +75,10 @@ owner of the deletion can claim it, and only while it is queued; an Undo
 may also claim a paused deletion. Undo wins while the window is open or
 the clock changed, but not once it has expired. The provider write wins
 only once the window has expired. Whichever claims first moves the
-deletion out of the queue, so the other cannot claim it after.
+deletion out of the queue, so the other cannot claim it after. A changed
+clock never authorizes the provider write: the deletion pauses for review
+again, and undoing a deletion that was never sent stays safe. A deletion that is being sent, or whose outcome is unknown, cannot
+be claimed by Undo or by another provider write.
 
 ```quint
 type DeletionPhase = Queued | Paused | Dispatching | Undone | Deleted | DeletionConflict | UnknownOutcome
@@ -110,24 +109,10 @@ pure val entryValues: Set[PendingDeletion] = List(
   { owner: "owner1", deadline: deletionDeadline({ continuity: "boot1", elapsed: 0, wall: 100 }), deletionPhase: UnknownOutcome },
   { owner: "owner2", deadline: deletionDeadline({ continuity: "boot2", elapsed: 5000, wall: 100 }), deletionPhase: Queued }
 ).foldl(Set(), (acc, e) => acc.union(Set(e)))
-```
-
-### A lost clock never authorizes the provider write
-
-When the clock changed, the deletion pauses for review again. Undoing a
-deletion that was never sent stays safe.
-
-```quint
 pure def lawLostClockNeverDispatches(entry: PendingDeletion, owner: str, later: DeletionClock): bool =
   deletionWindow(entry.deadline, later) == ClockChanged implies not(claimDeletion(entry, owner, later, ClaimDispatch).won)
-```
-
-### An uncertain outcome is never sent again
-
-A deletion that is being sent, or whose outcome is unknown, cannot be
-claimed by Undo or by another provider write.
-
-```quint
+pure def lawLostClockStillAllowsUndo(entry: PendingDeletion, owner: str, later: DeletionClock): bool =
+  (entry.owner == owner and (entry.deletionPhase == Queued or entry.deletionPhase == Paused) and deletionWindow(entry.deadline, later) == ClockChanged) implies claimDeletion(entry, owner, later, ClaimUndo).won
 pure def lawUncertainOutcomeIsNeverReplayed(entry: PendingDeletion, owner: str, later: DeletionClock, claimAction: DeletionClaimAction): bool =
   (entry.deletionPhase == Dispatching or entry.deletionPhase == UnknownOutcome) implies not(claimDeletion(entry, owner, later, claimAction).won)
 ```

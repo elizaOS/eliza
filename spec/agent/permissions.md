@@ -1,8 +1,8 @@
 # Device permission state
 
 The agent keeps the device's permission state, such as microphone, camera or
-notifications, in `packages/agent/src/services/permissions/permissions-registry.ts`,
-probing the Android permission APIs through the native bridge. A native probe
+notifications, in its permissions registry, probing the platform's
+permission APIs through the native bridge. A native probe
 cannot be aborted, so this spec owns how probes of one permission are
 serialized, how shutdown fences their late results, and how a state that could
 not be saved is kept until it is. Each permission has its own registry entry;

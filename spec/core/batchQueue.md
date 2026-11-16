@@ -4,6 +4,9 @@ Priority admission, per-item retry and scheduled draining share one queue owner.
 
 ## Story: Schedule one drain at a time
 
+> As a host, I want one drain of my queue at a time, checked against live
+> batch capability, so that queued work is never lost or processed twice.
+
 As a host I register a repeat task, enqueue work and probe live batch capability before removing queued items.
 
 ### A failed capability probe leaves queued items untouched
@@ -81,6 +84,10 @@ pure def sometimesPartialBatchSuccess(s: BatchQueue): bool = s.active.some(j => 
 ```
 
 ## Story: Dispose the queue and optionally flush urgent work
+
+> As a host, I want disposal to refuse new work, flush urgent work once
+> and remove the repeat task, so that shutting a queue down loses nothing
+> I marked urgent.
 
 As a host I reject new enqueue operations immediately, flush selected high-priority work once in serial order and remove the repeat task.
 

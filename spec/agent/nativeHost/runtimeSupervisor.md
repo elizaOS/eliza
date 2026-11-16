@@ -1,8 +1,7 @@
 # Native runtime supervisor
 
 The native host supervises one private runtime child for the account it is
-currently asked to run (`packages/agent/native-host/runtime-supervisor.mjs`
-and `private-runtime-launch.mjs`). The desired identity can change at any
+currently asked to run. The desired identity can change at any
 time; the supervisor starts, reaps and stops only the child it launched.
 [Account migration](./accountMigration.md) prepares an account's files
 before its child starts.

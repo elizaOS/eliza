@@ -1,14 +1,18 @@
 # Secret placeholder session
 
-The source is `packages/core/src/security/secret-swap.ts` at the pinned baseline. One session owns a fresh nonce and a bijection from exact secret values to placeholders. Compiled replacement and containment patterns are caches derived from those values. `SecretText.characters` is the complete Unicode code-point sequence of `value`; the input boundary supplies exact Unicode letter/number/underscore and whitespace classifications and UTF-16 widths. Literal matching, short-value boundaries and the symmetric containment rule are executable below. The string/code-point correspondence remains a decoder obligation. The placeholder is distinct from a pseudonym and is restored only at authorized local boundaries.
+Secret placeholders of `security/secret-swap.ts`. One session owns a fresh nonce and a bijection from exact secret values to placeholders; compiled replacement and containment patterns are caches of those values. `SecretText.characters` is the code-point sequence of `value`, and the input boundary supplies Unicode letter/number/underscore and whitespace classes and UTF-16 widths. A placeholder is distinct from a [pseudonym](./pseudonymSession.md) and is restored only at authorized local boundaries.
 
 ## Story: Restore known placeholders while keeping credentials out of replies
 
-As an agent, I replace known credential and contact values with stable session placeholders. Restoring handler arguments resolves known placeholders exactly and optionally rejects unresolved placeholders from this session. User-visible replies may restore personal contacts, while credential values and overlapping protected values remain redacted.
+> As an agent, I want known credential and contact values replaced with
+> stable session placeholders, so that credentials stay out of replies while
+> handler arguments are restored exactly.
 
-Discovered by the proof: an empty session nonce has no registered entries. A new nonce can therefore never change the identity of an existing placeholder.
+Restoring handler arguments resolves known placeholders exactly and optionally rejects unresolved placeholders from this session. User-visible replies may restore personal contacts, while credential values and overlapping protected values remain redacted.
 
 ### Every new secret has one stable placeholder in its session
+
+Discovered by the proof: an empty session nonce has no registered entries, so a new nonce can never change the identity of an existing placeholder.
 
 ```quint
 type SecretValue = str

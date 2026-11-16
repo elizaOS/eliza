@@ -1,13 +1,12 @@
 # Native cloud live speech custody
 
-A consumer's cloud voice adapter uses `native-cloud-speech.ts` from the
-voice sources. It can select it for a cloud voice driver when the native
-streaming bridge is available and resident inference is outside the direct
-route. The bridge owns credentials and PCM. The renderer receives decoded
-lifecycle, level, and text events. The server half is
-[cloud speech](../../cloud/speech.md). The client's paid lease and consent
-deadline are [cloud speech lease](./cloudSpeechLease.md), and the handover
-to a successor session is [cloud speech successor](./cloudSpeechSuccessor.md).
+A consumer's cloud voice driver can stream live speech through the native
+cloud bridge when that bridge is available and resident inference is not
+the direct route. The bridge owns credentials and PCM; the renderer
+receives decoded lifecycle, level and text events. The server half is
+[cloud speech](../../cloud/speech.md); the paid lease and consent deadline
+are [cloud speech lease](./cloudSpeechLease.md), and the handover to a
+successor session is [cloud speech successor](./cloudSpeechSuccessor.md).
 
 ## Story: Reopen capture without inheriting a provider turn from playback
 
@@ -26,11 +25,8 @@ Its final can finish the drain but cannot publish into a newer listener.
 Interim and final text require a matching provider session, a current
 capture generation, and decoded text of at most 16,384 UTF-16 units.
 Final text is trimmed. Cancellation and native failure retire the session
-and its listeners. Discovered by the proof: a rejected open must also clear
-any captured speech owner before entering the retired state. The model uses one logical provider session and
-projects retirement, final and unmute acknowledgments as bridge events.
-Speech audio receipt and cancellation use the separately owned
-[playback boundary](./playback.md).
+and its listeners. Speech audio receipt and cancellation belong to
+[playback](./playback.md).
 
 ```quint
 type NativeCloudPhase = CloudSpeechClosed | CloudSpeechOpening | CloudSpeechListening | CloudSpeechMuted | CloudSpeechDraining | CloudSpeechRetired
@@ -67,10 +63,19 @@ pure def retireCloudCapture(c: CloudCapture): CloudCapture =
 pure def alwaysCaptureGeneration(c: CloudCapture): bool =
   c.generation >= 0 and c.speechOwner >= 0 and c.speechOwner <= c.generation and
   (c.phase == CloudSpeechListening implies c.generation > 0)
-pure def alwaysRetiredCaptureIsSilent(c: CloudCapture): bool = c.phase == CloudSpeechRetired implies not(c.speechActive) and c.speechOwner == 0
 pure def stepPublicationNeedsExactLiveCapture(before: CloudCapture, via: str, after: CloudCapture): bool =
   after.published != before.published implies via == "hearFinal" and ownsCloudSpeech(before)
 pure def sometimesMutedSpeechDrains(c: CloudCapture): bool = c.phase == CloudSpeechDraining and c.speechActive and c.speechOwner == 0
 pure def sometimesClosingCaptureFinishesItsFinal(c: CloudCapture): bool = c.phase == CloudSpeechDraining and c.published > 0
 pure def sometimesCloudFinalPublishes(c: CloudCapture): bool = c.published > 0
+```
+
+### A retired capture has no active speech and no speech owner
+
+Discovered by the proof: without it, an open the bridge rejected could
+retire the session while a captured speech owner remained, and a late
+final could then be taken as a turn of a capture that no longer exists.
+
+```quint
+pure def alwaysRetiredCaptureIsSilent(c: CloudCapture): bool = c.phase == CloudSpeechRetired implies not(c.speechActive) and c.speechOwner == 0
 ```

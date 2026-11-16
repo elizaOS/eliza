@@ -99,10 +99,10 @@ lemma readFresh_ensures(m: MemoReads, readerId: string)
     FreshReadShape(m, readerId);
     var after := readFresh(m, readerId);
     forall id | id in after.fetchIds
-      ensures id > 0 && id <= after.serial && fetchAt(after, id).phase != fetchAbsentValue
+      ensures id > 0 && id <= after.serial && fetchAt(after, id).phase != FetchAbsent
       ensures 0 <= fetchAt(after, id).floor <= after.completed
       ensures fetchAt(after, id).captured ==> fetchAt(after, id).floor <= fetchAt(after, id).version <= after.durable
-      ensures fetchAt(after, id).phase == fetchResolvedValue ==> fetchAt(after, id).captured
+      ensures fetchAt(after, id).phase == FetchResolved ==> fetchAt(after, id).captured
     {
       if id != m.serial + 1 { assert id in m.fetchIds; }
     }

@@ -1,93 +1,42 @@
 # Workflow approval and device operation receipts
 
-A consumer uses `WorkflowClient.approvals` and `decideApproval` from
-`packages/contracts/src/workflow-client.ts` and device-step review from
-`packages/contracts/src/workflow-device.ts`.
-`EmbeddedWorkflowService.decideReviewedApproval` reads the canonical
-Smithers receipt under the execution lock. The [run scope](./runScope.md)
-owns the exact calendar scope of a reviewed read.
+The owner decides a reviewed approval against the workflow engine's
+canonical receipt, read under the execution lock. The [run
+scope](./runScope.md) owns the exact calendar scope of a reviewed read.
 
-## Story: Decide one reviewed approval and confirm the native result
+## Story: Decide one reviewed approval once and run its device step only as reviewed
 
-> As the owner, I want my decision to apply to the request I reviewed, and a
-> device step to run only within the scope I reviewed on my enrolled device.
+> As the owner, I want my decision to apply once to the run and request I
+> reviewed, to be told only what the engine actually recorded, and a device
+> step to run only within the scope I reviewed on my enrolled device.
 
-### The current request digest and canonical receipt determine the decision
+### One caller at a time holds the execution lock, and only the canonical decision is reported
 
-A transaction selects the run in its tenant, then checks the captured
-version and approval node/iteration/request digest. A decided receipt is
-replayable only for the same decision and actor. Pending approval is
-refused for a finished or cancelling run. An unsupported review may be
-denied but cannot be approved. The control process may commit and lose
-its reply. Recovery requires canonical readback for the same decision,
-digest and actor. A missing result is unknown, and no successful response
-is inferred from a submitted control command. Shell validation handles
-bounded strings, approval arrays, numbers, and wire schema.
+Each caller's request passes the owner gate, then takes the execution row
+lock and checks the captured version and approval request digest against
+the canonical receipt. A decided receipt resumes a caller that asked for
+the same decision and fails one that asked for the other. A pending
+approval on a finished or cancelling run, or an approval of an unsupported
+review, fails; an unsupported review may still be denied. Otherwise the
+caller sends the control command under the lock. The engine may commit it
+and lose the reply; the caller then reads the canonical receipt back for
+the same decision, digest and actor, and caches it. A failed readback or
+cache write releases the lock without undoing the engine's receipt, and no
+success is inferred from a submitted command. A caller is answered only
+with the canonical decision.
 
 ```quint
 type ApprovalState = PendingApproval | ApprovedRequest | DeniedRequest
 type ApprovalCheck = SendControl | ReadCanonical | ApprovalIdentityChanged | DecisionAlreadyDifferent | ExecutionUnavailable | ReviewUnsupported
 type ApprovalFacts = { identitiesMatch: bool, digestMatches: bool, prior: ApprovalState, actorMatches: bool, finished: bool, cancelRequested: bool, supported: bool }
-pure val pendingApproval: ApprovalState = PendingApproval
-pure val approvedRequest: ApprovalState = ApprovedRequest
 pure def decideApproval(facts: ApprovalFacts, approved: bool): ApprovalCheck =
   if (not(facts.identitiesMatch) or not(facts.digestMatches)) ApprovalIdentityChanged
   else if (facts.prior != PendingApproval) (if (facts.actorMatches and facts.prior == (if (approved) ApprovedRequest else DeniedRequest)) ReadCanonical else DecisionAlreadyDifferent)
   else if (facts.finished or facts.cancelRequested) ExecutionUnavailable
   else if (approved and not(facts.supported)) ReviewUnsupported
   else SendControl
-pure val factsValues = Set(
-  { identitiesMatch: true, digestMatches: true, prior: pendingApproval, actorMatches: true, finished: false, cancelRequested: false, supported: true },
-  { identitiesMatch: true, digestMatches: true, prior: pendingApproval, actorMatches: true, finished: false, cancelRequested: false, supported: false },
-  { identitiesMatch: true, digestMatches: true, prior: approvedRequest, actorMatches: true, finished: true, cancelRequested: false, supported: true },
-  { identitiesMatch: true, digestMatches: false, prior: pendingApproval, actorMatches: true, finished: false, cancelRequested: false, supported: true })
-pure def lawDecidedRequestNeverSendsControl(facts: ApprovalFacts, approved: bool): bool = facts.prior != PendingApproval implies decideApproval(facts, approved) != SendControl
-pure def lawStaleReviewCannotSend(facts: ApprovalFacts, approved: bool): bool = (not(facts.identitiesMatch) or not(facts.digestMatches)) implies decideApproval(facts, approved) == ApprovalIdentityChanged
-pure def lawUnsupportedReviewCannotApprove(facts: ApprovalFacts): bool = not(facts.supported) implies decideApproval(facts, true) != SendControl
 pure def receiptConfirmed(matchingRun: bool, matchingNode: bool, matchingDigest: bool, matchingDecision: bool, matchingActor: bool, controlFailed: bool): bool = matchingRun and matchingNode and matchingDigest and matchingDecision and (not(controlFailed) or matchingActor)
 pure def lawFailedControlRequiresExactActor(matchingRun: bool, matchingNode: bool, matchingDigest: bool, matchingDecision: bool, matchingActor: bool): bool = receiptConfirmed(matchingRun, matchingNode, matchingDigest, matchingDecision, matchingActor, true) implies matchingActor and matchingDigest and matchingDecision
-```
-
-### Device steps require the exact reviewed scope and enrolled device
-
-The device read/write command must name the still-running run, workflow,
-version, spec digest, and step. Its installation and enrollment must
-match the reviewed device. The concrete requested operation, including
-its resource or calendar range, must match that step and kind. For stored
-runs with a calendar anchor, relative dates are resolved against that
-exact persisted instant. Older rows take the legacy current-clock
-comparison. The approval notice is a read-only route and does not
-provide authority for a device operation.
-
-```quint
-type StepFacts = { runMatches: bool, definitionMatches: bool, versionMatches: bool, digestMatches: bool, installationMatches: bool, enrollmentMatches: bool, stepMatches: bool, operationMatches: bool, finished: bool, cancelRequested: bool }
-pure def admitsReviewedDeviceStep(scope: StepFacts): bool = scope.runMatches and scope.definitionMatches and scope.versionMatches and scope.digestMatches and scope.installationMatches and scope.enrollmentMatches and scope.stepMatches and scope.operationMatches and not(scope.finished) and not(scope.cancelRequested)
-pure val scopeValues = Set(
-  { runMatches: true, definitionMatches: true, versionMatches: true, digestMatches: true, installationMatches: true, enrollmentMatches: true, stepMatches: true, operationMatches: true, finished: false, cancelRequested: false },
-  { runMatches: true, definitionMatches: true, versionMatches: true, digestMatches: true, installationMatches: true, enrollmentMatches: false, stepMatches: true, operationMatches: true, finished: false, cancelRequested: false })
-pure def lawForeignDeviceCannotUseReview(scope: StepFacts): bool = (not(scope.installationMatches) or not(scope.enrollmentMatches)) implies not(admitsReviewedDeviceStep(scope))
-pure def lawTerminalRunCannotUseDevice(scope: StepFacts): bool = (scope.finished or scope.cancelRequested) implies not(admitsReviewedDeviceStep(scope))
-```
-
-## Story: An approval decides one reviewed run once
-
-> As the owner, I want my approval to decide exactly the run I reviewed, once,
-> and to be told only what the engine actually recorded.
-
-### One caller at a time holds the execution lock, and only the canonical decision is reported
-
-Ported from the workflow package's reviewed-approval model. Each caller's
-request passes the owner gate, then takes the execution row lock, checks the
-captured version and request digest, and reads the canonical receipt. A
-decided receipt resumes a caller that asked for the same decision and fails
-one that asked for the other. A pending approval on a finished or cancelling
-run, or an approval of an unsupported review, fails. Otherwise the caller
-sends the control command under the lock. The engine may commit it and lose
-the reply; the caller then reads the canonical receipt back and caches it.
-A failed readback or cache write releases the lock without undoing the
-engine's receipt. A caller is answered only with the canonical decision.
-
-```quint
 type CallerPhase = CallerIdle | CallerQueued | CallerReading | CallerCommanding | CallerReadingBack | CallerPersisting | CallerResuming | CallerDone | CallerFailed
 type ApprovalAttempt = { caller: str, phase: CallerPhase, wants: ApprovalState, ownerOk: bool, versionOk: bool, digestOk: bool, responded: bool, response: ApprovalState }
 type ApprovalRun = { lock: str, canonical: ApprovalState, cached: ApprovalState, supported: bool, finished: bool, cancelled: bool, effects: int, attempts: List[ApprovalAttempt] }
@@ -107,14 +56,14 @@ pure def acquireRun(r: ApprovalRun, caller: str): ApprovalRun = {
   val a = attemptOf(r, caller)
   if (not(a.ownerOk)) withAttempt({ ...a, phase: CallerFailed }, r) else withAttempt({ ...a, phase: CallerReading }, { ...r, lock: caller })
 }
+pure def reviewFacts(r: ApprovalRun, a: ApprovalAttempt): ApprovalFacts =
+  { identitiesMatch: a.versionOk, digestMatches: a.digestOk, prior: r.canonical, actorMatches: a.ownerOk, finished: r.finished, cancelRequested: r.cancelled, supported: r.supported }
 pure def canReviewApproval(r: ApprovalRun, caller: str): bool = caller != "" and r.lock == caller and attemptOf(r, caller).phase == CallerReading
 pure def reviewApproval(r: ApprovalRun, caller: str): ApprovalRun = {
   val a = attemptOf(r, caller)
-  val released = { ...r, lock: "" }
-  if (not(a.versionOk) or not(a.digestOk)) withAttempt({ ...a, phase: CallerFailed }, released)
-  else if (r.canonical != PendingApproval) withAttempt({ ...a, phase: if (r.canonical == a.wants) CallerResuming else CallerFailed }, released)
-  else if (r.finished or r.cancelled or (a.wants == ApprovedRequest and not(r.supported))) withAttempt({ ...a, phase: CallerFailed }, released)
-  else withAttempt({ ...a, phase: CallerCommanding }, r)
+  val check = decideApproval(reviewFacts(r, a), a.wants == ApprovedRequest)
+  if (check == SendControl) withAttempt({ ...a, phase: CallerCommanding }, r)
+  else withAttempt({ ...a, phase: if (check == ReadCanonical) CallerResuming else CallerFailed }, { ...r, lock: "" })
 }
 pure def canSendControl(r: ApprovalRun, caller: str): bool = caller != "" and r.lock == caller and attemptOf(r, caller).phase == CallerCommanding
 pure def sendControl(r: ApprovalRun, caller: str, committed: bool): ApprovalRun = {
@@ -162,12 +111,12 @@ pure def sometimesCommittedReplyLost(r: ApprovalRun): bool = r.effects == 1 and 
 pure def sometimesUnsupportedDenied(r: ApprovalRun): bool = not(r.supported) and r.canonical == DeniedRequest
 ```
 
-### Each caller's phase records the checks it has already passed
+### A caller acts only on the checks it has passed
 
-These facts keep the decision rules above inductive. A caller is listed once. The lock belongs to exactly the
-caller that is reading, commanding, reading back or persisting. A caller
-past the lock has passed the owner gate; one past review matched the
-captured version and digest. A commanding caller saw a pending decision on a
+The lock belongs to exactly the caller that is reading, commanding, reading
+back or persisting, and each caller is listed once. A caller past the lock
+has passed the owner gate; one past review matched the captured version
+and digest. A caller sends a command only for a pending decision on a
 running, supported review. A caller reading back, persisting or resuming
 wants the canonical decision, and only a finished caller has been answered.
 
@@ -182,4 +131,23 @@ pure def alwaysLockHeldByWorkingCaller(r: ApprovalRun): bool =
     (a.phase == CallerCommanding implies r.canonical == PendingApproval and not(r.finished or r.cancelled) and (a.wants == ApprovedRequest implies r.supported)) and
     ((a.phase == CallerReadingBack or a.phase == CallerPersisting or a.phase == CallerResuming) implies r.canonical == a.wants and r.canonical != PendingApproval) and
     (a.responded implies a.phase == CallerDone))
+```
+
+### Device steps require the exact reviewed scope and enrolled device
+
+The device read or write command names the still-running run, workflow,
+version, spec digest and step. Its installation and enrollment match the
+reviewed device, and the requested operation, including its resource or
+calendar range, matches that step and kind. Relative dates resolve against
+the run's persisted anchor ([run scope](./runScope.md)). The approval
+notice is read-only and grants no authority for a device operation.
+
+```quint
+type StepFacts = { runMatches: bool, definitionMatches: bool, versionMatches: bool, digestMatches: bool, installationMatches: bool, enrollmentMatches: bool, stepMatches: bool, operationMatches: bool, finished: bool, cancelRequested: bool }
+pure def admitsReviewedDeviceStep(scope: StepFacts): bool = scope.runMatches and scope.definitionMatches and scope.versionMatches and scope.digestMatches and scope.installationMatches and scope.enrollmentMatches and scope.stepMatches and scope.operationMatches and not(scope.finished) and not(scope.cancelRequested)
+pure val scopeValues = Set(
+  { runMatches: true, definitionMatches: true, versionMatches: true, digestMatches: true, installationMatches: true, enrollmentMatches: true, stepMatches: true, operationMatches: true, finished: false, cancelRequested: false },
+  { runMatches: true, definitionMatches: true, versionMatches: true, digestMatches: true, installationMatches: true, enrollmentMatches: false, stepMatches: true, operationMatches: true, finished: false, cancelRequested: false })
+pure def lawForeignDeviceCannotUseReview(scope: StepFacts): bool = (not(scope.installationMatches) or not(scope.enrollmentMatches)) implies not(admitsReviewedDeviceStep(scope))
+pure def lawTerminalRunCannotUseDevice(scope: StepFacts): bool = (scope.finished or scope.cancelRequested) implies not(admitsReviewedDeviceStep(scope))
 ```

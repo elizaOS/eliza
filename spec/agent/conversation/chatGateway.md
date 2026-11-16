@@ -1,14 +1,8 @@
 # Chat through a privileged gateway
 
 A consumer's device host configures the resident agent's conversation
-caller role (`ELIZA_CONVERSATION_CALLER_ROLE`), its action allowlist
-(`ELIZA_ACTION_ALLOWLIST`), in-memory PGlite and provider routing. A
-consumer's own action policy may admit, for example, REPLY, IGNORE, NONE and
-CALCULATE. The sources are `packages/agent/src/api/client-chat-admin.ts`,
-`packages/core/src/runtime/action-gate.ts` and
-`packages/agent/src/runtime/assistant-plugins.ts`. A consumer may instead
-run the resident-agent host with its own plugin profile and gateway
-authority. [Core authorization](../../core/authorization.md),
+caller role, its action allowlist and provider routing, or runs the
+resident-agent host with its own plugin profile and gateway authority. [Core authorization](../../core/authorization.md),
 [model dispatch](../../core/models.md) and
 [turn lifecycle](../../core/journey.md) own their own state.
 
@@ -25,7 +19,7 @@ explicit USER setting. Agent API chat constructs a distinct end-user
 entity and supplies a session USER grant. The default and explicit OWNER
 setting preserve the operator caller. Invalid settings fail boot. The
 retyping applies on chat only. The gateway must keep its owner credential
-private and independently restrict its route surface. The source's fixed
+private and independently restrict its route surface. The fixed
 entity seed and derivation remain a compatibility boundary.
 
 ```quint
@@ -44,7 +38,7 @@ pure def lawInvalidCallerConfigCannotBoot(surface: RouteSurface, ownerAuthentica
 
 ### The exact host allowlist applies to discovery and execution
 
-The source decoder distinguishes unset, a valid JSON array of exact
+The decoder distinguishes unset, a valid JSON array of exact
 nonempty names, and invalid configuration. The host verifies all configured
 names against registered actions once after deferred startup. A present
 empty JSON array authorizes no actions in the core gate. A consumer whose

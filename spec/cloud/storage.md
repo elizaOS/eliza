@@ -9,9 +9,6 @@ its lease is lost. A document and its fragments are published and deleted
 in one transaction. One upload and one document are the state machine.
 Reading an object-backed field is stated as laws.
 
-Develop sources: the cloud `NativeStoragePutRecovery`,
-`document_publication` and `object_field_hydration` models.
-
 ## Story: Upload an object once and recover a lost upload
 
 > As a device owner saving a file to the cloud, I want the upload either

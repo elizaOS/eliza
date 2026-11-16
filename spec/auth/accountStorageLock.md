@@ -9,11 +9,8 @@ at, and that moved live owner stays authoritative until it releases, so
 nobody else enters meanwhile. A process attempts once; a failed admission
 retires its attempt.
 
-Ported from develop `packages/auth/quint/AccountStorageLock.qnt` (source
-`src/auth/account-storage.ts`: `acquireStorageLock`, `removeStaleLock`,
-`hasLiveQuarantinedLock`, `releaseStorageLock`). A token names its owner
-process (`token - 1`); the lock left by process 0, which is dead, is there
-from the start.
+A token names its owner process (`token - 1`); the lock left by process 0,
+which is dead, is there from the start.
 
 ## Story: Serialize account storage across processes on one machine
 

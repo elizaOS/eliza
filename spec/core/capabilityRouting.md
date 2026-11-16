@@ -15,8 +15,8 @@ The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c1
 Routing binds a request to the local runner when it is available, else to the remote runner when that is available, else to none, and the request fails as unavailable. Once bound, the runner never changes: a remote failure is not retried on the local runner behind the caller's back.
 
 ```quint
-type AccountStatus = Connected | AccountDisabled | Revoked | NeedsReauth
-type HeldAccount = { id: str, status: AccountStatus, cost: int }
+import accountValues as A from "./accountValues"
+type HeldAccount = { id: str, status: A::AccountStatus, cost: int }
 type Runner = NoRunner | LocalRunner | RemoteRunner
 type RoutePhase = Routed | Running | Succeeded | RouteFailed
 type Failure = NoFailure | CapabilityUnavailable | AccountIneligible | RemoteUnreachable | RequestFailed
@@ -24,11 +24,11 @@ type RouteRequest = { id: int, pinned: str, account: str, runner: Runner, phase:
 type Routing = { accounts: List[HeldAccount], requests: List[RouteRequest] }
 pure val initial: Routing = { accounts: List(), requests: List() }
 pure val idValues = Set(1, 2, 3)
-pure val noAccount: HeldAccount = { id: "", status: Revoked, cost: 0 }
+pure val noAccount: HeldAccount = { id: "", status: A::AccountRevoked, cost: 0 }
 pure val noRequest: RouteRequest = { id: 0, pinned: "", account: "", runner: NoRunner, phase: RouteFailed, failure: CapabilityUnavailable }
 pure def requestAt(s: Routing, id: int): RouteRequest = s.requests.select(r => r.id == id).nthOr(0, noRequest)
 pure def knownRequest(s: Routing, id: int): bool = s.requests.some(r => r.id == id)
-pure def eligible(s: Routing): List[HeldAccount] = s.accounts.select(a => a.status == Connected)
+pure def eligible(s: Routing): List[HeldAccount] = s.accounts.select(a => A::connectedOnly.includes(a.status))
 pure def isEligible(s: Routing, accountId: str): bool = accountId != "" and eligible(s).some(a => a.id == accountId)
 pure def cheapest(accounts: List[HeldAccount]): str = accounts.foldl(noAccount, (best, a) => if (best.id == "" or a.cost < best.cost) a else best).id
 pure def chosenAccount(s: Routing, pinned: str): str = if (pinned != "") (if (isEligible(s, pinned)) pinned else "") else cheapest(eligible(s))
@@ -49,15 +49,15 @@ pure def sometimesRemoteSucceeded(s: Routing): bool = s.requests.some(r => r.run
 
 ### A request uses only a connected account the agent holds
 
-The agent's accounts are the ones the user connected to it. A disabled, revoked or reauthorization-needing account is not eligible. Routing and the start of work each check eligibility, so an account revoked or released between them fails the request instead of running under it.
+The agent's accounts are the ones the user connected to it, with the [account status](./accountValues.md) connectors share. Only a connected account is eligible, as an account policy admits by default; a pending, disabled, revoked, reauthorization-needing or failed one is not. Routing and the start of work each check eligibility, so an account revoked or released between them fails the request instead of running under it.
 
 ```quint
 pure val accountIdValues = Set("acct-a", "acct-b")
 pure val costValues = Set(1, 2)
 pure def canConnectAccount(s: Routing, accountId: str, cost: int): bool = accountId != "" and cost >= 0 and not(s.accounts.some(a => a.id == accountId))
-pure def connectAccount(s: Routing, accountId: str, cost: int): Routing = { ...s, accounts: s.accounts.append({ id: accountId, status: Connected, cost: cost }) }
-pure def canSetAccountStatus(s: Routing, accountId: str, status: AccountStatus): bool = s.accounts.some(a => a.id == accountId)
-pure def setAccountStatus(s: Routing, accountId: str, status: AccountStatus): Routing = { ...s, accounts: s.accounts.listMap(a => if (a.id == accountId) { ...a, status: status } else a) }
+pure def connectAccount(s: Routing, accountId: str, cost: int): Routing = { ...s, accounts: s.accounts.append({ id: accountId, status: A::AccountConnected, cost: cost }) }
+pure def canSetAccountStatus(s: Routing, accountId: str, status: A::AccountStatus): bool = s.accounts.some(a => a.id == accountId)
+pure def setAccountStatus(s: Routing, accountId: str, status: A::AccountStatus): Routing = { ...s, accounts: s.accounts.listMap(a => if (a.id == accountId) { ...a, status: status } else a) }
 pure def canReleaseAccount(s: Routing, accountId: str): bool = s.accounts.some(a => a.id == accountId)
 pure def releaseAccount(s: Routing, accountId: str): Routing = { ...s, accounts: s.accounts.select(a => a.id != accountId) }
 pure def canStart(s: Routing, id: int): bool = knownRequest(s, id) and requestAt(s, id).phase == Routed

@@ -9,6 +9,9 @@ asynchronous and exceptional continuations.
 
 ## Story: Keep concurrent turn context isolated
 
+> As a runtime caller, I want the context I enter to reach only my own
+> continuations, so that concurrent turns never read each other's context.
+
 As a runtime caller, I enter a scope with a context, inherit that context
 in continuations created inside it, and recover the outer context when
 the scope returns or throws. A peer continuation keeps its own context.

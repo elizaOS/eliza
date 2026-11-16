@@ -1,19 +1,17 @@
 # Native Password Manager boundary
 
 A consumer's Settings and browser adapters consume Eliza's
-`plugins/plugin-native-passwords/src/{client,bindings,definitions,transfer}.ts`.
-`MainActivity` registers the live Passwords plugin. The separate
-import/export bridge is loaded only in a test-mocks build with that native
-plugin ([bridge composition](./bridge.md)). The development vault requires
-both the dev build and browser development profile; a consumer may instead
-gate passwords behind a release switch. The consumer's
+`plugins/plugin-native-passwords/src/{client,bindings,definitions}.ts`, and
+its `MainActivity` registers the Passwords plugin when its descriptor
+declares passwords ([bridge composition](./bridge.md)).
 [Autofill custody](./passwordAutofill.md) owns the system Autofill path.
-This is the renderer and native capability boundary.
+This spec is the renderer and native capability boundary.
 
 ## Story: Edit or fill saved credentials without exposing them to the agent
 
-> As the person, I want to edit or fill saved credentials without
-> exposing them to the agent.
+> As the person, I want to edit or fill my saved passwords without the
+> agent ever seeing them, so that unlocking the vault never leaks a
+> secret.
 
 ### An unlocked foreground page owns a temporary typed secret and observes only native metadata
 
@@ -72,8 +70,8 @@ and an explicit review for that origin. Changing target or locking retires
 fill approval. A damaged vault cannot reveal prior contents. Reset needs a
 freshly confirmed native authentication result after the owner reviewed
 the reset for the same live visit. Lock, background, a new refresh or
-owner retirement retires a pending reset. No browser mock or transfer
-build flag can authorize a production native effect.
+owner retirement retires a pending reset. Only native receipts authorize
+these effects; a browser stand-in cannot.
 
 ```quint
 pure def canReviewOrigin(s: VaultUi, origin: str): bool = healthy(s) and origin != ""
@@ -89,8 +87,6 @@ pure def canResetVault(s: VaultUi, ticket: int, nativeAuthenticated: bool): bool
   s.active and s.foreground and s.damaged and s.resetEpoch > 0 and s.resetEpoch == s.epoch and s.epoch == ticket and nativeAuthenticated
 pure def resetVault(s: VaultUi, ticket: int, nativeAuthenticated: bool): VaultUi = { ...clearAccess(false, s), damaged: false }
 pure def refresh(s: VaultUi): VaultUi = { ...s, epoch: s.epoch + 1, resetEpoch: 0 }
-pure def transfersAvailable(nativeAndroid: bool, testMocks: bool, pluginPresent: bool): bool = nativeAndroid and testMocks and pluginPresent
-pure def lawTransferCannotReachProduction(nativeAndroid: bool, testMocks: bool, pluginPresent: bool): bool = not(testMocks) implies not(transfersAvailable(nativeAndroid, testMocks, pluginPresent))
 pure def alwaysFillHasExactReview(s: VaultUi): bool = s.filled implies healthy(s) and s.reviewedOrigin != ""
 pure def alwaysResetReviewHasMatchingEpoch(s: VaultUi): bool = s.resetEpoch == 0 or (s.resetEpoch == s.epoch and s.active and s.foreground and s.damaged)
 pure def alwaysEpochPositive(s: VaultUi): bool = s.epoch > 0

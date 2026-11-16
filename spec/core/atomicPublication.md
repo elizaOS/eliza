@@ -1,10 +1,12 @@
 # Atomic JSON publication
 
-This model migrates `quint/AtomicJsonPublication.qnt` and `utils/atomic-json.ts`. It describes one publication attempt. The shared serialization model orders same-process asynchronous calls. Independent processes can replace complete snapshots in either order.
+Source: `utils/atomic-json.ts`. This spec describes one publication attempt. The shared serialization model orders same-process asynchronous calls. Independent processes can replace complete snapshots in either order.
 
 ## Story: Publish complete durable JSON with an honest receipt
 
-As a store owner, I want readers to see a complete old or new file and callers to receive the publication outcome.
+> As a store owner, I want readers to see a complete old or new file and
+> callers to receive the real publication outcome, so that no one reads a
+> half-written file or a false success.
 
 ### The final path changes only after a complete temporary file is renamed
 
@@ -39,7 +41,7 @@ pure def sometimesPublishedOutcomeUnknown(p: Publication): bool = p.phase == Cra
 
 ### Publication attempts settle when their pending I/O settles
 
-The environment eventually completes each admitted create, write, rename and cleanup operation. A crash is already a terminal unknown receipt. This preserves the original conditional progress property.
+The environment eventually completes each admitted create, write, rename and cleanup operation. A crash is already a terminal unknown receipt.
 
 ```quint
 pure val fair_create = "weak"

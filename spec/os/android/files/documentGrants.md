@@ -13,8 +13,8 @@ attachment bytes and chooser presentation remain separately owned effects.
 
 ## Story: Reopen only a document I selected while its grant still exists
 
-> As the person, I want to reopen only a document I selected while its
-> grant still exists.
+> As the person, I want a document I picked to reopen only while Android
+> still grants it, so that the app never keeps access I took away.
 
 ### The native picker is the authority and only retained selections survive restart
 
@@ -85,9 +85,9 @@ including transient ones. Another selected ID with the exact same URI
 and retained flags contributes those flags to a new retained ID. A
 new transient ID never gains retained flags through this union. A
 failed insertion rolls back its own mapping before making an exact
-grant release attempt. A failed eviction can leave the new mapping
-and more than 32 entries until a later successful cleanup or restart.
-It must not report a successful selection. Loading after restart
+grant release attempt. A failed eviction rolls the new mapping back
+too and refuses the selection, so the registry never holds more than 32
+entries. Loading after restart
 visits at most the first 32 persisted array entries before filtering.
 
 Forget removes the exact mapping and flags, commits preferences and
@@ -140,6 +140,10 @@ pure def stepRemovalKeepsCoveringTree(before: Selection, via: str, after: Select
 pure def stepProtectedGrantIsNeverReleased(before: Selection, via: str, after: Selection): bool =
   (via == "forgetSelection" or via == "releaseOrphan") and (before.otherSelection or before.noteReference) implies
     after.exactGrant == before.exactGrant
+pure def retainedSelections(insertCommitted: bool, afterInsertCount: int, evictionCommitted: bool): int =
+  if (insertCommitted and not(needsOldestEviction(afterInsertCount))) afterInsertCount else afterInsertCount - 1
+pure def lawRegistryNeverExceedsItsBound(insertCommitted: bool, afterInsertCount: int, evictionCommitted: bool): bool =
+  afterInsertCount <= 33 implies retainedSelections(insertCommitted, afterInsertCount, evictionCommitted) <= 32
 pure def lawFailedEvictionCannotAcknowledge(insertCommitted: bool, afterInsertCount: int): bool =
   needsOldestEviction(afterInsertCount) implies not(authorizesReceipt(insertCommitted, afterInsertCount, false))
 pure def lawUnionCannotPersistATransientSelection(acquired: GrantFlags, priorFlags: GrantFlags): bool =

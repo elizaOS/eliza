@@ -59,8 +59,6 @@ pure def lawQuietHoursNeverAutoStart(networkClass: NetworkClass, prefs: PolicyPr
   not(applyNetworkPolicy(networkClass, prefs, true, headless).allow)
 pure def lawHeadlessIsExplicitOnly(networkClass: NetworkClass, prefs: PolicyPreferences, quietHours: bool, ownerConfirmed: bool): bool =
   not(mayStartDownload(applyNetworkPolicy(networkClass, prefs, quietHours, true), ownerConfirmed))
-pure def lawMeteredFlagNotCellularDecidesWifi(metered: MeteredFlag): bool =
-  classifyNetwork(WifiConnection, metered) != CellularLink
 ```
 
 ### A quiet-hours window holds its start and not its end, and may cross midnight

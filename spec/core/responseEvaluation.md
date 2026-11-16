@@ -1,32 +1,60 @@
-# Response-handler evaluator execution
+# Response-handler evaluators
 
-The [response evaluator registry](./responseEvaluators.md) retains each
-registered object. The runner in
-[response-handler-evaluators.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/response-handler-evaluators.ts)
-snapshots the explicit evaluators followed by registered evaluators. Each
-candidate observes the plan and runtime-owned scope left by its predecessors.
+The response-handler evaluator registry of `runtime.ts` and the runner of
+`runtime/response-handler-evaluators.ts`, distinct from ordinary
+[evaluators](./registries.md) and response-field evaluators. Each candidate
+observes the plan and runtime-owned scope left by its predecessors.
 Normalization supplies trimmed context IDs, canonical comparison keys for
 names, the JavaScript locale order of candidate names, and syntax validity for
-extension-field names. The model retains complete values from that boundary.
+extension-field names. The model keeps complete values from that boundary.
+
+## Story: Register each named response evaluator once
+
+> As a plugin, I want the first evaluator registered under an exact name to
+> keep its identity, and removal of a trimmed name to leave its peers alone,
+> so that registration never silently replaces another plugin's evaluator.
+
+### Duplicate registration preserves the original evaluator identity
+
+Registration compares the exact evaluator name and keeps the handler object
+identity and insertion order. Registered names are not trimmed or
+case-folded, so a whitespace-padded name is a distinct registration. Removal
+receives `normalizedName = name.trim()` from the string adapter and removes
+the exact match.
+
+```quint
+type RegisteredEvaluator = { name: str, reference: int, priority: int, localeOrder: int, declaredTools: List[str] }
+pure val firstEvaluator: RegisteredEvaluator = {name: "context", reference: 1, priority: 10, localeOrder: 1, declaredTools: List("read")}
+pure val secondEvaluator: RegisteredEvaluator = {name: "scope", reference: 2, priority: 20, localeOrder: 2, declaredTools: List("write")}
+pure val registrationValues: Set[RegisteredEvaluator] = Set({ ...firstEvaluator, name: "first" }, { ...secondEvaluator, name: "First" }, { ...firstEvaluator, name: " first ", localeOrder: 3 })
+pure val normalizedNameValues = Set("", "first", "First")
+pure def canRegister(s: ResponseEvaluation, registration: RegisteredEvaluator): bool = registration.reference > 0
+pure def register(s: ResponseEvaluation, registration: RegisteredEvaluator): ResponseEvaluation = if (s.registered.some(e => e.name == registration.name)) s else { ...s, registered: s.registered.append(registration) }
+pure def unregister(s: ResponseEvaluation, normalizedName: str): ResponseEvaluation = if (normalizedName == "") s else { ...s, registered: s.registered.select(e => e.name != normalizedName) }
+pure def alwaysExactNamesUnique(s: ResponseEvaluation): bool = s.registered.every(e => s.registered.select(other => other.name == e.name).length() == 1)
+pure def stepRegistrationKeepsPriorNames(before: ResponseEvaluation, via: str, after: ResponseEvaluation): bool = via == "register" implies before.registered.every(e => after.registered.includes(e))
+pure def sometimesCaseDistinctEvaluators(s: ResponseEvaluation): bool = s.registered.some(a => a.name == "first") and s.registered.some(b => b.name == "First")
+```
 
 ## Story: Apply response evaluator decisions in priority order
 
-As a host I run the selected evaluators serially, keep their active names and
-patch traces, and distinguish turn cancellation from an individual evaluator
-failure.
+> As a host, I want the selected evaluators run serially with their active
+> names and patch traces kept, so that a turn's cancellation is told apart
+> from one evaluator's failure.
 
 ### Each candidate checks eligibility before evaluating its patch
 
-Priorities ascend, with absent priority mapped to 100. Equal priorities use
+A run snapshots the explicit evaluators followed by the registered ones, each
+at its own position. Priorities ascend, with absent priority mapped to 100. Equal priorities use
 the locale order of names. A stable tie retains explicit-before-registered
 snapshot order. Distinct positions can hold the same evaluator object.
-Evaluators registered or removed during a run affect the
+Evaluators registered or removed during a run affect only the
 next snapshot. A false eligibility result or an absent patch advances to the
 next candidate. A cancellation from either await is terminal. Other errors
 are recorded for that evaluator and allow the next candidate to run.
 
 ```quint
-type EvaluatorCandidate = { slot: int, name: str, reference: int, priority: int, localeOrder: int, declaredTools: Set[str] }
+type EvaluatorCandidate = { slot: int, name: str, reference: int, priority: int, localeOrder: int, declaredTools: List[str] }
 type EvaluationPhase = RunIdle | AwaitEligibility | AwaitEvaluation | RunFinished | RunCancelled
 type EvaluatorOutcome = CallbackReturned | CallbackFailed | CallbackCancelled
 type Decision = { outcome: EvaluatorOutcome, eligible: bool, errorText: str }
@@ -38,19 +66,14 @@ type ResponsePlan = { process: str, requiresTool: bool, replyStatus: str, contex
 type ScopeField = { name: str, key: str, validSyntax: bool }
 type ResponsePatch = { provided: bool, replaceScope: bool, intents: List[str], intentShapeValid: bool, invalidations: List[ScopeField], owner: int, process: str, changeRequiresTool: bool, requiresTool: bool, nonAppliedReply: bool, setContexts: bool, contexts: List[str], addContexts: bool, contextAdditions: List[str], clearCandidates: bool, addCandidates: bool, candidates: List[NamedValue], clearParents: bool, addParents: bool, parents: List[NamedValue], addSlices: bool, slices: List[NamedValue], toolName: str, toolKey: str, toolParams: str, clearReply: bool, setReply: bool, reply: str, contextSources: List[str], debug: List[NamedValue] }
 type PatchReceipt = { outcome: EvaluatorOutcome, patch: ResponsePatch, errorText: str }
-type ResponseEvaluation = { phase: EvaluationPhase, remaining: List[EvaluatorCandidate], plan: ResponsePlan, available: Set[str], active: List[str], traces: List[PatchTrace], candidateAdditions: List[NamedValue], candidatesCleared: bool, contextualSources: List[str], invalidatedFields: List[str], scopeOwner: int, errors: List[EvaluationError], cancellation: str }
+type ResponseEvaluation = { phase: EvaluationPhase, remaining: List[EvaluatorCandidate], plan: ResponsePlan, available: Set[str], active: List[str], traces: List[PatchTrace], candidateAdditions: List[NamedValue], candidatesCleared: bool, contextualSources: List[str], invalidatedFields: List[str], scopeOwner: int, errors: List[EvaluationError], cancellation: str, registered: List[RegisteredEvaluator] }
 pure val emptyPlan: ResponsePlan = {process: "", requiresTool: false, replyStatus: "", contexts: List(), candidates: List(), candidateField: false, parentHints: List(), parentField: false, slices: List(), reply: "", replyField: false, intents: List(), extensions: List(), toolName: "", toolParams: "", evidencePresent: false, requiredEvidence: "", budgetPresent: false, missBudget: "", sourceContext: "", priorReceipts: List()}
-pure val initial: ResponseEvaluation = {phase: RunIdle, remaining: List(), plan: emptyPlan, available: Set(), active: List(), traces: List(), candidateAdditions: List(), candidatesCleared: false, contextualSources: List(), invalidatedFields: List(), scopeOwner: 0, errors: List(), cancellation: ""}
-pure val noEvaluator: EvaluatorCandidate = {slot: 0, name: "", reference: 0, priority: 0, localeOrder: 0, declaredTools: Set()}
-pure val firstEvaluator: EvaluatorCandidate = {slot: 1, name: "context", reference: 1, priority: 10, localeOrder: 1, declaredTools: Set("read")}
-pure val secondEvaluator: EvaluatorCandidate = {slot: 2, name: "scope", reference: 2, priority: 20, localeOrder: 2, declaredTools: Set("write")}
+pure val initial: ResponseEvaluation = {phase: RunIdle, remaining: List(), plan: emptyPlan, available: Set(), active: List(), traces: List(), candidateAdditions: List(), candidatesCleared: false, contextualSources: List(), invalidatedFields: List(), scopeOwner: 0, errors: List(), cancellation: "", registered: List()}
+pure val noEvaluator: EvaluatorCandidate = {slot: 0, name: "", reference: 0, priority: 0, localeOrder: 0, declaredTools: List()}
 pure val availableValues = Set(Set(), Set("world"), Set("world", "private"))
-pure val snapshotValues = Set(List(), List(firstEvaluator), List(secondEvaluator, firstEvaluator), List(firstEvaluator, { ...firstEvaluator, slot: 2 }))
+pure val explicitValues = Set(List(), List(firstEvaluator), List(secondEvaluator, firstEvaluator), List(firstEvaluator, firstEvaluator))
 pure val planValues = Set(emptyPlan, { ...emptyPlan, reply: "original", replyField: true, toolName: "OLD", toolParams: "old-parameters", evidencePresent: true, requiredEvidence: "old-evidence", budgetPresent: true, missBudget: "old-budget", sourceContext: "complete-source", priorReceipts: List("prior-receipt"), extensions: List({key: "scopeHint", value: "old-hint"}) })
-pure val callbackReturned: EvaluatorOutcome = CallbackReturned
-pure val callbackFailed: EvaluatorOutcome = CallbackFailed
-pure val callbackCancelled: EvaluatorOutcome = CallbackCancelled
-pure val decisionValues: Set[Decision] = Set({outcome: callbackReturned, eligible: true, errorText: ""}, {outcome: callbackReturned, eligible: false, errorText: ""}, {outcome: callbackFailed, eligible: false, errorText: "eligibility-error"}, {outcome: callbackCancelled, eligible: false, errorText: "cancelled"})
+pure val decisionValues: Set[Decision] = Set({outcome: CallbackReturned, eligible: true, errorText: ""}, {outcome: CallbackReturned, eligible: false, errorText: ""}, {outcome: CallbackFailed, eligible: false, errorText: "eligibility-error"}, {outcome: CallbackCancelled, eligible: false, errorText: "cancelled"})
 pure def precedes(left: EvaluatorCandidate, right: EvaluatorCandidate): bool = left.priority < right.priority or (left.priority == right.priority and left.localeOrder < right.localeOrder)
 pure def currentCandidate(s: ResponseEvaluation): EvaluatorCandidate = s.remaining.foldl(s.remaining.nthOr(0, noEvaluator), (best, entry) => if (precedes(entry, best)) entry else best)
 pure def nextPhase(remaining: List[EvaluatorCandidate]): EvaluationPhase = if (remaining.length() == 0) RunFinished else AwaitEligibility
@@ -58,19 +81,25 @@ pure def nextCandidate(slot: int, s: ResponseEvaluation): ResponseEvaluation = {
   val remaining = s.remaining.select(entry => entry.slot != slot)
   { ...s, remaining: remaining, phase: nextPhase(remaining) }
 }
-pure def canStart(s: ResponseEvaluation, snapshot: List[EvaluatorCandidate]): bool = s.phase == RunIdle and snapshot.every(entry => entry.reference > 0 and entry.slot > 0 and snapshot.select(other => other.slot == entry.slot).length() == 1)
-pure def start(s: ResponseEvaluation, snapshot: List[EvaluatorCandidate], plan: ResponsePlan, available: Set[str]): ResponseEvaluation = { ...s, remaining: snapshot, phase: nextPhase(snapshot), plan: plan, available: available }
+pure def snapshotOf(evaluators: List[RegisteredEvaluator]): List[EvaluatorCandidate] =
+  evaluators.foldl(List(), (taken, e) => taken.append({slot: taken.length() + 1, name: e.name, reference: e.reference, priority: e.priority, localeOrder: e.localeOrder, declaredTools: e.declaredTools}))
+pure def canStart(s: ResponseEvaluation, explicit: List[RegisteredEvaluator]): bool = s.phase == RunIdle and explicit.every(e => e.reference > 0)
+pure def start(s: ResponseEvaluation, explicit: List[RegisteredEvaluator], plan: ResponsePlan, available: Set[str]): ResponseEvaluation = {
+  val snapshot = snapshotOf(explicit.concat(s.registered))
+  { ...s, remaining: snapshot, phase: nextPhase(snapshot), plan: plan, available: available }
+}
 pure def canSettleEligibility(s: ResponseEvaluation): bool = s.phase == AwaitEligibility
 pure def recordEvaluationError(errorText: str, s: ResponseEvaluation): ResponseEvaluation = {
   val selected = currentCandidate(s)
   nextCandidate(selected.slot, { ...s, errors: s.errors.append({name: selected.name, message: errorText}) })
 }
 pure def settleEligibility(s: ResponseEvaluation, decision: Decision): ResponseEvaluation =
-  if (decision.outcome == callbackCancelled) { ...s, phase: RunCancelled, cancellation: decision.errorText }
-  else if (decision.outcome == callbackFailed) recordEvaluationError(decision.errorText, s)
+  if (decision.outcome == CallbackCancelled) { ...s, phase: RunCancelled, cancellation: decision.errorText }
+  else if (decision.outcome == CallbackFailed) recordEvaluationError(decision.errorText, s)
   else if (decision.eligible) { ...s, phase: AwaitEvaluation, active: s.active.append(currentCandidate(s).name) }
   else nextCandidate(currentCandidate(s).slot, s)
 pure def alwaysAwaitOwnsCandidate(s: ResponseEvaluation): bool = (s.phase == AwaitEligibility or s.phase == AwaitEvaluation) implies s.remaining.length() > 0
+pure def stepRegistrationAffectsOnlyNextSnapshot(before: ResponseEvaluation, via: str, after: ResponseEvaluation): bool = (via == "register" or via == "unregister") implies after.remaining == before.remaining
 pure def stepCancellationIsTerminal(before: ResponseEvaluation, after: ResponseEvaluation): bool = before.phase == RunCancelled implies after.phase == RunCancelled and after.cancellation == before.cancellation
 pure def sometimesFailureAllowsNextCandidate(s: ResponseEvaluation): bool = s.errors.length() > 0 and s.phase == AwaitEligibility
 ```
@@ -91,15 +120,9 @@ pure val scopeProtectedKeys = Set("contexts", "reply", "replyeffectstatus", "req
 pure val noPatch: ResponsePatch = {provided: false, replaceScope: false, intents: List(), intentShapeValid: true, invalidations: List(), owner: 0, process: "", changeRequiresTool: false, requiresTool: false, nonAppliedReply: false, setContexts: false, contexts: List(), addContexts: false, contextAdditions: List(), clearCandidates: false, addCandidates: false, candidates: List(), clearParents: false, addParents: false, parents: List(), addSlices: false, slices: List(), toolName: "", toolKey: "", toolParams: "", clearReply: false, setReply: false, reply: "", contextSources: List(), debug: List()}
 pure val scopedPatch: ResponsePatch = { ...noPatch, provided: true, replaceScope: true, intents: List("observe"), invalidations: List({name: "scopeHint", key: "scopehint", validSyntax: true}), owner: 2, contextSources: List("new-complete-source"), clearCandidates: true }
 pure val callPatch: ResponsePatch = { ...noPatch, provided: true, toolName: "READ", toolKey: "read", toolParams: "complete-params", setContexts: true, contexts: List("world", "private", "world"), addCandidates: true, candidates: List({key: "read", value: "READ"}), setReply: true, reply: "" }
-pure val receiptValues: Set[PatchReceipt] = Set({outcome: callbackReturned, patch: noPatch, errorText: ""}, {outcome: callbackReturned, patch: scopedPatch, errorText: ""}, {outcome: callbackReturned, patch: callPatch, errorText: ""}, {outcome: callbackReturned, patch: { ...scopedPatch, invalidations: List({name: "sourceContext", key: "sourcecontext", validSyntax: true}) }, errorText: ""}, {outcome: callbackFailed, patch: noPatch, errorText: "evaluate-error"}, {outcome: callbackCancelled, patch: noPatch, errorText: "cancelled"})
+pure val receiptValues: Set[PatchReceipt] = Set({outcome: CallbackReturned, patch: noPatch, errorText: ""}, {outcome: CallbackReturned, patch: scopedPatch, errorText: ""}, {outcome: CallbackReturned, patch: callPatch, errorText: ""}, {outcome: CallbackReturned, patch: { ...scopedPatch, invalidations: List({name: "sourceContext", key: "sourcecontext", validSyntax: true}) }, errorText: ""}, {outcome: CallbackFailed, patch: noPatch, errorText: "evaluate-error"}, {outcome: CallbackCancelled, patch: noPatch, errorText: "cancelled"})
 pure def validIntentReplacement(patch: ResponsePatch): bool = not(patch.replaceScope) or (patch.intentShapeValid and patch.intents.length() > 0 and patch.invalidations.every(fieldName => fieldName.validSyntax and not(scopeProtectedKeys.contains(fieldName.key))))
-pure def declaredTool(evaluator: EvaluatorCandidate, patch: ResponsePatch): bool = patch.toolName == "" or evaluator.declaredTools.contains(patch.toolKey)
-type ReceiptOrderCheck = {index: int, matched: bool}
-pure val initialReceiptOrderCheck: ReceiptOrderCheck = {index: 0, matched: true}
-pure def sameReceipts(left: List[str], right: List[str]): bool = {
-  val checked = left.foldl(initialReceiptOrderCheck, (at, value) => {index: at.index + 1, matched: at.matched and value == right.nthOr(at.index, "")})
-  left.length() == right.length() and checked.matched
-}
+pure def declaredTool(evaluator: EvaluatorCandidate, patch: ResponsePatch): bool = patch.toolName == "" or evaluator.declaredTools.includes(patch.toolKey)
 pure def dedupExact(values: List[str]): List[str] = values.foldl(List(), (items, value) => if (items.includes(value)) items else items.append(value))
 pure def mergeNamed(before: List[NamedValue], addition: List[NamedValue]): List[NamedValue] = before.concat(addition).foldl(List(), (items, value) => if (value.key == "" or items.some(entry => entry.key == value.key)) items else items.append(value))
 pure def filteredContexts(values: List[str], available: Set[str]): List[str] = dedupExact(values.select(value => value != "" and (available.size() == 0 or available.contains(value))))
@@ -178,13 +201,13 @@ pure def applyValidPatch(patch: ResponsePatch, s: ResponseEvaluation): ResponseE
 }
 pure def canSettleEvaluation(s: ResponseEvaluation): bool = s.phase == AwaitEvaluation
 pure def settleEvaluation(s: ResponseEvaluation, receipt: PatchReceipt): ResponseEvaluation =
-  if (receipt.outcome == callbackCancelled) { ...s, phase: RunCancelled, cancellation: receipt.errorText }
-  else if (receipt.outcome == callbackFailed) recordEvaluationError(receipt.errorText, s)
+  if (receipt.outcome == CallbackCancelled) { ...s, phase: RunCancelled, cancellation: receipt.errorText }
+  else if (receipt.outcome == CallbackFailed) recordEvaluationError(receipt.errorText, s)
   else if (not(receipt.patch.provided)) nextCandidate(currentCandidate(s).slot, s)
   else if (not(declaredTool(currentCandidate(s), receipt.patch))) recordEvaluationError("RESPONSE_HANDLER_DETERMINISTIC_ACTION_DENIED", s)
   else if (not(validIntentReplacement(receipt.patch))) recordEvaluationError("RESPONSE_HANDLER_INTENT_SCOPE_INVALID", s)
   else nextCandidate(currentCandidate(s).slot, applyValidPatch(receipt.patch, s))
-pure def stepOriginalSourceContextSurvives(before: ResponseEvaluation, via: str, after: ResponseEvaluation): bool = via != "start" implies after.plan.sourceContext == before.plan.sourceContext and sameReceipts(after.plan.priorReceipts, before.plan.priorReceipts)
+pure def stepOriginalSourceContextSurvives(before: ResponseEvaluation, via: str, after: ResponseEvaluation): bool = via != "start" implies after.plan.sourceContext == before.plan.sourceContext and after.plan.priorReceipts == before.plan.priorReceipts
 pure def sometimesScopeReplacementApplied(s: ResponseEvaluation): bool = s.scopeOwner > 0 and s.invalidatedFields.includes("scopeHint") and s.contextualSources.includes("new-complete-source")
 pure def sometimesUnauthorizedToolRejected(s: ResponseEvaluation): bool = s.errors.some(error => error.message == "RESPONSE_HANDLER_DETERMINISTIC_ACTION_DENIED")
 ```

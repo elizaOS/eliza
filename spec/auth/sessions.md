@@ -4,14 +4,8 @@ A sign-in starts a session family: a short-lived access token and a refresh
 token. Refreshing rotates the refresh token, and a rotated token presented
 again is taken as theft, which revokes the whole family. Logout revokes the
 presented session, and revoke-all ends every session of a person. A client
-holding one session refreshes it once, however many reads overlap. Times are
-in seconds.
+holding one session refreshes it once, however many reads overlap.
 
-Ported from develop `packages/auth/quint/AccessExpiryRecovery.qnt` (one
-browser client sharing a pending refresh, and sign-out staying final); the
-server rotation, reuse and revocation rules are new, from develop
-`src/server/auth/` (refresh-session revocation and the session lock).
-Develop's `RefreshMutex.qnt` is ported in [provider access tokens](./accessTokens.md).
 [Agent host access](../agent/host/access.md) verifies sessions with these rules.
 
 ## Story: Stay signed in and sign out everywhere
@@ -43,13 +37,13 @@ pure val noFamily: SessionFamily = { id: 0, user: 0, startedAt: 0, revoked: true
 pure def familyOf(s: Sessions, id: int): SessionFamily = s.families.select(f => f.id == id).nthOr(0, noFamily)
 pure def accessExpiry(now: int, startedAt: int): int = if (now + accessLifetime <= startedAt + sessionMaximum) now + accessLifetime else startedAt + sessionMaximum
 pure def canSignIn(s: Sessions, user: int): bool = user > 0
-pure def signIn(s: Sessions, user: int): Sessions =
+pure def signIn(s: Sessions, user: int): SessionChange = audited(s.families,
   { ...s, nextId: s.nextId + 3,
     families: s.families.append({ id: s.nextId, user: user, startedAt: s.now, revoked: false }),
     refreshTokens: s.refreshTokens.append({ id: s.nextId + 1, family: s.nextId, status: ActiveToken }),
     accessTokens: s.accessTokens.append({ id: s.nextId + 2, family: s.nextId, issuedAt: s.now, expiresAt: accessExpiry(s.now, s.now) }),
     clientRefreshToken: if (user == 1) s.nextId + 1 else s.clientRefreshToken, clientAccess: if (user == 1) s.nextId + 2 else s.clientAccess,
-    clientOutcome: if (user == 1) ClientIdle else s.clientOutcome }
+    clientOutcome: if (user == 1) ClientIdle else s.clientOutcome })
 pure val userValues = Set(1, 2)
 pure def canElapse(s: Sessions, seconds: int): bool = seconds > 0
 pure def elapse(s: Sessions, seconds: int): Sessions = { ...s, now: s.now + seconds }
@@ -86,7 +80,7 @@ pure def refreshed(id: int, s: Sessions): Sessions = {
   else s
 }
 pure def canRefresh(s: Sessions, token: int): bool = s.refreshTokens.some(t => t.id == token)
-pure def refresh(s: Sessions, token: int): Sessions = refreshed(token, s)
+pure def refresh(s: Sessions, token: int): SessionChange = audited(s.families, refreshed(token, s))
 pure val tokenValues = Set(2, 5, 7, 8)
 pure def alwaysOneUsableRefreshTokenPerFamily(s: Sessions): bool =
   s.families.every(f => s.refreshTokens.select(t => t.family == f.id and t.status == ActiveToken).length() <= 1 and (f.revoked implies not(s.refreshTokens.some(t => t.family == f.id and t.status == ActiveToken))))
@@ -99,14 +93,15 @@ pure def sometimesReuseDetected(s: Sessions): bool = s.reuseDetected.length() > 
 
 ```quint
 pure def canLogout(s: Sessions, token: int): bool = s.refreshTokens.some(t => t.id == token)
-pure def logout(s: Sessions, token: int): Sessions = {
+pure def loggedOut(token: int, s: Sessions): Sessions = {
   val family = refreshTokenOf(s, token).family
   { ...s, families: revokedFamilies(s, List(family)), refreshTokens: revokeFamilies(s, List(family)) }
 }
+pure def logout(s: Sessions, token: int): SessionChange = audited(s.families, loggedOut(token, s))
 pure def canRevokeAll(s: Sessions, user: int): bool = user > 0
-pure def revokeAll(s: Sessions, user: int): Sessions = {
+pure def revokeAll(s: Sessions, user: int): SessionChange = {
   val doomed = s.families.select(f => f.user == user).listMap(f => f.id)
-  { ...s, families: revokedFamilies(s, doomed), refreshTokens: revokeFamilies(s, doomed), revokedBefore: s.revokedBefore.put(user, s.nextId) }
+  audited(s.families, { ...s, families: revokedFamilies(s, doomed), refreshTokens: revokeFamilies(s, doomed), revokedBefore: s.revokedBefore.put(user, s.nextId) })
 }
 pure def alwaysRevokeAllCoversEarlierSessions(s: Sessions): bool =
   s.families.every(f => f.id < s.revokedBefore.getOr(f.user, 0) implies f.revoked) and s.families.every(f => f.id < s.nextId)
@@ -142,17 +137,37 @@ pure def clientRead(s: Sessions): Sessions =
   else if (s.clientInFlight > 0) { ...s, clientWaiters: s.clientWaiters + 1 }
   else { ...s, clientInFlight: 1 }
 pure def canClientRefreshSettles(s: Sessions, transient: bool): bool = s.clientInFlight > 0
-pure def clientRefreshSettles(s: Sessions, transient: bool): Sessions =
+pure def clientRefreshSettles(s: Sessions, transient: bool): SessionChange = audited(s.families, clientSettled(transient, s))
+pure def clientSettled(transient: bool, s: Sessions): Sessions =
   if (s.clientRefreshToken == 0) { ...s, clientInFlight: 0, clientWaiters: 0 }
   else if (transient) { ...s, clientInFlight: 0, clientWaiters: 0, clientOutcome: ClientKeptCredential }
   else if (rotates(s, s.clientRefreshToken)) { ...refreshed(s.clientRefreshToken, s), clientRefreshToken: s.nextId, clientAccess: s.nextId + 1, clientInFlight: 0, clientWaiters: 0, clientOutcome: ClientRefreshed }
   else { ...refreshed(s.clientRefreshToken, s), clientRefreshToken: 0, clientAccess: 0, clientInFlight: 0, clientWaiters: 0, clientOutcome: ClientSignedOutByServer }
 pure def canClientSignOut(s: Sessions): bool = s.clientRefreshToken > 0
-pure def clientSignOut(s: Sessions): Sessions = { ...logout(s, s.clientRefreshToken), clientRefreshToken: 0, clientAccess: 0, clientOutcome: ClientSignedOut }
+pure def clientSignOut(s: Sessions): SessionChange = audited(s.families, { ...loggedOut(s.clientRefreshToken, s), clientRefreshToken: 0, clientAccess: 0, clientOutcome: ClientSignedOut })
 pure def alwaysOneClientRefreshInFlight(s: Sessions): bool = s.clientInFlight >= 0 and s.clientInFlight <= 1 and (s.clientWaiters > 0 implies s.clientInFlight == 1)
 pure def alwaysSignOutStaysFinal(s: Sessions): bool = (s.clientOutcome == ClientSignedOut or s.clientOutcome == ClientSignedOutByServer) implies (s.clientRefreshToken == 0 and s.clientAccess == 0)
 pure def alwaysTransientFailureKeepsCredential(s: Sessions): bool = s.clientOutcome == ClientKeptCredential implies s.clientRefreshToken > 0
 pure def sometimesOverlappingReadsShareRefresh(s: Sessions): bool = s.clientWaiters >= 1 and s.clientInFlight == 1
 pure def sometimesClientRefreshed(s: Sessions): bool = s.clientOutcome == ClientRefreshed
 pure def sometimesSignOutDuringRefresh(s: Sessions): bool = s.clientOutcome == ClientSignedOut and s.clientInFlight == 1
+```
+
+### Every sign-in and every revocation is written to the audit log
+
+A step that starts a session family or revokes one emits one entry for the
+[audit log](./audit.md).
+
+```quint
+type AuditEntry = SessionStarted | SessionsRevoked
+type SessionChange = { state: Sessions, out: List[AuditEntry] }
+pure def revokedCount(families: List[SessionFamily]): int = families.select(f => f.revoked).length()
+pure def audited(familiesBefore: List[SessionFamily], changed: Sessions): SessionChange = {
+  val started: List[AuditEntry] = if (changed.families.length() > familiesBefore.length()) List(SessionStarted) else List()
+  val revoked: List[AuditEntry] = if (revokedCount(changed.families) > revokedCount(familiesBefore)) List(SessionsRevoked) else List()
+  { state: changed, out: started.concat(revoked) }
+}
+pure def stepSessionChangeIsAudited(before: Sessions, after: Sessions, out: List[AuditEntry]): bool =
+  (after.families.length() > before.families.length() implies out.includes(SessionStarted)) and
+    (revokedCount(after.families) > revokedCount(before.families) implies out.includes(SessionsRevoked))
 ```

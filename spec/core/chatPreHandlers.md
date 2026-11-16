@@ -4,7 +4,9 @@ The source is `packages/core/src/runtime/chat-pre-handler-registry.ts` at `72fed
 
 ## Story: Resolve a turn before normal chat generation
 
-As a plugin I can handle a matching turn deterministically. Nonmatching handlers pass through; throwing handlers and cancellation reject the drain without running later handlers.
+> As a plugin I can handle a matching turn deterministically. Nonmatching
+> handlers pass through; throwing handlers and cancellation reject the
+> drain without running later handlers.
 
 ### A drain owns its ordered snapshot and cancellation signal
 

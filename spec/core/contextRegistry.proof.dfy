@@ -1,28 +1,6 @@
-lemma ContextTextOrderReflexive(prefix: seq<string>, full: seq<string>)
-  requires |prefix| <= |full| && prefix == full[..|prefix|]
-  ensures var compare := (at: TextOrderCheck, value: string) => TextOrderCheck(at.index + 1, at.matched && value == (if 0 <= at.index && at.index < |full| then full[at.index] else ""));
-    Std.Collections.Seq.FoldLeft(compare, initialTextOrderCheck, prefix) == TextOrderCheck(|prefix|, true)
-  decreases |prefix|
-{
-  if |prefix| > 0 {
-    var rest := prefix[..|prefix| - 1];
-    var last := prefix[|prefix| - 1];
-    var compare := (at: TextOrderCheck, value: string) => TextOrderCheck(at.index + 1, at.matched && value == (if 0 <= at.index && at.index < |full| then full[at.index] else ""));
-    assert rest == full[..|rest|];
-    assert prefix == rest + [last];
-    ContextTextOrderReflexive(rest, full);
-    ProofLib.FoldLeftAppend(compare, initialTextOrderCheck, rest, last);
-    assert full[|rest|] == last;
-  }
-}
-
 lemma ContextDefinitionReflexive(definition: ContextDefinition)
   ensures sameDefinition(definition, definition)
-{
-  ContextTextOrderReflexive(definition.parents, definition.parents);
-  ContextTextOrderReflexive(definition.subcontexts, definition.subcontexts);
-  ContextTextOrderReflexive(definition.aliases, definition.aliases);
-}
+{}
 
 lemma ContextFilterPartitions<T>(keep: T -> bool, prefix: seq<T>, suffix: seq<T>)
   requires forall row :: row in prefix ==> keep(row)
@@ -69,13 +47,6 @@ lemma ContextRegistrationIsValid(s: ContextRegistry, incoming: seq<ContextDefini
   ensures alwaysValidGraph(registerMany(s, incoming, idempotent))
 {}
 
-lemma ContextSameIdsForExactRows(rows: seq<ContextDefinition>)
-  ensures sameTextOrder(definitionIds(rows), definitionIds(rows))
-{
-  var ids := definitionIds(rows);
-  ContextTextOrderReflexive(ids, ids);
-}
-
 lemma ContextRetainsValues(before: seq<ContextDefinition>, after: seq<ContextDefinition>)
   requires forall row :: row in before ==> row in after
   ensures retainsDefinitionValues(before, after)
@@ -93,7 +64,6 @@ lemma ContextSameDefinitions(s: ContextRegistry, after: ContextRegistry)
   requires s.definitions == after.definitions
   ensures stepRejectedBatchPreservesRegistry(s, after)
 {
-  ContextSameIdsForExactRows(s.definitions);
   ContextRetainsValues(s.definitions, after.definitions);
 }
 
@@ -108,7 +78,6 @@ lemma ContextKeepsDefinitionPrefix(s: ContextRegistry, after: ContextRegistry, s
   }
   ContextFilterPartitions(existing, s.definitions, suffix);
   assert existingDefinitions(s.definitions, after.definitions) == s.definitions;
-  ContextSameIdsForExactRows(s.definitions);
   ContextRetainsValues(s.definitions, after.definitions);
 }
 

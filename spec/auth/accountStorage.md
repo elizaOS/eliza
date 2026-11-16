@@ -10,9 +10,6 @@ generation that later writers compare against, an old record is migrated
 the first time it is read, and a provider's accounts are deleted together
 or not at all. Provider names are placeholders (`p1`, `p2`).
 
-Ported from develop `packages/auth/quint/AccountCredentialGeneration.qnt`,
-`AccountStorageMigration.qnt`, `AccountProviderDeletion.qnt` and
-`AccountStorageKeyOwnership.qnt` (source `src/auth/account-storage.ts`).
 [Provider access tokens](./accessTokens.md) commit refreshed tokens through
 the generation rule here.
 
@@ -51,7 +48,7 @@ refresh. A refresh keeps the current label, and keeps the ID token when the
 provider sent none.
 
 ```quint
-type RecordFormat = CurrentFormat | LegacyFormat | CorruptRecord | ForeignIdentity
+type RecordFormat = CurrentFormat | LegacyFormat | CorruptRecord
 type CredentialRecord = { key: int, provider: str, generation: int, credential: int, idToken: int, label: int, format: RecordFormat, rewrites: int }
 type ReaderStage = ReaderIdle | ReaderWaiting | ReaderDone
 type Reader = { id: int, key: int, generation: int, stage: ReaderStage }
@@ -148,14 +145,14 @@ pure def migrate(s: AccountStorage, key: int, fault: MigrationFault): AccountSto
   val record = recordOf(s, key)
   val rewritten = { ...record, format: CurrentFormat, generation: if (record.generation == 0) s.nextGeneration else record.generation, rewrites: record.rewrites + 1 }
   val following = if (record.generation == 0) s.nextGeneration + 1 else s.nextGeneration
-  if (record.format == CorruptRecord or record.format == ForeignIdentity) { ...s, result: InvalidRecord }
+  if (record.format == CorruptRecord) { ...s, result: InvalidRecord }
   else if (record.format == CurrentFormat) { ...s, result: Returned }
   else if (fault == FaultBeforeRename) { ...s, result: ErrorBeforeRename }
   else { ...s, records: withRecord(key, rewritten, s), nextGeneration: following, result: if (fault == FaultAfterRename) ErrorAfterRename else Returned }
 }
 pure def alwaysRewrittenOnce(s: AccountStorage): bool = s.records.every(r => r.rewrites <= 1 and (r.rewrites == 1 implies r.format == CurrentFormat))
 pure def stepMigrationKeepsContents(before: AccountStorage, via: str, after: AccountStorage): bool =
-  via == "migrate" implies (after.records.length() == before.records.length() and after.records.every(r => before.records.some(b => b.key == r.key and b.credential == r.credential and b.label == r.label and (b.generation > 0 implies b.generation == r.generation) and ((b.format == CorruptRecord or b.format == ForeignIdentity) implies b == r))))
+  via == "migrate" implies (after.records.length() == before.records.length() and after.records.every(r => before.records.some(b => b.key == r.key and b.credential == r.credential and b.label == r.label and (b.generation > 0 implies b.generation == r.generation) and (b.format == CorruptRecord implies b == r))))
 pure def sometimesLegacyMigrated(s: AccountStorage): bool = s.records.some(r => r.key == 2 and r.rewrites == 1 and r.format == CurrentFormat)
 pure def sometimesInvalidRecordRefused(s: AccountStorage): bool = s.result == InvalidRecord
 ```

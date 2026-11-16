@@ -1,12 +1,17 @@
 # Complete source-row collection
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are the memory source sweep path and `quint/MemorySourceSweep.qnt`. Ordinary memory lists can hide immutable source segments. A sweep must enumerate source rows separately, including orphan segments, before deciding which media is referenced or which rows a wipe removes.
+The source is the memory source sweep path. Ordinary memory lists can hide immutable source segments. A sweep must enumerate source rows separately, including orphan segments, before deciding which media is referenced or which rows a wipe removes.
 
 ## Story: Include hidden source rows in collection and wipes
 
-As an operator, I preserve media referenced by source-only rows during collection and remove source rows during an explicit complete wipe. A partial ordinary-memory scan cannot authorize either operation. Discovered by the proof: the source collection phase retains the complete ordinary ID set from the first scan.
+> As an operator, I want collection to keep media that only source rows
+> reference, and a complete wipe to remove source rows too, so that
+> neither operation acts on a partial scan.
 
 ### A sweep captures the complete ordinary and source-row input sets
+
+A sweep loads the ordinary row IDs and the source rows once, collects the
+ordinary IDs, and then adds every source row's ID and media reference.
 
 ```quint
 type SourceRow = { id: str, mediaRef: str }
@@ -34,7 +39,6 @@ The media reference set is retained after the wipe so media cleanup can apply it
 pure def canWipe(s: Sweep): bool = s.phase == Classified
 pure def wipe(s: Sweep): Sweep = { ...s, retainedIds: s.retainedIds.exclude(s.collectedIds), phase: Wiped }
 pure def alwaysRetainedRowsComeFromInput(s: Sweep): bool = s.retainedIds.subseteq(allInputIds(s))
-pure def alwaysSourcePhaseFollowsOrdinaryScan(s: Sweep): bool = s.phase == Sources implies (s.ordinaryRows.subseteq(s.collectedIds) and s.collectedIds.subseteq(s.ordinaryRows))
 pure def alwaysClassifiedIdsCoverInput(s: Sweep): bool = (s.phase == Classified or s.phase == Wiped) implies allInputIds(s).subseteq(s.collectedIds)
 pure def alwaysSourceCollectionComplete(s: Sweep): bool = (s.phase == Classified or s.phase == Wiped) implies s.sourceRows.every(row => s.collectedIds.contains(row.id))
 pure def alwaysSourceMediaRetained(s: Sweep): bool = (s.phase == Classified or s.phase == Wiped) implies s.sourceRows.every(row => row.mediaRef == "" or s.collectedMedia.contains(row.mediaRef))
@@ -44,4 +48,14 @@ pure val fair_collectOrdinary = "weak"
 pure val fair_collectSources = "weak"
 pure val fair_wipe = "weak"
 pure def leadsToSweepFinishes(s: Sweep, later: Sweep): bool = s.phase != Empty implies later.phase == Wiped
+```
+
+### Source collection starts from exactly the ordinary rows of the first scan
+
+Without it, a sweep could enter source collection
+holding ordinary IDs other than those the first scan collected, so a wipe
+could remove rows no scan saw or keep rows it should remove.
+
+```quint
+pure def alwaysSourcePhaseFollowsOrdinaryScan(s: Sweep): bool = s.phase == Sources implies (s.ordinaryRows.subseteq(s.collectedIds) and s.collectedIds.subseteq(s.ordinaryRows))
 ```

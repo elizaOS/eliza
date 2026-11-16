@@ -9,10 +9,7 @@ subscription, is applied exactly once under a lease and publishes the free
 plan, its audit record and the notice together. Funding reserved for a plan
 change is conserved until it settles. The review and authority checks a
 native host applies before sending a cancel or undo are in
-[host operations](./hostOperations.md). Ported from the develop models
-`PlatformSubscriptionCommand`, `SubscriptionCheckoutReadBack`,
-`SubscriptionTerminalReceipt`, `subscription_event_receipts` and
-`subscription_funding_reservations`.
+[host operations](./hostOperations.md).
 
 ## Story: Subscribe, change plan, cancel and undo without paying twice
 

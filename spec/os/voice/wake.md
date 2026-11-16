@@ -1,15 +1,14 @@
 # Wake listening
 
 The device can listen for a wake phrase in a separately signed listener
-application, outside the assistant's own process. The listener's Android
-service lifecycle is [listener foreground](./listenerForeground.md). The
-interface's wake window (`wake-listen-window.ts`) holds the microphone open
-for one exchange after a wake, and the native bridge decides whether an
-arrival may start a voice session at all. A wake starts a fresh listening
-exchange; it never resumes earlier work or supplies an approval, which
-[the voice session](./session.md) keeps off the voice channel. Whether
-wake listening is offered at all is a consumer's choice; when it is off the
-assistant asks the installed listener to turn off at startup.
+application, outside the assistant's own process; its Android service
+lifecycle is [listener foreground](./listenerForeground.md). After a wake
+the interface's wake window holds the microphone open for one exchange,
+and the native bridge decides whether an arrival may start a voice session
+at all. A wake starts a fresh exchange; it never resumes earlier work or
+supplies an approval, which [the voice session](../../agent/actions/voiceApproval.md) keeps off
+the voice channel. Wake listening is a consumer's choice; when it is off,
+the assistant asks the installed listener to turn off at startup.
 
 ## Story: Keep wake listening on the device under the person's control
 
@@ -91,24 +90,37 @@ pure def stepChipNeverStartsListening(before: Wake, via: str, after: Wake): bool
 pure def alwaysPausedListenerHoldsNoWindow(w: Wake): bool = not(w.listening) implies w.phase == WakeIdle
 ```
 
-### A stop is confirmed only by an available OFF report with the microphone closed
+### A stop is confirmed only by a timely absent or OFF reply with the microphone closed
 
-Only an available OFF response with both listening and microphone open
-false confirms that the listener stopped. Bridge absence, timeout,
-malformed status and an incomplete acknowledgement leave a visible
-unconfirmed stop.
+App startup asks the installed listener to turn off. Only a reply in time
+that reports the listener absent or saved OFF, with both listening and
+microphone open false, confirms that the listener stopped. A stop that
+timed out or failed, bridge absence included, never confirms, whatever
+reply arrives, and an unknown, active or contradictory reply never
+confirms either; each leaves a visible unconfirmed stop. Sending one
+native request per stop, and treating a reply after the stop settled,
+malformed status or an incomplete acknowledgement as a failure, are
+adapter obligations.
 
 ```quint
-type ListenerStatus = { available: bool, reportedOff: bool, reportsListening: bool, microphoneOpen: bool }
+type ListenerReply = ListenerAbsent | ListenerSavedOff | ListenerUnknown | ListenerActive | ListenerContradictory
+type StopSettlement = StopByReply | StopTimedOut | StopFailed
+type ListenerStatus = { settlement: StopSettlement, reply: ListenerReply, reportsListening: bool, microphoneOpen: bool }
 pure def listenerStopped(status: ListenerStatus): bool =
-  status.available and status.reportedOff and not(status.reportsListening or status.microphoneOpen)
+  status.settlement == StopByReply and (status.reply == ListenerAbsent or status.reply == ListenerSavedOff) and
+    not(status.reportsListening or status.microphoneOpen)
 pure def reportStatus(w: Wake, status: ListenerStatus): Wake =
   if (listenerStopped(status)) { ...windowClosed(false, w), stopConfirmed: true } else { ...w, stopConfirmed: false }
-pure val stoppedStatus: ListenerStatus = { available: true, reportedOff: true, reportsListening: false, microphoneOpen: false }
-pure val statusValues = Set(stoppedStatus, { ...stoppedStatus, microphoneOpen: true },
-  { ...stoppedStatus, available: false }, { ...stoppedStatus, reportedOff: false })
+pure val stoppedStatus: ListenerStatus = { settlement: StopByReply, reply: ListenerSavedOff, reportsListening: false, microphoneOpen: false }
+pure val statusValues = Set(stoppedStatus, { ...stoppedStatus, microphoneOpen: true }, { ...stoppedStatus, reply: ListenerAbsent },
+  { ...stoppedStatus, settlement: StopTimedOut }, { ...stoppedStatus, settlement: StopFailed, reply: ListenerAbsent },
+  { ...stoppedStatus, reply: ListenerContradictory })
 pure def lawNoStopClaimWithOpenMicrophone(status: ListenerStatus): bool =
   status.microphoneOpen implies not(listenerStopped(status))
+pure def lawTimeoutNeverConfirms(status: ListenerStatus): bool =
+  status.settlement != StopByReply implies not(listenerStopped(status))
+pure def lawUnsafeReplyNeverConfirms(status: ListenerStatus): bool =
+  (status.reply == ListenerUnknown or status.reply == ListenerActive or status.reply == ListenerContradictory) implies not(listenerStopped(status))
 pure def alwaysConfirmedStopIsNotListening(w: Wake): bool = w.stopConfirmed implies not(w.listening)
 pure def sometimesStopConfirmed(w: Wake): bool = w.stopConfirmed and w.generation > 0
 ```

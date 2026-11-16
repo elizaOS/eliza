@@ -1,9 +1,9 @@
 # Native renderer ownership and turn timing
 
 A device host binds the agent's native renderer to itself and publishes the
-timing of the owner's turns to it (`packages/agent/src/api/native-*`). Host
-and turn identifiers are handles here; a string ID never conveys authority.
-[Views](./views.md) own installations and claims.
+timing of the owner's turns to it. Host and turn identifiers are handles
+here; a string ID never conveys authority. [Views](./views.md) own
+installations and claims.
 
 ## Story: Show the native renderer only to its bound host
 

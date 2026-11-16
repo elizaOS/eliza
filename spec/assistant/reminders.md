@@ -101,16 +101,3 @@ pure def sometimesSavedWithRecoveredDestination(s: ReminderIntent): bool =
 pure def sometimesRejected(s: ReminderIntent): bool = s.reminderPhase == IntentRejected and s.checked
 pure def sometimesCancelledWhenReady(s: ReminderIntent): bool = s.reminderPhase == IntentCancelled and s.checked
 ```
-
-### Reminders survive the move to their own store
-
-Reminders that an earlier version kept in the shared assistant store are
-copied once into the reminders store, under the
-[goals' rule for such moves](./goals.md).
-
-```quint
-import goals as G from "./goals"
-pure def reminderMove(sourcePresent: bool, targetEmpty: bool, moveReceipt: bool): G::MoveOutcome = G::moveOutcome(sourcePresent, targetEmpty, moveReceipt)
-pure def lawReminderMoveNeverOverwrites(sourcePresent: bool, targetEmpty: bool, moveReceipt: bool): bool =
-  reminderMove(sourcePresent, targetEmpty, moveReceipt) == G::MovedCopied implies (targetEmpty and not(moveReceipt))
-```

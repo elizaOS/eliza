@@ -178,7 +178,7 @@
       "targets": [
         {
           "path": "spec/core/execution.md",
-          "sha256": "50664d604ebf05564eae55e37aae3d2781ad028b93f2a2c688d70b47f5acbaa2",
+          "sha256": "2cd8d70cbd7063098c40dfbe657dc8ba7ca9a23ef137932f389c112fa2ac299d",
           "definitions": [
             "initial",
             "canAdmitAction",
@@ -753,19 +753,8 @@
       "targets": [
         {
           "path": "spec/core/events.md",
-          "sha256": "1801e02849a7e5eb7a03dce7f0d14392bed3027ffe4bfe77c2ee7fd96582f498",
+          "sha256": "f010fd5dd510041ce1c6d11c05f0359196b901617307b18f5c08becf96cb5a20",
           "definitions": [
-            "noIndicator",
-            "noHeartbeatStatus",
-            "agentChannel",
-            "heartbeatChannel",
-            "agentEmission",
-            "agentDiagnostic",
-            "agentWarning",
-            "heartbeatEmission",
-            "visitingListeners",
-            "reportingErrors",
-            "readyToFinish",
             "emptyContext",
             "emptyHeartbeat",
             "noEnvelope",
@@ -827,13 +816,6 @@
             "alwaysDiagnosticsFollowOriginal",
             "alwaysAllocatedSequencesArePositive",
             "sometimesErrorAndWarningFollowOriginal",
-            "sentHeartbeat",
-            "failedHeartbeat",
-            "okEmptyHeartbeat",
-            "okTokenHeartbeat",
-            "alertIndicator",
-            "errorIndicator",
-            "okIndicator",
             "heartbeatInputValues",
             "defaultIndicator",
             "selectedIndicator",
@@ -1615,7 +1597,7 @@
           ]
         },
         {
-          "path": "spec/core/approvalWorkers.md",
+          "path": "spec/core/approvalService.md",
           "sha256": "383daf2e4b1e2475b37a2d48b88197ceabbb59a235829abeeef70b30008b113f",
           "definitions": [
             "initial",
@@ -2512,7 +2494,7 @@
       "targets": [
         {
           "path": "spec/core/messaging.md",
-          "sha256": "d663cdacbbe48a1650a81744c1daa4914347b49a574fb7f8c07af07e1dea580c",
+          "sha256": "ad9ea9751565198667a03ae2839ec78f7882847849f6c7d6c23544516c154646",
           "definitions": [
             "initial",
             "sourceValues",
@@ -2760,7 +2742,7 @@
       "targets": [
         {
           "path": "spec/core/embeddingSpace.md",
-          "sha256": "46ddd2a42586c57fcf987fdda7594b703999152eb105e606a0884160dba93688",
+          "sha256": "5e6c48f2816f6f898ff67ba361f0cdd6a38d172af5bb910e3586db43bf492b8b",
           "definitions": [
             "initial",
             "encoderValues",
@@ -2818,7 +2800,7 @@
         },
         {
           "path": "spec/core/embeddingService.md",
-          "sha256": "27105bb9e10ffa8ecc73e8d0d35672442fecb21e3a7bf99461886e33f283c3c2",
+          "sha256": "22ddf67d33966e919e2a252a302ece38568e4e98cfefdccf20db457b6accfb38",
           "definitions": [
             "emptyWaitingItem",
             "initial",
@@ -3043,7 +3025,7 @@
       "targets": [
         {
           "path": "spec/core/embeddingWrite.md",
-          "sha256": "cdd5e4a0b98a976a732214def032d6cd575c29489259b9e043346bf1f6d2fef7",
+          "sha256": "72d09fd650d191302f2900a53c83ee8eb44421b923edf4755980d606042091e7",
           "definitions": [
             "initial",
             "canSubmit",
@@ -3076,7 +3058,7 @@
         },
         {
           "path": "spec/core/embeddingBatch.md",
-          "sha256": "61f813dfba68cbd16e54dd603e6ebfebebbfab135fc35bf36e3b68bd6e4b5bd1",
+          "sha256": "2afbbbfa1d276b4387a8feff148beb4de8bdba69838d59206b469ad6a6fde39e",
           "definitions": [
             "initial",
             "membersValues",
@@ -3102,7 +3084,7 @@
         },
         {
           "path": "spec/core/embeddingService.md",
-          "sha256": "27105bb9e10ffa8ecc73e8d0d35672442fecb21e3a7bf99461886e33f283c3c2",
+          "sha256": "22ddf67d33966e919e2a252a302ece38568e4e98cfefdccf20db457b6accfb38",
           "definitions": [
             "emptyWaitingItem",
             "initial",
@@ -3264,7 +3246,7 @@
       "targets": [
         {
           "path": "spec/core/factWrites.md",
-          "sha256": "c8785d151e9fbcfb505110aa9731825e7a0d261350d7aaa3075cd55d2a45cdac",
+          "sha256": "24f9432b685d9542d79dfbaca8a6df3d029030425deed35f0b97b59e554cd6dc",
           "definitions": [
             "initial",
             "writerValues",
@@ -3368,7 +3350,7 @@
       "targets": [
         {
           "path": "spec/core/grammar.md",
-          "sha256": "0ac4c26bada50ad9d35c51af0df72374ee6cd9a6c45e4802f352ff089a7904e4",
+          "sha256": "a148ebe39b8e145eefcc0b653c5e83a0f8420d6055d9de4df890e1e203e8aa5a",
           "definitions": [
             "encodeMember",
             "parserAccepts",
@@ -3855,7 +3837,7 @@
       "targets": [
         {
           "path": "spec/core/interactiveTask.md",
-          "sha256": "774c374ce6f89e17edfada3eee3d3a51340aaed38f4354351295d48d396e4278",
+          "sha256": "5335c40b45044ebe394d794fd400ce163310b8c34c4ad9cf83716eec6045069f",
           "definitions": [
             "initial",
             "byValues",
@@ -4589,7 +4571,7 @@
       "targets": [
         {
           "path": "spec/core/models.md",
-          "sha256": "447323bd9a33516ade14f93f667c617546ee0c20b33f9d01820efca7af47c104",
+          "sha256": "c74a7838e3942aecccbfc3c0f2442ae38fd588baaa24a73c5c5879b760e8e2cd",
           "definitions": [
             "missingAttempt",
             "emptyRequestEvidence",
@@ -4815,8 +4797,8 @@
       "reviewStatus": "behavioral mapping inspected against current spec; no mechanized cross-model equivalence claimed",
       "targets": [
         {
-          "path": "spec/core/notificationCursor.md",
-          "sha256": "ae8a5d42fc4f519ed270e1f27f76ab4fa780ee28d54ecff9d27c3e1b2a6c3662",
+          "path": "spec/core/notifications/cursor.md",
+          "sha256": "d28e0341573eb28ca7223ddf69e08ffe48debf092ffe9bd008c1cee1ce658a4d",
           "definitions": [
             "emptyCursor",
             "initial",
@@ -5098,8 +5080,8 @@
       "reviewStatus": "behavioral mapping inspected against current spec; no mechanized cross-model equivalence claimed",
       "targets": [
         {
-          "path": "spec/core/notifications.md",
-          "sha256": "7480e89eed108440741e8d6b4a2d31323725e41e009f0c2d0912eca30b125822",
+          "path": "spec/core/notifications/index.md",
+          "sha256": "6bb28cd3ed122e1cdde60f54de092db7cf33a27853964bb610b2bf65e3b52f0d",
           "definitions": [
             "emptyInput",
             "inputValues",
@@ -5165,8 +5147,6 @@
             "restart",
             "canReplaceInbox",
             "replaceInbox",
-            "cursorAccepted",
-            "lawOldEpochCursorIsRejected",
             "alwaysReadFenceMatchesDurableState",
             "sometimesReadDurableNotifications",
             "sometimesClosedInbox",
@@ -5196,13 +5176,6 @@
             "lawProducerCountWins",
             "lawPermanentExpiryWins",
             "lawReadNotificationsHaveNoBadge",
-            "snapshotValues",
-            "checkedValues",
-            "checkCoordinate",
-            "validSnapshot",
-            "hydrationReady",
-            "lawUnacknowledgedMigrationCannotBecomeReady",
-            "lawReadySnapshotIsValid",
             "freshPendingAgainstRows",
             "alwaysFreshNotificationIdentity",
             "alwaysAffectedRowsNonnegative",
@@ -5210,10 +5183,9 @@
           ]
         },
         {
-          "path": "spec/core/notificationPayload.md",
-          "sha256": "9d18735d503c485c73cdda2edc8d3208567a82f988e77cd6251efe44fcd957ce",
+          "path": "spec/core/notifications/payload.md",
+          "sha256": "9bbc46359a30333ba87e5d9f2c070653b4d32b63690345bd55ee26d80dc48627",
           "definitions": [
-            "absentPayload",
             "payloadOf",
             "initial",
             "canCapturePayload",
@@ -5427,8 +5399,8 @@
       "reviewStatus": "behavioral mapping inspected against current spec; no mechanized cross-model equivalence claimed",
       "targets": [
         {
-          "path": "spec/core/notifications.md",
-          "sha256": "7480e89eed108440741e8d6b4a2d31323725e41e009f0c2d0912eca30b125822",
+          "path": "spec/core/notifications/index.md",
+          "sha256": "6bb28cd3ed122e1cdde60f54de092db7cf33a27853964bb610b2bf65e3b52f0d",
           "definitions": [
             "emptyInput",
             "inputValues",
@@ -5494,8 +5466,6 @@
             "restart",
             "canReplaceInbox",
             "replaceInbox",
-            "cursorAccepted",
-            "lawOldEpochCursorIsRejected",
             "alwaysReadFenceMatchesDurableState",
             "sometimesReadDurableNotifications",
             "sometimesClosedInbox",
@@ -5525,13 +5495,6 @@
             "lawProducerCountWins",
             "lawPermanentExpiryWins",
             "lawReadNotificationsHaveNoBadge",
-            "snapshotValues",
-            "checkedValues",
-            "checkCoordinate",
-            "validSnapshot",
-            "hydrationReady",
-            "lawUnacknowledgedMigrationCannotBecomeReady",
-            "lawReadySnapshotIsValid",
             "freshPendingAgainstRows",
             "alwaysFreshNotificationIdentity",
             "alwaysAffectedRowsNonnegative",
@@ -5653,8 +5616,8 @@
       "reviewStatus": "behavioral mapping inspected against current spec; no mechanized cross-model equivalence claimed",
       "targets": [
         {
-          "path": "spec/core/notificationHydration.md",
-          "sha256": "d731b90bd5acce0c3b1be1e43e4f13a2803b83a401f2a9fa03237895c6a407a0",
+          "path": "spec/core/notifications/startup.md",
+          "sha256": "41cd39f697647298901525dd01508df8c4dd6e110aa8423891b45203f6eb6add",
           "definitions": [
             "emptySnapshot",
             "emptyStore",
@@ -5686,12 +5649,14 @@
             "sometimesDuplicateLegacyRejected",
             "fair_readLoaded",
             "fair_persistMigration",
-            "leadsToHydrationAttemptSettles"
+            "leadsToHydrationAttemptSettles",
+            "checkCoordinate",
+            "validSnapshot"
           ]
         },
         {
-          "path": "spec/core/notifications.md",
-          "sha256": "7480e89eed108440741e8d6b4a2d31323725e41e009f0c2d0912eca30b125822",
+          "path": "spec/core/notifications/index.md",
+          "sha256": "6bb28cd3ed122e1cdde60f54de092db7cf33a27853964bb610b2bf65e3b52f0d",
           "definitions": [
             "emptyInput",
             "inputValues",
@@ -5757,8 +5722,6 @@
             "restart",
             "canReplaceInbox",
             "replaceInbox",
-            "cursorAccepted",
-            "lawOldEpochCursorIsRejected",
             "alwaysReadFenceMatchesDurableState",
             "sometimesReadDurableNotifications",
             "sometimesClosedInbox",
@@ -5788,13 +5751,6 @@
             "lawProducerCountWins",
             "lawPermanentExpiryWins",
             "lawReadNotificationsHaveNoBadge",
-            "snapshotValues",
-            "checkedValues",
-            "checkCoordinate",
-            "validSnapshot",
-            "hydrationReady",
-            "lawUnacknowledgedMigrationCannotBecomeReady",
-            "lawReadySnapshotIsValid",
             "freshPendingAgainstRows",
             "alwaysFreshNotificationIdentity",
             "alwaysAffectedRowsNonnegative",
@@ -6092,8 +6048,8 @@
       "reviewStatus": "behavioral mapping inspected against current spec; no mechanized cross-model equivalence claimed",
       "targets": [
         {
-          "path": "spec/core/notificationRecovery.md",
-          "sha256": "09ff4d143431b8dc1dde47fedc67b703a8200e261275bc533c3c8f7c2174e841",
+          "path": "spec/core/notifications/recovery.md",
+          "sha256": "735cd514edbad0b8ff81c080ddfca483c01938f8d46d94186243476a5219d1f8",
           "definitions": [
             "initial",
             "delayMs",
@@ -6121,8 +6077,8 @@
           ]
         },
         {
-          "path": "spec/core/notificationRecoveryOwners.md",
-          "sha256": "ee55afe160e10343c862b01ae84de5d5672bf7d1922e66f6e1bb263439f437b6",
+          "path": "spec/core/notifications/recoveryOwners.md",
+          "sha256": "b40093f183b97bdbdd119b6b6f0a65cd8055b2478f0cfefe17fb9e7c95c3d756",
           "definitions": [
             "initial",
             "absent",
@@ -6367,7 +6323,7 @@
       "reviewStatus": "behavioral mapping inspected against current spec; no mechanized cross-model equivalence claimed",
       "targets": [
         {
-          "path": "spec/core/pairing.md",
+          "path": "spec/core/pairing/index.md",
           "sha256": "3fc17a90d29973d73e0fec832df2905e1fc7e064f65e9985e5c2628e0b3d9f96",
           "definitions": [
             "sameSender",
@@ -6454,7 +6410,7 @@
           ]
         },
         {
-          "path": "spec/core/pairingAdmission.md",
+          "path": "spec/core/pairing/admission.md",
           "sha256": "bddccd60e403418e1786241ddae94354c9750a508422e942ad3ea582c003ecc5",
           "definitions": [
             "emptyScope",
@@ -6547,7 +6503,7 @@
           ]
         },
         {
-          "path": "spec/core/pairingGrants.md",
+          "path": "spec/core/pairing/grants.md",
           "sha256": "5a839b57d2957288ea918d3f4b0648be5a3b2f3a856737b41baa53b6f0cc0954",
           "definitions": [
             "emptyOwner",
@@ -6572,7 +6528,7 @@
           ]
         },
         {
-          "path": "spec/core/pairingReplies.md",
+          "path": "spec/core/pairing/replies.md",
           "sha256": "9f7046c324b93cd5503aeb4d1dd1fe04a0e5be48ecb3f9a134d62490ef647ce2",
           "definitions": [
             "initial",
@@ -6734,7 +6690,7 @@
       "reviewStatus": "behavioral mapping inspected against current spec; no mechanized cross-model equivalence claimed",
       "targets": [
         {
-          "path": "spec/core/pairing.md",
+          "path": "spec/core/pairing/index.md",
           "sha256": "3fc17a90d29973d73e0fec832df2905e1fc7e064f65e9985e5c2628e0b3d9f96",
           "definitions": [
             "sameSender",
@@ -6821,7 +6777,7 @@
           ]
         },
         {
-          "path": "spec/core/pairingAdmission.md",
+          "path": "spec/core/pairing/admission.md",
           "sha256": "bddccd60e403418e1786241ddae94354c9750a508422e942ad3ea582c003ecc5",
           "definitions": [
             "emptyScope",
@@ -6914,7 +6870,7 @@
           ]
         },
         {
-          "path": "spec/core/pairingGrants.md",
+          "path": "spec/core/pairing/grants.md",
           "sha256": "5a839b57d2957288ea918d3f4b0648be5a3b2f3a856737b41baa53b6f0cc0954",
           "definitions": [
             "emptyOwner",
@@ -6939,7 +6895,7 @@
           ]
         },
         {
-          "path": "spec/core/pairingReplies.md",
+          "path": "spec/core/pairing/replies.md",
           "sha256": "9f7046c324b93cd5503aeb4d1dd1fe04a0e5be48ecb3f9a134d62490ef647ce2",
           "definitions": [
             "initial",
@@ -7329,7 +7285,7 @@
       "targets": [
         {
           "path": "spec/core/media.md",
-          "sha256": "7edb681a7d6374a61d992450e397fc71967f1165f360ccff6d9781e2936945c7",
+          "sha256": "5a3345c10c8b009e54f2a81cb698cfe8ff411959a3b02d8365dde30e4253f6c8",
           "definitions": [
             "initial",
             "canScreen",
@@ -7510,7 +7466,7 @@
       "targets": [
         {
           "path": "spec/core/hooks.md",
-          "sha256": "7bd853fd6ffb940c890480089bbfebb705d91691f9c3627d89d27a6c6b25efba",
+          "sha256": "3d199139ae3ae423b978370a57f686388225753325b2491e6f61d4a0b8f5bfdc",
           "definitions": [
             "initial",
             "idValues",
@@ -8023,7 +7979,7 @@
           ]
         },
         {
-          "path": "spec/core/pluginRegistry.md",
+          "path": "spec/core/pluginServices.md",
           "sha256": "3b721c348e2053743268b396cfc70f626c05c2d277eb63ee222a1e03c015539c",
           "definitions": [
             "initial",
@@ -8310,7 +8266,7 @@
         },
         {
           "path": "spec/core/messaging.md",
-          "sha256": "d663cdacbbe48a1650a81744c1daa4914347b49a574fb7f8c07af07e1dea580c",
+          "sha256": "ad9ea9751565198667a03ae2839ec78f7882847849f6c7d6c23544516c154646",
           "definitions": [
             "initial",
             "sourceValues",
@@ -9067,7 +9023,7 @@
       "reviewStatus": "behavioral mapping inspected against current spec; no mechanized cross-model equivalence claimed",
       "targets": [
         {
-          "path": "spec/core/providers.md",
+          "path": "spec/core/providers/work.md",
           "sha256": "00dc5c593c3d740fe1c9c59839f11dff401003e3ba2aae8449de0a2ea87bbbfc",
           "definitions": [
             "initial",
@@ -9133,7 +9089,7 @@
           ]
         },
         {
-          "path": "spec/core/providerExecutions.md",
+          "path": "spec/core/providers/index.md",
           "sha256": "b0c9129a9f1b5e04b6d344118319361af0fa9a8d5b1d872e8b67bf15b028adbf",
           "definitions": [
             "publicAudience",
@@ -9193,7 +9149,7 @@
           ]
         },
         {
-          "path": "spec/core/providerPromiseRace.md",
+          "path": "spec/core/providers/race.md",
           "sha256": "ef204b7e2294fd83bf51800b4630a98ab42a514c34bd8891e4c602156aff67f5",
           "definitions": [
             "initial",
@@ -9236,7 +9192,7 @@
           ]
         },
         {
-          "path": "spec/core/providerWaiterPromise.md",
+          "path": "spec/core/providers/waiter.md",
           "sha256": "b8c95c1d308a2c1a4e2be2d66acb06f29f4c371111faba8ba7aeb2ae9429cd8e",
           "definitions": [
             "initial",
@@ -9354,7 +9310,7 @@
       "reviewStatus": "behavioral mapping inspected against current spec; no mechanized cross-model equivalence claimed",
       "targets": [
         {
-          "path": "spec/core/responseFences.md",
+          "path": "spec/core/responseFields.md",
           "sha256": "a1e00d6737e85cad3a2f3334138a4a919c062b05e3fb7da6b8d160aa1d908435",
           "definitions": [
             "initial",
@@ -9640,8 +9596,7 @@
             "maxRoomsValues",
             "activeRoomIds",
             "activeRooms",
-            "canReuseLease",
-            "reuseLease",
+            "leaseReusable",
             "roomOccupancy",
             "canQueueRoom",
             "queueRoom",
@@ -9663,7 +9618,7 @@
             "cancelQueued",
             "canCloseRoomAdmission",
             "closeRoomAdmission",
-            "alwaysWritesRetainLease",
+            "alwaysLeaseWriteCountsNonnegative",
             "alwaysCancelledWaitersRemoved",
             "stepClosedQueueCannotGrow",
             "sometimesPendingWritePreventsRelease",
@@ -9762,7 +9717,7 @@
         },
         {
           "path": "spec/core/multiRoomLeases.md",
-          "sha256": "94f3b3dd9fbc38ee81ae92e6c004b548b73ea33666f2a5efbcf3da639c70609c",
+          "sha256": "73775ae53319848f7f9ced4f68aaf8374ead2aa109a12f597b62521b89d9d1ef",
           "definitions": [
             "initial",
             "capacityValues",
@@ -11769,7 +11724,7 @@
         },
         {
           "path": "spec/core/eagerServices.md",
-          "sha256": "d5c1aaed160d79c2e4473c294aa2f9bca225ee80eeb5fe69b1fa6353bd25c68e",
+          "sha256": "9ef307c88bb90087561fc54e8c69624875b9b8f3a6fa169c55b571fe7907a9d6",
           "definitions": [
             "initial",
             "jobIdValues",
@@ -11778,7 +11733,6 @@
             "attemptIdValues",
             "instanceIdValues",
             "errorIdValues",
-            "nowValues",
             "eagerJob",
             "retryDelay",
             "canRegisterClass",
@@ -11826,7 +11780,7 @@
           ]
         },
         {
-          "path": "spec/core/serviceRegistry.md",
+          "path": "spec/core/serviceInstances.md",
           "sha256": "80fa7f7df4f7307aa3e8be8ef8dbe4b9ae5ad91259bed21820858a1932a6a33b",
           "definitions": [
             "registeredTypeStatus",
@@ -12147,7 +12101,7 @@
       "targets": [
         {
           "path": "spec/core/memo.md",
-          "sha256": "51facc0aef89e1aef35d4a185ac1fd0d861e10be8a0205d8e14f824c754628cf",
+          "sha256": "881d38e3dd0aa64ef024b2c67d179c43e21ef9eb14e22b5a84a36128e9ff3145",
           "definitions": [
             "initial",
             "absentEntry",
@@ -12196,19 +12150,8 @@
         },
         {
           "path": "spec/core/memoConcurrency.md",
-          "sha256": "a73660681638c86181f5efda4d03733d5cbc3254d5a3904999895f26a1f733b2",
+          "sha256": "9414f2025fadf93c14e323766550686b7f6053c36b4d1e4c195e8f79754f6185",
           "definitions": [
-            "fetchAbsentValue",
-            "fetchWaitingValue",
-            "fetchResolvedValue",
-            "fetchRejectedValue",
-            "readAbsentValue",
-            "readWaitingValue",
-            "readServedValue",
-            "readFailedValue",
-            "writeAbsentValue",
-            "writeCommittedValue",
-            "writeInvalidatedValue",
             "emptyFetch",
             "emptyRead",
             "emptyWrite",
@@ -14375,7 +14318,7 @@
         },
         {
           "path": "spec/core/models.md",
-          "sha256": "447323bd9a33516ade14f93f667c617546ee0c20b33f9d01820efca7af47c104",
+          "sha256": "c74a7838e3942aecccbfc3c0f2442ae38fd588baaa24a73c5c5879b760e8e2cd",
           "definitions": [
             "missingAttempt",
             "emptyRequestEvidence",
@@ -14460,7 +14403,7 @@
           ]
         },
         {
-          "path": "spec/core/turnSignalScan.md",
+          "path": "spec/core/turnEventStack.md",
           "sha256": "18a6d4baeb3332ce734607257293bb97cceb146aead1454e4beef1511275ea3f",
           "definitions": [
             "initial",

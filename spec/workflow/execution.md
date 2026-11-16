@@ -1,9 +1,9 @@
 # Workflow worker execution and wakeups
 
-`EmbeddedWorkflowService` runs the approved native workflow worker. The
-[workflow admission contract](./admission.md) owns reviewed-run identity.
-[Worker provenance](./worker.md) owns executable admission. This machine begins at the persisted execution
-boundary and models one run, its worker slot, and wakeup reservation.
+The host runs the approved workflow worker. [Admission](./admission.md)
+owns reviewed-run identity and [worker provenance](./worker.md) owns
+executable admission. This machine follows one persisted run, its worker
+slot and its wakeup reservation.
 
 ## Story: Recover a parked workflow without creating a second execution
 
@@ -14,12 +14,12 @@ boundary and models one run, its worker slot, and wakeup reservation.
 
 The host sweeps timer events in order. A create can reopen an existing
 node ID after it fires or is cancelled. Timer waits choose the earliest
-open timer, or 60 seconds when none is recorded. Waits on events rearm
-only with a reported deadline. Resume scheduling adds a 100 millisecond
-pad and caps the delay at the maximum signed 32-bit timeout. The first
-reservation is replaced only by an earlier due request. A live-but-unknown
-worker is checked again after a second. Unknown outcome with no live
-worker removes the wakeup while preserving unfinished history.
+open timer, or a default wait when none is recorded. Waits on events rearm
+only with a reported deadline. A wakeup is never postponed past the
+earliest due attempt: a reservation is replaced only by an earlier one. A
+live worker of unknown outcome is checked again at once; an unknown outcome
+with no live worker removes the wakeup while preserving unfinished
+history.
 
 ```quint
 type ExecutionPhase = NoExecution | PostedRun | RunningWorker | WaitingTimer | WaitingEvent | WaitingApproval | WorkerUncertain | ExecutionDone | ExecutionCancelled | ExecutionFailed
@@ -30,31 +30,29 @@ pure def admitRun(r: WakeupRun, runId: int): WakeupRun = { ...r, phase: PostedRu
 pure def terminalRun(phase: ExecutionPhase): bool = phase == ExecutionDone or phase == ExecutionCancelled or phase == ExecutionFailed
 pure def canStartWorker(r: WakeupRun): bool = r.runId > 0 and not(r.worker) and not(terminalRun(r.phase)) and not(r.stopping) and not(r.cancelAsked)
 pure def startWorker(r: WakeupRun): WakeupRun = { ...r, phase: RunningWorker, worker: true, starts: r.starts + 1 }
-pure def boundedDelay(now: int, target: int): int = {
-  val padded = if (target <= now) 100 else target - now + 100
-  if (padded <= 2147483647) padded else 2147483647
+pure val defaultTimerWaitMs: int = 60000
+pure def reserveWake(target: int, r: WakeupRun): WakeupRun = {
+  val due = if (target <= r.now) r.now else target
+  if (r.stopping or (r.wakeId > 0 and r.wakeDue <= due)) r
+  else { ...r, wakeDue: due, wakeId: r.wakeSerial + 1, wakeSerial: r.wakeSerial + 1 }
 }
-pure def reserveWake(delay: int, r: WakeupRun): WakeupRun =
-  if (r.stopping or (r.wakeId > 0 and r.wakeDue <= r.now + delay)) r
-  else { ...r, wakeDue: r.now + delay, wakeId: r.wakeSerial + 1, wakeSerial: r.wakeSerial + 1 }
 pure def canParkWorker(r: WakeupRun, parked: ExecutionPhase): bool = r.worker and (parked == WaitingTimer or parked == WaitingEvent or parked == WaitingApproval)
 pure def parkWorker(r: WakeupRun, parked: ExecutionPhase, deadline: int, hasDeadline: bool): WakeupRun = {
   val saved = { ...r, phase: parked, worker: false }
-  if (parked == WaitingTimer or (parked == WaitingEvent and hasDeadline)) reserveWake(boundedDelay(r.now, if (hasDeadline) deadline else r.now + 60000), saved)
+  if (parked == WaitingTimer or (parked == WaitingEvent and hasDeadline)) reserveWake(if (hasDeadline) deadline else r.now + defaultTimerWaitMs, saved)
   else saved
 }
-pure val uncertainWorkerPhase: ExecutionPhase = WorkerUncertain
 pure def canObserveUncertain(r: WakeupRun): bool = r.worker
 pure def observeUncertain(r: WakeupRun, workerKnownLive: bool): WakeupRun = {
-  val saved = { ...r, phase: uncertainWorkerPhase, worker: false }
-  if (workerKnownLive) reserveWake(1000, saved) else { ...saved, wakeDue: 0, wakeId: 0 }
+  val saved = { ...r, phase: WorkerUncertain, worker: false }
+  if (workerKnownLive) reserveWake(r.now, saved) else { ...saved, wakeDue: 0, wakeId: 0 }
 }
 pure def changeClock(r: WakeupRun, now: int): WakeupRun = { ...r, now: now }
 pure def canObserveWake(r: WakeupRun, wakeId: int): bool = wakeId > 0 and wakeId == r.wakeId
 pure def observeWake(r: WakeupRun, wakeId: int): WakeupRun = { ...r, wakeId: 0, wakeDue: 0 }
 pure val runIdValues = Set(0, 1)
-pure val nowValues = Set(0, 300, 1100, 2147483647)
-pure val deadlineValues = Set(200, 1000, 2147483647)
+pure val nowValues = Set(0, 300, 1100)
+pure val deadlineValues = Set(200, 1000, 70000)
 pure val wakeIdValues = Set(0, 1, 2, 3)
 ```
 
@@ -66,8 +64,7 @@ cancel operation. With no native run row, cancellation may have won
 before the worker entered. A native finished status without its terminal
 receipt does not reconstruct successful output and is recorded as failure.
 A wakeup reservation names the run and cannot authorize a terminal or
-already-owned execution. Process liveness and the monotonic host timer's
-expiry are boundary observations.
+already-owned execution.
 
 ```quint
 type CancelObservation = NativeRunAbsent | NativeRunCancelled | NativeResultMissing

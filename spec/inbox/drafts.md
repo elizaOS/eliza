@@ -1,23 +1,22 @@
 # Inbox drafts and provider review custody
 
-A consumer's mailbox adapter instantiates the inbox package's drafts
-controller, review controller and operation journal. The local draft
-store, retained edit coalescer and receipt guard are injected by the
-consumer. [Saved reads](./grants.md) own mailbox reads.
+The inbox package keeps the owner's drafts on the device and turns one
+reviewed draft into at most one provider request. [Mailbox reads](./reads.md) own mailbox reads.
 [Managed Gmail](../cloud/managedGoogle/gmail.md) owns remote send
 admission and its receipt. This model owns the installed client records
 and the transition from a reviewed local draft to one provider request.
 
 ## Story: Keep drafts recoverable across account switches and provider failures
 
-> As the owner, I want to keep drafts recoverable across account switches and provider failures.
+> As the owner, I want a draft I wrote to survive switching accounts, a
+> crash or a provider failure, and to stay with the account I wrote it
+> from.
 
 ### Saved and retained content belongs to the exact From account
 
-The saved slot uses `inbox-drafts:v1:<owner>`, and the shelf uses
-`inbox-drafts:v1:shelf:<sha256(owner)>`. Owner is the JSON tuple
-of environment, Cloud user, organization or empty string, and Gmail grant.
-The current Cloud session must match the account session to bind. A
+The saved draft and the shelf of set-aside drafts are each keyed by the
+owner: environment, Cloud user, organization and mail grant. The current
+Cloud session must match the account session to bind. A
 new binding retires pending publication from the old binding. Same-owner
 in-memory edits may resume, but a newer saved revision fences their next
 write until the conflict is reviewed.
@@ -28,12 +27,9 @@ copies. Within one draft ID the current composer wins over retained edits,
 which win over the saved row and existing shelf row. A failed later cleanup
 may leave copies in both locations. A malformed saved or shelf record
 opens recovery without an empty overwrite. The draft and shelf each have
-an 8 MiB serialized UTF-8 bound. A shelf contains at most 50 distinct
-draft IDs and can retain uncommitted recipient text. The Android store
-uses secure slots. The browser uses a scoped document, with the saved
-draft owner hashed in its document name. The controller validates local recipients,
-attachments and draft layout before writing. The provider journal has its
-own 7.5 MiB proposal bound before attempting review.
+an 8 MiB serialized bound, and a shelf holds at most 50 drafts.
+Recipients, attachments and layout are validated before writing. A
+provider review has its own smaller 7.5 MiB proposal bound.
 
 ```quint
 type Copy = { id: int, content: int, revision: int }
@@ -63,10 +59,8 @@ pure def lawProviderReviewHasSeparateBytes(completeBytes: int): bool = completeB
 
 ### Retained edits coalesce under the owner and flush on departure
 
-The retained binding is the JSON tuple `["inbox-unsaved", profile, owner]`
-and its slot is `inbox-drafts:v1:unsaved:<sha256(binding)>`. The retained
-coalescer schedules a zero-delay timer. Each new edit replaces the one waiting
-copy. An in-flight write holds the waiting copy until release, unless a
+Unsaved edits are retained under the profile and owner, written on the
+next turn. Each new edit replaces the one waiting copy. An in-flight write holds the waiting copy until release, unless a
 flush explicitly transfers it to the durable controller. Hiding, retiring
 or preparing an app update flushes current edits. Retiring stops publication
 to the retired view and app update can require readback of the retired
@@ -91,9 +85,7 @@ pure def lawBusyTimerKeepsWaiting(hasWaiting: bool, timerDue: bool): bool =
 
 ### A provider request is bound to the current draft and reserves its one dispatch durably
 
-The operation slot is `inbox-operation:v1:<sha256(JSON.stringify([owner, grantId]))>`.
-Its owner is the Cloud environment, user and organization tuple. Only one
-record occupies that slot. The request ID and complete proposal survive
+Each owner and mail grant has one operation record. The request ID and complete proposal survive
 retry. Review compares draft identity and the serialized mode, recipients,
 subject, body, attachments, forward attachments and reply source against
 the composer. A changed or replaced composer discards the unsent review.
@@ -104,10 +96,8 @@ A fresh confirmation checks current operation capability, composer
 binding and reviewed forward capability. Acknowledged durable reservation
 precedes network dispatch. A saved reservation with a lost acknowledgement
 cannot cause a dispatch in the acknowledging caller, and a restarted
-caller can only read its receipt. Model integers denote distinct exact
-identities, one journal slot and one visible binding generation. Loading
-another slot is modeled by a state machine for that slot. The attached
-session epoch fences callback and dispatch authority within the slot.
+caller can only read its receipt. The attached session epoch fences
+callback and dispatch authority.
 
 ```quint
 type MailKind = NoMail | CreateMail | ReplaceMail | DeleteMail | SendMail
@@ -205,15 +195,14 @@ Once the durable reservation exists, recovery uses a receipt read. A stale
 prepared reply does not regress or clear an attempted operation. A separate
 confirmed abandon can observe an exact prepared receipt while the durable
 record is still dispatching, warn that a delayed request could arrive,
-and only then remove that record. A provider success or rejection needs the
+and only then remove that record; discarding never cancels mail and never
+sends the request again. A provider success or rejection needs the
 same request, operation kind and review digest. Unknown receipts keep their
 durable record. An observed terminal receipt can be retired separately.
-Different operations use different request IDs. Increasing model IDs
-represent creation order for fresh UUIDs. Clearing a journal is restricted to the explicit abandon,
-review-discard or terminal-retirement events. The receipt's epoch,
-request, operation kind and digest travel together as one observation.
-The simulator uses a mix of matching and stale observations. The proof
-covers arbitrary observations.
+Different operations use different request IDs. Only the explicit
+abandon, review discard or terminal retirement clears a journal. A
+receipt's epoch, request, operation kind and digest are observed
+together.
 
 ```quint
 pure def receiptAttempt(s: MailState): bool =
@@ -254,8 +243,7 @@ pure def sometimesCanonicalSuccess(s: MailState): bool = s.phase == SucceededMai
 
 Create and replacement yield the reference used by Edit. Reopening checks
 the current Cloud epoch, exact provider draft ID and the freshly read
-digest. The library stores only `draftId` and `providerDigest`.
-An edited composer or unresolved retained copy blocks adoption. An
+digest; only the draft ID and the provider digest are stored. An edited composer or unresolved retained copy blocks adoption. An
 unchanged already-saved reference may reopen without writing. Otherwise
 an unrelated saved copy must first be shelved, and the new provider
 reference must be saved locally before the old receipt is clearable. Lost
@@ -263,8 +251,7 @@ write acknowledgement leaves the old receipt available for recovery.
 The Edit invocation clears the journal only after that adoption and a
 current-binding check. If clear is unconfirmed, keep the old receipt
 available and require the same provider and local checks on a later
-Edit. The receipt clear result and the binding check are observed
-together by the same call.
+Edit.
 
 Forwarded original parts come from the reviewed source message ID and
 history ID and the exact ordered reviewed part IDs. The draft carries
@@ -272,10 +259,8 @@ accepted metadata and rechecks the outgoing policy. A text-only retained
 recovery record never invents original forward parts. Provider review may
 capture source bytes before dispatch. Provider replacement checks the
 expected digest when preparing the review and requires explicit
-acknowledgement of non-atomic replacement. Gmail's remote replacement is
-non-atomic with that check, so a change after review may be overwritten.
-The client records the observed outcome without representing that provider
-behavior as an atomic compare-and-exchange.
+acknowledgement that the provider's replacement is not atomic with that
+check, so a change made after review may be overwritten.
 
 ```quint
 type ProviderRead = { currentEpoch: bool, exactId: bool, exactDigest: bool, localCanAdopt: bool, forwardedSource: bool, exactForwardMetadata: bool, localAcknowledged: bool }
@@ -325,12 +310,11 @@ saved copy is removed by compare-and-exchange. A differing saved copy is
 marked earlier only if still at the revision captured before Send. Later
 revisions remain unchanged. In the shelf, the exact sent draft is removed
 and a different copy of that draft is marked rather than removed. Reusing
-an earlier draft needs confirmation. A sent Gmail draft remains in Gmail
-until a separate draft-delete review captures the exact reference and the
+an earlier draft needs confirmation. A sent provider draft remains at the
+provider until a separate draft-delete review captures the exact reference and the
 permanent-delete choice.
 
-Discovered by the proof. A held cleanup belongs to an already observed
-send. New and still-preparing reviews have no prior sent source to unlock.
+A held cleanup always belongs to an already observed send.
 
 ```quint
 type CleanupDecision = KeepCopy | DropSentCopy | MarkEarlierCopy
@@ -369,39 +353,6 @@ pure def lawUnknownSendCannotCleanCopies(cleanup: Cleanup, copy: Copy, pendingRe
   not(cleanup.exactReceipt) implies decideSavedCleanup(cleanup, copy) == KeepCopy and decideShelfCleanup(cleanup, copy, pendingRecipient) == KeepCopy
 ```
 
-A consumer's journey drives its real adapters and these client
-controllers with scripted Gmail and compare-and-exchange ports. Android secure storage
-and Gmail's live behavior are separate conformance boundaries.
-
-## Story: Discard an attempted operation on this device without pretending to cancel it
-
-> As the owner, I want to discard an attempted operation on this device without pretending to cancel it.
-
-### A local discard removes the row only after a prepared receipt read
-
-The owner may discard the local record of an attempted operation. The
-discard first reads the operation's receipt. Only a read that finds the
-request still prepared, while the same owner is current, admits clearing
-the row; a read that finds it started or failed keeps the row. A clear
-that saves removes the row, and the owner is told it is gone only if
-still current. Discarding never cancels mail and never sends the
-original request again: a provider may still start the request after
-the local row is gone.
-
-```quint
-type DiscardRead = DiscardFoundPrepared | DiscardFoundStarted | DiscardReadFailed
-type DiscardResult = { rowRemoved: bool, acknowledged: bool }
-pure def discardAttempt(ownerAtRead: bool, discardRead: DiscardRead, clearSaved: bool, ownerAtClear: bool): DiscardResult =
-  val removed = ownerAtRead and discardRead == DiscardFoundPrepared and clearSaved
-  { rowRemoved: removed, acknowledged: removed and ownerAtClear }
-pure def lawRemovalNeedsPreparedRead(ownerAtRead: bool, discardRead: DiscardRead, clearSaved: bool, ownerAtClear: bool): bool =
-  discardAttempt(ownerAtRead, discardRead, clearSaved, ownerAtClear).rowRemoved implies ownerAtRead and discardRead == DiscardFoundPrepared
-pure def lawAcknowledgementRequiresRemoval(ownerAtRead: bool, discardRead: DiscardRead, clearSaved: bool, ownerAtClear: bool): bool =
-  val result = discardAttempt(ownerAtRead, discardRead, clearSaved, ownerAtClear)
-  result.acknowledged implies result.rowRemoved
-pure def lawRetiredOwnerReadKeepsRow(discardRead: DiscardRead, clearSaved: bool, ownerAtClear: bool): bool =
-  not(discardAttempt(false, discardRead, clearSaved, ownerAtClear).rowRemoved)
-```
 
 ## Story: Open a provider draft without losing my saved draft
 

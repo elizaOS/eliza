@@ -40,11 +40,6 @@ pure def lawStatedClockIsOnTheDial(hour: int, minute: int, meridiem: Meridiem): 
   val reading = clockFromParts(hour, minute, meridiem)
   reading.readable implies (reading.clock.hour >= 0 and reading.clock.hour <= 23 and reading.clock.minute >= 0 and reading.clock.minute <= 59)
 }
-```
-
-### Twelve with a meridiem is midnight or noon
-
-```quint
 pure def lawTwelveAmIsMidnight(minute: int): bool =
   (minute >= 0 and minute <= 59) implies clockFromParts(12, minute, AmMeridiem).clock.hour == 0
 pure def lawTwelvePmIsNoon(minute: int): bool =
@@ -91,18 +86,8 @@ pure def lawOneTimeOnlyWhenEveryMentionAgrees(span: RangeReading, mentions: List
 pure def lawRangeIsOneTimeOnlyWhenBothEndsRead(span: RangeReading, mentions: List[ClockReading]): bool =
   (span.present and statedTimes(span, mentions).statedKind == OneStatedTime) implies
     (span.opening.readable and span.closing.readable and mentions.length() == 0 and statedTimes(span, mentions).ranged)
-```
-
-### The same time mentioned twice is one time
-
-```quint
 pure def lawRepeatedMentionIsOneTime(reading: ClockReading): bool =
   reading.readable implies statedTimes(noRange, List(reading, reading)).statedKind == OneStatedTime
-```
-
-### A range beside another mention, or an unreadable mention, is ambiguous
-
-```quint
 pure def lawRangeWithAnotherMentionIsAmbiguous(span: RangeReading, reading: ClockReading): bool =
   span.present implies statedTimes(span, List(reading)).statedKind == SeveralStatedTimes
 pure def lawUnreadableMentionIsAmbiguous(span: RangeReading, mentions: List[ClockReading]): bool =

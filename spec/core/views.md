@@ -4,7 +4,9 @@ Sources are `views/{declarations,surface-manifest,host-external-contract,view-in
 
 ## Story: Deliver a completed action to the intended view
 
-As a user, I want a completed action to reach the requesting renderer without overriding later navigation or accepting a mismatched response.
+> As a user, I want a completed action to reach the view that requested it,
+> so that it neither overrides navigation I made since nor lands in the
+> wrong view.
 
 ### Completion requires matching request renderer installation and view identities
 
@@ -26,4 +28,26 @@ pure def stepDeliveryUsesCapturedEpoch(before: ViewRequest, via: str, after: Vie
 pure def stepTerminalHandoffStaysTerminal(before: ViewRequest, after: ViewRequest): bool = (before.phase == Delivered or before.phase == Retired) implies before.phase == after.phase
 pure def sometimesViewDelivered(v: ViewRequest): bool = v.phase == Delivered
 pure def sometimesViewRetired(v: ViewRequest): bool = v.phase == Retired
+```
+
+## Story: Offer a caller only the actions its view allows
+
+> As the owner, a view sees only the actions its declaration allows, so an
+> action meant for another view is never offered there.
+
+### A view offers only registered actions its declaration lists
+
+A view's declaration lists the actions it scopes. Within that view, the
+caller is offered exactly the registered actions the declaration lists; an
+unlisted action is unavailable there whatever the caller's role. Whether
+the caller's role may run an offered action is [action
+planning](./actionPlanning.md)'s check.
+
+```quint
+pure def offeredInView(viewActions: Set[str], registeredActions: Set[str]): Set[str] = registeredActions.intersect(viewActions)
+pure def lawUnlistedActionUnavailable(viewActions: Set[str], registeredActions: Set[str], actionName: str): bool =
+  not(viewActions.contains(actionName)) implies not(offeredInView(viewActions, registeredActions).contains(actionName))
+pure val viewActionsValues = Set(Set(), Set("reply"), Set("reply", "manage"))
+pure val registeredActionsValues = Set(Set("reply", "manage", "browse"), Set("reply"))
+pure val actionNameValues = Set("reply", "manage", "browse")
 ```

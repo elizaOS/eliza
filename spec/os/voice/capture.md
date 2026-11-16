@@ -1,24 +1,19 @@
 # Half-duplex voice capture ownership
 
-The voice assistant session controller (`voice-assistant-session.ts` in the
-voice sources) owns one capture through a half-duplex turn and one capture
-re-acquisition. A consumer constructs the controller in its own voice
-adapter. Live full-duplex audio is [live session](./liveSession.md), the
-decision to submit an utterance is the [voice endpoint](./endpoint.md), and
-what the person heard is [playback](./playback.md).
-
-The microphone underneath has its own owners:
+The voice assistant session controller owns one capture through a
+half-duplex turn and one capture re-acquisition; a consumer constructs it
+in its own voice adapter. Live full-duplex audio is
+[live session](./liveSession.md), the decision to submit an utterance is
+the [voice endpoint](./endpoint.md), and what the person heard is
+[playback](./playback.md). The microphone underneath has its own owners:
 
 - [Microphone samples](./microphoneSamples.md): the shared capture graph,
   its bounded sample prefix and speech previews.
 - [Recorded transcription](./recordedTranscription.md): one recorded
   utterance and its final text for review.
-- [Microphone slot](./microphoneSlot.md): the one process-wide on-device
-  capture slot shared by independent owners.
-- [Microphone handoff](./microphoneHandoff.md): a running capture handing
-  the microphone to a draft recorder and then back to live capture.
-- [Native capture](./nativeCapture.md): one native capture's start and the
-  delivery of its terminal event to the host that admitted it.
+- [On-device microphone ownership](./microphoneSlot.md): the process-wide
+  slot, the handoff to the draft recorder, and native capture start and
+  end delivery.
 
 ## Story: Submit a voice turn without retaining the microphone
 

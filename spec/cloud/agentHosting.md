@@ -8,10 +8,6 @@ operator's route cleanup, status publication and container health probes
 are boundaries stated as laws. Network delivery and provider health are
 outside the model: each remote call may succeed, fail or stall.
 
-Develop sources: the cloud `agent_lifecycle`, `agent_routing`,
-`shutdown_sequence`, `shutdown_liveness`, `operator_routing` and
-`container_monitor` models (the agent path only).
-
 ## Story: Start, stop and delete a hosted agent
 
 > As an organization running an agent in the cloud, I want it started,

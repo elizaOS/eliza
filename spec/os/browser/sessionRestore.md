@@ -1,123 +1,82 @@
 # Browser session restoration and clear
 
-A consumer calls the shared `browsing-session.ts` from
-`plugins/plugin-native-browser-surface/src` and owns the save queue in its
-renderer browser adapter. The model covers backoff, clear and hydration.
-[Live document custody](./documentCustody.md) owns native tab events and
-capture. This model owns the persisted list and write fence.
+The consumer's renderer saves its browsing session through the shared
+[storage codec](./storage.md) and owns the save queue, its backoff, Clear
+and the merge of a late restore into the running view.
+[Document custody](./documentCustody.md) owns native tab events and which
+tab may contribute.
 
 ## Story: Restore saved public tabs without losing the tabs I already opened
 
-> As the person, I want to restore saved public tabs without losing the
-> tabs I already opened.
+> As the person, I want my saved public tabs restored beside the tabs I
+> already opened, so that a slow restore never replaces or duplicates
+> what I am using.
 
-### Saved rows keep order and exact safe addresses
+### A snapshot offers the codec at most eight known normal tabs
 
-The shared helper accepts raw HTTP or HTTPS URLs up to 4,096 UTF-16 units
-with a parsed nonempty hostname and no credentials or literal ASCII
-space, controls or DEL. Preserve raw spelling, so distinct accepted
-spellings have distinct history identity. The host supplies URL parse
-facts. Tab IDs are one through 80 ASCII alphanumeric, hyphen or underscore
-units. History preserves the first admitted occurrence, with at most 100
-URLs. The first valid row of each tab ID is kept, with at most eight tabs.
-The title replaces ASCII control characters and DEL with spaces, takes the
-first 200 UTF-16 units, and then trims. Preserve the selected ID only when
-it remains in the admitted rows. Missing arrays are empty.
-
-Snapshot production omits private tabs before asking for their addresses.
-It collects up to eight normal tabs with known addresses before the
-shared normalization pass. An invalid early candidate can therefore take
-up one of those eight slots and then be discarded. Its known URL can come
-from an unloaded restored page. Browser-only external pages can also
-contribute through the consumer's browser tracking. Visit admission keeps
-private navigation out of the supplied visit list.
+Snapshot production skips private tabs before asking for their addresses
+and offers the codec up to eight normal tabs whose address is known, in
+order; the codec then drops any that are invalid, so an invalid early
+candidate can take one of the eight slots. A known address can come from
+an unloaded restored page.
 
 ```quint
-type Address = { raw: str, units: int, http: bool, hostname: bool, credentials: bool, forbiddenUnit: bool }
-type DecodedTab = { id: str, validId: bool, address: Address, title: str, privateTab: bool }
-type SavedSession = { history: List[str], tabs: List[DecodedTab], selected: str }
-pure def savedAddress(address: Address): bool =
-  address.raw != "" and address.units > 0 and address.units <= 4096 and address.http and address.hostname and not(address.credentials or address.forbiddenUnit)
-pure def appendHistory(visits: List[str], address: Address): List[str] =
-  if (visits.length() < 100 and savedAddress(address) and not(visits.some(url => url == address.raw))) visits.append(address.raw) else visits
-pure def idIn(rows: List[DecodedTab], id: str): bool = rows.some(row => row.id == id)
-pure def appendSavedTab(rows: List[DecodedTab], row: DecodedTab): List[DecodedTab] =
-  if (rows.length() < 8 and row.validId and savedAddress(row.address) and not(idIn(rows,row.id))) rows.append(row) else rows
-pure def appendSnapshotCandidate(rows: List[DecodedTab], row: DecodedTab): List[DecodedTab] =
-  if (rows.length() < 8 and not(row.privateTab) and row.address.raw != "") rows.append(row) else rows
-pure def normalizeSession(history: List[Address], candidates: List[DecodedTab], preferred: str): SavedSession = {
-  val rows = candidates.foldl(List(), appendSavedTab)
-  { history: history.foldl(List(), appendHistory), tabs: rows, selected: if (idIn(rows, preferred)) preferred else "" }
-}
-pure def snapshotSession(history: List[Address], candidates: List[DecodedTab], preferred: str): SavedSession =
-  normalizeSession(history, candidates.foldl(List(), appendSnapshotCandidate), preferred)
-pure val exampleAddress: Address = { raw: "https://example.test", units: 20, http: true, hostname: true, credentials: false, forbiddenUnit: false }
-pure val exampleTab: DecodedTab = { id: "public", validId: true, address: exampleAddress, title: "Public", privateTab: false }
-pure val privateExampleTab: DecodedTab = { ...exampleTab, id: "private", privateTab: true }
-pure val addressValues = Set(exampleAddress, { ...exampleAddress, credentials: true }, { ...exampleAddress, units: 4097 })
-pure val historyValues = Set(List(), List(exampleAddress), List(exampleAddress, exampleAddress))
-pure val candidatesValues = Set(List(), List(exampleTab), List(privateExampleTab, exampleTab, exampleTab))
-pure val rowsValues = candidatesValues
-pure val rowValues = Set(exampleTab, privateExampleTab)
+import storage as St from "./storage"
+pure def appendSnapshotCandidate(rows: List[St::SavedTab], row: St::SavedTab): List[St::SavedTab] =
+  if (rows.length() < St::maxSavedTabs and not(row.privateTab) and row.address.raw != "") rows.append(row) else rows
+pure def snapshotSession(history: List[St::WebAddress], candidates: List[St::SavedTab], preferred: str): St::SavedSession =
+  St::normalizeSession(St::RendererCodec, history, candidates.foldl(List(), (rows, row) => appendSnapshotCandidate(rows, row)), preferred)
+pure val privateSavedTab: St::SavedTab = { ...St::publicTab, id: "private", privateTab: true }
+pure val candidatesValues = Set(List(), List(St::publicTab), List(privateSavedTab, St::publicTab, St::publicTab))
+pure val historyValues = Set(List(), List(St::publicAddress))
 pure val preferredValues = Set("", "public", "private")
-pure def lawCredentialsNeverPersist(address: Address): bool = address.credentials implies not(savedAddress(address))
-pure def lawPrivateRowIsNotASnapshotCandidate(rows: List[DecodedTab], row: DecodedTab): bool =
-  row.privateTab implies appendSnapshotCandidate(rows, row) == rows
-pure def lawSelectedRowSurvivesCodec(history: List[Address], candidates: List[DecodedTab], preferred: str): bool = {
-  val record = normalizeSession(history, candidates, preferred)
-  record.selected != "" implies idIn(record.tabs, record.selected)
-}
+pure def lawSnapshotKeepsAtMostTheTabLimit(history: List[St::WebAddress], candidates: List[St::SavedTab], preferred: str): bool =
+  snapshotSession(history, candidates, preferred).tabs.length() <= St::maxSavedTabs
 ```
 
 ### A late restore preserves the open list and appends only unused identities
 
-Preexisting history takes priority when merging admitted saved history and
-the result is capped at 100. A single blank tab with no registered native
-tab or metadata and no editing is pristine. The pinned shared helper can
-restore history only for a nonpristine shell. The consumer requests normalized
-rows from it with the pristine flag, then chooses whether to replace
-or append them based on the live view. On a pristine shell with saved
-rows, use the saved selection or the first saved row. Otherwise retain the
-open list and selection and append unused saved IDs in order up to the
-total tab limit, including open private tabs in the capacity check.
-An accepted restore installs lazy tabs and never resubmits a historical
-request. When shown, a restored page navigates to the retained address.
+A single blank tab with no registered native tab, metadata or editing is
+pristine. On a pristine view with saved rows the saved rows replace it,
+selecting the saved selection or the first saved row. Otherwise the open
+list and selection stay, and unused saved IDs are appended in order up to
+the tab limit, open private tabs included in that count. Existing history
+comes first when saved history is merged, up to the history limit. A
+restored tab loads lazily, navigates to its address when shown and never
+resubmits a request.
 
 ```quint
 type OpenTabs = { ids: List[str], selected: str }
 pure def addUnusedId(ids: List[str], id: str): List[str] =
-  if (ids.length() < 8 and not(ids.some(openId => openId == id))) ids.append(id) else ids
-pure def addRestoredTab(ids: List[str], row: DecodedTab): List[str] = addUnusedId(ids, row.id)
-pure def restoreTabIds(openTabs: OpenTabs, record: SavedSession, pristine: bool): OpenTabs =
-  if (pristine and record.tabs.length() > 0) {
-    ids: record.tabs.listMap(row => row.id),
-    selected: if (record.selected != "") record.selected else record.tabs.nthOr(0, exampleTab).id
-  }
-  else { ...openTabs, ids: record.tabs.foldl(openTabs.ids, addRestoredTab) }
-pure def addRestoredVisit(visits: List[str], url: str): List[str] =
-  if (visits.length() < 100 and not(visits.some(known => known == url))) visits.append(url) else visits
-pure def restoreHistory(visits: List[str], record: SavedSession): List[str] = {
-  val first = visits.foldl(List(), (kept, url) => if (kept.length() < 100) kept.append(url) else kept)
-  record.history.foldl(first, addRestoredVisit)
+  if (ids.length() < St::maxSavedTabs and not(ids.includes(id))) ids.append(id) else ids
+pure def restoreTabIds(openTabs: OpenTabs, record: St::SavedSession, pristine: bool): OpenTabs = {
+  val savedIds = record.tabs.listMap(row => row.id)
+  if (pristine and savedIds.length() > 0)
+    { ids: savedIds, selected: if (record.selected != "") record.selected else savedIds.nthOr(0, "") }
+  else { ...openTabs, ids: savedIds.foldl(openTabs.ids, (ids, id) => addUnusedId(ids, id)) }
+}
+pure def restoreHistory(visits: List[str], record: St::SavedSession): List[str] = {
+  val first = visits.foldl(List(), (kept, url) => if (kept.length() < St::maxSavedHistory) kept.append(url) else kept)
+  record.history.foldl(first, (kept, url) => St::keepVisit(St::RendererCodec, kept, url))
 }
 pure val visitsValues = Set(List(), List("https://example.test"))
 pure val idsValues = Set(List(), List("public"), List("private"))
-pure val openTabsValues = Set({ ids: List("new"), selected: "new" }, { ids: List("public","private"), selected: "private" })
-pure val recordValues = Set(normalizeSession(List(), List(), ""), normalizeSession(List(exampleAddress), List(exampleTab), "public"))
+pure val openTabsValues = Set({ ids: List("new"), selected: "new" }, { ids: List("public", "private"), selected: "private" })
+pure val recordValues = Set(St::normalizeSession(St::RendererCodec, List(), List(), ""), St::normalizeSession(St::RendererCodec, List(St::publicAddress), List(St::publicTab), "public"))
 pure val idValues = Set("public", "private", "new")
-pure val urlValues = Set("https://example.test", "https://other.test")
-pure def lawLateRestoreKeepsCurrent(openTabs: OpenTabs, record: SavedSession): bool =
+pure def lawLateRestoreKeepsCurrent(openTabs: OpenTabs, record: St::SavedSession): bool =
   restoreTabIds(openTabs, record, false).selected == openTabs.selected
 pure def lawDuplicateCannotUseCapacity(ids: List[str], id: str): bool =
-  ids.some(openId => openId == id) implies addUnusedId(ids,id) == ids
+  ids.includes(id) implies addUnusedId(ids, id) == ids
 pure def lawFullViewCannotAppend(ids: List[str], id: str): bool =
-  ids.length() >= 8 implies addUnusedId(ids,id) == ids
+  ids.length() >= St::maxSavedTabs implies addUnusedId(ids, id) == ids
 ```
 
 ## Story: Clear browsing data without resurrecting earlier snapshots
 
-> As the person, I want to clear browsing data without resurrecting
-> earlier snapshots.
+> As the person, I want Clear to remove my browsing data for good, so
+> that no save or restore already in flight brings an earlier snapshot
+> back.
 
 ### Restore and save use the current generation and serialize durable writes
 
@@ -135,19 +94,15 @@ latest submitted snapshot and its generation is still current. Retry
 starts at 2,000 ms, doubles up to 60,000 ms, and is specific to the failed
 candidate. A different snapshot can save immediately. A successful
 current write resets retry state. The first current failure in a streak
-reports a warning. Absolute timer readings and JSON identity comparison
-come from the host. Model integers represent equivalent nonempty encoded
-snapshots, including the empty browsing session. Zero is absence of a
-snapshot identity.
+reports a warning. A snapshot is named by a positive number; zero is no
+snapshot.
 
 Clear starts only with a confirmed live action. It advances the generation,
 pauses new saves, retires pending old writes, and drains the write already
 issued before sending the native clear. The UI waits for publication of
 the cleared view before unpausing. A failure leaves the current view and
 permits saving it again. A successful clear establishes the new baseline
-without another write. The closure and native receipt report proof of
-durable clear and retained private tabs. Tab removal itself belongs to
-the browser host, and does not share its authority with a save receipt.
+without another write.
 
 ```quint
 type BrowserWrite = { epoch: int, snapshot: int }
@@ -197,14 +152,6 @@ pure def finishClear(s: BrowserStorage, clearedSnapshot: int, published: bool): 
 pure val snapshotValues = Set(0, 1, 2)
 pure val clearedSnapshotValues = Set(0, 3)
 pure val nowValues = Set(0, 1999, 2000, 60000)
-pure val weight_startRestore = 5
-pure val weight_finishRestore = 7
-pure val weight_queueSave = 8
-pure val weight_dispatchSave = 8
-pure val weight_finishSave = 8
-pure val weight_askClear = 4
-pure val weight_sendClear = 6
-pure val weight_finishClear = 6
 pure def alwaysQueuedWritesAreCurrent(s: BrowserStorage): bool =
   s.queued.every(write => write.epoch == s.epoch and write.snapshot > 0)
 pure def alwaysClearDrainsWrites(s: BrowserStorage): bool =

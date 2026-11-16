@@ -1,17 +1,18 @@
-# Connector manager registry and account policy
+# Connector manager registry
 
-Source `connectors/account-manager.ts` resolves one manager per actual runtime object, with a separate standalone singleton. A registered compatible service takes precedence over the per-runtime cache. Supplying storage updates the selected manager's explicit storage. Each manager retains a stable storage facade and its own provider registry.
+Source `connectors/account-manager.ts` resolves one manager per actual runtime object, with a separate standalone singleton. A registered compatible service takes precedence over the per-runtime cache. Supplying storage updates the selected manager's explicit storage. Each manager retains a stable storage facade and its own provider registry. Account status and policy decisions are [account values](./accountValues.md).
 
 ## Story: Resolve account providers through the correct manager
 
-As a host, I want account/provider registration scoped to my runtime and an explicit storage override retained by that manager.
+> As a host, I want account providers resolved through my runtime's own
+> manager, so that another runtime's registration or storage never answers
+> for mine.
 
 ### A runtime cache preserves its manager while a compatible registered service takes precedence
 
 Runtime keys represent object identities. The empty key represents the standalone singleton, which does not inspect a runtime service. Manager identities are fresh process-local references, and provider ids are trimmed and lowercased at the boundary. Registering the same provider replaces that manager's provider object. Unregistering it leaves other managers untouched.
 
 ```quint
-import accountValues as A from "./accountValues"
 type ManagerRecord = { runtime: str, id: int, storage: str }
 type ProviderRecord = { manager: int, provider: str, reference: int }
 type ConnectorManagers = { nextId: int, managers: List[ManagerRecord], providers: List[ProviderRecord], selected: int }
@@ -29,20 +30,4 @@ pure def alwaysOneCachedManagerPerRuntime(s: ConnectorManagers): bool = s.manage
 pure def alwaysOneProviderPerManager(s: ConnectorManagers): bool = s.providers.every(entry => s.providers.select(other => other.manager == entry.manager and other.provider == entry.provider).length() == 1)
 pure def sometimesIndependentManagers(s: ConnectorManagers): bool = s.managers.length() > 1
 pure def sometimesProviderAvailable(s: ConnectorManagers): bool = s.providers.length() > 0
-```
-
-### Stored disable and revoke decisions win over provider readiness
-
-When the provider owns status, live provider status replaces a stored status except disabled and revoked. A stored account missing from live inventory becomes pending unless explicitly disabled or revoked. Stored identity, role, purposes and access policy remain authoritative. Ambiguous live identity matches fail with `CONNECTOR_ACCOUNT_AMBIGUOUS`.
-
-```quint
-type AccountStatus = AccountConnected | AccountPending | AccountDisabled | AccountRevoked | AccountError
-pure def mergedAccountStatus(stored: AccountStatus, provider: AccountStatus, providerOwns: bool, found: bool): AccountStatus = if (not(providerOwns) or stored == AccountDisabled or stored == AccountRevoked) stored else if (found) provider else AccountPending
-pure def lawDisabledAccountStaysDisabled(provider: AccountStatus, found: bool): bool = mergedAccountStatus(AccountDisabled, provider, true, found) == AccountDisabled
-pure def policyAllows(account: A::AccountValue, policy: A::AccountPolicy, purpose: A::OptionalText, verifiedBinding: bool): bool = A::accountPolicyDenial(account, policy, purpose, verifiedBinding) == A::PolicyAllowed
-pure def lawMissingOwnerBindingRefuses(account: A::AccountValue, policy: A::AccountPolicy, purpose: A::OptionalText): bool = account.gate == "owner_binding" implies not(policyAllows(account, policy, purpose, false))
-pure val accountValues = A::accountValues
-pure val policyValues = A::policyValues
-pure val purposeValues = A::purposeValues
-
 ```

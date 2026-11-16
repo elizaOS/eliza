@@ -4,10 +4,7 @@ The agent may start a conversation on its own: a check-in, a reminder of
 something it noticed. A gate decides. It admits a message only while
 proactive messages are on, after the owner's active surface has settled,
 outside the cool-down after the last one, below the daily cap and when the
-message is not a repeat of the last one on that surface. Asking whether a
-message would be admitted changes nothing; only sending it is recorded. The
-research baseline is `packages/agent/src/services/proactive-interaction-gate.ts`
-and the `services-proactive` model.
+message is not a repeat of the last one on that surface.
 
 ## Story: Speak up without becoming a nuisance
 
@@ -15,6 +12,9 @@ and the `services-proactive` model.
 > twice a day, never repeating itself before the cool-down is over.
 
 ### A message is admitted only on the settled active surface, outside the cool-down and below the daily cap
+
+Asking whether a message would be admitted is the same check and records
+nothing; only sending it is recorded.
 
 ```quint
 type Proactive = { on: bool, surface: int, surfaceSettled: bool, coolingDown: bool, sentToday: int, lastText: int, lastSurface: int }
@@ -25,15 +25,10 @@ pure val textValues = Set(1, 2)
 pure def canEmit(p: Proactive, surface: int, text: int): bool =
   p.on and p.surfaceSettled and not(p.coolingDown) and p.sentToday < dailyCap and surface == p.surface and surface > 0 and text > 0 and
   not(p.lastText == text and p.lastSurface == surface)
+pure def wouldAdmit(p: Proactive, surface: int, text: int): bool = canEmit(p, surface, text)
 pure def emit(p: Proactive, surface: int, text: int): Proactive = { ...p, sentToday: p.sentToday + 1, coolingDown: true, lastText: text, lastSurface: surface }
 pure def alwaysWithinDailyCap(p: Proactive): bool = p.sentToday >= 0 and p.sentToday <= dailyCap
 pure def sometimesCapReached(p: Proactive): bool = p.sentToday == dailyCap
-```
-
-### Asking whether a message would be admitted is the same check and records nothing
-
-```quint
-pure def wouldAdmit(p: Proactive, surface: int, text: int): bool = canEmit(p, surface, text)
 ```
 
 ### Switching surface waits for the new surface to settle

@@ -1,16 +1,15 @@
-# Native JSON slots and renderer storage admission
+# Secure slots
 
-The native secure store keeps small JSON values for the device in
-encrypted slots: `JsonCredentialSlots` under the Android `nativeonly`
-module of the secure-store plugin, with Keystore keys and atomic files.
-A renderer reaches it through a bridge that names a slot and asks to read,
-write, compare-and-exchange or remove it. Notes, a mail journal, linked
-calendar checkpoints and a read cache reach this path in a consumer; a
-verified account snapshot and per-slot task key wrapping use the same
-primitive natively. The [credential broker](./credentialBroker.md) owns
-those native callers' authority. Which slot names belong to the native host,
-which a renderer may exchange, and each slot's size budget are the branded
-deployment's policy, supplied as data.
+The native secure store keeps small JSON values for the device in encrypted
+slots, under a hardware-backed key, with atomic files. A renderer reaches it
+through a bridge that names a slot and asks to read, write,
+compare-and-exchange or remove it; a consumer's drafts, journals and caches
+use this path, and a verified account snapshot and per-slot task key
+wrapping use the same primitive natively. The
+[credential broker](./credentialBroker.md) owns those native callers'
+authority. Which slot names belong to the native host, which a renderer may
+exchange, and each slot's size budget are the branded deployment's policy,
+supplied as data.
 
 ## Story: Persist a local draft without changing a native journal or a newer edit
 
@@ -19,26 +18,16 @@ deployment's policy, supplied as data.
 
 ### A renderer can only name an allowed slot and compare approved draft slots
 
-The shared slot policy validates 1–1024 UTF-16 code units. The bridge
-refuses each native-only root both by itself and followed by a colon and
-any suffix. Prefix lookalikes without the colon are ordinary names.
-Compare-and-exchange requires a full allow-list match and both
-`expectedValue` and `value` properties. Each property is a string or
-explicit JSON null. A draft root's suffix can be empty and can contain line
-breaks. Hashed families require exactly 64 lowercase hex digits. The Cloud
-credential slots may be read and use the credential intent path for writes
-and removals. The native storage layer maps logical Cloud names to the
-installed deployment prefix. Renderer calls cannot use that physical
-namespace. Cloud credential mutation and agent retirement remain with the
-native lifecycle owner.
-
-The bridge decoder derives the length, whether the root (the substring
-before the first colon) is in each family of the deployment's slot policy,
-and whether the exact `:v1:` framing and lowercase digest suffix were
-present, all from the same slot string. These are decoder evidence, never
-renderer claims. The native roots, exact exchange names, draft roots,
-hashed exchange families and credential slots are the deployment's
-policy, supplied as data.
+A slot name is 1–1024 UTF-16 code units. A native-only root is refused
+both by itself and followed by a colon and any suffix; a prefix lookalike
+without the colon is an ordinary name. Compare-and-exchange needs both
+`expectedValue` and `value`, each a string or JSON null, and an allowed
+slot: an exact exchange name, a draft root under `:v1:`, or a hashed
+family under `:v1:` with exactly 64 lowercase hex digits. Credential slots
+may be read; their writes and removals take the credential intent path,
+and their mutation stays with the native lifecycle owner. The decoder
+derives every flag of a slot name from the slot string itself, never from
+a renderer's claim, against the deployment's slot policy.
 
 ```quint
 type SlotRequest = ReadSlot | WriteSlot | ExchangeSlot | RemoveSlot
@@ -54,10 +43,10 @@ pure def bridgeAdmission(slotName: SlotName, request: SlotRequest, exactFields: 
   } else if (slotName.credentialSlot and (request == WriteSlot or request == RemoveSlot)) CredentialIntent
   else LocalSlot
 pure val slotNameValues = Set(
-  { text: "notes-draft:v1:device", units: 21, nativeRoot: false, exactExchange: true, draftRoot: false, hashedFamily: false, credentialSlot: false, scopeV1: true, lowerHex64: false },
-  { text: "sms-send-ledger:v1:device", units: 25, nativeRoot: true, exactExchange: false, draftRoot: false, hashedFamily: false, credentialSlot: false, scopeV1: true, lowerHex64: false },
-  { text: "mail-drafts:v1:", units: 15, nativeRoot: false, exactExchange: false, draftRoot: true, hashedFamily: false, credentialSlot: false, scopeV1: true, lowerHex64: false },
-  { text: "cloud:production", units: 16, nativeRoot: false, exactExchange: false, draftRoot: false, hashedFamily: false, credentialSlot: true, scopeV1: false, lowerHex64: false },
+  { text: "draft:v1:x", units: 10, nativeRoot: false, exactExchange: true, draftRoot: false, hashedFamily: false, credentialSlot: false, scopeV1: true, lowerHex64: false },
+  { text: "native:v1:x", units: 11, nativeRoot: true, exactExchange: false, draftRoot: false, hashedFamily: false, credentialSlot: false, scopeV1: true, lowerHex64: false },
+  { text: "drafts:v1:", units: 10, nativeRoot: false, exactExchange: false, draftRoot: true, hashedFamily: false, credentialSlot: false, scopeV1: true, lowerHex64: false },
+  { text: "credential:x", units: 12, nativeRoot: false, exactExchange: false, draftRoot: false, hashedFamily: false, credentialSlot: true, scopeV1: false, lowerHex64: false },
   { text: "unknown", units: 7, nativeRoot: false, exactExchange: false, draftRoot: false, hashedFamily: false, credentialSlot: false, scopeV1: false, lowerHex64: false })
 pure def lawRendererCannotEnterNativeNamespace(slotName: SlotName, request: SlotRequest, exactFields: bool): bool =
   slotName.nativeRoot implies bridgeAdmission(slotName, request, exactFields) == RefusedSlot
@@ -68,53 +57,33 @@ pure def lawUnapprovedExchangeRefused(slotName: SlotName, exactFields: bool): bo
 
 ### Storage distinguishes absence, unreadability, conflict and a definite capacity refusal
 
-The native port authenticates one complete frame before yielding its
-serialized value and checks that Android's JSON tokener accepts exactly
-one value and no trailing token. The format remains byte version 1,
-IV-length byte 12, the 12-byte IV, then AES-GCM ciphertext and 16-byte tag.
-The lowercase SHA-256 of the slot's UTF-8 name is the filename and its
-ASCII spelling is the AAD. The host supplies a dedicated directory and
-AndroidKeyStore AES-256 alias, and the budget of each slot: a current
-limit and a retained ceiling at least as large. Raw credentials and data
-keys are represented only by synthetic equality tokens here.
+A slot is absent only if neither its file nor its backup exists. A frame
+that fails to open, fails authentication, holds anything but exactly one
+JSON value or exceeds the retained ceiling is unreadable, never absent. A
+present slot compares by its full serialized text, an absent one only with
+null. A stale expected value is a conflict and neither writes nor removes.
+A deployment that preflights the retained ceiling refuses an oversized
+replacement before that comparison. A platform failure remains an error.
 
-An open that throws `FileNotFoundException` means absent only if both
-the base and `.bak` are absent. Other open failures, invalid framing,
-authentication, invalid JSON and oversized authenticated content remain
-unreadable. For an existing slot, compare the full serialized
-representation, preserving whitespace and key order in the comparison.
-An absent slot compares only with null. The JSON string transmitted as
-`"null"` is a present value. A stale expected value returns conflict
-under the same process lock. It cannot trigger removal or write.
-A deployment that preflights the retained ceiling does so before that
-comparison. In the shared primitive the comparison precedes validation of
-a replacement's size and JSON syntax. A platform failure remains an error,
-including one reading a corrupt frame during CAS.
-
-Android measures UTF-8 bytes. A value above the current limit may only
-match or shrink the existing stored plaintext length, within the retained
-ceiling. The direct write path gets that size from the existing frame
-header and extent, without interpreting its payload; it cannot use that
-observation to assert a successful authenticated read. CAS has already
-read the whole prior authenticated value before this extent check. An
-absent slot therefore cannot be initialized above the current limit.
-Moving below that limit gives up the prior larger allowance. Rejecting for
-capacity leaves bytes untouched and reports storage full.
+Each slot has a current limit and a retained ceiling at least as large, in
+UTF-8 bytes. A value above the current limit may only match or shrink the
+stored length, so an absent slot is never initialized above the limit. A
+capacity refusal leaves the bytes untouched and reports storage full.
 
 ```quint
 type SlotRead = SlotAbsent | SlotUnreadable | SlotValue({ opaqueText: str, storedBytes: int })
 type ExpectedValue = ExpectAbsent | ExpectValue({ exactText: str })
-type FrameOpen = OpenedFrame | FileNotFound | OtherOpenError
+type FrameOpen = OpenedFrame | FrameMissing | OtherOpenError
 type JsonFrameEvidence = { opened: FrameOpen, baseVisible: bool, backupVisible: bool, correctFrame: bool,
   authenticated: bool, singleJson: bool, plainBytes: int, valueToken: str }
 type SlotBudget = { limit: int, retained: int }
 type SerializedProposal = { units: int, utf8Bytes: int, singleJson: bool, token: str }
-type Replacement = RemoveValue | ReplaceValue({ units: int, utf8Bytes: int, singleJson: bool, token: str })
+type Replacement = RemoveValue | ReplaceValue(SerializedProposal)
 type SlotDecision = SlotConflict | SlotFull | SlotFailed | CanWriteFrame | CanEraseFrame
 pure def budgetValid(budget: SlotBudget): bool = budget.limit >= 1 and budget.retained >= budget.limit and budget.retained <= 2147483583
 pure def readFrame(frame: JsonFrameEvidence, budget: SlotBudget): SlotRead =
   if (not(budgetValid(budget))) SlotUnreadable
-  else if (frame.opened == FileNotFound and not(frame.baseVisible) and not(frame.backupVisible)) SlotAbsent
+  else if (frame.opened == FrameMissing and not(frame.baseVisible) and not(frame.backupVisible)) SlotAbsent
   else if (frame.opened == OpenedFrame and frame.correctFrame and frame.authenticated and frame.singleJson and
     frame.plainBytes >= 1 and frame.plainBytes <= budget.retained) SlotValue({ opaqueText: frame.valueToken, storedBytes: frame.plainBytes })
   else SlotUnreadable
@@ -155,7 +124,7 @@ pure def exchangeDecision(observed: SlotRead, expected: ExpectedValue, proposal:
 pure val budgetValues = Set({ limit: 256, retained: 256 }, { limit: 30, retained: 32 }, { limit: 0, retained: 0 })
 pure val frameValues = Set(
   { opened: OpenedFrame, baseVisible: true, backupVisible: false, correctFrame: true, authenticated: true, singleJson: true, plainBytes: 31, valueToken: "draft-1" },
-  { opened: FileNotFound, baseVisible: false, backupVisible: false, correctFrame: false, authenticated: false, singleJson: false, plainBytes: 0, valueToken: "" },
+  { opened: FrameMissing, baseVisible: false, backupVisible: false, correctFrame: false, authenticated: false, singleJson: false, plainBytes: 0, valueToken: "" },
   { opened: OpenedFrame, baseVisible: true, backupVisible: true, correctFrame: true, authenticated: false, singleJson: true, plainBytes: 31, valueToken: "draft-2" })
 pure val observedValues = Set(SlotAbsent, SlotUnreadable, SlotValue({ opaqueText: "draft-1", storedBytes: 30 }),
   SlotValue({ opaqueText: "draft-2", storedBytes: 32 }))
@@ -165,8 +134,6 @@ pure val proposalValues = Set(RemoveValue,
   ReplaceValue({ units: 31, utf8Bytes: 31, singleJson: true, token: "draft-2" }),
   ReplaceValue({ units: 32, utf8Bytes: 33, singleJson: true, token: "draft-3" }),
   ReplaceValue({ units: 6, utf8Bytes: 6, singleJson: false, token: "invalid" }))
-pure val encodedValues = Set({ units: 31, utf8Bytes: 31, singleJson: true, token: "draft-2" },
-  { units: 32, utf8Bytes: 33, singleJson: true, token: "draft-3" })
 pure val priorExtentValues = Set(-1, 30, 31, 32)
 pure def lawInvalidBudgetNeverReadsOrWrites(frame: JsonFrameEvidence, budget: SlotBudget, observed: SlotRead, expected: ExpectedValue,
   proposal: Replacement, retainedPreflight: bool): bool =
@@ -184,32 +151,25 @@ pure def lawStaleExchangeCannotChangeBytes(observed: SlotRead, expected: Expecte
   (budgetValid(budget) and not(isUnreadable(observed)) and not(expectedMatches(observed, expected)) and
     not(retainedPreflight and overRetained(proposal, budget))) implies
     exchangeDecision(observed, expected, proposal, budget, retainedPreflight) == SlotConflict
-pure def lawAboveCurrentSizeNeverGrows(encoded: SerializedProposal, budget: SlotBudget, priorExtent: int): bool =
-  (encoded.utf8Bytes > budget.limit and writeDecision(ReplaceValue({ units: encoded.units, utf8Bytes: encoded.utf8Bytes,
-    singleJson: encoded.singleJson, token: encoded.token }), budget, priorExtent) == CanWriteFrame) implies
-    encoded.utf8Bytes <= priorExtent and encoded.utf8Bytes <= budget.retained
-pure def lawAbsentExchangeCannotInitializeAboveCap(encoded: SerializedProposal, budget: SlotBudget, retainedPreflight: bool): bool =
-  encoded.utf8Bytes > budget.limit implies exchangeDecision(SlotAbsent, ExpectAbsent,
-    ReplaceValue({ units: encoded.units, utf8Bytes: encoded.utf8Bytes, singleJson: encoded.singleJson, token: encoded.token }),
-    budget, retainedPreflight) != CanWriteFrame
+pure def lawAboveCurrentSizeNeverGrows(proposal: Replacement, budget: SlotBudget, priorExtent: int): bool = match proposal {
+  | RemoveValue => true
+  | ReplaceValue(encoded) => (encoded.utf8Bytes > budget.limit and writeDecision(proposal, budget, priorExtent) == CanWriteFrame) implies
+    (encoded.utf8Bytes <= priorExtent and encoded.utf8Bytes <= budget.retained)
+}
+pure def lawAbsentExchangeCannotInitializeAboveCap(proposal: Replacement, budget: SlotBudget, retainedPreflight: bool): bool = match proposal {
+  | RemoveValue => true
+  | ReplaceValue(encoded) => encoded.utf8Bytes > budget.limit implies exchangeDecision(SlotAbsent, ExpectAbsent, proposal, budget, retainedPreflight) != CanWriteFrame
+}
 ```
 
 ### An exchange is acknowledged only after local readback confirms the result
 
-The machine describes one slot mutation inside the process-wide lock,
-using the caller's authenticated snapshot and physical extent for that
-slot. A host that also holds a lifecycle lock takes it before the slot
-lock and checks the current bridge owner at entry. A conflicting or
-rejected request never enters the filesystem mutation. A write is
-acknowledged after the newly written frame is finished and read back
-exactly, including the version, IV, ciphertext and end of file. A removal
-is acknowledged after the base, `.bak` and `.new` are all absent.
-A commit or readback error is an unconfirmed outcome, including failure
-after `finishWrite`; a caller must reread before deciding how to retry.
-The port supplies readback evidence from this exact serialized operation.
-The lock serializes same-process writers. Live readback conveys no
-power-loss guarantee. The Java writer syncs its output file but does
-not explicitly sync its parent directory.
+One slot mutation runs inside the process-wide lock, for the bridge's
+current owner. A conflicting or refused request never touches the files. A
+write is acknowledged only after the new frame reads back exactly, and a
+removal only after the file, its backup and its staged sibling are all
+gone; any other outcome is unconfirmed, and the caller rereads before it
+retries.
 
 ```quint
 type Readback = { exactFrame: bool, baseGone: bool, backupGone: bool, stagedGone: bool }

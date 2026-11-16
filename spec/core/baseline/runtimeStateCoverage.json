@@ -25,7 +25,7 @@
       ],
       "specFiles": [
         "spec/core/services.md",
-        "spec/core/serviceRegistry.md"
+        "spec/core/serviceInstances.md"
       ],
       "stateDomains": [
         "class starts",
@@ -42,7 +42,7 @@
       ],
       "specFiles": [
         "spec/core/plugins.md",
-        "spec/core/pluginRegistry.md",
+        "spec/core/pluginServices.md",
         "spec/core/registries.md",
         "spec/core/pluginServices.md"
       ],
@@ -63,7 +63,7 @@
         "packages/core/src/runtime/provider-execution.ts"
       ],
       "specFiles": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ],
       "stateDomains": [
         "coalesced execution",
@@ -391,7 +391,7 @@
         "packages/core/src/runtime/candidate-action-backstop.ts"
       ],
       "specFiles": [
-        "spec/core/routingRegistries.md"
+        "spec/core/registries.md"
       ],
       "stateDomains": [
         "per-runtime localized provider replacement",
@@ -487,7 +487,7 @@
         "packages/core/src/runtime/provider-execution.ts"
       ],
       "specFiles": [
-        "spec/core/providerExecutions.md"
+        "spec/core/providers/index.md"
       ],
       "stateDomains": [
         "structural six-dimension key",
@@ -506,7 +506,7 @@
       "specFiles": [
         "spec/core/serviceInstances.md",
         "spec/core/eagerServices.md",
-        "spec/core/serviceRegistry.md",
+        "spec/core/serviceInstances.md",
         "spec/core/pluginServices.md"
       ],
       "stateDomains": [
@@ -589,7 +589,7 @@
         "packages/core/src/runtime/model-dispatch.ts"
       ],
       "specFiles": [
-        "spec/core/runtimeExtensions.md"
+        "spec/core/registries.md"
       ],
       "stateDomains": [
         "task worker replacement and wake signal",
@@ -647,7 +647,7 @@
         "packages/core/src/runtime.ts"
       ],
       "specFiles": [
-        "spec/core/responseEvaluators.md"
+        "spec/core/responseEvaluation.md"
       ],
       "stateDomains": [
         "exact-name first registration",

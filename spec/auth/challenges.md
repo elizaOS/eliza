@@ -6,12 +6,9 @@ belongs to one purpose, and the store offers three atomic operations on it:
 publish a token, consume that token once, and revoke a claim by
 compare-and-delete. [Code sign-in](./codeSignIn.md),
 [Google sign-in](./googleSignIn.md) and [request integrity](./requestIntegrity.md)
-build on these operations. Every backend treats an expired row as absent, so
+keep their codes, states and nonces here; each states the single-use rule
+of its own flow. Every backend treats an expired row as absent, so
 physical cleanup of expired rows is not modeled.
-
-Ported from develop `packages/auth/quint/AuthStorePublication.qnt` (sources
-`src/server/auth/token-store.ts` and `store-backends.ts`). Develop's fixed
-two-namespace domain is widened to any list of purposes.
 
 ## Story: Publish, consume and revoke one-time challenges
 

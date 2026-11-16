@@ -1,17 +1,19 @@
 # Resident agent
 
-A device runs its agent as a resident process that survives the app's
-screens. Each install identity has one resident: its
-[installation identity](./installIdentity.md) is created once and reused,
-[adoption](./adoption.md) restores a running resident instead of launching
-a duplicate and retires the exact owner before a credential change,
-[startup](./startup.md) launches the agent and gateway under one owned
-scope, [request authority](./requestAuthority.md) fences each request to
-the live launch, the [watchdog](./watchdog.md) never treats a slow agent
-as an absent one, [provider rebind](./providerRebind.md) rechecks inference
-authority after blocking work, and the [bundle inventory](./bundleInventory.md)
-attributes what was packaged. This page owns the startup phases the host
-reports while all of that happens (`AppStartupStateMachine`).
+A device runs its agent as a resident process that outlives the app's
+screens, one per install identity. Its
+[installation identity](./installIdentity.md) is created once and reused;
+its [lifecycle](./lifecycle.md) adopts a running resident instead of
+launching a duplicate, fences each request to the live launch and retires
+the exact owner before a credential change; [startup](./startup.md)
+launches the agent and gateway under one owned scope; the
+[watchdog](./watchdog.md) never treats a slow agent as an absent one;
+[Cloud admission](./cloudAdmission.md) decides whether the resident may use
+Cloud inference and [provider rebind](./providerRebind.md) rechecks it after
+blocking work; the [Android host](./host.md) keeps custody of the runtime and
+its [provider credential](./credential.md). The packaged inventory is
+[os bundle inventory](../../os/build/bundleInventory.md). This page owns the startup phases the host reports
+while all of that happens.
 
 ## Story: Report where the agent is in its startup
 

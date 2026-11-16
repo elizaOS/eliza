@@ -1,17 +1,18 @@
 # Android video copy
 
 A consumer uses `beginVideoEdit`, `saveVideoEdit`, `cancelVideoEdit` and
-`editResult` through its photos plugin. The producer is Eliza's
-`plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media`
-under `PhotosPlugin.java`, `VideoCopyEdits.java` and
-`VideoEditSpec.java`. [Photos access](./permissionEpochs.md) owns grants
-and source read tickets. The consumer's renderer copy intent
-owns acknowledgement and whether a result can change the visible Photos view.
+`editResult` through its photos plugin; the producer is `PhotosPlugin.java`,
+`VideoCopyEdits.java` and `VideoEditSpec.java` under
+`plugins/plugin-native-media/android`. [Photo permission epochs](./permissionEpochs.md) owns
+grants and source read tickets. A saved clip is one row of the
+[photo copy journal](./photoCopy.md), whose lookup and recovery rules this
+spec reuses; it adds only the video source, edit and export admission.
 
 ## Story: Save a playable edited video as a copy of the item I reviewed
 
-> As the person, I want to save a playable edited video as a copy of the
-> item I reviewed.
+> As the person, I want to save a trimmed or rotated video as a new
+> playable copy of the item I reviewed, so that the original stays
+> untouched.
 
 ### Opening and editing are bound to the exact permitted source and selected interval
 
@@ -35,7 +36,7 @@ Recheck the active epoch before publication.
 A video lasts at most five minutes and covers at most 32 million
 displayed pixels. The codec checks finite seconds, start at or after
 zero, an end at most 50 ms past duration and an interval of at least
-100 ms subject to the producer's floating-point tolerance. Round to
+100 ms within floating-point tolerance. Round to
 milliseconds, snap within 50 ms of duration to duration, and verify
 the resulting interval again. Rotate clockwise by 0, 90, 180 or 270.
 Optionally apply a centered 1.3× crop. Scale the larger output axis
@@ -140,26 +141,22 @@ pure def sometimesClipPublished(s: ClipState): bool = s.phase == ClipPublished
 pure val goodPublish: ExportPublishEvidence = { currentWriter: true, exactSource: true, exactPendingId: true, completeOutput: true, bytesMatch: true, batchAuthorized: true }
 pure val publishFactsValues = Set(goodPublish, { ...goodPublish, exactSource: false }, { ...goodPublish, bytesMatch: false }, { ...goodPublish, currentWriter: false })
 pure val mediaIdValues = Set(1,2)
-pure val weight_prepareClip = 7
-pure val weight_startClip = 10
-pure val weight_recordPendingClip = 12
-pure val weight_publishClip = 12
 ```
 
 ## Story: Recover the same copy after closing or losing the save response
 
-> As the person, I want to recover the same copy after closing or losing
-> the save response.
+> As the person, I want a save I closed or lost the answer to resolve to
+> the same copy, so that I never end up with two copies or a hidden
+> pending one.
 
 ### Recovery reads exact custody and keeps pending evidence when the result is unresolved
 
 An absent journal record is not-started. A live Save with this token
 returns incomplete. A saved receipt returns its historical ID and
-attempts cache cleanup. Otherwise query pending-inclusive MediaStore
-by exact owner package and operation-derived display name. Missing
-cursor or ambiguous matches refuse. An existing reserved pending ID
-must match the unique result. Missing or different evidence for that
-ID remains unresolved. Recover an observed published copy by committing
+attempts cache cleanup. Otherwise the lookup follows the photo copy
+journal's recovery rule: an unresolved lookup, including a recorded
+pending ID that is absent or different, stays unresolved. Recover an
+observed published copy by committing
 the same ID as saved. A pending row already recorded failed is held
 for recovery review. Other pending matches can be removed only while
 pending and under the exact package, and require one confirmed deletion.
@@ -170,35 +167,31 @@ If deletion succeeds but the terminal receipt cannot commit, the
 old durable ID can still be present when the next lookup sees an
 absent row. That read remains unresolved. A recovered saved receipt
 can outlive a later cache cleanup failure. Keep the confirmed deletion
-separate from the old pending ID until the terminal receipt commits. It includes legacy
-recovery records through the recovery classifier. The protected native
-preservation port for an explicitly authorized closed failed operation
-is outside ordinary Save and `editResult`.
+separate from the old pending ID until the terminal receipt commits.
 
 ```quint
-type ClipLookup = ClipLookupError | ClipLookupAmbiguous | ClipLookupAbsent | ClipLookupPending | ClipLookupPublished
+import photoCopy as Copy from "./photoCopy"
 type ClipRecovery = ReturnClipNotStarted | ReturnClipIncomplete | ReturnHistoricalClip | SettlePublishedClip | RemovePendingClip | CleanAbsentClip | RetainUnresolvedClip
 type ClipRecoveryFacts = { journalPresent: bool, liveSave: bool, savedReceipt: bool, failedReceipt: bool,
-  recordedId: int, matchedId: int, lookup: ClipLookup }
+  recordedId: int, matchedId: int, lookup: Copy::CopyLookup }
 pure def clipRecovery(facts: ClipRecoveryFacts): ClipRecovery =
   if (not(facts.journalPresent)) ReturnClipNotStarted
   else if (facts.liveSave) ReturnClipIncomplete
   else if (facts.savedReceipt) ReturnHistoricalClip
-  else if (facts.lookup == ClipLookupError or facts.lookup == ClipLookupAmbiguous) RetainUnresolvedClip
-  else if (facts.recordedId > 0 and (facts.lookup == ClipLookupAbsent or facts.recordedId != facts.matchedId)) RetainUnresolvedClip
-  else if (facts.lookup == ClipLookupPublished and facts.matchedId > 0) SettlePublishedClip
-  else if (facts.lookup == ClipLookupPending and facts.matchedId > 0 and not(facts.failedReceipt)) RemovePendingClip
-  else if (facts.lookup == ClipLookupAbsent) CleanAbsentClip else RetainUnresolvedClip
+  else if (not(Copy::lookupResolves(facts.lookup, facts.recordedId, facts.matchedId))) RetainUnresolvedClip
+  else if (facts.lookup == Copy::LookupPublished and facts.matchedId > 0) SettlePublishedClip
+  else if (facts.lookup == Copy::LookupPending and facts.matchedId > 0 and not(facts.failedReceipt)) RemovePendingClip
+  else if (facts.lookup == Copy::LookupAbsent) CleanAbsentClip else RetainUnresolvedClip
 pure def lawRecordedVideoCannotDisappearIntoFailure(facts: ClipRecoveryFacts): bool =
-  facts.journalPresent and not(facts.liveSave or facts.savedReceipt) and facts.recordedId > 0 and facts.lookup == ClipLookupAbsent implies
+  facts.journalPresent and not(facts.liveSave or facts.savedReceipt) and facts.recordedId > 0 and facts.lookup == Copy::LookupAbsent implies
     clipRecovery(facts) == RetainUnresolvedClip
 pure def lawClosedFailedPendingVideoCannotBeDeleted(facts: ClipRecoveryFacts): bool =
   facts.failedReceipt implies clipRecovery(facts) != RemovePendingClip
-type ClipSettlement = { lookup: ClipLookup, matchedId: int, deletedCount: int, filesCleaned: bool, receiptCommitted: bool }
+type ClipSettlement = { lookup: Copy::CopyLookup, matchedId: int, deletedCount: int, filesCleaned: bool, receiptCommitted: bool }
 pure def canRecoverClip(s: ClipState): bool =
   not(s.active) and (s.phase == ClipPrepared or s.phase == ClipEncoding or s.phase == ClipPending or s.phase == ClipPublished)
 pure def recoverClip(s: ClipState, readback: ClipSettlement): ClipState = {
-  val lookup = if (s.removedPending) ClipLookupAbsent else readback.lookup
+  val lookup = if (s.removedPending) Copy::LookupAbsent else readback.lookup
   val plan = clipRecovery({ journalPresent: true, liveSave: false, savedReceipt: false,
     failedReceipt: false, recordedId: s.pendingId, matchedId: readback.matchedId, lookup: lookup })
   val removed = s.phase == ClipPending and plan == RemovePendingClip and readback.deletedCount == 1
@@ -219,21 +212,13 @@ pure def sometimesClipDeletionOutlivesReceipt(s: ClipState): bool =
 pure def sometimesClipRecovered(s: ClipState): bool = s.phase == ClipSaved
 pure def sometimesClipFailsCleanly(s: ClipState): bool = s.phase == ClipFailed and s.insertions == 1
 pure val matchedClip: ClipRecoveryFacts = { journalPresent: true, liveSave: false, savedReceipt: false, failedReceipt: false,
-  recordedId: 1, matchedId: 1, lookup: ClipLookupPending }
+  recordedId: 1, matchedId: 1, lookup: Copy::LookupPending }
 pure val factsValues = Set(matchedClip, { ...matchedClip, failedReceipt: true }, { ...matchedClip, liveSave: true },
-  { ...matchedClip, lookup: ClipLookupAbsent }, { ...matchedClip, lookup: ClipLookupPublished },
-  { ...matchedClip, matchedId: 2 }, { ...matchedClip, lookup: ClipLookupAmbiguous }, { ...matchedClip, journalPresent: false })
-pure val settledClip: ClipSettlement = { lookup: ClipLookupPending, matchedId: 1, deletedCount: 1, filesCleaned: true, receiptCommitted: true }
-pure val readbackValues = Set(settledClip, { ...settledClip, lookup: ClipLookupPublished },
-  { ...settledClip, lookup: ClipLookupAbsent }, { ...settledClip, lookup: ClipLookupAmbiguous },
-  { ...settledClip, matchedId: 2 }, { ...settledClip, matchedId: 2, lookup: ClipLookupPublished },
+  { ...matchedClip, lookup: Copy::LookupAbsent }, { ...matchedClip, lookup: Copy::LookupPublished },
+  { ...matchedClip, matchedId: 2 }, { ...matchedClip, lookup: Copy::LookupAmbiguous }, { ...matchedClip, journalPresent: false })
+pure val settledClip: ClipSettlement = { lookup: Copy::LookupPending, matchedId: 1, deletedCount: 1, filesCleaned: true, receiptCommitted: true }
+pure val readbackValues = Set(settledClip, { ...settledClip, lookup: Copy::LookupPublished },
+  { ...settledClip, lookup: Copy::LookupAbsent }, { ...settledClip, lookup: Copy::LookupAmbiguous },
+  { ...settledClip, matchedId: 2 }, { ...settledClip, matchedId: 2, lookup: Copy::LookupPublished },
   { ...settledClip, deletedCount: 0 }, { ...settledClip, receiptCommitted: false })
-pure val weight_recoverClip = 10
 ```
-
-The producer's `VideoCopyInstrumentedTest` exercises real encoded
-video and audio, source changes during export, cancellation and worker
-retirement, and missing or different pending-output custody. The
-renderer fixtures exercise its persistence and view through the bridge.
-Transformer, Android media permissions and the MediaStore batch remain
-effect boundaries.

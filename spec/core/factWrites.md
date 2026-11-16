@@ -1,10 +1,18 @@
 # Serialized fact evidence writes
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/runtime/fact-write-dedupe.ts`, `runtime/data-mutations.ts` and `quint/FactWriteDedupe.qnt`. This machine follows one natural fact key with multiple writer identities. Different keys have independent queues. Existing data must be read through its canonical deduplication key before this path updates it.
+This machine follows one natural fact key with multiple writer
+identities. Different keys have independent queues. Existing data must be
+read through its canonical deduplication key before this path updates it.
 
 ## Story: Merge every contribution once into its canonical fact
 
-As an agent, I preserve all evidence when concurrent writes describe the same fact. Read, merge and insert-or-update execute under the key's serialization owner. A failed writer releases its lock and preserves earlier committed contributions.
+> As an agent, I want concurrent writes about the same fact to merge, so
+> no evidence is lost.
+
+As an agent, I preserve all evidence when concurrent writes describe the
+same fact. Read, merge and insert-or-update execute under the key's
+serialization owner. A failed writer releases its lock and preserves earlier
+committed contributions.
 
 ### One writer owns the read and commit interval
 

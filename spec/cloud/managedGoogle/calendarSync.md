@@ -9,9 +9,6 @@ the next run lists everything again and replaces the copy. One calendar's
 copy and cursor are the state machine. Which calendar may be read, and under
 which grant, is [managed calendar reads](./calendarRead.md).
 
-Develop sources: the managed calendar pull of the app's managed Google agent
-host, which develop did not model.
-
 ## Story: Keep a synced calendar current with one cursor
 
 > As an owner, I want my agent's copy of a calendar to follow every change

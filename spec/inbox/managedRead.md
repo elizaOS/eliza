@@ -1,11 +1,10 @@
 # Managed inbox read
 
 A managed account's aggregate inbox read is a fresh read for the owner
-who asked for it. It is never served from the older per-account cache,
-and a read the managed route does not support is refused before
-anything is sent. The Cloud side of the read is
-[managed Gmail](../cloud/managedGoogle/gmail.md); the device's own cached
-reads are [saved reads](./grants.md).
+who asked for it, never served from a cache, and a read the managed
+route does not support is refused before anything is sent. The Cloud
+side of the read is [managed Gmail](../cloud/managedGoogle/gmail.md); the
+device's own cached reads are [mailbox reads](./reads.md).
 
 ## Story: Read my managed inbox fresh, and only for me
 
@@ -24,9 +23,9 @@ when it began.
 type ManagedReadKind = BoundedRead | MissingLimitRead | AccountOverrideRead | MissedOnlyRead
 type ManagedReadPhase = ReadIdle | ReadPending | ReadDone | ReadFailed
 type ManagedInboxRead = { owner: int, pendingOwner: int, returnedOwner: int, phase: ManagedReadPhase,
-  permission: bool, kind: ManagedReadKind, calls: int, cacheReads: int }
+  permission: bool, kind: ManagedReadKind, calls: int }
 pure val initial: ManagedInboxRead = { owner: 1, pendingOwner: 0, returnedOwner: 0, phase: ReadIdle,
-  permission: true, kind: BoundedRead, calls: 0, cacheReads: 0 }
+  permission: true, kind: BoundedRead, calls: 0 }
 pure def canBeginRead(s: ManagedInboxRead): bool = s.phase == ReadIdle
 pure def beginRead(s: ManagedInboxRead, kind: ManagedReadKind): ManagedInboxRead =
   if (kind == BoundedRead) { ...s, kind: kind, phase: ReadPending, pendingOwner: s.owner, calls: 1 }
@@ -66,13 +65,4 @@ pure def sometimesMailReturned(s: ManagedInboxRead): bool = s.phase == ReadDone 
 pure val fair_receiveMail = "weak"
 pure def leadsToReadFinishes(s: ManagedInboxRead, later: ManagedInboxRead): bool =
   s.phase == ReadPending implies later.phase != ReadPending
-```
-
-### A managed read never reads the older account cache
-
-The aggregate read never consults the per-account cache that older
-versions kept, so no cached row can stand in for a fresh read.
-
-```quint
-pure def alwaysLegacyCacheNeverRead(s: ManagedInboxRead): bool = s.cacheReads == 0
 ```

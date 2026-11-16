@@ -1,50 +1,45 @@
 # Local OCR image and worker custody
 
-A consumer calls the files package's local OCR module. Its wrapper
-selects the worker script, the language data path and the language.
-Scans and browser content questions use the same recognizer.
-[Scan review](../os/android/documentScan.md) owns the document revision
+Text is recognized from images on the device by a local worker, with
+locally installed language data. Scans and content questions use the
+same recognizer.
+[Scan review](./scan/review.md) owns the document revision
 and [searchable PDF](./scan/searchablePdf.md) owns normalized text
 placement.
 
 ## Story: Read the selected image on device and stop the worker when I cancel
 
-> As the owner, I want to read the selected image on device and stop the worker when I cancel.
+> As the owner, I want text read from an image I chose to stay on my
+> device, and cancelling to stop the work at once.
 
 ### Image admission is bounded before recognition and every decoded bitmap closes
 
-A pre-aborted signal refuses before a worker is created. Use a JPEG,
-PNG or WebP blob from one byte through 16 MiB. Creating the worker
-precedes asynchronous bitmap decoding. A zero dimension or more than
-32 million decoded pixels refuses conversion. Preserve the aspect ratio
-with a maximum side of 2,048, using rounded dimensions with a minimum
-of one. The canvas uses a white background and requests PNG bytes. A
-missing drawing context or output fails explicitly. Close the decoded
-bitmap even if drawing or conversion throws. Bitmap decoding, drawing,
-rescaling and blob allocation are Effect port results.
+A request cancelled before it starts creates no worker. The image must
+meet the [shared image bounds](./images.md), and is scaled, keeping its
+aspect ratio, to fit them. A decoded bitmap that reports no width or no
+height is refused before conversion. A
+failure to draw or convert fails explicitly, and the decoded bitmap is
+closed whatever happens.
 
 ```quint
+import images.* from "./images"
 type OcrImageType = OcrJpeg | OcrPng | OcrWebp | OtherOcrImage
 pure def admitsOcrBlob(mime: OcrImageType, blobBytes: int, aborted: bool): bool =
-  mime != OtherOcrImage and blobBytes > 0 and blobBytes <= 16777216 and not(aborted)
-pure def admitsOcrBitmap(hasWidth: bool, hasHeight: bool, pixels: int): bool =
-  hasWidth and hasHeight and pixels > 0 and pixels <= 32000000
-pure def lawOversizeOcrBlobDoesNotStart(mime: OcrImageType, blobBytes: int, aborted: bool): bool =
-  blobBytes > 16777216 implies not(admitsOcrBlob(mime,blobBytes,aborted))
-pure def lawUnboundedOcrBitmapDoesNotConvert(hasWidth: bool, hasHeight: bool, pixels: int): bool =
-  pixels > 32000000 implies not(admitsOcrBitmap(hasWidth,hasHeight,pixels))
-pure val blobBytesValues = Set(0,1,16777216,16777217)
-pure val pixelsValues = Set(0,1,32000000,32000001)
+  admitsImageBytes(mime != OtherOcrImage, blobBytes) and not(aborted)
+pure def lawCancelledOcrDoesNotStart(mime: OcrImageType, blobBytes: int): bool = not(admitsOcrBlob(mime, blobBytes, true))
+pure def admitsOcrBitmap(hasWidth: bool, hasHeight: bool, width: int, height: int): bool =
+  hasWidth and hasHeight and admitsDecodedPixels(width, height)
+pure def lawOcrBitmapNeedsDimensions(hasWidth: bool, hasHeight: bool, width: int, height: int): bool =
+  not(hasWidth and hasHeight) implies not(admitsOcrBitmap(hasWidth, hasHeight, width, height))
+pure val blobBytesValues = Set(0, 1, 16777216, 16777217)
 ```
 
 ### One exact worker reply advances the next local OCR action
 
-Use one worker and one pending request at a time. The request sequence
-is `load`, `loadLanguage`, `initialize` and `recognize`, with increasing
-decimal job IDs beginning at one. Load uses the local core path and
-LSTM only. Language load uses the local language path, gzip, no cache
-and LSTM only. Initialization uses OEM 1. Recognition takes the prepared
-image bytes and requests text, with blocks only for layout review.
+One worker serves one pending request at a time, through the steps load,
+load language, initialize and recognize, with increasing job IDs. Only
+local code and language data are used. Recognition returns text, with
+layout blocks only for layout review.
 
 Worker ID, job ID and action must match the live request. A finite
 progress value and string status are reported with progress clamped
@@ -52,8 +47,7 @@ between zero and one. Progress leaves the request pending. An exact
 resolve clears it once and advances the chain. An exact reject fails
 the reader. Worker errors, message errors, a failed post, cancellation
 or return close the worker once and clear the pending request. Results
-from an already retired worker or completed job are ignored. The
-constructing caller supplies the worker identity and effect outcomes.
+from an already retired worker or completed job are ignored.
 
 ```quint
 type OcrStep = DecodeOcrImage | LoadOcrEngine | LoadOcrLanguage | InitializeOcr | RecognizeOcr | RecognizedOcr | EndedOcr
@@ -118,12 +112,10 @@ Normalize coordinates against the actual canvas dimensions, trim the
 line and validate the resulting page layer. An empty layer is valid
 when blocks are null. The image-only result carries no line layer.
 
-The recognizer stops accepting worker messages as soon as it closes.
-An exact recognition message that already resolved can still be decoded
-if cancellation occurs before the JavaScript continuation. The scan
-review rechecks its own abort signal and current document before
-presenting that result. The model distinguishes worker settlement from
-the review's authority to display it.
+The recognizer stops accepting worker messages as soon as it closes. A
+recognition that resolved just before cancellation can still be decoded,
+so the scan review rechecks its own cancellation and current document
+before presenting the result.
 
 ```quint
 type OcrResultFacts = { exactMessage: bool, textString: bool, textUnits: int, confidenceFinite: bool,

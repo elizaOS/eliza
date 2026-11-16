@@ -7,29 +7,13 @@ within the recovery window. After the window it becomes an irreversible
 saga that removes each provider's data in a fixed order and erases the
 database rows last. The identity half of deactivation and deletion is the
 auth service's ([platform users](../auth/platformUsers.md)); this spec
-orders it with everything else. Ported from the develop models
-`AccountDeletionRecovery`, `AccountDeletionOrder` and
-`AccountDeletionPhase`. Phases that removed cloud-hosted applications, their
-repositories and custom domains, and the gate on on-chain sweeps, are not
-part of Eliza.
+orders it with everything else.
 
 ## Story: Delete my account, with a window to change my mind
 
 > As an account owner, I ask for my account and organization to be deleted,
 > receive an export of my data, and can cancel within the recovery window;
 > once the window passes, everything is removed and nothing reappears.
-
-### Every user belongs to an organization before any billable call
-
-The owner identity is the user and organization pair; a billable request
-with no organization is refused rather than attributed later.
-
-```quint
-type Owner = { user: str, organization: str }
-pure def billable(o: Owner): bool = o.user != "" and o.organization != ""
-pure val oValues = Set({ user: "u1", organization: "o1" }, { user: "u1", organization: "" }, { user: "", organization: "o1" })
-pure def lawBillableNeedsOrganization(o: Owner): bool = billable(o) implies o.organization != ""
-```
 
 ### A deletion request fences the user and organization together and records the authority receipt
 

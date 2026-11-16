@@ -1,10 +1,9 @@
 # Recorded transcription
 
-The recorded transcription controller and its typed failures
-(`recorded-transcription-controller.ts`) record one utterance for a
-consumer's voice controls. This model owns one capture and its callbacks.
-The [voice endpoint](./endpoint.md) owns the decision to submit a turn, and
-[microphone samples](./microphoneSamples.md) own the live previews. Both
+The recorded transcription controller records one utterance for a
+consumer's voice controls and owns that capture and its callbacks. The
+[voice endpoint](./endpoint.md) owns the decision to submit a turn, and
+[microphone samples](./microphoneSamples.md) own the live previews; both
 belong to [voice capture](./capture.md).
 
 ## Story: Record one utterance and release its microphone when recording stops
@@ -163,9 +162,3 @@ pure val weight_appendChunk = 6
 pure val weight_observeHostTranscript = 10
 pure val weight_observeRecordingEncoded = 9
 ```
-
-The controller's own `recorded-transcription-controller.test.ts`
-exercises the default MIME upload, host text, undefined fallback and both
-preview lifetimes with a controlled recorder. Whether a consumer uses a
-current preview that covers the end of the utterance, and whether it uses
-cloud or device recognition, is supplied through the host finalizer.

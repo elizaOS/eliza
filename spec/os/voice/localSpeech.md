@@ -1,14 +1,14 @@
 # On-device speech request and model ownership
 
-A consumer's device speech plugin extends `ElizaInferencePlugin` from the
-local inference Android sources (`ai.eliza.voice`) and compiles the voice
-bundle into its own Android build. The producer owns status, synthesize,
-transcribe, cancel and the process-wide speech and hearing lanes. The
-consumer supplies language routing, audio focus, packaged asset policy and
-hidden release timing. This model follows one request through one lane and
-the shared model hold through application visibility and pressure.
-Concurrent requests are counted via the lane and queue evidence on release.
-The [microphone slot](./microphoneSlot.md) owns the shared capture.
+A consumer's device speech plugin builds on the os package's local
+inference plugin and compiles the voice bundle into its own Android build.
+The plugin owns status, synthesis, transcription, cancellation and the
+process-wide speech and hearing lanes; the consumer supplies language
+routing, audio focus, packaged asset policy and release timing. This spec
+follows one request through one lane and the shared model hold through
+application visibility and memory pressure.
+[On-device microphone ownership](./microphoneSlot.md) owns the shared
+capture.
 
 ## Story: Recognize and speak on the device with a verified speech bundle
 
@@ -42,7 +42,7 @@ pure val bundleValues = Set({ source: PackagedBundle, digestMatches: true },
 
 ### An admitted request retains its identity until its worker finishes
 
-The producer refuses a missing request ID, a duplicate pending ID,
+The plugin refuses a missing request ID, a duplicate pending ID,
 a destroyed bridge, a queue already holding at least 64 entries, or a
 speech bundle that has not been verified. The worker checks current
 ownership, cancellation, memory pressure and consumer policy before

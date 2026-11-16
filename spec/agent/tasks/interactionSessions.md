@@ -1,7 +1,6 @@
 # Interaction sessions on the agent host
 
-The agent host runs an interaction's external effect through
-`packages/agent/src/services/message-interaction-{host,store}.ts`. The
+The agent host runs an interaction's external effect. The
 [core interaction session](../../core/sessions.md) owns claim tokens,
 digests, leases and expiry; this spec takes those as already checked and
 owns what the host adds: a process lock over the session row, a durable

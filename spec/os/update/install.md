@@ -1,14 +1,11 @@
 # Android prepared installation and readback
 
-The updater's `UpdateJournal`, `InstallReadback`, `PackageInstallCoordinator`
-and `PreparedRecovery` live in the native agent plugin's updater package
-(`ai.eliza.plugins.agent.updater`). A consumer's updater application may
-extend the producer coordinator. The journal is private, lock-serialized
-and atomically replaced. [App update admission](./appAdmission.md) decides
-whether authenticated artifacts remain admissible. This projection models
-one admitted candidate and its recovery, with installer session and health
-receipts bound to that plan. Separate journals belong to the consumer that
-installs them.
+The updater's installation journal is private, lock-serialized and
+atomically replaced. It follows one admitted candidate and its adjacent
+recovery, with installer session and health receipts bound to that plan.
+[App update admission](./appAdmission.md) decides whether authenticated
+artifacts remain admissible; [WebView health](./uiHealth.md) and
+[runtime health](./runtimeHealth.md) supply the health evidence.
 
 ## Story: Resolve a candidate installation from platform readback
 
@@ -77,7 +74,7 @@ pure def releasedCandidate(releases: int, j: Journal): Journal = {
 }
 pure def canObserveInstall(j: Journal, observation: InstallObservation): bool =
   awaitsReadback(j) and observation.planId == j.planId and observation.sessionId == j.sessionId
-pure def reconcileInstall(observation: InstallObservation, j: Journal): Journal = {
+pure def observeInstall(j: Journal, observation: InstallObservation): Journal = {
   val recovery = j.recoveryAttempted
   val expected = if (recovery) RecoveryCode else CandidateCode
   val previous = if (recovery) CandidateCode else BaselineCode
@@ -96,20 +93,14 @@ pure def reconcileInstall(observation: InstallObservation, j: Journal): Journal 
   else if (j.phase == Support and j.support == OutcomeUnknown) j
   else { ...j, phase: Support, support: OutcomeUnknown, revision: j.revision + 1 }
 }
-pure def observeInstall(j: Journal, observation: InstallObservation): Journal =
-  reconcileInstall(observation, j)
-pure def canObserveExpectedInstall(j: Journal): bool = awaitsReadback(j)
-pure def observeExpectedInstall(j: Journal): Journal = reconcileInstall({
-  planId: j.planId, sessionId: j.sessionId, installed: if (j.recoveryAttempted) RecoveryCode else CandidateCode,
-  stillListed: false, blocked: false, evidence: NoFailure
-}, j)
 pure val weight_stagePair = 4
 pure val weight_verifyPair = 4
 pure val weight_commitCandidate = 4
-pure val weight_observeExpectedInstall = 4
-pure val weight_observeCurrentHealth = 4
+pure val weight_observeInstall = 6
+pure val weight_observeHealth = 6
 pure val weight_commitRecovery = 4
 pure val observationValues = Set(
+  {planId: 1, sessionId: 1, installed: CandidateCode, stillListed: false, blocked: false, evidence: NoFailure},
   {planId: 1, sessionId: 1, installed: CandidateCode, stillListed: false, blocked: true, evidence: NoFailure},
   {planId: 1, sessionId: 1, installed: BaselineCode, stillListed: true, blocked: false, evidence: RetryableFailure},
   {planId: 1, sessionId: 1, installed: BaselineCode, stillListed: false, blocked: false, evidence: NoFailure},
@@ -138,20 +129,13 @@ pure def sometimesCommitOutcomeUnknown(j: Journal): bool = j.phase == Support an
 
 ### Health evidence carries the revision, generation, plan and installed identity
 
-The source takes the snapshot before collecting health. Each health
-decision requires that exact snapshot and installed identity.
-The same-lock expected-install event supplies the current journal
-identity with an observed matching installed package. The current-health
-receipt event represents the callback delivering the intact
-snapshot and verified installed identity without interleaving. The port
-supplies qualified health and probation timing. [WebView health evidence](./uiHealth.md)
-governs the renderer portion. [The runtime observation](./runtimeHealth.md)
-binds the agent and gateway readings to the same active launch. Local failure of the
-candidate quarantines it and permits one authorized recovery attempt.
-A failed recovery health outcome quarantines both artifacts and stops
-automatic recovery. Current recovery authority is required before
-handoff, even after candidate failure. A quarantined candidate cannot
-be restaged in this owner.
+The journal takes its snapshot before health is collected, and each
+health decision requires that exact snapshot and the installed identity
+the phase expects. The port supplies qualified health and probation
+timing. Local failure of the candidate quarantines it and permits one
+authorized recovery attempt. A failed recovery health outcome quarantines
+both artifacts and stops automatic recovery. Current recovery authority
+is required before handoff, even after candidate failure.
 
 ```quint
 pure def matchesHealth(j: Journal, health: HealthBinding): bool =
@@ -161,16 +145,11 @@ pure def healthPhase(j: Journal): bool =
 pure def canObserveHealth(j: Journal, health: HealthBinding, installed: InstalledIdentity, healthy: bool): bool =
   matchesHealth(j, health) and healthPhase(j) and (not(healthy) or j.phase != CandidateHealthy) and
   installed == (if (j.phase == RecoveryProbation) RecoveryCode else CandidateCode)
-pure def applyHealth(healthy: bool, j: Journal): Journal =
+pure def observeHealth(j: Journal, health: HealthBinding, installed: InstalledIdentity, healthy: bool): Journal =
   if (healthy) { ...j, phase: if (j.phase == RecoveryProbation) Recovered else CandidateHealthy, revision: j.revision + 1 }
   else { ...j, candidateQuarantined: true, recoveryQuarantined: j.recoveryQuarantined or j.phase == RecoveryProbation,
     phase: if (j.recoveryAttempted) Support else RecoveryReady,
     support: if (j.recoveryAttempted) RecoveryFailed else NoBlock, revision: j.revision + 1 }
-pure def observeHealth(j: Journal, health: HealthBinding, installed: InstalledIdentity, healthy: bool): Journal =
-  applyHealth(healthy, j)
-pure def canObserveCurrentHealth(j: Journal, healthy: bool): bool =
-  healthPhase(j) and (not(healthy) or j.phase != CandidateHealthy)
-pure def observeCurrentHealth(j: Journal, healthy: bool): Journal = applyHealth(healthy, j)
 pure def canCommitRecovery(j: Journal, sessionId: int, currentAuthority: bool): bool =
   j.phase == RecoveryReady and not(j.recoveryAttempted) and sessionId > 0 and currentAuthority
 pure def commitRecovery(j: Journal, sessionId: int, currentAuthority: bool): Journal =
@@ -192,6 +171,17 @@ pure def alwaysUncommittedHasNoRecovery(j: Journal): bool =
 pure def alwaysJournalCoordinates(j: Journal): bool = j.revision >= 0 and j.generation > 0
 pure def sometimesRecovered(j: Journal): bool = j.phase == Recovered
 pure def sometimesQuarantined(j: Journal): bool = j.phase == Quarantined
+```
+
+### Support names why the update stopped
+
+Support shows the person the reason the journal stopped: a blocked
+installer, an unknown outcome, an unexpected installed identity or a
+failed recovery. Outside support there is no reason to show.
+
+```quint
+pure def alwaysSupportNamesItsReason(j: Journal): bool = (j.phase == Support) == (j.support != NoBlock)
+pure def sometimesSupportAfterFailedRecovery(j: Journal): bool = j.phase == Support and j.support == RecoveryFailed
 ```
 
 ### A quarantined artifact stays quarantined

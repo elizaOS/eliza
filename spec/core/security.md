@@ -1,6 +1,6 @@
 # Content and outbound security
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/network/ssrf.ts`, `packages/core/src/security/spawn-env-policy.ts`, `process-env-policy.ts`, `redact.ts`, `log-redaction.ts`, `fragment-redaction.ts`, `secrets.ts`, `secret-swap.ts`, `outbound-envelope-guard.ts`, `outbound-sanitize.ts`, `external-content.ts`, `injection-primitives.ts`, `bind-host.ts`, `loopback-trust.ts`, `request-token.ts` and `mcp-server-config.ts`, and `packages/core/src/utils/exec-safety.ts`. This library holds the decisions that keep untrusted content and outbound data inside their boundaries. The fetch that applies the address decision, and how its transport spells the host, are [media](./media.md); PII scrubbing is [privacy](./privacy.md); which processing a confidential request may use is [processing policy](./processingPolicy.md).
+This library decides what keeps untrusted content and outbound data inside their boundaries: which addresses may be fetched, which environment keys a spawned process inherits, how log fields and secrets are redacted, and when outbound text is blocked. The fetch that applies the address decision is [media](./media.md); PII scrubbing is [privacy](./privacy.md); which processing a confidential request may use is [processing policy](./processingPolicy.md).
 
 ## Story: Admit content and outbound data
 
@@ -67,19 +67,20 @@ pure def lawConfigurationNeverSuppliesAProcessOnlyKey(entry: EnvEntry, source: E
 
 ### A secret never appears in a log line
 
-Before a log line is written, a field whose name marks it sensitive, or whose value contains a known secret or matches a credential pattern, has its value replaced by a redaction marker. Other fields are written as they are.
+Before a log line is written, a field whose name marks it sensitive, or whose value contains a known secret or matches a credential pattern, has its value replaced by a redaction marker. A field that cannot be read, such as one behind a throwing getter, is written as a distinct failure marker, never as its value. Classification happens at the sink; a caller cannot mark a field safe to bypass masking. Other fields are written as they are.
 
 ```quint
-type LogField = { name: str, sensitiveName: bool, containsSecret: bool, value: str }
+type LogField = { name: str, sensitiveName: bool, containsSecret: bool, unreadable: bool, value: str }
 pure val redactionMarker = "[REDACTED]"
+pure val unreadableMarker = "[REDACTION_FAILED]"
 pure val logFieldsValues = Set(
   List(),
-  List({ name: "apiKey", sensitiveName: true, containsSecret: true, value: "k-123" }, { name: "room", sensitiveName: false, containsSecret: false, value: "lobby" }),
-  List({ name: "text", sensitiveName: false, containsSecret: true, value: "token k-123" })
+  List({ name: "apiKey", sensitiveName: true, containsSecret: true, unreadable: false, value: "k-123" }, { name: "room", sensitiveName: false, containsSecret: false, unreadable: false, value: "lobby" }),
+  List({ name: "text", sensitiveName: false, containsSecret: true, unreadable: false, value: "token k-123" }, { name: "hostile", sensitiveName: false, containsSecret: false, unreadable: true, value: "" })
 )
-pure def mustRedact(f: LogField): bool = f.sensitiveName or f.containsSecret
-pure def redactLine(logFields: List[LogField]): List[LogField] = logFields.listMap(f => if (mustRedact(f)) { ...f, value: redactionMarker } else f)
-pure def lawLoggedSecretsAreRedacted(logFields: List[LogField]): bool = redactLine(logFields).every(f => not(mustRedact(f)) or f.value == redactionMarker)
+pure def mustRedact(f: LogField): bool = f.sensitiveName or f.containsSecret or f.unreadable
+pure def redactLine(logFields: List[LogField]): List[LogField] = logFields.listMap(f => if (f.unreadable) { ...f, value: unreadableMarker } else if (mustRedact(f)) { ...f, value: redactionMarker } else f)
+pure def lawLoggedSecretsAreRedacted(logFields: List[LogField]): bool = redactLine(logFields).every(f => not(mustRedact(f)) or f.value == (if (f.unreadable) unreadableMarker else redactionMarker))
 pure def lawOrdinaryFieldsAreLoggedUnchanged(logFields: List[LogField]): bool = logFields.every(f => mustRedact(f) or redactLine(logFields).includes(f))
 ```
 
@@ -96,4 +97,21 @@ pure def deliver(outbound: OutboundText): Delivery = if (outbound.envelopeMateri
 pure def lawEnvelopeMaterialIsNeverDelivered(outbound: OutboundText): bool =
   outbound.envelopeMaterial implies (deliver(outbound).blocked and deliver(outbound).text == leakNotice)
 pure def lawCleanTextIsDeliveredUnchanged(outbound: OutboundText): bool = not(outbound.envelopeMaterial) implies deliver(outbound) == { text: outbound.text, blocked: false }
+```
+
+### The first positive detection trips the stream and reports once
+
+A streamed reply is checked against everything it has produced so far. The first chunk that brings envelope material trips the stream: it is reported once and nothing more is forwarded, whatever later chunks hold.
+
+```quint
+type EnvelopeLatch = { tripped: bool, reports: int, forwarded: int }
+pure val latchValues = Set({ tripped: false, reports: 0, forwarded: 0 }, { tripped: false, reports: 0, forwarded: 2 }, { tripped: true, reports: 1, forwarded: 1 })
+pure def observeChunk(latch: EnvelopeLatch, soFarHasEnvelope: bool): EnvelopeLatch =
+  if (latch.tripped) latch
+  else if (soFarHasEnvelope) { ...latch, tripped: true, reports: latch.reports + 1 }
+  else { ...latch, forwarded: latch.forwarded + 1 }
+pure def reportsOnce(latch: EnvelopeLatch): bool = latch.reports == (if (latch.tripped) 1 else 0)
+pure def lawLatchReportsOnce(latch: EnvelopeLatch, soFarHasEnvelope: bool): bool = reportsOnce(latch) implies reportsOnce(observeChunk(latch, soFarHasEnvelope))
+pure def lawTripForwardsNothingMore(latch: EnvelopeLatch, soFarHasEnvelope: bool): bool = latch.tripped implies observeChunk(latch, soFarHasEnvelope) == latch
+pure def lawDetectionTrips(latch: EnvelopeLatch): bool = not(latch.tripped) implies (observeChunk(latch, true).tripped and observeChunk(latch, true).forwarded == latch.forwarded)
 ```

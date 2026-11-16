@@ -9,6 +9,6 @@ custody is the os package's [file mutation](../os/android/files/mutation.md).
 
 | Area | Specifications |
 | --- | --- |
-| Opening and changing | [Direct admission](./admission.md), [view ownership](./viewOwnership.md), [reviewed operations](./reviewedOperations.md), [Photos downloads](./archive.md) |
+| Opening and changing | [Requests](./requests.md), [reviewed operations](./reviewedOperations.md), [reviewed file identity](./reviewPin.md), [downloads](./archive.md) |
 | Documents | [Source references](./sourceReferences.md), [local OCR](./localOcr.md) |
-| Scans | [Perspective correction](./scan/correction.md), [draft storage](./scan/drafts.md), [reviewed links](./scan/links.md), [searchable PDF](./scan/searchablePdf.md) |
+| Scans | [Image bounds](./images.md), [scan review](./scan/review.md), [perspective correction](./scan/correction.md), [draft storage](./scan/drafts.md), [reviewed links](./scan/links.md), [searchable PDF](./scan/searchablePdf.md), [PDF interpretation](./pdfInterpretation.md) |

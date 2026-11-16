@@ -5,7 +5,7 @@ each spoken segment into one final transcript. Frames and voice-activity
 edges are forwarded in the order they were captured, as batches, and a
 batch stays counted until its transport promise settles. Partial
 transcripts are shown while a person speaks; only finals become turns. The
-capture feeding it is [native capture](./nativeCapture.md); per-turn
+capture feeding it is [native capture](./microphoneSlot.md); per-turn
 diagnostics are [timing](./timing.md).
 
 ## Story: Stream live transcription for each spoken segment

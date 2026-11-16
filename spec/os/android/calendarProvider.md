@@ -12,8 +12,9 @@ authority.
 
 ## Story: Read calendar events and open the Android editor for review
 
-> As the person, I want to read calendar events and open the Android
-> editor for review.
+> As the person, I want my calendar read only within a bounded range
+> while I allow it, and Android's own editor opened for review, so that
+> opening the editor is never mistaken for a saved change.
 
 ### Reading uses a bounded range and editor dispatch confers no write receipt
 
@@ -26,10 +27,11 @@ editor opened. Native host parsing establishes event time, title
 and all-day UTC date semantics before provider admission.
 
 ```quint
+import numbers as Num from "../../core/numbers"
 type CalendarDecision = RangeAllowed | InvalidRange | PermissionDenied | EditorDispatched | EditorUnavailable
 pure def listCalendarDecision(startMs: int, endMs: int, permissionBefore: bool, permissionAfter: bool): CalendarDecision =
   if (not(permissionBefore)) PermissionDenied
-  else if (startMs < 0 or endMs <= startMs or endMs - startMs > 31968000000 or endMs > 9007199254740991) InvalidRange
+  else if (startMs < 0 or endMs <= startMs or endMs - startMs > 31968000000 or endMs > Num::maxSafeInteger) InvalidRange
   else if (not(permissionAfter)) PermissionDenied
   else RangeAllowed
 pure def reviewCalendarEditor(validEvent: bool, opened: bool): CalendarDecision =
@@ -41,10 +43,10 @@ pure def lawCalendarReadNeedsCurrentPermission(startMs: int, endMs: int, permiss
     startMs >= 0 and endMs > startMs and endMs - startMs <= 31968000000 and permissionBefore and permissionAfter
 ```
 
-## Story: Change exactly the calendar event the user reviewed
+## Story: Change exactly the calendar event I reviewed
 
-> As the person, I want to change exactly the calendar event the user
-> reviewed.
+> As the person, I want an edit or delete to change exactly the event I
+> reviewed, so that an event changed since is never overwritten.
 
 ### The provider compares both rows atomically before editing or deleting
 

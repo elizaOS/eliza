@@ -1,10 +1,12 @@
 # Request attempts and completion evidence
 
-Source `actions/task-extraction-context.ts` binds opaque attempt tokens, denial identities and result-object fingerprints to an existing request issuer. These process-local associations support completion accounting. They never add permission to execute a mutation. The model follows one issuer and any number of attempts and result objects.
+Attempt tokens, denial identities and result-object fingerprints bound to one [request issuer](./requestIssuer.md) in `actions/task-extraction-context.ts`. These process-local associations support completion accounting and never add permission to run a mutation.
 
 ## Story: Keep mutation completion tied to the exact issued attempt
 
-As the planner, I want a denied step removed only when a current same-request success proves its exact operation completed.
+> As the planner, I want a denied step removed only when a current same-
+> request success proves its exact operation completed, so that completion
+> is never inferred from another attempt.
 
 ### Resolving a second different mutation invalidates an attempt
 
@@ -29,13 +31,13 @@ type RequestCompletions = { revision: int, live: bool, classification: RequestCl
 pure val noDefinition: DefinitionIdentity = { objectId: 0, definitionId: "", fingerprint: "" }
 pure val noRegistration: RegistrationSnapshot = { registeredAction: noDefinition, family: noDefinition }
 pure val noChild: ChildSnapshot = { definition: noDefinition, operation: NoOperation }
-pure val sampleAction: DefinitionIdentity = { objectId: 1, definitionId: "notes-create", fingerprint: "action-definition" }
-pure val sampleFamily: DefinitionIdentity = { objectId: 2, definitionId: "notes", fingerprint: "family-definition" }
+pure val sampleAction: DefinitionIdentity = { objectId: 1, definitionId: "action-create", fingerprint: "action-definition" }
+pure val sampleFamily: DefinitionIdentity = { objectId: 2, definitionId: "action-family", fingerprint: "family-definition" }
 pure val sampleRegistration: RegistrationSnapshot = { registeredAction: sampleAction, family: sampleFamily }
 pure val registrationValues = Set(sampleRegistration, noRegistration)
 pure val observationValues = Set(sampleRegistration, { ...sampleRegistration, registeredAction: { ...sampleAction, fingerprint: "changed-definition" } })
 pure val sampleChild: ChildSnapshot = { definition: sampleAction, operation: CreateOperation }
-pure val childValues = Set(sampleChild, { definition: { ...sampleAction, objectId: 3, definitionId: "notes-update" }, operation: UpdateOperation })
+pure val childValues = Set(sampleChild, { definition: { ...sampleAction, objectId: 3, definitionId: "action-update" }, operation: UpdateOperation })
 pure val emptyAttempt: Attempt = { id: "", revision: 0, resolved: NoOperation, registered: NoOperation, registration: noRegistration, conflicted: false, invalidated: CurrentCompletion }
 pure val emptyCompletion: Completion = { id: "", attempt: "", fingerprint: "", projectionHash: "", registration: noRegistration, child: noChild, changed: false, hasFact: false, projected: false, status: StaleCompletion }
 pure val emptyDenial: Denial = { id: "", attempt: "", operation: NoOperation, classification: UnresolvedClass, projectedResult: false }

@@ -1,12 +1,8 @@
 # Workflow request custody
 
-A consumer keeps its pending workflow actions in the shared
-`WorkflowIntentStore` from `packages/contracts/src/workflow-intents.ts`,
-under a namespace the consumer chooses. The encoded key includes origin,
-owner, agent, and local request key. Android uses per-key storage. A
-development browser uses an owner-scoped domain archive seeded from existing
-keys; its reset and export belong to the consumer.
-[Workflow admission](./admission.md) owns remote executions.
+A client keeps its pending workflow actions in the workflow request store,
+under a namespace it chooses, keyed by origin, owner, agent and local
+request key. [Workflow admission](./admission.md) owns remote executions.
 
 ## Story: Preserve the owner’s pending action across transport uncertainty
 
@@ -15,15 +11,14 @@ keys; its reset and export belong to the consumer.
 
 ### A committed revision is the only receipt that can unlock its action
 
-The model represents one key and its owner tuple. Compare-and-edit
-is atomic and operates against durable storage. A missing snapshot locks
+Each request key belongs to one owner. Compare-and-edit is atomic against
+durable storage. A missing snapshot locks
 all keys for this store. An aborted or late read may not replace the
 snapshot. A storage failure invalidates the cache even if the mutation
 landed. A committed write refreshes the local cache and then reports the
 change to observers. If an observer throws after commit, persistence
-and the cache are still updated. The shell validates the owner prefix,
-archive schema, revision UUID and raw JSON. The model tracks durable
-commit and receipt as separate observations.
+and the cache are still updated. A durable commit and its receipt are
+observed separately.
 
 ```quint
 type IntentResult = NoIntentResult | IntentConfirmed | IntentConflict | IntentUnknown | IntentOtherOwner | IntentObserverFailed

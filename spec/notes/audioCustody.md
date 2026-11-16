@@ -1,49 +1,42 @@
 # Device Notes audio and transcription windows
 
-On the device, the note audio bridge uses `RecordingStore` and the voice
-bridge uses `RecordingWindow`, both from the native media module
-(`ai.eliza.plugins.media`). The installed files live in no-backup
-`note-audio` and metadata uses `note-audio-metadata:v1:<id>` with owner
-field `noteId`. [Notes Trash](./trash.md) owns renderer and journal
-admission. [Secure slots](../auth/secureSlots.md) own encrypted slot
-readback. A separate native recorder and foreground service produce
-stopped clips. This contract begins at the handoff from that recorder.
+A note's recording lives on the device as an audio file in private,
+non-backed-up storage, with its metadata, owned by its note, in an
+encrypted slot. This spec begins when the device's recorder hands over a
+stopped clip. [Notes Trash](./trash.md) owns journal admission and
+[secure slots](../auth/secureSlots.md) own encrypted slot readback.
 
 ## Story: Retain a finished recording for the same note and recover interrupted metadata
 
-> As the owner, I want to retain a finished recording for the same note and recover interrupted metadata.
+> As the owner, I want a recording I finished to be kept with its note,
+> and an interrupted save to be reported as unknown rather than lost or
+> claimed.
 
 ### The audio and the confirmed metadata are separate parts of retention
 
 Only a native recorder can nominate a source file. Recording and note IDs
 are 1–100 ASCII letters, digits, underscores or dashes. The source must be
 a file with positive length, the elapsed duration positive, and a
-transcript must be supplied. Short clips are at most 4 MiB,
-60 seconds and 64,000 transcript units. The long Notes path uses no
-product byte or duration cap below the Java signed-long range. It keeps
-up to 150,000 UTF-16 units in audio metadata without splitting a
-surrogate pair. The complete transcript belongs to the note. The
-separate encrypted slot still applies its serialized byte cap.
+transcript must be supplied. Short clips are at most 4 MiB, 60 seconds
+and 64,000 transcript units. A long note keeps up to 150,000 UTF-16 units
+of transcript in its audio metadata without splitting a surrogate pair;
+the complete transcript belongs to the note.
 
-New audio first moves or copies to `<id>.pending`. The same-filesystem
-move can avoid duplication. A copy uses bounded streaming and file sync.
-Then the pending file is renamed to `<id>.audio`. A failed pending copy
-or target rename attempts pending cleanup. The metadata write is next.
-It must read back the exact serialized encrypted slot before replacing
-the legacy sidecar with `{"encrypted":1}`. A failure can leave audio
-with missing or unconfirmed metadata. No `saved` answer is owed until
-both stages report success. The port reports whether this attempt's
-bytes are installed and whether the exact encrypted row and marker
-were confirmed. That readback is live process evidence.
+New audio is installed through a pending file that is then renamed; a
+failed copy or rename cleans up the pending file. The metadata write
+follows and must read back the exact encrypted slot. A failure can leave
+audio with missing or unconfirmed metadata, and the retention is saved
+only when both the bytes and the exact encrypted row are confirmed.
 
 An existing audio file with a readable row may update its transcript
 only for the same owner and only while the row is live. A retained
 row keeps its original duration and creation time. A file with no row
 may be replaced when the caller can still supply a stopped source.
 An ID without audio and with retained deletion receipts cannot be
-reattached. The port supplies the exact metadata trust and byte states.
+reattached.
 
 ```quint
+import numbers as Num from "../core/numbers"
 type RecordKind = ShortClip | LongNote
 type RetainPlan = ImportAudio | UpdateTranscript | RetainRefused
 type MetadataStatus = NoMetadata | CurrentMetadata | TrashedMetadata | RetiredMetadata | UnreadableMetadata
@@ -61,9 +54,9 @@ pure def retainPlan(kind: RecordKind, facts: RetainFacts): RetainPlan =
   else if (facts.targetAudio and facts.metadata != NoMetadata) {
     if (facts.metadata == CurrentMetadata and facts.ownerExact) UpdateTranscript else RetainRefused
   } else ImportAudio
-pure def retentionResult(plan: RetainPlan, bytesInstalled: bool, exactEncryptedReadback: bool, markerConfirmed: bool): RetainResult =
+pure def retentionResult(plan: RetainPlan, bytesInstalled: bool, exactEncryptedReadback: bool): RetainResult =
   if (plan == RetainRefused) RetentionRefused
-  else if (bytesInstalled and exactEncryptedReadback and markerConfirmed) RetentionSaved else RetentionUnknown
+  else if (bytesInstalled and exactEncryptedReadback) RetentionSaved else RetentionUnknown
 pure def longTranscriptUnits(transcriptUnits: int, highSurrogateAtCut: bool): int =
   if (transcriptUnits <= 150000) transcriptUnits else if (highSurrogateAtCut) 149999 else 150000
 pure val longFacts: RetainFacts = { nativeSource: true, validIds: true, filePresent: true, bytes: 11000000, duration: 100000,
@@ -74,58 +67,16 @@ pure def lawRetiredAudioCannotBeReattached(kind: RecordKind, facts: RetainFacts)
   not(facts.targetAudio) and facts.metadata == RetiredMetadata implies retainPlan(kind, facts) == RetainRefused
 pure def lawTranscriptUpdateRequiresExactLiveOwner(kind: RecordKind, facts: RetainFacts): bool =
   retainPlan(kind, facts) == UpdateTranscript implies facts.targetAudio and facts.ownerExact and facts.metadata == CurrentMetadata
-pure def lawSavedRetentionHasBothParts(plan: RetainPlan, bytesInstalled: bool, exactEncryptedReadback: bool, markerConfirmed: bool): bool =
-  retentionResult(plan, bytesInstalled, exactEncryptedReadback, markerConfirmed) == RetentionSaved implies
-    bytesInstalled and exactEncryptedReadback and markerConfirmed
+pure def lawSavedRetentionHasBothParts(plan: RetainPlan, bytesInstalled: bool, exactEncryptedReadback: bool): bool =
+  retentionResult(plan, bytesInstalled, exactEncryptedReadback) == RetentionSaved implies bytesInstalled and exactEncryptedReadback
 pure def lawSurrogateAtCutIsNotKept(transcriptUnits: int): bool =
   transcriptUnits > 150000 implies longTranscriptUnits(transcriptUnits, true) == 149999
 ```
 
-### A legacy sidecar is replaced only after its equal encrypted copy is verified
-
-A legacy `.json` sidecar or backup is read with a 512 KiB bound. JSON
-with no `encrypted` member is legacy data. The store compares its exact
-serialized JSON to an existing encrypted copy. A difference raises an
-error and keeps both. Matching or missing encrypted data can be migrated
-by writing it and verifying exact readback before switching the sidecar
-to the marker. Marker or absent sidecar requires an encrypted row. A
-failed or unreadable pass retains evidence for recovery. Startup checks
-interruption between records and may report needs-recovery or stopped.
-Plaintext audio itself is a private file. This contract does not equate
-private app file storage with the separately encrypted metadata.
-
-For old trash, the native audio restore limit is 60 days after deletion
-in both recording profiles. The limit is strict for automatic
-legacy erase. After that period the migration pass can erase audio.
-Rows with prior operation receipts keep them and clear the transcript.
-A row without receipts can erase metadata after bytes are absent. The
-separate Notes Trash backstop becomes due at 30 days, with live
-notes, pending operations and exact native receipts deciding when the
-note row can retire. That separate store is owned by Notes Trash.
-
-```quint
-type Sidecar = MissingSidecar | RawSidecar | MarkerSidecar | BrokenSidecar
-type MetadataPlan = RejectMetadata | UseEncrypted | VerifyMigration
-type LegacyCleanup = KeepLegacy | EraseLegacyWithReceipts | EraseLegacyWithoutReceipts
-pure def metadataPlan(sidecar: Sidecar, hasEncrypted: bool, encryptedReadable: bool, copiesEqual: bool): MetadataPlan =
-  if (sidecar == BrokenSidecar or not(encryptedReadable)) RejectMetadata
-  else if (sidecar == RawSidecar) {
-    if (hasEncrypted and not(copiesEqual)) RejectMetadata else VerifyMigration
-  } else if (hasEncrypted) UseEncrypted else RejectMetadata
-pure def mayMarkMigrated(plan: MetadataPlan, exactEncryptedReadback: bool): bool = plan == VerifyMigration and exactEncryptedReadback
-pure def lawMigrationMarkerNeedsExactReadback(plan: MetadataPlan): bool = not(mayMarkMigrated(plan, false))
-pure def legacyCleanup(deletedAt: int, wall: int, hasReceipts: bool): LegacyCleanup =
-  if (deletedAt <= 0 or wall - deletedAt <= 5184000000) KeepLegacy
-  else if (hasReceipts) EraseLegacyWithReceipts else EraseLegacyWithoutReceipts
-pure def lawLegacyConflictLeavesBothCopies(hasEncrypted: bool, encryptedReadable: bool): bool =
-  hasEncrypted implies metadataPlan(RawSidecar, hasEncrypted, encryptedReadable, false) == RejectMetadata
-pure def lawLegacyDeadlineIsInclusive(deletedAt: int, hasReceipts: bool): bool =
-  legacyCleanup(deletedAt, deletedAt + 5184000000, hasReceipts) == KeepLegacy
-```
-
 ## Story: Change only the exact reviewed recording and retain its operation receipt
 
-> As the owner, I want to change only the exact reviewed recording and retain its operation receipt.
+> As the owner, I want trashing, restoring or erasing a recording to act
+> only on the recording I reviewed, once, with a receipt I can rely on.
 
 ### One current operation controls trash and an erased ID remains retired
 
@@ -134,32 +85,22 @@ lowercase UUID-shaped operation. The store keeps at most 128 receipts
 and never evicts an earlier operation to gain capacity. Moving to
 trash commits the active operation and `removed` receipt together and
 makes the file unplayable. Repeating the same request returns its existing
-receipt. A foreign operation may not restore a trashed recording. The
-old format without an active deletion or any receipts permits an
-initial restore. Restoring requires the audio file and the 60-day
-inclusive restore deadline. Once restored, the old operation returns
+receipt. A foreign operation may not restore a trashed recording.
+Restoring requires the audio file and is open for 60 days after
+deletion, inclusive. Once restored, the old operation returns
 `restored`, even after another delete, without modifying the later row.
 Purging requires the matching `removed` receipt and active operation.
 It erases bytes first, then commits `purged` and clears the transcript.
 If byte deletion fails, no `purged` status is published. If metadata
 settlement fails after audio erasure, an unconfirmed outcome may have
 no bytes. Exact retry can confirm the same operation after readback.
-Already-purged retry returns its retained receipt. The native wrapper
-stops playback of that ID before an admitted changing effect.
-
-The machine follows a recording with validated metadata and bytes and
-retains per-operation receipts. Production operation IDs are decoded by
-the port and represented by synthetic integers. A failed encrypted
-commit is opaque to the caller. This model selects the old-row branch
-of an unconfirmed write until a subsequent exact observation. The slot
-and readback contract owns how to obtain that observation; completion
-without a confirmed marker does not imply disk rollback.
+Already-purged retry returns its retained receipt. Playback of the
+recording stops before an admitted change. An unconfirmed metadata write
+keeps the old row until an exact readback shows otherwise.
 
 ```quint
 type AudioReceipt = RemovedAudio | RestoredAudio | PurgedAudio | UnknownAudio
-pure val removedReceipt: AudioReceipt = RemovedAudio
-pure val restoredReceipt: AudioReceipt = RestoredAudio
-pure val purgedReceipt: AudioReceipt = PurgedAudio
+pure val audioRestoreWindowMs: int = 5184000000
 type AudioCustody = { owner: int, hasAudio: bool, activeOp: int, deletedAt: int, wall: int, transcript: bool,
   receiptCount: int, receipts: int -> AudioReceipt }
 pure val initial: AudioCustody = { owner: 1, hasAudio: true, activeOp: 0, deletedAt: 0, wall: 1, transcript: true,
@@ -172,20 +113,20 @@ pure def canTrashAudio(s: AudioCustody, noteOwner: int, operation: int): bool =
     ((s.deletedAt == 0 or s.activeOp == operation) and roomFor(s, operation)))
 pure def trashAudio(s: AudioCustody, noteOwner: int, operation: int, metadataConfirmed: bool): AudioCustody =
   if (not(metadataConfirmed) or priorReceipt(s, operation) != UnknownAudio) s
-  else { ...s, activeOp: operation, deletedAt: s.wall, receiptCount: countWith(s, operation), receipts: s.receipts.put(operation, removedReceipt) }
+  else { ...s, activeOp: operation, deletedAt: s.wall, receiptCount: countWith(s, operation), receipts: s.receipts.put(operation, RemovedAudio) }
 pure def canRestoreAudio(s: AudioCustody, noteOwner: int, operation: int): bool =
   noteOwner == s.owner and operation > 0 and (priorReceipt(s, operation) == RestoredAudio or
     (priorReceipt(s, operation) != PurgedAudio and s.hasAudio and roomFor(s, operation) and
-      (s.deletedAt == 0 or ((s.activeOp == operation or (s.activeOp == 0 and s.receiptCount == 0)) and s.wall - s.deletedAt <= 5184000000))))
+      (s.deletedAt == 0 or (s.activeOp == operation and s.wall - s.deletedAt <= audioRestoreWindowMs))))
 pure def restoreAudio(s: AudioCustody, noteOwner: int, operation: int, metadataConfirmed: bool): AudioCustody =
   if (not(metadataConfirmed) or priorReceipt(s, operation) == RestoredAudio) s
-  else { ...s, activeOp: 0, deletedAt: 0, receiptCount: countWith(s, operation), receipts: s.receipts.put(operation, restoredReceipt) }
+  else { ...s, activeOp: 0, deletedAt: 0, receiptCount: countWith(s, operation), receipts: s.receipts.put(operation, RestoredAudio) }
 pure def canPurgeAudio(s: AudioCustody, noteOwner: int, operation: int): bool =
   noteOwner == s.owner and operation > 0 and (priorReceipt(s, operation) == PurgedAudio or
     (priorReceipt(s, operation) == RemovedAudio and s.deletedAt > 0 and s.activeOp == operation))
 pure def purgeAudio(s: AudioCustody, noteOwner: int, operation: int, bytesGone: bool, metadataConfirmed: bool): AudioCustody =
   if (priorReceipt(s, operation) == PurgedAudio or (s.hasAudio and not(bytesGone))) s
-  else if (metadataConfirmed) { ...s, hasAudio: false, transcript: false, receipts: s.receipts.put(operation, purgedReceipt) }
+  else if (metadataConfirmed) { ...s, hasAudio: false, transcript: false, receipts: s.receipts.put(operation, PurgedAudio) }
   else { ...s, hasAudio: false }
 pure def canAdvanceAudioClock(s: AudioCustody, wall: int): bool = wall > 0 and wall != s.wall
 pure def advanceAudioClock(s: AudioCustody, wall: int): AudioCustody = { ...s, wall: wall }
@@ -209,30 +150,22 @@ pure def sometimesBytesGoneAwaitingReceipt(s: AudioCustody): bool = not(s.hasAud
 
 ## Story: Transcribe only a bounded window of the recording I selected
 
-> As the owner, I want to transcribe only a bounded window of the recording I selected.
+> As the owner, I want transcription to hear only a short window of the
+> recording I selected, and nothing once that recording has changed.
 
 ### A private temporary clip and the exact recording identity fence every use
 
-`RecordingWindow.open` admits the selected recording ID, `noteId`, exact
-stored duration and a nonnegative 25,000 ms aligned offset strictly below
-that duration. Duration is a positive safe integer. The stored row must
-name both IDs, have matching duration, and have no `deletedAt` key. The
-live audio file must exist. The decoder accepts one AAC track of 16 kHz
-mono and reads only the selected range, from the offset up to at most
-25 seconds later. Samples must fit the bounded 256 KiB buffer. During
-sample iteration the port checks cancellation and its 20-second elapsed
-budget. A sample omission raises error, except that an offset at or past
-reported encoded end may produce a distinct empty window. That empty
-case is checked again by the caller before publishing silence.
+A window names the recording, its note, the exact stored duration and an
+offset aligned to 25 seconds strictly below that duration. The stored row
+must name both, match the duration and not be deleted, and the live audio
+file must exist. Only the range from the offset up to 25 seconds later is
+read, within a bounded buffer and time budget, checking cancellation. An
+offset at or past the encoded end yields a distinct empty window, which
+the caller checks again before publishing silence.
 
-The temporary `.m4a` file stays native, with best-effort deletion on
-failure and on close. Nonempty windows recheck the recording after
-extraction. The transcription path rechecks before every Cloud upload (including one
-allowed warming replay), before direct STT, and again before returning
-provider text. Provider ownership and cancellation also apply. Empty
-windows never enter transport. The model uses port evidence for media
-container parsing, exact file and recording identities, cleanup and
-transport; no user path or raw audio crosses this model.
+The temporary clip stays on the device and is deleted on failure and on
+close. A nonempty window rechecks the recording after extraction, before
+every upload and before returning text; an empty window is never sent.
 
 ```quint
 type WindowInput = { validIds: bool, exactAudio: bool, exactNote: bool, duration: int, recordedDuration: int,
@@ -242,7 +175,7 @@ type WindowResult = WindowUnavailable | WindowHasAudio | WindowIsEmpty
 type WindowFile = NoWindowFile | CallerOwnsWindow | CleanupPending | CleanupUnconfirmed
 pure def windowAllowed(window: WindowInput): bool =
   window.validIds and window.exactAudio and window.exactNote and window.duration == window.recordedDuration and
-    window.duration > 0 and window.duration <= 9007199254740991 and window.offset >= 0 and window.offset < window.duration and
+    window.duration > 0 and window.duration <= Num::maxSafeInteger and window.offset >= 0 and window.offset < window.duration and
     window.offset % 25000 == 0 and not(window.deletedKeyPresent) and window.liveFilePresent
 pure def windowEnd(offset: int, duration: int): int = if (duration - offset <= 25000) duration else offset + 25000
 pure def extractedWindow(window: WindowInput, decoded: Extraction, supportedTrack: bool, sampledSafely: bool,
@@ -277,7 +210,8 @@ pure def lawCloseWithoutDeleteCannotConfirmAbsence(held: WindowFile): bool =
 
 ## Story: Keep a stopped recording until it is claimed for its note
 
-> As the owner, I want to keep a stopped recording until it is claimed for its note.
+> As the owner, I want a recording I stopped kept until it is saved to its
+> note, so that a lost reply or reload never loses or duplicates it.
 
 ### A stopped recording is claimed once and committed only to its canonical note
 

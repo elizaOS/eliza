@@ -1,8 +1,12 @@
 # Task service operation and timer ownership
 
-`services/task.ts` owns a local timer, active tick promise, pending admission promises, per-task execution counts, orphan quarantine set and scheduler drain. Per-task schedule/bookkeeping values are specified in [scheduling](./scheduling.md), and daemon query ownership in [queryDrain](./queryDrain.md). This product keeps the service's distinct concurrent operations instead of projecting all of them onto one task.
+`services/task.ts` owns a local timer, active tick promise, pending admission promises, per-task execution counts, orphan quarantine set and scheduler drain. Per-task schedule/bookkeeping values are specified in [scheduling](./scheduling.md), and daemon query ownership in [queryDrain](./queryDrain.md). This spec keeps the service's distinct concurrent operations instead of projecting all of them onto one task.
 
 ## Story: Stop admission synchronously and drain every admitted task operation
+
+> As a host, I want stopping the task service to refuse new work at once and
+> return only after every admitted operation, tick and worker has settled,
+> so that no task runs against a stopped runtime or is lost mid-run.
 
 ### Exclusive tasks observe every active invocation of the same task
 
@@ -17,8 +21,8 @@ type DueRow = { task: str, paused: bool, invalid: bool, due: int }
 type StopPhase = WaitScheduler | WaitTick | WaitOperations | StopReturned
 type StopCall = { id: int, drain: int, phase: StopPhase, tick: int, operations: Set[int] }
 
-type TaskServiceOwners = { configured: bool, now: int, startedAt: int, stopped: bool, localTimer: bool, hasTimer: bool, timerAt: int, maxTick: int, activeTick: int, ticks: List[ServiceTick], wakeWaiters: Set[int], operations: List[Operation], executions: List[Execution], quarantined: Set[str], drains: List[Operation], stops: List[StopCall], rejected: int, failures: int, sharedRegistrations: int }
-pure val initial: TaskServiceOwners = { configured: false, now: 0, startedAt: 0, stopped: false, localTimer: false, hasTimer: false, timerAt: 0, maxTick: 60000, activeTick: 0, ticks: List(), wakeWaiters: Set(), operations: List(), executions: List(), quarantined: Set(), drains: List(), stops: List(), rejected: 0, failures: 0, sharedRegistrations: 0 }
+type TaskServiceOwners = { configured: bool, now: int, startedAt: int, stopped: bool, localTimer: bool, hasTimer: bool, timerAt: int, maxTick: int, activeTick: int, ticks: List[ServiceTick], wakeWaiters: Set[int], operations: List[Operation], executions: List[Execution], quarantined: Set[str], drains: List[Operation], stops: List[StopCall], rejected: int, failures: int, sharedRegistrations: int, workers: Set[str] }
+pure val initial: TaskServiceOwners = { configured: false, now: 0, startedAt: 0, stopped: false, localTimer: false, hasTimer: false, timerAt: 0, maxTick: 60000, activeTick: 0, ticks: List(), wakeWaiters: Set(), operations: List(), executions: List(), quarantined: Set(), drains: List(), stops: List(), rejected: 0, failures: 0, sharedRegistrations: 0, workers: Set() }
 pure def canConfigure(s: TaskServiceOwners): bool = not(s.configured)
 pure def configure(s: TaskServiceOwners, now: int): TaskServiceOwners = { ...s, configured: true, now: now, startedAt: now }
 pure def setClock(s: TaskServiceOwners, now: int): TaskServiceOwners = { ...s, now: now }
@@ -27,8 +31,8 @@ pure def operationPending(s: TaskServiceOwners, id: int): bool = s.operations.so
 pure def canAdmitOperation(s: TaskServiceOwners, id: int, tick: int): bool = s.configured and not(s.stopped) and id > 0 and not(s.operations.some(operation => operation.id == id)) and (tick == 0 or s.ticks.some(entry => entry.id == tick and not(entry.completed)))
 pure def admitOperation(s: TaskServiceOwners, id: int, tick: int): TaskServiceOwners = { ...s, operations: s.operations.append({ id: id, completed: false, tick: tick }) }
 pure def canTryExecute(s: TaskServiceOwners, id: int, operation: int): bool = id > 0 and not(s.executions.some(execution => execution.id == id)) and operationPending(s, operation)
-pure def tryExecute(s: TaskServiceOwners, id: int, operation: int, task: str, repeating: bool, blocking: bool, workerPresent: bool): TaskServiceOwners =
-  if (s.stopped or task == "" or not(workerPresent) or ((not(repeating) or blocking) and executionCount(s, task) > 0)) { ...s, rejected: s.rejected + 1 }
+pure def tryExecute(s: TaskServiceOwners, id: int, operation: int, task: str, repeating: bool, blocking: bool): TaskServiceOwners =
+  if (s.stopped or task == "" or not(s.workers.contains(task)) or ((not(repeating) or blocking) and executionCount(s, task) > 0)) { ...s, rejected: s.rejected + 1 }
   else { ...s, executions: s.executions.append({ id: id, operation: operation, task: task, phase: if (repeating) WorkerRunning else RecheckOneShot, failed: false }) }
 pure def canRecheck(s: TaskServiceOwners, id: int): bool = s.executions.some(execution => execution.id == id and execution.phase == RecheckOneShot)
 pure def recheck(s: TaskServiceOwners, id: int, rowExists: bool, readSucceeded: bool): TaskServiceOwners = { ...s, failures: s.failures + (if (readSucceeded) 0 else 1), executions: s.executions.listMap(execution => if (execution.id == id) { ...execution, phase: if (rowExists and readSucceeded and not(s.stopped)) WorkerRunning else ExecutionDone, failed: not(readSucceeded) } else execution) }
@@ -91,10 +95,6 @@ pure def snapshotOperations(s: TaskServiceOwners, id: int): TaskServiceOwners = 
 pure def canReturnStop(s: TaskServiceOwners, id: int): bool = s.stops.some(call => call.id == id and call.phase == WaitOperations and call.operations.forall(operation => not(operationPending(s, operation))))
 pure def returnStop(s: TaskServiceOwners, id: int): TaskServiceOwners = { ...s, stops: s.stops.listMap(call => if (call.id == id) { ...call, phase: StopReturned } else call) }
 pure def alwaysStopReturnsAfterOperations(s: TaskServiceOwners): bool = s.stops.every(call => call.phase != StopReturned or (call.operations.forall(operation => not(operationPending(s, operation))) and s.executions.every(execution => execution.phase == ExecutionDone)))
-pure def quarantineCompleted(s: TaskServiceOwners, task: str, success: bool): TaskServiceOwners = { ...s, quarantined: s.quarantined.union(Set(task)), failures: s.failures + (if (success) 0 else 1) }
-pure def healCompleted(s: TaskServiceOwners, task: str, success: bool): TaskServiceOwners = { ...s, quarantined: if (success) s.quarantined.exclude(Set(task)) else s.quarantined, failures: s.failures + (if (success) 0 else 1) }
-pure def workerRestored(s: TaskServiceOwners, task: str): TaskServiceOwners = { ...s, quarantined: s.quarantined.exclude(Set(task)) }
-pure def orphanMayQuarantine(s: TaskServiceOwners, task: str): bool = s.now - s.startedAt >= 60000 and not(s.quarantined.contains(task))
 pure val idValues = Set(1, 2, 3, 4)
 pure val operationValues = Set(1, 2, 3)
 pure val tickValues = Set(0, 1, 2, 3)
@@ -111,4 +111,29 @@ pure val fair_awaitTick = "weak"
 pure val fair_snapshotOperations = "weak"
 pure val fair_returnStop = "weak"
 pure def leadsToStopJoins(s: TaskServiceOwners, later: TaskServiceOwners): bool = s.stops.every(call => later.stops.some(done => done.id == call.id and done.phase == StopReturned))
+```
+
+### An orphaned task is quarantined only after the startup grace and leaves quarantine when its worker returns or a heal succeeds
+
+A task with no registered worker cannot execute, and is quarantined only
+once 60,000 ms have passed since the service was configured, so workers
+registered late during startup are not mistaken for orphans. Quarantine is
+recorded locally even when persisting it fails, and a quarantined task is
+never chosen for the next wake. It leaves quarantine when its worker is
+registered or when a heal of its row succeeds; a failed heal keeps it
+quarantined.
+
+```quint
+pure def canQuarantineCompleted(s: TaskServiceOwners, task: str): bool = s.configured and task != "" and not(s.workers.contains(task)) and s.now - s.startedAt >= 60000 and not(s.quarantined.contains(task))
+pure def quarantineCompleted(s: TaskServiceOwners, task: str, success: bool): TaskServiceOwners = { ...s, quarantined: s.quarantined.union(Set(task)), failures: s.failures + (if (success) 0 else 1) }
+pure def canHealCompleted(s: TaskServiceOwners, task: str): bool = s.quarantined.contains(task)
+pure def healCompleted(s: TaskServiceOwners, task: str, success: bool): TaskServiceOwners = { ...s, quarantined: if (success) s.quarantined.exclude(Set(task)) else s.quarantined, failures: s.failures + (if (success) 0 else 1) }
+pure def canRegisterWorker(s: TaskServiceOwners, task: str): bool = task != "" and not(s.workers.contains(task))
+pure def registerWorker(s: TaskServiceOwners, task: str): TaskServiceOwners = { ...s, workers: s.workers.union(Set(task)), quarantined: s.quarantined.exclude(Set(task)) }
+pure def stepQuarantineFollowsStartupGrace(before: TaskServiceOwners, via: str, after: TaskServiceOwners): bool =
+  via == "quarantineCompleted" implies before.now - before.startedAt >= 60000
+pure def stepQuarantineLeavesOnlyByHealOrWorker(before: TaskServiceOwners, via: str, after: TaskServiceOwners): bool =
+  via == "healCompleted" or via == "registerWorker" or before.quarantined.forall(task => after.quarantined.contains(task))
+pure def alwaysQuarantinedTaskHasNoWorker(s: TaskServiceOwners): bool = s.quarantined.forall(task => not(s.workers.contains(task)))
+pure def sometimesOrphanQuarantined(s: TaskServiceOwners): bool = s.quarantined.size() > 0
 ```

@@ -4,7 +4,8 @@ Every per-item attempt releases its permit before retry delay or exhaustion call
 
 ## Story: Process every batch item with independent outcomes
 
-As a caller I receive outcomes in submitted order while retries and failures remain isolated per item.
+> As a caller I receive outcomes in submitted order while retries and
+> failures remain isolated per item.
 
 ### Configured parallelism limits running attempts across all batches
 

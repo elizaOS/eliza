@@ -5,13 +5,11 @@
 > As a user, the choices I am shown in chat belong to the task that asked
 > me, and a batch with any foreign or malformed choice shows nothing.
 
-A consumer stages the pinned core `messaging/task-widgets.ts` and UI
-`components/chat/TaskChoice.tsx`. Its runtime client calls
-`admitTaskChoiceResponse` on chat responses, and its task panels also
-validate widgets.
-[Interaction sessions](../../core/sessions.md) own claim, commit and replay.
+The client admits a chat response's task choices, and the task panels
+validate them too; [interaction sessions](../../core/sessions.md) own claim,
+commit and replay.
 
-### Decode, detach and bind the entire batch before displaying it
+### A batch is shown only when every choice is valid and belongs to the requested task and epoch
 
 The wire is `TaskChoiceWidget` with schema version one, task ID, nonnegative
 safe-integer epoch, a 64-character lowercase hex context key, an
@@ -27,14 +25,14 @@ matches the request scope, and an accepted widget conveys presentation
 only.
 
 ```quint
+import numbers as Num from "../../core/numbers"
 type ChoiceEnvelope = { taskId: str, taskEpoch: int, widgetValid: bool }
 type ChoiceBatch = { listShape: bool, canDetach: bool, requestedTask: bool, expectedId: str, expectedEpoch: int, maxWidgets: int, widgets: List[ChoiceEnvelope] }
 type ChoiceAdmission = ShowChoices | BadChoiceResponse | BadChoiceWidget | ChoiceScopeMismatch
 
-pure val showChoicesDecision: ChoiceAdmission = ShowChoices
 pure def batchHeadersValid(batch: ChoiceBatch): bool =
   batch.listShape and batch.canDetach and batch.maxWidgets >= 0 and
-  batch.maxWidgets <= 9007199254740991 and batch.widgets.length() <= batch.maxWidgets
+  batch.maxWidgets <= Num::maxSafeInteger and batch.widgets.length() <= batch.maxWidgets
 pure def choiceMatches(batch: ChoiceBatch, widget: ChoiceEnvelope): bool =
   batch.requestedTask and widget.taskId == batch.expectedId and widget.taskEpoch == batch.expectedEpoch
 pure def firstAdmission(batch: ChoiceBatch, prior: ChoiceAdmission, widget: ChoiceEnvelope): ChoiceAdmission =
@@ -44,10 +42,10 @@ pure def firstAdmission(batch: ChoiceBatch, prior: ChoiceAdmission, widget: Choi
   else ShowChoices
 pure def admitChoices(batch: ChoiceBatch): ChoiceAdmission =
   if (not(batchHeadersValid(batch))) BadChoiceResponse
-  else if (batch.widgets.length() == 0) showChoicesDecision
+  else if (batch.widgets.length() == 0) ShowChoices
   else if (batch.widgets.length() == 1)
-    firstAdmission(batch, showChoicesDecision, batch.widgets.nthOr(0, ownedWidget))
-  else batch.widgets.foldl(showChoicesDecision, (prior, widget) => firstAdmission(batch, prior, widget))
+    firstAdmission(batch, ShowChoices, batch.widgets.nthOr(0, ownedWidget))
+  else batch.widgets.foldl(ShowChoices, (prior, widget) => firstAdmission(batch, prior, widget))
 pure def lawOversizedResponseIsRejected(batch: ChoiceBatch): bool =
   batch.widgets.length() > batch.maxWidgets implies admitChoices(batch) == BadChoiceResponse
 pure def lawEmptyResponseDoesNotRequireTask(batch: ChoiceBatch): bool =

@@ -1,8 +1,12 @@
 # Shared scheduler ownership
 
-`services/task-scheduler.ts` has one timer and one attached tick, with detached database awaits that can outlive adapter or service replacement. This product composes the [timer and process callbacks](./processScheduler.md) with [query and dispatch ownership](./queryDrain.md). It preserves both canonical owners and adds only a lineage link from each real tick to its captured query.
+`services/task-scheduler.ts` has one timer and one attached tick, with detached database awaits that can outlive adapter or service replacement. This spec composes the [timer and process callbacks](./processScheduler.md) with [query and dispatch ownership](./queryDrain.md). It preserves both canonical owners and adds only a lineage link from each real tick to its captured query.
 
 ## Story: Replace scheduler storage while process tasks and safely owned queries continue
+
+> As a host, I want to replace or stop the scheduler's storage while
+> process tasks keep running, so that an old database await can never
+> release or overwrite work owned by its replacement.
 
 ### Each timer tick queues process work and captures at most one query for its own generation
 

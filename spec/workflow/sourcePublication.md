@@ -1,10 +1,9 @@
-# Android workflow source publication
+# Workflow source publication
 
-The device's workflow worker publishes source through the workflow
-package's `services/workflow-source-publication.ts`.
+The device's workflow worker publishes workflow source for import.
 [Worker provenance](./worker.md) governs compiler and bundle identity.
-This contract concerns cooperating publishers under the trusted Android app
-UID and the exact source bytes an importer can see.
+This spec concerns cooperating publishers under the trusted device app and
+the exact source bytes an importer can see.
 
 ## Story: Import only complete reviewed workflow source
 

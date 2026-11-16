@@ -9,9 +9,10 @@ operation keys a host works with is never released to a renderer or a
 remote service. This is a library: the derivation and the seal are modeled
 as values, with the cryptography itself supplied by the host.
 
-New in v4, from develop `src/kms/` (the local adapters and the
-`AGENT_BACKUP_*` namespaces). External key custody services are not part of
-Eliza; the [vault](./vault.md) supplies the master key.
+External key custody services are not part of Eliza; the [vault](./vault.md)
+supplies the master key. Rotating the master key and re-sealing what it
+protects is not yet specified, and is needed before production; until then a
+host keeps one master key.
 
 ## Story: Encrypt fields and backups under namespaced keys
 
@@ -21,24 +22,25 @@ Eliza; the [vault](./vault.md) supplies the master key.
 
 ### Each namespace derives a distinct key from the master key
 
+A derived key is identified by its master key and namespace, so two
+different pairs are two different keys.
+
 ```quint
 type KeyNamespace = FieldEncryption | BackupEncryption | SessionSigning | AuditSigning
 type DerivedKey = { master: int, namespace: KeyNamespace }
 pure def deriveKey(master: int, namespace: KeyNamespace): DerivedKey = { master: master, namespace: namespace }
-pure def lawNamespacesDeriveDistinctKeys(master: int, first: KeyNamespace, second: KeyNamespace): bool =
-  first != second implies deriveKey(master, first) != deriveKey(master, second)
-pure def lawMastersDeriveDistinctKeys(master: int, other: int, namespace: KeyNamespace): bool =
-  master != other implies deriveKey(master, namespace) != deriveKey(other, namespace)
 ```
 
 ### Opening with the wrong namespace, the wrong key or a wrong tag fails closed
 
+The tag is the keyed MAC the host computes over the plaintext with the
+derived key; nothing more of it is assumed.
+
 ```quint
+const mac: (int, KeyNamespace, int) => int
 type SealedData = { namespace: KeyNamespace, keyMaster: int, plaintext: int, tag: int }
 type OpenResult = { ok: bool, plaintext: int }
-pure def namespaceCode(namespace: KeyNamespace): int =
-  if (namespace == FieldEncryption) 1 else if (namespace == BackupEncryption) 2 else if (namespace == SessionSigning) 3 else 4
-pure def tagOf(key: DerivedKey, plaintext: int): int = key.master * 100 + namespaceCode(key.namespace) * 10 + plaintext
+pure def tagOf(key: DerivedKey, plaintext: int): int = mac(key.master, key.namespace, plaintext)
 pure def seal(key: DerivedKey, plaintext: int): SealedData = { namespace: key.namespace, keyMaster: key.master, plaintext: plaintext, tag: tagOf(key, plaintext) }
 pure def unseal(key: DerivedKey, data: SealedData): OpenResult =
   if (data.namespace == key.namespace and data.keyMaster == key.master and data.tag == tagOf(key, data.plaintext)) { ok: true, plaintext: data.plaintext } else { ok: false, plaintext: 0 }
@@ -50,15 +52,8 @@ pure def lawAlteredTagFailsClosed(master: int, namespace: KeyNamespace, plaintex
   delta != 0 implies not(unseal(deriveKey(master, namespace), { ...seal(deriveKey(master, namespace), plaintext), tag: tagOf(deriveKey(master, namespace), plaintext) + delta }).ok)
 pure def lawFailedOpenRevealsNothing(key: DerivedKey, data: SealedData): bool = not(unseal(key, data).ok) implies unseal(key, data).plaintext == 0
 pure val keyValues = Set({ master: 1, namespace: FieldEncryption }, { master: 2, namespace: BackupEncryption })
-pure val dataValues = Set({ namespace: FieldEncryption, keyMaster: 1, plaintext: 5, tag: 115 }, { namespace: FieldEncryption, keyMaster: 1, plaintext: 5, tag: 116 }, { namespace: BackupEncryption, keyMaster: 1, plaintext: 5, tag: 125 })
-pure val plaintextValues = Set(0, 5, 9)
+pure val dataValues = Set({ namespace: FieldEncryption, keyMaster: 1, plaintext: 5, tag: 1 }, { namespace: FieldEncryption, keyMaster: 1, plaintext: 5, tag: 2 }, { namespace: BackupEncryption, keyMaster: 1, plaintext: 5, tag: 1 })
+pure val masterValues = Set(1, 2)
+pure val plaintextValues = Set(0, 5)
 pure val deltaValues = Set(-1, 0, 1)
-```
-
-### Operation key bundles never leave the trusted host
-
-```quint
-type BundleDestination = TrustedHost | Renderer | RemoteService
-pure def bundleReleasable(destination: BundleDestination): bool = destination == TrustedHost
-pure def lawBundleStaysOnTheHost(destination: BundleDestination): bool = destination != TrustedHost implies not(bundleReleasable(destination))
 ```

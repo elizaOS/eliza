@@ -1,16 +1,21 @@
 # Pipeline hook snapshots
 
-Hook selection captures a phase-specific snapshot before awaiting. Sources include [pipeline-hooks.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/pipeline-hooks.ts), [pipeline-hooks.ts contracts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/types/pipeline-hooks.ts) and [PipelineHookSnapshot.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/PipelineHookSnapshot.qnt).
+Hook selection captures a phase-specific snapshot before awaiting.
 
 ## Story: Dispatch an immutable phase snapshot
 
-As a plugin author I register or replace hooks while earlier dispatches retain their captured handlers.
+> As a plugin author, I want to register or replace hooks without
+> disturbing dispatches already running, so each dispatch sees one
+> consistent set of handlers.
+
+As a plugin author I register or replace hooks while earlier dispatches
+retain their captured handlers.
 
 ### Each phase dispatch captures the current handler identities
 
 Replacement preserves the existing ID's registration slot, with the new handler and phase. A new ID receives a later insertion slot. The lookup for an ID is a projection of the single registry. Each upsert invalidates every phase memo; unregister invalidates them only when the ID exists. A memo miss caches the exact phase list, including an empty list. A hit returns that same phase-array reference. Old arrays can remain held by older dispatches after invalidation.
 
-Discovered by the proof: a cached phase retains the complete ordered registration selection from its epoch. Cardinality and membership alone admit a duplicated entry in place of a different handler and would allow invalid captures on a hit.
+A cached phase retains the complete ordered registration selection from its epoch. Cardinality and membership alone admit a duplicated entry in place of a different handler and would allow invalid captures on a hit.
 
 The source comparator sorts by position ascending and then host `localeCompare` for public IDs. The adapter supplies the order-preserving position and collation values for comparisons among the registered hooks. When both compare equally, stable sort preserves insertion order. IDs and handler references are independent. The source's finite phase catalog is exact.
 

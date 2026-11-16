@@ -1,10 +1,12 @@
 # Priority queue ordering and pressure
 
-Queue priority controls dequeue order while maxSize is a pressure threshold. It is not a hard capacity unless the installed pressure callback rejects admission. Source [batch-queue.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/utils/batch-queue.ts).
+Priority decides dequeue order, and `maxSize` is a pressure threshold, not a hard capacity, unless the installed pressure callback rejects admission. Source: `utils/batch-queue.ts`.
 
 ## Story: Enqueue and drain ordered work
 
-As a producer I preserve FIFO within each priority and receive explicit admission results under pressure.
+> As a producer, I want FIFO order within each priority and an explicit
+> admission result under pressure, so that work is neither reordered nor
+> dropped silently.
 
 ### High priority precedes normal priority which precedes low priority
 

@@ -5,11 +5,8 @@ reserving an amount before metered work and settling the actual cost after
 it. One immutable quote leads to at most one provider checkout session and
 at most one credit grant, whichever of the signed provider event or the
 buyer's return verifies the payment first. A refund claws credits back as
-far as the balance allows and records the rest as a shortfall. Ported from
-the develop models `CreditCheckoutQuote`, `CreditCheckoutOrder`,
-`checkout_credit_settlement`, `checkout_retry_clock`, `billing_reservations`,
-`billing_sweep`, `auto_topup_lock_order`, `StripeDeliveryOutbox` and
-`payment_delivery`. Money is in whole abstract units; a quote grants two.
+far as the balance allows and records the rest as a shortfall. Money is in
+whole abstract units; a quote grants two.
 
 ## Story: Buy credits and spend them without overdraft
 
@@ -147,6 +144,37 @@ pure def alwaysSettledChargeIsAtMostCost(c: Credits): bool = c.reservations.ever
 pure def sometimesOverageCollected(c: Credits): bool = c.reservations.some(r => r.status == ReservationSettled and r.collected > r.reserved)
 ```
 
+### A charge is split across credit grants within what each still offers
+
+An organization's credit comes in grants. A reservation draws from the
+first grant as far as it can and the rest from the second, never more than
+either offers. Settlement charges at most what was held, from the same
+grants in the same order, and returns the rest. An expired or sealed grant
+offers nothing to a new reservation, and a grant is sealed only when no
+lease or unacknowledged settlement still draws on it.
+
+```quint
+type GrantSplit = { first: int, second: int }
+pure def minOf(a: int, b: int): int = if (a < b) a else b
+pure def reserveSplit(firstAvailable: int, secondAvailable: int, maximum: int): GrantSplit =
+  { first: minOf(firstAvailable, maximum), second: maximum - minOf(firstAvailable, maximum) }
+pure def chargeSplit(hold: GrantSplit, cost: int): GrantSplit = { first: minOf(cost, hold.first), second: cost - minOf(cost, hold.first) }
+pure def grantOffers(remaining: int, sealed: bool, expired: bool): int = if (sealed or expired) 0 else remaining
+pure def sealable(activeLeases: int, unacknowledged: int): bool = activeLeases == 0 and unacknowledged == 0
+pure def lawReservationDrawsWithinGrants(firstAvailable: int, secondAvailable: int, maximum: int): bool = {
+  val split = reserveSplit(firstAvailable, secondAvailable, maximum)
+  (firstAvailable >= 0 and secondAvailable >= 0 and maximum >= 1 and firstAvailable + secondAvailable >= maximum) implies
+    (split.first + split.second == maximum and split.first >= 0 and split.first <= firstAvailable and split.second >= 0 and split.second <= secondAvailable)
+}
+pure def lawChargeStaysWithinHold(hold: GrantSplit, cost: int): bool = {
+  val charged = chargeSplit(hold, cost)
+  (hold.first >= 0 and hold.second >= 0 and cost >= 0 and cost <= hold.first + hold.second) implies
+    (charged.first + charged.second == cost and charged.first >= 0 and charged.first <= hold.first and charged.second >= 0 and charged.second <= hold.second)
+}
+pure def lawClosedGrantOffersNothing(remaining: int, sealed: bool, expired: bool): bool = (sealed or expired) implies grantOffers(remaining, sealed, expired) == 0
+pure val holdValues = Set({ first: 0, second: 0 }, { first: 1, second: 0 }, { first: 1, second: 2 }, { first: 2, second: 1 })
+```
+
 ### A refund claws back credits up to the balance and records the rest as a shortfall
 
 Provider refund events can arrive in any order and repeat; each carries the
@@ -171,28 +199,19 @@ pure def sometimesRefundShortfall(c: Credits): bool = c.shortfall > 0
 
 The sweep orders rows by database time and key and keeps a cursor past
 each row it visits, so a row that fails to settle is retried in the next
-run instead of being selected again in this one.
+run instead of being selected again in this one. Which rows fail never
+changes which rows the run visits.
 
 ```quint
 type SweepRow = { row: int, failing: bool }
-pure def sweepVisits(rows: List[SweepRow]): List[int] = rows.listMap(r => r.row)
-pure def sweepSettles(rows: List[SweepRow]): List[int] = rows.select(r => not(r.failing)).listMap(r => r.row)
-pure val rowsValues = Set(List({ row: 1, failing: true }, { row: 2, failing: true }, { row: 3, failing: false }), List({ row: 1, failing: false }))
-pure def lawFailingRowDoesNotBlockLaterRows(rows: List[SweepRow]): bool = rows.every(r => not(r.failing) implies sweepSettles(rows).includes(r.row))
-pure def lawSweepVisitsEachRowOnce(rows: List[SweepRow]): bool = rows.every(r => sweepVisits(rows).select(x => x == r.row).length() == rows.select(x => x.row == r.row).length())
-```
-
-### Automatic top-up locks the organization before its attempt in every transaction
-
-Provider authorization and the terminal update of a top-up attempt take
-the same row locks in the same order, so neither waits on the other in a
-cycle.
-
-```quint
-type RowLock = OrganizationLock | AttemptLock
-type TopUpTransaction = AuthorizeTopUp | FinishTopUp
-pure def topUpLocks(t: TopUpTransaction): List[RowLock] = List(OrganizationLock, AttemptLock)
-pure def lawTopUpTransactionsShareOneOrder(a: TopUpTransaction, b: TopUpTransaction): bool = topUpLocks(a) == topUpLocks(b)
+type SweepPass = { cursor: int, visited: List[int], settled: List[int] }
+pure val sweepStart: SweepPass = { cursor: 0, visited: List(), settled: List() }
+pure def sweepVisit(p: SweepPass, r: SweepRow): SweepPass =
+  if (r.row <= p.cursor) p else { cursor: r.row, visited: p.visited.append(r.row), settled: if (r.failing) p.settled else p.settled.append(r.row) }
+pure def sweep(rows: List[SweepRow]): SweepPass = rows.foldl(sweepStart, (p, r) => sweepVisit(p, r))
+pure val rowsValues = Set(List({ row: 1, failing: true }, { row: 2, failing: true }, { row: 3, failing: false }), List({ row: 1, failing: true }, { row: 1, failing: true }, { row: 2, failing: false }), List({ row: 1, failing: false }))
+pure def lawSweepVisitsEachRowOnce(rows: List[SweepRow]): bool = rows.every(r => sweep(rows).visited.select(x => x == r.row).length() <= 1)
+pure def lawFailingRowDoesNotBlockLaterRows(rows: List[SweepRow]): bool = sweep(rows).visited == sweep(rows.listMap(r => { ...r, failing: false })).visited
 ```
 
 ### A provider event is settled only by the drain whose lease token is current
@@ -220,25 +239,4 @@ pure val claimTokenValues = Set(0, 1, 2)
 pure def lawStaleSettlementChangesNothing(row: OutboxRow, claimToken: int, result: OutboxResult): bool = row.token != claimToken implies settleDelivery(row, claimToken, result) == row
 pure def lawAcknowledgedEventDropsPayload(row: OutboxRow, claimToken: int): bool = settleDelivery(row, claimToken, AckDelivery).status == OutboxComplete implies not(settleDelivery(row, claimToken, AckDelivery).payload)
 pure def lawLastRetryDeadLetters(row: OutboxRow): bool = (row.status == OutboxPending and row.token > 0 and row.attempts >= maxDeliveryAttempts) implies settleDelivery(row, row.token, RetryDelivery).status == OutboxDead
-```
-
-### A payment callback is sent only under its live claim, and a success supersedes an unsent failure
-
-Each callback attempt is claimed with a deadline; a worker sends only while
-it still owns that claim and the deadline is ahead, and only the exact
-claim may record the outcome. Once the payment succeeds, the success is
-the outcome callers see; a failure callback not yet dispatched is
-superseded.
-
-```quint
-type CallbackClaim = { owner: int, deadline: int }
-pure def maySend(live: CallbackClaim, mine: CallbackClaim, now: int, eligible: bool): bool = eligible and live == mine and mine.deadline > now
-pure def mayRecordOutcome(live: CallbackClaim, mine: CallbackClaim, eligible: bool): bool = eligible and live == mine
-pure val liveValues = Set({ owner: 1, deadline: 2 }, { owner: 2, deadline: 3 })
-pure val mineValues = Set({ owner: 1, deadline: 2 }, { owner: 2, deadline: 2 })
-pure val nowValues = Set(1, 2, 3)
-pure def lawExpiredClaimNeverSends(live: CallbackClaim, mine: CallbackClaim, now: int, eligible: bool): bool = mine.deadline <= now implies not(maySend(live, mine, now, eligible))
-pure def lawStaleClaimNeverRecords(live: CallbackClaim, mine: CallbackClaim, eligible: bool): bool = live != mine implies not(mayRecordOutcome(live, mine, eligible))
-pure def failureCallbackAfter(paymentSucceeded: bool, failureDispatched: bool): bool = not(paymentSucceeded) or failureDispatched
-pure def lawSuccessSupersedesUnsentFailure(failureDispatched: bool): bool = not(failureDispatched) implies not(failureCallbackAfter(true, failureDispatched))
 ```

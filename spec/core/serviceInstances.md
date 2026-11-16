@@ -1,21 +1,15 @@
 # Service instances attempts and eager retries
 
-Sources are `packages/core/src/runtime/service-lifecycle.ts:42-89,101-125,164-382` and `plugin-lifecycle.ts` at `72fed7e4069ecd35d61d886ab6eec5c02c137517`. This identity model refines the class-level lifecycle: every start promise, returned instance and shared stop promise has its own identity. Successful instance publication precedes the awaited service-started observer; a throwing send-handler registration can leave a published instance even though the start attempt rejects.
+Sources are `runtime/service-lifecycle.ts` and `plugin-lifecycle.ts`. This identity model refines the class-level lifecycle: every start promise, returned instance and shared stop promise has its own identity. Successful instance publication precedes the awaited service-started observer; a throwing send-handler registration can leave a published instance even though the start attempt rejects.
 
 ## Story: Share starts and stop each returned object once
 
-As a runtime I start pending classes together, retain their exact attempt generations for each caller, and retain stop-once ownership across unload, runtime shutdown and late completion.
+> As a runtime, I want pending service classes started together, each
+> caller's exact attempt generations retained, and every returned object
+> stopped once across unload, shutdown and late completion, so that no
+> service starts twice or leaks.
 
-### Acquisition snapshots keep each class and attempt generation
-
-Discovered by the proof. The attempt and type-promise allocators stay positive
-even when their history is empty. Each acquisition and type aggregate retains
-a unique identity so that clearing one captured promise cannot affect another. Class
-generations and pending IDs start at zero and stay nonnegative. A registered
-class has a nonempty service type, so its returned instance can publish a
-valid type key even when this is the first publication. A caller waiting
-for initialization owns no aggregate until it is admitted; resuming the same
-caller therefore cannot replace a prior aggregate under its identity.
+### Concurrent acquisitions of a type share one attempt per class
 
 All active classes of a type are considered in declaration order. A failed
 sibling is skipped when another class of the type already holds an
@@ -25,8 +19,6 @@ ServiceInstances state also owns the per-type registration status, retained
 load promise, pending resolver and latest aggregate of ordered startup results.
 The aggregate and its initiating caller settle independently after the captured
 class results are ready. Clearing an aggregate compares the captured identity.
-Fair completion selects actual pending attempt identities even when the
-allocator passes the numeric examples used for explicit callback inputs.
 Success retains the fulfilled load promise and releases its handler. Failure
 rejects the pending promise and removes its entry. Runtime reset rejects active
 handlers, clears the promise and aggregate lookups and retains status values.
@@ -85,11 +77,10 @@ pure val noAggregate: TypeAggregate = {id: 0, serviceType: "", members: List(), 
 pure def serviceTypeEntry(s: ServiceInstances, serviceType: str): TypeEntry = s.typeEntries.select(e => e.serviceType == serviceType).nthOr(0, noTypeEntry)
 pure def typeAggregate(s: ServiceInstances, aggregateId: int): TypeAggregate = s.aggregates.select(a => a.id == aggregateId).nthOr(0, noAggregate)
 pure def putType(entry: TypeEntry, s: ServiceInstances): ServiceInstances = { ...s, typeEntries: if (s.typeEntries.some(e => e.serviceType == entry.serviceType)) s.typeEntries.listMap(e => if (e.serviceType == entry.serviceType) entry else e) else s.typeEntries.append(entry) }
-pure val pendingTypeStatus: TypeStatus = TypePending
 pure def registerType(serviceType: str, s: ServiceInstances): ServiceInstances = {
   val entry = serviceTypeEntry(s, serviceType)
   val allocated = entry.promiseId == 0
-  val registered = {serviceType: serviceType, status: pendingTypeStatus, promiseId: if (allocated) s.nextLoad else entry.promiseId, handlerId: if (allocated) s.nextLoad else entry.handlerId, latestAggregate: entry.latestAggregate}
+  val registered = {serviceType: serviceType, status: TypePending, promiseId: if (allocated) s.nextLoad else entry.promiseId, handlerId: if (allocated) s.nextLoad else entry.handlerId, latestAggregate: entry.latestAggregate}
   putType(registered, { ...s, loadPromises: if (allocated) s.loadPromises.append({id: s.nextLoad, serviceType: serviceType, phase: LoadPending, instance: 0}) else s.loadPromises, nextLoad: if (allocated) s.nextLoad + 1 else s.nextLoad })
 }
 pure def setTypeStatus(serviceType: str, status: TypeStatus, s: ServiceInstances): ServiceInstances = {
@@ -139,11 +130,10 @@ pure def returnInstance(s: ServiceInstances, attemptId: int, instanceId: int): S
   if (late) stopObjectOnce(instanceId, added) else setTypeStatus(c.serviceType, TypeRegistered, replacePublication(c.serviceType, classInstances(added, c.serviceType), added))
 }
 pure def canFailStart(s: ServiceInstances, attemptId: int, errorId: str): bool = serviceAttempt(s, attemptId).id > 0 and (serviceAttempt(s, attemptId).phase == StartInvoking or serviceAttempt(s, attemptId).phase == StartObserver)
-pure def rejectStartAttempt(attemptId: int, errorId: str, s: ServiceInstances): ServiceInstances = {
+pure def failStart(s: ServiceInstances, attemptId: int, errorId: str): ServiceInstances = {
   val a = serviceAttempt(s, attemptId)
   { ...s, attempts: s.attempts.listMap(x => if (x.id == attemptId) { ...x, phase: StartFailed, errorId: errorId } else x), classes: s.classes.listMap(c => if (c.id == a.classId and c.pending == attemptId) { ...c, pending: 0, failed: true } else c) }
 }
-pure def failStart(s: ServiceInstances, attemptId: int, errorId: str): ServiceInstances = rejectStartAttempt(attemptId, errorId, s)
 pure def canFinishObserver(s: ServiceInstances, attemptId: int, ok: bool): bool = serviceAttempt(s, attemptId).id > 0 and serviceAttempt(s, attemptId).phase == StartObserver
 pure def finishObserver(s: ServiceInstances, attemptId: int, ok: bool): ServiceInstances = {
   val a = serviceAttempt(s, attemptId)
@@ -185,7 +175,7 @@ pure def invokeObjectStop(s: ServiceInstances, instanceId: int): ServiceInstance
 pure def canSettleObjectStop(s: ServiceInstances, instanceId: int, ok: bool, errorId: str): bool = serviceObject(s, instanceId).stopPhase == StopWaiting and serviceObject(s, instanceId).stopInvoked
 pure def settleObjectStop(s: ServiceInstances, instanceId: int, ok: bool, errorId: str): ServiceInstances = { ...s, objects: s.objects.listMap(o => if (o.id == instanceId) { ...o, stopPhase: if (ok) StopSucceeded else StopFailed, errorId: if (ok) "" else errorId } else o) }
 pure def canFinishLateStart(s: ServiceInstances, attemptId: int): bool = serviceAttempt(s, attemptId).phase == StartLateStop and (serviceObject(s, serviceAttempt(s, attemptId).instance).stopPhase == StopSucceeded or serviceObject(s, serviceAttempt(s, attemptId).instance).stopPhase == StopFailed)
-pure def finishLateStart(s: ServiceInstances, attemptId: int): ServiceInstances = rejectStartAttempt(attemptId, "late-service-start", s)
+pure def finishLateStart(s: ServiceInstances, attemptId: int): ServiceInstances = failStart(s, attemptId, "late-service-start")
 pure def withdrawClass(classId: int, s: ServiceInstances): ServiceInstances = { ...s, declarations: s.declarations.select(d => d.classId != classId), classes: s.classes.listMap(c => if (c.id == classId) { ...c, registered: false, live: 0 } else c) }
 pure def canUnregisterClass(s: ServiceInstances, classId: int): bool = serviceClass(s, classId).registered
 pure def unregisterClass(s: ServiceInstances, classId: int): ServiceInstances = {
@@ -206,6 +196,21 @@ pure def stopRuntime(s: ServiceInstances): ServiceInstances = {
   val stopped = s.published.foldl(s, (acc, p) => stopPublishedType(p, acc))
   { ...stopped, stopped: true, published: List(), classes: stopped.classes.listMap(c => { ...c, live: 0, pending: 0, failed: false }), typeEntries: stopped.typeEntries.listMap(e => { ...e, promiseId: 0, handlerId: 0, latestAggregate: 0 }), loadPromises: stopped.loadPromises.listMap(p => if (s.typeEntries.some(e => e.handlerId == p.id)) { ...p, phase: LoadStopped } else p) }
 }
+```
+
+### Type load promises and aggregates settle once per registration
+
+A type has one entry, one retained load promise and at most one latest
+aggregate, each referring to records the state still holds. A failed type
+publishes no instance. Clearing a superseded aggregate never clears its
+successor, and a fulfilled load promise stays retained after its handler
+is released.
+
+A caller still waiting for initialization must own
+no aggregate, or resuming it could replace a prior aggregate under the same
+identity.
+
+```quint
 pure def hasFailedPublishedType(s: ServiceInstances): bool = s.typeEntries.some(e => e.status == TypeFailed and firstLive(s, e.serviceType) != 0)
 pure def alwaysFailedTypeHasNoPublication(s: ServiceInstances): bool = not(hasFailedPublishedType(s))
 pure def alwaysTypeEntriesUnique(s: ServiceInstances): bool = s.typeEntries.every(e => s.typeEntries.select(other => other.serviceType == e.serviceType).length() == 1)
@@ -216,10 +221,35 @@ pure def alwaysTypeReferencesRetained(s: ServiceInstances): bool = s.typeEntries
 pure def stepSupersededAggregateKeepsSuccessor(before: ServiceInstances, via: str, after: ServiceInstances): bool = via == "clearTypeAggregate" implies before.typeEntries.every(e => after.typeEntries.some(a => a.serviceType == e.serviceType and (a.latestAggregate == e.latestAggregate or (a.latestAggregate == 0 and typeAggregate(before, e.latestAggregate).settled))))
 pure def sometimesFulfilledPromiseRetained(s: ServiceInstances): bool = s.typeEntries.some(e => e.handlerId == 0 and s.loadPromises.some(p => p.id == e.promiseId and p.phase == LoadFulfilled))
 pure def sometimesStaleAggregateCannotClearSuccessor(s: ServiceInstances): bool = s.typeEntries.some(e => e.latestAggregate > 0 and s.aggregates.some(a => a.serviceType == e.serviceType and a.id != e.latestAggregate and a.settled and not(canClearTypeAggregate(s, a.id))))
+```
+
+### Every issued identity stays unique and owned
+
+Classes, objects, acquisitions and attempts each keep one record per
+identity. A class's pending attempt is its own current generation, every
+captured attempt and returned object exists, and every declaration names a
+registered class with a nonempty service type.
+
+Without these facts an allocator could issue
+identity zero into an empty history, clearing one captured promise could
+clear another caller's, and a first publication could use an empty type key.
+
+```quint
 pure def alwaysClassAndObjectIdentities(s: ServiceInstances): bool = s.classes.every(c => c.id > 0 and c.generation >= 0 and c.pending >= 0 and s.classes.select(other => other.id == c.id).length() == 1) and s.objects.every(o => o.id > 0 and s.objects.select(other => other.id == o.id).length() == 1)
 pure def alwaysPendingAttemptsOwned(s: ServiceInstances): bool = s.classes.every(c => c.pending == 0 or (serviceAttempt(s, c.pending).classId == c.id and serviceAttempt(s, c.pending).generation == c.generation and (serviceAttempt(s, c.pending).phase == StartInvoking or serviceAttempt(s, c.pending).phase == StartObserver or serviceAttempt(s, c.pending).phase == StartLateStop)))
 pure def alwaysCapturedAttemptsExist(s: ServiceInstances): bool = s.calls.every(c => c.attempts.every(id => id > 0 and serviceAttempt(s, id).id == id)) and s.attempts.every(a => a.instance == 0 or serviceObject(s, a.instance).id == a.instance) and s.aggregates.every(a => a.members.every(m => m.attemptId == 0 or serviceAttempt(s, m.attemptId).id == m.attemptId))
 pure def alwaysDeclarationsMatch(s: ServiceInstances): bool = s.declarations.every(d => d.serviceType != "" and serviceClass(s, d.classId).registered and serviceClass(s, d.classId).serviceType == d.serviceType) and s.classes.every(c => c.registered iff s.declarations.some(d => d.classId == c.id))
+```
+
+### Each object stops at most once and a stopped runtime publishes nothing
+
+A stop request is recorded once per object and its outcome never changes
+afterwards. A class owns only known objects, every attempt is numbered
+below the allocator with a positive generation of its class, a stopped
+runtime publishes no instance, and every published instance is the live
+instance of a class of that type.
+
+```quint
 pure def alwaysObjectStopOnce(s: ServiceInstances): bool = s.objects.every(o => o.stopCalls >= 0 and o.stopCalls <= 1 and (o.stopPhase != StopNotRequested iff o.stopCalls == 1))
 pure def alwaysClassOwnsKnownObjects(s: ServiceInstances): bool = s.classes.every(c => c.live == 0 or s.objects.some(o => o.id == c.live))
 pure def alwaysAttemptGeneration(s: ServiceInstances): bool = s.nextAttempt > 0 and s.attempts.every(a => a.id > 0 and a.id < s.nextAttempt and a.generation > 0 and a.generation <= serviceClass(s, a.classId).generation and s.attempts.select(other => other.id == a.id).length() == 1)
@@ -230,6 +260,15 @@ pure def sometimesRetryHasNewGeneration(s: ServiceInstances): bool = s.classes.s
 pure def sometimesSharedObjectStoppedOnce(s: ServiceInstances): bool = s.objects.some(o => o.stopCalls == 1 and s.attempts.select(a => a.instance == o.id).length() > 1)
 pure def sometimesFailedAttemptLeftPublishedObject(s: ServiceInstances): bool = s.classes.some(c => c.live != 0 and c.failed)
 pure def sometimesWithdrawnAliasRemainsInClassMap(s: ServiceInstances): bool = s.classes.some(c => c.registered and c.live > 0 and serviceObject(s, c.live).stopCalls == 1 and not(publishedInstances(s, c.serviceType).includes(c.live)))
+```
+
+### Every acquisition settles under fair completion
+
+Starts, observers, stops and late starts eventually settle. The fair events
+complete the oldest attempt of each phase, so fairness reaches every
+attempt identity rather than only the identities the simulator samples.
+
+```quint
 pure def nextInvokingAttempt(s: ServiceInstances): int = s.attempts.select(a => a.phase == StartInvoking).nthOr(0, noAttempt).id
 pure def nextObservableAttempt(s: ServiceInstances): int = s.attempts.select(a => a.phase == StartObserver).nthOr(0, noAttempt).id
 pure def nextRetiredAttempt(s: ServiceInstances): int = s.attempts.select(a => canFinishLateStart(s, a.id)).nthOr(0, noAttempt).id

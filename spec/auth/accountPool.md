@@ -9,13 +9,10 @@ root, never from whatever directory the process happens to point at. The
 [lease](./accountPoolLeases.md) of a selected account, and the usage and
 health reports against it, are a machine of their own. Provider names are
 placeholders (`p1`, `p2`); account 3 of `p2` shows the same visible id as
-account 1 of `p1`. Times are in seconds.
+account 1 of `p1`.
 
-Ported from develop `packages/auth/quint/AccountPoolPriority.qnt`,
-`AccountPoolLeastUsed.qnt` and `AccountPoolAffinity.qnt` (source
-`src/accounts/` `AccountPool.select`). Subscription sign-in to a model
-provider is not part of Eliza; accounts are linked through
-[account storage](./accountStorage.md).
+Subscription sign-in to a model provider is not part of Eliza; accounts are
+linked through [account storage](./accountStorage.md).
 
 ## Story: Choose a linked provider account by priority, usage and affinity
 

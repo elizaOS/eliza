@@ -1,23 +1,20 @@
 # Maps planning and navigation custody
 
-A consumer's Maps adapter binds the maps client's device navigation,
-navigation relay, current location, search, route and guidance
-interfaces: its device navigation, navigation relay, navigation fix and
-agent navigation modules. Provider validation, route geometry,
-coordinate codecs, location watches and OS speech keep separate shell
-conformance obligations. [Guidance speech](./guidanceVoice.md),
+The maps package plans routes for the agent and hands guidance to the
+owner. [Guidance speech](./guidanceVoice.md),
 [screen-off guidance](./navigationService.md) and
 [guidance recovery](./guidanceRecovery.md) continue from a started route.
 
-## Story: Plan directions on my phone and keep me in control of guidance
+## Story: Plan directions and keep me in control of guidance
 
-> As the owner, I want to plan directions on my phone and keep me in control of guidance.
+> As the owner, I want the agent to plan a route for me, but guidance to
+> start only when I confirm it.
 
 ### A valid agent request prepares a route and never turns on guidance itself
 
 An accepted agent request belongs to the active authenticated turn and
 current Maps owner, with exact destination and supported travel mode.
-The phone displays the target and asks for current location only through
+The device displays the target and asks for current location only through
 its UI. The request uses existing permission and a precise fix no older
 than 30 seconds, no more than five seconds in the future, and with
 accuracy at most 50 meters. It publishes awaiting-location when no
@@ -35,12 +32,6 @@ type Travel = Drive | Walk | Bicycle | Transit
 type PlanAdmission = { ownerId: int, destination: str, travel: Travel, providerReady: bool, modeSupported: bool, validReference: bool }
 type PlanReceipt = { route: int, destination: str, travel: Travel }
 type DirectionsPhase = Idle | AwaitingFix | Planning | Confirm | Guiding | Rerouting | Refused
-pure val idlePhase: DirectionsPhase = Idle
-pure val awaitingPhase: DirectionsPhase = AwaitingFix
-pure val planningPhase: DirectionsPhase = Planning
-pure val confirmPhase: DirectionsPhase = Confirm
-pure val guidingPhase: DirectionsPhase = Guiding
-pure val refusedPhase: DirectionsPhase = Refused
 type Directions = { owner: int, ticket: int, selection: int, capturedSelection: int, destination: str, travel: Travel, phase: DirectionsPhase, active: bool, route: int }
 pure val initial: Directions = { owner: 0, ticket: 0, selection: 0, capturedSelection: 0, destination: "", travel: Drive, phase: Idle, active: false, route: 0 }
 pure val planValues = Set(
@@ -49,34 +40,36 @@ pure val planValues = Set(
   { ownerId: 1, destination: "park", travel: Transit, providerReady: true, modeSupported: false, validReference: true }
 )
 pure val fixValues = Set({ present: true, precise: true, age: 100, accuracy: 50 }, { present: true, precise: true, age: 30001, accuracy: 10 }, { present: true, precise: false, age: 0, accuracy: 10 }, { present: true, precise: true, age: -5001, accuracy: 10 }, { present: false, precise: false, age: 0, accuracy: 0 })
-pure def usableFix(fix: Fix): bool = fix.present and fix.precise and fix.age >= -5000 and fix.age <= 30000 and fix.accuracy >= 0 and fix.accuracy <= 50
+pure def freshFix(age: int): bool = age >= -5000 and age <= 30000
+pure def guidanceQuality(precise: bool, age: int, accuracy: int): bool = precise and freshFix(age) and accuracy >= 0 and accuracy <= 50
+pure def usableFix(fix: Fix): bool = fix.present and guidanceQuality(fix.precise, fix.age, fix.accuracy)
 pure def lawApproximateFixCannotPlan(fix: Fix): bool = not(fix.precise) implies not(usableFix(fix))
 pure def canStartPlan(s: Directions, plan: PlanAdmission): bool =
   not(s.active) and plan.ownerId > 0 and plan.destination != "" and plan.providerReady and plan.modeSupported and plan.validReference
 pure def startPlan(s: Directions, plan: PlanAdmission): Directions =
   { ...s, owner: plan.ownerId, ticket: s.ticket + 1, selection: s.selection + 1, capturedSelection: s.selection + 1,
-    destination: plan.destination, travel: plan.travel, phase: awaitingPhase, route: 0 }
+    destination: plan.destination, travel: plan.travel, phase: AwaitingFix, route: 0 }
 pure def canRetire(s: Directions): bool = s.owner > 0
 pure def retire(s: Directions): Directions = { ...initial, ticket: s.ticket + 1, selection: s.selection + 1 }
 pure def canSelectionChanges(s: Directions): bool = s.owner > 0 and not(s.active)
-pure def selectionChanges(s: Directions): Directions = { ...s, selection: s.selection + 1, route: 0, phase: refusedPhase }
+pure def selectionChanges(s: Directions): Directions = { ...s, selection: s.selection + 1, route: 0, phase: Refused }
 pure def canReceiveFix(s: Directions, ticket: int, fix: Fix, alreadyGranted: bool): bool =
   s.phase == AwaitingFix and ticket == s.ticket and s.selection == s.capturedSelection and alreadyGranted and usableFix(fix)
-pure def receiveFix(s: Directions, ticket: int, fix: Fix, alreadyGranted: bool): Directions = { ...s, phase: planningPhase }
+pure def receiveFix(s: Directions, ticket: int, fix: Fix, alreadyGranted: bool): Directions = { ...s, phase: Planning }
 pure def canPlanSettles(s: Directions, ticket: int): bool = s.phase == Planning and ticket == s.ticket and s.selection == s.capturedSelection
 pure def planSettles(s: Directions, ticket: int, result: PlanReceipt): Directions = {
   val exact = result.route > 0 and result.destination == s.destination and result.travel == s.travel
-  { ...s, phase: if (exact) confirmPhase else refusedPhase, route: if (exact) result.route else 0 }
+  { ...s, phase: if (exact) Confirm else Refused, route: if (exact) result.route else 0 }
 }
 pure def canConfirmGuidance(s: Directions): bool = s.phase == Confirm and s.route > 0
-pure def confirmGuidance(s: Directions): Directions = { ...s, phase: guidingPhase, active: true }
+pure def confirmGuidance(s: Directions): Directions = { ...s, phase: Guiding, active: true }
 pure def canStartReroute(s: Directions, fix: Fix): bool = s.phase == Guiding and usableFix(fix)
 pure def startReroute(s: Directions, fix: Fix): Directions = { ...s, phase: Rerouting, ticket: s.ticket + 1 }
 pure def canRerouteSettles(s: Directions, ticket: int): bool = s.phase == Rerouting and ticket == s.ticket
 pure def rerouteSettles(s: Directions, ticket: int, route: int, sameSession: bool): Directions =
-  { ...s, phase: guidingPhase, route: if (sameSession and route > 0) route else s.route }
+  { ...s, phase: Guiding, route: if (sameSession and route > 0) route else s.route }
 pure def canStop(s: Directions): bool = s.phase != Idle
-pure def stop(s: Directions): Directions = { ...s, phase: idlePhase, active: false, route: 0, ticket: s.ticket + 1 }
+pure def stop(s: Directions): Directions = { ...s, phase: Idle, active: false, route: 0, ticket: s.ticket + 1 }
 pure val routeValues = Set(0, 1, 2)
 pure val resultValues = Set({ route: 1, destination: "park", travel: Walk }, { route: 2, destination: "shop", travel: Drive }, { route: 0, destination: "stale", travel: Transit })
 pure val weight_receiveFix = 5
@@ -99,10 +92,10 @@ pure def sometimesReroutes(s: Directions): bool = s.phase == Rerouting
 
 ### A route sheet retains a destination while its owner is attached
 
-Discovered by the proof: the selection callback could otherwise be
-applied to a fabricated idle record with an owner but no captured
-destination. Stopping a route retains the presented destination. Closing
-or replacing its owner clears the route sheet entirely.
+A route sheet with an owner always holds a captured destination, so a
+selection can never apply to an empty sheet. Stopping a route retains the
+presented destination; closing or replacing its owner clears the route
+sheet entirely.
 
 ```quint
 pure def alwaysAttachedHasDestination(s: Directions): bool = s.owner > 0 implies s.destination != ""

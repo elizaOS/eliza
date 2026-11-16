@@ -1,9 +1,8 @@
 # Native deferred deletion and Undo custody
 
 A consumer uses Eliza's `plugins/plugin-native-action-journal` Android
-deletion coordinator and `@elizaos/contracts/deletion-window`. The
-owner-admission story below ports the producer's `DeletionOwnerAdmission`
-model. [Calendar provider review](./calendarDeletion.md) supplies
+deletion coordinator and `@elizaos/contracts/deletion-window`.
+[Calendar provider review](./calendarDeletion.md) supplies
 the selected target and dispatch outcome. The reminder store owns its
 rows and the suspension and delivery effects for occurrences. This
 specification owns the Calendar journal's durable dispatch claim and
@@ -11,10 +10,10 @@ common coordinator decisions where both kinds participate.
 
 ## Story: Keep the item when I undo a reviewed deletion before dispatch
 
-> As the person, I want to keep the item when I undo a reviewed deletion
-> before dispatch.
+> As the person, I want Undo within the window to keep the item I was
+> deleting, so that a deletion I regret never reaches the calendar.
 
-### An owned exact intent retains the original ten-second Undo window
+### Only the owner's exact replay of a staged deletion returns its row
 
 A just-reviewed Calendar deletion stages one version-1 row containing the
 operation ID, authenticated owner, selected target and deadline. Operation
@@ -26,41 +25,30 @@ A different owner or target for that ID is refused. An exact replay can
 return a dispatching row as recorded; the notice gives it the conservative
 unknown projection. Two equal JSON objects may use different key orders.
 
-The ten-second deadline uses elapsed time on one continuity. A different
-continuity or elapsed time earlier than creation is a clock change.
-Wall time is used for display and ordering receipt retention. The
+The ten-second window, its clock-change case and the one-winner claim are
+the [deletion window contract](../../contracts/deletionWindow.md); this
+journal adds owner and stage admission, retention and its durable claim
+machine. Wall time is used for display and ordering receipt retention. The
 native constructor checks nonnegative signed-64-bit clock inputs with
 room for the window. The browser wire uses a nonnegative finite elapsed
 time and safe integer wall time. The model uses validated clock facts
 and integer millisecond points for the shared ordering.
 
 ```quint
-type DeletionWindow = OpenUndoWindow | ExpiredUndoWindow | ChangedDeletionClock
+import deletionWindow as W from "../../contracts/deletionWindow"
 type StageDecision = StageNewDeletion | ReplayDeletionRow | RefuseDeletionOwner | RefuseDeletionId | RefuseDeletionIdentity
-pure val undoWindowMs = 10000
 pure def nativeDeadlineAdmitted(continuityUnits: int, nativeElapsedFits: bool, nativeWallFits: bool): bool =
   continuityUnits >= 1 and continuityUnits <= 200 and nativeElapsedFits and nativeWallFits
-pure def journalWindow(sameContinuity: bool, createdMs: int, nowMs: int): DeletionWindow =
-  if (not(sameContinuity) or nowMs < createdMs) ChangedDeletionClock
-  else if (nowMs < createdMs + undoWindowMs) OpenUndoWindow
-  else ExpiredUndoWindow
 pure def deletionStageDecision(ownerCurrent: bool, idValid: bool, rowExists: bool, exactOwner: bool, exactTarget: bool): StageDecision =
   if (not(ownerCurrent)) RefuseDeletionOwner
   else if (not(idValid)) RefuseDeletionId
   else if (not(rowExists)) StageNewDeletion
   else if (exactOwner and exactTarget) ReplayDeletionRow
   else RefuseDeletionIdentity
-pure def lawChangedClockDoesNotExpire(sameContinuity: bool, createdMs: int, nowMs: int): bool =
-  (not(sameContinuity) or nowMs < createdMs) implies journalWindow(sameContinuity,createdMs,nowMs) == ChangedDeletionClock
-pure def lawDeadlineBoundary(createdMs: int): bool =
-  journalWindow(true,createdMs,createdMs + undoWindowMs - 1) == OpenUndoWindow and
-  journalWindow(true,createdMs,createdMs + undoWindowMs) == ExpiredUndoWindow
 pure def lawReplayRequiresExactRetainedIdentity(ownerCurrent: bool, idValid: bool, exactOwner: bool, exactTarget: bool): bool =
   deletionStageDecision(ownerCurrent,idValid,true,exactOwner,exactTarget) == ReplayDeletionRow implies
     ownerCurrent and idValid and exactOwner and exactTarget
 pure val continuityUnitsValues = Set(0, 1, 200, 201)
-pure val createdMsValues = Set(0, 100)
-pure val nowMsValues = Set(-1, 0, 100, 9999, 10000, 10100)
 ```
 
 ### A durable claim gives Undo and provider dispatch one winner
@@ -83,9 +71,7 @@ save succeeds. A subsequent definitive readback confirms deletion,
 conflict, or permission refusal. A null, unexpected or failed readback
 is uncertain. If the outcome save fails, the journal retains dispatching
 and subsequent observations report unknown. The same row never starts
-another provider call. Discovered by the proof: a paused or undone row can retain a provider call
-only when that call returned explicit permission refusal without mutation.
-The model applies to a retained row and represents
+another provider call. The model applies to a retained row and represents
 the provider invocation separately from durable phase. The storage
 adapter confirms writes or surfaces failure. Exact physical durability
 is an adapter property.
@@ -95,18 +81,18 @@ type NativeDeletionPhase = JournalQueued | JournalPaused | JournalDispatching | 
 type ProviderDeletion = ProviderDeleted | ProviderConflict | ProviderPermission | ProviderUncertain
 type DeletionJournal = { phase: NativeDeletionPhase, calls: int, claimed: bool, liveClaim: bool, permissionRefused: bool, dismissed: bool }
 pure val initial: DeletionJournal = { phase: JournalQueued, calls: 0, claimed: false, liveClaim: false, permissionRefused: false, dismissed: false }
-pure def canUndoJournal(s: DeletionJournal, enrolledOwner: bool, window: DeletionWindow, durable: bool): bool =
+pure def canUndoJournal(s: DeletionJournal, enrolledOwner: bool, window: W::WindowState, durable: bool): bool =
   enrolledOwner and (s.phase == JournalUndone or
-  (durable and (s.phase == JournalPaused or (s.phase == JournalQueued and window != ExpiredUndoWindow))))
-pure def undoJournal(s: DeletionJournal, enrolledOwner: bool, window: DeletionWindow, durable: bool): DeletionJournal =
+  (durable and (s.phase == JournalPaused or (s.phase == JournalQueued and window != W::WindowExpired))))
+pure def undoJournal(s: DeletionJournal, enrolledOwner: bool, window: W::WindowState, durable: bool): DeletionJournal =
   if (s.phase == JournalUndone) s else { ...s, phase: JournalUndone }
-pure def canPauseBeforeDispatch(s: DeletionJournal, window: DeletionWindow, refused: bool, durable: bool): bool =
-  s.phase == JournalQueued and window == ExpiredUndoWindow and refused and durable
-pure def pauseBeforeDispatch(s: DeletionJournal, window: DeletionWindow, refused: bool, durable: bool): DeletionJournal =
+pure def canPauseBeforeDispatch(s: DeletionJournal, window: W::WindowState, refused: bool, durable: bool): bool =
+  s.phase == JournalQueued and window == W::WindowExpired and refused and durable
+pure def pauseBeforeDispatch(s: DeletionJournal, window: W::WindowState, refused: bool, durable: bool): DeletionJournal =
   { ...s, phase: JournalPaused }
-pure def canClaimDeletion(s: DeletionJournal, window: DeletionWindow, exactOwner: bool, currentFence: bool, providerAdmitted: bool, durable: bool): bool =
-  s.phase == JournalQueued and window == ExpiredUndoWindow and exactOwner and currentFence and providerAdmitted and durable
-pure def claimDeletion(s: DeletionJournal, window: DeletionWindow, exactOwner: bool, currentFence: bool, providerAdmitted: bool, durable: bool): DeletionJournal =
+pure def canClaimDeletion(s: DeletionJournal, window: W::WindowState, exactOwner: bool, currentFence: bool, providerAdmitted: bool, durable: bool): bool =
+  s.phase == JournalQueued and window == W::WindowExpired and exactOwner and currentFence and providerAdmitted and durable
+pure def claimDeletion(s: DeletionJournal, window: W::WindowState, exactOwner: bool, currentFence: bool, providerAdmitted: bool, durable: bool): DeletionJournal =
   { ...s, phase: JournalDispatching, claimed: true, liveClaim: true }
 pure def canInvokeDeletion(s: DeletionJournal): bool =
   s.phase == JournalDispatching and s.claimed and s.liveClaim and s.calls == 0
@@ -131,13 +117,10 @@ pure def dismissDeletion(s: DeletionJournal, enrolledOwner: bool, durable: bool)
   { ...s, dismissed: true }
 pure def alwaysProviderCallRequiresDurableClaim(s: DeletionJournal): bool =
   s.calls >= 0 and s.calls <= 1 and (s.calls == 1 implies s.claimed) and
-  ((s.phase == JournalQueued or s.phase == JournalPaused or s.phase == JournalUndone) implies
-    (s.calls == 0 or s.permissionRefused)) and
   (s.phase == JournalQueued implies not(s.claimed or s.permissionRefused)) and
   (s.liveClaim implies s.phase == JournalDispatching) and
   (s.phase == JournalDispatching implies s.claimed and not(s.permissionRefused)) and
-  ((s.phase == JournalDeleted or s.phase == JournalConflict or s.phase == JournalUnknown) implies s.calls == 1) and
-  (s.permissionRefused implies s.calls == 1 and (s.phase == JournalPaused or s.phase == JournalUndone))
+  ((s.phase == JournalDeleted or s.phase == JournalConflict or s.phase == JournalUnknown) implies s.calls == 1)
 pure def stepUndoRetainsNoNewCall(before: DeletionJournal, via: str, after: DeletionJournal): bool =
   via == "undoJournal" implies after.phase == JournalUndone and after.calls == before.calls and
     (after.calls == 0 or after.permissionRefused)
@@ -151,15 +134,25 @@ pure def stepLostProcessCannotResumeClaim(before: DeletionJournal, after: Deleti
     after.phase == JournalDispatching and not(after.liveClaim) and after.calls == before.calls
 pure def sometimesInterruptedDispatchStaysUncertain(s: DeletionJournal): bool =
   s.phase == JournalDispatching and not(s.liveClaim) and s.calls == 1
-pure def lawUnknownCannotBeUndone(s: DeletionJournal, enrolledOwner: bool, window: DeletionWindow, durable: bool): bool =
+pure def lawUnknownCannotBeUndone(s: DeletionJournal, enrolledOwner: bool, window: W::WindowState, durable: bool): bool =
   projectedDeletionPhase(s.phase) == JournalUnknown implies not(canUndoJournal(s,enrolledOwner,window,durable))
 pure def sometimesUndoKeepsUncalledItem(s: DeletionJournal): bool = s.phase == JournalUndone and s.calls == 0
 pure def sometimesProviderReceiptVerified(s: DeletionJournal): bool = s.phase == JournalDeleted
 pure def sometimesUnknownReceiptDismissed(s: DeletionJournal): bool = s.phase == JournalUnknown and s.dismissed
 pure def sometimesPermissionRefusalAllowsUndo(s: DeletionJournal): bool = s.phase == JournalUndone and s.permissionRefused
-pure val weight_claimDeletion = 10
-pure val weight_invokeDeletion = 10
-pure val weight_recordDeletion = 10
+```
+
+### A paused or undone row keeps a provider call only after an explicit permission refusal
+
+A queued, paused or undone row keeps a provider call only when that call
+returned an explicit permission refusal without mutation, so Undo never
+acknowledges an item the provider may already have deleted.
+
+```quint
+pure def alwaysRetainedCallWasRefused(s: DeletionJournal): bool =
+  ((s.phase == JournalQueued or s.phase == JournalPaused or s.phase == JournalUndone) implies
+    (s.calls == 0 or s.permissionRefused)) and
+  (s.permissionRefused implies s.calls == 1 and (s.phase == JournalPaused or s.phase == JournalUndone))
 ```
 
 ## Story: Preserve uncertain receipts and respect the owner across session changes
@@ -196,11 +189,11 @@ type DeletionOwnerRead = SameDeletionOwner | ChangedDeletionOwner | UnavailableD
 type DeletionFence = FreshDeletionFence | StaleDeletionFence | UnreadableDeletionFence
 type DeletionExpiry = WaitForDeletionWindow | RetryDeletionOwner | PauseDeletionOwnerChanged | PauseDeletionOwnerUnavailable | AdmitDeletionProvider
 pure val ownerRetryMs = 86400000
-pure def checksDeletionFence(window: DeletionWindow, ownerRead: DeletionOwnerRead): bool =
-  window == ExpiredUndoWindow and ownerRead == SameDeletionOwner
-pure def expireDeletionOwner(kind: DeletionRecordKind, window: DeletionWindow, ownerRead: DeletionOwnerRead,
+pure def checksDeletionFence(window: W::WindowState, ownerRead: DeletionOwnerRead): bool =
+  window == W::WindowExpired and ownerRead == SameDeletionOwner
+pure def expireDeletionOwner(kind: DeletionRecordKind, window: W::WindowState, ownerRead: DeletionOwnerRead,
   fence: DeletionFence, elapsedSinceExpiry: int): DeletionExpiry =
-  if (window != ExpiredUndoWindow) WaitForDeletionWindow
+  if (window != W::WindowExpired) WaitForDeletionWindow
   else if (ownerRead == ChangedDeletionOwner) PauseDeletionOwnerChanged
   else if (ownerRead == UnavailableDeletionOwner)
     (if (elapsedSinceExpiry < ownerRetryMs) RetryDeletionOwner else PauseDeletionOwnerUnavailable)
@@ -208,15 +201,15 @@ pure def expireDeletionOwner(kind: DeletionRecordKind, window: DeletionWindow, o
   else if (fence == StaleDeletionFence) PauseDeletionOwnerChanged
   else if (kind == CalendarDeletion) PauseDeletionOwnerUnavailable
   else RetryDeletionOwner
-pure def lawAdmittedDeletionHasExactCurrentOwner(kind: DeletionRecordKind, window: DeletionWindow, ownerRead: DeletionOwnerRead,
+pure def lawAdmittedDeletionHasExactCurrentOwner(kind: DeletionRecordKind, window: W::WindowState, ownerRead: DeletionOwnerRead,
   fence: DeletionFence, elapsedSinceExpiry: int): bool =
   expireDeletionOwner(kind,window,ownerRead,fence,elapsedSinceExpiry) == AdmitDeletionProvider implies
     checksDeletionFence(window,ownerRead) and fence == FreshDeletionFence
 pure def lawChangedOwnerSkipsFence(kind: DeletionRecordKind, fence: DeletionFence, elapsedSinceExpiry: int): bool =
-  not(checksDeletionFence(ExpiredUndoWindow,ChangedDeletionOwner)) and
-  expireDeletionOwner(kind,ExpiredUndoWindow,ChangedDeletionOwner,fence,elapsedSinceExpiry) == PauseDeletionOwnerChanged
+  not(checksDeletionFence(W::WindowExpired,ChangedDeletionOwner)) and
+  expireDeletionOwner(kind,W::WindowExpired,ChangedDeletionOwner,fence,elapsedSinceExpiry) == PauseDeletionOwnerChanged
 pure def lawUnreadableFenceNeverDispatches(kind: DeletionRecordKind, ownerRead: DeletionOwnerRead, elapsedSinceExpiry: int): bool =
-  expireDeletionOwner(kind,ExpiredUndoWindow,ownerRead,UnreadableDeletionFence,elapsedSinceExpiry) != AdmitDeletionProvider
+  expireDeletionOwner(kind,W::WindowExpired,ownerRead,UnreadableDeletionFence,elapsedSinceExpiry) != AdmitDeletionProvider
 pure val elapsedSinceExpiryValues = Set(0, 86399999, 86400000, 86400001)
 ```
 

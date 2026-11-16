@@ -1,4 +1,4 @@
-# Authenticated client observation and optional calendar day
+# Optional observation negotiation
 
 A consumer imports the [client turn observation](../../contracts/clientTurnObservation.md)
 contract and the instance ID validator of
@@ -6,7 +6,9 @@ contract and the instance ID validator of
 learns support in a verified session and compares it again before use.
 [Remote pairing](../../cloud/remotePairing.md) owns parsing and mint;
 [conversation](./conversation.md) owns dispatch and the current turn. The
-learn, compare and cancellation edges are separate.
+learn, compare and cancellation edges are separate. Which fields are
+optional, how they are validated, and that a sensitive view shares none are
+the contract's; this spec adds only when a client may send them.
 
 ## Story: Share screen context with my current peer only when its process has advertised support
 
@@ -14,40 +16,13 @@ learn, compare and cancellation edges are separate.
 > connected to now, and only after that peer's process said it supports
 > it.
 
-### Validation and negotiation do not create search or effect authority
-
-The v1 peer support object admits exactly version and optionalFields;
-optionalFields is empty or contains the single literal calendarDay.
-The peer status instance is a canonical lowercased UUID (versions
-1–8 with RFC variant), learned from the authenticated status response
-for one origin, owner, agent, session and connection epoch. A malformed,
-legacy, revoked or unavailable peer receives all ordinary context and
-no calendarDay. No later process instance is learned under a successfully
-settled session. A new verified connection gets independent negotiation.
-A cancelled learn can retry under a live caller; an aborted waiting
-call does not cancel a background read owned by another caller.
-A format preference is capability information; it neither binds
-source data nor authorizes any effect.
-
-CalendarDay contains exactly a real Gregorian date (year at least 1970)
-and an admitted IANA time zone. Its authoring context must be the current
-nonsensitive Calendar view. The ordinary observation codec checks its
-exact fields and identifier and size bounds, rejects controls and
-unknown fields, and cannot transmit selected objects from sensitive
-views. Invalid observation data fails closed without truncation; this
-model tracks capability evidence rather than its string parser.
-
-```quint
-type ObservationView = CalendarView | OtherView
-pure def admitsCalendarDay(view: ObservationView, sensitive: bool, validDate: bool, validZone: bool): bool =
-  view == CalendarView and not(sensitive) and validDate and validZone
-pure def lawSensitiveNeverOffersCalendarDay(view: ObservationView, validDate: bool, validZone: bool): bool =
-  not(admitsCalendarDay(view, true, validDate, validZone))
-```
-
 ### A new status comparison is required for each optional turn
 
-Pending reads carry tickets. A turn can join a current learn or begin one
+Support is learned from the authenticated status response for one origin,
+owner, agent, session and connection epoch; a malformed, legacy, revoked or
+unavailable peer gets ordinary context only, and a new verified connection
+negotiates afresh. Support is capability information and authorizes no
+effect. Pending reads carry tickets. A turn can join a current learn or begin one
 if needed. A positive learn never sends the field by itself. Each turn
 presenting an optional calendar day compares a fresh response for the
 original server instance and exact current binding. A mismatch drops

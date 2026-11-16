@@ -1,25 +1,19 @@
 # Interactive task runtime
 
-The agent runs a user's interactive task through
-`packages/agent/src/services/interactive-task-{runtime,store,http}.ts`. The
-[core interactive task](../../core/interactiveTask.md) owns the task's
-authority, observation and operation journal. This spec owns the runtime
-around it: an operation is written durably before it is dispatched, every
-interruption advances the task's epoch, a dispatched operation whose result
-was lost stays unknown, and the actuator's cleanup is acknowledged before the
-task is considered quiet. The native actuator still checks authority itself
-immediately before every external effect.
-
-The parts of the task runtime are specified separately:
+The runtime around a user's interactive task; the
+[core interactive task](../../core/interactiveTask.md) owns its authority,
+observation and operation journal. Here an operation is written durably
+before it is dispatched, every interruption advances the task's epoch, a
+dispatched operation whose result was lost stays unknown, and the actuator's
+cleanup is acknowledged before the task is considered quiet. The native
+actuator still checks authority itself before every external effect.
 
 - [Task choices on the chat wire](./choices.md)
 - [Task request and view codecs](./http.md)
 - [Task gateway owner fence](./ownerFence.md)
-- [Native task storage custody](./storageCustody.md)
-- [Task SQLCipher writer lease](./encryptedWriterLease.md)
+- [Encrypted task storage custody](./storageCustody.md)
 - [Legacy task migration and key replacement](./storageMigration.md)
 - [Task journal records across builds](./recordRecovery.md)
-- [Observed website answers and retained results](./websiteGoal.md)
 - [Interaction sessions on the agent host](./interactionSessions.md)
 
 ## Story: Run one task operation without losing or repeating its effect

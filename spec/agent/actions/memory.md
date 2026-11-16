@@ -1,22 +1,8 @@
-# Background memory and the trajectory store
+# Background memory
 
-After conversations, the agent distils memories in the background. A
-memory task reads its evidence in pages; each page of each task revision is
-evaluated by a model call that settles once. A page whose evaluation failed
-for good is blocked and never read again, but the task keeps the pages
-still pending and finishes only when none is left. When the evidence is
-reconciled the task gets a new revision, and a result from an older
-revision, or from a cancelled task, never writes the current task's row.
-Shutting down aborts the call in flight without consuming its page.
-
-The trajectory store that records the agent's runs initializes its schema
-on first use, whether that use is a read or a capture. One initializer runs
-at a time and every caller waits for it; a failure fails the waiting
-callers, and the next caller retries without redoing the migration that
-already committed. The research baseline is `plugins/plugin-assistant`
-`features/advanced-memory`, `features/trajectories` and the
-`BackgroundMemoryDeferredPage` and `DeferredTrajectoryInit` models. What
-trajectories record is in [trajectories](../trajectories.md).
+After conversations, the agent distils memories in the background, one
+page of evidence per settled model call. The store that records the
+agent's runs is [trajectory capture](../trajectories.md)'s.
 
 ## Story: Distil memories in the background without losing evidence
 
@@ -29,11 +15,10 @@ trajectories record is in [trajectories](../trajectories.md).
 ```quint
 type TaskPhase = Live | Finished | Cancelled
 type PageStatus = Pending | Evaluated | PageFailed
-type InitStage = NoInit | Inspecting | Migrating | Publishing
-type Memory = { task: TaskPhase, revision: int, blocked: Set[int], pages: int -> PageStatus, running: int, attemptRevision: int, settlements: int -> int, retryUsed: bool, backoff: bool, shutdown: bool, initialized: bool, initStage: InitStage, schemaMigrated: bool, migrations: int, waiting: Set[int], failedCallers: Set[int], initFailures: int }
+type Memory = { task: TaskPhase, revision: int, blocked: Set[int], pages: int -> PageStatus, running: int, attemptRevision: int, settlements: int -> int, retryUsed: bool, backoff: bool, shutdown: bool }
 pure val pageIds = Set(1, 2)
 pure val allPending: int -> PageStatus = Map().put(1, Pending).put(2, Pending)
-pure val initial: Memory = { task: Live, revision: 0, blocked: Set(), pages: allPending, running: 0, attemptRevision: 0, settlements: Map(), retryUsed: false, backoff: false, shutdown: false, initialized: false, initStage: NoInit, schemaMigrated: false, migrations: 0, waiting: Set(), failedCallers: Set(), initFailures: 0 }
+pure val initial: Memory = { task: Live, revision: 0, blocked: Set(), pages: allPending, running: 0, attemptRevision: 0, settlements: Map(), retryUsed: false, backoff: false, shutdown: false }
 pure def pageStatus(m: Memory, page: int): PageStatus = m.pages.getOr(page, Pending)
 pure def pageKey(revision: int, page: int): int = revision * 2 + page
 pure def nextPage(m: Memory): int =
@@ -110,43 +95,4 @@ pure def reopen(m: Memory): Memory = { ...m, shutdown: false }
 pure def stepShutdownKeepsPages(before: Memory, via: str, after: Memory): bool =
   via == "abortClosed" implies pageIds.forall(p => pageStatus(after, p) == pageStatus(before, p))
 pure def sometimesPageKeptAcrossShutdown(m: Memory): bool = m.shutdown and m.task == Live and m.running == 0 and pageStatus(m, 1) == Pending
-```
-
-## Story: Initialize the trajectory store once
-
-> As the owner, the first look at my agent's history and the first record
-> of a run share one setup of the store, and a failed setup is simply tried
-> again.
-
-### One initializer runs at a time, and callers that arrive meanwhile wait for it
-
-```quint
-pure val callerValues = Set(1, 2)
-pure def canRequestStore(m: Memory, caller: int): bool = not(m.initialized) and caller > 0 and not(m.waiting.contains(caller))
-pure def requestStore(m: Memory, caller: int): Memory =
-  { ...m, waiting: m.waiting.union(Set(caller)), failedCallers: m.failedCallers.exclude(Set(caller)), initStage: if (m.initStage == NoInit) Inspecting else m.initStage }
-pure def alwaysWaitersHaveAnInitializer(m: Memory): bool = (m.waiting.size() > 0) iff (m.initStage != NoInit)
-pure def sometimesTwoCallersShareInitialization(m: Memory): bool = m.waiting.size() == 2
-```
-
-### The schema migration runs at most once, and the store is published only with its schema
-
-```quint
-pure def canInspectSchema(m: Memory): bool = m.initStage == Inspecting
-pure def inspectSchema(m: Memory): Memory = { ...m, initStage: if (m.schemaMigrated) Publishing else Migrating }
-pure def canMigrateSchema(m: Memory): bool = m.initStage == Migrating
-pure def migrateSchema(m: Memory): Memory = { ...m, schemaMigrated: true, migrations: m.migrations + 1, initStage: Publishing }
-pure def canPublishStore(m: Memory): bool = m.initStage == Publishing
-pure def publishStore(m: Memory): Memory = { ...m, initialized: true, initStage: NoInit, waiting: Set() }
-pure def alwaysMigrationOnce(m: Memory): bool =
-  m.migrations == (if (m.schemaMigrated) 1 else 0) and (m.initialized implies m.schemaMigrated) and (m.initStage == Migrating implies not(m.schemaMigrated))
-pure def sometimesPublished(m: Memory): bool = m.initialized
-```
-
-### A failed initialization fails its waiting callers, and the next caller retries without redoing the migration
-
-```quint
-pure def canInitFailed(m: Memory): bool = m.initStage != NoInit
-pure def initFailed(m: Memory): Memory = { ...m, initStage: NoInit, failedCallers: m.failedCallers.union(m.waiting), waiting: Set(), initFailures: m.initFailures + 1 }
-pure def sometimesRetrySucceededAfterPartialMigration(m: Memory): bool = m.initialized and m.initFailures == 1 and m.migrations == 1
 ```

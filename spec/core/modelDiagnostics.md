@@ -1,10 +1,18 @@
 # Model diagnostic promise ownership
 
-`packages/core/src/runtime/model-dispatch.ts:251-267` at `72fed7e4069ecd35d61d886ab6eec5c02c137517` keeps a Set of exact write promises. Fulfillment and rejection both remove the same identity. Drain loops over new snapshots until the Set is empty, including writes added while an earlier snapshot was awaiting.
+Model dispatch keeps a set of exact diagnostic write promises beside
+[model dispatch](./models.md). Fulfillment and rejection both remove the
+same identity. Drain loops over new snapshots until the set is empty,
+including writes added while an earlier snapshot was awaiting.
 
 ## Story: Finish every diagnostic write before storage closes
 
-As the model runtime I retain each pending diagnostic promise. Duplicate tracking shares its Set entry, and tracking an already-settled promise adds it until its completion microtask removes it again.
+> As the model runtime, I want every pending diagnostic write finished
+> before storage closes, so no diagnostic is lost at shutdown.
+
+As the model runtime I retain each pending diagnostic promise. Duplicate
+tracking shares its Set entry, and tracking an already-settled promise adds
+it until its completion microtask removes it again.
 
 ### Promise identity governs membership independently of the final outcome
 

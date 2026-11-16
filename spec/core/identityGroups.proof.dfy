@@ -62,14 +62,6 @@ lemma RegisteredRoot(nodes: seq<IdentityNode>, identity: string)
   var root :| root in nodes && root.identity == matches[0].root && root.root == root.identity;
 }
 
-lemma findIdentity_ensures(s: IdentityGroups, identity: string)
-  ensures (inv(s) ==> alwaysIdentitiesAreUnique(findIdentity(s, identity)))
-  ensures (inv(s) ==> alwaysRootsAreRegisteredAndCanonical(findIdentity(s, identity)))
-  ensures (inv(s) ==> stepOnlyClearRemovesIdentities(s, "findIdentity", findIdentity(s, identity)))
-{
-  if inv(s) { WithIdentityPreserves(s, identity); }
-}
-
 lemma registerIdentity_ensures(s: IdentityGroups, identity: string)
   ensures (inv(s) ==> alwaysIdentitiesAreUnique(registerIdentity(s, identity)))
   ensures (inv(s) ==> alwaysRootsAreRegisteredAndCanonical(registerIdentity(s, identity)))

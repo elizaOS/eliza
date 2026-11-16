@@ -1,6 +1,9 @@
 # Task journal records across builds
 
-Eliza `7743504b7c936a764b3938a44cad918808b621df` stores task documents and recovery records in `packages/agent/src/services/interactive-task-store.ts`. A consumer's native update provider reads the runtime's current task and quarantine records. The task kernel owns the transition for a readable record. This specification owns the decisions that precede that transition, the durable release of an unreadable record, and the update readiness projection.
+Task documents and their recovery records, across builds that may not read
+them. The task kernel owns the transition for a readable record; this spec
+owns the decisions before it, the durable release of an unreadable record,
+and whether a native update may proceed.
 
 ## Story: Preserve task records when a build cannot read them
 
@@ -10,9 +13,10 @@ Eliza `7743504b7c936a764b3938a44cad918808b621df` stores task documents and recov
 
 ### A structural task failure can be recorded separately from corrupt storage
 
-A missing row is absence. A stored document must be text containing valid JSON. A torn or nontext row is corruption. A parsed value rejected by `validateInteractiveTask` with `TASK_INVALID` is eligible for quarantine, with the validator's diagnostic as its reason. A valid task whose embedded owner or whose explicitly requested ID differs from the indexed row is corruption when that identity is checked. Quarantined rows fail by-ID reads as `TASK_UNREADABLE`, while current-task lookup skips them. By-ID lookup excludes another owner's row before interpreting the document. On startup the scan inspects the owner's nonquarantined history in ascending ID pages of 64. Torn historical rows do not gain quarantine entries and can still fail a direct read. A torn current row fails recovery. SQL and validation failures retain their typed outcomes. JSON parsing, domain validation and SQLite row/owner lookup supply the model's input facts.
+A missing row is absence. A stored document must be text containing valid JSON. A torn or nontext row is corruption. A parsed value the task validator rejects with `TASK_INVALID` is eligible for quarantine, with the validator's diagnostic as its reason. A valid task whose embedded owner or whose explicitly requested ID differs from the indexed row is corruption when that identity is checked. Quarantined rows fail by-ID reads as `TASK_UNREADABLE`, while current-task lookup skips them. By-ID lookup excludes another owner's row before interpreting the document. On startup the scan inspects the owner's nonquarantined history in ascending ID pages of 64. Torn historical rows do not gain quarantine entries and can still fail a direct read. A torn current row fails recovery. SQL and validation failures retain their typed outcomes.
 
 ```quint
+import numbers as Num from "../../core/numbers"
 type DocumentResult = TaskDecoded | TaskShapeInvalid | TaskBytesCorrupt
 type Quarantine = RecordVisible | RecordHeld | RecordAcknowledged
 pure def eligibleForQuarantine(document: DocumentResult): bool = document == TaskShapeInvalid
@@ -37,13 +41,14 @@ pure def lawVisibleCorruptionIsTyped(document: DocumentResult, matchingIdentity:
 
 A task's original unreadable document stays in the journal. A build that can decode a held record removes the quarantine entry only while acknowledgement is absent. An acknowledged record stays set aside after a build can read it. Acknowledgement requires the exact owner and task with no prior `acknowledgedAt`. It writes the acknowledgement timestamp and releases `unfinished` in one transaction. The original document and recovery reason remain. An unfinished quarantine entry blocks a different task for its owner with `TASK_UNREADABLE`. An occupied readable slot or an existing task ID yields `TASK_CONFLICT`, even after the original record's slot was released. A historical record without the unfinished flag does not block a new task, even if it has an unacknowledged entry.
 
-This machine follows one row. The database supplies the exact owner tuple for a request, globally unique task IDs, at most one unfinished row per owner and the outcome of the exclusive recovery transaction. Each `documentId` denotes the full original task bytes in the fixture. A successful recovery of a readable unfinished row may rewrite those bytes and append an event through the kernel. Recovery does not dispatch an effect, and this model only counts that kernel write. A transaction that fails before commit leaves its durable input unchanged if rollback succeeds. Rollback failure instead has the external `TASK_STORAGE_UNCERTAIN` outcome and the connection must be discarded.
+A recovery of a readable unfinished row may rewrite its bytes and append an
+event through the kernel, and never dispatches an effect. A transaction that
+fails before commit leaves its durable input unchanged; a failed rollback is
+`TASK_STORAGE_UNCERTAIN` and the connection is discarded.
 
 ```quint
 type JournalRow = { installed: bool, ownerKey: str, taskId: str, documentId: str, document: DocumentResult, reason: str, unfinished: bool, quarantine: Quarantine, quarantinedAt: int, acknowledgedAt: int, kernelWrites: int }
 pure val initial: JournalRow = { installed: false, ownerKey: "", taskId: "", documentId: "", document: TaskDecoded, reason: "", unfinished: false, quarantine: RecordVisible, quarantinedAt: 0, acknowledgedAt: 0, kernelWrites: 0 }
-pure val heldRecord: Quarantine = RecordHeld
-pure val readableRecord: Quarantine = RecordVisible
 pure def canEncounterRow(row: JournalRow, ownerKey: str, taskId: str, documentId: str, document: DocumentResult, reason: str, unfinished: bool): bool =
   not(row.installed) and ownerKey != "" and taskId != "" and documentId != "" and (reason != "" iff document == TaskShapeInvalid)
 pure def encounterRow(row: JournalRow, ownerKey: str, taskId: str, documentId: str, document: DocumentResult, reason: str, unfinished: bool): JournalRow =
@@ -52,13 +57,13 @@ pure def canSelectBuild(row: JournalRow, decodes: bool, reason: str): bool =
   row.installed and row.document != TaskBytesCorrupt and (decodes iff reason == "")
 pure def selectBuild(row: JournalRow, decodes: bool, reason: str): JournalRow =
   { ...row, document: if (decodes) TaskDecoded else TaskShapeInvalid, reason: if (row.quarantine == RecordVisible) reason else row.reason }
-pure def canRecoverRow(row: JournalRow, at: int, committed: bool): bool = row.installed and row.kernelWrites < 9007199254740991
+pure def canRecoverRow(row: JournalRow, at: int, committed: bool): bool = row.installed and row.kernelWrites < Num::maxSafeInteger
 pure def recoverRow(row: JournalRow, at: int, committed: bool): JournalRow =
   if (not(committed) or row.quarantine == RecordAcknowledged) row
   else if (row.quarantine == RecordVisible and eligibleForQuarantine(row.document))
-    { ...row, quarantine: heldRecord, quarantinedAt: at }
+    { ...row, quarantine: RecordHeld, quarantinedAt: at }
   else if (row.document == TaskDecoded)
-    { ...row, quarantine: readableRecord, quarantinedAt: 0, reason: "", kernelWrites: row.kernelWrites + (if (row.unfinished) 1 else 0) }
+    { ...row, quarantine: RecordVisible, quarantinedAt: 0, reason: "", kernelWrites: row.kernelWrites + (if (row.unfinished) 1 else 0) }
   else row
 pure def canAcknowledgeRow(row: JournalRow, byOwner: str, claimedId: str): bool =
   row.installed and row.ownerKey == byOwner and row.taskId == claimedId and row.quarantine == RecordHeld
@@ -114,14 +119,20 @@ pure val claimedIdValues = Set("task1", "task2")
 pure val atValues = Set(0, 1, 2, 3)
 ```
 
-## Story: Defer a native update if the runtime may still hold her task
+## Story: Defer a native update while the runtime may still hold a task
 
 > As a user, an update of the app waits while the runtime may still hold my
 > task, and goes ahead only when every record has been checked.
 
 ### An empty current answer needs a successful check of every quarantine record
 
-The consumer's update provider returns only a status word. A bounded read that fails or is already in flight returns `unknown`. A successful current response endorses one of the six task status strings or explicit `task: null`. A missing task member, a malformed value or an unsupported status is `unknown`. After explicit null, a successful records response must provide an array where every element is an object with a present, nonnull `acknowledgedAt` whose Java type is `Number`. The decoder permits an empty array and never reads another field or infers whether an unacknowledged row occupied the slot. A nonempty current task retains its status without reading the second endpoint. HTTP framing and Android JSON type observations supply the inputs.
+The update provider answers with a status word. A read that fails or is
+already in flight is `unknown`. A successful current response names one of
+the six task statuses, or an explicit `task: null`; anything else is
+`unknown`. A current task keeps its status without the second read. After an
+explicit null, the records response must be an array in which every record
+has a numeric `acknowledgedAt`; an empty array is fine, and nothing else is
+read or inferred.
 
 ```quint
 type CurrentTaskReply = { ok: bool, hasTask: bool, textStatus: str, explicitNull: bool, objectTask: bool }

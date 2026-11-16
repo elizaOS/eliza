@@ -7,12 +7,7 @@ exact receipt, with the organization the same decision carried. Usage and
 health reports against the lease are serialized per account, and each
 write is fenced by the credential generation, so a report from an old
 credential never touches a replacement, and a success never erases a newer
-failure written by someone else. Times are in seconds.
-
-Ported from develop `packages/auth/quint/AccountPoolBroker.qnt` (modules
-`BrokerLeasePublication` and `BrokerLeaseReports`) and the generation and
-baseline rules of `AccountPoolHealth.qnt` (sources `src/accounts/`
-`AccountPoolBroker.lease`, `report`, and the pool health metadata).
+failure written by someone else.
 
 ## Story: Lease a selected account and report its usage and health
 

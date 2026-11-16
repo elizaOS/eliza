@@ -1,10 +1,14 @@
 # PII scrub persistence and retirement
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/services/pii-scrub.ts`, `security/pii-scrub-markers.ts`, `security/pii-scrub-seam.ts`, LazyPiiDrain and PiiScrubSettlement. The machine follows one exact content and ruleset key through a lazy queue. Different content or ruleset values require different keys. Pseudonym assignment storage is encrypted and must precede completion markers. Model and storage failures preserve quarantine and retry ownership. The service that owns this machine is [privacy service](./privacyService.md); whether trajectories persist is [trajectories](./trajectories.md); address, environment, log and outbound protections are [content and outbound security](./security.md).
+One PII scrub job for an exact content and ruleset key, from `services/pii-scrub.ts` and `security/pii-scrub-*.ts`. Encrypted pseudonym assignments are stored before the completion marker, and model or storage failures keep quarantine and retry ownership. The [privacy service](./privacyService.md) owns the queue around these jobs; whether trajectories persist is [trajectories](./trajectories.md); address, environment, log and outbound protections are [content and outbound security](./security.md).
 
 ## Story: Publish scrub completion only after durable privacy work
 
-As an operator, I receive a completion event only after the scrub succeeded, pseudonym assignments persisted and the exact content/ruleset marker was acknowledged. A failed observer does not revoke an existing marker or repeat committed work. Concurrent initial misses may both scrub, since the marker check is not an exclusive claim.
+> As an operator, I want a completion event only after the scrub succeeded,
+> pseudonym assignments persisted and the exact content/ruleset marker was
+> acknowledged, so that completion always means durable privacy work.
+
+A failed observer does not revoke an existing marker or repeat committed work. Concurrent initial misses may both scrub, since the marker check is not an exclusive claim.
 
 ### Admission checks shutdown again after the asynchronous marker lookup
 

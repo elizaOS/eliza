@@ -4,6 +4,10 @@
 
 ## Story: Reconcile a reusable drain and retire its persisted task
 
+> As a service, I want a repeating drain to find or create its one
+> persisted task and delete it on disposal, so that a drain never leaves a
+> duplicate or orphaned task behind.
+
 ### Every asynchronous start retains its own storage operation and checks disposal after lookup
 
 Concurrent starts may query or create independently, as the source has no start mutex. A lookup returning after disposal does not install a task. A create returning after disposal installs its returned ID and immediately starts disposal for it. Missing storage capabilities end that portion of startup without claiming a row was created. Worker registration precedes lookup unless explicitly skipped; a missing required callback or rejected registration fails the start.

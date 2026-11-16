@@ -533,7 +533,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/capabilities/account-selection.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ]
     },
     {
@@ -552,7 +552,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/capabilities/decoder.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ]
     },
     {
@@ -571,7 +571,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/capabilities/protocol.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ]
     },
     {
@@ -620,7 +620,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/capabilities/router.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ]
     },
     {
@@ -1202,11 +1202,10 @@
     },
     {
       "source": "packages/core/src/connector-account-catalog.ts",
-      "spec": "spec/core/connectorAccounts.md",
+      "spec": "spec/core/connectorStorage.md",
       "rules": [
-        "Each provider identity is one account",
-        "Removing an account revokes it and deletes its credentials",
-        "Moving to durable storage preserves every account and credential"
+        "Each provider account ID is one account",
+        "Removing an account revokes it before deleting it"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "e0469eeaee961947683e20e14663be63dff6d8d6be38a4a232d8e66ba84f2b55",
@@ -1219,11 +1218,10 @@
     },
     {
       "source": "packages/core/src/connectors.ts",
-      "spec": "spec/core/connectorAccounts.md",
+      "spec": "spec/core/connectorStorage.md",
       "rules": [
-        "Each provider identity is one account",
-        "Removing an account revokes it and deletes its credentials",
-        "Moving to durable storage preserves every account and credential"
+        "Each provider account ID is one account",
+        "Removing an account revokes it before deleting it"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "aa31c545c7464a84e37f62dc7e8611cdcdf74a93915ddcc2c933935198f04a01",
@@ -1243,7 +1241,7 @@
         "Only a pending unexpired unconsumed flow can be consumed",
         "The selected backend cannot be used until the captured fallback state transfers",
         "A runtime cache preserves its manager while a compatible registered service takes precedence",
-        "Stored disable and revoke decisions win over provider readiness",
+        "Provider refresh preserves stored identity and protected policy fields",
         "Backend replacement preserves facade identity and memoizes each current adapter",
         "Each scope runs one operation in admission order and removes only its own tail",
         "Storing a verifier sweeps expired entries and replacement preserves the flow key",
@@ -1258,13 +1256,13 @@
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
         "spec/core/connectorStorage.md",
-        "spec/core/connectorMigration.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorBackends.md",
+        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
-        "spec/core/oauthSecrets.md",
-        "spec/core/oauthStart.md",
-        "spec/core/oauthLifecycle.md"
+        "spec/core/oauth/verifiers.md",
+        "spec/core/oauth/index.md",
+        "spec/core/oauth/index.md"
       ]
     },
     {
@@ -2339,7 +2337,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/retrieval.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/retrievalIndex.md"
+        "spec/core/retrieval.md"
       ]
     },
     {
@@ -2623,7 +2621,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/connector-registry.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/pluginRegistry.md"
+        "spec/core/pluginServices.md"
       ]
     },
     {
@@ -3157,7 +3155,7 @@
     },
     {
       "source": "packages/core/src/runtime/provider-execution.ts",
-      "spec": "spec/core/providerPromiseRace.md",
+      "spec": "spec/core/providers/race.md",
       "rules": [
         "The invocation microtask checks the execution signal before starting",
         "The first delivered race reaction fixes the shared outcome",
@@ -3170,10 +3168,10 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/provider-execution.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/providers.md",
-        "spec/core/providerExecutions.md",
-        "spec/core/providerPromiseRace.md",
-        "spec/core/providerWaiterPromise.md"
+        "spec/core/providers/work.md",
+        "spec/core/providers/index.md",
+        "spec/core/providers/race.md",
+        "spec/core/providers/waiter.md"
       ]
     },
     {
@@ -3241,13 +3239,13 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/response-handler-evaluators.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/responseEvaluators.md",
-        "spec/core/responseFences.md"
+        "spec/core/responseEvaluation.md",
+        "spec/core/responseFields.md"
       ]
     },
     {
       "source": "packages/core/src/runtime/response-handler-fields.ts",
-      "spec": "spec/core/responseFences.md",
+      "spec": "spec/core/responseFields.md",
       "rules": [
         "Only a matching fence of sufficient length closes quoted content"
       ],
@@ -3335,7 +3333,7 @@
       "relatedSpecs": [
         "spec/core/serviceInstances.md",
         "spec/core/eagerServices.md",
-        "spec/core/serviceRegistry.md",
+        "spec/core/serviceInstances.md",
         "spec/core/serviceStopObservation.md",
         "spec/core/serviceAcquisitionResult.md"
       ]
@@ -3387,7 +3385,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/state-composition.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/providers.md"
+        "spec/core/providers/work.md"
       ]
     },
     {
@@ -3575,7 +3573,7 @@
       "relatedSpecs": [
         "spec/core/turnControllers.md",
         "spec/core/turnEventStack.md",
-        "spec/core/turnSignalScan.md"
+        "spec/core/turnEventStack.md"
       ]
     },
     {
@@ -4266,7 +4264,7 @@
     },
     {
       "source": "packages/core/src/security/voice-gate.ts",
-      "spec": "spec/core/voiceRewrite.md",
+      "spec": "spec/core/outboundStyle.md",
       "rules": [
         "Cache hits move to most recent and capacity evicts only the oldest key",
         "Typed notices and existing voice provenance bypass cosmetic inference"
@@ -4277,7 +4275,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/voice-gate.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/voiceRewrite.md"
+        "spec/core/outboundStyle.md"
       ]
     },
     {
@@ -4470,8 +4468,8 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/notification.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/notificationRecovery.md",
-        "spec/core/notifications.md"
+        "spec/core/notifications/recovery.md",
+        "spec/core/notifications/index.md"
       ]
     },
     {
@@ -4492,7 +4490,7 @@
     },
     {
       "source": "packages/core/src/services/pairing.ts",
-      "spec": "spec/core/pairing.md",
+      "spec": "spec/core/pairing/index.md",
       "rules": [
         "Each request lookup selects the exact oldest live row for the normalized code",
         "A retained grant is captured before deletion of that request's ID",
@@ -4507,10 +4505,10 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/pairing.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/pairing.md",
-        "spec/core/pairingAdmission.md",
-        "spec/core/pairingReplies.md",
-        "spec/core/pairingGrants.md"
+        "spec/core/pairing/index.md",
+        "spec/core/pairing/admission.md",
+        "spec/core/pairing/replies.md",
+        "spec/core/pairing/grants.md"
       ]
     },
     {
@@ -4860,10 +4858,9 @@
     },
     {
       "source": "packages/core/src/types/access-context.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "d0c2899331650bb75ee260f5f2bef30a604c6ba18488c7c151a50a7230594fd4",
@@ -4873,10 +4870,9 @@
     },
     {
       "source": "packages/core/src/types/action-failure.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "6dedadbc76b6c37faf9f82de5a38eb23ac5140a0ab7fad49348ed87f9ec178c4",
@@ -4886,10 +4882,9 @@
     },
     {
       "source": "packages/core/src/types/action-reply.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "2bb1e1f1e2cfe862e2f1ef3dc61629f1dd53adacafe0a8677139b2e28115cce5",
@@ -4899,10 +4894,9 @@
     },
     {
       "source": "packages/core/src/types/agent-api.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "11e3c505f8e971fe525cdcbf259ab9c16f11b7ca574e77ac86307fcab19542d4",
@@ -4912,10 +4906,9 @@
     },
     {
       "source": "packages/core/src/types/agent-event.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "5cc08f64661cf4451a7becca2c12e01f6941c8a65163c2c5979175aa94b8c33f",
@@ -4925,10 +4918,9 @@
     },
     {
       "source": "packages/core/src/types/agent.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "16c932e95f8e44d08745a7ddf25a9e53311e936b6e7d821b4031c812a752383b",
@@ -4938,10 +4930,9 @@
     },
     {
       "source": "packages/core/src/types/channel-config.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "ed483a279d23ee781ec221ef18b7586415b87f3bbbf8c38f0b27c6b24bcb29f7",
@@ -4951,10 +4942,9 @@
     },
     {
       "source": "packages/core/src/types/chat-pre-handler.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "35ed3c782a2330b646a71e6ee0bec6d08244274af5cc9c024b46d19f52817ab2",
@@ -4964,10 +4954,9 @@
     },
     {
       "source": "packages/core/src/types/coding.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "d38d0ba1db20ff65aad72ca65bf4e99b88d7920ea91a335339f7946b5e381907",
@@ -4975,15 +4964,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/coding.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/commands.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "a5c8c74aea19394eea9c30718929691e3b2804602dea5e866f2fe119acd29bfb",
@@ -4991,15 +4979,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/commands.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/components.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "41bc8b9422006383c5a319fd966c5d59844b896249b8c30a2fce2bd78428f4e6",
@@ -5007,16 +4994,15 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/components.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/connector-account-policy.ts",
-      "spec": "spec/core/connectorAccounts.md",
+      "spec": "spec/core/connectorStorage.md",
       "rules": [
-        "Each provider identity is one account",
-        "Removing an account revokes it and deletes its credentials",
-        "Moving to durable storage preserves every account and credential"
+        "Each provider account ID is one account",
+        "Removing an account revokes it before deleting it"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "2e5bff2e7d99df34c8c48285b453b95ec9a1a5fc0fb98ff6302c778ac3e278fe",
@@ -5026,11 +5012,10 @@
     },
     {
       "source": "packages/core/src/types/connector-setup.ts",
-      "spec": "spec/core/connectorAccounts.md",
+      "spec": "spec/core/connectorStorage.md",
       "rules": [
-        "Each provider identity is one account",
-        "Removing an account revokes it and deletes its credentials",
-        "Moving to durable storage preserves every account and credential"
+        "Each provider account ID is one account",
+        "Removing an account revokes it before deleting it"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "0ff9d0ec41efc7b30ed74dc52714b832970ccdee59d3981c96553bc81699ac91",
@@ -5040,10 +5025,9 @@
     },
     {
       "source": "packages/core/src/types/content-manifest.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "763fae88b3ce1b39ae1b29a5fb8b5ca577ecf089c2dc0d339d138475e933f55f",
@@ -5051,15 +5035,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/content-manifest.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/content.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "c89b9544ec326fb27ae03a687a70288ca5e46997959cf4699e78c8dfdd28ea2c",
@@ -5067,15 +5050,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/content.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/contexts.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "26f93414e6933db88d301f2f59385b82d7c725e61ffbfff5a3a9ec962f809cf6",
@@ -5085,10 +5067,9 @@
     },
     {
       "source": "packages/core/src/types/database.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "b2a5fb374667e17d10677155ec1e29620d8f0d3be0cab26262d3a7e72d7ef2b7",
@@ -5098,10 +5079,9 @@
     },
     {
       "source": "packages/core/src/types/documents.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "1582b121fa8ee7b5e58db06957f48c0dd02fb10b8a3c03e0570f0b343ba3d1fb",
@@ -5111,10 +5091,9 @@
     },
     {
       "source": "packages/core/src/types/effects.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "8f8a7d5c9af37bbca589c97f5eb6b8b5d42852e1018cbfe3255c3ddab6e35256",
@@ -5122,15 +5101,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/effects.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/environment.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "5472be366b543592218de84e2253aa18fd90c5599b5cfebe7b5b29322f05b8b1",
@@ -5140,10 +5118,9 @@
     },
     {
       "source": "packages/core/src/types/evaluator.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "612a58bf221c910d5d3823d7a029026db7f412f0bfd1ba91e755f3be12237e39",
@@ -5153,10 +5130,9 @@
     },
     {
       "source": "packages/core/src/types/events.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "0654374994de68e6164d33ed14533807c64381ece90cbec1ff4c8ac8550a783a",
@@ -5166,10 +5142,9 @@
     },
     {
       "source": "packages/core/src/types/hook.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "bbf0a7a1edb863a488f185f70815569b589462d6562d1a65978a09a4f94b2edc",
@@ -5179,10 +5154,9 @@
     },
     {
       "source": "packages/core/src/types/identity.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "2bc7eda33d6f8a3007578480a1a883051975cc5704eb065353e4a898ca69db5b",
@@ -5190,15 +5164,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/identity.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/interactions.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "e45f80ddb05d797ef1caa70e8b8351afa8cdd4c841987cfdaf749de22f2b0ced",
@@ -5208,10 +5181,9 @@
     },
     {
       "source": "packages/core/src/types/json.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "f6419beda03c6d59b81cca1c780aca934f829b12a5c94e3ef3b0559917011e49",
@@ -5221,10 +5193,9 @@
     },
     {
       "source": "packages/core/src/types/long-term-memory.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "5ef7ed5fe095d303119f44a81c1ac1b337c78a56a1534f48e30bd06fb1031bf6",
@@ -5234,10 +5205,9 @@
     },
     {
       "source": "packages/core/src/types/membership.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "658a989d45b2f089fe9f29262a04eec2bd0f094c94a0d0087a4ea23cec7ef37b",
@@ -5245,15 +5215,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/membership.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/memory-storage.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "8fce00fafd5124cf8c86ff364a36844b932cb0f8e0427b74dd637b8a7c3251dd",
@@ -5263,10 +5232,9 @@
     },
     {
       "source": "packages/core/src/types/memory.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "0c0cd9a54d7276a76c2b22188b7cb62774e380e331a032fb7385ce81612f27e2",
@@ -5276,10 +5244,9 @@
     },
     {
       "source": "packages/core/src/types/message-service.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "78ff666809e387b23d1a2e73893aee6b9c2f7dd115ed77b8e370936186845f81",
@@ -5289,10 +5256,9 @@
     },
     {
       "source": "packages/core/src/types/message-source.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "a70bfc5dc339fd38501b05a26d74f6cea0c1f1d16f6f454defd3fa75289f7ec1",
@@ -5302,10 +5268,9 @@
     },
     {
       "source": "packages/core/src/types/messaging.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "95f634d672fa723868d3b870c44eaf81e2826c2d0916946953df65e6a73eccfa",
@@ -5315,10 +5280,9 @@
     },
     {
       "source": "packages/core/src/types/model-pricing.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "97d37dfae63d5834b3df8ffb1b40ad5df2d92062787259b74c688b62efed2f05",
@@ -5328,10 +5292,9 @@
     },
     {
       "source": "packages/core/src/types/model.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "649233be14eda3163ce3ccd61c42c7ed71b3b83e5861cbd7e65b2749d98bfb9c",
@@ -5339,15 +5302,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/model.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/notification.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "bddf929726a858bcf95a54d9312e6a2804e872e0631c704a2ba93ddb9b842864",
@@ -5357,10 +5319,9 @@
     },
     {
       "source": "packages/core/src/types/pairing.ts",
-      "spec": "spec/core/pairingAdmission.md",
+      "spec": "spec/core/pairing/admission.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection",
+        "An admitted pack serves exactly the declared leaves, each free of host-only code",
         "One read-check-write admission owns the captured row and exact payload",
         "Both owner and grant-key indexes identify the same complete row"
       ],
@@ -5370,18 +5331,17 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/pairing.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md",
-        "spec/core/pairingAdmission.md",
-        "spec/core/pairingGrants.md",
-        "spec/core/pairing.md"
+        "spec/core/packageExports.md",
+        "spec/core/pairing/admission.md",
+        "spec/core/pairing/grants.md",
+        "spec/core/pairing/index.md"
       ]
     },
     {
       "source": "packages/core/src/types/payment.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "72eaba887a2bb737d7dd8d7d4ed2cae70443a49cfd7da311d899a8194888f6b8",
@@ -5391,10 +5351,9 @@
     },
     {
       "source": "packages/core/src/types/pending-user-action.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "0d37f213893be6aa8c498c425662e3aea2b40ffb9a5ff72318e1fc62dfaa7f8b",
@@ -5402,15 +5361,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/pending-user-action.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/permissions.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "7b8a6089c3c08590ff316c7be2f675bf0ddb0783f5d804023c15a93a753535d3",
@@ -5420,10 +5378,9 @@
     },
     {
       "source": "packages/core/src/types/pipeline-hooks.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "0d505b0267eee9f2c4d174a7ca43ce4e92d9f229f5981d0cdc25cb7183cf5e50",
@@ -5431,15 +5388,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/pipeline-hooks.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/plugin-manifest.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "ad23d21a294027380f49ed1365f368cd72d1251f70df9838073ea888a377d134",
@@ -5449,10 +5405,9 @@
     },
     {
       "source": "packages/core/src/types/plugin-store.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "fe2c849dea07445f7ad51958bf665438249c36c9d56bbb6f972564ff909f456d",
@@ -5462,10 +5417,9 @@
     },
     {
       "source": "packages/core/src/types/plugin.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "83e206d777328899678be111a6eb835e07696f81ed5736c3d3f2be240d1ef1a1",
@@ -5473,15 +5427,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/plugin.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/primitives.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "df8eb56cc97880e3b5c620731d66cab5de7114b1ec8eb074be6beea604be7125",
@@ -5510,7 +5463,7 @@
     },
     {
       "source": "packages/core/src/types/reminder-presentation.ts",
-      "spec": "spec/core/reminderPresentation.md",
+      "spec": "spec/assistant/reminderPresentation.md",
       "rules": [
         "Issuance requires a nonblank body and title and a chat text beginning with the body"
       ],
@@ -5520,15 +5473,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/reminder-presentation.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/reminderPresentation.md"
+        "spec/assistant/reminderPresentation.md"
       ]
     },
     {
       "source": "packages/core/src/types/runtime.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "eccb15d579cc9f9372fffb582a4317181ae1c36921a6726eca7f53e59c88cb94",
@@ -5538,10 +5490,9 @@
     },
     {
       "source": "packages/core/src/types/schema.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "064be078551f60c488082daa9cdfa61495ebf39d3373e8e575f4b38ff018b505",
@@ -5563,15 +5514,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/search.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/service-interfaces.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "52f87674616251a2cb51c2e22d1b9d3d30505782242dbcb94b5157b6b4076e6b",
@@ -5579,15 +5529,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/service-interfaces.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/service.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "ff8fa3b4ddb92588fe2038e787151d89b6d34b2edaf22719ea6e5d069f784485",
@@ -5595,15 +5544,14 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/service.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
       "source": "packages/core/src/types/session.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "9eabd3de56576aaf14e9c0d433d164c1752de84dce0d95bd650c44da1b2cb892",
@@ -5613,10 +5561,9 @@
     },
     {
       "source": "packages/core/src/types/settings.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "4b76e242b3a901ac7b1bf78d2a90ea20428ac9d815a8209742c6c9ecf3f0bcb6",
@@ -5626,10 +5573,9 @@
     },
     {
       "source": "packages/core/src/types/state.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "6645a01a5764f962508f88a6b999fdbe08292570d8c839c89047e5d09f671833",
@@ -5639,10 +5585,9 @@
     },
     {
       "source": "packages/core/src/types/streaming.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "71ed5ab8ba21baffecef493b6d9914b1e53c113076e06f765b340d572a6a737f",
@@ -5652,10 +5597,9 @@
     },
     {
       "source": "packages/core/src/types/surface-manifest.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "94b5d2d9a81cc4afa1e6578200d691970f14790f7670c569bf05dc5a3e23add3",
@@ -5665,10 +5609,9 @@
     },
     {
       "source": "packages/core/src/types/swarm-coordinator.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "1c70825276e440a190af0490366690e5301f45370267755a9c0013080215a318",
@@ -5678,10 +5621,9 @@
     },
     {
       "source": "packages/core/src/types/system-notice.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "27f1cef45967271006ca712800431da4c8eb970065dd67d1d5a4b7ded8fdfe55",
@@ -5691,10 +5633,9 @@
     },
     {
       "source": "packages/core/src/types/task.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "58428f703c2ffcea56e6cc8815a832627f17e613e35e38a08a0ba410b85f4707",
@@ -5704,10 +5645,9 @@
     },
     {
       "source": "packages/core/src/types/testing.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "cd286982ea2fa3dd4e420de0e7d825f48cdb9779e0654e2fdcb56e2bc9ecfbc2",
@@ -5717,10 +5657,9 @@
     },
     {
       "source": "packages/core/src/types/trigger.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "cbd3a971db064585b3c309f4e22301c7e4cef81d55003d2eb417526f6fd38940",
@@ -5730,10 +5669,9 @@
     },
     {
       "source": "packages/core/src/types/view-capability.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "c227b3c0c332607ae24ab26ad02de2857336a38737e476582cfea24f15676d27",
@@ -5743,10 +5681,9 @@
     },
     {
       "source": "packages/core/src/types/view-kind.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "303553c2c0e5463c71a7b228f1af6a7c95a5a29f180963832df75c49914e685d",
@@ -5756,10 +5693,9 @@
     },
     {
       "source": "packages/core/src/types/workspace-delta.ts",
-      "spec": "spec/core/contracts.md",
+      "spec": "spec/core/packageExports.md",
       "rules": [
-        "A release accounts for every required public symbol and consumer",
-        "Required fields and discriminants survive a compatibility projection"
+        "An admitted pack serves exactly the declared leaves, each free of host-only code"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "30b0183b93e211432aa1721e52fd50cdd8023d936fe8918e3da117e266f9f889",
@@ -5767,7 +5703,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/workspace-delta.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/contracts.md"
+        "spec/core/packageExports.md"
       ]
     },
     {
@@ -6480,8 +6416,8 @@
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
         "spec/core/streamMarkable.md",
-        "spec/core/streamStructured.md",
-        "spec/core/streamSkeleton.md",
+        "spec/core/structuredStreamState.md",
+        "spec/core/skeletonStreamState.md",
         "spec/core/streamRevisions.md"
       ]
     },
@@ -6822,7 +6758,7 @@
     },
     {
       "legacyModel": "packages/core/quint/ResponseFieldFences.qnt",
-      "spec": "spec/core/responseFences.md",
+      "spec": "spec/core/responseFields.md",
       "legacyProperties": [
         "QuotedFieldsStayQuoted",
         "OuterFieldsSurvive"

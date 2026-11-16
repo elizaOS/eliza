@@ -5,16 +5,14 @@
 > As a user, a slow credential read that finishes after I switched accounts
 > can never end or change the other account's task.
 
-The pinned host gateway reads credentials asynchronously. It creates a sequence
-and captures the owner epoch for each read. A read that would replace or clear
+The host gateway reads credentials asynchronously, numbering each read and
+capturing the owner epoch it started in. A read that would replace or clear
 a live owner asks for confirmation first. An out-of-order read for the same
 owner may still succeed, but never moves the settled sequence backwards.
 
-### Apply the credential gate decision
+### A stale credential read changes nothing, and replacing a live owner needs confirmation
 
-`OwnerFence` and `GateRead` are the value contracts of
-`packages/host/native-host/task-owner-fence.mjs` at the reviewed pin. Empty account
-models `null` or a gate failure. Explicit revocation retries cleanup even if
+An empty account is no account or a failed read. Explicit revocation retries cleanup even if
 the fence is already closed. The result's revoke bit describes a cleanup
 request. The gateway owns that work and its errors.
 
@@ -24,8 +22,6 @@ type GateRead = { sequence: int, startedEpoch: int, account: str, confirming: bo
 type GateDecision = Superseded | Confirm | Accepted | SignedOut
 type GateResult = { fence: OwnerFence, decision: GateDecision, revoke: bool }
 
-pure val supersededDecision: GateDecision = Superseded
-pure val confirmDecision: GateDecision = Confirm
 pure val initialFence: OwnerFence = { epoch: 0, owner: "", settledSequence: 0, closed: false }
 pure def staleRead(f: OwnerFence, read: GateRead): bool =
   f.closed or read.startedEpoch != f.epoch or
@@ -33,8 +29,8 @@ pure def staleRead(f: OwnerFence, read: GateRead): bool =
 pure def gateRead(f: OwnerFence, read: GateRead): GateResult = {
   val revokes = f.owner != "" and read.account != f.owner
   val boundedSequence = if (read.sequence > f.settledSequence) read.sequence else f.settledSequence
-  if (staleRead(f, read)) { fence: f, decision: supersededDecision, revoke: false }
-  else if (revokes and not(read.confirming)) { fence: f, decision: confirmDecision, revoke: false }
+  if (staleRead(f, read)) { fence: f, decision: Superseded, revoke: false }
+  else if (revokes and not(read.confirming)) { fence: f, decision: Confirm, revoke: false }
   else if (read.account == "") {
     fence: { ...f, epoch: f.epoch + 1, owner: "", settledSequence: boundedSequence },
     decision: SignedOut, revoke: true
@@ -49,10 +45,10 @@ pure def endFence(f: OwnerFence, closing: bool): GateResult = {
   decision: SignedOut, revoke: true
 }
 pure def lawStaleReadHasNoEffect(f: OwnerFence, read: GateRead): bool =
-  staleRead(f, read) implies gateRead(f, read) == { fence: f, decision: supersededDecision, revoke: false }
+  staleRead(f, read) implies gateRead(f, read) == { fence: f, decision: Superseded, revoke: false }
 pure def lawReplacingOwnerNeedsConfirmation(f: OwnerFence, read: GateRead): bool =
   (not(staleRead(f, read)) and f.owner != "" and read.account != f.owner and not(read.confirming))
-  implies gateRead(f, read) == { fence: f, decision: confirmDecision, revoke: false }
+  implies gateRead(f, read) == { fence: f, decision: Confirm, revoke: false }
 pure def lawOldReadCannotMoveSequenceBack(f: OwnerFence, read: GateRead): bool =
   gateRead(f, read).fence.settledSequence >= f.settledSequence
 pure def lawARevokeClearsOwner(f: OwnerFence, closing: bool): bool =
@@ -67,11 +63,9 @@ pure def lawSwitchInvalidatesOldEpoch(f: OwnerFence, read: GateRead): bool =
 > As a user, a task response reaches me only if I am still the account that
 > asked for it, in the same epoch.
 
-### Recheck owner and epoch at the response boundary
+### A response reaches only the open fence's current owner in the request's epoch
 
-Related source evidence includes the host's `TaskOwnerFence.qnt` and pinned
-`packages/host/native-host/task-runtime-gateway.mjs`. A committed response is
-still subject to the owner fence. If a write already committed, the response
+A committed response is still subject to the owner fence. If a write already committed, the response
 fence does not undo its effects. The task and effect ledgers govern
 reconciliation and prevent dispatch replay.
 

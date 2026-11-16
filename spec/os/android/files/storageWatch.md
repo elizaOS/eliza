@@ -1,13 +1,10 @@
 # Native storage observer custody
 
-A consumer's files plugin uses the producer's `StorageBrowser.WatchSlot`
-from
+A consumer's files plugin uses `StorageBrowser.WatchSlot` in
 `plugins/plugin-native-filesystem/android/src/main/java/ai/eliza/plugins/filesystem/browser/StorageBrowser.java`.
-This ports the producer's `StorageWatch` model, which compares three
-ticket generations; the runtime can issue an arbitrary number. This
-projection models one current resource, its ticket and its observable
-results. Android file-observer and media-observer registration and
-unregistering remain host effects.
+The model follows one current resource, its ticket and its observable
+results; the runtime may issue any number of tickets. Android file-observer
+and media-observer registration and unregistering remain host effects.
 
 ## Story: Replace a folder watch without publishing from a retired callback
 
@@ -20,9 +17,8 @@ Issuing a request retires publication from the old ticket immediately.
 The previous resource may still be allocated until the current
 request installs its watch or fails. The latest refusal stops the
 old resource. A stale refusal does not stop a newer watch. Explicit
-unwatch increments the ticket and releases the resource.
-The producer serializes all of those changes with installation under
-the slot lock.
+unwatch increments the ticket and releases the resource. All of these
+changes are serialized with installation under the slot lock.
 
 ```quint
 type WatchSlot = { generation: int, activeTicket: int, refused: bool, releases: int, emitted: int }

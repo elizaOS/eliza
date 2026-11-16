@@ -12,7 +12,8 @@ separate producers ([device calendar deletion](../os/android/calendarDeletion.md
 
 ## Story: Delete the exact Calendar event or scope I selected
 
-> As the owner, I want to delete the exact Calendar event or scope I selected.
+> As the owner, I want deleting to remove exactly the event, occurrence or
+> series part I chose, and to be told only what the calendar confirmed.
 
 ### Transfer only the admitted target to the device calendar
 
@@ -37,8 +38,8 @@ inspection response requiring external review goes there too.
 On an inspection result, check the captured owner and whether
 its row is still open before proceeding. A ready device response
 sends exactly its event ID, source ID, source revision and event
-revision to `removeScoped`. The renderer neither reconstructs a
-target nor uses the legacy remove call. An external inspection
+revision to the scoped removal; the renderer never reconstructs a
+target. An external inspection
 opens Calendar. Other inspection failures ask for refresh. Native
 inspection and review enforce their own permission, the inspected ticket and
 provider identity requirements.
@@ -67,10 +68,6 @@ pure def lawStaleInspectionCannotDispatch(captured: OpenSelection, active: OpenS
   captured.owner != active.owner or captured.openRow != active.openRow implies manualInspectionRoute(captured, active, inspected) == IgnoreInspection
 pure def lawAgentSelectionChecksGeneration(captured: OpenSelection, active: OpenSelection, inspectionReady: bool): bool =
   captured.generation != active.generation implies not(inspectPublishes(captured, active, inspectionReady))
-pure def lawReadyCopiesTicket(inspectedTicket: InspectedTicket): bool =
-  val outgoing = scopedArguments(inspectedTicket)
-  outgoing.eventKey == inspectedTicket.eventKey and outgoing.sourceKey == inspectedTicket.sourceKey and
-  outgoing.sourceRevision == inspectedTicket.sourceRevision and outgoing.eventRevision == inspectedTicket.eventRevision
 pure val capturedValues = Set(
   { owner: 1, generation: 1, openRow: 1 }, { owner: 1, generation: 2, openRow: 1 },
   { owner: 1, generation: 2, openRow: 2 }, { owner: 2, generation: 2, openRow: 1 })
@@ -80,67 +77,38 @@ pure val inspectedTicketValues = Set(
   { eventKey: 2, sourceKey: 1, sourceRevision: 1, eventRevision: 4 })
 ```
 
-### Receipts update the reviewed detail without consuming a newer view
+### An uncertain delete holds its event until a complete read settles it
 
-After the bridge response only the captured shell owner may adopt
-it. A queued receipt refreshes pending deletion views. A deleted
-receipt refreshes the range. Either closes the detail only if
-Calendar is active and visible and the same row is still open
-without a form. Queued does not prove deletion. The normal agent
-adapter reports a queued deletion as pending and unconfirmed.
-A verified deleted response can retire an owned Note origin. For
-the document calendar the direct cleanup takes only a standalone event ID,
-excluding linked occurrences and IDs in occurrence form. The
-deferred bridge handles its own later origin reporting.
-
-Conflict refreshes the range. A refusal before invoking the
-mutation does not make it uncertain. An unknown result or a
-thrown call after mutation invocation records uncertainty for the
-captured target on that shell owner. The owner can request another
-read. A successful requested or forced read clears uncertainty
-if it lists that event ID, or for a deletion if its range covers the
-captured begin, with end exclusive. An ordinary read or another
-range does not resolve a missing event. This mirrors the pinned
-projection: it uses event identity rather than validating an
-occurrence receipt, and it can clear on a ready truncated range
-that covers the start. Clearing this UI hold is not a provider
-deletion receipt.
+Only the captured owner adopts a reply. A queued reply does not prove
+deletion; only a verified deleted reply does. A refusal before the
+mutation was invoked leaves nothing uncertain, but an unknown result or a
+failure after invocation holds the captured event: no further write to it
+until a requested or forced read settles it. A complete read clears the
+hold if it lists the event, or for a deletion if its range covers the
+event's start, end exclusive. A truncated read, an ordinary read or another
+range does not. Clearing the hold is not a provider deletion receipt.
 
 ```quint
 type DeleteReply = QueuedReply | DeletedReply | ConflictReply | CancelledReply | UnknownReply | BeforeBridgeFault | AfterBridgeFault | OtherRefusal
-type ReplyScope = { sameOwner: bool, sameRow: bool, activeView: bool, visible: bool, formOpen: bool }
-type DeleteDisplay = { closeDetail: bool, refreshRange: bool, refreshPending: bool, markUncertain: bool, deletedEvidence: bool }
+type DeleteOutcome = { markUncertain: bool, deletedEvidence: bool }
 type CalendarWriteKind = EditWrite | DeleteWrite
-pure def completionClose(replyScope: ReplyScope): bool =
-  replyScope.sameOwner and replyScope.sameRow and replyScope.activeView and replyScope.visible and not(replyScope.formOpen)
-pure def deleteDisplay(replyScope: ReplyScope, reply: DeleteReply): DeleteDisplay =
-  { closeDetail: completionClose(replyScope) and (reply == QueuedReply or reply == DeletedReply),
-    refreshRange: replyScope.sameOwner and (reply == DeletedReply or reply == ConflictReply),
-    refreshPending: replyScope.sameOwner and reply == QueuedReply,
-    markUncertain: reply == AfterBridgeFault or (replyScope.sameOwner and reply == UnknownReply),
-    deletedEvidence: replyScope.sameOwner and reply == DeletedReply }
+pure def deleteOutcome(sameOwner: bool, reply: DeleteReply): DeleteOutcome =
+  { markUncertain: reply == AfterBridgeFault or (sameOwner and reply == UnknownReply),
+    deletedEvidence: sameOwner and reply == DeletedReply }
 pure def blockedByWrite(saving: bool, eventKey: int, uncertainEvent: int): bool =
   saving or (uncertainEvent > 0 and uncertainEvent == eventKey)
-pure def readClearsHold(kind: CalendarWriteKind, readAccepted: bool, requestedOrForced: bool, listsEvent: bool, begin: int, rangeBegin: int, rangeEnd: int): bool =
-  readAccepted and requestedOrForced and (listsEvent or (kind == DeleteWrite and begin >= rangeBegin and begin < rangeEnd))
-pure def lawQueueHasNoDeleteReceipt(replyScope: ReplyScope): bool =
-  not(deleteDisplay(replyScope, QueuedReply).deletedEvidence)
-pure def lawCompletionPreservesDraft(replyScope: ReplyScope, reply: DeleteReply): bool =
-  replyScope.formOpen or not(replyScope.sameRow) or not(replyScope.sameOwner) implies not(deleteDisplay(replyScope, reply).closeDetail)
-pure def lawPreBridgeFaultDoesNotFence(replyScope: ReplyScope): bool =
-  not(deleteDisplay(replyScope, BeforeBridgeFault).markUncertain)
+pure def readClearsHold(kind: CalendarWriteKind, readAccepted: bool, requestedOrForced: bool, complete: bool, listsEvent: bool, begin: int, rangeBegin: int, rangeEnd: int): bool =
+  readAccepted and requestedOrForced and complete and (listsEvent or (kind == DeleteWrite and begin >= rangeBegin and begin < rangeEnd))
+pure def lawQueueHasNoDeleteReceipt(sameOwner: bool): bool = not(deleteOutcome(sameOwner, QueuedReply).deletedEvidence)
+pure def lawPreBridgeFaultDoesNotFence(sameOwner: bool): bool = not(deleteOutcome(sameOwner, BeforeBridgeFault).markUncertain)
 pure def lawAnotherEventCanProceed(saving: bool, eventKey: int, uncertainEvent: int): bool =
   not(saving) and eventKey != uncertainEvent implies not(blockedByWrite(saving, eventKey, uncertainEvent))
-pure def lawUnrelatedReadKeepsHold(kind: CalendarWriteKind, readAccepted: bool, requestedOrForced: bool, begin: int, rangeBegin: int, rangeEnd: int): bool =
-  (begin < rangeBegin or begin >= rangeEnd) implies not(readClearsHold(kind, readAccepted, requestedOrForced, false, begin, rangeBegin, rangeEnd))
-pure def lawEditAbsenceCannotResolve(readAccepted: bool, requestedOrForced: bool, begin: int, rangeBegin: int, rangeEnd: int): bool =
-  not(readClearsHold(EditWrite, readAccepted, requestedOrForced, false, begin, rangeBegin, rangeEnd))
-pure val replyScopeValues = Set(
-  { sameOwner: true, sameRow: true, activeView: true, visible: true, formOpen: false },
-  { sameOwner: true, sameRow: false, activeView: true, visible: true, formOpen: false },
-  { sameOwner: true, sameRow: true, activeView: true, visible: true, formOpen: true },
-  { sameOwner: true, sameRow: true, activeView: false, visible: true, formOpen: false },
-  { sameOwner: false, sameRow: true, activeView: true, visible: true, formOpen: false })
+pure def lawUnrelatedReadKeepsHold(kind: CalendarWriteKind, readAccepted: bool, requestedOrForced: bool, complete: bool, begin: int, rangeBegin: int, rangeEnd: int): bool =
+  (begin < rangeBegin or begin >= rangeEnd) implies not(readClearsHold(kind, readAccepted, requestedOrForced, complete, false, begin, rangeBegin, rangeEnd))
+pure def lawTruncatedReadKeepsHold(kind: CalendarWriteKind, readAccepted: bool, requestedOrForced: bool, listsEvent: bool, begin: int, rangeBegin: int, rangeEnd: int): bool =
+  not(readClearsHold(kind, readAccepted, requestedOrForced, false, listsEvent, begin, rangeBegin, rangeEnd))
+pure def lawEditAbsenceCannotResolve(readAccepted: bool, requestedOrForced: bool, complete: bool, begin: int, rangeBegin: int, rangeEnd: int): bool =
+  not(readClearsHold(EditWrite, readAccepted, requestedOrForced, complete, false, begin, rangeBegin, rangeEnd))
 pure val beginValues = Set(0, 1, 2, 3)
 pure val rangeBeginValues = Set(0, 1)
 pure val rangeEndValues = Set(2, 3)
@@ -148,7 +116,8 @@ pure val rangeEndValues = Set(2, 3)
 
 ## Story: Change one occurrence without changing its siblings
 
-> As the owner, I want to change one occurrence without changing its siblings.
+> As the owner, I want an edit to one occurrence of a repeating event to
+> leave the other occurrences as they were.
 
 ### An occurrence becomes a standalone override or an exclusion under its series
 
@@ -305,8 +274,6 @@ pure def lawClockChangeCannotDispatch(phase: DeletePhase, ownerCurrent: bool, so
   deletionSettlement(phase, ClockChanged, ownerCurrent, sourceCurrent, rowMatch) == KeepEntry
 pure def lawExpiredQueueCannotUndo(ownerVisible: bool): bool =
   not(deletionUndo(DeleteQueued, WindowExpired, ownerVisible))
-pure def lawPausedCanUndo(windowView: DeadlineView, ownerVisible: bool): bool =
-  deletionUndo(DeletePaused, windowView, ownerVisible) == ownerVisible
 pure def lawPendingGuardStopsContentChange(phase: DeletePhase, rowMatch: RowMatch): bool =
   unresolvedDeletion(phase) and not(sameStoredRow(rowMatch)) implies not(allowsPendingWrite(phase, true, true, rowMatch))
 pure def lawDistinctOccurrencesMayQueue(phase: DeletePhase, targetId: int, targetParent: int, newId: int): bool =
@@ -325,9 +292,8 @@ pure val retainedCountValues = Set(0, 127, 499, 500)
 
 The staged row and event survive a failed document write. A fully
 committed delete changes the Calendar row and receipt together.
-The model covers one target and compares the captured source and
-row before each commit. Its abort input can represent document
-compare-and-exchange failure. The actual provider mutation is
+The captured source and row are compared before each commit, and a
+failed compare and exchange changes nothing. The provider mutation is
 outside this document transaction.
 
 ```quint

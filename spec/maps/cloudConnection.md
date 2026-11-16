@@ -1,23 +1,21 @@
 # Cloud Maps connection ownership
 
-A consumer composes the maps client's Cloud provider, Cloud session and
-runtime through its own Cloud Maps and Maps adapter modules. The Cloud
-side is [Cloud maps](../cloud/maps.md). [Maps planning](./navigation.md)
+The maps client reaches its provider through the owner's Cloud account.
+The Cloud side is [Cloud maps](../cloud/maps.md). [Maps planning](./navigation.md)
 owns routes, live location, and guidance.
 [Request pauses](./requests.md) and [attribution](./attribution.md)
 cover what the connected provider returns.
 
 ## Story: Keep Cloud Maps on the account that requested it
 
-> As the owner, I want to keep Cloud Maps on the account that requested it.
+> As the owner, I want map data I see to come from the account I am signed
+> in as, and never to arrive for an account I have left.
 
 ### The newest qualifying coverage read can install the Cloud provider
 
-The launch reader remembers whether coverage is due when the resident
-becomes ready. First opening Maps and explicit search can ask the same
-guarded reader. An attempted, error-free connection, including a pending
-read, keeps its current generation on a guarded read. A failed read can
-retry. The explicit map-plane retry can call the initializer directly.
+Opening Maps or searching reads the provider's coverage once per
+generation; a pending or successful read is kept, a failed one can be
+retried, and an explicit retry starts a new read.
 
 Initializing increments the generation, clears coverage, and releases
 the previous Cloud install if this Cloud instance published one. A read
@@ -30,19 +28,9 @@ The account comprises both the session and credential identities.
 Changing either invalidates coverage. Replacing the client object for
 the same binding keeps any current read and installed provider.
 
-Discovered in the pinned source: the request closure checks its
-generation after the Cloud reply, then returns through two asynchronous
-callers. The initializer reads the response and installs it without
-another generation check. A generation that changes after the request
-check still requires a publication check in the replacement. The model
-checks at publication so stale data cannot cross that asynchronous gap.
-
-The machine receives guarded read requests after the host's readiness
-check. It tracks only the pending generation eligible to publish.
-Older requests may finish and are fenced when they report. The product
-selects one provider at composition. The Cloud implementation tracks
-whether its own prior install occurred, and clearing that install uses
-the shared provider slot. The model assumes that composition ownership.
+Coverage is published only after a generation check at publication
+itself, so no stale reply crosses an asynchronous gap. Older requests may
+finish and are fenced when they report.
 
 ```quint
 type MapsBinding = { session: int, credential: int, client: int }
@@ -90,23 +78,16 @@ pure val replyValues = Set(ValidCoverage, InvalidCoverage, CoverageUnavailable, 
 
 ### Maps requests and tiles retain the captured account through completion
 
-A provider carries a captured session and credential, and the stable
-account adapter resolves the currently bound client for each
-request. Refuse a missing or different binding at dispatch and again
+A provider carries a captured session and credential and resolves the
+currently bound client for each request. Refuse a missing or different binding at dispatch and again
 before returning a successful result. For search, detail, routes, and
 viewport copyright data, also check cancellation and the captured Cloud
 generation before and after the asynchronous request.
 
-A raster tile carries the binding captured for its coverage plane.
-Its coordinates and generation must pass admission when the call begins.
-The tile callback uses the active client for that same binding,
-checks the binding again after the reply, then checks cancellation.
-The pinned tile wrapper does not check generation again on return. A
-same-account coverage refresh can therefore leave an older tile promise
-eligible to resolve to its original caller. Selection of the current
-plane belongs to the renderer. Coverage, tile coordinate validation,
-provider response decoding, HTTP failures, and cancellation are port
-observations for this rule.
+A raster tile carries the binding and generation captured for its
+coverage plane, which must pass admission when the call begins. On
+return it checks the binding, the coverage generation and cancellation
+again, so a coverage refresh retires every older tile request.
 
 ```quint
 type CloudReadKind = ProviderOperation | RasterTileOperation
@@ -114,12 +95,11 @@ pure def cloudReadMayStart(kind: CloudReadKind, activeBinding: MapsBinding, owne
   sameMapsAccount(activeBinding,owner) and currentGeneration == capturedGeneration and admitted and
   (kind == RasterTileOperation or not(aborted))
 pure def cloudReadMayReturn(kind: CloudReadKind, activeBinding: MapsBinding, owner: MapsBinding, currentGeneration: int, capturedGeneration: int, loaded: bool, aborted: bool): bool =
-  sameMapsAccount(activeBinding,owner) and loaded and not(aborted) and
-  (kind == RasterTileOperation or currentGeneration == capturedGeneration)
+  sameMapsAccount(activeBinding,owner) and loaded and not(aborted) and currentGeneration == capturedGeneration
 pure def lawChangedAccountCannotReceiveMapData(kind: CloudReadKind, activeBinding: MapsBinding, owner: MapsBinding, currentGeneration: int, capturedGeneration: int, loaded: bool, aborted: bool): bool =
   not(sameMapsAccount(activeBinding,owner)) implies not(cloudReadMayReturn(kind,activeBinding,owner,currentGeneration,capturedGeneration,loaded,aborted))
-pure def lawRetiredProviderCannotReturn(activeBinding: MapsBinding, owner: MapsBinding, currentGeneration: int, capturedGeneration: int, loaded: bool, aborted: bool): bool =
-  currentGeneration != capturedGeneration implies not(cloudReadMayReturn(ProviderOperation,activeBinding,owner,currentGeneration,capturedGeneration,loaded,aborted))
+pure def lawRetiredProviderCannotReturn(kind: CloudReadKind, activeBinding: MapsBinding, owner: MapsBinding, currentGeneration: int, capturedGeneration: int, loaded: bool, aborted: bool): bool =
+  currentGeneration != capturedGeneration implies not(cloudReadMayReturn(kind,activeBinding,owner,currentGeneration,capturedGeneration,loaded,aborted))
 pure def lawCancelledReadCannotReturn(kind: CloudReadKind, activeBinding: MapsBinding, owner: MapsBinding, currentGeneration: int, capturedGeneration: int, loaded: bool): bool =
   not(cloudReadMayReturn(kind,activeBinding,owner,currentGeneration,capturedGeneration,loaded,true))
 pure val activeBindingValues = bindingValues

@@ -1,8 +1,7 @@
 # Native task evidence
 
-The native host keeps an append-only store of task evidence
-(`packages/agent/native-host/task-evidence-store.mjs`): what a task observed
-and did, recorded per owner and storage epoch. Evidence records neither
+The native host keeps an append-only store of task evidence: what a task
+observed and did, recorded per owner and storage epoch. Evidence records neither
 authorize nor transition the task journal, which [tasks](../tasks/) own.
 
 ## Story: Keep a task's evidence exactly once, in order, for its owner

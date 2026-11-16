@@ -4,9 +4,8 @@ A command-line client starts a login session, opens the browser for the
 person to approve it, and polls the cloud until the session yields an API
 key. The approval mints the key and stores it encrypted; the first poller
 that claims it receives the plaintext once. A reaper removes expired
-sessions and revokes any key nobody collected. Ported from the develop
-model `CliAuthSession`; device-code login for clients without a browser
-stays here and is the same session.
+sessions and revokes any key nobody collected. Device-code login for
+clients without a browser is the same session.
 
 ## Story: Log a command-line client in through the browser
 

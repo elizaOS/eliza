@@ -1,12 +1,23 @@
 # Trusted delivery audience and turn leases
 
-The source is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`, `packages/core/src/security/trusted-delivery-audience.ts`. The `RuntimeCaller` sender is supplied by the owning trusted runtime boundary and is excluded from decoded event payloads. HTTP and model inputs use `ExternalCaller`; they cannot attest audiences, acquire leases or renew authority. A private symbol identifies a WeakMap record bound to the owning runtime. Ordinary in-process message spreads retain it, serialized messages cannot. The record owns the attestation sequence, exact audience and renewable turn lease. Reference-counted internal actors are modeled separately below.
+The source is `security/trusted-delivery-audience.ts`. The `RuntimeCaller` sender is supplied by the owning trusted runtime boundary and is excluded from decoded event payloads. HTTP and model inputs use `ExternalCaller`; they cannot attest audiences, acquire leases or renew authority. A private symbol identifies a WeakMap record bound to the owning runtime. Ordinary in-process message spreads retain it, serialized messages cannot. The record owns the attestation sequence, exact audience and renewable turn lease. Reference-counted internal actors are [internal actors](./internalActors.md); the shared bindings that embed this lease are the [audience registry](./audienceRegistry.md).
 
 ## Story: Renew audience evidence only for the same active turn
 
-As an owner, I disclose private data only into a verified destination with the current actor, agent, owner and participant census. An expired attestation can renew during its active uncancelled turn after fresh authority checks. Renewal preserves exact audience identity and rejects replaced leases or changed membership.
+> As an owner, I want private data disclosed only into a destination
+> verified for the current actor, agent, owner and participants, so that a
+> changed audience never receives what it was not cleared for.
+
+An expired attestation can renew during its active uncancelled turn after fresh authority checks. Renewal preserves exact audience identity and rejects replaced leases or changed membership.
 
 ### Attestation binds an exact runtime and audience
+
+Only the trusted runtime caller attests an audience, begins or ends a turn
+lease, cancels or moves the clock. An attestation names one runtime and
+the exact audience, issued now with a positive lifetime; a turn lease can
+begin only for that runtime while the attestation is unexpired and not
+issued more than five seconds in the future. Ending a turn affects only
+its own lease.
 
 ```quint
 type AudienceCaller = RuntimeCaller | ExternalCaller
@@ -37,6 +48,13 @@ pure val timeValues = Set(0, 1001, 300001)
 ```
 
 ### Renewal rechecks lease identity and audience after the authority await
+
+Renewal begins only for the active, uncancelled lease of an expired
+attestation. When the authority check returns, the attestation renews only
+if the check verified it, the same lease is still active and uncancelled,
+no other attestation happened meanwhile, and the audience is exactly the
+same; otherwise renewal ends without effect. Disclosure is allowed only
+for fresh evidence of a private audience that still matches.
 
 ```quint
 pure def canBeginRenewal(s: AudienceLease, by: AudienceCaller, runtimeId: str): bool = by == RuntimeCaller and s.attached and s.audience.runtime == runtimeId and s.leaseActive and not(s.cancelled) and not(s.renewing) and s.now >= s.expiresAt
@@ -69,6 +87,9 @@ pure def sometimesSensitiveUseRecorded(s: AudienceLease): bool = s.sensitiveUsed
 ```
 
 ### External event payloads cannot mint an attestation
+
+An external caller, such as an HTTP request or model input, can neither
+attest an audience nor renew one.
 
 ```quint
 pure def lawExternalCannotAttest(s: AudienceLease, audience: Audience, lifetime: int): bool = not(canAttest(s, ExternalCaller, audience, lifetime))

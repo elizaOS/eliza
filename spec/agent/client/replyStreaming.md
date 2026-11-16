@@ -1,6 +1,11 @@
 # Conversation reply streaming
 
-A consumer's renderer uses the native gateway's `/conversations/{uuid}/messages/stream/{start,pull,cancel}` endpoints through its [runtime client](./runtimeClient.md). The renderer can speak a preview while the agent is composing. The final displayed reply comes from the complete terminal message. The [conversation owner contract](../conversation/ownership.md) supplies account and reset evidence. The client turn controller owns Stop, and the speech owner determines what is actually heard.
+The renderer streams a reply through the native gateway's start, pull and
+cancel endpoints, over the [runtime client](./runtimeClient.md), and may
+speak a preview while the agent composes; the displayed reply is the
+complete terminal message. [Conversation ownership](../conversation/ownership.md)
+supplies account and reset evidence, the client turn controller owns Stop,
+and the speech owner decides what is heard.
 
 ## Story: Open a reply stream only once per admitted turn
 
@@ -11,12 +16,13 @@ A consumer's renderer uses the native gateway's `/conversations/{uuid}/messages/
 
 The renderer attempts a stream only when there is a preview callback, there is no task context, and the session redactor has no remembered secrets after redacting the input. The start uses the same submitted body as the buffered route would. The gateway recognizes the exact UUID path and POST. Start shares the buffered message's funding, current owner, conversation and inference checks. In the gateway, the constructor merges optional stream settings over defaults, refuses unknown keys or values that are not positive safe integers, and requires coalescing < hold < idle. A consumer release that passes no stream overrides allows two held streams per owner and current gateway epoch. A successfully settled stream still occupies its slot until discard. The host reserves the slot before calling the agent, and an opening failure releases it. Opening requires the agent's successful event-stream media type and a fresh owner/epoch check. Non-success responses before opening preserve the structured status/body when the owner is still current. A successful response with the wrong media type fails opening, even though the upstream request was sent.
 
-The renderer calls its buffered path on a completed start with no nonempty string stream ID, or a numeric 404, 405 or 501, a 503 whose code is undefined, or 429 with `MESSAGE_STREAM_LIMIT`. An abort observed on a fallback branch prevents the buffered call. The real gateway's own compatibility refusals and the pinned agent's plain early validation refusals give the supported fallback cases. A replacement producer must preserve their pre-effect meaning. A start error that does not qualify for fallback propagates its original failure. Once a stream ID has been accepted, pull failure cannot use buffered fallback. Source: `gateway.mjs`.
+The renderer calls its buffered path on a completed start with no nonempty string stream ID, or a numeric 404, 405 or 501, a 503 whose code is undefined, or 429 with `MESSAGE_STREAM_LIMIT`. An abort observed on a fallback branch prevents the buffered call. The real gateway's own compatibility refusals and the agent's plain early validation refusals give the supported fallback cases. A replacement producer must preserve their pre-effect meaning. A start error that does not qualify for fallback propagates its original failure. Once a stream ID has been accepted, pull failure cannot use buffered fallback.
 
 ```quint
+import numbers as Num from "../../core/numbers"
 type StreamLimits = { knownKeys: bool, heldMax: int, bufferedMax: int, idleMs: int, holdMs: int, coalesceMs: int }
 pure val releaseLimits: StreamLimits = { knownKeys: true, heldMax: 2, bufferedMax: 262144, idleMs: 30000, holdMs: 2000, coalesceMs: 150 }
-pure def positiveLimit(value: int): bool = value > 0 and value <= 9007199254740991
+pure def positiveLimit(value: int): bool = value > 0 and value <= Num::maxSafeInteger
 pure def streamConfiguration(limits: StreamLimits): bool =
   limits.knownKeys and positiveLimit(limits.heldMax) and positiveLimit(limits.bufferedMax) and positiveLimit(limits.idleMs) and positiveLimit(limits.holdMs) and positiveLimit(limits.coalesceMs) and limits.coalesceMs < limits.holdMs and limits.holdMs < limits.idleMs
 pure def requestsStream(hasPreviewCallback: bool, hasTask: bool, hasSecrets: bool): bool =
@@ -50,7 +56,7 @@ pure val currentHeldValues = Set(0, 1, 2, 3)
 
 Each decoded token contributes a string append, or, if the token has no string append, a string full-text replacement. Each arrival, including a replacement or an empty append, gets its next sequence number. The host retains replacement events as individual entries and counts their full length in UTF-16 code units. The outstanding count includes only queued events. A cursor at or below the latest sequence and at or above the acknowledged cursor can acknowledge and remove queued events through that cursor. An earlier cursor returns `409 MESSAGE_STREAM_CURSOR_EXPIRED`, a future or invalid cursor returns 400, and a missing stream or different conversation returns `404 MESSAGE_STREAM_NOT_FOUND`. Pull accepts exactly a string `streamId` and a nonnegative safe integer `cursor`. Cancel accepts exactly a string `streamId`. The wire decoder marks unsafe or noninteger input before converting a cursor to the model's integer coordinate.
 
-At exactly 262,144 unacknowledged units the buffer can still be used. The next unit beyond the configured limit aborts the upstream reader, clears preview events and settles `503 MESSAGE_STREAM_BUFFER_FULL`. The failed stream keeps this typed outcome until discarded. It does not deliver a clipped final or convert the error into a buffered resend, even when the renderer received earlier previews. The limit is a transport backlog limit, independent of total preview output or final message length. The model counts UTF-16 widths supplied by the decoder and stores no text body. Source: `gateway.mjs`.
+At exactly 262,144 unacknowledged units the buffer can still be used. The next unit beyond the configured limit aborts the upstream reader, clears preview events and settles `503 MESSAGE_STREAM_BUFFER_FULL`. The failed stream keeps this typed outcome until discarded. It does not deliver a clipped final or convert the error into a buffered resend, even when the renderer received earlier previews. The limit is a transport backlog limit, independent of total preview output or final message length. The model counts UTF-16 widths supplied by the decoder and stores no text body.
 
 ```quint
 type PreviewEvent = { seq: int, units: int }
@@ -61,7 +67,7 @@ pure def wouldOverflow(heldUnits: int, addedUnits: int, ceiling: int): bool =
   heldUnits + addedUnits > ceiling
 type PullRequest = { exactKeys: bool, streamIdString: bool, cursorSafe: bool, exactConversation: bool, streamExists: bool, cursor: int, acknowledged: int, latest: int }
 pure def pullAdmission(pull: PullRequest): str =
-  if (not(pull.exactKeys and pull.streamIdString and pull.cursorSafe) or pull.cursor < 0 or pull.cursor > 9007199254740991) "400-invalid"
+  if (not(pull.exactKeys and pull.streamIdString and pull.cursorSafe) or pull.cursor < 0 or pull.cursor > Num::maxSafeInteger) "400-invalid"
   else if (not(pull.streamExists and pull.exactConversation)) "404-missing"
   else if (pull.cursor > pull.latest) "400-invalid"
   else if (pull.cursor < pull.acknowledged) "409-cursor"
@@ -83,7 +89,7 @@ pure val cursorValues = Set(-1, 0, 1, 2, 3)
 
 Each stream allows one waiting pull. An admitted newer pull advances the pull identity and wakes the prior waiter. The older request may then answer; it does not keep holding the slot. With no settled outcome, a current latest pull waits at most 2,000 ms. Queued preview chunks can release the hold on a phrase-ending punctuation mark, at 120 queued units, or 150 ms after the oldest queued arrival. Aborting its request ends the wait. After the wait it checks the stream still exists, then rechecks the captured owner and reset epoch immediately before returning preview or terminal data. Failed authority drops the stream. Cancellation of an exact stream discards only that stream and neither publishes text nor authorizes another conversation. A closed gateway also discards. A live or settled stream without a pull expires after 30,000 ms from the last touch, which can be opening or a pull. These predicates use current clock and authority facts, not Android bridge timers.
 
-The host strips preview timestamps from the pull response. A successful done frame must have string `fullText`, passed intact as the final message's `text`. The terminal projection uses the buffered reply's allowed message metadata, omits reasoning/usage, and overlays only current authenticated task-choice data. It refuses an ephemeral assistant reply and a changed task presentation. An agent error frame or a stream ending without a valid terminal frame fails explicitly. The retained preview list never manufactures that final text or substitutes for a missing final frame. Source: `gateway.mjs`.
+The host strips preview timestamps from the pull response. A successful done frame must have string `fullText`, passed intact as the final message's `text`. The terminal projection uses the buffered reply's allowed message metadata, omits reasoning/usage, and overlays only current authenticated task-choice data. It refuses an ephemeral assistant reply and a changed task presentation. An agent error frame or a stream ending without a valid terminal frame fails explicitly. The retained preview list never manufactures that final text or substitutes for a missing final frame.
 
 ```quint
 type PullWait = { settled: bool, stillHeld: bool, latestPull: bool, requestAborted: bool, hasEvents: bool, phraseEnd: bool, units: int, oldestAt: int, deadline: int, now: int }
@@ -153,7 +159,7 @@ pure val weight_settleReply = 5
 
 ### The renderer can retry a lost pull, and final success requires its own message
 
-For one accepted stream ID, the renderer begins at cursor zero. An unanswered pull can retry twice, after 250 ms, using the same stream ID and cursor. An answered status, abort, or exhausted retry budget fails the turn. The response needs an object, event array, nondecreasing safe integer cursor and boolean `done`. The pinned client checks event shape and receives events in gateway order, without independently validating each event sequence number. It prefers a string full snapshot over a string append when both occur in a supplied event. An append concatenates and ORs the provisional flag. A snapshot replaces the whole preview and sets its own provisional flag, so a confirmed snapshot can clear a prior hold. The callback sees a changed preview only when it is unheld. Its exception does not fail the turn.
+For one accepted stream ID, the renderer begins at cursor zero. An unanswered pull can retry twice, after 250 ms, using the same stream ID and cursor. An answered status, abort, or exhausted retry budget fails the turn. The response needs an object, event array, nondecreasing safe integer cursor and boolean `done`. The client checks event shape and receives events in gateway order, without independently validating each event sequence number. It prefers a string full snapshot over a string append when both occur in a supplied event. An append concatenates and ORs the provisional flag. A snapshot replaces the whole preview and sets its own provisional flag, so a confirmed snapshot can clear a prior hold. The callback sees a changed preview only when it is unheld. Its exception does not fail the turn.
 
 A terminal pull needs an object message with string text and returns that message unchanged. A started failure or Stop invokes the preview failure callback before rejection. Cleanup requests cancel at most once, including after successful completion, and ignores cancel transport errors. The complete final payload stays distinct from this list of code units and the callback output.
 

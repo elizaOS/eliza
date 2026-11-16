@@ -1,10 +1,9 @@
 # Connector accounts on the agent
 
-Connector plugins keep their OAuth tokens through the agent's credential store,
-`packages/agent/src/services/connector-credential-store.ts`, under a vault
-reference that connector account storage points to, and the connector health
-monitor in `packages/agent/src/api/connector-health.ts` reports their status.
-The [core connector accounts](../core/connectorAccounts.md) own the account
+Connector plugins keep their OAuth tokens in the agent's credential store,
+under a vault reference that connector account storage points to, and the
+connector health monitor reports their status.
+The [core connector accounts](../core/connectorStorage.md) own the account
 lifecycle; this spec owns the agent's two promises around it: a connection is
 reported successful only once its credential is durable, and health reflects
 the runtime that is running now.
