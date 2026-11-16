@@ -247,7 +247,7 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     ),
     ACTUAL_GOOGLE: between(
       plugin,
-      " private void signInWithGoogle(",
+      " private String gmailClientId(",
       " /** Observe only the already received",
     ),
     ACTUAL_SIGN_OUT: between(

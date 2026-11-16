@@ -153,7 +153,8 @@ public class CloudSignInChainTest {
   if(readmitFails)throw new IllegalStateException("controlled host failure");
  }
  static final String RETIRING="cloud-signin:v1:retire:production";
- CloudSignInConfig config(){return TestRegistration.PRODUCT;}
+ CloudSignInConfig registration=TestRegistration.PRODUCT;String clientReply="ready";
+ CloudSignInConfig config(){return registration;}
  <T> T withCredentialRead(java.util.concurrent.Callable<T> read)throws Exception{T value;synchronized(slots){value=read.call();}Runnable interleave=afterCredentialRead;afterCredentialRead=null;if(interleave!=null)interleave.run();return value;}
  CloudCredentialSlots credentials(Runnable guard){
   return new CloudCredentialSlots(){
@@ -207,6 +208,15 @@ public class CloudSignInChainTest {
 
  Response post(Attempt current,String path,JSONObject body,String bearer)throws Exception{
   return post(current,current.environment,path,body,bearer);
+ }
+ Response get(String url,Attempt current)throws Exception{
+  requests++;check(url.equals(current.environment.api()+"/api/v1/app-auth/mobile/google")&&current==attempt,"the Gmail client read is Cloud's Google route, owned by the attempt so ending it disconnects the read");
+  return switch(clientReply){
+   case "ready" -> new Response(200,new JSONObject().put("configured",true).put("serverClientId","123-web.apps.googleusercontent.com"));
+   case "unconfigured" -> new Response(503,new JSONObject().put("configured",false).put("code","google_not_configured"));
+   case "malformed" -> new Response(200,new JSONObject().put("configured",true).put("serverClientId","web-client"));
+   default -> throw new SignInFailure("offline");
+  };
  }
  Response post(Attempt current,CloudSignInEnvironment environment,String path,JSONObject body,String bearer)throws Exception{
   requests++;
@@ -1341,6 +1351,16 @@ public class CloudSignInChainTest {
   PluginCall verified=new PluginCall();verified.input.put("attemptId",mfa.id);verified.input.put("code","123456");host.verify(verified,true);
   check("authenticated".equals(verified.result.getString("status"))&&verified.result.getJSONObject("google").getBoolean("connected")&&mfa.gmailCode==null,"after the second factor Gmail connects with the new key");
   check(events.indexOf("ack")<events.indexOf("connect-gmail")&&events.contains("logout"),"Gmail connects only once Cloud confirmed the key");
+
+  CloudSignInChainTest unscoped=googleAttempt("valid",null,new PluginCall());
+  check(unscoped.gmailClientId(unscoped.attempt)==null&&unscoped.requests==0&&unscoped.attempt.gmail==null,"a host that names no Google scope reads nothing before the picker");
+  CloudSignInConfig scopedRegistration=TestRegistration.base().environment(TestRegistration.PRODUCTION).googleScope("email").googleScope(GMAIL).build();
+  for(String reply:List.of("ready","unconfigured","malformed","offline")){
+   CloudSignInChainTest scoped=googleAttempt("valid",null,new PluginCall());scoped.registration=scopedRegistration;scoped.clientReply=reply;
+   String clientId=scoped.gmailClientId(scoped.attempt);
+   String reason=scoped.attempt.gmail==null?null:scoped.attempt.gmail.getString("reason");
+   check(scoped.requests==1&&(reply.equals("ready")?"123-web.apps.googleusercontent.com".equals(clientId)&&reason==null:clientId==null&&(reply.equals("unconfigured")?"google_not_configured":"google_unavailable").equals(reason)),"Cloud's Google client is read once before the picker; without a usable one the sign-in goes on and reports why Gmail was not asked: "+reply);
+  }
  }
  static CloudSignInChainTest signedIn(){
   slots.clear();events.clear();notifications.clear();Cloud.reset();revoked.clear();CloudKeyRevocation.unanswered=false;CloudKeyRevocation.signOuts.clear();
