@@ -1,6 +1,5 @@
 // The traces stage (SPEC.md, "Conformance"): each package's drivers, `driver:` programs and recorded traces, run
 // against its specs with the events the simulator found. conformance.ts does the comparing for all three.
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { profile, type TestProfile } from "./testing/profile.ts";
@@ -12,7 +11,7 @@ import { check, compareObservation, ConformanceError, departure, replay, transit
 import type { Model } from "./gen.ts";
 import { heading, type Spec } from "./parse.ts";
 import type { Step } from "./simulate.ts";
-import { exec } from "./run.ts";
+import { exec, startGroup } from "./run.ts";
 import { filesUnder, indent, type Reported } from "./util.ts";
 
 export type Simulated = Found<any> & { traces: Sent<any>[][] };
@@ -64,7 +63,7 @@ const ANSWER_WITHIN = 10_000;
 
 /** A real program, one JSON answer for each reset/event request. */
 function driver(root: string, command: string) {
-  const child = spawn(command, { cwd: root, shell: true, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
+  const { child, stop } = startGroup(command, root);
   let stderr = "";
   let launchError: Error | undefined;
   child.on("error", (error) => { launchError = error; });
@@ -72,7 +71,6 @@ function driver(root: string, command: string) {
   child.stdin.on("error", () => {});
   const lines = readline.createInterface({ input: child.stdout });
   const answers = lines[Symbol.asyncIterator]();
-  const closed = new Promise<void>((resolve) => child.on("close", () => resolve()));
   const ask = async (request: Line): Promise<Pick<Line, "state" | "out">> => {
     if (launchError) throw launchError;
     child.stdin.write(`${JSON.stringify(request)}\n`);
@@ -87,10 +85,7 @@ function driver(root: string, command: string) {
       return fail("the driver must answer with {state: ..., out?: ...}");
     return value;
   };
-  const stop = (signal: NodeJS.Signals) => {
-    try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal); else child.kill(signal); } catch { /* already exited */ }
-  };
-  return { ask, end: async () => { lines.close(); stop("SIGTERM"); const timer = setTimeout(() => stop("SIGKILL"), 1000); await closed; clearTimeout(timer); } };
+  return { ask, end: async () => { lines.close(); await stop(); } };
 }
 
 async function drive(root: string, machine: Machine, command: string): Promise<string | undefined> {

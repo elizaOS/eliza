@@ -2,13 +2,13 @@ name: ci
 
 # Every run is `pnpm verify`, the tools' own self-test included; Turborepo and
 # spec skip what the change does not reach, from the cache of the last run.
-# The fixed normal profile is the same locally and in CI. Standalone examples
-# are checked manually.
+# The fixed normal profile is the same locally and in CI. The self-test also
+# installs and checks each standalone example.
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [vibestack]
   push:
-    branches: [develop, main]
+    branches: [vibestack]
 
 concurrency:
   group: ci-${{ github.ref }}-${{ github.event.pull_request.number || github.sha }}
@@ -23,10 +23,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'push' && 'turbo-cache-publish' || 'turbo-cache-read' }}
     env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_CACHE: ${{ github.event_name == 'push' && 'local:rw,remote:rw' || 'local:rw,remote:r' }}
+      TURBO_CACHE: local:rw
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup

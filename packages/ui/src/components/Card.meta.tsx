@@ -15,6 +15,4 @@ export const meta: ComponentMeta<CardProps> = {
       </>
     ),
   },
-  // `asChild` needs an element to become, which no type can supply.
-  examples: { AsChild: { asChild: true, children: <a href="#order-1042"><CardTitle>Order 1042</CardTitle></a> } },
 };

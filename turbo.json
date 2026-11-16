@@ -21,14 +21,6 @@
         "generated/**"
       ]
     },
-    "@repo/ui#gen": {
-      "dependsOn": [
-        "//#gen"
-      ],
-      "outputs": [
-        "generated/**"
-      ]
-    },
     "build": {
       "dependsOn": [
         "gen",
@@ -167,8 +159,7 @@
       ],
       "inputs": [
         "vibestack/**",
-        "!vibestack/examples/{assistant,dashboard,fullstack}/**",
-        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
         "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
         "packages/**",
         ".claude/skills/**",
@@ -187,7 +178,8 @@
       "dependsOn": [
         "//#build",
         "//#typecheck",
-        "//#test"
+        "//#test",
+        "vibestack-studio#test"
       ],
       "cache": false
     },
@@ -244,9 +236,6 @@
       ],
       "outputs": []
     },
-    "//#examples": {
-      "cache": false
-    },
     "dev": {
       "cache": false,
       "persistent": true
@@ -275,6 +264,14 @@
       "outputs": [
         "generated/**",
         "design.md"
+      ]
+    },
+    "@repo/ui#gen": {
+      "dependsOn": [
+        "//#gen"
+      ],
+      "outputs": [
+        "generated/**"
       ]
     }
   },

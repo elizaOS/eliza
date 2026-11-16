@@ -46,8 +46,6 @@ export interface Found {
   meta?: Meta;
   manual?: Manual;
   model?: Model;
-  /** Why its `@model` tag gave no model: the spec it names has no generated state to show. */
-  unlinked?: string;
   design: string[];
   /** The props it only inherits: declared by a library or the DOM, not in the project's source. */
   inherited: string[];
@@ -64,18 +62,7 @@ export function packageOf(dir: string): { name: string; dir: string } {
 
 /** `spec/billing/index.md` is `billing`, `spec/billing/payments.md` is `billing__payments` (SPEC.md, "Writing a spec"). */
 const moduleOf = (spec: string) => spec.replace(/^(\.\/)?spec\//, "").replace(/\.md$/, "").replace(/\/index$/, "").replaceAll("/", "__");
-/**
- * The generated module of `spec`: in the component's own package, or, for a shared package such as a component
- * library, in the spec's owner (`spec/<name>/` is `apps/<name>` or `packages/<name>`), else the root's (SPEC.md, "One spec tree").
- */
-const modelFile = (abs: string, spec: string) => {
-  const own = packageOf(dirname(abs)).dir, name = `${moduleOf(spec)}.ts`;
-  const root = ancestors(own).find((dir) => existsSync(join(dir, spec)));
-  const owner = /^(?:\.\/)?spec\/([^/]+)\//.exec(spec)?.[1];
-  const candidates = [join(own, "gen", name), ...(root ? [...(owner ? ["apps", "packages"].map((group) => join(root, group, owner, "gen", name)) : []), join(root, "gen", name)] : [])];
-  return candidates.find(existsSync) ?? candidates[0]!;
-};
-const ancestors = (dir: string): string[] => (dirname(dir) === dir ? [dir] : [dir, ...ancestors(dirname(dir))]);
+const modelFile = (abs: string, spec: string) => join(packageOf(dirname(abs)).dir, "gen", `${moduleOf(spec)}.ts`);
 const modelTag = (text: string) => /@model\s+(\S+)/.exec(text)?.[1];
 
 /** The component files the globs name, sorted: never tests, stories, metadata or anything installed. */
@@ -307,8 +294,6 @@ export function analyze(built: ts.Program, abs: string): Found[] {
       meta,
       manual: manual ? readManual(manual) : undefined,
       model,
-      // A module not generated yet is not stateless: its spec's `gen` may simply not have run.
-      ...(gen && tags("model").length && !model ? { unlinked: `@model ${spec} has no state to show: ${moduleOf(spec!)}.ts exports no \`initial\`; name the spec whose model holds what it shows` } : {}),
       design: tags("design"),
       inherited: symbols.filter((p) => !p.declarations?.some(own)).map((p) => p.name),
     }];

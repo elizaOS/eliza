@@ -1,7 +1,7 @@
 # Contributing
 
 Every contributor, person or agent, reads [AGENTS.md](AGENTS.md) in full before any work, and the skill or file its ["Where the rest is"](AGENTS.md#where-the-rest-is) names for the work at hand.
-Starting a project from the template is [the toolchain setup guide](vibestack/README.md#set-up-a-new-project).
+Starting a project from the template is [the toolchain guide, "Set up a new project"](vibestack/README.md#set-up-a-new-project).
 Everything is built on [the stack](AGENTS.md#the-stack): Node 26, pnpm, VibeLang on Effect for the shell, React for every interface.
 
 ## The monorepo
@@ -24,11 +24,10 @@ does not import React, and a UI package holds no business rules. A shared type l
 |---|---|
 | `pnpm dev` | Studio, and every package's `dev` script beside it |
 | `pnpm quick` | the fast local check: types, tests, ESLint and Stylelint, in every package |
-| `pnpm verify` | what CI runs: build, types, tests, browser tests, every `check`, lint, `pnpm analyze` and `pnpm selftest` |
+| `pnpm verify` | what CI runs: build, types, tests, browser tests, every `check`, lint, `pnpm analyze` and `pnpm selftest`, which also installs and checks each example |
 | `pnpm all <task>…` | one or more kinds of task in every package: `pnpm all build typecheck test` |
 | `pnpm test:browser` | the browser tests |
-| `pnpm test:models` | every `check`: the root's, which is its owners' too, Studio's, and the examples' |
-| `pnpm examples` | each example's install and `check` |
+| `pnpm test:models` | every workspace `check`: the root's, which is its owners' too, and Studio's |
 | `pnpm lint` | ESLint and Stylelint (`pnpm lint:js`, `pnpm lint:css` for one) |
 | `pnpm analyze` | Knip (unused files, exports, dependencies), Madge (import cycles) and jscpd (duplicated code) |
 | `pnpm check`, `pnpm gen`, `pnpm build`, `pnpm typecheck`, `pnpm test` | this package's own, here as in every package: at the root, the root project and the tools |
@@ -44,8 +43,7 @@ tasks wait for its `gen` and the root's, and its `check` for all of them, since 
 as `@repo/app`'s are. `pnpm lint:js` on its own needs what `gen` and `typecheck` write (`gen/`, `.vibe/declarations`);
 `pnpm lint` runs them first.
 
-Pull requests go to `develop`, and `develop` to `main`; what CI runs on each is in
-[CI](#ci).
+Pull requests for this rebuild go to `vibestack`. See [CI](#ci) for its checks.
 
 ## Changing the tools
 
@@ -64,6 +62,7 @@ Pull requests go to `develop`, and `develop` to `main`; what CI runs on each is 
 | `vibestack/proof/lib.dfy` | the library proof files call |
 | `vibestack/std/` | specs that ship with the tools, which any spec may import, each with its proof file |
 | `vibestack/conform.ts` | the `traces` stage: drivers, each in a Node of its own, `driver:` programs and recorded traces; saved counterexamples; the driver stub |
+| `vibestack/explore.ts` | the `explore` stage: serves a package's page with its app script, runs Bombadil on it, and replays and removes a saved run |
 | `vibestack/conformance.ts` | the comparing: journeys, malformed-input probes, walks, shrinking and replay; copied into `gen/` for a driver's types |
 | `vibestack/testing/` | what packages import: `project()` (the Vitest configuration), the property-test generator, `effectDriver` |
 | `vibestack/stories/`, `vibestack/design/` | generated stories and their tests; design tokens and their lint rules |
@@ -86,9 +85,10 @@ tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENT
 
 ## Releasing
 
-Set `version` in the root `package.json`, merge to `main`, and push the tag `v<version>` from it.
+Set `version` in the root `package.json`, merge to `vibestack`, and push the tag `vibestack-v<version>` from it.
 `.github/workflows/release.yml` builds, packs with `pnpm pack`, runs `pnpm selftest` and attaches the tarball to a GitHub release of that tag.
 A project installs it as [the toolchain guide, "Using it from another package"](vibestack/README.md#using-it-from-another-package) says.
+
 ## Architecture
 
 The spec owns the rules and state; generated code is its runtime contract.
@@ -116,6 +116,7 @@ See [SPEC.md, "One spec tree"](SPEC.md#one-spec-tree).
 | `vibestack/` | Packaged `spec` command in `dist/` | `pnpm build`; no, included in the package |
 | A person's review | `spec/lock.json` | `pnpm accept`; yes |
 | A journey or walk that disagrees with the application | `test/counterexamples/<name>/` | `traces`; yes, replayed before later walks |
+| An exploration that broke a property | Bombadil's run of the page in `test/__traces__/bombadil/` | `explore` (`vibestack/explore.ts`); no, replayed first and removed once it breaks nothing |
 
 The adapter and driver types read the generated model; `traces` uses events
 found by the simulator; property tests read schemas and contracts. Generated
@@ -155,10 +156,10 @@ with the same version does.
 
 `vibestack/testing/profile.ts` is the one source of the fixed profiles:
 
-| Invocation | Values per property and maximum driver walks | Seed |
-|---|---:|---:|
-| normal local checks and every pull request or push | 1,000 | 1 |
-| `pnpm all check -- --nightly` | 20,000 | 2 |
+| Invocation | Values per property and maximum driver walks | Seed | Seconds exploring each page |
+|---|---:|---:|---:|
+| normal local checks and every pull request or push | 1,000 | 1 | 60 |
+| `pnpm all check -- --nightly` | 20,000 | 2 | 300 |
 
 A driver's `options.walks` can impose a smaller maximum for an expensive
 journey. Quint mixes the selected profile's seed into its model-derived
@@ -167,6 +168,11 @@ reuse an earlier nightly pass. `FUZZ_RUNS` and `FUZZ_SEED` do not configure
 these checks. A failing property prints its fixed-profile replay command;
 a driver's shrunk counterexample is saved and replayed on every later run
 ([SPEC.md, "Conformance"](SPEC.md#conformance)).
+
+Exploring a page is bounded by time, Chrome's start included, not by a
+count, and Bombadil takes no seed: two runs try different actions. What a
+failing exploration found is saved and replayed instead
+([SPEC.md, "Exploring the page"](SPEC.md#exploring-the-page)).
 
 ### Which test, for what
 
@@ -179,6 +185,7 @@ a driver's shrunk counterexample is saved and replayed on every later run
 | Model-based | Real shell against the spec: journeys, malformed input, walks and saved counterexamples | `test/drivers/app.ts` and the recorded `test/traces/app.jsonl`, run by `traces` |
 | Journey/integration | A story through real services, including what a driver cannot see | `@effect/vitest` in `test/app.test.vibe`: reload from storage |
 | Component/browser | Story interactions and accessibility; browser-only behavior such as focus and storage | Component metadata `play`; `test/app.browser.test.tsx` in Chromium |
+| Exploratory/browser | The served page under random clicks, typing, scrolling and reloads: no uncaught error, console error or failed request, and the properties each rule gives the page, in every state reached | `test/bombadil.ts`, or nothing for Bombadil's defaults; `apps/app/test/bombadil.ts`, run by `explore` |
 | Property | What a schema or declared contract promises for generated values | Generated from `src/link.contract.ts` and other `*.schema.*` or `*.contract.*` files |
 
 A generated test asserts its schema or contract, never a recorded result of
@@ -196,7 +203,7 @@ compare screenshots.
 | Proved | Dafny proved the obligation for every state and input | Code outside the spec and `//@` files |
 | Simulated only | No sampled trace broke an obligation accepted with `pnpm accept unproved` | A proof |
 | Model checked within bounds | No violation in the traces and depth checked | Behavior beyond those bounds |
-| Runtime tested | The journeys, properties and conformance walks that ran passed | Untested inputs |
+| Runtime tested | The journeys, properties, conformance walks and explorations that ran passed | Untested inputs |
 | Not verified | Effects, timing or third parties outside test coverage | An assurance about those behaviors |
 
 Asynchronous Effect programs are tested, not proved. Each `proof` line says
@@ -213,23 +220,26 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `develop` or `main` | `pnpm verify --continue`: build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and selftest |
-| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `develop` |
-| A `v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest`, and the tarball attached to a GitHub release |
+| Pull request or push to `vibestack` | `pnpm verify --continue`: build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and selftest |
+| Nightly, once `fuzz.yml` is on the default branch | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `vibestack` |
+| A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest`, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
-run keeps `test/counterexamples/` and `test/__traces__/` as an artifact.
+run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
+exploration is, as an artifact.
 
 Each run restores pnpm's store, every `.spec-cache/`, and Quint's evaluator.
-Turborepo shares task results through the private Cloudflare/R2 cache.
-The task entry point disables Turbo telemetry. Selftest waits for the root and
-Studio test tasks so those integration journeys do not compete with it.
-Pull requests read shared results; only branch pushes receive the publishing
-credential, protected by the `turbo-cache-publish` environment's branch
-policy. Newer commits replace an older run of the same pull request.
-Every pushed commit can finish. Completed tasks are shared through the cache.
+The hosted rebuild workflow uses the runner-local Turborepo cache.
+The task entry point disables Turbo telemetry. The root check waits for
+Studio's test task because its journeys run checks in scratch projects.
+Selftest waits for the root and Studio test tasks so those integration journeys
+do not compete with it.
+Newer commits replace an older run of the same pull request.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
 are never part of a task fingerprint.
 
-Standalone examples run manually with `pnpm examples`, outside CI.
+The standalone examples are the tools' own subjects: `pnpm selftest` installs
+each from its own lock file and runs its `check`, its page explored where it
+has one. An application built on the tools never checks them: its `check`
+reaches only its own packages, and the packed toolchain carries no example.

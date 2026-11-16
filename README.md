@@ -12,6 +12,9 @@ The source baseline is Eliza commit
 starts from elizaOS/eliza-vibestack commit
 `71d7b30f404b91d7ec48741ac288d6c8d911f3e2`.
 
+The vendored Vibestack toolchain is synchronized with upstream commit
+`fd4f726016c0e2b465bc6dc7a02abebc0c2e0fb3`.
+
 ## Setup and verification
 
 Use Node 26, pnpm 10.24.0 and Dafny 4.11.

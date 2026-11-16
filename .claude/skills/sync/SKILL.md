@@ -10,7 +10,7 @@ Read AGENTS.md in full first, once per session.
 ## The loop
 
 1. Run `pnpm check`. Each `✗` line is something to resolve; `-` lines are
-   stages skipped because of a `✗` above.
+   stages skipped because of a `✗` above, or that this platform cannot run.
    Under `review` it prints a changed rule's prose and Quint, a story's text
    and rules, and a contract's `//@` lines; for a **new** rule, read it in the
    spec. The last line, `next:`, names what to do first.
@@ -75,6 +75,15 @@ Give up and report after five rounds on the same failure.
 | `traces` … **the run did not get as far as comparing** … "fill in reset, dispatch and observe" | `check` wrote this driver because `src/` keeps the machine's state. Write `reset`, `dispatch` and `observe` on the application's own entry point (SPEC.md, "Conformance"), and `receive` if the shell decodes untrusted input. |
 | `traces` … **the run did not get as far as comparing** … "the spec has outgrown" | A saved counterexample sends an event the spec no longer has. Rewrite its events to what the spec now calls them, or delete the file if what it caught is gone, and say which in your report. |
 | `traces` … **the run did not get as far as comparing**, otherwise | The driver could not run: it threw, exports no `driver`, did not finish, or is named after no state machine. The lines under it say which; fix that. |
+| `explore` … **the page breaks** … | Bombadil reached a state of the page that breaks the named properties; the actions before it are printed. Fix the page. If the property in `test/bombadil.ts` no longer says what the rules ask, fix it instead and say so. The run is saved in `test/__traces__/bombadil` and replayed first; `pnpm exec bombadil browser inspect test/__traces__/bombadil` shows each state. A bug worth keeping fixed becomes a step of the journey it broke. |
+| `explore` … **still breaks, in the replay** | The saved run still breaks the page. Fix the page or the property, as above; never delete the saved run to pass. |
+| `explore` ✓ … **so it was removed** | Not a failure: the saved run breaks nothing now, or no longer applies to the page as it is, and a fresh exploration followed. |
+| `explore` … **is kept, to be replayed when it can be** | The saved run could not be replayed for the reason printed before it (no address, no Chromium, Bombadil stopped). Resolve that reason as its own row says; the run stays until a replay shows whether the page still breaks. |
+| `explore` … **no start or dev script that serves it** | The package has an `index.html` that nothing serves. Add a `start` or `dev` script, not the studio, that serves it and prints its `http://localhost` address. |
+| `explore` … **printed no http://localhost address** | The script ended, or said nothing within 300 s; its last lines are printed. Make it serve the page and print where. |
+| `explore` … **took no action** | Chrome took the whole budget to start, or the page never settled between actions. Run again on a less busy machine; if it persists, find what keeps the page busy. |
+| `explore` … **found no Chromium**, **could not explore the page**, **the browser stalled**, **bombadil ran for more than** | Bombadil or its browser could not run. For no Chromium, `pnpm exec playwright install chromium`, or set `CHROME`. Otherwise read the printed output. Tell the user; do not work around it. |
+| `-` `explore` … **Bombadil runs on** | Not a failure: Bombadil has no executable for this platform, and CI explores the page. |
 | "another check or accept is running" | Wait for that process and run again. If it no longer exists, delete the lock file the message names. |
 
 ## Rules for what you write
@@ -103,7 +112,8 @@ Tell the user, in this order:
 5. **Tests**: journeys added or extended, each with what it covers that the
    checks cannot (search the tests for a rule's citation before adding one:
    extend the journey that has it), drivers written, counterexamples saved
-   and which side you fixed, and tests you propose to delete.
+   and which side you fixed, properties added to `test/bombadil.ts`, what
+   `explore` found and which side you fixed, and tests you propose to delete.
 6. **Not proved**: obligations that hold in simulation only, if any, each
    with why you could not prove it.
 7. **Could not formalize**: anything in a story you left out, and why.
