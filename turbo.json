@@ -178,6 +178,7 @@
         "//#build",
         "//#typecheck",
         "//#test",
+        "vibestack-studio#test",
         "@repo/app#build",
         "@repo/app#typecheck",
         "@repo/app#test",

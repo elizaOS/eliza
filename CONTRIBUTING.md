@@ -211,8 +211,10 @@ run keeps `test/counterexamples/` and `test/__traces__/` as an artifact.
 
 Each run restores pnpm's store, every `.spec-cache/`, and Quint's evaluator.
 The hosted rebuild workflow uses the runner-local Turborepo cache.
-The task entry point disables Turbo telemetry. Selftest waits for the root and
-Studio test tasks so those integration journeys do not compete with it.
+The task entry point disables Turbo telemetry. The root check waits for
+Studio's test task because its journeys run checks in scratch projects.
+Selftest waits for the root and Studio test tasks so those integration journeys
+do not compete with it.
 Newer commits replace an older run of the same pull request.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
