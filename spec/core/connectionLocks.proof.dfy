@@ -158,3 +158,89 @@ lemma WarningIsDue(s: Reconciliations, ticket: int, firedAt: int)
     }
   }
 }
+
+lemma cleanupKey_ensures(s: Reconciliations, ticket: int)
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysOneTimerPerAcquiredTicket(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysTimersOwnTheirQueueTicket(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysEachHeldTicketOwnsTimer(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysCleanupOwnsSettledTicket(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysQueueMutualExclusion(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysCallIdentitiesUnique(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysAcquisitionCursor(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysCallbackOwnsEveryKey(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysWaitingTicketIsQueued(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysHeldTicketsAreRunning(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysOneCallOwnsEachTicket(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysWarnedTimersWereDue(cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> stepWarningRetainsAllLocks(s, "cleanupKey", cleanupKey(s, ticket)))
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> stepCleanupRetainsOtherTails(s, "cleanupKey", cleanupKey(s, ticket)))
+{
+  if inv(s) && canCleanupKey(s, ticket) {
+    CleanupRetainsCallState(s, ticket);
+    CleanupKeepsOtherTails(s, ticket);
+  }
+}
+
+lemma CleanupFrame(s: Reconciliations, ticket: int)
+  ensures cleanupKey(s, ticket).calls == s.calls
+  ensures cleanupKey(s, ticket).timers == s.timers
+{
+  reveal cleanupKey();
+}
+
+lemma CleanupRetainsCallState(s: Reconciliations, ticket: int)
+  requires inv(s)
+  ensures alwaysOneCallOwnsEachTicket(cleanupKey(s, ticket))
+  ensures alwaysOneTimerPerAcquiredTicket(cleanupKey(s, ticket))
+{
+  var after := cleanupKey(s, ticket);
+  CleanupFrame(s, ticket);
+  CleanupPreservesOwners(s, after);
+  CleanupPreservesTimers(s, after);
+}
+
+lemma CleanupPreservesOwners(before: Reconciliations, after: Reconciliations)
+  requires before.calls == after.calls
+  requires alwaysOneCallOwnsEachTicket(before)
+  ensures alwaysOneCallOwnsEachTicket(after)
+{
+  reveal alwaysOneCallOwnsEachTicket();
+}
+
+lemma CleanupPreservesTimers(before: Reconciliations, after: Reconciliations)
+  requires before.calls == after.calls
+  requires before.timers == after.timers
+  requires alwaysOneTimerPerAcquiredTicket(before)
+  ensures alwaysOneTimerPerAcquiredTicket(after)
+{
+  reveal alwaysOneTimerPerAcquiredTicket();
+}
+
+lemma CleanupKeepsOtherTails(s: Reconciliations, ticket: int)
+  requires canCleanupKey(s, ticket)
+  requires alwaysCleanupOwnsSettledTicket(s)
+  ensures alwaysCleanupOwnsSettledTicket(cleanupKey(s, ticket))
+  ensures stepCleanupRetainsOtherTails(s, "cleanupKey", cleanupKey(s, ticket))
+{
+  var after := cleanupKey(s, ticket);
+  reveal cleanupKey(), core__connectorQueues_cleanup();
+  assert after.queue.entries == s.queue.entries;
+  var pending := (set_x: int) => !(set_x in [ticket]);
+  forall other | other in after.cleanupPending
+    ensures core__connectorQueues_canCleanup(after.queue, other)
+  {
+    ProofLib.FilterMember(pending, s.cleanupPending, other);
+    assert other in s.cleanupPending;
+    assert core__connectorQueues_canCleanup(s.queue, other);
+  }
+  forall tail | tail in s.queue.tails
+    ensures tail in after.queue.tails ||
+      (tail.ticket in s.cleanupPending && tail.ticket !in after.cleanupPending)
+  {
+    if tail.ticket == ticket {
+      ProofLib.FilterMember(pending, s.cleanupPending, ticket);
+    } else {
+      ProofLib.FilterMember((queuedTail: core__connectorQueues_QueueTail) => queuedTail.ticket != ticket, s.queue.tails, tail);
+    }
+  }
+}
