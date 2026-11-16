@@ -29,7 +29,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -138,6 +137,9 @@ public class EmbeddedAgentService extends EmbeddedRuntimeService {
     try { credential = cloudCredential(); }
     catch (Exception unreadable) { throw new RuntimeStartFailure(Cause.CREDENTIAL, "The Eliza Cloud credential could not be read", unreadable); }
     if (credential == null || credential.isEmpty()) throw new RuntimeStartFailure(Cause.CREDENTIAL, "No Eliza Cloud account is signed in", null);
+    Map<String, String> env;
+    try { env = config.agentEnvironment(credential); }
+    catch (IllegalArgumentException unusable) { throw new RuntimeStartFailure(Cause.CREDENTIAL, "The Eliza Cloud credential is not usable", unusable); }
     scope.check();
     File state = new File(root, "state");
     EmbeddedRuntimeLaunch launch;
@@ -145,7 +147,6 @@ public class EmbeddedAgentService extends EmbeddedRuntimeService {
     catch (IOException missing) { throw new RuntimeStartFailure(Cause.PAYLOAD, "The agent runtime is not installed", missing); }
     File configFile = new File(state, "config.json");
     writePrivate(configFile, config.agentConfig().toString().getBytes(StandardCharsets.UTF_8));
-    Map<String, String> env = config.agentEnvironment(credential);
     String dns = dnsServers();
     if (dns != null) env.put("ELIZA_MOBILE_DNS_SERVERS", dns);
     group.launchAgent(scope, endpoint -> launch.agent(bundle.resolve("agent-bundle.js"), configFile.toPath(), endpoint.port, endpoint.token, env),
@@ -164,9 +165,10 @@ public class EmbeddedAgentService extends EmbeddedRuntimeService {
         catch (IOException changed) { stopSelf(); }
       });
       return prepared.bundle;
+    } catch (RuntimeBundleStore.InsufficientSpace full) {
+      throw new RuntimeStartFailure(Cause.STORAGE, "There is not enough free space for the agent", full);
     } catch (IOException failure) {
-      boolean full = String.valueOf(failure.getMessage()).toLowerCase(Locale.ROOT).contains("space");
-      throw new RuntimeStartFailure(full ? Cause.STORAGE : Cause.PAYLOAD, full ? "There is not enough free space for the agent" : "The agent runtime could not be unpacked", failure);
+      throw new RuntimeStartFailure(Cause.PAYLOAD, "The agent runtime could not be unpacked", failure);
     }
   }
 

@@ -12,23 +12,23 @@ import org.json.JSONObject;
 public final class EmbeddedAgentTest {
   static int checks;
   static void check(boolean value) { checks++; if (!value) throw new AssertionError("check " + checks); }
-  static void refused(String host, String character, String policy) {
-    try { EmbeddedAgentConfig.parse(host, character, policy); check(false); } catch (IOException expected) { check(true); }
-  }
-
-  static final String CHARACTER = "{\"name\":\"Helper\",\"system\":\"Answer briefly.\",\"bio\":[\"Kind\"]}";
-  static final String POLICY = "{\"schema\":1,\"actions\":{\"allowed\":{\"REPLY\":\"talk\",\"NONE\":\"stay quiet\"},\"refused\":{\"BROWSE\":\"the page owns the browser\"}},\"plugins\":{\"denied\":[\"@elizaos/plugin-browser\"]}}";
-  static String host(String environment) {
-    return "{\"schema\":1,\"service\":\"example.consumer.HelperService\","
-      + "\"notification\":{\"channel\":\"Helper\",\"title\":\"Helper\",\"text\":\"Helper is ready\"},"
-      + "\"cloud\":{\"baseUrl\":\"https://cloud.example\",\"smallModel\":\"small-1\",\"largeModel\":\"large-1\"},"
-      + "\"routes\":[{\"method\":\"GET\",\"path\":\"/api/status\"},{\"method\":\"POST\",\"path\":\"/api/conversations\"},"
-      + "{\"method\":\"POST\",\"path\":\"/api/conversations/{id}/messages/stream\",\"stream\":true},{\"method\":\"POST\",\"path\":\"/api/turns/{room}/abort\"}],"
-      + "\"environment\":" + environment + "}";
+  static String merged(JSONObject valid, JSONObject changed, String file) {
+    JSONObject value = new JSONObject(valid.getJSONObject(file).toString());
+    JSONObject replaced = changed.optJSONObject(file);
+    if (replaced != null) for (String key : replaced.keySet()) value.put(key, replaced.get(key));
+    return value.toString();
   }
 
   public static void main(String[] args) throws Exception {
-    EmbeddedAgentConfig config = EmbeddedAgentConfig.parse(host("{\"ELIZA_PLUGIN_SET\":\"lean-chat\"}"), CHARACTER, POLICY);
+    JSONObject data = new JSONObject(new String(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(args[0])), StandardCharsets.UTF_8));
+    JSONObject valid = data.getJSONObject("valid");
+    for (Object entry : data.getJSONArray("refused")) {
+      JSONObject changed = (JSONObject) entry;
+      try { EmbeddedAgentConfig.parse(merged(valid, changed, "host"), merged(valid, changed, "character"), merged(valid, changed, "policy")); check(false); }
+      catch (IOException expected) { check(true); }
+    }
+    JSONObject none = new JSONObject();
+    EmbeddedAgentConfig config = EmbeddedAgentConfig.parse(merged(valid, none, "host"), merged(valid, none, "character"), merged(valid, none, "policy"));
     check(config.service.equals("example.consumer.HelperService") && config.notification.text.equals("Helper is ready"));
     check(config.admit("GET", "/api/status") != null && !config.admit("GET", "/api/status").stream);
     check(config.admit("POST", "/api/conversations/3f2a-91/messages/stream").stream);
@@ -47,15 +47,8 @@ public final class EmbeddedAgentTest {
     check(agent.getJSONObject("agents").getJSONArray("list").getJSONObject(0).getBoolean("default"));
     check(agent.getJSONObject("plugins").getJSONArray("deny").getString(0).equals("@elizaos/plugin-browser"));
     check(agent.getJSONObject("database").getJSONObject("pglite").getString("dataDir").equals("memory://"));
-    try { config.agentEnvironment(null); check(false); } catch (IllegalArgumentException signedOut) { check(true); }
-
-    for (String owned : List.of("ELIZAOS_CLOUD_API_KEY", "ELIZA_PROVIDER", "ELIZA_API_TOKEN", "ELIZA_ACTION_ALLOWLIST", "LD_PRELOAD", "PATH"))
-      refused(host("{\"" + owned + "\":\"x\"}"), CHARACTER, POLICY);
-    refused(host("{}").replace("https://cloud.example", "http://cloud.example"), CHARACTER, POLICY);
-    refused(host("{}"), "{\"name\":\"\",\"system\":\"x\"}", POLICY);
-    refused(host("{}"), CHARACTER, POLICY.replace("\"BROWSE\"", "\"REPLY\""));
-    refused(host("{}"), CHARACTER, "{\"schema\":1,\"actions\":{\"allowed\":{}}}");
-    refused(host("{}").replace("/api/status", "/api/../status"), CHARACTER, POLICY);
+    for (String unusable : Arrays.asList(null, "two words", "cl\u00e9"))
+      try { config.agentEnvironment(unusable); check(false); } catch (IllegalArgumentException refused) { check(true); }
 
     try (ServerSocket server = new ServerSocket(0, 4, InetAddress.getByName("127.0.0.1"))) {
       ExecutorService agentSide = Executors.newCachedThreadPool();
@@ -87,9 +80,10 @@ public final class EmbeddedAgentTest {
       check(refusal.getInt("status") == 409 && refusal.getJSONObject("data").getString("error").equals("busy"));
       Socket aborted = new Socket();
       List<String> partial = new CopyOnWriteArrayList<>();
-      agentSide.execute(() -> { try { held.await(); aborted.close(); } catch (Exception ignored) { } });
-      try { LocalRuntimeHttp.stream(aborted, server.getLocalPort(), "agent-token", "POST", "/api/conversations/c1/messages/stream", null, 5000, 65536, partial::add); check(false); }
-      catch (IOException closed) { check(aborted.isClosed()); }
+      CountDownLatch arrived = new CountDownLatch(1);
+      agentSide.execute(() -> { try { held.await(); arrived.await(5, TimeUnit.SECONDS); aborted.close(); } catch (Exception ignored) { } });
+      try { LocalRuntimeHttp.stream(aborted, server.getLocalPort(), "agent-token", "POST", "/api/conversations/c1/messages/stream", null, 5000, 65536, event -> { partial.add(event); arrived.countDown(); }); check(false); }
+      catch (IOException closed) { check(aborted.isClosed() && partial.equals(List.of("{\"text\":\"Hel\"}"))); }
       agentSide.shutdownNow();
     }
     System.out.println("PASS embedded agent: " + checks + " checks");
