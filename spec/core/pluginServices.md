@@ -148,14 +148,18 @@ pure def captureOwnedInstances(classes: List[RetireClass], services: I::ServiceI
   val result = classes.foldl(noCapturedInstances, (capture, c) => captureClassInstance(capture, c.id, services))
   result.instances
 }
+pure def retirementClassesForType(s: PluginServices, epochId: int, serviceType: str): List[RetireClass] =
+  s.ownership.select(o => o.epochId == epochId and o.serviceType == serviceType).listMap(o => {id: o.classId, hasStopHook: o.hasStopHook})
+pure def withdrawRetiringClasses(classes: List[RetireClass], s: I::ServiceInstances): I::ServiceInstances =
+  classes.foldl(s, (acc, c) => I::withdrawClass(c.id, acc))
 pure def withdrawNextType(s: PluginServices, epochId: int): PluginServices = {
   val r = retirement(s, epochId)
   val serviceType = r.plan.nthOr(r.cursor, "")
   val skip = not(s.services.declarations.some(d => d.serviceType == serviceType))
-  val classes = s.ownership.select(o => o.epochId == epochId and o.serviceType == serviceType).listMap(o => {id: o.classId, hasStopHook: o.hasStopHook})
+  val classes = retirementClassesForType(s, epochId, serviceType)
   val captured = classes.listMap(c => I::serviceClass(s.services, c.id))
   val group: RetirementGroup = {serviceType: serviceType, classes: if (skip) List() else classes, starts: if (skip) List() else captured.select(c => c.pending != 0).listMap(c => c.pending), aggregate: if (skip) 0 else I::serviceTypeEntry(s.services, serviceType).latestAggregate, instances: if (skip) List() else captureOwnedInstances(classes, s.services), observedStops: List(), phase: if (skip) skippedGroupPhase else missingGroupPhase, instanceCursor: 0, classCursor: 0, hook: readyHookPhase}
-  val withdrawn = if (skip) s.services else classes.foldl(s.services, (acc, c) => I::withdrawClass(c.id, acc))
+  val withdrawn = if (skip) s.services else withdrawRetiringClasses(classes, s.services)
   val services = if (skip) withdrawn else I::removePublishedInstances(serviceType, group.instances, withdrawn)
   { ...s, services: services, retirements: s.retirements.listMap(x => if (x.epochId == epochId) { ...x, groups: x.groups.append(group), cursor: x.cursor + (if (skip) 1 else 0) } else x) }
 }
