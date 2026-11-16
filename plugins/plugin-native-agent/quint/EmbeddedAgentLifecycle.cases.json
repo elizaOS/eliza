@@ -1,0 +1,59 @@
+{
+  "sources": [
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/embedded/EmbeddedAgentService.java",
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/embedded/EmbeddedAgentPlugin.java",
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/EmbeddedRuntimeGroup.java",
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/EmbeddedRuntimeService.java",
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProcessSupervisor.java",
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeStartFailure.java",
+    "plugins/plugin-native-agent/native-host/embedded-agent.mjs",
+    "plugins/plugin-native-agent/src/embedded.ts",
+    "plugins/plugin-native-agent/src/embedded-web.ts",
+    "plugins/plugin-native-agent/test/native-host/EmbeddedRuntimeGroupTest.java",
+    "plugins/plugin-native-agent/test/native-host/NativeProcessSupervisorTest.java",
+    "plugins/plugin-native-agent/test/native-host/embedded-agent.node.mjs",
+    "plugins/plugin-native-agent/scripts/check-embedded-agent-lifecycle.mjs"
+  ],
+  "bounds": {
+    "domain": "One supervisor and one agent child launched alone, with no gateway or broker. Start, restart and stop in any state; the pre-spawn refusals config, payload, storage and credential; a spawn that fails; readiness, timeout and child exit before readiness; child exit while running, restarted within a budget of two.",
+    "assumptions": "Readiness is an observed authenticated probe of the agent's own endpoint. A refused check or a failed spawn leaves no child. Stop, restart, timeout and failure request the child's destruction, modeled as immediate; physical exit is outside this model and in ParallelRuntimeStartup.",
+    "progress": "A start settles (running, failed or stopped) under weak fairness of advance, which includes the readiness deadline. Without fairness a start may stutter forever.",
+    "limitations": "Elapsed time, the back-off delay, the Android foreground-service rules, the route allowlist and the stream bridge are outside the model. The device service and plugin have never run on a device or emulator; the development launch and the JVM supervisor are checked by the conformance contracts."
+  },
+  "conformance": "plugins/plugin-native-agent/scripts/check-embedded-agent-lifecycle.mjs",
+  "cases": [
+    {
+      "name": "agent-alone-supervisor",
+      "main": "EmbeddedAgentLifecycle",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "AgentAlone",
+        "FailureNamesCause",
+        "RunningWasReady",
+        "ChildOnlyWhileLaunched",
+        "ChecksBeforeChild",
+        "CrashedOnlyAfterReadiness",
+        "StartupFailureIsNotACrash",
+        "BoundedRestarts"
+      ],
+      "temporal": ["StartSettles", "StartSettlesWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "StartSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance: checks, spawn, readiness or its deadline, and exit observation. No assumption that the agent becomes ready."
+          ]
+        },
+        {
+          "property": "StartSettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": ["No fairness. A start may stutter forever."]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}
