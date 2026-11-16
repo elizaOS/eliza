@@ -130,6 +130,7 @@ public class CloudSignInChainTest {
  static class CloudKeyRevocation {
   static boolean unanswered;static final List<String> retirements=new ArrayList<>(),named=new ArrayList<>();
   static String renewedCredential(String credentialId){return ai.eliza.auth.cloud.CloudKeyRevocation.renewedCredential(credentialId);}
+  static String bearer(String token){return ai.eliza.auth.cloud.CloudKeyRevocation.bearer(token);}
   static boolean revoke(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("revoke");revoked.add(token);if(Cloud.known.contains(token))Cloud.revoke(token,null);return true;}
   static boolean retire(CloudSignInConfig config,CloudSignInEnvironment environment,String token,String successorCredentialId){
    String successor=renewedCredential(successorCredentialId);
@@ -138,6 +139,11 @@ public class CloudSignInChainTest {
    if(!ai.eliza.auth.cloud.CloudKeyRevocation.retired(Cloud.known.contains(token)?Cloud.revoke(token,successor):200))return false;
    events.add("revoke");revoked.add(token);return true;
   }
+  static boolean signOut(CloudSignInConfig config,CloudSignInEnvironment environment,String token){
+   signOuts.add(token);if(unanswered)return false;
+   events.add("revoke");revoked.add(token);return ai.eliza.auth.cloud.CloudKeyRevocation.retired(Cloud.revoke(token,null));
+  }
+  static final List<String> signOuts=new ArrayList<>();
  }
  /** The host's native re-admission of a renewed key. */
  String readmitted;boolean readmitFails;
@@ -1336,25 +1342,50 @@ public class CloudSignInChainTest {
   check("authenticated".equals(verified.result.getString("status"))&&verified.result.getJSONObject("google").getBoolean("connected")&&mfa.gmailCode==null,"after the second factor Gmail connects with the new key");
   check(events.indexOf("ack")<events.indexOf("connect-gmail")&&events.contains("logout"),"Gmail connects only once Cloud confirmed the key");
  }
+ static CloudSignInChainTest signedIn(){
+  slots.clear();events.clear();notifications.clear();Cloud.reset();revoked.clear();CloudKeyRevocation.unanswered=false;CloudKeyRevocation.signOuts.clear();
+  slots.put("cloud:production",new JSONObject().put("token",OLD).put("credentialId",SAVED_ID).put("expiresAt",System.currentTimeMillis()+5*DAY).toString());
+  return new CloudSignInChainTest();
+ }
+ static PluginCall signOutCall(CloudSignInChainTest host,String environment){PluginCall call=new PluginCall();call.input.put("environment",environment);host.signOut(call);return call;}
  static void signOutScenarios()throws Exception{
-  slots.clear();events.clear();notifications.clear();Cloud.reset();revoked.clear();
-  CloudSignInChainTest host=new CloudSignInChainTest();
+  CloudSignInChainTest host=signedIn();
   String receipt=host.config().receiptSlot(TestRegistration.PRODUCTION),pending=host.config().pendingSlot;
-  slots.put("cloud:production",new JSONObject().put("token",OLD).put("credentialId",SAVED_ID).toString());
   slots.put(receipt,"synthetic-receipt");slots.put(pending,"synthetic-pending");slots.put("cloud:staging","preserved-other-environment");
   Attempt running=new Attempt(REQUEST);PluginCall waiting=new PluginCall();running.waiting=waiting;running.credentialGuard=host.reserveCredentialCommit();host.attempt=running;
-  PluginCall call=new PluginCall();call.input.put("environment","production");host.signOut(call);
+  PluginCall call=signOutCall(host,"production");
   check("cancelled".equals(waiting.error)&&host.attempt==null,"signing out ends a sign-in in progress");
   boolean superseded=false;try{running.credentialGuard.run();}catch(IllegalStateException stale){superseded=true;}
   check(superseded,"the sign-out's credential intent supersedes the earlier attempt");
   check(!slots.containsKey("cloud:production")&&!slots.containsKey(receipt)&&!slots.containsKey(pending)&&"preserved-other-environment".equals(slots.get("cloud:staging")),"the saved key and its records go, for this deployment only");
-  check(revoked.contains(OLD)&&!Cloud.accepts(OLD),"Cloud no longer accepts the key");
+  check(events.indexOf("retiring")<events.indexOf("revoke")&&revoked.contains(OLD)&&!Cloud.accepts(OLD)&&!slots.containsKey(RETIRING),"the duty is stored before the request, Cloud no longer accepts the key, and the duty goes");
   check(call.result.length()==3&&"production".equals(call.result.getString("environment"))&&"signed-out".equals(call.result.getString("status"))&&"revoked".equals(call.result.getString("revocation"))&&!call.result.toString().contains(OLD),"the result reports the new status and the revocation, with no key");
   check(events.contains("google-cleared"),"the Google account picker state is cleared");
-  PluginCall again=new PluginCall();again.input.put("environment","production");host.signOut(again);
+  PluginCall again=signOutCall(host,"production");
   check(again.result.length()==2&&"signed-out".equals(again.result.getString("status")),"signing out again revokes nothing and reports signed out");
-  PluginCall elsewhere=new PluginCall();elsewhere.input.put("environment","nowhere");host.signOut(elsewhere);
-  check("invalid-request".equals(elsewhere.error),"an unknown deployment is refused");
+  check("invalid-request".equals(signOutCall(host,"nowhere").error),"an unknown deployment is refused");
+
+  CloudSignInChainTest offline=signedIn();CloudKeyRevocation.unanswered=true;
+  PluginCall unanswered=signOutCall(offline,"production");
+  JSONObject duty=new JSONObject(slots.get(RETIRING));
+  check("unconfirmed".equals(unanswered.result.getString("revocation"))&&!slots.containsKey("cloud:production")&&Cloud.accepts(OLD),"offline: the owner is signed out on the device although Cloud was not reached");
+  check(duty.length()==3&&OLD.equals(duty.getString("token"))&&duty.getBoolean("signOut")&&duty.getLong("expiresAt")>System.currentTimeMillis(),"the duty to end the key is stored until the key lapses on its own");
+  check(offline.main.delays.equals(List.of(5000L)),"one retry is scheduled in this process");
+  CloudKeyRevocation.unanswered=false;
+  CloudSignInChainTest next=new CloudSignInChainTest();next.observable=false;next.renewSaved();next.drainRenewal();
+  check(revoked.equals(List.of(OLD))&&!Cloud.accepts(OLD)&&!slots.containsKey(RETIRING)&&next.requests==0,"the next start ends the key from storage and forgets the duty");
+
+  CloudSignInChainTest damaged=signedIn();slots.put("cloud:production","{damaged");
+  PluginCall cleared=signOutCall(damaged,"production");
+  check(cleared.result.length()==2&&!slots.containsKey("cloud:production")&&!slots.containsKey(RETIRING)&&CloudKeyRevocation.signOuts.isEmpty(),"a damaged saved record is removed with nothing owed");
+
+  CloudSignInChainTest closed=signedIn();closed.destroyed=true;
+  check("unavailable".equals(signOutCall(closed,"production").error)&&slots.containsKey("cloud:production"),"a closed plugin answers at once and changes nothing");
+ }
+ static void googleActivationPending()throws Exception{
+  PluginCall call=new PluginCall();CloudSignInChainTest host=googleAttempt("google-mfa",SERVER_AUTH_CODE,call);Attempt mfa=host.attempt;host.signInWithGoogle(mfa,ID_TOKEN);
+  host.ackReplies.add("denied");PluginCall verified=new PluginCall();verified.input.put("attemptId",mfa.id);verified.input.put("code","123456");host.verify(verified,true);
+  check("activation-expired".equals(verified.error)&&mfa.gmailCode==null&&!events.contains("connect-gmail"),"an unconfirmed key never connects Gmail and the Google code is dropped");
  }
  public static void main(String[] args)throws Exception{
   changedAfterCommit("intent-after-commit");changedAfterCommit("replacement-after-commit");credentialIdentityReads();
@@ -1388,7 +1419,7 @@ public class CloudSignInChainTest {
   System.out.println("PASS browser return in a new process (8 scenarios)");
   renewalScenarios();retirementScenarios();sessionScenarios();
   System.out.println("PASS silent key renewal (20 scenario groups)");
-  googleScenarios();signOutScenarios();
-  System.out.println("PASS native Google sign-in with Gmail and sign-out (9 scenarios)");
+  googleScenarios();googleActivationPending();signOutScenarios();
+  System.out.println("PASS native Google sign-in with Gmail and sign-out (13 scenarios)");
  }
 }

@@ -203,12 +203,6 @@ public final class CloudSignInFlow {
    if (status == 404 && "App client not found or disabled".equals(error)) return new GoogleFailure("provider-refused", "client-unavailable");
    if (status == 503 && "Native Google sign-in is not configured for this app".equals(error)) return new GoogleFailure("unavailable", "native-google-unconfigured");
    if (status == 400 && stage == GoogleStage.CHALLENGE && "An S256 code challenge is required".equals(error)) return new GoogleFailure("invalid-request", "pkce-challenge-invalid");
-   if (status == 400 && stage == GoogleStage.VERIFY && "challengeId, idToken and codeVerifier are required".equals(error)) return new GoogleFailure("invalid-request", "verification-input-invalid");
-   if (status == 401 && stage == GoogleStage.VERIFY && "Sign-in challenge expired or was already used".equals(error)) return new GoogleFailure("expired", "challenge-unavailable");
-   if (status == 401 && stage == GoogleStage.VERIFY && "Sign-in challenge does not match this request".equals(error)) return new GoogleFailure("state-mismatch", "challenge-request-mismatch");
-   if (status == 401 && stage == GoogleStage.VERIFY && "Google identity could not be verified".equals(error)) return new GoogleFailure("provider-refused", "google-identity-unverified");
-   if (status == 401 && stage == GoogleStage.VERIFY && "Sign-in challenge was already used".equals(error)) return new GoogleFailure("expired", "challenge-consumed");
-   if (status == 401 && stage == GoogleStage.VERIFY && "Google identity token was already used or expired".equals(error)) return new GoogleFailure("provider-refused", "identity-proof-unavailable");
    if (status == 429 && "Too many sign-in attempts. Try again later.".equals(error)) return new GoogleFailure("rate-limited", "rate-limited");
   }
   if (status == 410) return new GoogleFailure("expired", "http-expired");

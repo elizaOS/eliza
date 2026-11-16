@@ -43,7 +43,8 @@ import org.json.JSONTokener;
  * Native Eliza Cloud sign-in for a registered Android application. Native screens collect an email
  * or phone code or use the host-selected Google account picker or external browser; no hosted
  * Eliza Cloud login page is part of sign-in. Every secret-bearing request (Steward code exchange or email/SMS/MFA
- * verification, mobile App Auth connect, token and ack, Steward logout) is made here with fixed URLs
+ * verification, mobile App Auth connect, token and ack, Steward logout, the one-step native Google
+ * sign-in at /api/v1/app-auth/mobile/google and its Gmail connection) is made here with fixed URLs
  * (CloudSignInRoutes). The Steward session, refresh token, authorization codes and PKCE verifiers
  * never cross the bridge; the Steward session is revoked after one sign-in and never stored.
  *
@@ -58,9 +59,9 @@ import org.json.JSONTokener;
  * not confirm in time is removed and reported (`activation-expired`), and a late confirmation is
  * announced (`signInCompleted`). Plugin call results carry no secret. A key a new sign-in replaces is
  * revoked best effort after the new key is stored and its acknowledgement was tried; an unconfirmed
- * revocation is retried twice in memory, never from storage. A key a renewal replaces is different:
- * the duty to revoke it is stored before the new key is saved and is retried on later starts until
- * Cloud no longer accepts that key.
+ * revocation is retried twice in memory, never from storage. A key a renewal replaces and a key the
+ * owner signed out of are different: the duty to revoke it is stored in the retiring slot before the
+ * key leaves the credential slot, and is retried on later starts until Cloud no longer accepts it.
  *
  * Readiness: status() reports each method only after CloudSignInReadiness confirms Cloud is ready for
  * this app. Ready methods are cached; a method that is not ready is measured again on a short TTL,
@@ -329,7 +330,7 @@ public abstract class CloudSignInPlugin extends Plugin {
    if (attempt != null) out.put("kind", attempt.google ? "google" : attempt.mfaType != null ? "mfa" : attempt.phone != null ? "phone" : "email");
    // A key is stored but Cloud has not confirmed it yet: it is not a usable sign-in until signInCompleted.
    if (activating.contains(environment.name)) out.put("activationPending", true);
-   return out.put("methodsKnown", result.methodsKnown).put("inApp", result.inApp).put("email", result.email).put("phone", result.phone).put("google", result.google);
+   return out.put("googleScopes", new JSONArray(config().googleScopes)).put("methodsKnown", result.methodsKnown).put("inApp", result.inApp).put("email", result.email).put("phone", result.phone).put("google", result.google);
   }
  }
  /**
@@ -704,7 +705,7 @@ public abstract class CloudSignInPlugin extends Plugin {
    Response answer = get(next.environment.api() + "/api/v1/app-auth/mobile/google");
    String clientId = answer.data.optString("serverClientId", "");
    if (answer.status == 200 && Boolean.TRUE.equals(answer.data.opt("configured")) && clientId.matches("[0-9]+-[A-Za-z0-9_-]+\\.apps\\.googleusercontent\\.com")) return clientId;
-   next.gmail = gmailRefused("google_not_configured");
+   next.gmail = gmailRefused(answer.status == 200 || answer.status == 404 ? "google_not_configured" : "google_unavailable");
   } catch (Exception unavailable) { next.gmail = gmailRefused("google_unavailable"); }
   return null;
  }
@@ -1113,36 +1114,60 @@ public abstract class CloudSignInPlugin extends Plugin {
  @PluginMethod public void clearCredentialState(PluginCall call) {
   getActivity().runOnUiThread(() -> NativeGoogleCredential.clear(getActivity(), () -> call.resolve()));
  }
+ /**
+  * Signs a deployment out under a new credential intent and ends any sign-in in progress (the pending
+  * browser record is shared by every deployment). The duty to revoke the saved key is stored in the
+  * retiring slot first; then the key, its receipt and the pending record are removed. A damaged saved
+  * record is removed with nothing owed. Cloud is then asked to end the key: an answer it did not give
+  * is asked again twice in this process and on later starts (retireStored) until Cloud no longer
+  * accepts the key. Answers {environment, status: 'signed-out', revocation?: 'revoked' | 'unconfirmed'}.
+  */
  @PluginMethod public void signOut(PluginCall call) {
   final CloudSignInEnvironment environment;
   try { environment = config().environment(call.getString("environment")); }
   catch (Exception invalid) { call.reject("Unsupported Cloud environment", "invalid-request"); return; }
+  if (destroyed) { call.reject("Sign-in closed", "unavailable"); return; }
   final Runnable guard = reserveCredentialCommit();
   final Attempt current;
   synchronized (lock) {
    current = attempt; attempt = null; pendingRetirementUnconfirmed = true;
    if (current != null && current.google) cancelledBrowserState = current.browserState;
   }
-  if (current != null) { current.cancel(); PluginCall waiting; synchronized (lock) { waiting = current.waiting; current.waiting = null; } if (waiting != null) waiting.reject("cancelled", "cancelled"); }
-  run(() -> {
-   final String token;
-   try {
-    CloudCredentialSlots owned = credentials(() -> { if (destroyed) throw new IllegalStateException("Sign-in closed"); guard.run(); });
-    String saved = owned.read(config().credentialSlot(environment));
-    token = saved == null ? null : new JSONObject(saved).optString("token", null);
-    owned.remove(config().credentialSlot(environment));
-    owned.remove(config().receiptSlot(environment));
-    owned.remove(config().pendingSlot);
-    synchronized (lock) { activating.remove(environment.name); if (attempt == null) pendingRetirementUnconfirmed = false; }
-   } catch (Exception storage) { call.reject("Sign-out was not saved", "storage"); return; }
-   JSObject outcome = new JSObject().put("environment", environment.name).put("status", "signed-out");
-   if (token != null) {
-    boolean revoked = CloudKeyRevocation.revoke(config(), environment, token);
-    if (!revoked) retryRevocation(() -> {}, environment, token, 0);
-    outcome.put("revocation", revoked ? "revoked" : "unconfirmed");
-   }
-   getActivity().runOnUiThread(() -> NativeGoogleCredential.clear(getActivity(), () -> call.resolve(outcome)));
-  });
+  abandon(current);
+  try { worker.execute(() -> signedOut(call, environment, guard)); }
+  catch (java.util.concurrent.RejectedExecutionException closed) { call.reject("Sign-in closed", "unavailable"); }
+ }
+ private void signedOut(PluginCall call, CloudSignInEnvironment environment, Runnable guard) {
+  String token = null;
+  try {
+   CloudCredentialSlots owned = credentials(() -> { if (destroyed) throw new IllegalStateException("Sign-in closed"); guard.run(); });
+   String slot = config().credentialSlot(environment), saved = owned.read(slot);
+   JSONObject record = null;
+   try { record = saved == null ? null : new JSONObject(saved); } catch (Exception damaged) { /* Removed with nothing owed. */ }
+   token = record == null ? null : CloudKeyRevocation.bearer(record.optString("token", null));
+   if (token != null) owned.write(config().retiringSlot(environment), new JSONObject().put("token", token).put("expiresAt", record.opt("expiresAt")).put("signOut", true).toString());
+   owned.remove(slot);
+   owned.remove(config().receiptSlot(environment));
+   owned.remove(config().pendingSlot);
+   synchronized (lock) { activating.remove(environment.name); if (attempt == null) pendingRetirementUnconfirmed = false; }
+  } catch (Exception storage) { call.reject("Sign-out was not saved", "storage"); return; }
+  JSObject outcome = new JSObject().put("environment", environment.name).put("status", "signed-out");
+  if (token != null) {
+   boolean revoked = retireReplaced(environment, token, null);
+   if (!revoked) retryRetirement(environment, token, null, 0);
+   outcome.put("revocation", revoked ? "revoked" : "unconfirmed");
+  }
+  final var activity = getActivity();
+  if (activity == null) { call.resolve(outcome); return; }
+  activity.runOnUiThread(() -> NativeGoogleCredential.clear(activity, () -> call.resolve(outcome)));
+ }
+ /** Ends an attempt a newer action took over; its waiting call is refused as cancelled. */
+ private void abandon(Attempt current) {
+  if (current == null) return;
+  current.cancel();
+  PluginCall waiting;
+  synchronized (lock) { waiting = current.waiting; current.waiting = null; }
+  if (waiting != null) waiting.reject("cancelled", "cancelled");
  }
 
  @PluginMethod public void cancel(PluginCall call) {
@@ -1163,7 +1188,7 @@ public abstract class CloudSignInPlugin extends Plugin {
    attempt = null; pendingRetirementUnconfirmed = true;
    if (current != null && current.google) cancelledBrowserState = current.browserState;
   }
-  if (current != null) { current.cancel(); PluginCall waiting; synchronized (lock) { waiting = current.waiting; current.waiting = null; } if (waiting != null) waiting.reject("cancelled", "cancelled"); }
+  abandon(current);
   if (readFailure != null) { cancellationFailed(call); return; }
   final String pending = captured;
   try { worker.execute(() -> {
@@ -1179,7 +1204,9 @@ public abstract class CloudSignInPlugin extends Plugin {
   call.reject("Pending sign-in cancellation was not saved", "storage");
  }
 
- /** Post-authentication consent is owned by Android, never a renderer-supplied boolean.
+ /** The owner's consent to this product holding a Cloud key is owned by Android, never a renderer-supplied
+  * boolean. It follows the code or MFA step, and for native Google it comes after Google's own sheets and
+  * before the one Cloud call.
   * The worker retains the session only in memory while this bounded prompt is open.
   * Closing the activity, cancellation and expiration all refuse access. */
  private void requireAuthorization(Attempt current) throws Exception {
@@ -1319,6 +1346,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   CloudSignInFlow.Ack acknowledged = acknowledge(current, proof, credentialId, secret);
   if (acknowledged == CloudSignInFlow.Ack.ACKNOWLEDGED) try { receipts.remove(config().receiptSlot(environment)); } catch (Exception kept) { /* Retried on next start. */ }
   if (acknowledged == CloudSignInFlow.Ack.ACKNOWLEDGED && current.gmailCode != null) connectGmail(current, secret);
+  else if (current.gmailCode != null) { current.gmailCode = null; current.gmail = gmailRefused("google_unavailable"); }
   JSObject outcome = new JSObject().put("status", "authenticated").put("environment", environment.name).put("expiresAt", expiresAt)
    .put("attemptId", current.id).put("credentialId", saved.getString("credentialId"))
    .put("accountCreated", created instanceof Boolean ? created : JSONObject.NULL);
@@ -1857,21 +1885,23 @@ public abstract class CloudSignInPlugin extends Plugin {
   } catch (Exception unavailable) { return failed; }
  }
  /**
-  * Makes sure a key a renewal replaced is unusable (2xx, or 401: Cloud already refuses it) and then
-  * forgets the stored duty. The request names the key it was renewed into (`successor`, the server
-  * credential id), so Cloud revokes the replaced key alone. False when Cloud did not answer: the duty stays.
+  * Makes sure a key a renewal replaced or the owner signed out of is unusable (2xx, or 401: Cloud
+  * already refuses it) and then forgets its stored duty. A renewal's duty names the key it was renewed into (`successor`, the server
+  * credential id), so Cloud revokes the replaced key alone. A sign-out's duty has no successor
+  * (null): the bare request ends the key's whole sign-in. False when Cloud did not answer: the duty stays.
   */
  private boolean retireReplaced(CloudSignInEnvironment environment, String replaced, String successor) {
-  if (!CloudKeyRevocation.retire(config(), environment, replaced, successor)) return false;
+  if (!(successor == null ? CloudKeyRevocation.signOut(config(), environment, replaced) : CloudKeyRevocation.retire(config(), environment, replaced, successor))) return false;
   try {
    CloudCredentialSlots slots = store();
    String retiring = config().retiringSlot(environment), duty = slots.read(retiring);
-   if (duty != null && replaced.equals(new JSONObject(duty).optString("token", null))
-     && successor.equals(new JSONObject(duty).optString("successor", null))) slots.compareExchange(retiring, duty, null);
+   JSONObject stored = duty == null ? null : new JSONObject(duty);
+   if (stored != null && replaced.equals(stored.optString("token", null))
+     && (successor == null ? Boolean.TRUE.equals(stored.opt("signOut")) : successor.equals(stored.optString("successor", null)))) slots.compareExchange(retiring, duty, null);
   } catch (Exception kept) { /* Asked again on a later start; Cloud then answers 401 and the duty goes. */ }
   return true;
  }
- /** Two more tries in this process, on the renewal worker. Unlike a sign-in's replaced key, the duty is also stored. */
+ /** Two more tries in this process, on the renewal worker. Unlike a sign-in's replaced key, the duty is also stored. A null successor is a sign-out's duty. */
  private void retryRetirement(CloudSignInEnvironment environment, String replaced, String successor, int round) {
   if (round >= REVOCATION_RETRY_MS.length) return;
   main.postDelayed(() -> {
@@ -1881,11 +1911,12 @@ public abstract class CloudSignInPlugin extends Plugin {
   }, REVOCATION_RETRY_MS[round]);
  }
  /**
-  * Stored duties to revoke a key a renewal replaced, tried again on load and with the hourly check, on
-  * the renewal worker and ahead of any renewal. A duty for a key that is still the saved one (the
-  * renewal ended before its save), that has expired, or that does not name the key it was renewed
-  * into is dropped without a request: the saved, working key is never revoked here, and a request
-  * that names no successor would end the renewed key with the replaced one.
+  * Stored duties to revoke a key a renewal replaced or the owner signed out of, tried again on load and
+  * with the hourly check, on the renewal worker and ahead of any renewal. A duty for a key that is
+  * still the saved one (the renewal or the sign-out ended before its removal), that has expired, or a
+  * renewal's duty that does not name the key it was renewed into is dropped without a request: the
+  * saved, working key is never revoked here, and a renewal's request that names no successor would
+  * end the renewed key with the replaced one. A sign-out's duty sends the bare request.
   */
  private void retireStored() {
   try {
@@ -1897,7 +1928,8 @@ public abstract class CloudSignInPlugin extends Plugin {
       String retiring = config().retiringSlot(environment), duty = slots.read(retiring);
       if (duty == null) continue;
       JSONObject stored = new JSONObject(duty);
-      String replaced = stored.optString("token", null), successor = CloudKeyRevocation.renewedCredential(stored.optString("successor", null)), saved = slots.read(config().credentialSlot(environment));
+      boolean signedOut = Boolean.TRUE.equals(stored.opt("signOut"));
+      String replaced = stored.optString("token", null), successor = signedOut ? null : CloudKeyRevocation.renewedCredential(stored.optString("successor", null)), saved = slots.read(config().credentialSlot(environment));
       String receiptRaw = slots.read(config().receiptSlot(environment));
       if (receiptRaw != null && CloudKeyRenewal.Receipt.isRenewal(new JSONObject(receiptRaw))) {
        CloudKeyRenewal.Receipt receipt = CloudKeyRenewal.Receipt.parse(receiptRaw, config(), environment);
@@ -1905,7 +1937,7 @@ public abstract class CloudSignInPlugin extends Plugin {
        if (replaced != null && replaced.equals(receipt.previousToken) && !receipt.matchesSuccessor(saved)) continue;
       }
       boolean stillSaved = saved != null && replaced != null && replaced.equals(new JSONObject(saved).optString("token", null));
-      if (stillSaved || successor == null || !CloudSignInFlow.validMobileSecret(replaced) || instant(stored.opt("expiresAt")) <= System.currentTimeMillis()) { slots.compareExchange(retiring, duty, null); continue; }
+      if (stillSaved || !signedOut && successor == null || !CloudSignInFlow.validMobileSecret(replaced) || instant(stored.opt("expiresAt")) <= System.currentTimeMillis()) { slots.compareExchange(retiring, duty, null); continue; }
       retireReplaced(environment, replaced, successor);
      } catch (Exception unavailable) { /* Kept for a later check. */ }
     }

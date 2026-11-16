@@ -34,6 +34,7 @@ public final class NativeGoogleCredential {
   void token(String idToken, String account);
   void failure(String code);
  }
+ /** The answer of {@link #authorize}: Google's one-use server code, or a stable reason it was not given. */
  public interface Authorization {
   void code(String serverAuthCode);
   void failure(String reason);
@@ -78,6 +79,13 @@ public final class NativeGoogleCredential {
    });
   } catch (Exception unavailable) { callback.failure("unavailable"); }
  }
+ /**
+  * Asks Google, for the account the picker returned, for exactly {@code scopes} with offline access
+  * for Cloud's web client ({@code serverClientId}), showing Google's permission sheet when it has not
+  * been granted yet. Answers once, with the server code or `google_declined` / `google_unavailable`.
+  * The listeners are not bound to the activity, so an answer that arrives after the owner left the
+  * app still ends the attempt.
+  */
  public static void authorize(Activity activity, String serverClientId, String account, List<String> scopes,
                        CancellationSignal cancellation, Authorization callback) {
   if (!(activity instanceof ComponentActivity) || activity.isFinishing() || activity.isDestroyed()
@@ -92,8 +100,9 @@ public final class NativeGoogleCredential {
    AuthorizationRequest request = AuthorizationRequest.builder().setRequestedScopes(requested)
        .setAccount(new Account(account, "com.google")).requestOfflineAccess(serverClientId, true).build();
    Identity.getAuthorizationClient(activity).authorize(request)
-       .addOnSuccessListener(activity, result -> {
+       .addOnSuccessListener(result -> {
         if (cancellation.isCanceled()) { callback.failure("google_declined"); return; }
+        if (activity.isFinishing() || activity.isDestroyed()) { callback.failure("google_unavailable"); return; }
         if (!result.hasResolution()) { authorized(result, callback); return; }
         ComponentActivity host = (ComponentActivity) activity;
         @SuppressWarnings("unchecked") final ActivityResultLauncher<IntentSenderRequest>[] launcher = new ActivityResultLauncher[1];
@@ -106,7 +115,7 @@ public final class NativeGoogleCredential {
         });
         launcher[0].launch(new IntentSenderRequest.Builder(result.getPendingIntent().getIntentSender()).build());
        })
-       .addOnFailureListener(activity, unavailable -> callback.failure("google_unavailable"));
+       .addOnFailureListener(unavailable -> callback.failure("google_unavailable"));
   } catch (Exception unavailable) { callback.failure("google_unavailable"); }
  }
  private static void authorized(AuthorizationResult result, Authorization callback) {
