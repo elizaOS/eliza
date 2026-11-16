@@ -1120,7 +1120,7 @@ public abstract class CloudSignInPlugin extends Plugin {
  /**
   * Signs a deployment out under a new credential intent and ends any sign-in in progress (the pending
   * browser record is shared by every deployment). The duty to revoke the saved key is stored in the
-  * retiring slot first; then the key, its receipt and the pending record are removed. A damaged saved
+  * retiring slot first, above any duty still owed there (owedAbove); then the key, its receipt and the pending record are removed. A damaged saved
   * record is removed with nothing owed. Cloud is then asked to end the key: an answer it did not give
   * is asked again twice in this process and on later starts (retireStored) until Cloud no longer
   * accepts the key. Answers {environment, status: 'signed-out', revocation?: 'revoked' | 'unconfirmed'}.
