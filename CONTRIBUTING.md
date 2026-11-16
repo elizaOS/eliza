@@ -183,10 +183,16 @@ A complete passing Vitest run records its input fingerprint. `check` reuses
 that result only while its source, generated core, transitive workspace
 inputs, lockfile and fixed profile match. The fingerprint covers the package's
 files, with the packages nested under its `test/` as fixtures but not other
-nested packages, and each `workspace:` dependency without its `spec/` or the
-packages nested in it; a file a test reads from elsewhere comes through a
-declared dependency, as the root's `@repo/design-system` does. Turbo's
-`//#test` inputs cover the same files, so a restored receipt still matches. Filtered, exclusive, interrupted
+nested packages, and of each `workspace:` dependency what a dependent can
+load: not its `spec/`, Markdown, tests, drivers, traces, counterexamples or
+nested packages, nor its `gen/` unless its code or manifest reaches into it; a
+file a test reads from elsewhere comes through a declared dependency, as the
+root's `@repo/design-system` does. A typecheck is keyed by the scripts and
+JSON alone, and then by the content of every file the compile read. Turbo's
+`//#test` inputs cover the same files but the root's Markdown, so a restored
+receipt matches unless only a document changed, and then `check` runs the root's
+tests itself. Generated code names each rule by its heading, not its line, so
+prose that only moves a rule changes none of these keys. Filtered, exclusive, interrupted
 and failed runs record no complete result. Acceptance and nightly checks
 bypass these receipts and the inner verification cache.
 
@@ -194,7 +200,11 @@ The spec cache retains recent branch and profile results for 30 days within
 256 MiB, evicting the oldest unused results first. A check's own entries are
 preserved. Proof identity covers the verifier and solver contents, so moving
 an identical installation does not invalidate it and replacing an executable
-with the same version does.
+with the same version does; tests, drivers and explorations are keyed by the
+verifier too, since they may run proofs, as Studio's do. A process that
+outlives a reinstall, as `spec watch` does, reads Quint, LemmaScript and Dafny
+again once their installed files change. In CI, a Turborepo cache entry is
+kept for seven days after its last hit, which the run summary names.
 
 ### Seeds and budgets
 

@@ -15,7 +15,7 @@ import { contracts, pending, pendingKey, pendingContracts, acceptAllReviews, pen
 import { cacheCredentials, dafnyVersion, entry, recall, remembered, store, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
-import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, UNREAD, type Reported, type SrcFile } from "./util.ts";
+import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
 import { availableDirectory, generatedSkillIgnores, linkProjectSkills, skillRoot } from "./skill-links.ts";
 
@@ -681,7 +681,7 @@ async function watch(root: string) {
     clearTimeout(timer);
     timer = setTimeout(once, 200);
   };
-  // Watch each package's directories when they exist, and the package itself for its files and for creation, replacement and atomic saves.
+  // Watch each package's directories when they exist, the workspace packages they depend on whole, and the package itself for its files and for creation, replacement and atomic saves.
   const watched = new Map<string, { watcher: fs.FSWatcher; ino: number }>();
   const inode = (dir: string) => { try { return fs.statSync(path.join(root, dir)).ino; } catch { return undefined; } };
   const read = (dir: string) => { try { return fs.readdirSync(path.join(root, dir || "."), { withFileTypes: true }); } catch { return []; } };
@@ -691,7 +691,10 @@ async function watch(root: string) {
     const packages = containers.flatMap((dir) => [dir, ...areas.map((area) => `${dir}/${area}`)]);
     const own = (dir: string) => read(dir).filter((e) => e.isDirectory() && !UNREAD.test(e.name) && e.name !== "gen" && !(dir === "" && containers.includes(e.name))
       && !fs.existsSync(path.join(root, dir, e.name, "package.json"))).map((e): [string, boolean] => [`${dir}${e.name}`, true]);
-    const dirs = new Map([...packages.map((dir): [string, boolean] => [dir, false]), ...codeDirs(root).flatMap((dir): [string, boolean][] => [[dir || ".", false], ...own(dir)])]);
+    const owners = codeDirs(root);
+    const depended = owners.flatMap((dir) => workspacePackages(path.join(root, dir)).map(({ directory }) => path.relative(root, directory)))
+      .filter((dir) => dir && !dir.startsWith("..") && !path.isAbsolute(dir) && !owners.includes(`${dir}/`)).map((dir): [string, boolean] => [dir, true]);
+    const dirs = new Map([...packages.map((dir): [string, boolean] => [dir, false]), ...owners.flatMap((dir): [string, boolean][] => [[dir || ".", false], ...own(dir)]), ...depended]);
     for (const dir of new Set([...dirs.keys(), ...watched.keys()])) {
       const ino = dirs.has(dir) ? inode(dir) : undefined;
       const had = watched.get(dir);

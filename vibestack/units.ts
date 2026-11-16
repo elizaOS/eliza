@@ -17,6 +17,9 @@ import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, type SrcFile
 import { effectAdapter } from "./gen/vibe.ts";
 import { reactHook } from "./gen/react.ts";
 
+/** Where Quint writes the traces of the simulations a check ran. */
+export const SIMULATIONS = "gen/traces";
+
 const ANNOTATIONS = ["backend", "pure", "requires", "ensures", "invariant", "decreases", "type", "ghost", "assert"];
 
 /**
@@ -107,11 +110,13 @@ function namespace(dir: string, name: unknown): string {
  * names, with the types their drivers are written to, so that a package imports only from its own gen/. The Effect
  * adapter and the React hook are written for the owner (`writeFaces`): that is the package the service runs in.
  * A module not generated, because its spec is not valid, is not there. This ends a generation: what it did not write,
- * in the root's gen/ or an owner's, is removed, so that nothing stale survives a rename.
+ * in the root's gen/ or an owner's, is removed, so that nothing stale survives a rename; but for gen/traces, where this
+ * check's simulations wrote what they ran (simulate.ts), and which the next generation begins by removing.
  */
 export function mirrorGen(root: string, specs: Spec[]) {
   const written = generations.get(root) ?? new Set<string>();
   generations.set(root, written);
+  written.add(path.join(root, SIMULATIONS));
   const sweep = (dir: string) => {
     if (!fs.existsSync(dir)) return;
     for (const f of fs.readdirSync(dir)) if (!written.has(path.join(dir, f))) fs.rmSync(path.join(dir, f), { recursive: true, force: true });
@@ -143,6 +148,7 @@ export function mirrorGen(root: string, specs: Spec[]) {
  */
 export function typecheckAll(memory: Memory, specs: Spec[]): Map<string, Promise<any>> {
   generations.set(memory.root, new Set());
+  fs.rmSync(path.join(memory.root, SIMULATIONS), { recursive: true, force: true });
   const dir = genDir(memory.root);
   for (const spec of specs) put(memory.root, path.join(dir, `${spec.name}.qnt`), spec.qnt);
   return new Map(specs.map((spec) => {

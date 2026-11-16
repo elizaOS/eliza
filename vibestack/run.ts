@@ -18,6 +18,9 @@ export const onPath = (name: string) => (process.env.PATH ?? "").split(path.deli
     try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile(); } catch { return false; }
   });
 
+/** Installed files as they are: a reinstall writes them again, at a new inode, size or modification or change time, which a copy or an archive cannot set back. */
+export const stamp = (files: string[]) => files.map((f) => { const s = fs.statSync(f, { bigint: true }); return `${s.dev}:${s.ino}:${s.size}:${s.mtimeNs}:${s.ctimeNs}`; }).join(" ");
+
 /** An executable from the toolchain's dependencies, wherever npm put it: beside the tools, or in the project. */
 export function bin(cmd: string, root: string): string {
   // On Windows pnpm installs a `.cmd` shim beside the extensionless shell script, and only the shim runs there.
@@ -100,12 +103,15 @@ export async function run(cmd: string, args: string[], cwd: string, input?: stri
   return { ok: r.status === 0 && !r.stopped, out: `${r.stdout}${r.stderr}${r.stopped ? `\n${r.stopped}\n` : ""}`, status: r.status, stderr: r.stderr };
 }
 
-/** The solver selected by Dafny's installation, pinned for every proof and recorded in its cache key. */
-let selected: Promise<{ path: string; version: string }> | undefined;
+/** The solver selected by Dafny's installation, pinned for every proof and recorded in its cache key; selected again once Dafny or Z3 on the PATH is another or installed again. */
+const selected = new Map<string, Promise<{ path: string; version: string }>>();
 export function solver(): Promise<{ path: string; version: string }> {
-  return selected ??= (async () => {
+  const dafny = onPath("dafny");
+  const z3 = onPath("z3");
+  const installed = [dafny, z3].map((f) => f ? `${f}=${stamp([f, fs.realpathSync(f)])}` : "").join("\0");
+  let chosen = selected.get(installed);
+  if (!chosen) selected.set(installed, chosen = (async () => {
     const candidates: string[] = [];
-    const dafny = onPath("dafny");
     if (dafny) {
       const real = fs.realpathSync(dafny);
       for (const dir of [path.dirname(real), path.join(path.dirname(real), "..", "libexec")]) {
@@ -116,8 +122,7 @@ export function solver(): Promise<{ path: string; version: string }> {
           .sort((a, b) => preferred(a) - preferred(b) || a.localeCompare(b)).map((name) => path.join(bundled, name)));
       }
     }
-    const executable = onPath("z3");
-    if (executable) candidates.push(executable);
+    if (z3) candidates.push(z3);
     for (const candidate of candidates) {
       try {
         const result = await exec(candidate, ["--version"], path.dirname(candidate));
@@ -126,5 +131,6 @@ export function solver(): Promise<{ path: string; version: string }> {
       } catch { /* try the next solver supplied by this installation */ }
     }
     throw new Error("the proof stage needs the Z3 solver bundled with Dafny or on the PATH");
-  })().catch((e) => { selected = undefined; throw e; });
+  })().catch((e) => { selected.delete(installed); throw e; }));
+  return chosen;
 }

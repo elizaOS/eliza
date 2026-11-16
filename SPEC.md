@@ -550,8 +550,8 @@ under `src/`.
   the page removes it. A bug worth keeping fixed becomes a step of the journey it broke.
 - **A pass is remembered** until what the page serves changes (the
   package's files and workspace dependencies, as for its tests, without its
-  tests, drivers, traces and counterexamples), or the installed Bombadil or
-  the script. The nightly check always explores afresh.
+  tests, drivers, traces and counterexamples), or the installed Bombadil and
+  the packages it loads, or the script. The nightly check always explores afresh.
 
 ## Large applications
 
