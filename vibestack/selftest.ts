@@ -2040,6 +2040,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     fs.mkdirSync(installed, { recursive: true });
     const unpacked = await exec("tar", ["-xzf", archive, "--strip-components", "1", "-C", installed], copy);
     assert.equal(unpacked.status, 0, unpacked.stdout + unpacked.stderr);
+    assert.deepEqual(fs.readdirSync(installed, { recursive: true, encoding: "utf8" }).filter((file) => file.split(path.sep).includes("examples")), [], "an application's toolchain carries no example to check");
     fs.mkdirSync(path.join(installed, "node_modules"));
     for (const entry of fs.readdirSync(nodeModules).filter((name) => name !== ".bin"))
       fs.symlinkSync(path.join(nodeModules, entry), path.join(installed, "node_modules", entry), fs.statSync(path.join(nodeModules, entry)).isDirectory() ? "dir" : "file");
@@ -2068,6 +2069,18 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(proof?.ok, checked.stdout + checked.stderr);
     assert.match(proof.summary, /all 1 obligations proved/);
   });
+
+  // The examples are the tools' own subjects: checked here, where the tools test themselves, and never by an application
+  // built on them, whose check reaches only its own packages and whose installed toolchain carries no example.
+  for (const name of fs.readdirSync(path.join(project, "vibestack/examples")).sort())
+    test(`the ${name} example installs from its own lock file and passes its check, its page explored where it has one`, async () => {
+      const example = path.join(project, "vibestack/examples", name);
+      const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+      const installed = await exec(pnpm, ["install", "--frozen-lockfile", "--ignore-workspace"], example);
+      assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+      const checked = await exec(pnpm, ["check"], example);
+      assert.equal(checked.status, 0, `${checked.stdout}${checked.stderr}`.trim().split("\n").slice(-80).join("\n"));
+    });
 
   test("the command line checks, generates and watches a project directory from its parent", async () => {
     const script = path.join(project, "vibestack/spec.ts");

@@ -24,11 +24,10 @@ does not import React, and a UI package holds no business rules. A shared type l
 |---|---|
 | `pnpm dev` | Studio, and every package's `dev` script beside it |
 | `pnpm quick` | the fast local check: types, tests, ESLint and Stylelint, in every package |
-| `pnpm verify` | what CI runs: build, types, tests, browser tests, every `check`, lint, `pnpm analyze` and `pnpm selftest` |
+| `pnpm verify` | what CI runs: build, types, tests, browser tests, every `check`, lint, `pnpm analyze` and `pnpm selftest`, which also installs and checks each example |
 | `pnpm all <task>…` | one or more kinds of task in every package: `pnpm all build typecheck test` |
 | `pnpm test:browser` | the browser tests |
-| `pnpm test:models` | every `check`: the root's, which is its owners' too, Studio's, and the examples' |
-| `pnpm examples` | each example's install and `check` |
+| `pnpm test:models` | every workspace `check`: the root's, which is its owners' too, and Studio's |
 | `pnpm lint` | ESLint and Stylelint (`pnpm lint:js`, `pnpm lint:css` for one) |
 | `pnpm analyze` | Knip (unused files, exports, dependencies), Madge (import cycles) and jscpd (duplicated code) |
 | `pnpm check`, `pnpm gen`, `pnpm build`, `pnpm typecheck`, `pnpm test` | this package's own, here as in every package: at the root, the root project and the tools |
@@ -241,4 +240,7 @@ Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
 are never part of a task fingerprint.
 
-Standalone examples run manually with `pnpm examples`, outside CI.
+The standalone examples are the tools' own subjects: `pnpm selftest` installs
+each from its own lock file and runs its `check`, its page explored where it
+has one. An application built on the tools never checks them: its `check`
+reaches only its own packages, and the packed toolchain carries no example.
