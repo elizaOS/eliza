@@ -391,7 +391,8 @@ declare, as data:
   cloud-only embedded agent (see the `@elizaos/capacitor-agent` README). The
   generator checks them with the device service's rules (both refuse the shared
   cases in `test/embedded/embedded-agent-data.json`), packages them as assets,
-  and adds the `eliza-embedded-agent` module. That module compiles the agent's Java
+  records them and the module's copied sources as generation inputs, and adds
+  the `eliza-embedded-agent` module. That module compiles the agent's Java
   closure (no Kotlin, no local inference or voice class) and its manifest declares
   the named service with type `specialUse` and its permissions. It needs
   `runtimeDirectory` and the `capacitor-android` module.
