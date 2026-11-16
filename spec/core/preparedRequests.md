@@ -20,7 +20,7 @@ type LimitObservation = {supplied: bool, positiveFinite: bool, roundedDown: int,
 type PreparationLimits = {contextWindow: LimitObservation, outputReserve: LimitObservation}
 type TokenObservation = NoTokenizer | TokenizerFailed | TokenizerCount({body: List[int], roundedUp: int, exact: bool})
 type PreparationObservation = {walk: S::Validation, serializer: S::SerializerChoice, serialized: S::SerializedObservation, tokens: TokenObservation}
-type RequestPreparation = Prepared({request: RequestObservation}) | SerializationFailed | TokenizationFailed
+type RequestPreparation = Prepared({request: RequestObservation}) | SerializationFailed | PreparationHostFailure({stage: S::SerializationHostStage}) | TokenizationFailed
 type RequestGuardInput = {provider: str, model: str, route: str, preparation: PreparationObservation, limits: PreparationLimits, leaseId: int, messageId: str}
 type RequestObservation = {codeUnits: List[int], inputCount: int, countSource: CountSource}
 type PreparedGuard = {id: int, phase: GuardPhase, provider: str, model: str, route: str, codeUnits: List[int], inputCount: int, countSource: CountSource, threshold: int, exactAuthority: bool, contextTokens: int, outputTokens: int, reservationTokens: int, leaseId: int, messageId: str, attempts: int, errorCode: str}
@@ -101,8 +101,10 @@ tokenizer or a count for a different serialized body leaves no guard. The
 adapter reports a thrown tokenizer or an invalid numeric count as tokenization
 failure, and rounds a successful finite nonnegative count upward. The guard
 reports `MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED` or
-`MODEL_PREPARED_REQUEST_TOKENIZATION_FAILED` for these preparation failures. When there
-is no tokenizer, the diagnostic count is the UTF-8 length of the admitted
+`MODEL_PREPARED_REQUEST_TOKENIZATION_FAILED` for typed preparation failures.
+For a host failure the adapter propagates the original thrown value from the
+reported stage. Both forms of serialization failure leave no guard. When
+there is no tokenizer, the diagnostic count is the UTF-8 length of the admitted
 UTF-16 sequence. An estimate remains diagnostic. The adapter is responsible
 for passing the exact serialized body to the reported tokenizer and for
 establishing whether its encoding is exact for the selected provider.
@@ -113,6 +115,9 @@ pure val preparationValues = Set(
   wirePreparation(changedCodeUnits, 0, Utf8UpperBound),
   { ...projectionPreparation, walk: { ...S::initial, ancestors: List(1) } },
   { ...projectionPreparation, serialized: S::SerializationThrew },
+  { ...projectionPreparation, walk: { ...S::initial, ancestors: List(1) }, serialized: S::SerializerHostThrew({stage: S::ValidationReflection}) },
+  { ...projectionPreparation, serialized: S::SerializerHostThrew({stage: S::InitialProjectionFreeze}) },
+  { ...wirePreparation(changedCodeUnits, 0, Utf8UpperBound), serialized: S::SerializerHostThrew({stage: S::WireCallback}) },
   { ...projectionPreparation, tokens: TokenizerFailed },
   { ...projectionPreparation, tokens: TokenizerCount({body: changedCodeUnits, roundedUp: 1, exact: true}) })
 pure def prepareObservation(preparation: PreparationObservation): RequestPreparation = {
@@ -128,6 +133,7 @@ pure def prepareObservation(preparation: PreparationObservation): RequestPrepara
           else TokenizationFailed
         | _ => TokenizationFailed
       }
+    | HostSerializationFailure(failure) => PreparationHostFailure({stage: failure.stage})
     | _ => SerializationFailed
   }
 }
@@ -144,9 +150,21 @@ pure def preparationError(result: RequestPreparation): str =
     | TokenizationFailed => "MODEL_PREPARED_REQUEST_TOKENIZATION_FAILED"
     | _ => ""
   }
-pure def lawFailedSerializationPrecedesTokenizer(preparation: PreparationObservation): bool =
-  not(S::hasAdmittedBody(S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized))) implies
-    preparationError(prepareObservation(preparation)) == "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED"
+pure def lawFailedSerializationPrecedesTokenizer(preparation: PreparationObservation): bool = {
+  val admission = S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized)
+  val result = prepareObservation(preparation)
+  match admission {
+    | InvalidBody => match result {
+      | SerializationFailed => true
+      | _ => false
+    }
+    | HostSerializationFailure(failure) => match result {
+      | PreparationHostFailure(reported) => reported.stage == failure.stage
+      | _ => false
+    }
+    | _ => true
+  }
+}
 pure def lawPreparationRetainsAdmittedBody(preparation: PreparationObservation): bool = {
   val result = prepareObservation(preparation)
   val admission = S::finishSerialization(preparation.walk, preparation.serializer, preparation.serialized)
@@ -208,7 +226,15 @@ pure def sometimesExactTokenizerWithoutAuthority(s: PreparedRequests): bool =
 
 ### Every dispatched attempt rechecks bytes counts and lease authority
 
-The allowance computes its input charge bound from the actual serialized code units and qualifies the original output argument. The captured request and budget stay fixed. A standalone unchanged check consumes no transport attempt. A failed check reports a typed error without debiting the lease or incrementing the attempt count. The guard remains usable if a later check observes the original bytes and count again.
+The allowance computes its input charge bound from the actual serialized code
+units and qualifies the original output argument. The captured request and
+budget stay fixed. A standalone unchanged check consumes no transport attempt.
+A changed body reports a typed error before token counting. A changed count
+for the original body reports a separate typed error. The retry adapter
+forwards serializer exceptions under the same source rules as preparation and
+does not freeze the projection again. A failed check leaves the lease and
+attempt count intact. The guard remains usable if a later check observes the
+original bytes and count again.
 
 The aggregate also selects an existing eligible guard and submits its captured
 bytes and count through the same dispatch guard. This models a normal unchanged
