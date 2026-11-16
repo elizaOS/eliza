@@ -130,19 +130,13 @@
       "source": "packages/core/src/access-control/role-primitives.ts",
       "spec": "spec/core/authorization.md",
       "rules": [
-        "Memory and artifact scopes preserve their distinct compatibility decisions",
-        "Verified cross-world membership is intersected with the agent membership",
-        "A role write captures the target and authority revision",
-        "A concurrent revocation makes the captured role write stale",
-        "A committed role change has fresh authorization and one matching audit row",
-        "Role gates combine exclusions, minimum rank and all required memberships",
-        "Trusted ownership and deliberate grants determine resolved roles"
+        "Role gates combine exclusions, minimum rank and all required memberships"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "2b183e4fdb02c94afa03895500d4a5b3d08d201403eda890407eef2d1c99a330",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/access-control/role-primitives.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
+      "implementationProofBoundary": "Declarative gate policy preserves custom and blank name membership and USER-to-MEMBER aliasing over host-coerced, trimmed, uppercased observations. It models exclusions, the roles/anyOf union, allOf membership, and the zero-initialized rank floor. String coercion, ECMAScript trim and Unicode uppercase conversion require adapter conformance. World normalizeRole and hasAtLeastRole retain their separate source normalization contracts; the gate policy is not a replacement for them. Model proofs do not establish source-to-model refinement.",
       "relatedSpecs": [
         "spec/core/authorization.md"
       ]

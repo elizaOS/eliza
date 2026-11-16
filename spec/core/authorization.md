@@ -111,16 +111,87 @@ pure def sometimesOwnerGrantsAdmin(s: Authorization): bool = s.phase == Committe
 
 ### Role gates combine exclusions, minimum rank and all required memberships
 
-A missing gate allows access. Explicit exclusions win. The combined roles and anyOf set needs at least one match when nonempty, allOf needs every match, and a minimum rank compares the caller's highest role. USER and MEMBER normalize to the same User value before this function.
+A missing gate allows access before the host coerces or iterates caller roles.
+For a present gate, host coercion and property evaluation retain source order
+and failures. Explicit exclusions win. The `roles` and
+`anyOf` sets form one alternative union: when nonempty, at least one of their
+names must match. Every `allOf` name must match. Rank compares against the
+caller's highest role, starting at zero even for an empty caller set.
+
+Gate names are separate from resolved world roles. The host supplies the
+exact result of `String(value).trim().toUpperCase()`; the pure policy maps
+USER to MEMBER. Custom and empty names retain their membership identity
+and rank zero. A normalized blank name is a real member, so `Set("")` is
+different from an empty set. Missing, NONE, custom and blank minimum names
+all require rank zero and admit an empty caller set unless another gate
+condition denies it.
+
+String coercion, trimming and Unicode uppercasing require conformance to
+[the pinned gate helper](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/access-control/role-primitives.ts#L52-L143).
+World `normalizeRole` instead maps unknown names to GUEST, maps MEMBER to
+USER, and does not trim. `hasAtLeastRole` uppercases without trimming. Those
+separate source contracts are not replaced by gate normalization.
 
 ```quint
-pure val userRolesValues = Set(Set(), Set(Guest), Set(User), Set(Admin, Owner))
-pure val anyOfValues = Set(Set(), Set(User), Set(Guest, Admin))
-pure val allOfValues = Set(Set(), Set(User), Set(Admin, Owner))
-pure val noneOfValues = Set(Set(), Set(Guest), Set(Owner))
-pure def roleGateAllowed(gatePresent: bool, userRoles: Set[Role], anyOf: Set[Role], allOf: Set[Role], noneOf: Set[Role], minimum: Role): bool =
-  not(gatePresent) or (userRoles.intersect(noneOf).size() == 0 and (minimum == Unresolved or userRoles.exists(role => rank(role) >= rank(minimum))) and (anyOf.size() == 0 or userRoles.intersect(anyOf).size() > 0) and allOf.subseteq(userRoles))
-pure def lawMissingRoleGateAllows(userRoles: Set[Role], anyOf: Set[Role], allOf: Set[Role], noneOf: Set[Role], minimum: Role): bool = roleGateAllowed(false, userRoles, anyOf, allOf, noneOf, minimum)
+pure def gateRoleKey(name: str): str = if (name == "USER") "MEMBER" else name
+pure def gateRoleRank(name: str): int = {
+  val key = gateRoleKey(name)
+  if (key == "OWNER") 4 else if (key == "ADMIN") 3 else if (key == "MEMBER") 2 else if (key == "GUEST") 1 else 0
+}
+pure def gateRoleNames(names: Set[str]): Set[str] = names.map(name => gateRoleKey(name))
+pure val userRolesValues = Set(Set(), Set("GUEST"), Set("USER"), Set("ADMIN", "OWNER"), Set("CUSTOM"), Set("AUDITOR"), Set(""))
+pure val rolesValues = Set(Set(), Set("USER"), Set("ADMIN"), Set("CUSTOM"), Set(""))
+pure val anyOfValues = Set(Set(), Set("USER"), Set("GUEST", "ADMIN"), Set("CUSTOM"), Set("AUDITOR"), Set(""))
+pure val allOfValues = Set(Set(), Set("USER"), Set("ADMIN", "OWNER"), Set("CUSTOM"), Set(""))
+pure val noneOfValues = Set(Set(), Set("GUEST"), Set("OWNER"), Set("CUSTOM"), Set(""))
+pure val minimumValues = Set("", "NONE", "GUEST", "USER", "MEMBER", "ADMIN", "OWNER", "CUSTOM")
+pure val requiredValues = Set("", "USER", "MEMBER", "CUSTOM", "AUDITOR")
+pure val nameValues = Set("", "NONE", "USER", "MEMBER", "OWNER", "CUSTOM", "AUDITOR")
+pure def roleGateAllowed(gatePresent: bool, userRoles: Set[str], roles: Set[str], anyOf: Set[str], allOf: Set[str], noneOf: Set[str], minimum: str): bool = {
+  val callers = gateRoleNames(userRoles)
+  val alternatives = gateRoleNames(roles.union(anyOf))
+  val requiredNames = gateRoleNames(allOf)
+  val excludedNames = gateRoleNames(noneOf)
+  val minimumRank = gateRoleRank(minimum)
+  not(gatePresent) or
+    (callers.intersect(excludedNames).size() == 0 and
+     (minimumRank == 0 or callers.exists(role => gateRoleRank(role) >= minimumRank)) and
+     (alternatives.size() == 0 or callers.intersect(alternatives).size() > 0) and
+     requiredNames.subseteq(callers))
+}
+pure def lawMissingRoleGateAllows(userRoles: Set[str], roles: Set[str], anyOf: Set[str], allOf: Set[str], noneOf: Set[str], minimum: str): bool =
+  roleGateAllowed(false, userRoles, roles, anyOf, allOf, noneOf, minimum)
+pure def lawGateRoleAliasIsIdempotent(name: str): bool = gateRoleKey(gateRoleKey(name)) == gateRoleKey(name)
+pure def lawGateRoleRankIsBounded(name: str): bool = gateRoleRank(name) >= 0 and gateRoleRank(name) <= 4
+pure def lawUnknownGateRoleRetainsNameAndZeroRank(name: str): bool =
+  not(Set("OWNER", "ADMIN", "USER", "MEMBER", "GUEST").contains(name)) implies gateRoleKey(name) == name and gateRoleRank(name) == 0
+pure def lawGateUserAndMemberHaveOneIdentity(name: str): bool =
+  name == "USER" or name == "MEMBER" implies gateRoleKey(name) == "MEMBER" and gateRoleRank(name) == 2
+pure def lawEmptyCallerMeetsZeroRankMinimum(minimum: str): bool =
+  gateRoleRank(minimum) == 0 implies roleGateAllowed(true, Set(), Set(), Set(), Set(), Set(), minimum)
+pure def lawEmptyCallerFailsPositiveRankMinimum(minimum: str): bool =
+  gateRoleRank(minimum) > 0 implies not(roleGateAllowed(true, Set(), Set(), Set(), Set(), Set(), minimum))
+pure def lawGateExclusionsWin(userRoles: Set[str], roles: Set[str], anyOf: Set[str], allOf: Set[str], noneOf: Set[str], minimum: str): bool =
+  gateRoleNames(userRoles).intersect(gateRoleNames(noneOf)).size() > 0 implies not(roleGateAllowed(true, userRoles, roles, anyOf, allOf, noneOf, minimum))
+pure def lawGateAlternativesCombineBothLists(userRoles: Set[str], roles: Set[str], anyOf: Set[str]): bool =
+  roleGateAllowed(true, userRoles, roles, anyOf, Set(), Set(), "") ==
+    roleGateAllowed(true, userRoles, roles.union(anyOf), Set(), Set(), Set(), "")
+pure def lawGatePositiveMinimumRequiresRank(userRoles: Set[str], roles: Set[str], anyOf: Set[str], allOf: Set[str], noneOf: Set[str], minimum: str): bool =
+  roleGateAllowed(true, userRoles, roles, anyOf, allOf, noneOf, minimum) and gateRoleRank(minimum) > 0 implies
+    gateRoleNames(userRoles).exists(role => gateRoleRank(role) >= gateRoleRank(minimum))
+pure def lawGateAlternativesRequireMembership(userRoles: Set[str], roles: Set[str], anyOf: Set[str], allOf: Set[str], noneOf: Set[str], minimum: str): bool = {
+  val callers = gateRoleNames(userRoles)
+  val alternatives = gateRoleNames(roles.union(anyOf))
+  roleGateAllowed(true, userRoles, roles, anyOf, allOf, noneOf, minimum) and alternatives.size() > 0 implies
+    callers.intersect(alternatives).size() > 0
+}
+pure def lawGateRequiresEveryNamedMembership(userRoles: Set[str], roles: Set[str], anyOf: Set[str], allOf: Set[str], noneOf: Set[str], minimum: str): bool =
+  roleGateAllowed(true, userRoles, roles, anyOf, allOf, noneOf, minimum) implies gateRoleNames(allOf).subseteq(gateRoleNames(userRoles))
+pure def lawGateMembershipDoesNotFollowRank(userRoles: Set[str], required: str): bool =
+  not(gateRoleNames(userRoles).contains(gateRoleKey(required))) implies
+    not(roleGateAllowed(true, userRoles, Set(), Set(), Set(required), Set(), ""))
+pure def lawBlankGateRoleRemainsAMembership(userRoles: Set[str]): bool =
+  roleGateAllowed(true, userRoles, Set(), Set(""), Set(), Set(), "") == userRoles.contains("")
 ```
 
 ### Trusted ownership and deliberate grants determine resolved roles
