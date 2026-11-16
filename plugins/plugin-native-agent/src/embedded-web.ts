@@ -61,15 +61,20 @@ export class EmbeddedAgentWeb
       });
     const controller = new AbortController();
     this.streams.set(id, controller);
-    const response = await fetch(`${EMBEDDED_AGENT_PREFIX}/stream`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(options),
-      signal: controller.signal,
-    }).catch((error: unknown) => {
+    let response: Response;
+    try {
+      response = await fetch(`${EMBEDDED_AGENT_PREFIX}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options),
+        signal: controller.signal,
+      });
+    } catch (error) {
       this.streams.delete(id);
-      throw error;
-    });
+      if (!controller.signal.aborted) throw error;
+      this.notifyListeners("streamEnd", { id, aborted: true });
+      return { id };
+    }
     if (response.status === 403) {
       this.streams.delete(id);
       const value = await response.json();

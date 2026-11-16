@@ -36,8 +36,21 @@ const LAUNCH_SETTINGS = new Set([
 ]);
 const CLOUD_ORIGIN =
   /^https:\/\/[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?(\/[A-Za-z0-9._~-]+)*\/?$/;
+const string = (object, key) => {
+  const value = object?.[key];
+  if (value === undefined) return "";
+  if (typeof value !== "string") fail(`Embedded agent ${key} must be text`);
+  return value;
+};
+const flag = (object, key) => {
+  const value = object?.[key];
+  if (value === undefined) return false;
+  if (typeof value !== "boolean")
+    fail(`Embedded agent ${key} must be true or false`);
+  return value;
+};
 const text = (words, key) => {
-  const value = typeof words?.[key] === "string" ? words[key].trim() : "";
+  const value = string(words, key).trim();
   if (!value || value.length > 200)
     fail(`Invalid embedded agent notification ${key}`);
   return value;
@@ -62,10 +75,14 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
   if (typeof baseUrl !== "string" || !CLOUD_ORIGIN.test(baseUrl))
     fail("The Eliza Cloud address must be an https origin");
   const cloud = baseUrl.replace(/\/+$/, "");
-  const { smallModel = "", largeModel = "" } = host.cloud;
+  const smallModel = string(host.cloud, "smallModel");
+  const largeModel = string(host.cloud, "largeModel");
+  const persistMemory = flag(host, "persistMemory");
   if (!Array.isArray(host.routes) || host.routes.length === 0)
     fail("The embedded agent admits no route");
-  const routes = host.routes.map(({ method, path: template, stream }) => {
+  const routes = host.routes.map((route) => {
+    const { method, path: template } = route;
+    const stream = flag(route, "stream");
     if (
       !["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method) ||
       !/^(\/([A-Za-z0-9._-]+|\{[a-z][A-Za-z]*\}))+$/.test(template ?? "") ||
@@ -83,7 +100,7 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
       .join("/");
     return {
       method,
-      stream: stream === true,
+      stream,
       path: new RegExp(`^/${pattern}$`),
     };
   });
@@ -103,8 +120,8 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
       fail(`The embedded agent environment may not set ${key}`);
     environment[key] = value;
   }
-  const name = typeof character?.name === "string" ? character.name.trim() : "";
-  if (!name || name.length > 50 || !character.system?.trim?.())
+  const name = string(character, "name").trim();
+  if (!name || name.length > 50 || !string(character, "system").trim())
     fail("Invalid embedded agent character");
   const allowed = record(policy.actions?.allowed)
     ? Object.keys(policy.actions.allowed).sort()
@@ -142,7 +159,7 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
         hooks: { internal: { enabled: false } },
         agents: { list: [{ ...character, default: true }] },
         ui: { assistant: { name } },
-        ...(host.persistMemory === true
+        ...(persistMemory
           ? {}
           : {
               database: {
@@ -187,6 +204,38 @@ const json = (res, status, value) => {
     "Cache-Control": "no-store",
   });
   res.end(JSON.stringify(value));
+};
+const ownHost = (req, allowedHosts) => {
+  let hostname;
+  try {
+    hostname = new URL(`http://${req.headers.host}`).hostname;
+  } catch {
+    return null;
+  }
+  const bare = hostname.replace(/^\[|\]$/g, "");
+  const allowed =
+    allowedHosts === true ||
+    net.isIP(bare) !== 0 ||
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    allowedHosts.some((entry) =>
+      entry.startsWith(".")
+        ? hostname === entry.slice(1) || hostname.endsWith(entry)
+        : hostname === entry,
+    );
+  return allowed ? req.headers.host : null;
+};
+const fromOwnPage = (req, host) => {
+  const site = req.headers["sec-fetch-site"];
+  const origin = req.headers.origin;
+  const type = (req.headers["content-type"] ?? "").split(";")[0].trim();
+  return (
+    type.toLowerCase() === "application/json" &&
+    (site === undefined || site === "same-origin") &&
+    (origin === undefined ||
+      origin === `http://${host}` ||
+      origin === `https://${host}`)
+  );
 };
 const readBody = async (req) => {
   let size = 0;
@@ -283,9 +332,10 @@ export function embeddedAgentDevelopment({
       );
     }
     let child;
+    let port;
     const token = randomBytes(48).toString("base64url");
-    const port = await freePort();
     try {
+      port = await freePort();
       const {
         runtimeEnvironment,
         startPrivateRuntimeProcess,
@@ -403,7 +453,13 @@ export function embeddedAgentDevelopment({
     return json(res, 200, { status: answer.status, data: await answer.json() });
   };
 
-  const handle = async (req, res) => {
+  const handle = async (req, res, allowedHosts) => {
+    const host = ownHost(req, allowedHosts);
+    if (!host || (req.method !== "GET" && !fromOwnPage(req, host)))
+      return json(res, 403, {
+        code: "ORIGIN_REFUSED",
+        error: "Only this development server's page may use the agent",
+      });
     const url = new URL(req.url, "http://localhost");
     if (req.method === "GET" && url.pathname === "/status")
       return json(res, 200, status);
@@ -439,13 +495,15 @@ export function embeddedAgentDevelopment({
     name: "eliza-embedded-agent",
     configureServer(server) {
       server.middlewares.use(EMBEDDED_AGENT_PREFIX, (req, res) => {
-        handle(req, res).catch((error) => {
-          if (!res.headersSent)
-            json(res, error instanceof EmbeddedAgentDataError ? 400 : 502, {
-              error: "The agent request failed",
-            });
-          else res.end();
-        });
+        handle(req, res, server.config?.server?.allowedHosts ?? []).catch(
+          (error) => {
+            if (!res.headersSent)
+              json(res, error instanceof EmbeddedAgentDataError ? 400 : 502, {
+                error: "The agent request failed",
+              });
+            else res.destroy();
+          },
+        );
       });
       server.httpServer?.once("close", stop);
       void start(0);

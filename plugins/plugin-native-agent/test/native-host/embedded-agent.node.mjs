@@ -28,8 +28,9 @@ http.createServer((req, res) => {
   let body = ""; req.on("data", (c) => body += c); req.on("end", () => {
     const { text } = JSON.parse(body);
     if (text === "crash") process.exit(3);
-    if (text === "refused") { res.writeHead(401, {"Content-Type":"application/json"}); return res.end('{"error":"Invalid API key"}'); }
     res.writeHead(200, {"Content-Type":"text/event-stream"});
+    if (text === "refused") return res.end('data: {"type":"done","fullText":"Sorry","failureKind":"provider_issue"}\\n\\n');
+    if (text === "cut") return res.write('data: {"text":"H', () => res.destroy());
     res.end('data: {"text":"Hi"}\\n\\ndata: [DONE]\\n\\n');
   });
 }).listen(Number(process.env.ELIZA_API_PORT), "127.0.0.1");
@@ -86,17 +87,53 @@ async function development(t, { script, executable, credential }) {
     }
     assert.fail(`never ${expected}`);
   };
-  const post = (route, body) =>
-    fetch(base + route, { method: "POST", body: JSON.stringify(body) });
-  return { settled, post, seen };
+  const post = (route, body, headers = {}) =>
+    fetch(base + route, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+  return { settled, post, seen, base };
 }
 
 test("the development agent runs from the data files and serves only their routes", async (t) => {
   let key = "cloud-key";
-  const { settled, post } = await development(t, {
+  const { settled, post, base } = await development(t, {
     credential: async () => key,
   });
   await settled("running");
+  const turn = { method: "POST", path: stream, body: { text: "hello" } };
+  const sent = (method, route, headers) =>
+    new Promise((resolve, reject) =>
+      http
+        .request(base + route, { method, headers }, (res) => {
+          res.resume();
+          resolve(res.statusCode);
+        })
+        .on("error", reject)
+        .end(method === "POST" ? JSON.stringify(turn) : undefined),
+    );
+  for (const headers of [
+    { "Content-Type": "text/plain" },
+    {
+      "Content-Type": "application/json",
+      Origin: "https://evil.example",
+      "Sec-Fetch-Site": "cross-site",
+    },
+    { "Content-Type": "application/json", "Sec-Fetch-Site": "same-site" },
+    { "Content-Type": "application/json", Host: "evil.example" },
+  ])
+    assert.equal(await sent("POST", "/stream", headers), 403);
+  assert.equal(await sent("GET", "/status", { Host: "evil.example" }), 403);
+  assert.equal(
+    (
+      await post("/stream", turn, {
+        Origin: new URL(base).origin,
+        "Sec-Fetch-Site": "same-origin",
+      })
+    ).status,
+    200,
+  );
   assert.deepEqual(
     await (
       await post("/request", { method: "GET", path: "/api/status" })
@@ -109,21 +146,19 @@ test("the development agent runs from the data files and serves only their route
     ["/stream", { method: "GET", path: "/api/status" }],
   ])
     assert.equal((await post(...refusal)).status, 403);
-  const reply = await post("/stream", {
-    method: "POST",
-    path: stream,
-    body: { text: "hello" },
-  });
+  const reply = await post("/stream", turn);
   assert.equal(await reply.text(), 'data: {"text":"Hi"}\n\ndata: [DONE]\n\n');
-  assert.deepEqual(
-    await (
-      await post("/stream", {
-        method: "POST",
-        path: stream,
-        body: { text: "refused" },
-      })
-    ).json(),
-    { status: 401, data: { error: "Invalid API key" } },
+  const refused = await post("/stream", {
+    ...turn,
+    body: { text: "refused" },
+  });
+  assert.equal(refused.status, 200);
+  assert.equal(
+    await refused.text(),
+    'data: {"type":"done","fullText":"Sorry","failureKind":"provider_issue"}\n\n',
+  );
+  await assert.rejects(
+    (await post("/stream", { ...turn, body: { text: "cut" } })).text(),
   );
 
   await post("/stream", {
