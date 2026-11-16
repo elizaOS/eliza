@@ -2381,3 +2381,189 @@ lemma PluginReturningStartRetainsReceiptTypes(s: PluginServices, attemptId: int,
   {}
   PluginReceiptsRetainDeclaredType(s, after);
 }
+
+lemma PluginRetirementTypeHasOneGroup(r: ServiceRetirement, cursor: int, other: int)
+  requires retirementGroupsFollowPlan(r)
+  requires 0 <= cursor < |r.groups| && 0 <= other < |r.groups|
+  requires r.groups[cursor].serviceType == r.groups[other].serviceType
+  ensures cursor == other
+{
+  hide *;
+  reveal retirementGroupsFollowPlan(), retirementGroupMatchesPosition(), ProofLib.Filter();
+  if cursor != other {
+    PluginRetirementPlanPosition(r, cursor);
+    PluginRetirementPlanPosition(r, other);
+    var serviceType := r.groups[cursor].serviceType;
+    assert r.plan[cursor] == serviceType && r.plan[other] == serviceType;
+    assert serviceType in r.plan;
+    var matches := (value: string) => value == serviceType;
+    ProofLib.FilterTwo(matches, r.plan, cursor, other);
+    assert |ProofLib.Filter(matches, r.plan)| == 1;
+  }
+}
+
+lemma PluginClassGroupEditProjection(s: PluginServices, beforePlacement: PluginServices, next: RetirementGroup, epochId: int)
+  requires alwaysRetirementsFollowTypePlan(s) && beforePlacement.retirements == s.retirements
+  requires currentGroup(s, epochId).phase.GroupStoppingClasses?
+  requires next == currentGroup(s, epochId).(classCursor := next.classCursor, hook := next.hook)
+  ensures var after := putCurrentGroup(next, epochId, beforePlacement);
+    |after.retirements| == |s.retirements| &&
+      (forall i | 0 <= i < |s.retirements| ::
+        var prior := s.retirements[i];
+        var updated := after.retirements[i];
+        updated.(groups := prior.groups) == prior && |updated.groups| == |prior.groups|
+          && (forall j | 0 <= j < |prior.groups| ::
+            updated.groups[j].(classCursor := prior.groups[j].classCursor, hook := prior.groups[j].hook) == prior.groups[j]))
+{
+  hide *;
+  reveal alwaysRetirementsFollowTypePlan(), retirementGroupsFollowPlan(), putCurrentGroup(), currentGroup(), noGroup;
+  var after := putCurrentGroup(next, epochId, beforePlacement);
+  forall i | 0 <= i < |s.retirements|
+    ensures var prior := s.retirements[i];
+      var updated := after.retirements[i];
+      updated.(groups := prior.groups) == prior && |updated.groups| == |prior.groups|
+        && (forall j | 0 <= j < |prior.groups| ::
+          updated.groups[j].(classCursor := prior.groups[j].classCursor, hook := prior.groups[j].hook) == prior.groups[j])
+  {
+    var prior := s.retirements[i];
+    var updated := after.retirements[i];
+    if prior.epochId == epochId {
+      assert prior in s.retirements;
+      PluginRetirementPlanLookup(s, prior);
+      assert 0 <= prior.cursor < |prior.groups|;
+      var current := prior.groups[prior.cursor];
+      assert currentGroup(s, epochId) == current;
+      forall j | 0 <= j < |prior.groups|
+        ensures updated.groups[j].(classCursor := prior.groups[j].classCursor, hook := prior.groups[j].hook) == prior.groups[j]
+      {
+        if prior.groups[j].serviceType == next.serviceType {
+          PluginRetirementTypeHasOneGroup(prior, prior.cursor, j);
+          assert prior.groups[j] == current;
+        }
+      }
+    }
+  }
+}
+
+lemma PluginClassGroupEditKeepsCurrentPlan(before: ServiceRetirement, after: ServiceRetirement)
+  requires retirementGroupsFollowPlan(before)
+  requires after.(groups := before.groups) == before && |after.groups| == |before.groups|
+  requires forall i | 0 <= i < |before.groups| ::
+    after.groups[i].(classCursor := before.groups[i].classCursor, hook := before.groups[i].hook) == before.groups[i]
+  ensures retirementGroupsFollowPlan(after)
+{
+  hide *;
+  reveal retirementGroupsFollowPlan(), retirementGroupMatchesPosition(), groupFinishedOrSkipped();
+  PluginRetirementWithdrawalHasPositionEvidence(before);
+  forall i | 0 <= i < |after.groups|
+    ensures retirementGroupMatchesPosition(after, i, after.groups[i])
+  {
+    assert retirementGroupMatchesPosition(before, i, before.groups[i]);
+    assert before.groups[i].phase == after.groups[i].phase && before.groups[i].serviceType == after.groups[i].serviceType;
+  }
+  PluginRetirementWithdrawalHasPositionEvidence(after);
+}
+
+lemma PluginClassGroupEditPreservesPlans(s: PluginServices, beforePlacement: PluginServices, next: RetirementGroup, epochId: int)
+  requires alwaysRetirementsFollowTypePlan(s)
+  requires beforePlacement.retirements == s.retirements && beforePlacement.plugins == s.plugins
+  requires currentGroup(s, epochId).phase.GroupStoppingClasses?
+  requires next == currentGroup(s, epochId).(classCursor := next.classCursor, hook := next.hook)
+  ensures alwaysRetirementsFollowTypePlan(putCurrentGroup(next, epochId, beforePlacement))
+{
+  hide *;
+  reveal alwaysRetirementsFollowTypePlan(), putCurrentGroup(), ProofLib.Filter();
+  var after := putCurrentGroup(next, epochId, beforePlacement);
+  PluginClassGroupEditProjection(s, beforePlacement, next, epochId);
+  forall row | row in after.retirements
+    ensures row.epochId > 0 && core__pluginRegistry_epoch(after.plugins, row.epochId).id == row.epochId
+    ensures core__pluginRegistry_epochRetiring(after.plugins, row.epochId) ||
+      !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId)
+    ensures |ProofLib.Filter((other: ServiceRetirement) => other.epochId == row.epochId, after.retirements)| == 1
+    ensures retirementGroupsFollowPlan(row)
+  {
+    var i :| 0 <= i < |after.retirements| && after.retirements[i] == row;
+    var prior := s.retirements[i];
+    assert prior in s.retirements && prior.epochId == row.epochId;
+    var byEpoch := (other: ServiceRetirement) => other.epochId == row.epochId;
+    ProofLib.FilterLengthPointwise(byEpoch, byEpoch, s.retirements, after.retirements);
+    PluginClassGroupEditKeepsCurrentPlan(prior, row);
+  }
+}
+
+lemma invokeClassHook_ensures(s: PluginServices, epochId: int)
+  ensures (inv(s) ==> canInvokeClassHook(s, epochId) ==> alwaysLiveClassOwnerUnique(invokeClassHook(s, epochId)))
+  ensures (inv(s) ==> canInvokeClassHook(s, epochId) ==> alwaysServiceOwnerEpochExists(invokeClassHook(s, epochId)))
+  ensures (inv(s) ==> canInvokeClassHook(s, epochId) ==> alwaysChildLifecyclesValid(invokeClassHook(s, epochId)))
+  ensures (inv(s) ==> canInvokeClassHook(s, epochId) ==> alwaysRetirementsFollowTypePlan(invokeClassHook(s, epochId)))
+  ensures (inv(s) ==> canInvokeClassHook(s, epochId) ==> alwaysNoOrphanInstance(invokeClassHook(s, epochId)))
+  ensures (inv(s) ==> canInvokeClassHook(s, epochId) ==> alwaysRetiredUndeclaredTypeIsUnknown(invokeClassHook(s, epochId)))
+  ensures (inv(s) ==> canInvokeClassHook(s, epochId) ==> alwaysStopObservationsFollowSlots(invokeClassHook(s, epochId)))
+  ensures (inv(s) ==> canInvokeClassHook(s, epochId) ==> alwaysRetiredEpochHasNoResources(invokeClassHook(s, epochId)))
+  ensures (inv(s) ==> canInvokeClassHook(s, epochId) ==> alwaysSealedOwnedClassesStable(invokeClassHook(s, epochId)))
+{
+  hide *;
+  reveal inv(), canInvokeClassHook(), invokeClassHook(), clearRetiredClassFailure(), ProofLib.Filter();
+  reveal alwaysLiveClassOwnerUnique(), alwaysSealedOwnedClassesStable(), putCurrentGroup();
+  if inv(s) && canInvokeClassHook(s, epochId) {
+    var beforePlacement := clearRetiredClassFailure(currentClassHook(s, epochId).id, s);
+    PluginClassGroupEditPreservesPlans(s, beforePlacement, currentGroup(s, epochId).(hook := ClassHookPhase.HookPending), epochId);
+    var after := invokeClassHook(s, epochId);
+    forall i | 0 <= i < |s.services.classes|
+      ensures after.services.classes[i].id == s.services.classes[i].id
+        && after.services.classes[i].serviceType == s.services.classes[i].serviceType
+    {}
+    PluginReceiptsRetainDeclaredType(s, after);
+  }
+}
+
+lemma finishClassSlot_ensures(s: PluginServices, epochId: int)
+  ensures (inv(s) ==> canFinishClassSlot(s, epochId) ==> alwaysLiveClassOwnerUnique(finishClassSlot(s, epochId)))
+  ensures (inv(s) ==> canFinishClassSlot(s, epochId) ==> alwaysServiceOwnerEpochExists(finishClassSlot(s, epochId)))
+  ensures (inv(s) ==> canFinishClassSlot(s, epochId) ==> alwaysChildLifecyclesValid(finishClassSlot(s, epochId)))
+  ensures (inv(s) ==> canFinishClassSlot(s, epochId) ==> alwaysRetirementsFollowTypePlan(finishClassSlot(s, epochId)))
+  ensures (inv(s) ==> canFinishClassSlot(s, epochId) ==> alwaysNoOrphanInstance(finishClassSlot(s, epochId)))
+  ensures (inv(s) ==> canFinishClassSlot(s, epochId) ==> alwaysRetiredUndeclaredTypeIsUnknown(finishClassSlot(s, epochId)))
+  ensures (inv(s) ==> canFinishClassSlot(s, epochId) ==> alwaysStopObservationsFollowSlots(finishClassSlot(s, epochId)))
+  ensures (inv(s) ==> canFinishClassSlot(s, epochId) ==> alwaysRetiredEpochHasNoResources(finishClassSlot(s, epochId)))
+  ensures (inv(s) ==> canFinishClassSlot(s, epochId) ==> alwaysSealedOwnedClassesStable(finishClassSlot(s, epochId)))
+{
+  hide *;
+  reveal inv(), canFinishClassSlot(), finishClassSlot(), clearRetiredClassFailure(), ProofLib.Filter();
+  reveal alwaysLiveClassOwnerUnique(), alwaysSealedOwnedClassesStable(), putCurrentGroup();
+  if inv(s) && canFinishClassSlot(s, epochId) {
+    var current := currentGroup(s, epochId);
+    var cls := currentClassHook(s, epochId);
+    var cleared := if current.hook.HookReady? then clearRetiredClassFailure(cls.id, s) else s;
+    var retained := (o: OwnedClass) => ((o.classId != cls.id) || (o.epochId != epochId));
+    var prior := cleared.(liveOwners := ProofLib.Filter(retained, cleared.liveOwners));
+    var next := current.(classCursor := current.classCursor + 1, hook := ClassHookPhase.HookReady);
+    assert finishClassSlot(s, epochId) == putCurrentGroup(next, epochId, prior);
+    PluginClassGroupEditPreservesPlans(s, prior, next, epochId);
+    var after := finishClassSlot(s, epochId);
+    forall i | 0 <= i < |s.services.classes|
+      ensures after.services.classes[i].id == s.services.classes[i].id
+        && after.services.classes[i].serviceType == s.services.classes[i].serviceType
+    {}
+    PluginReceiptsRetainDeclaredType(s, after);
+    PluginFilteringKeepsLiveClassOwners(s, after, retained);
+  }
+}
+
+lemma PluginFilteringKeepsLiveClassOwners(s: PluginServices, after: PluginServices, retain: OwnedClass -> bool)
+  requires alwaysLiveClassOwnerUnique(s) && s.ownership == after.ownership
+  requires after.liveOwners == ProofLib.Filter(retain, s.liveOwners)
+  ensures alwaysLiveClassOwnerUnique(after)
+{
+  hide *;
+  reveal alwaysLiveClassOwnerUnique(), ProofLib.Filter();
+  forall owner | owner in after.liveOwners
+    ensures owner in after.ownership
+    ensures |ProofLib.Filter((other: OwnedClass) => other.classId == owner.classId, after.liveOwners)| == 1
+  {
+    ProofLib.FilterMember(retain, s.liveOwners, owner);
+    var byClass := (other: OwnedClass) => other.classId == owner.classId;
+    ProofLib.FilterOfFilterLength(retain, byClass, byClass, s.liveOwners);
+    ProofLib.FilterMember(byClass, after.liveOwners, owner);
+  }
+}
