@@ -1329,3 +1329,551 @@ lemma AcquireKeepsExclusiveTicketCustody(s: Reconciliations, id: int, armedAt: i
   }
   ConnectionTicketCustodyByIndex(after);
 }
+
+lemma releaseKey_ensures(s: Reconciliations, id: int)
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysOneTimerPerAcquiredTicket(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysTimersOwnTheirQueueTicket(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysEachHeldTicketOwnsTimer(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysCleanupOwnsSettledTicket(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysQueueMutualExclusion(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysCallIdentitiesUnique(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysAcquisitionCursor(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysCallbackOwnsEveryKey(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysWaitingTicketIsQueued(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysHeldTicketsAreRunning(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysOneCallOwnsEachTicket(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysWarnedTimersWereDue(releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> stepWarningRetainsAllLocks(s, "releaseKey", releaseKey(s, id)))
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> stepCleanupRetainsOtherTails(s, "releaseKey", releaseKey(s, id)))
+{
+  if inv(s) && canReleaseKey(s, id) {
+    ReleaseKeepsQueueAndCleanupCustody(s, id);
+    ReleaseKeepsTimerQueueOwners(s, id);
+    ReleaseKeepsHeldEntriesRunning(s, id);
+    ReleaseKeepsOtherWaitingEntries(s, id);
+    ReleaseKeepsRemainingTimerOwners(s, id);
+    ReleaseKeepsOtherHeldTimers(s, id);
+    ReleaseKeepsCallIdentities(s, id);
+    ReleaseKeepsExclusiveTickets(s, id);
+  }
+}
+lemma ReleasingCallLookup(s: Reconciliations, id: int)
+  requires alwaysCallIdentitiesUnique(s) && canReleaseKey(s, id)
+  ensures var selected := callAt(s, id);
+    selected in s.calls && selected.id == id && selected.phase.ReleasingRecords? && |selected.held| > 0
+  ensures forall call | call in s.calls && call.id == id :: call == callAt(s, id)
+{
+  reveal canReleaseKey(), callAt();
+  var sameId := (call: Reconciliation) => call.id == id;
+  var matches := ProofLib.Filter(sameId, s.calls);
+  var selected := callAt(s, id);
+  assert noCall.held == [] && |matches| > 0 && matches[0] == selected;
+  ProofLib.FilterMember(sameId, s.calls, selected);
+  assert |matches| == 1;
+  forall call | call in s.calls && call.id == id
+    ensures call == selected
+  {
+    ProofLib.FilterMember(sameId, s.calls, call);
+    assert call in matches;
+  }
+}
+
+lemma ReleasingTicketHasLiveOwners(s: Reconciliations, id: int)
+  requires inv(s) && canReleaseKey(s, id)
+  ensures var call := callAt(s, id);
+    var ticket := call.held[|call.held|-1];
+    0 < |call.held| && 0 < ticket && ticket in call.held &&
+    core__connectorQueues_canFinish(s.queue, ticket) &&
+    (exists timer :: timer in s.timers && timer.ticket == ticket && !timer.cleared && timer.callId == id && timer.adapter == call.adapter)
+{
+  ReleasingCallLookup(s, id);
+  var call := callAt(s, id);
+  var ticket := call.held[|call.held|-1];
+  assert ticket in call.held;
+  var entry :| entry in s.queue.entries && entry.ticket == ticket && entry.running;
+  assert !entry.complete;
+}
+
+lemma ReleaseKeyFrame(s: Reconciliations, id: int)
+  requires inv(s) && canReleaseKey(s, id)
+  ensures var after := releaseKey(s, id);
+    var call := callAt(s, id);
+    0 < |call.held| &&
+    (var ticket := call.held[|call.held|-1];
+      after.queue == core__connectorQueues_finish(s.queue, ticket, !call.failed) &&
+      |after.calls| == |s.calls| && |after.queue.entries| == |s.queue.entries| && |after.timers| == |s.timers| &&
+      (forall i | 0 <= i < |s.calls| ::
+        var prior := s.calls[i];
+        after.calls[i] == (
+          if prior.id != id then prior
+          else prior.(held := ProofLib.Filter((number: int) => number != ticket, prior.held),
+            phase := if |prior.held| == 1 then ReconcilePhase.Reconciled else ReconcilePhase.ReleasingRecords)
+        )) &&
+      (forall j | 0 <= j < |s.queue.entries| ::
+        var prior := s.queue.entries[j];
+        after.queue.entries[j] == (
+          if prior.ticket != ticket then prior
+          else prior.(running := false, complete := true, failed := call.failed)
+        )) &&
+      (forall k | 0 <= k < |s.timers| ::
+        var prior := s.timers[k];
+        after.timers[k] == (if prior.ticket != ticket then prior else prior.(cleared := true))) &&
+      (forall number :: number in after.cleanupPending <==> number in s.cleanupPending || number == ticket))
+{
+  ReleasingCallLookup(s, id);
+  reveal releaseKey(), core__connectorQueues_finish();
+  var after := releaseKey(s, id);
+  var call := callAt(s, id);
+  var ticket := call.held[|call.held|-1];
+  var add := (number: int) => number !in s.cleanupPending;
+  var appended := ProofLib.Filter(add, [ticket]);
+  assert after.cleanupPending == s.cleanupPending + appended;
+  forall number: int
+    ensures number in after.cleanupPending <==> number in s.cleanupPending || number == ticket
+  {
+    ProofLib.FilterMember(add, [ticket], number);
+    assert number in appended <==> number == ticket && add(number);
+  }
+}
+
+lemma ReleaseRetainsFilteredTicket(held: seq<int>, released: int, ticket: int)
+  requires ticket != released
+  ensures ticket in ProofLib.Filter((number: int) => number != released, held) <==> ticket in held
+  ensures |ProofLib.Filter((other: int) => other == ticket,
+      ProofLib.Filter((number: int) => number != released, held))| ==
+    |ProofLib.Filter((other: int) => other == ticket, held)|
+  decreases |held|
+{
+  var keep := (number: int) => number != released;
+  var lookup := (other: int) => other == ticket;
+  ProofLib.FilterMember(keep, held, ticket);
+  if |held| == 0 {
+    ProofLib.FilterNil(keep, held);
+    ProofLib.FilterNil(lookup, held);
+  } else {
+    ProofLib.FilterCons(keep, held);
+    ProofLib.FilterCons(lookup, held);
+    var tail := held[1..];
+    var retained := ProofLib.Filter(keep, held);
+    var retainedTail := ProofLib.Filter(keep, tail);
+    ReleaseRetainsFilteredTicket(tail, released, ticket);
+    if keep(held[0]) {
+      assert retained == [held[0]] + retainedTail && retained[0] == held[0];
+      ProofLib.FilterCons(lookup, retained);
+      assert retained[1..] == retainedTail;
+    } else {
+      assert held[0] == released && !lookup(held[0]);
+      assert retained == retainedTail;
+    }
+  }
+}
+
+lemma ReleaseQueueEntryRemains(s: Reconciliations, id: int, prior: core__connectorQueues_QueueEntry)
+  requires inv(s) && canReleaseKey(s, id) && prior in s.queue.entries
+  ensures var call := callAt(s, id);
+    var ticket := call.held[|call.held|-1];
+    var next := if prior.ticket == ticket then prior.(running := false, complete := true, failed := call.failed) else prior;
+    next in releaseKey(s, id).queue.entries
+{
+  ReleaseKeyFrame(s, id);
+  var i :| 0 <= i < |s.queue.entries| && s.queue.entries[i] == prior;
+  assert releaseKey(s, id).queue.entries[i] in releaseKey(s, id).queue.entries;
+}
+
+lemma ReleaseKeepsQueueAndCleanupCustody(s: Reconciliations, id: int)
+  requires inv(s) && canReleaseKey(s, id)
+  ensures alwaysQueueMutualExclusion(releaseKey(s, id))
+  ensures alwaysCleanupOwnsSettledTicket(releaseKey(s, id))
+{
+  var call := callAt(s, id);
+  var ticket := call.held[|call.held|-1];
+  var after := releaseKey(s, id);
+  ReleaseKeyFrame(s, id);
+  ReleasingTicketHasLiveOwners(s, id);
+  core__connectorQueues_finish_ensures(s.queue, ticket, !call.failed);
+  forall pending | pending in after.cleanupPending
+    ensures core__connectorQueues_canCleanup(after.queue, pending)
+  {
+    if pending == ticket {
+      var prior :| prior in s.queue.entries && prior.ticket == ticket && prior.running && !prior.complete;
+      ReleaseQueueEntryRemains(s, id, prior);
+    } else {
+      assert pending in s.cleanupPending;
+      var prior :| prior in s.queue.entries && prior.ticket == pending && prior.complete;
+      ReleaseQueueEntryRemains(s, id, prior);
+    }
+  }
+}
+
+lemma ReleaseKeepsTimerQueueOwners(s: Reconciliations, id: int)
+  requires inv(s) && canReleaseKey(s, id)
+  ensures alwaysTimersOwnTheirQueueTicket(releaseKey(s, id))
+{
+  var call := callAt(s, id);
+  var ticket := call.held[|call.held|-1];
+  var after := releaseKey(s, id);
+  ReleaseKeyFrame(s, id);
+  forall timer | timer in after.timers
+    ensures (
+      exists entry ::
+        entry in after.queue.entries && entry.ticket == timer.ticket &&
+        entry.scope.owner == timer.adapter && entry.scope.provider == timer.recordKey &&
+        entry.running == !timer.cleared && entry.complete == timer.cleared
+    )
+  {
+    var k :| 0 <= k < |after.timers| && after.timers[k] == timer;
+    var prior := s.timers[k];
+    assert prior in s.timers && prior.ticket == timer.ticket;
+    var entry :| entry in s.queue.entries && entry.ticket == prior.ticket &&
+      entry.scope.owner == prior.adapter && entry.scope.provider == prior.recordKey &&
+      entry.running == !prior.cleared && entry.complete == prior.cleared;
+    ReleaseQueueEntryRemains(s, id, entry);
+    if prior.ticket == ticket {
+      assert timer.cleared;
+    } else {
+      assert timer == prior;
+    }
+  }
+}
+
+lemma ReleaseOtherCallsCannotHoldReleasedTicket(s: Reconciliations, id: int, other: Reconciliation)
+  requires inv(s) && canReleaseKey(s, id)
+  requires other in s.calls && other.id != id
+  ensures var selected := callAt(s, id);
+    var ticket := selected.held[|selected.held|-1];
+    other.waiting != ticket && ticket !in other.held
+{
+  ReleasingCallLookup(s, id);
+  var selected := callAt(s, id);
+  var ticket := selected.held[|selected.held|-1];
+  assert ticket in selected.held;
+  CallbackOtherTicket(s, selected, other, ticket);
+}
+
+lemma ReleaseKeepsHeldEntriesRunning(s: Reconciliations, id: int)
+  requires inv(s) && canReleaseKey(s, id)
+  ensures alwaysHeldTicketsAreRunning(releaseKey(s, id))
+{
+  var after := releaseKey(s, id);
+  var call := callAt(s, id);
+  var released := call.held[|call.held|-1];
+  ReleaseKeyFrame(s, id);
+  forall current | current in after.calls
+    ensures forall ticket | ticket in current.held ::
+      (exists entry :: entry in after.queue.entries && entry.ticket == ticket && entry.running)
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == current;
+    var prior := s.calls[i];
+    assert prior in s.calls;
+    if prior.id != id {
+      ReleaseOtherCallsCannotHoldReleasedTicket(s, id, prior);
+    }
+    forall ticket | ticket in current.held
+      ensures (exists entry :: entry in after.queue.entries && entry.ticket == ticket && entry.running)
+    {
+      if prior.id == id {
+        ProofLib.FilterMember((number: int) => number != released, prior.held, ticket);
+      }
+      assert ticket in prior.held && ticket != released;
+      var entry :| entry in s.queue.entries && entry.ticket == ticket && entry.running;
+      ReleaseQueueEntryRemains(s, id, entry);
+    }
+  }
+}
+
+lemma ReleaseKeepsOtherWaitingEntries(s: Reconciliations, id: int)
+  requires inv(s) && canReleaseKey(s, id)
+  ensures alwaysWaitingTicketIsQueued(releaseKey(s, id))
+{
+  var after := releaseKey(s, id);
+  var selected := callAt(s, id);
+  var released := selected.held[|selected.held|-1];
+  ReleaseKeyFrame(s, id);
+  ReleasingCallLookup(s, id);
+  assert selected.waiting == 0;
+  forall call | call in after.calls
+    ensures call.waiting >= 0
+    ensures call.waiting > 0 ==> (
+      call.phase.AcquiringRecords? &&
+      (exists entry :: entry in after.queue.entries && entry.ticket == call.waiting &&
+        entry.scope.owner == call.adapter && !entry.running && !entry.complete &&
+        entry.scope.provider == (if 0 <= call.position < |call.recordKeys|
+          then call.recordKeys[call.position] else noKey).key)
+    )
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == call;
+    var prior := s.calls[i];
+    assert prior in s.calls;
+    if prior.id != id && call.waiting > 0 {
+      assert call == prior;
+      ReleaseOtherCallsCannotHoldReleasedTicket(s, id, prior);
+      var record := if 0 <= call.position < |call.recordKeys| then call.recordKeys[call.position] else noKey;
+      var queued :| queued in s.queue.entries && queued.ticket == call.waiting &&
+        queued.scope.owner == call.adapter && queued.scope.provider == record.key &&
+        !queued.running && !queued.complete;
+      assert queued.ticket != released;
+      ReleaseQueueEntryRemains(s, id, queued);
+    }
+  }
+}
+
+lemma ReleaseRetainsOtherHeldTickets(s: Reconciliations, id: int, i: int, ticket: int)
+  requires inv(s) && canReleaseKey(s, id) && 0 <= i < |s.calls|
+  requires var selected := callAt(s, id); ticket != selected.held[|selected.held|-1]
+  ensures ticket in releaseKey(s, id).calls[i].held <==> ticket in s.calls[i].held
+  ensures |ProofLib.Filter((number: int) => number == ticket, releaseKey(s, id).calls[i].held)| ==
+    |ProofLib.Filter((number: int) => number == ticket, s.calls[i].held)|
+{
+  ReleaseKeyFrame(s, id);
+  var selected := callAt(s, id);
+  if s.calls[i].id == id {
+    ReleaseRetainsFilteredTicket(s.calls[i].held, selected.held[|selected.held|-1], ticket);
+  }
+}
+
+lemma ReleaseKeepsOtherHeldTimers(s: Reconciliations, id: int)
+  requires inv(s) && canReleaseKey(s, id)
+  ensures alwaysEachHeldTicketOwnsTimer(releaseKey(s, id))
+{
+  var after := releaseKey(s, id);
+  forall call | call in after.calls
+    ensures forall ticket | ticket in call.held ::
+      (exists timer :: timer in after.timers && timer.ticket == ticket && timer.callId == call.id &&
+        timer.adapter == call.adapter && !timer.cleared)
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == call;
+    forall ticket | ticket in call.held
+      ensures (
+        exists timer :: timer in after.timers && timer.ticket == ticket && timer.callId == call.id &&
+          timer.adapter == call.adapter && !timer.cleared
+      )
+    {
+      ReleaseUnreleasedHeldTimer(s, id, i, ticket);
+    }
+  }
+}
+
+lemma ReleaseKeepsCallIdentities(s: Reconciliations, id: int)
+  requires inv(s) && canReleaseKey(s, id)
+  ensures alwaysCallIdentitiesUnique(releaseKey(s, id))
+{
+  ReleaseKeyFrame(s, id);
+  var after := releaseKey(s, id);
+  forall call | call in after.calls
+    ensures call.id > 0 && |ProofLib.Filter((row: Reconciliation) => row.id == call.id, after.calls)| == 1
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == call;
+    assert s.calls[i] in s.calls && s.calls[i].id == call.id;
+    var byId := (row: Reconciliation) => row.id == call.id;
+    ProofLib.FilterLengthPointwise(byId, byId, s.calls, after.calls);
+  }
+}
+
+lemma ReleaseHeldTicketsOnlyShrink(s: Reconciliations, id: int, i: int)
+  requires inv(s) && canReleaseKey(s, id) && 0 <= i < |s.calls|
+  ensures var after := releaseKey(s, id).calls[i];
+    after.id == s.calls[i].id && after.waiting == s.calls[i].waiting &&
+    (forall ticket | ticket in after.held :: ticket in s.calls[i].held) &&
+    (forall ticket | ticket in after.held ::
+      ticket > 0 && ticket != after.waiting &&
+      |ProofLib.Filter((number: int) => number == ticket, after.held)| == 1)
+{
+  ReleaseKeyFrame(s, id);
+  var prior := s.calls[i];
+  var call := releaseKey(s, id).calls[i];
+  var selected := callAt(s, id);
+  var released := selected.held[|selected.held|-1];
+  assert prior in s.calls;
+  forall ticket | ticket in call.held
+    ensures ticket in prior.held && ticket > 0 && ticket != call.waiting &&
+      |ProofLib.Filter((number: int) => number == ticket, call.held)| == 1
+  {
+    if prior.id == id {
+      ProofLib.FilterMember((number: int) => number != released, prior.held, ticket);
+      assert ticket != released;
+      ReleaseRetainsOtherHeldTickets(s, id, i, ticket);
+    }
+  }
+}
+
+lemma ReleasePeersContinueToOwnDistinctTickets(s: Reconciliations, id: int, i: int, j: int)
+  requires inv(s) && canReleaseKey(s, id)
+  requires 0 <= i < |s.calls| && 0 <= j < |s.calls| && s.calls[i].id != s.calls[j].id
+  ensures var call := releaseKey(s, id).calls[i];
+    var peer := releaseKey(s, id).calls[j];
+    (call.waiting == 0 || (peer.waiting != call.waiting && call.waiting !in peer.held)) &&
+    (forall ticket | ticket in call.held :: peer.waiting != ticket && ticket !in peer.held)
+{
+  ReleaseHeldTicketsOnlyShrink(s, id, i);
+  ReleaseHeldTicketsOnlyShrink(s, id, j);
+  var prior := s.calls[i];
+  var peer := s.calls[j];
+  assert prior in s.calls && peer in s.calls;
+  forall ticket | ticket in releaseKey(s, id).calls[i].held
+    ensures releaseKey(s, id).calls[j].waiting != ticket && ticket !in releaseKey(s, id).calls[j].held
+  {
+    CallbackOtherTicket(s, prior, peer, ticket);
+  }
+}
+
+lemma ReleaseKeepsExclusiveTickets(s: Reconciliations, id: int)
+  requires inv(s) && canReleaseKey(s, id)
+  ensures alwaysOneCallOwnsEachTicket(releaseKey(s, id))
+{
+  ReleaseKeyFrame(s, id);
+  var after := releaseKey(s, id);
+  forall i | 0 <= i < |after.calls|
+    ensures var call := after.calls[i];
+      forall ticket | ticket in call.held ::
+        ticket > 0 && ticket != call.waiting &&
+        |ProofLib.Filter((other: int) => other == ticket, call.held)| == 1
+  {
+    ReleaseHeldTicketsOnlyShrink(s, id, i);
+  }
+  forall i, j | 0 <= i < |after.calls| && 0 <= j < |after.calls| && after.calls[i].id != after.calls[j].id
+    ensures var call := after.calls[i];
+      var peer := after.calls[j];
+      (call.waiting == 0 || (peer.waiting != call.waiting && call.waiting !in peer.held)) &&
+      (forall ticket | ticket in call.held :: peer.waiting != ticket && ticket !in peer.held)
+  {
+    assert s.calls[i].id == after.calls[i].id && s.calls[j].id == after.calls[j].id;
+    ReleasePeersContinueToOwnDistinctTickets(s, id, i, j);
+  }
+  ConnectionTicketCustodyByIndex(after);
+}
+
+lemma ReleaseUnreleasedHeldTicket(s: Reconciliations, id: int, i: int, ticket: int)
+  requires inv(s) && canReleaseKey(s, id) && 0 <= i < |releaseKey(s, id).calls|
+  requires ticket in releaseKey(s, id).calls[i].held
+  ensures var selected := callAt(s, id);
+    ticket in s.calls[i].held && ticket != selected.held[|selected.held|-1]
+{
+  ReleaseKeyFrame(s, id);
+  var selected := callAt(s, id);
+  var released := selected.held[|selected.held|-1];
+  var prior := s.calls[i];
+  assert prior in s.calls;
+  if prior.id != id {
+    ReleaseOtherCallsCannotHoldReleasedTicket(s, id, prior);
+  } else {
+    ProofLib.FilterMember((number: int) => number != released, prior.held, ticket);
+  }
+}
+
+lemma ReleaseUnreleasedHeldTimer(s: Reconciliations, id: int, i: int, ticket: int)
+  requires inv(s) && canReleaseKey(s, id) && 0 <= i < |releaseKey(s, id).calls|
+  requires ticket in releaseKey(s, id).calls[i].held
+  ensures var after := releaseKey(s, id);
+    var call := after.calls[i];
+    (exists timer :: timer in after.timers && timer.ticket == ticket && timer.callId == call.id &&
+      timer.adapter == call.adapter && !timer.cleared)
+{
+  ReleaseKeyFrame(s, id);
+  ReleaseUnreleasedHeldTicket(s, id, i, ticket);
+  var after := releaseKey(s, id);
+  var prior := s.calls[i];
+  assert prior in s.calls;
+  var timer :| timer in s.timers && timer.ticket == ticket && timer.callId == prior.id &&
+    timer.adapter == prior.adapter && !timer.cleared;
+  ReleaseTimerIndexRemains(s, id, timer);
+}
+
+
+lemma ReleaseTimerIndexRemains(s: Reconciliations, id: int, timer: WarningTimer)
+  requires inv(s) && canReleaseKey(s, id) && timer in s.timers
+  requires var call := callAt(s, id); timer.ticket != call.held[|call.held|-1]
+  ensures timer in releaseKey(s, id).timers
+{
+  ReleaseKeyFrame(s, id);
+  var after := releaseKey(s, id);
+  var k :| 0 <= k < |s.timers| && s.timers[k] == timer;
+  assert after.timers[k] == timer && after.timers[k] in after.timers;
+}
+
+lemma LiveTimerOwnerIndex(s: Reconciliations, timer: WarningTimer)
+  requires alwaysOneTimerPerAcquiredTicket(s) && timer in s.timers && !timer.cleared
+  ensures (
+    exists i :: 0 <= i < |s.calls| && s.calls[i].id == timer.callId &&
+      s.calls[i].adapter == timer.adapter && timer.ticket in s.calls[i].held
+  )
+{
+  var owner :| owner in s.calls && owner.id == timer.callId && owner.adapter == timer.adapter && timer.ticket in owner.held;
+  var i :| 0 <= i < |s.calls| && s.calls[i] == owner;
+}
+
+lemma ReleaseLiveTimerRetainsOwner(s: Reconciliations, id: int, k: int)
+  requires inv(s) && canReleaseKey(s, id) && 0 <= k < |releaseKey(s, id).timers|
+  requires !releaseKey(s, id).timers[k].cleared
+  ensures var after := releaseKey(s, id);
+    var timer := after.timers[k];
+    (exists call :: call in after.calls && call.id == timer.callId && call.adapter == timer.adapter && timer.ticket in call.held)
+{
+  ReleaseKeyFrame(s, id);
+  var after := releaseKey(s, id);
+  var selected := callAt(s, id);
+  var timer := after.timers[k];
+  assert timer == s.timers[k] && timer in s.timers;
+  assert timer.ticket != selected.held[|selected.held|-1];
+  LiveTimerOwnerIndex(s, timer);
+  var i :| 0 <= i < |s.calls| && s.calls[i].id == timer.callId &&
+    s.calls[i].adapter == timer.adapter && timer.ticket in s.calls[i].held;
+  ReleaseRetainsOtherHeldTickets(s, id, i, timer.ticket);
+  assert after.calls[i] in after.calls &&
+    after.calls[i].id == timer.callId && after.calls[i].adapter == timer.adapter;
+}
+
+lemma MappedTimerRetainsCount(before: Reconciliations, after: Reconciliations, k: int)
+  requires alwaysOneTimerPerAcquiredTicket(before)
+  requires |before.timers| == |after.timers| && 0 <= k < |after.timers|
+  requires forall i | 0 <= i < |before.timers| :: before.timers[i].ticket == after.timers[i].ticket
+  ensures |ProofLib.Filter((t: WarningTimer) => t.ticket == after.timers[k].ticket, after.timers)| == 1
+{
+  var prior := before.timers[k];
+  var sameTicket := (t: WarningTimer) => t.ticket == after.timers[k].ticket;
+  assert prior in before.timers && prior.ticket == after.timers[k].ticket;
+  ProofLib.FilterLengthPointwise(sameTicket, sameTicket, before.timers, after.timers);
+}
+
+lemma TimerOwnershipByIndex(s: Reconciliations)
+  requires forall k | 0 <= k < |s.timers| ::
+    var timer := s.timers[k];
+    |ProofLib.Filter((other: WarningTimer) => other.ticket == timer.ticket, s.timers)| == 1 &&
+      (!timer.cleared ==> (
+        exists call :: call in s.calls && call.id == timer.callId && call.adapter == timer.adapter &&
+          timer.ticket in call.held
+      ))
+  ensures alwaysOneTimerPerAcquiredTicket(s)
+{
+  reveal alwaysOneTimerPerAcquiredTicket();
+  forall timer | timer in s.timers
+    ensures |ProofLib.Filter((other: WarningTimer) => other.ticket == timer.ticket, s.timers)| == 1
+    ensures !timer.cleared ==> (
+      exists call :: call in s.calls && call.id == timer.callId && call.adapter == timer.adapter &&
+        timer.ticket in call.held
+    )
+  {
+    var k :| 0 <= k < |s.timers| && s.timers[k] == timer;
+  }
+}
+
+lemma ReleaseKeepsRemainingTimerOwners(s: Reconciliations, id: int)
+  requires inv(s) && canReleaseKey(s, id)
+  ensures alwaysOneTimerPerAcquiredTicket(releaseKey(s, id))
+{
+  ReleaseKeyFrame(s, id);
+  var after := releaseKey(s, id);
+  forall k | 0 <= k < |after.timers|
+    ensures var timer := after.timers[k];
+      |ProofLib.Filter((other: WarningTimer) => other.ticket == timer.ticket, after.timers)| == 1 &&
+        (!timer.cleared ==> (
+          exists call :: call in after.calls && call.id == timer.callId && call.adapter == timer.adapter &&
+            timer.ticket in call.held
+        ))
+  {
+    MappedTimerRetainsCount(s, after, k);
+    if !after.timers[k].cleared {
+      ReleaseLiveTimerRetainsOwner(s, id, k);
+    }
+  }
+  TimerOwnershipByIndex(after);
+}
