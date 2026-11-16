@@ -50,7 +50,7 @@ module NativeAndroidSignOut {
     s' = { ...s, removed: if (Keys.contains(s.out)) s.removed.union(Set(s.out)) else s.removed, saved: 0, receipt: false, step: "asking" },
   }
   action ask(answer: str): bool = all {
-    s.step == "asking", not(Keys.contains(s.out)) or honest(s, s.out, answer),
+    s.step == "asking", if (Keys.contains(s.out)) honest(s, s.out, answer) else true,
     s' = if (not(Keys.contains(s.out))) { ...s, step: "answered", result: "signed-out" }
       else if (answered(s, s.out, answer)) { ...ended(s, s.out), step: "answered", result: "revoked" }
       else { ...s, step: "answered", retries: s.retries.set(s.out, Retries), result: "unconfirmed" },
@@ -106,9 +106,10 @@ module NativeAndroidSignOut {
   val RevokedMeansEnded = (s.result == "revoked").implies(not(accepts(s, s.out)))
   val RetryBudget = Keys.forall(k => s.retries.get(k).in(0.to(Retries)))
 
-  // Every stored duty is settled once the sign-out finishes its steps and Cloud answers the start-up check.
+  // Every stored duty is settled once restarts stop cutting the sign-out short and Cloud answers the
+  // start-up check.
   temporal DutiesSettle =
-    (storeDuty.weakFair(s) and remove.weakFair(s) and Keys.forall(k => retireStored(k, "ok").weakFair(s)))
+    (storeDuty.strongFair(s) and remove.strongFair(s) and Keys.forall(k => retireStored(k, "ok").strongFair(s)))
       .implies(always((s.owed != Set()).implies(eventually(s.owed == Set()))))
 
   run onlineSignOutTest = start(First).then(signOut).then(storeDuty).then(remove).then(ask("ok"))

@@ -38,7 +38,7 @@
           "property": "DutiesSettle",
           "expect": "holds",
           "assumptions": [
-            "Weak fairness of the sign-out's storing and removal steps and of a start-up check that Cloud answers with 2xx. No sign-in, sign-out or restart is required."
+            "Strong fairness of the sign-out's storing and removal steps and of a start-up check that Cloud answers with 2xx: a step enabled again and again, between restarts, is eventually taken. No sign-in, sign-out or restart is required."
           ]
         }
       ]
