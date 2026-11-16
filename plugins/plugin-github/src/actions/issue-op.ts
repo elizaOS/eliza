@@ -19,6 +19,7 @@ import {
   describeSelection,
   optionalStringArray,
   type ResolvedClient,
+  readParameters,
   requireNumber,
   requireString,
   requireStringArray,
@@ -47,8 +48,9 @@ const SUPPORTED_OPS: ReadonlySet<GitHubIssueOp> = new Set([
 
 function parseOp(value: unknown): GitHubIssueOp | null {
   if (typeof value !== "string") return null;
-  return SUPPORTED_OPS.has(value as GitHubIssueOp)
-    ? (value as GitHubIssueOp)
+  const normalized = value.trim().toLowerCase();
+  return SUPPORTED_OPS.has(normalized as GitHubIssueOp)
+    ? (normalized as GitHubIssueOp)
     : null;
 }
 
@@ -456,7 +458,8 @@ export const issueOpAction: Action = {
     options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<GitHubActionResult<GitHubIssueOpResult>> => {
-    const op = parseOp(options?.op);
+    const params = readParameters(options);
+    const op = parseOp(params.op ?? params.subaction);
     if (!op) {
       const err =
         "GITHUB_ISSUE_OP requires op (create|assign|close|reopen|comment|label)";
@@ -464,8 +467,8 @@ export const issueOpAction: Action = {
       return { success: false, error: err };
     }
 
-    const selection = resolveAccountSelection(options, "agent");
-    const repo = requireString(options, "repo");
+    const selection = resolveAccountSelection(params, "agent");
+    const repo = requireString(params, "repo");
     if (!repo) {
       const err = "GITHUB_ISSUE_OP requires repo (owner/name)";
       await callback?.({ text: err });
@@ -478,7 +481,7 @@ export const issueOpAction: Action = {
       return { success: false, error: err };
     }
 
-    const request = parseRequest(op, options);
+    const request = parseRequest(op, params);
     if ("error" in request) {
       await callback?.({ text: request.error });
       return { success: false, error: request.error };
@@ -493,7 +496,7 @@ export const issueOpAction: Action = {
       op,
       repo,
       describeSelection(selection),
-      options,
+      params,
     );
     const prompt = `${preview} Reply yes to confirm or no to cancel.`;
     const decision = await confirmPreviewedRequest({

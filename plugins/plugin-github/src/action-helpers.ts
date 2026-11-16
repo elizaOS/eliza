@@ -55,6 +55,15 @@ export async function reportAndReturn<T>(
   return result;
 }
 
+export function readParameters(options: unknown): Record<string, unknown> {
+  if (!options || typeof options !== "object") return {};
+  const record = options as Record<string, unknown>;
+  const params = record.parameters;
+  return params && typeof params === "object" && !Array.isArray(params)
+    ? { ...(params as Record<string, unknown>) }
+    : { ...record };
+}
+
 export function requireString(
   options: Record<string, unknown> | undefined,
   key: string,
