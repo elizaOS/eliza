@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -64,7 +63,10 @@ const text = (words, key) => {
 export function parseEmbeddedAgentData({ host, character, policy }) {
   if (host?.schema !== 1 || policy?.schema !== 1)
     fail("Unknown embedded agent schema");
-  if (!/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)+$/.test(host.service ?? ""))
+  if (
+    typeof host.service !== "string" ||
+    !/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)+$/.test(host.service)
+  )
     fail("Invalid embedded agent service class");
   const notification = {
     channel: text(host.notification, "channel"),
@@ -139,7 +141,10 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
     admit(method, requested) {
       return (
         routes.find(
-          (route) => route.method === method && route.path.test(requested),
+          (route) =>
+            route.method === method &&
+            typeof requested === "string" &&
+            route.path.test(requested),
         ) ?? null
       );
     },
@@ -245,7 +250,23 @@ const readBody = async (req) => {
     if (size > 65536) throw new EmbeddedAgentDataError("Request too large");
     chunks.push(chunk);
   }
-  return chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
+  let input;
+  try {
+    input = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+  } catch {
+    throw new EmbeddedAgentDataError("The request is not JSON");
+  }
+  if (
+    input === null ||
+    typeof input !== "object" ||
+    Array.isArray(input) ||
+    (input.body !== undefined &&
+      (input.body === null ||
+        typeof input.body !== "object" ||
+        Array.isArray(input.body)))
+  )
+    throw new EmbeddedAgentDataError("The request is not an agent request");
+  return input;
 };
 
 /**
@@ -254,10 +275,12 @@ const readBody = async (req) => {
  * files and the checkout's own private-runtime launch, and serves the bridge's
  * calls under EMBEDDED_AGENT_PREFIX on the dev server, so the page's web
  * fallback of EmbeddedAgent reaches the same routes without a token. As on the
- * device, a child that exits before it is ready fails the start with `agent`,
- * and a running child that exits is restarted within `maxRestarts`, then
- * fails with `crashed`. The agent token and the cloud credential stay in this
- * process.
+ * device, private files that cannot be prepared fail the start with `runtime`,
+ * a child that cannot be spawned or exits before it is ready fails it with
+ * `agent`, and a running child that exits is restarted within `maxRestarts`,
+ * then fails with `crashed`. The agent's home is `stateDirectory`, the agent
+ * token and the cloud credential stay in this process, and the child is
+ * stopped when the dev server closes or this process exits.
  */
 export function embeddedAgentDevelopment({
   source,
@@ -280,10 +303,11 @@ export function embeddedAgentDevelopment({
   maxRestarts = 2,
 }) {
   const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
-  const launcher = path.join(
+  const launcherPath = path.join(
     source,
     "packages/agent/native-host/private-runtime-launch.mjs",
   );
+  const quiet = { on() {}, removeListener() {} };
   let status = { available: true, state: "stopped" };
   let admission = null;
   let running = null;
@@ -331,31 +355,40 @@ export function embeddedAgentDevelopment({
         failed("credential", "The Eliza Cloud credential could not be read")
       );
     }
-    let child;
+    let launcher;
+    try {
+      launcher = await import(pathToFileURL(launcherPath).href);
+    } catch {
+      return current() && failed("agent", "The agent launch is missing");
+    }
     let port;
-    const token = randomBytes(48).toString("base64url");
+    const config = path.join(stateDirectory, "config.json");
     try {
       port = await freePort();
-      const {
-        runtimeEnvironment,
-        startPrivateRuntimeProcess,
-        writePrivateRuntimeJson,
-      } = await import(pathToFileURL(launcher).href);
       fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
-      const config = path.join(stateDirectory, "config.json");
-      await writePrivateRuntimeJson(config, admission.agentConfig());
-      if (!current()) return;
-      child = await startPrivateRuntimeProcess({
+      await launcher.writePrivateRuntimeJson(config, admission.agentConfig());
+    } catch {
+      return (
+        current() &&
+        failed("runtime", "The agent's private files could not be prepared")
+      );
+    }
+    if (!current()) return;
+    let child;
+    const token = randomBytes(48).toString("base64url");
+    try {
+      child = await launcher.startPrivateRuntimeProcess({
         command: command.executable,
         args: command.args,
         cwd: command.cwd,
         stdio: ["ignore", "inherit", "inherit"],
-        signalSource: new EventEmitter(),
-        env: runtimeEnvironment({
+        signalSource: quiet,
+        env: launcher.runtimeEnvironment({
           inherited: process.env,
-          allow: ["PATH", "HOME", "TMPDIR"],
+          allow: ["PATH", "TMPDIR"],
           settings: environment,
           owned: {
+            HOME: stateDirectory,
             ELIZA_STATE_DIR: stateDirectory,
             ELIZA_CONFIG_PATH: config,
             ELIZA_API_BIND: "127.0.0.1",
@@ -506,6 +539,7 @@ export function embeddedAgentDevelopment({
         );
       });
       server.httpServer?.once("close", stop);
+      process.once("exit", stop);
       void start(0);
     },
   };

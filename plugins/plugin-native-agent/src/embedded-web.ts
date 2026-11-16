@@ -7,18 +7,33 @@ import {
   type EmbeddedAgentStatus,
 } from "./embedded.js";
 
+type Answer = { error?: string; code?: string };
+
+async function answer(response: Response): Promise<Answer> {
+  const value: unknown = response.headers
+    .get("content-type")
+    ?.startsWith("application/json")
+    ? await response.json()
+    : null;
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    throw Object.assign(
+      new Error("The development agent is not served on this page"),
+      { code: "AGENT_UNAVAILABLE" },
+    );
+  if (!response.ok) {
+    const { error, code } = value as Answer;
+    throw Object.assign(new Error(error ?? code), { code });
+  }
+  return value;
+}
+
 async function call<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`${EMBEDDED_AGENT_PREFIX}${path}`, {
     method: body === undefined ? "GET" : "POST",
     headers: { "Content-Type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  const value = await response.json();
-  if (!response.ok)
-    throw Object.assign(new Error(value.error ?? value.code), {
-      code: value.code,
-    });
-  return value as T;
+  return (await answer(response)) as T;
 }
 
 /** The page's bridge in a browser: the development agent behind the Vite plugin. */
@@ -75,10 +90,9 @@ export class EmbeddedAgentWeb
       this.notifyListeners("streamEnd", { id, aborted: true });
       return { id };
     }
-    if (response.status === 403) {
+    if (response.status === 403 || response.status === 404) {
       this.streams.delete(id);
-      const value = await response.json();
-      throw Object.assign(new Error(value.error), { code: value.code });
+      await answer(response);
     }
     void this.pump(id, response, controller.signal);
     return { id };

@@ -725,7 +725,11 @@ export function generateAndroidConsumerHost({
       add(`${EMBEDDED_AGENT_MODULE}/src/main/java/${relative}`, bytes);
       return { file, sha256: hash(bytes) };
     });
-    embeddedAgent = { service: data.service, files, sources };
+    const inputs = Object.values(files).map((file) => ({
+      file,
+      sha256: hash(fs.readFileSync(file)),
+    }));
+    embeddedAgent = { files, inputs: [...inputs, ...sources] };
   }
   const assetNames = new Set(
     embeddedAgent ? Object.values(EMBEDDED_AGENT_ASSETS) : [],
@@ -757,7 +761,7 @@ export function generateAndroidConsumerHost({
       const file = input(reference, "file");
       return { file, sha256: hash(fs.readFileSync(file)) };
     }),
-    ...(embeddedAgent?.sources ?? []),
+    ...(embeddedAgent?.inputs ?? []),
   ];
   let runtimeMain = null;
   // A staged runtime keeps its packaged libraries unstripped, so it always
@@ -804,7 +808,6 @@ export function generateAndroidConsumerHost({
     admission,
     settingsAdmission,
     assetFiles,
-    embeddedAgent: embeddedAgent && { service: embeddedAgent.service },
     appScripts,
     generationInputs,
     runtimeMain,

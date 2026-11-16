@@ -52,9 +52,10 @@ public final class EmbeddedAgentConfig {
   private final JSONArray deniedPlugins = new JSONArray();
 
   private EmbeddedAgentConfig(JSONObject host, JSONObject character, JSONObject policy) throws IOException, JSONException {
-    if (!Integer.valueOf(1).equals(host.opt("schema")) || !Integer.valueOf(1).equals(policy.opt("schema"))) throw new IOException("Unknown embedded agent schema");
-    service = host.getString("service");
-    if (!CLASS_NAME.matcher(service).matches()) throw new IOException("Invalid embedded agent service class");
+    if (!schemaOne(host.opt("schema")) || !schemaOne(policy.opt("schema"))) throw new IOException("Unknown embedded agent schema");
+    Object named = host.opt("service");
+    if (!(named instanceof String) || !CLASS_NAME.matcher((String) named).matches()) throw new IOException("Invalid embedded agent service class");
+    service = (String) named;
     JSONObject words = host.getJSONObject("notification");
     notification = new Notification(text(words, "channel"), text(words, "title"), text(words, "text"));
     JSONObject cloud = host.getJSONObject("cloud");
@@ -98,6 +99,7 @@ public final class EmbeddedAgentConfig {
     }
   }
 
+  private static boolean schemaOne(Object schema) { return schema instanceof Number && ((Number) schema).doubleValue() == 1; }
   private static String string(JSONObject object, String key) throws IOException {
     Object value = object.opt(key);
     if (value == null) return "";

@@ -288,6 +288,16 @@
           "largeModel": null
         }
       }
+    },
+    {
+      "host": {
+        "service": ["example.consumer.HelperService"]
+      }
+    },
+    {
+      "host": {
+        "schema": 1.5
+      }
     }
   ]
 }

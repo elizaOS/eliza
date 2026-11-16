@@ -140,7 +140,19 @@ test("the development agent runs from the data files and serves only their route
     ).json(),
     { status: 200, data: { provider: "elizacloud", key: true } },
   );
+  for (const malformed of ["null", "[1]", "{", '{"method":"GET","body":null}'])
+    assert.equal(
+      (
+        await fetch(`${base}/request`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: malformed,
+        })
+      ).status,
+      400,
+    );
   for (const refusal of [
+    ["/request", { method: "GET", path: ["/api/status"] }],
     ["/request", { method: "GET", path: "/api/config" }],
     ["/request", { method: "POST", path: stream }],
     ["/stream", { method: "GET", path: "/api/status" }],
