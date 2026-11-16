@@ -562,10 +562,14 @@ under `src/`.
 - **One tree for every package.** Each application or shared package keeps
   its specs in `spec/<its name>/` and its code in its own directory; the
   root's `check` covers them all ([One spec tree](#one-spec-tree)).
-- **Only what changed is checked again.** Each simulation result, a failing
-  one too (its seed is fixed), and each passing proof result is kept in
-  `.spec-cache/` under a fingerprint of the spec's Quint without its comments,
-  everything it imports and the versions of the tools. The specs are simulated at once.
+- **Only what changed is checked again.** Each run of Quint is kept in
+  `.spec-cache/` under what it reads, the Quint of the spec and of everything
+  it imports without the prose, and the Quint installed, so a change to the
+  prose or to the tools that leaves the Quint alone runs no Quint again. Each
+  simulation result, a failing one too (its seed is fixed), and each passing
+  proof result is kept beside them, under a fingerprint of the spec's Quint
+  without its comments, everything it imports and the versions of the tools.
+  The specs are simulated at once.
 - **The spec covers the rules, not the plumbing.** Chat, HTTP and storage stay
   hand-written around the generated core, as `vibestack/examples/dashboard/src/notify.vibe`
   does for sending messages.

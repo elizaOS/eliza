@@ -7,10 +7,10 @@ import { writeConformance } from "./conform.ts";
 import { simulated } from "./gen/harness.ts";
 import { fail } from "./gen/types.ts";
 import type { Unit } from "./prove.ts";
-import { run } from "./run.ts";
-import { importedMeanings, originalColumn, type Spec } from "./parse.ts";
+import { modules, originalColumn, type Spec } from "./parse.ts";
 import { defines } from "./review.ts";
-import { entry, recall, store, type Memory } from "./cache.ts";
+import { quint } from "./action.ts";
+import type { Memory } from "./cache.ts";
 import { plainText } from "./scan.ts";
 import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, type SrcFile } from "./util.ts";
 import { effectAdapter } from "./gen/vibe.ts";
@@ -114,24 +114,18 @@ export function mirrorGen(root: string, specs: Spec[]) {
 
 /**
  * Quint's typed IR of every spec, typechecked all at once and without blocking, or remembered: it depends only on the
- * Quint of the spec and of what it imports. Each promise rejects with the errors of its spec. gen/<name>.qnt is written
- * for every spec, since the simulation harness imports it.
+ * Quint of the spec and of what it imports (action.ts). Each promise rejects with the errors of its spec. gen/<name>.qnt
+ * is written for every spec, since the simulation harness imports it.
  */
 export function typecheckAll(memory: Memory, specs: Spec[]): Map<string, Promise<any>> {
   const dir = genDir(memory.root);
   for (const spec of specs) fs.writeFileSync(path.join(dir, `${spec.name}.qnt`), spec.qnt);
   return new Map(specs.map((spec) => {
     const ir = (async () => {
-      const at = await entry(memory.root, "model", [importedMeanings(spec, specs), spec.meaning]);
-      const known = recall<any>(memory, at);
-      if (known !== undefined) return known;
-      const out = path.join(dir, `${spec.name}.ir.json`);
-      const typed = await run("quint", ["typecheck", "--out", out, `gen/${spec.name}.qnt`], memory.root);
+      const typed = await quint(memory, ["typecheck", "--out", "ir.json", `${spec.name}.qnt`], `gen/typecheck/${spec.name}`, modules(spec, specs));
       let ir: any;
-      try { ir = JSON.parse(fs.readFileSync(out, "utf8")); } catch { ir = undefined; }
-      fs.rmSync(out, { force: true });
+      try { ir = JSON.parse(typed.files["ir.json"]); } catch { ir = undefined; }
       if (!typed.ok || !ir || ir.errors?.length) throw typeErrors(spec, ir, typed.out, specs);
-      store(memory, at, ir);
       return ir;
     })();
     ir.catch(() => {}); // a spec that is not valid is reported in its turn, not as an unhandled rejection

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { BUILTINS, LIST_HELPERS } from "./gen/print.ts";
 import { plainText, scanSpec } from "./scan.ts";
+import type { Input } from "./action.ts";
 
 /** `defs` are the rule's top-level definitions and types; `locals` the names it binds inside a definition (`val x = …` in a body). */
 export interface Rule { key: string; story: string; line: number; prose: string; code: string; defs: string[]; locals: string[] }
@@ -17,11 +18,21 @@ export interface Import { module: string; alias?: string; star: boolean; names: 
 export interface SpecReference { target: string; line: number }
 interface SpecImport extends Import { target?: string; line: number; column: number; pathLine?: number; pathColumn?: number; pathLength?: number }
 const importSources = new WeakMap<Spec, SpecImport[]>();
+/** The lines of a spec's `tangled` that hold prose, as `//` comments: every one but those of its quint blocks and its first. */
+const proseLines = new WeakMap<Spec, Set<number>>();
 /**
  * `meaning` is the Quint as written, with every comment, prose included, reduced to a space: what a cache key may
- * depend on. `tangled` is `qnt` before the list helpers were expanded, to map Quint's columns back.
+ * depend on. `tangled` is `qnt` before the list helpers were expanded, to map Quint's columns back. `code` is `qnt`
+ * without the lines tangled from prose: what decides a run of Quint on `qnt`, wherever the prose puts it.
  */
-export interface Spec { name: string; file: string; preamble: string; references: SpecReference[]; links: string[]; rules: Rule[]; stories: Story[]; imports: string[]; uses: Import[]; qnt: string; tangled: string; meaning: string; builtins: string[] }
+export interface Spec { name: string; file: string; preamble: string; references: SpecReference[]; links: string[]; rules: Rule[]; stories: Story[]; imports: string[]; uses: Import[]; qnt: string; tangled: string; meaning: string; code: string; builtins: string[] }
+/** The Quint a spec's module reads, its own and that of each module it imports, by the name each has in gen/. */
+export function modules(spec: Spec, specs: Spec[], into: Record<string, Input> = {}): Record<string, Input> {
+  if (Object.hasOwn(into, `${spec.name}.qnt`)) return into;
+  into[`${spec.name}.qnt`] = { text: spec.qnt, key: spec.code };
+  for (const name of spec.imports) modules(specs.find((s) => s.name === name)!, specs, into);
+  return into;
+}
 /** The Quint of a spec's imports, theirs first, as far as a cache key may depend on it. */
 export const importedMeanings = (spec: Spec, specs: Spec[]): string =>
   spec.imports.map((n) => { const dep = specs.find((x) => x.name === n)!; return importedMeanings(dep, specs) + dep.meaning; }).join("");
@@ -59,6 +70,7 @@ export function parseSpec(root: string, file: string, text = fs.readFileSync(loc
   const rules: Rule[] = [];
   const stories: Story[] = [];
   const qnt: string[] = [];
+  const prose = new Set<number>();
   const references: SpecReference[] = [];
   let preamble = "";
   let story: Story | undefined;
@@ -132,6 +144,7 @@ export function parseSpec(root: string, file: string, text = fs.readFileSync(loc
       if (rule) rule.prose += text + "\n";
       else if (story) story.prose += text + "\n";
     }
+    if (i) prose.add(i);
     qnt.push(i === 0 ? `module ${name} { // ${text}` : text ? `// ${text}` : "");
   });
   if (quint) {
@@ -144,7 +157,8 @@ export function parseSpec(root: string, file: string, text = fs.readFileSync(loc
   if (forged >= 0) throw new Error(`${file}:${forged + 1}: a name beginning std_ is reserved for generated collection operations`);
   try {
     const sources = importsOf(tangled);
-    const spec: Spec = { name, file, preamble, references, links: [], rules, stories, imports: sources.map((i) => i.module), uses: sources, qnt: "", tangled, meaning: "", builtins: [] };
+    const spec: Spec = { name, file, preamble, references, links: [], rules, stories, imports: sources.map((i) => i.module), uses: sources, qnt: "", tangled, meaning: "", code: "", builtins: [] };
+    proseLines.set(spec, prose);
     finish(spec, tangled);
     importSources.set(spec, sources);
     return spec;
@@ -153,12 +167,18 @@ export function parseSpec(root: string, file: string, text = fs.readFileSync(loc
   }
 }
 
-/** Set what follows from a spec's final Quint: the text Quint reads, the definitions added for builtins, and its meaning. */
+/**
+ * Set what follows from a spec's final Quint: the text Quint reads, the definitions added for builtins, its meaning and
+ * its code. Expanding moves no line and adds definitions only below the last, so a line of `qnt` is prose where the
+ * same line of `text` is; the first line opens the module, then holds the title.
+ */
 function finish(spec: Spec, text: string) {
   const expanded = expandBuiltins(expandListHelpers(text), spec.name);
   spec.qnt = expanded.text + "\n}\n";
   spec.builtins = expanded.names;
   spec.meaning = codeOnly(text);
+  const prose = proseLines.get(spec)!;
+  spec.code = spec.qnt.split("\n").flatMap((line, i) => (i ? (prose.has(i) ? [] : [line]) : [`module ${spec.name} {`])).join("\n");
 }
 
 /** Which characters of Quint are code, as opposed to part of a string or a comment, which are comments, and what is still open at the end. */

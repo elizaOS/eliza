@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, describe, test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
+import { gunzipSync } from "node:zlib";
 import { Miniflare } from "miniflare";
 import { cacheCredentials, collectGarbage } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
@@ -23,7 +24,7 @@ import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
 import { mirrorGen } from "./units.ts";
 import { conformance as checkTraces, conformanceFound } from "./conform.ts";
 import { explore, explored } from "./explore.ts";
-import { search } from "./simulate.ts";
+import { harnessOf, search } from "./simulate.ts";
 import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./spec.ts";
 
 const project = path.join(import.meta.dirname, "..");
@@ -574,7 +575,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     const root = oneRule("t", "Counting", quint);
     const spec = readSpecs(root)[0];
     const model = await gen(root, spec);
-    const result = await search(root, model, "never_sometimesLate", "step", [20, 40], 180);
+    const result = await search(harnessOf({ root, fresh: true, used: new Set() }, spec, [spec], model), "never_sometimesLate", "step", [20, 40], 180);
     assert.equal(result.broken, true, result.again);
     assert.match(result.again, /--max-samples 32 --max-steps 40\b/);
     assert.equal(result.traces[0]?.at(-1)?.state, 38);
@@ -1722,12 +1723,12 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const before = await run(root);
     assert.deepEqual(before.failed, ["review"], before.text);
     const cache = path.join(root, ".spec-cache");
-    const entries = fs.readdirSync(cache).filter((f) => f.endsWith(".json"));
+    const entries = fs.readdirSync(cache).filter((f) => f.endsWith(".json.gz"));
     assert.ok(entries.length > 0);
     for (const entry of entries) fs.writeFileSync(path.join(cache, entry), "{");
     const after = await run(root);
     assert.deepEqual(after.failed, ["review"], after.text);
-    for (const entry of fs.readdirSync(cache).filter((f) => f.endsWith(".json"))) assert.doesNotThrow(() => JSON.parse(fs.readFileSync(path.join(cache, entry), "utf8")));
+    for (const entry of fs.readdirSync(cache).filter((f) => f.endsWith(".json.gz"))) assert.doesNotThrow(() => JSON.parse(gunzipSync(fs.readFileSync(path.join(cache, entry))).toString("utf8")));
   });
 
   test("changing an imported definition invalidates model and simulation results", async () => {
@@ -1797,6 +1798,30 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const result = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout), [true, false], "an entry computed by code other than what its key names is not stored");
+  });
+
+  test("a change to the tools or the prose that leaves the Quint alone runs no Quint again, and its results cite the rules where they now are", { skip: process.platform === "win32" }, async () => {
+    const root = toolchain(oneRule("index", "Small", "pure val initial: int = 0\npure def up(n: int): int = n + 1\npure def alwaysSmall(n: int): bool = n < 3"), "quint");
+    const log = path.join(root, "quint.log");
+    const shim = path.join(root, "node_modules/.bin/quint");
+    fs.unlinkSync(shim);
+    fs.writeFileSync(shim, `#!/bin/sh\necho "$1" >> '${log}'\nexec '${path.join(nodeModules, ".bin/quint")}' "$@"\n`, { mode: 0o755 });
+    const checked = async () => {
+      fs.rmSync(log, { force: true });
+      const { stdout } = await runCli(path.join(root, "vibestack/spec.ts"), root, "check", "--json");
+      return { broken: answer(stdout).results.find((r: Result) => r.stage === "always"), ran: fs.existsSync(log) ? read("quint.log", root).trim().split("\n") : [] };
+    };
+    const first = await checked();
+    assert.match(first.broken?.summary ?? "", /"Story \/ Small" \(spec\/index\.md:5\)/, JSON.stringify(first.broken));
+    assert.deepEqual([...new Set(first.ran)].sort(), ["run", "typecheck"]);
+    assert.deepEqual((await checked()).ran, []);
+    fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\n// A change to the tools that leaves the Quint alone.\n");
+    const tooled = await checked();
+    assert.deepEqual(tooled, { broken: first.broken, ran: [] });
+    fs.writeFileSync(path.join(root, "spec/index.md"), read("spec/index.md", root).replace("### Small\n", "Prose above the rule.\n\n### Small\n"));
+    const moved = await checked();
+    assert.deepEqual(moved.ran, []);
+    assert.match(moved.broken?.summary ?? "", /"Story \/ Small" \(spec\/index\.md:7\)/, JSON.stringify(moved.broken));
   });
 
   test("proof and task cache identity follows verifier and compiler bytes rather than installation directories", { skip: process.platform === "win32" }, async () => {
@@ -1996,8 +2021,8 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     fs.writeFileSync(lock, `${spawnSync(process.execPath, ["-e", ""]).pid}\n`);
     const unused = path.join(root, ".spec-cache/000000000000000000000000.json");
     fs.writeFileSync(unused, "{}");
-    const recent = path.join(root, `.spec-cache/prove-${"1".repeat(24)}.json`);
-    const expired = path.join(root, `.spec-cache/prove-${"2".repeat(24)}.json`);
+    const recent = path.join(root, `.spec-cache/prove-${"1".repeat(24)}.json.gz`);
+    const expired = path.join(root, `.spec-cache/prove-${"2".repeat(24)}.json.gz`);
     fs.writeFileSync(recent, "{}");
     fs.writeFileSync(expired, "{}");
     const old = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
@@ -2009,7 +2034,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(!fs.existsSync(expired), "an unused entry past retention is deleted");
     assert.ok(fs.existsSync(recent), "a recent entry from another branch remains reusable");
     assert.ok(fs.readdirSync(path.dirname(lock)).length > 0, "the entries it used are kept");
-    const newer = path.join(root, `.spec-cache/prove-${"3".repeat(24)}.json`);
+    const newer = path.join(root, `.spec-cache/prove-${"3".repeat(24)}.json.gz`);
     fs.writeFileSync(newer, "{}");
     const file = fs.openSync(recent, "r+");
     fs.ftruncateSync(file, 256 * 2 ** 20);

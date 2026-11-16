@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { filesUnder, sha, writeWhole } from "./util.ts";
 import { dafnyVersion, solver } from "./prove.ts";
 import { executableDigest } from "./run.ts";
@@ -90,21 +91,26 @@ const toolFiles = () => ["", "gen"].flatMap((dir) => fs.readdirSync(path.join(im
  */
 const toolsChanged = () => ["", "gen", ...toolFiles()].some((f) => fs.statSync(path.join(import.meta.dirname, f)).ctimeMs >= performance.timeOrigin);
 
+/** The stages whose results are remembered, and the runs of an outside tool any of them asks for (action.ts). */
+const STAGES = ["simulate", "prove", "tests", "explore", "action"] as const;
+type Stage = (typeof STAGES)[number];
+
 /**
  * What a remembered result of one stage was produced by: a different Quint, Node or version of these tools must not
- * reuse a model or a simulation, and a proof also depends on LemmaScript, Dafny and the prover's own code. Each stage
- * has its own, so that a change that matters only to the proof (prove.ts, Dafny, LemmaScript) does not simulate
- * everything again. The part of the proof library a proof file calls (prove.ts, `libraryFor`) is part of its unit's key.
+ * reuse a simulation, and a proof also depends on LemmaScript, Dafny and the prover's own code. Each stage has its own,
+ * so that a change that matters only to the proof (prove.ts, Dafny, LemmaScript) does not simulate everything again.
+ * The part of the proof library a proof file calls (prove.ts, `libraryFor`) is part of its unit's key. An action
+ * depends only on the code that runs a tool and keeps what it said: its key names the tool and all the tool reads.
  */
 const toolchains = new Map<string, Promise<string>>();
-function toolchainId(stage: "model" | "simulate" | "prove" | "tests" | "explore"): Promise<string> {
+function toolchainId(stage: Stage): Promise<string> {
   let id = toolchains.get(stage);
   if (id) return id;
   toolchains.set(stage, (id = (async () => {
-    // Only the prover's own file is left out of what a model or simulation depends on: anything else may be used by both.
-    const tools = toolFiles().filter((f) => stage === "prove" || f !== `prove${ext}`)
-      .map((f) => `${f}\0${fs.readFileSync(path.join(import.meta.dirname, f), "utf8")}`);
-    const parts = [stage, packageVersion("@informalsystems/quint"), `node@${process.versions.node}:${process.platform}:${process.arch}`, sha(...tools).slice(0, 12)];
+    const code = (files: string[]) => sha(...files.map((f) => `${f}\0${fs.readFileSync(path.join(import.meta.dirname, f), "utf8")}`)).slice(0, 12);
+    if (stage === "action") return `${stage} ${code([`action${ext}`, `run${ext}`])}`;
+    // Only the prover's own file is left out of what a simulation depends on: anything else may be used by both.
+    const parts = [stage, packageVersion("@informalsystems/quint"), `node@${process.versions.node}:${process.platform}:${process.arch}`, code(toolFiles().filter((f) => stage === "prove" || f !== `prove${ext}`))];
     if (stage === "prove") {
       const z3 = await solver();
       parts.push(packageVersion("lemmascript"), `dafny@${JSON.stringify(await dafnyIdentity())}`, `z3@${z3.version}:${executableDigest(z3.path)}`);
@@ -118,27 +124,31 @@ function toolchainId(stage: "model" | "simulate" | "prove" | "tests" | "explore"
 
 /** The remembered results of one check: whether it may read them, and every entry it read or wrote. */
 export interface Memory { root: string; fresh: boolean; used: Set<string> }
-/** An entry of `.spec-cache`. */
+/** An entry of `.spec-cache`: JSON, compressed, since a run of the simulator says megabytes. */
 interface Entry { name: string; file: string }
 const cacheDir = (root: string) => path.join(root, ".spec-cache");
-export async function entry(root: string, stage: "model" | "simulate" | "prove" | "tests" | "explore", key: string[]): Promise<Entry> {
-  const name = `${stage}-${sha(await toolchainId(stage), ...key).slice(0, 24)}.json`;
+export async function entry(root: string, stage: Stage, key: string[]): Promise<Entry> {
+  const name = `${stage}-${sha(await toolchainId(stage), ...key).slice(0, 24)}.json.gz`;
   return { name, file: path.join(cacheDir(root), name) };
+}
+/** Entries are deleted when unused for a while (see collectGarbage), so a hit says the entry is in use. */
+function use(memory: Memory, name: string) {
+  memory.used.add(name);
+  try { const now = new Date(); fs.utimesSync(path.join(cacheDir(memory.root), name), now, now); } catch { /* still a hit */ }
 }
 /** What an entry holds, or undefined. An entry that cannot be read, cut short by a kill or a full disk, is deleted and is a miss. */
 export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined {
   memory.used.add(name);
   if (memory.fresh) return undefined;
-  let text: string;
+  let bytes: Buffer;
   try {
-    text = fs.readFileSync(file, "utf8");
+    bytes = fs.readFileSync(file);
   } catch {
     return undefined;
   }
   try {
-    const value = JSON.parse(text) as T;
-    // Entries are deleted when unused for a while (see collectGarbage), so a hit says the entry is in use.
-    try { const now = new Date(); fs.utimesSync(file, now, now); } catch { /* still a hit */ }
+    const value = JSON.parse(gunzipSync(bytes).toString("utf8")) as T;
+    use(memory, name);
     return value;
   } catch {
     fs.rmSync(file, { force: true });
@@ -148,24 +158,32 @@ export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined 
 /** Remember `value` under an entry, unless the tools changed under this check: then the next check computes it again. */
 export function store(memory: Memory, { name, file }: Entry, value: unknown) {
   memory.used.add(name);
-  if (!toolsChanged()) writeWhole(file, JSON.stringify(value));
+  if (!toolsChanged()) writeWhole(file, gzipSync(JSON.stringify(value)));
 }
 
 /**
  * `produce()`, or what it returned the last time for the same key, if that was
  * worth keeping. This is what keeps a check proportional to what changed. The
  * cache is a convenience: `accept` never reads it. Every entry read or written is recorded as used, so that a
- * full check keeps its results while pruning older branches and profiles.
+ * full check keeps its results while pruning older branches and profiles. A result also names the entries its
+ * producer used, the runs of tools beneath it, and a hit keeps those in use too: a change to these tools asks for the
+ * result again, and finds the runs still there.
  */
-export async function remembered<T>(memory: Memory, at: Entry | Promise<Entry>, produce: () => T | Promise<T>, keep: (result: T) => boolean): Promise<T> {
+export async function remembered<T>(memory: Memory, at: Entry | Promise<Entry>, produce: (memory: Memory) => T | Promise<T>, keep: (result: T) => boolean): Promise<T> {
   const e = await at;
-  const known = recall<T>(memory, e);
-  if (known !== undefined) return known;
-  const result = await produce();
-  if (keep(result)) store(memory, e, result);
+  const known = recall<{ result: T; used: string[] }>(memory, e);
+  if (known !== undefined) {
+    for (const name of known.used) use(memory, name);
+    return known.result;
+  }
+  const own: Memory = { ...memory, used: new Set() };
+  const result = await produce(own);
+  for (const name of own.used) memory.used.add(name);
+  if (keep(result)) store(memory, e, { result, used: [...own.used] });
   return result;
 }
 
+const ENTRY = new RegExp(`^(${STAGES.join("|")})-(?:.*-)?[a-f0-9]{24}\\.json\\.gz$`);
 /** Keep recent branches and profiles for a month, within 256 MiB; never evict this check's entries. */
 export function collectGarbage(memory: Memory) {
   const directory = cacheDir(memory.root);
@@ -176,7 +194,7 @@ export function collectGarbage(memory: Memory) {
     const file = path.join(directory, name);
     const stat = fs.lstatSync(file);
     const used = memory.used.has(name);
-    if (!used && (!/^(model|simulate|prove|tests|explore)-(?:.*-)?[a-f0-9]{24}\.json$/.test(name) || !stat.isFile() || stat.mtimeMs < expired))
+    if (!used && (!ENTRY.test(name) || !stat.isFile() || stat.mtimeMs < expired))
       fs.rmSync(file, { recursive: true, force: true });
     else retained.push({ file, size: stat.size, touched: stat.mtimeMs, used });
   }
