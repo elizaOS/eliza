@@ -245,6 +245,16 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
       " private void complete(",
       " /** The saved key",
     ),
+    ACTUAL_GOOGLE: between(
+      plugin,
+      " private void signInWithGoogle(",
+      " /** Observe only the already received",
+    ),
+    ACTUAL_SIGN_OUT: between(
+      plugin,
+      " @PluginMethod public void signOut(",
+      " @PluginMethod public void cancel(",
+    ).replace("@PluginMethod ", ""),
     ACTUAL_PREVIOUS_TOKEN: between(
       plugin,
       " private static String previousToken(",
@@ -312,6 +322,10 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
       /^PASS browser return in a new process \(8 scenarios\)$/m,
     );
     assert.match(output, /^PASS silent key renewal \(20 scenario groups\)$/m);
+    assert.match(
+      output,
+      /^PASS native Google sign-in with Gmail and sign-out \(9 scenarios\)$/m,
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -1081,6 +1095,7 @@ test("the Gradle library declares what its plugin compiles against", () => {
     "androidx.credentials:credentials:",
     "androidx.credentials:credentials-play-services-auth:",
     "com.google.android.libraries.identity.googleid:googleid:",
+    "com.google.android.gms:play-services-auth:",
   ])
     assert.ok(gradle.includes(dependency), dependency);
   assert.doesNotMatch(
