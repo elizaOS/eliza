@@ -25,9 +25,16 @@ lemma cleanPlugin_ensures(s: PluginServices, epochId: int)
   ensures (inv(s) ==> canCleanPlugin(s, epochId) ==> alwaysRetiredEpochHasNoResources(cleanPlugin(s, epochId)))
   ensures (inv(s) ==> canCleanPlugin(s, epochId) ==> alwaysSealedOwnedClassesStable(cleanPlugin(s, epochId)))
 {
+  hide *;
+  reveal inv(), cleanPlugin(), canCleanPlugin(), alwaysSealedOwnedClassesStable(), core__pluginRegistry_inv();
   if inv(s) && canCleanPlugin(s, epochId) {
+    PluginRetirementCleanPreservesEpochOwners(s, epochId);
+    PluginRetirementCleanKeepsServiceState(s, epochId);
     PluginRetirementCleanupKeepsAllObjectsOwned(s, epochId);
     PluginRetirementCleanupRetainsCompletedObservations(s, epochId);
+    PluginRetirementChildRulesMatchImportedInvariants(s);
+    core__pluginRegistry_cleanPlugin_ensures(s.plugins, epochId);
+    PluginRetirementChildRulesMatchImportedInvariants(cleanPlugin(s, epochId));
   }
 }
 
@@ -171,18 +178,26 @@ lemma PluginRetirementCleanupKeepsInstanceReceipts(s: PluginServices, epochId: i
   }
 }
 
-lemma PluginRetirementSiblingEpochUnchanged(s: PluginServices, epochId: int, sibling: int)
-  requires sibling != epochId
-  ensures core__pluginRegistry_epochOwnsResources(s.plugins, sibling) ==
-    core__pluginRegistry_epochOwnsResources(cleanPlugin(s, epochId).plugins, sibling)
+lemma PluginRetirementEpochAfterCleanup(s: PluginServices, epochId: int, query: int)
+  ensures core__pluginRegistry_epoch(cleanPlugin(s, epochId).plugins, query).id ==
+    core__pluginRegistry_epoch(s.plugins, query).id
+  ensures query == epochId ==> !core__pluginRegistry_epochOwnsResources(cleanPlugin(s, epochId).plugins, query)
+  ensures query != epochId ==>
+    core__pluginRegistry_epoch(cleanPlugin(s, epochId).plugins, query) == core__pluginRegistry_epoch(s.plugins, query)
+  ensures query != epochId ==>
+    core__pluginRegistry_epochOwnsResources(cleanPlugin(s, epochId).plugins, query) ==
+      core__pluginRegistry_epochOwnsResources(s.plugins, query)
 {
   hide *;
   reveal cleanPlugin(), core__pluginRegistry_cleanPlugin(), core__pluginRegistry_epoch(), ProofLib.Filter();
-  reveal core__pluginRegistry_epochOwnsResources();
+  reveal core__pluginRegistry_epochOwnsResources(), core__pluginRegistry_activePhase(), core__plugins_finishCleanup();
+  reveal core__pluginRegistry_absentEpoch;
   var before := s.plugins.epochs;
   var after := cleanPlugin(s, epochId).plugins.epochs;
-  var selected := (row: core__pluginRegistry_PluginEpoch) => (row.id == sibling);
-  var retained := (a: core__pluginRegistry_PluginEpoch, b: core__pluginRegistry_PluginEpoch) => !selected(a) || a == b;
+  var selected := (row: core__pluginRegistry_PluginEpoch) => (row.id == query);
+  var cleaned := (row: core__pluginRegistry_PluginEpoch) =>
+    if row.id == epochId then row.(lifecycle := core__plugins_finishCleanup(row.lifecycle)) else row;
+  var retained := (a: core__pluginRegistry_PluginEpoch, b: core__pluginRegistry_PluginEpoch) => b == cleaned(a);
   forall i | 0 <= i < |before|
     ensures selected(before[i]) == selected(after[i]) && retained(before[i], after[i])
   {}
@@ -191,8 +206,50 @@ lemma PluginRetirementSiblingEpochUnchanged(s: PluginServices, epochId: int, sib
   var updatedMatches := ProofLib.Filter(selected, after);
   if |matches| > 0 {
     ProofLib.FilterMember(selected, before, matches[0]);
-    assert matches[0] == updatedMatches[0];
+    assert updatedMatches[0] == cleaned(matches[0]);
   }
+}
+
+lemma PluginRetirementCleanPreservesEpochOwners(s: PluginServices, epochId: int)
+  requires alwaysServiceOwnerEpochExists(s) && alwaysRetirementsFollowTypePlan(s)
+  ensures alwaysServiceOwnerEpochExists(cleanPlugin(s, epochId))
+  ensures alwaysRetirementsFollowTypePlan(cleanPlugin(s, epochId))
+{
+  hide *;
+  reveal cleanPlugin(), alwaysServiceOwnerEpochExists(), alwaysRetirementsFollowTypePlan();
+  reveal core__pluginRegistry_epochRetiring();
+  var after := cleanPlugin(s, epochId);
+  forall owner | owner in after.ownership
+    ensures core__pluginRegistry_epoch(after.plugins, owner.epochId).id == owner.epochId
+  {
+    PluginRetirementEpochAfterCleanup(s, epochId, owner.epochId);
+  }
+  forall plan | plan in after.retirements
+    ensures plan.epochId > 0 && core__pluginRegistry_epoch(after.plugins, plan.epochId).id == plan.epochId
+    ensures core__pluginRegistry_epochRetiring(after.plugins, plan.epochId) ||
+      !core__pluginRegistry_epochOwnsResources(after.plugins, plan.epochId)
+  {
+    PluginRetirementEpochAfterCleanup(s, epochId, plan.epochId);
+  }
+}
+
+lemma PluginRetirementCleanKeepsServiceState(s: PluginServices, epochId: int)
+  requires alwaysLiveClassOwnerUnique(s) && alwaysStopObservationsFollowSlots(s)
+  requires alwaysRetiredUndeclaredTypeIsUnknown(s)
+  ensures alwaysLiveClassOwnerUnique(cleanPlugin(s, epochId))
+  ensures alwaysStopObservationsFollowSlots(cleanPlugin(s, epochId))
+  ensures alwaysRetiredUndeclaredTypeIsUnknown(cleanPlugin(s, epochId))
+{
+  hide *;
+  reveal cleanPlugin(), alwaysLiveClassOwnerUnique(), alwaysStopObservationsFollowSlots(), alwaysRetiredUndeclaredTypeIsUnknown();
+}
+
+lemma PluginRetirementChildRulesMatchImportedInvariants(s: PluginServices)
+  ensures alwaysChildLifecyclesValid(s) ==
+    (core__pluginRegistry_inv(s.plugins) && core__serviceInstances_inv(s.services))
+{
+  hide *;
+  reveal alwaysChildLifecyclesValid(), core__pluginRegistry_inv(), core__serviceInstances_inv();
 }
 
 lemma PluginRetirementPlanLookup(s: PluginServices, plan: ServiceRetirement)
@@ -254,7 +311,7 @@ lemma PluginRetirementCleanupKeepsAllObjectsOwned(s: PluginServices, epochId: in
         (core__pluginRegistry_epochOwnsResources(s.plugins, r.epochId) && o.id in g.instances));
       if !missingStopObservedFor(g, o.id) {
         if r.epochId != epochId {
-          PluginRetirementSiblingEpochUnchanged(s, epochId, r.epochId);
+          PluginRetirementEpochAfterCleanup(s, epochId, r.epochId);
         } else {
           PluginRetirementPlanLookup(s, r);
           var i :| 0 <= i < |g.instances| && g.instances[i] == o.id;
@@ -287,7 +344,7 @@ lemma PluginRetirementCleanupRetainsCompletedObservations(s: PluginServices, epo
       g.instanceCursor == |g.instances| && (forall slot | slot in g.observedStops :: stopSlotSettled(slot, after.services))
   {
     if r.epochId != epochId {
-      PluginRetirementSiblingEpochUnchanged(s, epochId, r.epochId);
+      PluginRetirementEpochAfterCleanup(s, epochId, r.epochId);
     } else {
       PluginRetirementPlanLookup(s, r);
       forall g | g in r.groups
