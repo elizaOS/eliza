@@ -584,7 +584,7 @@ describe("TelegramService startup wiring", () => {
 
       expect(api.getMeCalls()).toBe(5);
       expect(startRegistration).toHaveBeenCalledTimes(1);
-      expect(commandRegistration).toHaveBeenCalledTimes(2);
+      expect(commandRegistration).toHaveBeenCalledTimes(3);
       expect(middlewareRegistration).toHaveBeenCalledTimes(
         commandRegistration.mock.calls.length +
           eventRegistration.mock.calls.length +
