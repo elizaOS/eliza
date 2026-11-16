@@ -63,8 +63,9 @@ module EmbeddedAgentLifecycle {
   val safety = AgentAlone and FailureNamesCause and RunningWasReady and ChildOnlyWhileLaunched and
     ChecksBeforeChild and CrashedOnlyAfterReadiness and StartupFailureIsNotACrash and BoundedRestarts
 
-  temporal StartSettles = advance.weakFair(s).implies((s.state == "starting").leadsTo(s.state != "starting"))
-  temporal StartSettlesWithoutFairness = (s.state == "starting").leadsTo(s.state != "starting")
+  val Waiting = s.state == "starting" and s.phase == "spawned"
+  temporal ReadinessWaitSettles = advance.weakFair(s).implies(Waiting.leadsTo(not(Waiting)))
+  temporal ReadinessWaitSettlesWithoutFairness = Waiting.leadsTo(not(Waiting))
 
   run startsAgentAloneTest = init.then(start).then(spawnAgent).then(observeReady)
     .expect(s.state == "running" and s.childLive and safety)
