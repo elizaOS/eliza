@@ -137,6 +137,7 @@
       ],
       "inputs": [
         "*",
+        "!*.md",
         "vibestack/**",
         "!vibestack/{examples,studio}/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
