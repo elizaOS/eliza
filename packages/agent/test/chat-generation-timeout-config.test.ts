@@ -6,7 +6,10 @@
  * with no hint that the endpoint string was the cause.
  */
 import { afterEach, expect, it, vi } from "vitest";
-import { resolveChatGenerationTimeoutMs } from "../src/api/chat-routes.ts";
+import {
+  __resetOllamaEndpointReportCacheForTests,
+  resolveChatGenerationTimeoutMs,
+} from "../src/api/chat-routes.ts";
 
 const LOCAL_DEFAULT_MS = 180000;
 const REMOTE_MS = 600000;
@@ -19,6 +22,7 @@ afterEach(() => {
   restore("OLLAMA_BASE_URL", savedBaseUrl);
   restore("OLLAMA_API_ENDPOINT", savedApiEndpoint);
   restore("ELIZA_CHAT_GENERATION_TIMEOUT_MS", savedExplicitTimeout);
+  __resetOllamaEndpointReportCacheForTests();
   vi.restoreAllMocks();
 });
 
@@ -71,4 +75,18 @@ it("warns once per broken endpoint value rather than on every chat request", () 
   resolveChatGenerationTimeoutMs({ warn });
 
   expect(warn).toHaveBeenCalledTimes(1);
+});
+
+it("warns again for the same endpoint value once the report cache is reset", () => {
+  silenceExplicitTimeout();
+  delete process.env.OLLAMA_API_ENDPOINT;
+  process.env.OLLAMA_BASE_URL = "http://";
+  const warn = vi.fn();
+
+  resolveChatGenerationTimeoutMs({ warn });
+  __resetOllamaEndpointReportCacheForTests();
+  resolveChatGenerationTimeoutMs({ warn });
+
+  // The once-per-value cache must not leak between independent cases.
+  expect(warn).toHaveBeenCalledTimes(2);
 });

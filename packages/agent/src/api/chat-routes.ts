@@ -1417,6 +1417,11 @@ export function isChatGenerationTimeoutError(err: unknown): boolean {
   return CHAT_GENERATION_TIMEOUT_PATTERN.test(msg);
 }
 const reportedUnparsableOllamaEndpoints = new Set<string>();
+/** Test-only: clear the reported unparsable-endpoint set between cases so a
+ *  reused fixture value cannot silently suppress the warning. */
+export function __resetOllamaEndpointReportCacheForTests(): void {
+  reportedUnparsableOllamaEndpoints.clear();
+}
 function isRemoteOllamaEndpointConfigured(
   logger?: Pick<Logger, "warn">,
 ): boolean {
