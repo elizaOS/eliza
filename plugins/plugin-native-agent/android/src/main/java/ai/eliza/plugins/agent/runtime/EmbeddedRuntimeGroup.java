@@ -37,6 +37,7 @@ public final class EmbeddedRuntimeGroup {
   private final Readiness readiness;
   private final long agentBudget, gatewayBudget, poll;
   private volatile Endpoint agent, gateway;
+  private volatile boolean agentOnly;
 
   public EmbeddedRuntimeGroup(NativeProcessLog log, String token, Publisher publisher,
       Readiness readiness, long agentBudget, long gatewayBudget, long poll) {
@@ -50,6 +51,23 @@ public final class EmbeddedRuntimeGroup {
   /** Endpoint visibility does not grant readiness; callers must use session fences. */
   public Endpoint agent() { return agent; }
   public Endpoint gateway() { return gateway; }
+  /** The endpoint a host bridge talks to: the gateway, or the agent when it was launched alone. */
+  public Endpoint served() { return agentOnly ? agent : gateway; }
+
+  /** The agent alone, for a host whose native bridge is the agent's only client and admits its
+   * routes itself. The launch returns only after the agent answers its readiness probe. */
+  public void launchAgent(NativeRuntimeSession.Scope scope, AgentCommand agentCommand,
+      Collection<String> secrets) throws Exception {
+    Objects.requireNonNull(secrets);
+    scope.check();
+    Endpoint selected = new Endpoint(EmbeddedRuntimeLaunch.loopbackPort(),token);
+    agent = selected; gateway = null; agentOnly = true;
+    List<String> redactions = new ArrayList<>(secrets);
+    redactions.add(token);
+    scope.check();
+    Process process = scope.start("agent",agentCommand.create(selected),log,redactions);
+    await(RuntimeStartFailure.Cause.AGENT,scope,process,() -> readiness.ready(selected,false),agentBudget);
+  }
 
   public void launch(NativeRuntimeSession.Scope scope, AgentCommand agentCommand,
       GatewayCommand gatewayCommand, BrokerFactory brokerFactory, byte[] binding,
@@ -59,7 +77,7 @@ public final class EmbeddedRuntimeGroup {
     Endpoint selectedAgent = new Endpoint(EmbeddedRuntimeLaunch.loopbackPort(),token);
     Endpoint selectedGateway = new Endpoint(EmbeddedRuntimeLaunch.loopbackPort(),EmbeddedRuntimeLaunch.token());
     String brokerToken = EmbeddedRuntimeLaunch.token();
-    agent = selectedAgent; gateway = null;
+    agent = selectedAgent; gateway = null; agentOnly = false;
     // Every launch secret is redacted from both children's output.
     List<String> redactions = new ArrayList<>(secrets);
     redactions.add(token); redactions.add(selectedGateway.token); redactions.add(brokerToken);
@@ -77,7 +95,15 @@ public final class EmbeddedRuntimeGroup {
     gateway = selectedGateway;
     ProcessBuilder command = gatewayCommand.create(selectedAgent,selectedGateway,broker.port(),brokerToken);
     Process gatewayProcess = scope.start("gateway",command,log,redactions);
-    scope.awaitReady(agentProcess,() -> readiness.ready(selectedAgent,false),agentBudget,poll);
-    scope.awaitReady(gatewayProcess,() -> readiness.ready(selectedGateway,true),gatewayBudget,poll);
+    await(RuntimeStartFailure.Cause.AGENT,scope,agentProcess,() -> readiness.ready(selectedAgent,false),agentBudget);
+    await(RuntimeStartFailure.Cause.GATEWAY,scope,gatewayProcess,() -> readiness.ready(selectedGateway,true),gatewayBudget);
+  }
+
+  private void await(RuntimeStartFailure.Cause cause, NativeRuntimeSession.Scope scope, Process process,
+      NativeProcessSupervisor.Probe probe, long budget) throws Exception {
+    try { scope.awaitReady(process,probe,budget,poll); }
+    catch (NativeProcessSupervisor.LifecycleException failure) {
+      throw new RuntimeStartFailure(cause,failure.getMessage(),failure);
+    }
   }
 }
