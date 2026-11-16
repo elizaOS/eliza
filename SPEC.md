@@ -10,8 +10,7 @@ A path under `vibestack/` names a file of the
 installed package does not ship. There, "the order example" is
 `vibestack/examples/order/spec/index.md` and "the tracker example" is
 `vibestack/examples/dashboard/spec/tracker.md`. The root `spec/index.md` links to
-`spec/app/index.md`, the hello world in `apps/app` that uses one of each thing
-Vibestack offers (`apps/app/README.md`), to be replaced by your application.
+the spec of each package under `packages/` that owns one.
 
 ## Stages of `pnpm check`
 
@@ -214,7 +213,7 @@ it does for the root's own `src/` and `test/`:
   its `tsconfig.json`, `test` script, `test/drivers/`, `test/traces/` and
   `driver:` scripts;
   its `//@` files under `src/` are proved and their contracts reviewed. Each
-  result names the package: `apps/app: pass`.
+  result names the package: `packages/agent: pass`.
 - **Citations** in an owner's code are written from the root, as everywhere:
   `// spec/app/index.md, "A rule"`.
 
@@ -488,7 +487,7 @@ spec, in the package whose code it is, with the events the simulator found.
 package's own: an owner of `spec/app/cart.md` writes
 `test/drivers/app__cart.ts` on `gen/app__cart.conformance.ts`, records
 `test/traces/app__cart.jsonl` or names its script `driver:app__cart`, all in
-`apps/app`. `vibestack/examples/order/test/drivers/index.ts` is a worked
+the owner's directory. `vibestack/examples/order/test/drivers/index.ts` is a worked
 driver; `effectDriver` from `vibestack/testing` builds one from a `Layer`.
 
 A `Driver` has `reset`, `dispatch` (sends an event through the
@@ -541,7 +540,7 @@ under `src/`.
   error), and export a property for each rule the page must keep, citing
   it as a test does. The types come from `@antithesishq/bombadil`, which
   `spec init` adds. Without the file, the defaults are checked.
-  `apps/app/test/bombadil.ts` is a worked one.
+  `vibestack/examples/fullstack/test/bombadil.ts` is a worked one.
 - **A broken property is saved.** The run is kept in
   `test/__traces__/bombadil`, which is not committed;
   `pnpm exec bombadil browser inspect test/__traces__/bombadil` shows each

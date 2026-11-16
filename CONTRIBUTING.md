@@ -8,8 +8,7 @@ Everything is built on [the stack](AGENTS.md#the-stack): Node 26, pnpm, VibeLang
 
 | Path | Holds |
 |---|---|
-| `apps/` | deployable applications; `apps/app` is the hello world to replace |
-| `packages/` | what applications share: `@repo/ui` (components), `@repo/design-system` (tokens) |
+| `packages/` | Eliza's packages, each the owner of its `spec/<name>/`, and the toolchain's private `@repo/ui` (components) and `@repo/design-system` (tokens) |
 | `vibestack/` | the tools: the `spec` command, Studio, and what any project uses but does not own (`vibestack/testing`, `vibestack/design`, `vibestack/stories`) |
 | `vibestack/examples/` | standalone projects, each with its own install; never part of the workspace |
 
@@ -177,7 +176,7 @@ failing exploration found is saved and replayed instead
 ### Which test, for what
 
 [AGENTS.md, "Tests"](AGENTS.md#tests) defines what earns a test and the rules
-`check` enforces. The hello world in `apps/app` demonstrates each kind.
+`check` enforces. The examples under `vibestack/examples/` demonstrate each kind.
 
 | Kind | Checks | Source or example |
 |---|---|---|
@@ -185,7 +184,7 @@ failing exploration found is saved and replayed instead
 | Model-based | Real shell against the spec: journeys, malformed input, walks and saved counterexamples | `test/drivers/app.ts` and the recorded `test/traces/app.jsonl`, run by `traces` |
 | Journey/integration | A story through real services, including what a driver cannot see | `@effect/vitest` in `test/app.test.vibe`: reload from storage |
 | Component/browser | Story interactions and accessibility; browser-only behavior such as focus and storage | Component metadata `play`; `test/app.browser.test.tsx` in Chromium |
-| Exploratory/browser | The served page under random clicks, typing, scrolling and reloads: no uncaught error, console error or failed request, and the properties each rule gives the page, in every state reached | `test/bombadil.ts`, or nothing for Bombadil's defaults; `apps/app/test/bombadil.ts`, run by `explore` |
+| Exploratory/browser | The served page under random clicks, typing, scrolling and reloads: no uncaught error, console error or failed request, and the properties each rule gives the page, in every state reached | `test/bombadil.ts`, or nothing for Bombadil's defaults; `vibestack/examples/fullstack/test/bombadil.ts`, run by `explore` |
 | Property | What a schema or declared contract promises for generated values | Generated from `src/link.contract.ts` and other `*.schema.*` or `*.contract.*` files |
 
 A generated test asserts its schema or contract, never a recorded result of
