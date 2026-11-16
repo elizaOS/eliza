@@ -125,6 +125,7 @@ lemma beginWrite_ensures(s: MultiRoomLeases, caller: int, room: int)
   if inv(s) && canBeginWrite(s, caller, room) {
     RoomBatchQueueState(s);
     core__concurrency_beginWrite_ensures(s.queue, caller, room);
+    RoomWriteTransitionsKeepOwnership(s, caller, room);
     RoomBatchProgress(beginWrite(s, caller, room));
   }
 }
@@ -153,6 +154,7 @@ lemma finishWrite_ensures(s: MultiRoomLeases, caller: int, room: int)
   if inv(s) && canFinishWrite(s, caller, room) {
     RoomBatchQueueState(s);
     core__concurrency_finishWrite_ensures(s.queue, caller, room);
+    RoomWriteTransitionsKeepOwnership(s, caller, room);
     RoomBatchProgress(finishWrite(s, caller, room));
   }
 }
@@ -181,6 +183,7 @@ lemma closeBatchWrites_ensures(s: MultiRoomLeases, caller: int)
   if inv(s) && canCloseBatchWrites(s, caller) {
     RoomBatchQueueState(s);
     core__concurrency_closeWrites_ensures(s.queue, caller, releaseRoomId(s, caller));
+    RoomWriteTransitionsKeepOwnership(s, caller, releaseRoomId(s, caller));
     RoomBatchProgress(closeBatchWrites(s, caller));
   }
 }
@@ -1087,4 +1090,340 @@ lemma AbortBatchPreservesOwners(s: MultiRoomLeases, caller: int, cause: int)
     var i :| 0 <= i < |after.calls| && after.calls[i] == c;
     assert s.calls[i] in s.calls && s.calls[i].phase.BatchAcquiring?;
   }
+}
+
+lemma RoomWriterRetainsHeldRooms(before: MultiRoomLeases, after: MultiRoomLeases, caller: int)
+  requires |before.queue.leases| == |after.queue.leases|
+  requires forall i | 0 <= i < |before.queue.leases| ::
+    before.queue.leases[i].caller == after.queue.leases[i].caller &&
+    before.queue.leases[i].room == after.queue.leases[i].room
+  ensures heldRooms(before, caller) == heldRooms(after, caller)
+{
+  var belongs := (lease: core__concurrency_Lease) => lease.caller == caller;
+  var sameRoom := (prior: core__concurrency_Lease, next: core__concurrency_Lease) => prior.room == next.room;
+  var original := ProofLib.Filter(belongs, before.queue.leases);
+  var retained := ProofLib.Filter(belongs, after.queue.leases);
+  ProofLib.FilterPointwise(belongs, belongs, sameRoom, before.queue.leases, after.queue.leases);
+  RoomBatchHeldProjection(before, caller);
+  RoomBatchHeldProjection(after, caller);
+  forall i | 0 <= i < |original| ensures heldRooms(before, caller)[i] == heldRooms(after, caller)[i] {
+    assert original[i].room == retained[i].room;
+  }
+}
+
+lemma RoomWriterKeepsLeasePairs(before: seq<core__concurrency_Lease>, after: seq<core__concurrency_Lease>)
+  requires |before| == |after|
+  requires forall i | 0 <= i < |before| ::
+    before[i].caller == after[i].caller && before[i].room == after[i].room
+  ensures forall lease | lease in before ::
+    (exists next :: next in after && next.caller == lease.caller && next.room == lease.room)
+  ensures forall lease | lease in after ::
+    (exists prior :: prior in before && prior.caller == lease.caller && prior.room == lease.room)
+{
+  forall lease | lease in before
+    ensures (exists next :: next in after && next.caller == lease.caller && next.room == lease.room)
+  {
+    var i :| 0 <= i < |before| && before[i] == lease;
+    assert after[i] in after;
+  }
+  forall lease | lease in after
+    ensures (exists prior :: prior in before && prior.caller == lease.caller && prior.room == lease.room)
+  {
+    var i :| 0 <= i < |after| && after[i] == lease;
+    assert before[i] in before;
+  }
+}
+
+lemma RoomWriterKeepsBatchOwnership(before: MultiRoomLeases, after: MultiRoomLeases)
+  requires inv(before)
+  requires after == before.(queue := before.queue.(leases := after.queue.leases))
+  requires |before.queue.leases| == |after.queue.leases|
+  requires forall i | 0 <= i < |before.queue.leases| ::
+    before.queue.leases[i].caller == after.queue.leases[i].caller &&
+    before.queue.leases[i].room == after.queue.leases[i].room
+  ensures alwaysLeasesBelongToBatch(after) && alwaysWaiterHasOwner(after)
+  ensures alwaysHeldPrefixMatchesRequests(after) && alwaysInvocationHoldsAllRooms(after)
+  ensures alwaysWaiterMatchesNextRoom(after) && alwaysWaitsAboveHeldRooms(after)
+  ensures alwaysDoneHasNoLease(after) && alwaysReverseReleaseRank(after)
+  ensures stepReleasedAfterWriteSettlement(before, after)
+{
+  RoomWriterKeepsLeasePairs(before.queue.leases, after.queue.leases);
+  RoomWriterRetainsBatchLeaseOwners(before, after);
+  RoomWriterRetainsWaiterLeaseOwners(before, after);
+  RoomWriterRetainsBatchRoomPlans(before, after);
+  RoomWriterRetainsWaitingBatches(before, after);
+}
+
+lemma RoomWriterRetainsWaitingBatches(before: MultiRoomLeases, after: MultiRoomLeases)
+  requires alwaysWaiterMatchesNextRoom(before)
+  requires after.calls == before.calls && after.queue.waiting == before.queue.waiting
+  ensures alwaysWaiterMatchesNextRoom(after)
+{
+  reveal batchAt();
+  forall w | w in after.queue.waiting
+    ensures batchAt(after, w.caller) == batchAt(before, w.caller)
+  {}
+}
+
+lemma RoomWriterRetainsBatchLeaseOwners(before: MultiRoomLeases, after: MultiRoomLeases)
+  requires alwaysLeasesBelongToBatch(before) && after.calls == before.calls
+  requires forall lease | lease in after.queue.leases ::
+    (exists prior :: prior in before.queue.leases && prior.caller == lease.caller && prior.room == lease.room)
+  ensures alwaysLeasesBelongToBatch(after)
+{
+  forall lease | lease in after.queue.leases
+    ensures (exists c :: c in after.calls && c.id == lease.caller && !c.phase.BatchDone? && lease.room in c.wanted)
+  {
+    var prior :| prior in before.queue.leases && prior.caller == lease.caller && prior.room == lease.room;
+  }
+}
+
+lemma RoomWriterRetainsWaiterLeaseOwners(before: MultiRoomLeases, after: MultiRoomLeases)
+  requires alwaysWaiterHasOwner(before) && after.queue.waiting == before.queue.waiting
+  requires forall lease | lease in before.queue.leases ::
+    (exists next :: next in after.queue.leases && next.caller == lease.caller && next.room == lease.room)
+  ensures alwaysWaiterHasOwner(after)
+  ensures stepReleasedAfterWriteSettlement(before, after)
+{
+  forall w | w in after.queue.waiting
+    ensures (exists lease :: lease in after.queue.leases && lease.room == w.room)
+  {
+    var prior :| prior in before.queue.leases && prior.room == w.room;
+  }
+}
+
+lemma RoomWriterRetainsBatchRoomPlans(before: MultiRoomLeases, after: MultiRoomLeases)
+  requires after.calls == before.calls && after.queue.waiting == before.queue.waiting
+  requires alwaysHeldPrefixMatchesRequests(before) && alwaysInvocationHoldsAllRooms(before)
+  requires alwaysWaitsAboveHeldRooms(before) && alwaysDoneHasNoLease(before) && alwaysReverseReleaseRank(before)
+  requires |before.queue.leases| == |after.queue.leases|
+  requires forall i | 0 <= i < |before.queue.leases| ::
+    before.queue.leases[i].caller == after.queue.leases[i].caller &&
+    before.queue.leases[i].room == after.queue.leases[i].room
+  ensures alwaysHeldPrefixMatchesRequests(after) && alwaysInvocationHoldsAllRooms(after)
+  ensures alwaysWaitsAboveHeldRooms(after) && alwaysDoneHasNoLease(after) && alwaysReverseReleaseRank(after)
+{
+  forall c | c in after.calls ensures heldRooms(before, c.id) == heldRooms(after, c.id) {
+    RoomWriterRetainsHeldRooms(before, after, c.id);
+  }
+}
+
+lemma RoomWriteTransitionsKeepOwnership(s: MultiRoomLeases, caller: int, room: int)
+  requires inv(s)
+  ensures alwaysLeasesBelongToBatch(beginWrite(s, caller, room)) && alwaysWaiterHasOwner(beginWrite(s, caller, room))
+  ensures alwaysHeldPrefixMatchesRequests(beginWrite(s, caller, room)) && alwaysInvocationHoldsAllRooms(beginWrite(s, caller, room))
+  ensures alwaysWaiterMatchesNextRoom(beginWrite(s, caller, room)) && alwaysWaitsAboveHeldRooms(beginWrite(s, caller, room))
+  ensures alwaysDoneHasNoLease(beginWrite(s, caller, room)) && alwaysReverseReleaseRank(beginWrite(s, caller, room))
+  ensures stepReleasedAfterWriteSettlement(s, beginWrite(s, caller, room))
+  ensures alwaysLeasesBelongToBatch(finishWrite(s, caller, room)) && alwaysWaiterHasOwner(finishWrite(s, caller, room))
+  ensures alwaysHeldPrefixMatchesRequests(finishWrite(s, caller, room)) && alwaysInvocationHoldsAllRooms(finishWrite(s, caller, room))
+  ensures alwaysWaiterMatchesNextRoom(finishWrite(s, caller, room)) && alwaysWaitsAboveHeldRooms(finishWrite(s, caller, room))
+  ensures alwaysDoneHasNoLease(finishWrite(s, caller, room)) && alwaysReverseReleaseRank(finishWrite(s, caller, room))
+  ensures stepReleasedAfterWriteSettlement(s, finishWrite(s, caller, room))
+  ensures alwaysLeasesBelongToBatch(closeBatchWrites(s, caller)) && alwaysWaiterHasOwner(closeBatchWrites(s, caller))
+  ensures alwaysHeldPrefixMatchesRequests(closeBatchWrites(s, caller)) && alwaysInvocationHoldsAllRooms(closeBatchWrites(s, caller))
+  ensures alwaysWaiterMatchesNextRoom(closeBatchWrites(s, caller)) && alwaysWaitsAboveHeldRooms(closeBatchWrites(s, caller))
+  ensures alwaysDoneHasNoLease(closeBatchWrites(s, caller)) && alwaysReverseReleaseRank(closeBatchWrites(s, caller))
+  ensures stepReleasedAfterWriteSettlement(s, closeBatchWrites(s, caller))
+{
+  reveal beginWrite(), finishWrite(), closeBatchWrites();
+  reveal core__concurrency_beginWrite(), core__concurrency_finishWrite(), core__concurrency_closeWrites();
+  RoomWriterKeepsBatchOwnership(s, beginWrite(s, caller, room));
+  RoomWriterKeepsBatchOwnership(s, finishWrite(s, caller, room));
+  RoomWriterKeepsBatchOwnership(s, closeBatchWrites(s, caller));
+}
+
+lemma returnBody_ensures(s: MultiRoomLeases, caller: int, cause: int)
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysNestedReuseExact(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysQueueInvariant(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysBatchIdentitiesUnique(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysBatchesHaveValidPosition(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysStoredResultFollowsPhase(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysQueueConfiguredForCalls(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysLeasesBelongToBatch(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysWaiterHasOwner(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysHeldPrefixMatchesRequests(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysInvocationHoldsAllRooms(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysWaiterMatchesNextRoom(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysWaitsAboveHeldRooms(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysDoneHasNoLease(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysAcquiringQueueAuthority(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysReverseReleaseRank(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> alwaysBatchProgressOrTerminal(returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> stepNestedDoesNotAcquire(s, "returnBody", returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> stepClosedAdmissionCannotGrow(s, returnBody(s, caller, cause)))
+  ensures (inv(s) ==> canReturnBody(s, caller, cause) ==> stepReleasedAfterWriteSettlement(s, returnBody(s, caller, cause)))
+{
+  if inv(s) && canReturnBody(s, caller, cause) {
+    reveal returnBody(), canReturnBody();
+    var after := returnBody(s, caller, cause);
+    forall i | 0 <= i < |s.calls| && s.calls[i].id == caller
+      ensures s.calls[i] == batchAt(s, caller) && s.calls[i].phase.BatchInvoking?
+    {
+      assert s.calls[i] in s.calls;
+      RoomBatchIdentityLookup(s, s.calls[i]);
+    }
+    RoomCompletionKeepsNonWaitingOwnership(s, after, caller);
+    RoomBatchProgress(after);
+  }
+}
+
+lemma finishBatch_ensures(s: MultiRoomLeases, caller: int)
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysNestedReuseExact(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysQueueInvariant(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysBatchIdentitiesUnique(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysBatchesHaveValidPosition(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysStoredResultFollowsPhase(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysQueueConfiguredForCalls(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysLeasesBelongToBatch(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysWaiterHasOwner(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysHeldPrefixMatchesRequests(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysInvocationHoldsAllRooms(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysWaiterMatchesNextRoom(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysWaitsAboveHeldRooms(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysDoneHasNoLease(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysAcquiringQueueAuthority(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysReverseReleaseRank(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> alwaysBatchProgressOrTerminal(finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> stepNestedDoesNotAcquire(s, "finishBatch", finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> stepClosedAdmissionCannotGrow(s, finishBatch(s, caller)))
+  ensures (inv(s) ==> canFinishBatch(s, caller) ==> stepReleasedAfterWriteSettlement(s, finishBatch(s, caller)))
+{
+  if inv(s) && canFinishBatch(s, caller) {
+    reveal finishBatch(), canFinishBatch();
+    var after := finishBatch(s, caller);
+    forall i | 0 <= i < |s.calls| && s.calls[i].id == caller
+      ensures s.calls[i] == batchAt(s, caller) && s.calls[i].phase.BatchReleasing?
+    {
+      assert s.calls[i] in s.calls;
+      RoomBatchIdentityLookup(s, s.calls[i]);
+    }
+    RoomCompletionKeepsNonWaitingOwnership(s, after, caller);
+    RoomBatchProgress(after);
+  }
+}
+
+lemma RoomCompletionRetainsWaiters(before: MultiRoomLeases, after: MultiRoomLeases, caller: int)
+  requires alwaysBatchIdentitiesUnique(before) && alwaysBatchIdentitiesUnique(after)
+  requires alwaysWaiterMatchesNextRoom(before) && before.queue == after.queue
+  requires |before.calls| == |after.calls|
+  requires forall i | 0 <= i < |before.calls| ::
+    var prior := before.calls[i];
+    var next := after.calls[i];
+    (prior.id != caller ==> next == prior) &&
+    (prior.id == caller ==> (
+      next.id == caller && !prior.phase.BatchWaiting? && !next.phase.BatchWaiting?
+    ))
+  ensures alwaysWaiterMatchesNextRoom(after)
+{
+  forall w | w in after.queue.waiting
+    ensures batchAt(after, w.caller).phase.BatchWaiting? && wantedRoom(batchAt(after, w.caller)) == w.room
+  {
+    var prior := batchAt(before, w.caller);
+    reveal batchAt();
+    var byId := (c: BatchLeaseCall) => c.id == w.caller;
+    var matches := ProofLib.Filter(byId, before.calls);
+    assert prior.phase.BatchWaiting? && |matches| > 0 && prior == matches[0];
+    ProofLib.FilterMember(byId, before.calls, prior);
+    var i :| 0 <= i < |before.calls| && before.calls[i] == prior;
+    var next := after.calls[i];
+    assert next == prior && next in after.calls;
+    RoomBatchIdentityLookup(after, next);
+  }
+  forall c | c in after.calls && c.phase.BatchWaiting?
+    ensures (exists w :: w in after.queue.waiting && w.caller == c.id && w.room == wantedRoom(c))
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == c;
+    assert before.calls[i] == c && c in before.calls;
+  }
+}
+
+lemma RoomCompletionRetainsLeaseOwners(before: MultiRoomLeases, after: MultiRoomLeases, caller: int)
+  requires alwaysLeasesBelongToBatch(before) && alwaysDoneHasNoLease(before)
+  requires alwaysBatchIdentitiesUnique(before) && alwaysWaiterMatchesNextRoom(before)
+  requires before.queue == after.queue && |before.calls| == |after.calls|
+  requires forall i | 0 <= i < |before.calls| ::
+    var prior := before.calls[i];
+    var next := after.calls[i];
+    (prior.id != caller ==> next == prior) &&
+    (prior.id == caller ==> (
+      next.id == caller && next.wanted == prior.wanted && !prior.phase.BatchWaiting? &&
+        !next.resultKind.BatchPending? && (next.phase.BatchDone? ==> |heldRooms(before, caller)| == 0)
+    ))
+  ensures alwaysLeasesBelongToBatch(after) && alwaysDoneHasNoLease(after)
+{
+  forall lease | lease in after.queue.leases
+    ensures (exists c :: c in after.calls && c.id == lease.caller && !c.phase.BatchDone? && lease.room in c.wanted)
+  {
+    var prior :| prior in before.calls && prior.id == lease.caller && !prior.phase.BatchDone? && lease.room in prior.wanted;
+    var i :| 0 <= i < |before.calls| && before.calls[i] == prior;
+    var next := after.calls[i];
+    assert next in after.calls && next.id == prior.id && next.wanted == prior.wanted;
+    if next.phase.BatchDone? {
+      assert prior.id == caller && |heldRooms(before, caller)| == 0;
+      RoomBatchIncludesHeldRoom(before, lease);
+      assert false;
+    }
+  }
+  forall c | c in after.calls && c.phase.BatchDone?
+    ensures |heldRooms(after, c.id)| == 0 && !c.resultKind.BatchPending?
+    ensures forall w | w in after.queue.waiting :: w.caller != c.id
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == c;
+    var prior := before.calls[i];
+    assert prior in before.calls && prior.id == c.id;
+    if prior.id == caller {
+      RoomBatchNoWaitOutsideWaiting(before, prior);
+    }
+  }
+}
+
+lemma RoomCompletionRetainsAcquisitionAuthority(before: MultiRoomLeases, after: MultiRoomLeases, caller: int)
+  requires alwaysAcquiringQueueAuthority(before) && alwaysStoredResultFollowsPhase(before)
+  requires before.queue == after.queue && |before.calls| == |after.calls|
+  requires forall i | 0 <= i < |before.calls| ::
+    var prior := before.calls[i];
+    var next := after.calls[i];
+    (prior.id != caller ==> next == prior) &&
+    (prior.id == caller ==> (
+      next.id == caller && (next.phase.BatchDone? || next.phase.BatchReleasing?) && !next.resultKind.BatchPending?
+    ))
+  ensures alwaysAcquiringQueueAuthority(after) && alwaysStoredResultFollowsPhase(after)
+{
+  forall id | id in after.queue.cancelled
+    ensures (exists c :: c in after.calls && c.id == id)
+  {
+    var prior :| prior in before.calls && prior.id == id;
+    var i :| 0 <= i < |before.calls| && before.calls[i] == prior;
+    assert after.calls[i] in after.calls;
+  }
+  forall c | c in after.calls
+    ensures c.phase.BatchAcquiring? ==> c.id !in after.queue.cancelled
+    ensures (c.phase.BatchReleasing? || c.phase.BatchDone?) == !c.resultKind.BatchPending?
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == c;
+    assert before.calls[i] in before.calls;
+  }
+}
+
+lemma RoomCompletionKeepsNonWaitingOwnership(before: MultiRoomLeases, after: MultiRoomLeases, caller: int)
+  requires inv(before)
+  requires before.queue == after.queue && |before.calls| == |after.calls|
+  requires forall i | 0 <= i < |before.calls| ::
+    var prior := before.calls[i];
+    var next := after.calls[i];
+    (prior.id != caller ==> next == prior) &&
+    (prior.id == caller ==> (
+      next.id == caller && next.wanted == prior.wanted && !prior.phase.BatchWaiting? &&
+        (next.phase.BatchDone? || next.phase.BatchReleasing?) && !next.resultKind.BatchPending? &&
+        (next.phase.BatchDone? ==> |heldRooms(before, caller)| == 0)
+    ))
+  ensures alwaysBatchIdentitiesUnique(after) && alwaysLeasesBelongToBatch(after)
+  ensures alwaysWaiterMatchesNextRoom(after) && alwaysAcquiringQueueAuthority(after)
+  ensures alwaysStoredResultFollowsPhase(after) && alwaysDoneHasNoLease(after)
+{
+  RoomBatchMapIdentities(before, after);
+  RoomCompletionRetainsWaiters(before, after, caller);
+  RoomCompletionRetainsLeaseOwners(before, after, caller);
+  RoomCompletionRetainsAcquisitionAuthority(before, after, caller);
 }
