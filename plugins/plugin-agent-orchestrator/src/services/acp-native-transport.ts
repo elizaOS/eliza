@@ -161,8 +161,7 @@ const ACP_PROTOCOL_VERSION = 1;
 // completion-time distribution (max ~14 s on `task_complete`, ~270 s tail
 // on what would otherwise have been timeouts) without letting genuinely
 // hung sessions linger forever. Deployments that want faster fail-fast or
-// longer waits can override via `ACPX_DEFAULT_TIMEOUT_MS` or
-// `ELIZA_ACP_PROMPT_TIMEOUT_MS` env vars.
+// longer waits can override via the `ACPX_DEFAULT_TIMEOUT_MS` env var.
 const DEFAULT_TIMEOUT_MS = 300_000;
 const TERMINAL_OUTPUT_LIMIT = 512 * 1024;
 const AGENT_CLOSE_TERM_GRACE_MS = 1_500;

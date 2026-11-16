@@ -109,6 +109,7 @@ import {
 import { ensurePrivateDir } from "../config/paths.ts";
 import {
   assertNoRetiredCharacterToolRestrictions,
+  assertNoRetiredSettingNames,
   assertNoRetiredToolRestrictions,
 } from "../config/retired-tool-policy.ts";
 import { type LoadHooksOptions, loadHooks } from "../hooks/loader.ts";
@@ -3970,6 +3971,7 @@ export async function startEliza(
 ): Promise<AgentRuntime | undefined> {
   const restoredGeneration = opts?.restoredGeneration;
   opts?.abortSignal?.throwIfAborted();
+  assertNoRetiredSettingNames(process.env);
   if (opts?.configOverride)
     assertNoRetiredToolRestrictions(opts.configOverride);
   if (restoredGeneration !== undefined) {

@@ -14,11 +14,7 @@ const OUTBOUND_SIGNAL_LOOKBACK_MS = 10 * 60 * 1_000;
 const IMESSAGE_PLUGIN_PACKAGE = "@elizaos/plugin-imessage";
 
 function nativeIMessageProbeDisabled(): boolean {
-  const backend = (
-    process.env.ELIZA_IMESSAGE_BACKEND ??
-    process.env.IMESSAGE_BACKEND ??
-    ""
-  )
+  const backend = (process.env.ELIZA_IMESSAGE_BACKEND ?? "")
     .trim()
     .toLowerCase();
   return backend === "none" || backend === "disabled";
