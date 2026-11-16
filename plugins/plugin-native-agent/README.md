@@ -118,20 +118,28 @@ loopback socket, so the page needs no cleartext access and never holds a token.
 `abort` closes the request, which ends the agent's turn. `status` events follow
 each lifecycle change. A failed status names its `failure`: `payload`, `storage`,
 `config`, `credential`, `agent`, `crashed` or `runtime`. An agent that exits
-before it is ready fails the start with `agent`; a running agent that exits is
-restarted twice, 3 and 6 seconds apart, then fails with `crashed`
-(`quint/EmbeddedAgentLifecycle.qnt`). The service returns `START_STICKY` so that
-Android may restart it after its process is killed; that has not been observed on a
-device, and a restart Android refuses to bring to the foreground stops the service.
-Whether Eliza Cloud accepts the key is the outcome of each turn: its HTTP status
-reaches the page as `status` of a `request` or `streamEnd`. A host binds the
-signed-in Cloud credential by overriding `cloudCredential()` in a subclass named as
-`service`.
+before it is ready, or that cannot be spawned, fails the start with `agent`; a
+running agent that exits is restarted twice, 3 and 6 seconds apart, then fails with
+`crashed` (`quint/EmbeddedAgentLifecycle.qnt`). The service returns `START_STICKY`
+so that Android may restart it after its process is killed; that has not been
+observed on a device, and a restart Android refuses to bring to the foreground
+stops the service. The start does not ask Eliza Cloud whether it accepts the key.
+A turn's stream answers HTTP 200 once the agent has validated the request; a
+refused key or an unfunded account then ends the turn with a `done` event whose
+`failureKind` is `provider_issue` or `insufficient_credits`, and any other failure
+with an `error` event (`type`, `message`, optional `code`). Both reach the page as
+`streamData`. A host binds the signed-in Cloud credential by overriding
+`cloudCredential()` in a subclass named as `service`, and registers
+`EmbeddedAgentPlugin` with its Capacitor bridge; the generator writes no plugin
+registration.
 
 `native-host/embedded-agent.mjs` exports `embeddedAgentDevelopment`, a Vite plugin
 that starts the agent from the Eliza checkout at `source` with the same data files,
 that checkout's `private-runtime-launch.mjs` and the same lifecycle, and serves the
-bridge's web fallback under `/__eliza-embedded-agent`. Both readers of the data
+bridge's web fallback under `/__eliza-embedded-agent`. It answers only a
+loopback, IP-literal or Vite-allowed host, and takes a command only as JSON from
+the dev server's own origin, so another site in the browser cannot reach the
+agent. Both readers of the data
 files refuse the cases in `test/embedded/embedded-agent-data.json`.
 
 `LocalRuntimeHttp` supplies bounded JSON HTTP exchange with an absolute socket
