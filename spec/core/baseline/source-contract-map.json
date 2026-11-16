@@ -482,7 +482,7 @@
       "sourceSha256": "9e11eb6be986ce754eee145d63d73bec18f9e38b63426cbe193e03fb63a15a78",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/canonical-json.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
+      "implementationProofBoundary": "The canonical traversal models a paid root, frame admission, host extent observation, breadth reservation before per-slot inspection, frame-owned prepaid children, independent output reservation, depth and ancestor-cycle guards, and terminal rejection. Disposition laws preserve sparse-hole and invisible-value policy. Reflection traps, descriptor classification, scalar encoding, UTF-16 key sorting, exact bytes and typed host error propagation require adapter conformance. Model proofs do not establish source-to-model refinement.",
       "relatedSpecs": [
         "spec/core/canonicalJson.md"
       ]

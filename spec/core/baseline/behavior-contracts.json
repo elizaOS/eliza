@@ -14534,7 +14534,7 @@
           "expectationCount": 5
         }
       ],
-      "proofBoundary": "Generated state laws cover the mapped lifecycle. Pure parser/codec algorithms retain these documented contracts and source test vectors; their future implementation needs a proved //@ contract or adapter conformance.",
+      "proofBoundary": "The canonical traversal models a paid root, frame admission, host extent observation, breadth reservation before per-slot inspection, frame-owned prepaid children, independent output reservation, depth and ancestor-cycle guards, and terminal rejection. Disposition laws preserve sparse-hole and invisible-value policy. Reflection traps, descriptor classification, scalar encoding, UTF-16 key sorting, exact bytes and typed host error propagation require adapter conformance. Model proofs do not establish source-to-model refinement.",
       "functionContracts": [
         {
           "name": "failCanonicalJsonUnbounded",
