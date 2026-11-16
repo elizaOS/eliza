@@ -24,6 +24,38 @@ function stubFetchStatus(status: number): void {
   );
 }
 
+function jsonResponse(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/** Answers every Kamino endpoint with a well-formed payload. */
+function stubFetchOk(): void {
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/v2/staking-yields/median")) {
+      return jsonResponse([{ apy: "0.05", tokenMint: "medianMint" }]);
+    }
+    if (url.includes("/v2/staking-yields")) {
+      return jsonResponse([{ apy: "0.04", tokenMint: "mint" }]);
+    }
+    if (url.includes("/limo/trades")) {
+      return jsonResponse([
+        {
+          sizeUsd: "10",
+          tipAmountUsd: "0.1",
+          surplusUsd: "0.2",
+          inMint: "inMint",
+          outMint: "outMint",
+        },
+      ]);
+    }
+    return new Response("unknown endpoint", { status: 404 });
+  });
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -45,5 +77,32 @@ describe("Kamino REST API failure", () => {
     const stats = await service().getMarketStatistics();
 
     expect(stats).toBeNull();
+  });
+
+  it("rejects with the HTTP status rather than a bare failure", async () => {
+    stubFetchStatus(503);
+
+    await expect(service().getStakingYieldsStrict()).rejects.toThrow(/503/);
+  });
+
+  it("reports a healthy API as connected (positive control)", async () => {
+    stubFetchOk();
+
+    const result = await service().testConnection();
+
+    expect(result.connectionTest).toBe(true);
+    expect(result.stakingYieldsTest).toBe(true);
+    expect(result.limoTradesTest).toBe(true);
+  });
+
+  it("returns real statistics when the API answers (positive control)", async () => {
+    stubFetchOk();
+
+    const stats = await service().getMarketStatistics();
+
+    expect(stats).not.toBeNull();
+    expect(stats?.stakingYields.total).toBe(1);
+    expect(stats?.stakingYields.averageApy).toBeCloseTo(4);
+    expect(stats?.limoTrades.totalVolume).toBeCloseTo(10);
   });
 });
