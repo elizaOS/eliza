@@ -83,6 +83,6 @@ pure val lookupValues = Set(
 )
 pure def lawRetiredCallerNeverShown(lookup: CallerLookup): bool =
   not(lookup.serviceLive and lookup.callPresent) implies not(callerNamePublished(lookup))
-pure def lawWithdrawnGrantHidesCachedName(cached: bool, atRefresh: CallerLookup): bool =
-  not(atRefresh.grantHeld) implies not(cachedNamePublished(cached, atRefresh))
+pure def lawWithdrawnGrantHidesCachedName(cached: bool, lookup: CallerLookup): bool =
+  not(lookup.grantHeld) implies not(cachedNamePublished(cached, lookup))
 ```

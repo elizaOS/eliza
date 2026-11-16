@@ -169,27 +169,27 @@ pure def canReturnFromListener(s: Navigation, attempt: int): bool = {
   val a = attemptAt(s.views, attempt)
   a.attempt == attempt and a.phase == Invoking
 }
-pure def returnFromListener(s: Navigation, attempt: int, outcome: ListenerOutcome): Navigation = {
+pure def returnFromListener(s: Navigation, attempt: int, verdict: ListenerOutcome): Navigation = {
   val a = attemptAt(s.views, attempt)
-  val returned = withAttempt(s.views, { ...a, phase: if (outcome == ListenerPromised) Awaiting else Settled })
+  val returned = withAttempt(s.views, { ...a, phase: if (verdict == ListenerPromised) Awaiting else Settled })
   val updated =
-    if (outcome == ListenerPromised) withClaim(returned, { ...claimAt(returned, a.request), applying: true })
-    else if (outcome == ListenerApplied) commitClaim(returned, a.request, ClaimApplied)
+    if (verdict == ListenerPromised) withClaim(returned, { ...claimAt(returned, a.request), applying: true })
+    else if (verdict == ListenerApplied) commitClaim(returned, a.request, ClaimApplied)
     else returned
   { ...s, views: updated }
 }
-pure def canSettleListener(s: Navigation, attempt: int, outcome: ListenerOutcome): bool = {
+pure def canSettleListener(s: Navigation, attempt: int, verdict: ListenerOutcome): bool = {
   val a = attemptAt(s.views, attempt)
-  a.attempt == attempt and a.phase == Awaiting and outcome != ListenerPromised
+  a.attempt == attempt and a.phase == Awaiting and verdict != ListenerPromised
 }
-pure def settleListener(s: Navigation, attempt: int, outcome: ListenerOutcome): Navigation = {
+pure def settleListener(s: Navigation, attempt: int, verdict: ListenerOutcome): Navigation = {
   val v = s.views
   val a = attemptAt(v, attempt)
   val c = claimAt(v, a.request)
   val stillActive = v.active.contains(a.listener)
-  val declinedNow = stillActive and outcome != ListenerApplied and a.admittedAt == v.admitted
+  val declinedNow = stillActive and verdict != ListenerApplied and a.admittedAt == v.admitted
   val completed = withClaim(withAttempt(v, { ...a, phase: Settled }), { ...c, applying: false, declined: if (declinedNow) c.declined.union(Set(a.listener)) else c.declined })
-  { ...s, views: if (stillActive and outcome == ListenerApplied) commitClaim(completed, a.request, ClaimApplied) else completed }
+  { ...s, views: if (stillActive and verdict == ListenerApplied) commitClaim(completed, a.request, ClaimApplied) else completed }
 }
 pure def sometimesViewRequestApplied(s: Navigation): bool = s.views.requests.some(c => c.resolution == ClaimApplied)
 pure def sometimesViewRequestDeclined(s: Navigation): bool = s.views.requests.some(c => c.declined.size() > 0 and c.live)

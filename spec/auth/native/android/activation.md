@@ -40,7 +40,7 @@ type ReceiptRemoval = NoRemoval | RemovalStale | RemovalAcknowledged | RemovalEx
 type KeyRemoval = NoKeyRemoval | RemovedRefused | RemovedUnconfirmed
 type AckRecovery = { saved: int, initialSaved: int, receipt: AckReceipt, initialReceipt: AckReceipt, runReceipt: AckReceipt,
   runSaved: int, replaced: bool, live: bool, runs: int, pending: bool, phase: RecoveryPhase, calls: int, latePosts: int,
-  post: AckPost, removal: ReceiptRemoval, outcome: RecoveryOutcome, keyRemoval: KeyRemoval, removedKey: int,
+  post: AckPost, removal: ReceiptRemoval, verdict: RecoveryOutcome, keyRemoval: KeyRemoval, removedKey: int,
   removedLate: bool, revoked: bool, completed: int, expiredReports: int, removedReceipt: AckReceipt }
 type Activation = { background: ActivationRounds, recovery: AckRecovery }
 pure val myKey = 11
@@ -53,7 +53,7 @@ pure val newerReceipt: AckReceipt = { present: true, parsed: true, environment: 
 pure val noPost: AckPost = { environment: 0, credential: 0, saved: 0, late: false }
 pure def recoveryFrom(receipt: AckReceipt, saved: int): AckRecovery = { saved: saved, initialSaved: saved, receipt: receipt,
   initialReceipt: receipt, runReceipt: noReceipt, runSaved: 0, replaced: false, live: true, runs: 0, pending: false,
-  phase: RecoveryIdle, calls: 0, latePosts: 0, post: noPost, removal: NoRemoval, outcome: NoRecoveryOutcome,
+  phase: RecoveryIdle, calls: 0, latePosts: 0, post: noPost, removal: NoRemoval, verdict: NoRecoveryOutcome,
   keyRemoval: NoKeyRemoval, removedKey: 0, removedLate: false, revoked: false, completed: 0, expiredReports: 0, removedReceipt: noReceipt }
 pure val initial: Activation = {
   background: { saved: myKey, receipt: myKey, intentCurrent: true, live: true, supersededSaved: -1, serverActive: false,
@@ -66,17 +66,19 @@ pure def roundActivated(r: ActivationRounds): ActivationRounds =
 pure def roundExpired(r: ActivationRounds): ActivationRounds =
   { ...r, retrying: false, saved: if (r.saved == myKey) 0 else r.saved, receipt: if (r.receipt == myKey) 0 else r.receipt,
     revokeSent: true, announced: AnnouncedExpired }
+pure def unansweredRound(sent: ActivationRounds, answer: RoundAnswer): ActivationRounds = {
+  val reached = { ...sent, serverActive: sent.serverActive or answer == RoundLost }
+  if (sent.deadlinePassed) roundExpired(reached) else reached
+}
+pure def answerRound(r: ActivationRounds, answer: RoundAnswer): ActivationRounds = {
+  val sent = { ...r, rounds: r.rounds + 1, roundsAfterDeadline: r.roundsAfterDeadline + (if (r.deadlinePassed) 1 else 0) }
+  if (answer == RoundAcknowledged or answer == RoundAlreadyComplete) roundActivated(sent)
+  else if (answer == RoundRefused) roundExpired(sent)
+  else unansweredRound(sent, answer)
+}
 pure def nextRound(r: ActivationRounds, answer: RoundAnswer): ActivationRounds =
   if (not(roundsOwn(r))) { ...r, retrying: false }
-  else {
-    val sent = { ...r, rounds: r.rounds + 1, roundsAfterDeadline: r.roundsAfterDeadline + (if (r.deadlinePassed) 1 else 0) }
-    if (answer == RoundAcknowledged or answer == RoundAlreadyComplete) roundActivated(sent)
-    else if (answer == RoundRefused) roundExpired(sent)
-    else {
-      val reached = { ...sent, serverActive: sent.serverActive or answer == RoundLost }
-      if (r.deadlinePassed) roundExpired(reached) else reached
-    }
-  }
+  else answerRound(r, answer)
 pure def canRound(a: Activation): bool = a.background.retrying
 pure def round(a: Activation, answer: RoundAnswer): Activation = { ...a, background: nextRound(a.background, answer) }
 pure def canDeadline(a: Activation): bool = not(a.background.deadlinePassed)
@@ -144,11 +146,11 @@ pure def loadReceipt(a: Activation, receiptCase: ReceiptCase): Activation = { ..
   else recoveryFrom(matchingReceipt, myKey) }
 pure def recoveryMatches(r: AckRecovery): bool =
   r.receipt.present and r.receipt.parsed and r.receipt.credential == r.saved and r.receipt.environment == production
-pure def recoveryFinished(outcome: RecoveryOutcome, r: AckRecovery): AckRecovery = { ...r, phase: RecoveryFinished, outcome: outcome }
+pure def recoveryFinished(verdict: RecoveryOutcome, r: AckRecovery): AckRecovery = { ...r, phase: RecoveryFinished, verdict: verdict }
 pure def canBeginRecovery(a: Activation): bool = a.recovery.phase == RecoveryIdle or a.recovery.phase == RecoveryFinished
 pure def beginRecovery(a: Activation): Activation = { ...a, recovery: { ...a.recovery, live: true, runs: a.recovery.runs + 1,
   runReceipt: a.recovery.receipt, runSaved: a.recovery.saved, phase: Reading, calls: 0, latePosts: 0, post: noPost,
-  outcome: NoRecoveryOutcome, pending: false } }
+  verdict: NoRecoveryOutcome, pending: false } }
 pure def canReadReceipt(a: Activation): bool = a.recovery.phase == Reading
 pure def readReceiptRecovery(r: AckRecovery, readable: bool): AckRecovery =
   if (not(readable)) recoveryFinished(ReceiptKept, r)
@@ -194,7 +196,7 @@ pure def confirmKeyRecovery(r: AckRecovery, removed: bool): AckRecovery = {
     removal: if (own and removed) RemovalAcknowledged else r.removal,
     removedReceipt: if (own and removed) r.receipt else r.removedReceipt,
     completed: r.completed + (if (r.live and r.saved == r.runSaved) 1 else 0),
-    outcome: if (not(own)) RunSuperseded else if (removed) KeyConfirmed else ReceiptKept }
+    verdict: if (not(own)) RunSuperseded else if (removed) KeyConfirmed else ReceiptKept }
 }
 pure def confirmKey(a: Activation, removed: bool): Activation = { ...a, recovery: confirmKeyRecovery(a.recovery, removed) }
 pure def canExpireKey(a: Activation): bool = a.recovery.phase == ExpiringRefused or a.recovery.phase == ExpiringUnconfirmed
@@ -230,23 +232,23 @@ pure def alwaysSavedKeyRemovedOnlyWhenDead(a: Activation): bool = {
       r.removedKey == (if (r.replaced) newerKey else r.initialSaved) and (r.keyRemoval == RemovedUnconfirmed) == r.removedLate))
 }
 pure def alwaysDeadKeyNotLeftSaved(a: Activation): bool =
-  a.recovery.outcome == KeyExpired implies (a.recovery.saved == 0 and not(a.recovery.receipt.present) and a.recovery.revoked)
+  a.recovery.verdict == KeyExpired implies (a.recovery.saved == 0 and not(a.recovery.receipt.present) and a.recovery.revoked)
 pure def alwaysNewerSignInSurvives(a: Activation): bool =
   (a.recovery.replaced and a.recovery.receipt != newerReceipt) implies a.recovery.removedReceipt == newerReceipt
 pure def alwaysRemoveOnlyStaleAcknowledgedOrDead(a: Activation): bool = {
   val r = a.recovery
   not(r.initialReceipt.present and not(r.receipt.present) and r.removal == NoRemoval) and
     (r.removal == RemovalStale implies (r.initialReceipt.credential != r.initialSaved or r.initialReceipt.environment != production)) and
-    (r.outcome == ReceiptKept implies (r.receipt == r.runReceipt or (r.replaced and r.receipt == newerReceipt)))
+    (r.verdict == ReceiptKept implies (r.receipt == r.runReceipt or (r.replaced and r.receipt == newerReceipt)))
 }
 pure def alwaysReportedOnce(a: Activation): bool = {
   val r = a.recovery
   r.completed >= 0 and r.completed <= r.runs and r.expiredReports >= 0 and r.expiredReports <= 1 and
-    ((r.outcome == KeyConfirmed or r.outcome == KeyExpired or r.outcome == RunSuperseded) implies not(r.pending))
+    ((r.verdict == KeyConfirmed or r.verdict == KeyExpired or r.verdict == RunSuperseded) implies not(r.pending))
 }
-pure def sometimesStartupConfirmed(a: Activation): bool = a.recovery.outcome == KeyConfirmed and a.recovery.completed == 1
+pure def sometimesStartupConfirmed(a: Activation): bool = a.recovery.verdict == KeyConfirmed and a.recovery.completed == 1
 pure def sometimesStartupExpiredAfterDeadline(a: Activation): bool = a.recovery.keyRemoval == RemovedUnconfirmed
-pure def sometimesStaleReceiptRemoved(a: Activation): bool = a.recovery.outcome == StaleRemoved and a.recovery.calls == 0
-pure def sometimesHandedToBackgroundRounds(a: Activation): bool = a.recovery.outcome == HandedOver and a.recovery.pending
-pure def sometimesNewerSignInSurvivedRecovery(a: Activation): bool = a.recovery.outcome == RunSuperseded and a.recovery.saved == newerKey
+pure def sometimesStaleReceiptRemoved(a: Activation): bool = a.recovery.verdict == StaleRemoved and a.recovery.calls == 0
+pure def sometimesHandedToBackgroundRounds(a: Activation): bool = a.recovery.verdict == HandedOver and a.recovery.pending
+pure def sometimesNewerSignInSurvivedRecovery(a: Activation): bool = a.recovery.verdict == RunSuperseded and a.recovery.saved == newerKey
 ```

@@ -111,8 +111,8 @@ pure val noKey: Key = { id: 0, status: KeyDeleted, expires: 0, start: 0, activat
 pure def grantOf(s: SignIn, g: int): Grant = s.grants.select(x => x.id == g).nthOr(0, noGrant)
 pure def keyOf(s: SignIn, k: int): Key = s.keys.select(x => x.id == k).nthOr(0, noKey)
 pure def hasKey(s: SignIn, k: int): bool = s.keys.some(x => x.id == k)
-pure def putGrant(s: SignIn, g: Grant): List[Grant] = s.grants.listMap(x => if (x.id == g.id) g else x)
-pure def putKey(s: SignIn, k: Key): List[Key] = s.keys.listMap(x => if (x.id == k.id) k else x)
+pure def putGrant(s: SignIn, updated: Grant): List[Grant] = s.grants.listMap(x => if (x.id == updated.id) updated else x)
+pure def putKey(s: SignIn, updated: Key): List[Key] = s.keys.listMap(x => if (x.id == updated.id) updated else x)
 pure def usable(s: SignIn, k: int): bool = keyOf(s, k).status == KeyActive and s.clock < keyOf(s, k).expires
 pure def signInStart(s: SignIn): int = grantOf(s, 1).start
 pure val gValues = Set(1, 2, 3)
@@ -173,12 +173,12 @@ pure def renewed(s: SignIn, k: int): bool = s.grants.some(g => g.from == k and g
 pure def canRequestRenewal(s: SignIn, k: int): bool =
   usable(s, k) and s.clientOk and s.ownerOk and s.clock <= keyOf(s, k).start + cap and keyOf(s, k).expires < keyOf(s, k).start + cap
 pure def revokeAll(s: SignIn): List[Key] = s.keys.listMap(k => if (k.status == KeyActive or k.status == KeyMinted) { ...k, status: KeyRevoked } else k)
+pure def issueGrant(s: SignIn, k: int): SignIn = {
+  val voided = s.grants.listMap(g => if (g.from == k and (g.status == GrantPending or g.status == GrantExchanged)) { ...g, status: GrantVoid, cipher: false } else g)
+  { ...s, grants: voided.append({ id: s.grants.length() + 1, status: GrantPending, from: k, issuedAt: s.clock, start: keyOf(s, k).start, cipher: false, reveals: 0, redeemedAt: 0 }) }
+}
 pure def requestRenewal(s: SignIn, k: int): SignIn =
-  if (renewed(s, k)) { ...s, keys: revokeAll(s), ended: true }
-  else {
-    val voided = s.grants.listMap(g => if (g.from == k and (g.status == GrantPending or g.status == GrantExchanged)) { ...g, status: GrantVoid, cipher: false } else g)
-    { ...s, grants: voided.append({ id: s.grants.length() + 1, status: GrantPending, from: k, issuedAt: s.clock, start: keyOf(s, k).start, cipher: false, reveals: 0, redeemedAt: 0 }) }
-  }
+  if (renewed(s, k)) { ...s, keys: revokeAll(s), ended: true } else issueGrant(s, k)
 pure def alwaysSignInTimeNeverMoves(s: SignIn): bool = s.grants.every(g => g.start == signInStart(s)) and s.keys.every(k => k.start == signInStart(s))
 pure def alwaysNoCodeAfterCap(s: SignIn): bool = s.grants.every(g => g.issuedAt <= g.start + cap)
 pure def alwaysOneLiveSuccessor(s: SignIn): bool = s.keys.every(k => s.grants.select(g => g.from == k.id and (g.status == GrantPending or g.status == GrantExchanged or g.status == GrantAcknowledged)).length() <= 1)
@@ -219,8 +219,8 @@ minted. An acknowledged grant is removed only once its key has expired too,
 so cleanup never ends a live key early.
 
 ```quint
-pure def grantExpired(s: SignIn, g: Grant): bool =
-  if (g.status == GrantAcknowledged) s.clock >= keyOf(s, g.id).expires else s.clock >= g.issuedAt + codeTtl
+pure def grantExpired(s: SignIn, grant: Grant): bool =
+  if (grant.status == GrantAcknowledged) s.clock >= keyOf(s, grant.id).expires else s.clock >= grant.issuedAt + codeTtl
 pure def canReap(s: SignIn, g: int): bool = grantOf(s, g).id == g and grantOf(s, g).status != GrantDeleted and grantExpired(s, grantOf(s, g))
 pure def reap(s: SignIn, g: int): SignIn =
   { ...s, grants: putGrant(s, { ...grantOf(s, g), status: GrantDeleted, cipher: false }), keys: if (hasKey(s, g)) putKey(s, { ...keyOf(s, g), status: KeyDeleted }) else s.keys }

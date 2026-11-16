@@ -274,7 +274,11 @@ success or rejection supplied by the host.
 Completion scheduler witnesses choose one actual pending registration or
 disposal. Allocated epochs can outgrow the sampled identifiers for their
 identity-specific callbacks. Selecting from pending epochs preserves those
-callbacks' guards and supplies the finite-workload fairness witness.
+callbacks' guards and supplies the finite-workload fairness witness. A live
+instance reaches an unload only after a declaration, an acquisition and a
+fulfilled start, and the scheduler would otherwise take every captured stop
+slot itself, so the simulator favors those steps, the host's stop
+completions, and the direct claim and observation of a captured stop.
 
 ```quint
 pure def canSealRequests(s: PluginServices): bool = not(s.requestsClosed)
@@ -327,5 +331,14 @@ pure val weight_withdrawNextType = 2
 pure val weight_finishNextPluginDisposal = 3
 pure val weight_finishNextRegistration = 3
 pure val weight_requestOwnedStops = 2
-pure val weight_skipMissingStop = 2
+pure val weight_skipMissingStop = 4
+pure val weight_registerOwnedClass = 3
+pure val weight_ensureServices = 4
+pure val weight_resolveNextStart = 4
+pure val weight_finishNextObserver = 3
+pure val weight_unloadPlugin = 3
+pure val weight_invokeClassStop = 10
+pure val weight_finishClassStop = 10
+pure val weight_claimInstanceStop = 20
+pure val weight_observeInstanceStop = 20
 ```

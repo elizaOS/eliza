@@ -167,27 +167,27 @@ names the earliest time at which both buckets will hold a token.
 type BucketLimits = { burstCapacity: int, sustainedCapacity: int, burstRate: int, sustainedRate: int }
 type Bucket = { burst: int, sustained: int, at: int }
 type BucketReply = { refused: bool, bucket: Bucket, retryAt: int }
-pure def maximum(a: int, b: int): int = if (a >= b) a else b
-pure def minimum(a: int, b: int): int = if (a <= b) a else b
+pure def maximum(left: int, right: int): int = if (left >= right) left else right
+pure def minimum(left: int, right: int): int = if (left <= right) left else right
 pure def waitTicks(tokens: int, rate: int): int = if (tokens >= 4) 0 else if (rate <= 0) 0 else (4 - tokens + rate - 1) / rate
-pure def consumeRequest(limits: BucketLimits, b: Bucket, now: int): BucketReply = {
+pure def consumeRequest(rates: BucketLimits, b: Bucket, now: int): BucketReply = {
   val boundary = maximum(b.at, now)
   val elapsed = boundary - b.at
-  val burst = minimum(limits.burstCapacity, b.burst + elapsed * limits.burstRate)
-  val sustained = minimum(limits.sustainedCapacity, b.sustained + elapsed * limits.sustainedRate)
+  val burst = minimum(rates.burstCapacity, b.burst + elapsed * rates.burstRate)
+  val sustained = minimum(rates.sustainedCapacity, b.sustained + elapsed * rates.sustainedRate)
   val admitted = burst >= 4 and sustained >= 4
   { refused: not(admitted), bucket: { burst: if (admitted) burst - 4 else burst, sustained: if (admitted) sustained - 4 else sustained, at: boundary },
-    retryAt: boundary + maximum(waitTicks(burst, limits.burstRate), waitTicks(sustained, limits.sustainedRate)) }
+    retryAt: boundary + maximum(waitTicks(burst, rates.burstRate), waitTicks(sustained, rates.sustainedRate)) }
 }
-pure val limitsValues = Set({ burstCapacity: 4, sustainedCapacity: 12, burstRate: 1, sustainedRate: 4 }, { burstCapacity: 12, sustainedCapacity: 4, burstRate: 4, sustainedRate: 1 })
+pure val ratesValues = Set({ burstCapacity: 4, sustainedCapacity: 12, burstRate: 1, sustainedRate: 4 }, { burstCapacity: 12, sustainedCapacity: 4, burstRate: 4, sustainedRate: 1 })
 pure val bValues = Set({ burst: 4, sustained: 4, at: 4 }, { burst: 0, sustained: 12, at: 4 }, { burst: 3, sustained: 0, at: 6 })
 pure val clockValues = Set(0, 4, 5, 8)
-pure def bucketInBounds(limits: BucketLimits, x: Bucket): bool = x.burst >= 0 and x.burst <= limits.burstCapacity and x.sustained >= 0 and x.sustained <= limits.sustainedCapacity
-pure def lawTokensStayInBounds(limits: BucketLimits, b: Bucket, clock: int): bool = bucketInBounds(limits, b) implies bucketInBounds(limits, consumeRequest(limits, b, clock).bucket)
-pure def lawRefillBoundaryNeverRetreats(limits: BucketLimits, b: Bucket, clock: int): bool = consumeRequest(limits, b, clock).bucket.at >= b.at
-pure def lawRetryTimeIsUsable(limits: BucketLimits, b: Bucket, clock: int): bool = {
-  val reply = consumeRequest(limits, b, clock)
-  (reply.refused and limits.burstRate > 0 and limits.sustainedRate > 0 and limits.burstCapacity >= 4 and limits.sustainedCapacity >= 4) implies
-    (reply.retryAt >= reply.bucket.at and reply.bucket.burst + (reply.retryAt - reply.bucket.at) * limits.burstRate >= 4 and reply.bucket.sustained + (reply.retryAt - reply.bucket.at) * limits.sustainedRate >= 4)
+pure def bucketInBounds(rates: BucketLimits, x: Bucket): bool = x.burst >= 0 and x.burst <= rates.burstCapacity and x.sustained >= 0 and x.sustained <= rates.sustainedCapacity
+pure def lawTokensStayInBounds(rates: BucketLimits, b: Bucket, clock: int): bool = bucketInBounds(rates, b) implies bucketInBounds(rates, consumeRequest(rates, b, clock).bucket)
+pure def lawRefillBoundaryNeverRetreats(rates: BucketLimits, b: Bucket, clock: int): bool = consumeRequest(rates, b, clock).bucket.at >= b.at
+pure def lawRetryTimeIsUsable(rates: BucketLimits, b: Bucket, clock: int): bool = {
+  val reply = consumeRequest(rates, b, clock)
+  (reply.refused and rates.burstRate > 0 and rates.sustainedRate > 0 and rates.burstCapacity >= 4 and rates.sustainedCapacity >= 4) implies
+    (reply.retryAt >= reply.bucket.at and reply.bucket.burst + (reply.retryAt - reply.bucket.at) * rates.burstRate >= 4 and reply.bucket.sustained + (reply.retryAt - reply.bucket.at) * rates.sustainedRate >= 4)
 }
 ```

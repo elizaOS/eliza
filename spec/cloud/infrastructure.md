@@ -102,7 +102,7 @@ published, and only then is ownership released. Settling the loader
 clears its timer.
 
 ```quint
-pure val loadValues = Set(1, 2, 3)
+pure val nValues = Set(1, 2, 3)
 pure def deliveryOf(c: Cache, n: int): DeliveryState = c.deliveries.select(d => d.load == n).nthOr(0, { load: 0, delivery: DeliveryFailed }).delivery
 pure def setDelivery(c: Cache, n: int, st: DeliveryState): List[Delivery] = c.deliveries.listMap(d => if (d.load == n) { load: n, delivery: st } else d)
 pure def canStaleRead(c: Cache): bool = c.owner == 0

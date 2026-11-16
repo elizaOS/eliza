@@ -52,9 +52,9 @@ pure def canRecordStep(s: Trajectories, id: int, kind: StepKind, promptTokens: i
 pure def recordStep(s: Trajectories, id: int, kind: StepKind, promptTokens: int, completionTokens: int): Trajectories =
   { ...s, trajectories: s.trajectories.listMap(t => if (t.id == id) { ...t, steps: t.steps.append({ kind: kind, runId: t.runId, promptTokens: promptTokens, completionTokens: completionTokens }), promptTokens: t.promptTokens + promptTokens, completionTokens: t.completionTokens + completionTokens } else t) }
 pure def alwaysStepsBelongToTheirRun(s: Trajectories): bool =
-  s.trajectories.every(t => t.runId != "" and t.steps.every(step => step.runId == t.runId))
+  s.trajectories.every(t => t.runId != "" and t.steps.every(stage => stage.runId == t.runId))
 pure def sometimesModelCallAndAction(s: Trajectories): bool =
-  s.trajectories.some(t => t.steps.some(step => step.kind == ModelCall) and t.steps.some(step => step.kind == ActionCall))
+  s.trajectories.some(t => t.steps.some(stage => stage.kind == ModelCall) and t.steps.some(stage => stage.kind == ActionCall))
 ```
 
 ### An ended trajectory refuses later steps
@@ -75,8 +75,8 @@ pure def sometimesErroredTrajectory(s: Trajectories): bool = s.trajectories.some
 The prompt and completion token totals of a trajectory are the sums over its steps, so the usage rolled up per trace never counts a call twice or misses one.
 
 ```quint
-pure def promptSum(steps: List[TrajectoryStep]): int = steps.foldl(0, (total, step) => total + step.promptTokens)
-pure def completionSum(steps: List[TrajectoryStep]): int = steps.foldl(0, (total, step) => total + step.completionTokens)
+pure def promptSum(steps: List[TrajectoryStep]): int = steps.foldl(0, (total, stage) => total + stage.promptTokens)
+pure def completionSum(steps: List[TrajectoryStep]): int = steps.foldl(0, (total, stage) => total + stage.completionTokens)
 pure def alwaysUsageIsTheSumOfSteps(s: Trajectories): bool =
   s.trajectories.every(t => t.promptTokens == promptSum(t.steps) and t.completionTokens == completionSum(t.steps))
 ```

@@ -81,6 +81,7 @@ pure def appendToSink(a: Audit, result: AppendResult): Audit = {
     durableAccepted: a.durableAccepted or (result == Appended and a.durable.contains(sink)),
     sinkIndex: a.sinkIndex + 1 }
 }
+type RowOrder = { prior: int, ordered: bool }
 pure def rowsInRecordOrder(rows: List[AuditRow], sink: int): bool =
   rows.foldl({ prior: 0, ordered: true }, (acc, r) => if (r.sink == sink) { prior: r.entry, ordered: acc.ordered and r.entry > acc.prior } else acc).ordered
 pure def alwaysOneDeliveryAtATime(a: Audit): bool =
@@ -133,17 +134,20 @@ what an earlier process stored.
 
 ```quint
 type Salt = MissingSalt | HistoricalSalt | ConfiguredSalt
-type SettingsKey = NoKey | ConfiguredKey | ProcessKey(int)
+type KeySource = NoKey | ConfiguredKey | ProcessKey
+type SettingsKey = { source: KeySource, process: int }
 pure def settingsKey(production: bool, salt: Salt, process: int): SettingsKey =
-  if (salt == ConfiguredSalt) ConfiguredKey else if (production) NoKey else ProcessKey(process)
+  if (salt == ConfiguredSalt) { source: ConfiguredKey, process: 0 }
+  else if (production) { source: NoKey, process: 0 }
+  else { source: ProcessKey, process: process }
 pure def lawProductionNeedsConfiguredKey(salt: Salt, process: int): bool =
-  settingsKey(true, salt, process) == (if (salt == ConfiguredSalt) ConfiguredKey else NoKey)
+  settingsKey(true, salt, process).source == (if (salt == ConfiguredSalt) ConfiguredKey else NoKey)
 ```
 
 ### A stored setting reads back only under the key that stored it
 
 ```quint
-pure def readsBack(storedKey: SettingsKey, presentKey: SettingsKey): bool = storedKey != NoKey and storedKey == presentKey
+pure def readsBack(storedKey: SettingsKey, presentKey: SettingsKey): bool = storedKey.source != NoKey and storedKey == presentKey
 pure def lawRestartCannotInventARead(salt: Salt): bool = salt != ConfiguredSalt implies not(readsBack(settingsKey(false, salt, 0), settingsKey(false, salt, 1)))
 pure def lawConfiguredKeySurvivesRestart(production: bool): bool = readsBack(settingsKey(production, ConfiguredSalt, 0), settingsKey(production, ConfiguredSalt, 1))
 ```

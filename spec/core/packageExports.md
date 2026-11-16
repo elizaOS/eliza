@@ -120,13 +120,13 @@ pure def leafOwner(leaf: CoreLeaf): str =
   else if (leaf == SpeechLeaf or leaf == SpokenTextLeaf) "spec/core/voice.md"
   else if (leaf == ProtocolLeaf) "spec/core/protocols.md"
   else if (leaf == EventsLeaf) "spec/core/events.md"
-  else if (leaf == LogRedactionLeaf) "spec/core/privacy.md"
+  else if (leaf == LogRedactionLeaf) "spec/core/security.md"
   else if (leaf == SingleFlightMemoLeaf) "spec/core/memoConcurrency.md"
   else if (leaf == ViewsLeaves) "spec/core/viewNavigation.md"
   else if (leaf == EmbeddingVectorSpaceLeaf) "spec/core/embeddingSpace.md"
   else "spec/core/contracts.md"
 pure val leafOwnerSpecs: Set[str] = Set("spec/core/logListeners.md", "spec/core/memo.md", "spec/core/views.md",
-  "spec/core/voice.md", "spec/core/protocols.md", "spec/core/events.md", "spec/core/privacy.md",
+  "spec/core/voice.md", "spec/core/protocols.md", "spec/core/events.md", "spec/core/security.md",
   "spec/core/memoConcurrency.md", "spec/core/viewNavigation.md", "spec/core/embeddingSpace.md", "spec/core/contracts.md")
 pure def lawEveryLeafHasAnOwner(leaf: CoreLeaf): bool = leafOwnerSpecs.contains(leafOwner(leaf))
 ```

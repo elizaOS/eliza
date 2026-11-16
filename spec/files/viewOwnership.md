@@ -84,9 +84,9 @@ type ChunkOutcome = ChunkConfirmed | ChunkUnknown | ChunkRefused
 type ChunkRecord = { confirmed: bool, undoKept: bool, unknown: bool, batchContinues: bool }
 pure def mayDispatchChunk(retired: bool, chunkPending: bool, alreadySent: bool): bool =
   not(retired) and not(chunkPending) and not(alreadySent)
-pure def settleChunk(outcome: ChunkOutcome, retired: bool, lastChunk: bool): ChunkRecord =
-  if (outcome == ChunkConfirmed) { confirmed: true, undoKept: true, unknown: false, batchContinues: not(retired or lastChunk) }
-  else if (outcome == ChunkUnknown) { confirmed: false, undoKept: false, unknown: true, batchContinues: false }
+pure def settleChunk(verdict: ChunkOutcome, retired: bool, lastChunk: bool): ChunkRecord =
+  if (verdict == ChunkConfirmed) { confirmed: true, undoKept: true, unknown: false, batchContinues: not(retired or lastChunk) }
+  else if (verdict == ChunkUnknown) { confirmed: false, undoKept: false, unknown: true, batchContinues: false }
   else { confirmed: false, undoKept: false, unknown: false, batchContinues: false }
 pure def lawRetiredBatchSendsNothing(chunkPending: bool, alreadySent: bool): bool =
   not(mayDispatchChunk(true, chunkPending, alreadySent))

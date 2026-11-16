@@ -63,17 +63,17 @@ pure def sometimesRetriedThenSettled(m: Memory): bool = m.retryUsed and pageStat
 
 ```quint
 pure def canFinishPage(m: Memory, failed: bool): bool = m.running != 0 and not(m.shutdown)
+pure def finishOwnedPage(m: Memory, failed: bool): Memory = {
+  val p = m.running
+  val k = pageKey(m.revision, p)
+  val updated = m.pages.put(p, if (failed) PageFailed else Evaluated)
+  val other = pageIds.exists(q => q != p and updated.getOr(q, Pending) == Pending)
+  { ...m, running: 0, task: if (other) Live else Finished, pages: updated,
+    blocked: if (failed) m.blocked.union(Set(p)) else m.blocked,
+    settlements: m.settlements.put(k, m.settlements.getOr(k, 0) + 1) }
+}
 pure def finishPage(m: Memory, failed: bool): Memory =
-  if (not(ownsRow(m))) { ...m, running: 0 }
-  else {
-    val p = m.running
-    val k = pageKey(m.revision, p)
-    val updated = m.pages.put(p, if (failed) PageFailed else Evaluated)
-    val other = pageIds.exists(q => q != p and updated.getOr(q, Pending) == Pending)
-    { ...m, running: 0, task: if (other) Live else Finished, pages: updated,
-      blocked: if (failed) m.blocked.union(Set(p)) else m.blocked,
-      settlements: m.settlements.put(k, m.settlements.getOr(k, 0) + 1) }
-  }
+  if (not(ownsRow(m))) { ...m, running: 0 } else finishOwnedPage(m, failed)
 pure def alwaysPendingPageKeepsTask(m: Memory): bool = m.task == Finished implies pageIds.forall(p => pageStatus(m, p) != Pending)
 pure def alwaysPageSettlesOnce(m: Memory): bool =
   pageIds.forall(p => m.settlements.getOr(pageKey(m.revision, p), 0) <= 1) and (pageIds.forall(p => pageStatus(m, p) == Pending) implies pageIds.forall(p => m.settlements.getOr(pageKey(m.revision, p), 0) == 0))

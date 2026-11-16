@@ -81,16 +81,16 @@ pure def alwaysPendingCallIsDispatched(m: MapsRequest): bool = m.providerCallPen
 ### Settlement charges what was observed, or the admitted price when a reply was lost
 
 With no provider call outstanding, settlement charges what the calls
-reported and returns the rest of the hold. With a call outstanding, the
-charge is fixed at the admitted price. The first choice stands through
-retries and failures; the acknowledgement returns the unused hold and
-records the charge once.
+reported and returns the rest of the hold. With a call outstanding, its
+reply is given up as lost and the charge is fixed at the admitted price.
+The first choice stands through retries and failures; the acknowledgement
+returns the unused hold and records the charge once.
 
 ```quint
 pure def canSettleKnown(m: MapsRequest): bool = (m.funding == FundingAdmitted or m.funding == FundingDispatched) and not(m.providerCallPending)
 pure def settleKnown(m: MapsRequest): MapsRequest = { ...m, chosen: m.observed, funding: SettlingKnown }
 pure def canSettleUnknown(m: MapsRequest): bool = m.funding == FundingDispatched and m.providerCallPending
-pure def settleUnknown(m: MapsRequest): MapsRequest = { ...m, chosen: m.quote, funding: SettlingUnknown }
+pure def settleUnknown(m: MapsRequest): MapsRequest = { ...m, chosen: m.quote, funding: SettlingUnknown, providerCallPending: false }
 pure def canAcknowledgeSettlement(m: MapsRequest): bool = m.funding == SettlingKnown or m.funding == SettlingUnknown
 pure def acknowledgeSettlement(m: MapsRequest): MapsRequest =
   { ...m, balance: m.balance + m.held - m.chosen, held: 0, charged: m.chosen, funding: if (m.funding == SettlingUnknown) FundingUnknown else FundingSettled, providerCallPending: false }

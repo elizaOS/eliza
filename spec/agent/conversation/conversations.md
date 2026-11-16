@@ -77,16 +77,20 @@ pure def settleMutation(c: Conversations, ok: bool): Conversations = {
   val fresh = not(job.deletion) and stampCurrent(c, job.stamp)
   { ...c, queue: c.queue.tail(), running: false, room: if (job.deletion) -1 else c.room,
     topology: if (not(ok) and fresh) c.topology + 1 else c.topology,
-    outcome: if (job.timedOut) Quiet else if (not(ok)) MutationFailed else if (job.deletion) RoomDeleted else if (fresh) ReadyFor(job.stamp) else MutationFailed }
+    outcome: if (job.timedOut) Quiet else if (not(ok)) MutationFailed else if (job.deletion) RoomDeleted else if (fresh) ReadyFor({ topology: job.stamp.topology, room: job.stamp.room }) else MutationFailed }
 }
 pure val jobIdValues = Set(1, 2, 3)
 pure def alwaysOneRunningMutationAtTheHead(c: Conversations): bool =
   (c.running implies c.queue.length() > 0) and c.room <= c.roomSequence and c.queue.select(j => j.deletion).length() <= 1 and
   (deletionQueued(c) implies c.room >= 0) and c.queue.every(j => j.jobId > 0 and j.jobId < c.nextJob)
-pure def alwaysReadyOnlyForCurrentDescriptor(c: Conversations): bool =
-  match c.outcome { | ReadyFor(stamp) => stamp.topology == c.topology and stamp.room == c.room and c.room >= 0 and not(deletionQueued(c)) | _ => true }
-pure def sometimesMutationReady(c: Conversations): bool =
-  match c.outcome { | ReadyFor(stamp) => stamp.topology >= 0 | _ => false }
+pure def alwaysReadyOnlyForCurrentDescriptor(c: Conversations): bool = {
+  val ready = c.outcome
+  match ready { | ReadyFor(stamp) => stamp.topology == c.topology and stamp.room == c.room and c.room >= 0 and not(deletionQueued(c)) | _ => true }
+}
+pure def sometimesMutationReady(c: Conversations): bool = {
+  val ready = c.outcome
+  match ready { | ReadyFor(stamp) => stamp.topology >= 0 | _ => false }
+}
 pure def sometimesSharedMutation(c: Conversations): bool = c.queue.some(j => j.joined)
 ```
 

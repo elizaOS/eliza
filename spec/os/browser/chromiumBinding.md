@@ -24,11 +24,12 @@ retry with delay doubling from one second to a 30-second maximum.
 A security denial leaves no retry. A normal service disconnect
 retains Android's binding for reconnect. A connected callback
 rechecks package and certificate. A mismatched callback closes the
-owner. A trusted warmup result resets retry delay even if warmup
-was not accepted. Warmup never opens an activity, debugging port
-or URL. A bind is attempted only while something pins or holds the
-binding, and a trusted connection fires every ready callback waiting
-for it (below).
+owner, as closing the binding does, dropping every waiting ready
+callback and any pending idle release. A trusted warmup result resets
+retry delay even if warmup was not accepted. Warmup never opens an
+activity, debugging port or URL. A bind is attempted only while
+something pins or holds the binding, and a trusted connection fires
+every ready callback waiting for it (below).
 
 ```quint
 type BindResult = BindAccepted | BindRefused | BindDenied | BindUntrusted
@@ -45,7 +46,7 @@ pure def tryBinding(b: BrowserBinding, bindResult: BindResult): BrowserBinding =
 pure def canConnected(b: BrowserBinding): bool = b.bound and not(b.closed)
 pure def connected(b: BrowserBinding, identityMatches: bool, acceptedWarmup: bool): BrowserBinding =
   if (identityMatches) {...b, connected: true, retryDelay: 1000, warmed: acceptedWarmup, demand: { ...b.demand, fired: b.demand.fired.union(b.demand.waiting.foldl(Set(), (ids, id) => ids.union(Set(id)))), waiting: List() }}
-  else {...b, bound: false, connected: false, closed: true, retryPending: false, warmed: false}
+  else closeBinding(b)
 pure def canDisconnected(b: BrowserBinding): bool = b.bound and not(b.closed)
 pure def disconnected(b: BrowserBinding): BrowserBinding = {...b, connected: false, warmed: false}
 pure def canLostBinding(b: BrowserBinding): bool = b.bound and not(b.closed)

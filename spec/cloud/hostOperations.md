@@ -150,13 +150,15 @@ pure def withNewRead(t: AccessTuple, a: PaidAccess): PaidAccess = { ...a, flight
 pure val callerValues = Set(1, 2)
 pure val rValues = Set(1, 2, 3)
 pure def canBeginCheck(a: PaidAccess, caller: int): bool = not(a.calls.some(c => c.caller == caller and c.phase == CallWaiting)) and a.tuple.key != ""
+pure def joinFlight(a: PaidAccess, caller: int): PaidAccess = {
+  val others = a.calls.select(c => c.caller != caller)
+  val started = if (matchingFlight(a)) a else withNewRead(a.tuple, a)
+  { ...started, calls: others.append({ caller: caller, phase: CallWaiting, read: started.flight, tuple: a.tuple, admitted: noTuple }) }
+}
 pure def beginCheck(a: PaidAccess, caller: int): PaidAccess = {
   val others = a.calls.select(c => c.caller != caller)
   if (warm(a)) { ...a, background: true, calls: others.append({ caller: caller, phase: CallAdmitted, read: 0, tuple: a.tuple, admitted: a.tuple }) }
-  else {
-    val started = if (matchingFlight(a)) a else withNewRead(a.tuple, a)
-    { ...started, calls: others.append({ caller: caller, phase: CallWaiting, read: started.flight, tuple: a.tuple, admitted: noTuple }) }
-  }
+  else joinFlight(a, caller)
 }
 pure def canRevalidate(a: PaidAccess): bool = a.background and not(matchingFlight(a))
 pure def revalidate(a: PaidAccess): PaidAccess = { ...withNewRead(a.tuple, a), background: false }

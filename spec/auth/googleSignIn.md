@@ -80,7 +80,7 @@ pure def canStartAttempt(s: GoogleSignIn, request: AuthorizeRequest): bool =
   authorizeAccepted(request) and not(s.exchangeInFlight) and not(s.cancelling) and s.lockOwner == 0
 pure def startAttempt(s: GoogleSignIn, request: AuthorizeRequest): GoogleSignIn =
   { ...s, attempt: s.attempt + 1, phase: AwaitingReturn, attemptExpiresAt: s.now + stateLifetime, verifierLive: true, lastResult: NothingYet,
-    codeFor: 0, codePresent: false, spentBy: 0, spentAt: -1, redemptions: List() }
+    codeFor: 0, codePresent: false, spentBy: 0, spentAt: -1, redemptions: List(), nextRedemption: 1 }
 pure val requestValues = Set({ method: S256, redirectAllowlisted: true, tenantKnown: true }, { method: PlainChallenge, redirectAllowlisted: true, tenantKnown: true })
 pure def canProviderApproves(s: GoogleSignIn, lane: Lane, storeSlack: int): bool = s.phase == AwaitingReturn and s.codeFor != s.attempt and storeSlack >= 0
 pure def providerApproves(s: GoogleSignIn, lane: Lane, storeSlack: int): GoogleSignIn =
@@ -131,10 +131,13 @@ pure def sometimesFailureLinkEndsAttempt(s: GoogleSignIn): bool = s.lastResult =
 Anyone may present the code. The service reads it, checks every binding and
 the payload expiry, takes a short lock, and consumes the code (checking the
 store lifetime again) before it replies. A presenter with a wrong binding
-spends nothing, and a contender for the lock is refused as busy.
+spends nothing, and a contender for the lock is refused as busy. The model
+lets an outside presenter try an attempt's code while it has fewer than two
+redemptions, and numbers each attempt's redemptions from one, so the service
+can finish every redemption, the host's included.
 
 ```quint
-pure def canPresentCode(s: GoogleSignIn, binding: Binding): bool = s.codeFor > 0
+pure def canPresentCode(s: GoogleSignIn, binding: Binding): bool = s.codeFor > 0 and s.redemptions.length() < 2
 pure def presentCode(s: GoogleSignIn, binding: Binding): GoogleSignIn =
   { ...s, redemptions: s.redemptions.append({ id: s.nextRedemption, binding: binding, phase: if (codeLive(s)) Peeked else RedemptionRefused, fromHost: false }), nextRedemption: s.nextRedemption + 1 }
 pure val bindingValues = Set(AllBindingsMatch, WrongVerifier, WrongRedirect)
@@ -154,7 +157,7 @@ pure def consumeCode(s: GoogleSignIn, id: int): GoogleSignIn =
 pure def canReply(s: GoogleSignIn, id: int): bool = (redemption(s, id).phase == CodeConsumed or redemption(s, id).phase == CodeMissing) and s.lockOwner == id
 pure def reply(s: GoogleSignIn, id: int): GoogleSignIn =
   { ...s, lockOwner: 0, redemptions: withPhase(s, id, if (redemption(s, id).phase == CodeMissing) RedemptionRefused else if (s.lane == MfaLane) GrantedMfa else GrantedSession) }
-pure val idValues = Set(1, 2)
+pure val idValues = Set(1, 2, 3)
 pure val weight_validate = 4
 pure val weight_acquire = 4
 pure val weight_consumeCode = 4

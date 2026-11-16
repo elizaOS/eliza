@@ -31,7 +31,7 @@ pure def terminal(status: JobStatus): bool = status == JobCompleted or status ==
 pure def canClaimJob(j: Job, worker: int): bool = j.status == JobPending and j.due and worker > 0
 pure def claimJob(j: Job, worker: int): Job = { ...j, status: JobRunning, generation: j.generation + 1, leaseOwner: worker, leaseAge: LeaseLive, quiesced: false, aged: false }
 pure val workerValues = Set(1, 2)
-pure val generationValues = Set(1, 2)
+pure val generationValues = Set(1, 2, 3)
 pure def alwaysLeaseBelongsToARunningGeneration(j: Job): bool = j.leaseOwner != 0 implies (j.status == JobRunning and not(j.quiesced) and j.generation > 0)
 pure def alwaysRunningJobHasItsOwner(j: Job): bool = j.status == JobRunning implies (j.leaseOwner != 0 and not(j.quiesced))
 pure def alwaysSettledJobHasNoLease(j: Job): bool = terminal(j.status) implies j.leaseOwner == 0

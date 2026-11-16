@@ -37,18 +37,18 @@ type KeyRenewal = { saved: int, intentCurrent: bool, attemptActive: bool, live: 
   installed: bool, partialWrite: bool, journal: RenewJournal, claimOwner: int, worker: int, foreignJournal: bool,
   duty: bool, server: ServerKey, oldAccepted: bool, successorConfirmed: bool, phase: RenewPhase, rounds: int,
   requests: int, recorded: bool, ackWithoutCustody: bool, renewedTwice: bool, oldRevokeSent: bool,
-  announced: bool, keyRefused: bool, competitorBlocked: bool, outcome: RenewOutcome }
+  announced: bool, keyRefused: bool, competitorBlocked: bool, verdict: RenewOutcome }
 pure val oldKey = 1
 pure val successorKey = 2
 pure val initial: KeyRenewal = { saved: oldKey, intentCurrent: true, attemptActive: false, live: true, supersededSaved: -1,
   installed: false, partialWrite: false, journal: JournalNone, claimOwner: 0, worker: 1, foreignJournal: false,
   duty: false, server: ServerNone, oldAccepted: true, successorConfirmed: false, phase: RenewIdle, rounds: 0,
   requests: 0, recorded: false, ackWithoutCustody: false, renewedTwice: false, oldRevokeSent: false,
-  announced: false, keyRefused: false, competitorBlocked: false, outcome: NoRenewOutcome }
+  announced: false, keyRefused: false, competitorBlocked: false, verdict: NoRenewOutcome }
 pure val ackRounds = 6
 pure def owns(k: KeyRenewal): bool = k.live and k.intentCurrent and not(k.attemptActive)
 pure def holdsSecret(k: KeyRenewal): bool = k.journal == JournalPending or k.journal == JournalConfirmed
-pure def finishWith(outcome: RenewOutcome, k: KeyRenewal): KeyRenewal = { ...k, phase: RenewFinished, outcome: outcome }
+pure def finishWith(verdict: RenewOutcome, k: KeyRenewal): KeyRenewal = { ...k, phase: RenewFinished, verdict: verdict }
 pure def canCheck(k: KeyRenewal): bool = (k.phase == RenewIdle or k.phase == RenewFinished) and k.live
 pure def check(k: KeyRenewal, due: bool, supported: bool): KeyRenewal =
   if (not(supported)) finishWith(RenewUnavailable, k)
@@ -58,7 +58,7 @@ pure def check(k: KeyRenewal, due: bool, supported: bool): KeyRenewal =
   else if (k.journal == JournalRequest) finishWith(RenewSignInRequired, k)
   else if (k.journal != JournalNone) finishWith(RenewDeferred, k)
   else if (k.saved != oldKey or not(due)) finishWith(RenewCurrent, k)
-  else { ...k, phase: RenewClaim, worker: 1, outcome: NoRenewOutcome }
+  else { ...k, phase: RenewClaim, worker: 1, verdict: NoRenewOutcome }
 pure def canCompetingClaim(k: KeyRenewal): bool = k.live and k.intentCurrent
 pure def competingClaim(k: KeyRenewal): KeyRenewal =
   if (k.journal != JournalNone) { ...k, competitorBlocked: true }
@@ -109,15 +109,16 @@ pure def stage(k: KeyRenewal, stored: bool): KeyRenewal =
 pure def canReplaceRequest(k: KeyRenewal): bool = k.journal == JournalRequest and k.server != ServerActive
 pure def replaceRequest(k: KeyRenewal): KeyRenewal = { ...k, journal: JournalForeign, foreignJournal: true, claimOwner: 0 }
 pure def canAckReply(k: KeyRenewal): bool = k.phase == RenewAck and k.rounds < ackRounds
+pure def answerAck(answer: AckAnswer, k: KeyRenewal): KeyRenewal = {
+  val sent = { ...k, rounds: k.rounds + 1, ackWithoutCustody: k.ackWithoutCustody or not(holdsSecret(k)) }
+  if (answer == AckAcknowledged) { ...sent, server: ServerActive, successorConfirmed: true, phase: RenewConfirm }
+  else if (answer == AckLost) finishWith(RenewDeferred, { ...sent, server: ServerActive, successorConfirmed: true })
+  else if (answer == AckRefusedAfterCommit) finishWith(RenewSignInRequired, { ...sent, server: ServerActive, successorConfirmed: true })
+  else finishWith(if (answer == AckRefused) RenewSignInRequired else RenewDeferred, sent)
+}
 pure def ackReply(k: KeyRenewal, answer: AckAnswer): KeyRenewal =
   if (not(owns(k)) or k.journal != JournalPending) finishWith(RenewDeferred, k)
-  else {
-    val sent = { ...k, rounds: k.rounds + 1, ackWithoutCustody: k.ackWithoutCustody or not(holdsSecret(k)) }
-    if (answer == AckAcknowledged) { ...sent, server: ServerActive, successorConfirmed: true, phase: RenewConfirm }
-    else if (answer == AckLost) finishWith(RenewDeferred, { ...sent, server: ServerActive, successorConfirmed: true })
-    else if (answer == AckRefusedAfterCommit) finishWith(RenewSignInRequired, { ...sent, server: ServerActive, successorConfirmed: true })
-    else finishWith(if (answer == AckRefused) RenewSignInRequired else RenewDeferred, sent)
-  }
+  else answerAck(answer, k)
 pure def canConfirmSuccessor(k: KeyRenewal): bool = k.phase == RenewConfirm
 pure def confirmSuccessor(k: KeyRenewal, stored: bool): KeyRenewal =
   if (stored and owns(k) and k.journal == JournalPending) { ...k, journal: JournalConfirmed, phase: RenewDuty }
@@ -238,5 +239,5 @@ pure val weight_dutyStored = 10
 pure val weight_successorSelected = 10
 pure val weight_receiptCleaned = 10
 pure val weight_revokeOld = 10
-pure def sometimesRenewed(k: KeyRenewal): bool = k.outcome == RenewDone and k.saved == successorKey
+pure def sometimesRenewed(k: KeyRenewal): bool = k.verdict == RenewDone and k.saved == successorKey
 ```

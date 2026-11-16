@@ -86,7 +86,7 @@ lease, pending work, last synced point and failure count stay as they
 were.
 
 ```quint
-pure val attemptValues = Set(1, 2, 3)
+pure val attemptValues = 1.to(20)
 pure def canFailAttempt(s: SyncSettlement, attempt: int): bool = s.watch.inFlight.contains(attempt)
 pure def failAttempt(s: SyncSettlement, attempt: int): SyncSettlement =
   val w = s.watch

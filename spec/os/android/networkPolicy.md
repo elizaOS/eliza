@@ -46,10 +46,8 @@ pure def classAllowed(networkClass: NetworkClass, prefs: PolicyPreferences): boo
   else false
 pure def applyNetworkPolicy(networkClass: NetworkClass, prefs: PolicyPreferences, quietHours: bool, headless: bool): PolicyDecision =
   if (headless) { networkClass: networkClass, allow: false, reason: HeadlessExplicitOnly }
-  else {
-    val auto = classAllowed(networkClass, prefs) and not(quietHours)
-    { networkClass: networkClass, allow: auto, reason: if (auto) AutoAllowed else if (networkClass == CellularLink) CellularAsk else MeteredAsk }
-  }
+  else if (classAllowed(networkClass, prefs) and not(quietHours)) { networkClass: networkClass, allow: true, reason: AutoAllowed }
+  else { networkClass: networkClass, allow: false, reason: if (networkClass == CellularLink) CellularAsk else MeteredAsk }
 pure def mayStartDownload(decision: PolicyDecision, ownerConfirmed: bool): bool = decision.allow or (decision.reason != HeadlessExplicitOnly and ownerConfirmed)
 pure val defaultPreferences: PolicyPreferences = { onWifi: true, onCellular: false, onMetered: false }
 pure val prefsValues = Set(defaultPreferences, { onWifi: true, onCellular: true, onMetered: true }, { onWifi: false, onCellular: false, onMetered: false })

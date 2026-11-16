@@ -37,7 +37,7 @@ type CodeVerification = { generation: int, channel: Channel, factor: Factor, sen
   issued: int, waiter: int, work: Work, replied: List[int] }
 type BrokerOutcome = RequestPending | RequestResolved | RequestRejected
 type CallbackState = CallbackIdle | CallbackRunning | CallbackAborted
-type BrokerRequest = { id: int, key: str, outcome: BrokerOutcome, callback: CallbackState }
+type BrokerRequest = { id: int, key: str, verdict: BrokerOutcome, callback: CallbackState }
 type RouteKind = NoRoute | JoinRoute | BusyRoute | ColdRoute | ViewRoute | RetainRoute
 type Route = { kind: RouteKind, source: str, ownerKey: str }
 type Broker = { issued: int, owner: int, ownerKey: str, requests: List[BrokerRequest], subscribed: bool, retained: bool, route: Route, staleSettled: bool }
@@ -52,7 +52,7 @@ type Delivery = NotSent | SentResend | AdmittedResend | RefusedResend | DroppedR
 type ResendReceipt = { scope: int, before: int, after: int }
 type VerifiedOutcome = { verifiedStep: int, verified: int, echo: int }
 type Resend = { live: int, displayed: int, verifying: int, stage: ResendStage, delivery: Delivery, known: Set[int], pending: Set[int],
-  fenced: bool, receipt: ResendReceipt, outcome: VerifiedOutcome, lateAdmission: bool }
+  fenced: bool, receipt: ResendReceipt, verdict: VerifiedOutcome, lateAdmission: bool }
 type SignIn = { code: CodeVerification, broker: Broker, controller: Controller, resend: Resend }
 pure val noWork: Work = { owner: 0, rpc: 0, stage: WorkIdle }
 pure val noRoute: Route = { kind: NoRoute, source: "", ownerKey: "" }
@@ -68,7 +68,7 @@ pure val initial: SignIn = {
   broker: { issued: 0, owner: 0, ownerKey: "", requests: List(), subscribed: false, retained: false, route: noRoute, staleSettled: false },
   controller: { mounted: true, issued: 0, request: 0, phase: ShowingMethods, native: 0, cleanup: noCleanup, detached: Set(), receipt: noCancelReceipt },
   resend: { live: originalRequest, displayed: originalRequest, verifying: 0, stage: CodeStage, delivery: NotSent, known: Set(originalRequest),
-    pending: Set(), fenced: false, receipt: noResendReceipt, outcome: noOutcome, lateAdmission: false } }
+    pending: Set(), fenced: false, receipt: noResendReceipt, verdict: noOutcome, lateAdmission: false } }
 pure def withReply(rpc: int, c: CodeVerification): CodeVerification = { ...c, replied: c.replied.append(rpc) }
 pure def retired(c: CodeVerification): CodeVerification =
   { ...c, channel: NoChannel, factor: NoFactor, sending: false, expired: false, failed: 0, waiter: 0 }
@@ -175,20 +175,20 @@ a fresh signal on the same request.
 pure val keyValues = Set("production:A", "staging:A", "production:B", "production:default")
 pure val idValues = Set(1, 2, 3)
 pure def requestAt(b: Broker, id: int): BrokerRequest =
-  b.requests.select(r => r.id == id).nthOr(0, { id: 0, key: "", outcome: RequestRejected, callback: CallbackIdle })
+  b.requests.select(r => r.id == id).nthOr(0, { id: 0, key: "", verdict: RequestRejected, callback: CallbackIdle })
 pure def withRequest(id: int, update: BrokerRequest, b: Broker): Broker =
   { ...b, requests: b.requests.listMap(r => if (r.id == id) update else r) }
-pure def closedBroker(id: int, outcome: BrokerOutcome, b: Broker): Broker =
-  if (b.owner == id) { ...withRequest(id, { ...requestAt(b, id), outcome: outcome }, b), owner: 0, ownerKey: "", subscribed: false, retained: false }
+pure def closedBroker(id: int, verdict: BrokerOutcome, b: Broker): Broker =
+  if (b.owner == id) { ...withRequest(id, { ...requestAt(b, id), verdict: verdict }, b), owner: 0, ownerKey: "", subscribed: false, retained: false }
   else b
 pure def canOpenRequest(s: SignIn): bool = s.broker.owner == 0
 pure def openRequest(s: SignIn, key: str): SignIn = { ...s, broker: { ...s.broker, issued: s.broker.issued + 1, owner: s.broker.issued + 1, ownerKey: key,
-  requests: s.broker.requests.append({ id: s.broker.issued + 1, key: key, outcome: RequestPending, callback: CallbackIdle }) } }
+  requests: s.broker.requests.append({ id: s.broker.issued + 1, key: key, verdict: RequestPending, callback: CallbackIdle }) } }
 pure def canRequestWhileOpen(s: SignIn): bool = s.broker.owner != 0
 pure def requestWhileOpen(s: SignIn, key: str): SignIn =
   { ...s, broker: { ...s.broker, route: { kind: if (key == s.broker.ownerKey) JoinRoute else BusyRoute, source: key, ownerKey: s.broker.ownerKey } } }
-pure def canSettle(s: SignIn, id: int, resolved: bool): bool = s.broker.owner == id
-pure def settle(s: SignIn, id: int, resolved: bool): SignIn =
+pure def canResolve(s: SignIn, id: int, resolved: bool): bool = s.broker.owner == id
+pure def resolve(s: SignIn, id: int, resolved: bool): SignIn =
   { ...s, broker: closedBroker(id, if (resolved) RequestResolved else RequestRejected, s.broker) }
 pure def canBeginActivation(s: SignIn, id: int): bool = s.broker.owner == id and requestAt(s.broker, id).callback == CallbackIdle
 pure def beginActivation(s: SignIn, id: int): SignIn = { ...s, broker: withRequest(id, { ...requestAt(s.broker, id), callback: CallbackRunning }, s.broker) }
@@ -199,16 +199,16 @@ pure def finishActivation(s: SignIn, id: int, accepted: bool): SignIn = {
   val retiredRequest = s.broker.owner != id or requestAt(s.broker, id).callback == CallbackAborted
   val finished = withRequest(id, { ...requestAt(s.broker, id), callback: CallbackIdle }, s.broker)
   val updated = if (accepted and not(retiredRequest)) closedBroker(id, RequestResolved, finished) else finished
-  { ...s, broker: { ...updated, staleSettled: s.broker.staleSettled or (retiredRequest and requestAt(updated, id).outcome != requestAt(s.broker, id).outcome) } }
+  { ...s, broker: { ...updated, staleSettled: s.broker.staleSettled or (retiredRequest and requestAt(updated, id).verdict != requestAt(s.broker, id).verdict) } }
 }
 pure def alwaysOneOpenRequest(s: SignIn): bool = {
   val b = s.broker
-  b.requests.every(r => (r.outcome == RequestPending) == (r.id == b.owner)) and b.requests.length() == b.issued and
+  b.requests.every(r => (r.verdict == RequestPending) == (r.id == b.owner)) and b.requests.length() == b.issued and
     b.requests.every(r => r.id >= 1 and r.id <= b.issued and b.requests.select(o => o.id == r.id).length() == 1) and
     ((b.owner == 0 and b.ownerKey == "") or (b.owner >= 1 and b.owner <= b.issued and b.ownerKey != ""))
 }
 pure def alwaysRetiredRequestCannotSettle(s: SignIn): bool = not(s.broker.staleSettled)
-pure def sometimesRetiredCallbackFinished(s: SignIn): bool = s.broker.issued == 2 and requestAt(s.broker, 1).outcome == RequestRejected and s.broker.owner == 2
+pure def sometimesRetiredCallbackFinished(s: SignIn): bool = s.broker.issued == 2 and requestAt(s.broker, 1).verdict == RequestRejected and s.broker.owner == 2
 ```
 
 ### A native return reaches only the open request with the matching deployment and port
@@ -350,7 +350,7 @@ pure def acceptResendReply(s: SignIn): SignIn = { ...s, resend: { ...s.resend, s
 pure def canVerifyDisplayed(s: SignIn): bool = s.resend.stage == CodeStage and not(s.resend.fenced) and s.resend.known.contains(s.resend.displayed)
 pure def verifyDisplayed(s: SignIn): SignIn = { ...s, resend: { ...s.resend, stage: VerifyingStage, verifying: s.resend.displayed } }
 pure def authenticatedBy(echo: int, r: Resend): Resend =
-  { ...r, stage: AuthenticatedStage, live: 0, outcome: { verifiedStep: r.displayed, verified: r.verifying, echo: echo } }
+  { ...r, stage: AuthenticatedStage, live: 0, verdict: { verifiedStep: r.displayed, verified: r.verifying, echo: echo } }
 pure def canVerifyReply(s: SignIn, echo: int): bool = s.resend.stage == VerifyingStage and not(s.resend.fenced) and resendDelivered(s.resend)
 pure def verifyReply(s: SignIn, echo: int): SignIn = { ...s, resend:
   if (s.resend.live == s.resend.verifying and (echo == 0 or echo == s.resend.verifying)) authenticatedBy(echo, s.resend)
@@ -388,9 +388,9 @@ pure def alwaysScopedResendReceipt(s: SignIn): bool = {
 }
 pure def alwaysVerificationUsesDisplayedOwner(s: SignIn): bool =
   (s.resend.stage == VerifyingStage implies s.resend.verifying == s.resend.displayed) and
-    (s.resend.outcome != noOutcome implies (s.resend.outcome.verifiedStep == s.resend.outcome.verified and (s.resend.outcome.echo == 0 or s.resend.outcome.echo == s.resend.outcome.verified)))
+    (s.resend.verdict != noOutcome implies (s.resend.verdict.verifiedStep == s.resend.verdict.verified and (s.resend.verdict.echo == 0 or s.resend.verdict.echo == s.resend.verdict.verified)))
 pure def alwaysNoLateAdmission(s: SignIn): bool = not(s.resend.lateAdmission)
-pure def sometimesResendAuthenticated(s: SignIn): bool = s.resend.stage == AuthenticatedStage and s.resend.outcome.verified == resendRequest
+pure def sometimesResendAuthenticated(s: SignIn): bool = s.resend.stage == AuthenticatedStage and s.resend.verdict.verified == resendRequest
 pure def sometimesPartialCleanupKeepsResend(s: SignIn): bool = s.resend.fenced and s.resend.known.size() == 1 and s.resend.known.contains(resendRequest)
 pure def sometimesCancellationRetired(s: SignIn): bool = s.resend.stage == RetiredStage
 pure val weight_sendResend = 5

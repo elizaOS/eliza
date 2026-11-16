@@ -36,40 +36,40 @@ settles once.
 type RequestKind = DialogAsk | FileChooserAsk | SitePermissionAsk | DownloadAsk | ExternalLinkAsk | IdentityProviderAsk
 type RequestOutcome = Pending | Accepted | Declined | PickerOpened | NoFile | Granted | SiteDenied | AndroidDenied | PermissionWithdrawn | Ended
   | Saving | Saved | SaveFailed | SaveUnconfirmed | SaveCancelled | Dispatched | ExternalAppUnavailable | BrowserUnavailable
-type PageRequest = { surface: int, requestId: int, kind: RequestKind, page: int, outcome: RequestOutcome, resolvable: bool }
+type PageRequest = { surface: int, requestId: int, kind: RequestKind, page: int, verdict: RequestOutcome, resolvable: bool }
 type SurfacePage = { surface: int, page: int, visible: bool, holdsRequests: bool }
 type PageRequests = { pages: List[SurfacePage], requests: List[PageRequest] }
 pure val initial: PageRequests = { pages: List({ surface: 1, page: 1, visible: true, holdsRequests: true }, { surface: 2, page: 1, visible: false, holdsRequests: false }), requests: List() }
 pure val noPage: SurfacePage = { surface: 0, page: 0, visible: false, holdsRequests: false }
-pure val noRequest: PageRequest = { surface: 0, requestId: 0, kind: DialogAsk, page: 0, outcome: Ended, resolvable: false }
+pure val noRequest: PageRequest = { surface: 0, requestId: 0, kind: DialogAsk, page: 0, verdict: Ended, resolvable: false }
 pure def pageOf(s: PageRequests, surface: int): SurfacePage = s.pages.select(p => p.surface == surface).nthOr(0, noPage)
 pure def requestOf(s: PageRequests, surface: int, requestId: int): PageRequest =
   s.requests.select(r => r.surface == surface and r.requestId == requestId).nthOr(0, noRequest)
 pure def held(s: PageRequests, surface: int, requestId: int, kind: RequestKind): bool =
-  s.requests.some(r => r.surface == surface and r.requestId == requestId and r.kind == kind and r.outcome == Pending)
-pure def settle(surface: int, s: PageRequests, requestId: int, outcome: RequestOutcome): PageRequests =
-  { ...s, requests: s.requests.listMap(r => if (r.surface == surface and r.requestId == requestId) { ...r, outcome: outcome } else r) }
+  s.requests.some(r => r.surface == surface and r.requestId == requestId and r.kind == kind and r.verdict == Pending)
+pure def resolve(surface: int, s: PageRequests, requestId: int, verdict: RequestOutcome): PageRequests =
+  { ...s, requests: s.requests.listMap(r => if (r.surface == surface and r.requestId == requestId) { ...r, verdict: verdict } else r) }
 pure def canAsk(s: PageRequests, surface: int, requestId: int, kind: RequestKind, resolvable: bool): bool =
   pageOf(s, surface).surface > 0 and requestId > 0 and not(s.requests.some(r => r.surface == surface and r.requestId == requestId))
 pure def ask(s: PageRequests, surface: int, requestId: int, kind: RequestKind, resolvable: bool): PageRequests = {
   val p = pageOf(s, surface)
   { ...s, requests: s.requests.append({ surface: surface, requestId: requestId, kind: kind, page: p.page,
-    outcome: if (p.visible and p.holdsRequests) Pending else Ended, resolvable: resolvable }) }
+    verdict: if (p.visible and p.holdsRequests) Pending else Ended, resolvable: resolvable }) }
 }
 pure def canAnswerDialog(s: PageRequests, surface: int, requestId: int, accept: bool): bool = held(s, surface, requestId, DialogAsk)
 pure def answerDialog(s: PageRequests, surface: int, requestId: int, accept: bool): PageRequests =
-  settle(surface, s, requestId, if (accept) Accepted else Declined)
+  resolve(surface, s, requestId, if (accept) Accepted else Declined)
 pure def canDeclineRequest(s: PageRequests, surface: int, requestId: int): bool =
   held(s, surface, requestId, DownloadAsk) or held(s, surface, requestId, ExternalLinkAsk) or held(s, surface, requestId, IdentityProviderAsk)
-pure def declineRequest(s: PageRequests, surface: int, requestId: int): PageRequests = settle(surface, s, requestId, Declined)
+pure def declineRequest(s: PageRequests, surface: int, requestId: int): PageRequests = resolve(surface, s, requestId, Declined)
 pure def settledOutcome(o: RequestOutcome): bool = o != Pending and o != Saving
 pure def alwaysRequestIdsUnique(s: PageRequests): bool =
   s.requests.every(r => s.requests.select(q => q.surface == r.surface and q.requestId == r.requestId).length() == 1)
 pure def stepSettledRequestNeverChanges(before: PageRequests, after: PageRequests): bool =
-  before.requests.every(r => not(settledOutcome(r.outcome)) or after.requests.includes(r))
+  before.requests.every(r => not(settledOutcome(r.verdict)) or after.requests.includes(r))
 pure def stepOutcomeNeverReturnsToPending(before: PageRequests, after: PageRequests): bool =
-  before.requests.every(r => r.outcome == Pending or after.requests.every(q => q.surface != r.surface or q.requestId != r.requestId or q.outcome != Pending))
-pure def sometimesDialogAccepted(s: PageRequests): bool = s.requests.some(r => r.outcome == Accepted)
+  before.requests.every(r => r.verdict == Pending or after.requests.every(q => q.surface != r.surface or q.requestId != r.requestId or q.verdict != Pending))
+pure def sometimesDialogAccepted(s: PageRequests): bool = s.requests.some(r => r.verdict == Accepted)
 pure val surfaceValues = Set(1, 2)
 pure val requestIdValues = Set(1, 2, 3)
 ```
@@ -84,7 +84,7 @@ hears any request of the new page.
 
 ```quint
 pure def endHeld(s: PageRequests, surface: int): List[PageRequest] =
-  s.requests.listMap(r => if (r.surface == surface and r.outcome == Pending) { ...r, outcome: Ended } else r)
+  s.requests.listMap(r => if (r.surface == surface and r.verdict == Pending) { ...r, verdict: Ended } else r)
 pure def canStartPage(s: PageRequests, surface: int): bool = pageOf(s, surface).surface > 0
 pure def startPage(s: PageRequests, surface: int): PageRequests =
   { pages: s.pages.listMap(p => if (p.surface == surface) { ...p, page: p.page + 1 } else p), requests: endHeld(s, surface) }
@@ -93,11 +93,11 @@ pure def setPageVisible(s: PageRequests, surface: int, visible: bool): PageReque
   { pages: s.pages.listMap(p => if (p.surface == surface) { ...p, visible: visible } else p),
     requests: if (visible) s.requests else endHeld(s, surface) }
 pure def alwaysHeldRequestIsOnItsVisiblePage(s: PageRequests): bool =
-  s.requests.every(r => r.outcome != Pending or (pageOf(s, r.surface).page == r.page and pageOf(s, r.surface).visible and pageOf(s, r.surface).holdsRequests))
+  s.requests.every(r => r.verdict != Pending or (pageOf(s, r.surface).page == r.page and pageOf(s, r.surface).visible and pageOf(s, r.surface).holdsRequests))
 pure def stepLookingAwayNeverAccepts(before: PageRequests, via: str, after: PageRequests): bool =
   (via == "startPage" or via == "setPageVisible") implies
-    after.requests.every(r => before.requests.includes(r) or r.outcome == Ended)
-pure def sometimesRequestEndedByLookingAway(s: PageRequests): bool = s.requests.some(r => r.outcome == Ended and pageOf(s, r.surface).holdsRequests)
+    after.requests.every(r => before.requests.includes(r) or r.verdict == Ended)
+pure def sometimesRequestEndedByLookingAway(s: PageRequests): bool = s.requests.some(r => r.verdict == Ended and pageOf(s, r.surface).holdsRequests)
 ```
 
 ### A site gets a device permission only when I allow it for the current presentation and Android allows it too
@@ -118,17 +118,17 @@ pure def canAnswerSitePermission(s: PageRequests, surface: int, requestId: int, 
 pure def permissionOutcome(grant: bool, androidAllows: bool): RequestOutcome =
   if (not(grant)) SiteDenied else if (androidAllows) Granted else AndroidDenied
 pure def answerSitePermission(s: PageRequests, surface: int, requestId: int, grant: bool, androidAllows: bool): PageRequests =
-  settle(surface, s, requestId, permissionOutcome(grant, androidAllows))
+  resolve(surface, s, requestId, permissionOutcome(grant, androidAllows))
 pure def lawGrantNeedsPersonAndAndroid(grant: bool, androidAllows: bool): bool =
   (permissionOutcome(grant, androidAllows) == Granted) iff (grant and androidAllows)
 pure def canWithdrawSitePermission(s: PageRequests, surface: int, requestId: int): bool = held(s, surface, requestId, SitePermissionAsk)
-pure def withdrawSitePermission(s: PageRequests, surface: int, requestId: int): PageRequests = settle(surface, s, requestId, PermissionWithdrawn)
-pure def alwaysGrantedOnlyForSitePermission(s: PageRequests): bool = s.requests.every(r => r.outcome == Granted implies r.kind == SitePermissionAsk)
+pure def withdrawSitePermission(s: PageRequests, surface: int, requestId: int): PageRequests = resolve(surface, s, requestId, PermissionWithdrawn)
+pure def alwaysGrantedOnlyForSitePermission(s: PageRequests): bool = s.requests.every(r => r.verdict == Granted implies r.kind == SitePermissionAsk)
 pure def stepWithdrawnPermissionIsNeverGranted(before: PageRequests, after: PageRequests): bool =
-  before.requests.every(r => r.outcome != PermissionWithdrawn or after.requests.includes(r))
-pure def sometimesSitePermissionGranted(s: PageRequests): bool = s.requests.some(r => r.outcome == Granted)
-pure def sometimesAndroidRefusesPermission(s: PageRequests): bool = s.requests.some(r => r.outcome == AndroidDenied)
-pure def sometimesPermissionWithdrawn(s: PageRequests): bool = s.requests.some(r => r.outcome == PermissionWithdrawn)
+  before.requests.every(r => r.verdict != PermissionWithdrawn or after.requests.includes(r))
+pure def sometimesSitePermissionGranted(s: PageRequests): bool = s.requests.some(r => r.verdict == Granted)
+pure def sometimesAndroidRefusesPermission(s: PageRequests): bool = s.requests.some(r => r.verdict == AndroidDenied)
+pure def sometimesPermissionWithdrawn(s: PageRequests): bool = s.requests.some(r => r.verdict == PermissionWithdrawn)
 ```
 
 ### A file request opens the system picker only when I choose to, and a busy picker keeps the request
@@ -147,11 +147,11 @@ pure def canAnswerFileChooser(s: PageRequests, surface: int, requestId: int, ope
 pure def fileChooserOutcome(open: bool, pickerBusy: bool): RequestOutcome =
   if (open and pickerBusy) Pending else if (open) PickerOpened else NoFile
 pure def answerFileChooser(s: PageRequests, surface: int, requestId: int, open: bool, pickerBusy: bool): PageRequests =
-  settle(surface, s, requestId, fileChooserOutcome(open, pickerBusy))
+  resolve(surface, s, requestId, fileChooserOutcome(open, pickerBusy))
 pure def lawBusyPickerKeepsRequest(pickerBusy: bool): bool = pickerBusy implies fileChooserOutcome(true, pickerBusy) == Pending
 pure def lawNotOpeningGivesNoFile(pickerBusy: bool): bool = fileChooserOutcome(false, pickerBusy) == NoFile
-pure def sometimesPickerOpened(s: PageRequests): bool = s.requests.some(r => r.outcome == PickerOpened)
-pure def sometimesPageGetsNoFile(s: PageRequests): bool = s.requests.some(r => r.outcome == NoFile)
+pure def sometimesPickerOpened(s: PageRequests): bool = s.requests.some(r => r.verdict == PickerOpened)
+pure def sometimesPageGetsNoFile(s: PageRequests): bool = s.requests.some(r => r.verdict == NoFile)
 ```
 
 ### A download is saved only after I chose Save and the host published the file
@@ -169,22 +169,22 @@ stays out of models, threads and logs.
 ```quint
 type DownloadSettlement = PublishedWithReceipt | PublicationFailed | EntryRemovedBeforeClaim | CommittedWithoutReceipt
 pure def canSaveDownload(s: PageRequests, surface: int, requestId: int): bool = held(s, surface, requestId, DownloadAsk)
-pure def saveDownload(s: PageRequests, surface: int, requestId: int): PageRequests = settle(surface, s, requestId, Saving)
+pure def saveDownload(s: PageRequests, surface: int, requestId: int): PageRequests = resolve(surface, s, requestId, Saving)
 pure def canFinishDownload(s: PageRequests, surface: int, requestId: int, settlement: DownloadSettlement): bool =
-  requestOf(s, surface, requestId).outcome == Saving
+  requestOf(s, surface, requestId).verdict == Saving
 pure def finishDownload(s: PageRequests, surface: int, requestId: int, settlement: DownloadSettlement): PageRequests =
-  settle(surface, s, requestId,
+  resolve(surface, s, requestId,
     if (settlement == PublishedWithReceipt) Saved else if (settlement == PublicationFailed) SaveFailed
     else if (settlement == EntryRemovedBeforeClaim) SaveCancelled else SaveUnconfirmed)
 pure val fair_finishDownload = "weak"
 pure def alwaysSavingOnlyForDownloads(s: PageRequests): bool =
-  s.requests.every(r => (r.outcome == Saving or r.outcome == Saved or r.outcome == SaveFailed or r.outcome == SaveCancelled or r.outcome == SaveUnconfirmed) implies r.kind == DownloadAsk)
+  s.requests.every(r => (r.verdict == Saving or r.verdict == Saved or r.verdict == SaveFailed or r.verdict == SaveCancelled or r.verdict == SaveUnconfirmed) implies r.kind == DownloadAsk)
 pure def stepSavedFollowsSaving(before: PageRequests, after: PageRequests): bool =
-  after.requests.every(r => r.outcome != Saved or before.requests.some(q => q.surface == r.surface and q.requestId == r.requestId and (q.outcome == Saving or q.outcome == Saved)))
+  after.requests.every(r => r.verdict != Saved or before.requests.some(q => q.surface == r.surface and q.requestId == r.requestId and (q.verdict == Saving or q.verdict == Saved)))
 pure def leadsToDownloadSettles(s: PageRequests, later: PageRequests): bool =
-  s.requests.every(r => r.outcome != Saving or later.requests.some(q => q.surface == r.surface and q.requestId == r.requestId and q.outcome != Saving))
-pure def sometimesDownloadSaved(s: PageRequests): bool = s.requests.some(r => r.outcome == Saved)
-pure def sometimesDownloadUnconfirmed(s: PageRequests): bool = s.requests.some(r => r.outcome == SaveUnconfirmed)
+  s.requests.every(r => r.verdict != Saving or later.requests.some(q => q.surface == r.surface and q.requestId == r.requestId and q.verdict != Saving))
+pure def sometimesDownloadSaved(s: PageRequests): bool = s.requests.some(r => r.verdict == Saved)
+pure def sometimesDownloadUnconfirmed(s: PageRequests): bool = s.requests.some(r => r.verdict == SaveUnconfirmed)
 ```
 
 ### Another app opens only for the link I tapped, and an unresolvable link reports that no app is available
@@ -198,10 +198,10 @@ other address. When no app resolves the intent it fails with
 ```quint
 pure def canOpenExternalLink(s: PageRequests, surface: int, requestId: int): bool = held(s, surface, requestId, ExternalLinkAsk)
 pure def openExternalLink(s: PageRequests, surface: int, requestId: int): PageRequests =
-  settle(surface, s, requestId, if (requestOf(s, surface, requestId).resolvable) Dispatched else ExternalAppUnavailable)
+  resolve(surface, s, requestId, if (requestOf(s, surface, requestId).resolvable) Dispatched else ExternalAppUnavailable)
 pure def alwaysDispatchedLinkWasResolvable(s: PageRequests): bool =
-  s.requests.every(r => r.kind == ExternalLinkAsk and r.outcome == Dispatched implies r.resolvable)
-pure def sometimesExternalAppUnavailable(s: PageRequests): bool = s.requests.some(r => r.outcome == ExternalAppUnavailable)
+  s.requests.every(r => r.kind == ExternalLinkAsk and r.verdict == Dispatched implies r.resolvable)
+pure def sometimesExternalAppUnavailable(s: PageRequests): bool = s.requests.some(r => r.verdict == ExternalAppUnavailable)
 ```
 
 ### A sign-in page that refuses embedded browsers opens in a full browser only when I choose to
@@ -216,8 +216,8 @@ unopened.
 ```quint
 pure def canOpenIdentityProvider(s: PageRequests, surface: int, requestId: int): bool = held(s, surface, requestId, IdentityProviderAsk)
 pure def openIdentityProvider(s: PageRequests, surface: int, requestId: int): PageRequests =
-  settle(surface, s, requestId, if (requestOf(s, surface, requestId).resolvable) Dispatched else BrowserUnavailable)
+  resolve(surface, s, requestId, if (requestOf(s, surface, requestId).resolvable) Dispatched else BrowserUnavailable)
 pure def alwaysDispatchOnlyForHandoffs(s: PageRequests): bool =
-  s.requests.every(r => r.outcome == Dispatched implies (r.kind == ExternalLinkAsk or r.kind == IdentityProviderAsk) and r.resolvable)
-pure def sometimesIdentityProviderOpened(s: PageRequests): bool = s.requests.some(r => r.kind == IdentityProviderAsk and r.outcome == Dispatched)
+  s.requests.every(r => r.verdict == Dispatched implies (r.kind == ExternalLinkAsk or r.kind == IdentityProviderAsk) and r.resolvable)
+pure def sometimesIdentityProviderOpened(s: PageRequests): bool = s.requests.some(r => r.kind == IdentityProviderAsk and r.verdict == Dispatched)
 ```

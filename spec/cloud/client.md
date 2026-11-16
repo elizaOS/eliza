@@ -46,12 +46,12 @@ pure def startRead(v: CloudSessionView, readId: int): CloudSessionView = { ...v,
 pure def canReadReply(v: CloudSessionView, readId: int, hostReply: HostReply): bool = readOf(v, readId).readId == readId and readOf(v, readId).phase == ReadPending
 pure def readReply(v: CloudSessionView, readId: int, hostReply: HostReply): CloudSessionView = {
   val read = readOf(v, readId)
-  val settled = { ...v, reads: withRead(v, { ...read, phase: ReadDone }) }
+  val resolved = { ...v, reads: withRead(v, { ...read, phase: ReadDone }) }
   val owns = currentOwner(v, read.ownerPort, read.ownerRevision) and not(signingOut(v))
-  if (not(owns) or hostReply == ReplyAborted) settled
-  else if (hostReply == ReplyUnavailable) { ...settled, unavailable: true, lastViewRevision: read.ownerRevision }
-  else if (hostReply == ReplyAbsent) { ...settled, account: 0, unavailable: false, suppressConnected: false, lastViewRevision: read.ownerRevision }
-  else { ...settled, account: if (v.suppressConnected) v.account else read.ownerPort, unavailable: false, lastViewRevision: read.ownerRevision }
+  if (not(owns) or hostReply == ReplyAborted) resolved
+  else if (hostReply == ReplyUnavailable) { ...resolved, unavailable: true, lastViewRevision: read.ownerRevision }
+  else if (hostReply == ReplyAbsent) { ...resolved, account: 0, unavailable: false, suppressConnected: false, lastViewRevision: read.ownerRevision }
+  else { ...resolved, account: if (v.suppressConnected) v.account else read.ownerPort, unavailable: false, lastViewRevision: read.ownerRevision }
 }
 pure val readIdValues = Set(1, 2)
 pure def stepOnlyTheCurrentOwnerChangesTheView(before: CloudSessionView, after: CloudSessionView): bool =
@@ -78,8 +78,8 @@ pure def signOutReply(v: CloudSessionView, acknowledged: bool): CloudSessionView
   else { ...v, signOutPort: 0, signOutRevision: 0 }
 pure def canJoinSignOut(v: CloudSessionView): bool = v.signOutAcknowledged
 pure def joinSignOut(v: CloudSessionView): CloudSessionView = {
-  val settled = { ...v, signOutPort: 0, signOutRevision: 0, signOutAcknowledged: false }
-  if (currentOwner(v, v.signOutPort, v.signOutRevision)) { ...settled, account: 0, suppressConnected: true, lastViewRevision: v.revision } else settled
+  val resolved = { ...v, signOutPort: 0, signOutRevision: 0, signOutAcknowledged: false }
+  if (currentOwner(v, v.signOutPort, v.signOutRevision)) { ...resolved, account: 0, suppressConnected: true, lastViewRevision: v.revision } else resolved
 }
 pure def alwaysSuppressedAccountIsCleared(v: CloudSessionView): bool = v.suppressConnected implies v.account == 0
 pure def alwaysAcknowledgedSignOutIsInProgress(v: CloudSessionView): bool = v.signOutAcknowledged implies signingOut(v)

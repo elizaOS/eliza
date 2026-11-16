@@ -29,10 +29,10 @@ type KeyPhase = KeyVacant | KeyActive | KeySettled
 type Reservation = { phase: KeyPhase, owner: int, fingerprint: int, generation: int, receiptGeneration: int, waiters: int, receipt: bool, expired: bool }
 type PromptPhase = PromptIdle | PromptResolving | PromptReading | PromptPersisting | PromptPersisted | PromptFinished
 type PromptOutcome = NoOutcome | NotAdmitted | Completed | Failed | Cancelled | Denied
-type Prompt = { epoch: int, captured: int, requested: int, active: int, present: Set[int], owned: Set[int], phase: PromptPhase, result: int, verified: bool, roomValid: bool, persisted: bool, outcome: PromptOutcome, delivered: bool, runCompleted: bool }
+type Prompt = { epoch: int, captured: int, requested: int, active: int, present: Set[int], owned: Set[int], phase: PromptPhase, result: int, verified: bool, roomValid: bool, persisted: bool, verdict: PromptOutcome, delivered: bool, runCompleted: bool }
 type Chat = { key: Reservation, prompt: Prompt }
 pure val vacantKey: Reservation = { phase: KeyVacant, owner: 0, fingerprint: 0, generation: 0, receiptGeneration: 0, waiters: 0, receipt: false, expired: false }
-pure val idlePrompt: Prompt = { epoch: 0, captured: 0, requested: 0, active: 2, present: Set(1, 2), owned: Set(1, 2), phase: PromptIdle, result: 0, verified: false, roomValid: false, persisted: false, outcome: NoOutcome, delivered: false, runCompleted: false }
+pure val idlePrompt: Prompt = { epoch: 0, captured: 0, requested: 0, active: 2, present: Set(1, 2), owned: Set(1, 2), phase: PromptIdle, result: 0, verified: false, roomValid: false, persisted: false, verdict: NoOutcome, delivered: false, runCompleted: false }
 pure val initial: Chat = { key: vacantKey, prompt: idlePrompt }
 pure def vacate(k: Reservation): Reservation = { ...vacantKey, generation: k.generation }
 pure def canAcquireKey(c: Chat, owner: int, fingerprint: int): bool = c.key.phase == KeyVacant and owner > 0 and fingerprint > 0
@@ -96,7 +96,7 @@ target, and no other conversation is chosen in its place.
 pure def canStartPrompt(c: Chat, requested: int): bool =
   (c.prompt.phase == PromptIdle or c.prompt.phase == PromptFinished) and requested >= 0
 pure def startPrompt(c: Chat, requested: int): Chat =
-  { ...c, prompt: { ...c.prompt, captured: c.prompt.epoch, requested: requested, phase: PromptResolving, result: 0, verified: false, roomValid: false, persisted: false, outcome: NoOutcome, delivered: false, runCompleted: false } }
+  { ...c, prompt: { ...c.prompt, captured: c.prompt.epoch, requested: requested, phase: PromptResolving, result: 0, verified: false, roomValid: false, persisted: false, verdict: NoOutcome, delivered: false, runCompleted: false } }
 pure def canSwitchWindow(c: Chat): bool = c.prompt.phase == PromptResolving
 pure def switchWindow(c: Chat): Chat = { ...c, prompt: { ...c.prompt, active: 3 - c.prompt.active } }
 pure def canRemoveConversation(c: Chat, conversation: int): bool =
@@ -120,7 +120,7 @@ pure def alwaysResolvedPromptIsVerified(c: Chat): bool =
   c.prompt.result > 0 implies (c.prompt.verified and (c.prompt.requested == 0 or c.prompt.result == c.prompt.requested))
 pure def sometimesSelectedConversationSurvivesWindowSwitch(c: Chat): bool =
   c.prompt.persisted and c.prompt.requested > 0 and c.prompt.active != c.prompt.requested
-pure def sometimesRemovedConversationHasNoFallback(c: Chat): bool = c.prompt.result == -1 and c.prompt.outcome == NotAdmitted
+pure def sometimesRemovedConversationHasNoFallback(c: Chat): bool = c.prompt.result == -1 and c.prompt.verdict == NotAdmitted
 ```
 
 ### A prompt is persisted only for a verified, readable conversation under the same runtime
@@ -136,12 +136,12 @@ pure def readRoom(c: Chat): Chat = { ...c, prompt: { ...c.prompt, phase: PromptP
 pure def canPersistPrompt(c: Chat): bool = c.prompt.phase == PromptPersisting
 pure def persistPrompt(c: Chat): Chat = {
   val ok = c.prompt.verified and c.prompt.roomValid and c.prompt.epoch == c.prompt.captured
-  { ...c, prompt: { ...c.prompt, persisted: ok, phase: if (ok) PromptPersisted else PromptFinished, outcome: if (ok) NoOutcome else NotAdmitted } }
+  { ...c, prompt: { ...c.prompt, persisted: ok, phase: if (ok) PromptPersisted else PromptFinished, verdict: if (ok) NoOutcome else NotAdmitted } }
 }
 pure def alwaysPersistedPromptIsCurrent(c: Chat): bool =
   c.prompt.persisted implies (c.prompt.verified and c.prompt.roomValid and c.prompt.epoch == c.prompt.captured)
 pure def sometimesRetiredRuntimeRefusesPersistence(c: Chat): bool =
-  c.prompt.outcome == NotAdmitted and c.prompt.verified and c.prompt.epoch != c.prompt.captured
+  c.prompt.verdict == NotAdmitted and c.prompt.verified and c.prompt.epoch != c.prompt.captured
 ```
 
 ### A persisted prompt reaches completed, failed, cancelled or denied, independent of reply delivery
@@ -151,13 +151,13 @@ denied. A reply may already have been delivered before any of them. The run
 status reports success only for completed.
 
 ```quint
-pure def canFinishPrompt(c: Chat, outcome: PromptOutcome): bool =
-  c.prompt.phase == PromptPersisted and c.prompt.persisted and (outcome == Completed or outcome == Failed or outcome == Cancelled or outcome == Denied)
-pure def finishPrompt(c: Chat, outcome: PromptOutcome, delivered: bool): Chat =
-  { ...c, prompt: { ...c.prompt, phase: PromptFinished, outcome: outcome, delivered: delivered, runCompleted: outcome == Completed } }
+pure def canFinishPrompt(c: Chat, verdict: PromptOutcome): bool =
+  c.prompt.phase == PromptPersisted and c.prompt.persisted and (verdict == Completed or verdict == Failed or verdict == Cancelled or verdict == Denied)
+pure def finishPrompt(c: Chat, verdict: PromptOutcome, delivered: bool): Chat =
+  { ...c, prompt: { ...c.prompt, phase: PromptFinished, verdict: verdict, delivered: delivered, runCompleted: verdict == Completed } }
 pure def alwaysRunStatusFollowsOutcome(c: Chat): bool =
-  c.prompt.runCompleted == (c.prompt.outcome == Completed) and
-  ((c.prompt.phase == PromptFinished and c.prompt.persisted) implies (c.prompt.outcome == Completed or c.prompt.outcome == Failed or c.prompt.outcome == Cancelled or c.prompt.outcome == Denied))
-pure def sometimesFailedAfterDelivery(c: Chat): bool = c.prompt.delivered and c.prompt.outcome == Failed
+  c.prompt.runCompleted == (c.prompt.verdict == Completed) and
+  ((c.prompt.phase == PromptFinished and c.prompt.persisted) implies (c.prompt.verdict == Completed or c.prompt.verdict == Failed or c.prompt.verdict == Cancelled or c.prompt.verdict == Denied))
+pure def sometimesFailedAfterDelivery(c: Chat): bool = c.prompt.delivered and c.prompt.verdict == Failed
 pure def sometimesCompletedWithoutReply(c: Chat): bool = not(c.prompt.delivered) and c.prompt.runCompleted
 ```

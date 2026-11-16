@@ -182,20 +182,22 @@ pure def canClaimPhase(d: Deletion, w: int): bool = {
   val first = headRow(d)
   sagaRunning(d) and d.authority and workerOf(d, w).id == w and workerOf(d, w).step == WorkerIdle and hasHead(d) and first.owner == 0 and first.status != PhaseActionNeeded
 }
+pure def leasePhase(w: int, d: Deletion): Deletion = {
+  val first = headRow(d)
+  val generation = first.generation + 1
+  val reconciling = first.status == PhaseCalling or first.status == PhaseReconciling
+  val status = if (first.phase == ExportRevokePhase) d.status else DeletionProcessing
+  if (reconciling and not(first.effect))
+    { ...d, status: status, phases: withRow(d, first.phase, { ...first, generation: generation, owner: 0, status: PhaseRetry }) }
+  else
+    { ...d, status: status,
+      phases: withRow(d, first.phase, { ...first, generation: generation, owner: w, status: if (reconciling) PhaseReconciling else PhaseLeased }),
+      workers: withWorker(d, { id: w, phase: first.phase, generation: generation, step: if (first.effect) WorkerConfirm else WorkerCall }) }
+}
 pure def claimPhase(d: Deletion, w: int): Deletion = {
   val first = headRow(d)
   if (first.generation >= maxLeases) { ...d, status: DeletionActionRequired, phases: withRow(d, first.phase, { ...first, status: PhaseActionNeeded }) }
-  else {
-    val generation = first.generation + 1
-    val reconciling = first.status == PhaseCalling or first.status == PhaseReconciling
-    val status = if (first.phase == ExportRevokePhase) d.status else DeletionProcessing
-    if (reconciling and not(first.effect))
-      { ...d, status: status, phases: withRow(d, first.phase, { ...first, generation: generation, owner: 0, status: PhaseRetry }) }
-    else
-      { ...d, status: status,
-        phases: withRow(d, first.phase, { ...first, generation: generation, owner: w, status: if (reconciling) PhaseReconciling else PhaseLeased }),
-        workers: withWorker(d, { id: w, phase: first.phase, generation: generation, step: if (first.effect) WorkerConfirm else WorkerCall }) }
-  }
+  else leasePhase(w, d)
 }
 pure def canExpireLease(d: Deletion, p: ProviderPhase): bool = rowOf(d, p).owner != 0 and rowOf(d, p).status != PhaseDone
 pure def expireLease(d: Deletion, p: ProviderPhase): Deletion = { ...d, phases: withRow(d, p, { ...rowOf(d, p), owner: 0 }) }
@@ -277,13 +279,16 @@ pure def alwaysIdentifiersErasedOnlyOnCompletion(d: Deletion): bool = not(d.iden
 pure def alwaysIdentityDeletedOnlyAfterDeactivation(d: Deletion): bool =
   (d.identity == PU::IdentityDeleted implies (d.irreversible and rowOf(d, AuthDeletionPhase).status == PhaseDone)) and (d.irreversible implies (d.identity == PU::Deactivated or d.identity == PU::IdentityDeleted))
     and ((d.deactivationReceipt and not(d.irreversible)) implies d.identity == PU::Deactivated)
-pure val weight_claimPhase = 10
-pure val weight_callProvider = 10
-pure val weight_confirmPhase = 10
-pure val weight_finalizeErasure = 10
-pure val weight_expireRecovery = 10
-pure val weight_completeExport = 5
-pure val weight_startExport = 5
-pure val weight_completeDeactivation = 5
+pure val weight_reserve = 10
+pure val weight_activate = 10
+pure val weight_tick = 5
+pure val weight_startExport = 10
+pure val weight_completeExport = 10
+pure val weight_completeDeactivation = 10
+pure val weight_expireRecovery = 50
+pure val weight_claimPhase = 50
+pure val weight_callProvider = 50
+pure val weight_confirmPhase = 50
+pure val weight_finalizeErasure = 50
 pure def sometimesErasureCompleted(d: Deletion): bool = d.status == DeletionCompleted
 ```

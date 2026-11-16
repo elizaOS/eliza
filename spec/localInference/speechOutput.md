@@ -57,11 +57,11 @@ pure def cancelSpeech(s: SpeechOutput): SpeechOutput = { ...s, publication: { ..
 pure def canPublishSpeech(s: SpeechOutput): bool = s.publication.publishPhase == PublishAdmitted
 pure def publishSpeech(s: SpeechOutput): SpeechOutput = {
   val p = s.publication
-  val settled =
+  val resolved =
     if (p.cancelRequested) { ...p, publishPhase: PublishCancelled, playbackAtPublication: p.playback }
     else if (p.playback != EmptyPlayback and not(p.replace)) { ...p, publishPhase: PublishBusy, playbackAtPublication: p.playback }
     else { ...p, publishPhase: Published, playback: PreparedClip, playbackAtPublication: p.playback, interrupted: p.playback != EmptyPlayback }
-  { ...s, publication: settled }
+  { ...s, publication: resolved }
 }
 ```
 

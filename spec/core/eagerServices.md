@@ -16,6 +16,11 @@ continuation may make a previous attempt ready to retry. Unique eager job IDs ke
 The host observes elapsed time on a monotonic clock. Every backoff has
 its own deadline and can expire after any earlier clock observation.
 
+Shutdown can land while an eager attempt is still starting; the instance it
+then returns is stopped, and that late start fails once its stop settles.
+Setup, instance return and the late stop are weighted so the simulator
+reaches that interleaving between eager retries.
+
 ```quint
 import serviceInstances as I from "./serviceInstances"
 type EagerPhase = EagerReady | EagerWaiting | EagerBackoff | EagerDone
@@ -86,6 +91,13 @@ pure val weight_settleAcquire = 24
 pure val weight_observeAcquire = 24
 pure val weight_wakeEager = 24
 pure val weight_advanceClock = 4
+pure val weight_registerClass = 8
+pure val weight_finishInitialization = 8
+pure val weight_startEager = 8
+pure val weight_returnInstance = 6
+pure val weight_invokeObjectStop = 8
+pure val weight_settleObjectStop = 8
+pure val weight_finishLateStart = 8
 pure def sometimesSecondAttemptAfterDelay(s: EagerServices): bool = s.jobs.some(j => j.attempts == 2 and s.now >= 2000)
 pure def sometimesStoppedDuringBackoff(s: EagerServices): bool = s.services.stopped and s.jobs.some(j => j.phase == EagerBackoff)
 pure def sometimesFourFailuresTerminate(s: EagerServices): bool = s.jobs.some(j => j.phase == EagerDone and j.failures == 4)

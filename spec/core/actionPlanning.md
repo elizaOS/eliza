@@ -96,12 +96,12 @@ pure def sometimesUnknownSubactionRejected(s: Planning): bool = s.calls.some(c =
 A subaction's handler runs inside its parent's handler, so the parent's result settles only once every subaction it planned has been rejected or has settled.
 
 ```quint
-pure def settled(c: PlannedCall): bool = c.phase == Rejected or c.phase == Succeeded or c.phase == Failed
+pure def resolved(c: PlannedCall): bool = c.phase == Rejected or c.phase == Succeeded or c.phase == Failed
 pure def canSettleCall(s: Planning, id: int, ok: bool): bool =
-  knownCall(s, id) and callAt(s, id).phase == Invoked and s.calls.every(c => c.parent != id or settled(c))
+  knownCall(s, id) and callAt(s, id).phase == Invoked and s.calls.every(c => c.parent != id or resolved(c))
 pure def settleCall(s: Planning, id: int, ok: bool): Planning = { ...s, calls: s.calls.listMap(c => if (c.id == id) { ...c, phase: if (ok) Succeeded else Failed } else c) }
 pure def alwaysParentSettlesAfterSubactions(s: Planning): bool =
-  s.calls.every(p => not(p.phase == Succeeded or p.phase == Failed) or s.calls.every(c => c.parent != p.id or settled(c)))
+  s.calls.every(p => not(p.phase == Succeeded or p.phase == Failed) or s.calls.every(c => c.parent != p.id or resolved(c)))
 ```
 
 ### A planned call settles once
@@ -110,6 +110,6 @@ A rejected, succeeded or failed call keeps that outcome; nothing runs it again o
 
 ```quint
 pure def stepSettledCallKeepsItsOutcome(before: Planning, after: Planning): bool =
-  before.calls.every(b => not(settled(b)) or after.calls.some(c => c == b))
+  before.calls.every(b => not(resolved(b)) or after.calls.some(c => c == b))
 pure def alwaysCallIdentitiesUnique(s: Planning): bool = s.calls.every(c => c.id > 0 and s.calls.select(other => other.id == c.id).length() == 1)
 ```

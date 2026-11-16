@@ -57,11 +57,11 @@ pure def expireOccurrence(s: Routines): Routines = { ...s, occurrence: Occurrenc
 ### A settled occurrence keeps its outcome until the next occurrence begins
 
 ```quint
-pure def settled(phase: OccurrencePhase): bool = phase == OccurrenceCompleted or phase == OccurrenceSkipped or phase == OccurrenceExpired
-pure def canNextOccurrence(s: Routines): bool = settled(s.occurrence)
+pure def resolved(phase: OccurrencePhase): bool = phase == OccurrenceCompleted or phase == OccurrenceSkipped or phase == OccurrenceExpired
+pure def canNextOccurrence(s: Routines): bool = resolved(s.occurrence)
 pure def nextOccurrence(s: Routines): Routines = { ...s, occurrence: OccurrencePending, shown: false, snoozes: 0, occurrences: s.occurrences + 1 }
 pure def stepSettledOutcomeIsKept(before: Routines, via: str, after: Routines): bool =
-  (settled(before.occurrence) and via != "nextOccurrence") implies after.occurrence == before.occurrence
+  (resolved(before.occurrence) and via != "nextOccurrence") implies after.occurrence == before.occurrence
 ```
 
 ### A muted routine shows nothing until it is unmuted

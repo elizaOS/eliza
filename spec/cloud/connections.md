@@ -46,12 +46,11 @@ pure def canCreateIntent(a: Authorization, kind: IntentKind): bool = a.status ==
 pure def createIntent(a: Authorization, kind: IntentKind): Authorization = { ...a, kind: kind, status: IntentPending, events: List(IntentPending) }
 pure def canTickClock(a: Authorization): bool = a.status != IntentAbsent
 pure def tickClock(a: Authorization): Authorization = { ...a, clock: a.clock + 1 }
+pure def openedEvents(a: Authorization): List[IntentStatus] = if (a.delivered) List(IntentPending, IntentDelivered) else List(IntentPending)
 pure def expectedEvents(a: Authorization): List[IntentStatus] =
   if (a.status == IntentAbsent) List()
-  else {
-    val opened = if (a.delivered) List(IntentPending, IntentDelivered) else List(IntentPending)
-    if (terminalStatus(a.status)) opened.append(a.status) else opened
-  }
+  else if (terminalStatus(a.status)) openedEvents(a).append(a.status)
+  else openedEvents(a)
 pure def alwaysEventsMatchTheIntent(a: Authorization): bool = a.events == expectedEvents(a)
 pure def alwaysOnlyApprovalsAreDelivered(a: Authorization): bool = a.delivered implies a.kind == ApprovalIntent
 ```

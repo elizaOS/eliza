@@ -175,7 +175,7 @@ pure def reserveSplit(firstAvailable: int, secondAvailable: int, maximum: int): 
   { first: minOf(firstAvailable, maximum), second: maximum - minOf(firstAvailable, maximum) }
 pure def chargeSplit(held: GrantSplit, cost: int): GrantSplit = { first: minOf(cost, held.first), second: cost - minOf(cost, held.first) }
 pure def grantOffers(remaining: int, sealed: bool, expired: bool): int = if (sealed or expired) 0 else remaining
-pure def canSealGrant(activeLeases: int, unacknowledged: int): bool = activeLeases == 0 and unacknowledged == 0
+pure def sealable(activeLeases: int, unacknowledged: int): bool = activeLeases == 0 and unacknowledged == 0
 pure def lawReservationDrawsWithinGrants(firstAvailable: int, secondAvailable: int, maximum: int): bool = {
   val split = reserveSplit(firstAvailable, secondAvailable, maximum)
   (firstAvailable >= 0 and secondAvailable >= 0 and maximum >= 1 and firstAvailable + secondAvailable >= maximum) implies
@@ -187,7 +187,7 @@ pure def lawChargeStaysWithinHold(held: GrantSplit, cost: int): bool = {
     (charged.first + charged.second == cost and charged.first >= 0 and charged.first <= held.first and charged.second >= 0 and charged.second <= held.second)
 }
 pure def lawClosedGrantOffersNothing(remaining: int, sealed: bool, expired: bool): bool = (sealed or expired) implies grantOffers(remaining, sealed, expired) == 0
-pure def lawSealingWaitsForOpenWork(activeLeases: int, unacknowledged: int): bool = canSealGrant(activeLeases, unacknowledged) implies activeLeases == 0 and unacknowledged == 0
+pure def lawSealingWaitsForOpenWork(activeLeases: int, unacknowledged: int): bool = sealable(activeLeases, unacknowledged) implies activeLeases == 0 and unacknowledged == 0
 pure val heldValues = Set({ first: 0, second: 0 }, { first: 1, second: 0 }, { first: 1, second: 2 }, { first: 2, second: 1 })
 ```
 

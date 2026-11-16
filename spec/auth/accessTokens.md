@@ -23,6 +23,9 @@ storage policy.
 
 ### Refreshes for one account run one at a time in arrival order, and other accounts do not wait
 
+Each account's queue in a process admits the request at its head, and the
+provider and storage answer the one request that queue has admitted.
+
 ```quint
 type TokenRecord = { root: int, generation: int, token: int, grant: int, expires: int, refreshable: bool }
 type ResolutionPhase = AtStart | Queued | AtProvider | Committing | ResolutionDone
@@ -58,13 +61,14 @@ pure def finished(id: int, verdict: ResolutionOutcome, token: int, generation: i
   { ...s, queues: dequeued(id, s),
     requests: withRequest(id, { ...r, phase: ResolutionDone, outcome: verdict, resultToken: if (verdict == TokenOk) token else 0, resultGeneration: generation, resultExpires: expires, decidedAt: s.now, refreshed: refreshed }, s) }
 }
-pure def canAdmit(s: AccessTokens, id: int): bool = {
-  val r = requestOf(s, id)
-  val q = queueOf(s, r.process, r.root)
-  r.phase == Queued and q.active == 0 and q.waiting.nthOr(0, 0) == id
+pure def activeOf(s: AccessTokens, process: int, root: int): Resolution = requestOf(s, queueOf(s, process, root).active)
+pure def canAdmit(s: AccessTokens, process: int, root: int): bool = {
+  val q = queueOf(s, process, root)
+  q.active == 0 and requestOf(s, q.waiting.nthOr(0, 0)).phase == Queued
 }
-pure def admit(s: AccessTokens, id: int): AccessTokens = {
-  val r = requestOf(s, id)
+pure def admit(s: AccessTokens, process: int, root: int): AccessTokens = {
+  val r = requestOf(s, queueOf(s, process, root).waiting.nthOr(0, 0))
+  val id = r.id
   val record = recordOf(s, r.root)
   val reread = { ...r, observedGeneration: record.generation }
   val s2 = { ...s, requests: withRequest(id, reread, s) }
@@ -126,18 +130,19 @@ pure def sometimesMissingPolicyRefusedWithoutGrant(s: AccessTokens): bool = s.re
 ```quint
 type ProviderFailure = InvalidGrant | Unauthorized | Forbidden | RateLimit | ServerError | NetworkFailure | MalformedReply | ProviderTimeout
 pure def authFailure(reason: ProviderFailure): bool = reason == InvalidGrant or reason == Unauthorized or reason == Forbidden
-pure def canProviderSucceeds(s: AccessTokens, id: int, lifetime: int, rotate: bool): bool = requestOf(s, id).phase == AtProvider and not(s.usedGrants.contains(requestOf(s, id).issuedGrant))
-pure def providerSucceeds(s: AccessTokens, id: int, lifetime: int, rotate: bool): AccessTokens = {
-  val r = requestOf(s, id)
+pure def canProviderSucceeds(s: AccessTokens, process: int, root: int, lifetime: int, rotate: bool): bool =
+  activeOf(s, process, root).phase == AtProvider and not(s.usedGrants.contains(activeOf(s, process, root).issuedGrant))
+pure def providerSucceeds(s: AccessTokens, process: int, root: int, lifetime: int, rotate: bool): AccessTokens = {
+  val r = activeOf(s, process, root)
   { ...s, usedGrants: if (rotate) s.usedGrants.union(Set(r.issuedGrant)) else s.usedGrants,
-    requests: withRequest(id, { ...r, phase: Committing, responseToken: id + 10, responseGrant: if (rotate) id + 10 else r.issuedGrant, responseLifetime: lifetime }, s) }
+    requests: withRequest(r.id, { ...r, phase: Committing, responseToken: r.id + 10, responseGrant: if (rotate) r.id + 10 else r.issuedGrant, responseLifetime: lifetime }, s) }
 }
 pure val lifetimeValues = Set(1, 4)
-pure def canProviderFails(s: AccessTokens, id: int, reason: ProviderFailure, consumed: bool): bool =
-  requestOf(s, id).phase == AtProvider and (not(consumed) or reason == NetworkFailure or reason == MalformedReply or reason == ProviderTimeout)
-pure def providerFails(s: AccessTokens, id: int, reason: ProviderFailure, consumed: bool): AccessTokens = {
-  val r = requestOf(s, id)
-  finished(id, if (authFailure(reason)) NeedsAuth else Transient, 0, r.observedGeneration, 0, false, { ...s, usedGrants: if (consumed) s.usedGrants.union(Set(r.issuedGrant)) else s.usedGrants })
+pure def canProviderFails(s: AccessTokens, process: int, root: int, reason: ProviderFailure, consumed: bool): bool =
+  activeOf(s, process, root).phase == AtProvider and (not(consumed) or reason == NetworkFailure or reason == MalformedReply or reason == ProviderTimeout)
+pure def providerFails(s: AccessTokens, process: int, root: int, reason: ProviderFailure, consumed: bool): AccessTokens = {
+  val r = activeOf(s, process, root)
+  finished(r.id, if (authFailure(reason)) NeedsAuth else Transient, 0, r.observedGeneration, 0, false, { ...s, usedGrants: if (consumed) s.usedGrants.union(Set(r.issuedGrant)) else s.usedGrants })
 }
 pure def stepFailureDoesNotPublish(before: AccessTokens, via: str, after: AccessTokens): bool = via == "providerFails" implies after.records == before.records
 pure def alwaysTransientFailureKeepsCapturedGeneration(s: AccessTokens): bool = s.requests.every(r => r.outcome == Transient implies (r.resultGeneration == r.observedGeneration and not(r.published)))
@@ -152,9 +157,10 @@ removed. A rotated grant that was published is the one kept.
 
 ```quint
 type AccountChange = ReplaceAccount | RemoveAccount | ResetPolicy
-pure def canCommit(s: AccessTokens, id: int): bool = requestOf(s, id).phase == Committing
-pure def commit(s: AccessTokens, id: int): AccessTokens = {
-  val r = requestOf(s, id)
+pure def canCommit(s: AccessTokens, process: int, root: int): bool = activeOf(s, process, root).phase == Committing
+pure def commit(s: AccessTokens, process: int, root: int): AccessTokens = {
+  val r = activeOf(s, process, root)
+  val id = r.id
   val latest = recordOf(s, r.root)
   val fresh = { ...latest, generation: s.nextGeneration, token: r.responseToken, grant: r.responseGrant, expires: s.now + r.responseLifetime }
   val ok = usable(fresh.expires, s.now, r.buffer)
@@ -166,12 +172,13 @@ pure def commit(s: AccessTokens, id: int): AccessTokens = {
     { ...s, records: s.records.listMap(x => if (x.root == r.root) fresh else x), nextGeneration: s.nextGeneration + 1,
       requests: withRequest(id, { ...r, published: true, committedGeneration: fresh.generation }, s) })
 }
-pure def canStorageFails(s: AccessTokens, id: int, written: bool): bool = {
-  val r = requestOf(s, id)
+pure def canStorageFails(s: AccessTokens, process: int, root: int, written: bool): bool = {
+  val r = activeOf(s, process, root)
   r.phase == Committing and policyValid(s, r) and present(s, r.root) and recordOf(s, r.root).generation == r.observedGeneration
 }
-pure def storageFails(s: AccessTokens, id: int, written: bool): AccessTokens = {
-  val r = requestOf(s, id)
+pure def storageFails(s: AccessTokens, process: int, root: int, written: bool): AccessTokens = {
+  val r = activeOf(s, process, root)
+  val id = r.id
   val fresh = { ...recordOf(s, r.root), generation: s.nextGeneration, token: r.responseToken, grant: r.responseGrant, expires: s.now + r.responseLifetime }
   finished(id, StorageError, 0, 0, 0, false,
     { ...s, records: if (written) s.records.listMap(x => if (x.root == r.root) fresh else x) else s.records, nextGeneration: if (written) s.nextGeneration + 1 else s.nextGeneration,
@@ -203,8 +210,11 @@ pure def sometimesRefreshed(s: AccessTokens): bool = s.requests.some(r => r.refr
 ```quint
 pure val fair_admit = "weak"
 pure val fair_commit = "weak"
-pure def canProviderTimesOut(s: AccessTokens, id: int): bool = requestOf(s, id).phase == AtProvider
-pure def providerTimesOut(s: AccessTokens, id: int): AccessTokens = finished(id, Transient, 0, requestOf(s, id).observedGeneration, 0, false, s)
+pure def canProviderTimesOut(s: AccessTokens, process: int, root: int): bool = activeOf(s, process, root).phase == AtProvider
+pure def providerTimesOut(s: AccessTokens, process: int, root: int): AccessTokens = {
+  val r = activeOf(s, process, root)
+  finished(r.id, Transient, 0, r.observedGeneration, 0, false, s)
+}
 pure val fair_providerTimesOut = "weak"
 pure def leadsToRequestsSettle(s: AccessTokens, later: AccessTokens): bool = later.requests.every(r => r.phase == ResolutionDone or r.phase == AtStart)
 ```

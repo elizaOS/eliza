@@ -84,15 +84,15 @@ path on that environment's web origin and nothing else.
 ```quint
 type Redirect = { origin: str, path: str }
 type NativeRegistration = { environment: Environment, packageId: str, displayNameClean: bool, redirect: Redirect }
-pure def registrationValid(p: Profile, c: NativeRegistration): bool =
-  profileValid(p) and c.packageId != "" and c.displayNameClean and c.redirect.origin == rowOf(p, c.environment).web and c.redirect.path == p.callbackPath
-pure val cValues = Set(
+pure def registrationValid(p: Profile, reg: NativeRegistration): bool =
+  profileValid(p) and reg.packageId != "" and reg.displayNameClean and reg.redirect.origin == rowOf(p, reg.environment).web and reg.redirect.path == p.callbackPath
+pure val regValues = Set(
   { environment: Production, packageId: "client.one", displayNameClean: true, redirect: { origin: "https://www.one", path: "/auth/native/callback" } },
   { environment: Staging, packageId: "client.one", displayNameClean: true, redirect: { origin: "https://www.one", path: "/auth/native/callback" } },
   { environment: Production, packageId: "", displayNameClean: true, redirect: { origin: "https://www.one", path: "/auth/native/callback" } },
   { environment: Production, packageId: "client.one", displayNameClean: true, redirect: { origin: "https://www.one", path: "/other" } })
-pure def lawRedirectIsExact(p: Profile, c: NativeRegistration): bool =
-  registrationValid(p, c) implies c.redirect == { origin: rowOf(p, c.environment).web, path: p.callbackPath }
+pure def lawRedirectIsExact(p: Profile, reg: NativeRegistration): bool =
+  registrationValid(p, reg) implies reg.redirect == { origin: rowOf(p, reg.environment).web, path: p.callbackPath }
 ```
 
 ### An agent's cloud base is the configured API origin of its environment

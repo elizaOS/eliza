@@ -64,7 +64,7 @@ signing observed and none may be empty or unset.
 
 ```quint
 type SigningRecord = { targetFiles: str, signedTargetFiles: str, updatePackage: str, releaseCertificate: str, verifiedBootKey: str }
-pure def bound(recorded: str, observed: str): bool = recorded != "" and recorded != "UNSET" and recorded == observed
+pure def bound(expected: str, observed: str): bool = expected != "" and expected != "UNSET" and expected == observed
 pure def recordBindsOutputs(r: SigningRecord, o: SigningRecord): bool =
   bound(r.targetFiles, o.targetFiles) and bound(r.signedTargetFiles, o.signedTargetFiles) and bound(r.updatePackage, o.updatePackage) and
   bound(r.releaseCertificate, o.releaseCertificate) and bound(r.verifiedBootKey, o.verifiedBootKey)

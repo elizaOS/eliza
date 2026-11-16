@@ -94,6 +94,14 @@ pure def alwaysNoUnfundedWindow(l: CloudLease): bool = {
 }
 pure def sometimesLiveCaptureFunded(l: CloudLease): bool = l.capture and l.paid >= 2 and l.client >= 2
 pure def sometimesUnsupportedClientOneWindow(l: CloudLease): bool = l.phase == LeaseLive and not(l.negotiated)
+pure val weight_giveConsent = 10
+pure val weight_mintLease = 10
+pure val weight_acknowledgeMint = 10
+pure val weight_bridgeReady = 10
+pure val weight_reserveWindow = 10
+pure val weight_grantWindow = 10
+pure val weight_hostAck = 40
+pure val weight_clientAck = 40
 ```
 
 ### Capture runs only in the live session of the current owner

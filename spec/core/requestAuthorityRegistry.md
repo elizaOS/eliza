@@ -26,14 +26,14 @@ pure val emptyOwner: IssuerOwner = { id: 0, runtimeId: 0, messageObject: 0, agen
 pure val initial: RequestRegistry = { runtimes: List(), messages: List(), states: List(), views: List(), owners: List(), nextIssuer: 1, lastIssuer: 0, lastAllowed: false, lastBound: false }
 pure val byValues = Set(HostBoundary, ExternalPayload)
 pure val runtimeIdValues = Set(1, 2)
-pure val messageObjectValues = Set(1, 2, 3)
-pure val stateObjectValues = Set(1, 2, 3)
+pure val messageObjectValues = Set(1, 2)
+pure val stateObjectValues = Set(1, 2)
 pure val copyIdValues = Set(1, 2, 3)
 pure val dataIdValues = Set(1, 2, 3)
-pure val issuerIdValues = Set(1, 2, 3)
+pure val issuerIdValues = Set(1, 2)
 pure val agentIdValues = Set("agent1", "agent2")
-pure val messageIdValues = Set("message1", "message2")
-pure val roomIdValues = Set("room1", "room2")
+pure val messageIdValues = Set("message1")
+pure val roomIdValues = Set("room1")
 pure val entityIdValues = Set("actor1", "actor2")
 pure val requestHashValues = Set("request1", "request2")
 pure val stateHashValues = Set("state1", "state2")
@@ -42,7 +42,7 @@ pure val observedSourceHashValues = sourceHashValues
 pure val projectionHashValues = Set("projection1", "projection2")
 pure val currentSourceHashValues = sourceHashValues
 pure val currentOriginalHashValues = sourceHashValues
-pure val classificationValues = Set(I::ReadOnlyRequest, I::MutationRequest, I::UnresolvedRequest)
+pure val classificationValues = Set(I::ReadOnlyRequest, I::MutationRequest)
 pure val interpretationValues = I::interpretationValues
 pure def runtimeAt(s: RequestRegistry, runtimeId: int): RuntimeObject = s.runtimes.select(runtime => runtime.id == runtimeId).nthOr(0, emptyRuntime)
 pure def messageAt(s: RequestRegistry, messageObject: int): RequestMessage = s.messages.select(message => message.objectId == messageObject).nthOr(0, emptyMessage)
@@ -93,7 +93,11 @@ pure def observeSources(s: RequestRegistry, by: RegistryCaller, issuerId: int, i
 Discovered by simulation: the source and projection values of a binding
 come from one host observation. Sample them together so the simulation
 exercises an exact view, a mismatched projection and a stale source tuple.
-Each field is still checked with its own identity or hash.
+Each field is still checked with its own identity or hash. Every pairing of
+issuer and runtime has an exact observation, so the first issuer can be
+bound whichever runtime minted it; the rows naming another message or room
+exercise a source that does not match. Messages share one message and room
+ID, since only their object identity selects the issuer.
 
 ```quint
 pure def viewAt(s: RequestRegistry, stateObject: int): ExtractionView = s.views.select(view => view.dataId == stateAt(s, stateObject).dataId).nthOr(0, emptyView)
@@ -102,13 +106,11 @@ pure def extractionViewAllowed(s: RequestRegistry, stateObject: int, messageObje
 type ViewBindingObservation = {issuerId: int, runtimeId: int, sourceMessageId: str, sourceRoomId: str, sourceHash: str, projectionHash: str, expectedProjectionHash: str, extractionAllowed: bool}
 pure val bindingValues = Set(
   {issuerId: 1, runtimeId: 1, sourceMessageId: "message1", sourceRoomId: "room1", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: true},
-  {issuerId: 1, runtimeId: 1, sourceMessageId: "message1", sourceRoomId: "room2", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: true},
-  {issuerId: 1, runtimeId: 1, sourceMessageId: "message2", sourceRoomId: "room1", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: true},
-  {issuerId: 1, runtimeId: 1, sourceMessageId: "message2", sourceRoomId: "room2", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: true},
+  {issuerId: 1, runtimeId: 2, sourceMessageId: "message1", sourceRoomId: "room1", sourceHash: "source2", projectionHash: "projection2", expectedProjectionHash: "projection2", extractionAllowed: true},
+  {issuerId: 2, runtimeId: 1, sourceMessageId: "message1", sourceRoomId: "room1", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: true},
   {issuerId: 2, runtimeId: 2, sourceMessageId: "message1", sourceRoomId: "room1", sourceHash: "source2", projectionHash: "projection2", expectedProjectionHash: "projection2", extractionAllowed: true},
+  {issuerId: 1, runtimeId: 1, sourceMessageId: "message2", sourceRoomId: "room1", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: true},
   {issuerId: 2, runtimeId: 2, sourceMessageId: "message1", sourceRoomId: "room2", sourceHash: "source2", projectionHash: "projection2", expectedProjectionHash: "projection2", extractionAllowed: true},
-  {issuerId: 2, runtimeId: 2, sourceMessageId: "message2", sourceRoomId: "room1", sourceHash: "source2", projectionHash: "projection2", expectedProjectionHash: "projection2", extractionAllowed: true},
-  {issuerId: 2, runtimeId: 2, sourceMessageId: "message2", sourceRoomId: "room2", sourceHash: "source2", projectionHash: "projection2", expectedProjectionHash: "projection2", extractionAllowed: true},
   {issuerId: 1, runtimeId: 1, sourceMessageId: "message1", sourceRoomId: "room1", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection2", extractionAllowed: true},
   {issuerId: 2, runtimeId: 1, sourceMessageId: "message1", sourceRoomId: "room1", sourceHash: "source1", projectionHash: "projection1", expectedProjectionHash: "projection1", extractionAllowed: false})
 pure def canBindView(s: RequestRegistry, by: RegistryCaller, stateObject: int, messageObject: int): bool = by == HostBoundary and stateAt(s, stateObject).objectId != 0 and messageAt(s, messageObject).objectId != 0
@@ -133,18 +135,20 @@ Discovered by the proof: each owner retains the identity uniqueness of its own c
 
 Discovered by simulation: completing an attempt requires a live issuer, a committed restriction and a current bound view before the operation and result can be observed. Give those events and the matching operation and child observations more chances in the harness. Include both a mutation that can complete and a restricted request whose denial can transfer.
 
+Discovered by simulation: attempt, result and denial IDs are each owned once across every issuer, so a run that spends them early can never complete. Sample a third attempt ID, let either bound result be a projection source, project only onto fresh result objects that no attempt binds, and let an operation check name no denial (`""`) as the imported completion model does; otherwise two denials disable every later check. Registration and classification samples stay on the values that can mint a completion: the captured registration is known, and a request is restricted as read-only or mutation (an unresolved restriction still arises from contradiction). A bound result and its observed source share one fingerprint, so here a changed association comes from a differing projection hash, and a differing target fingerprint leaves a copy without a fact; the sticky source mismatch is the [completion model's](./requestCompletions.md) own rule. A later restriction commit or view rebinding usually taints the issuer or unbinds the view, so those run rarely while the completion steps run often.
+
 ```quint
-pure val attemptIdValues = Set("attempt1", "attempt2")
+pure val attemptIdValues = Set("attempt1", "attempt2", "attempt3")
 pure val resultIdValues = Set("result1", "result2")
-pure val sourceIdValues = Set("result1")
-pure val targetIdValues = Set("result2")
+pure val sourceIdValues = resultIdValues
+pure val targetIdValues = Set("result3", "result4")
 pure val operationValues = Set(C::NoOperation, C::GetOperation, C::CreateOperation, C::UpdateOperation)
 pure val registeredValues = Set(C::CreateOperation, C::UpdateOperation)
-pure val denialIdValues = Set("denial1", "denial2")
-pure val fingerprintValues = Set("fingerprint1", "fingerprint2")
+pure val denialIdValues = Set("", "denial1", "denial2")
+pure val fingerprintValues = Set("fingerprint1")
 pure val sourceFingerprintValues = fingerprintValues
-pure val targetFingerprintValues = fingerprintValues
-pure val registrationValues = C::registrationValues
+pure val targetFingerprintValues = Set("fingerprint1", "fingerprint2")
+pure val registrationValues = Set(C::sampleRegistration)
 pure val observationValues = C::observationValues
 pure val childValues = C::childValues
 pure def attemptOwner(s: RequestRegistry, attemptId: str): IssuerOwner = s.owners.select(owner => owner.completions.attempts.some(attempt => attempt.id == attemptId)).nthOr(0, emptyOwner)
@@ -188,7 +192,7 @@ pure def inspectCompletion(s: RequestRegistry, issuerId: int, resultId: str, fin
   val owner = refreshedOwner(resultOwner(s, resultId), s)
   replaceOwner({ ...owner, completions: C::inspectCompletion(owner.completions, resultId, true, fingerprint, observation, child) }, s)
 }
-pure val sourceDenialValues = denialIdValues
+pure val sourceDenialValues = Set("denial1", "denial2")
 pure val errorIdValues = Set("error1", "error2")
 pure val targetResultValues = resultIdValues
 pure val expectedAttemptValues = attemptIdValues
@@ -212,17 +216,17 @@ pure def alwaysResultOwnershipIsUnique(s: RequestRegistry): bool = s.owners.ever
 pure def alwaysOwnersRetainProtocolSafety(s: RequestRegistry): bool = s.owners.every(owner => I::alwaysIssuerRevision(owner.issuer) and I::alwaysTaintedIssuerUnresolved(owner.issuer) and C::alwaysCompletionOwnsAttempt(owner.completions) and C::alwaysAttemptAndResultIdentityUnique(owner.completions))
 pure def lawExternalCannotMint(s: RequestRegistry, runtimeId: int, messageObject: int): bool = not(canBeginIssuer(s, ExternalPayload, runtimeId, messageObject))
 pure def lawCrossIssuerProjectionRejected(s: RequestRegistry, by: RegistryCaller, issuerId: int, sourceId: str, targetId: str): bool = resultOwner(s, sourceId).id != issuerId implies not(canProjectResult(s, by, issuerId, sourceId, targetId))
-pure val weight_registerRuntime = 4
-pure val weight_createMessage = 4
-pure val weight_createState = 4
-pure val weight_beginIssuer = 8
-pure val weight_commitRestriction = 8
-pure val weight_bindView = 8
-pure val weight_beginAttempt = 10
-pure val weight_checkOperation = 12
-pure val weight_bindResult = 12
-pure val weight_projectResult = 8
-pure val weight_copyCompletion = 8
+pure val weight_registerRuntime = 12
+pure val weight_createMessage = 12
+pure val weight_createState = 12
+pure val weight_beginIssuer = 12
+pure val weight_commitRestriction = 3
+pure val weight_bindView = 4
+pure val weight_beginAttempt = 40
+pure val weight_checkOperation = 40
+pure val weight_bindResult = 40
+pure val weight_projectResult = 50
+pure val weight_copyCompletion = 50
 pure val weight_inspectCompletion = 8
 pure val weight_wrapDenialError = 8
 pure val weight_transferDenial = 8

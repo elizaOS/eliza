@@ -127,13 +127,14 @@ selection epoch.
 ```quint
 pure def draftOf(drafts: int -> int, room: int): int = if (drafts.keys().contains(room)) drafts.get(room) else 0
 pure def canChooseConversation(c: ConversationLoad, target: int): bool = target > 0
+pure def switchConversation(c: ConversationLoad, target: int): ConversationLoad = {
+  val saved = if (c.active > 0) c.drafts.put(c.active, c.composer) else c.drafts
+  { ...claimedBy(target, c), selectionEpoch: c.selectionEpoch + 1, nextCall: c.nextCall + 1, drafts: saved, composer: draftOf(saved, target),
+    calls: c.calls.append({ callId: c.nextCall, epoch: c.selectionEpoch + 1, target: target, previous: c.active, waiting: true }) }
+}
 pure def chooseConversation(c: ConversationLoad, target: int): ConversationLoad =
   if (target == c.active and c.loaded == c.active) { ...c, selectionEpoch: c.selectionEpoch + 1 }
-  else {
-    val saved = if (c.active > 0) c.drafts.put(c.active, c.composer) else c.drafts
-    { ...claimedBy(target, c), selectionEpoch: c.selectionEpoch + 1, nextCall: c.nextCall + 1, drafts: saved, composer: draftOf(saved, target),
-      calls: c.calls.append({ callId: c.nextCall, epoch: c.selectionEpoch + 1, target: target, previous: c.active, waiting: true }) }
-  }
+  else switchConversation(c, target)
 pure val targetValues = Set(0, 1, 2, 3)
 pure def stepLeavingSavesDraft(before: ConversationLoad, via: str, after: ConversationLoad): bool =
   (via == "chooseConversation" and after.active != before.active) implies
@@ -155,10 +156,10 @@ pure def callOf(c: ConversationLoad, callId: int): SelectionCall = c.calls.selec
 pure def canSelectionReply(c: ConversationLoad, callId: int): bool = callOf(c, callId).waiting
 pure def selectionReply(c: ConversationLoad, callId: int, selectionResult: SelectionResult): ConversationLoad = {
   val call = callOf(c, callId)
-  val settled = { ...c, calls: c.calls.select(k => k.callId != callId), lastReply: callId }
-  if (call.epoch != c.selectionEpoch or selectionResult == SelectOk or selectionResult == SelectMissing) settled
-  else if (call.previous > 0) { ...claimedBy(call.previous, settled), composer: draftOf(c.drafts, call.previous) }
-  else { ...settled, notices: c.notices + 1 }
+  val resolved = { ...c, calls: c.calls.select(k => k.callId != callId), lastReply: callId }
+  if (call.epoch != c.selectionEpoch or selectionResult == SelectOk or selectionResult == SelectMissing) resolved
+  else if (call.previous > 0) { ...claimedBy(call.previous, resolved), composer: draftOf(c.drafts, call.previous) }
+  else { ...resolved, notices: c.notices + 1 }
 }
 pure val callIdValues = Set(1, 2, 3)
 pure def stepOutdatedSelectionChangesNothing(before: ConversationLoad, via: str, after: ConversationLoad): bool =

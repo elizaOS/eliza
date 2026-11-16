@@ -30,8 +30,8 @@ pure val keyValues = Set("k1", "k2", "k3", "k4", "k5")
 pure val contentValues = Set("milk", "call mom")
 pure def keyAdmits(s: Todos, key: str, request: TodoRequest): bool = s.mutations.every(m => m.key != key or m.request == request)
 pure def replayed(s: Todos, key: str): bool = s.mutations.some(m => m.key == key)
-pure def recordMutation(key: str, request: TodoRequest, s: Todos, outcome: TodoOutcome): Todos =
-  { ...s, mutations: s.mutations.append({ key: key, request: request }), lastOutcome: outcome }
+pure def recordMutation(key: str, request: TodoRequest, s: Todos, verdict: TodoOutcome): Todos =
+  { ...s, mutations: s.mutations.append({ key: key, request: request }), lastOutcome: verdict }
 pure def alwaysKeysAreUnique(s: Todos): bool = s.mutations.every(m => s.mutations.select(o => o.key == m.key).length() == 1)
 ```
 
