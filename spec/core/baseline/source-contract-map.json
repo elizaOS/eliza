@@ -6873,25 +6873,33 @@
       "source": "packages/core/src/views/view-action-handoff.ts",
       "spec": "spec/core/views.md",
       "rules": [
-        "Completion requires matching request renderer installation and view identities"
+        "Completion requires matching request renderer installation and view identities",
+        "Candidate observations preserve conditional reflection and codec order",
+        "Eligible actions retain legacy paths and derive canonical prepared identity",
+        "The newest selected result prevents every older read"
       ],
-      "classification": "documented-function-contracts-and-source-branches",
+      "classification": "source-reviewed-domain-model-with-explicit-boundaries",
       "sourceSha256": "f99e662eff594b91d96d3c1927d7704d3ad35f0b9b9166c9282afc6a448fb320",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/views/view-action-handoff.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
+      "implementationProofBoundary": "The pure completed-action policy computes family eligibility, exact prepared identity, newest-first selection and conditional failure order over typed potential observations. Own-data/proxy/array reflection, literal/lexical/identifier codecs, URI/string projection and demand-driven extraction remain host adapter contracts. Finite actual pinned full-parser comparisons and model proofs are separate evidence. The existing request-local epoch projection does not prove the authoritative renderer window/path/epoch or DOM adapter; viewNavigation owns that state. No source-product refinement theorem is claimed.",
+      "relatedSpecs": [
+        "spec/core/views.md",
+        "spec/core/viewNavigation.md"
+      ]
     },
     {
       "source": "packages/core/src/views/view-interact-protocol.ts",
       "spec": "spec/core/views.md",
       "rules": [
-        "Completion requires matching request renderer installation and view identities"
+        "Completion requires matching request renderer installation and view identities",
+        "Candidate observations preserve conditional reflection and codec order"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "bdce19f41e0f0e2c79627a99d6744416dffc55b854410c01ebd4ba91b721df0c",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/views/view-interact-protocol.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
+      "implementationProofBoundary": "The existing request identity/epoch projection and canonical prepared tuple matching are specified in views.md. Client and installation IDs remain routing-only; their exact ASCII grammar and readViewInteractionClientId reflection are host codec observations, not authentication or a universal raw-JavaScript refinement theorem. Actual renderer fence and DOM delivery belong to the navigation adapter. Source/type/fixture inventory remains reference evidence.",
       "relatedSpecs": [
         "spec/core/views.md"
       ]
