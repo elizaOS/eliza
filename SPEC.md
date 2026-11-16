@@ -582,9 +582,12 @@ under `src/`.
   the changed code. A passing typecheck is kept under what the compiler read:
   the package's files but its Markdown and Quint, its `tsconfig.json` and the
   configurations it extends, every file outside `node_modules` the compile
-  read, the lock file and the compiler's bytes. A driver's passing run is kept
-  under the files its tests read and the events the simulator found; a
-  failure, and a `driver:` program, run every time.
+  read, the lock file and the compiler's bytes. A test pass is kept under the
+  files its tests read, which are the package's but its specs' Markdown and
+  their Quint in `gen/`: a test reads the generated modules, so a prose edit
+  runs no test again. A driver's passing run is kept under those files and the
+  events the simulator found; a failure, and a `driver:` program, run every
+  time.
   The specs are simulated at once.
 - **The spec covers the rules, not the plumbing.** Chat, HTTP and storage stay
   hand-written around the generated core, as `vibestack/examples/dashboard/src/notify.vibe`

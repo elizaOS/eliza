@@ -687,32 +687,32 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.equal(runs(), 1);
     fs.appendFileSync(path.join(root, "spec/door.md"), "\nProse that no compiler reads.\n");
     await run(root);
-    assert.deepEqual([runs(), typed()], [2, compiled], "the tests read the prose, and the compiler does not");
+    assert.deepEqual([runs(), typed()], [1, compiled], "neither the tests nor the compiler read the prose: they read the generated modules");
     fs.writeFileSync(path.join(root, ".shared/one.ts"), 'export const one = "1";\n');
     const mistyped = await run(root);
     assert.equal(mistyped.said("types", /./)?.ok, false, `a file the compiler read changed, outside what the package's inputs cover\n${mistyped.text}`);
     fs.writeFileSync(path.join(root, "src/door.ts"), "export const door = 2;\n");
     await run(root);
-    assert.equal(runs(), 3);
+    assert.equal(runs(), 2);
     fs.mkdirSync(path.join(root, "test"));
     fs.writeFileSync(path.join(root, "test/door.test.ts"), 'import { test } from "node:test";\nimport { door } from "../src/door.ts";\ntest("uncited", () => { void door; });\n');
     const turbo = await exec(process.execPath, [path.join(project, "vibestack/spec.ts"), "check", "--json"], root, { ...process.env, TURBO_HASH: "1", npm_lifecycle_event: "check" });
     const said = answer(turbo.stdout).results.filter((r: Result) => r.stage === "tests").map((r: Result) => [r.ok, r.summary]);
     assert.deepEqual(said, [[false, "1 tests cite no story or rule: cite the one each serves, fold it into the journey that does, or propose deleting it"],
       [true, "note: no test or driver checks spec/door.md; a story that leaves the verified core needs a journey that cites it"], [true, "pass"]]);
-    assert.equal(runs(), 4, "a Turbo environment value cannot claim that the test script ran");
+    assert.equal(runs(), 3, "a Turbo environment value cannot claim that the test script ran");
     const receipt = testReceipt(root);
     fs.mkdirSync(path.dirname(receipt), { recursive: true });
     fs.writeFileSync(receipt, JSON.stringify({ fingerprint: testInputs(root) }));
     const reused = await run(root);
     assert.ok(reused.said("tests", /^pass: the test runner recorded success for these inputs\n$/), reused.text);
-    assert.equal(runs(), 4);
+    assert.equal(runs(), 3);
     fs.writeFileSync(path.join(root, "src/door.ts"), "export const door = 3;\n");
     await run(root);
-    assert.equal(runs(), 5, "a receipt for older source cannot suppress the tests");
+    assert.equal(runs(), 4, "a receipt for older source cannot suppress the tests");
     const workspace = scratch({ "tsconfig.json": "{}", "package.json": JSON.stringify({ devDependencies: { kit: "workspace:*" } }),
       ...Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts", "test/fixtures/p/package.json",
-        "test/fixtures/p/a.ts", "apps/other/package.json", "apps/other/a.ts", "kit/package.json", "kit/a.ts", "kit/spec/a.md", "kit/nested/package.json", "kit/nested/a.ts", "kit/README.md", "kit/test/a.test.ts", "kit/gen/a.ts", "notes.md", "style.css", "gen/a.qnt"].map((f) => [f, "{}"])) });
+        "test/fixtures/p/a.ts", "apps/other/package.json", "apps/other/a.ts", "kit/package.json", "kit/a.ts", "kit/spec/a.md", "kit/nested/package.json", "kit/nested/a.ts", "kit/README.md", "kit/test/a.test.ts", "kit/gen/a.ts", "notes.md", "style.css", "gen/a.qnt", "spec/a.md"].map((f) => [f, "{}"])) });
     fs.mkdirSync(path.join(workspace, "node_modules"));
     fs.symlinkSync("../kit", path.join(workspace, "node_modules/kit"), "dir");
     const inputs = () => (["tests", "types"] as const).map((read) => testInputs(workspace, "normal", read));
@@ -723,13 +723,13 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     };
     assert.deepEqual(Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts",
       "test/fixtures/p/a.ts", "apps/other/a.ts", "kit/a.ts", "kit/package.json", "kit/spec/a.md", "kit/nested/a.ts", "kit/README.md", "kit/test/a.test.ts", "kit/gen/a.ts",
-      ".DS_Store", "notes.md", "style.css", "gen/a.qnt"].map((f) => [f, changed(f)])), {
+      ".DS_Store", "notes.md", "style.css", "gen/a.qnt", "spec/a.md"].map((f) => [f, changed(f)])), {
       "src/a.ts": [true, true], "test/a.test.ts": [true, true], "test/drivers/a.ts": [true, true], "test/traces/a.jsonl": [true, false],
       "test/counterexamples/a.json": [true, false], "test/bombadil.ts": [true, true], "test/fixtures/p/a.ts": [true, true], "apps/other/a.ts": [false, false],
       "kit/a.ts": [true, true], "kit/package.json": [true, true], "kit/spec/a.md": [false, false], "kit/nested/a.ts": [false, false],
       "kit/README.md": [false, false], "kit/test/a.test.ts": [false, false], "kit/gen/a.ts": [false, false], ".DS_Store": [false, false],
-      "notes.md": [true, false], "style.css": [true, false], "gen/a.qnt": [true, false],
-    }, "the tests read the package, its test fixtures and what its workspace dependencies ship to it; the typecheck reads only scripts and JSON, and no traces or counterexamples");
+      "notes.md": [true, false], "style.css": [true, false], "gen/a.qnt": [false, false], "spec/a.md": [false, false],
+    }, "the tests read the package, its test fixtures and what its workspace dependencies ship to it; the typecheck reads only scripts and JSON, and no traces or counterexamples; neither reads a spec's prose or its Quint copy");
     fs.writeFileSync(path.join(workspace, "kit/a.ts"), 'export * from "./gen/a.ts";\n');
     assert.deepEqual(changed("kit/gen/a.ts"), [true, true], "a dependency's gen/ is read once its code imports it");
   });
