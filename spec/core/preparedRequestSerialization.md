@@ -53,10 +53,17 @@ pure def lawUndefinedRootHasNoBody(serializer: SerializerChoice): bool =
 An active ancestor reference is a cycle. A shared reference may be visited
 again after its first frame leaves the stack. Validation rejects nonfinite
 numbers, non-JSON primitive types and nonplain objects other than arrays.
-Enumerable own object keys require data descriptors. Array slots follow
+Enumerable own string keys require data descriptors. Array slots follow
 JavaScript indexed reads. Undefined and sparse array slots pass validation
 and use JavaScript's JSON rendering rules. The walk abstracts the traversal
 observations supplied by the adapter. It preserves exact ancestor identity.
+
+The pinned walk and stringifier read array indices separately. The
+stringifier can call a non-enumerable `toJSON` hook after the walk has
+visited the enumerable string keys. The adapter reports the resulting complete string, including
+where a later indexed read or a hook changes the encoded value. The
+validation facts establish eligibility to stringify the projected graph.
+The actual string establishes what was serialized.
 
 ```quint
 type GraphValue = PrimitiveValue | UndefinedValue | NonFiniteNumber | NonJsonPrimitive | OpaqueObject | ContainerValue({identity: int})
