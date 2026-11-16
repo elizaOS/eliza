@@ -113,20 +113,6 @@ export function mirrorGen(root: string, specs: Spec[]) {
 }
 
 /**
- * Deletes what the VibeLang compiler declared for a `.vibe` source since deleted or renamed. tsconfig.json puts its
- * sidecar directory on `rootDirs`, so TypeScript and the linter see `.vibe` modules; a stale declaration there would
- * still resolve an import of the missing source.
- */
-export function pruneSidecars(dir: string) {
-  const sidecars = (ts.readConfigFile(path.join(dir, "tsconfig.json"), ts.sys.readFile).config as { vibe?: { sidecarDir?: string } } | undefined)?.vibe?.sidecarDir;
-  if (!sidecars || !fs.existsSync(path.join(dir, sidecars))) return;
-  for (const file of fs.readdirSync(path.join(dir, sidecars), { recursive: true, encoding: "utf8" })) {
-    const source = /^(.+?)(?:\.vibe\.pure\.d\.ts|\.d\.vibe\.ts|\.d\.ts)$/.exec(file)?.[1];
-    if (source && !fs.existsSync(path.join(dir, `${source}.vibe`))) fs.rmSync(path.join(dir, sidecars, file));
-  }
-}
-
-/**
  * Quint's typed IR of every spec, typechecked all at once and without blocking, or remembered: it depends only on the
  * Quint of the spec and of what it imports. Each promise rejects with the errors of its spec. gen/<name>.qnt is written
  * for every spec, since the simulation harness imports it.

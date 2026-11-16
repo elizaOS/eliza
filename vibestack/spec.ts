@@ -13,10 +13,11 @@ import { bin, run } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
 import { cacheCredentials, entry, remembered, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
-import { generated, mirrorGen, pruneSidecars, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
+import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
-import { sha, indent, packageScripts, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, type Reported, type SrcFile } from "./util.ts";
+import { sha, indent, packageScripts, pruneSidecars, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
+import { availableDirectory, generatedSkillIgnores, linkProjectSkills, skillRoot } from "./skill-links.ts";
 
 export { readSpecs, parseSpec, expandListHelpers, type Spec, type Rule, type Story } from "./parse.ts";
 export { pending, pendingKey, pendingContracts, acceptReviews, acceptContracts, dependencies, type Lock, type Pending } from "./review.ts";
@@ -26,7 +27,7 @@ export { danglingCitations } from "./util.ts";
 export { scanSpec } from "./scan.ts";
 
 export interface Result { ok: boolean; stage: "model" | "always" | "sometimes" | "replay" | "types" | "proof" | "tests" | "traces" | "review" | "skipped"; summary: string; detail: string; where?: string; /** The rules the result concerns, each by its spec and key. */ rules?: { file: string; key: string }[] }
-/** The Node these tools run on, as .nvmrc and the root's `engines` name it. */
+/** The Node these tools run on: the major release .nvmrc pins, and the root's `engines` floor. */
 export const NODE = 26;
 export const show = ({ ok, stage, summary, detail }: Result) => `${stage === "skipped" ? "-" : ok ? "✓" : "✗"} ${stage.padEnd(9)} ${summary}${detail ? "\n" + detail.trimEnd() : ""}`;
 
@@ -103,10 +104,15 @@ function lockProject(root: string): () => void {
 async function* generating(memory: Memory, specs: Spec[]): AsyncGenerator<{ spec: Spec; model: Model; error?: undefined } | { spec: Spec; model?: undefined; error: Error }> {
   const models = new Map<string, Model>();
   const typed = typecheckAll(memory, specs);
-  for (const spec of specs) {
-    const missing = spec.imports.find((i) => !models.has(i));
-    yield missing ? { spec, error: new Error(`it imports ${missing}, which is not a valid model`) }
-      : await typed.get(spec.name)!.then((ir) => ({ spec, model: generated(memory.root, spec, ir, models) })).catch((error: Error) => ({ spec, error }));
+  try {
+    for (const spec of specs) {
+      const missing = spec.imports.find((i) => !models.has(i));
+      yield missing ? { spec, error: new Error(`it imports ${missing}, which is not a valid model`) }
+        : await typed.get(spec.name)!.then((ir) => ({ spec, model: generated(memory.root, spec, ir, models) })).catch((error: Error) => ({ spec, error }));
+    }
+  } finally {
+    // A caller that stops early must not restore gen/ while a typecheck still writes into it.
+    await Promise.allSettled(typed.values());
   }
 }
 
@@ -138,8 +144,7 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
 }
 
 /**
- * The proof stage, run while the typecheck does: what it reports, in order, and, for `accept unproved`, the ledger to
- * record, if every unit could be checked. `accepted` is the ledger as it is.
+ * The proof stage, run while the typecheck does: what it reports, in order, and the proposed ledger if it passes.
  */
 async function proofStage(root: string, memory: Memory, specs: Spec[], models: Model[], srcFiles: SrcFile[], accepted: Record<string, Accepted | undefined>, accept: false | "reviews" | "unproved"): Promise<{ results: Result[]; ledger?: Record<string, Accepted> }> {
   const results: Result[] = [];
@@ -149,7 +154,6 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
     const dafnyProblem = (await dafnyVersion()).problem;
     if (dafnyProblem) throw new Error(dafnyProblem);
     const ledger: Record<string, Accepted> = {};
-    let recordable = true;
     fs.rmSync(path.join(root, "gen/proof"), { recursive: true, force: true });
     const units = proofUnits(root, models, srcFiles);
     for (const f of strayProofFiles(root, units))
@@ -205,8 +209,8 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
       const valid = !u.src && was?.text === meaning ? was.unproved : [];
       const outdated = was && was.text !== meaning ? `; the ${was.unproved.length} accepted earlier were accepted for another text of this unit or its proof file, and no longer count` : "";
       const fresh = proof.unproved.filter((x) => !valid.includes(x));
-      const stale = valid.filter((x) => !proof.unproved.includes(x));
-      if (!u.src && proof.unproved.length) ledger[u.unit] = { text: meaning, unproved: proof.unproved };
+      const retained = accept === "unproved" ? proof.unproved : valid.filter((x) => proof.unproved.includes(x));
+      if (!u.src && retained.length) ledger[u.unit] = { text: meaning, unproved: retained };
       const start = proof.scaffold ? `\n      their lemmas without a body yet, each with one to start from: ${scaffold}` : "";
       /** The rules the obligations name: the transition or law each is of, and every definition its clause mentions. */
       const named = (xs: string[]) => {
@@ -221,22 +225,19 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
         // A precondition is assumed by the proof and checked by no one: callers outside verified code must meet it.
         + (u.requires ? `, under ${u.requires} //@ requires that its unverified callers must meet` : "");
       if (proof.errors.length) {
-        recordable = false;
         said(false, `${u.unit}: Dafny could not check it (full output in ${logFile}, final Dafny in ${dfy})`, indent(proof.errors.join("\n")), u.unit);
       } else if (u.src && proof.unproved.length) {
-        recordable = false;
         said(false, `${u.unit}: ${proof.unproved.length} of ${proof.total} obligations not proved. Hand-written code is not simulated, so they must be proved in ${u.proofFile}. Full output in ${logFile}, final Dafny in ${dfy}`, listed(proof.unproved) + start, u.unit);
       } else if (fresh.length && accept !== "unproved") {
         said(false, `${u.unit}: ${fresh.length} of ${proof.total} obligations not proved${outdated}. Prove them in ${u.proofFile}, or add the rule that makes them provable; if simulation is enough for them, that is the user's decision (\`pnpm accept unproved\`). Full output in ${logFile}, final Dafny in ${dfy}`, listed(fresh) + start, u.unit, named(fresh));
       } else {
-        said(true, `${u.unit}: ${proof.unproved.length ? `${proof.total} obligations, of which ${proof.unproved.length} are simulated only (accepted) and the rest proved` : `all ${proof.total} obligations proved`} for all states and inputs${assuming}`
-          + (stale.length && accept !== "unproved" ? `; ${stale.length} accepted earlier now prove, run \`pnpm accept unproved\` to tighten the ledger` : ""), [
+        said(true, `${u.unit}: ${proof.unproved.length ? `${proof.total} obligations, of which ${proof.unproved.length} are simulated only (accepted) and the rest proved` : `all ${proof.total} obligations proved`} for all states and inputs${assuming}`, [
             ...(proof.unproved.length ? [`    simulated only, accepted in spec/lock.json:\n${listed(proof.unproved)}`] : []),
             ...(assumed.length ? [`    assumed from the module it is proved against, simulated only there:\n${indent(u.rests.flatMap((name) => (proved.get(name)?.unproved ?? []).map((clause) => `${name}: ${clause}`)).join("\n"))}`] : []),
           ].join("\n"), u.unit);
       }
     }
-    return { results, ...(accept === "unproved" && recordable ? { ledger } : {}) };
+    return { results, ...(results.every((r) => r.ok) ? { ledger } : {}) };
   } catch (e) {
     said(false, (e as Error).message);
     return { results };
@@ -365,21 +366,29 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
       review(false, "sources changed while the check ran; nothing was accepted", indent((e as Error).message));
     }
   }
-  if (accept === "unproved" && allOk && ledger) {
-    const accepted = lock.unproved;
-    writeLedger(root, ledger, lock);
+  const formal = todos.every(({ todo }) => !todo.some((t) => t.status === "story has no rules" || t.status === "not formalized"));
+  const record = accept === "reviews" && allOk && formal;
+  const recordExceptions = accept === "unproved" && allOk;
+  if (record) acceptAllReviews(root, specs, srcFiles, { ...lock, unproved: ledger ?? lock.unproved });
+  if (ledger && (record || recordExceptions)) {
+    if (recordExceptions) writeLedger(root, ledger, lock);
     const entries = (l: Record<string, Accepted | undefined>) => Object.entries(l).flatMap(([unit, a]) => (a?.unproved ?? []).map((x) => `${unit}: ${x}  [${a!.text}]`));
-    const [before, after] = [entries(accepted), entries(ledger)];
+    const [before, after] = [entries(lock.unproved), entries(ledger)];
     const added = after.filter((x) => !before.includes(x));
     const removed = before.filter((x) => !after.includes(x));
     const line = (sign: string) => (x: string) => `    ${sign} ${x.replace(/  \[[^\]]*\]$/, "")}`;
-    report({ ok: true, stage: "proof", summary: `${path.relative(root, ledgerFile(root))}: ${added.length} added, ${removed.length} removed`,
+    if (recordExceptions || removed.length) report({ ok: true, stage: "proof", summary: `${path.relative(root, ledgerFile(root))}: ${added.length} added, ${removed.length} removed`,
       detail: [...added.map(line("+")), ...removed.map(line("-"))].join("\n") });
   }
-  const formal = todos.every(({ todo }) => !todo.some((t) => t.status === "story has no rules" || t.status === "not formalized"));
-  const record = accept === "reviews" && allOk && formal;
-  if (record) acceptAllReviews(root, specs, srcFiles, lock);
   const why = accept !== "reviews" ? "then run `pnpm accept`" : !allOk ? "nothing was accepted: fix the stages above first" : "every story needs rules and every rule a quint block before anything can be accepted";
+  if (ledger && !record && accept !== "unproved") {
+    const ledgerPath = path.relative(root, ledgerFile(root));
+    for (const [unit, was] of Object.entries(lock.unproved)) {
+      const stillUnproved = new Set(ledger[unit]?.unproved);
+      const obsolete = was.unproved.filter((x) => !stillUnproved.has(x));
+      if (obsolete.length) review(false, `${ledgerPath}: ${obsolete.length} obsolete simulated-only proof exception${obsolete.length === 1 ? "" : "s"} in ${unit}, ${why}`, indent(obsolete.join("\n")), ledgerPath);
+    }
+  }
   const items = (todo: Pending[], heading: string) => {
     const shown = moved(todo);
     return todo.map((t) => "    " + showPending(t)).join("\n") + (shown.length ? `\n\n    ${heading}:\n${shown.join("\n")}` : "");
@@ -415,26 +424,37 @@ const VIBELANG = {
 export function init(root: string, warn: (message: string) => void = (message) => console.warn(`note: ${message}`)): string[] {
   const pkg = path.join(import.meta.dirname, "..");
   const done: string[] = [];
-  const add = (file: string, content: () => string) => {
+  const add = (file: string, content: () => string | Buffer) => {
     if (fs.lstatSync(path.join(root, file), { throwIfNoEntry: false })) return;
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     fs.writeFileSync(path.join(root, file), content());
     done.push(file);
   };
-  for (const name of fs.readdirSync(path.join(pkg, ".claude/skills")).sort()) {
-    const source = `.claude/skills/${name}`;
-    add(`${source}/SKILL.md`, () => fs.readFileSync(path.join(pkg, source, "SKILL.md"), "utf8"));
-    const link = path.join(root, `.agents/skills/${name}`);
-    if (!fs.lstatSync(link, { throwIfNoEntry: false })) {
-      fs.mkdirSync(path.dirname(link), { recursive: true });
-      fs.symlinkSync(path.relative(path.dirname(link), path.join(root, source)), link, "dir");
-      done.push(`.agents/skills/${name}`);
+  const addSkillFiles = (directory: string): void => {
+    const existing = fs.lstatSync(path.join(root, directory), { throwIfNoEntry: false });
+    if (existing && !existing.isDirectory()) return;
+    const source = path.join(pkg, directory);
+    for (const name of fs.readdirSync(source).sort()) {
+      if (name === ".DS_Store") continue;
+      const file = `${directory}/${name}`;
+      const entry = fs.lstatSync(path.join(source, name));
+      if (entry.isDirectory()) addSkillFiles(file);
+      else if (entry.isFile()) add(file, () => fs.readFileSync(path.join(source, name)));
     }
+  };
+  const hasClaudeDirectory = availableDirectory(path.join(root, ".claude"), warn);
+  if (hasClaudeDirectory) {
+    addSkillFiles(skillRoot);
+    done.push(...linkProjectSkills(root, warn));
   }
-  // AGENTS.md links to it.
   add("SPEC.md", () => fs.readFileSync(path.join(pkg, "SPEC.md"), "utf8"));
+  const referenceDir = "vibestack/reference";
+  if (["vibestack", referenceDir].every((dir) => fs.lstatSync(path.join(root, dir), { throwIfNoEntry: false })?.isDirectory() ?? true)) {
+    const file = `${referenceDir}/typereferences.md`;
+    add(file, () => fs.readFileSync(path.join(pkg, file)));
+  }
   // The repository's own guard for what the tools write; the rules about this repository's tools stay behind.
-  add(".claude/settings.json", () => {
+  if (hasClaudeDirectory) add(".claude/settings.json", () => {
     const { permissions } = JSON.parse(fs.readFileSync(path.join(pkg, ".claude/settings.json"), "utf8")) as { permissions: { deny: string[]; ask: string[] } };
     return JSON.stringify({ permissions: { ...permissions, deny: permissions.deny.filter((rule) => !rule.includes("/vibestack/")) } }, null, 2) + "\n";
   });
@@ -455,10 +475,16 @@ export function init(root: string, warn: (message: string) => void = (message) =
     done.push("AGENTS.md (Vibestack instructions)");
   }
   const claude = path.join(root, "CLAUDE.md");
-  const own = fs.existsSync(claude) ? fs.readFileSync(claude, "utf8") : "";
-  if (!/^@AGENTS\.md\s*$/m.test(own)) {
+  const claudeEntry = fs.lstatSync(claude, { throwIfNoEntry: false });
+  const own = claudeEntry?.isFile() ? fs.readFileSync(claude, "utf8") : undefined;
+  const instruction = own?.trim();
+  if (!claudeEntry || instruction === "" || instruction === "@AGENTS.md") {
+    if (claudeEntry) fs.unlinkSync(claude);
+    fs.symlinkSync("AGENTS.md", claude, "file");
+    done.push("CLAUDE.md (symlink to AGENTS.md)");
+  } else if (own !== undefined && !/^@AGENTS\.md\s*$/m.test(own)) {
     const eol = own.includes("\r\n") ? "\r\n" : "\n";
-    fs.writeFileSync(claude, `${own.trimEnd()}${own.trim() ? eol + eol : ""}@AGENTS.md${eol}`);
+    fs.writeFileSync(claude, `${own.trimEnd()}${eol}${eol}@AGENTS.md${eol}`);
     done.push("CLAUDE.md (imports AGENTS.md)");
   }
   add("tsconfig.json", () => JSON.stringify({
@@ -469,7 +495,7 @@ export function init(root: string, warn: (message: string) => void = (message) =
   add("spec/index.md", () => "");
   const ignore = path.join(root, ".gitignore");
   const ignored = fs.existsSync(ignore) ? fs.readFileSync(ignore, "utf8") : "";
-  const missing = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/"].filter((l) => !ignored.split("\n").includes(l));
+  const missing = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", ...generatedSkillIgnores].filter((l) => !ignored.split("\n").includes(l));
   if (missing.length) { fs.writeFileSync(ignore, ignored + (ignored && !ignored.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n"); done.push(".gitignore"); }
   const manifest = path.join(root, "package.json");
   {
