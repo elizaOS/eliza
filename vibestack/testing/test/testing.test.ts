@@ -85,6 +85,14 @@ const vitest = (dir: string, env: Record<string, string> = {}, rerun?: string, m
 
 describe.concurrent("generated tests", () => {
   it("are the same bytes on every run, follow their sources, and pass for a package that keeps its contracts", async () => {
+    const indirect = fixture("indirect");
+    fs.renameSync(path.join(indirect, "src/point.schema.vibe"), path.join(indirect, "src/point.vibe"));
+    fs.writeFileSync(path.join(indirect, "src/point.schema.ts"), 'export { Point } from "./point.vibe";\n');
+    const indirectRun = await vitest(indirect);
+    expect(indirectRun.status, indirectRun.said).toBe(0);
+    expect(indirectRun.said).toMatch(/Tests {2}14 passed \(14\)/);
+    expect(JSON.parse(fs.readFileSync(testReceipt(indirect), "utf8"))).toEqual({ fingerprint: testInputs(indirect) });
+
     const dir = fixture("good"), out = path.join(dir, ".cache/generated/tests");
     fs.copyFileSync(path.join(root, "pnpm-lock.yaml"), path.join(dir, "pnpm-lock.yaml"));
     // src/point.schema.vibe is VibeLang, which the generator loads through vibelang/register.
