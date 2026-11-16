@@ -510,8 +510,18 @@ lemma settleEnsure_ensures(s: PluginServices, callId: int)
   ensures (inv(s) ==> canSettleEnsure(s, callId) ==> alwaysRetiredEpochHasNoResources(settleEnsure(s, callId)))
   ensures (inv(s) ==> canSettleEnsure(s, callId) ==> alwaysSealedOwnedClassesStable(settleEnsure(s, callId)))
 {
+  hide *;
+  reveal inv(), canSettleEnsure(), settleEnsure(), core__serviceInstances_settleAcquire(), core__serviceInstances_putType();
+  reveal core__serviceInstances_inv();
+  reveal alwaysLiveClassOwnerUnique(), alwaysServiceOwnerEpochExists(), alwaysRetirementsFollowTypePlan();
+  reveal alwaysNoOrphanInstance(), alwaysSealedOwnedClassesStable();
   if inv(s) && canSettleEnsure(s, callId) {
-    PluginServiceFrameAfterSettleEnsure(s, callId);
+    var after := settleEnsure(s, callId);
+    PluginRetirementChildRulesMatchImportedInvariants(s);
+    core__serviceInstances_settleAcquire_ensures(s.services, callId);
+    PluginRetirementChildRulesMatchImportedInvariants(after);
+    PluginServiceFrameRetainsStopReceipts(s, after);
+    PluginAcquireSettlementPreservesTypeStatus(s, callId);
   }
 }
 
@@ -593,15 +603,6 @@ lemma PluginServiceFrameAfterClearTypeAggregate(s: PluginServices, callId: int)
   hide *;
   reveal clearTypeAggregate(), core__serviceInstances_clearTypeAggregate();
   PluginServiceFrameRetainsStopReceipts(s, clearTypeAggregate(s, callId));
-}
-
-lemma PluginServiceFrameAfterSettleEnsure(s: PluginServices, callId: int)
-  requires alwaysStopObservationsFollowSlots(s) && alwaysRetiredEpochHasNoResources(s)
-  ensures alwaysStopObservationsFollowSlots(settleEnsure(s, callId)) && alwaysRetiredEpochHasNoResources(settleEnsure(s, callId))
-{
-  hide *;
-  reveal settleEnsure(), core__serviceInstances_settleAcquire(), core__serviceInstances_putType();
-  PluginServiceFrameRetainsStopReceipts(s, settleEnsure(s, callId));
 }
 
 lemma PluginEpochFrameLookup(before: core__pluginRegistry_PluginEpochs, after: core__pluginRegistry_PluginEpochs, query: int)
@@ -1578,4 +1579,291 @@ lemma sealRequests_ensures(s: PluginServices)
   reveal alwaysChildLifecyclesValid(), alwaysRetirementsFollowTypePlan(), alwaysNoOrphanInstance();
   reveal alwaysRetiredUndeclaredTypeIsUnknown(), alwaysStopObservationsFollowSlots();
   reveal alwaysRetiredEpochHasNoResources(), retirementSettled(), retirement(), alwaysSealedOwnedClassesStable();
+}
+
+lemma PluginTypeLookupAfterPut(s: core__serviceInstances_ServiceInstances, entry: core__serviceInstances_TypeEntry,
+    query: string)
+  ensures core__serviceInstances_serviceTypeEntry(core__serviceInstances_putType(entry, s), query) ==
+    (if query == entry.serviceType then entry else core__serviceInstances_serviceTypeEntry(s, query))
+{
+  hide *;
+  reveal core__serviceInstances_putType(), core__serviceInstances_serviceTypeEntry(), ProofLib.Filter();
+  var prior := s.typeEntries;
+  var after := core__serviceInstances_putType(entry, s).typeEntries;
+  var selects := (row: core__serviceInstances_TypeEntry) => row.serviceType == query;
+  if exists row :: row in prior && row.serviceType == entry.serviceType {
+    if query == entry.serviceType {
+      var existing :| existing in prior && existing.serviceType == query;
+      var i :| 0 <= i < |prior| && prior[i] == existing;
+      assert after[i] == entry && entry in after;
+      ProofLib.FilterMember(selects, after, entry);
+      var matches := ProofLib.Filter(selects, after);
+      assert |matches| > 0;
+      ProofLib.FilterMember(selects, after, matches[0]);
+      var j :| 0 <= j < |after| && after[j] == matches[0];
+      assert after[j] == entry;
+    } else {
+      var retained := (priorRow: core__serviceInstances_TypeEntry, nextRow: core__serviceInstances_TypeEntry) =>
+        !selects(priorRow) || priorRow == nextRow;
+      forall i | 0 <= i < |prior|
+        ensures selects(prior[i]) == selects(after[i]) && retained(prior[i], after[i])
+      {}
+      ProofLib.FilterPointwise(selects, selects, retained, prior, after);
+      var matches := ProofLib.Filter(selects, prior);
+      if |matches| > 0 {
+        ProofLib.FilterMember(selects, prior, matches[0]);
+      }
+    }
+  } else {
+    assert after == prior + [entry];
+    if query == entry.serviceType {
+      ProofLib.FilterNone(selects, prior);
+    }
+    ProofLib.FilterAppend(selects, prior, entry);
+  }
+}
+
+lemma PluginPublishedServiceHasDeclaration(s: core__serviceInstances_ServiceInstances, serviceType: string)
+  requires core__serviceInstances_alwaysPublicationIdentitiesValid(s)
+  requires core__serviceInstances_alwaysClassAndObjectIdentities(s)
+  requires core__serviceInstances_alwaysDeclarationsMatch(s)
+  requires core__serviceInstances_firstLive(s, serviceType) != 0
+  ensures exists d :: d in s.declarations && d.serviceType == serviceType
+{
+  hide *;
+  reveal core__serviceInstances_firstLive(), core__serviceInstances_publishedInstances(), core__serviceInstances_absentPublication;
+  reveal core__serviceInstances_alwaysPublicationIdentitiesValid(), core__serviceInstances_alwaysClassAndObjectIdentities();
+  reveal core__serviceInstances_alwaysDeclarationsMatch(), core__serviceInstances_serviceClass(), ProofLib.Filter();
+  var selectType := (p: core__serviceInstances_ServicePublication) => p.serviceType == serviceType;
+  var published := ProofLib.Filter(selectType, s.published);
+  assert |published| > 0;
+  var publication := published[0];
+  ProofLib.FilterMember(selectType, s.published, publication);
+  var instance := core__serviceInstances_firstLive(s, serviceType);
+  assert instance in publication.instances;
+  var c :| c in s.classes && c.serviceType == serviceType && c.live == instance;
+  assert c.registered;
+  var byId := (owner: core__serviceInstances_ServiceClassEntry) => owner.id == c.id;
+  var owners := ProofLib.Filter(byId, s.classes);
+  ProofLib.FilterMember(byId, s.classes, c);
+  assert |owners| == 1 && owners[0] == c;
+  assert core__serviceInstances_serviceClass(s, c.id) == c;
+  var declaration :| declaration in s.declarations && declaration.classId == c.id;
+  assert declaration.serviceType == c.serviceType;
+}
+
+lemma PluginAcquireSettlementPreservesTypeStatus(s: PluginServices, callId: int)
+  requires inv(s)
+  ensures alwaysRetiredUndeclaredTypeIsUnknown(settleEnsure(s, callId))
+{
+  hide *;
+  reveal inv(), settleEnsure(), core__serviceInstances_settleAcquire(), core__serviceInstances_putType();
+  reveal alwaysChildLifecyclesValid(), alwaysRetiredUndeclaredTypeIsUnknown();
+  var before := s.services;
+  var after := settleEnsure(s, callId);
+  var serviceType := core__serviceInstances_acquireCall(before, callId).serviceType;
+  var previous := core__serviceInstances_serviceTypeEntry(before, serviceType);
+  var result := core__serviceInstances_firstLive(before, serviceType);
+  var haveDeclarations := exists d :: d in before.declarations && d.serviceType == serviceType;
+  var updated := previous.(serviceType := serviceType,
+    status := if result != 0 then core__serviceInstances_TypeStatus.TypeRegistered
+      else if haveDeclarations then core__serviceInstances_TypeStatus.TypeFailed
+      else core__serviceInstances_TypeStatus.TypeUnknown,
+    promiseId := if result == 0 && previous.handlerId != 0 then 0 else previous.promiseId,
+    handlerId := 0);
+  var callsSettled := after.services.(typeEntries := before.typeEntries);
+  assert after.services == core__serviceInstances_putType(updated, callsSettled);
+  if result != 0 {
+    PluginPublishedServiceHasDeclaration(before, serviceType);
+  }
+  forall r | r in after.retirements
+    ensures forall g | g in r.groups ::
+      (!after.services.stopped && (g.phase.GroupFinished? || g.phase.GroupFailed?)
+        && !(exists d :: d in after.services.declarations && d.serviceType == g.serviceType)
+        && !(exists other :: (other in after.retirements &&
+          (exists pending :: pending in other.groups && pending.serviceType == g.serviceType && pending.phase.GroupWaiting?))))
+      ==> core__serviceInstances_serviceTypeEntry(after.services, g.serviceType).status.TypeUnknown?
+  {
+    forall g | g in r.groups && !after.services.stopped && (g.phase.GroupFinished? || g.phase.GroupFailed?)
+        && !(exists d :: d in after.services.declarations && d.serviceType == g.serviceType)
+        && !(exists other :: (other in after.retirements &&
+          (exists pending :: pending in other.groups && pending.serviceType == g.serviceType && pending.phase.GroupWaiting?)))
+      ensures core__serviceInstances_serviceTypeEntry(after.services, g.serviceType).status.TypeUnknown?
+    {
+      reveal core__serviceInstances_serviceTypeEntry();
+      PluginTypeLookupAfterPut(callsSettled, updated, g.serviceType);
+    }
+  }
+}
+
+lemma PluginStopObjectUpdateRetainsSettledSlot(before: core__serviceInstances_ServiceInstances,
+    after: core__serviceInstances_ServiceInstances, slot: InstanceSlot)
+  requires |before.objects| == |after.objects|
+  requires forall i | 0 <= i < |before.objects| ::
+    before.objects[i].id == after.objects[i].id
+      && (!before.objects[i].stopPhase.StopWaiting? ==> before.objects[i].stopPhase == after.objects[i].stopPhase)
+  requires stopSlotSettled(slot, before)
+  ensures stopSlotSettled(slot, after)
+{
+  hide *;
+  reveal stopSlotSettled(), core__serviceInstances_serviceObject(), ProofLib.Filter();
+  if !slot.observed.MissingStopSlot? {
+    var byId := (o: core__serviceInstances_ServiceObject) => o.id == slot.instanceId;
+    var stillSettled := (prior: core__serviceInstances_ServiceObject, next: core__serviceInstances_ServiceObject) =>
+      !prior.stopPhase.StopWaiting? ==> prior.stopPhase == next.stopPhase;
+    ProofLib.FilterPointwise(byId, byId, stillSettled, before.objects, after.objects);
+  }
+}
+
+lemma PluginStopObjectUpdateGroupObservations(g: RetirementGroup, services: core__serviceInstances_ServiceInstances)
+  ensures allStopObservationsValid(g, services) <==>
+    (forall i | 0 <= i < |g.observedStops| :: validStopObservation(g, i, g.observedStops[i], services))
+{
+  hide *;
+  reveal allStopObservationsValid(), validateNextStop(), uncheckedSequence;
+  var validAt := (i: int, slot: InstanceSlot) => validStopObservation(g, i, slot, services);
+  var validate := (check: SequenceValidation, slot: InstanceSlot) => validateNextStop(check, g, slot, services);
+  PluginRetirementIndexedValidation(validate, validAt, uncheckedSequence, g.observedStops);
+}
+
+lemma PluginStopObjectUpdatePreservesReceipts(s: PluginServices, after: PluginServices)
+  requires inv(s) && after == s.(services := s.services.(objects := after.services.objects))
+  requires |s.services.objects| == |after.services.objects|
+  requires forall i | 0 <= i < |s.services.objects| ::
+    s.services.objects[i].id == after.services.objects[i].id
+      && s.services.objects[i].stopCalls == after.services.objects[i].stopCalls
+      && (!s.services.objects[i].stopPhase.StopWaiting? ==> s.services.objects[i].stopPhase == after.services.objects[i].stopPhase)
+  ensures alwaysStopObservationsFollowSlots(after) && alwaysRetiredEpochHasNoResources(after)
+  ensures alwaysLiveClassOwnerUnique(after) && alwaysServiceOwnerEpochExists(after)
+  ensures alwaysRetirementsFollowTypePlan(after) && alwaysNoOrphanInstance(after)
+  ensures alwaysRetiredUndeclaredTypeIsUnknown(after) && alwaysSealedOwnedClassesStable(after)
+{
+  hide *;
+  reveal inv(), alwaysStopObservationsFollowSlots(), alwaysRetiredEpochHasNoResources(), retirementSettled(), retirement();
+  reveal alwaysLiveClassOwnerUnique(), alwaysServiceOwnerEpochExists(), alwaysRetirementsFollowTypePlan();
+  reveal alwaysNoOrphanInstance(), alwaysRetiredUndeclaredTypeIsUnknown(), core__serviceInstances_serviceTypeEntry();
+  reveal alwaysSealedOwnedClassesStable();
+  forall obj | obj in after.services.objects
+    ensures obj.stopCalls > 0
+      || (exists c | c in after.services.classes :: c.live == obj.id && c.registered)
+      || (exists r | r in after.retirements :: exists g | g in r.groups ::
+        missingStopObservedFor(g, obj.id)
+          || (core__pluginRegistry_epochOwnsResources(after.plugins, r.epochId) && obj.id in g.instances))
+  {
+    var i :| 0 <= i < |after.services.objects| && after.services.objects[i] == obj;
+    assert s.services.objects[i] in s.services.objects;
+  }
+  forall r | r in after.retirements
+    ensures forall g | g in r.groups :: allStopObservationsValid(g, after.services)
+    ensures forall g | g in r.groups && !core__pluginRegistry_epochOwnsResources(after.plugins, r.epochId) ::
+      (forall slot | slot in g.observedStops :: stopSlotSettled(slot, after.services))
+  {
+    forall g | g in r.groups
+      ensures allStopObservationsValid(g, after.services)
+      ensures !core__pluginRegistry_epochOwnsResources(after.plugins, r.epochId) ==>
+        (forall slot | slot in g.observedStops :: stopSlotSettled(slot, after.services))
+    {
+      PluginStopObjectUpdateGroupObservations(g, s.services);
+      forall i | 0 <= i < |g.observedStops|
+        ensures validStopObservation(g, i, g.observedStops[i], after.services)
+      {
+        reveal validStopObservation();
+        var slot := g.observedStops[i];
+        assert validStopObservation(g, i, slot, s.services);
+        if i < g.instanceCursor {
+          PluginStopObjectUpdateRetainsSettledSlot(s.services, after.services, slot);
+        }
+      }
+      PluginStopObjectUpdateGroupObservations(g, after.services);
+      if !core__pluginRegistry_epochOwnsResources(after.plugins, r.epochId) {
+        forall slot | slot in g.observedStops ensures stopSlotSettled(slot, after.services) {
+          PluginStopObjectUpdateRetainsSettledSlot(s.services, after.services, slot);
+        }
+      }
+    }
+  }
+}
+
+lemma PluginSettlingStopChangesOnlyWaitingObject(s: core__serviceInstances_ServiceInstances,
+    instanceId: int, ok: bool, errorId: string)
+  requires core__serviceInstances_alwaysClassAndObjectIdentities(s)
+  requires core__serviceInstances_canSettleObjectStop(s, instanceId, ok, errorId)
+  ensures var after := core__serviceInstances_settleObjectStop(s, instanceId, ok, errorId);
+    forall i | 0 <= i < |s.objects| && !s.objects[i].stopPhase.StopWaiting? ::
+      after.objects[i].stopPhase == s.objects[i].stopPhase
+{
+  hide *;
+  reveal core__serviceInstances_settleObjectStop(), core__serviceInstances_canSettleObjectStop();
+  reveal core__serviceInstances_alwaysClassAndObjectIdentities(), core__serviceInstances_serviceObject(), ProofLib.Filter();
+  var byId := (o: core__serviceInstances_ServiceObject) => o.id == instanceId;
+  var matches := ProofLib.Filter(byId, s.objects);
+  forall i | 0 <= i < |s.objects| && !s.objects[i].stopPhase.StopWaiting?
+    ensures core__serviceInstances_settleObjectStop(s, instanceId, ok, errorId).objects[i].stopPhase == s.objects[i].stopPhase
+  {
+    var original := s.objects[i];
+    if original.id == instanceId {
+      assert original in s.objects;
+      ProofLib.FilterMember(byId, s.objects, original);
+      assert |matches| == 1 && matches[0] == original;
+      assert core__serviceInstances_serviceObject(s, instanceId) == original;
+      assert false;
+    }
+  }
+}
+
+lemma invokeClassStop_ensures(s: PluginServices, instanceId: int)
+  ensures (inv(s) ==> canInvokeClassStop(s, instanceId) ==> alwaysLiveClassOwnerUnique(invokeClassStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeClassStop(s, instanceId) ==> alwaysServiceOwnerEpochExists(invokeClassStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeClassStop(s, instanceId) ==> alwaysChildLifecyclesValid(invokeClassStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeClassStop(s, instanceId) ==> alwaysRetirementsFollowTypePlan(invokeClassStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeClassStop(s, instanceId) ==> alwaysNoOrphanInstance(invokeClassStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeClassStop(s, instanceId) ==> alwaysRetiredUndeclaredTypeIsUnknown(invokeClassStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeClassStop(s, instanceId) ==> alwaysStopObservationsFollowSlots(invokeClassStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeClassStop(s, instanceId) ==> alwaysRetiredEpochHasNoResources(invokeClassStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeClassStop(s, instanceId) ==> alwaysSealedOwnedClassesStable(invokeClassStop(s, instanceId)))
+{
+  hide *;
+  reveal inv(), canInvokeClassStop(), invokeClassStop(), core__serviceInstances_invokeObjectStop();
+  reveal core__serviceInstances_inv();
+  if inv(s) && canInvokeClassStop(s, instanceId) {
+    var after := invokeClassStop(s, instanceId);
+    forall i | 0 <= i < |s.services.objects|
+      ensures s.services.objects[i].id == after.services.objects[i].id
+        && s.services.objects[i].stopCalls == after.services.objects[i].stopCalls
+        && (!s.services.objects[i].stopPhase.StopWaiting? ==> s.services.objects[i].stopPhase == after.services.objects[i].stopPhase)
+    {}
+    PluginStopObjectUpdatePreservesReceipts(s, after);
+    PluginRetirementChildRulesMatchImportedInvariants(s);
+    core__serviceInstances_invokeObjectStop_ensures(s.services, instanceId);
+    PluginRetirementChildRulesMatchImportedInvariants(after);
+  }
+}
+
+lemma finishClassStop_ensures(s: PluginServices, instanceId: int, ok: bool, errorId: string)
+  ensures (inv(s) ==> canFinishClassStop(s, instanceId, ok, errorId) ==> alwaysLiveClassOwnerUnique(finishClassStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassStop(s, instanceId, ok, errorId) ==> alwaysServiceOwnerEpochExists(finishClassStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassStop(s, instanceId, ok, errorId) ==> alwaysChildLifecyclesValid(finishClassStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassStop(s, instanceId, ok, errorId) ==> alwaysRetirementsFollowTypePlan(finishClassStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassStop(s, instanceId, ok, errorId) ==> alwaysNoOrphanInstance(finishClassStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassStop(s, instanceId, ok, errorId) ==> alwaysRetiredUndeclaredTypeIsUnknown(finishClassStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassStop(s, instanceId, ok, errorId) ==> alwaysStopObservationsFollowSlots(finishClassStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassStop(s, instanceId, ok, errorId) ==> alwaysRetiredEpochHasNoResources(finishClassStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canFinishClassStop(s, instanceId, ok, errorId) ==> alwaysSealedOwnedClassesStable(finishClassStop(s, instanceId, ok, errorId)))
+{
+  hide *;
+  reveal inv(), canFinishClassStop(), finishClassStop(), core__serviceInstances_settleObjectStop();
+  if inv(s) && canFinishClassStop(s, instanceId, ok, errorId) {
+    var after := finishClassStop(s, instanceId, ok, errorId);
+    reveal alwaysChildLifecyclesValid();
+    PluginSettlingStopChangesOnlyWaitingObject(s.services, instanceId, ok, errorId);
+    forall i | 0 <= i < |s.services.objects|
+      ensures s.services.objects[i].id == after.services.objects[i].id
+        && s.services.objects[i].stopCalls == after.services.objects[i].stopCalls
+        && (!s.services.objects[i].stopPhase.StopWaiting? ==> s.services.objects[i].stopPhase == after.services.objects[i].stopPhase)
+    {}
+    PluginStopObjectUpdatePreservesReceipts(s, after);
+    PluginRetirementChildRulesMatchImportedInvariants(s);
+    core__serviceInstances_settleObjectStop_ensures(s.services, instanceId, ok, errorId);
+    PluginRetirementChildRulesMatchImportedInvariants(after);
+  }
 }
