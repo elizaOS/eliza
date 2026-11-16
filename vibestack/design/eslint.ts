@@ -1,4 +1,4 @@
-import type { Tokens } from "./tokens.ts"
+import { type Tokens, palette } from "./tokens.ts"
 
 const hex = "#(?:[\\da-f]{3,4}|[\\da-f]{6}|[\\da-f]{8})"
 const functional = "(?:rgba?|hsla?|hwb|oklch|oklab|lab|lch|color|color-mix|light-dark)\\("
@@ -45,14 +45,20 @@ const noLiteralColors = {
   },
 }
 
-// Tailwind's default palette, which stays in the theme for third-party markup but is not ours to use.
-const palettes = "slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose"
 const variants = "^(?:.+:)?!?"
 const opacity = "(?:/[^!]+)?!?$"
 // Tailwind's own sizes of a shadow and of a radius; the tokens define some of them.
 const sizes = ["2xs", "xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl"]
 // The radii generate.ts derives from `radius`; tokens.rounded names more.
 const derived = ["sm", "md", "lg", "xl"]
+// Tailwind's own values of each scale a project may declare; once it declares one, only its own names are allowed there.
+const scales = {
+  text: { utility: "text", what: "font size", builtIn: ["xs", "sm", "base", "lg", "xl", "[2-9]xl"] },
+  weight: { utility: "font", what: "font weight", builtIn: ["thin", "extralight", "light", "normal", "medium", "semibold", "bold", "extrabold", "black", "\\d+"] },
+  leading: { utility: "leading", what: "line height", builtIn: ["none", "tight", "snug", "normal", "relaxed", "loose", "px", "\\d+(?:\\.\\d+)?"] },
+  tracking: { utility: "-?tracking", what: "letter spacing", builtIn: ["tighter", "tight", "normal", "wide", "wider", "widest"] },
+  z: { utility: "-?z", what: "z-index", builtIn: ["\\d+"] },
+}
 
 /**
  * Flat-config entries that hold `.ts`/`.tsx` to the tokens. The caller passes the eslint-plugin-better-tailwindcss
@@ -64,15 +70,27 @@ export function designSystem<Plugin>({ tailwind, tokens, entryPoint }: { tailwin
   const colors = `Use a color token: ${names(tokens.color.light)}.`
   const radii = [...derived, ...Object.keys(tokens.rounded)]
   const radius = `Use a radius token:${radii.map((size) => `rounded-${size}`).join(", ")}.`
+  // A declared name is never refused, even where it matches a built-in pattern (`z-10`, `leading-6`).
+  const declared = Object.entries(scales).flatMap(([group, { utility, what, builtIn }]) => {
+    const own = Object.keys(tokens[group as keyof typeof scales])
+    if (!own.length) return []
+    const use = `Use a ${what} token: ${own.map((name) => `${utility.replace("-?", "")}-${name}`).join(", ")}.`
+    return [
+      { pattern: `${variants}${utility}-[[(].+[\\])]${opacity}`, message: `"$0" is an arbitrary ${what}. ${use}` },
+      { pattern: `${variants}${utility}-(?!(?:${own.join("|")})${opacity})(?:${builtIn.join("|")})${opacity}`, message: `"$0" is a ${what} the tokens do not define. ${use}` },
+    ]
+  })
   const shadow = `Use a shadow token: ${names(tokens.shadow, "shadow-")}.`
+  // Tailwind's default palette stays in the theme for third-party markup but is not ours to use.
   const restrict = [
-    { pattern: `${variants}[a-z-]+-(?:(?:${palettes})-\\d{2,3}|white|black)${opacity}`, message: `"$0" is a palette color. ${colors}` },
+    { pattern: `${variants}[a-z-]+-(?:(?:${palette})-\\d{2,3}|white|black)${opacity}`, message: `"$0" is a palette color. ${colors}` },
     { pattern: `${variants}[a-z-]+-\\[(?:[^\\]]*(?:#[\\da-fA-F]{3,8}|${functional})[^\\]]*|(?:color:)?${named})\\]${opacity}`, message: `"$0" is an arbitrary color. ${colors}` },
     { pattern: `${variants}rounded(?:-[a-z]{1,2})?-\\[.+\\]!?$`, message: `"$0" is an arbitrary radius. ${radius}` },
     { pattern: `${variants}rounded(?:-[a-z]{1,2})?-(?:${besides(radii)})!?$`, message: `"$0" is a radius the tokens do not define. ${radius}` },
     { pattern: `${variants}shadow-\\[.+\\]!?$`, message: `"$0" is an arbitrary shadow. ${shadow}` },
     { pattern: `${variants}shadow-(?:${besides(Object.keys(tokens.shadow))})!?$`, message: `"$0" is a shadow the tokens do not define. ${shadow}` },
     { pattern: `${variants}font-serif!?$`, message: `"$0" is a font the tokens do not define. Use a font token: ${names(tokens.font, "font-")}.` },
+    ...declared,
   ]
   return [{
     files: ["**/*.{ts,tsx}"],
