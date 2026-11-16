@@ -41,6 +41,15 @@ pure def sometimesSoftThresholdExceeded(s: PriorityState): bool = s.hasMax and n
 pure def sometimesPressureRejected(s: PriorityState): bool = s.hasPressure and s.configured and not(s.pressurePending) and not(s.lastAccepted) and s.nextTicket > 1
 ```
 
+### The next queue ticket stays positive
+
+Discovered by the proof: an empty queue with a nonpositive next ticket satisfied the bucket and uniqueness rules but assigned an invalid ticket on its next admission. The model occurrence serial starts at one, advances on each admission, and remains positive through every queue mutation. A well-formed queue satisfies all three queue invariants.
+
+```quint
+pure def alwaysNextTicketIsPositive(s: PriorityState): bool = s.nextTicket > 0
+pure def wellFormed(s: PriorityState): bool = alwaysPriorityBucketsAgree(s) and alwaysQueueTicketsUnique(s) and alwaysNextTicketIsPositive(s)
+```
+
 ### Dequeue returns a bounded prefix and selective drain preserves all other items
 
 A nonpositive dequeue count removes nothing. Draining and clearing are explicit queue mutations, including inside the pressure callback.
@@ -59,4 +68,16 @@ pure def drainTickets(s: PriorityState, tickets: Set[int]): PriorityState = { ..
 pure def canClearQueue(s: PriorityState): bool = s.configured
 pure def clearQueue(s: PriorityState): PriorityState = { ...s, high: List(), normal: List(), low: List(), lastRemoved: queuedItems(s) }
 pure def sometimesQueueDrained(s: PriorityState): bool = s.nextTicket > 1 and queueSize(s) == 0
+```
+
+### Dequeue receipts retain bounded distinct queue tickets
+
+A dequeue receipt contains at most the nonnegative requested count and only items from the original queue. For a well-formed queue, its tickets remain positive, below the next serial, and unique even when payload values repeat.
+
+```quint
+pure def lawDequeueReceipt(s: PriorityState, count: int): bool = {
+  val removed = dequeue(s, count).lastRemoved
+  removed.length() <= (if (count > 0) count else 0) and removed.every(j => not(queuedItems(s).every(other => other.ticket != j.ticket or other.payload != j.payload or other.priority != j.priority))) and
+  (wellFormed(s) implies removed.every(j => j.ticket > 0 and j.ticket < s.nextTicket and removed.select(other => other.ticket == j.ticket).length() == 1))
+}
 ```
