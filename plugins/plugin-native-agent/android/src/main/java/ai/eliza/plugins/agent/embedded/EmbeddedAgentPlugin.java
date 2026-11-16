@@ -56,7 +56,10 @@ public final class EmbeddedAgentPlugin extends Plugin {
       if ("stop".equals(action)) getContext().stopService(intent);
       else if (EmbeddedAgentService.payloadAvailable(getContext())) getContext().startForegroundService(intent);
       call.resolve(JSObject.fromJSONObject(EmbeddedAgentService.status(getContext(), service)));
-    } catch (Exception refused) { call.reject("The agent could not be started"); }
+    } catch (Exception refused) {
+      if ("restart".equals(action)) getContext().stopService(new Intent(getContext(), service));
+      call.reject("The agent could not be started");
+    }
   }
 
   @PluginMethod public void request(PluginCall call) {
