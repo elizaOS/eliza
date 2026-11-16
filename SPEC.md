@@ -564,8 +564,9 @@ under `src/`.
   root's `check` covers them all ([One spec tree](#one-spec-tree)).
 - **Only what changed is checked again.** Each run of Quint is kept in
   `.spec-cache/` under what it reads, the Quint of the spec and of everything
-  it imports without the prose, and the Quint installed, so a change to the
-  prose or to the tools that leaves the Quint alone runs no Quint again. Each
+  it imports without its prose, comments and layout, and the Quint installed,
+  so a change to the prose or to the tools that leaves the Quint alone runs no
+  Quint again. Each
   simulation result, a failing one too (its seed is fixed), and each passing
   proof result is kept beside them, under a fingerprint of the spec's Quint
   without its comments, everything it imports and the versions of the tools.

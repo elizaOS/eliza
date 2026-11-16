@@ -24,7 +24,7 @@ import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
 import { mirrorGen } from "./units.ts";
 import { conformance as checkTraces, conformanceFound } from "./conform.ts";
 import { explore, explored } from "./explore.ts";
-import { harnessOf, search } from "./simulate.ts";
+import { harnessFiles, search } from "./simulate.ts";
 import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./spec.ts";
 
 const project = path.join(import.meta.dirname, "..");
@@ -575,7 +575,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     const root = oneRule("t", "Counting", quint);
     const spec = readSpecs(root)[0];
     const model = await gen(root, spec);
-    const result = await search(harnessOf({ root, fresh: true, used: new Set() }, spec, [spec], model), "never_sometimesLate", "step", [20, 40], 180);
+    const result = await search({ memory: { root, fresh: true, used: new Set() }, model, files: harnessFiles(spec, [spec], model) }, "never_sometimesLate", "step", [20, 40], 180);
     assert.equal(result.broken, true, result.again);
     assert.match(result.again, /--max-samples 32 --max-steps 40\b/);
     assert.equal(result.traces[0]?.at(-1)?.state, 38);
@@ -1787,17 +1787,20 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(!fs.existsSync(path.join(root, ".spec-cache/lock")));
   });
 
-  test("a check whose tools change under it remembers nothing more", async () => {
+  test("a check remembers its results under the tools it loaded, and nothing when they changed as it loaded them", async () => {
     const root = toolchain(scratch({}));
-    const script = `const fs = await import("node:fs"); const { entry, store } = await import(${JSON.stringify(path.join(root, "vibestack/cache.ts"))});
-      const memory = { root: ".", fresh: false, used: new Set() };
-      const before = await entry(".", "simulate", ["before"]); store(memory, before, 1);
-      fs.appendFileSync(${JSON.stringify(path.join(root, "vibestack/parse.ts"))}, "\\n");
-      const after = await entry(".", "simulate", ["after"]); store(memory, after, 1);
-      console.log(JSON.stringify([before, after].map((e) => fs.existsSync(e.file))));`;
-    const result = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
-    assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), [true, false], "an entry computed by code other than what its key names is not stored");
+    const touch = `fs.appendFileSync(${JSON.stringify(path.join(root, "vibestack/parse.ts"))}, "\\n");`;
+    const load = `const { entry, store } = await import(${JSON.stringify(path.join(root, "vibestack/cache.ts"))});`;
+    const remember = 'const at = await entry(".", "simulate", ["same"]); store({ root: ".", fresh: false, used: new Set() }, at, 1); console.log(JSON.stringify({ name: at.name, kept: fs.existsSync(at.file) }));';
+    const checked = async (...steps: string[]) => {
+      const r = await exec(process.execPath, ["--input-type=module", "--eval", ['const fs = await import("node:fs");', ...steps].join("\n")], root);
+      assert.equal(r.status, 0, r.stderr);
+      return JSON.parse(r.stdout);
+    };
+    const loaded = await checked(load, touch, remember);
+    assert.equal(loaded.kept, true, "a tool changed after a check loaded it leaves that check's results remembered");
+    assert.notEqual((await checked(load, remember)).name, loaded.name, "under the code that computed them, not the code there now");
+    assert.equal((await checked(touch, load, remember)).kept, false, "a tool changed while a check loaded it leaves nothing remembered");
   });
 
   test("a change to the tools or the prose that leaves the Quint alone runs no Quint again, and its results cite the rules where they now are", { skip: process.platform === "win32" }, async () => {
@@ -1822,6 +1825,16 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const moved = await checked();
     assert.deepEqual(moved.ran, []);
     assert.match(moved.broken?.summary ?? "", /"Story \/ Small" \(spec\/index\.md:7\)/, JSON.stringify(moved.broken));
+  });
+
+  test("a Quint string ends at its next quote, as Quint reads it, and a change inside one is simulated again", async () => {
+    const quint = (b: string) => `pure val b: str = if (1 == 2) "p\\" else "${b}"\npure val initial: int = 0\npure def up(n: int): int = n + 1\npure def alwaysSame(n: int): bool = b == "x // y"`;
+    const root = oneRule("index", "Same", quint("x // y"));
+    const first = await run(root);
+    assert.ok(!first.failed.includes("always"), first.text);
+    fs.writeFileSync(path.join(root, "spec/index.md"), ruleSpec(quint("x // z"), "Same"));
+    const changed = await run(root);
+    assert.equal(changed.said("always", /alwaysSame|"Story \/ Same"/)?.ok, false, changed.text);
   });
 
   test("proof and task cache identity follows verifier and compiler bytes rather than installation directories", { skip: process.platform === "win32" }, async () => {

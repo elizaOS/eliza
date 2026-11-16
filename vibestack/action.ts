@@ -59,8 +59,8 @@ function quintProgram(root: string) {
 }
 
 /**
- * Run Quint with `args` in `dir`, a directory of the project made anew with only `files` in it, or say what the same run
- * said before. A run is remembered under the program, the arguments and what decides each file, and the code of this
+ * Run Quint with `args` in `dir`, a directory of the project or an absolute one, made anew with only `files` in it, or
+ * say what the same run said before. A run is remembered under the program, the arguments and what decides each file, and the code of this
  * file and run.ts: a change elsewhere in these tools runs Quint again only where it changes what Quint reads, and a file
  * left out of `files` is one Quint cannot find. Only a run that reached its answer is remembered, and not when the
  * program was installed again during the check.
@@ -70,7 +70,7 @@ export async function quint(memory: Memory, args: string[], dir: string, files: 
   const at = await entry(memory.root, "action", [id, JSON.stringify(args), ...Object.keys(files).sort().flatMap((f) => [f, files[f].key])]);
   const known = recall<Ran>(memory, at);
   if (known) return known;
-  const where = path.join(memory.root, dir);
+  const where = path.resolve(memory.root, dir);
   fs.rmSync(where, { recursive: true, force: true });
   fs.mkdirSync(where, { recursive: true });
   for (const [f, { text }] of Object.entries(files)) fs.writeFileSync(path.join(where, f), text);

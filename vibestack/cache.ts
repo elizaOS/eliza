@@ -80,16 +80,18 @@ export async function toolchainFingerprint() {
 const ext = path.extname(import.meta.filename);
 /**
  * The tools' own scripts, as source or as built: this directory and gen/, never the projects below it (examples,
- * Studio), whose checks rewrite their gen/ while this one reads.
+ * Studio), whose checks rewrite their gen/ while this one reads. Read once, as this process loads them, so that a key
+ * names the code that runs, however the files change after.
  */
-const toolFiles = () => ["", "gen"].flatMap((dir) => fs.readdirSync(path.join(import.meta.dirname, dir)).map((f) => path.join(dir, f)))
-  .filter((f) => f.endsWith(ext) && f !== `selftest${ext}`).sort();
+const tools = new Map(["", "gen"].flatMap((dir) => fs.readdirSync(path.join(import.meta.dirname, dir)).map((f) => path.join(dir, f)))
+  .filter((f) => f.endsWith(ext) && f !== `selftest${ext}`).sort().map((f) => [f, fs.readFileSync(path.join(import.meta.dirname, f), "utf8")]));
 
 /**
- * Whether a tool, or the set of them, changed since this process started, so that the code it runs may not be the code
- * a key names. The change time, which a copy or an archive cannot set back, never the modification time.
+ * Whether a tool, or the set of them, changed between the start of this process and the reading above: then the code it
+ * runs may not be the code its keys name, and it remembers nothing. The change time, which a copy or an archive cannot
+ * set back, never the modification time.
  */
-const toolsChanged = () => ["", "gen", ...toolFiles()].some((f) => fs.statSync(path.join(import.meta.dirname, f)).ctimeMs >= performance.timeOrigin);
+const unsure = ["", "gen", ...tools.keys()].some((f) => fs.statSync(path.join(import.meta.dirname, f)).ctimeMs >= performance.timeOrigin);
 
 /** The stages whose results are remembered, and the runs of an outside tool any of them asks for (action.ts). */
 const STAGES = ["simulate", "prove", "tests", "explore", "action"] as const;
@@ -107,10 +109,10 @@ function toolchainId(stage: Stage): Promise<string> {
   let id = toolchains.get(stage);
   if (id) return id;
   toolchains.set(stage, (id = (async () => {
-    const code = (files: string[]) => sha(...files.map((f) => `${f}\0${fs.readFileSync(path.join(import.meta.dirname, f), "utf8")}`)).slice(0, 12);
+    const code = (files: string[]) => sha(...files.map((f) => `${f}\0${tools.get(f)}`)).slice(0, 12);
     if (stage === "action") return `${stage} ${code([`action${ext}`, `run${ext}`])}`;
     // Only the prover's own file is left out of what a simulation depends on: anything else may be used by both.
-    const parts = [stage, packageVersion("@informalsystems/quint"), `node@${process.versions.node}:${process.platform}:${process.arch}`, code(toolFiles().filter((f) => stage === "prove" || f !== `prove${ext}`))];
+    const parts = [stage, packageVersion("@informalsystems/quint"), `node@${process.versions.node}:${process.platform}:${process.arch}`, code([...tools.keys()].filter((f) => stage === "prove" || f !== `prove${ext}`))];
     if (stage === "prove") {
       const z3 = await solver();
       parts.push(packageVersion("lemmascript"), `dafny@${JSON.stringify(await dafnyIdentity())}`, `z3@${z3.version}:${executableDigest(z3.path)}`);
@@ -155,10 +157,10 @@ export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined 
     return undefined;
   }
 }
-/** Remember `value` under an entry, unless the tools changed under this check: then the next check computes it again. */
+/** Remember `value` under an entry, unless this process cannot say which tools computed it: then the next check computes it again. */
 export function store(memory: Memory, { name, file }: Entry, value: unknown) {
   memory.used.add(name);
-  if (!toolsChanged()) writeWhole(file, gzipSync(JSON.stringify(value)));
+  if (!unsure) writeWhole(file, gzipSync(JSON.stringify(value)));
 }
 
 /**

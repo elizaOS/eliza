@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type * as TS from "typescript";
 import ts from "typescript";
@@ -122,7 +123,9 @@ export function typecheckAll(memory: Memory, specs: Spec[]): Map<string, Promise
   for (const spec of specs) fs.writeFileSync(path.join(dir, `${spec.name}.qnt`), spec.qnt);
   return new Map(specs.map((spec) => {
     const ir = (async () => {
-      const typed = await quint(memory, ["typecheck", "--out", "ir.json", `${spec.name}.qnt`], `gen/typecheck/${spec.name}`, modules(spec, specs));
+      const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-typecheck-"));
+      const typed = await quint(memory, ["typecheck", "--out", "ir.json", `${spec.name}.qnt`], scratch, modules(spec, specs))
+        .finally(() => fs.rmSync(scratch, { recursive: true, force: true }));
       let ir: any;
       try { ir = JSON.parse(typed.files["ir.json"]); } catch { ir = undefined; }
       if (!typed.ok || !ir || ir.errors?.length) throw typeErrors(spec, ir, typed.out, specs);

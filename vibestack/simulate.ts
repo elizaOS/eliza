@@ -10,7 +10,7 @@ import { quint, violated, type Input } from "./action.ts";
 import { entry, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { simulated } from "./gen/harness.ts";
-import { importedMeanings, modules, type Rule, type Spec } from "./parse.ts";
+import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
 import type { Result } from "./spec.ts";
 import { allDone, digest, indent } from "./util.ts";
 
@@ -113,11 +113,11 @@ const MAX_SHARDS = 4;
 
 /** What a spec's runs of Quint share: the check's memory, the model, and every file of Quint its harness reads. */
 export interface Harness { memory: Memory; model: Model; files: Record<string, Input> }
-/** A spec's harness: its modules, the harness itself, and the spec as the harness reads it where it has opaque functions. */
-export const harnessOf = (memory: Memory, spec: Spec, specs: Spec[], model: Model): Harness => ({ memory, model, files: {
-  ...modules(spec, specs), [`${model.name}.run.qnt`]: { text: model.harness, key: model.harness },
-  ...(model.opaques.length ? { [`${model.name}.sim.qnt`]: { text: simulated(spec.qnt, model.opaques), key: simulated(spec.code, model.opaques) } } : {}),
-} });
+/** What a spec's harness reads: its modules, the harness itself, and the spec as the harness reads it where it has opaque functions. */
+export function harnessFiles(spec: Spec, specs: Spec[], model: Model): Record<string, Input> {
+  const sim = model.opaques.length ? simulated(spec.qnt, model.opaques) : undefined;
+  return { ...modules(spec, specs), [`${model.name}.run.qnt`]: { text: model.harness, key: model.harness }, ...(sim ? { [`${model.name}.sim.qnt`]: { text: sim, key: codeOf(sim) } } : {}) };
+}
 
 /**
  * Simulate the harness until `invariant` breaks; returns the traces Quint wrote, and the command that runs the same
@@ -296,9 +296,10 @@ const COULD_NOT_RUN = "the simulator could not run";
 export interface Simulation { said: Result[]; tested?: Simulated }
 
 /**
- * Simulate one spec and replay its traces through `domain`, its generated module. A spec whose model and harness are
- * unchanged is not simulated again: the seed is part of what is simulated, so a failure comes back the same. Only a
- * simulator that could not run is tried again.
+ * Simulate one spec and replay its traces through `domain`, its generated module. A spec is not simulated again while
+ * what Quint reads is unchanged, and its results are not said again while the rules they cite are where they were, with
+ * the definitions they held: the seed is part of what is simulated, so a failure comes back the same. Only a simulator
+ * that could not run is tried again.
  */
 export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Model, domain: any, seed: number): Promise<Simulation> {
   const citation = (rule: Rule) => `"${rule.key}" (${spec.file}:${rule.line})`;
@@ -307,9 +308,11 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
     return rule ? citation(rule) : def;
   };
   const simulationSteps = STEPS + Math.max(0, ...model.within.values());
-  const key = [importedMeanings(spec, specs), spec.meaning, spec.rules.map((r) => r.key).join("\n"), model.harness, String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
+  const files = harnessFiles(spec, specs, model);
+  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), spec.file, spec.rules.map((r) => `${r.key}\0${r.line}\0${r.defs.join(" ")}`).join("\n"),
+    String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
   return remembered<Simulation>(memory, entry(memory.root, "simulate", key), async (memory) => {
-    const harness = harnessOf(memory, spec, specs, model);
+    const harness: Harness = { memory, model, files };
     const said: Result[] = [];
     let tested: Simulated | undefined;
     /** A result concerns the rules it cites. */
