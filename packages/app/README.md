@@ -389,7 +389,8 @@ declare, as data:
   the generated host refuse to configure until it is regenerated.
 - `embeddedAgent`: the `host`, `character` and `policy` data files of the
   cloud-only embedded agent (see the `@elizaos/capacitor-agent` README). The
-  generator checks them with the device service's rules, packages them as assets,
+  generator checks them with the device service's rules (both refuse the shared
+  cases in `test/embedded/embedded-agent-data.json`), packages them as assets,
   and adds the `eliza-embedded-agent` module. That module compiles the agent's Java
   closure (no Kotlin, no local inference or voice class) and its manifest declares
   the named service with type `specialUse` and its permissions. It needs
