@@ -1,0 +1,17 @@
+// The upstream cloud-only embedded agent: its Java sources, and the manifest that declares its service.
+apply plugin: 'com.android.library'
+def profile = new groovy.json.JsonSlurper().parse(rootProject.file('.eliza-consumer-profile.json'))
+android {
+ namespace 'ai.eliza.plugins.agent.embedded'
+ compileSdk rootProject.ext.compileSdkVersion
+ defaultConfig { minSdk rootProject.ext.minSdkVersion }
+ compileOptions {
+  sourceCompatibility JavaVersion.toVersion(profile.toolchain.java)
+  targetCompatibility JavaVersion.toVersion(profile.toolchain.java)
+ }
+ sourceSets.main.java {
+  srcDirs = [profile.embeddedAgent.sources]
+  include profile.embeddedAgent.include
+ }
+}
+dependencies { implementation project(':capacitor-android') }
