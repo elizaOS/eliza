@@ -136,7 +136,7 @@
     {
       "host": {
         "cloud": {
-          "baseUrl": "https://bücher.example"
+          "baseUrl": "https://b\u00fccher.example"
         }
       }
     },
@@ -225,6 +225,67 @@
       "policy": {
         "plugins": {
           "denied": "@elizaos/plugin-browser"
+        }
+      }
+    },
+    {
+      "host": {
+        "schema": "1"
+      }
+    },
+    {
+      "policy": {
+        "schema": "1"
+      }
+    },
+    {
+      "host": {
+        "notification": {
+          "channel": 5,
+          "title": "Helper",
+          "text": "Helper is ready"
+        }
+      }
+    },
+    {
+      "character": {
+        "name": 5
+      }
+    },
+    {
+      "character": {
+        "system": 5
+      }
+    },
+    {
+      "host": {
+        "persistMemory": "true"
+      }
+    },
+    {
+      "host": {
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/status",
+            "stream": "true"
+          }
+        ]
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "https://cloud.example",
+          "smallModel": 5
+        }
+      }
+    },
+    {
+      "host": {
+        "cloud": {
+          "baseUrl": "https://cloud.example",
+          "largeModel": null
         }
       }
     }

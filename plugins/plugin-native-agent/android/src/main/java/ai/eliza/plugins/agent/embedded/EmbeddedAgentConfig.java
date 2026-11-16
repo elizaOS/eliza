@@ -52,7 +52,7 @@ public final class EmbeddedAgentConfig {
   private final JSONArray deniedPlugins = new JSONArray();
 
   private EmbeddedAgentConfig(JSONObject host, JSONObject character, JSONObject policy) throws IOException, JSONException {
-    if (host.getInt("schema") != 1 || policy.getInt("schema") != 1) throw new IOException("Unknown embedded agent schema");
+    if (!Integer.valueOf(1).equals(host.opt("schema")) || !Integer.valueOf(1).equals(policy.opt("schema"))) throw new IOException("Unknown embedded agent schema");
     service = host.getString("service");
     if (!CLASS_NAME.matcher(service).matches()) throw new IOException("Invalid embedded agent service class");
     JSONObject words = host.getJSONObject("notification");
@@ -61,15 +61,15 @@ public final class EmbeddedAgentConfig {
     String baseUrl = cloud.getString("baseUrl");
     if (!CLOUD_ORIGIN.matcher(baseUrl).matches()) throw new IOException("The Eliza Cloud address must be an https origin");
     this.cloud = baseUrl.replaceAll("/+$", "");
-    smallModel = cloud.optString("smallModel", ""); largeModel = cloud.optString("largeModel", "");
-    persistMemory = host.optBoolean("persistMemory", false);
+    smallModel = string(cloud, "smallModel"); largeModel = string(cloud, "largeModel");
+    persistMemory = flag(host, "persistMemory");
     JSONArray routes = host.getJSONArray("routes");
     for (int index = 0; index < routes.length(); index++) {
       JSONObject route = routes.getJSONObject(index);
       String method = route.getString("method"), path = route.getString("path");
       if (!Set.of("GET", "POST", "PUT", "PATCH", "DELETE").contains(method) || !ROUTE.matcher(path).matches() || path.matches(".*/\\.+(/.*)?"))
         throw new IOException("Invalid embedded agent route");
-      this.routes.add(new Route(method, path, route.optBoolean("stream", false)));
+      this.routes.add(new Route(method, path, flag(route, "stream")));
     }
     if (this.routes.isEmpty()) throw new IOException("The embedded agent admits no route");
     JSONObject settings = host.has("environment") ? host.getJSONObject("environment") : new JSONObject();
@@ -81,8 +81,8 @@ public final class EmbeddedAgentConfig {
         throw new IOException("The embedded agent environment may not set " + key);
       environment.put(key, (String) value);
     }
-    String name = character.optString("name", "").trim();
-    if (name.isEmpty() || name.length() > 50 || character.optString("system", "").trim().isEmpty()) throw new IOException("Invalid embedded agent character");
+    String name = string(character, "name").trim();
+    if (name.isEmpty() || name.length() > 50 || string(character, "system").trim().isEmpty()) throw new IOException("Invalid embedded agent character");
     this.character = new JSONObject(character.toString()).put("default", true);
     JSONObject actions = policy.getJSONObject("actions");
     for (Iterator<String> keys = actions.getJSONObject("allowed").keys(); keys.hasNext();) allowedActions.add(keys.next());
@@ -98,8 +98,22 @@ public final class EmbeddedAgentConfig {
     }
   }
 
+  private static String string(JSONObject object, String key) throws IOException {
+    Object value = object.opt(key);
+    if (value == null) return "";
+    if (!(value instanceof String)) throw new IOException("Embedded agent " + key + " must be text");
+    return (String) value;
+  }
+
+  private static boolean flag(JSONObject object, String key) throws IOException {
+    Object value = object.opt(key);
+    if (value == null) return false;
+    if (!(value instanceof Boolean)) throw new IOException("Embedded agent " + key + " must be true or false");
+    return (Boolean) value;
+  }
+
   private static String text(JSONObject words, String key) throws IOException {
-    String value = words.optString(key, "").trim();
+    String value = string(words, key).trim();
     if (value.isEmpty() || value.length() > 200) throw new IOException("Invalid embedded agent notification " + key);
     return value;
   }
