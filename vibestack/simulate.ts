@@ -11,7 +11,8 @@ import { entry, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { simulated } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
-import type { Result } from "./spec.ts";
+import type { Result } from "./pipeline.ts";
+import { SIMULATIONS } from "./units.ts";
 import { allDone, digest, indent } from "./util.ts";
 
 const SAMPLES = 10000;
@@ -124,10 +125,10 @@ export function harnessFiles(spec: Spec, specs: Spec[], model: Model): Record<st
  * simulation again. One run of Quint uses one core, so with `split` a large budget is split among up to four runs of a
  * single thread, each with a seed of its own; how it is split depends only on the budget, so the same harness always gives
  * the same traces. When a run breaks the invariant, the command is the one for that run. A run that ran is in
- * gen/traces; one remembered (action.ts) is not.
+ * gen/traces until the next check; one remembered (action.ts) is not.
  */
 export async function simulate({ memory, model, files }: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
-  const dir = `gen/traces/${model.name}.${invariant}.${step}`;
+  const dir = `${SIMULATIONS}/${model.name}.${invariant}.${step}`;
   const shards = !split ? 1 : Math.max(1, Math.min(MAX_SHARDS, Math.floor(samples / SHARD_SAMPLES)));
   const runs = Array.from({ length: shards }, async (_, k) => {
     const derivedSeed = seedFor(seed, model.harness, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));
@@ -297,19 +298,20 @@ export interface Simulation { said: Result[]; tested?: Simulated }
 
 /**
  * Simulate one spec and replay its traces through `domain`, its generated module. A spec is not simulated again while
- * what Quint reads is unchanged, and its results are not said again while the rules they cite are where they were, with
- * the definitions they held: the seed is part of what is simulated, so a failure comes back the same. Only a simulator
- * that could not run is tried again.
+ * what Quint reads is unchanged, and its results are not said again while its rules keep their names and the
+ * definitions they held: the seed is part of what is simulated, so a failure comes back the same. A result cites a
+ * rule at the line it is on now, so prose that moves the rules simulates nothing again. Only a simulator that could
+ * not run is tried again.
  */
 export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Model, domain: any, seed: number): Promise<Simulation> {
-  const citation = (rule: Rule) => `"${rule.key}" (${spec.file}:${rule.line})`;
+  const citation = (rule: Rule) => `"${rule.key}" (${spec.file}:\0${rule.key}\0)`;
   const cite = (def: string) => {
     const rule = spec.rules.find((r) => r.defs.includes(def));
     return rule ? citation(rule) : def;
   };
   const simulationSteps = STEPS + Math.max(0, ...model.within.values());
   const files = harnessFiles(spec, specs, model);
-  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), spec.file, spec.rules.map((r) => `${r.key}\0${r.line}\0${r.defs.join(" ")}`).join("\n"),
+  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
     String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
   return remembered<Simulation>(memory, entry(memory.root, "simulate", key), async (memory) => {
     const harness: Harness = { memory, model, files };
@@ -433,5 +435,9 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));
     }
     return { said, tested };
-  }, ({ said }) => !said.some((r) => r.summary === COULD_NOT_RUN));
+  }, ({ said }) => !said.some((r) => r.summary === COULD_NOT_RUN)).then(({ said, tested }) => {
+    const lines = new Map(spec.rules.map((r) => [r.key, r.line]));
+    const placed = (text: string) => text.replace(/\0([^\0]*)\0/g, (_, key: string) => String(lines.get(key)));
+    return { said: said.map((r) => ({ ...r, summary: placed(r.summary), detail: placed(r.detail) })), tested };
+  });
 }

@@ -1,5 +1,5 @@
 name: setup
-description: Node 26, pnpm from packageManager and its cache; with verification, Dafny, Quint's evaluator, Chromium and the spec cache.
+description: Node 26, pnpm from packageManager and its cache; with verification, Dafny, Quint's evaluator, Chromium and the spec cache; on a pull request, Turborepo's cache.
 inputs:
   verification:
     description: Set up the tools pnpm verify needs beyond Node and pnpm.
@@ -11,6 +11,9 @@ outputs:
   spec-cache-key:
     description: The key to save the spec cache under, unique to this run attempt; empty without verification.
     value: ${{ steps.spec-cache.outputs.key }}
+  turbo-cache-key:
+    description: On a pull request, the key to save Turborepo's local cache under, unique to this run attempt.
+    value: ${{ steps.turbo-cache.outputs.key }}
 runs:
   using: composite
   steps:
@@ -46,6 +49,16 @@ runs:
         path: ${{ steps.spec-cache.outputs.path }}
         key: ${{ steps.spec-cache.outputs.key }}
         restore-keys: ${{ steps.spec-cache.outputs.prefix }}
+    - id: turbo-cache
+      if: github.event_name == 'pull_request'
+      shell: bash
+      run: echo "key=turbo-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+    - if: steps.turbo-cache.outputs.key != ''
+      uses: actions/cache/restore@v6
+      with:
+        path: .turbo/cache
+        key: ${{ steps.turbo-cache.outputs.key }}
+        restore-keys: turbo-${{ runner.os }}-${{ runner.arch }}-
     - run: pnpm install --frozen-lockfile
       shell: bash
     # Quint's first-run downloader uses the unauthenticated GitHub API.

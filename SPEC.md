@@ -548,8 +548,15 @@ under `src/`.
   state. Later runs replay it first: one that still breaks fails, one that
   cannot run keeps it, and one that breaks nothing or no longer applies to
   the page removes it. A bug worth keeping fixed becomes a step of the journey it broke.
-- **A pass is remembered** until the package's test inputs, Bombadil's
-  version or the script change. The nightly check always explores afresh.
+- **A pass is remembered** until what the page reads changes, or the
+  installed Bombadil and the packages it loads, or the script: the package's
+  files but its tests and their configuration, drivers, traces,
+  counterexamples, contracts, proofs and `spec/`; each file and directory its
+  code or scripts name by a path; what each workspace package its code
+  imports, or its scripts run, exports; and the generated modules it imports,
+  or all of them where its code names none. A page that runs the tools, as
+  Studio's does, reads the code of them all. The nightly check always
+  explores afresh.
 
 ## Large applications
 
@@ -570,7 +577,14 @@ under `src/`.
   checks and the Dafny and Z3 installed. Each
   simulation result, a failing one too (its seed is fixed), and each passing
   proof result is kept beside them, under a fingerprint of the spec's Quint
-  without its comments, everything it imports and the versions of the tools.
+  without its comments, everything it imports and the versions of the tools
+  that compute it, so a change to the tools reruns only the stages that run
+  the changed code. A passing typecheck is kept under what the compiler read:
+  the package's files but its Markdown and Quint, its `tsconfig.json` and the
+  configurations it extends, every file outside `node_modules` the compile
+  read, the lock file and the compiler's bytes. A driver's passing run is kept
+  under the files its tests read and the events the simulator found; a
+  failure, and a `driver:` program, run every time.
   The specs are simulated at once.
 - **The spec covers the rules, not the plumbing.** Chat, HTTP and storage stay
   hand-written around the generated core, as `vibestack/examples/dashboard/src/notify.vibe`

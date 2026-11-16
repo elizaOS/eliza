@@ -31,12 +31,22 @@ jobs:
       - uses: actions/checkout@v7
       - id: setup
         uses: ./.github/actions/setup
-      - run: pnpm verify --continue
+      - run: pnpm verify --continue --summarize
       - if: always() && steps.setup.outputs.spec-cache-key != ''
         uses: actions/cache/save@v6
         with:
           path: ${{ steps.setup.outputs.spec-cache-path }}
           key: ${{ steps.setup.outputs.spec-cache-key }}
+      - if: always() && steps.setup.outputs.turbo-cache-key != ''
+        run: |
+          mkdir -p .turbo/cache
+          cat .turbo/runs/*.json 2>/dev/null | jq -r '.tasks[] | select(.cache.status == "HIT") | .hash' | while read -r hash; do find .turbo/cache -name "$hash*" -exec touch {} +; done
+          find .turbo/cache -type f -mtime +7 -delete
+      - if: always() && steps.setup.outputs.turbo-cache-key != ''
+        uses: actions/cache/save@v6
+        with:
+          path: .turbo/cache
+          key: ${{ steps.setup.outputs.turbo-cache-key }}
       - if: always()
         uses: actions/upload-artifact@v7
         with:

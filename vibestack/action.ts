@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { dafnyIdentity, entry, recall, store, type Memory } from "./cache.ts";
-import { NEEDS_DAFNY, bin, exec, executableDigest, solver } from "./run.ts";
+import { entry, executableDigest, recall, store, verifierIdentity, type Memory } from "./cache.ts";
+import { NEEDS_DAFNY, bin, exec, stamp } from "./run.ts";
 
 /** A file a tool reads: its text, and what of the text decides the run, which is what the run is remembered under. */
 export interface Input { text: string; key: string }
@@ -36,37 +36,53 @@ function packages(dir: string, found = new Map<string, string>()): Map<string, s
   return found;
 }
 
-/** The program a tool runs as: where it is, what tells it from another, and the file that changes when it is installed again. */
-interface Program { exe: string; id: string; since?: string }
-const programs = new Map<string, Promise<Program>>();
+/** What tells each program installed as a package from another, by the program and its launcher as it was when read. */
+const programs = new Map<string, Promise<string>>();
 
 /**
- * The tools run as actions. Each names its program: Quint by the bytes of its launcher, every package it loads, and the
- * Node and platform that run them; Dafny by its installation and the solver it is given. And each says whether a run
- * reached its answer, the only kind remembered: a typecheck that found no error and wrote the IR, or a simulation that
- * held or broke the invariant and wrote its traces; an audit that completed, or a verification that counts no failure
- * but the ones it would count again, obligations not proved or out of resources. A run that ran out of time or memory,
- * or was stopped, is tried again.
+ * The package `name` that the executable `exe` runs, and every package it may load, by name and version: installed
+ * beside the executable, or, for one a package manager exposes from a dependency of these tools, where they load it.
+ */
+export function installedPackages(exe: string, name: string): string[] {
+  const at = installed(name, path.resolve(exe, "../../..")) ?? installed(name, import.meta.dirname);
+  const found = at && packages(at);
+  if (!found || /@undefined$/.test(found.get(at)!)) throw new Error(`no ${name} with a version is installed beside ${exe} or these tools; run pnpm install`);
+  return [...found.values()].sort();
+}
+
+/** An executable of the toolchain's dependencies, told apart by its launcher, every package it loads, and the Node and platform that run them. */
+const packaged = (exe: string, name: string) => [executableDigest(exe), ...installedPackages(exe, name), `node@${process.versions.node}:${process.platform}:${process.arch}`].join(" ");
+
+/** Whether Dafny refused a file it could not parse or resolve, which it does again for the same file. */
+const refused = (r: Ran) => r.status === 2 && /^\d+ (?:resolution\/type|parse) errors? detected in /m.test(r.out);
+
+/** Whether LemmaScript refused its input, as it does again for the same input: an error of its own, not of the system it runs on. */
+const declined = (r: Ran) => r.status === 1 && /^(?:ERROR|WARNING): /m.test(r.stderr) && !/\bE[A-Z]{2,}: |could not run `git diff`/.test(r.stderr);
+
+/**
+ * The tools run as actions. Each names its program: Quint and LemmaScript by the bytes of their launchers, every package
+ * they load, and the Node and platform that run them; Dafny by its installation and the solver it is given. And each
+ * says whether a run reached its answer, the only kind remembered: a typecheck that found no error and wrote the IR, or
+ * a simulation that held or broke the invariant and wrote its traces; LemmaScript generating the Dafny, or refusing its
+ * input; Dafny refusing a file it cannot parse or resolve, an audit that completed, or a verification that counts no
+ * failure but the ones it would count again, obligations not proved or out of resources. A run that ran out of time or
+ * memory, failed for want of a file, a process or a program, or was stopped, is tried again.
  */
 const TOOLS = {
   quint: {
-    program: (root: string): Program => {
-      const exe = bin("quint", root);
-      const at = installed("@informalsystems/quint", path.resolve(exe, "../../.."));
-      if (!at) throw new Error(`no @informalsystems/quint is installed beside ${exe}; run pnpm install`);
-      return { exe, id: [executableDigest(exe), ...[...packages(at).values()].sort(), `node@${process.versions.node}:${process.platform}:${process.arch}`].join(" "), since: exe };
-    },
+    installs: "@informalsystems/quint",
     answered: (args: string[], r: Ran) => args[0] === "typecheck" ? r.ok && Object.keys(r.files).length > 0
       : (r.ok || violated(r)) && Object.keys(r.files).some((f) => f.endsWith(".itf.json")),
   },
+  lsc: {
+    installs: "lemmascript",
+    answered: (_args: string[], r: Ran) => declined(r) || (r.ok && Object.keys(r.files).some((f) => f.endsWith(".dfy.gen"))),
+  },
   dafny: {
-    program: async (): Promise<Program> => {
-      const [dafny, z3] = await Promise.all([dafnyIdentity(), solver()]);
-      return { exe: "dafny", id: JSON.stringify({ dafny, z3: `${z3.version}:${executableDigest(z3.path)}`, platform: `${process.platform}:${process.arch}` }) };
-    },
-    answered: (args: string[], r: Ran) => args[0] === "audit" ? /Dafny auditor completed/.test(r.out)
+    installs: undefined,
+    answered: (args: string[], r: Ran) => refused(r) || (args[0] === "audit" ? /Dafny auditor completed/.test(r.out)
       : (r.status === 0 || r.status === 4) && !/timed out|out of memory|solver exception|inconclusive/i.test(r.out)
-        && (r.out.match(DAFNY_SUMMARY)?.[1].split(", ").filter(Boolean).every((counted) => counted.endsWith(" out of resource")) ?? false),
+        && (r.out.match(DAFNY_SUMMARY)?.[1].split(", ").filter(Boolean).every((counted) => counted.endsWith(" out of resource")) ?? false)),
   },
 };
 
@@ -75,13 +91,16 @@ const TOOLS = {
  * say what the same run said before. A run is remembered under the program, the arguments and what decides each file,
  * and the code of this file and run.ts: a change elsewhere in these tools runs the tool again only where it changes
  * what the tool reads, and a file left out of `files` is one the tool cannot find. Only a run that reached its answer
- * is remembered, and not when the program was installed again during the check.
+ * is remembered, and not when the program was installed again during the run; a process that outlives a reinstall
+ * names the program installed now.
  */
 export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string[], dir: string, files: Record<string, Input>): Promise<Ran> {
-  const { program, answered } = TOOLS[tool];
-  const key = `${tool}\0${memory.root}`;
-  if (!programs.has(key)) programs.set(key, Promise.resolve(memory.root).then((root) => program(root)).catch((e) => { programs.delete(key); throw e; }));
-  const { exe, id, since } = await programs.get(key)!;
+  const { installs, answered } = TOOLS[tool];
+  const exe = installs ? bin(tool, memory.root) : tool;
+  const since = installs ? stamp([exe]) : "";
+  const key = `${exe}\0${since}`;
+  if (installs && !programs.has(key)) programs.set(key, Promise.resolve(exe).then((exe) => packaged(exe, installs)).catch((e) => { programs.delete(key); throw e; }));
+  const id = installs ? await programs.get(key)! : await verifierIdentity();
   const at = await entry(memory.root, "action", [id, JSON.stringify(args), ...Object.keys(files).sort().flatMap((f) => [f, files[f].key])]);
   const known = recall<Ran>(memory, at);
   if (known) return known;
@@ -93,6 +112,6 @@ export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string
   const written = fs.readdirSync(where, { withFileTypes: true }).filter((f) => f.isFile() && !Object.hasOwn(files, f.name)).map((f) => f.name).sort();
   const ran: Ran = { ok: r.status === 0 && !r.stopped, status: r.status, out: `${r.stdout}${r.stderr}${r.stopped ? `\n${r.stopped}\n` : ""}`, stderr: r.stderr, stopped: r.stopped,
     files: Object.fromEntries(written.map((f) => [f, fs.readFileSync(path.join(where, f), "utf8")])) };
-  if (!ran.stopped && answered(args, ran) && !(since && fs.statSync(since).ctimeMs >= performance.timeOrigin)) store(memory, at, ran);
+  if (!ran.stopped && answered(args, ran) && (installs ? stamp([exe]) === since : await verifierIdentity() === id)) store(memory, at, ran);
   return ran;
 }
