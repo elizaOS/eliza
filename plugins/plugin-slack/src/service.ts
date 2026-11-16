@@ -60,6 +60,7 @@ import {
 } from "@elizaos/core";
 import { App, LogLevel } from "@slack/bolt";
 import {
+  ErrorCode,
   type RetryOptions,
   retryPolicies,
   WebClient as SlackWebClient,
@@ -70,6 +71,10 @@ import {
  * non-200 answer or network error by default, and `chat.postMessage` has no
  * idempotency key: when Slack stored the message but the answer was lost, the
  * retry posts it again. Only a rate limit (Slack stored nothing) is retried.
+ *
+ * The library signals "rate limited, retry after the wait" with an error that
+ * has no code. A non-200 answer and a network failure are its coded HTTP and
+ * request errors; those stop the retry.
  */
 export const OUTBOUND_RETRY_CONFIG: RetryOptions & {
   // `WebClient` hands `retryConfig` to p-retry, which stops when this throws.
@@ -78,7 +83,10 @@ export const OUTBOUND_RETRY_CONFIG: RetryOptions & {
 } = {
   ...retryPolicies.tenRetriesInAboutThirtyMinutes,
   onFailedAttempt: (error) => {
-    if (!error.message.startsWith("A rate limit was exceeded")) throw error;
+    const code = (error as { code?: unknown }).code;
+    if (code === ErrorCode.HTTPError || code === ErrorCode.RequestError) {
+      throw error;
+    }
   },
 };
 
@@ -1187,26 +1195,24 @@ export class SlackService extends Service implements ISlackService {
     if (!app) return;
 
     // Handle regular messages
-    app.message(async ({ message, client, body }) => {
+    app.message(async ({ message, body }) => {
       if (!this.isInboundWorkspaceAuthorized(accountId, body, "message")) {
         return;
       }
       await this.handleMessage(
         message as SlackMessageEventType,
-        client,
         accountId,
         body,
       );
     });
 
     // Handle app mentions
-    app.event("app_mention", async ({ event, client, body }) => {
+    app.event("app_mention", async ({ event, body }) => {
       if (!this.isInboundWorkspaceAuthorized(accountId, body, "app_mention")) {
         return;
       }
       await this.handleAppMention(
         event as SlackAppMentionEventType,
-        client,
         accountId,
         body,
       );
@@ -1488,7 +1494,6 @@ export class SlackService extends Service implements ISlackService {
 
   private async authorizeInboundEvent(
     event: Parameters<SlackAccountPolicyResolver["authorize"]>[0],
-    client: WebClient,
     accountId: string,
   ): Promise<SlackInboundPolicyDecision> {
     const policy = this.getPolicyForAccount(accountId);
@@ -1518,8 +1523,14 @@ export class SlackService extends Service implements ISlackService {
     }
 
     if (decision.pairingReply) {
-      const outbound =
-        this.getAccountState(accountId)?.outboundClient ?? client;
+      // A pairing reply comes from the account's policy, which lives in its
+      // state, so the state and its outbound client exist here.
+      const outbound = this.getAccountState(accountId)?.outboundClient;
+      if (!outbound) {
+        throw new Error(
+          `Slack account ${accountId} has a pairing reply but no account state`,
+        );
+      }
       await outbound.chat.postMessage({
         channel: event.channelId,
         text: decision.pairingReply,
@@ -1547,7 +1558,6 @@ export class SlackService extends Service implements ISlackService {
 
   private async handleMessage(
     message: SlackMessageEventType,
-    client: WebClient,
     accountId = this.defaultAccountId,
     body?: unknown,
   ): Promise<void> {
@@ -1626,7 +1636,6 @@ export class SlackService extends Service implements ISlackService {
         isBotMessage: Boolean(message.bot_id),
         ...workspace,
       },
-      client,
       accountId,
     );
     if (!gate.allowed) return;
@@ -1714,7 +1723,6 @@ export class SlackService extends Service implements ISlackService {
 
   private async handleAppMention(
     event: SlackAppMentionEventType,
-    client: WebClient,
     accountId = this.defaultAccountId,
     body?: unknown,
   ): Promise<void> {
@@ -1749,7 +1757,6 @@ export class SlackService extends Service implements ISlackService {
         isBotMessage: false,
         ...workspace,
       },
-      client,
       accountId,
     );
     if (!gate.allowed) return;

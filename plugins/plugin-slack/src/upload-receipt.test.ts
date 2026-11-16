@@ -173,7 +173,8 @@ describe("outbound client retry policy", () => {
     const { apiUrl, posts } = await startPostServer("429");
     const client = new WebClient("xoxb-test", {
       slackApiUrl: apiUrl,
-      retryConfig: OUTBOUND_RETRY_CONFIG,
+      // No backoff wait, so the retry does not depend on the policy's timing.
+      retryConfig: { ...OUTBOUND_RETRY_CONFIG, minTimeout: 0, maxTimeout: 0 },
     });
 
     const result = await client.chat.postMessage({
