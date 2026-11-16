@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import { ModelType } from "../types/model.vibe"
 
 const EXPECTED_UNAVAILABLE_REASONS = new Set([

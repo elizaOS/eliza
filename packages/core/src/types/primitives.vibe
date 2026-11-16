@@ -1,3 +1,5 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { failingAs, thrown } from "../edge.vibe"
 import { validateUuid } from "../utils/uuid.vibe"
 import type { InteractionBlock } from "./interactions.vibe"
 import type { JsonValue } from "./json.vibe"
@@ -26,12 +28,16 @@ export type ChannelType = (typeof ChannelType)[keyof typeof ChannelType]
 
 export const DEFAULT_UUID: UUID = "00000000-0000-0000-0000-000000000000"
 
-export function asUUID(id: string): UUID {
+export error InvalidUuid { message: string }
+
+export effect function asUUID(id: string): UUID!InvalidUuid {
   if (!validateUuid(id)) {
-    throw new Error(`Invalid UUID format: ${id}`)
+    throw new InvalidUuid({ message: `Invalid UUID format: ${id}` })
   }
-  return id as UUID
+  return id
 }
+
+export const asUUIDOrThrow = thrown(failingAs(Error, asUUID))
 
 export type ContentValue =
   | JsonValue
@@ -41,57 +47,34 @@ export type ContentValue =
 
 export interface Content {
   thought?: string
-
   text?: string
-
   sourceReplyReferences?: {
     replySha256: string
     sources: { eventId: string; sourceSha256: string }[]
   }
 
   effectReceiptIds?: string[]
-
   transcriptVisibility?: "internal"
-
   merge?: "append" | "replace"
-
   actions?: string[]
-
   providers?: string[]
-
   source?: string
-
   agentVoiced?: boolean
   reminderPresentation?: import("./reminder-presentation.vibe").ReminderPresentation
-
   systemNotice?: import("./system-notice.vibe").SystemNotice
-
   target?: string
-
   url?: string
-
   inReplyTo?: UUID
-
   reactedMessageText?: string
-
   attachments?: Media[]
-
   channelType?: ChannelType
-
   mentionContext?: MentionContext
-
   responseMessageId?: UUID
-
   responseId?: UUID
-
   actionCallbacks?: Content
-
   evalCallbacks?: Content
-
   type?: string
-
   interactions?: InteractionBlock[]
-
   [key: string]:
     | ContentValue
     | ChannelType
@@ -104,53 +87,31 @@ export interface Content {
 
 export interface MentionContext {
   isMention: boolean
-
   isReply: boolean
-
   isThread: boolean
-
   mentionType?: "platform_mention" | "reply" | "thread" | "none"
 }
 
 export interface Media {
   id: string
-
   url: string
-
   title?: string
-
   source?: string
-
   description?: string
-
   text?: string
-
   contentType?: ContentType
-
   thumbnailUrl?: string
-
   mimeType?: string
-
   filename?: string
-
   size?: number
-
   checksum?: string
-
   width?: number
-
   height?: number
-
   duration?: number
-
   pageCount?: number
-
   createdAt?: number
-
   ephemeral?: boolean
-
   notProcessed?: string
-
   enrichmentFailure?: {
     phase: "fetch" | "describe" | "extract" | "transcribe" | "budget"
     code: "unavailable" | "empty_result" | "unsupported_type" | "byte_limit"

@@ -1,3 +1,4 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
 import { unwrapWholeCodeFence } from "../markdown/code.vibe"
 import { findNextCloseTag, findNextOpenTag, REASONING_TAG_ALTERNATION } from "../utils/reasoning-tags.vibe"
 

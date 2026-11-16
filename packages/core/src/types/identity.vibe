@@ -1,3 +1,5 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { foreign, runDetached, type Foreign } from "../edge.vibe"
 import type { JsonObject, UUID } from "./primitives.vibe"
 import { Service, ServiceType } from "./service.vibe"
 
@@ -65,7 +67,6 @@ export interface IdentityClaim {
   verification: IdentityClaimVerification
   status: IdentityClaimStatus
   confidence: number
-
   ownerBindingId: string | null
   provenance: JsonObject
   evidence: JsonObject
@@ -112,9 +113,7 @@ export function identityDeliveryClaimsAuthoritative(value: unknown): boolean {
 export interface ResolveIdentityDeliveryClaimRequest {
   agentId: UUID
   principalId: UUID
-
   connectorId?: string
-
   connectorAccountId?: UUID
 }
 
@@ -227,7 +226,6 @@ export interface IdentityClaimConflict {
 
 export interface IdentityMergePlan {
   contractVersion: typeof IDENTITY_AUTHORITY_CONTRACT_VERSION
-
   id: UUID
   agentId: UUID
   operation: IdentityMergeOperation
@@ -379,10 +377,66 @@ export type IdentityPersonLinkVerification =
     reason: "no_attestation"
   }
 
+effect function resolveDeliveryClaim(
+  request: ResolveIdentityDeliveryClaimRequest,
+  getCluster: (agentId: UUID, principalId: UUID) => Promise<IdentityCluster | null>,
+  filterEligible: (agentId: UUID, claims: readonly IdentityClaim[]) => Promise<readonly IdentityClaim[]>,
+): IdentityDeliveryClaimResolution!Foreign {
+  const noClaim = (
+    canonicalPrincipalId: UUID | null,
+    generation: number | null,
+    reason: Extract<IdentityDeliveryClaimResolution, { decision: "no_claim" }>["reason"],
+  ): IdentityDeliveryClaimResolution => ({
+    decision: "no_claim",
+    requestedPrincipalId: request.principalId,
+    canonicalPrincipalId,
+    generation,
+    reason,
+  })
+  const cluster = try foreign(() => getCluster(request.agentId, request.principalId))
+  if (!cluster) return noClaim(null, null, "principal_not_found")
+  const { canonicalPrincipalId, generation } = cluster
+  const verified = cluster.claims.filter(
+    (claim) =>
+      claim.status === "active"
+      && (claim.verification === "verified" || claim.verification === "owner_bound"),
+  )
+  if (verified.length === 0) return noClaim(canonicalPrincipalId, generation, "no_active_verified_claim")
+  const connectorId = request.connectorId?.trim().toLowerCase()
+  const connectorClaims = connectorId
+    ? verified.filter((claim) => claim.connectorId.trim().toLowerCase() === connectorId)
+    : verified
+  if (connectorClaims.length === 0) return noClaim(canonicalPrincipalId, generation, "no_connector_claim")
+  const accountClaims = request.connectorAccountId
+    ? connectorClaims.filter((claim) => claim.connectorAccountId === request.connectorAccountId)
+    : connectorClaims
+  if (accountClaims.length === 0) return noClaim(canonicalPrincipalId, generation, "no_account_claim")
+  const eligibleClaims = try foreign(() => filterEligible(request.agentId, accountClaims))
+  if (eligibleClaims.length === 0) return noClaim(canonicalPrincipalId, generation, "connector_account_ineligible")
+  const ordered = orderIdentityDeliveryClaims(eligibleClaims)
+  const claim = ordered[0]
+  if (ordered.length === 1 && claim) {
+    return {
+      decision: "resolved",
+      requestedPrincipalId: request.principalId,
+      canonicalPrincipalId,
+      claim,
+      generation,
+    }
+  }
+  return {
+    decision: "ambiguous",
+    requestedPrincipalId: request.principalId,
+    canonicalPrincipalId,
+    claims: ordered,
+    generation,
+    reason: "multiple_verified_claims",
+  }
+}
+
 export abstract class PrincipalService extends Service {
   static override readonly serviceType = ServiceType.PRINCIPAL
   public readonly capabilityDescription = "Owns principals, identity evidence, and reversible identity mutations."
-
   abstract resolveCanonicalPrincipal(
     agentId: UUID,
     principalId: UUID,
@@ -407,102 +461,20 @@ export abstract class PrincipalService extends Service {
     principalId: UUID,
     connectorAccountId?: UUID,
   ): Promise<readonly IdentityClaim[]>
-
   protected abstract filterConnectorAccountEligibleClaims(
     agentId: UUID,
     claims: readonly IdentityClaim[],
   ): Promise<readonly IdentityClaim[]>
-
   async resolveIdentityDeliveryClaim(
     request: ResolveIdentityDeliveryClaimRequest,
   ): Promise<IdentityDeliveryClaimResolution> {
-    const cluster = await this.getCluster(request.agentId, request.principalId)
-    if (!cluster) {
-      return {
-        decision: "no_claim",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: null,
-        generation: null,
-        reason: "principal_not_found",
-      }
-    }
-    const verified = cluster.claims.filter(
-      (claim) =>
-        claim.status === "active"
-        && (claim.verification === "verified"
-          || claim.verification === "owner_bound"),
-    )
-    if (verified.length === 0) {
-      return {
-        decision: "no_claim",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: cluster.canonicalPrincipalId,
-        generation: cluster.generation,
-        reason: "no_active_verified_claim",
-      }
-    }
-    const connectorId = request.connectorId?.trim().toLowerCase()
-    const connectorClaims = connectorId
-      ? verified.filter(
-        (claim) => claim.connectorId.trim().toLowerCase() === connectorId,
-      )
-      : verified
-    if (connectorClaims.length === 0) {
-      return {
-        decision: "no_claim",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: cluster.canonicalPrincipalId,
-        generation: cluster.generation,
-        reason: "no_connector_claim",
-      }
-    }
-    const accountClaims = request.connectorAccountId
-      ? connectorClaims.filter(
-        (claim) => claim.connectorAccountId === request.connectorAccountId,
-      )
-      : connectorClaims
-    if (accountClaims.length === 0) {
-      return {
-        decision: "no_claim",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: cluster.canonicalPrincipalId,
-        generation: cluster.generation,
-        reason: "no_account_claim",
-      }
-    }
-    const eligibleClaims = await this.filterConnectorAccountEligibleClaims(
-      request.agentId,
-      accountClaims,
-    )
-    if (eligibleClaims.length === 0) {
-      return {
-        decision: "no_claim",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: cluster.canonicalPrincipalId,
-        generation: cluster.generation,
-        reason: "connector_account_ineligible",
-      }
-    }
-    const ordered = orderIdentityDeliveryClaims(eligibleClaims)
-    const claim = ordered[0]
-    if (ordered.length === 1 && claim) {
-      return {
-        decision: "resolved",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: cluster.canonicalPrincipalId,
-        claim,
-        generation: cluster.generation,
-      }
-    }
-    return {
-      decision: "ambiguous",
-      requestedPrincipalId: request.principalId,
-      canonicalPrincipalId: cluster.canonicalPrincipalId,
-      claims: ordered,
-      generation: cluster.generation,
-      reason: "multiple_verified_claims",
-    }
+    return runDetached(resolveDeliveryClaim(
+      request,
+      (agentId, principalId) => this.getCluster(agentId, principalId),
+      (agentId, claims) => this.filterConnectorAccountEligibleClaims(agentId, claims),
+    ))
   }
+
   abstract evaluateOwnerBinding(
     request: EvaluateOwnerBindingRequest,
   ): Promise<OwnerBindingEvaluation>

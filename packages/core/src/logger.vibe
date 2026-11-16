@@ -1,10 +1,11 @@
+// spec/core/logFiles.md, "Story: Open optional log files lazily and close their descriptors"; spec/core/logFiles.md, "A single initialization attempt opens output prompt and chat sinks in order"; spec/core/logFiles.md, "Pending initialization owns no descriptor"; spec/core/logListeners.md, "Story: Retain recent diagnostics and notify current listeners"; spec/core/logListeners.md, "Retention preserves the newest entries under a positive configured cap"; spec/core/logListeners.md, "Listener registration is idempotent and reregistration resets its warning"; spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"
 import type { Logger, LoggerBindings } from "./logging.vibe"
 
 export type { Logger, LoggerBindings } from "./logging.vibe"
 
-import * as fs from "node:fs"
-import { hostname } from "node:os"
-import * as pathMod from "node:path"
+import { Machine, machine, type Rejected } from "../gen/core__logFiles.effect.vibe"
+import { own } from "./owned.vibe"
+import { rawEnv } from "./utils/environment.vibe"
 import adze, {
   type ConsoleStyle,
   type Level,
@@ -21,10 +22,96 @@ import {
   redactTrailingArgs,
 } from "./security/log-redaction.vibe"
 
-const getEnvironmentVar = (
-  key: string,
-  fallback?: string,
-): string | undefined => process.env[key] ?? fallback
+module node {
+  import * as fs from "node:fs"
+  import { hostname } from "node:os"
+  import * as pathMod from "node:path"
+
+  /** @throws {never} */
+  export function writeStderr(message: string): void {
+    if (typeof process !== "undefined" && process.stderr?.write) {
+      process.stderr.write(`${message}\n`)
+    } else {
+      console.warn(message)
+    }
+  }
+
+  /** @throws {never} */
+  export function reportToConsole(message: string): void {
+    try {
+      console.error(message)
+    } catch {
+    }
+  }
+
+  /** @throws {never} */
+  export function clearConsole(): void {
+    const consoleClear = console.clear
+    if (typeof consoleClear === "function") consoleClear()
+  }
+
+  /** @throws {never} */
+  export function processId(): number {
+    return process.pid
+  }
+
+  /** @throws {never} */
+  export function hostName(): string {
+    return hostname()
+  }
+
+  /** @throws {never} */
+  export function onProcessExit(listener: () => void): void {
+    process.on("exit", listener)
+  }
+
+  /** @throws {never} */
+  export function prepareSinkPaths(target: string, inWorkingDirectory: boolean): readonly string[] | undefined {
+    try {
+      const output = inWorkingDirectory ? pathMod.join(process.cwd(), "output.log") : target
+      const directory = pathMod.dirname(output)
+      fs.mkdirSync(directory, { recursive: true })
+      return [output, pathMod.join(directory, "prompts.log"), pathMod.join(directory, "chat.log")]
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function openPrivate(path: string): number | undefined {
+    try {
+      const fd = fs.openSync(path, "a", 0o600)
+      try {
+        fs.fchmodSync(fd, 0o600)
+      } catch {
+      }
+      return fd
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function closeDescriptor(fd: number): boolean {
+    try {
+      fs.closeSync(fd)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** @throws {never} */
+  export function writeDescriptor(fd: number, parts: readonly string[]): string | undefined {
+    try {
+      for (const part of parts) fs.writeSync(fd, part)
+      return undefined
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+import { clearConsole, closeDescriptor, hostName, onProcessExit, openPrivate, prepareSinkPaths, processId, reportToConsole, writeDescriptor, writeStderr } from node
 
 interface AdzeLogMethods {
   alert(...args: unknown[]): void
@@ -110,11 +197,7 @@ function resolveConfiguredLogLevel(
   const message = `[logger] ignoring unknown ${source}=${
     JSON.stringify(raw)
   }; expected one of ${known} (aliases: off, none, warning); using "${fallback}"`
-  if (typeof process !== "undefined" && process.stderr?.write) {
-    process.stderr.write(`${message}\n`)
-  } else {
-    console.warn(message)
-  }
+  writeStderr(message)
   return fallback
 }
 
@@ -188,7 +271,7 @@ function formatPrettyLog(
 
 const DEFAULT_LOG_LEVEL = "info"
 const effectiveLogLevel = resolveConfiguredLogLevel(
-  getEnvironmentVar("LOG_LEVEL"),
+  rawEnv("LOG_LEVEL"),
   DEFAULT_LOG_LEVEL,
   "LOG_LEVEL",
 )
@@ -199,20 +282,12 @@ export const RUNTIME_DEBUG_LOG_ENABLED = ["trace", "verbose", "debug"].includes(
   effectiveLogLevel,
 )
 
-const raw = parseBooleanFromText(getEnvironmentVar("LOG_JSON_FORMAT"))
+const raw = parseBooleanFromText(rawEnv("LOG_JSON_FORMAT"))
 const showTimestamps = parseBooleanFromText(
-  getEnvironmentVar("LOG_TIMESTAMPS") ?? "true",
+  rawEnv("LOG_TIMESTAMPS") ?? "true",
 )
 
-const serverId = getEnvironmentVar("SERVER_ID") || `process-${process.pid}`
-
-let _fileLogState: "pending" | "active" | "disabled" = "pending"
-let _fileLogFd: number | null = null
-
-let _fileLogWriteErrorWarned = false
-let _promptLogFd: number | null = null
-let _chatLogFd: number | null = null
-let _promptLogCounter = 0
+const serverId = rawEnv("SERVER_ID") || `process-${processId()}`
 
 const ANSI_ESCAPE_RE = /\x1b(?:\[[\x20-\x3F]*[\x40-\x7E]|\].*?(?:\x07|\x1b\\|\(B))/g
 
@@ -220,105 +295,90 @@ function stripAnsi(str: string): string {
   return str.replace(ANSI_ESCAPE_RE, "")
 }
 
-function openLogFilePrivate(
-  fs: typeof import("node:fs"),
-  path: string,
-): number {
-  const fd = fs.openSync(path, "a", 0o600)
-  try {
-    fs.fchmodSync(fd, 0o600)
-  } catch {
-  }
-  return fd
-}
+type Descriptors = ReadonlyArray<number>
 
-function ensureFileLog(): boolean {
-  if (_fileLogState === "active") return true
-  if (_fileLogState === "disabled") return false
-
-  _fileLogState = "disabled"
-
-  if (effectiveLogSilent) return false
-  try {
-    const logFileEnv = process.env.LOG_FILE
-    if (
-      !logFileEnv
-      || logFileEnv.trim() === ""
-      || logFileEnv.trim() === "0"
-      || logFileEnv.trim().toLowerCase() === "false"
-    ) {
-      return false
-    }
-
-    const isBooleanFlag = ["true", "1", "yes", "on"].includes(
-      logFileEnv.trim().toLowerCase(),
-    )
-    const logFilePath = isBooleanFlag
-      ? pathMod.join(process.cwd(), "output.log")
-      : logFileEnv.trim()
-    const logDir = pathMod.dirname(
-      isBooleanFlag ? pathMod.join(process.cwd(), "output.log") : logFilePath,
-    )
-
-    fs.mkdirSync(logDir, { recursive: true })
-
-    const promptLogPath = pathMod.join(logDir, "prompts.log")
-    const chatLogPath = pathMod.join(logDir, "chat.log")
-
-    _fileLogFd = openLogFilePrivate(fs, logFilePath)
-    _promptLogFd = openLogFilePrivate(fs, promptLogPath)
-    _chatLogFd = openLogFilePrivate(fs, chatLogPath)
-    _fileLogState = "active"
-
-    process.on("exit", () => {
-      if (_fileLogFd !== null) {
-        try {
-          fs.closeSync(_fileLogFd)
-        } catch {
-        }
-        _fileLogFd = null
-      }
-      if (_promptLogFd !== null) {
-        try {
-          fs.closeSync(_promptLogFd)
-        } catch {
-        }
-        _promptLogFd = null
-      }
-      if (_chatLogFd !== null) {
-        try {
-          fs.closeSync(_chatLogFd)
-        } catch {
-        }
-        _chatLogFd = null
-      }
-    })
-
-    return true
-  } catch {
-    return false
+effect function fileSinkMachine() {
+  provide machine() {
+    return try own(try Machine, [] as Descriptors)
   }
 }
 
-function writeLogEntryToFile(entry: LogEntry): void {
-  if (!ensureFileLog()) return
-  try {
-    const fd = _fileLogFd
-    if (fd === null) return
-    const timestamp = new Date(entry.time).toISOString()
-    const levelStr = LEVEL_TO_NAME[entry.level ?? 30] || "info"
-    const line = `${timestamp} [${levelStr.toUpperCase().padEnd(8)}] ${stripAnsi(entry.msg)}\n`
-    fs.writeSync(fd, line)
-  } catch (error) {
-    if (!_fileLogWriteErrorWarned) {
-      _fileLogWriteErrorWarned = true
-      console.error(
-        `[logger] failed to write to the log file; further errors are suppressed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      )
-    }
+const sinks = Effect.runSync(fileSinkMachine())
+
+const promptsAfterExit = Effect.runSync(Ref.make(0))
+
+const unchanged = (fds: Descriptors) => [undefined, fds] as const
+
+function runSinks<A>(program: A!Rejected): A | undefined {
+  const exit = runSyncExit(program)
+  return Exit.isSuccess(exit) ? exit.value : undefined
+}
+
+function logFileTarget(): string | undefined {
+  const value = rawEnv("LOG_FILE")?.trim()
+  if (!value || value === "0" || value.toLowerCase() === "false") return undefined
+  return value
+}
+
+effect function abandonSinks() {
+  try sinks.step({ type: "openNext", succeeded: false }, unchanged)
+  const opened = try sinks.read((_, fds) => fds)
+  for (const fd of [...opened].reverse()) {
+    const closed = closeDescriptor(fd)
+    try sinks.step({ type: "closeFailedAcquisition", closed }, (fds) => [undefined, closed ? fds.slice(0, -1) : fds] as const)
+    if (!closed) return
   }
+  try sinks.step({ type: "finishFailedAcquisition" }, unchanged)
+}
+
+effect function closeSinksAtExit() {
+  const opened = try sinks.step({ type: "exitProcess" }, (fds) => [fds, []] as const)
+  for (const fd of opened) closeDescriptor(fd)
+}
+
+effect function initializeSinks() {
+  const target = effectiveLogSilent ? undefined : logFileTarget()
+  try sinks.step({ type: "initialize", silent: effectiveLogSilent, fileEnabled: target !== undefined }, unchanged)
+  if (target === undefined) return
+  const paths = prepareSinkPaths(target, ["true", "1", "yes", "on"].includes(target.toLowerCase()))
+  if (paths === undefined) return try abandonSinks()
+  for (const path of paths) {
+    const fd = openPrivate(path)
+    if (fd === undefined) return try abandonSinks()
+    try sinks.step({ type: "openNext", succeeded: true }, (fds) => [undefined, [...fds, fd]] as const)
+  }
+  onProcessExit(() => {
+    runSinks(closeSinksAtExit())
+  })
+}
+
+effect function activeSinks(): (Descriptors | undefined)!Rejected {
+  if (try sinks.read((state) => state.phase === "Pending")) try initializeSinks()
+  return try sinks.read((state, fds) => state.phase === "Active" || state.phase === "Exited" ? fds : undefined)
+}
+
+effect function writeOutputLine(entry: LogEntry) {
+  const fds = try activeSinks()
+  if (fds?.[0] === undefined) return
+  const timestamp = new Date(entry.time).toISOString()
+  const levelStr = LEVEL_TO_NAME[entry.level ?? 30] || "info"
+  const failure = writeDescriptor(fds[0], [`${timestamp} [${levelStr.toUpperCase().padEnd(8)}] ${stripAnsi(entry.msg)}\n`])
+  const warned = try sinks.read((state) => state.outputWarned)
+  try sinks.step({ type: "writeOutput", succeeded: failure === undefined }, unchanged)
+  if (failure !== undefined && !warned) {
+    reportToConsole(`[logger] failed to write to the log file; further errors are suppressed: ${failure}`)
+  }
+}
+
+effect function countPrompt(): (number | undefined)!Rejected {
+  if (try activeSinks() === undefined) return undefined
+  const counterAtExit = try sinks.read((state) => state.phase === "Exited" ? state.promptCounter : undefined)
+  if (counterAtExit !== undefined) return counterAtExit + (try Ref.updateAndGet(promptsAfterExit, (count) => count + 1))
+  return try sinks.step({ type: "writePrompt" }, (fds, state) => [state.promptCounter, fds] as const)
+}
+
+function sinkDescriptor(index: number): number | undefined {
+  return runSinks(activeSinks())?.[index]
 }
 
 export interface PromptLogMetadata {
@@ -355,7 +415,8 @@ function writeToPromptLog(
   body: string,
   metadata?: Record<string, unknown>,
 ): void {
-  if (!ensureFileLog() || _promptLogFd === null) return
+  const fd = sinkDescriptor(1)
+  if (fd === undefined) return
   try {
     const sep = "=".repeat(80)
     let header = `${sep}\n ${slug}  ${kind}: ${modelType} (${body.length} chars)\n`
@@ -364,9 +425,7 @@ function writeToPromptLog(
       header += ` ${JSON.stringify(metadata, null, 2)}\n`
     }
     header += `${sep}\n`
-    fs.writeSync(_promptLogFd, header)
-    fs.writeSync(_promptLogFd, body)
-    fs.writeSync(_promptLogFd, `\n${sep}\n\n`)
+    writeDescriptor(fd, [header, body, `\n${sep}\n\n`])
   } catch {
   }
 }
@@ -376,8 +435,8 @@ export function logPrompt(
   prompt: string,
   metadata?: PromptLogMetadata,
 ): string {
-  if (!ensureFileLog()) return ""
-  const counter = ++_promptLogCounter
+  const counter = runSinks(countPrompt())
+  if (counter === undefined) return ""
   const agentName = metadata?.agentName ?? "unknown"
   const slug = promptSlug(counter, agentName, modelType)
   writeToPromptLog(slug, "PROMPT", modelType, prompt, {
@@ -392,7 +451,7 @@ export function logResponse(
   response: string,
   metadata?: ResponseLogMetadata,
 ): string {
-  if (!ensureFileLog()) return ""
+  if (runSinks(activeSinks()) === undefined) return ""
   const slug = metadata?.promptSlug
   if (!slug) {
     logger.warn(
@@ -436,12 +495,9 @@ function escapeChatPreview(text: string): string {
 }
 
 function writeChatLine(line: string): void {
-  if (!ensureFileLog() || _chatLogFd === null) return
-  try {
-    const timestamp = new Date().toISOString()
-    fs.writeSync(_chatLogFd, `${timestamp} ${line}\n`)
-  } catch {
-  }
+  const fd = sinkDescriptor(2)
+  if (fd === undefined) return
+  writeDescriptor(fd, [`${new Date().toISOString()} ${line}\n`])
 }
 
 export function logChatIn(params: ChatInLogParams): string {
@@ -511,12 +567,9 @@ function createInMemoryDestination(initialMaxLogs = 100): InMemoryDestination {
         } catch {
           if (!warnedLogListeners.has(listener)) {
             warnedLogListeners.add(listener)
-            try {
-              console.error(
-                "[logger] log listener failed; continuing fan-out and suppressing further errors from this listener",
-              )
-            } catch {
-            }
+            reportToConsole(
+              "[logger] log listener failed; continuing fan-out and suppressing further errors from this listener",
+            )
           }
         }
       }
@@ -673,12 +726,12 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
     metaBase.name = "elizaos"
   }
 
-  if (!metaBase.pid && process.pid) {
-    metaBase.pid = process.pid
+  if (!metaBase.pid && processId()) {
+    metaBase.pid = processId()
   }
 
   if (!metaBase.environment) {
-    metaBase.environment = process.env.NODE_ENV || "development"
+    metaBase.environment = rawEnv("NODE_ENV") || "development"
   }
 
   if (!metaBase.serverId) {
@@ -686,7 +739,7 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
   }
 
   if (raw && !metaBase.hostname) {
-    metaBase.hostname = hostname()
+    metaBase.hostname = hostName()
   }
 
   let safeMeta: Record<string, unknown>
@@ -776,7 +829,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
 
     const entry: LogEntry = { time: Date.now(), level: priority, msg }
     globalInMemoryDestination.write(entry)
-    writeLogEntryToFile(entry)
+    runSinks(writeOutputLine(entry))
 
     try {
       if (adzeTag === undefined) {
@@ -787,12 +840,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     } catch {
       if (!warnedSinkFailure) {
         warnedSinkFailure = true
-        try {
-          console.error(
-            "[logger] formatted output sink failed; buffered logs remain available",
-          )
-        } catch {
-        }
+        reportToConsole("[logger] formatted output sink failed; buffered logs remain available")
       }
     }
   }
@@ -877,10 +925,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   const logFn = method(p.log, "log")
 
   const clear = (): void => {
-    const consoleClear = console.clear
-    if (typeof consoleClear === "function") {
-      consoleClear()
-    }
+    clearConsole()
     globalInMemoryDestination.clear()
   }
 

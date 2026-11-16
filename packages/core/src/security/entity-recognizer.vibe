@@ -1,3 +1,5 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
+import { foreign, runDetached } from "../edge.vibe"
 import { findBasicEmailSpans } from "./basic-email.vibe"
 
 export interface EntitySpan {
@@ -144,54 +146,58 @@ export class CompositeEntityRecognizer implements PiiEntityRecognizer {
     )
   }
 
-  async recognize(text: string): Promise<EntitySpan[]> {
-    if (!text) return []
-
-    const batches = await Promise.all(
-      this.recognizers.map(async (recognizer, order) =>
-        (await recognizer.recognize(text)).map((span) => ({ span, order }))
-      ),
-    )
-    const candidates = batches
-      .flat()
-      .map(({ span, order }) => ({
-        span: { ...span, kind: canonicalKind(span.kind) },
-        order,
-      }))
-      .filter(({ span }) => !this.blocklistLower.has(span.value.toLowerCase()))
-
-    const located = candidates.filter(
-      ({ span }) => span.start !== undefined && span.end !== undefined,
-    )
-    const unlocated = candidates.filter(
-      ({ span }) => span.start === undefined || span.end === undefined,
-    )
-
-    located.sort(
-      (a, b) =>
-        b.span.value.length - a.span.value.length
-        || a.order - b.order
-        || (a.span.start ?? 0) - (b.span.start ?? 0),
-    )
-    const kept: EntitySpan[] = []
-    const keptRanges: { start: number; end: number }[] = []
-    for (const { span } of located) {
-      const start = span.start as number
-      const end = span.end as number
-      if (keptRanges.some((r) => start < r.end && r.start < end)) continue
-      kept.push(span)
-      keptRanges.push({ start, end })
-    }
-
-    const seen = new Set(kept.map((s) => `${s.kind}\0${s.value}`))
-    for (const { span } of unlocated) {
-      const key = `${span.kind}\0${span.value}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      kept.push(span)
-    }
-    return kept
+  recognize(text: string): Promise<EntitySpan[]> {
+    return runDetached(recognizeComposite(this.recognizers, this.blocklistLower, text))
   }
+}
+
+effect function recognizeComposite(
+  recognizers: readonly PiiEntityRecognizer[],
+  blocklistLower: ReadonlySet<string>,
+  text: string,
+) {
+  if (!text) return []
+
+  const batches = try forEach(
+    recognizers,
+    (recognizer) => foreign(() => recognizer.recognize(text)),
+    { concurrency: "unbounded" },
+  )
+  const candidates = batches
+    .flatMap((spans, order) => spans.map((span) => ({ span: { ...span, kind: canonicalKind(span.kind) }, order })))
+    .filter(({ span }) => !blocklistLower.has(span.value.toLowerCase()))
+
+  const located = candidates.filter(
+    ({ span }) => span.start !== undefined && span.end !== undefined,
+  )
+  const unlocated = candidates.filter(
+    ({ span }) => span.start === undefined || span.end === undefined,
+  )
+
+  located.sort(
+    (a, b) =>
+      b.span.value.length - a.span.value.length
+      || a.order - b.order
+      || (a.span.start ?? 0) - (b.span.start ?? 0),
+  )
+  const kept: EntitySpan[] = []
+  const keptRanges: { start: number; end: number }[] = []
+  for (const { span } of located) {
+    const start = span.start as number
+    const end = span.end as number
+    if (keptRanges.some((r) => start < r.end && r.start < end)) continue
+    kept.push(span)
+    keptRanges.push({ start, end })
+  }
+
+  const seen = new Set(kept.map((s) => `${s.kind}\0${s.value}`))
+  for (const { span } of unlocated) {
+    const key = `${span.kind}\0${span.value}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    kept.push(span)
+  }
+  return kept
 }
 
 export function canonicalKind(raw: string): string {

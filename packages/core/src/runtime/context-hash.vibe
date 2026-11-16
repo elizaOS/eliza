@@ -1,4 +1,6 @@
-import { createHash } from "../utils/crypto-compat.vibe"
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { failingAs, Foreign, thrown } from "../edge.vibe"
+import { sha256Hex } from "./trajectory-provider-attribution.vibe"
 
 type StableJsonValue =
   | string
@@ -22,88 +24,99 @@ interface PrefixHash {
   segmentHash: string
 }
 
-export function hashString(value: string): string {
-  return createHash("sha256").update(value).digest("hex")
-}
+module stable {
+  export class UnstableJsonFault extends TypeError {}
 
-function stableStringifyValue(value: unknown, seen: WeakSet<object>): string {
-  if (value === null) {
-    return "null"
-  }
-
-  const type = typeof value
-  if (type === "string" || type === "number" || type === "boolean") {
-    return JSON.stringify(value)
-  }
-
-  if (type === "bigint") {
-    throw new TypeError("Cannot stable stringify BigInt values as JSON")
-  }
-
-  if (type === "undefined" || type === "function" || type === "symbol") {
-    return ""
-  }
-
-  if (Array.isArray(value)) {
-    if (seen.has(value)) {
-      throw new TypeError("Cannot stable stringify circular structures")
+  /** @throws {TypeError} */
+  export function stableStringifyValue(value: unknown, seen: WeakSet<object>): string {
+    if (value === null) {
+      return "null"
     }
-    seen.add(value)
-    const serialized = `[${
-      value
-        .map((item) => {
-          const serialized = stableStringifyValue(item, seen)
-          return serialized === "" ? "null" : serialized
-        })
-        .join(",")
-    }]`
-    seen.delete(value)
-    return serialized
-  }
 
-  if (seen.has(value as object)) {
-    throw new TypeError("Cannot stable stringify circular structures")
-  }
-  seen.add(value as object)
-  const record = value as Record<string, unknown>
+    const type = typeof value
+    if (type === "string" || type === "number" || type === "boolean") {
+      return JSON.stringify(value)
+    }
 
-  const keys = Object.keys(record).sort((left, right) => left < right ? -1 : left > right ? 1 : 0)
-  let serialized = ""
-  for (const key of keys) {
-    const entry = stableStringifyValue(record[key], seen)
+    if (type === "bigint") {
+      throw new UnstableJsonFault("Cannot stable stringify BigInt values as JSON")
+    }
 
-    if (entry === "") continue
-    serialized += `${serialized ? "," : ""}${JSON.stringify(key)}:${entry}`
+    if (type === "undefined" || type === "function" || type === "symbol") {
+      return ""
+    }
+
+    if (seen.has(value as object)) {
+      throw new UnstableJsonFault("Cannot stable stringify circular structures")
+    }
+    seen.add(value as object)
+
+    if (Array.isArray(value)) {
+      const serialized = `[${
+        value
+          .map((item) => {
+            const serialized = stableStringifyValue(item, seen)
+            return serialized === "" ? "null" : serialized
+          })
+          .join(",")
+      }]`
+      seen.delete(value)
+      return serialized
+    }
+
+    const record = value as Record<string, unknown>
+    const keys = Object.keys(record).sort((left, right) => left < right ? -1 : left > right ? 1 : 0)
+    let serialized = ""
+    for (const key of keys) {
+      const entry = stableStringifyValue(record[key], seen)
+      if (entry === "") continue
+      serialized += `${serialized ? "," : ""}${JSON.stringify(key)}:${entry}`
+    }
+    seen.delete(value as object)
+    return `{${serialized}}`
   }
-  seen.delete(value as object)
-  return `{${serialized}}`
+}
+import { stableStringifyValue, UnstableJsonFault } from stable
+
+export error UnstableJson { message: string }
+
+export effect function hashString(value: string): string!! {
+  return sha256Hex(value)
 }
 
-export function stableJsonStringify(value: unknown): string {
-  const serialized = stableStringifyValue(value, new WeakSet())
+export const hashStringOrThrow = thrown(hashString)
+
+export effect function stableJsonStringify(value: unknown): string!(UnstableJson | Foreign) {
+  const serialized = try Effect.try({
+    try: () => stableStringifyValue(value, new WeakSet()),
+    catch: (cause) => cause instanceof UnstableJsonFault ? new UnstableJson({ message: cause.message }) : new Foreign({ cause }),
+  })
   return serialized === "" ? "null" : serialized
 }
 
-export function hashStableJson(value: unknown): string {
-  return hashString(stableJsonStringify(value))
+export const stableJsonStringifyOrThrow = thrown(failingAs(TypeError, stableJsonStringify))
+
+export effect function hashStableJson(value: unknown): string!(UnstableJson | Foreign) {
+  return try hashString(try stableJsonStringify(value))
 }
 
-export function computePrefixHashes(
-  segments: readonly HashablePromptSegment[],
-): PrefixHash[] {
-  let prefixHash = hashStableJson({ contextPrefix: [] })
-  return segments.map((segment, index) => {
-    const segmentHash = hashStableJson({
+export const hashStableJsonOrThrow = thrown(failingAs(TypeError, hashStableJson))
+
+export effect function computePrefixHashes(segments: readonly HashablePromptSegment[]): PrefixHash[]!(UnstableJson | Foreign) {
+  let prefixHash = try hashStableJson({ contextPrefix: [] })
+  const hashes: PrefixHash[] = []
+  for (const [index, segment] of segments.map((segment, index) => [index, segment] as const)) {
+    const segmentHash = try hashStableJson({
       content: segment.content,
       id: segment.id,
       label: segment.label,
       metadata: segment.metadata,
       stable: Boolean(segment.stable),
     })
-    prefixHash = hashStableJson({
-      previousPrefixHash: prefixHash,
-      segmentHash,
-    })
-    return { index, hash: prefixHash, segmentHash }
-  })
+    prefixHash = try hashStableJson({ previousPrefixHash: prefixHash, segmentHash })
+    hashes.push({ index, hash: prefixHash, segmentHash })
+  }
+  return hashes
 }
+
+export const computePrefixHashesOrThrow = thrown(failingAs(TypeError, computePrefixHashes))

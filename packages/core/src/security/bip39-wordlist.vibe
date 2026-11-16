@@ -1,4 +1,6 @@
-import { createHash } from "../utils/crypto-compat.vibe"
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
+import { thrown } from "../edge.vibe"
+import { sha256Hex } from "../runtime/trajectory-provider-attribution.vibe"
 
 export const BIP39_WORDLIST: readonly string[] = [
   "abandon",
@@ -2061,7 +2063,7 @@ const VALID_WORD_COUNTS = new Set([12, 15, 18, 21, 24])
 
 const MNEMONIC_WINDOW_SIZES = [24, 21, 18, 15, 12] as const
 
-export function mnemonicValid(phrase: string): boolean {
+function checksumMatches(phrase: string): boolean {
   const words = phrase.trim().toLowerCase().split(/\s+/)
   if (!VALID_WORD_COUNTS.has(words.length)) return false
 
@@ -2082,12 +2084,8 @@ export function mnemonicValid(phrase: string): boolean {
   for (let i = 0; i < entropyBytes.length; i += 1) {
     entropyBytes[i] = Number.parseInt(entropy.slice(i * 8, i * 8 + 8), 2)
   }
-  const hash = createHash("sha256").update(entropyBytes).digest() as Uint8Array
-  let hashBits = ""
-  for (let i = 0; i < Math.ceil(checksumBits / 8); i += 1) {
-    hashBits += (hash[i] ?? 0).toString(2).padStart(8, "0")
-  }
-  return hashBits.slice(0, checksumBits) === checksum
+  const firstHashByte = Number.parseInt(sha256Hex(entropyBytes).slice(0, 2), 16)
+  return firstHashByte.toString(2).padStart(8, "0").slice(0, checksumBits) === checksum
 }
 
 export interface MnemonicSpan {
@@ -2096,7 +2094,7 @@ export interface MnemonicSpan {
   end: number
 }
 
-export function findAllMnemonicPhrases(text: string): MnemonicSpan[] {
+function findSpans(text: string): MnemonicSpan[] {
   const tokens = [...text.matchAll(/[a-zA-Z]{3,8}/g)]
   const count = tokens.length
 
@@ -2124,7 +2122,7 @@ export function findAllMnemonicPhrases(text: string): MnemonicSpan[] {
       if (end > count) continue
       if (brokenLinks[end] !== brokenLinks[i + 1]) continue
       if (unknownWords[end] !== unknownWords[i]) continue
-      if (mnemonicValid(words.slice(i, end).join(" "))) {
+      if (checksumMatches(words.slice(i, end).join(" "))) {
         const last = tokens[end - 1]
         const start = tokens[i].index
         const spanEnd = last.index + last[0].length
@@ -2139,6 +2137,20 @@ export function findAllMnemonicPhrases(text: string): MnemonicSpan[] {
   return spans
 }
 
-export function findMnemonicPhrase(text: string): string | null {
-  return findAllMnemonicPhrases(text)[0]?.value ?? null
+export effect function mnemonicValid(phrase: string) {
+  return checksumMatches(phrase)
 }
+
+export const mnemonicValidOrThrow = thrown(mnemonicValid)
+
+export effect function findAllMnemonicPhrases(text: string) {
+  return findSpans(text)
+}
+
+export const findAllMnemonicPhrasesOrThrow = thrown(findAllMnemonicPhrases)
+
+export effect function findMnemonicPhrase(text: string) {
+  return findSpans(text)[0]?.value ?? null
+}
+
+export const findMnemonicPhraseOrThrow = thrown(findMnemonicPhrase)

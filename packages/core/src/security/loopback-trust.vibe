@@ -1,7 +1,80 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
 import type http from "node:http"
-import { BlockList, isIP } from "node:net"
 import { isLoopbackBindHost } from "./bind-host.vibe"
 import { firstHeaderValue } from "./request-token.vibe"
+
+module node {
+  import { BlockList, isIP } from "node:net"
+
+  /** @throws {never} */
+  export function ipFamily(value: string): number {
+    return isIP(value)
+  }
+
+  const IPV4_MAPPED_PREFIXES = ["::ffff:", "::ffff:0:"] as const
+
+  /** @throws {never} */
+  export function isRemoteAddressInCidrList(
+    remoteAddress: string | null | undefined,
+    cidrList: string | null | undefined,
+  ): boolean {
+    if (!remoteAddress || !cidrList) return false
+    const entries = cidrList
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+    if (entries.length === 0) return false
+
+    const blockList = new BlockList()
+    let added = 0
+    for (const entry of entries) {
+      const slash = entry.lastIndexOf("/")
+      const ip = slash === -1 ? entry : entry.slice(0, slash)
+      const family = isIP(ip)
+      if (family === 0) continue
+      const type = family === 4 ? "ipv4" : "ipv6"
+      if (slash === -1) {
+        blockList.addSubnet(ip, family === 4 ? 32 : 128, type)
+        added += 1
+        continue
+      }
+
+      const prefixText = entry.slice(slash + 1)
+      if (!/^\d+$/.test(prefixText)) continue
+      const prefix = Number(prefixText)
+      const maxPrefix = family === 4 ? 32 : 128
+      if (prefix > maxPrefix) continue
+      try {
+        blockList.addSubnet(ip, prefix, type)
+        added += 1
+      } catch {
+      }
+    }
+    if (added === 0) return false
+
+    let peer = remoteAddress.trim().toLowerCase()
+    if (isIP(peer) === 6) {
+      for (const mappedPrefix of IPV4_MAPPED_PREFIXES) {
+        if (!peer.startsWith(mappedPrefix)) continue
+        const mapped = peer.slice(mappedPrefix.length)
+        if (isIP(mapped) === 4) {
+          peer = mapped
+          break
+        }
+      }
+    }
+    const peerFamily = isIP(peer)
+    if (peerFamily === 0) return false
+    try {
+      return blockList.check(peer, peerFamily === 4 ? "ipv4" : "ipv6")
+    } catch {
+      return false
+    }
+  }
+}
+import { ipFamily, isRemoteAddressInCidrList } from node
+export { ipFamily, isRemoteAddressInCidrList }
+
 export interface LocalRequestTrustPolicy {
   localAuthRequired: boolean
   cloudProvisioned: boolean
@@ -110,7 +183,7 @@ function normalizeProxyClientIp(raw: string): string | null {
   }
 
   normalized = normalized.trim().toLowerCase()
-  return isIP(normalized) ? normalized : null
+  return ipFamily(normalized) ? normalized : null
 }
 
 export function proxyClientHeaderBlocksLocalTrust(
@@ -142,7 +215,7 @@ export function isLoopbackRemoteAddress(
 ): boolean {
   if (!remoteAddress) return false
   const normalized = remoteAddress.trim().toLowerCase()
-  if (isIP(normalized) === 0) return false
+  if (ipFamily(normalized) === 0) return false
   return (
     normalized.startsWith("127.")
     || normalized === "::1"
@@ -150,66 +223,6 @@ export function isLoopbackRemoteAddress(
     || normalized.startsWith("::ffff:127.")
     || normalized.startsWith("::ffff:0:127.")
   )
-}
-
-const IPV4_MAPPED_PREFIXES = ["::ffff:", "::ffff:0:"] as const
-
-export function isRemoteAddressInCidrList(
-  remoteAddress: string | null | undefined,
-  cidrList: string | null | undefined,
-): boolean {
-  if (!remoteAddress || !cidrList) return false
-  const entries = cidrList
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-  if (entries.length === 0) return false
-
-  const blockList = new BlockList()
-  let added = 0
-  for (const entry of entries) {
-    const slash = entry.lastIndexOf("/")
-    const ip = slash === -1 ? entry : entry.slice(0, slash)
-    const family = isIP(ip)
-    if (family === 0) continue
-    const type = family === 4 ? "ipv4" : "ipv6"
-    if (slash === -1) {
-      blockList.addSubnet(ip, family === 4 ? 32 : 128, type)
-      added += 1
-      continue
-    }
-
-    const prefixText = entry.slice(slash + 1)
-    if (!/^\d+$/.test(prefixText)) continue
-    const prefix = Number(prefixText)
-    const maxPrefix = family === 4 ? 32 : 128
-    if (prefix > maxPrefix) continue
-    try {
-      blockList.addSubnet(ip, prefix, type)
-      added += 1
-    } catch {
-    }
-  }
-  if (added === 0) return false
-
-  let peer = remoteAddress.trim().toLowerCase()
-  if (isIP(peer) === 6) {
-    for (const mappedPrefix of IPV4_MAPPED_PREFIXES) {
-      if (!peer.startsWith(mappedPrefix)) continue
-      const mapped = peer.slice(mappedPrefix.length)
-      if (isIP(mapped) === 4) {
-        peer = mapped
-        break
-      }
-    }
-  }
-  const peerFamily = isIP(peer)
-  if (peerFamily === 0) return false
-  try {
-    return blockList.check(peer, peerFamily === 4 ? "ipv4" : "ipv6")
-  } catch {
-    return false
-  }
 }
 
 const LOCAL_APP_PROTOCOLS = new Set([
@@ -271,48 +284,42 @@ function isTrustedLocalBrowserUrl(
   const hostAuthority = parseLoopbackHostAuthority(host)
   if (!hostAuthority) return false
 
-  try {
-    const parsed = new URL(raw)
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return false
-    }
-    if (parsed.username || parsed.password) return false
-    if (
-      !allowPath
-      && (parsed.pathname !== "/" || parsed.search || parsed.hash)
-    ) {
-      return false
-    }
-
-    const originHostname = normalizeAuthorityHostname(parsed.hostname)
-    if (
-      !isLoopbackBindHost(originHostname)
-      || originHostname !== hostAuthority.hostname
-    ) {
-      return false
-    }
-
-    const explicitOriginPort = parsed.port ? Number(parsed.port) : null
-    if (hostAuthority.port === null) return explicitOriginPort === null
-    const effectiveOriginPort = explicitOriginPort ?? (parsed.protocol === "https:" ? 443 : 80)
-    return effectiveOriginPort === hostAuthority.port
-  } catch {
+  const parsed = URL.parse(raw)
+  if (!parsed) return false
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return false
   }
+  if (parsed.username || parsed.password) return false
+  if (
+    !allowPath
+    && (parsed.pathname !== "/" || parsed.search || parsed.hash)
+  ) {
+    return false
+  }
+
+  const originHostname = normalizeAuthorityHostname(parsed.hostname)
+  if (
+    !isLoopbackBindHost(originHostname)
+    || originHostname !== hostAuthority.hostname
+  ) {
+    return false
+  }
+
+  const explicitOriginPort = parsed.port ? Number(parsed.port) : null
+  if (hostAuthority.port === null) return explicitOriginPort === null
+  const effectiveOriginPort = explicitOriginPort ?? (parsed.protocol === "https:" ? 443 : 80)
+  return effectiveOriginPort === hostAuthority.port
 }
 
 function isTrustedLocalOrigin(raw: string, host: string | null): boolean {
   const trimmed = raw.trim()
   if (!trimmed || trimmed === "null") return true
-  try {
-    const parsed = new URL(trimmed)
-    if (LOCAL_APP_PROTOCOLS.has(parsed.protocol)) {
-      return true
-    }
-    return isTrustedLocalBrowserUrl(trimmed, host, false)
-  } catch {
-    return false
+  const parsed = URL.parse(trimmed)
+  if (!parsed) return false
+  if (LOCAL_APP_PROTOCOLS.has(parsed.protocol)) {
+    return true
   }
+  return isTrustedLocalBrowserUrl(trimmed, host, false)
 }
 
 function isTrustedLocalReferer(raw: string, host: string | null): boolean {

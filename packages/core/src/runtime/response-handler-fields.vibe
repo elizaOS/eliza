@@ -1,3 +1,5 @@
+// spec/core/responseFields.md, "Story: Extend structured responses without hiding sibling failures"; spec/core/responseFields.md, "Valid registration is first-wins and invalidates full-schema caches only when changed"; spec/core/responseFields.md, "All active fields parse before handlers begin and preemption stops subsequent handlers"
+import { Foreign, foreign } from "../edge.vibe"
 import type { ReplyEffectStatus } from "../types/components.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { JSONSchema } from "../types/model.vibe"
@@ -105,342 +107,207 @@ export interface ResponseHandlerFieldRunResult {
   fieldErrors: Record<string, string>
 }
 
-export class ResponseHandlerFieldRegistry {
-  private evaluators = new Map<string, ResponseHandlerFieldEvaluator>()
-  private cachedSchema: JSONSchema | null = null
-  private cachedSchemaSignature: string | null = null
-  private cachedSorted: ReadonlyArray<ResponseHandlerFieldEvaluator> | null = null
+export error InvalidFieldEvaluator { message: string }
 
-  register(evaluator: ResponseHandlerFieldEvaluator): void {
-    if (!evaluator.name || typeof evaluator.name !== "string") {
-      throw new Error(
-        "ResponseHandlerFieldEvaluator must have a non-empty name",
-      )
-    }
-    if (!evaluator.description || typeof evaluator.description !== "string") {
-      throw new Error(
+export effect function admitResponseHandlerField(
+  registered: ReadonlyMap<string, ResponseHandlerFieldEvaluator>,
+  evaluator: ResponseHandlerFieldEvaluator,
+): boolean!InvalidFieldEvaluator {
+  if (!evaluator.name || typeof evaluator.name !== "string") {
+    throw new InvalidFieldEvaluator({ message: "ResponseHandlerFieldEvaluator must have a non-empty name" })
+  }
+  if (!evaluator.description || typeof evaluator.description !== "string") {
+    throw new InvalidFieldEvaluator({
+      message:
         `ResponseHandlerFieldEvaluator '${evaluator.name}' must have a non-empty description (used verbatim in the system prompt)`,
-      )
-    }
-    if (!evaluator.schema || typeof evaluator.schema !== "object") {
-      throw new Error(
-        `ResponseHandlerFieldEvaluator '${evaluator.name}' must declare a JSONSchema`,
-      )
-    }
-    if (this.evaluators.has(evaluator.name)) {
-      return
-    }
-    this.evaluators.set(evaluator.name, evaluator)
-    this.invalidateCaches()
+    })
   }
-
-  unregister(name: string): boolean {
-    const removed = this.evaluators.delete(name)
-    if (removed) this.invalidateCaches()
-    return removed
+  if (!evaluator.schema || typeof evaluator.schema !== "object") {
+    throw new InvalidFieldEvaluator({ message: `ResponseHandlerFieldEvaluator '${evaluator.name}' must declare a JSONSchema` })
   }
+  return !registered.has(evaluator.name)
+}
 
-  private invalidateCaches(): void {
-    this.cachedSchema = null
-    this.cachedSchemaSignature = null
-    this.cachedSorted = null
-  }
+type FieldPreempt = NonNullable<ResponseHandlerFieldEffect["preempt"]>
 
-  list(
-    options: ResponseHandlerFieldSelectionOptions = {},
-  ): ReadonlyArray<ResponseHandlerFieldEvaluator> {
-    return this.sortedEvaluators(options)
-  }
+type FieldAttempt<A> = { ok: true; value: A } | { ok: false; cause: unknown }
 
-  size(): number {
-    return this.evaluators.size
-  }
-
-  composeSchema(
-    options: ResponseHandlerFieldSelectionOptions = {},
-  ): JSONSchema {
-    const selectionKey = fieldSelectionKey(options)
-    if (!selectionKey && this.cachedSchema) return this.cachedSchema
-    const sorted = this.sortedEvaluators(options)
-    const properties: Record<string, JSONSchema> = {}
-    const required: string[] = []
-    for (const evaluator of sorted) {
-      properties[evaluator.name] = evaluator.schema
-      required.push(evaluator.name)
-    }
-    const schema: JSONSchema = {
-      type: "object",
-      additionalProperties: false,
-      properties,
-      required,
-    }
-    if (selectionKey) return schema
-    this.cachedSchema = schema
-    this.cachedSchemaSignature = JSON.stringify(schema)
-    return schema
-  }
-
-  composeSchemaSignature(
-    options: ResponseHandlerFieldSelectionOptions = {},
-  ): string {
-    const selectionKey = fieldSelectionKey(options)
-    if (selectionKey) return JSON.stringify(this.composeSchema(options))
-    if (!this.cachedSchemaSignature) this.composeSchema()
-    return this.cachedSchemaSignature ?? ""
-  }
-
-  async composePromptSlices(
-    ctx: ResponseHandlerFieldContext,
-    options: ResponseHandlerFieldSelectionOptions = {},
-  ): Promise<{
-    rendered: string
-    context: string
-    activeFieldNames: string[]
-    skippedFieldNames: string[]
-  }> {
-    const sorted = this.sortedEvaluators(options)
-    const sections: string[] = []
-    const context: string[] = []
-    const active: string[] = []
-    const skipped: string[] = []
-    for (const evaluator of sorted) {
-      const should = evaluator.shouldRun
-        ? await evaluator.shouldRun(ctx)
-        : true
-      if (should) {
-        active.push(evaluator.name)
-        sections.push(`### ${evaluator.name}\n${evaluator.description}`)
-        const facts = await evaluator.getContext?.(ctx)
-        if (facts?.trim()) context.push(`### ${evaluator.name}\n${facts}`)
-      } else {
-        skipped.push(evaluator.name)
-
-        sections.push(
-          `### ${evaluator.name}\nN/A this turn; emit empty value.`,
-        )
-      }
-    }
-    return {
-      rendered: sections.join("\n\n"),
-      context: context.join("\n\n"),
-      activeFieldNames: active,
-      skippedFieldNames: skipped,
-    }
-  }
-
-  async dispatch(args: {
-    rawParsed: Record<string, unknown>
-    runtime: IAgentRuntime
-    message: Memory
-    state: State
-    senderRole: ResponseHandlerSenderRole
-    turnSignal: AbortSignal
-  }): Promise<ResponseHandlerFieldRunResult> {
-    const traces: ResponseHandlerFieldTrace[] = []
-    const fieldErrors: Record<string, string> = {}
-    let preempt:
-      | { mode: "ack-and-stop" | "ignore" | "direct-reply"; reason: string }
-      | undefined
-
-    const evaluators = this.sortedEvaluators()
-    const parsed = buildDefaultedResult(evaluators, args.rawParsed)
-
-    const baseCtx: ResponseHandlerFieldContext = {
-      runtime: args.runtime,
-      message: args.message,
-      state: args.state,
-      senderRole: args.senderRole,
-      turnSignal: args.turnSignal,
-    }
-
-    const handlers: Array<{
-      evaluator: ResponseHandlerFieldEvaluator
-      trace: ResponseHandlerFieldTrace
-      value: unknown
-    }> = []
-    for (const evaluator of evaluators) {
-      const trace: ResponseHandlerFieldTrace = {
-        fieldName: evaluator.name,
-        active: true,
-        parsed: false,
-        parseOutcome: "skipped",
-        handled: false,
-        preempted: false,
-      }
-      try {
-        const should = evaluator.shouldRun
-          ? await evaluator.shouldRun(baseCtx)
-          : true
-        if (!should) {
-          trace.active = false
-          traces.push(trace)
-          continue
-        }
-
-        const raw = args.rawParsed[evaluator.name]
-        let value: unknown = raw
-        if (evaluator.parse) {
-          try {
-            const parsedValue = evaluator.parse(raw, baseCtx)
-            if (parsedValue === null) {
-              trace.parseOutcome = "soft-fail"
-              traces.push(trace)
-              fieldErrors[evaluator.name] = "parse returned null (soft fail)"
-              continue
-            }
-            value = parsedValue
-          } catch (error) {
-            if (error instanceof TurnAbortedError) throw error
-
-            trace.parseOutcome = "hard-fail"
-            const messageStr = error instanceof Error ? error.message : String(error)
-            trace.errorMessage = messageStr
-            fieldErrors[evaluator.name] = messageStr
-            traces.push(trace)
-
-            args.runtime.logger.warn(
-              {
-                src: "response-handler-field-registry",
-                field: evaluator.name,
-                err: messageStr,
-              },
-              "Response-handler field parse hard-failed",
-            )
-            args.runtime.reportError(
-              "ResponseHandlerFieldRegistry.parse",
-              error,
-              { evaluator: evaluator.name },
-            )
-            continue
-          }
-        }
-        trace.parsed = true
-        trace.parseOutcome = "ok"
-
-        parsed[evaluator.name] = value
-        traces.push(trace)
-        if (evaluator.handle) handlers.push({ evaluator, trace, value })
-      } catch (error) {
-        if (error instanceof TurnAbortedError) throw error
-
-        const messageStr = error instanceof Error ? error.message : String(error)
-        trace.errorMessage = messageStr
-        fieldErrors[evaluator.name] = messageStr
-        traces.push(trace)
-        args.runtime.logger.warn(
-          {
-            src: "response-handler-field-registry",
-            field: evaluator.name,
-            err: messageStr,
-          },
-          "Response-handler field shouldRun failed",
-        )
-        args.runtime.reportError(
-          "ResponseHandlerFieldRegistry.shouldRun",
-          error,
-          { evaluator: evaluator.name },
-        )
-      }
-    }
-
-    for (const { evaluator, trace, value } of handlers) {
-      try {
-        if (args.turnSignal.aborted) {
-          continue
-        }
-        const handleCtx: ResponseHandlerFieldHandleContext<unknown> = {
-          ...baseCtx,
-          value,
-          parsed,
-        }
-        const effect = await evaluator.handle?.(handleCtx)
-        trace.handled = true
-        if (effect?.debug?.length) {
-          trace.debug = effect.debug.slice()
-        }
-        if (effect?.mutateResult) {
-          effect.mutateResult(parsed)
-        }
-        if (effect?.preempt) {
-          trace.preempted = true
-          trace.preemptMode = effect.preempt.mode
-          trace.preemptReason = effect.preempt.reason
-          preempt = effect.preempt
-        }
-        if (preempt) {
-          break
-        }
-      } catch (error) {
-        if (error instanceof TurnAbortedError) throw error
-
-        const messageStr = error instanceof Error ? error.message : String(error)
-        trace.errorMessage = messageStr
-        fieldErrors[evaluator.name] = messageStr
-        args.runtime.logger.warn(
-          {
-            src: "response-handler-field-registry",
-            field: evaluator.name,
-            err: messageStr,
-          },
-          "Response-handler field handler failed",
-        )
-        args.runtime.reportError("ResponseHandlerFieldRegistry.handle", error, {
-          evaluator: evaluator.name,
-        })
-      }
-    }
-
-    return {
-      parsed,
-      traces,
-      preempt,
-      fieldErrors,
-    }
-  }
-
-  private sortedEvaluators(
-    options: ResponseHandlerFieldSelectionOptions = {},
-  ): ReadonlyArray<ResponseHandlerFieldEvaluator> {
-    const includeNames = normalizeFieldSelection(options)
-    if (!includeNames) {
-      this.cachedSorted ??= [...this.evaluators.values()].sort(
-        compareEvaluators,
-      )
-      return this.cachedSorted
-    }
-    return [...this.evaluators.values()]
-      .filter((evaluator) => includeNames.has(evaluator.name))
-      .sort(compareEvaluators)
+effect function attemptField<A>(work: A!Foreign): FieldAttempt<A>!Foreign {
+  return map(work, (value): FieldAttempt<A> => ({ ok: true, value })) catch effect (failure) => {
+    if (failure.cause instanceof TurnAbortedError) throw failure
+    return { ok: false, cause: failure.cause } satisfies FieldAttempt<A>
   }
 }
 
-function compareEvaluators(
-  a: ResponseHandlerFieldEvaluator,
-  b: ResponseHandlerFieldEvaluator,
-): number {
-  const pa = a.priority ?? 100
-  const pb = b.priority ?? 100
-  if (pa !== pb) return pa - pb
-  return a.name.localeCompare(b.name)
+function shouldRunField(evaluator: ResponseHandlerFieldEvaluator, ctx: ResponseHandlerFieldContext): boolean!Foreign {
+  const shouldRun = evaluator.shouldRun
+  return shouldRun ? foreign(() => shouldRun.call(evaluator, ctx)) : succeed(true)
+}
+
+function parseFieldValue(evaluator: ResponseHandlerFieldEvaluator, raw: unknown, ctx: ResponseHandlerFieldContext): unknown!Foreign {
+  return Effect.try({ try: () => evaluator.parse?.(raw, ctx), catch: (cause) => new Foreign({ cause }) })
+}
+
+effect function handleField(
+  evaluator: ResponseHandlerFieldEvaluator,
+  trace: ResponseHandlerFieldTrace,
+  ctx: ResponseHandlerFieldHandleContext<unknown>,
+  parsed: ResponseHandlerResult,
+): (ResponseHandlerFieldEffect | undefined)!Foreign {
+  const outcome = try foreign(() => evaluator.handle?.(ctx))
+  trace.handled = true
+  if (outcome?.debug?.length) {
+    trace.debug = outcome.debug.slice()
+  }
+  const mutateResult = outcome?.mutateResult
+  if (mutateResult) {
+    try Effect.try({ try: () => mutateResult.call(outcome, parsed), catch: (cause) => new Foreign({ cause }) })
+  }
+  return outcome
+}
+
+function failureMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function recordFieldFailure(
+  runtime: IAgentRuntime,
+  evaluatorName: string,
+  trace: ResponseHandlerFieldTrace,
+  fieldErrors: Record<string, string>,
+  error: unknown,
+  stage: "parse" | "shouldRun" | "handle",
+  logMessage: string,
+): void {
+  const messageStr = failureMessage(error)
+  trace.errorMessage = messageStr
+  fieldErrors[evaluatorName] = messageStr
+  runtime.logger.warn(
+    { src: "response-handler-field-registry", field: evaluatorName, err: messageStr },
+    logMessage,
+  )
+  runtime.reportError(`ResponseHandlerFieldRegistry.${stage}`, error, { evaluator: evaluatorName })
+}
+
+export effect function composeResponseHandlerPromptSlices(
+  evaluators: ReadonlyArray<ResponseHandlerFieldEvaluator>,
+  ctx: ResponseHandlerFieldContext,
+) {
+  const sections: string[] = []
+  const context: string[] = []
+  const active: string[] = []
+  const skipped: string[] = []
+  for (const evaluator of evaluators) {
+    if (try shouldRunField(evaluator, ctx)) {
+      active.push(evaluator.name)
+      sections.push(`### ${evaluator.name}\n${evaluator.description}`)
+      const facts = try foreign(() => evaluator.getContext?.(ctx))
+      if (facts?.trim()) context.push(`### ${evaluator.name}\n${facts}`)
+    } else {
+      skipped.push(evaluator.name)
+      sections.push(`### ${evaluator.name}\nN/A this turn; emit empty value.`)
+    }
+  }
+  return {
+    rendered: sections.join("\n\n"),
+    context: context.join("\n\n"),
+    activeFieldNames: active,
+    skippedFieldNames: skipped,
+  }
+}
+
+export interface ResponseHandlerDispatchArgs {
+  rawParsed: Record<string, unknown>
+  runtime: IAgentRuntime
+  message: Memory
+  state: State
+  senderRole: ResponseHandlerSenderRole
+  turnSignal: AbortSignal
+}
+
+export effect function dispatchResponseHandlerFields(
+  evaluators: ReadonlyArray<ResponseHandlerFieldEvaluator>,
+  args: ResponseHandlerDispatchArgs,
+): ResponseHandlerFieldRunResult!Foreign {
+  const traces: ResponseHandlerFieldTrace[] = []
+  const fieldErrors: Record<string, string> = {}
+  let preempt: FieldPreempt | undefined
+  const parsed = buildDefaultedResult(evaluators, args.rawParsed)
+  const baseCtx: ResponseHandlerFieldContext = {
+    runtime: args.runtime,
+    message: args.message,
+    state: args.state,
+    senderRole: args.senderRole,
+    turnSignal: args.turnSignal,
+  }
+  const handlers: Array<{ evaluator: ResponseHandlerFieldEvaluator; trace: ResponseHandlerFieldTrace; value: unknown }> = []
+
+  for (const evaluator of evaluators) {
+    const trace: ResponseHandlerFieldTrace = {
+      fieldName: evaluator.name,
+      active: true,
+      parsed: false,
+      parseOutcome: "skipped",
+      handled: false,
+      preempted: false,
+    }
+    const activation = try attemptField(shouldRunField(evaluator, baseCtx))
+    if (!activation.ok) {
+      traces.push(trace)
+      recordFieldFailure(args.runtime, evaluator.name, trace, fieldErrors, activation.cause, "shouldRun", "Response-handler field shouldRun failed")
+      continue
+    }
+    if (!activation.value) {
+      trace.active = false
+      traces.push(trace)
+      continue
+    }
+    let value: unknown = args.rawParsed[evaluator.name]
+    if (evaluator.parse) {
+      const parsing = try attemptField(parseFieldValue(evaluator, value, baseCtx))
+      if (!parsing.ok) {
+        trace.parseOutcome = "hard-fail"
+        traces.push(trace)
+        recordFieldFailure(args.runtime, evaluator.name, trace, fieldErrors, parsing.cause, "parse", "Response-handler field parse hard-failed")
+        continue
+      }
+      if (parsing.value === null) {
+        trace.parseOutcome = "soft-fail"
+        traces.push(trace)
+        fieldErrors[evaluator.name] = "parse returned null (soft fail)"
+        continue
+      }
+      value = parsing.value
+    }
+    trace.parsed = true
+    trace.parseOutcome = "ok"
+    parsed[evaluator.name] = value
+    traces.push(trace)
+    if (evaluator.handle) handlers.push({ evaluator, trace, value })
+  }
+
+  for (const { evaluator, trace, value } of handlers) {
+    if (args.turnSignal.aborted) continue
+    const handling = try attemptField(handleField(evaluator, trace, { ...baseCtx, value, parsed }, parsed))
+    if (!handling.ok) {
+      recordFieldFailure(args.runtime, evaluator.name, trace, fieldErrors, handling.cause, "handle", "Response-handler field handler failed")
+      continue
+    }
+    const fieldPreempt = handling.value?.preempt
+    if (fieldPreempt) {
+      trace.preempted = true
+      trace.preemptMode = fieldPreempt.mode
+      trace.preemptReason = fieldPreempt.reason
+      preempt = fieldPreempt
+    }
+    if (preempt) break
+  }
+
+  return { parsed, traces, preempt, fieldErrors }
 }
 
 export interface ResponseHandlerFieldSelectionOptions {
   includeFieldNames?: ReadonlySet<string> | readonly string[]
-}
-
-function normalizeFieldSelection(
-  options: ResponseHandlerFieldSelectionOptions,
-): ReadonlySet<string> | null {
-  const include = options.includeFieldNames
-  if (!include) return null
-  return new Set([...include].filter(Boolean))
-}
-
-function fieldSelectionKey(
-  options: ResponseHandlerFieldSelectionOptions,
-): string {
-  const include = normalizeFieldSelection(options)
-  return include ? [...include].sort().join("\0") : ""
 }
 
 function buildDefaultedResult(
@@ -484,3 +351,147 @@ function defaultValueForType(type: string): unknown {
       return null
   }
 }
+
+module edge {
+  import { asLegacy, runDetached, runDetachedSync } from "../edge.vibe"
+  import type { JSONSchema } from "../types/model.vibe"
+  import {
+    admitResponseHandlerField,
+    composeResponseHandlerPromptSlices,
+    dispatchResponseHandlerFields,
+    type ResponseHandlerDispatchArgs,
+    type ResponseHandlerFieldContext,
+    type ResponseHandlerFieldEvaluator,
+    type ResponseHandlerFieldRunResult,
+    type ResponseHandlerFieldSelectionOptions,
+  } from "./response-handler-fields.vibe"
+
+  /** @throws {never} */
+  function compareEvaluators(
+    a: ResponseHandlerFieldEvaluator,
+    b: ResponseHandlerFieldEvaluator,
+  ): number {
+    const pa = a.priority ?? 100
+    const pb = b.priority ?? 100
+    if (pa !== pb) return pa - pb
+    return a.name.localeCompare(b.name)
+  }
+
+  /** @throws {never} */
+  function normalizeFieldSelection(
+    options: ResponseHandlerFieldSelectionOptions,
+  ): ReadonlySet<string> | null {
+    const include = options.includeFieldNames
+    if (!include) return null
+    return new Set([...include].filter(Boolean))
+  }
+
+  /** @throws {never} */
+  function fieldSelectionKey(
+    options: ResponseHandlerFieldSelectionOptions,
+  ): string {
+    const include = normalizeFieldSelection(options)
+    return include ? [...include].sort().join("\0") : ""
+  }
+
+  export class ResponseHandlerFieldRegistry {
+    private evaluators = new Map<string, ResponseHandlerFieldEvaluator>()
+    private cachedSchema: JSONSchema | null = null
+    private cachedSchemaSignature: string | null = null
+    private cachedSorted: ReadonlyArray<ResponseHandlerFieldEvaluator> | null = null
+
+    /** @throws {Error} */
+    register(evaluator: ResponseHandlerFieldEvaluator): void {
+      if (!runDetachedSync(asLegacy(Error, admitResponseHandlerField(this.evaluators, evaluator)))) return
+      this.evaluators.set(evaluator.name, evaluator)
+      this.invalidateCaches()
+    }
+
+    /** @throws {never} */
+    unregister(name: string): boolean {
+      const removed = this.evaluators.delete(name)
+      if (removed) this.invalidateCaches()
+      return removed
+    }
+
+    /** @throws {never} */
+    private invalidateCaches(): void {
+      this.cachedSchema = null
+      this.cachedSchemaSignature = null
+      this.cachedSorted = null
+    }
+
+    /** @throws {never} */
+    list(options: ResponseHandlerFieldSelectionOptions = {}): ReadonlyArray<ResponseHandlerFieldEvaluator> {
+      return this.sortedEvaluators(options)
+    }
+
+    /** @throws {never} */
+    size(): number {
+      return this.evaluators.size
+    }
+
+    /** @throws {never} */
+    composeSchema(options: ResponseHandlerFieldSelectionOptions = {}): JSONSchema {
+      const selectionKey = fieldSelectionKey(options)
+      if (!selectionKey && this.cachedSchema) return this.cachedSchema
+      const sorted = this.sortedEvaluators(options)
+      const properties: Record<string, JSONSchema> = {}
+      const required: string[] = []
+      for (const evaluator of sorted) {
+        properties[evaluator.name] = evaluator.schema
+        required.push(evaluator.name)
+      }
+      const schema: JSONSchema = {
+        type: "object",
+        additionalProperties: false,
+        properties,
+        required,
+      }
+      if (selectionKey) return schema
+      this.cachedSchema = schema
+      this.cachedSchemaSignature = JSON.stringify(schema)
+      return schema
+    }
+
+    /** @throws {never} */
+    composeSchemaSignature(options: ResponseHandlerFieldSelectionOptions = {}): string {
+      const selectionKey = fieldSelectionKey(options)
+      if (selectionKey) return JSON.stringify(this.composeSchema(options))
+      if (!this.cachedSchemaSignature) this.composeSchema()
+      return this.cachedSchemaSignature ?? ""
+    }
+
+    /** @throws {never} */
+    composePromptSlices(
+      ctx: ResponseHandlerFieldContext,
+      options: ResponseHandlerFieldSelectionOptions = {},
+    ): Promise<{
+      rendered: string
+      context: string
+      activeFieldNames: string[]
+      skippedFieldNames: string[]
+    }> {
+      return runDetached(composeResponseHandlerPromptSlices(this.sortedEvaluators(options), ctx))
+    }
+
+    /** @throws {never} */
+    dispatch(args: ResponseHandlerDispatchArgs): Promise<ResponseHandlerFieldRunResult> {
+      return runDetached(dispatchResponseHandlerFields(this.sortedEvaluators(), args))
+    }
+
+    /** @throws {never} */
+    private sortedEvaluators(options: ResponseHandlerFieldSelectionOptions = {}): ReadonlyArray<ResponseHandlerFieldEvaluator> {
+      const includeNames = normalizeFieldSelection(options)
+      if (!includeNames) {
+        this.cachedSorted ??= [...this.evaluators.values()].sort(compareEvaluators)
+        return this.cachedSorted
+      }
+      return [...this.evaluators.values()]
+        .filter((evaluator) => includeNames.has(evaluator.name))
+        .sort(compareEvaluators)
+    }
+  }
+}
+import { ResponseHandlerFieldRegistry } from edge
+export { ResponseHandlerFieldRegistry }

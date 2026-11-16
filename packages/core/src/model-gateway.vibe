@@ -1,3 +1,5 @@
+// spec/core/models.md, "Story: Dispatch a complete admitted request"
+import { thrown } from "./edge.vibe"
 import { isTruthyEnvValue } from "./utils/env.vibe"
 
 export const MODEL_GATEWAY_URL_KEY = "ELIZA_MODEL_GATEWAY_URL"
@@ -31,25 +33,28 @@ const trimToUndefined = (value: string | undefined): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined
 }
 
-export class ModelGatewayStrictError extends Error {
+export class ModelGatewayStrictError extends Data.TaggedError("ModelGatewayStrictError")<{
   readonly offendingVars: RawProviderKeyVar[]
+}> {
+  override readonly name = "ModelGatewayStrictError"
 
   constructor(offendingVars: RawProviderKeyVar[]) {
-    super(
-      `Model gateway strict mode is enabled (${MODEL_GATEWAY_STRICT_KEY}) `
+    super({ offendingVars })
+    Object.defineProperty(this, "message", {
+      value: `Model gateway strict mode is enabled (${MODEL_GATEWAY_STRICT_KEY}) `
         + `but raw provider key(s) are set: ${offendingVars.join(", ")}. `
         + `Remove them so all model traffic flows through the gateway `
         + `(${MODEL_GATEWAY_URL_KEY}/${MODEL_GATEWAY_TOKEN_KEY}), `
         + `or disable strict mode.`,
-    )
-    this.name = "ModelGatewayStrictError"
-    this.offendingVars = offendingVars
+      writable: true,
+      configurable: true,
+    })
   }
 }
 
-export function resolveModelGateway(
+export effect function resolveModelGateway(
   getSetting: GetSettingFn,
-): ModelGatewayResolution {
+): ModelGatewayResolution!ModelGatewayStrictError {
   const gatewayURL = trimToUndefined(getSetting(MODEL_GATEWAY_URL_KEY))
   const gatewayToken = trimToUndefined(getSetting(MODEL_GATEWAY_TOKEN_KEY))
   const strict = isTruthyEnvValue(getSetting(MODEL_GATEWAY_STRICT_KEY))
@@ -77,10 +82,10 @@ export function resolveModelGateway(
     enabled: true,
     strict,
     baseURL: gatewayURL,
-
     apiKey: gatewayToken,
   }
 }
+export const resolveModelGatewayOrThrow = thrown(resolveModelGateway)
 
 export interface OpenAiCompatibleCreds {
   baseURL: string | undefined
@@ -96,7 +101,6 @@ export function applyModelGateway(
   }
   return {
     baseURL: resolution.baseURL ?? raw.baseURL,
-
     apiKey: resolution.apiKey,
   }
 }

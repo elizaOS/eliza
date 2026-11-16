@@ -1,3 +1,5 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { Foreign, foreign, promised } from "../edge.vibe"
 import { getRecentMessagesData } from "../recent-messages-state.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
@@ -98,59 +100,66 @@ export function recentConversationTextsFromState(
   return collected
 }
 
-export async function recentConversationTexts(args: {
+effect function storedConversationTexts(runtime: IAgentRuntime, roomId: string, state: State | undefined) {
+  const memories = try foreign(() =>
+    runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      orderBy: "createdAt",
+      orderDirection: "asc",
+    })
+  )
+  const stored = Array.isArray(memories) ? memories : []
+  const memoryTexts = stored
+    .map((memory) =>
+      memory.content && typeof memory.content.text === "string"
+        ? memory.content.text
+        : ""
+    )
+    .filter((text) => text.length > 0)
+
+  const byId = new Map<string, Memory[]>()
+  for (const memory of stored) {
+    if (
+      !memory.id
+      || memory.roomId !== roomId
+      || typeof memory.content?.text !== "string"
+      || memory.content.text.length === 0
+    ) {
+      continue
+    }
+    const matches = byId.get(memory.id) ?? []
+    matches.push(memory)
+    byId.set(memory.id, matches)
+  }
+  const stateTexts = renderedConversationTextsFromState(state)
+  for (const memory of getRecentMessagesData(state)) {
+    const matches = memory.id && memory.roomId === roomId ? byId.get(memory.id) : undefined
+    if (matches?.every((saved) => sameMemoryData(saved, memory))) continue
+    if (typeof memory.content?.text === "string") {
+      stateTexts.push(memory.content.text)
+    }
+  }
+  return [...memoryTexts, ...stateTexts]
+}
+
+export effect function recentConversationTexts(args: {
   runtime: IAgentRuntime
   message?: Memory
   state: State | undefined
-}): Promise<string[]> {
+}) {
   const roomId = typeof args.message?.roomId === "string" ? args.message.roomId : ""
 
   if (!roomId || typeof args.runtime.getMemories !== "function") {
     return recentConversationTextsFromState(args.state)
   }
 
-  try {
-    const memories = await args.runtime.getMemories({
-      roomId,
-      tableName: "messages",
-      orderBy: "createdAt",
-      orderDirection: "asc",
+  return try Effect.tapCause(storedConversationTexts(args.runtime, roomId, args.state), (cause) =>
+    sync(() => {
+      const error = Cause.squash(cause)
+      args.runtime.reportError("RecentContext.getMemories", error instanceof Foreign ? error.cause : error, { roomId })
     })
-    const memoryTexts = Array.isArray(memories)
-      ? memories
-        .map((memory) =>
-          memory.content && typeof memory.content.text === "string"
-            ? memory.content.text
-            : ""
-        )
-        .filter((text) => text.length > 0)
-      : []
-
-    const byId = new Map<string, Memory[]>()
-    for (const memory of Array.isArray(memories) ? memories : []) {
-      if (
-        !memory.id
-        || memory.roomId !== roomId
-        || typeof memory.content?.text !== "string"
-        || memory.content.text.length === 0
-      ) {
-        continue
-      }
-      const matches = byId.get(memory.id) ?? []
-      matches.push(memory)
-      byId.set(memory.id, matches)
-    }
-    const stateTexts = renderedConversationTextsFromState(args.state)
-    for (const memory of getRecentMessagesData(args.state)) {
-      const matches = memory.id && memory.roomId === roomId ? byId.get(memory.id) : undefined
-      if (matches?.every((stored) => sameMemoryData(stored, memory))) continue
-      if (typeof memory.content?.text === "string") {
-        stateTexts.push(memory.content.text)
-      }
-    }
-    return [...memoryTexts, ...stateTexts]
-  } catch (error) {
-    args.runtime.reportError("RecentContext.getMemories", error, { roomId })
-    throw error
-  }
+  )
 }
+
+export const recentConversationTextsPromise = promised(recentConversationTexts)

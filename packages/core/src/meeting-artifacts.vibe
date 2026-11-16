@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"; spec/core/protocols.md, "A public value retains identity and explicitly declared version"
 import type { MeetingPlatform } from "./meetings.vibe"
 import type { TranscriptSegment } from "./transcripts.vibe"
 import { isObjectRecord } from "./utils/type-guards.vibe"
@@ -621,16 +622,26 @@ export function validateMeetingArtifact(
   return { valid: errors.length === 0, errors }
 }
 
-export function assertValidMeetingArtifact(
-  value: unknown,
-): asserts value is MeetingArtifact {
+export error InvalidMeetingArtifact { message: string }
+
+export effect function assertValidMeetingArtifact(value: unknown): void!InvalidMeetingArtifact {
   const validation = validateMeetingArtifact(value)
   if (!validation.valid) {
-    throw new Error(
-      `invalid meeting artifact: ${validation.errors.join("; ")}`,
-    )
+    throw new InvalidMeetingArtifact({ message: `invalid meeting artifact: ${validation.errors.join("; ")}` })
   }
 }
+
+module edge {
+  import { asLegacy, runDetachedSync } from "./edge.vibe"
+  import { assertValidMeetingArtifact, type MeetingArtifact } from "./meeting-artifacts.vibe"
+
+  /** @throws {Error} */
+  export function assertValidMeetingArtifactOrThrow(value: unknown): asserts value is MeetingArtifact {
+    runDetachedSync(asLegacy(Error, assertValidMeetingArtifact(value)))
+  }
+}
+import { assertValidMeetingArtifactOrThrow } from edge
+export { assertValidMeetingArtifactOrThrow }
 
 function firstById<T extends { id: string }>(
   rows: readonly T[],

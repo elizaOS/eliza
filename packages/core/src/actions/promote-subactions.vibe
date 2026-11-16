@@ -1,5 +1,8 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { foreign, runDetached } from "../edge.vibe"
 import type {
   Action,
+  ActionResult,
   ActionExample,
   ActionParameter,
   ActionParameters,
@@ -98,10 +101,10 @@ export function pinnedDiscriminatorForPromotedChild(
 ): { child: string; discriminator: string; value: string } | undefined {
   const wanted = toUpperSnake(childName)
   const declared = parent.subActions?.find(
-    (entry) => toUpperSnake(typeof entry === "string" ? entry : entry.name) === wanted,
+    (entry) => toUpperSnake(subActionName(entry)) === wanted,
   )
   if (!declared) return undefined
-  const child = lookup(typeof declared === "string" ? declared : declared.name)
+  const child = lookup(subActionName(declared))
   if (!child || promotedSubactionParent(child) !== parent.name) {
     return undefined
   }
@@ -143,26 +146,13 @@ function findDiscriminatorParameter(
   return undefined
 }
 
-function parameterRequiredForSubaction(
-  requiredForSubactions: readonly string[] | undefined,
-  subaction: string,
-): boolean {
-  if (!requiredForSubactions) return false
-  const pinned = normalizeSubaction(subaction)
-  return requiredForSubactions.some(
-    (entry) => normalizeSubaction(entry) === pinned,
-  )
+function subActionName(entry: string | Action): string {
+  return typeof entry === "string" ? entry : entry.name
 }
 
-function parameterAppliesToSubaction(
-  parameter: ActionParameter,
-  subaction: string,
-): boolean {
-  if (!parameter.subactions) return true
+function namesSubaction(entries: readonly string[], subaction: string): boolean {
   const pinned = normalizeSubaction(subaction)
-  return parameter.subactions.some(
-    (entry) => normalizeSubaction(entry) === pinned,
-  )
+  return entries.some((entry) => normalizeSubaction(entry) === pinned)
 }
 
 export function pinnedDiscriminatorDescription(subaction: string): string {
@@ -196,14 +186,14 @@ function pinDiscriminatorForVirtual(
       })
       continue
     }
-    if (!parameterAppliesToSubaction(parameter, subaction)) continue
+    if (parameter.subactions && !namesSubaction(parameter.subactions, subaction)) continue
     const {
       subactions: _applicability,
       requiredForSubactions,
       ...rest
     } = parameter
     sliced.push(
-      parameterRequiredForSubaction(requiredForSubactions, subaction)
+      requiredForSubactions && namesSubaction(requiredForSubactions, subaction)
         ? { ...rest, required: true }
         : rest,
     )
@@ -251,55 +241,62 @@ function mergeOptionsWithSubaction(
   }
 }
 
+function pinContradiction(
+  parent: Action,
+  subaction: string,
+  options: HandlerOptions | Record<string, JsonValue | undefined> | undefined,
+): string | undefined {
+  const rawParams = (options as HandlerOptions | undefined)?.parameters as
+    | Record<string, unknown>
+    | undefined
+  if (!rawParams) return undefined
+  const pinned = normalizeSubaction(subaction)
+  for (const key of DEFAULT_SUBACTION_KEYS) {
+    const declared = parent.parameters?.find((p) => p.name === key)
+    if (declared) {
+      const declaredEnum = (
+        declared.schema as { enum?: unknown } | undefined
+      )?.enum
+      const carriesPin = Array.isArray(declaredEnum)
+        && declaredEnum.some(
+          (v) => typeof v === "string" && normalizeSubaction(v) === pinned,
+        )
+      if (!carriesPin) continue
+    }
+    const value = rawParams[key]
+    if (
+      typeof value === "string"
+      && value.trim() !== ""
+      && normalizeSubaction(value) !== pinned
+    ) {
+      const parentName = toUpperSnake(parent.name)
+      const wanted = `${parentName}_${toUpperSnake(value.trim())}`
+      return `This tool is pinned to ${subaction}; '${key}: ${value}' contradicts it. Call ${wanted} (or ${parentName} with ${key}=${value}) instead.`
+    }
+  }
+  return undefined
+}
+
+effect function runVirtualHandler(
+  parent: Action,
+  parentHandler: Handler,
+  subaction: string,
+  ...[runtime, message, state, options, callback, responses]: Parameters<Handler>
+) {
+  const text = pinContradiction(parent, subaction, options)
+  if (text !== undefined) return { success: false, text, error: new Error(text) } satisfies ActionResult
+  const merged = mergeOptionsWithSubaction(parent, options, subaction)
+  return try foreign(() => parentHandler(runtime, message, state, merged, callback, responses))
+}
+
 function buildVirtualHandler(parent: Action, subaction: string): Handler {
   const parentHandler = parent.handler
-  const pinned = normalizeSubaction(subaction)
-  return async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-    options?: HandlerOptions | Record<string, JsonValue | undefined>,
-    callback?: HandlerCallback,
-    responses?: Memory[],
-  ) => {
-    const rawParams = (options as HandlerOptions | undefined)?.parameters as
-      | Record<string, unknown>
-      | undefined
-    if (rawParams) {
-      for (const key of DEFAULT_SUBACTION_KEYS) {
-        const declared = parent.parameters?.find((p) => p.name === key)
-        if (declared) {
-          const declaredEnum = (
-            declared.schema as { enum?: unknown } | undefined
-          )?.enum
-          const carriesPin = Array.isArray(declaredEnum)
-            && declaredEnum.some(
-              (v) => typeof v === "string" && normalizeSubaction(v) === pinned,
-            )
-          if (!carriesPin) continue
-        }
-        const value = rawParams[key]
-        if (
-          typeof value === "string"
-          && value.trim() !== ""
-          && normalizeSubaction(value) !== pinned
-        ) {
-          const parentName = toUpperSnake(parent.name)
-          const wanted = `${parentName}_${toUpperSnake(value.trim())}`
-          const text =
-            `This tool is pinned to ${subaction}; '${key}: ${value}' contradicts it. Call ${wanted} (or ${parentName} with ${key}=${value}) instead.`
-          return { success: false, text, error: new Error(text) }
-        }
-      }
-    }
-    const merged = mergeOptionsWithSubaction(parent, options, subaction)
-    return parentHandler(runtime, message, state, merged, callback, responses)
-  }
+  return (...args) => runDetached(runVirtualHandler(parent, parentHandler, subaction, ...args))
 }
 
 function buildVirtualValidator(parent: Action, subaction: string): Validator {
   const parentValidate = parent.validate
-  if (!parentValidate) return async () => true
+  if (!parentValidate) return () => Promise.resolve(true)
   return (runtime, message, state, options) => {
     const merged = mergeOptionsWithSubaction(parent, options, subaction)
     return parentValidate(runtime, message, state, merged)
@@ -403,9 +400,7 @@ function attachVirtualSubactions(
   }
 
   const existing = parent.subActions ?? []
-  const seen = new Set(
-    existing.map((entry) => toUpperSnake(typeof entry === "string" ? entry : entry.name)),
-  )
+  const seen = new Set(existing.map((entry) => toUpperSnake(subActionName(entry))))
   const additions = virtualNames.filter((name) => {
     const normalized = toUpperSnake(name)
     if (seen.has(normalized)) {

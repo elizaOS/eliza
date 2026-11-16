@@ -1,12 +1,11 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { foreign, promised } from "./edge.vibe"
 import type { Room } from "./types/environment.vibe"
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "./types/message-source.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 
-export async function getClientChatRooms(
-  runtime: IAgentRuntime,
-): Promise<Room[]> {
-  const rooms = await runtime.getRoomsByIds(
-    await runtime.getRoomsForParticipant(runtime.agentId),
-  )
+export effect function getClientChatRooms(runtime: IAgentRuntime) {
+  const rooms = try foreign(async () => runtime.getRoomsByIds(await runtime.getRoomsForParticipant(runtime.agentId)))
   return rooms.filter((room) => room.source === MESSAGE_SOURCE_CLIENT_CHAT)
 }
+export const getClientChatRoomsPromise = promised(getClientChatRooms)

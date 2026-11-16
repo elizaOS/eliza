@@ -1,3 +1,5 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"; spec/core/privacy.md, "A marker follows successful scrub and persisted pseudonym assignments"
+import { failingAs, foreign, promised, thrown } from "../edge.vibe"
 import { sha256Hex } from "../runtime/trajectory-provider-attribution.vibe"
 
 export const PII_SCRUB_MARKER_PREFIX = "pii"
@@ -14,33 +16,40 @@ export interface PiiScrubDoneMarker {
   readonly tier0Only: boolean
 }
 
+export error MissingRulesetVersion { message: string }
+export error MissingContentHash { message: string }
+
 export function hashScrubContent(content: string): string {
   return sha256Hex(content)
 }
 
-export function scrubMarkerKey(
+export effect function scrubMarkerKey(
   contentHash: string,
   rulesetVersion: string,
-): string {
+) {
   if (typeof rulesetVersion !== "string" || rulesetVersion.length === 0) {
-    throw new Error(
-      "[pii-scrub-markers] rulesetVersion must be a non-empty string; refusing to build a version-collapsed marker key",
-    )
+    throw new MissingRulesetVersion({
+      message: "[pii-scrub-markers] rulesetVersion must be a non-empty string; refusing to build a version-collapsed marker key",
+    })
   }
   if (typeof contentHash !== "string" || contentHash.length === 0) {
-    throw new Error(
-      "[pii-scrub-markers] contentHash must be a non-empty string",
-    )
+    throw new MissingContentHash({
+      message: "[pii-scrub-markers] contentHash must be a non-empty string",
+    })
   }
   return `${PII_SCRUB_MARKER_PREFIX}:${contentHash}:v${rulesetVersion}`
 }
 
-export function scrubMarkerKeyForContent(
+export const scrubMarkerKeyOrThrow = thrown(failingAs(Error, scrubMarkerKey))
+
+export effect function scrubMarkerKeyForContent(
   content: string,
   rulesetVersion: string,
-): string {
-  return scrubMarkerKey(hashScrubContent(content), rulesetVersion)
+) {
+  return try scrubMarkerKey(hashScrubContent(content), rulesetVersion)
 }
+
+export const scrubMarkerKeyForContentOrThrow = thrown(failingAs(Error, scrubMarkerKeyForContent))
 
 export interface ScrubMarkerCache {
   getCache<T>(key: string): Promise<T | undefined>
@@ -48,25 +57,25 @@ export interface ScrubMarkerCache {
   deleteCache(key: string): Promise<boolean>
 }
 
-export async function isScrubDone(
+export effect function isScrubDone(
   cache: ScrubMarkerCache,
   content: string,
   rulesetVersion: string,
-): Promise<boolean> {
-  const key = scrubMarkerKeyForContent(content, rulesetVersion)
-  const marker = await cache.getCache<PiiScrubDoneMarker>(key)
-  return marker !== undefined && marker !== null
+) {
+  return (try getScrubMarker(cache, content, rulesetVersion)) !== undefined
 }
 
-export async function markScrubDone(
+export const isScrubDonePromise = promised(failingAs(Error, isScrubDone))
+
+export effect function markScrubDone(
   cache: ScrubMarkerCache,
   content: string,
   marker: Omit<PiiScrubDoneMarker, "contentHash" | "completedAt"> & {
     completedAt?: number
   },
-): Promise<boolean> {
+) {
   const contentHash = hashScrubContent(content)
-  const key = scrubMarkerKey(contentHash, marker.rulesetVersion)
+  const key = try scrubMarkerKey(contentHash, marker.rulesetVersion)
   const record: PiiScrubDoneMarker = {
     contentHash,
     rulesetVersion: marker.rulesetVersion,
@@ -74,15 +83,19 @@ export async function markScrubDone(
     tier0Only: marker.tier0Only,
     completedAt: marker.completedAt ?? Date.now(),
   }
-  return cache.setCache<PiiScrubDoneMarker>(key, record)
+  return try foreign(() => cache.setCache<PiiScrubDoneMarker>(key, record))
 }
 
-export async function getScrubMarker(
+export const markScrubDonePromise = promised(failingAs(Error, markScrubDone))
+
+export effect function getScrubMarker(
   cache: ScrubMarkerCache,
   content: string,
   rulesetVersion: string,
-): Promise<PiiScrubDoneMarker | undefined> {
-  const key = scrubMarkerKeyForContent(content, rulesetVersion)
-  const marker = await cache.getCache<PiiScrubDoneMarker>(key)
+) {
+  const key = try scrubMarkerKeyForContent(content, rulesetVersion)
+  const marker = try foreign(() => cache.getCache<PiiScrubDoneMarker>(key))
   return marker ?? undefined
 }
+
+export const getScrubMarkerPromise = promised(failingAs(Error, getScrubMarker))

@@ -1,9 +1,22 @@
+// spec/core/environment.md, "Story: Cache environment reads with explicit invalidation"; spec/core/environment.md, "An absent cached value uses each call's own default"
 import { parseBooleanValue } from "./boolean.vibe"
 import { normalizeEnvValue } from "./env.vibe"
 
+module node {
+  /** @throws {never} */
+  export function processEnv(): NodeJS.ProcessEnv {
+    return typeof process === "undefined" ? {} : (process.env ?? {})
+  }
+}
+import { processEnv } from node
+export { processEnv }
+
+export function rawEnv(key: string): string | undefined {
+  return processEnv()[key]
+}
+
 export interface ReadEnvOptions {
   env?: NodeJS.ProcessEnv
-
   defaultValue?: string
 }
 
@@ -11,7 +24,7 @@ export function readEnv(
   canonicalKey: string,
   options: ReadEnvOptions = {},
 ): string | undefined {
-  const env = options.env ?? process.env
+  const env = options.env ?? processEnv()
   return normalizeEnvValue(env[canonicalKey]) ?? options.defaultValue
 }
 
@@ -46,18 +59,18 @@ export function resolveSetting(
 export class Environment {
   private readonly cache = new Map<string, string | undefined>()
   get(key: string, defaultValue?: string): string | undefined {
-    if (!this.cache.has(key)) this.cache.set(key, process.env[key])
+    if (!this.cache.has(key)) this.cache.set(key, rawEnv(key))
     return this.cache.get(key) ?? defaultValue
   }
   set(key: string, value: string | boolean | number): void {
     this.cache.delete(key)
-    process.env[key] = String(value)
+    processEnv()[key] = String(value)
   }
   has(key: string): boolean {
     return this.get(key) !== undefined
   }
   getAll(): Record<string, string | undefined> {
-    return { ...process.env }
+    return { ...processEnv() }
   }
   getBoolean(key: string, defaultValue = false): boolean {
     return parseBooleanValue(this.get(key)) ?? defaultValue

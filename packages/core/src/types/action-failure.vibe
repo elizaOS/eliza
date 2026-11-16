@@ -1,3 +1,5 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { failingAs, thrown } from "../edge.vibe"
 import { asObjectRecord } from "../utils/type-guards.vibe"
 
 export type ActionFailureProvenance =
@@ -22,31 +24,27 @@ export type ActionFailureProvenance =
 
 export type ActionFailureKind = ActionFailureProvenance["kind"]
 
-export function normalizeActionFailureProvenance(
+export error InvalidActionFailureProvenance { message: string }
+
+export effect function normalizeActionFailureProvenance(
   value: unknown,
-): ActionFailureProvenance {
+): ActionFailureProvenance!InvalidActionFailureProvenance {
   const record = asObjectRecord(value)
   if (!record) {
-    throw new TypeError("ActionResult.failureProvenance must be an object.")
+    throw new InvalidActionFailureProvenance({ message: "ActionResult.failureProvenance must be an object." })
   }
   const code = typeof record.code === "string" ? record.code.trim() : ""
   if (!code) {
-    throw new TypeError(
-      "ActionResult.failureProvenance.code must be a non-empty string.",
-    )
+    throw new InvalidActionFailureProvenance({ message: "ActionResult.failureProvenance.code must be a non-empty string." })
   }
   if (typeof record.retryable !== "boolean") {
-    throw new TypeError(
-      "ActionResult.failureProvenance.retryable must be a boolean.",
-    )
+    throw new InvalidActionFailureProvenance({ message: "ActionResult.failureProvenance.retryable must be a boolean." })
   }
 
   switch (record.kind) {
     case "missing_capability":
       if (record.boundary !== "capability" || record.retryable !== false) {
-        throw new TypeError(
-          "missing_capability provenance must use the capability boundary and retryable:false.",
-        )
+        throw new InvalidActionFailureProvenance({ message: "missing_capability provenance must use the capability boundary and retryable:false." })
       }
       return {
         kind: "missing_capability",
@@ -56,9 +54,7 @@ export function normalizeActionFailureProvenance(
       }
     case "handler_error":
       if (record.boundary !== "handler") {
-        throw new TypeError(
-          "handler_error provenance must use the handler boundary.",
-        )
+        throw new InvalidActionFailureProvenance({ message: "handler_error provenance must use the handler boundary." })
       }
       return {
         kind: "handler_error",
@@ -68,9 +64,7 @@ export function normalizeActionFailureProvenance(
       }
     case "persistence_error":
       if (record.boundary !== "persistence") {
-        throw new TypeError(
-          "persistence_error provenance must use the persistence boundary.",
-        )
+        throw new InvalidActionFailureProvenance({ message: "persistence_error provenance must use the persistence boundary." })
       }
       return {
         kind: "persistence_error",
@@ -79,11 +73,11 @@ export function normalizeActionFailureProvenance(
         retryable: record.retryable,
       }
     default:
-      throw new TypeError(
-        "ActionResult.failureProvenance.kind is not supported.",
-      )
+      throw new InvalidActionFailureProvenance({ message: "ActionResult.failureProvenance.kind is not supported." })
   }
 }
+
+export const normalizeActionFailureProvenanceOrThrow = thrown(failingAs(TypeError, normalizeActionFailureProvenance))
 
 export function readActionFailureProvenance(
   error: unknown,
@@ -93,9 +87,8 @@ export function readActionFailureProvenance(
   const candidate = record.failureProvenance
     ?? asObjectRecord(record.context)?.failureProvenance
   if (candidate === undefined) return null
-  try {
-    return normalizeActionFailureProvenance(candidate)
-  } catch {
-    return null
+  return match (runSyncExit(normalizeActionFailureProvenance(candidate))) {
+    when Exit.Success(let value): value;
+    default: null;
   }
 }

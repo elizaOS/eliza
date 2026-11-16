@@ -1,7 +1,19 @@
-import { createHash } from "node:crypto"
-import type { UUID } from "../types/primitives.vibe"
+// spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+import { failingAs, thrown } from "../edge.vibe"
 import { uuidFromString } from "./uuid.vibe"
 
-export function stringToUuid(target: string | number): UUID {
-  return uuidFromString(target, (input) => createHash("sha1").update(input).digest())
+module node {
+  import { createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function sha1(input: string): Uint8Array {
+    return createHash("sha1").update(input).digest()
+  }
 }
+import { sha1 } from node
+
+export effect function stringToUuid(target: string | number) {
+  return try uuidFromString(target, sha1)
+}
+
+export const stringToUuidOrThrow = thrown(failingAs(TypeError, stringToUuid))

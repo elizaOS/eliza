@@ -1,6 +1,8 @@
-import { lookup as dnsLookup } from "node:dns/promises"
-import net from "node:net"
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
+import { foreign, promised } from "../edge.vibe"
+import { nodeLookupFn } from "../network/node-pinned-fetch.vibe"
 import { isBlockedHostname, isPrivateIpAddress, normalizeHostLike } from "../network/ssrf.vibe"
+import { ipFamily } from "./loopback-trust.vibe"
 import { BLOCKED_SPAWN_ENV_KEYS, BLOCKED_SPAWN_ENV_PREFIXES } from "./spawn-env-policy.vibe"
 
 function isBlockedObjectKey(key: string): boolean {
@@ -211,15 +213,9 @@ function firstRemoteUrlPositionalArg(args: string[]): string | null {
   return null
 }
 
-async function resolveMcpRemoteUrlRejection(
-  rawUrl: string,
-): Promise<string | null> {
-  let parsed: URL
-  try {
-    parsed = new URL(rawUrl)
-  } catch {
-    return "URL must be a valid absolute URL"
-  }
+effect function resolveMcpRemoteUrlRejection(rawUrl: string) {
+  const parsed = URL.parse(rawUrl)
+  if (!parsed) return "URL must be a valid absolute URL"
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return "URL must use http:// or https://"
@@ -232,22 +228,15 @@ async function resolveMcpRemoteUrlRejection(
     return `URL host "${hostname}" is blocked for security reasons`
   }
 
-  if (net.isIP(hostname)) {
+  if (ipFamily(hostname)) {
     if (isPrivateIpAddress(hostname)) {
       return `URL host "${hostname}" is blocked for security reasons`
     }
     return null
   }
 
-  let addresses: Array<{ address: string }>
-  try {
-    const resolved = await dnsLookup(hostname, { all: true })
-    addresses = Array.isArray(resolved) ? resolved : [resolved]
-  } catch {
-    return `Could not resolve URL host "${hostname}"`
-  }
-
-  if (addresses.length === 0) {
+  const addresses = foreign(() => nodeLookupFn(hostname, { all: true })) catch () => undefined
+  if (addresses === undefined || addresses.length === 0) {
     return `Could not resolve URL host "${hostname}"`
   }
 
@@ -260,9 +249,9 @@ async function resolveMcpRemoteUrlRejection(
   return null
 }
 
-export async function validateMcpServerConfig(
+export effect function validateMcpServerConfig(
   config: Record<string, unknown>,
-): Promise<string | null> {
+) {
   const configType = config.type
   if (
     typeof configType !== "string"
@@ -334,7 +323,7 @@ export async function validateMcpServerConfig(
         }
         const remoteUrlArg = firstRemoteUrlPositionalArg(args)
         if (remoteUrlArg) {
-          const urlRejection = await resolveMcpRemoteUrlRejection(remoteUrlArg)
+          const urlRejection = try resolveMcpRemoteUrlRejection(remoteUrlArg)
           if (urlRejection) return urlRejection
         }
       }
@@ -344,7 +333,7 @@ export async function validateMcpServerConfig(
     if (!url) {
       return "URL is required for remote servers"
     }
-    const urlRejection = await resolveMcpRemoteUrlRejection(url)
+    const urlRejection = try resolveMcpRemoteUrlRejection(url)
     if (urlRejection) return urlRejection
   }
 
@@ -382,3 +371,5 @@ export async function validateMcpServerConfig(
 
   return null
 }
+
+export const validateMcpServerConfigPromise = promised(validateMcpServerConfig)

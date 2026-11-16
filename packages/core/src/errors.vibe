@@ -1,22 +1,25 @@
+// spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"; spec/core/diagnostics.md, "A structured failure retains its identity and an unclassified one gets a code"
 import { formatError, readDiagnosticProperty } from "./utils/errors.vibe"
 
 export type ElizaErrorSeverity = "ephemeral" | "fatal"
 
 export interface ElizaErrorOptions {
   retryAt?: number
-
   code: string
-
   cause?: unknown
-
   context?: Record<string, unknown>
-
   severity?: ElizaErrorSeverity
 }
 
 const ELIZA_ERROR_BRAND: unique symbol = Symbol.for("elizaos.core.ElizaError")
 
-export class ElizaError extends Error {
+export class ElizaError extends Data.Error<{
+  readonly name: string
+  readonly code: string
+  readonly retryAt?: number
+  readonly context?: Record<string, unknown>
+  readonly severity?: ElizaErrorSeverity
+}> {
   static override [Symbol.hasInstance](value: unknown): boolean {
     if (this !== ElizaError) {
       return Function.prototype[Symbol.hasInstance].call(this, value)
@@ -28,23 +31,14 @@ export class ElizaError extends Error {
     )
   }
 
-  override readonly name: string = "ElizaError"
-  readonly code: string
-  readonly retryAt?: number
-  readonly context?: Record<string, unknown>
-  readonly severity?: ElizaErrorSeverity
+  readonly _tag: string = "ElizaError"
 
   constructor(message: string, options: ElizaErrorOptions) {
-    super(
-      message,
-      options.cause !== undefined ? { cause: options.cause } : undefined,
-    )
-    this.code = options.code
-    this.retryAt = options.retryAt
-    this.context = options.context
-    this.severity = options.severity
-
-    Object.setPrototypeOf(this, new.target.prototype)
+    super({ name: "ElizaError", code: options.code, retryAt: options.retryAt, context: options.context, severity: options.severity })
+    Object.defineProperty(this, "message", { value: message, writable: true, configurable: true })
+    if (options.cause !== undefined) {
+      Object.defineProperty(this, "cause", { value: options.cause, writable: true, configurable: true })
+    }
   }
 }
 
@@ -54,15 +48,10 @@ Object.defineProperty(ElizaError.prototype, ELIZA_ERROR_BRAND, {
 
 export interface ReportedError {
   scope: string
-
   code: string
-
   message: string
-
   severity?: ElizaErrorSeverity
-
   context?: Record<string, unknown>
-
   at: number
 }
 

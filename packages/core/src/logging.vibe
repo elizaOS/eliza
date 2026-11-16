@@ -1,3 +1,4 @@
+// spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"; spec/core/logListeners.md, "Story: Retain recent diagnostics and notify current listeners"
 type LogFn = (
   obj: Record<string, unknown> | string | Error,
   msg?: string,

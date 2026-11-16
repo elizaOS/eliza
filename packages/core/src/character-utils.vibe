@@ -1,3 +1,4 @@
+// spec/core/runtime.md, "Story: Initialize an explicit host composition"
 import { MODEL_PROVIDER_SECRETS } from "./security/secrets.vibe"
 import type { Character } from "./types/agent.vibe"
 

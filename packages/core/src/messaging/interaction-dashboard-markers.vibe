@@ -1,3 +1,4 @@
+// spec/core/messaging.md, "Story: Dispatch through a selected connector account"
 import { isObjectRecord } from "../utils/type-guards.vibe"
 
 const DASHBOARD_CONFIG_MARKER_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g
@@ -12,14 +13,26 @@ const CHECKLIST_STATUS_GLYPHS: Record<string, string> = {
   pending: "[ ]",
 }
 
-function checklistBodyToPlainText(body: string): string | null {
-  let parsed: unknown
+function parseWidgetBody(body: string): Record<string, unknown> | null {
   try {
-    parsed = JSON.parse(body)
+    const parsed: unknown = JSON.parse(body)
+    return isObjectRecord(parsed) ? parsed : null
   } catch {
     return null
   }
-  if (!isObjectRecord(parsed) || !Array.isArray(parsed.items)) return null
+}
+
+function titledLines(parsed: Record<string, unknown>, lines: readonly string[]): string | null {
+  if (lines.length === 0) return null
+  const title = typeof parsed.title === "string" && parsed.title.trim().length > 0
+    ? `${parsed.title.trim()}:\n`
+    : ""
+  return `${title}${lines.join("\n")}`
+}
+
+function checklistBodyToPlainText(body: string): string | null {
+  const parsed = parseWidgetBody(body)
+  if (!parsed || !Array.isArray(parsed.items)) return null
   const lines: string[] = []
   for (const raw of parsed.items) {
     if (!isObjectRecord(raw) || typeof raw.content !== "string") continue
@@ -31,21 +44,12 @@ function checklistBodyToPlainText(body: string): string | null {
       : CHECKLIST_STATUS_GLYPHS.pending
     lines.push(`- ${glyph} ${content}`)
   }
-  if (lines.length === 0) return null
-  const title = typeof parsed.title === "string" && parsed.title.trim().length > 0
-    ? `${parsed.title.trim()}:\n`
-    : ""
-  return `${title}${lines.join("\n")}`
+  return titledLines(parsed, lines)
 }
 
 function workflowBodyToPlainText(body: string): string | null {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(body)
-  } catch {
-    return null
-  }
-  if (!isObjectRecord(parsed) || !Array.isArray(parsed.steps)) return null
+  const parsed = parseWidgetBody(body)
+  if (!parsed || !Array.isArray(parsed.steps)) return null
   const lines: string[] = []
   for (const raw of parsed.steps) {
     if (!isObjectRecord(raw) || typeof raw.label !== "string") continue
@@ -56,11 +60,7 @@ function workflowBodyToPlainText(body: string): string | null {
       : "pending"
     lines.push(`${lines.length + 1}. ${label} — ${status}`)
   }
-  if (lines.length === 0) return null
-  const title = typeof parsed.title === "string" && parsed.title.trim().length > 0
-    ? `${parsed.title.trim()}:\n`
-    : ""
-  return `${title}${lines.join("\n")}`
+  return titledLines(parsed, lines)
 }
 
 function degradeWidgetBlocks(text: string): string {

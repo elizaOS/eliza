@@ -1,7 +1,6 @@
-import { accessSync, constants as fsConstants, statSync } from "node:fs"
-import { join as joinPath, delimiter as pathDelimiter } from "node:path"
-import type { EventPayload } from "../types/events.vibe"
-import { EventType } from "../types/events.vibe"
+// spec/core/hookService.md, "Registration identities, event membership and live metadata are separate"; spec/core/hookService.md, "Eligibility returns every failure in source order and caches successful binary probes"; spec/core/hookService.md, "A captured interceptor dispatches sequentially against one payload object"
+import { foreign, runDetached } from "../edge.vibe"
+import { EventType, type EventPayload } from "../types/events.vibe"
 import type {
   HookEligibilityResult,
   HookHandler,
@@ -19,38 +18,47 @@ import type {
 import { DEFAULT_HOOK_PRIORITY } from "../types/hook.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { Service, ServiceType } from "../types/service.vibe"
+import { rawEnv } from "../utils/environment.vibe"
 
-function hasBinary(bin: string): boolean {
-  if (!bin || bin.includes("/") || bin.includes("\\")) {
-    return false
+module node {
+  import { accessSync, constants as fsConstants, statSync } from "node:fs"
+  import { platform } from "node:os"
+  import { join as joinPath, delimiter as pathDelimiter } from "node:path"
+
+  /** @throws {never} */
+  export function currentPlatform(): string {
+    return platform()
   }
-  const pathValue = process.env.PATH ?? ""
-  if (!pathValue) {
-    return false
-  }
-  const extensions = process.platform === "win32" ? [".exe", ".cmd", ".bat", ""] : [""]
-  for (const dir of pathValue.split(pathDelimiter)) {
-    if (!dir) continue
-    for (const extension of extensions) {
-      const candidate = joinPath(dir, `${bin}${extension}`)
-      let isFile = false
-      try {
-        isFile = statSync(candidate).isFile()
-      } catch {
-        continue
-      }
-      if (!isFile) continue
-      if (process.platform === "win32") {
-        return true
-      }
-      try {
-        accessSync(candidate, fsConstants.X_OK)
-        return true
-      } catch {
+
+  /** @throws {never} */
+  export function hasBinary(bin: string, pathValue: string): boolean {
+    if (!bin || bin.includes("/") || bin.includes("\\") || !pathValue) {
+      return false
+    }
+    const windows = platform() === "win32"
+    const extensions = windows ? [".exe", ".cmd", ".bat", ""] : [""]
+    for (const dir of pathValue.split(pathDelimiter)) {
+      if (!dir) continue
+      for (const extension of extensions) {
+        const candidate = joinPath(dir, `${bin}${extension}`)
+        try {
+          if (!statSync(candidate).isFile()) continue
+          if (!windows) accessSync(candidate, fsConstants.X_OK)
+          return true
+        } catch {
+          continue
+        }
       }
     }
+    return false
   }
-  return false
+}
+import { currentPlatform, hasBinary } from node
+
+effect function runHooks(registrations: readonly HookRegistration[], payload: EventPayload) {
+  for (const registration of registrations) {
+    try foreign(() => registration.handler(payload))
+  }
 }
 
 function normalizeHookPriority(
@@ -102,12 +110,13 @@ export class HookService extends Service implements IHookService {
   }
 
   private hasCachedBinary(bin: string): boolean {
-    if (this.binaryCachePath !== process.env.PATH) {
+    const pathValue = rawEnv("PATH")
+    if (this.binaryCachePath !== pathValue) {
       this.binaryCache.clear()
-      this.binaryCachePath = process.env.PATH
+      this.binaryCachePath = pathValue
     }
     if (this.binaryCache.has(bin)) return true
-    const found = hasBinary(bin)
+    const found = hasBinary(bin, pathValue ?? "")
     if (found) this.binaryCache.add(bin)
     return found
   }
@@ -124,17 +133,16 @@ export class HookService extends Service implements IHookService {
     }
   }
 
-  private async dispatchToHooks(
+  private dispatchToHooks(
     eventType: EventType,
     payload: EventPayload,
   ): Promise<void> {
-    const hookIds = this.eventIndex.get(eventType)
-    if (!hookIds || hookIds.size === 0) {
-      return
-    }
+    return runDetached(suspend(() => runHooks(this.eligibleHooks(eventType), payload)))
+  }
 
+  private eligibleHooks(eventType: EventType): HookRegistration[] {
     const registrations: HookRegistration[] = []
-    for (const id of hookIds) {
+    for (const id of this.eventIndex.get(eventType) ?? []) {
       const reg = this.registry.get(id)
       if (reg?.metadata.enabled && this.checkEligibilityInternal(reg).eligible) {
         registrations.push(reg)
@@ -146,10 +154,7 @@ export class HookService extends Service implements IHookService {
       }
       return a.registeredAt - b.registeredAt
     })
-
-    for (const registration of registrations) {
-      await registration.handler(payload)
-    }
+    return registrations
   }
 
   private checkEligibilityInternal(
@@ -332,10 +337,10 @@ export class HookService extends Service implements IHookService {
     const reasons: string[] = []
 
     if (requirements.os && requirements.os.length > 0) {
-      const currentPlatform = process.platform
-      if (!requirements.os.includes(currentPlatform)) {
+      const platform = currentPlatform()
+      if (!requirements.os.includes(platform)) {
         reasons.push(
-          `OS '${currentPlatform}' not in allowed list: ${requirements.os.join(", ")}`,
+          `OS '${platform}' not in allowed list: ${requirements.os.join(", ")}`,
         )
       }
     }
@@ -359,7 +364,7 @@ export class HookService extends Service implements IHookService {
 
     if (requirements.env && requirements.env.length > 0) {
       for (const envVar of requirements.env) {
-        if (!process.env[envVar]) {
+        if (!rawEnv(envVar)) {
           reasons.push(`Required environment variable '${envVar}' not set`)
         }
       }

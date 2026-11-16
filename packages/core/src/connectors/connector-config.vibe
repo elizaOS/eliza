@@ -1,3 +1,4 @@
+// spec/core/plugins.md, "Story: Load and roll back a plugin"
 import { asNonEmptyString, isObjectRecord } from "../utils/type-guards.vibe"
 
 export function connectorAccountCredentialSettingKey(

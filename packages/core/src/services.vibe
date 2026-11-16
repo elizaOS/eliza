@@ -1,3 +1,5 @@
+// spec/core/serviceBuilder.md, "Story: Build independent service classes from a mutable builder"; spec/core/serviceBuilder.md, "Building captures all current closures and description"
+import { asLegacy, foreign, runDetached } from "./edge.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 import type { ServiceTypeName } from "./types/service.vibe"
 import { Service } from "./types/service.vibe"
@@ -6,6 +8,21 @@ export interface TypedServiceBuilder<TService extends Service = Service> {
   new(runtime?: IAgentRuntime): TService
   serviceType: ServiceTypeName
   start(runtime: IAgentRuntime): Promise<TService>
+}
+
+error StartFunctionMissing { message: string }
+
+effect function startBuiltService<TService>(
+  serviceType: ServiceTypeName | string,
+  startFn: ((runtime: IAgentRuntime) => Promise<TService>) | undefined,
+  runtime: IAgentRuntime,
+) {
+  if (!startFn) throw new StartFunctionMissing({ message: `Start function not defined for service ${serviceType}` })
+  return try foreign(() => startFn(runtime))
+}
+
+effect function stopBuiltService(stopFn: (() => Promise<void>) | undefined) {
+  if (stopFn) try foreign(() => stopFn())
 }
 
 export class ServiceBuilder<TService extends Service = Service> {
@@ -43,10 +60,8 @@ export class ServiceBuilder<TService extends Service = Service> {
     const ServiceClassImpl = class extends Service {
       capabilityDescription = description
 
-      async stop(): Promise<void> {
-        if (stopFn) {
-          await stopFn()
-        }
+      stop(): Promise<void> {
+        return runDetached(stopBuiltService(stopFn))
       }
     }
 
@@ -57,14 +72,8 @@ export class ServiceBuilder<TService extends Service = Service> {
       configurable: false,
     })
 
-    const startMethod = async (runtime: IAgentRuntime): Promise<TService> => {
-      if (!startFn) {
-        throw new Error(
-          `Start function not defined for service ${serviceType}`,
-        )
-      }
-      return startFn(runtime)
-    }
+    const startMethod = (runtime: IAgentRuntime): Promise<TService> =>
+      runDetached(asLegacy(Error, startBuiltService(serviceType, startFn, runtime)))
 
     Object.defineProperty(ServiceClassImpl, "start", {
       value: startMethod,

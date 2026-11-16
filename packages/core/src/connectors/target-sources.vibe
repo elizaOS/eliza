@@ -1,3 +1,4 @@
+// spec/core/connectorRegistries.md, "Target sources replace in place and profile collisions preserve the incumbent"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { Service } from "../types/service.vibe"
 

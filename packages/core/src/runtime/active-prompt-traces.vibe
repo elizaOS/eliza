@@ -1,3 +1,4 @@
+// spec/core/traces.md, "Story: Retain enrich and retire active trace records"; spec/core/traces.md, "Recording preserves the insertion position of a replacement in its run"
 import type { ExecutionTrace, ScoreSignal } from "../prompt-optimization.vibe"
 import { ScoreCard } from "../prompt-optimization.vibe"
 export class ActivePromptTraces {

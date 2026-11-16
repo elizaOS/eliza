@@ -1,3 +1,4 @@
+// spec/core/authorization.md, "Memory and artifact scopes preserve their distinct compatibility decisions"
 import type { ArtifactShareGrant, MemoryScope } from "../types/memory.vibe"
 import type { UUID } from "../types/primitives.vibe"
 import { validateUuid } from "../utils/uuid.vibe"

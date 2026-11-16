@@ -1,5 +1,6 @@
-import type { PairingChannel } from "../types/pairing.vibe"
-import { getPairingIdLabel } from "../types/pairing.vibe"
+// spec/core/services.md, "Story: Acquire a declared service"
+import { Foreign, foreign, promised } from "../edge.vibe"
+import { getPairingIdLabel, type PairingChannel } from "../types/pairing.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { ServiceType } from "../types/service.vibe"
 import type { PairingService } from "./pairing.vibe"
@@ -32,10 +33,10 @@ export function getPairingService(
   return runtime.getService<PairingService>(ServiceType.PAIRING)
 }
 
-export async function checkPairingAllowed(
+export effect function checkPairingAllowed(
   runtime: IAgentRuntime,
   params: PairingCheckParams,
-): Promise<PairingCheckResult> {
+): PairingCheckResult!Foreign {
   const { channel, senderId, metadata, suppressReply } = params
 
   const pairingService = getPairingService(runtime)
@@ -54,7 +55,7 @@ export async function checkPairingAllowed(
     }
   }
 
-  const isAllowed = await pairingService.isAllowed(channel, senderId)
+  const isAllowed = try foreign(() => pairingService.isAllowed(channel, senderId))
   if (isAllowed) {
     return { allowed: true }
   }
@@ -63,11 +64,13 @@ export async function checkPairingAllowed(
     return { allowed: false }
   }
 
-  const { code, created } = await pairingService.upsertRequest({
-    channel,
-    senderId,
-    metadata,
-  })
+  const { code, created } = try foreign(() =>
+    pairingService.upsertRequest({
+      channel,
+      senderId,
+      metadata,
+    })
+  )
 
   const idLabel = getPairingIdLabel(channel)
 
@@ -115,12 +118,12 @@ export function buildPairingReplyMessage(params: {
   return lines.join("\n")
 }
 
-export async function addToAllowlist(
+export effect function addToAllowlist(
   runtime: IAgentRuntime,
   channel: PairingChannel,
   senderId: string,
   metadata?: Record<string, string>,
-): Promise<boolean> {
+) {
   const pairingService = getPairingService(runtime)
   if (!pairingService) {
     runtime.logger.warn(
@@ -130,46 +133,56 @@ export async function addToAllowlist(
     return false
   }
 
-  await pairingService.addToAllowlist(channel, senderId, metadata)
+  try foreign(() => pairingService.addToAllowlist(channel, senderId, metadata))
   return true
 }
 
-export async function removeFromAllowlist(
+export effect function removeFromAllowlist(
   runtime: IAgentRuntime,
   channel: PairingChannel,
   senderId: string,
-): Promise<boolean> {
+) {
   const pairingService = getPairingService(runtime)
   if (!pairingService) {
     return false
   }
 
-  return pairingService.removeFromAllowlist(channel, senderId)
+  return try foreign(() => pairingService.removeFromAllowlist(channel, senderId))
 }
 
-export async function isInAllowlist(
+export effect function isInAllowlist(
   runtime: IAgentRuntime,
   channel: PairingChannel,
   senderId: string,
-): Promise<boolean> {
+) {
   const pairingService = getPairingService(runtime)
   if (!pairingService) {
     return false
   }
 
-  return pairingService.isAllowed(channel, senderId)
+  return try foreign(() => pairingService.isAllowed(channel, senderId))
 }
 
-export async function approvePairingCode(
+export effect function approvePairingCode(
   runtime: IAgentRuntime,
   channel: PairingChannel,
   code: string,
-): Promise<string | null> {
+) {
   const pairingService = getPairingService(runtime)
   if (!pairingService) {
     return null
   }
 
-  const result = await pairingService.approveCode({ channel, code })
+  const result = try foreign(() => pairingService.approveCode({ channel, code }))
   return result?.senderId ?? null
 }
+
+export const checkPairingAllowedPromise = promised(checkPairingAllowed)
+
+export const addToAllowlistPromise = promised(addToAllowlist)
+
+export const removeFromAllowlistPromise = promised(removeFromAllowlist)
+
+export const isInAllowlistPromise = promised(isInAllowlist)
+
+export const approvePairingCodePromise = promised(approvePairingCode)

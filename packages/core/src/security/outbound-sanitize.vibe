@@ -1,3 +1,5 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
+import { failingAs, thrown } from "../edge.vibe"
 import { REASONING_TAG_NAMES, stripPairedTagBlocks, stripUnclosedTagSuffix } from "../utils/reasoning-tags.vibe"
 
 const MACHINE_SYNTAX_TAGS = [
@@ -103,10 +105,14 @@ export interface OutboundLiteralSpan {
   end: number
 }
 
-export function sanitizeOutboundTextWithLiterals(
+export error InvalidLiteralRange { message: string }
+export error LiteralSplitsControlSyntax { message: string }
+export error LiteralLostInCleanup { message: string }
+
+export effect function sanitizeOutboundTextWithLiterals(
   text: string,
   literalSpans: readonly OutboundLiteralSpan[],
-): { text: string; literalSpans: OutboundLiteralSpan[] } {
+): { text: string; literalSpans: OutboundLiteralSpan[] }!(InvalidLiteralRange | LiteralSplitsControlSyntax | LiteralLostInCleanup) {
   let previousEnd = 0
   for (const span of literalSpans) {
     if (
@@ -116,7 +122,7 @@ export function sanitizeOutboundTextWithLiterals(
       || span.end <= span.start
       || span.end > text.length
     ) {
-      throw new TypeError("Invalid outbound literal range")
+      throw new InvalidLiteralRange({ message: "Invalid outbound literal range" })
     }
     previousEnd = span.end
   }
@@ -131,7 +137,7 @@ export function sanitizeOutboundTextWithLiterals(
           && !(span.start <= start && span.end >= end),
       )
     ) {
-      throw new TypeError("Outbound literal splits control syntax")
+      throw new LiteralSplitsControlSyntax({ message: "Outbound literal splits control syntax" })
     }
   }
   if (!text || (!QUICK_TAG_RE.test(text) && !PSEUDO_LINK_START_RE.test(text))) {
@@ -187,7 +193,7 @@ export function sanitizeOutboundTextWithLiterals(
       literalIndex !== undefined
       && (at < 0 || processed.indexOf(token, at + token.length) >= 0)
     ) {
-      throw new TypeError("Outbound cleanup removed or duplicated a literal")
+      throw new LiteralLostInCleanup({ message: "Outbound cleanup removed or duplicated a literal" })
     }
     if (at < 0) continue
     const delta = codeSpans[index].length - token.length
@@ -210,6 +216,10 @@ export function sanitizeOutboundTextWithLiterals(
   return { text: processed, literalSpans: restoredLiterals }
 }
 
-export function sanitizeOutboundText(text: string): string {
-  return sanitizeOutboundTextWithLiterals(text, []).text
+export const sanitizeOutboundTextWithLiteralsOrThrow = thrown(failingAs(TypeError, sanitizeOutboundTextWithLiterals))
+
+export effect function sanitizeOutboundText(text: string) {
+  return (try sanitizeOutboundTextWithLiterals(text, [])).text
 }
+
+export const sanitizeOutboundTextOrThrow = thrown(failingAs(TypeError, sanitizeOutboundText))

@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import { Service } from "./service.vibe"
 
 export interface SerializedCommandArg {
@@ -26,7 +27,6 @@ export interface SerializedCommand {
   target: CommandTarget
   icon?: string
   source: SerializedCommandSource
-
   views?: string[]
 }
 
@@ -89,7 +89,6 @@ export interface CommandArgDefinition {
   description: string
   required?: boolean
   choices?: string[] | ((ctx: CommandArgChoiceContext) => string[])
-
   dynamicChoices?: CommandArgSource
   captureRemaining?: boolean
 }
@@ -107,20 +106,14 @@ export interface CommandDefinition {
   requiresAuth?: boolean
   requiresElevated?: boolean
   enabled?: boolean
-
   target?: CommandTarget
-
   surfaces?: CommandSurface[]
-
   icon?: string
-
   views?: string[]
 }
 
 export abstract class CommandRegistryService extends Service {
   static override readonly serviceType = "commands"
-
   abstract register(command: CommandDefinition): void
-
   abstract list(): CommandDefinition[]
 }

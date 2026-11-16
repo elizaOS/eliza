@@ -1,6 +1,17 @@
+// spec/core/providerPromiseRace.md, "Story: Release an aborted execution while observing native work"; spec/core/providerPromiseRace.md, "The invocation microtask checks the execution signal before starting"; spec/core/providerPromiseRace.md, "The first delivered race reaction fixes the shared outcome"
+import { Foreign, foreign, thrown } from "../edge.vibe"
 import type { ElizaError } from "../errors.vibe"
 import type { ProviderResult } from "../types/components.vibe"
+import { whenAborted } from "../utils/retry.vibe"
 import { TurnAbortedError } from "./turn-aborted-error.vibe"
+
+module node {
+  /** @throws {never} */
+  export function nextMicrotask(run: () => void): void {
+    queueMicrotask(run)
+  }
+}
+import { nextMicrotask } from node
 
 export type ProviderExecutionOutcome = "success" | "error" | "aborted"
 
@@ -23,7 +34,7 @@ export interface CachedProviderResult extends ProviderResult {
 }
 
 export interface InFlightProviderExecution {
-  promise: Promise<ProviderResult>
+  work: Fiber.Fiber<ProviderResult, Foreign>
 
   controller: AbortController
 
@@ -32,11 +43,15 @@ export interface InFlightProviderExecution {
   startedAtMonotonic: number
 }
 
-export function awaitProviderExecution(
+function abortedProviderExecution(reason: unknown): Foreign {
+  return new Foreign({ cause: reason ?? new Error("Provider execution aborted") })
+}
+
+export effect function awaitProviderExecution(
   execution: InFlightProviderExecution,
   signal: AbortSignal | undefined,
   evict: () => void,
-): Promise<ProviderResult> {
+): ProviderResult!Foreign {
   execution.waiters += 1
   let released = false
   const release = () => {
@@ -45,32 +60,17 @@ export function awaitProviderExecution(
     execution.waiters -= 1
     return true
   }
-  if (!signal) {
-    return execution.promise.finally(release)
+  const joined = ensuring(Fiber.join(execution.work), sync(() => void release()))
+  if (!signal) return try joined
+  const aborted = effect {
+    const reason = try whenAborted(signal)
+    if (release() && execution.waiters === 0) {
+      evict()
+      execution.controller.abort(reason)
+    }
+    throw abortedProviderExecution(reason)
   }
-  return new Promise<ProviderResult>((resolve, reject) => {
-    const settle = <V>(handler: (value: V) => void) => {
-      return (value: V) => {
-        if (!release()) return
-        signal.removeEventListener("abort", onAbort)
-        handler(value)
-      }
-    }
-    const onAbort = settle(() => {
-      if (execution.waiters === 0) {
-        evict()
-        execution.controller.abort(signal.reason)
-      }
-      reject(signal.reason ?? new Error("Provider execution aborted"))
-    })
-
-    execution.promise.then(settle(resolve), settle(reject))
-    if (signal.aborted) {
-      onAbort(undefined)
-      return
-    }
-    signal.addEventListener("abort", onAbort, { once: true })
-  })
+  return try (signal.aborted ? aborted : raceFirst(joined, aborted))
 }
 
 export function calculateProviderOverlaps(
@@ -95,34 +95,19 @@ export function calculateProviderOverlaps(
   )
 }
 
-export function runProviderExecution<T>(
+export effect function runProviderExecution<T>(
   run: () => Promise<T>,
   signal: AbortSignal,
-): Promise<T> {
-  let rejectFromSignal: (() => void) | undefined
-  const aborted = new Promise<never>((_, reject) => {
-    rejectFromSignal = () => {
-      reject(signal.reason ?? new Error("Provider execution aborted"))
-    }
-    if (signal.aborted) {
-      rejectFromSignal()
-      return
-    }
-    signal.addEventListener("abort", rejectFromSignal, {
-      once: true,
-    })
-  })
-  const providerPromise = Promise.resolve().then(() => {
-    if (signal.aborted) {
-      throw signal.reason ?? new Error("Provider execution aborted")
-    }
-    return run()
-  })
-  return Promise.race([providerPromise, aborted]).finally(() => {
-    if (rejectFromSignal) {
-      signal.removeEventListener("abort", rejectFromSignal)
-    }
-  })
+): T!Foreign {
+  const invoke = effect {
+    try callback<void>((resume) => nextMicrotask(() => resume(Effect.void)))
+    if (signal.aborted) throw abortedProviderExecution(signal.reason)
+    return try foreign(() => run())
+  }
+  const aborted = effect {
+    throw abortedProviderExecution(try whenAborted(signal))
+  }
+  return try raceFirst(invoke, aborted)
 }
 
 export function providerCancellationReason(
@@ -136,10 +121,10 @@ export function providerCancellationReason(
   )
 }
 
-export function throwIfProviderCompositionAborted(
+export effect function throwIfProviderCompositionAborted(
   signal: AbortSignal | undefined,
   runtimeStopped: boolean,
-): void {
+): void!TurnAbortedError {
   if (signal?.aborted) {
     const reason = signal.reason
     throw reason instanceof TurnAbortedError
@@ -152,3 +137,5 @@ export function throwIfProviderCompositionAborted(
     throw new TurnAbortedError("runtime-stop")
   }
 }
+
+export const throwIfProviderCompositionAbortedOrThrow = thrown(throwIfProviderCompositionAborted)

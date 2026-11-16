@@ -1,3 +1,5 @@
+// spec/core/catalog.md, "Story: Discover and register first-party capabilities"; spec/core/catalog.md, "A valid runtime registration overrides its id and invalidates cached indexes"; spec/core/catalog.md, "Legacy connector authentication fills only the missing agent account"
+import { thrown } from "../edge.vibe"
 import {
   type AccountAuthKind,
   type AppEntry,
@@ -10,14 +12,10 @@ import {
   registryEntrySchema,
 } from "./schema.vibe"
 
-export class RegistryValidationError extends Error {
-  readonly file: string
-  readonly cause: unknown
+export class RegistryValidationError extends Data.TaggedError("RegistryValidationError")<{ readonly file: string; readonly cause: unknown }> {
   constructor(file: string, cause: unknown) {
-    super(`Registry entry at ${file} failed validation: ${String(cause)}`)
-    this.name = "RegistryValidationError"
-    this.file = file
-    this.cause = cause
+    super({ file, cause })
+    this.message = `Registry entry at ${file} failed validation: ${String(cause)}`
   }
 }
 
@@ -34,31 +32,28 @@ interface RawEntry {
   data: unknown
 }
 
-export function loadRegistryFromRawEntries(raws: RawEntry[]): LoadedRegistry {
+function validated({ file, data }: RawEntry): RegistryEntry | RegistryValidationError {
+  const parsed = registryEntrySchema.safeParse(data)
+  if (!parsed.success) return new RegistryValidationError(file, parsed.error)
+  return parsed.data.kind === "connector" ? normalizeConnectorAuth(parsed.data) : parsed.data
+}
+
+export effect function loadRegistryFromRawEntries(raws: RawEntry[]) {
   const seenIds = new Set<string>()
   const all: RegistryEntry[] = []
-
-  for (const { file, data } of raws) {
-    const parsed = registryEntrySchema.safeParse(data)
-    if (!parsed.success) {
-      throw new RegistryValidationError(file, parsed.error)
-    }
-
-    const entry = parsed.data.kind === "connector"
-      ? normalizeConnectorAuth(parsed.data)
-      : parsed.data
+  for (const raw of raws) {
+    const entry = validated(raw)
+    if (entry instanceof RegistryValidationError) throw entry
     if (seenIds.has(entry.id)) {
-      throw new RegistryValidationError(
-        file,
-        `duplicate id "${entry.id}" — every registry entry must have a unique id`,
-      )
+      throw new RegistryValidationError(raw.file, `duplicate id "${entry.id}" — every registry entry must have a unique id`)
     }
     seenIds.add(entry.id)
     all.push(entry)
   }
-
   return indexEntries(all)
 }
+
+export const loadRegistryFromRawEntriesOrThrow = thrown(loadRegistryFromRawEntries)
 
 export function normalizeConnectorAuth(entry: ConnectorEntry): ConnectorEntry {
   if (!entry.auth || entry.accounts?.agent) {

@@ -1,5 +1,7 @@
+// spec/core/providers.md, "Story: Share provider work without sharing cancellation"
 import type { JsonObject, JsonValue } from "../types/primitives.vibe"
 import type { PageLayoutManifest, SurfaceCapability } from "../types/surface-manifest.vibe"
+import type { ViewKind } from "../types/view-kind.vibe"
 import {
   type CapabilityEndpointSelection,
   CapabilityError,
@@ -35,16 +37,16 @@ import {
   type RemotePluginWidgetManifest,
 } from "./protocol.vibe"
 
-export function endpointSelection(
+export effect function endpointSelection(
   params: CapabilityEndpointSelection,
-): JsonObject {
+): JsonObject!CapabilityError {
   if (params.endpointId === undefined) return {}
-  validateRemotePluginCallTarget(
+  try validateRemotePluginCallTarget(
     params.endpointId,
     "endpointId",
     "capability.endpoint",
   )
-  validateHeaderSafeString(
+  try validateHeaderSafeString(
     params.endpointId,
     "endpointId",
     "capability.endpoint",
@@ -52,10 +54,10 @@ export function endpointSelection(
   return { endpointId: params.endpointId }
 }
 
-export function requireObject(
+export effect function requireObject(
   value: JsonValue | undefined,
   method: string,
-): JsonObject {
+): JsonObject!CapabilityError {
   if (isJsonObject(value)) return value
   throw decodeError(method, "Expected object response.")
 }
@@ -64,74 +66,74 @@ function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-export function requireString(
+export effect function requireString(
   object: JsonObject,
   key: string,
   method: string,
-): string {
+): string!CapabilityError {
   const value = object[key]
   if (typeof value === "string") return value
   throw decodeError(method, `${key} must be a string.`)
 }
 
-export function requireNonEmptyString(
+export effect function requireNonEmptyString(
   object: JsonObject,
   key: string,
   method: string,
-): string {
-  const value = requireString(object, key, method)
+): string!CapabilityError {
+  const value = try requireString(object, key, method)
   if (value.trim().length > 0) return value
   throw decodeError(method, `${key} must be a non-empty string.`)
 }
 
-function requireRemotePluginModuleId(
+effect function requireRemotePluginModuleId(
   object: JsonObject,
   key: string,
   method: string,
-): string {
-  const value = requireNonEmptyString(object, key, method)
-  validateRemotePluginModuleId(value, key, method)
+): string!CapabilityError {
+  const value = try requireNonEmptyString(object, key, method)
+  try validateRemotePluginModuleId(value, key, method)
   return value
 }
 
-export function optionalString(
+export effect function optionalString(
   object: JsonObject,
   key: string,
   method: string,
-): string | undefined {
+): (string | undefined)!CapabilityError {
   const value = object[key]
   if (value === undefined) return undefined
   if (typeof value === "string") return value
   throw decodeError(method, `${key} must be a string when present.`)
 }
 
-function optionalNonEmptyString(
+effect function optionalNonEmptyString(
   object: JsonObject,
   key: string,
   method: string,
-): string | undefined {
-  const value = optionalString(object, key, method)
+): (string | undefined)!CapabilityError {
+  const value = try optionalString(object, key, method)
   if (value === undefined) return undefined
   if (value.trim().length > 0) return value
   throw decodeError(method, `${key} must be a non-empty string when present.`)
 }
 
-export function optionalJsonObject(
+export effect function optionalJsonObject(
   object: JsonObject,
   key: string,
   method: string,
-): JsonObject | undefined {
+): (JsonObject | undefined)!CapabilityError {
   const value = object[key]
   if (value === undefined) return undefined
   if (isJsonObject(value)) return value
   throw decodeError(method, `${key} must be an object when present.`)
 }
 
-function optionalRemotePluginConfig(
+effect function optionalRemotePluginConfig(
   object: JsonObject,
   key: string,
   method: string,
-): RemotePluginConfigMap | undefined {
+): (RemotePluginConfigMap | undefined)!CapabilityError {
   const value = object[key]
   if (value === undefined) return undefined
   if (!isJsonObject(value)) {
@@ -156,42 +158,42 @@ function optionalRemotePluginConfig(
   return config
 }
 
-function requireJsonObject(
+effect function requireJsonObject(
   object: JsonObject,
   key: string,
   method: string,
-): JsonObject {
+): JsonObject!CapabilityError {
   const value = object[key]
   if (isJsonObject(value)) return value
   throw decodeError(method, `${key} must be an object.`)
 }
 
-export function optionalNumber(
+export effect function optionalNumber(
   object: JsonObject,
   key: string,
   method: string,
-): number | undefined {
+): (number | undefined)!CapabilityError {
   const value = object[key]
   if (value === undefined) return undefined
   if (typeof value === "number" && Number.isFinite(value)) return value
   throw decodeError(method, `${key} must be a finite number when present.`)
 }
 
-export function requireNumber(
+export effect function requireNumber(
   object: JsonObject,
   key: string,
   method: string,
-): number {
+): number!CapabilityError {
   const value = object[key]
   if (typeof value === "number" && Number.isFinite(value)) return value
   throw decodeError(method, `${key} must be a finite number.`)
 }
 
-export function requireObjectArray(
+export effect function requireObjectArray(
   object: JsonObject,
   key: string,
   method: string,
-): JsonObject[] {
+): JsonObject[]!CapabilityError {
   const value = object[key]
   if (
     Array.isArray(value)
@@ -202,21 +204,21 @@ export function requireObjectArray(
   throw decodeError(method, `${key} must be an object array.`)
 }
 
-export function requireFileStatArray(
+export effect function requireFileStatArray(
   object: JsonObject,
   key: string,
   method: string,
-): FileStat[] {
+): FileStat[]!CapabilityError {
   const value = object[key]
   if (!Array.isArray(value)) {
     throw decodeError(method, `${key} must be an array.`)
   }
-  return value.map((entry) => requireFileStat(entry, `${method}.${key}`))
+  return try forEach(value, (entry) => requireFileStat(entry, `${method}.${key}`))
 }
 
-function requireFileStat(value: JsonValue, method: string): FileStat {
-  const object = requireObject(value, method)
-  const kind = requireString(object, "kind", method)
+effect function requireFileStat(value: JsonValue, method: string): FileStat!CapabilityError {
+  const object = try requireObject(value, method)
+  const kind = try requireString(object, "kind", method)
   if (
     kind !== "file"
     && kind !== "directory"
@@ -225,23 +227,23 @@ function requireFileStat(value: JsonValue, method: string): FileStat {
   ) {
     throw decodeError(method, "kind must be a valid file entry kind.")
   }
-  const modifiedAt = optionalString(object, "modifiedAt", method)
-  const isText = optionalBoolean(object, "isText", method)
+  const modifiedAt = try optionalString(object, "modifiedAt", method)
+  const isText = try optionalBoolean(object, "isText", method)
   return {
-    path: requireString(object, "path", method),
-    name: requireString(object, "name", method),
+    path: try requireString(object, "path", method),
+    name: try requireString(object, "name", method),
     kind,
-    size: requireNumber(object, "size", method),
+    size: try requireNumber(object, "size", method),
     ...(modifiedAt === undefined ? {} : { modifiedAt }),
     ...(isText === undefined ? {} : { isText }),
   }
 }
 
-function requireStringArray(
+effect function requireStringArray(
   object: JsonObject,
   key: string,
   method: string,
-): string[] {
+): string[]!CapabilityError {
   const value = object[key]
   if (
     Array.isArray(value)
@@ -252,11 +254,11 @@ function requireStringArray(
   throw decodeError(method, `${key} must be a string array.`)
 }
 
-function optionalStringArray(
+effect function optionalStringArray(
   object: JsonObject,
   key: string,
   method: string,
-): string[] | undefined {
+): (string[] | undefined)!CapabilityError {
   const value = object[key]
   if (value === undefined) return undefined
   if (
@@ -268,11 +270,11 @@ function optionalStringArray(
   throw decodeError(method, `${key} must be a string array when present.`)
 }
 
-export function optionalStringRecord(
+export effect function optionalStringRecord(
   object: JsonObject,
   key: string,
   method: string,
-): Record<string, string> | undefined {
+): (Record<string, string> | undefined)!CapabilityError {
   const value = object[key]
   if (value === undefined) return undefined
   if (
@@ -284,22 +286,22 @@ export function optionalStringRecord(
   throw decodeError(method, `${key} must be a string record when present.`)
 }
 
-export function nullableNumber(
+export effect function nullableNumber(
   object: JsonObject,
   key: string,
   method: string,
-): number | null {
+): (number | null)!CapabilityError {
   const value = object[key]
   if (value === null) return null
   if (typeof value === "number" && Number.isFinite(value)) return value
   throw decodeError(method, `${key} must be a finite number or null.`)
 }
 
-function optionalNullableNumber(
+effect function optionalNullableNumber(
   object: JsonObject,
   key: string,
   method: string,
-): number | null | undefined {
+): (number | null | undefined)!CapabilityError {
   const value = object[key]
   if (value === undefined) return undefined
   if (value === null) return null
@@ -310,11 +312,11 @@ function optionalNullableNumber(
   )
 }
 
-function optionalNullableString(
+effect function optionalNullableString(
   object: JsonObject,
   key: string,
   method: string,
-): string | null | undefined {
+): (string | null | undefined)!CapabilityError {
   const value = object[key]
   if (value === undefined) return undefined
   if (value === null) return null
@@ -322,36 +324,36 @@ function optionalNullableString(
   throw decodeError(method, `${key} must be a string or null when present.`)
 }
 
-export function requireBoolean(
+export effect function requireBoolean(
   object: JsonObject,
   key: string,
   method: string,
-): boolean {
+): boolean!CapabilityError {
   const value = object[key]
   if (typeof value === "boolean") return value
   throw decodeError(method, `${key} must be a boolean.`)
 }
 
-export function optionalBoolean(
+export effect function optionalBoolean(
   object: JsonObject,
   key: string,
   method: string,
-): boolean | undefined {
+): (boolean | undefined)!CapabilityError {
   const value = object[key]
   if (value === undefined) return undefined
   if (typeof value === "boolean") return value
   throw decodeError(method, `${key} must be a boolean when present.`)
 }
 
-function optionalSurfaceManifest(
+effect function optionalSurfaceManifest(
   object: JsonObject,
   key: string,
   method: string,
-): RemotePluginSurfaceManifest | undefined {
-  const value = optionalJsonObject(object, key, method)
+): (RemotePluginSurfaceManifest | undefined)!CapabilityError {
+  const value = try optionalJsonObject(object, key, method)
   if (value === undefined) return undefined
 
-  const background = optionalString(value, "background", `${method}.${key}`)
+  const background = try optionalString(value, "background", `${method}.${key}`)
   if (
     background !== undefined
     && background !== "opaque"
@@ -363,7 +365,7 @@ function optionalSurfaceManifest(
     )
   }
 
-  const header = optionalString(value, "header", `${method}.${key}`)
+  const header = try optionalString(value, "header", `${method}.${key}`)
   if (
     header !== undefined
     && header !== "normal"
@@ -377,7 +379,7 @@ function optionalSurfaceManifest(
     )
   }
 
-  const isolation = optionalString(value, "isolation", `${method}.${key}`)
+  const isolation = try optionalString(value, "isolation", `${method}.${key}`)
   if (
     isolation !== undefined
     && isolation !== "in-process"
@@ -388,7 +390,7 @@ function optionalSurfaceManifest(
     throw decodeError(method, `${key}.isolation is not supported.`)
   }
 
-  const lifecycle = optionalString(value, "lifecycle", `${method}.${key}`)
+  const lifecycle = try optionalString(value, "lifecycle", `${method}.${key}`)
   if (
     lifecycle !== undefined
     && lifecycle !== "ephemeral"
@@ -400,12 +402,12 @@ function optionalSurfaceManifest(
     )
   }
 
-  const capabilities = optionalSurfaceCapabilities(
+  const capabilities = try optionalSurfaceCapabilities(
     value,
     "capabilities",
     `${method}.${key}`,
   )
-  const layout = optionalPageLayoutManifest(
+  const layout = try optionalPageLayoutManifest(
     value,
     "layout",
     `${method}.${key}`,
@@ -421,18 +423,18 @@ function optionalSurfaceManifest(
   }
 }
 
-function optionalPageLayoutManifest(
+effect function optionalPageLayoutManifest(
   object: JsonObject,
   key: string,
   method: string,
-): PageLayoutManifest | undefined {
-  const value = optionalJsonObject(object, key, method)
+): (PageLayoutManifest | undefined)!CapabilityError {
+  const value = try optionalJsonObject(object, key, method)
   if (value === undefined) return undefined
-  const kind = requireString(value, "kind", `${method}.${key}`)
-  const width = requireString(value, "width", `${method}.${key}`)
-  const scroll = requireString(value, "scroll", `${method}.${key}`)
-  const topology = optionalString(value, "topology", `${method}.${key}`)
-  const gutter = optionalString(value, "gutter", `${method}.${key}`)
+  const kind = try requireString(value, "kind", `${method}.${key}`)
+  const width = try requireString(value, "width", `${method}.${key}`)
+  const scroll = try requireString(value, "scroll", `${method}.${key}`)
+  const topology = try optionalString(value, "topology", `${method}.${key}`)
+  const gutter = try optionalString(value, "gutter", `${method}.${key}`)
   if (
     topology !== undefined
     && topology !== "framed"
@@ -494,12 +496,12 @@ const SURFACE_CAPABILITIES: ReadonlySet<string> = new Set<SurfaceCapability>([
   "agent-surface",
 ])
 
-function optionalSurfaceCapabilities(
+effect function optionalSurfaceCapabilities(
   object: JsonObject,
   key: string,
   method: string,
-): SurfaceCapability[] | undefined {
-  const values = optionalStringArray(object, key, method)
+): (SurfaceCapability[] | undefined)!CapabilityError {
+  const values = try optionalStringArray(object, key, method)
   if (values === undefined) return undefined
   const capabilities: SurfaceCapability[] = []
   for (const value of values) {
@@ -511,16 +513,16 @@ function optionalSurfaceCapabilities(
   return capabilities
 }
 
-export function requireResponseHandlerFieldEffect(
+export effect function requireResponseHandlerFieldEffect(
   value: JsonValue,
   method: string,
-): NonNullable<PluginResponseHandlerFieldEvaluatorHandleResult["effect"]> {
-  const object = requireObject(value, method)
-  const patch = optionalJsonObject(object, "patch", method)
+): NonNullable<PluginResponseHandlerFieldEvaluatorHandleResult["effect"]>!CapabilityError {
+  const object = try requireObject(value, method)
+  const patch = try optionalJsonObject(object, "patch", method)
   const preempt = object.preempt === undefined
     ? undefined
-    : requireResponseHandlerFieldPreempt(object.preempt, `${method}.preempt`)
-  const debug = optionalStringArray(object, "debug", method)
+    : try requireResponseHandlerFieldPreempt(object.preempt, `${method}.preempt`)
+  const debug = try optionalStringArray(object, "debug", method)
   return {
     ...(patch === undefined ? {} : { patch }),
     ...(preempt === undefined ? {} : { preempt }),
@@ -528,137 +530,133 @@ export function requireResponseHandlerFieldEffect(
   }
 }
 
-function requireResponseHandlerFieldPreempt(
+effect function requireResponseHandlerFieldPreempt(
   value: JsonValue,
   method: string,
-): NonNullable<
-  NonNullable<
-    PluginResponseHandlerFieldEvaluatorHandleResult["effect"]
-  >["preempt"]
-> {
-  const object = requireObject(value, method)
-  const mode = requireString(object, "mode", method)
+): NonNullable<NonNullable<PluginResponseHandlerFieldEvaluatorHandleResult["effect"]>["preempt"]>!CapabilityError {
+  const object = try requireObject(value, method)
+  const mode = try requireString(object, "mode", method)
   if (mode !== "ack-and-stop" && mode !== "ignore" && mode !== "direct-reply") {
     throw decodeError(method, "preempt.mode is not supported.")
   }
   return {
     mode,
-    reason: requireString(object, "reason", method),
+    reason: try requireString(object, "reason", method),
   }
 }
 
-export function requireGitOperation(
+export effect function requireGitOperation(
   value: JsonValue | undefined,
   method: string,
-): GitOperation {
-  const object = requireObject(value, method)
-  const status = requireString(object, "status", method)
+): GitOperation!CapabilityError {
+  const object = try requireObject(value, method)
+  const status = try requireString(object, "status", method)
   if (status !== "running" && status !== "completed" && status !== "failed") {
     throw decodeError(method, "status must be a valid Git operation status.")
   }
-  const exitCode = optionalNullableNumber(object, "exitCode", method)
-  const signal = optionalNullableString(object, "signal", method)
-  const completedAt = optionalString(object, "completedAt", method)
-  const error = optionalString(object, "error", method)
+  const exitCode = try optionalNullableNumber(object, "exitCode", method)
+  const signal = try optionalNullableString(object, "signal", method)
+  const completedAt = try optionalString(object, "completedAt", method)
+  const error = try optionalString(object, "error", method)
   return {
-    id: requireString(object, "id", method),
-    name: requireString(object, "name", method),
-    cwd: requireString(object, "cwd", method),
-    command: requireStringArray(object, "command", method),
+    id: try requireString(object, "id", method),
+    name: try requireString(object, "name", method),
+    cwd: try requireString(object, "cwd", method),
+    command: try requireStringArray(object, "command", method),
     status,
-    stdout: requireString(object, "stdout", method),
-    stderr: requireString(object, "stderr", method),
+    stdout: try requireString(object, "stdout", method),
+    stderr: try requireString(object, "stderr", method),
     ...(exitCode === undefined ? {} : { exitCode }),
     ...(signal === undefined ? {} : { signal }),
-    startedAt: requireString(object, "startedAt", method),
+    startedAt: try requireString(object, "startedAt", method),
     ...(completedAt === undefined ? {} : { completedAt }),
     ...(error === undefined ? {} : { error }),
   }
 }
 
-export function requireRemotePluginModuleArray(
+export effect function requireRemotePluginModuleArray(
   object: JsonObject,
   key: string,
   method: string,
-): RemotePluginModuleManifest[] {
+): RemotePluginModuleManifest[]!CapabilityError {
   const value = object[key]
   if (!Array.isArray(value)) {
     throw decodeError(method, `${key} must be an array.`)
   }
-  return value.map((entry) => requireRemotePluginModule(entry, `${method}.${key}`))
+  return try forEach(value, (entry) => requireRemotePluginModule(entry, `${method}.${key}`))
 }
 
-function requireRemotePluginModule(
+effect function requireRemotePluginModule(
   value: JsonValue,
   method: string,
-): RemotePluginModuleManifest {
-  const object = requireObject(value, method)
-  const capabilityEndpointId = optionalString(
+): RemotePluginModuleManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const capabilityEndpointId = try optionalString(
     object,
     "capabilityEndpointId",
     method,
   )
-  const version = optionalString(object, "version", method)
-  const description = optionalString(object, "description", method)
-  const priority = optionalNumber(object, "priority", method)
-  const contexts = optionalStringArray(object, "contexts", method)
-  const config = optionalRemotePluginConfig(object, "config", method)
-  const schema = optionalJsonObject(object, "schema", method)
-  const actions = optionalArray(
+  const version = try optionalString(object, "version", method)
+  const description = try optionalString(object, "description", method)
+  const priority = try optionalNumber(object, "priority", method)
+  const contexts = try optionalStringArray(object, "contexts", method)
+  const config = try optionalRemotePluginConfig(object, "config", method)
+  const schema = try optionalJsonObject(object, "schema", method)
+  const actions = try optionalArray(
     object,
     "actions",
     method,
     requireRemotePluginAction,
   )
-  const providers = optionalArray(
+  const providers = try optionalArray(
     object,
     "providers",
     method,
     requireRemotePluginProvider,
   )
-  const evaluators = optionalArray(
+  const evaluators = try optionalArray(
     object,
     "evaluators",
     method,
     requireRemotePluginEvaluator,
   )
-  const responseHandlerEvaluators = optionalArray(
+  const responseHandlerEvaluators = try optionalArray(
     object,
     "responseHandlerEvaluators",
     method,
     requireRemotePluginResponseHandlerEvaluator,
   )
-  const responseHandlerFieldEvaluators = optionalArray(
+  const responseHandlerFieldEvaluators = try optionalArray(
     object,
     "responseHandlerFieldEvaluators",
     method,
     requireRemotePluginResponseHandlerFieldEvaluator,
   )
-  const events = optionalArray(
+  const events = try optionalArray(
     object,
     "events",
     method,
     requireRemotePluginEvent,
   )
-  const models = optionalArray(
+  const models = try optionalArray(
     object,
     "models",
     method,
     requireRemotePluginModel,
   )
-  const services = optionalArray(
+  const services = try optionalArray(
     object,
     "services",
     method,
     requireRemotePluginService,
   )
-  const componentTypes = optionalArray(
+  const componentTypes = try optionalArray(
     object,
     "componentTypes",
     method,
     requireRemotePluginComponentType,
   )
-  const widgets = optionalArray(
+  const widgets = try optionalArray(
     object,
     "widgets",
     method,
@@ -666,30 +664,30 @@ function requireRemotePluginModule(
   )
   const app = object.app === undefined
     ? undefined
-    : requireRemotePluginApp(object.app, `${method}.app`)
+    : try requireRemotePluginApp(object.app, `${method}.app`)
   const appBridge = object.appBridge === undefined
     ? undefined
-    : requireRemotePluginAppBridge(object.appBridge, `${method}.appBridge`)
+    : try requireRemotePluginAppBridge(object.appBridge, `${method}.appBridge`)
   const lifecycle = object.lifecycle === undefined
     ? undefined
-    : requireRemotePluginLifecycle(object.lifecycle, `${method}.lifecycle`)
-  const routes = optionalArray(
+    : try requireRemotePluginLifecycle(object.lifecycle, `${method}.lifecycle`)
+  const routes = try optionalArray(
     object,
     "routes",
     method,
     requireRemotePluginRoute,
   )
-  const views = optionalArray(object, "views", method, requireRemotePluginView)
+  const views = try optionalArray(object, "views", method, requireRemotePluginView)
   const provenance = object.provenance === undefined
     ? undefined
-    : requireRemotePluginModuleProvenance(
+    : try requireRemotePluginModuleProvenance(
       object.provenance,
       `${method}.provenance`,
     )
-  const metadata = optionalJsonObject(object, "metadata", method)
+  const metadata = try optionalJsonObject(object, "metadata", method)
   return {
-    id: requireRemotePluginModuleId(object, "id", method),
-    name: requireNonEmptyString(object, "name", method),
+    id: try requireRemotePluginModuleId(object, "id", method),
+    name: try requireNonEmptyString(object, "name", method),
     ...(capabilityEndpointId === undefined ? {} : { capabilityEndpointId }),
     ...(version === undefined ? {} : { version }),
     ...(description === undefined ? {} : { description }),
@@ -721,56 +719,56 @@ function requireRemotePluginModule(
   }
 }
 
-function requireRemotePluginModuleProvenance(
+effect function requireRemotePluginModuleProvenance(
   value: JsonValue,
   method: string,
-): RemotePluginModuleProvenance {
-  const object = requireObject(value, method)
-  const digestSha256 = requireNonEmptyString(object, "digestSha256", method)
+): RemotePluginModuleProvenance!CapabilityError {
+  const object = try requireObject(value, method)
+  const digestSha256 = try requireNonEmptyString(object, "digestSha256", method)
   if (!/^[0-9a-f]{64}$/i.test(digestSha256)) {
     throw decodeError(method, "digestSha256 must be a SHA-256 hex digest.")
   }
   return {
-    issuer: requireNonEmptyString(object, "issuer", method),
-    subject: requireNonEmptyString(object, "subject", method),
+    issuer: try requireNonEmptyString(object, "issuer", method),
+    subject: try requireNonEmptyString(object, "subject", method),
     digestSha256: digestSha256.toLowerCase(),
-    signatureAlgorithm: requireNonEmptyString(
+    signatureAlgorithm: try requireNonEmptyString(
       object,
       "signatureAlgorithm",
       method,
     ),
-    signature: requireNonEmptyString(object, "signature", method),
+    signature: try requireNonEmptyString(object, "signature", method),
   }
 }
 
-function optionalArray<T>(
+effect function optionalArray<T>(
   object: JsonObject,
   key: string,
   method: string,
-  decode: (value: JsonValue, method: string) => T,
-): T[] | undefined {
+  decode: (value: JsonValue, method: string) => T!CapabilityError,
+): (T[] | undefined)!CapabilityError {
   const value = object[key]
   if (value === undefined) return undefined
   if (!Array.isArray(value)) {
     throw decodeError(method, `${key} must be an array when present.`)
   }
-  return value.map((entry) => decode(entry, `${method}.${key}`))
+  return try forEach(value, (entry) => decode(entry, `${method}.${key}`))
 }
 
-function requireRemotePluginAction(
+effect function requireRemotePluginAction(
   value: JsonValue,
   method: string,
-): RemotePluginActionManifest {
-  const object = requireObject(value, method)
-  const descriptionCompressed = optionalString(
+): RemotePluginActionManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const descriptionCompressed = try optionalString(
     object,
     "descriptionCompressed",
     method,
   )
-  const similes = optionalStringArray(object, "similes", method)
+  const similes = try optionalStringArray(object, "similes", method)
   return {
-    name: requireNonEmptyString(object, "name", method),
-    description: requireNonEmptyString(object, "description", method),
+    name: try requireNonEmptyString(object, "name", method),
+    description: try requireNonEmptyString(object, "description", method),
     ...(descriptionCompressed === undefined ? {} : { descriptionCompressed }),
     ...(similes === undefined ? {} : { similes }),
     ...(object.parameters === undefined
@@ -779,21 +777,21 @@ function requireRemotePluginAction(
   }
 }
 
-function requireRemotePluginProvider(
+effect function requireRemotePluginProvider(
   value: JsonValue,
   method: string,
-): RemotePluginProviderManifest {
-  const object = requireObject(value, method)
-  const description = optionalString(object, "description", method)
-  const descriptionCompressed = optionalString(
+): RemotePluginProviderManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const description = try optionalString(object, "description", method)
+  const descriptionCompressed = try optionalString(
     object,
     "descriptionCompressed",
     method,
   )
-  const dynamic = optionalBoolean(object, "dynamic", method)
-  const isPrivate = optionalBoolean(object, "private", method)
+  const dynamic = try optionalBoolean(object, "dynamic", method)
+  const isPrivate = try optionalBoolean(object, "private", method)
   return {
-    name: requireNonEmptyString(object, "name", method),
+    name: try requireNonEmptyString(object, "name", method),
     ...(description === undefined ? {} : { description }),
     ...(descriptionCompressed === undefined ? {} : { descriptionCompressed }),
     ...(dynamic === undefined ? {} : { dynamic }),
@@ -801,140 +799,140 @@ function requireRemotePluginProvider(
   }
 }
 
-function requireRemotePluginEvaluator(
+effect function requireRemotePluginEvaluator(
   value: JsonValue,
   method: string,
-): RemotePluginEvaluatorManifest {
-  const object = requireObject(value, method)
-  const similes = optionalStringArray(object, "similes", method)
-  const priority = optionalNumber(object, "priority", method)
-  const providers = optionalStringArray(object, "providers", method)
-  const modelType = optionalString(object, "modelType", method)
-  const hasPrepare = optionalBoolean(object, "hasPrepare", method)
-  const hasProcessor = optionalBoolean(object, "hasProcessor", method)
+): RemotePluginEvaluatorManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const similes = try optionalStringArray(object, "similes", method)
+  const priority = try optionalNumber(object, "priority", method)
+  const providers = try optionalStringArray(object, "providers", method)
+  const modelType = try optionalString(object, "modelType", method)
+  const hasPrepare = try optionalBoolean(object, "hasPrepare", method)
+  const hasProcessor = try optionalBoolean(object, "hasProcessor", method)
   return {
-    name: requireNonEmptyString(object, "name", method),
-    description: requireNonEmptyString(object, "description", method),
-    prompt: requireNonEmptyString(object, "prompt", method),
+    name: try requireNonEmptyString(object, "name", method),
+    description: try requireNonEmptyString(object, "description", method),
+    prompt: try requireNonEmptyString(object, "prompt", method),
     ...(similes === undefined ? {} : { similes }),
     ...(priority === undefined ? {} : { priority }),
     ...(providers === undefined ? {} : { providers }),
-    schema: requireJsonObject(object, "schema", method),
+    schema: try requireJsonObject(object, "schema", method),
     ...(modelType === undefined ? {} : { modelType }),
     ...(hasPrepare === undefined ? {} : { hasPrepare }),
     ...(hasProcessor === undefined ? {} : { hasProcessor }),
   }
 }
 
-function requireRemotePluginResponseHandlerEvaluator(
+effect function requireRemotePluginResponseHandlerEvaluator(
   value: JsonValue,
   method: string,
-): RemotePluginResponseHandlerEvaluatorManifest {
-  const object = requireObject(value, method)
-  const description = optionalString(object, "description", method)
-  const priority = optionalNumber(object, "priority", method)
+): RemotePluginResponseHandlerEvaluatorManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const description = try optionalString(object, "description", method)
+  const priority = try optionalNumber(object, "priority", method)
   return {
-    name: requireNonEmptyString(object, "name", method),
+    name: try requireNonEmptyString(object, "name", method),
     ...(description === undefined ? {} : { description }),
     ...(priority === undefined ? {} : { priority }),
   }
 }
 
-function requireRemotePluginResponseHandlerFieldEvaluator(
+effect function requireRemotePluginResponseHandlerFieldEvaluator(
   value: JsonValue,
   method: string,
-): RemotePluginResponseHandlerFieldEvaluatorManifest {
-  const object = requireObject(value, method)
-  const priority = optionalNumber(object, "priority", method)
-  const hasParse = optionalBoolean(object, "hasParse", method)
-  const hasHandle = optionalBoolean(object, "hasHandle", method)
+): RemotePluginResponseHandlerFieldEvaluatorManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const priority = try optionalNumber(object, "priority", method)
+  const hasParse = try optionalBoolean(object, "hasParse", method)
+  const hasHandle = try optionalBoolean(object, "hasHandle", method)
   return {
-    name: requireNonEmptyString(object, "name", method),
-    description: requireNonEmptyString(object, "description", method),
-    schema: requireObject(object.schema, `${method}.schema`),
+    name: try requireNonEmptyString(object, "name", method),
+    description: try requireNonEmptyString(object, "description", method),
+    schema: try requireObject(object.schema, `${method}.schema`),
     ...(priority === undefined ? {} : { priority }),
     ...(hasParse === undefined ? {} : { hasParse }),
     ...(hasHandle === undefined ? {} : { hasHandle }),
   }
 }
 
-function requireRemotePluginEvent(
+effect function requireRemotePluginEvent(
   value: JsonValue,
   method: string,
-): RemotePluginEventManifest {
-  const object = requireObject(value, method)
+): RemotePluginEventManifest!CapabilityError {
+  const object = try requireObject(value, method)
   return {
-    eventName: requireNonEmptyString(object, "eventName", method),
+    eventName: try requireNonEmptyString(object, "eventName", method),
   }
 }
 
-function requireRemotePluginModel(
+effect function requireRemotePluginModel(
   value: JsonValue,
   method: string,
-): RemotePluginModelManifest {
-  const object = requireObject(value, method)
-  const priority = optionalNumber(object, "priority", method)
+): RemotePluginModelManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const priority = try optionalNumber(object, "priority", method)
   return {
-    modelType: requireNonEmptyString(object, "modelType", method),
+    modelType: try requireNonEmptyString(object, "modelType", method),
     ...(priority === undefined ? {} : { priority }),
   }
 }
 
-function requireRemotePluginService(
+effect function requireRemotePluginService(
   value: JsonValue,
   method: string,
-): RemotePluginServiceManifest {
-  const object = requireObject(value, method)
-  const capabilityDescription = optionalString(
+): RemotePluginServiceManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const capabilityDescription = try optionalString(
     object,
     "capabilityDescription",
     method,
   )
-  const methods = optionalStringArray(object, "methods", method)
-  validateRemotePluginServiceMethods(methods, method)
-  const config = optionalJsonObject(object, "config", method)
+  const methods = try optionalStringArray(object, "methods", method)
+  try validateRemotePluginServiceMethods(methods, method)
+  const config = try optionalJsonObject(object, "config", method)
   return {
-    serviceType: requireNonEmptyString(object, "serviceType", method),
+    serviceType: try requireNonEmptyString(object, "serviceType", method),
     ...(capabilityDescription === undefined ? {} : { capabilityDescription }),
     ...(methods === undefined ? {} : { methods }),
     ...(config === undefined ? {} : { config }),
   }
 }
 
-function requireRemotePluginComponentType(
+effect function requireRemotePluginComponentType(
   value: JsonValue,
   method: string,
-): RemotePluginComponentTypeManifest {
-  const object = requireObject(value, method)
+): RemotePluginComponentTypeManifest!CapabilityError {
+  const object = try requireObject(value, method)
   return {
-    name: requireNonEmptyString(object, "name", method),
-    schema: requireRemotePluginJsonSchemaDefinition(
+    name: try requireNonEmptyString(object, "name", method),
+    schema: try requireRemotePluginJsonSchemaDefinition(
       object.schema,
       `${method}.schema`,
     ),
   }
 }
 
-function requireRemotePluginJsonSchemaDefinition(
+effect function requireRemotePluginJsonSchemaDefinition(
   value: JsonValue,
   method: string,
-): RemotePluginJsonSchemaDefinition {
-  const object = requireObject(value, method)
+): RemotePluginJsonSchemaDefinition!CapabilityError {
+  const object = try requireObject(value, method)
   const propertiesValue = object.properties
   const properties = propertiesValue === undefined
     ? undefined
-    : requireRemotePluginJsonSchemaProperties(propertiesValue, method)
+    : try requireRemotePluginJsonSchemaProperties(propertiesValue, method)
   const items = object.items === undefined
     ? undefined
-    : requireRemotePluginJsonSchemaDefinition(
+    : try requireRemotePluginJsonSchemaDefinition(
       object.items,
       `${method}.items`,
     )
-  const required = optionalStringArray(object, "required", method)
-  const enumValues = optionalStringArray(object, "enumValues", method)
-  const description = optionalString(object, "description", method)
+  const required = try optionalStringArray(object, "required", method)
+  const enumValues = try optionalStringArray(object, "enumValues", method)
+  const description = try optionalString(object, "description", method)
   return {
-    type: requireNonEmptyString(object, "type", method),
+    type: try requireNonEmptyString(object, "type", method),
     ...(properties === undefined ? {} : { properties }),
     ...(items === undefined ? {} : { items }),
     ...(required === undefined ? {} : { required }),
@@ -943,14 +941,14 @@ function requireRemotePluginJsonSchemaDefinition(
   }
 }
 
-function requireRemotePluginJsonSchemaProperties(
+effect function requireRemotePluginJsonSchemaProperties(
   value: JsonValue,
   method: string,
-): Record<string, RemotePluginJsonSchemaDefinition> {
-  const object = requireObject(value, `${method}.properties`)
+): Record<string, RemotePluginJsonSchemaDefinition>!CapabilityError {
+  const object = try requireObject(value, `${method}.properties`)
   const properties: Record<string, RemotePluginJsonSchemaDefinition> = {}
   for (const [key, property] of Object.entries(object)) {
-    properties[key] = requireRemotePluginJsonSchemaDefinition(
+    properties[key] = try requireRemotePluginJsonSchemaDefinition(
       property,
       `${method}.properties.${key}`,
     )
@@ -974,10 +972,10 @@ const REMOTE_SERVICE_RESERVED_METHODS = new Set([
   "__proto__",
 ])
 
-export function validateRemotePluginServiceMethods(
+export effect function validateRemotePluginServiceMethods(
   methods: string[] | undefined,
   method: string,
-): void {
+): void!CapabilityError {
   if (methods === undefined) return
   const seen = new Set<string>()
   for (const serviceMethod of methods) {
@@ -1003,24 +1001,24 @@ export function validateRemotePluginServiceMethods(
   }
 }
 
-export function validateRemotePluginCallTarget(
+export effect function validateRemotePluginCallTarget(
   value: string,
   key: string,
   method: string,
-): void {
+): void!CapabilityError {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw decodeError(method, `${key} must be a non-empty string.`)
   }
   if (key === "moduleId") {
-    validateRemotePluginModuleId(value, key, method)
+    try validateRemotePluginModuleId(value, key, method)
   }
 }
 
-function validateRemotePluginModuleId(
+effect function validateRemotePluginModuleId(
   value: string,
   key: string,
   method: string,
-): void {
+): void!CapabilityError {
   if (!/^[A-Za-z0-9._-]+$/.test(value)) {
     throw decodeError(
       method,
@@ -1029,11 +1027,11 @@ function validateRemotePluginModuleId(
   }
 }
 
-function optionalViewKind(
-  object: Record<string, JsonValue>,
+effect function optionalViewKind(
+  object: JsonObject,
   method: string,
-): import("../views/declarations.vibe").ViewKind | undefined {
-  const value = optionalString(object, "viewKind", method)
+): (ViewKind | undefined)!CapabilityError {
+  const value = try optionalString(object, "viewKind", method)
   if (
     value === undefined
     || value === "system"
@@ -1049,27 +1047,27 @@ function optionalViewKind(
   )
 }
 
-function requireRemotePluginWidget(
+effect function requireRemotePluginWidget(
   value: JsonValue,
   method: string,
-): RemotePluginWidgetManifest {
-  const object = requireObject(value, method)
-  const slot = requireString(object, "slot", method)
+): RemotePluginWidgetManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const slot = try requireString(object, "slot", method)
   if (slot !== "chat-sidebar" && slot !== "character" && slot !== "nav-page") {
     throw decodeError(method, "slot must be a valid plugin widget slot.")
   }
-  const pluginId = optionalNonEmptyString(object, "pluginId", method)
-  const icon = optionalString(object, "icon", method)
-  const order = optionalNumber(object, "order", method)
-  const defaultEnabled = optionalBoolean(object, "defaultEnabled", method)
-  const navGroup = optionalString(object, "navGroup", method)
-  const viewKind = optionalViewKind(object, method)
-  const componentExport = optionalString(object, "componentExport", method)
+  const pluginId = try optionalNonEmptyString(object, "pluginId", method)
+  const icon = try optionalString(object, "icon", method)
+  const order = try optionalNumber(object, "order", method)
+  const defaultEnabled = try optionalBoolean(object, "defaultEnabled", method)
+  const navGroup = try optionalString(object, "navGroup", method)
+  const viewKind = try optionalViewKind(object, method)
+  const componentExport = try optionalString(object, "componentExport", method)
   return {
-    id: requireNonEmptyString(object, "id", method),
+    id: try requireNonEmptyString(object, "id", method),
     ...(pluginId === undefined ? {} : { pluginId }),
     slot,
-    label: requireNonEmptyString(object, "label", method),
+    label: try requireNonEmptyString(object, "label", method),
     ...(icon === undefined ? {} : { icon }),
     ...(order === undefined ? {} : { order }),
     ...(defaultEnabled === undefined ? {} : { defaultEnabled }),
@@ -1079,43 +1077,43 @@ function requireRemotePluginWidget(
   }
 }
 
-function requireRemotePluginApp(
+effect function requireRemotePluginApp(
   value: JsonValue,
   method: string,
-): RemotePluginAppManifest {
-  const object = requireObject(value, method)
-  const displayName = optionalNonEmptyString(object, "displayName", method)
-  const category = optionalString(object, "category", method)
-  const launchType = optionalString(object, "launchType", method)
-  const launchUrl = optionalNullableString(object, "launchUrl", method)
+): RemotePluginAppManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const displayName = try optionalNonEmptyString(object, "displayName", method)
+  const category = try optionalString(object, "category", method)
+  const launchType = try optionalString(object, "launchType", method)
+  const launchUrl = try optionalNullableString(object, "launchUrl", method)
   if (typeof launchUrl === "string") {
-    validateRemotePluginBrowserUrl(launchUrl, "launchUrl", method)
+    try validateRemotePluginBrowserUrl(launchUrl, "launchUrl", method)
   }
-  const icon = optionalNullableString(object, "icon", method)
-  const capabilities = optionalStringArray(object, "capabilities", method)
-  const minPlayers = optionalNullableNumber(object, "minPlayers", method)
-  const maxPlayers = optionalNullableNumber(object, "maxPlayers", method)
-  const runtimePlugin = optionalString(object, "runtimePlugin", method)
+  const icon = try optionalNullableString(object, "icon", method)
+  const capabilities = try optionalStringArray(object, "capabilities", method)
+  const minPlayers = try optionalNullableNumber(object, "minPlayers", method)
+  const maxPlayers = try optionalNullableNumber(object, "maxPlayers", method)
+  const runtimePlugin = try optionalString(object, "runtimePlugin", method)
   const viewer = object.viewer === undefined
     ? undefined
-    : requireRemotePluginAppViewer(object.viewer, `${method}.viewer`)
+    : try requireRemotePluginAppViewer(object.viewer, `${method}.viewer`)
   const session = object.session === undefined
     ? undefined
-    : requireRemotePluginAppSession(object.session, `${method}.session`)
-  const bridgeExport = optionalString(object, "bridgeExport", method)
+    : try requireRemotePluginAppSession(object.session, `${method}.session`)
+  const bridgeExport = try optionalString(object, "bridgeExport", method)
   const uiExtension = object.uiExtension === undefined
     ? undefined
-    : requireRemotePluginAppUiExtension(
+    : try requireRemotePluginAppUiExtension(
       object.uiExtension,
       `${method}.uiExtension`,
     )
-  const viewKind = optionalViewKind(object, method)
-  const visibleInAppStore = optionalBoolean(
+  const viewKind = try optionalViewKind(object, method)
+  const visibleInAppStore = try optionalBoolean(
     object,
     "visibleInAppStore",
     method,
   )
-  const navTabs = optionalArray(
+  const navTabs = try optionalArray(
     object,
     "navTabs",
     method,
@@ -1141,16 +1139,16 @@ function requireRemotePluginApp(
   }
 }
 
-function requireRemotePluginAppViewer(
+effect function requireRemotePluginAppViewer(
   value: JsonValue,
   method: string,
-): RemotePluginAppViewerManifest {
-  const object = requireObject(value, method)
-  const embedParams = optionalStringRecord(object, "embedParams", method)
-  const postMessageAuth = optionalBoolean(object, "postMessageAuth", method)
-  const sandbox = optionalString(object, "sandbox", method)
-  const url = requireNonEmptyString(object, "url", method)
-  validateRemotePluginBrowserUrl(url, "url", method)
+): RemotePluginAppViewerManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const embedParams = try optionalStringRecord(object, "embedParams", method)
+  const postMessageAuth = try optionalBoolean(object, "postMessageAuth", method)
+  const sandbox = try optionalString(object, "sandbox", method)
+  const url = try requireNonEmptyString(object, "url", method)
+  try validateRemotePluginBrowserUrl(url, "url", method)
   return {
     url,
     ...(embedParams === undefined ? {} : { embedParams }),
@@ -1159,33 +1157,35 @@ function requireRemotePluginAppViewer(
   }
 }
 
-function validateRemotePluginBrowserUrl(
+effect function validateRemotePluginBrowserUrl(
   value: string,
   key: string,
   method: string,
-): void {
+): void!CapabilityError {
+  if (isBrowserUrl(value)) return
+  throw decodeError(
+    method,
+    `${key} must be an absolute http(s) URL without embedded credentials.`,
+  )
+}
+
+function isBrowserUrl(value: string): boolean {
   try {
     const parsed = new URL(value)
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new Error("invalid protocol")
-    }
-    if (parsed.username || parsed.password) {
-      throw new Error("credentials are not allowed")
-    }
+    return (parsed.protocol === "http:" || parsed.protocol === "https:")
+      && !parsed.username
+      && !parsed.password
   } catch {
-    throw decodeError(
-      method,
-      `${key} must be an absolute http(s) URL without embedded credentials.`,
-    )
+    return false
   }
 }
 
-function requireRemotePluginAppSession(
+effect function requireRemotePluginAppSession(
   value: JsonValue,
   method: string,
-): RemotePluginAppSessionManifest {
-  const object = requireObject(value, method)
-  const mode = requireString(object, "mode", method)
+): RemotePluginAppSessionManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const mode = try requireString(object, "mode", method)
   if (
     mode !== "viewer"
     && mode !== "spectate-and-steer"
@@ -1193,7 +1193,7 @@ function requireRemotePluginAppSession(
   ) {
     throw decodeError(method, "mode must be a valid plugin app session mode.")
   }
-  const features = optionalStringArray(object, "features", method)
+  const features = try optionalStringArray(object, "features", method)
   if (
     features?.some(
       (feature) =>
@@ -1219,33 +1219,33 @@ function requireRemotePluginAppSession(
   }
 }
 
-function requireRemotePluginAppUiExtension(
+effect function requireRemotePluginAppUiExtension(
   value: JsonValue,
   method: string,
-): NonNullable<RemotePluginAppManifest["uiExtension"]> {
-  const object = requireObject(value, method)
-  const detailPanelId = optionalString(object, "detailPanelId", method)
+): NonNullable<RemotePluginAppManifest["uiExtension"]>!CapabilityError {
+  const object = try requireObject(value, method)
+  const detailPanelId = try optionalString(object, "detailPanelId", method)
   return {
     ...(detailPanelId === undefined ? {} : { detailPanelId }),
   }
 }
 
-function requireRemotePluginAppNavTab(
+effect function requireRemotePluginAppNavTab(
   value: JsonValue,
   method: string,
-): RemotePluginAppNavTabManifest {
-  const object = requireObject(value, method)
-  const icon = optionalString(object, "icon", method)
-  const order = optionalNumber(object, "order", method)
-  const viewKind = optionalViewKind(object, method)
-  const group = optionalString(object, "group", method)
-  const surface = optionalSurfaceManifest(object, "surface", method)
-  const componentExport = optionalString(object, "componentExport", method)
-  const path = requireNonEmptyString(object, "path", method)
-  validateRemotePluginPath(path, "path", method)
+): RemotePluginAppNavTabManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const icon = try optionalString(object, "icon", method)
+  const order = try optionalNumber(object, "order", method)
+  const viewKind = try optionalViewKind(object, method)
+  const group = try optionalString(object, "group", method)
+  const surface = try optionalSurfaceManifest(object, "surface", method)
+  const componentExport = try optionalString(object, "componentExport", method)
+  const path = try requireNonEmptyString(object, "path", method)
+  try validateRemotePluginPath(path, "path", method)
   return {
-    id: requireNonEmptyString(object, "id", method),
-    label: requireNonEmptyString(object, "label", method),
+    id: try requireNonEmptyString(object, "id", method),
+    label: try requireNonEmptyString(object, "label", method),
     ...(icon === undefined ? {} : { icon }),
     path,
     ...(order === undefined ? {} : { order }),
@@ -1256,12 +1256,12 @@ function requireRemotePluginAppNavTab(
   }
 }
 
-function requireRemotePluginAppBridge(
+effect function requireRemotePluginAppBridge(
   value: JsonValue,
   method: string,
-): RemotePluginAppBridgeManifest {
-  const object = requireObject(value, method)
-  const hooks = requireStringArray(object, "hooks", method)
+): RemotePluginAppBridgeManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const hooks = try requireStringArray(object, "hooks", method)
   if (hooks.length === 0) {
     throw decodeError(method, "hooks must not be empty.")
   }
@@ -1288,12 +1288,12 @@ export function isRemotePluginAppBridgeHook(
   )
 }
 
-function requireRemotePluginLifecycle(
+effect function requireRemotePluginLifecycle(
   value: JsonValue,
   method: string,
-): RemotePluginLifecycleManifest {
-  const object = requireObject(value, method)
-  const hooks = requireStringArray(object, "hooks", method)
+): RemotePluginLifecycleManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const hooks = try requireStringArray(object, "hooks", method)
   if (hooks.length === 0) {
     throw decodeError(method, "hooks must not be empty.")
   }
@@ -1311,20 +1311,24 @@ export function isRemotePluginLifecycleHook(
   return value === "init" || value === "dispose" || value === "applyConfig"
 }
 
-function requireRemotePluginRoute(
+effect function requireRemotePluginRoute(
   value: JsonValue,
   method: string,
-): RemotePluginRouteManifest {
-  const object = requireObject(value, method)
-  const routeMethod = requireString(object, "method", method)
-  validateRemotePluginRouteMethod(routeMethod, "method", method, true)
-  const name = optionalString(object, "name", method)
-  const isPublic = optionalBoolean(object, "public", method)
-  const publicReason = optionalString(object, "publicReason", method)
-  const publicWrite = optionalString(object, "publicWrite", method)
-  const description = optionalString(object, "description", method)
-  const path = requireNonEmptyString(object, "path", method)
-  validateRemotePluginPath(path, "path", method)
+): RemotePluginRouteManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const routeMethod = try validateRemotePluginRouteMethod(
+    try requireString(object, "method", method),
+    "method",
+    method,
+    true,
+  )
+  const name = try optionalString(object, "name", method)
+  const isPublic = try optionalBoolean(object, "public", method)
+  const publicReason = try optionalString(object, "publicReason", method)
+  const publicWrite = try optionalString(object, "publicWrite", method)
+  const description = try optionalString(object, "description", method)
+  const path = try requireNonEmptyString(object, "path", method)
+  try validateRemotePluginPath(path, "path", method)
   if (isPublic === true && !publicReason?.trim()) {
     throw decodeError(
       method,
@@ -1342,29 +1346,30 @@ function requireRemotePluginRoute(
   }
 }
 
-export function validateRemotePluginRouteMethod(
+export effect function validateRemotePluginRouteMethod(
   value: string,
   key: string,
   method: string,
   allowStatic: boolean,
-): asserts value is RemotePluginRouteManifest["method"] {
+): RemotePluginRouteManifest["method"]!CapabilityError {
   if (
-    value !== "GET"
-    && value !== "POST"
-    && value !== "PUT"
-    && value !== "PATCH"
-    && value !== "DELETE"
-    && (allowStatic ? value !== "STATIC" : true)
+    value === "GET"
+    || value === "POST"
+    || value === "PUT"
+    || value === "PATCH"
+    || value === "DELETE"
+    || (allowStatic && value === "STATIC")
   ) {
-    throw decodeError(method, `${key} must be a valid plugin route method.`)
+    return value
   }
+  throw decodeError(method, `${key} must be a valid plugin route method.`)
 }
 
-export function validateRemotePluginPath(
+export effect function validateRemotePluginPath(
   value: string,
   key: string,
   method: string,
-): void {
+): void!CapabilityError {
   if (
     !value.startsWith("/")
     || value.startsWith("//")
@@ -1389,13 +1394,13 @@ export function validateRemotePluginPath(
   }
 }
 
-function requireRemotePluginView(
+effect function requireRemotePluginView(
   value: JsonValue,
   method: string,
-): RemotePluginViewManifest {
-  const object = requireObject(value, method)
-  const viewKind = optionalViewKind(object, method)
-  const viewType = optionalString(object, "viewType", method)
+): RemotePluginViewManifest!CapabilityError {
+  const object = try requireObject(value, method)
+  const viewKind = try optionalViewKind(object, method)
+  const viewType = try optionalString(object, "viewType", method)
   if (
     viewType !== undefined
     && viewType !== "gui"
@@ -1404,28 +1409,28 @@ function requireRemotePluginView(
   ) {
     throw decodeError(method, "viewType must be gui, tui, or xr when present.")
   }
-  const bundlePath = optionalNonEmptyString(object, "bundlePath", method)
-  const bundleUrl = optionalNonEmptyString(object, "bundleUrl", method)
-  const framePath = optionalNonEmptyString(object, "framePath", method)
-  const frameUrl = optionalNonEmptyString(object, "frameUrl", method)
+  const bundlePath = try optionalNonEmptyString(object, "bundlePath", method)
+  const bundleUrl = try optionalNonEmptyString(object, "bundleUrl", method)
+  const framePath = try optionalNonEmptyString(object, "framePath", method)
+  const frameUrl = try optionalNonEmptyString(object, "frameUrl", method)
   if (bundlePath !== undefined) {
-    validateRemotePluginAssetPath(bundlePath, "bundlePath", method)
+    try validateRemotePluginAssetPath(bundlePath, "bundlePath", method)
   }
   if (bundleUrl !== undefined) {
-    validateRemotePluginBundleUrl(bundleUrl, "bundleUrl", method)
+    try validateRemotePluginBundleUrl(bundleUrl, "bundleUrl", method)
   }
   if (framePath !== undefined) {
-    validateRemotePluginAssetPath(framePath, "framePath", method)
+    try validateRemotePluginAssetPath(framePath, "framePath", method)
   }
   if (frameUrl !== undefined) {
-    validateRemotePluginBundleUrl(frameUrl, "frameUrl", method)
+    try validateRemotePluginBundleUrl(frameUrl, "frameUrl", method)
   }
-  const surface = optionalSurfaceManifest(object, "surface", method)
-  const contentType = optionalString(object, "contentType", method)
-  const integrity = optionalString(object, "integrity", method)
+  const surface = try optionalSurfaceManifest(object, "surface", method)
+  const contentType = try optionalString(object, "contentType", method)
+  const integrity = try optionalString(object, "integrity", method)
   return {
-    id: requireNonEmptyString(object, "id", method),
-    label: requireNonEmptyString(object, "label", method),
+    id: try requireNonEmptyString(object, "id", method),
+    label: try requireNonEmptyString(object, "label", method),
     ...(viewType === undefined ? {} : { viewType }),
     ...(viewKind === undefined ? {} : { viewKind }),
     ...(surface === undefined ? {} : { surface }),
@@ -1438,23 +1443,23 @@ function requireRemotePluginView(
   }
 }
 
-function validateRemotePluginBundleUrl(
+effect function validateRemotePluginBundleUrl(
   value: string,
   key: string,
   method: string,
-): void {
+): void!CapabilityError {
   if (value.startsWith("/")) {
-    validateRemotePluginPath(value, key, method)
+    try validateRemotePluginPath(value, key, method)
     return
   }
-  validateRemotePluginBrowserUrl(value, key, method)
+  try validateRemotePluginBrowserUrl(value, key, method)
 }
 
-export function validateRemotePluginAssetPath(
+export effect function validateRemotePluginAssetPath(
   value: string,
   key: string,
   method: string,
-): void {
+): void!CapabilityError {
   const path = value.trim()
   if (
     !path
@@ -1481,11 +1486,11 @@ export function validateRemotePluginAssetPath(
   }
 }
 
-export function validateHeaderSafeString(
+export effect function validateHeaderSafeString(
   value: string,
   key: string,
   method: string,
-): void {
+): void!CapabilityError {
   if (!isControlSafeString(value)) {
     throw decodeError(method, `${key} must not contain control characters.`)
   }
@@ -1495,24 +1500,24 @@ function isControlSafeString(value: string): boolean {
   return !/[\r\n\0]/.test(value)
 }
 
-export function validateHeaderRecord(
+export effect function validateHeaderRecord(
   headers: Record<string, string>,
   key: string,
   method: string,
-): void {
+): void!CapabilityError {
   for (const [headerName, headerValue] of Object.entries(headers)) {
     if (!/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(headerName)) {
       throw decodeError(method, `${key} must contain valid header names.`)
     }
-    validateHeaderSafeString(headerValue, key, method)
+    try validateHeaderSafeString(headerValue, key, method)
   }
 }
 
-export function validateRouteQueryRecord(
+export effect function validateRouteQueryRecord(
   query: Record<string, string | string[]>,
   key: string,
   method: string,
-): void {
+): void!CapabilityError {
   for (const [queryKey, queryValue] of Object.entries(query)) {
     if (!queryKey || !isControlSafeString(queryKey)) {
       throw decodeError(method, `${key} must contain valid query keys.`)
@@ -1528,21 +1533,21 @@ export function validateRouteQueryRecord(
   }
 }
 
-export function validateHttpStatusCode(
+export effect function validateHttpStatusCode(
   value: number,
   key: string,
   method: string,
-): void {
+): void!CapabilityError {
   if (!Number.isInteger(value) || value < 100 || value > 599) {
     throw decodeError(method, `${key} must be an integer HTTP status code.`)
   }
 }
 
-export function validateBase64String(
+export effect function validateBase64String(
   value: string,
   key: string,
   method: string,
-): void {
+): void!CapabilityError {
   if (
     value.length > 0
     && !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
@@ -1553,15 +1558,15 @@ export function validateBase64String(
   }
 }
 
-export function requirePluginActionResult(
+export effect function requirePluginActionResult(
   value: JsonValue | undefined,
   method: string,
-): PluginInvokeActionResult {
-  const object = requireObject(value, method)
-  const text = optionalString(object, "text", method)
-  const actions = optionalStringArray(object, "actions", method)
-  const values = optionalJsonObject(object, "values", method)
-  const data = optionalJsonObject(object, "data", method)
+): PluginInvokeActionResult!CapabilityError {
+  const object = try requireObject(value, method)
+  const text = try optionalString(object, "text", method)
+  const actions = try optionalStringArray(object, "actions", method)
+  const values = try optionalJsonObject(object, "values", method)
+  const data = try optionalJsonObject(object, "data", method)
   return {
     ...(text === undefined ? {} : { text }),
     ...(actions === undefined ? {} : { actions }),
@@ -1570,14 +1575,14 @@ export function requirePluginActionResult(
   }
 }
 
-export function requirePluginProviderResult(
+export effect function requirePluginProviderResult(
   value: JsonValue | undefined,
   method: string,
-): PluginGetProviderResult {
-  const object = requireObject(value, method)
-  const text = optionalString(object, "text", method)
-  const values = optionalJsonObject(object, "values", method)
-  const data = optionalJsonObject(object, "data", method)
+): PluginGetProviderResult!CapabilityError {
+  const object = try requireObject(value, method)
+  const text = try optionalString(object, "text", method)
+  const values = try optionalJsonObject(object, "values", method)
+  const data = try optionalJsonObject(object, "data", method)
   return {
     ...(text === undefined ? {} : { text }),
     ...(values === undefined ? {} : { values }),

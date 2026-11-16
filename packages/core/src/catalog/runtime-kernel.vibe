@@ -1,4 +1,6 @@
+// spec/core/catalog.md, "Story: Discover and register first-party capabilities"
 import { z } from "zod"
+import { Foreign, thrown } from "../edge.vibe"
 import { appSessionSchema, appSupportsSchema, appViewerSchema } from "./schema.vibe"
 
 const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
@@ -187,11 +189,8 @@ function normalizeEntry(
   }
 }
 
-export function decodeRuntimeRegistry(
-  input: unknown,
-  options: DecodeRuntimeRegistryOptions = {},
-): Map<string, NormalizedRegistryEntry> {
-  const decoded = runtimeRegistryFileSchema.parse(input)
+export effect function decodeRuntimeRegistry(input: unknown, options: DecodeRuntimeRegistryOptions = {}) {
+  const decoded = try Effect.try({ try: () => runtimeRegistryFileSchema.parse(input), catch: (cause) => new Foreign({ cause }) })
   const result = new Map<string, NormalizedRegistryEntry>()
   for (const [name, entry] of Object.entries(decoded.registry)) {
     result.set(name, normalizeEntry(name, entry, options))
@@ -201,6 +200,8 @@ export function decodeRuntimeRegistry(
   }
   return result
 }
+
+export const decodeRuntimeRegistryOrThrow = thrown(decodeRuntimeRegistry)
 
 export interface RegistrySearchable {
   name: string

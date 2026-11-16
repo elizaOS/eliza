@@ -1,3 +1,5 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { Foreign, failingAs, thrown } from "../edge.vibe"
 import { unwrapWholeCodeFence } from "../markdown/code.vibe"
 import { formatError } from "../utils/errors.vibe"
 
@@ -293,13 +295,20 @@ function escapeRawJsonStringChar(char: string): string {
   }
 }
 
-export function stringifyForModel(value: unknown): string {
-  const serialized = JSON.stringify(value, null, 2)
+export error UnserializableModelData { message: string }
+
+export effect function stringifyForModel(value: unknown) {
+  const serialized: string | undefined = try Effect.try({
+    try: () => JSON.stringify(value, null, 2),
+    catch: (cause) => new Foreign({ cause }),
+  })
   if (serialized === undefined) {
-    throw new TypeError("Model prompt data is not JSON-serializable")
+    throw new UnserializableModelData({ message: "Model prompt data is not JSON-serializable" })
   }
   return serialized
 }
+
+export const stringifyForModelOrThrow = thrown(failingAs(TypeError, stringifyForModel))
 
 export function stringifyForDiagnostics(value: unknown): string {
   if (typeof value === "string") return value

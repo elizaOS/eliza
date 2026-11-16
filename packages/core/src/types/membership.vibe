@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { JsonObject, UUID } from "./primitives.vibe"
 import { Service, ServiceType } from "./service.vibe"
 

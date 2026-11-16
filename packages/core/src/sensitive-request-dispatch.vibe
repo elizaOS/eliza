@@ -1,3 +1,4 @@
+// spec/core/sensitiveRequestAdapters.md, "Story: Resolve the correct connector while retaining registration order"; spec/core/sensitiveRequestAdapters.md, "Per-target identity and callback order determine resolution"
 import type { SensitiveRequestTunnelRouting } from "./sensitive-request-policy.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 import { Service } from "./types/service.vibe"

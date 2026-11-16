@@ -1,5 +1,5 @@
-import { satisfiesRoleGate } from "../access-control/role-primitives.vibe"
-import type { AgentContext, ContextDefinition, RoleGateRole } from "../types/contexts.vibe"
+// spec/core/contextRegistry.md, "Story: Register an internally consistent context graph"; spec/core/contextRegistry.md, "Graph validation precedes replacement of the live map"; spec/core/contextRegistry.md, "An empty subcontext can participate in a cycle"; spec/core/contextRegistry.md, "Available contexts preserve insertion order and apply every role gate clause"
+import type { AgentContext, ContextDefinition } from "../types/contexts.vibe"
 import { normalizeContextId, normalizeContextList } from "./context-normalization.vibe"
 
 export {
@@ -12,92 +12,12 @@ export {
 
 const EMPTY_CONTEXTS: readonly AgentContext[] = []
 
-export class ContextRegistryError extends Error {
+type ContextDefinitions = ReadonlyMap<AgentContext, ContextDefinition>
+
+export class ContextRegistryError extends Data.TaggedError("ContextRegistryError") {
   constructor(message: string) {
-    super(message)
-    this.name = "ContextRegistryError"
-  }
-}
-
-export class ContextRegistry {
-  #definitions = new Map<AgentContext, ContextDefinition>()
-
-  constructor(definitions: readonly ContextDefinition[] = []) {
-    this.registerMany(definitions)
-  }
-
-  list(): ContextDefinition[] {
-    return [...this.#definitions.values()]
-  }
-
-  get(context: AgentContext): ContextDefinition | undefined {
-    return this.#definitions.get(normalizeContextId(context))
-  }
-
-  has(context: AgentContext): boolean {
-    return this.#definitions.has(normalizeContextId(context))
-  }
-
-  register(definition: ContextDefinition): void {
-    this.registerMany([definition])
-  }
-
-  registerMany(definitions: readonly ContextDefinition[]): void {
-    const next = new Map(this.#definitions)
-    for (const definition of definitions) {
-      const normalized = normalizeDefinition(definition)
-      if (next.has(normalized.id)) {
-        throw new ContextRegistryError(
-          `Duplicate context definition: ${normalized.id}`,
-        )
-      }
-      next.set(normalized.id, normalized)
-    }
-    assertNoUnknownEdges(next)
-    assertNoContextCycles(next)
-    this.#definitions = next
-  }
-
-  tryRegister(definition: ContextDefinition): boolean {
-    const normalized = normalizeDefinition(definition)
-    if (this.#definitions.has(normalized.id)) {
-      return false
-    }
-    this.registerMany([definition])
-    return true
-  }
-
-  tryRegisterMany(definitions: readonly ContextDefinition[]): {
-    added: AgentContext[]
-    skipped: AgentContext[]
-  } {
-    const added: AgentContext[] = []
-    const skipped: AgentContext[] = []
-    const toAdd: ContextDefinition[] = []
-    for (const definition of definitions) {
-      const normalized = normalizeDefinition(definition)
-      if (this.#definitions.has(normalized.id)) {
-        skipped.push(normalized.id)
-        continue
-      }
-      toAdd.push(definition)
-      added.push(normalized.id)
-    }
-    if (toAdd.length > 0) {
-      this.registerMany(toAdd)
-    }
-    return { added, skipped }
-  }
-
-  listAvailable(
-    roles: RoleGateRole | readonly RoleGateRole[] | undefined,
-  ): ContextDefinition[] {
-    const normalizedRoles = roles === undefined
-      ? []
-      : Array.isArray(roles)
-      ? (roles as readonly RoleGateRole[])
-      : [roles as RoleGateRole]
-    return this.list().filter((definition) => satisfiesRoleGate(normalizedRoles, definition.roleGate))
+    super()
+    this.message = message
   }
 }
 
@@ -114,74 +34,156 @@ function normalizeDefinition(definition: ContextDefinition): ContextDefinition {
   }
 }
 
-function getEdges(
-  definitions: ReadonlyMap<AgentContext, ContextDefinition>,
-): Map<AgentContext, AgentContext[]> {
+function parentsOf(definition: ContextDefinition): AgentContext[] {
+  return [definition.parent, ...(definition.parents ?? EMPTY_CONTEXTS)].filter(Boolean) as AgentContext[]
+}
+
+function getEdges(definitions: ContextDefinitions): Map<AgentContext, AgentContext[]> {
   const edges = new Map<AgentContext, AgentContext[]>()
   for (const [id, definition] of definitions) {
-    const targets = new Set<AgentContext>()
-    for (
-      const parent of [
-        definition.parent,
-        ...(definition.parents ?? EMPTY_CONTEXTS),
-      ].filter(Boolean) as AgentContext[]
-    ) {
+    for (const parent of parentsOf(definition)) {
       const parentTargets = edges.get(parent) ?? []
       parentTargets.push(id)
       edges.set(parent, parentTargets)
     }
-    for (const subcontext of definition.subcontexts ?? EMPTY_CONTEXTS) {
-      targets.add(subcontext)
-    }
+    const targets = new Set(definition.subcontexts ?? EMPTY_CONTEXTS)
     edges.set(id, [...(edges.get(id) ?? []), ...targets])
   }
   return edges
 }
 
-function assertNoUnknownEdges(
-  definitions: ReadonlyMap<AgentContext, ContextDefinition>,
-): void {
+function findUnknownEdge(definitions: ContextDefinitions): string | undefined {
   for (const [id, definition] of definitions) {
-    const referenced = [
-      definition.parent,
-      ...(definition.parents ?? EMPTY_CONTEXTS),
-      ...(definition.subcontexts ?? EMPTY_CONTEXTS),
-    ].filter(Boolean) as AgentContext[]
-    for (const context of referenced) {
-      if (!definitions.has(context)) {
-        throw new ContextRegistryError(
-          `Context ${id} references unknown context ${context}`,
-        )
-      }
-    }
+    const referenced = [...parentsOf(definition), ...(definition.subcontexts ?? EMPTY_CONTEXTS)].filter(Boolean)
+    const unknown = referenced.find((context) => !definitions.has(context))
+    if (unknown !== undefined) return `Context ${id} references unknown context ${unknown}`
   }
+  return undefined
 }
 
-function assertNoContextCycles(
-  definitions: ReadonlyMap<AgentContext, ContextDefinition>,
-): void {
+function findContextCycle(definitions: ContextDefinitions): AgentContext[] | undefined {
   const edges = getEdges(definitions)
   const visiting = new Set<AgentContext>()
   const visited = new Set<AgentContext>()
 
-  function visit(id: AgentContext, path: AgentContext[]): void {
-    if (visiting.has(id)) {
-      throw new ContextRegistryError(
-        `Context cycle detected: ${[...path, id].join(" -> ")}`,
-      )
-    }
-    if (visited.has(id)) {
-      return
-    }
+  function visit(id: AgentContext, path: AgentContext[]): AgentContext[] | undefined {
+    if (visiting.has(id)) return [...path, id]
+    if (visited.has(id)) return undefined
     visiting.add(id)
     for (const target of edges.get(id) ?? []) {
-      visit(target, [...path, id])
+      const cycle = visit(target, [...path, id])
+      if (cycle) return cycle
     }
     visiting.delete(id)
     visited.add(id)
+    return undefined
   }
 
   for (const id of definitions.keys()) {
-    visit(id, [])
+    const cycle = visit(id, [])
+    if (cycle) return cycle
+  }
+  return undefined
+}
+
+export effect function registerContextDefinitions(
+  current: ContextDefinitions,
+  definitions: readonly ContextDefinition[],
+): Map<AgentContext, ContextDefinition>!ContextRegistryError {
+  const next = new Map(current)
+  for (const definition of definitions) {
+    const normalized = normalizeDefinition(definition)
+    if (next.has(normalized.id)) {
+      throw new ContextRegistryError(`Duplicate context definition: ${normalized.id}`)
+    }
+    next.set(normalized.id, normalized)
+  }
+  const unknownEdge = findUnknownEdge(next)
+  if (unknownEdge !== undefined) throw new ContextRegistryError(unknownEdge)
+  const cycle = findContextCycle(next)
+  if (cycle) throw new ContextRegistryError(`Context cycle detected: ${cycle.join(" -> ")}`)
+  return next
+}
+
+export effect function tryRegisterContextDefinitions(current: ContextDefinitions, definitions: readonly ContextDefinition[]) {
+  const added: AgentContext[] = []
+  const skipped: AgentContext[] = []
+  const toAdd: ContextDefinition[] = []
+  for (const definition of definitions) {
+    const normalized = normalizeDefinition(definition)
+    if (current.has(normalized.id)) {
+      skipped.push(normalized.id)
+      continue
+    }
+    toAdd.push(definition)
+    added.push(normalized.id)
+  }
+  const next = toAdd.length > 0 ? try registerContextDefinitions(current, toAdd) : current
+  return { definitions: next, added, skipped }
+}
+
+module edge {
+  import { satisfiesRoleGate } from "../access-control/role-primitives.vibe"
+  import { runDetachedSync } from "../edge.vibe"
+  import type { AgentContext, ContextDefinition, RoleGateRole } from "../types/contexts.vibe"
+  import { normalizeContextId } from "./context-normalization.vibe"
+  import { registerContextDefinitions, tryRegisterContextDefinitions } from "./context-registry.vibe"
+
+  export class ContextRegistry {
+    #definitions: ReadonlyMap<AgentContext, ContextDefinition> = new Map()
+
+    /** @throws {ContextRegistryError} */
+    constructor(definitions: readonly ContextDefinition[] = []) {
+      this.registerMany(definitions)
+    }
+
+    /** @throws {never} */
+    list(): ContextDefinition[] {
+      return [...this.#definitions.values()]
+    }
+
+    /** @throws {never} */
+    get(context: AgentContext): ContextDefinition | undefined {
+      return this.#definitions.get(normalizeContextId(context))
+    }
+
+    /** @throws {never} */
+    has(context: AgentContext): boolean {
+      return this.#definitions.has(normalizeContextId(context))
+    }
+
+    /** @throws {ContextRegistryError} */
+    register(definition: ContextDefinition): void {
+      this.registerMany([definition])
+    }
+
+    /** @throws {ContextRegistryError} */
+    registerMany(definitions: readonly ContextDefinition[]): void {
+      this.#definitions = runDetachedSync(registerContextDefinitions(this.#definitions, definitions))
+    }
+
+    /** @throws {ContextRegistryError} */
+    tryRegister(definition: ContextDefinition): boolean {
+      return this.tryRegisterMany([definition]).added.length > 0
+    }
+
+    /** @throws {ContextRegistryError} */
+    tryRegisterMany(definitions: readonly ContextDefinition[]): { added: AgentContext[]; skipped: AgentContext[] } {
+      const { definitions: next, added, skipped } = runDetachedSync(tryRegisterContextDefinitions(this.#definitions, definitions))
+      this.#definitions = next
+      return { added, skipped }
+    }
+
+    /** @throws {never} */
+    listAvailable(roles: RoleGateRole | readonly RoleGateRole[] | undefined): ContextDefinition[] {
+      const normalizedRoles = roles === undefined
+        ? []
+        : Array.isArray(roles)
+        ? (roles as readonly RoleGateRole[])
+        : [roles as RoleGateRole]
+      return this.list().filter((definition) => satisfiesRoleGate(normalizedRoles, definition.roleGate))
+    }
   }
 }
+import { ContextRegistry } from edge
+export { ContextRegistry }

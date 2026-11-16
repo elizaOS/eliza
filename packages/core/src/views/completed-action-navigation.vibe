@@ -1,5 +1,25 @@
-import type { NavigateViewDetail } from "../events.vibe"
-import { NAVIGATE_VIEW_EVENT, normalizeCompletedActionHandoffId } from "../events.vibe"
+// spec/core/viewNavigation.md, "Pending handoffs capture the pre-dispatch epoch and path"
+import { normalizeCompletedActionHandoffId, type NavigateViewDetail } from "../events.vibe"
+
+module dom {
+  import { NAVIGATE_VIEW_EVENT, type NavigateViewDetail } from "../events.vibe"
+
+  /** @throws {never} */
+  export function currentWindow(): Window | undefined {
+    return typeof window === "undefined" ? undefined : window
+  }
+
+  /** @throws {never} */
+  export function dispatchNavigateView(target: Window, detail: NavigateViewDetail): boolean {
+    const event = new CustomEvent<NavigateViewDetail>(NAVIGATE_VIEW_EVENT, {
+      detail,
+      cancelable: true,
+    })
+    target.dispatchEvent(event)
+    return event.defaultPrevented
+  }
+}
+import { currentWindow, dispatchNavigateView } from dom
 
 export function createCompletedActionNavigationState(readPath: () => string) {
   const MAX_TRACKED_HANDOFFS = 256
@@ -17,10 +37,11 @@ export function createCompletedActionNavigationState(readPath: () => string) {
     navigationEpoch += 1
   }
   function observeNavigationEpoch(): void {
-    if (typeof window === "undefined" || observedWindow === window) return
+    const current = currentWindow()
+    if (current === undefined || observedWindow === current) return
     observedWindow?.removeEventListener("popstate", advanceNavigationEpoch)
     observedWindow?.removeEventListener("hashchange", advanceNavigationEpoch)
-    observedWindow = window
+    observedWindow = current
     observedWindow.addEventListener("popstate", advanceNavigationEpoch)
     observedWindow.addEventListener("hashchange", advanceNavigationEpoch)
   }
@@ -64,7 +85,8 @@ export function createCompletedActionNavigationState(readPath: () => string) {
   function dispatchCompletedActionNavigation(
     detail: NavigateViewDetail,
   ): boolean {
-    if (typeof window === "undefined") return false
+    const target = currentWindow()
+    if (target === undefined) return false
     observeNavigationEpoch()
     const id = normalizeCompletedActionHandoffId(
       detail.completedActionHandoffId,
@@ -81,13 +103,9 @@ export function createCompletedActionNavigationState(readPath: () => string) {
       return false
     }
     const snapshot = { navigationEpoch, path }
-    const event = new CustomEvent<NavigateViewDetail>(NAVIGATE_VIEW_EVENT, {
-      detail,
-      cancelable: true,
-    })
-    window.dispatchEvent(event)
+    const handled = dispatchNavigateView(target, detail)
     if (id) {
-      if (event.defaultPrevented) rememberHandledHandoff(id)
+      if (handled) rememberHandledHandoff(id)
       else if (!pending) rememberPendingHandoff(id, snapshot)
     }
     return true

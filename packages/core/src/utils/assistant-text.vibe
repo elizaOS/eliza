@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import MarkdownIt from "markdown-it"
 import { looksLikeStageDirection } from "./stage-directions.vibe"
 

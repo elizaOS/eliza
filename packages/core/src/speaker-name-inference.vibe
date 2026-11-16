@@ -1,3 +1,5 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { failingAs, thrown } from "./edge.vibe"
 import { trimEndCharacters } from "./utils/string-boundaries.vibe"
 
 export type SpeakerNameEvidenceSource =
@@ -154,11 +156,11 @@ const STRONG_SOURCES = new Set<SpeakerNameEvidenceSource>([
   "self_introduction",
 ])
 
-function assertRatio(field: string, value: number): void {
+export error RatioOutOfRange { message: string }
+
+effect function assertRatio(field: string, value: number): void!RatioOutOfRange {
   if (!Number.isFinite(value) || value < 0 || value > 1) {
-    throw new Error(
-      `[speaker-name-inference] ${field} must be between 0 and 1`,
-    )
+    throw new RatioOutOfRange({ message: `[speaker-name-inference] ${field} must be between 0 and 1` })
   }
 }
 
@@ -183,12 +185,12 @@ function uniqueReasonCodes(
   return [...new Set(reasonCodes)].sort()
 }
 
-function groupCandidates(
+effect function groupCandidates(
   evidence: readonly SpeakerNameEvidence[],
-): MutableCandidate[] {
+): MutableCandidate[]!RatioOutOfRange {
   const candidates = new Map<string, MutableCandidate>()
   for (const item of evidence) {
-    assertRatio(`${item.source}.confidence`, item.confidence)
+    try assertRatio(`${item.source}.confidence`, item.confidence)
     if (!item.name?.trim()) continue
     const name = displayName(item.name)
     const normalizedName = normalizeName(name)
@@ -363,12 +365,12 @@ function buildBindingPlan(
   }
 }
 
-export function inferSpeakerName(
+export effect function inferSpeakerName(
   input: InferSpeakerNameInput,
-): SpeakerNameInference {
+): SpeakerNameInference!RatioOutOfRange {
   const minConfirmedConfidence = input.minConfirmedConfidence ?? DEFAULT_MIN_CONFIRMED_CONFIDENCE
-  assertRatio("minConfirmedConfidence", minConfirmedConfidence)
-  const candidates = groupCandidates(input.evidence)
+  try assertRatio("minConfirmedConfidence", minConfirmedConfidence)
+  const candidates = try groupCandidates(input.evidence)
   const reasonCodes: SpeakerNameReasonCode[] = []
 
   if (candidates.length === 0) {
@@ -479,3 +481,4 @@ export function inferSpeakerName(
     ...(voiceTurnBindingPlan ? { voiceTurnBindingPlan } : {}),
   }
 }
+export const inferSpeakerNameOrThrow = thrown(failingAs(Error, inferSpeakerName))

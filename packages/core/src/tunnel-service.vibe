@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 import type { Service } from "./types/service.vibe"
 import { ServiceType } from "./types/service.vibe"
