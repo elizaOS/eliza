@@ -44,8 +44,7 @@ tasks wait for its `gen` and the root's, and its `check` for all of them, since 
 as `@repo/app`'s are. `pnpm lint:js` on its own needs what `gen` and `typecheck` write (`gen/`, `.vibe/declarations`);
 `pnpm lint` runs them first.
 
-Pull requests go to `develop`, and `develop` to `main`; what CI runs on each is in
-[CI](#ci).
+Pull requests for this rebuild go to `vibestack`. See [CI](#ci) for its checks.
 
 ## Changing the tools
 
@@ -204,20 +203,17 @@ scopes are in `knip.config.js`, `.madgerc` and `eslint.config.js`.
 
 | When | Runs |
 |---|---|
-| Pull request or push to `develop` or `main` | `pnpm verify --continue`: build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge and selftest |
+| Pull request or push to `vibestack` | `pnpm verify --continue`: build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge and selftest |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `develop` |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/` as an artifact.
 
 Each run restores pnpm's store, every `.spec-cache/`, and Quint's evaluator.
-Turborepo shares task results through the private Cloudflare/R2 cache.
+The hosted rebuild workflow uses the runner-local Turborepo cache.
 The task entry point disables Turbo telemetry. Selftest waits for the root and
 Studio test tasks so those integration journeys do not compete with it.
-Pull requests read shared results; only branch pushes receive the publishing
-credential, protected by the `turbo-cache-publish` environment's branch
-policy. Newer commits replace an older run of the same pull request.
-Every pushed commit can finish. Completed tasks are shared through the cache.
+Newer commits replace an older run of the same pull request.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
 are never part of a task fingerprint.
