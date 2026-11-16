@@ -37,6 +37,13 @@ jobs:
         with:
           path: ${{ steps.setup.outputs.spec-cache-path }}
           key: ${{ steps.setup.outputs.spec-cache-key }}
+      - if: always() && steps.setup.outputs.turbo-cache-key != ''
+        run: mkdir -p .turbo/cache && find .turbo/cache -type f -mtime +7 -delete
+      - if: always() && steps.setup.outputs.turbo-cache-key != ''
+        uses: actions/cache/save@v6
+        with:
+          path: .turbo/cache
+          key: ${{ steps.setup.outputs.turbo-cache-key }}
       - if: always()
         uses: actions/upload-artifact@v7
         with:

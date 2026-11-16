@@ -1,8 +1,9 @@
 name: release
 
 # A v* tag that names the version in package.json builds the packaged `spec`
-# command, runs the tools' self-test and attaches the tarball to a GitHub
-# release (CONTRIBUTING.md, "Releasing").
+# command, runs the tools' self-test through the shared cache, where CI has
+# already verified the commit, and attaches the tarball to a GitHub release
+# (CONTRIBUTING.md, "Releasing").
 on:
   push:
     tags: ["v*"]
@@ -14,6 +15,11 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    environment: turbo-cache-read
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_CACHE: local:rw,remote:r
+      TURBO_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
