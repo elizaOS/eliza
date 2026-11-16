@@ -1,0 +1,38 @@
+{
+  "sources": [
+    "plugins/plugin-mcp/src/protocol-utils/schema-converter.ts",
+    "packages/cloud/shared/src/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.ts",
+    "packages/cloud/shared/src/lib/eliza/plugin-mcp/actions/dynamic-tool-nested-arguments.test.ts",
+    "plugins/plugin-mcp/quint/check-mcp-argument-shape.mjs"
+  ],
+  "conformance": "plugins/plugin-mcp/quint/check-mcp-argument-shape.mjs",
+  "bounds": "One planned call of one MCP tool with one argument shape. The tools have the shapes of real servers: push_files (server-github, a list of {path, content}), create_page (Notion, a parent {page_id}), sum_ids (pydantic list[int]), echo_value (pydantic Any) and set_labels (pydantic dict[str, str]). Each tool has a shape the server accepts and, except echo_value, one that breaks a nested required name, array items or additionalProperties; echo_value has a word and an object. The conformance script replays all ten generated cases through executePlannedToolCall with the action that createMcpToolAction builds, on a SQLite runtime whose caller owns the world, against a real MCP SDK server that validates its own zod schemas. It compares whether the server accepts the arguments when called directly, whether the planner let the handler call the server, and whether the server's tool ran. Value constraints such as minLength and integer below the top level, nesting deeper than MAX_SHAPE_DEPTH, $ref and tuple items are not replayed. Under weak fairness of validation and the server call the planned call returns. Explicit stuttering lets it stop before that, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "mcp-argument-shape",
+      "main": "McpArgumentShape",
+      "init": "init",
+      "step": "step",
+      "invariants": ["AcceptedDelivered", "DeliveredAccepted", "RefusedBeforeDispatch", "TypeOK"],
+      "temporal": ["Returns", "ReturnsWithoutFairness"],
+      "maxSteps": 5,
+      "samples": 2000,
+      "temporalChecks": [
+        {
+          "property": "Returns",
+          "expect": "holds",
+          "assumptions": [
+            "Continuously enabled validation and server-call steps eventually run (weak fairness). This checks that the planned call then returns, not how long the server takes."
+          ]
+        },
+        {
+          "property": "ReturnsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. Validation or the server call may never finish, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
