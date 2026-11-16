@@ -59,7 +59,24 @@ import {
   type World,
 } from "@elizaos/core";
 import { App, LogLevel } from "@slack/bolt";
-import { WebClient as SlackWebClient } from "@slack/web-api";
+import {
+  type RetryOptions,
+  retryPolicies,
+  WebClient as SlackWebClient,
+} from "@slack/web-api";
+
+/**
+ * Retry policy for calls that post to Slack. `@slack/web-api` retries any
+ * non-200 answer or network error by default, and `chat.postMessage` has no
+ * idempotency key: when Slack stored the message but the answer was lost, the
+ * retry posts it again. Only a rate limit (Slack stored nothing) is retried.
+ */
+export const OUTBOUND_RETRY_CONFIG: RetryOptions = {
+  ...retryPolicies.tenRetriesInAboutThirtyMinutes,
+  onFailedAttempt: (error) => {
+    if (!error.message.startsWith("A rate limit was exceeded")) throw error;
+  },
+};
 
 type WebClient = App["client"];
 type AccountScopedTargetInfo = TargetInfo & { accountId?: string };
@@ -554,6 +571,8 @@ type SlackAccountRuntime = {
    * accounts ignore it and keep using the bot client.
    */
   userClient: WebClient | null;
+  /** Bot-token client for posting, with `OUTBOUND_RETRY_CONFIG`. Reads stay on `client`. */
+  outboundClient: WebClient;
   botUserId: string | null;
   teamId: string | null;
   policy: SlackAccountPolicyResolver;
@@ -986,8 +1005,13 @@ export class SlackService extends Service implements ISlackService {
       // `SlackWebClient` — a direct `as WebClient` cast is correct
       // and a future type divergence will surface as an error here.
       const userClient = account.userToken
-        ? (new SlackWebClient(account.userToken) as WebClient)
+        ? (new SlackWebClient(account.userToken, {
+            retryConfig: OUTBOUND_RETRY_CONFIG,
+          }) as WebClient)
         : null;
+      const outboundClient = new SlackWebClient(account.botToken, {
+        retryConfig: OUTBOUND_RETRY_CONFIG,
+      }) as WebClient;
 
       const authResult = await app.client.auth.test();
       const botUserId =
@@ -1042,6 +1066,7 @@ export class SlackService extends Service implements ISlackService {
         app,
         client: app.client,
         userClient,
+        outboundClient,
         botUserId,
         teamId,
         policy,
@@ -1298,7 +1323,7 @@ export class SlackService extends Service implements ISlackService {
     }
     if (state.account.role === "OWNER") {
       if (state.account.config.userTokenReadOnly === true) {
-        return state.client;
+        return state.outboundClient;
       }
       if (!state.userClient) {
         this.runtime.logger.warn(
@@ -1309,7 +1334,7 @@ export class SlackService extends Service implements ISlackService {
         return state.userClient;
       }
     }
-    return state.client;
+    return state.outboundClient;
   }
 
   private getPolicyForAccount(
@@ -1489,7 +1514,9 @@ export class SlackService extends Service implements ISlackService {
     }
 
     if (decision.pairingReply) {
-      await client.chat.postMessage({
+      const outbound =
+        this.getAccountState(accountId)?.outboundClient ?? client;
+      await outbound.chat.postMessage({
         channel: event.channelId,
         text: decision.pairingReply,
       });

@@ -8,7 +8,7 @@
 import http from "node:http";
 import { WebClient } from "@slack/web-api";
 import { afterEach, describe, expect, it } from "vitest";
-import { extractUploadReceipt } from "./service";
+import { extractUploadReceipt, OUTBOUND_RETRY_CONFIG } from "./service";
 
 const servers: http.Server[] = [];
 
@@ -102,5 +102,85 @@ describe("extractUploadReceipt / files.uploadV2 wire shape", () => {
     expect(() => extractUploadReceipt(result)).toThrow(
       "Slack files.uploadV2 response contained no file data",
     );
+  });
+});
+
+/**
+ * `chat.postMessage` has no idempotency key. The local API stores each post,
+ * then loses its first answer (502 or a reset connection), as when Slack kept
+ * the message but the answer did not arrive. The outbound client must not
+ * post it again. A 429 (Slack stored nothing) is still retried.
+ */
+describe("outbound client retry policy", () => {
+  function startPostServer(
+    firstAnswer: "502" | "reset" | "429",
+  ): Promise<{ apiUrl: string; posts: string[] }> {
+    const posts: string[] = [];
+    return new Promise((resolve) => {
+      const server = http.createServer((req, res) => {
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk;
+        });
+        req.on("end", () => {
+          const first = posts.length === 0;
+          if (!(first && firstAnswer === "429")) {
+            posts.push(new URLSearchParams(body).get("text") ?? "");
+          }
+          if (first && firstAnswer === "502") {
+            res.writeHead(502);
+            res.end("Bad Gateway");
+            return;
+          }
+          if (first && firstAnswer === "reset") {
+            req.socket.destroy();
+            return;
+          }
+          if (first && firstAnswer === "429") {
+            posts.push("(rate limited, not stored)");
+            res.writeHead(429, { "retry-after": "0" });
+            res.end();
+            return;
+          }
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ ok: true, channel: "C1", ts: "1.000001" }));
+        });
+      });
+      servers.push(server);
+      server.listen(0, "127.0.0.1", () => {
+        const { port } = server.address() as { port: number };
+        resolve({ apiUrl: `http://127.0.0.1:${port}/api/`, posts });
+      });
+    });
+  }
+
+  for (const answer of ["502", "reset"] as const) {
+    it(`posts once when the first answer is ${answer === "502" ? "a 502" : "a reset connection"}`, async () => {
+      const { apiUrl, posts } = await startPostServer(answer);
+      const client = new WebClient("xoxb-test", {
+        slackApiUrl: apiUrl,
+        retryConfig: OUTBOUND_RETRY_CONFIG,
+      });
+
+      await expect(
+        client.chat.postMessage({ channel: "C1", text: "agent reply" }),
+      ).rejects.toThrow();
+      expect(posts).toEqual(["agent reply"]);
+    });
+  }
+
+  it("still retries a rate-limited post", async () => {
+    const { apiUrl, posts } = await startPostServer("429");
+    const client = new WebClient("xoxb-test", {
+      slackApiUrl: apiUrl,
+      retryConfig: OUTBOUND_RETRY_CONFIG,
+    });
+
+    const result = await client.chat.postMessage({
+      channel: "C1",
+      text: "agent reply",
+    });
+    expect(result.ts).toBe("1.000001");
+    expect(posts).toEqual(["(rate limited, not stored)", "agent reply"]);
   });
 });
