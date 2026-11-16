@@ -4258,6 +4258,19 @@
     {
       "consumer": "AlphaPhone",
       "consumerPaths": [
+        "scripts/native-google-product-host.ts"
+      ],
+      "producerPaths": [
+        "packages/app/src/runtime/managed-google-agent/managed-google-agent-host.ts",
+        "packages/app/src/runtime/managed-google-agent/managed-google-agent-broker.ts",
+        "plugins/plugin-inbox/src/inbox/managed-gmail-read.ts",
+        "plugins/plugin-inbox/src/inbox/managed-gmail-transport.ts"
+      ],
+      "relatedSpec": "spec/downstream/alpha/managedGoogle.md"
+    },
+    {
+      "consumer": "AlphaPhone",
+      "consumerPaths": [
         "apps/app/src/prototype/home-shell.ts"
       ],
       "producerPaths": [
