@@ -98,13 +98,16 @@ export interface RetainedMailEdits {
   /** The retained copy as stored, or null when there is none or it cannot be read. */
   peek(): InboxUnsaved | null;
   readonly conflict: boolean;
+  /** The exact host conflict version, when available. */
+  readonly conflictVersion?: string;
   readonly error: boolean;
   readonly status: string;
   edit(value: InboxUnsaved): void;
   resume(): void;
   replace(): void;
   retry(): unknown;
-  clear(): Promise<void>;
+  /** A review may retire while the host waits to clear the copy. */
+  clear(current?: () => boolean): Promise<void>;
   recover(current: unknown): void;
   retire(): void;
 }
@@ -148,6 +151,13 @@ export interface MailDraftsProvider {
   } | null;
 }
 
+export interface MailDraftConfirmation {
+  title: string;
+  confirmLabel: string;
+  signal: AbortSignal;
+  current(): boolean;
+}
+
 export interface MailDraftsControllerOptions {
   publish(): void;
   toast(text: string): void;
@@ -167,8 +177,13 @@ export interface MailDraftsControllerOptions {
     publish: () => void,
     restore: (value: InboxUnsaved) => void,
   ): RetainedMailEdits;
-  /** An explicit yes/no question. */
-  confirm(message: string): boolean;
+  /** An explicit yes/no question, cancelled when its draft or owner retires. */
+  confirm(
+    message: string,
+    review: MailDraftConfirmation,
+  ): boolean | Promise<boolean>;
+  /** Whether the host is still showing the mailbox that can admit the review. */
+  reviewActive?(): boolean;
   attachments: MailAttachmentPicker;
   reviewAttachment: MailAttachmentReviewer;
 }
@@ -264,6 +279,8 @@ export function createMailDraftsController(
         }
       : {};
   let reviewRevision = 0;
+  let reviewVisit = 0;
+  let pendingReview: AbortController | undefined;
   let owner = "",
     account = "",
     session = "",
@@ -376,6 +393,70 @@ export function createMailDraftsController(
     } | null = null,
     earlier = "";
 
+  function liveOwner(grant: string) {
+    const { account: identity, sessionId } = options.identity();
+    const key =
+      identity && sessionId === identity.sessionId && grant
+        ? JSON.stringify([
+            identity.environment,
+            identity.userId,
+            identity.organizationId || "",
+            grant,
+          ])
+        : "";
+    return { key, sessionId };
+  }
+
+  function retireReview() {
+    const pending = pendingReview;
+    pendingReview = undefined;
+    pending?.abort();
+  }
+
+  function captureVisit() {
+    const token = epoch;
+    const visit = reviewVisit;
+    return () => {
+      if (
+        epoch !== token ||
+        reviewVisit !== visit ||
+        !ready ||
+        !owner ||
+        !session ||
+        options.reviewActive?.() === false
+      )
+        return false;
+      const live = liveOwner(account);
+      return live.key === owner && live.sessionId === session;
+    };
+  }
+
+  async function reviewDraft(
+    message: string,
+    title: string,
+    confirmLabel: string,
+    current: () => boolean,
+  ) {
+    if (pendingReview || !current()) return false;
+    const pending = new AbortController();
+    pendingReview = pending;
+    const admitted = () =>
+      pendingReview === pending && !pending.signal.aborted && current();
+    try {
+      const approved = await options.confirm(message, {
+        title,
+        confirmLabel,
+        signal: pending.signal,
+        current: admitted,
+      });
+      return approved === true && admitted();
+    } catch {
+      return false;
+    } finally {
+      if (pendingReview === pending) pendingReview = undefined;
+    }
+  }
+
   const slot = () => `inbox-drafts:v1:${owner}`;
   const same = (a: unknown, b: unknown) =>
     JSON.stringify(a) === JSON.stringify(b);
@@ -414,6 +495,7 @@ export function createMailDraftsController(
   // attachments, so its copy omits them; the explicitly saved local draft keeps them.
   function persist() {
     reviewRevision++;
+    retireReview();
     if (draft) {
       const { forward: _forward, ...copy } = structuredClone(draft);
       // Legacy saved references can include readback-only fields such as messageId.
@@ -429,6 +511,7 @@ export function createMailDraftsController(
   }
 
   function restoreRetained(value: InboxUnsaved) {
+    retireReview();
     draft = structuredClone(value.draft) as LocalMailDraft;
     toQ = value.toQ;
     baseRevision = value.baseRevision;
@@ -574,6 +657,7 @@ export function createMailDraftsController(
   }
 
   function reset() {
+    retireReview();
     sent = null;
     earlier = "";
     account = "";
@@ -594,17 +678,9 @@ export function createMailDraftsController(
   }
 
   async function bind(account_: string, accountLabel: string) {
-    const { account: identity, sessionId } = options.identity();
-    const next =
-      identity && sessionId === identity.sessionId && account_
-        ? JSON.stringify([
-            identity.environment,
-            identity.userId,
-            identity.organizationId || "",
-            account_,
-          ])
-        : "";
+    const { key: next, sessionId } = liveOwner(account_);
     if (next === owner && sessionId === session && ready) return;
+    retireReview();
     if (draft)
       pendingEdits.set(owner, {
         draft: structuredClone(draft),
@@ -1004,18 +1080,32 @@ export function createMailDraftsController(
     return begin(undefined, undefined, "", target);
   }
 
-  async function openShelved(id: string) {
-    const row = shelf?.items.find((item) => item.draft.id === id);
-    if (!row || !ready || busy) return;
-    if (
-      row.draft.earlierThanSent &&
-      !options.confirm(
-        "This is an earlier version of a sent email. Open it for editing? Sending it creates another message.",
+  async function openShelved(row: Shelved) {
+    const visit = captureVisit();
+    const rowCurrent = () =>
+      visit() && !busy && shelf?.items.includes(row) === true;
+    if (!rowCurrent()) return;
+    if (row.draft.earlierThanSent) {
+      const expected = draft;
+      const revision = reviewRevision;
+      const savedBefore = saved;
+      const current = () =>
+        rowCurrent() &&
+        draft === expected &&
+        saved === savedBefore &&
+        reviewRevision === revision;
+      if (
+        !(await reviewDraft(
+          "This is an earlier version of a sent email. Open it for editing? Sending it creates another message.",
+          "Open an earlier sent version?",
+          "Open draft",
+          current,
+        )) ||
+        !current()
       )
-    )
-      return;
-    const token = epoch;
-    if (!(await setAside()) || token !== epoch) return;
+        return;
+    }
+    if (!(await setAside()) || !rowCurrent() || draft || saved) return;
     // The earlier-version mark stays on the shelved row, as with fromSaved().
     const { earlierThanSent: _earlier, ...copy } = structuredClone(row.draft);
     draft = copy as LocalMailDraft;
@@ -1027,6 +1117,116 @@ export function createMailDraftsController(
     status = "Draft on this device";
     persist();
     publish();
+  }
+
+  async function openSaved(expected: LocalMailDraft) {
+    const visit = captureVisit();
+    const reuse = earlierVersion();
+    const current = () =>
+      visit() &&
+      !busy &&
+      !draft &&
+      !retained?.available &&
+      saved === expected &&
+      earlierVersion() === reuse;
+    if (!current()) return;
+    if (
+      reuse &&
+      (!(await reviewDraft(
+        "This saved draft is an earlier version of an email that was already sent.\n\nOpen it to edit or send? Sending it creates another message.",
+        "Open an earlier sent version?",
+        "Open draft",
+        current,
+      )) ||
+        !current())
+    )
+      return;
+    draft = fromSaved();
+    baseRevision = expected.revision;
+    staleBase = false;
+    open = true;
+    confirm = false;
+    toQ = "";
+    if (reuse)
+      status =
+        "Earlier version of a sent email. Sending it creates another message; nothing has been sent.";
+    publish();
+  }
+
+  async function replaceEdits(expected: LocalMailDraft) {
+    const visit = captureVisit();
+    const revision = reviewRevision;
+    const copy = retained;
+    const conflict = copy?.conflictVersion;
+    const current = () =>
+      visit() &&
+      open &&
+      !busy &&
+      draft === expected &&
+      reviewRevision === revision &&
+      retained === copy &&
+      copy?.conflict === true &&
+      copy.conflictVersion === conflict;
+    if (
+      !(await reviewDraft(
+        "Replace the retained email edits with this composer?",
+        "Replace retained email edits?",
+        "Replace edits",
+        current,
+      )) ||
+      !current()
+    )
+      return;
+    copy?.replace();
+  }
+
+  async function useLatest(expected: LocalMailDraft) {
+    const visit = captureVisit();
+    const revision = reviewRevision;
+    const copy = retained;
+    const latest = saved;
+    const current = () =>
+      visit() &&
+      open &&
+      staleBase &&
+      draft === expected &&
+      reviewRevision === revision &&
+      retained === copy &&
+      saved === latest;
+    if (
+      busy ||
+      !(await reviewDraft(
+        "Discard these edits and review the latest saved local draft?",
+        "Discard these email edits?",
+        "Discard edits",
+        () => !busy && current(),
+      )) ||
+      busy ||
+      !current()
+    )
+      return;
+    const token = epoch;
+    busy = true;
+    try {
+      await copy?.clear(current);
+      if (!current()) return;
+      draft = latest ? fromSaved() : null;
+      toQ = "";
+      baseRevision = latest?.revision || null;
+      staleBase = false;
+      open = !!draft;
+      status = "Review the latest saved local draft.";
+    } catch {
+      if (current())
+        toast(
+          "Retained edits changed. Review recovery before discarding them.",
+        );
+    } finally {
+      if (token === epoch) {
+        busy = false;
+        publish();
+      }
+    }
   }
 
   /**
@@ -1665,6 +1865,8 @@ export function createMailDraftsController(
       return token === epoch && saved?.id === next.id;
     },
     close() {
+      reviewVisit++;
+      retireReview();
       if (!open) return false;
       if (busy) {
         toast("Wait for the local draft update.");
@@ -1692,7 +1894,8 @@ export function createMailDraftsController(
     chips<T extends Bag>(
       chip: (label: string, action: () => void) => T,
     ): Bag[] {
-      const local = draft || retained?.peek?.()?.draft || saved;
+      const savedCopy = saved;
+      const local = draft || retained?.peek?.()?.draft || savedCopy;
       return ready
         ? [
             ...(draft
@@ -1704,42 +1907,20 @@ export function createMailDraftsController(
                 ]
               : retained?.available
                 ? [chip("Resume unsaved email", () => retained?.resume())]
-                : saved
+                : savedCopy
                   ? [
                       chip(
                         earlierVersion()
                           ? "Earlier version of a sent email"
                           : "Restore local draft",
-                        () => {
-                          const reuse = earlierVersion();
-                          if (
-                            reuse &&
-                            !options.confirm(
-                              "This saved draft is an earlier version of an email that was already sent.\n\nOpen it to edit or send? Sending it creates another message.",
-                            )
-                          )
-                            return;
-                          draft = fromSaved();
-                          baseRevision = (saved as LocalMailDraft).revision;
-                          staleBase = false;
-                          open = true;
-                          confirm = false;
-                          toQ = "";
-                          if (reuse)
-                            status =
-                              "Earlier version of a sent email. Sending it creates another message; nothing has been sent.";
-                          publish();
-                        },
+                        () => void openSaved(savedCopy),
                       ),
                     ]
                   : []),
             ...(shelf?.items
               .filter((row) => row.draft.id !== local?.id)
               .map((row) => ({
-                ...chip(
-                  "Open local draft",
-                  () => void openShelved(row.draft.id),
-                ),
+                ...chip("Open local draft", () => void openShelved(row)),
                 subject: row.draft.subject || "(No subject)",
                 snippet: row.draft.body.slice(0, 160) || "Draft on this device",
               })) || []),
@@ -1837,42 +2018,11 @@ export function createMailDraftsController(
               retainedConflict: retained?.conflict,
               retainedError: retained?.error,
               restoreEdits: () => retained?.resume(),
-              replaceEdits: () => {
-                if (
-                  options.confirm(
-                    "Replace the retained email edits with this composer?",
-                  )
-                )
-                  retained?.replace();
-              },
+              replaceEdits: () => void replaceEdits(current),
               retryEdits: () => void retained?.retry(),
               recoverEdits: () => retained?.recover({ draft, toQ }),
               staleBase,
-              useLatest: async () => {
-                if (
-                  !options.confirm(
-                    "Discard these edits and review the latest saved local draft?",
-                  )
-                )
-                  return;
-                const token = epoch;
-                try {
-                  await retained?.clear();
-                  if (token !== epoch) return;
-                  draft = saved ? fromSaved() : null;
-                  toQ = "";
-                  baseRevision = saved?.revision || null;
-                  staleBase = false;
-                  open = !!draft;
-                  status = "Review the latest saved local draft.";
-                  publish();
-                } catch {
-                  if (token === epoch)
-                    toast(
-                      "Retained edits changed. Review recovery before discarding them.",
-                    );
-                }
-              },
+              useLatest: () => useLatest(current),
               save: () => void update(),
               discard: () => {
                 if (!busy) {
