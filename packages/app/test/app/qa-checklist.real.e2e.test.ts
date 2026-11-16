@@ -1166,19 +1166,6 @@ async function smokeTabs(page: Page, profile: Profile) {
         waitForAnyText(page, ["Tables", "Table Editor", "SQL Editor"], 30_000),
     },
     {
-      path: "/desktop",
-      name: "desktop",
-      waitForReady: () =>
-        waitForAnyText(
-          page,
-          [
-            "Refresh Diagnostics",
-            "Desktop workspace tools are only available inside the Electrobun desktop runtime.",
-          ],
-          30_000,
-        ),
-    },
-    {
       path: "/logs",
       name: "logs",
       waitForReady: () =>

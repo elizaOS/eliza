@@ -226,7 +226,6 @@ import {
   LazyCharacterSkillsView,
   LazyClockView,
   LazyDatabasePageView,
-  LazyDesktopWorkspaceSection,
   LazyFilesView,
   LazyLiveMeetingPageView,
   LazyLogsView,
@@ -1462,7 +1461,6 @@ function buildStaticTabRenderers(): Record<
     runtime: wrap(<LazyRuntimeView />),
     database: wrapOverlayAware(<LazyDatabasePageView />),
     logs: wrap(<LazyLogsView />),
-    desktop: wrap(<LazyDesktopWorkspaceSection />),
     settings: ({
       settingsInitialSection,
       settingsNavigatePayload,

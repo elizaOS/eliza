@@ -14,11 +14,9 @@ import {
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
   type BrandingConfig,
-  COMMAND_PALETTE_EVENT,
   clearStandaloneBottomReclaim,
   client,
   createPersistedActiveServer,
-  createTranslator,
   dedicatedCloudAgentIdFromBase,
   dispatchAppEvent,
   dispatchConnectRequest,
@@ -30,8 +28,6 @@ import {
   ErrorBoundary,
   exchangeRemoteAgentPairing,
   getBootConfig,
-  getChatOverlayHotkey,
-  getPushToTalkAccelerator,
   getWindowNavigationPath,
   IOS_LOCAL_AGENT_IPC_BASE,
   initializeCapacitorBridge,
@@ -42,7 +38,6 @@ import {
   installDesktopPermissionsClientPatch,
   installLocalProviderCloudPreferencePatch,
   installStandaloneBottomReclaim,
-  invokeDesktopBridgeRequest,
   isAndroidCloudBuild,
   isAppWindowRoute,
   isChatOverlayWindowShell,
@@ -59,7 +54,6 @@ import {
   loadManagedCloudPage,
   loadPersistedActiveServer,
   loadShellViewAgentSurface,
-  loadUiLanguage,
   logger,
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
@@ -67,8 +61,6 @@ import {
   markStartup,
   measureStartup,
   normalizeMobileRuntimeMode,
-  PUSH_TO_TALK_HOLD_EVENT,
-  PUSH_TO_TALK_TOGGLE_EVENT,
   parseFirstRunRemoteConnectDeepLink,
   parseRemoteAgentPairingDeepLink,
   parseRemoteControllerPairingDeepLink,
@@ -89,9 +81,7 @@ import {
   shouldInstallMainWindowFirstRunPatches,
   shouldInstallStandaloneBottomReclaim,
   startRendererServiceHost,
-  subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
-  TRAY_ACTION_EVENT,
   upsertAndActivateAgentProfile,
 } from "@elizaos/ui";
 import { installAndroidNativeAgentFetchBridge } from "./renderer/transports/android-native-agent-transport";
@@ -149,7 +139,6 @@ import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/contracts";
-import type { PushToTalkHoldDetail } from "@elizaos/core/protocol";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
 import {
@@ -190,8 +179,6 @@ import {
   isTrustedAppLink,
   resolveDeepLinkNavigationIntent,
 } from "./deep-link-routing";
-import { shouldStartFnHoldMonitor } from "./desktop-fn-hold-policy";
-import { decideChatOverlayToggle } from "./desktop-hotkey";
 import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
@@ -342,19 +329,7 @@ const ShellViewAgentSurface = lazyNamedComponent<{
   return mod.ShellViewAgentSurface;
 });
 
-/** Desktop-only shell widgets — never static-import into the login entry. */
-const DesktopSurfaceNavigationRuntime = lazyNamedComponent<
-  Record<string, never>
->(async () => {
-  const mod = await import("./runtime/desktop");
-  return mod.DesktopSurfaceNavigationRuntime;
-});
-const DesktopTrayRuntime = lazyNamedComponent<Record<string, never>>(
-  async () => {
-    const mod = await import("./runtime/desktop");
-    return mod.DesktopTrayRuntime;
-  },
-);
+/** Detached shell root — never static-import into the login entry. */
 const DetachedShellRoot = lazyNamedComponent<DetachedShellRootProps>(
   async () => {
     const mod = await import("./runtime/desktop");
@@ -371,12 +346,6 @@ async function runIosFullBunSmoke(): Promise<boolean> {
   return mod.runIosFullBunSmokeIfRequested();
 }
 
-async function buildLocalizedTrayMenuAsync(
-  ...args: Parameters<typeof import("./runtime/desktop").buildLocalizedTrayMenu>
-) {
-  const mod = await import("./runtime/desktop");
-  return mod.buildLocalizedTrayMenu(...args);
-}
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
   async () => (await importPersonalAssistant()).AppBlockerSettingsCard,
 );
@@ -878,9 +847,7 @@ async function initializePlatform(): Promise<void> {
     void registerMobileBlockerBackends();
   }
 
-  if (isDesktopPlatform()) {
-    await initializeDesktopShell();
-  } else if (isNative) {
+  if (isNative) {
     await initializeAgent();
   }
 
@@ -1411,214 +1378,6 @@ function dispatchDeepLinkNavigation(
   return dispatchNavigateViewRequest(intent, options);
 }
 
-async function initializeDesktopShell(): Promise<void> {
-  document.body.classList.add("desktop");
-
-  const version = await invokeDesktopBridgeRequest<{ runtime: string }>({
-    rpcMethod: "desktopGetVersion",
-    ipcChannel: "desktop:getVersion",
-  });
-  const desktopNativeReady =
-    version !== null &&
-    typeof version.runtime === "string" &&
-    version.runtime !== "N/A" &&
-    version.runtime !== "unknown";
-  if (!desktopNativeReady) {
-    throw new Error("[desktop-shell] Native Electrobun bridge is unavailable");
-  }
-
-  const commandPaletteRegistration = await invokeDesktopBridgeRequest<{
-    success: boolean;
-  }>({
-    rpcMethod: "desktopRegisterShortcut",
-    ipcChannel: "desktop:registerShortcut",
-    params: {
-      id: "command-palette",
-      accelerator: "CommandOrControl+K",
-    },
-  });
-  if (commandPaletteRegistration?.success !== true) {
-    throw new Error(
-      "[desktop-shell] Operating system rejected the command-palette shortcut",
-    );
-  }
-
-  // Programmable chat-overlay summon hotkey (#10716). The command palette keeps
-  // CommandOrControl+K; this is a distinct, user-configurable global shortcut
-  // (default CommandOrControl+Shift+C) that brings the floating chat surface —
-  // which on desktop is the main window — to the foreground. Registered only
-  // when enabled in Desktop settings.
-  const chatOverlayHotkey = getChatOverlayHotkey();
-  if (chatOverlayHotkey.enabled) {
-    const chatOverlayRegistration = await invokeDesktopBridgeRequest<{
-      success: boolean;
-    }>({
-      rpcMethod: "desktopRegisterShortcut",
-      ipcChannel: "desktop:registerShortcut",
-      params: {
-        id: "chat-overlay",
-        accelerator: chatOverlayHotkey.accelerator,
-      },
-    });
-    if (chatOverlayRegistration?.success !== true) {
-      throw new Error(
-        `[desktop-shell] Operating system rejected the chat-overlay shortcut ${chatOverlayHotkey.accelerator}`,
-      );
-    }
-  }
-
-  // Global push-to-talk toggle (#20483). Electrobun's GlobalShortcut is
-  // trigger-only (no key-up), so the OS-wide voice hotkey is press-to-start /
-  // press-again-to-send rather than a held quasimode — the pill's own
-  // press-and-hold remains the true hold gesture. Best-effort: a rejected
-  // accelerator (another app owns it) logs and moves on; voice stays reachable
-  // via the pill.
-  const pushToTalkRegistration = await invokeDesktopBridgeRequest<{
-    success: boolean;
-  }>({
-    rpcMethod: "desktopRegisterShortcut",
-    ipcChannel: "desktop:registerShortcut",
-    params: {
-      id: "push-to-talk",
-      accelerator: getPushToTalkAccelerator(),
-    },
-  });
-  if (pushToTalkRegistration?.success !== true) {
-    console.warn(
-      "[desktop-shell] Operating system rejected the push-to-talk shortcut; the pill hold gesture remains available",
-    );
-  }
-
-  // Fn-hold push-to-talk quasimode (#20483, Wispr parity): the native fn key
-  // monitor delivers true down/up, so holding fn anywhere drives the same
-  // capture as holding the pill. Best-effort: `permission-missing` (no
-  // Accessibility trust yet) and `unavailable` (non-mac, sandboxed store
-  // build) degrade silently to the toggle hotkey above.
-  subscribeDesktopBridgeEvent({
-    rpcMessage: "desktopFnHoldChanged",
-    ipcChannel: "desktop:fnHoldChanged",
-    listener: (payload: unknown) => {
-      const detail = payload as PushToTalkHoldDetail | null | undefined;
-      if (!detail || typeof detail.held !== "boolean") return;
-      dispatchAppEvent(PUSH_TO_TALK_HOLD_EVENT, {
-        held: detail.held,
-        cancelled: detail.cancelled === true,
-      } satisfies PushToTalkHoldDetail);
-    },
-  });
-  const fnHoldStart = shouldStartFnHoldMonitor({
-    cloudOnly: APP_BRANDING.cloudOnly === true,
-  })
-    ? await invokeDesktopBridgeRequest<{
-        status: "started" | "permission-missing" | "failed" | "unavailable";
-        fnSystemUsageType: number;
-      }>({
-        rpcMethod: "desktopStartFnHoldMonitor",
-        ipcChannel: "desktop:startFnHoldMonitor",
-      })
-    : null;
-  if (fnHoldStart?.status === "started") {
-    if (fnHoldStart.fnSystemUsageType !== 0) {
-      console.warn(
-        "[desktop-shell] fn-hold push-to-talk is active but the macOS 'Press 🌐 key to' action is also enabled — a quick fn tap will trigger the system action; set it to 'Do Nothing' in System Settings → Keyboard",
-      );
-    }
-  } else if (fnHoldStart?.status === "permission-missing") {
-    console.warn(
-      "[desktop-shell] fn-hold push-to-talk needs Accessibility permission (System Settings → Privacy & Security → Accessibility); falling back to the toggle hotkey",
-    );
-  }
-
-  // Toggle semantics (#12184): a focused + visible overlay is dismissed
-  // (focus returns to the previously active app via the macOS orderOut path);
-  // otherwise summon + focus it. Blur does NOT hide the pill — it is a resting
-  // surface (unlike the tray popover).
-  const summonChatOverlay = async (): Promise<void> => {
-    const [focusState, visibilityState] = await Promise.all([
-      invokeDesktopBridgeRequest<{ focused: boolean }>({
-        rpcMethod: "desktopIsWindowFocused",
-        ipcChannel: "desktop:isWindowFocused",
-      }),
-      invokeDesktopBridgeRequest<{ visible: boolean }>({
-        rpcMethod: "desktopIsWindowVisible",
-        ipcChannel: "desktop:isWindowVisible",
-      }),
-    ]);
-    if (!focusState || !visibilityState) {
-      throw new Error("[desktop-shell] Native window state is unavailable");
-    }
-    const { focused } = focusState;
-    const { visible } = visibilityState;
-    if (decideChatOverlayToggle({ focused, visible }) === "hide") {
-      await invokeDesktopBridgeRequest<void>({
-        rpcMethod: "desktopHideWindow",
-        ipcChannel: "desktop:hideWindow",
-      });
-      return;
-    }
-    await invokeDesktopBridgeRequest<void>({
-      rpcMethod: "desktopShowWindow",
-      ipcChannel: "desktop:showWindow",
-    });
-    await invokeDesktopBridgeRequest<void>({
-      rpcMethod: "desktopFocusWindow",
-      ipcChannel: "desktop:focusWindow",
-    });
-  };
-
-  subscribeDesktopBridgeEvent({
-    rpcMessage: "desktopShortcutPressed",
-    ipcChannel: "desktop:shortcutPressed",
-    listener: (payload: unknown) => {
-      const id = (payload as { id?: string } | null | undefined)?.id;
-      if (id === "command-palette") {
-        dispatchAppEvent(COMMAND_PALETTE_EVENT);
-      } else if (id === "chat-overlay") {
-        void summonChatOverlay();
-      } else if (id === "push-to-talk") {
-        dispatchAppEvent(PUSH_TO_TALK_TOGGLE_EVENT);
-      }
-    },
-  });
-
-  await invokeDesktopBridgeRequest<void>({
-    rpcMethod: "desktopSetTrayMenu",
-    ipcChannel: "desktop:setTrayMenu",
-    params: {
-      menu: await buildLocalizedTrayMenuAsync(
-        createTranslator(loadUiLanguage()),
-      ),
-    },
-  });
-
-  subscribeDesktopBridgeEvent({
-    rpcMessage: "desktopTrayMenuClick",
-    ipcChannel: "desktop:trayMenuClick",
-    listener: (event: unknown) => {
-      if (!event || typeof event !== "object") return;
-      const itemId = Reflect.get(event, "itemId");
-      const checked = Reflect.get(event, "checked");
-      if (typeof itemId !== "string") return;
-      dispatchAppEvent(TRAY_ACTION_EVENT, {
-        itemId,
-        ...(typeof checked === "boolean" ? { checked } : {}),
-      });
-    },
-  });
-
-  subscribeDesktopBridgeEvent({
-    rpcMessage: "shareTargetReceived",
-    ipcChannel: "desktop:shareTargetReceived",
-    listener: (payload: unknown) => {
-      const url = (payload as { url?: string } | null | undefined)?.url;
-      if (typeof url !== "string" || url.trim().length === 0) {
-        return;
-      }
-      void handleDeepLink(url);
-    },
-  });
-}
-
 function setupPlatformStyles(): void {
   const root = document.documentElement;
   document.body.classList.add(`platform-${platform}`);
@@ -1780,8 +1539,6 @@ function mountReactApp(): void {
   // becomes the router shell's catch-all `appElement`.
   const appSubtree = (
     <>
-      <DesktopSurfaceNavigationRuntime />
-      <DesktopTrayRuntime />
       {/* #9946: this GUI shell is the single owner of the modality contract,
           so every leaf's detectDomModality() reads one authoritative source.
           #9948: provide the canonical role context once, under AppProvider, so
@@ -2408,13 +2165,6 @@ async function main(): Promise<void> {
     }
     await initializeStorageBridge();
     initializeCapacitorBridge();
-    // The desktop main window uses the standalone chat-overlay route, but it
-    // still owns the global shortcut and tray event wiring. Without this the
-    // early standalone-shell return paints the pill while silently skipping
-    // every native desktop control.
-    if (isChatOverlayWindowShell(windowShellRoute) && isDesktopPlatform()) {
-      await initializeDesktopShell();
-    }
     rendererBootstrap.mount();
     scheduleDeferredAppModuleLoadsAfterPaint();
     return;

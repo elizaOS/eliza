@@ -74,7 +74,7 @@ import type { AgentProfile } from "./agent-profile-types";
 import type { BackgroundConfig, UiShellMode, UiTheme } from "./ui-preferences";
 
 export type { UiShellMode } from "./ui-preferences";
-export type ShellView = "character" | "desktop";
+export type ShellView = "character";
 /**
  * Controls which cloud-auth authority a login caller needs. Most settings
  * surfaces only require the connected server session; onboarding additionally

@@ -1328,7 +1328,6 @@ export {
 export { useAppShellState } from "./state/useAppShellState.js";
 export { useCharacterState } from "./state/useCharacterState.js";
 export { useChatCallbacks } from "./state/useChatCallbacks.js";
-export { getChatOverlayHotkey } from "./state/useChatOverlayHotkey.js";
 export { useChatState } from "./state/useChatState.js";
 export { useCloudState } from "./state/useCloudState.js";
 export { useDataLoaders } from "./state/useDataLoaders.js";
@@ -1448,7 +1447,6 @@ export {
   loadContextInspectorView,
   loadConversationsSidebar,
   loadDatabasePageView,
-  loadDesktopWorkspaceSection,
   loadDeveloperWorkspace,
   loadFilesView,
   loadLiveMeetingPage,

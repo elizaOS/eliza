@@ -11,8 +11,6 @@ export const loadLiveMeetingPage = () =>
   import("./components/transcripts/LiveMeetingPage.js");
 export const loadCameraPageView = () =>
   import("./components/pages/CameraPageView.js");
-export const loadDesktopWorkspaceSection = () =>
-  import("./components/settings/DesktopWorkspaceSection.js");
 export const loadSettingsView = () =>
   import("./components/pages/SettingsView.js");
 export const loadVaultPageView = () =>

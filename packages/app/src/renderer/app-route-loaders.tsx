@@ -8,7 +8,6 @@ import {
   loadCharacterSkillsView,
   loadClockView,
   loadDatabasePageView,
-  loadDesktopWorkspaceSection,
   loadFilesView,
   loadLiveMeetingPage,
   loadLogsView,
@@ -84,10 +83,6 @@ export const LazyLiveMeetingPageView = lazyNamedView(
 export const LazyCameraPageView = lazyNamedView(
   loadCameraPageView,
   "CameraPageView",
-);
-export const LazyDesktopWorkspaceSection = lazyNamedView(
-  loadDesktopWorkspaceSection,
-  "DesktopWorkspaceSection",
 );
 export const LazySettingsView = lazyNamedView(loadSettingsView, "SettingsView");
 export const LazyVaultPageView = lazyNamedView(

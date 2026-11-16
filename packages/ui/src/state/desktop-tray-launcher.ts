@@ -8,10 +8,8 @@ import { useSyncExternalStore } from "react";
 /**
  * Runtime registry for the desktop tray-popover launcher rows (#12184).
  *
- * The launcher catalog's single source of truth is `DESKTOP_VIEW_WINDOWS` in
- * `@elizaos/app` (`runtime/desktop/tray-menu.ts`). `@elizaos/ui` cannot
- * import `@elizaos/app` (that package depends on this one — importing it
- * back would be a cycle), so the desktop host registers the resolved,
+ * `@elizaos/ui` cannot import `@elizaos/app` (that package depends on this
+ * one — importing it back would be a cycle), so a host registers the resolved,
  * localized rows here at runtime and the presentational `TrayLauncher`
  * (rendered inside `TrayPopoverShell`) reads them. Same pattern as
  * `registerAppShellPage`: the host contributes, the shell renders.
@@ -30,8 +28,7 @@ export type DesktopLauncherIconId =
 export interface DesktopLauncherEntry {
   /**
    * Tray item id dispatched on click (e.g. `tray-open-view-chat`,
-   * `tray-show-window`) — routed through the same `TRAY_ACTION_EVENT` handling
-   * the native tray menu uses (`DesktopTrayRuntime`).
+   * `tray-show-window`) — dispatched as a `TRAY_ACTION_EVENT`.
    */
   readonly itemId: string;
   /** Localized row label. */
