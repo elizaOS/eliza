@@ -1,6 +1,6 @@
 # Response-field fence ownership
 
-This migrates `quint/ResponseFieldFences.qnt`. `runtime/response-handler-fields.ts` owns actual Markdown line recognition. Recognition must retain fence character, opening length, closing-line syntax and info-string behavior. Fields inside a fence remain quoted content.
+This migrates `quint/ResponseFieldFences.qnt` as a legacy response-fence policy over supplied lexical observations. The compatible lexical scanner in pinned `markdown/code.ts` (`advanceFenceScan`) recognizes delimiter kind, opening and closing length, closing suffix and info-string behavior and emits fence spans. Field-envelope extraction and source-to-model refinement remain open adapter evidence. The current `runtime/response-handler-fields.ts` registry dispatch has no Markdown lexer. The separate coarse scanner in `messaging/interaction-parse.ts` retains its own behavior; it is not a refinement of this policy. The rules below keep supplied field observations inside a fence as quoted content.
 
 ## Story: Parse outer response fields without promoting quoted instructions
 
