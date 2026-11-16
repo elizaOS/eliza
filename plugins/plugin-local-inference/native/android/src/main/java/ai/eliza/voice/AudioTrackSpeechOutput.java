@@ -3,6 +3,7 @@ package ai.eliza.voice;
 import android.media.AudioFormat;
 import android.media.AudioTimestamp;
 import android.media.AudioTrack;
+import android.media.PlaybackParams;
 
 /**
  * AudioTrack (MODE_STREAM, mono float PCM, assistant/speech attributes) behind
@@ -16,11 +17,12 @@ public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Out
  public static final int START_MS=40;
  private final AudioTrack track;
  private final AudioTimestamp stamp=new AudioTimestamp();
- private final int rate;
+ private final int presentedRate;
 
- private AudioTrackSpeechOutput(AudioTrack track,int rate){this.track=track;this.rate=rate;}
+ private AudioTrackSpeechOutput(AudioTrack track,int presentedRate){this.track=track;this.presentedRate=presentedRate;}
 
- public static AudioTrackSpeechOutput open(int rate){
+ public static AudioTrackSpeechOutput open(int rate){return open(rate,1f);}
+ public static AudioTrackSpeechOutput open(int rate,float pace){
   try{android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);}catch(RuntimeException ignored){/* Default priority still plays. */}
   int minimum=AudioTrack.getMinBufferSize(rate,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_FLOAT);
   if(minimum<=0)throw new IllegalStateException("Float speech output unsupported");
@@ -31,11 +33,12 @@ public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Out
    .setTransferMode(AudioTrack.MODE_STREAM)
    .setBufferSizeInBytes(bytes)
    // A request: the platform grants its fast path only where the device mixer accepts this format.
-   .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+   .setPerformanceMode(pace==1f?AudioTrack.PERFORMANCE_MODE_LOW_LATENCY:AudioTrack.PERFORMANCE_MODE_NONE)
    .build();
   if(track.getState()!=AudioTrack.STATE_INITIALIZED){track.release();throw new IllegalStateException("Speech output unavailable");}
+  if(pace!=1f)try{track.setPlaybackParams(new PlaybackParams().setSpeed(pace).setPitch(1f));}catch(RuntimeException unsupported){track.release();throw new IllegalStateException("Speech pace unsupported");}
   if(android.os.Build.VERSION.SDK_INT>=31)try{track.setStartThresholdInFrames(Math.max(1,rate*START_MS/1000));}catch(RuntimeException ignored){/* The default threshold (the whole buffer) still plays. */}
-  return new AudioTrackSpeechOutput(track,rate);
+  return new AudioTrackSpeechOutput(track,Math.round(rate*pace));
  }
  public void play(){track.play();}
  public int write(float[] samples,int offset,int length){
@@ -48,7 +51,7 @@ public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Out
  public long presentationNs(long frame){
   try{
    if(!track.getTimestamp(stamp)||stamp.nanoTime<=0||stamp.framePosition<=0)return VoiceLatencyTrials.UNSET;
-   return VoiceLatencyTrials.frameTimeNs(stamp.nanoTime,stamp.framePosition,frame,rate);
+   return VoiceLatencyTrials.frameTimeNs(stamp.nanoTime,stamp.framePosition,frame,presentedRate);
   }catch(RuntimeException unavailable){return VoiceLatencyTrials.UNSET;}
  }
  /** The start threshold (API 31+), else the whole buffer, which a stream must fill before it plays. */
