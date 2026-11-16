@@ -225,7 +225,7 @@ pure def add(a: int, b: int): int = a + b`);
     assert.match(replayed[0][2], /still breaks, in the replay of test\/__traces__\/bombadil, noUncaughtExceptions/);
     const unavailable = await exec(process.execPath, ["--input-type=module", "-e",
       `import { explore } from ${JSON.stringify(path.join(project, "vibestack/explore.ts"))}; process.stdout.write(JSON.stringify(await explore(process.cwd(), (_key, run) => run())));`],
-    root, { ...process.env, CHROME: path.join(root, "missing-chromium") });
+    root, { ...process.env, CHROME: process.execPath });
     assert.equal(unavailable.status, 0, unavailable.stderr);
     assert.match(unavailable.stdout, /is kept, to be replayed when it can be/);
     assert.ok(fs.existsSync(saved));
