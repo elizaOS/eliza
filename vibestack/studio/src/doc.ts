@@ -4,7 +4,7 @@ import path from "node:path";
 import { parseSpec, readSpecs, specName, type Spec } from "../../parse.ts";
 import { dependencies } from "../../review.ts";
 import { codeDirs, danglingCitations, filesUnder } from "../../util.ts";
-import { itemsOf, nodeId, nodesOfOutline, outlineOf, SIGN } from "./markdown.ts";
+import { edits, itemsOf, nodeId, nodesOfOutline, outlineOf, SIGN } from "./markdown.ts";
 
 // --- identity: which node of the baseline a node of the current specs is -----------------------------
 
@@ -66,20 +66,6 @@ const TODO = {
   ruleDeleted: "Check that no story still depends on it",
 };
 
-/** Longest common subsequence of two lists of ids; what is not in it moved. */
-function moved(before: string[], after: string[]): Set<string> {
-  const n = before.length, m = after.length;
-  const t = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) t[i][j] = before[i] === after[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1]);
-  const kept = new Set<string>();
-  for (let i = 0, j = 0; i < n && j < m; ) {
-    if (before[i] === after[j]) { kept.add(before[i]); i++; j++; }
-    else if (t[i + 1][j] >= t[i][j + 1]) i++;
-    else j++;
-  }
-  return new Set(after.filter((id) => !kept.has(id)));
-}
-
 const specsOf = (root: string, texts: Record<string, string>): Spec[] => {
   try { return readSpecs(root, texts); } catch {
     return Object.entries(texts).flatMap(([file, text]) => { try { return [parseSpec(root, file, text)]; } catch { return []; } });
@@ -115,7 +101,7 @@ export function manifestOf(root: string, baseline: Record<string, string>, curre
   const shuffled = new Set<string>();
   for (const [k, list] of group(after.filter((n) => baseId(n)), (n) => (n.parent ? baseId(byId.get(n.parent)) : n.file), (n) => baseId(n)!)) {
     const original = (beforeKids.get(k) ?? []).filter((id) => list.includes(id));
-    for (const id of moved(original, list.filter((id) => original.includes(id)))) shuffled.add(id);
+    for (const e of edits(original, list.filter((id) => original.includes(id)))) if (e.op === "+") shuffled.add(e.item);
   }
 
   const gone = new Set(before.map((n) => n.id));

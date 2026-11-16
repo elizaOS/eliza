@@ -23,8 +23,8 @@ export function typeWalks(typedefs: Json[], module: string, prefix = "") {
   /** Structural identity, so inferred types can be matched back to their names. */
   const shape = (t0: Json): string => {
     const t = resolve(t0);
-    if (t.kind === "rec") return `{${fields(t).map((f) => `${f.fieldName}:${shape(f.fieldType)}`).sort()}}`;
-    if (t.kind === "sum") return `<${fields(t).map((f) => f.fieldName + (payload(f) ? shape(payload(f)) : "")).sort()}>`;
+    if (t.kind === "rec") return `{${fields(t).map((f) => `${f.fieldName}:${shape(f.fieldType)}`).sort().join(",")}}`;
+    if (t.kind === "sum") return `<${fields(t).map((f) => f.fieldName + (payload(f) ? shape(payload(f)) : "")).sort().join(",")}>`;
     if (t.kind === "list") return `[${shape(t.elem)}]`;
     if (t.kind === "set") return `(${shape(t.elem)})`;
     if (t.kind === "fun") return `${shape(t.arg)}=>${shape(t.res)}`;
@@ -119,33 +119,43 @@ export function typeWalks(typedefs: Json[], module: string, prefix = "") {
 
   // --- untrusted values --------------------------------------------------------
   /**
-   * A runtime test that an untrusted value inhabits a type. `exact` is for a whole state: a record or variant may have
-   * no field beyond those its type names, and a map is allowed, as a record whose keys are stored as the generated
-   * code stores them (keyOf).
+   * Runtime tests that an untrusted value inhabits a type: `test` is the expression for one value, and `lines` declare
+   * the function it calls for each named record or variant type, so that a type is tested by one text however many
+   * places hold it. `exact` is for a whole state: a record or variant may have no field beyond those its type names,
+   * and a map is allowed, as a record whose keys are stored as the generated code stores them (keyOf).
    */
-  const wellFormed = (v: string, t0: Json, depth = 0, exact = false): string => {
-    const t = resolve(t0);
-    if (t.kind === "int") return `Number.isSafeInteger(${v})`;
-    if (t.kind === "bool") return `typeof ${v} === "boolean"`;
-    if (t.kind === "str") return `typeof ${v} === "string"`;
-    const x = `x${depth}`;
-    const object = `typeof ${v} === "object" && ${v} !== null && !Array.isArray(${v})`;
-    const sized = (n: number) => (exact ? [`Object.keys(${v}).length === ${n}`] : []);
-    const record = (r: Json) => fields(r).map((f) => wellFormed(`${v}.${f.fieldName}`, f.fieldType, depth + 1, exact));
-    if (tagged(t)) return `${object} && (${fields(t).map((f) => [`${v}.tag === ${JSON.stringify(f.fieldName)}`, ...(payload(f) ? record(payload(f)!) : []), ...sized(1 + (payload(f) ? fields(payload(f)!).length : 0))].join(" && ")).join(" || ")})`;
-    if (t.kind === "sum") return `(${fields(t).map((f) => `${v} === ${JSON.stringify(f.fieldName)}`).join(" || ")})`;
-    if (t.kind === "list" || t.kind === "set")
-      return `Array.isArray(${v}) && ${v}.every((${x}: any) => ${wellFormed(x, t.elem, depth + 1, exact)})${t.kind === "set" ? ` && new Set(${v}).size === ${v}.length` : ""}`;
-    if (t.kind === "rec") return [object, ...record(t), ...sized(fields(t).length)].join(" && ");
-    if (t.kind === "fun") {
-      if (!exact) return fail("an event cannot carry a map; send a list of records instead");
-      const [k, key] = [keyOf(t), `k${depth}`];
-      const stored = k.kind === "str" ? `${key}.startsWith("$")`
-        : k.kind === "int" ? `/^(0|-?[1-9][0-9]*)$/.test(${key}) && Number.isSafeInteger(Number(${key}))`
-        : `(${fields(k).map((f) => `${key} === ${JSON.stringify(f.fieldName)}`).join(" || ")})`;
-      return `${object} && Object.entries(${v}).every(([${key}, ${x}]: [string, any]) => ${stored} && ${wellFormed(x, t.res, depth + 1, exact)})`;
-    }
-    return fail(`a parameter of type ${t.kind} is not supported`);
+  const validators = (exact = false) => {
+    const made = new Map<string, string>();
+    const test = (v: string, t0: Json, depth = 0, own = false): string => {
+      const t = resolve(t0);
+      if (t.kind === "int") return `Number.isSafeInteger(${v})`;
+      if (t.kind === "bool") return `typeof ${v} === "boolean"`;
+      if (t.kind === "str") return `typeof ${v} === "string"`;
+      if (t.kind === "sum" && !tagged(t)) return `(${fields(t).map((f) => `${v} === ${JSON.stringify(f.fieldName)}`).join(" || ")})`;
+      if (t0.kind === "const" && !own) {
+        const fn = `is_${typeName(typedef(t0.name))}`;
+        if (!made.has(fn)) made.set(fn, `  const ${fn} = (v: any): boolean => ${test("v", t0, 0, true)};`);
+        return `${fn}(${v})`;
+      }
+      const x = `x${depth}`;
+      const object = `typeof ${v} === "object" && ${v} !== null && !Array.isArray(${v})`;
+      const sized = (n: number) => (exact ? [`Object.keys(${v}).length === ${n}`] : []);
+      const record = (r: Json) => fields(r).map((f) => test(`${v}.${f.fieldName}`, f.fieldType, depth + 1));
+      if (tagged(t)) return `${object} && (${fields(t).map((f) => [`${v}.tag === ${JSON.stringify(f.fieldName)}`, ...(payload(f) ? record(payload(f)!) : []), ...sized(1 + (payload(f) ? fields(payload(f)!).length : 0))].join(" && ")).join(" || ")})`;
+      if (t.kind === "list" || t.kind === "set")
+        return `Array.isArray(${v}) && ${v}.every((${x}: any) => ${test(x, t.elem, depth + 1)})${t.kind === "set" ? ` && new Set(${v}).size === ${v}.length` : ""}`;
+      if (t.kind === "rec") return [object, ...record(t), ...sized(fields(t).length)].join(" && ");
+      if (t.kind === "fun") {
+        if (!exact) return fail("an event cannot carry a map; send a list of records instead");
+        const [k, key] = [keyOf(t), `k${depth}`];
+        const stored = k.kind === "str" ? `${key}.startsWith("$")`
+          : k.kind === "int" ? `/^(0|-?[1-9][0-9]*)$/.test(${key}) && Number.isSafeInteger(Number(${key}))`
+          : `(${fields(k).map((f) => `${key} === ${JSON.stringify(f.fieldName)}`).join(" || ")})`;
+        return `${object} && Object.entries(${v}).every(([${key}, ${x}]: [string, any]) => ${stored} && ${test(x, t.res, depth + 1)})`;
+      }
+      return fail(`a parameter of type ${t.kind} is not supported`);
+    };
+    return { test, lines: () => [...made.values()] };
   };
   /** A copy of a checked value that has the fields its type names and no others. */
   const copy = (v: string, t0: Json, depth = 0): string => {
@@ -207,6 +217,6 @@ export function typeWalks(typedefs: Json[], module: string, prefix = "") {
     return fail(`a comparison of type ${t.kind} is not supported`);
   };
 
-  return { fields, typedef, resolve, shape, payload, tagged, isScalar, setElem, keyOf, storedKey, holdsSet, named, ownerOf, typeName, tsType, declaration, qType, wellFormed, copy, decode, canon, comparison };
+  return { fields, typedef, resolve, shape, payload, tagged, isScalar, setElem, keyOf, storedKey, holdsSet, named, ownerOf, typeName, tsType, declaration, qType, validators, copy, decode, canon, comparison };
 }
 export type Types = ReturnType<typeof typeWalks>;

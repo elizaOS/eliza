@@ -5,6 +5,8 @@ A warm orange accent on quiet, warm neutrals. Color carries meaning; position an
 - **Surfaces.** `background` is the page. `muted` and `secondary` are quiet fills, `accent` the hover fill.
 - **Text.** `foreground` by default, `muted-foreground` for a to-do that is done. Every `x-foreground` is
   the text color on `x`, and each pair meets WCAG AA in both themes.
+- **Edges.** `border` divides and may be faint. `input` is the edge of a control (a field, a checkbox, an
+  outlined button): it stands at least 3:1 off `background` and `card` in both themes (WCAG 1.4.11).
 - **Meaning.** `primary` is the one accent: adding a to-do, a ticked box, the focus `ring`. `ok` is the
   tab's connection, filled when online and a ring when offline; `warn` counts refused edits. An edit the
   server has not answered yet shows its to-do at half strength.
@@ -47,7 +49,7 @@ this prose into tokens. To change the design, describe it, and have the change w
 | `destructive` | oklch(0.577 0.215 27.3) | oklch(0.711 0.166 22.2) |
 | `destructive-foreground` | oklch(1 0 0) | oklch(0.2 0.006 70) |
 | `border` | oklch(0.91 0.01 85) | oklch(0.32 0.012 70) |
-| `input` | oklch(0.91 0.01 85) | oklch(0.32 0.012 70) |
+| `input` | oklch(0.64 0.012 80) | oklch(0.55 0.012 75) |
 | `ring` | oklch(0.553 0.195 38.4) | oklch(0.74 0.17 45) |
 | `ok` | oklch(0.527 0.137 150.1) | oklch(0.8 0.182 151.7) |
 | `warn` | oklch(0.53 0.11 85) | oklch(0.84 0.15 90) |

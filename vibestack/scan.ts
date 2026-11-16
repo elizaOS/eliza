@@ -36,6 +36,6 @@ export function plainText(file: string, text: string): string {
   const nul = plain.indexOf("\0");
   if (nul >= 0) throw new Error(`${file}:${lineOf(nul)}: NUL characters are not allowed`);
   const odd = plain.search(/[\r\v\f\u0085\u2028\u2029]/);
-  if (odd >= 0) throw new Error(`${file}:${lineOf(odd)}: a line break other than \\n; save the file with plain line endings`);
+  if (odd >= 0) throw new Error(`${file}:${lineOf(odd)}: line breaks other than \\n are not allowed; save the file with plain line endings`);
   return plain;
 }

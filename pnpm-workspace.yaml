@@ -20,6 +20,7 @@ catalog:
   eslint-plugin-boundaries: ^7.4.3
   eslint-plugin-react-hooks: ^7.1.1
   happy-dom: ^21.0.4
+  jscpd: ^5.4.2
   jsdom: ^31.0.1
   knip: ^6.45.1
   madge: ^8.0.0
@@ -34,7 +35,7 @@ catalog:
   typescript-eslint: ^8.72.2
   vite: 8.3.5
   vitest: 5.1.0
-  # The component system: packages/ui, packages/design-system, packages/storybook.
+  # The component system: packages/ui, packages/design-system.
   "@radix-ui/react-checkbox": ^1.4.1
   "@radix-ui/react-dialog": ^1.3.1
   "@radix-ui/react-label": ^2.1.17

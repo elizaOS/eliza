@@ -84,7 +84,7 @@ would call true or false.
 | Shell | HTTP, storage, queues and every other effect, in VibeLang on Effect 4 | `types`: the `vibelang` compiler over `src/`, tests and `gen/` |
 | Interface | React with Vite, Tailwind CSS v4, shadcn/ui on Radix, tokens from `packages/design-system`, components in `packages/ui` with generated stories | `types`, ESLint and Stylelint rules for tokens, Storybook and browser tests |
 | Tests | Whole journeys in Vitest with `@effect/vitest` and Playwright, citing the rule each step serves; conformance runs of the real app against the spec | `tests`, `traces` |
-| Workspace | Node 26, pnpm workspaces, Turborepo; ESLint boundaries, Knip and Madge | `pnpm verify`, CI on every push |
+| Workspace | Node 26, pnpm workspaces, Turborepo; ESLint boundaries, Knip, Madge and jscpd | `pnpm verify`, CI on every push |
 
 ```mermaid
 flowchart LR
@@ -128,13 +128,16 @@ means are in [CONTRIBUTING.md](../CONTRIBUTING.md#architecture).
    what needs your review.
 5. Read what it reports, run the app, and sign off with `pnpm accept`.
 
-Agents start with [AGENTS.md](../AGENTS.md). All four skills (`sync`, `shell`,
-`prove`, `design`) live in [`.claude/skills/`](../.claude/skills/), with relative
-links in [`.agents/skills/`](../.agents/skills/) for Codex discovery. Keep both
-directories when copying the template. ChatGPT or another client without
-repository skill discovery must read the applicable `SKILL.md` files linked
-from AGENTS.md explicitly; it needs access to those files or their contents
-in the chat. The full instructions are read when the task needs a skill.
+Agents start with [AGENTS.md](../AGENTS.md), which Claude Code reads through the
+relative `CLAUDE.md` symlink. Skills and their bundled references
+live in [`.claude/skills/`](../.claude/skills/). `pnpm install` and
+`spec init` create missing project-relative links in `.agents/skills/` and
+under `.codex`, `.cursor`, `.grok`, `.gemini`, `.factory`, `.t3` and `.droid`.
+Git tracks the shared `.agents/skills/` links and ignores the harness aliases
+created during setup. Both commands preserve occupied paths and report
+conflicts with project skill sources. A client without repository skill
+discovery must read the applicable `SKILL.md` files linked from AGENTS.md
+explicitly.
 
 ## Studio
 
@@ -206,9 +209,12 @@ import { Machine, machine, apply, decodeEvent, decodeState } from "../gen/app.ef
 
 `Machine` holds the state and changes it only by an event the rules allow:
 `receive(input)` decodes an untrusted value and applies it, failing with
-`NotAnEvent` or `Rejected`. A shell that stores state builds its own service
-on `apply` and passes what it loads through `decodeState`
-([shell skill](../.claude/skills/shell/SKILL.md)).
+`NotAnEvent` or `Rejected`. A shell that stores state provides `stored(key)`
+in place of `machine()`, over a `KeyValueStore` layer (`layerFileSystem`,
+`layerStorage` or `layerMemory`). A React component reads and drives a
+`Machine` with `useMachine` from `gen/<name>.react.ts`. If the spec uses a
+sender parameter named `by`, authenticate that sender in your shell and pass
+it separately ([`shell` skill](../.claude/skills/shell/SKILL.md)).
 
 | Write | In | Following |
 |---|---|---|
@@ -256,19 +262,41 @@ Before committing your application's starting point:
 
 ## Using it from another package
 
-The tools are also the `spec` command of this package. In an existing
-project, `spec init [<dir>]` adds what the stack needs without replacing
-anything you have: all four skills in `.claude/skills/` and their relative
-links in `.agents/skills/`, the spec reference in `SPEC.md`, the procedure in
-`AGENTS.md` between `<!-- vibestack:start -->` markers (and `CLAUDE.md`
-importing it), a `tsconfig.json` and `vitest.config.ts` for VibeLang, an
-empty `spec/index.md`, `.gitignore` entries for what the tools own, and the
-`dev`, `check`, `gen`, `accept`, `build` and `test` scripts with the
-VibeLang and Effect packages at the versions the tools are tested with. Run
-it again after an upgrade to refresh the procedure.
+The toolchain is a package with a `spec` command, installed from a tarball
+made with `pnpm pack`, which builds it.
+
+```sh
+pnpm add -D /path/to/vibestack-0.1.0.tgz
+pnpm exec spec init          # adds what is missing; updates only its own marked instructions
+pnpm exec spec new           # fill an empty spec/index.md
+pnpm exec spec new <name>    # a starter spec/<name>/index.md
+pnpm check
+```
+
+| `spec init` adds | |
+|---|---|
+| `.claude/skills/`, `AGENTS.md` | the agent's procedure, skills, bundled references and license notice. Later invocations add missing files and refresh the marked Vibestack section in AGENTS.md |
+| `SPEC.md` | the spec reference |
+| `vibestack/reference/typereferences.md` | the TypeScript type reference |
+| `.agents/skills/` and the other project agent skill directories | links to the same skills in `.claude/skills/` |
+| `.claude/settings.json` | Claude Code refuses edits to `gen/`, `.spec-cache/`, `.studio/`, `spec/lock.json` and `lemmascript.json`, and asks before `pnpm accept` |
+| `CLAUDE.md` | relative symlink to `AGENTS.md`. A standalone `@AGENTS.md` import is converted to the link. Custom Claude instructions are preserved and import `AGENTS.md` |
+| an empty `spec/index.md` | |
+| `tsconfig.json` | for the VibeLang compiler: `src`, `test`, `gen/*.ts` and `gen/*.vibe`, emitting to `dist/`, with the compiler's declarations in `.vibe/declarations` |
+| `vitest.config.ts` | the one Vitest configuration, `project()` from `vibestack/testing/vitest.ts` ([AGENTS.md, "Tests"](../AGENTS.md#tests)) |
+| `.gitignore` | `gen/`, `.spec-cache/`, `.studio/`, `dist/`, `.vibe/` and the generated harness skill paths |
+| `package.json` | scripts `dev`, `check`, `gen`, `accept`, `build` (`vibelang`) and `test` (`vitest run`); the VibeLang toolchain it lacks, at its pins, with the `@effect/platform-node-shared` override that keeps one Effect; `packageManager` (`pnpm@10.24.0`), `engines.node` (`>=26`, the Node `spec` refuses to run below) and `"type": "module"` if unset |
+
+It preserves project-authored content, scripts, and dependencies.
 It writes no tests: `check` adds a `test` script on the one Vitest
 configuration when `test/` first appears, and a driver to fill in when
 `src/` first keeps a machine's state.
+
+`spec` works on `spec/**/*.md`, and optionally `src/`, the package's
+[tests](../AGENTS.md#tests) and a `tsconfig.json`, in the directory it is run from. Without a `tsconfig.json`, a package containing `src/` or `test/` fails the
+types stage; a spec-only package reports that there is no code to typecheck. To hand the generated code to another package, compile `gen/*.ts`
+with `tsc`; it has no dependencies. `gen/*.effect.vibe` needs the VibeLang
+toolchain.
 
 ## Commands
 
@@ -281,14 +309,13 @@ current one. Installed as a package, use `pnpm exec spec <command> [<dir>]`.
 | `pnpm studio [<dir>]` | Opens Studio alone, on one project |
 | `pnpm check [<dir>] [--json]` | Checks spec, source and tests; ends with a `next:` line ([JSON shape](../CONTRIBUTING.md#changing-the-tools)) |
 | `pnpm quick` | Types, lint and tests of what changed |
-| `pnpm verify` | Everything CI runs: build, types, tests, browser tests, checks, lint, Knip, Madge and the selftest, for every workspace package |
+| `pnpm verify` | Everything CI runs: build, types, tests, browser tests, checks, lint, Knip, Madge, jscpd and the selftest, for every workspace package |
 | `pnpm gen [<dir>]` | Generates `gen/` only |
 | `node vibestack/spec.ts watch [<dir>]` | Rechecks when a spec, source file or test changes |
 | `pnpm accept [<dir>]` | The user's sign-off: checks afresh and records what `review` lists, [all or nothing](../SPEC.md#review) |
 | `pnpm accept unproved` | Records the listed obligations as simulated only. The user's decision |
 | `pnpm new [<path>]` | Fills an empty root index or creates a child [starter spec](../SPEC.md#writing-a-spec) |
 | `node vibestack/spec.ts init [<dir>]` | Sets up an existing project ([above](#using-it-from-another-package)) |
-| `node vibestack/spec.ts migrate [<dir>]` | Consolidates old review ledgers into `spec/lock.json`, keeping their approvals |
 | `pnpm demo` | Runs the order example's scripted checkout session |
 | `pnpm examples` | Installs and checks every example, outside CI |
 | `pnpm selftest` | Breaks the pipeline one way at a time and checks each break is caught |
@@ -298,7 +325,7 @@ current one. Installed as a package, use `pnpm exec spec <command> [<dir>]`.
 |---|---|
 | 0 | green |
 | 1 | a `✗`, or an error |
-| 2 | bad arguments; prints the usage line |
+| 2 | bad arguments; prints the usage to stderr (`spec --help` prints it and exits 0) |
 
 CI runs `pnpm verify` on each pull request and push with the same fixed
 profile as local checks, and a fresh nightly run with a larger fixed profile
@@ -325,7 +352,7 @@ workspace.
 | `packages/design-system` | Design tokens, built into Tailwind's theme |
 | `packages/ui` | Shared React components, with generated stories |
 | `vibestack/` | The tools: generator, simulator, prover, Studio, testing and design helpers |
-| `.claude/skills/` | What agents read before each kind of work: `sync`, `shell`, `prove`, `design` |
+| `.claude/skills/` | What agents read before each kind of work, with bundled references |
 | `.agents/skills/` | Relative links to the same skills for Codex discovery |
 | [AGENTS.md](../AGENTS.md), [SPEC.md](../SPEC.md), [CONTRIBUTING.md](../CONTRIBUTING.md#architecture) | The procedure, the spec reference, and the map |
 
