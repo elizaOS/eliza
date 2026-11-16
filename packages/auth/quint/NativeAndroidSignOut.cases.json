@@ -28,9 +28,7 @@
         "RevokedMeansEnded",
         "RetryBudget"
       ],
-      "temporal": [
-        "DutiesSettle"
-      ],
+      "temporal": ["DutiesSettle"],
       "maxSteps": 24,
       "samples": 1000,
       "temporalChecks": [
