@@ -55,7 +55,7 @@ pure def sometimesRestoreAfterSelection(s: Context): bool = s.restored and s.vis
 
 ## Story: Keep historical evidence bound to its own request
 
-As an agent, I can defer a historical navigation receipt only with its unambiguous original request. Historical read observations require canonical validated receipt shapes. Historical mutations remain inline by default. A reviewed explicit projection may defer settled effects, and an owner-scoped terminal proof may establish done, rejected or expired state. Current effects and uncertain outcomes remain inline.
+As an agent, I can defer a historical navigation receipt only with its unambiguous original request. Historical read observations require canonical validated receipt shapes. Historical mutations remain inline by default. An explicitly reviewed historical-effect projection may defer validated mutations. Its settled-only mode requires a committed outcome or an owner-scoped terminal proof establishing done, rejected or expired state; uncertain outcomes stay inline in that mode. The broader reviewed mode may also defer unsettled historical effects. Current effects remain inline.
 
 ### A historical evidence projection requires exact validated source binding
 

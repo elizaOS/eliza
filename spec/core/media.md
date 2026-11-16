@@ -60,7 +60,7 @@ As an attachment consumer, I want a detected container type to retain a more spe
 
 ### Specific sniffed types win and generic containers defer to a known extension
 
-Headers are normalized to the lower-case MIME value before parameters. Only the basename determines an extension, after extracting an HTTP URL pathname. A generic sniff is `application/zip`, `application/octet-stream` or absence. The ordered fallback is specific sniff, known extension, specific header, sniff, header, absence.
+Headers are normalized to the lower-case MIME value before parameters. Only the basename determines an extension, after extracting an HTTP URL pathname. A generic sniff is `application/zip`, `application/octet-stream` or absence. A present sniff wins when it is specific or when no known extension exists, even if that sniff is generic and the header is specific. Otherwise the fallback is known extension, specific header, sniff, header, absence.
 
 ```quint
 type MimeCandidate = { present: bool, generic: bool, value: str }
