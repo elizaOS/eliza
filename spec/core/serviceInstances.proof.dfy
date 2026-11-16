@@ -362,14 +362,16 @@ lemma ServiceStartAttemptFields(s: ServiceInstances, after: ServiceInstances, at
 }
 
 lemma ServicePendingSettlement(s: ServiceInstances, after: ServiceInstances, attemptId: int)
-  requires alwaysPendingAttemptsOwned(s)
+  requires alwaysPendingAttemptsOwned(s) && alwaysAttemptGeneration(s)
+  requires alwaysClassAndObjectIdentities(after) && s.stopped == after.stopped
+  requires forall a | a in after.attempts && a.id == attemptId :: !a.phase.StartInvoking?
   requires |s.classes| == |after.classes| && |s.attempts| == |after.attempts|
   requires forall i :: 0 <= i < |s.attempts| ==>
     (s.attempts[i].id == after.attempts[i].id && s.attempts[i].classId == after.attempts[i].classId &&
       s.attempts[i].generation == after.attempts[i].generation &&
       (s.attempts[i].id != attemptId ==> s.attempts[i].phase == after.attempts[i].phase))
   requires forall i :: 0 <= i < |s.classes| ==>
-    (s.classes[i].id == after.classes[i].id && s.classes[i].generation == after.classes[i].generation &&
+    (s.classes[i].id == after.classes[i].id && s.classes[i].generation == after.classes[i].generation && s.classes[i].live == after.classes[i].live &&
       after.classes[i].pending == (if s.classes[i].pending == attemptId && s.classes[i].id == serviceAttempt(s, attemptId).classId then 0 else s.classes[i].pending))
   ensures alwaysPendingAttemptsOwned(after)
 {
@@ -384,6 +386,18 @@ lemma ServicePendingSettlement(s: ServiceInstances, after: ServiceInstances, att
     assert serviceAttempt(s, prior.pending).classId == prior.id;
     assert c.pending != attemptId;
     ServiceStartAttemptFields(s, after, c.pending, attemptId);
+  }
+  forall a | a in after.attempts && a.phase.StartInvoking? && !after.stopped
+    ensures serviceClass(after, a.classId).pending == a.id && serviceClass(after, a.classId).live == 0
+  {
+    var i :| 0 <= i < |after.attempts| && after.attempts[i] == a;
+    var prior := s.attempts[i];
+    assert prior in s.attempts && prior.id == a.id && a.id != attemptId && prior.phase.StartInvoking?;
+    var owner := serviceClass(s, a.classId);
+    ServiceInvokingAttemptClassMember(s, prior);
+    var j :| 0 <= j < |s.classes| && s.classes[j] == owner;
+    assert after.classes[j] in after.classes && after.classes[j].id == a.classId;
+    ServiceClassFind(after, a.classId);
   }
 }
 
@@ -948,15 +962,20 @@ lemma ServiceClassMapIncarnations(before: ServiceInstances, after: ServiceInstan
   requires forall i :: 0 <= i < |before.classes| ==>
     (before.classes[i].id == after.classes[i].id && before.classes[i].serviceType == after.classes[i].serviceType &&
       before.classes[i].generation == after.classes[i].generation && before.classes[i].registered == after.classes[i].registered && after.classes[i].pending >= 0)
+  requires forall i | 0 <= i < |before.classes| && !after.classes[i].registered ::
+    after.classes[i].live == 0 || after.classes[i].live == before.classes[i].live
   ensures alwaysClassAndObjectIdentities(after)
   ensures alwaysDeclarationsMatch(before) ==> alwaysDeclarationsMatch(after)
   ensures alwaysAttemptGeneration(before) ==> alwaysAttemptGeneration(after)
 {
+  hide *;
+  reveal alwaysClassAndObjectIdentities(), alwaysDeclarationsMatch(), alwaysAttemptGeneration();
   ServiceObjectIdentityFilters(before);
   ServiceObjectIdentityFilters(after);
   forall cls | cls in after.classes
     ensures cls.id > 0 && cls.generation >= 0 && cls.pending >= 0 && |ProofLib.Filter((other: ServiceClassEntry) => other.id == cls.id, after.classes)| == 1
     ensures alwaysDeclarationsMatch(before) ==> (cls.registered <==> (exists d :: d in after.declarations && d.classId == cls.id))
+    ensures alwaysDeclarationsMatch(before) && cls.live != 0 ==> cls.registered
   {
     var i :| 0 <= i < |after.classes| && after.classes[i] == cls;
     assert before.classes[i] in before.classes;
@@ -1049,6 +1068,7 @@ lemma ServiceAttemptPostClass(s: ServiceInstances, after: ServiceInstances, clas
 lemma ServiceAttemptAppend(s: ServiceInstances, classId: int)
   requires inv(s)
   requires serviceClass(s, classId).id == classId && classId > 0
+  requires serviceClass(s, classId).pending == 0 && serviceClass(s, classId).live == 0
   ensures inv(beginClassAttempt(classId, s))
   ensures stepStopIdentityRetained(s, beginClassAttempt(classId, s))
 {
@@ -1134,6 +1154,18 @@ lemma ServiceAttemptAppend(s: ServiceInstances, classId: int)
   {
     forall m | m in a.members && m.attemptId != 0 ensures serviceAttempt(after, m.attemptId).id == m.attemptId {
       ServiceRetainPriorAttempt(s, after, m.attemptId);
+    }
+  }
+  forall a | a in after.attempts && a.phase.StartInvoking? && !after.stopped
+    ensures serviceClass(after, a.classId).pending == a.id && serviceClass(after, a.classId).live == 0
+  {
+    ServiceAttemptPostClass(s, after, classId, a.classId);
+    if a == added {
+      ServiceClassLookupMember(s, classId);
+    } else {
+      assert a in s.attempts && a.id > 0;
+      assert serviceClass(s, a.classId).pending == a.id;
+      assert a.classId != classId;
     }
   }
 }
@@ -1412,6 +1444,8 @@ lemma ServiceAdmitAcquisition(s: ServiceInstances, callId: int, serviceType: str
   ensures inv(admittedAcquire(callId, serviceType, s))
   ensures stepStopIdentityRetained(s, admittedAcquire(callId, serviceType, s))
 {
+  hide *;
+  reveal admittedAcquire(), canAcquireServices(), ProofLib.Filter();
   var absent := s.stopped || s.initialization.InitializationFailed? ||
     (s.initialization.InitializationReady? && !(exists c :: c in s.classes && c.registered && c.serviceType == serviceType));
   var waiting := !absent && s.initialization.InitializationPending? && firstLive(s, serviceType) == 0;
@@ -1429,11 +1463,16 @@ lemma ServiceAdmitAcquisition(s: ServiceInstances, callId: int, serviceType: str
     assert waiting && noStarts && published.aggregates == s.aggregates;
   }
   if !noStarts {
+    assert alwaysDeclarationsMatch(published) && alwaysPendingAttemptsOwned(published) && alwaysClassAndObjectIdentities(published) by {
+      reveal inv();
+    }
     ServiceCapturedCallAttempts(published, serviceType, call.attempts);
   } else {
     assert call.attempts == [];
   }
   ServiceAppendAcquisition(published, call);
+  assert alwaysObjectStopOnce(s) by { reveal inv(); }
+  reveal alwaysObjectStopOnce();
   ServiceStopReferencePreserved(s, after);
 }
 
@@ -1670,7 +1709,13 @@ lemma ServiceRetainedClassGenerationsPreserveAttempts(s: ServiceInstances, after
   requires |s.classes| <= |after.classes|
   requires forall i :: 0 <= i < |s.classes| ==>
     (after.classes[i].id == s.classes[i].id && after.classes[i].generation == s.classes[i].generation)
+  requires alwaysPendingAttemptsOwned(s) && (s.stopped ==> after.stopped)
+  requires forall i | 0 <= i < |s.classes| ::
+    s.classes[i].pending == after.classes[i].pending &&
+      (s.classes[i].live == 0 ==> after.classes[i].live == 0)
   ensures alwaysAttemptGeneration(after)
+  ensures !after.stopped ==> (forall a | a in after.attempts && a.phase.StartInvoking? ::
+    serviceClass(after, a.classId).pending == a.id && serviceClass(after, a.classId).live == 0)
 {
   ServiceAttemptFilters(s);
   ServiceAttemptFilters(after);
@@ -1685,6 +1730,15 @@ lemma ServiceRetainedClassGenerationsPreserveAttempts(s: ServiceInstances, after
     var retained := after.classes[i];
     assert retained in after.classes && retained.id == attempt.classId && retained.generation == prior.generation;
     ServiceClassFind(after, attempt.classId);
+  }
+  forall a | a in after.attempts && a.phase.StartInvoking? && !after.stopped
+    ensures serviceClass(after, a.classId).pending == a.id && serviceClass(after, a.classId).live == 0
+  {
+    var prior := serviceClass(s, a.classId);
+    ServiceInvokingAttemptClassMember(s, a);
+    var i :| 0 <= i < |s.classes| && s.classes[i] == prior;
+    assert after.classes[i] in after.classes && after.classes[i].id == prior.id;
+    ServiceClassFind(after, a.classId);
   }
 }
 
@@ -2012,7 +2066,8 @@ lemma ServiceReturnedAttemptLookup(s: ServiceInstances, after: ServiceInstances,
 }
 
 lemma ServiceReturnedPendingOwners(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int)
-  requires alwaysPendingAttemptsOwned(s) && canReturnInstance(s, attemptId, instanceId)
+  requires alwaysPendingAttemptsOwned(s) && alwaysAttemptGeneration(s)
+  requires alwaysClassAndObjectIdentities(after) && canReturnInstance(s, attemptId, instanceId)
   requires after == returnInstance(s, attemptId, instanceId)
   ensures alwaysPendingAttemptsOwned(after)
 {
@@ -2027,6 +2082,27 @@ lemma ServiceReturnedPendingOwners(s: ServiceInstances, after: ServiceInstances,
     var prior := s.classes[i];
     assert prior in s.classes && prior.pending == cls.pending && prior.id == cls.id && prior.generation == cls.generation;
     ServiceReturnedAttemptLookup(s, after, attemptId, instanceId, cls.pending);
+  }
+  if !after.stopped {
+    var selected := serviceAttempt(s, attemptId);
+    ServiceAttemptProjection(s, attemptId);
+    var byId := (a: ServiceAttempt) => a.id == attemptId;
+    ProofLib.FilterMember(byId, s.attempts, selected);
+    assert selected in s.attempts && selected.id == attemptId;
+    assert serviceClass(s, selected.classId).pending == attemptId;
+    forall a | a in after.attempts && a.phase.StartInvoking?
+      ensures serviceClass(after, a.classId).pending == a.id && serviceClass(after, a.classId).live == 0
+    {
+      var i :| 0 <= i < |after.attempts| && after.attempts[i] == a;
+      var prior := s.attempts[i];
+      assert prior in s.attempts && prior == a && a.id != attemptId;
+      ServiceInvokingAttemptClassMember(s, a);
+      var owner := serviceClass(s, a.classId);
+      assert owner.pending == a.id && a.classId != selected.classId;
+      var j :| 0 <= j < |s.classes| && s.classes[j] == owner;
+      assert after.classes[j] == owner && owner in after.classes && owner.id == a.classId;
+      ServiceClassFind(after, a.classId);
+    }
   }
 }
 
@@ -2151,6 +2227,18 @@ lemma ServiceReturnedObjectIdentities(s: ServiceInstances, after: ServiceInstanc
     s.objects + [ServiceObject(instanceId, StopPhase.StopNotRequested, 0, false, "")] else s.objects) else after;
   ServiceObjectCreated(s, registrationView, instanceId);
   var classView := s.(classes := after.classes);
+  var changedClass := serviceAttempt(s, attemptId).classId;
+  ServiceClassFind(s, changedClass);
+  forall i | 0 <= i < |s.classes| && !classView.classes[i].registered
+    ensures classView.classes[i].live == s.classes[i].live
+  {
+    if !late && s.classes[i].id == changedClass {
+      assert s.classes[i] in s.classes;
+      assert serviceClass(s, changedClass) == s.classes[i];
+      assert s.classes[i].registered == classView.classes[i].registered;
+      assert false;
+    }
+  }
   ServiceClassMapIncarnations(s, classView);
   ServiceObjectIdentityFilters(classView);
   ServiceObjectIdentityFilters(after);
@@ -2217,10 +2305,10 @@ lemma returnInstance_ensures(s: ServiceInstances, attemptId: int, instanceId: in
     var after := returnInstance(s, attemptId, instanceId);
     ServiceReturnedClassObjects(s, after, attemptId, instanceId);
     ServiceReturnedPublication(s, after, attemptId, instanceId);
+    ServiceReturnedObjectIdentities(s, after, attemptId, instanceId);
     ServiceReturnedPendingOwners(s, after, attemptId, instanceId);
     ServiceReturnedAttemptGenerations(s, after, attemptId, instanceId);
     ServiceReturnedCapturedAttempts(s, after, attemptId, instanceId);
-    ServiceReturnedObjectIdentities(s, after, attemptId, instanceId);
     ServiceReturnedStopReferences(s, after, attemptId, instanceId);
     ServiceReturnedTypeLedger(s, after, attemptId, instanceId);
   }
@@ -2507,6 +2595,49 @@ lemma unregisterClass_ensures(s: ServiceInstances, classId: int)
     ServiceWithdrawnDeclarationOwners(s, after, classId);
     ServiceRetainedClassGenerationsPreserveAttempts(s, after);
     ServiceWithdrawalPreservesPublications(s, after, classId);
+    ServiceUnregisterDuringStopRetainsEmptyPublication(s, classId);
     ServiceOtherFailedTypesRemainUnpublished(s, after, selected.serviceType);
   }
+}
+
+lemma ServiceUnregisterDuringStopRetainsEmptyPublication(s: ServiceInstances, classId: int)
+  requires alwaysStoppedHasNoPublication(s)
+  requires alwaysPublicationIdentitiesValid(unregisterClass(s, classId))
+  ensures alwaysStoppedHasNoPublication(unregisterClass(s, classId))
+{
+  hide *;
+  reveal alwaysStoppedHasNoPublication(), alwaysPublicationIdentitiesValid(), unregisterClass(), stopObjectOnce();
+  reveal withdrawClass(), reconcileType(), putType(), removePublishedInstances(), replacePublication();
+  var after := unregisterClass(s, classId);
+  if after.stopped {
+    assert s.stopped && |after.classes| == |s.classes|;
+    forall c | c in after.classes
+      ensures c.live == 0
+    {
+      var i :| 0 <= i < |after.classes| && after.classes[i] == c;
+      assert s.classes[i] in s.classes;
+    }
+    if |after.published| > 0 {
+      var publication := after.published[0];
+      assert publication in after.published && |publication.instances| > 0;
+      var published := publication.instances[0];
+      assert published in publication.instances && published > 0;
+      var owner :| owner in after.classes && owner.serviceType == publication.serviceType && owner.live == published;
+      assert false;
+    }
+  }
+}
+
+lemma ServiceInvokingAttemptClassMember(s: ServiceInstances, a: ServiceAttempt)
+  requires alwaysPendingAttemptsOwned(s) && alwaysAttemptGeneration(s) && !s.stopped
+  requires a in s.attempts && a.phase.StartInvoking?
+  ensures serviceClass(s, a.classId) in s.classes && serviceClass(s, a.classId).id == a.classId
+{
+  hide *;
+  reveal alwaysPendingAttemptsOwned(), alwaysAttemptGeneration(), noClass;
+  var owner := serviceClass(s, a.classId);
+  assert a.id > 0 && owner.pending == a.id && owner != noClass;
+  ServiceClassProjection(s, a.classId);
+  var byId := (c: ServiceClassEntry) => c.id == a.classId;
+  ProofLib.FilterMember(byId, s.classes, owner);
 }
