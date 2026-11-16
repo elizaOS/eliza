@@ -83,11 +83,11 @@ effect function studioOn(root: string) {
 /** An app at its boundary: a development server that says where it serves, as Vite does, and answers every request. */
 const APP = `require("node:http").createServer((_, res) => res.end("door app")).listen(0, "127.0.0.1", function () { console.log("  Local: http://localhost:" + this.address().port + "/") })`
 
-// spec/index.md, "Story: Edit, then publish"; spec/index.md, "Story: Sync with an agent"; spec/index.md, "Story: Check"; spec/index.md, "Story: Preview the app"
-it.live("a spec is published with its origins, checked, synced by an agent, and refused while a job runs; the app runs beside it", effect () => { provide services { try scoped(effect {
+// spec/index.md, "Story: Edit, then publish"; spec/index.md, "Story: Sync with an agent"; spec/index.md, "Story: Check"
+it.live("publish a spec with its origins, check it and sync it with an agent", effect () => { provide services { try scoped(effect {
   const fs = try FileSystem.FileSystem
-  const root = try scratch({ "spec/door.md": try fs.readFileString(`${TOOLS}/fixtures/door.md`), "app.js": APP, "package.json": JSON.stringify({ name: "door", scripts: { start: "node app.js", build: "node -e \"require('node:fs').writeFileSync('built.txt', 'door')\"" } }) })
-  const { get, send, post, project, settled } = try studioOn(root)
+  const root = try scratch({ "spec/door.md": try fs.readFileString(`${TOOLS}/fixtures/door.md`) })
+  const { get, post, project, settled } = try studioOn(root)
 
   // The page and what its HTML loads are served; nothing else under the tools is.
   const html = (try get("/")).text
@@ -161,6 +161,13 @@ it.live("a spec is published with its origins, checked, synced by an agent, and 
     prompt: /~ rule spec\/door\.md: .*\(prose\)/.test(prompt),
     manifestLeft,
   }, { started: 200, agent: ["passed", ["synced"], 0, "Reviewable"], prompt: true, manifestLeft: false }))
+}) } })
+
+// spec/index.md, "Story: Preview the app"; spec/index.md, "Story: Build the app"
+it.live("start and stop the app beside a check and build it from Studio", effect () => { provide services { try scoped(effect {
+  const fs = try FileSystem.FileSystem
+  const root = try scratch({ "spec/index.md": "# Door\n", "app.js": APP, "package.json": JSON.stringify({ name: "door", scripts: { start: "node app.js", build: "node -e \"require('node:fs').writeFileSync('built.txt', 'door')\"" } }) })
+  const { send, post, project, settled } = try studioOn(root)
 
   // spec/index.md, "The app can be started and stopped whenever, beside any job": the project's start script runs,
   // says where it serves, and keeps serving while a check runs.
