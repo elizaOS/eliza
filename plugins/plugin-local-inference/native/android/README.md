@@ -141,19 +141,27 @@ output classes only: no inference session, JNI bridge, native library or model a
   permission (which pauses the activity and ends the session) and starts a new session. An
   unmute before recognition is connected resolves at once and opens the microphone on connect.
   A muted start resolves with `echoCancelled: false`; the `ready` event, which also carries
-  `muted`, gives the real value once the microphone opens. Muting sends a short silence tail
-  only when the microphone was open.
+  `muted`, gives the real value once the microphone opens. Once the microphone has opened,
+  every mute, a repeated one too, sends a short silence tail that closes the recognizer's turn;
+  a session that never opened the microphone sends none.
 - `speakCloudSpeech` takes `pace` (0.5 to 2, default 1). The speech plays at that speed with the
   same pitch on the device, in a buffer scaled up for a faster pace; an output that refuses the
   pace plays at the normal pace. The relay is unchanged.
 - While speech plays, `progress` events give `playedMs` (audio heard so far, at the synthesized
   pace) and `receivedMs` (audio received so far). `audio-end` and the `cancelCloudSpeech` result
-  give `playedMs` too, so the host can find the word that was reached.
+  give `playedMs` too, so the host can find the word that was reached. `playedMs` never passes
+  `receivedMs`. A last `progress` event can arrive just after `audio-end`; the `audio-end` value
+  is final.
 - The session holds transient, duckable audio focus while it speaks or its microphone is open,
   and releases it when it does neither. A transient or permanent focus loss, or a call, ends
-  the session even while it only listens; a ducking loss lowers the current and the next
-  utterance. Speech plays with the assistant usage, which AOSP maps to the media volume by
-  default (not yet checked on a device).
+  the session even while it only listens. A ducking loss lowers the speech for as long as the
+  session holds focus, so a listening session's next utterance starts lowered; a session that
+  only speaks releases focus after each utterance and asks again for the next. Speech plays with the assistant usage, which AOSP maps to the media volume by
+  default (not yet checked on a device); an OEM build can give the assistant stream its own
+  volume.
+- The host declares `RECORD_AUDIO` and `INTERNET`, registers its `@CapacitorPlugin` subclass
+  with a `microphone` permission alias for `RECORD_AUDIO`, and implements `cloudOrigin`,
+  `readCredential` and `authorityEpoch` there.
 
 `node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs`
 runs the host-JVM contracts and compiles the library against Android 36. Its pinned
