@@ -196,6 +196,7 @@ public final class CloudSignInFlow {
   if (stage == null) throw new IllegalArgumentException("Google stage required");
   if (stage == GoogleStage.LOCAL_DEADLINE) return new GoogleFailure("expired", "local-deadline");
   if (status == 200) return new GoogleFailure(null, "response-received");
+  if (stage == GoogleStage.VERIFY && status == 401 && "google_identity_rejected".equals(error)) return new GoogleFailure("provider-refused", "google-identity-rejected");
   if (Boolean.FALSE.equals(ok) && error instanceof String) {
    if (status == 400 && "A valid tenantId and clientId are required".equals(error)) return new GoogleFailure("invalid-request", "invalid-binding-input");
    if (status == 400 && "tenantId does not match X-Steward-Tenant".equals(error)) return new GoogleFailure("state-mismatch", "tenant-binding-mismatch");
