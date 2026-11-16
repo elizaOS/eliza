@@ -123,7 +123,8 @@ lemma joinPlugin_ensures(s: PluginEpochs, epochId: int)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) &&
+        core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -158,7 +159,8 @@ lemma commitPlugin_ensures(s: PluginEpochs, epochId: int)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) &&
+        core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -193,7 +195,8 @@ lemma failPlugin_ensures(s: PluginEpochs, epochId: int)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) &&
+        core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -228,7 +231,8 @@ lemma unloadPlugin_ensures(s: PluginEpochs, epochId: int)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) &&
+        core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -253,7 +257,8 @@ lemma disposePlugin_ensures(s: PluginEpochs, epochId: int, ok: bool)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) &&
+        core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -278,7 +283,8 @@ lemma cleanPlugin_ensures(s: PluginEpochs, epochId: int)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) &&
+        core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -288,5 +294,51 @@ lemma cleanPlugin_ensures(s: PluginEpochs, epochId: int)
         core__plugins_finishCleanup_ensures(prior.lifecycle);
       }
     }
+  }
+}
+
+lemma PluginDisposalKeepsOtherEpoch(s: PluginEpochs, epochId: int, otherId: int, ok: bool)
+  requires alwaysEpochIdentityUnique(s) && epochId != otherId
+  ensures epoch(disposePlugin(s, epochId, ok), otherId) == epoch(s, otherId)
+{
+  var after := disposePlugin(s, epochId, ok);
+  PluginEpochLookup(s, otherId);
+  PluginEpochLookup(after, otherId);
+  var matches := (e: PluginEpoch) => (e.id == otherId);
+  var retained := (before: PluginEpoch, later: PluginEpoch) => (before.id != otherId || before == later);
+  ProofLib.FilterPointwise(matches, matches, retained, s.epochs, after.epochs);
+  var beforeMatches := ProofLib.Filter(matches, s.epochs);
+  var afterMatches := ProofLib.Filter(matches, after.epochs);
+  if |beforeMatches| > 0 {
+    ProofLib.FilterMember(matches, s.epochs, beforeMatches[0]);
+    assert beforeMatches[0] == afterMatches[0];
+  }
+}
+
+lemma lawDisposeContinuationBlocksItsCapturedOwner_ensures(s: PluginEpochs, epochId: int, ok: bool, publication: ConnectorPublication)
+  ensures (lawDisposeContinuationBlocksItsCapturedOwner(s, epochId, ok, publication) == true)
+{
+  if alwaysEpochIdentityUnique(s) && epochId > 0 && canDisposePlugin(s, epochId, ok) {
+    var after := disposePlugin(s, epochId, ok);
+    var captured := epoch(s, epochId);
+    PluginEpochLookup(s, epochId);
+    var matches := ProofLib.Filter((e: PluginEpoch) => (e.id == epochId), s.epochs);
+    assert |matches| > 0;
+    ProofLib.FilterMember((e: PluginEpoch) => (e.id == epochId), s.epochs, captured);
+    var index :| 0 <= index < |s.epochs| && s.epochs[index] == captured;
+    PluginEpochMapIdentity(s, after);
+    var withdrawn := after.epochs[index];
+    assert withdrawn in after.epochs;
+    PluginEpochExact(after, withdrawn);
+    assert withdrawn.id == epochId && withdrawn.lifecycle.connectorsWithdrawn;
+    assert epoch(after, epochId) == withdrawn;
+  }
+}
+
+lemma lawDisposalKeepsOtherCapturedOwners_ensures(s: PluginEpochs, epochId: int, otherId: int, ok: bool, publication: ConnectorPublication)
+  ensures (lawDisposalKeepsOtherCapturedOwners(s, epochId, otherId, ok, publication) == true)
+{
+  if alwaysEpochIdentityUnique(s) && epochId != otherId {
+    PluginDisposalKeepsOtherEpoch(s, epochId, otherId, ok);
   }
 }

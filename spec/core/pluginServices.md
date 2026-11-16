@@ -8,6 +8,10 @@ As a host I can unload a plugin while original starts and shared stop promises a
 
 ### Plugin epochs own declaration receipts while classes share instance identity
 
+A declaration receipt retains its plugin epoch, class identity, and service
+type. A class keeps that type after withdrawal, so retirement uses the
+same service-type bucket that owned the declaration when it was registered.
+
 ```quint
 import pluginRegistry as E from "./pluginRegistry"
 import serviceInstances as I from "./serviceInstances"
@@ -20,7 +24,7 @@ type OwnedClass = {epochId: int, classId: int, serviceType: str, hasStopHook: bo
 type InstanceStopObservation = UncheckedStopSlot | AwaitedStopSlot | MissingStopSlot
 type InstanceSlot = {instanceId: int, observed: InstanceStopObservation}
 type RetirementGroup = {serviceType: str, classes: List[RetireClass], starts: List[int], aggregate: int, instances: List[int], observedStops: List[InstanceSlot], phase: RetirementGroupPhase, instanceCursor: int, classCursor: int, hook: ClassHookPhase}
-type StopValidation = {index: int, valid: bool}
+type SequenceValidation = {index: int, valid: bool}
 type ServiceRetirement = {epochId: int, plan: List[str], groups: List[RetirementGroup], cursor: int, failures: List[str], exited: bool, hookError: str}
 type PluginServices = {plugins: E::PluginEpochs, services: I::ServiceInstances, ownership: List[OwnedClass], liveOwners: List[OwnedClass], retirements: List[ServiceRetirement], requestsClosed: bool}
 pure val initial: PluginServices = {plugins: E::initial, services: I::initial, ownership: List(), liveOwners: List(), retirements: List(), requestsClosed: false}
@@ -65,7 +69,9 @@ pure def canSettleEnsure(s: PluginServices, callId: int): bool = I::canSettleAcq
 pure def settleEnsure(s: PluginServices, callId: int): PluginServices = { ...s, services: I::settleAcquire(s.services, callId) }
 pure def currentClassOwner(s: PluginServices, classId: int): int = s.liveOwners.select(o => o.classId == classId).listMap(o => o.epochId).nthOr(0, 0)
 pure def alwaysLiveClassOwnerUnique(s: PluginServices): bool = s.liveOwners.every(o => s.ownership.includes(o) and s.liveOwners.select(other => other.classId == o.classId).length() == 1)
-pure def alwaysServiceOwnerEpochExists(s: PluginServices): bool = s.ownership.every(o => E::epoch(s.plugins, o.epochId).id == o.epochId)
+pure def alwaysServiceOwnerEpochExists(s: PluginServices): bool = s.ownership.every(o =>
+  E::epoch(s.plugins, o.epochId).id == o.epochId and o.classId > 0 and
+    I::serviceClass(s.services, o.classId).id == o.classId and I::serviceClass(s.services, o.classId).serviceType == o.serviceType)
 pure def alwaysChildLifecyclesValid(s: PluginServices): bool = E::alwaysEpochIdentityUnique(s.plugins) and E::alwaysOneActiveEpochPerName(s.plugins) and E::alwaysEpochOutcomeHonest(s.plugins) and I::alwaysTypeEntriesUnique(s.services) and I::alwaysTypeReferencesRetained(s.services) and I::alwaysAggregateAndLoadIdsUnique(s.services) and I::alwaysAcquisitionIdsUnique(s.services) and I::alwaysInitWaitingHasNoAggregate(s.services) and I::alwaysClassAndObjectIdentities(s.services) and I::alwaysPendingAttemptsOwned(s.services) and I::alwaysCapturedAttemptsExist(s.services) and I::alwaysDeclarationsMatch(s.services) and I::alwaysObjectStopOnce(s.services) and I::alwaysClassOwnsKnownObjects(s.services) and I::alwaysPublicationIdentitiesValid(s.services) and I::alwaysAttemptGeneration(s.services) and I::alwaysStoppedHasNoPublication(s.services) and I::alwaysFailedTypeHasNoPublication(s.services)
 pure def sometimesTwoPluginsOwnServices(s: PluginServices): bool = s.ownership.some(a => s.ownership.some(b => a.epochId != b.epochId and I::serviceClass(s.services, a.classId).live != 0 and I::serviceClass(s.services, b.classId).live != 0))
 ```
@@ -80,11 +86,18 @@ Sibling types stay visible until the loop reaches them. After settlement,
 the group reconciles status against current declarations and publication
 before claiming any captured stop.
 
+The retained groups match the service types already reached by the loop. The
+cursor follows the finished or skipped prefix. Only the current group can
+fail a class hook and end the loop. Each retiring or retired epoch owns at
+most one plan.
+
 Withdrawal filters the current type array by captured object identity.
 Different classes can return the same object. An unrelated class keeps
 its instance reference even when the object drops out of the type array.
 A subsequent successful start rebuilds the array from the class map and
 may publish that identity again before the captured teardown finishes.
+Runtime shutdown reads the published arrays. An object that still needs a
+stop and has no retirement receipt is published under a registered class.
 Repeated declarations of one class produce one captured stop slot because
 the first lookup deletes the per-class instance. Distinct classes can
 produce separate slots with the same object and share one stop promise.
@@ -98,6 +111,24 @@ pure val skippedGroupPhase: RetirementGroupPhase = GroupSkipped
 pure val readyHookPhase: ClassHookPhase = HookReady
 pure def retirement(s: PluginServices, epochId: int): ServiceRetirement = s.retirements.select(r => r.epochId == epochId).nthOr(0, noRetirement)
 pure def currentGroup(s: PluginServices, epochId: int): RetirementGroup = retirement(s, epochId).groups.nthOr(retirement(s, epochId).cursor, noGroup)
+pure def groupFinishedOrSkipped(g: RetirementGroup): bool = g.phase == GroupFinished or g.phase == GroupSkipped
+pure def retirementGroupMatchesPosition(r: ServiceRetirement, index: int, g: RetirementGroup): bool =
+  g.serviceType == r.plan.nthOr(index, "") and (groupFinishedOrSkipped(g) iff index < r.cursor)
+pure def validateRetirementGroup(check: SequenceValidation, r: ServiceRetirement, g: RetirementGroup): SequenceValidation =
+  {index: check.index + 1, valid: check.valid and retirementGroupMatchesPosition(r, check.index, g)}
+pure def retirementGroupsFollowPlan(r: ServiceRetirement): bool = {
+  val captured = r.groups.length()
+  val activeGroup = r.groups.nthOr(r.cursor, noGroup)
+  0 <= r.cursor and r.cursor <= captured and captured <= r.cursor + 1 and captured <= r.plan.length()
+    and r.plan.every(serviceType => r.plan.select(other => other == serviceType).length() == 1)
+    and r.groups.foldl(uncheckedSequence, (check, g) => validateRetirementGroup(check, r, g)).valid
+    and (r.exited iff (r.cursor < captured and activeGroup.phase == GroupFailed))
+}
+pure def alwaysRetirementsFollowTypePlan(s: PluginServices): bool =
+  s.retirements.every(r => r.epochId > 0 and E::epoch(s.plugins, r.epochId).id == r.epochId
+    and (E::epochRetiring(s.plugins, r.epochId) or not(E::epochOwnsResources(s.plugins, r.epochId)))
+    and s.retirements.select(other => other.epochId == r.epochId).length() == 1
+    and retirementGroupsFollowPlan(r))
 pure def plannedTypes(s: PluginServices, epochId: int): List[str] = s.ownership.select(o => o.epochId == epochId).foldl(List(), (types, owner) => if (types.includes(owner.serviceType)) types else types.append(owner.serviceType))
 pure def captureRetirement(epochId: int, s: PluginServices): PluginServices = { ...s, retirements: s.retirements.append({epochId: epochId, plan: plannedTypes(s, epochId), groups: List(), cursor: 0, failures: List(), exited: false, hookError: ""}) }
 pure def canFailPlugin(s: PluginServices, epochId: int): bool = E::canFailPlugin(s.plugins, epochId)
@@ -119,14 +150,18 @@ pure def captureOwnedInstances(classes: List[RetireClass], services: I::ServiceI
   val result = classes.foldl(noCapturedInstances, (capture, c) => captureClassInstance(capture, c.id, services))
   result.instances
 }
+pure def retirementClassesForType(s: PluginServices, epochId: int, serviceType: str): List[RetireClass] =
+  s.ownership.select(o => o.epochId == epochId and o.serviceType == serviceType).listMap(o => {id: o.classId, hasStopHook: o.hasStopHook})
+pure def withdrawRetiringClasses(classes: List[RetireClass], s: I::ServiceInstances): I::ServiceInstances =
+  classes.foldl(s, (acc, c) => I::withdrawClass(c.id, acc))
 pure def withdrawNextType(s: PluginServices, epochId: int): PluginServices = {
   val r = retirement(s, epochId)
   val serviceType = r.plan.nthOr(r.cursor, "")
   val skip = not(s.services.declarations.some(d => d.serviceType == serviceType))
-  val classes = s.ownership.select(o => o.epochId == epochId and o.serviceType == serviceType).listMap(o => {id: o.classId, hasStopHook: o.hasStopHook})
+  val classes = retirementClassesForType(s, epochId, serviceType)
   val captured = classes.listMap(c => I::serviceClass(s.services, c.id))
   val group: RetirementGroup = {serviceType: serviceType, classes: if (skip) List() else classes, starts: if (skip) List() else captured.select(c => c.pending != 0).listMap(c => c.pending), aggregate: if (skip) 0 else I::serviceTypeEntry(s.services, serviceType).latestAggregate, instances: if (skip) List() else captureOwnedInstances(classes, s.services), observedStops: List(), phase: if (skip) skippedGroupPhase else missingGroupPhase, instanceCursor: 0, classCursor: 0, hook: readyHookPhase}
-  val withdrawn = if (skip) s.services else classes.foldl(s.services, (acc, c) => I::withdrawClass(c.id, acc))
+  val withdrawn = if (skip) s.services else withdrawRetiringClasses(classes, s.services)
   val services = if (skip) withdrawn else I::removePublishedInstances(serviceType, group.instances, withdrawn)
   { ...s, services: services, retirements: s.retirements.listMap(x => if (x.epochId == epochId) { ...x, groups: x.groups.append(group), cursor: x.cursor + (if (skip) 1 else 0) } else x) }
 }
@@ -156,6 +191,8 @@ and runtime shutdown can join the exact same attempt. A rejected instance
 stop adds its original error identity and then advances to the next.
 A missing or non-callable instance stop advances the slot synchronously and
 records the boundary observation without invoking or joining a stop promise.
+Class hooks start after every captured instance slot settles. A finished or
+failed class phase retains those settled observations.
 The observation is scoped to that slot because a plugin object may expose
 a different method when another slot reads the property. Runtime shutdown
 and late-start retirement have a distinct malformed-object reporting path.
@@ -164,6 +201,11 @@ A missing static class hook completes its slot immediately. An invoked hook
 awaits its own outcome. That hook's rejection ends the service loop before
 advancing the class or any later service type, preserves its original failure,
 and leaves outer plugin teardown eligible to continue.
+
+Once a group reconciles its type, that type stays unknown while it has no
+declarations or pending withdrawals. Reconciliation happens before the
+first captured stop or class hook. A finished or failed group retains that
+status rule while teardown processes later service types.
 
 ```quint
 pure def currentInstance(s: PluginServices, epochId: int): int = currentGroup(s, epochId).instances.nthOr(currentGroup(s, epochId).instanceCursor, 0)
@@ -244,16 +286,20 @@ pure def stopSlotSettled(slot: InstanceSlot, services: I::ServiceInstances): boo
   slot.observed == MissingStopSlot or (slot.observed == AwaitedStopSlot and (objectStop == I::StopSucceeded or objectStop == I::StopFailed))
 }
 pure def missingStopObservedFor(g: RetirementGroup, instanceId: int): bool = g.observedStops.some(slot => slot.instanceId == instanceId and slot.observed == MissingStopSlot)
-pure def alwaysNoOrphanInstance(s: PluginServices): bool = s.services.objects.every(o => o.stopCalls > 0 or s.services.classes.some(c => c.live == o.id and c.registered) or s.retirements.some(r => r.groups.some(g => missingStopObservedFor(g, o.id) or (E::epochOwnsResources(s.plugins, r.epochId) and g.instances.includes(o.id)))))
+pure def alwaysNoOrphanInstance(s: PluginServices): bool = s.services.objects.every(o => o.stopCalls > 0 or (s.services.classes.some(c => c.live == o.id and c.registered) and s.services.published.some(p => p.instances.includes(o.id))) or s.retirements.some(r => r.groups.some(g => missingStopObservedFor(g, o.id) or (E::epochOwnsResources(s.plugins, r.epochId) and g.instances.includes(o.id)))))
 pure def validStopObservation(g: RetirementGroup, i: int, slot: InstanceSlot, services: I::ServiceInstances): bool = {
   slot.instanceId == g.instances.nthOr(i, 0) and
     (if (i < g.instanceCursor) stopSlotSettled(slot, services) else g.phase == GroupStoppingInstances and slot.observed == AwaitedStopSlot)
 }
-pure val uncheckedSlots: StopValidation = {index: 0, valid: true}
-pure def validateNextStop(check: StopValidation, g: RetirementGroup, slot: InstanceSlot, services: I::ServiceInstances): StopValidation = {index: check.index + 1, valid: check.valid and validStopObservation(g, check.index, slot, services)}
-pure def allStopObservationsValid(g: RetirementGroup, services: I::ServiceInstances): bool = g.observedStops.foldl(uncheckedSlots, (check, slot) => validateNextStop(check, g, slot, services)).valid
-pure def alwaysStopObservationsFollowSlots(s: PluginServices): bool = s.retirements.every(r => r.groups.every(g => g.instanceCursor >= 0 and g.instanceCursor <= g.instances.length() and g.observedStops.length() >= g.instanceCursor and g.observedStops.length() <= g.instances.length() and g.observedStops.length() <= g.instanceCursor + 1 and allStopObservationsValid(g, s.services)))
-pure def alwaysRetiredUndeclaredTypeIsUnknown(s: PluginServices): bool = not(s.services.stopped) implies s.retirements.every(r => not(E::epochOwnsResources(s.plugins, r.epochId)) implies r.groups.every(g => (g.phase == GroupFinished or g.phase == GroupFailed) and not(s.services.declarations.some(d => d.serviceType == g.serviceType)) and not(s.retirements.some(other => other.groups.some(pending => pending.serviceType == g.serviceType and pending.phase == GroupWaiting))) implies I::serviceTypeEntry(s.services, g.serviceType).status == I::TypeUnknown))
+pure val uncheckedSequence: SequenceValidation = {index: 0, valid: true}
+pure def validateNextStop(check: SequenceValidation, g: RetirementGroup, slot: InstanceSlot, services: I::ServiceInstances): SequenceValidation = {index: check.index + 1, valid: check.valid and validStopObservation(g, check.index, slot, services)}
+pure def allStopObservationsValid(g: RetirementGroup, services: I::ServiceInstances): bool = g.observedStops.foldl(uncheckedSequence, (check, slot) => validateNextStop(check, g, slot, services)).valid
+pure def classPhaseFollowsInstances(g: RetirementGroup): bool =
+  ((g.phase == GroupStoppingClasses or g.phase == GroupFinished or g.phase == GroupFailed) implies
+    g.instanceCursor == g.instances.length())
+  and (g.phase == GroupSkipped implies g.instanceCursor == 0 and g.instances.length() == 0)
+pure def alwaysStopObservationsFollowSlots(s: PluginServices): bool = s.retirements.every(r => r.groups.every(g => g.instanceCursor >= 0 and g.instanceCursor <= g.instances.length() and g.observedStops.length() >= g.instanceCursor and g.observedStops.length() <= g.instances.length() and g.observedStops.length() <= g.instanceCursor + 1 and classPhaseFollowsInstances(g) and allStopObservationsValid(g, s.services)))
+pure def alwaysRetiredUndeclaredTypeIsUnknown(s: PluginServices): bool = not(s.services.stopped) implies s.retirements.every(r => r.groups.every(g => (g.phase == GroupStoppingInstances or g.phase == GroupStoppingClasses or g.phase == GroupFinished or g.phase == GroupFailed) and not(s.services.declarations.some(d => d.serviceType == g.serviceType)) and not(s.retirements.some(other => other.groups.some(pending => pending.serviceType == g.serviceType and pending.phase == GroupWaiting))) implies I::serviceTypeEntry(s.services, g.serviceType).status == I::TypeUnknown))
 pure def alwaysRetiredEpochHasNoResources(s: PluginServices): bool = s.retirements.every(r => not(E::epochOwnsResources(s.plugins, r.epochId)) implies retirementSettled(s, r.epochId) and r.groups.every(g => g.instanceCursor == g.instances.length() and g.observedStops.every(slot => stopSlotSettled(slot, s.services))))
 pure def pluginServiceTeardownError(s: PluginServices, epochId: int): str = if (retirement(s, epochId).exited) retirement(s, epochId).hookError else retirement(s, epochId).failures.nthOr(0, "")
 pure def pluginServiceTeardownAggregated(s: PluginServices, epochId: int): bool = not(retirement(s, epochId).exited) and retirement(s, epochId).failures.length() > 1
@@ -327,7 +373,13 @@ pure val weight_withdrawNextType = 2
 pure val weight_finishNextPluginDisposal = 3
 pure val weight_finishNextRegistration = 3
 pure val weight_requestOwnedStops = 2
-pure val weight_skipMissingStop = 2
-pure val weight_claimInstanceStop = 20
-pure val weight_observeInstanceStop = 20
+pure val weight_skipMissingStop = 8
+pure val weight_claimInstanceStop = 6
+pure val weight_observeInstanceStop = 6
+pure val weight_beginPlugin = 4
+pure val weight_registerOwnedClass = 6
+pure val weight_ensureServices = 4
+pure val weight_finishClassStart = 6
+pure val weight_resolveNextStart = 4
+pure val weight_finishNextObserver = 4
 ```

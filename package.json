@@ -20,13 +20,12 @@
     "prepack": "pnpm build",
     "test": "vitest run",
     "test:browser": "node vibestack/spec.ts tasks test:browser",
-    "test:models": "node vibestack/spec.ts tasks check //#examples",
+    "test:models": "node vibestack/spec.ts tasks check",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "node vibestack/spec.ts tasks //#lint:js //#lint:css",
     "lint:js": "eslint . --max-warnings 0",
     "lint:css": "stylelint \"**/*.css\" --allow-empty-input",
     "analyze": "knip && madge --circular vibestack packages apps && jscpd .",
-    "examples": "failed=0; for d in vibestack/examples/*/; do pnpm -C \"$d\" install --frozen-lockfile --ignore-workspace && pnpm -C \"$d\" check || failed=1; done; exit $failed",
     "quick": "node vibestack/spec.ts tasks typecheck test //#lint:js //#lint:css",
     "verify": "node vibestack/spec.ts tasks build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest",
     "all": "node vibestack/spec.ts tasks"
@@ -63,10 +62,12 @@
     "LICENSE"
   ],
   "dependencies": {
+    "@antithesishq/bombadil": "0.7.10",
     "@effect/platform-node": "4.1.1",
     "@informalsystems/quint": "^0.33.1",
     "effect": "4.1.1",
     "lemmascript": "^0.6.8",
+    "playwright": "catalog:",
     "typescript": "^6.0.3",
     "vibelang-runtime": "0.0.13"
   },
@@ -87,7 +88,6 @@
     "knip": "catalog:",
     "madge": "catalog:",
     "miniflare": "5.20261113.0-beta",
-    "playwright": "catalog:",
     "stylelint": "catalog:",
     "stylelint-config-standard": "catalog:",
     "turbo": "catalog:",

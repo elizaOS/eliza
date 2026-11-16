@@ -137,6 +137,9 @@ importers:
 
   .:
     dependencies:
+      '@antithesishq/bombadil':
+        specifier: 0.7.10
+        version: 0.7.10
       '@effect/platform-node':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
@@ -149,6 +152,9 @@ importers:
       lemmascript:
         specifier: ^0.6.8
         version: 0.6.9(zod@4.6.7)
+      playwright:
+        specifier: 'catalog:'
+        version: 1.65.0
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -204,9 +210,6 @@ importers:
       miniflare:
         specifier: 5.20261113.0-beta
         version: 5.20261113.0-beta(@types/node@26.6.6)
-      playwright:
-        specifier: 'catalog:'
-        version: 1.65.0
       stylelint:
         specifier: 'catalog:'
         version: 18.0.0
@@ -250,6 +253,9 @@ importers:
         specifier: 'catalog:'
         version: 19.3.1(react@19.3.1)
     devDependencies:
+      '@antithesishq/bombadil':
+        specifier: 0.7.10
+        version: 0.7.10
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
@@ -525,6 +531,10 @@ packages:
 
   '@anthropic-ai/vertex-sdk@0.22.0':
     resolution: {integrity: sha512-jT1F8uFf7B02PBrn/BtqlMb+Pknt1pxaRYgZ7de+HuHvIOgxl3ILDwj4s2YfYmwVXJ1MO0P24yFu4GBqiRkShQ==}
+
+  '@antithesishq/bombadil@0.7.10':
+    resolution: {integrity: sha512-71aLKQBB3GNDBQZXU6MCKbt99dl9I+/pjg0EfGD9eCKXDIqpKPXD2rFH6yCJude37RGtnKq6hZFfZhuTp+Tykg==}
+    hasBin: true
 
   '@aws-crypto/crc32@3.0.0':
     resolution: {integrity: sha512-IzSgsrxUcsrejQbPVilIKy16kAT52EwB6zSaI+M3xxIhKh5+aldEyvI+z6erM7TCLB2BJsFrtHjp6/4/sr+3dA==}
@@ -5234,6 +5244,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
       - zod
+
+  '@antithesishq/bombadil@0.7.10': {}
 
   '@aws-crypto/crc32@3.0.0':
     dependencies:

@@ -577,22 +577,22 @@ lemma beginIssuer_ensures(s: RequestRegistry, by_: RegistryCaller, runtimeId: in
   }
 }
 
-lemma commitRestriction_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: int, classification: core__requestIssuer_RequestClassification, interpretation: core__requestIssuer_Interpretation, sourceHash: string, observedSourceHash: string)
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysDenialOwnershipIsUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysSourceObjectIdentitiesAreUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysActivePairsAreUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysAttemptOwnershipIsUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysResultOwnershipIsUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysOwnersRetainProtocolSafety(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysViewsHaveOneDataOwner(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> stepActivePairIdentityNeverChanges(s, "commitRestriction", commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
+lemma commitRestriction_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: int, restriction: RestrictionObservation)
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restriction) ==> alwaysDenialOwnershipIsUnique(commitRestriction(s, by_, issuerId, restriction)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restriction) ==> alwaysSourceObjectIdentitiesAreUnique(commitRestriction(s, by_, issuerId, restriction)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restriction) ==> alwaysActivePairsAreUnique(commitRestriction(s, by_, issuerId, restriction)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restriction) ==> alwaysAttemptOwnershipIsUnique(commitRestriction(s, by_, issuerId, restriction)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restriction) ==> alwaysResultOwnershipIsUnique(commitRestriction(s, by_, issuerId, restriction)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restriction) ==> alwaysOwnersRetainProtocolSafety(commitRestriction(s, by_, issuerId, restriction)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restriction) ==> alwaysViewsHaveOneDataOwner(commitRestriction(s, by_, issuerId, restriction)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restriction) ==> stepActivePairIdentityNeverChanges(s, "commitRestriction", commitRestriction(s, by_, issuerId, restriction)))
 {
-  if inv(s) && canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) {
+  if inv(s) && canCommitRestriction(s, by_, issuerId, restriction) {
     RequestOwnerLookup(s,issuerId);
     var a := ownerAt(s,issuerId);
     assert a in s.owners;
-    core__requestIssuer_commitRestriction_ensures(a.issuer,classification,interpretation,sourceHash,observedSourceHash);
-    var t := commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash);
+    core__requestIssuer_commitRestriction_ensures(a.issuer, restriction.classification, restriction.interpretation, restriction.sourceHash, restriction.observedSourceHash);
+    var t := commitRestriction(s, by_, issuerId, restriction);
     var i :| 0 <= i < |s.owners| && s.owners[i] == a;
     var changed := t.owners[i];
     RequestCompletionPeers(s,a,changed.completions,"","","");

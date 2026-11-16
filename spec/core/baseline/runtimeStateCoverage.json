@@ -25,7 +25,11 @@
       ],
       "specFiles": [
         "spec/core/services.md",
-        "spec/core/serviceRegistry.md"
+        "spec/core/serviceRegistry.md",
+        "spec/core/serviceInstances.md",
+        "spec/core/eagerServices.md",
+        "spec/core/serviceStopObservation.md",
+        "spec/core/serviceAcquisitionResult.md"
       ],
       "stateDomains": [
         "class starts",
@@ -44,7 +48,8 @@
         "spec/core/plugins.md",
         "spec/core/pluginRegistry.md",
         "spec/core/registries.md",
-        "spec/core/pluginServices.md"
+        "spec/core/pluginServices.md",
+        "spec/core/serviceInstances.md"
       ],
       "stateDomains": [
         "epoch ownership",
@@ -53,7 +58,9 @@
         "dispose",
         "reload",
         "component/model/event registrations",
-        "joint service ownership and retirement"
+        "joint service ownership and retirement",
+        "sticky exact-owner connector withdrawal at the disposal continuation",
+        "captured-owner send-handler message-connector and post-connector publication decisions"
       ]
     },
     {
@@ -747,7 +754,7 @@
     "Current integrated simulation, replay and all Dafny obligations must finish; no runtime implementation exists.",
     "Open-workload per-identity fairness and deductive temporal proof remain unsupported by the current frontend; sealed-source and snapshot progress obligations are explicit.",
     "No source-to-model or old-actor-product refinement theorem is claimed. Detailed ownership compositions supplement representative per-call models.",
-    "Prepared-request JSON graph serialization, provider tokenizer execution and normalized locale/string boundaries remain future pure or adapter contracts. Request qualification and fallback count derive UTF-8 length in the Unicode model. A future adapter must supply the complete UTF-16 sequence of the actual serialization.",
+    "Prepared-request configuration preflight, graph validation observations, serialization failure stages and admitted body/count binding are specified in the current pure models. Actual JavaScript reflection and stringification, provider-tokenizer execution and exact deployment qualification remain adapter conformance boundaries, including native token-vector/prefill and device identity. Locale scoring and fallback policy are specified over host lexical observations. Exact JavaScript trimming, casing, Unicode tokenization and keyword normalization remain lexical adapter conformance boundaries. Request qualification and fallback count derive UTF-8 length in the Unicode model. An adapter must supply the complete UTF-16 sequence of the actual serialization.",
     "Trace identity-conflict rejection is an intentional compatibility correction awaiting user acceptance; wall-clock liveness is conditional on expiry remaining true."
   ]
 }

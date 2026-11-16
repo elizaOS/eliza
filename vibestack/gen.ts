@@ -48,6 +48,8 @@ export interface Model extends Roles {
   exports: { types: string[]; values: string[]; variants: string[]; visible: Json[]; samples: { name: string; elem: Json }[] };
   ts: string;
   harness: string;
+  /** The supplemental Quint harness for finding positive guard evaluations on long event traces. */
+  guardHarness: string;
 }
 
 /** Where a definition came from in the spec, for doc comments and ordering. */
@@ -222,7 +224,7 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
 
   const run = harness(name, source, [...imports, ...typeOnly], funs, sig, samples, roles, types, { weights, fair });
   return {
-    name, source, imports, ...roles, fair, within, evals: run.evals, uncompared: run.uncompared, harness: run.text,
+    name, source, imports, ...roles, fair, within, evals: run.evals, uncompared: run.uncompared, harness: run.text, guardHarness: run.guardHarness,
     ts, render, decode: types.decode, canon: types.canon,
     shape: roles.stateType ? types.comparison(roles.stateType) : undefined,
     outputShape: roles.output ? types.comparison(roles.output.out) : undefined,

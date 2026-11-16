@@ -10447,6 +10447,7 @@
             "plugins",
             "services",
             "ownership",
+            "liveOwners",
             "retirements",
             "requestsClosed"
           ],
@@ -10471,9 +10472,26 @@
             "finishLateStart",
             "cleanPlugin",
             "stopServices",
-            "sealRequests"
+            "sealRequests",
+            "resolveNextStart",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "settleTypeAggregate",
+            "clearTypeAggregate",
+            "withdrawNextType",
+            "invokeClassHook",
+            "finishClassHook",
+            "finishRetirementGroup",
+            "skipMissingStop",
+            "claimInstanceStop",
+            "observeInstanceStop",
+            "finishClassSlot",
+            "finishNextPluginDisposal",
+            "finishNextRegistration",
+            "finishNextClassHook",
+            "advanceRetirement"
           ],
-          "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+          "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
         },
         "associatedModels": [
           {
@@ -10483,6 +10501,7 @@
               "plugins",
               "services",
               "ownership",
+              "liveOwners",
               "retirements",
               "requestsClosed"
             ],
@@ -10507,9 +10526,26 @@
               "finishLateStart",
               "cleanPlugin",
               "stopServices",
-              "sealRequests"
+              "sealRequests",
+              "resolveNextStart",
+              "finishNextObserver",
+              "finishNextLateStart",
+              "settleTypeAggregate",
+              "clearTypeAggregate",
+              "withdrawNextType",
+              "invokeClassHook",
+              "finishClassHook",
+              "finishRetirementGroup",
+              "skipMissingStop",
+              "claimInstanceStop",
+              "observeInstanceStop",
+              "finishClassSlot",
+              "finishNextPluginDisposal",
+              "finishNextRegistration",
+              "finishNextClassHook",
+              "advanceRetirement"
             ],
-            "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+            "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
           },
           {
             "spec": "spec/core/serviceInstances.md",
@@ -10519,11 +10555,16 @@
               "classes",
               "attempts",
               "objects",
+              "published",
               "calls",
               "nextAttempt",
               "initialization",
               "stopped",
-              "observerErrors"
+              "observerErrors",
+              "typeEntries",
+              "loadPromises",
+              "aggregates",
+              "nextLoad"
             ],
             "transitions": [
               "registerClass",
@@ -10539,15 +10580,21 @@
               "settleObjectStop",
               "finishLateStart",
               "unregisterClass",
-              "stopRuntime"
+              "stopRuntime",
+              "clearTypeAggregate",
+              "settleTypeAggregate",
+              "finishNextObserver",
+              "finishNextLateStart",
+              "resolveNextStart"
             ],
-            "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+            "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
           }
         ],
         "mappedStateFields": [
           "plugins",
           "services",
           "ownership",
+          "liveOwners",
           "retirements",
           "requestsClosed"
         ],
@@ -10571,128 +10618,97 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/pluginServices.md",
-        "spec/core/serviceInstances.md"
+        "spec/core/pluginRegistry.md",
+        "spec/core/plugins.md"
       ],
-      "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
+      "verification": "Exact-owner publication decisions are specified in the model; model verification, pinned host conformance and implementation refinement are separate evidence.",
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "One authoritative instance state is composed with plugin epochs, ordered duplicate declaration aliases, captured retirement receipts and shared object stop identities. ServiceRegistry is a pure projection library. Cross-runtime product refinement remains unproved.",
+        "representation": "Each retained plugin epoch owns a sticky connectorsWithdrawn bit. Send-handler, message-connector and post-connector publication use the callback's captured epoch, and unowned calls delegate. PluginServices.liveOwners separately maps service classes to their current epochs.",
         "model": {
-          "spec": "spec/core/pluginServices.md",
-          "stateType": "PluginServices",
+          "spec": "spec/core/pluginRegistry.md",
+          "stateType": "PluginEpochs",
           "stateFields": [
-            "plugins",
-            "services",
-            "ownership",
-            "retirements",
-            "requestsClosed"
+            "epochs",
+            "nextEpoch"
           ],
           "transitions": [
             "beginPlugin",
             "joinPlugin",
             "commitPlugin",
-            "registerOwnedClass",
-            "finishInitialization",
-            "ensureServices",
-            "resumeEnsure",
-            "finishClassStart",
-            "failClassStart",
-            "finishClassObserver",
-            "settleEnsure",
             "failPlugin",
             "unloadPlugin",
             "disposePlugin",
-            "requestOwnedStops",
-            "invokeClassStop",
-            "finishClassStop",
-            "finishLateStart",
-            "cleanPlugin",
-            "stopServices",
-            "sealRequests"
+            "cleanPlugin"
           ],
-          "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+          "specSha256": "dea4c7289aba5a766f5d834e416570166ca7698d4bb753a8215221a846e416fa"
         },
         "associatedModels": [
           {
-            "spec": "spec/core/pluginServices.md",
-            "stateType": "PluginServices",
+            "spec": "spec/core/pluginRegistry.md",
+            "stateType": "PluginEpochs",
             "stateFields": [
-              "plugins",
-              "services",
-              "ownership",
-              "retirements",
-              "requestsClosed"
+              "epochs",
+              "nextEpoch"
             ],
             "transitions": [
               "beginPlugin",
               "joinPlugin",
               "commitPlugin",
-              "registerOwnedClass",
-              "finishInitialization",
-              "ensureServices",
-              "resumeEnsure",
-              "finishClassStart",
-              "failClassStart",
-              "finishClassObserver",
-              "settleEnsure",
               "failPlugin",
               "unloadPlugin",
               "disposePlugin",
-              "requestOwnedStops",
-              "invokeClassStop",
-              "finishClassStop",
-              "finishLateStart",
-              "cleanPlugin",
-              "stopServices",
-              "sealRequests"
+              "cleanPlugin"
             ],
-            "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+            "specSha256": "dea4c7289aba5a766f5d834e416570166ca7698d4bb753a8215221a846e416fa"
           },
           {
-            "spec": "spec/core/serviceInstances.md",
-            "stateType": "ServiceInstances",
+            "spec": "spec/core/plugins.md",
+            "stateType": "PluginState",
             "stateFields": [
-              "declarations",
-              "classes",
-              "attempts",
-              "objects",
-              "calls",
-              "nextAttempt",
-              "initialization",
-              "stopped",
-              "observerErrors"
+              "phase",
+              "callers",
+              "outcomeKnown",
+              "outcomeSuccess",
+              "contributions",
+              "hasAdapter",
+              "disposeCalls",
+              "disposePending",
+              "connectorsWithdrawn",
+              "cleanupFailed",
+              "connectorOwner",
+              "servicePending",
+              "serviceLive",
+              "serviceStopCalls",
+              "serviceStopPending"
             ],
             "transitions": [
-              "registerClass",
-              "acquireServices",
-              "finishInitialization",
-              "resumeAcquire",
-              "returnInstance",
-              "failStart",
-              "finishObserver",
-              "settleAcquire",
-              "requestObjectStop",
-              "invokeObjectStop",
-              "settleObjectStop",
-              "finishLateStart",
-              "unregisterClass",
-              "stopRuntime"
+              "beginRegistration",
+              "joinRegistration",
+              "contribute",
+              "commitRegistration",
+              "failRegistration",
+              "ownConnector",
+              "replaceConnector",
+              "beginUnload",
+              "finishDispose",
+              "finishCleanup",
+              "startOwnedService",
+              "finishOwnedService",
+              "stopOwnedService",
+              "finishOwnedServiceStop"
             ],
-            "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+            "specSha256": "f7cdb36a46c6ccb6eb30750936fb967f47c9caa0d121dc28c8849bbffdc84410"
           }
         ],
         "mappedStateFields": [
-          "plugins",
-          "services",
-          "ownership",
-          "retirements",
-          "requestsClosed"
+          "epochs"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled-with-explicit-refinement-boundary",
-        "verification": "Model checks and implementation refinement are separate evidence."
+        "verification": "Model checks and implementation refinement are separate evidence.",
+        "remainingBoundary": "The adapter maps actual captured PluginOwnership references to known retained epochs and preserves ambient capture and exact runtime identity. Absent or cross-runtime capture becomes UnownedCall. An absent dispose hook or synchronous throw reaches the fence before external interleaving, while awaited disposal is fenced by its owning continuation. Unassigned numeric-reference results are model-boundary validation. Registry traversal can fail and retain an old entry after its owner is blocked from publication. The finite pinned host comparisons cover gate decisions and observed schedules. Full source-to-model refinement remains unproved."
       }
     },
     {
@@ -12848,7 +12864,7 @@
             "disposePlugin",
             "cleanPlugin"
           ],
-          "specSha256": "12435c7fe70310841be0545ea9b68a2f98dcdef6131973bcf1b10da94d3c18b7"
+          "specSha256": "dea4c7289aba5a766f5d834e416570166ca7698d4bb753a8215221a846e416fa"
         },
         "mappedStateFields": [
           "epochs"
@@ -13268,11 +13284,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -13288,9 +13309,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -13343,11 +13369,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -13363,9 +13394,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14168,11 +14204,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14188,9 +14229,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14243,11 +14289,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14263,9 +14314,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14332,11 +14388,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14352,9 +14413,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14400,11 +14466,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14420,9 +14491,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14468,11 +14544,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14488,9 +14569,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14536,11 +14622,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14556,9 +14647,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14611,11 +14707,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14631,9 +14732,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -18888,9 +18994,10 @@
             "openTurnLease",
             "closeTurnLease",
             "closeAllowance",
-            "advanceAllowanceClock"
+            "dispatchUnchanged",
+            "setAllowanceClock"
           ],
-          "specSha256": "210e9c8667d07587be79425bbf3c364fed1ff11937a3d40670410ae832f39e70"
+          "specSha256": "74c7ce24eda4357fc77356cf72dbbbad788c3956fe3299b9ef7200ad0a8b6c68"
         },
         "mappedStateFields": [
           "guards",
@@ -21846,11 +21953,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -21866,9 +21978,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -52239,8 +52356,8 @@
         "packages/core/src/plugin-lifecycle.ts#withdrawnConnectorOwners@144"
       ],
       "modelSpecs": [
-        "spec/core/pluginServices.md",
-        "spec/core/serviceInstances.md"
+        "spec/core/pluginRegistry.md",
+        "spec/core/plugins.md"
       ],
       "missingState": [],
       "partialState": []

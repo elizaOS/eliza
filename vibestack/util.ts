@@ -111,6 +111,17 @@ export function manifest(dir: string) {
 /** A package's scripts. */
 export const packageScripts = (root: string): Record<string, string> => manifest(root).scripts ?? {};
 
+/** The script that runs the package's app, for Studio's preview and the explore stage: `start`, or `dev` when that is not the studio. */
+export function appScript(root: string): "start" | "dev" | undefined {
+  const scripts = packageScripts(root);
+  return scripts.start ? "start" : scripts.dev && !/\bspec(\.ts)? studio\b/.test(scripts.dev) ? "dev" : undefined;
+}
+
+/** A terminal colour code, which development servers print around their address. */
+export const COLOUR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+/** The address a development server says it serves at, in a line it printed. @throws {never} */
+export const servedAt = (line: string) => line.replace(COLOUR, "").match(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):\d+[^\s]*/)?.[0];
+
 /** The configuration every package shares (vibestack/testing/vitest.ts): `spec init` writes it, and `check` where test/ has nothing to run it. */
 export const VITEST_CONFIG = `import { project } from "vibestack/testing/vitest";\n\nexport default project({ root: import.meta.dirname });\n`;
 
@@ -458,7 +469,7 @@ function driverImports(root: string): string[] {
 }
 
 /** The package manager a package declares, or whose lock file sits in it or a directory above it, up to the repository or workspace root. */
-function packageManager(root: string): { name: string; lock?: string } {
+export function packageManager(root: string): { name: string; lock?: string } {
   const locks: Record<string, string> = { "pnpm-lock.yaml": "pnpm", "bun.lock": "bun", "bun.lockb": "bun", "yarn.lock": "yarn", "package-lock.json": "npm" };
   let declared: string | undefined;
   for (let dir = path.resolve(root); ; dir = path.dirname(dir)) {
