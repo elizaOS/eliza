@@ -83,7 +83,7 @@ export async function toolchainFingerprint() {
  * everything again. The part of the proof library a proof file calls (prove.ts, `libraryFor`) is part of its unit's key.
  */
 const toolchains = new Map<string, Promise<string>>();
-function toolchainId(stage: "model" | "simulate" | "prove" | "tests"): Promise<string> {
+function toolchainId(stage: "model" | "simulate" | "prove" | "tests" | "explore"): Promise<string> {
   let id = toolchains.get(stage);
   if (id) return id;
   toolchains.set(stage, (id = (async () => {
@@ -111,7 +111,7 @@ export interface Memory { root: string; fresh: boolean; used: Set<string> }
 /** An entry of `.spec-cache`. */
 interface Entry { name: string; file: string }
 const cacheDir = (root: string) => path.join(root, ".spec-cache");
-export async function entry(root: string, stage: "model" | "simulate" | "prove" | "tests", key: string[]): Promise<Entry> {
+export async function entry(root: string, stage: "model" | "simulate" | "prove" | "tests" | "explore", key: string[]): Promise<Entry> {
   const name = `${stage}-${sha(await toolchainId(stage), ...key).slice(0, 24)}.json`;
   return { name, file: path.join(cacheDir(root), name) };
 }
@@ -165,7 +165,7 @@ export function collectGarbage(memory: Memory) {
     const file = path.join(directory, name);
     const stat = fs.lstatSync(file);
     const used = memory.used.has(name);
-    if (!used && (!/^(model|simulate|prove|tests)-(?:.*-)?[a-f0-9]{24}\.json$/.test(name) || !stat.isFile() || stat.mtimeMs < expired))
+    if (!used && (!/^(model|simulate|prove|tests|explore)-(?:.*-)?[a-f0-9]{24}\.json$/.test(name) || !stat.isFile() || stat.mtimeMs < expired))
       fs.rmSync(file, { recursive: true, force: true });
     else retained.push({ file, size: stat.size, touched: stat.mtimeMs, used });
   }

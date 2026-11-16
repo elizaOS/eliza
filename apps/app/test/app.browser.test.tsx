@@ -5,11 +5,23 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import type { Machine } from "../gen/app.effect.vibe";
+import { useMachine } from "../gen/app.react.ts";
 import { App } from "../src/App.tsx";
 import { greeter } from "../src/greeter.vibe";
 import { linkTo } from "../src/link.ts";
 
 const opened: { root: Root; runtime: ManagedRuntime.ManagedRuntime<Machine, unknown> }[] = [];
+function SharedGreeting({ runtime }: Pick<(typeof opened)[number], "runtime">) {
+  const { state } = useMachine(runtime);
+  if (!state) throw new Error("A child lost the machine snapshot its parent already read");
+  return <output aria-label="Shared greetings">{state.count}</output>;
+}
+
+function OpenedApp({ runtime, search }: Pick<(typeof opened)[number], "runtime"> & { search: string }) {
+  const { state } = useMachine(runtime);
+  return <><App runtime={runtime} search={search} />{state && <SharedGreeting runtime={runtime} />}</>;
+}
+
 const environment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 const previousActEnvironment = environment.IS_REACT_ACT_ENVIRONMENT;
 
@@ -19,7 +31,7 @@ async function open(search = "") {
   const runtime = ManagedRuntime.make(Layer.provide(greeter, KeyValueStore.layerStorage(() => localStorage)));
   const root = createRoot(document.body.appendChild(document.createElement("div")));
   opened.push({ root, runtime });
-  await act(() => Promise.resolve(root.render(<App runtime={runtime} search={search} />)));
+  await act(() => Promise.resolve(root.render(<OpenedApp runtime={runtime} search={search} />)));
 }
 
 beforeAll(() => { environment.IS_REACT_ACT_ENVIRONMENT = true; });
@@ -44,6 +56,7 @@ function fill() {
 it("Say hello from a link, then one name after another, until the store is full", async () => {
   await open(linkTo("Ada"));
   await expect.poll(storedGreeter).toEqual({ name: "Ada", count: 1 });
+  await expect.element(page.getByRole("status", { name: "Shared greetings" })).toHaveTextContent("1");
   // spec/app/index.md, "Every step says hello to the name it greeted, once"; spec/app/words.md, "A page says hello to a name"
   await expect.element(page.getByRole("status").filter({ hasText: "Hello, Ada!" })).toBeInTheDocument();
   // spec/app/index.md, "Only a name that is not empty can be greeted, and a link greets only a name not greeted last"
@@ -57,6 +70,7 @@ it("Say hello from a link, then one name after another, until the store is full"
   await expect.element(greet).toBeDisabled();
   await act(() => userEvent.keyboard("Grace{Enter}"));
   await expect.poll(storedGreeter).toEqual({ name: "Grace", count: 3 });
+  await expect.element(page.getByRole("status", { name: "Shared greetings" })).toHaveTextContent("3");
 
   fill();
   await act(() => userEvent.keyboard("Margaret{Enter}"));

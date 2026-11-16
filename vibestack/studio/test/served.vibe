@@ -1,0 +1,40 @@
+// spec/index.md, "Story: Edit, then publish"; spec/index.md, "Story: Sync with an agent"
+// Studio on a scratch project, with stand-in agents at their boundary: test/studio.test.vibe's journeys start it so, and
+// run directly, as the `start` script does for the explore stage, it serves the door until stopped.
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { NODE, TOOLS } from "../src/project.ts"
+import { startStudio, type Agent } from "../src/server.vibe"
+
+/** A stand-in for an agent's command line, at its boundary: it runs `script` in the project with the prompt on standard input. */
+const agent = (label: string, script: string): Agent => ({ label, command: () => [NODE, ["-e", script]] })
+export const agents = {
+  // It keeps the prompt it was given and answers as Claude Code does.
+  fake: agent("Fake", `let p = ""; process.stdin.on("data", (d) => (p += d)).on("end", () => { require("fs").writeFileSync("prompt.txt", p); console.log(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "synced" }] } })); });`),
+  // Agents that write what only the tools may: the review ledger, and Studio's own state.
+  ledgerEdit: agent("Ledger writer", "require('node:fs').appendFileSync('spec/lock.json', '\\n')"),
+  invalidState: agent("State writer", "const fs = require('node:fs'); fs.rmSync('.studio', { recursive: true }); fs.writeFileSync('.studio', 'invalid')"),
+}
+
+/** A scratch project holding the given files, removed with the scope. */
+export effect function scratch(files: Record<string, string>) {
+  const fs = try FileSystem.FileSystem
+  const path = try Path.Path
+  const root = try fs.realPath(try fs.makeTempDirectoryScoped({ prefix: "studio-test-" }))
+  for (const [file, text] of Object.entries(files)) {
+    try fs.makeDirectory(path.dirname(path.join(root, file)), { recursive: true })
+    try fs.writeFileString(path.join(root, file), text)
+  }
+  return root
+}
+
+/** The door, from the fixtures, as a scratch project's only spec. */
+effect function scratchDoor(files: Record<string, string> = {}) {
+  return try scratch({ "spec/door.md": try (try FileSystem.FileSystem).readFileString(`${TOOLS}/fixtures/door.md`), ...files })
+}
+
+if (import.meta.main) NodeRuntime.runMain(Effect.provide(scoped(effect {
+  const { url } = try startStudio({ projects: [{ id: ".", name: "Door", root: try scratchDoor() }], port: 0, agents: { fake: agents.fake } })
+  try Console.log(`studio: ${url}/?project=.`)
+  return try Effect.never
+}), NodeServices.layer))

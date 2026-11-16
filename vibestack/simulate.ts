@@ -15,12 +15,12 @@ import { allDone, digest, indent } from "./util.ts";
 
 const SAMPLES = 10000;
 const WITNESS_SAMPLES = 20 * SAMPLES;
+const WITNESS_PREFLIGHT_SAMPLES = 32;
 const COMPARED_SAMPLES = 2000;
 const REPLAYED = 200;
 /** Traces of the first simulation kept, for a spec with `leadsTo` rules, to look for runs that break one (`lasso`). */
 const LASSO_TRACES = 2000;
 const STEPS = 20; // events per trace
-/** Trace lengths a search for something reachable tries in turn, the longer ones only if the shorter found nothing. */
 const DEPTHS = [STEPS, 2 * STEPS, 5 * STEPS];
 
 export interface Step {
@@ -116,16 +116,17 @@ const MAX_SHARDS = 4;
  * single thread, each with a seed of its own; how it is split depends only on the budget, so the same harness always gives
  * the same traces. When a run breaks the invariant, the command is the one for that run.
  */
-export async function simulate(root: string, model: Model, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
+export async function simulate(root: string, model: Model, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
   const dir = path.join(root, "gen/traces", `${model.name}.${invariant}.${step}`);
   fs.rmSync(dir, { recursive: true, force: true });
   const shards = !split ? 1 : Math.max(1, Math.min(MAX_SHARDS, Math.floor(samples / SHARD_SAMPLES)));
+  const singleThread = shards > 1 || sampleLimit < samples;
   const runs = Array.from({ length: shards }, async (_, k) => {
     const out = shards === 1 ? dir : path.join(dir, String(k));
     fs.mkdirSync(out, { recursive: true });
     const derivedSeed = seedFor(seed, model.harness, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));
     const args = ["run", `gen/${model.name}.run.qnt`, "--main", `${model.name}_run`, "--step", step, "--invariant", invariant,
-      "--max-samples", String(Math.ceil(samples / shards)), "--max-steps", String(steps), "--mbt", "--seed", derivedSeed, ...(shards === 1 ? [] : ["--n-threads", "1"])];
+      "--max-samples", String(Math.ceil(sampleLimit / shards)), "--max-steps", String(steps), "--mbt", "--seed", derivedSeed, ...(singleThread ? ["--n-threads", "1"] : [])];
     const r = await simulating(root, () => run("quint", [...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", path.join(out, "{seq}.itf.json")], root));
     const broken = r.status === 1 && /(?:^|\n)error: Invariant violated$/.test(r.stderr.trimEnd());
     // In the order Quint wrote them, so that the same simulation always gives the traces in the same order.
@@ -145,8 +146,16 @@ export async function simulate(root: string, model: Model, invariant: string, tr
  * found, fewer of them as they lengthen, so each depth costs about as many events as `samples` traces of the first.
  */
 export async function search(root: string, model: Model, invariant: string, step = "step", depths = DEPTHS, samples = WITNESS_SAMPLES, seed = 1): ReturnType<typeof simulate> {
+  const searches = depths.map((steps) => ({ steps, budget: Math.ceil(samples * STEPS / steps) }));
+  if (searches.length > 1) {
+    for (const { steps, budget } of searches) {
+      if (budget <= WITNESS_PREFLIGHT_SAMPLES) continue;
+      const run = await simulate(root, model, invariant, 1, budget, step, false, steps, seed, WITNESS_PREFLIGHT_SAMPLES);
+      if (run.broken) return run;
+    }
+  }
   let run!: Awaited<ReturnType<typeof simulate>>;
-  for (const steps of depths) if ((run = await simulate(root, model, invariant, 1, Math.ceil(samples * STEPS / steps), step, false, steps, seed)).broken) break;
+  for (const { steps, budget } of searches) if ((run = await simulate(root, model, invariant, 1, budget, step, false, steps, seed)).broken) break;
   return run;
 }
 const SEARCHED = `${WITNESS_SAMPLES} traces of ${STEPS} events and longer ones up to ${DEPTHS.at(-1)}`;
@@ -291,7 +300,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
     return rule ? citation(rule) : def;
   };
   const simulationSteps = STEPS + Math.max(0, ...model.within.values());
-  const key = [importedMeanings(spec, specs), spec.meaning, spec.rules.map((r) => r.key).join("\n"), model.harness, String([SAMPLES, WITNESS_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
+  const key = [importedMeanings(spec, specs), spec.meaning, spec.rules.map((r) => r.key).join("\n"), model.harness, String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
   return remembered<Simulation>(memory, entry(memory.root, "simulate", key), async () => {
     const said: Result[] = [];
     let tested: Simulated | undefined;

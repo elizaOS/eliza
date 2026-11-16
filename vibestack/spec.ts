@@ -8,6 +8,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Model } from "./gen.ts";
 import { conformance, type Machine } from "./conform.ts";
+import { explore } from "./explore.ts";
 import { ensuresOf, LIB_FILE, dafnyVersion, libraryFor, proofPaths, prove, type Offered, type Proof } from "./prove.ts";
 import { bin, run } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
@@ -26,7 +27,7 @@ export { replay, type Step } from "./simulate.ts";
 export { danglingCitations } from "./util.ts";
 export { scanSpec } from "./scan.ts";
 
-export interface Result { ok: boolean; stage: "model" | "always" | "sometimes" | "replay" | "types" | "proof" | "tests" | "traces" | "review" | "skipped"; summary: string; detail: string; where?: string; /** The rules the result concerns, each by its spec and key. */ rules?: { file: string; key: string }[] }
+export interface Result { ok: boolean; stage: "model" | "always" | "sometimes" | "replay" | "types" | "proof" | "tests" | "traces" | "explore" | "review" | "skipped"; summary: string; detail: string; where?: string; /** The rules the result concerns, each by its spec and key. */ rules?: { file: string; key: string }[] }
 /** The Node these tools run on: the major release .nvmrc pins, and the root's `engines` floor. */
 export const NODE = 26;
 export const show = ({ ok, stage, summary, detail }: Result) => `${stage === "skipped" ? "-" : ok ? "✓" : "✗"} ${stage.padEnd(9)} ${summary}${detail ? "\n" + detail.trimEnd() : ""}`;
@@ -48,6 +49,7 @@ export function nextStep(results: Result[]): string {
       proof: "prove what is listed in the unit's proof file, or fix what Dafny could not check",
       tests: "fix the application or its tests",
       traces: "fix the program where it departs from the spec, or the spec if the program is right",
+      explore: "fix the page where it breaks the property, or test/bombadil.ts if the property no longer says what the rules ask",
     };
     // A counterexample the traces stage saved is replayed first from now on, until one side changes.
     const saved = first.stage === "traces" && first.detail.match(/Saved as (\S+), which/)?.[1];
@@ -315,7 +317,7 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
   const restates = "a stage above failed, and their failures would only restate it";
   let ledger: Record<string, Accepted> | undefined;
 
-  if (!allOk) skip("types, proof, tests and traces", restates);
+  if (!allOk) skip("types, proof, tests, traces and explore", restates);
   else {
     // The typecheck runs while the proofs do; it is reported first.
     // VibeLang's compiler checks `.vibe`, `.ts` and `.tsx` as one program.
@@ -341,10 +343,11 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     const proofs = await proving;
     proofs.results.forEach(report);
     ledger = proofs.ledger;
-    if (!allOk) skip("tests and traces", restates);
+    if (!allOk) skip("tests, traces and explore", restates);
     else {
       for (const dir of dirs) for (const r of await tests(root, dir, specs, (key, ran, keep) => remembered(memory, entry(root, "tests", [dir, key]), ran, keep), mode, memory.fresh)) report(within(dir, result(r)));
       for (const dir of dirs) for (const r of await conformance(path.join(root, dir), machines, scripts.get(dir)!, mode)) report(within(dir, result(r)));
+      for (const dir of dirs) for (const r of await explore(path.join(root, dir), (key, ran, keep) => remembered(memory, entry(root, "explore", [dir, key]), ran, keep), mode, root)) report(within(dir, result(r)));
       // Every stage ran, so every entry still in use was read or written.
       collectGarbage(memory);
     }
@@ -417,7 +420,7 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
 /** What a VibeLang shell runs on, and what builds and tests it; `init` adds them at the versions in this package's manifest. */
 const VIBELANG = {
   dependencies: ["effect", "@effect/platform-node", "vibelang-runtime"],
-  devDependencies: ["vibelang", "vibelang-vite", "vite", "vitest", "@effect/vitest", "@types/node"],
+  devDependencies: ["vibelang", "vibelang-vite", "vite", "vitest", "@effect/vitest", "@types/node", "@antithesishq/bombadil"],
 };
 
 /** Set up a project, preserving its content outside the marked Vibestack instructions. */
@@ -495,7 +498,7 @@ export function init(root: string, warn: (message: string) => void = (message) =
   add("spec/index.md", () => "");
   const ignore = path.join(root, ".gitignore");
   const ignored = fs.existsSync(ignore) ? fs.readFileSync(ignore, "utf8") : "";
-  const missing = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", ...generatedSkillIgnores].filter((l) => !ignored.split("\n").includes(l));
+  const missing = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", "test/__traces__/", ...generatedSkillIgnores].filter((l) => !ignored.split("\n").includes(l));
   if (missing.length) { fs.writeFileSync(ignore, ignored + (ignored && !ignored.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n"); done.push(".gitignore"); }
   const manifest = path.join(root, "package.json");
   {
