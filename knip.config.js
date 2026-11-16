@@ -77,7 +77,7 @@ export default {
         "src/{index,protocol,logging,view-interaction,speech,read-memo,schema-types}.vibe",
         "src/types/permissions.vibe",
         "src/security/redact.vibe",
-        "src/messaging/{task-events,task-widgets}.vibe",
+        "src/entry/{task-events,task-widgets}.vibe",
         "test/**/*.test.{ts,vibe}",
         "test/drivers/*.ts",
         "src/**/*.{schema,contract}.{ts,vibe}"

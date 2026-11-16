@@ -82,16 +82,16 @@
       "default": "./dist/src/speech.js"
     },
     "./task-events": {
-      "eliza-source": "./src/messaging/task-events.vibe",
-      "types": "./dist/src/messaging/task-events.d.ts",
-      "import": "./dist/src/messaging/task-events.js",
-      "default": "./dist/src/messaging/task-events.js"
+      "eliza-source": "./src/entry/task-events.vibe",
+      "types": "./dist/src/entry/task-events.d.ts",
+      "import": "./dist/src/entry/task-events.js",
+      "default": "./dist/src/entry/task-events.js"
     },
     "./task-widgets": {
-      "eliza-source": "./src/messaging/task-widgets.vibe",
-      "types": "./dist/src/messaging/task-widgets.d.ts",
-      "import": "./dist/src/messaging/task-widgets.js",
-      "default": "./dist/src/messaging/task-widgets.js"
+      "eliza-source": "./src/entry/task-widgets.vibe",
+      "types": "./dist/src/entry/task-widgets.d.ts",
+      "import": "./dist/src/entry/task-widgets.js",
+      "default": "./dist/src/entry/task-widgets.js"
     },
     "./read-memo": {
       "eliza-source": "./src/read-memo.vibe",

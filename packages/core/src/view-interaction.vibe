@@ -1,3 +1,15 @@
 // spec/core/views.md, "Story: Deliver a completed action to the intended view"
-export * from "./views/view-action-handoff.vibe"
-export * from "./views/view-interact-protocol.vibe"
+export {
+  findViewActionHandoffOrThrow as findViewActionHandoff,
+  type ViewActionHandoff,
+} from "./views/view-action-handoff.vibe"
+export {
+  AGENT_SURFACE_CAPABILITY_IDS,
+  parseViewInteractionClientId,
+  READ_ONLY_VIEW_CAPABILITY_IDS,
+  readViewInteractionClientId,
+  STANDARD_CAPABILITIES,
+  type StandardCapability,
+  type ViewInteractRequest,
+  type ViewInteractResult,
+} from "./views/view-interact-protocol.vibe"

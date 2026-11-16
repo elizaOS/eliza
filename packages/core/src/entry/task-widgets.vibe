@@ -1,0 +1,6 @@
+// spec/core/contracts.md, "Story: Consume the replacement through existing imports"
+export {
+  admitTaskChoiceResponseOrThrow as admitTaskChoiceResponse,
+  type TaskChoiceWidget,
+  validateTaskChoiceWidgetOrThrow as validateTaskChoiceWidget,
+} from "../messaging/task-widgets.vibe"
