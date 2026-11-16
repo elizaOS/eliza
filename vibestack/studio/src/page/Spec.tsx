@@ -10,7 +10,7 @@ import {
   type Working,
 } from "./studio.ts";
 import { Code, Dot, Icon, IconButton, Markdown, Quint, type Mark } from "./text.tsx";
-import type { Result } from "../../../spec.ts";
+import type { Result } from "../../../pipeline.ts";
 
 /** What is being dragged, for the drop targets that accept it. */
 export let dragging: { uid: string; kind: "story" | "rule" } | null = null;

@@ -20,14 +20,25 @@ import { reactHook } from "./gen/react.ts";
 const ANNOTATIONS = ["backend", "pure", "requires", "ensures", "invariant", "decreases", "type", "ghost", "assert"];
 
 /**
+ * The files each project's generation wrote, by its root. A file is written only when its text changed, so that what
+ * watches gen/ hears of what changed alone; what the generation did not write is swept away (`mirrorGen`).
+ */
+const generations = new Map<string, Set<string>>();
+function put(root: string, file: string, text: string) {
+  generations.get(root)?.add(file);
+  let was: string | undefined;
+  try { was = fs.readFileSync(file, "utf8"); } catch { was = undefined; }
+  if (was !== text) fs.writeFileSync(file, text);
+}
+
+/**
  * gen/ holds TypeScript that Node loads as ES modules, whatever the project's package.json says: a project whose
  * package.json says `"type": "commonjs"` would otherwise fail to load every generated module.
  */
 function genDir(root: string): string {
   const dir = path.join(root, "gen");
   fs.mkdirSync(dir, { recursive: true });
-  const manifest = path.join(dir, "package.json");
-  if (!fs.existsSync(manifest)) fs.writeFileSync(manifest, `${JSON.stringify({ type: "module" })}\n`);
+  put(root, path.join(dir, "package.json"), `${JSON.stringify({ type: "module" })}\n`);
   return dir;
 }
 
@@ -56,11 +67,12 @@ export function generated(root: string, spec: Spec, ir: any, models: Map<string,
   const origins = new Map<string, Origin>();
   for (const r of spec.rules) for (const d of r.defs) origins.set(d, { rule: r.key, line: r.line });
   const model = generate(ir, spec.name, spec.file, (d) => origins.get(d), models);
-  fs.writeFileSync(path.join(dir, `${spec.name}.ts`), model.ts);
-  fs.writeFileSync(path.join(dir, `${spec.name}.run.qnt`), model.harness);
-  writeFaces(root, dir, spec, model.ts);
-  if (model.opaques.length) fs.writeFileSync(path.join(dir, `${spec.name}.sim.qnt`), simulated(spec.qnt, model.opaques));
-  writeConformance(root, model);
+  const write = (name: string, text: string) => put(root, path.join(dir, name), text);
+  write(`${spec.name}.ts`, model.ts);
+  write(`${spec.name}.run.qnt`, model.harness);
+  writeFaces(root, root, dir, spec, model.ts);
+  if (model.opaques.length) write(`${spec.name}.sim.qnt`, simulated(spec.qnt, model.opaques));
+  writeConformance(model, write);
   models.set(spec.name, model);
   return model;
 }
@@ -69,11 +81,11 @@ export function generated(root: string, spec: Spec, ir: any, models: Map<string,
  * Into `to`, the gen/ of the package in `dir`, what gen/<name>.ts (`text`) is for its shell: the Effect adapter, whose
  * `Machine` key carries the package's name, and the React hook where the package depends on react.
  */
-function writeFaces(dir: string, to: string, spec: Spec, text: string) {
+function writeFaces(root: string, dir: string, to: string, spec: Spec, text: string) {
   const pkg = manifest(dir);
-  fs.writeFileSync(path.join(to, `${spec.name}.effect.vibe`), effectAdapter(spec.name, spec.file, text, namespace(dir, pkg.name)));
+  put(root, path.join(to, `${spec.name}.effect.vibe`), effectAdapter(spec.name, spec.file, text, namespace(dir, pkg.name)));
   const hook = ["dependencies", "devDependencies", "peerDependencies"].some((kind) => pkg[kind]?.react) && reactHook(spec.name, spec.file, text);
-  if (hook) fs.writeFileSync(path.join(to, `${spec.name}.react.ts`), hook);
+  if (hook) put(root, path.join(to, `${spec.name}.react.ts`), hook);
 }
 
 /**
@@ -91,36 +103,48 @@ function namespace(dir: string, name: unknown): string {
 }
 
 /**
- * Each owner's gen/, written anew from the root's: the modules of its specs and of every spec they import, under the
- * root's module names, with the types their drivers are written to, so that a package imports only from its own gen/.
- * The Effect adapter and the React hook are written for the owner (`writeFaces`): that is the package the service runs
- * in.
- * A module not generated, because its spec is not valid, is not there.
+ * Each owner's gen/, from the root's: the modules of its specs and of every spec they import, under the root's module
+ * names, with the types their drivers are written to, so that a package imports only from its own gen/. The Effect
+ * adapter and the React hook are written for the owner (`writeFaces`): that is the package the service runs in.
+ * A module not generated, because its spec is not valid, is not there. This ends a generation: what it did not write,
+ * in the root's gen/ or an owner's, is removed, so that nothing stale survives a rename.
  */
 export function mirrorGen(root: string, specs: Spec[]) {
+  const written = generations.get(root) ?? new Set<string>();
+  generations.set(root, written);
+  const sweep = (dir: string) => {
+    if (!fs.existsSync(dir)) return;
+    for (const f of fs.readdirSync(dir)) if (!written.has(path.join(dir, f))) fs.rmSync(path.join(dir, f), { recursive: true, force: true });
+    if (!fs.readdirSync(dir).length) fs.rmSync(dir, { recursive: true });
+  };
   const from = path.join(root, "gen");
+  sweep(from);
   for (const dir of codeDirs(root).filter(Boolean)) {
     const needed = new Set<string>();
     const need = (name: string) => { if (!needed.has(name)) { needed.add(name); specs.find((s) => s.name === name)?.imports.forEach(need); } };
     for (const spec of specs) if (`${owner(root, spec.file)}/` === dir) need(spec.name);
     const to = path.join(root, dir, "gen");
-    fs.rmSync(to, { recursive: true, force: true });
-    const files = fs.readdirSync(from).filter((f) => needed.has(f.match(/^(\w+)\.(?:ts|conformance\.ts)$/)?.[1] ?? ""));
-    if (!files.length) continue;
-    fs.mkdirSync(to, { recursive: true });
-    for (const f of [...files, "package.json", ...files.some((f) => f.endsWith(".conformance.ts")) ? ["_conformance.ts"] : []]) fs.copyFileSync(path.join(from, f), path.join(to, f));
-    for (const spec of specs) if (files.includes(`${spec.name}.ts`)) writeFaces(path.join(root, dir), to, spec, fs.readFileSync(path.join(from, `${spec.name}.ts`), "utf8"));
+    const files = fs.existsSync(from) ? fs.readdirSync(from).filter((f) => needed.has(f.match(/^(\w+)\.(?:ts|conformance\.ts)$/)?.[1] ?? "")) : [];
+    if (files.length) {
+      fs.mkdirSync(to, { recursive: true });
+      for (const f of [...files, "package.json", ...files.some((f) => f.endsWith(".conformance.ts")) ? ["_conformance.ts"] : []]) put(root, path.join(to, f), fs.readFileSync(path.join(from, f), "utf8"));
+    }
+    for (const spec of specs) if (files.includes(`${spec.name}.ts`)) writeFaces(root, path.join(root, dir), to, spec, fs.readFileSync(path.join(from, `${spec.name}.ts`), "utf8"));
+    sweep(to);
   }
+  generations.delete(root);
 }
 
 /**
  * Quint's typed IR of every spec, typechecked all at once and without blocking, or remembered: it depends only on the
- * Quint of the spec and of what it imports (action.ts). Each promise rejects with the errors of its spec. gen/<name>.qnt
- * is written for every spec, since the simulation harness imports it.
+ * Quint of the spec and of what it imports (action.ts). Each promise rejects with the errors of its spec. This begins a
+ * generation of gen/ (`mirrorGen` ends it); gen/<name>.qnt is written for every spec, since the simulation harness
+ * imports it.
  */
 export function typecheckAll(memory: Memory, specs: Spec[]): Map<string, Promise<any>> {
+  generations.set(memory.root, new Set());
   const dir = genDir(memory.root);
-  for (const spec of specs) fs.writeFileSync(path.join(dir, `${spec.name}.qnt`), spec.qnt);
+  for (const spec of specs) put(memory.root, path.join(dir, `${spec.name}.qnt`), spec.qnt);
   return new Map(specs.map((spec) => {
     const ir = (async () => {
       const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-typecheck-"));

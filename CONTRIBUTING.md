@@ -50,7 +50,7 @@ Pull requests go to `develop`, and `develop` to `main`; what CI runs on each is 
 
 | File | Role |
 |---|---|
-| `vibestack/spec.ts` | the pipeline and the `spec` command |
+| `vibestack/spec.ts`, `vibestack/pipeline.ts` | the `spec` command, and the pipeline it runs |
 | `vibestack/parse.ts`, `vibestack/review.ts` | literate specs and the review ledger |
 | `vibestack/cache.ts`, `vibestack/run.ts` | stage caches and bounded tool execution |
 | `vibestack/units.ts`, `vibestack/simulate.ts` | generation, proof units, simulation and replay |
@@ -125,9 +125,11 @@ imports `gen/` only as types, so it does not compare the model with itself.
 
 ### Caching
 
-Core generation produces deterministic code and rebuilds `gen/` to remove
-stale modules. Story and property-test generators write files only when their
-bytes change and remove outputs whose sources have gone. `.spec-cache/`
+Core generation produces deterministic code. It, and the story and property-test
+generators, write files only when their bytes change and remove outputs whose
+sources have gone: a check that changes no spec leaves `gen/` and the owners'
+`gen/` untouched, so nothing that watches them rebuilds. A check loads each
+generated module from its own `.spec-cache/run-<time>/`, removed when it ends. `.spec-cache/`
 remembers each run of Quint, and of LemmaScript and Dafny on a proof, under the program as installed, its arguments and
 the files it reads, without their prose, comments and layout (`vibestack/action.ts`),
 and each simulation and proof result under a fingerprint of a spec and its
@@ -152,9 +154,15 @@ It also remembers a package's passing test run under a hash of what its tests
 read; a driver's passing run under the same hash and the events the simulator
 found; and a passing typecheck under the package's files without its Markdown,
 Quint and Dafny, its `tsconfig.json` chain and included files, and each file outside
-`node_modules` that the compiler listed as read. `watch` does not check again
-for a file the last check wrote itself, such as a driver to fill in or a saved
-counterexample, while the file still holds what it wrote.
+`node_modules` that the compiler listed as read. `watch` checks again when any
+file of the root or an owner changes, is added or is removed, outside `gen/`
+and the directories no stage reads (`node_modules`, build output, saved
+explorations, hidden directories), since a missed change would leave a stale
+pass on screen; it does not check again for a file the last check wrote
+itself, such as a driver to fill in or a saved counterexample, while the file
+still holds what it wrote. `spec.ts` turns on Node's compile cache before it
+loads the pipeline, so each `spec` process, Studio's checks and Turborepo's
+tasks included, compiles only the tools that changed.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3

@@ -1,4 +1,4 @@
-// What Studio reads of a project, through the tools' own synchronous API (../../spec.ts, ../../parse.ts), and the
+// What Studio reads of a project, through the tools' own synchronous API (../../pipeline.ts, ../../parse.ts), and the
 // Node edges Effect has no service for. Everything that runs, writes or serves is ./server.vibe's.
 // README, "Studio".
 import fs from "node:fs";
@@ -6,7 +6,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { trusted } from "vibelang-runtime";
-import { acceptable, type Result } from "../../spec.ts";
+import { acceptable, type Result } from "../../pipeline.ts";
 import { isStd, parseSpec, readSpecs, specFiles, specName } from "../../parse.ts";
 import { ledgerFile, pending, pendingContracts, pendingKey, pendingSpecs, type Lock, type Pending } from "../../review.ts";
 import { appScript as scriptOfApp, filesUnder, packageScripts, projectRoot, servedAt, short } from "../../util.ts";
@@ -122,7 +122,7 @@ const reviewItem = (p: Pending, file?: string): ReviewItem => ({
 });
 
 /**
- * The specs as the page shows them, and everything `accept` would record (../../spec.ts, the `review` stage), or the
+ * The specs as the page shows them, and everything `accept` would record (../../pipeline.ts, the `review` stage), or the
  * `problem` that keeps the specs from being read as one tree. A trusted call.
  */
 export const readTree = trusted(function readTree(root: string): { specs: SpecView[]; review: ReviewItem[]; problem?: string } {

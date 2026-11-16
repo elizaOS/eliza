@@ -11,7 +11,7 @@ import { entry, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { simulated } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
-import type { Result } from "./spec.ts";
+import type { Result } from "./pipeline.ts";
 import { allDone, digest, indent } from "./util.ts";
 
 const SAMPLES = 10000;

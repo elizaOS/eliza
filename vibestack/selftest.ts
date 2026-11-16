@@ -25,7 +25,7 @@ import { mirrorGen } from "./units.ts";
 import { conformance as checkTraces, conformanceFound } from "./conform.ts";
 import { explore, explored } from "./explore.ts";
 import { harnessFiles, search } from "./simulate.ts";
-import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./spec.ts";
+import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./pipeline.ts";
 
 const project = path.join(import.meta.dirname, "..");
 const harnessSkillPaths = [".codex/skills", ".cursor/skills", ".droid/skills", ".factory/skills", ".gemini/skills", ".grok/skills", ".t3/skills"];
@@ -172,7 +172,7 @@ function watching(root: string, cwd = root) {
   for (const stream of [watcher.stdout, watcher.stderr]) stream.on("data", (chunk) => { said.output += chunk; });
   return {
     said,
-    checks: () => said.output.match(/watching spec\//g)?.length ?? 0,
+    checks: () => said.output.match(/watching what the check reads/g)?.length ?? 0,
     waitFor: (ready: () => boolean) => until(() => { assert.equal(watcher.exitCode, null, said.output); return ready(); }, () => said.output),
     stop: async () => {
       if (watcher.exitCode !== null || watcher.signalCode !== null) return;
@@ -1777,7 +1777,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.deepEqual([await driverRuns(), await driverRuns()], [2, 3]);
   });
 
-  test("nothing stale survives in gen/ or hides a renamed source", async () => {
+  test("nothing stale survives in gen/ or hides a renamed source, and a check that changes no spec leaves gen/ as it was", async () => {
     const root = copyOfProject();
     fs.mkdirSync(path.join(root, "gen"), { recursive: true });
     for (const stale of ["renamed.ts", "renamed.effect.vibe", "index.effect.vibe.pure.d.ts"]) fs.writeFileSync(path.join(root, "gen", stale), "export const stale = true;\n");
@@ -1785,6 +1785,11 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     // tsconfig.json keeps the compiler's declaration sidecars under .vibe/declarations/.
     assert.deepEqual(fs.readdirSync(path.join(root, "gen")).filter((f) => /\.(ts|vibe)$/.test(f)).sort(),
       ["_conformance.ts", "index.conformance.ts", "index.effect.vibe", "index.ts"]);
+    const stamps = () => fs.readdirSync(path.join(root, "gen"), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => [e.name, fs.statSync(path.join(root, "gen", e.name)).mtimeMs]);
+    const stamped = stamps();
+    await check(root);
+    assert.deepEqual(stamps(), stamped);
+    assert.deepEqual(["gen", ".spec-cache"].flatMap((dir) => fs.readdirSync(path.join(root, dir)).filter((f) => f.startsWith("run-"))), []);
     const sidecar = path.join(root, ".vibe/declarations/src/app.d.vibe.ts");
     assert.ok(fs.existsSync(sidecar) && fs.existsSync(path.join(root, ".vibe/declarations/gen/index.effect.vibe.pure.d.ts")));
     fs.renameSync(path.join(root, "src/app.vibe"), path.join(root, "src/renamed.vibe"));
@@ -2393,6 +2398,17 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
       fs.writeFileSync(path.join(watchedRoot, "apps/app/tsconfig.json"), '{"compilerOptions":{"unknownOption":true}}');
       await waitFor(() => said.output.includes("apps/app: application does not fit the generated contract"));
       assert.match(said.output, /Unknown compiler option 'unknownOption'/);
+      // Any file a stage reads starts a run, not only a spec, source or configuration: a recorded trace, a page, a stylesheet, and one removed.
+      for (const [file, change] of [["test/traces/index.jsonl", "{}\n"], ["test/traces/index.jsonl", "{}\n{}\n"], ["index.html", "<!doctype html>\n"], ["apps/app/style.css", "a {}\n"], ["index.html", undefined]] as const) {
+        await waitFor(() => said.output.trimEnd().endsWith("Ctrl-C to stop)"));
+        const before = checks();
+        if (change === undefined) fs.rmSync(path.join(watchedRoot, file));
+        else {
+          fs.mkdirSync(path.dirname(path.join(watchedRoot, file)), { recursive: true });
+          fs.writeFileSync(path.join(watchedRoot, file), change);
+        }
+        await waitFor(() => checks() > before);
+      }
     } finally {
       await stop();
     }
@@ -2792,6 +2808,19 @@ assert.deepEqual(await Promise.all([undefined, "1", "2", "7", "{"].map((before) 
     assert.deepEqual((await genAll(tree)).filter((f) => f.endsWith(".react.ts")), []);
     mirrorGen(tree, readSpecs(tree));
     assert.deepEqual(["app", "plain"].map((name) => fs.readdirSync(path.join(tree, "apps", name, "gen")).filter((f) => /\.(react\.ts|effect\.vibe)$/.test(f))), [["app.effect.vibe", "app.react.ts"], ["plain.effect.vibe"]]);
+    // Generating again rewrites only what changed, so what watches gen/ hears of nothing else, and removes what it no longer writes.
+    const gens = ["gen", "apps/app/gen", "apps/plain/gen"].map((dir) => path.join(tree, dir));
+    const stamps = () => gens.map((dir) => Object.fromEntries(fs.readdirSync(dir).map((f) => [f, fs.statSync(path.join(dir, f)).mtimeMs])));
+    fs.writeFileSync(path.join(tree, "apps/app/gen/stale.ts"), "");
+    const [rootBefore, appBefore, plainBefore] = stamps();
+    const plainText = read("apps/plain/gen/plain.ts", tree);
+    fs.writeFileSync(path.join(tree, "spec/plain/index.md"), ruleSpec(COUNTER.replace("n < 2", "n < 1")));
+    await genAll(tree);
+    mirrorGen(tree, readSpecs(tree));
+    const [rootAfter, appAfter, plainAfter] = stamps();
+    delete appBefore["stale.ts"];
+    assert.deepEqual([appAfter, rootAfter["app.ts"], Object.keys(plainAfter)], [appBefore, rootBefore["app.ts"], Object.keys(plainBefore)]);
+    assert.notEqual(read("apps/plain/gen/plain.ts", tree), plainText);
   });
 
   test("init gives a project the repository's guard on what the tools write", () => {

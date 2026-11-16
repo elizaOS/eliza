@@ -4,7 +4,7 @@ import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { exec } from "./run.ts";
 import { heading, isStd, type Spec } from "./parse.ts";
-import type { Result } from "./spec.ts";
+import type { Result } from "./pipeline.ts";
 import ts from "typescript";
 import { profile, type TestProfile } from "./testing/profile.ts";
 
@@ -256,6 +256,9 @@ export function danglingCitations(root: string, specs: Spec[], dir = ""): string
   return citations(root, [dir]).filter((c) => !specs.some((s) => s.file === c.spec && names(s, c.heading))).map((c) => `${c.at}  ${c.spec}, "${c.heading}"`);
 }
 
+/** A directory no stage reads in a package: build output, dependencies, saved explorations and hidden directories. */
+export const UNREAD = /^(node_modules|dist|build|out|coverage|storybook-static|__traces__|__screenshots__|\..*)$/;
+
 /**
  * A package's files that `keep` accepts, as paths from it: not gen/, build output, dependencies, hidden directories
  * (such as `.cache/`) or `.DS_Store`, nor the packages nested in it, which are checked on their own, except, with
@@ -267,7 +270,7 @@ function packageFiles(root: string, keep: (file: string) => boolean, dir = "", f
     if (e.name === ".git" || e.name === ".DS_Store") return [];
     if (e.isFile()) return keep(rel) ? [rel] : [];
     const nested = fs.existsSync(path.join(root, rel, "package.json"));
-    const skip = /^(node_modules|dist|build|out|coverage|storybook-static|__traces__|__screenshots__|\..*)$/.test(e.name)
+    const skip = UNREAD.test(e.name)
       || (nested && (e.name === "gen" || !fixtures || !/(?:^|\/)test\//.test(rel)));
     return e.isDirectory() && !skip ? packageFiles(root, keep, rel, fixtures) : [];
   }).sort();
