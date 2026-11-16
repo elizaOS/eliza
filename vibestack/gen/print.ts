@@ -324,7 +324,8 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
     for (; e.kind === "let"; e = e.expr) {
       if (e.opdef.expr.kind === "lambda") fail(`local def ${e.opdef.name} is not supported`);
       const t = typeOf(e.opdef.expr.id);
-      const annotation = resolve(t).kind === "sum" ? `: ${tsType(t)}` : "";
+      const record = named(t, "rec");
+      const annotation = resolve(t).kind === "sum" ? `: ${tsType(t)}` : record ? `: ${typeName(record)}` : "";
       const name = bind(e.opdef.name);
       const local = `local_${localId++}`;
       lines.push(`const ${local}${annotation} = ${ex(e.opdef.expr)};`);
