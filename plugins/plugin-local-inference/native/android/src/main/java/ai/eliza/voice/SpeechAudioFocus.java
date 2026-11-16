@@ -10,7 +10,7 @@ import java.util.concurrent.Executor;
 
 /**
  * Android glue for {@link SpeechAudioFocusPolicy}: transient, duckable audio focus for assistant
- * speech (USAGE_ASSISTANT, CONTENT_TYPE_SPEECH), held while the owner speaks or listens, plus the
+ * speech (USAGE_ASSISTANT, CONTENT_TYPE_SPEECH), held while the owner needs it (while it speaks; the cloud bridge also while it listens), plus the
  * telephony/VoIP mode checks that keep speech and assistant capture off an active call.
  */
 public final class SpeechAudioFocus {
