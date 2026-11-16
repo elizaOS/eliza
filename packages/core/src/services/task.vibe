@@ -54,7 +54,7 @@ export const TASK_TICK_MAX_MS_SETTING = "TASK_TICK_MAX_MS"
 
 export const WALL_CLOCK_CHECK_MS = 1000
 
-error TaskNotFound { message: string }
+export error TaskNotFound { message: string }
 
 effect function readMaxTickMs(runtime: IAgentRuntime) {
   const raw = try foreignSync(() => runtime.getSetting(TASK_TICK_MAX_MS_SETTING))

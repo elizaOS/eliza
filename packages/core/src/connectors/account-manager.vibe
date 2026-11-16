@@ -377,12 +377,12 @@ export interface ConnectorAccountManagerState {
   warnedFallback: boolean
 }
 
-error MissingAccountId { message: string }
-error MissingAccountProvider { message: string }
-error MissingProviderId { message: string }
-error OAuthUnsupported { message: string }
-error UnknownOAuthFlow { message: string }
-error OAuthFlowNotPending { message: string }
+export error MissingAccountId { message: string }
+export error MissingAccountProvider { message: string }
+export error MissingProviderId { message: string }
+export error OAuthUnsupported { message: string }
+export error UnknownOAuthFlow { message: string }
+export error OAuthFlowNotPending { message: string }
 
 const runtimeManagers = new WeakMap<IAgentRuntime, ConnectorAccountManager>()
 let standaloneManager: ConnectorAccountManager | null = null

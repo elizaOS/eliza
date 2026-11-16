@@ -560,7 +560,7 @@ const completionFields = [
   "effectReceipts",
   "receipt",
 ]
-error InvalidCompletionEvidence { message: string }
+export error InvalidCompletionEvidence { message: string }
 
 effect function ownData(object: object, key: string): unknown!InvalidCompletionEvidence {
   const descriptor = Object.getOwnPropertyDescriptor(object, key)

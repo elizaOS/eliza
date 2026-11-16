@@ -316,7 +316,7 @@ type CrossRoomRecallGate =
   | { allowed: true }
   | { allowed: false; reason: string }
 
-error UnhandledDisclosureBasis { message: string }
+export error UnhandledDisclosureBasis { message: string }
 
 effect function deniedCrossRoomGateReason(
   decision: OwnerExclusiveDisclosureDecision,

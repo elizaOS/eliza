@@ -64,7 +64,7 @@ export interface AwarenessContributors {
   readonly cache: Map<string, WeakMap<IAgentRuntime, CacheEntry>>
 }
 
-error DuplicateAwarenessContributor { message: string }
+export error DuplicateAwarenessContributor { message: string }
 
 export effect function registerAwarenessContributor(
   contributors: AwarenessContributors,

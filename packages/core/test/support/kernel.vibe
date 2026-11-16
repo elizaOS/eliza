@@ -1,6 +1,6 @@
 // spec/core/runtime.md, "Story: Initialize an explicit host composition"; spec/core/runtime.md, "Story: Retire every owned operation"
 import { createCharacter } from "../../src/character.vibe"
-import { foreign, foreignSync } from "../../src/edge.vibe"
+import { Foreign, foreign, foreignSync } from "../../src/edge.vibe"
 import { AgentRuntime } from "../../src/runtime.vibe"
 import { type Character } from "../../src/types/agent.vibe"
 import { type Plugin } from "../../src/types/plugin.vibe"
@@ -63,7 +63,7 @@ effect function fresh() {
 export effect function kernel(options: KernelOptions = {}) {
   const store = options.store ?? (try fresh())
   const runtime = try acquireRelease(
-    built(() => {
+    Effect.mapError(Effect.try({ try: () => {
       const runtime = new AgentRuntime({
         character: { ...createCharacter({ name: "Eliza" }), ...options.character },
         plugins: options.plugins,
@@ -72,7 +72,7 @@ export effect function kernel(options: KernelOptions = {}) {
       })
       runtime.registerDatabaseAdapter(new SqliteAdapter(store, options.label ?? "a"))
       return runtime
-    }),
+    }, catch: (cause) => new Foreign({ cause }) }), (failure) => failure.cause),
     retire,
   )
   if (options.initialize !== false) try host(() => runtime.initialize({ skipMigrations: true }))

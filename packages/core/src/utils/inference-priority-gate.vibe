@@ -41,7 +41,7 @@ export class InferenceBackgroundWaitTimeoutError extends Data.TaggedError("Infer
   }
 }
 
-error InferenceAcquireAborted { message: string }
+export error InferenceAcquireAborted { message: string }
 
 type GateFailure = InferenceBackgroundWaitTimeoutError | InferenceAcquireAborted
 

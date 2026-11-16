@@ -10,7 +10,7 @@ export interface TypedServiceBuilder<TService extends Service = Service> {
   start(runtime: IAgentRuntime): Promise<TService>
 }
 
-error StartFunctionMissing { message: string }
+export error StartFunctionMissing { message: string }
 
 effect function startBuiltService<TService>(
   serviceType: ServiceTypeName | string,

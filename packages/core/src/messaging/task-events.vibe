@@ -372,8 +372,8 @@ function modelPage(page: TaskEventPage, retained: number): ModelPage {
   }
 }
 
-error InvalidPollingInterval { message: string }
-error InvalidTaskId { message: string }
+export error InvalidPollingInterval { message: string }
+export error InvalidTaskId { message: string }
 
 interface ReaderPayload {
   taskId: string

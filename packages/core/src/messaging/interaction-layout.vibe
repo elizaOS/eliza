@@ -55,7 +55,7 @@ function firstNonBlankText(
   return undefined
 }
 
-error InvalidButtonsPerRow { message: string }
+export error InvalidButtonsPerRow { message: string }
 
 effect function resolveButtonsPerRow(value: number | undefined): number!InvalidButtonsPerRow {
   if (value === undefined) return 3

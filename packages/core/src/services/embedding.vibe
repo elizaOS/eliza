@@ -23,8 +23,8 @@ interface EmbeddingQueueItem {
   pendingKey?: string
 }
 
-error EmptyEmbedding { message: string }
-error BatchSizeMismatch { message: string }
+export error EmptyEmbedding { message: string }
+export error BatchSizeMismatch { message: string }
 
 type ActivationFailure = Foreign | Effect.Error<ReturnType<typeof startBatchQueue<EmbeddingQueueItem>>>
 

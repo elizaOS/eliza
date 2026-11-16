@@ -91,7 +91,7 @@ export interface ConfidentialInferenceAuthorityOptions {
   readonly redispatchPolicy?: "deny-after-authorization"
 }
 
-error RedirectRefused { message: string }
+export error RedirectRefused { message: string }
 
 function rejection(code: string): ElizaError {
   return new ElizaError(

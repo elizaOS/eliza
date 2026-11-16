@@ -468,8 +468,8 @@ type TrajectoryContextWithLlmGuard = {
   [RECORD_LLM_CALL_DEPTH_KEY]?: number
 }
 
-error LlmCallOutsideTrajectory { message: string }
-error UnrecordedLlmCall { message: string }
+export error LlmCallOutsideTrajectory { message: string }
+export error UnrecordedLlmCall { message: string }
 
 module node {
   /** @throws {never} */

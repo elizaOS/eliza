@@ -37,7 +37,7 @@ module node {
 }
 import { segmentId } from node
 
-error Utf8BoundaryNotFound { message: string }
+export error Utf8BoundaryNotFound { message: string }
 
 interface UnitRange {
   start: number

@@ -45,10 +45,12 @@ export class RuntimeRetirement {
     const settled = Deferred.makeUnsafe<void>()
     this.ledger.pending.set(settled, { beforeClose })
     this.revision += 1
-    return runDetached(onExit(foreign(() => operation()), () => sync(() => {
+    const result = runDetached(onExit(foreign(() => operation()), () => sync(() => {
       this.ledger.pending.delete(settled)
       Deferred.doneUnsafe(settled, Effect.void)
     })))
+    result.catch(() => {})
+    return result
   }
 
   recordFailure(

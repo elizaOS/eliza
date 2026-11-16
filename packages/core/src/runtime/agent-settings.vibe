@@ -1,0 +1,354 @@
+// spec/core/settings.md, "Resolution preserves precedence and valid false zero and empty values"; spec/core/settings.md, "Setting and clearing align live secret and constructor slots"; spec/core/secretProfile.md, "The first query initializes the canonical signature and later changes advance it"
+import { Foreign, foreignSync } from "../edge.vibe"
+import { Machine, machine, type Event as SecretProfileEvent, type Rejected as SecretProfileRejected, type SecretProfile } from "../../gen/core__secretProfile.effect.vibe"
+import type { ElizaError } from "../errors.vibe"
+import { own, type Owned } from "../owned.vibe"
+import { CompositeEntityRecognizer, PII_ENTITY_RECOGNIZER_SERVICE, type PiiEntityRecognizer, type PiiEntityRecognizerService, RegexEntityRecognizer } from "../security/entity-recognizer.vibe"
+import { locateConfiguredSecretFragmentTaint as locateFragmentTaint, type SecretFragment, type SecretFragmentTaintProfile } from "../security/fragment-redaction.vibe"
+import { DEFAULT_PSEUDONYM_BLOCKLIST, PII_SWAP_DISABLED_KINDS_SETTING, PII_SWAP_ENABLED_SETTING, PII_SWAP_EXEMPT_VALUES_SETTING, PseudonymSession, parsePiiSwapList } from "../security/pii-pseudonymizer.vibe"
+import { redactWithSecrets } from "../security/redact.vibe"
+import { parseSecretSwapExemptValues, SECRET_SWAP_ENABLED_SETTING, SECRET_SWAP_EXEMPT_VALUES_SETTING, SecretSwapSession } from "../security/secret-swap.vibe"
+import { deriveKnownSecrets } from "../security/secrets.vibe"
+import { decryptSecret, getSalt, type UnsafeProductionSalt } from "../settings.vibe"
+import type { Agent, Character } from "../types/agent.vibe"
+import type { LLMModeType } from "../types/model.vibe"
+import type { Service } from "../types/service.vibe"
+import type { RuntimeSettings } from "../types/settings.vibe"
+import { parseBooleanValue } from "../utils/boolean.vibe"
+import { getNumberEnv, processEnv, rawEnv } from "../utils/environment.vibe"
+import { getOptimizationRootDir } from "../utils/state-dir.vibe"
+import { isPlainObject } from "../utils/type-guards.vibe"
+import { Host, type AgentRuntimeOptions } from "./host.vibe"
+import type { Lifecycle } from "./lifecycle.vibe"
+import type { RuntimeKernel } from "./kernel.vibe"
+
+export type SettingsFailure = UnsafeProductionSalt | ElizaError | Foreign
+
+export interface SettingsPayload {
+  readonly conversationLength: number
+  readonly actionPlanning: boolean | undefined
+  readonly llmMode: LLMModeType | undefined
+  readonly checkShouldRespond: boolean | undefined
+}
+
+export service Settings {
+  static readonly key = "@elizaos/core/runtime/Settings"
+  readonly owned: Owned<SecretProfile, SecretProfileEvent, SecretProfile, SecretProfileRejected, SettingsPayload>
+  readonly runtimeSettings: Ref.Ref<RuntimeSettings>
+}
+
+const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
+  "TIMEZONE",
+  "TZ",
+  "LOCALE",
+  "LANGUAGE",
+  "LANG",
+  "ELIZAOS_CLOUD_ENABLED",
+  "ELIZAOS_CLOUD_BASE_URL",
+])
+
+type SettingValue = string | boolean | number
+
+function isCredentialKey(key: string): boolean {
+  return !NON_CREDENTIAL_SECRET_KEYS.has(key.trim().toUpperCase())
+}
+
+function conversationLengthOf(options: AgentRuntimeOptions): number {
+  if (options.conversationLength !== undefined) return options.conversationLength
+  if (options.settings?.CONVERSATION_LENGTH) {
+    const parsed = parseInt(String(options.settings.CONVERSATION_LENGTH), 10)
+    return Number.isNaN(parsed) ? 100 : parsed
+  }
+  return getNumberEnv("CONVERSATION_LENGTH", 100) ?? 100
+}
+
+effect function ownedSettings(options: AgentRuntimeOptions) {
+  provide machine() {
+    return try own(try Machine, {
+      conversationLength: conversationLengthOf(options),
+      actionPlanning: options.actionPlanning,
+      llmMode: options.llmMode,
+      checkShouldRespond: options.checkShouldRespond,
+    } satisfies SettingsPayload)
+  }
+}
+
+export const SettingsLive: Layer.Layer<Settings, never, Host | Lifecycle> = Layer.effect(Settings, effect {
+  const { options } = try Host
+  return { owned: try ownedSettings(options), runtimeSettings: try Ref.make<RuntimeSettings>({ ...options.settings }) }
+})
+
+effect function payload(): SettingsPayload!!RuntimeKernel {
+  const { owned } = try Settings
+  return try owned.read((_state, current) => current)
+}
+
+export effect function runtimeSettings(): RuntimeSettings!!RuntimeKernel {
+  const { runtimeSettings } = try Settings
+  return try Ref.get(runtimeSettings)
+}
+
+export effect function replaceRuntimeSettings(next: RuntimeSettings): void!!RuntimeKernel {
+  const { runtimeSettings } = try Settings
+  try Ref.set(runtimeSettings, next)
+}
+
+function settingScalar(value: unknown): SettingValue | undefined {
+  return typeof value === "string" || typeof value === "boolean" || typeof value === "number" ? value : undefined
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+}
+
+function getCharacterEnvSetting(character: Character, key: string): SettingValue | undefined {
+  const env = asRecord((character as { env?: unknown }).env)
+  if (!env) return undefined
+  return settingScalar(env[key]) ?? settingScalar(asRecord(env.vars)?.[key])
+}
+
+function getRuntimeSettingValue(runtimeSettings: RuntimeSettings, key: string): SettingValue | undefined {
+  return settingScalar(runtimeSettings[key])
+}
+
+function objectField(settings: Character["settings"], field: "extra" | "secrets"): Record<string, unknown> | undefined {
+  return settings && typeof settings === "object" && field in settings && typeof settings[field] === "object" && settings[field] !== null
+    ? settings[field] as Record<string, unknown>
+    : undefined
+}
+
+function resolveSetting(character: Character, runtimeSettings: RuntimeSettings, key: string): unknown {
+  const settings = character.settings
+  return character.secrets?.[key]
+    ?? settings?.[key]
+    ?? objectField(settings, "extra")?.[key]
+    ?? objectField(settings, "secrets")?.[key]
+    ?? getCharacterEnvSetting(character, key)
+    ?? getRuntimeSettingValue(runtimeSettings, key)
+}
+
+export effect function getSetting(key: string): (string | boolean | number | null)!SettingsFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const value = resolveSetting(runtime.character, try runtimeSettings(), key)
+  if (typeof value === "number" || typeof value === "boolean") return value
+  if (typeof value !== "string") return null
+  const decrypted = try decryptSecret(value, try getSalt())
+  if (decrypted === "true") return true
+  if (decrypted === "false") return false
+  return decrypted
+}
+
+effect function instanceSetting(key: string): (string | boolean | number | null)!SettingsFailure!RuntimeKernel {
+  const { runtime } = try Host
+  return try Effect.try({ try: () => runtime.getSetting(key), catch: (cause) => new Foreign({ cause }) })
+}
+
+export effect function setSetting(key: string, value: string | boolean | null, secret?: boolean): void!!RuntimeKernel {
+  const { runtime } = try Host
+  const settings = try runtimeSettings()
+  const character = runtime.character
+  const present = value !== null && value !== undefined
+  const shadowedBySecret = character.secrets !== undefined && Object.hasOwn(character.secrets, key)
+  if (secret || shadowedBySecret) {
+    const nestedSecrets = objectField(character.settings, "secrets")
+    if (!character.secrets) character.secrets = {}
+    if (present) {
+      character.secrets[key] = String(value)
+      if (nestedSecrets && nestedSecrets !== character.secrets) delete nestedSecrets[key]
+    } else {
+      delete character.secrets[key]
+      if (nestedSecrets) delete nestedSecrets[key]
+    }
+  } else {
+    if (!character.settings) character.settings = {}
+    if (present) {
+      character.settings[key] = value
+    } else {
+      delete character.settings[key]
+    }
+  }
+  if (present) {
+    settings[key] = value
+  } else {
+    delete settings[key]
+  }
+}
+
+export effect function getConversationLength(): number!!RuntimeKernel {
+  return (try payload()).conversationLength
+}
+
+export effect function isActionPlanningEnabled(): boolean!SettingsFailure!RuntimeKernel {
+  const { actionPlanning } = try payload()
+  if (actionPlanning !== undefined) return actionPlanning
+  const setting = try instanceSetting("ACTION_PLANNING")
+  if (typeof setting === "boolean") return setting
+  if (typeof setting === "string") return setting.toLowerCase() === "true"
+  return true
+}
+
+export effect function getLLMMode(): LLMModeType!SettingsFailure!RuntimeKernel {
+  const { llmMode } = try payload()
+  if (llmMode !== undefined) return llmMode
+  const setting = try instanceSetting("LLM_MODE")
+  if (typeof setting === "string") {
+    const upper = setting.toUpperCase()
+    if (upper === "SMALL" || upper === "LARGE" || upper === "DEFAULT") return upper
+  }
+  return "DEFAULT"
+}
+
+export effect function isCheckShouldRespondEnabled(): boolean!SettingsFailure!RuntimeKernel {
+  const { checkShouldRespond } = try payload()
+  if (checkShouldRespond !== undefined) return checkShouldRespond
+  const setting = try instanceSetting("CHECK_SHOULD_RESPOND")
+  if (typeof setting === "boolean") return setting
+  if (typeof setting === "string") return setting.toLowerCase() !== "false"
+  return true
+}
+
+export effect function getOptimizationDir(): string!SettingsFailure!RuntimeKernel {
+  const setting = try instanceSetting("OPTIMIZATION_DIR")
+  return getOptimizationRootDir(typeof setting === "string" ? setting : null)
+}
+
+export effect function redactSecrets(text: string): string!!RuntimeKernel {
+  if (!text) return text
+  const secrets = try getSecretsForRedaction()
+  return redactWithSecrets(text, { secrets, applyPatterns: true })
+}
+
+export effect function getSecretsForRedaction(): Record<string, string>!!RuntimeKernel {
+  const { runtime } = try Host
+  const secrets = runtime.character.settings?.secrets
+  if (!secrets || typeof secrets !== "object") return {}
+  const result: Record<string, string> = {}
+  for (const [key, value] of Object.entries(secrets)) {
+    if (isCredentialKey(key) && typeof value === "string" && value.length > 0) result[key] = value
+  }
+  return result
+}
+
+export effect function locateConfiguredSecretFragmentTaint(fragments: readonly SecretFragment[]): SecretFragmentTaintProfile!!RuntimeKernel {
+  const { owned } = try Settings
+  const secrets = try getSecretsForRedaction()
+  const configured = Object.values(secrets).map((value) => ({ value, utf16Length: value.length, credential: true }))
+  const profile = try orDie(owned.step({ type: "observe", configured }, (current, next) => [next, current] as const))
+  return { ...locateFragmentTaint(fragments, secrets), profileRevision: profile.revision }
+}
+
+effect function swapEnabled(key: string): boolean!SettingsFailure!RuntimeKernel {
+  return parseBooleanValue(try instanceSetting(key)) ?? parseBooleanValue(rawEnv(key)) ?? false
+}
+
+export effect function isSecretSwapEnabled(): boolean!SettingsFailure!RuntimeKernel {
+  return try swapEnabled(SECRET_SWAP_ENABLED_SETTING)
+}
+
+function toSecretStrings(values: Record<string, unknown> | undefined): Record<string, string | undefined> {
+  const result: Record<string, string | undefined> = {}
+  for (const [key, value] of Object.entries(values ?? {})) {
+    if (typeof value === "string" && isCredentialKey(key)) result[key] = value
+  }
+  return result
+}
+
+export effect function createSecretSwapSession(): SecretSwapSession!SettingsFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const settingsSecrets = runtime.character.settings?.secrets
+  const knownSecrets = {
+    ...deriveKnownSecrets(processEnv()),
+    ...(settingsSecrets && typeof settingsSecrets === "object" ? toSecretStrings(settingsSecrets) : undefined),
+    ...toSecretStrings(runtime.character.secrets),
+  }
+  return new SecretSwapSession({
+    knownSecrets,
+    exemptValues: parseSecretSwapExemptValues(try instanceSetting(SECRET_SWAP_EXEMPT_VALUES_SETTING)),
+  })
+}
+
+export effect function isPiiSwapEnabled(): boolean!SettingsFailure!RuntimeKernel {
+  return try swapEnabled(PII_SWAP_ENABLED_SETTING)
+}
+
+export effect function createPiiSwapSession(): PseudonymSession!SettingsFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const recognizers: PiiEntityRecognizer[] = [new RegexEntityRecognizer()]
+  const nerService = try foreignSync(() => runtime.getService<Service & Partial<PiiEntityRecognizerService>>(PII_ENTITY_RECOGNIZER_SERVICE))
+  const nerRecognizer = nerService?.getRecognizer ? try foreignSync(() => nerService.getRecognizer?.()) : undefined
+  if (nerRecognizer) recognizers.push(nerRecognizer)
+  const name = runtime.character.name
+  const blocklist = [
+    ...DEFAULT_PSEUDONYM_BLOCKLIST,
+    ...(name ? [name] : []),
+    ...parsePiiSwapList(try instanceSetting(PII_SWAP_EXEMPT_VALUES_SETTING)),
+  ]
+  return new PseudonymSession({
+    recognizer: new CompositeEntityRecognizer(recognizers, { blocklist }),
+    blocklist,
+    disabledKinds: parsePiiSwapList(try instanceSetting(PII_SWAP_DISABLED_KINDS_SETTING)),
+  })
+}
+
+function plainRecord(value: unknown): Record<string, unknown> {
+  return isPlainObject(value) ? value : {}
+}
+
+function hasAnyKey(sources: readonly object[], key: string): boolean {
+  return sources.some((source) => Object.hasOwn(source, key))
+}
+
+function runtimeOverrides(runtimeSettings: RuntimeSettings, present: readonly object[], absent: readonly object[]): Record<string, SettingValue> {
+  const overrides: Record<string, SettingValue> = {}
+  for (const key of Object.keys(runtimeSettings)) {
+    const runtimeValue = getRuntimeSettingValue(runtimeSettings, key)
+    if (runtimeValue !== undefined && hasAnyKey(present, key) && !hasAnyKey(absent, key)) overrides[key] = runtimeValue
+  }
+  return overrides
+}
+
+function stringSecrets(merged: Record<string, unknown>): Record<string, string> {
+  const filtered: Record<string, string> = {}
+  for (const [key, value] of Object.entries(merged)) {
+    if (value !== null && value !== undefined) filtered[key] = String(value)
+  }
+  return filtered
+}
+
+export effect function mergePersistedSettings(existingAgent: Agent): void!!RuntimeKernel {
+  if (!existingAgent.settings) return
+  const { runtime } = try Host
+  const settings = try runtimeSettings()
+  const character = runtime.character
+  const dbSettings = plainRecord(existingAgent.settings)
+  const dbExtraSettings = plainRecord(dbSettings.extra)
+  const dbSettingsSecrets = plainRecord(dbSettings.secrets)
+  const characterSettings = plainRecord(character.settings)
+  const characterExtraSettings = plainRecord(characterSettings.extra)
+  const characterSettingsSecrets = plainRecord(characterSettings.secrets)
+  const characterSecrets = character.secrets && typeof character.secrets === "object" ? character.secrets : {}
+
+  character.settings = {
+    ...existingAgent.settings,
+    ...runtimeOverrides(
+      settings,
+      [dbSettings, dbExtraSettings, dbSettingsSecrets],
+      [characterSettings, characterExtraSettings, characterSettingsSecrets, characterSecrets],
+    ),
+    ...character.settings,
+  }
+
+  const dbSecrets = existingAgent.secrets && typeof existingAgent.secrets === "object" ? existingAgent.secrets : {}
+  const mergedSecrets = {
+    ...dbSecrets,
+    ...dbSettingsSecrets,
+    ...runtimeOverrides(settings, [dbSecrets, dbSettingsSecrets], [characterSecrets, characterSettingsSecrets]),
+    ...characterSecrets,
+    ...characterSettingsSecrets,
+  }
+  const filteredSecrets = stringSecrets(mergedSecrets)
+  if (Object.keys(filteredSecrets).length > 0) {
+    character.secrets = filteredSecrets
+    character.settings.secrets = filteredSecrets
+  }
+}

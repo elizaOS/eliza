@@ -303,7 +303,7 @@ interface HistoricalEvidenceBinding {
   historicalEffects?: boolean | "settled"
 }
 
-error UnparsableHistoricalReceipt { cause: unknown }
+export error UnparsableHistoricalReceipt { cause: unknown }
 
 effect function historicalEntryBound(
   observation: unknown,

@@ -1,0 +1,1107 @@
+// spec/core/memo.md, "A rejection affects only its captured key and promise identity"; spec/core/entities.md, "Each mutation invalidates exactly the affected cache families"; spec/core/memoConcurrency.md, "Every served reader observes at least its invocation's completed-write floor"
+import { ensureConnection as ensureConnectionStandalone } from "../connection.vibe"
+import { validateQueryEntitiesPagination, validateTaskQueryPagination, type InvalidPagination } from "../database.vibe"
+import { mergeWorldMetadataForLegacyWrite, worldMetadataValueEquals } from "../database/world-metadata-cas.vibe"
+import { foreign, foreignSync, runDetached, type Foreign } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import type { AgentRuntime } from "../runtime.vibe"
+import type { TaskService } from "../services/task.vibe"
+import { invalidateTurnMemoPrefix } from "../trajectory-context.vibe"
+import type { AccessContext } from "../types/access-context.vibe"
+import type { Agent } from "../types/agent.vibe"
+import type { ConnectorAccountRecord, DeleteConnectorAccountParams, GetConnectorAccountParams, IDatabaseAdapter, ListConnectorAccountsParams, LogBody } from "../types/database.vibe"
+import type { Component, Entity, Participant, Relationship, Room, World } from "../types/environment.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { IMessagingAdapter } from "../types/messaging.vibe"
+import type { PairingAllowlistEntry, PairingChannel, PairingRequest } from "../types/pairing.vibe"
+import { ChannelType, type JsonValue, type Metadata, type UUID } from "../types/primitives.vibe"
+import { ServiceType } from "../types/service.vibe"
+import type { Task, TaskMetadataPatch, TaskMetadataPatchOutcome } from "../types/task.vibe"
+import type { Settings } from "./agent-settings.vibe"
+import { RuntimeDataMutations } from "./data-mutations.vibe"
+import { Host } from "./host.vibe"
+import type { RuntimeKernel } from "./kernel.vibe"
+import { SingleFlightMemo } from "./single-flight-memo.vibe"
+
+const READ_MEMO_TTL_MS = 1_000
+const READ_MEMO_MAX_ENTRIES = 1_000
+const ROOM_MESSAGES_MEMO_MIN_WINDOW = 50
+const GET_ALL_MEMORIES_PAGE_SIZE = 10_000
+const CONNECTION_BATCH_SIZE = 5_000
+const WORLD_ENSURE_ATTEMPTS = 3
+const AGENT_MEMORY_TABLES = ["memories", "messages", "facts", "documents", "document_fragments", "transcripts"]
+
+export error WorldIdRequired { message: string }
+export error RoomCreateFailed { message: string }
+export error ParticipantLinkFailed { message: string }
+export error AgentRecordMissing { message: string }
+export error AgentIdRequired { message: string }
+export error AgentEntityUnavailable { message: string }
+
+type ConnectionFailure = Effect.Error<ReturnType<typeof ensureConnectionStandalone>>
+
+export interface GetMemoriesParams {
+  entityId?: UUID
+  authorEntityIds?: UUID[]
+  agentId?: UUID
+  roomId?: UUID
+  excludeRoomIds?: UUID[]
+  limit?: number
+  count?: number
+  offset?: number
+  cursor?: { createdAt: number; id: UUID }
+  unique?: boolean
+  tableName: string
+  start?: number
+  end?: number
+  worldId?: UUID
+  metadata?: Record<string, unknown>
+  textContains?: string
+  orderBy?: "createdAt"
+  orderDirection?: "asc" | "desc"
+  includeEmbedding?: boolean
+  accessContext?: AccessContext
+}
+
+export type StoreFailure =
+  | WorldIdRequired
+  | RoomCreateFailed
+  | ParticipantLinkFailed
+  | AgentRecordMissing
+  | AgentIdRequired
+  | AgentEntityUnavailable
+  | InvalidPagination
+  | ConnectionFailure
+  | ElizaError
+  | Foreign
+
+export service Store {
+  static readonly key = "@elizaos/core/runtime/Store"
+  readonly mutations: RuntimeDataMutations
+  readonly roomReadMemo: SingleFlightMemo<Room | null>
+  readonly roomMessagesMemo: SingleFlightMemo<Memory[], number>
+}
+
+module edge {
+  import type { Kernel } from "../edge.vibe"
+  import { getSecretsForRedaction } from "./agent-settings.vibe"
+  import type { RuntimeKernel } from "./kernel.vibe"
+
+  /** @throws {never} */
+  export function secretsForRedaction(kernel: () => Kernel<RuntimeKernel>): () => Record<string, string> {
+    return () => kernel().runSync(getSecretsForRedaction())
+  }
+}
+import { secretsForRedaction } from edge
+
+function invalidateTurnEntityDetails(agentId: UUID): void {
+  invalidateTurnMemoPrefix(`entity-details:${agentId}:`)
+}
+
+function invalidateTurnIdentityClusters(agentId: UUID): void {
+  invalidateTurnMemoPrefix(`identity-cluster:${agentId}:`)
+  invalidateTurnMemoPrefix(`verified-identity-cluster:${agentId}:`)
+}
+
+export const StoreLive: Layer.Layer<Store, never, Host | Settings> = Layer.effect(Store, effect {
+  const { runtime, kernel } = try Host
+  const roomReadMemo = new SingleFlightMemo<Room | null>(READ_MEMO_TTL_MS, READ_MEMO_MAX_ENTRIES)
+  const roomMessagesMemo = new SingleFlightMemo<Memory[], number>(READ_MEMO_TTL_MS, READ_MEMO_MAX_ENTRIES)
+  const mutations = new RuntimeDataMutations(runtime, {
+    invalidateTurnEntityDetails: () => invalidateTurnEntityDetails(runtime.agentId),
+    invalidateTurnIdentityClusters: () => invalidateTurnIdentityClusters(runtime.agentId),
+    getSecretsForRedaction: secretsForRedaction(kernel),
+    roomMessagesMemo: () => roomMessagesMemo,
+    roomReadMemo: () => roomReadMemo,
+  })
+  return { mutations, roomReadMemo, roomMessagesMemo }
+})
+
+export const DELEGATED = [
+  "getParticipantsForEntities",
+  "getParticipantsForRooms",
+  "areRoomParticipants",
+  "getAgents",
+  "countAgents",
+  "cleanupAgents",
+  "getAgentsByIds",
+  "createAgents",
+  "upsertAgents",
+  "updateAgents",
+  "deleteAgents",
+  "getEntitiesForRooms",
+  "getComponentsByNaturalKeys",
+  "getComponentsForEntities",
+  "getMemoriesByIds",
+  "getMemoriesByRoomIds",
+  "searchMessages",
+  "searchMemories",
+  "getLogs",
+  "getLogInventory",
+  "getLogsByIds",
+  "createLogs",
+  "updateLogs",
+  "deleteLogs",
+  "getAllWorlds",
+  "getWorldsByIds",
+  "createWorlds",
+  "upsertWorlds",
+  "deleteWorlds",
+  "updateWorlds",
+  "getRoomsByIds",
+  "getRoomsForParticipants",
+  "getParticipantUserStates",
+  "updateParticipantUserStates",
+  "getCaches",
+  "setCaches",
+  "compareAndSetCache",
+  "deleteCaches",
+  "getTasksByName",
+  "getTasksByIds",
+  "transaction",
+  "getEntitiesByIds",
+  "getComponentsByIds",
+  "getRelationshipsByIds",
+  "getRelationshipsByPairs",
+  "getMemoriesByWorldId",
+  "getPairingRequests",
+  "getPairingAllowlists",
+  "createPairingRequests",
+  "updatePairingRequests",
+  "deletePairingRequests",
+  "createPairingAllowlistEntries",
+  "updatePairingAllowlistEntries",
+  "deletePairingAllowlistEntries",
+  "setConnectorAccountCredentialRef",
+  "getConnectorAccountCredentialRef",
+  "listConnectorAccountCredentialRefs",
+  "deleteConnectorAccountCredentialRefs",
+  "getRoomsByWorlds",
+] as const satisfies readonly (keyof IDatabaseAdapter)[]
+
+export const AGENT_SCOPED = [
+  "upsertConnectorAccount",
+  "appendConnectorAccountAuditEvent",
+  "createOAuthFlowState",
+  "consumeOAuthFlowState",
+  "getOAuthFlowState",
+  "updateOAuthFlowState",
+  "deleteOAuthFlowState",
+] as const satisfies readonly (keyof IDatabaseAdapter)[]
+
+export const MUTATIONS = [
+  "updateEntities",
+  "deleteEntities",
+  "updateEntity",
+  "createComponents",
+  "updateComponents",
+  "deleteComponents",
+  "createComponent",
+  "updateComponent",
+  "deleteComponent",
+  "upsertComponent",
+  "upsertComponents",
+  "patchComponent",
+  "patchComponents",
+  "patchComponentField",
+  "upsertMemory",
+  "upsertMemories",
+  "createRelationships",
+  "updateRelationships",
+  "deleteRelationships",
+  "createRelationship",
+  "updateRelationship",
+  "createMemories",
+  "updateMemories",
+  "deleteMemories",
+  "createMessageMemory",
+  "replaceMessageMemoryContent",
+  "createMemory",
+  "updateMemory",
+  "updateMemoryEmbedding",
+  "deleteMemory",
+  "deleteParticipants",
+  "updateParticipants",
+  "removeParticipant",
+  "updateRooms",
+  "deleteRooms",
+  "updateRoom",
+  "deleteRoom",
+  "deleteRoomsByWorldIds",
+] as const satisfies readonly (keyof RuntimeDataMutations)[]
+
+effect function adapter(): IDatabaseAdapter!!Host {
+  return (try Host).runtime.adapter
+}
+
+effect function agentEntitiesById(runtime: AgentRuntime): (Entity | null)!Foreign {
+  return (try foreign(() => runtime.adapter.getEntitiesByIds([runtime.agentId])))[0] ?? null
+}
+
+export effect function ensureAgentInfrastructure(existingAgent: Agent): void!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  let agentEntity = try agentEntitiesById(runtime)
+  if (!agentEntity) {
+    const ownerId = existingAgent.id
+    if (!ownerId) {
+      throw new AgentIdRequired({ message: `Agent ${runtime.agentId} has no ID` })
+    }
+    const created = try foreign(() =>
+      runtime.createEntity({
+        id: runtime.agentId,
+        names: [runtime.character.name ?? "Agent"],
+        metadata: {},
+        agentId: ownerId,
+      })
+    )
+    if (!created) {
+      throw new AgentEntityUnavailable({ message: `Failed to create entity for agent ${runtime.agentId}` })
+    }
+    agentEntity = try agentEntitiesById(runtime)
+    if (!agentEntity) throw new AgentEntityUnavailable({ message: `Agent entity not found for ${runtime.agentId}` })
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId }, "Agent entity created")
+  } else if (runtime.character.name) {
+    try syncAgentEntityName(runtime, agentEntity, runtime.character.name)
+  }
+
+  const room = try foreign(() => runtime.getRoom(runtime.agentId))
+  if (!room) {
+    try foreign(() =>
+      runtime.adapter.createRooms([
+        {
+          id: runtime.agentId,
+          name: runtime.character.name,
+          source: "elizaos",
+          type: ChannelType.SELF,
+          channelId: runtime.agentId,
+          messageServerId: runtime.agentId,
+          worldId: runtime.agentId,
+        },
+      ])
+    )
+    const { roomReadMemo } = try Store
+    roomReadMemo.invalidate(runtime.agentId)
+  }
+  const participantsResults = try foreign(() => runtime.adapter.getParticipantsForRooms([runtime.agentId]))
+  const participantIds = participantsResults[0]!.entityIds
+  if (!participantIds.includes(runtime.agentId)) {
+    const added = try foreign(() => runtime.adapter.createRoomParticipants([runtime.agentId], runtime.agentId))
+    if (!added.length) {
+      throw new ParticipantLinkFailed({ message: `Failed to add agent ${runtime.agentId} as participant to its own room` })
+    }
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId }, "Agent linked to room")
+  }
+}
+
+export effect function retire(): void!!RuntimeKernel {
+  const store = try Store
+  store.roomReadMemo.invalidate()
+  store.roomMessagesMemo.invalidate()
+}
+
+function isMessagingAdapter(candidate: IDatabaseAdapter): candidate is IDatabaseAdapter & IMessagingAdapter {
+  const messaging = candidate as Partial<IMessagingAdapter>
+  return (
+    typeof messaging.createMessageServer === "function"
+    && typeof messaging.createChannel === "function"
+    && typeof messaging.createMessage === "function"
+  )
+}
+
+export effect function getMessagingAdapter(): (IMessagingAdapter | null)!!RuntimeKernel {
+  const current = try adapter()
+  return current && isMessagingAdapter(current) ? current : null
+}
+
+function batches<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size))
+  return chunks
+}
+
+export effect function ensureConnections(entities: Entity[], rooms: Room[], source: string, world: World): void!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  if (!entities) {
+    runtime.logger.error({ src: "agent", agentId: runtime.agentId }, "ensureConnections called without entities")
+    return
+  }
+  if (!rooms || rooms.length === 0) {
+    runtime.logger.error({ src: "agent", agentId: runtime.agentId }, "ensureConnections called without rooms")
+    return
+  }
+
+  try foreign(() => runtime.ensureWorldExists({ ...world, agentId: runtime.agentId }))
+  const firstRoom = rooms[0]
+
+  const roomIds = rooms.map((room) => room.id)
+  const existingRooms = try foreign(() => runtime.getRoomsByIds(roomIds))
+  const existingRoomIds = new Set(existingRooms.map((room) => room.id))
+  const roomsToCreate = roomIds.filter((id) => !existingRoomIds.has(id))
+  const roomFields = { worldId: world.id, messageServerId: world.messageServerId, source, agentId: runtime.agentId }
+  if (roomsToCreate.length) {
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId, count: roomsToCreate.length }, "Creating rooms")
+    try foreign(() =>
+      runtime.createRooms(
+        rooms
+          .filter((room) => !existingRoomIds.has(room.id))
+          .map((room) => ({ ...room, ...roomFields, type: room.type || ChannelType.GROUP })),
+      )
+    )
+  }
+
+  const entityIds = entities.map((entity) => entity.id).filter((id): id is UUID => id !== undefined)
+  const existingEntities = try foreign(() => runtime.adapter.getEntitiesByIds(entityIds))
+  const existingEntityIds = new Set(existingEntities.map((entity) => entity.id))
+  const entitiesToCreate = entities.filter((entity) => entity.id !== undefined && !existingEntityIds.has(entity.id))
+  if (entitiesToCreate.length) {
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId, count: entitiesToCreate.length }, "Creating entities")
+    const entityFields = {
+      roomId: firstRoom.id,
+      channelId: firstRoom.channelId,
+      type: firstRoom.type,
+      worldId: world.id,
+      messageServerId: world.messageServerId,
+      source,
+      agentId: runtime.agentId,
+    }
+    const prepared: Entity[] = entitiesToCreate.map((entity) => ({ ...entity, ...entityFields, metadata: entity.metadata || {} }))
+    for (const batch of batches(prepared, CONNECTION_BATCH_SIZE)) {
+      try foreign(() => runtime.createEntities(batch))
+    }
+  }
+
+  try foreign(() => runtime.ensureParticipantInRoom(runtime.agentId, firstRoom.id))
+  const entityIdsInFirstRoom = new Set(try foreign(() => runtime.getParticipantsForRoom(firstRoom.id)))
+  const missingIdsInRoom = entityIds.filter((id) => !entityIdsInFirstRoom.has(id))
+  if (missingIdsInRoom.length) {
+    runtime.logger.debug(
+      { src: "agent", agentId: runtime.agentId, count: missingIdsInRoom.length, channelId: firstRoom.id },
+      "Adding missing participants",
+    )
+    for (const batch of batches(missingIdsInRoom, CONNECTION_BATCH_SIZE)) {
+      try foreign(() => runtime.createRoomParticipants(batch, firstRoom.id))
+    }
+  }
+
+  runtime.logger.success({ src: "agent", agentId: runtime.agentId, worldId: world.id }, "World connected")
+}
+
+export effect function ensureConnection(params: { entityId: UUID; roomId: UUID; roomName?: string; worldId?: UUID; worldName?: string; userName?: string; name?: string; source?: string; type?: ChannelType | string; channelId?: string; serverId?: string; messageServerId?: UUID; userId?: UUID; metadata?: Record<string, JsonValue>; }): void!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const result = try ensureConnectionStandalone(runtime.adapter, {
+    agentId: runtime.agentId,
+    worldId: params.worldId,
+    messageServerId: params.messageServerId,
+    ...params,
+    source: params.source ?? "default",
+  })
+  const { roomReadMemo } = try Store
+  roomReadMemo.invalidate(params.roomId)
+  invalidateTurnEntityDetails(runtime.agentId)
+  if (result.createdRoomParticipants > 0) {
+    runtime.logger.debug(
+      {
+        src: "agent",
+        agentId: runtime.agentId,
+        entityId: params.entityId,
+        channelId: params.roomId,
+        createdRoomParticipants: result.createdRoomParticipants,
+      },
+      "Entity connected",
+    )
+  }
+}
+
+export effect function ensureParticipantInRoom(entityId: UUID, roomId: UUID): void!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const entity = (try foreign(() => runtime.adapter.getEntitiesByIds([entityId])))[0] ?? null
+  if (!entity && entityId !== runtime.agentId) {
+    runtime.logger.warn({ src: "agent", agentId: runtime.agentId, entityId }, "Entity not accessible, attempting to add as participant")
+  } else if (!entity) {
+    throw new ParticipantLinkFailed({ message: `Agent entity ${entityId} not found, cannot add as participant.` })
+  }
+  const participantsResults = try foreign(() => runtime.adapter.getParticipantsForRooms([roomId]))
+  const participants = participantsResults[0]?.entityIds ?? []
+  if (participants.includes(entityId)) return
+  const added = try foreign(() => runtime.adapter.createRoomParticipants([entityId], roomId))
+  if (!added) {
+    throw new ParticipantLinkFailed({ message: `Failed to add participant ${entityId} to room ${roomId}` })
+  }
+  if (entityId === runtime.agentId) {
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId, channelId: roomId }, "Agent linked to room")
+  } else {
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId, entityId, channelId: roomId }, "User linked to room")
+  }
+}
+
+export effect function getParticipantsForEntity(entityId: UUID): Participant[]!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.getParticipantsForEntities([entityId]))
+}
+
+export effect function getParticipantsForRoom(roomId: UUID): UUID[]!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  const result = try foreign(() => current.getParticipantsForRooms([roomId]))
+  return result[0]?.entityIds ?? []
+}
+
+export effect function isRoomParticipant(roomId: UUID, entityId: UUID): boolean!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  const results = try foreign(() => current.areRoomParticipants([{ roomId, entityId }]))
+  return results[0] ?? false
+}
+
+export effect function addParticipant(entityId: UUID, roomId: UUID): boolean!StoreFailure!RuntimeKernel {
+  return (try createRoomParticipants([entityId], roomId)).length > 0
+}
+
+export effect function createRoomParticipants(entityIds: UUID[], roomId: UUID): UUID[]!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const ids = try foreign(() => runtime.adapter.createRoomParticipants(entityIds, roomId))
+  invalidateTurnEntityDetails(runtime.agentId)
+  return ids
+}
+
+function isWorldEnsureConflict(error: unknown): boolean {
+  return error instanceof ElizaError && (error.code === "WORLD_METADATA_STALE_WRITE" || error.code === "WORLD_ALREADY_EXISTS")
+}
+
+export effect function ensureWorldExists({ id, name, messageServerId, metadata }: World): void!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  let stored: World | null = null
+  let completed = false
+  for (let attempt = 0; attempt < WORLD_ENSURE_ATTEMPTS; attempt += 1) {
+    stored = (try foreign(() => runtime.adapter.getWorldsByIds([id])))[0] ?? null
+    const mergedMetadata = stored
+      ? try mergeWorldMetadataForLegacyWrite(stored.metadata as Metadata | undefined, metadata as Metadata | undefined, String(id))
+      : metadata
+    if (
+      stored
+      && worldMetadataValueEquals(stored.metadata ?? {}, mergedMetadata ?? {})
+      && stored.name === (name ?? stored.name)
+      && stored.messageServerId === (messageServerId ?? stored.messageServerId)
+    ) {
+      completed = true
+      break
+    }
+    const written = Effect.as(
+      foreign(() =>
+        runtime.adapter.upsertWorlds([
+          {
+            ...stored,
+            id,
+            name: name ?? stored?.name,
+            agentId: runtime.agentId,
+            messageServerId: messageServerId ?? stored?.messageServerId,
+            metadata: mergedMetadata as World["metadata"],
+          },
+        ])
+      ),
+      true,
+    ) catch effect (error) => {
+      if (!isWorldEnsureConflict(error.cause)) throw error
+      return false
+    }
+    if (written) {
+      completed = true
+      break
+    }
+  }
+  if (!completed) {
+    throw new ElizaError("World ensure retries were exhausted", {
+      code: "WORLD_ENSURE_CONFLICT_EXHAUSTED",
+      context: { worldId: id, attempts: WORLD_ENSURE_ATTEMPTS },
+    })
+  }
+  runtime.logger.debug(
+    { src: "agent", agentId: runtime.agentId, worldId: id, messageServerId },
+    stored ? "World updated" : "World created",
+  )
+}
+
+export effect function ensureRoomExists({ id, name, source, type, channelId, serverId, messageServerId, worldId, metadata }: Room): void!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  if (!worldId) throw new WorldIdRequired({ message: "worldId is required" })
+  const existing = try foreign(() => runtime.getRoom(id))
+  try foreign(() =>
+    runtime.adapter.upsertRooms([
+      {
+        id,
+        name: name ?? existing?.name,
+        agentId: runtime.agentId,
+        source: source ?? existing?.source,
+        type: type ?? existing?.type,
+        channelId: channelId ?? existing?.channelId,
+        serverId: serverId ?? existing?.serverId,
+        messageServerId: messageServerId ?? existing?.messageServerId,
+        worldId,
+        metadata: metadata ?? existing?.metadata,
+      },
+    ])
+  )
+  const { roomReadMemo } = try Store
+  roomReadMemo.invalidate(id)
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, channelId: id }, existing ? "Room updated" : "Room created")
+}
+
+export effect function getAgent(agentId: UUID): (Agent | null)!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  const agents = try foreign(() => current.getAgentsByIds([agentId]))
+  return agents[0] ?? null
+}
+
+export effect function createAgent(agent: Partial<Agent>): boolean!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  const ids = try foreign(() => current.createAgents([agent]))
+  return ids.length > 0
+}
+
+export effect function updateAgent(agentId: UUID, agent: Partial<Agent>): boolean!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const updated = try foreign(() => runtime.adapter.updateAgents([{ agentId, agent }]))
+  const name = typeof agent.name === "string" ? agent.name.trim() : ""
+  if (updated && agentId === runtime.agentId && name) {
+    const [agentEntity] = try foreign(() => runtime.adapter.getEntitiesByIds([agentId]))
+    if (agentEntity) try syncAgentEntityName(runtime, agentEntity, name)
+  }
+  return updated
+}
+
+effect function syncAgentEntityName(runtime: AgentRuntime, agentEntity: Entity, name: string): void!Foreign {
+  if (agentEntity.names[0] === name) return
+  try foreign(() =>
+    runtime.updateEntity({
+      ...agentEntity,
+      names: [name, ...agentEntity.names.filter((existing) => existing !== name)],
+    })
+  )
+}
+
+export effect function deleteAgent(agentId: UUID): boolean!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.deleteAgents([agentId]))
+}
+
+function secretsOf(value: unknown): object {
+  return value && typeof value === "object" ? value : {}
+}
+
+export effect function ensureAgentExists(agent: Partial<Agent>): Agent!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const agentId = agent.id
+  if (!agentId) throw new AgentIdRequired({ message: "Agent id is required" })
+  const existingAgent = (try foreign(() => runtime.adapter.getAgentsByIds([agentId])))[0] ?? null
+
+  let agentToUpsert: Partial<Agent>
+  if (existingAgent) {
+    const mergedSettings = { ...existingAgent.settings, ...agent.settings }
+    const mergedSecrets = {
+      ...secretsOf(existingAgent.secrets),
+      ...secretsOf(existingAgent.settings?.secrets),
+      ...secretsOf(agent.secrets),
+      ...secretsOf(agent.settings?.secrets),
+    } as Agent["secrets"] & object
+    const hasSecrets = Object.keys(mergedSecrets).length > 0
+    if (hasSecrets) mergedSettings.secrets = mergedSecrets
+    agentToUpsert = {
+      ...existingAgent,
+      ...agent,
+      settings: mergedSettings,
+      id: agentId,
+      updatedAt: Date.now(),
+      secrets: hasSecrets ? mergedSecrets : agent.secrets,
+    }
+  } else {
+    agentToUpsert = { ...agent, id: agentId, createdAt: Date.now(), updatedAt: Date.now() } as Agent
+  }
+
+  try foreign(() => runtime.adapter.upsertAgents([agentToUpsert]))
+  const refreshedAgent = (try foreign(() => runtime.adapter.getAgentsByIds([agentId])))[0] ?? null
+  if (!refreshedAgent) {
+    throw new AgentRecordMissing({ message: `Failed to retrieve agent after upsert: ${agentId}` })
+  }
+  runtime.logger.debug({ src: "agent", agentId }, existingAgent ? "Agent updated on restart" : "Agent created")
+  return refreshedAgent
+}
+
+export effect function getEntityById(entityId: UUID): (Entity | null)!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  const entities = try foreign(() => current.getEntitiesByIds([entityId]))
+  if (!entities.length) return null
+  return entities[0]
+}
+
+export effect function getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Entity[]!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  const result = try foreign(() => current.getEntitiesForRooms([roomId], includeComponents))
+  return result[0]?.entities ?? []
+}
+
+export effect function createEntity(entity: Entity): boolean!StoreFailure!RuntimeKernel {
+  if (!entity.agentId) {
+    entity.agentId = (try Host).runtime.agentId
+  }
+  const { runtime } = try Host
+  return (try foreign(() => runtime.createEntities([entity]))).length > 0
+}
+
+export effect function createEntities(entities: Entity[]): UUID[]!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  entities.forEach((entity) => {
+    entity.agentId = runtime.agentId
+  })
+  const result: unknown = try foreign(() => runtime.adapter.createEntities(entities))
+  invalidateTurnEntityDetails(runtime.agentId)
+  if (Array.isArray(result)) return result as UUID[]
+  if (result) return entities.map((entity) => entity.id as UUID)
+  return []
+}
+
+export effect function upsertEntities(entities: Entity[]): void!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  entities.forEach((entity) => {
+    entity.agentId = runtime.agentId
+  })
+  try foreign(() => runtime.adapter.upsertEntities(entities))
+  invalidateTurnEntityDetails(runtime.agentId)
+}
+
+export effect function getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Component[]!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.getComponentsForEntities([entityId], worldId, sourceEntityId))
+}
+
+function coalescibleLimit(params: GetMemoriesParams): number | null {
+  if (params.tableName !== "messages" || !params.roomId) return null
+  if (
+    params.entityId !== undefined
+    || params.authorEntityIds !== undefined
+    || params.agentId !== undefined
+    || params.excludeRoomIds !== undefined
+    || params.worldId !== undefined
+    || params.unique
+    || (params.offset !== undefined && params.offset !== 0)
+    || params.cursor !== undefined
+    || params.end !== undefined
+    || params.metadata !== undefined
+    || params.textContains !== undefined
+    || params.orderDirection === "asc"
+    || params.includeEmbedding !== undefined
+    || params.accessContext !== undefined
+  ) {
+    return null
+  }
+  const requestedLimit = params.limit ?? params.count
+  if (requestedLimit === undefined) return Number.POSITIVE_INFINITY
+  if (typeof requestedLimit !== "number" || !Number.isFinite(requestedLimit) || requestedLimit <= 0) return null
+  return requestedLimit
+}
+
+effect function coalesceRoomMessagesScan(params: GetMemoriesParams, requested: number, roomId: UUID): Memory[]!Foreign!RuntimeKernel {
+  const { runtime } = try Host
+  const { roomMessagesMemo } = try Store
+  const unbounded = requested === Number.POSITIVE_INFINITY
+  const supersetLimit = unbounded
+    ? Number.POSITIVE_INFINITY
+    : Math.max(requested, try foreignSync(() => runtime.getConversationLength()), ROOM_MESSAGES_MEMO_MIN_WINDOW)
+  const cached = roomMessagesMemo.peek(roomId)
+  const rows = try foreign(() =>
+    cached && cached.meta >= requested
+      ? cached.promise
+      : roomMessagesMemo.put(
+        roomId,
+        supersetLimit,
+        runtime.adapter.getMemories({
+          tableName: "messages",
+          roomId,
+          ...(unbounded ? {} : { limit: supersetLimit }),
+          unique: false,
+        }),
+      )
+  )
+  const start = params.start
+  const filtered = start !== undefined ? rows.filter((row) => (row.createdAt ?? 0) >= start) : rows
+  return filtered.slice(0, requested)
+}
+
+export effect function getMemories(params: GetMemoriesParams): Memory[]!StoreFailure!RuntimeKernel {
+  const requested = coalescibleLimit(params)
+  if (requested !== null && params.roomId) return try coalesceRoomMessagesScan(params, requested, params.roomId)
+  const current = try adapter()
+  return try foreign(() => current.getMemories({ ...params, limit: params.limit ?? params.count, tableName: params.tableName }))
+}
+
+effect function readMemoryPartition(
+  runtime: AgentRuntime,
+  tableName: string,
+  append: (memories: Memory[]) => void,
+  metadata?: Record<string, unknown>,
+): void!Foreign {
+  for (let offset = 0; ; offset += GET_ALL_MEMORIES_PAGE_SIZE) {
+    const memories = try foreign(() =>
+      runtime.adapter.getMemories({
+        agentId: runtime.agentId,
+        tableName,
+        limit: GET_ALL_MEMORIES_PAGE_SIZE,
+        offset,
+        ...(metadata ? { metadata } : {}),
+      })
+    )
+    append(memories)
+    if (memories.length < GET_ALL_MEMORIES_PAGE_SIZE) break
+  }
+}
+
+export effect function getAllMemories(): Memory[]!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const allMemories: Memory[] = []
+  const seenIds = new Set<string>()
+  const append = (memories: Memory[]) => {
+    for (const memory of memories) {
+      if (memory.id) {
+        if (seenIds.has(memory.id)) continue
+        seenIds.add(memory.id)
+      }
+      allMemories.push(memory)
+    }
+  }
+  for (const tableName of AGENT_MEMORY_TABLES) {
+    try readMemoryPartition(runtime, tableName, append)
+    if (tableName !== "document_fragments") continue
+    try readMemoryPartition(runtime, tableName, append, { fragmentRole: "source-segment" })
+  }
+  return allMemories
+}
+
+export effect function clearAllAgentMemories(): void!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  runtime.logger.info({ src: "agent", agentId: runtime.agentId }, "Clearing all memories")
+  const memoryIds = (try foreign(() => runtime.getAllMemories())).map((memory) => memory.id).filter((id): id is UUID => id !== undefined)
+  if (memoryIds.length === 0) {
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId }, "No memories to delete")
+    return
+  }
+  try foreign(() => runtime.adapter.deleteMemories(memoryIds))
+  const { roomMessagesMemo } = try Store
+  roomMessagesMemo.invalidate()
+  runtime.logger.info({ src: "agent", agentId: runtime.agentId, count: memoryIds.length }, "Memories cleared")
+}
+
+export effect function deleteAllMemories(roomIds: UUID[], tableName: string): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  try foreign(() => current.deleteAllMemories(roomIds, tableName))
+  if (tableName === "messages") {
+    const { roomMessagesMemo } = try Store
+    for (const roomId of roomIds) roomMessagesMemo.invalidate(roomId)
+  }
+}
+
+export effect function countMemories(roomIdOrParams: | UUID | { roomId?: UUID; roomIds?: UUID[]; unique?: boolean; tableName?: string; entityId?: UUID; agentId?: UUID; metadata?: Record<string, unknown>; }, unique?: boolean, tableName?: string): number!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  if (typeof roomIdOrParams === "string") {
+    return try foreign(() => current.countMemories({ roomIds: [roomIdOrParams], unique, tableName: tableName ?? "messages" }))
+  }
+  return try foreign(() =>
+    current.countMemories({
+      roomIds: roomIdOrParams.roomIds ?? (roomIdOrParams.roomId ? [roomIdOrParams.roomId] : undefined),
+      unique: roomIdOrParams.unique,
+      tableName: roomIdOrParams.tableName ?? "messages",
+      entityId: roomIdOrParams.entityId,
+      agentId: roomIdOrParams.agentId,
+      metadata: roomIdOrParams.metadata,
+    })
+  )
+}
+
+export effect function createWorld(world: World): UUID!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return (try foreign(() => current.createWorlds([world])))[0]
+}
+
+export effect function getWorld(id: UUID): (World | null)!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return (try foreign(() => current.getWorldsByIds([id])))[0] ?? null
+}
+
+export effect function deleteWorld(worldId: UUID): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  try foreign(() => current.deleteWorlds([worldId]))
+}
+
+export effect function updateWorld(world: World): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  try foreign(() => current.updateWorlds([world]))
+}
+
+export effect function getRoom(roomId: UUID): (Room | null)!StoreFailure!RuntimeKernel {
+  const { roomReadMemo } = try Store
+  const cached = roomReadMemo.peek(roomId)
+  if (cached) return try foreign(() => cached.promise)
+  const current = try adapter()
+  return try foreign(() => roomReadMemo.put(roomId, undefined, runDetached(map(foreign(() => current.getRoomsByIds([roomId])), (rooms) => rooms[0] ?? null))))
+}
+
+export effect function createRoom({ id, name, source, type, channelId, serverId, messageServerId, worldId, metadata }: Room): UUID!StoreFailure!RuntimeKernel {
+  if (!worldId) throw new WorldIdRequired({ message: "worldId is required" })
+  const { runtime } = try Host
+  const ids = try foreign(() => runtime.createRooms([{ id, name, source, type, channelId, serverId, messageServerId, worldId, metadata }]))
+  if (!ids.length) throw new RoomCreateFailed({ message: "Failed to create room" })
+  return ids[0]
+}
+
+export effect function createRooms(rooms: Room[]): UUID[]!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  const ids = try foreign(() => current.createRooms(rooms))
+  const { roomReadMemo } = try Store
+  for (const roomId of ids) roomReadMemo.invalidate(roomId)
+  for (const room of rooms) {
+    if (room.id) roomReadMemo.invalidate(room.id)
+  }
+  return ids
+}
+
+export effect function upsertRooms(rooms: Room[]): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  try foreign(() => current.upsertRooms(rooms))
+  const { roomReadMemo } = try Store
+  for (const room of rooms) {
+    if (room.id) roomReadMemo.invalidate(room.id)
+  }
+}
+
+export effect function deleteRoomsByWorldId(worldId: UUID): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  try foreign(() => current.deleteRoomsByWorldIds([worldId]))
+  try retire()
+}
+
+export effect function getRoomsForParticipant(entityId: UUID): UUID[]!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.getRoomsForParticipants([entityId]))
+}
+
+export effect function getRooms(worldId: UUID): Room[]!StoreFailure!RuntimeKernel {
+  return try getRoomsByWorld(worldId)
+}
+
+export effect function getRoomsByWorld(worldId: UUID): Room[]!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.getRoomsByWorlds([worldId]))
+}
+
+export effect function getParticipantUserState(roomId: UUID, entityId: UUID): ("FOLLOWED" | "MUTED" | null)!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return (try foreign(() => current.getParticipantUserStates([{ roomId, entityId }])))[0] ?? null
+}
+
+export effect function updateParticipantUserState(roomId: UUID, entityId: UUID, state: "FOLLOWED" | "MUTED" | null): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  try foreign(() => current.updateParticipantUserStates([{ roomId, entityId, state }]))
+}
+
+export effect function getRelationships(params: { entityIds?: UUID[]; entityId?: UUID; tags?: string[]; limit?: number; offset?: number; }): Relationship[]!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  const entityIds = Array.isArray(params.entityIds) && params.entityIds.length > 0
+    ? params.entityIds
+    : params.entityId
+    ? [params.entityId]
+    : []
+  return try foreign(() => current.getRelationships({ entityIds, tags: params.tags, limit: params.limit, offset: params.offset }))
+}
+
+export effect function getTasks(params: { roomId?: UUID; worldId?: UUID; tags?: string[]; entityId?: UUID; limit?: number; offset?: number; }): Task[]!StoreFailure!RuntimeKernel {
+  try validateTaskQueryPagination(params)
+  const { runtime } = try Host
+  return try foreign(() => runtime.adapter.getTasks({ ...params, agentIds: [runtime.agentId] }))
+}
+
+export effect function markLocalTasksDirty(): void!Foreign!RuntimeKernel {
+  const { runtime } = try Host
+  try foreignSync(() => runtime.getService<TaskService>(ServiceType.TASK)?.markDirty())
+}
+
+export effect function createTask(task: Task): UUID!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  return (try foreign(() => runtime.createTasks([task])))[0]
+}
+
+export effect function getTask(id: UUID): (Task | null)!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return (try foreign(() => current.getTasksByIds([id])))[0] ?? null
+}
+
+export effect function updatePendingTask(id: UUID, task: Partial<Task>): boolean!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  const updated = (try foreign(() => current.updatePendingTask?.call(current, id, task))) ?? false
+  if (updated) try markLocalTasksDirty()
+  return updated
+}
+
+export effect function patchTaskMetadata(id: UUID, patch: TaskMetadataPatch): TaskMetadataPatchOutcome!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  if (patch.wake && current.supportsAtomicTaskWake !== true) return "unsupported"
+  const patcher = current.patchTaskMetadata
+  if (typeof patcher !== "function") return "unsupported"
+  const patched = try foreign(() => patcher.call(current, id, patch))
+  if (patched) try markLocalTasksDirty()
+  return patched ? "patched" : "missing"
+}
+
+export effect function updateTask(id: UUID, task: Partial<Task>): void!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  try foreign(() => runtime.updateTasks([{ id, task }]))
+}
+
+export effect function deleteTask(id: UUID): void!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  try foreign(() => runtime.deleteTasks([id]))
+}
+
+export effect function log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string; }): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.createLogs([params]))
+}
+
+export effect function deleteLog(logId: UUID): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.deleteLogs([logId]))
+}
+
+export effect function getCache<T>(key: string): (T | undefined)!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return (try foreign(() => current.getCaches<T>([key]))).get(key)
+}
+
+export effect function setCache<T>(key: string, value: T): boolean!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.setCaches<T>([{ key, value }]))
+}
+
+export effect function deleteCache(key: string): boolean!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.deleteCaches([key]))
+}
+
+export effect function createTasks(tasks: Task[]): UUID[]!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  const ids = try foreign(() => current.createTasks(tasks))
+  try markLocalTasksDirty()
+  return ids
+}
+
+export effect function updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  try foreign(() => current.updateTasks(updates))
+  try markLocalTasksDirty()
+}
+
+export effect function deleteTasks(taskIds: UUID[]): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  try foreign(() => current.deleteTasks(taskIds))
+  try markLocalTasksDirty()
+}
+
+export effect function queryEntities(params: { componentType?: string; componentDataFilter?: Record<string, unknown>; agentId?: UUID; entityIds?: UUID[]; worldId?: UUID; limit?: number; offset?: number; includeAllComponents?: boolean; entityContext?: UUID; }): Entity[]!StoreFailure!RuntimeKernel {
+  try validateQueryEntitiesPagination(params)
+  const { runtime } = try Host
+  return try foreign(() => runtime.adapter.queryEntities({ ...params, agentId: params.agentId ?? runtime.agentId }))
+}
+
+export effect function searchEntitiesByName(params: { query: string; agentId?: UUID; limit?: number; }): Entity[]!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  return try foreign(() =>
+    runtime.adapter.searchEntitiesByName({ query: params.query, agentId: params.agentId ?? runtime.agentId, limit: params.limit })
+  )
+}
+
+export effect function getEntitiesByNames(params: { names: string[]; agentId?: UUID; }): Entity[]!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  return try foreign(() => runtime.adapter.getEntitiesByNames({ names: params.names, agentId: params.agentId ?? runtime.agentId }))
+}
+
+export effect function getComponent(entityId: UUID, type: string, worldId?: UUID, sourceEntityId?: UUID): (Component | null)!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return (try foreign(() => current.getComponentsByNaturalKeys([{ entityId, type, worldId, sourceEntityId }])))[0] ?? null
+}
+
+export effect function getComponentsByType(type: string, agentId?: UUID, options?: { entityContext?: UUID }): Component[]!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const entities = try foreign(() =>
+    runtime.adapter.queryEntities({
+      componentType: type,
+      agentId: agentId ?? runtime.agentId,
+      includeAllComponents: false,
+      ...(options?.entityContext != null && { entityContext: options.entityContext }),
+    })
+  )
+  const components: Component[] = []
+  for (const entity of entities) {
+    if (entity.components) components.push(...entity.components)
+  }
+  return components
+}
+
+export effect function getRelationship(params: { sourceEntityId: UUID; targetEntityId: UUID; }): (Relationship | null)!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return (try foreign(() => current.getRelationshipsByPairs([params])))[0] ?? null
+}
+
+export effect function getMemoryById(id: UUID): (Memory | null)!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  const memories = try foreign(() => current.getMemoriesByIds([id]))
+  return memories.length > 0 ? memories[0] : null
+}
+
+export effect function getPairingRequestsForChannel(channel: PairingChannel, agentId: UUID): PairingRequest[]!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return (try foreign(() => current.getPairingRequests([{ channel, agentId }])))[0]?.requests ?? []
+}
+
+export effect function getPairingAllowlistForChannel(channel: PairingChannel, agentId: UUID): PairingAllowlistEntry[]!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return (try foreign(() => current.getPairingAllowlists([{ channel, agentId }])))[0]?.entries ?? []
+}
+
+export effect function createPairingRequest(request: PairingRequest): UUID!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return (try foreign(() => current.createPairingRequests([request])))[0]
+}
+
+export effect function updatePairingRequest(request: PairingRequest): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.updatePairingRequests([request]))
+}
+
+export effect function deletePairingRequest(id: UUID): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.deletePairingRequests([id]))
+}
+
+export effect function createPairingAllowlistEntry(entry: PairingAllowlistEntry): UUID!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return (try foreign(() => current.createPairingAllowlistEntries([entry])))[0]
+}
+
+export effect function deletePairingAllowlistEntry(id: UUID): void!StoreFailure!RuntimeKernel {
+  const current = try adapter()
+  return try foreign(() => current.deletePairingAllowlistEntries([id]))
+}
+
+export effect function listConnectorAccounts(params: ListConnectorAccountsParams): ConnectorAccountRecord[]!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  return try foreign(() => runtime.adapter.listConnectorAccounts({ ...params, agentId: params.agentId ?? runtime.agentId }))
+}
+
+export effect function getConnectorAccount(params: GetConnectorAccountParams): (ConnectorAccountRecord | null)!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  return try foreign(() =>
+    runtime.adapter.getConnectorAccount({ ...params, agentId: params.id ? params.agentId : (params.agentId ?? runtime.agentId) })
+  )
+}
+
+export effect function deleteConnectorAccount(params: DeleteConnectorAccountParams): boolean!StoreFailure!RuntimeKernel {
+  const { runtime } = try Host
+  return try foreign(() =>
+    runtime.adapter.deleteConnectorAccount({ ...params, agentId: params.id ? params.agentId : (params.agentId ?? runtime.agentId) })
+  )
+}

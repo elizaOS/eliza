@@ -1,0 +1,509 @@
+// spec/core/runtimeExtensions.md, "Each registry preserves its own normalization and replacement policy"; spec/core/responseEvaluators.md, "Duplicate registration preserves the original evaluator identity"; spec/core/runtime.md, "Stop closes admissions and prepares services once"
+import { Machine, lookupStatus, machine, visibleCategories, type Event as ExtensionsEvent, type Rejected as ExtensionsRejected, type RuntimeExtensions, type SearchCategory } from "../../gen/core__runtimeExtensions.effect.vibe"
+import { Foreign, foreign } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { own, type Owned } from "../owned.vibe"
+import type { PromptOptimizationRuntimeHooks } from "../prompt-optimization.vibe"
+import { flattenRuntimeSettings } from "../runtime-settings.vibe"
+import type { AgentRuntime } from "../runtime.vibe"
+import type { ChatPreHandler } from "../types/chat-pre-handler.vibe"
+import type { Action, Provider } from "../types/components.vibe"
+import type { RegisteredEvaluator } from "../types/evaluator.vibe"
+import type { EventPayload, EventPayloadMap } from "../types/events.vibe"
+import type { Plugin } from "../types/plugin.vibe"
+import { SearchCategoryRegistryError, type SearchCategoryEnumerationOptions, type SearchCategoryLookupOptions, type SearchCategoryRegistration } from "../types/search.vibe"
+import type { TaskWorker } from "../types/task.vibe"
+import { RuntimeConnectorRegistry } from "./connector-registry.vibe"
+import { Host } from "./host.vibe"
+import type { RuntimeKernel } from "./kernel.vibe"
+import * as lifecycle from "./lifecycle.vibe"
+import type { Lifecycle } from "./lifecycle.vibe"
+import { RuntimePipelineHooks } from "./pipeline-hooks.vibe"
+import type { ResponseHandlerEvaluator } from "./response-handler-evaluators.vibe"
+import type { ResponseHandlerFieldEvaluator } from "./response-handler-fields.vibe"
+import * as services from "./service-lifecycle.vibe"
+import type { Services, ServicesFailure } from "./service-lifecycle.vibe"
+import * as store from "./store.vibe"
+
+export error PluginNameMissing { message: string }
+export error SearchCategoryInvalid { message: string }
+
+export type ComponentsFailure = PluginNameMissing | SearchCategoryInvalid | SearchCategoryRegistryError | ElizaError | Foreign | ServicesFailure
+
+interface ExtensionsPayload {
+  readonly workers: ReadonlyMap<number, TaskWorker>
+  readonly categories: ReadonlyMap<string, SearchCategoryRegistration>
+  readonly promptHooks: PromptOptimizationRuntimeHooks | null
+}
+
+export service Components {
+  static readonly key = "@elizaos/core/runtime/Components"
+  readonly extensionsMachine: Machine.Shape
+  readonly extensions: Owned<RuntimeExtensions, ExtensionsEvent, RuntimeExtensions, ExtensionsRejected, ExtensionsPayload>
+  readonly pipelineHooks: RuntimePipelineHooks
+  readonly connectors: RuntimeConnectorRegistry
+}
+
+effect function extensionsRegistry() {
+  provide machine() {
+    const extensionsMachine = try Machine
+    const extensions = try own(extensionsMachine, { workers: new Map(), categories: new Map(), promptHooks: null } satisfies ExtensionsPayload as ExtensionsPayload)
+    return { extensionsMachine, extensions }
+  }
+}
+
+export const ComponentsLive: Layer.Layer<Components, never, Host | Lifecycle | Services> = Layer.effect(Components, effect {
+  const { runtime } = try Host
+  return {
+    ...(try extensionsRegistry()),
+    pipelineHooks: new RuntimePipelineHooks(runtime),
+    connectors: new RuntimeConnectorRegistry(runtime, new Map()),
+  }
+})
+
+export const CONNECTOR_FORWARDS = [
+  "registerSendHandler",
+  "registerInternalSendHandler",
+  "registerMessageConnector",
+  "unregisterMessageConnector",
+  "getMessageConnectors",
+  "registerPostConnector",
+  "unregisterPostConnector",
+  "getPostConnectors",
+  "sendMessageToTarget",
+  "editMessageOnTarget",
+  "sendTypingOnTarget",
+  "stopTypingOnTarget",
+  "createThreadOnTarget",
+  "postToThreadOnTarget",
+  "addReactionOnTarget",
+] as const satisfies readonly (keyof RuntimeConnectorRegistry)[]
+
+export const PIPELINE_FORWARDS = [
+  "registerPipelineHook",
+  "unregisterPipelineHook",
+  "applyPipelineHooks",
+] as const satisfies readonly (keyof RuntimePipelineHooks)[]
+
+type ComponentKind = "action" | "provider" | "evaluator"
+
+interface NamedComponent {
+  readonly name: string
+  readonly override?: boolean
+}
+
+type EventHandlers = (( params: EventPayloadMap[keyof EventPayloadMap] | EventPayload, ) => Promise<void>)[]
+
+const KIND_LABEL: Record<ComponentKind, string> = { action: "Action", provider: "Provider", evaluator: "Evaluator" }
+
+function resolveComponentCollision(runtime: AgentRuntime, kind: ComponentKind, name: string, override: boolean | undefined): boolean {
+  if (override === true) {
+    runtime.logger.info(
+      { src: "agent", agentId: runtime.agentId, [kind]: name },
+      `[AgentRuntime] ${kind} "${name}" declares override:true — superseding the already-registered ${kind} of the same name.`,
+    )
+    return true
+  }
+  runtime.logger.warn(
+    { src: "agent", agentId: runtime.agentId, [kind]: name },
+    `[AgentRuntime] ${kind} name collision: a ${kind} named "${name}" is already registered; keeping the first and skipping this one. Which one wins is load-order-dependent — give the two distinct names, or set override:true on the ${kind} that should intentionally supersede.`,
+  )
+  return false
+}
+
+function addComponent<T extends NamedComponent>(runtime: AgentRuntime, kind: ComponentKind, list: T[], component: T): void {
+  if (list.includes(component)) {
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId, [kind]: component.name }, `${KIND_LABEL[kind]} instance already registered, skipping`)
+    return
+  }
+  const existingIndex = list.findIndex((item) => item.name === component.name)
+  if (existingIndex !== -1) {
+    if (resolveComponentCollision(runtime, kind, component.name, component.override)) list[existingIndex] = component
+    return
+  }
+  list.push(component)
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, [kind]: component.name }, `${KIND_LABEL[kind]} registered`)
+}
+
+function removeNamed(runtime: AgentRuntime, list: { readonly name: string }[], name: string, field: "action" | "evaluator", label: string, removed?: (name: string) => void): boolean {
+  const normalized = typeof name === "string" ? name.trim() : ""
+  if (!normalized) return false
+  const index = list.findIndex((item) => item.name === normalized)
+  if (index === -1) return false
+  list.splice(index, 1)
+  removed?.(normalized)
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, [field]: normalized }, `${label} unregistered`)
+  return true
+}
+
+function hasNamed(runtime: AgentRuntime, list: readonly { readonly name: string }[], name: string, label: string): boolean {
+  if (!list.find((item) => item.name === name)) return false
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, evaluator: name }, `${label} already registered, skipping`)
+  return true
+}
+
+function getSearchCategoryKey(category: string): string {
+  return category.trim().toLowerCase()
+}
+
+function cloneSearchCategoryRegistration(registration: SearchCategoryRegistration): SearchCategoryRegistration {
+  return {
+    ...registration,
+    contexts: registration.contexts ? [...registration.contexts] : undefined,
+    filters: registration.filters?.map((filter) => ({
+      ...filter,
+      options: filter.options?.map((option) => ({ ...option })),
+    })),
+    capabilities: registration.capabilities ? [...registration.capabilities] : undefined,
+  }
+}
+
+effect function normalizeSearchCategoryRegistration(registration: SearchCategoryRegistration): SearchCategoryRegistration!SearchCategoryInvalid {
+  const category = typeof registration.category === "string" ? registration.category.trim() : ""
+  const label = typeof registration.label === "string" ? registration.label.trim() : ""
+  if (!category) throw new SearchCategoryInvalid({ message: "Search category registration requires a category" })
+  if (!label) throw new SearchCategoryInvalid({ message: "Search category registration requires a label" })
+  return cloneSearchCategoryRegistration({ ...registration, category, label, enabled: registration.enabled ?? true })
+}
+
+function searchCategoryModel(key: string, registration: SearchCategoryRegistration): SearchCategory {
+  return {
+    key,
+    category: registration.category,
+    label: registration.label,
+    active: registration.enabled !== false,
+    contexts: [...(registration.contexts ?? [])],
+    filters: (registration.filters ?? []).map((filter) => filter.name),
+    capabilities: [...(registration.capabilities ?? [])],
+    payload: key,
+  }
+}
+
+export effect function retire(): void!!RuntimeKernel {
+  const { runtime } = try Host
+  runtime.events = {}
+}
+
+effect function assertRuntimeActive(runtime: AgentRuntime, plugin: Plugin): void!ElizaError!RuntimeKernel {
+  if (!(try lifecycle.isStopRequested())) return
+  throw new ElizaError(`Cannot register plugin "${plugin.name}" after runtime stop was requested`, {
+    code: "RUNTIME_STOPPED_DURING_PLUGIN_REGISTRATION",
+    severity: "ephemeral",
+    context: { agentId: runtime.agentId, plugin: plugin.name },
+  })
+}
+
+function pluginConfig(plugin: Plugin): Record<string, string> {
+  const config: Record<string, string> = {}
+  for (const [key, value] of Object.entries(plugin.config ?? {})) {
+    if (value !== null && value !== undefined) config[key] = String(value)
+  }
+  return config
+}
+
+effect function initializePlugin(runtime: AgentRuntime, plugin: Plugin): void!ComponentsFailure!RuntimeKernel {
+  effect {
+    try foreign(() => plugin.init?.(pluginConfig(plugin), runtime))
+    try assertRuntimeActive(runtime, plugin)
+  } catch effect (error) => {
+    const index = runtime.plugins.indexOf(plugin)
+    if (index !== -1) runtime.plugins.splice(index, 1)
+    throw error
+  }
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, plugin: plugin.name }, "Plugin initialized")
+}
+
+module edge {
+  import { registerConnectorSourceDefinitions } from "../connectors.vibe"
+  import type { AgentRuntime } from "../runtime.vibe"
+  import type { EventPayload } from "../types/events.vibe"
+  import type { ModelTypeName } from "../types/model.vibe"
+  import type { Plugin } from "../types/plugin.vibe"
+  import type { JsonValue } from "../types/primitives.vibe"
+  import type { IAgentRuntime } from "../types/runtime.vibe"
+
+  /** @throws {unknown} */
+  export function registerComponents(runtime: AgentRuntime, plugin: Plugin): void {
+    if (plugin.actions) for (const action of plugin.actions) runtime.registerAction(action)
+    if (plugin.providers) for (const provider of plugin.providers) {
+      if (provider.registerByDefault === false) {
+        runtime.logger.debug(
+          { src: "agent", agentId: runtime.agentId, provider: provider.name, plugin: plugin.name },
+          "Skipping plugin provider with registerByDefault=false",
+        )
+        continue
+      }
+      runtime.registerProvider(provider)
+    }
+    if (plugin.evaluators) for (const evaluator of plugin.evaluators) runtime.registerEvaluator(evaluator)
+    if (plugin.chatPreHandlers) runtime.registerChatPreHandlers(plugin.chatPreHandlers)
+    registerUnique(runtime, plugin, runtime.responseHandlerEvaluators, plugin.responseHandlerEvaluators, "Skipping duplicate plugin response-handler evaluator", (evaluator) => runtime.registerResponseHandlerEvaluator(evaluator))
+    registerUnique(runtime, plugin, runtime.responseHandlerFieldEvaluators, plugin.responseHandlerFieldEvaluators, "Skipping duplicate plugin response-handler field evaluator", (evaluator) => runtime.registerResponseHandlerFieldEvaluator(evaluator))
+    for (const [modelType, handler] of Object.entries(plugin.models ?? {})) {
+      runtime.registerModel(
+        modelType as ModelTypeName,
+        handler as (runtime: IAgentRuntime, params: Record<string, JsonValue | object>) => Promise<JsonValue | object>,
+        plugin.name,
+        plugin.priority,
+        plugin.modelMetadata?.[modelType],
+      )
+    }
+    if (plugin.connectorSources) registerConnectorSourceDefinitions(plugin.connectorSources, plugin.name)
+    for (const [eventName, eventHandlers] of Object.entries(plugin.events ?? {})) {
+      for (const eventHandler of eventHandlers) runtime.registerEvent(eventName, eventHandler as (params: EventPayload) => Promise<void>)
+    }
+  }
+
+  /** @throws {unknown} */
+  function registerUnique<T extends { readonly name: string }>(runtime: AgentRuntime, plugin: Plugin, registered: readonly T[], declared: readonly T[] | undefined, skipped: string, register: (item: T) => void): void {
+    if (!declared) return
+    const names = new Set(registered.map((item) => item.name))
+    for (const item of declared) {
+      if (names.has(item.name)) {
+        runtime.logger.debug({ src: "agent", agentId: runtime.agentId, evaluator: item.name, plugin: plugin.name }, skipped)
+        continue
+      }
+      register(item)
+      names.add(item.name)
+    }
+  }
+}
+import { registerComponents } from edge
+
+effect function registerPluginAdapter(runtime: AgentRuntime, plugin: Plugin): void!ComponentsFailure!RuntimeKernel {
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, plugin: plugin.name }, "Registering database adapter")
+  const adapterSettings = flattenRuntimeSettings(runtime.character)
+  const adapter = try foreign(() => plugin.adapter!(runtime.agentId, adapterSettings))
+  try assertRuntimeActive(runtime, plugin)
+  runtime.registerDatabaseAdapter(adapter)
+}
+
+effect function registerPluginContributions<T extends Plugin>(plugin: T): void!ComponentsFailure!RuntimeKernel {
+  const { runtime } = try Host
+  if (!plugin.name) {
+    const errorMsg = "Plugin or plugin name is undefined"
+    runtime.logger.error({ src: "agent", agentId: runtime.agentId, error: errorMsg }, "Plugin registration failed")
+    throw new PluginNameMissing({ message: `registerPlugin: ${errorMsg}` })
+  }
+  try assertRuntimeActive(runtime, plugin)
+  if (runtime.plugins.find((p) => p.name === plugin.name)) {
+    runtime.logger.warn({ src: "agent", agentId: runtime.agentId, plugin: plugin.name }, "Plugin already registered, skipping")
+    return
+  }
+  runtime.plugins.push(plugin)
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, plugin: plugin.name }, "Plugin added")
+  if (plugin.init) try initializePlugin(runtime, plugin)
+  if (plugin.adapter) {
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId, plugin: plugin.name }, "Plugin declares adapter factory (handled pre-construction)")
+  }
+  try Effect.try({ try: () => registerComponents(runtime, plugin), catch: (cause) => new Foreign({ cause }) })
+  if (plugin.services) try services.registerPluginServices(plugin.name, plugin.services)
+  if (plugin.adapter) try registerPluginAdapter(runtime, plugin)
+}
+
+export effect function registerPlugin<T extends Plugin>(plugin: T): void!ComponentsFailure!RuntimeKernel {
+  return try lifecycle.tracked(registerPluginContributions(plugin))
+}
+
+export effect function registerPromptOptimizationHooks(hooks: PromptOptimizationRuntimeHooks | null): void!!RuntimeKernel {
+  const { extensions } = try Components
+  try orDie(extensions.step({ type: "setPromptHooks", hooks: hooks === null ? 0 : 1 }, (payload) => [undefined, { ...payload, promptHooks: hooks }] as const))
+}
+
+export effect function getPromptOptimizationHooks(): (PromptOptimizationRuntimeHooks | null)!!RuntimeKernel {
+  const { extensions } = try Components
+  return try extensions.read((_state, payload) => payload.promptHooks)
+}
+
+export effect function registerProvider(provider: Provider): void!!RuntimeKernel {
+  const { runtime } = try Host
+  addComponent(runtime, "provider", runtime.providers, provider)
+}
+
+export effect function registerAction(action: Action): void!!RuntimeKernel {
+  const { runtime } = try Host
+  addComponent(runtime, "action", runtime.actions, action)
+}
+
+export effect function registerChatPreHandler(handler: ChatPreHandler): void!!RuntimeKernel {
+  const { runtime } = try Host
+  runtime.chatPreHandlerRegistry.register(handler)
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, preHandler: handler.id }, "Chat pre-handler registered")
+}
+
+export effect function registerChatPreHandlers(handlers: readonly ChatPreHandler[]): void!!RuntimeKernel {
+  const { runtime } = try Host
+  for (const handler of handlers) runtime.registerChatPreHandler(handler)
+}
+
+export effect function unregisterChatPreHandler(id: string): void!!RuntimeKernel {
+  const { runtime } = try Host
+  runtime.chatPreHandlerRegistry.unregister(id)
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, preHandler: id }, "Chat pre-handler unregistered")
+}
+
+export effect function registerEvaluator(evaluator: RegisteredEvaluator): void!!RuntimeKernel {
+  const { runtime } = try Host
+  addComponent(runtime, "evaluator", runtime.evaluators, evaluator)
+}
+
+export effect function unregisterEvaluator(name: string): boolean!!RuntimeKernel {
+  const { runtime } = try Host
+  return removeNamed(runtime, runtime.evaluators, name, "evaluator", "Evaluator")
+}
+
+export effect function registerResponseHandlerEvaluator(evaluator: ResponseHandlerEvaluator): void!!RuntimeKernel {
+  const { runtime } = try Host
+  if (hasNamed(runtime, runtime.responseHandlerEvaluators, evaluator.name, "Response-handler evaluator")) return
+  runtime.responseHandlerEvaluators.push(evaluator)
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, evaluator: evaluator.name }, "Response-handler evaluator registered")
+}
+
+export effect function unregisterResponseHandlerEvaluator(name: string): boolean!!RuntimeKernel {
+  const { runtime } = try Host
+  return removeNamed(runtime, runtime.responseHandlerEvaluators, name, "evaluator", "Response-handler evaluator")
+}
+
+export effect function registerResponseHandlerFieldEvaluator(evaluator: ResponseHandlerFieldEvaluator): void!Foreign!RuntimeKernel {
+  const { runtime } = try Host
+  if (hasNamed(runtime, runtime.responseHandlerFieldEvaluators, evaluator.name, "Response-handler field evaluator")) return
+  runtime.responseHandlerFieldEvaluators.push(evaluator)
+  try Effect.try({ try: () => runtime.responseHandlerFieldRegistry.register(evaluator), catch: (cause) => new Foreign({ cause }) })
+  runtime.logger.debug(
+    { src: "agent", agentId: runtime.agentId, evaluator: evaluator.name, priority: evaluator.priority ?? 100 },
+    "Response-handler field evaluator registered",
+  )
+}
+
+export effect function unregisterResponseHandlerFieldEvaluator(name: string): boolean!!RuntimeKernel {
+  const { runtime } = try Host
+  return removeNamed(runtime, runtime.responseHandlerFieldEvaluators, name, "evaluator", "Response-handler field evaluator", (removed) => {
+    runtime.responseHandlerFieldRegistry.unregister(removed)
+  })
+}
+
+export effect function unregisterAction(name: string): boolean!!RuntimeKernel {
+  const { runtime } = try Host
+  return removeNamed(runtime, runtime.actions, name, "action", "Action")
+}
+
+export effect function getAllActions(): Action[]!!RuntimeKernel {
+  const { runtime } = try Host
+  return [...runtime.actions]
+}
+
+export effect function registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void!!RuntimeKernel {
+  const { runtime } = try Host
+  const typedHandler = handler as EventHandlers[number]
+  const handlers = runtime.events[event]
+  if (handlers) handlers.push(typedHandler)
+  else runtime.events[event] = [typedHandler]
+}
+
+export effect function unregisterEvent(event: string, handler: (params: EventPayload) => Promise<void>): void!!RuntimeKernel {
+  const { runtime } = try Host
+  const handlers = runtime.events[event]
+  if (!handlers) return
+  const filtered = handlers.filter((h) => h !== handler)
+  if (filtered.length > 0) runtime.events[event] = filtered
+  else delete runtime.events[event]
+}
+
+export effect function getEvent(event: string): (| (( params: EventPayloadMap[keyof EventPayloadMap] | EventPayload, ) => Promise<void>)[] | undefined)!!RuntimeKernel {
+  const { runtime } = try Host
+  return runtime.events[event] as EventHandlers | undefined
+}
+
+export effect function registerTaskWorker(taskHandler: TaskWorker): void!Foreign!RuntimeKernel {
+  const { runtime } = try Host
+  const { extensions } = try Components
+  const name = taskHandler.name
+  const { existed, reference } = try extensions.read((state, payload) => ({
+    existed: state.workers.some((worker) => worker.name === name),
+    reference: Math.max(0, ...payload.workers.keys()) + 1,
+  }))
+  if (existed) {
+    runtime.logger.warn({ src: "agent", agentId: runtime.agentId, task: name }, "Task worker already registered, overwriting")
+  }
+  try orDie(extensions.step({ type: "registerWorker", name, reference }, (payload, out) => [
+    undefined,
+    { ...payload, workers: workersOf(out, payload.workers, reference, taskHandler) },
+  ] as const))
+  try store.markLocalTasksDirty()
+}
+
+function workersOf(state: RuntimeExtensions, previous: ReadonlyMap<number, TaskWorker>, reference?: number, added?: TaskWorker): Map<number, TaskWorker> {
+  const workers = new Map<number, TaskWorker>()
+  for (const worker of state.workers) {
+    const value = worker.reference === reference ? added : previous.get(worker.reference)
+    if (value) workers.set(worker.reference, value)
+  }
+  return workers
+}
+
+export effect function getTaskWorker(name: string): (TaskWorker | undefined)!!RuntimeKernel {
+  const { extensions } = try Components
+  return try extensions.read((state, payload) => {
+    const worker = state.workers.find((item) => item.name === name)
+    return worker ? payload.workers.get(worker.reference) : undefined
+  })
+}
+
+export effect function unregisterTaskWorker(name: string): boolean!!RuntimeKernel {
+  const { extensions } = try Components
+  return try orDie(extensions.step({ type: "unregisterWorker", name }, (payload, out) => {
+    const workers = workersOf(out, payload.workers)
+    return [workers.size < payload.workers.size, { ...payload, workers }] as const
+  }))
+}
+
+export effect function registerSearchCategory(registration: SearchCategoryRegistration): void!ComponentsFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const { extensions } = try Components
+  const normalized = try normalizeSearchCategoryRegistration(registration)
+  const key = getSearchCategoryKey(normalized.category)
+  const existed = try extensions.read((_state, payload) => payload.categories.has(key))
+  if (existed) {
+    runtime.logger.warn({ src: "agent", agentId: runtime.agentId, searchCategory: normalized.category }, "Search category already registered, overwriting")
+  }
+  try orDie(extensions.step({ type: "registerCategory", category: searchCategoryModel(key, normalized) }, (payload) => [
+    undefined,
+    { ...payload, categories: new Map(payload.categories).set(key, normalized) },
+  ] as const))
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, searchCategory: normalized.category }, "Search category registered")
+}
+
+export effect function getSearchCategories(options: SearchCategoryEnumerationOptions = {}): SearchCategoryRegistration[]!!RuntimeKernel {
+  const { extensions } = try Components
+  const contexts: string[] = options.contexts && options.contexts.length > 0 ? [...options.contexts] : []
+  return try extensions.read((state, payload) =>
+    visibleCategories(state, contexts, Boolean(options.includeDisabled))
+      .flatMap((category) => {
+        const registration = payload.categories.get(category.key)
+        return registration ? [cloneSearchCategoryRegistration(registration)] : []
+      })
+      .sort((a, b) => a.category.localeCompare(b.category))
+  )
+}
+
+export effect function getSearchCategory(category: string, options: SearchCategoryLookupOptions = {}): SearchCategoryRegistration!ComponentsFailure!RuntimeKernel {
+  const { extensions } = try Components
+  const key = getSearchCategoryKey(category)
+  const { status, registration } = try extensions.read((state, payload) => ({
+    status: lookupStatus(state, key, Boolean(options.includeDisabled)),
+    registration: payload.categories.get(key),
+  }))
+  if (status === "SEARCH_CATEGORY_NOT_FOUND" || !registration) {
+    throw new SearchCategoryRegistryError("SEARCH_CATEGORY_NOT_FOUND", category, `No search category registered for category: ${category}`)
+  }
+  if (status === "SEARCH_CATEGORY_DISABLED") {
+    throw new SearchCategoryRegistryError(
+      "SEARCH_CATEGORY_DISABLED",
+      registration.category,
+      registration.disabledReason
+        ? `Search category disabled: ${registration.category} (${registration.disabledReason})`
+        : `Search category disabled: ${registration.category}`,
+    )
+  }
+  return cloneSearchCategoryRegistration(registration)
+}

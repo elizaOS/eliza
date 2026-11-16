@@ -1167,7 +1167,7 @@ export function recordRoleGrant(
   return changed
 }
 
-error WorldUnresolved { message: string }
+export error WorldUnresolved { message: string }
 
 export effect function setEntityRole(
   runtime: IAgentRuntime,

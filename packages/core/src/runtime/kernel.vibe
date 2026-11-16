@@ -1,0 +1,107 @@
+// spec/core/index.md, "Each boundary operation has one owning layer"; spec/core/journey.md, "A turn composes the existing machines without a second state store"
+import { asLegacy, type Kernel } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import type { AgentRuntime } from "../runtime.vibe"
+import { SecretSwapUnresolvedPlaceholderError } from "../security/secret-swap.vibe"
+import { SearchCategoryRegistryError } from "../types/search.vibe"
+import { Settings, SettingsLive } from "./agent-settings.vibe"
+import type { ActivePromptTraces } from "./active-prompt-traces.vibe"
+import { Components, ComponentsLive } from "./components.vibe"
+import type { RuntimeConnectorRegistry } from "./connector-registry.vibe"
+import type { RuntimeDataMutations } from "./data-mutations.vibe"
+import { Dispatch, DispatchLive } from "./dispatch.vibe"
+import { EmbeddingDimensionProbeError, type RuntimeEmbeddings } from "./embeddings.vibe"
+import { Host, type AgentRuntimeOptions } from "./host.vibe"
+import { Lifecycle, LifecycleLive } from "./lifecycle.vibe"
+import type { RuntimeModelDispatch } from "./model-dispatch.vibe"
+import type { RuntimePipelineHooks } from "./pipeline-hooks.vibe"
+import { Services, ServicesLive } from "./service-lifecycle.vibe"
+import type { ProviderStateComposer } from "./state-composition.vibe"
+import { Store, StoreLive } from "./store.vibe"
+import { TurnAbortedError } from "./turn-aborted-error.vibe"
+import { SchemaValidationFailedError } from "./validated-model-call.vibe"
+
+export type RuntimeKernel = Host | Lifecycle | Settings | Store | Services | Components | Dispatch
+
+export function kernelLayer(runtime: AgentRuntime, options: AgentRuntimeOptions, kernel: () => Kernel<RuntimeKernel>): Layer.Layer<RuntimeKernel> {
+  return DispatchLive.pipe(
+    Layer.provideMerge(ComponentsLive),
+    Layer.provideMerge(ServicesLive),
+    Layer.provideMerge(StoreLive),
+    Layer.provideMerge(SettingsLive),
+    Layer.provideMerge(LifecycleLive),
+    Layer.provideMerge(Layer.succeed(Host, { runtime, options, kernel })),
+  )
+}
+
+const PUBLIC_FAILURES = [
+  ElizaError,
+  SearchCategoryRegistryError,
+  EmbeddingDimensionProbeError,
+  TurnAbortedError,
+  SchemaValidationFailedError,
+  SecretSwapUnresolvedPlaceholderError,
+]
+
+export function legacy<A, E extends Error, R>(work: A!E!R, Legacy: new (message: string, options?: ErrorOptions) => Error = Error): A!Error!R {
+  return asLegacy(Legacy, work, ...PUBLIC_FAILURES)
+}
+
+export interface RuntimeHelpers {
+  readonly mutations: RuntimeDataMutations
+  readonly pipelineHooks: RuntimePipelineHooks
+  readonly connectors: RuntimeConnectorRegistry
+  readonly promptTraces: ActivePromptTraces
+  readonly embeddings: RuntimeEmbeddings
+  readonly models: RuntimeModelDispatch
+  readonly providerState: ProviderStateComposer
+}
+
+export effect function helpers(): RuntimeHelpers!!RuntimeKernel {
+  const store = try Store
+  const components = try Components
+  const dispatch = try Dispatch
+  return {
+    mutations: store.mutations,
+    pipelineHooks: components.pipelineHooks,
+    connectors: components.connectors,
+    promptTraces: dispatch.promptTraces,
+    embeddings: dispatch.embeddings,
+    models: dispatch.models,
+    providerState: dispatch.providerState,
+  }
+}
+
+module edge {
+  type Method = (...args: unknown[]) => unknown
+
+  /** @throws {never} */
+  export function forward<T extends object>(prototype: object, names: readonly string[], target: (self: T) => object): void {
+    for (const name of names) {
+      Object.defineProperty(prototype, name, {
+        value(this: T, ...args: unknown[]) {
+          const owner = target(this) as Record<string, Method>
+          return owner[name].apply(owner, args)
+        },
+        writable: true,
+        configurable: true,
+      })
+    }
+  }
+
+  /** @throws {never} */
+  export function forwardAsync<T extends object>(prototype: object, names: readonly string[], target: (self: T) => object, prepare: (self: T, args: unknown[]) => unknown[] = (_self, args) => args): void {
+    for (const name of names) {
+      Object.defineProperty(prototype, name, {
+        async value(this: T, ...args: unknown[]) {
+          const owner = target(this) as Record<string, Method>
+          return owner[name].apply(owner, prepare(this, args))
+        },
+        writable: true,
+        configurable: true,
+      })
+    }
+  }
+}
+import { forward, forwardAsync } from edge
+export { forward, forwardAsync }

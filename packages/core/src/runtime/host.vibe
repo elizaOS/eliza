@@ -1,0 +1,39 @@
+// spec/core/runtime.md, "Story: Initialize an explicit host composition"
+import type { Kernel } from "../edge.vibe"
+import type { AgentRuntime } from "../runtime.vibe"
+import type { FetchLike } from "../media/fetch.vibe"
+import type { ConfidentialInferenceAuthority } from "../security/confidential-inference.vibe"
+import type { ProcessingPolicy } from "../security/processing-policy.vibe"
+import type { Character } from "../types/agent.vibe"
+import type { IDatabaseAdapter } from "../types/database.vibe"
+import type { LLMModeType } from "../types/model.vibe"
+import type { Plugin } from "../types/plugin.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import type { RuntimeSettings } from "../types/settings.vibe"
+import type { RuntimeKernel } from "./kernel.vibe"
+
+export interface AgentRuntimeOptions {
+  confidentialInference?: ConfidentialInferenceAuthority
+  processingPolicy?: ProcessingPolicy
+  conversationLength?: number
+  agentId?: UUID
+  runtimeInstanceId?: UUID
+  character?: Character
+  plugins?: Plugin[]
+  fetch?: FetchLike
+  adapter?: IDatabaseAdapter
+  settings?: RuntimeSettings
+  allAvailablePlugins?: Plugin[]
+  logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal"
+  actionPlanning?: boolean
+  llmMode?: LLMModeType
+  checkShouldRespond?: boolean
+  enableAutonomy?: boolean
+}
+
+export service Host {
+  static readonly key = "@elizaos/core/runtime/Host"
+  readonly runtime: AgentRuntime
+  readonly options: AgentRuntimeOptions
+  readonly kernel: () => Kernel<RuntimeKernel>
+}

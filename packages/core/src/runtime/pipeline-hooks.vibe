@@ -49,8 +49,8 @@ function skipFlagMetadata(ctx: PipelineHookContext): unknown {
   return "message" in ctx ? ctx.message?.content.metadata : undefined
 }
 
-error PipelinePhaseMismatch { message: string }
-error UnknownPipelinePhase { message: string }
+export error PipelinePhaseMismatch { message: string }
+export error UnknownPipelinePhase { message: string }
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)

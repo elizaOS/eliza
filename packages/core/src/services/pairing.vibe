@@ -41,7 +41,7 @@ import { newRequestId, secureRandomByte } from node
 
 const MAX_PAIRING_REPLY_CLAIMS = 4096
 
-error UniqueCodeExhausted { message: string }
+export error UniqueCodeExhausted { message: string }
 
 interface Pairing {
   readonly config: Required<PairingConfig>

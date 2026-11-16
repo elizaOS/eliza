@@ -100,11 +100,11 @@ export class NotificationNativeError extends Data.TaggedError("NotificationNativ
   }
 }
 
-error WriteRejected { message: string }
-error TitleRequired { message: string }
-error PersistRejected { message: string }
-error UnexpectedRecovery { message: string }
-error PersistenceUnreconciled { errors: unknown[] }
+export error WriteRejected { message: string }
+export error TitleRequired { message: string }
+export error PersistRejected { message: string }
+export error UnexpectedRecovery { message: string }
+export error PersistenceUnreconciled { errors: unknown[] }
 
 const recoveryByRuntime = new WeakMap<
   NotificationServiceLifecycleRuntime,

@@ -169,15 +169,18 @@ function getRegistrationCapture(runtime: RuntimeWithPluginLifecycle) {
 }
 
 function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {
-  return (serviceClass as { name?: string }).name || "Function"
+  return (serviceClass as { name?: string }).name
+    || (serviceClass as { constructor: { name: string } }).constructor.name
+    || "anonymous service class"
 }
 
-function warnOnDuplicateServiceTypeRegistration(
-  runtime: RuntimeWithPluginLifecycle,
+export function warnOnDuplicateServiceTypeRegistration(
+  runtime: Pick<IAgentRuntime, "logger" | "agentId">,
   serviceType: ServiceTypeName | string,
   serviceClass: RuntimeServiceClass,
   existingServiceClasses: RuntimeServiceClass[],
-  pluginName?: string,
+  pluginName: string | undefined,
+  describe: (existing: RuntimeServiceClass) => unknown = getServiceClassLabel,
 ): void {
   if (
     existingServiceClasses.length === 0
@@ -194,10 +197,7 @@ function warnOnDuplicateServiceTypeRegistration(
       plugin: pluginName,
       serviceType,
       serviceClass: getServiceClassLabel(serviceClass),
-      existingServiceClasses: existingServiceClasses.map((existing) => ({
-        serviceClass: getServiceClassLabel(existing),
-        plugin: getServiceClassOwners(runtime).get(existing)?.pluginName,
-      })),
+      existingServiceClasses: existingServiceClasses.map(describe),
     },
     "Duplicate serviceType registration can make getService() ambiguous; use a distinct serviceType or getServicesByType()",
   )
@@ -532,7 +532,7 @@ function removeArrayItemsByReference<T extends object>(
   }
 }
 
-error OwnedServicesStopFailed { cause: unknown }
+export error OwnedServicesStopFailed { cause: unknown }
 
 function inFlightServiceStarts(
   runtime: RuntimeWithPluginLifecycle,
@@ -819,7 +819,7 @@ effect function teardownPluginOwnership(
   }
 }
 
-error PluginAdapterRequiresReload { message: string }
+export error PluginAdapterRequiresReload { message: string }
 
 effect function unloadOwnedPlugin(
   runtime: RuntimeWithPluginLifecycle,
@@ -861,6 +861,10 @@ effect function registerOwnedService(
     serviceClass,
     existingServiceClasses,
     capture?.ownership.pluginName,
+    (existing) => ({
+      serviceClass: getServiceClassLabel(existing),
+      plugin: getServiceClassOwners(runtime).get(existing)?.pluginName,
+    }),
   )
   const serviceTypesBefore = existingServiceClasses.length
   try foreign(() => originalRegisterService(serviceClass))

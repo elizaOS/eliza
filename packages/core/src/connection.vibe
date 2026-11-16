@@ -135,8 +135,8 @@ function isChannelType(value: unknown): value is ChannelType {
   return typeof value === "string" && CHANNEL_TYPES.has(value)
 }
 
-error WorldIdRequired { message: string }
-error ConnectionSourceRequired { message: string }
+export error WorldIdRequired { message: string }
+export error ConnectionSourceRequired { message: string }
 
 effect function resolveWorldId(
   worldId: UUID | undefined,

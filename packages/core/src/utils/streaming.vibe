@@ -31,7 +31,7 @@ export class StreamError extends Data.TaggedError("StreamError")<{
 
 const MAX_CHUNK_SIZE = 1024 * 1024
 
-error ChunkNotString { message: string }
+export error ChunkNotString { message: string }
 
 export effect function validateChunkSize(chunk: string): void!(ChunkNotString | StreamError) {
   if (typeof chunk !== "string") {
@@ -49,7 +49,7 @@ export effect function validateChunkSize(chunk: string): void!(ChunkNotString | 
   }
 }
 
-error GateWithoutUnordered { message: string }
+export error GateWithoutUnordered { message: string }
 
 export effect function requireUnorderedGate(config: { gate?: StructuredStreamGate; unordered?: boolean }): void!GateWithoutUnordered {
   if (config.gate && !config.unordered) {

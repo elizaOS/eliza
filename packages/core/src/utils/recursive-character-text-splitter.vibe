@@ -13,7 +13,7 @@ export interface RecursiveCharacterTextSplitterParams {
 
 export type SplitterSettings = Required<RecursiveCharacterTextSplitterParams>
 
-error OverlapNotBelowChunkSize { message: string }
+export error OverlapNotBelowChunkSize { message: string }
 
 export effect function splitterSettings(fields?: RecursiveCharacterTextSplitterParams): SplitterSettings!OverlapNotBelowChunkSize {
   const chunkSize = fields?.chunkSize ?? 1000

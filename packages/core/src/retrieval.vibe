@@ -866,7 +866,7 @@ export class Tokenizer {
   }
 }
 
-error DocumentIndexOutOfBounds { message: string }
+export error DocumentIndexOutOfBounds { message: string }
 
 export effect function documentAt(documents: Array<Record<string, unknown>>, index: number) {
   if (index < 0 || index >= documents.length) {

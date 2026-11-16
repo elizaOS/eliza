@@ -53,9 +53,9 @@ export class EmbeddingDimensionProbeError extends Data.TaggedError("EmbeddingDim
   }
 }
 
-error MissingDatabaseAdapter { message: string }
-error NoEmbeddingModel { message: string }
-error EmptyMemoryContent { message: string }
+export error MissingDatabaseAdapter { message: string }
+export error NoEmbeddingModel { message: string }
+export error EmptyMemoryContent { message: string }
 
 type InitializationFailure =
   | MissingDatabaseAdapter

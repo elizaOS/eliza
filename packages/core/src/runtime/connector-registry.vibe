@@ -46,9 +46,9 @@ type ConnectorWithHook<K extends keyof MessageConnector> =
   & MessageConnector
   & Required<Pick<MessageConnector, K>>
 
-error MissingConnectorSource { message: string }
-error ConnectorNotRegistered { message: string }
-error ConnectorCapabilityUnsupported { message: string }
+export error MissingConnectorSource { message: string }
+export error ConnectorNotRegistered { message: string }
+export error ConnectorCapabilityUnsupported { message: string }
 
 function normalizeSource(source: unknown): string {
   return typeof source === "string" ? source.trim() : ""

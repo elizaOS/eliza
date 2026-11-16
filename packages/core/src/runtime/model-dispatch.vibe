@@ -162,7 +162,7 @@ export interface RuntimeModelDispatchHost {
   ): ReturnType<RuntimePipelineHooks["invokePipelineHooks"]>
   createSecretSwapSession(): SecretSwapSession
   createPiiSwapSession(): PseudonymSession
-  initResolver(): ((value?: void | PromiseLike<void>) => void) | undefined
+  initializationPending(): boolean
   _ensureServiceStarted(
     serviceType: ServiceTypeName | string,
   ): Promise<Service | null>
@@ -202,7 +202,7 @@ export interface FailedModelTrajectory {
   elapsedTime: number
 }
 
-error NoModelHandler { message: string }
+export error NoModelHandler { message: string }
 
 function thrownValue(failure: unknown): unknown {
   return failure instanceof Foreign ? failure.cause : failure
@@ -222,11 +222,14 @@ function trajectoryRoomId(core: DispatchCore): UUID {
     ?? core.runtime.agentId
 }
 
-export effect function makeDispatchCore(runtime: IAgentRuntime, host: RuntimeModelDispatchHost) {
+export effect function makeDispatchCore(runtime: IAgentRuntime, host: RuntimeModelDispatchHost, resolvedProviders: Machine.Shape): DispatchCore!! {
   const diagnostics = try Scope.provide(FiberSet.make<void, never>(), Scope.makeUnsafe())
+  return { runtime, host, resolvedProviders, diagnostics }
+}
+
+export effect function standaloneDispatchCore(runtime: IAgentRuntime, host: RuntimeModelDispatchHost): DispatchCore!! {
   provide machine() {
-    const core: DispatchCore = { runtime, host, resolvedProviders: try Machine, diagnostics }
-    return core
+    return try makeDispatchCore(runtime, host, try Machine)
   }
 }
 
@@ -309,6 +312,42 @@ function trajectoryRequestFields(
     messages,
     prompt,
     ...reboundProviderAttributions(trajCtx, messages, prompt),
+  }
+}
+
+type TrajectoryCallFields = ReturnType<typeof trajectoryRequestFields>
+
+function trajectoryCallHead(stepId: string, args: { resolvedModelKey: string; modelType: string; provider?: string }, fields: TrajectoryCallFields) {
+  return {
+    stepId,
+    model: args.resolvedModelKey,
+    modelType: args.modelType,
+    provider: args.provider,
+    systemPrompt: fields.systemPrompt,
+    userPrompt: fields.userPrompt,
+    prompt: fields.prompt,
+    messages: fields.messages,
+    tools: fields.paramsRecord.tools,
+    toolChoice: fields.paramsRecord.toolChoice,
+    responseSchema: fields.paramsRecord.responseSchema,
+    providerOptions: fields.paramsRecord.providerOptions,
+  }
+}
+
+function trajectoryCallTail(
+  trajCtx: NonNullable<ReturnType<typeof getTrajectoryContext>>,
+  args: { modelType: string },
+  fields: TrajectoryCallFields,
+  executionTraceId: string | undefined,
+) {
+  return {
+    modelSlot: args.modelType,
+    runId: trajCtx.runId,
+    roomId: trajCtx.roomId,
+    messageId: trajCtx.messageId,
+    executionTraceId,
+    providerOrder: fields.providerOrder,
+    providerAttributions: fields.providerAttributions,
   }
 }
 
@@ -2157,7 +2196,7 @@ effect function trajectoryLogger(core: DispatchCore) {
 }
 
 export effect function recordUseModelTrajectory(core: DispatchCore, args: UseModelTrajectory) {
-  if (core.host.initResolver()) return
+  if (core.host.initializationPending()) return
   if (args.providerRecorded) return
   effect {
     activateDeferredChildStep()
@@ -2180,18 +2219,7 @@ export effect function recordUseModelTrajectory(core: DispatchCore, args: UseMod
         typeof value === "number" && Number.isFinite(value) ? value : undefined
       const activeTrace = core.runtime.getActiveTrace(core.runtime.getCurrentRunId())
       trajLogger.logLlmCall({
-        stepId,
-        model: args.resolvedModelKey,
-        modelType: args.modelType,
-        provider: args.provider,
-        systemPrompt: fields.systemPrompt,
-        userPrompt: fields.userPrompt,
-        prompt: fields.prompt,
-        messages: fields.messages,
-        tools: fields.paramsRecord.tools,
-        toolChoice: fields.paramsRecord.toolChoice,
-        responseSchema: fields.paramsRecord.responseSchema,
-        providerOptions: fields.paramsRecord.providerOptions,
+        ...trajectoryCallHead(stepId, args, fields),
         response: args.response,
         toolCalls: Array.isArray(resultRecord.toolCalls)
           ? resultRecord.toolCalls
@@ -2210,13 +2238,7 @@ export effect function recordUseModelTrajectory(core: DispatchCore, args: UseMod
         cacheReadInputTokens: asNumber(usageRecord.cacheReadInputTokens),
         cacheCreationInputTokens: asNumber(usageRecord.cacheCreationInputTokens),
         reasoningTokens: asNumber(usageRecord.reasoningTokens),
-        modelSlot: args.modelType,
-        runId: trajCtx.runId,
-        roomId: trajCtx.roomId,
-        messageId: trajCtx.messageId,
-        executionTraceId: activeTrace?.id,
-        providerOrder: fields.providerOrder,
-        providerAttributions: fields.providerAttributions,
+        ...trajectoryCallTail(trajCtx, args, fields, activeTrace?.id),
       })
     })
   } catch (failure) => {
@@ -2255,7 +2277,7 @@ function failedCallMessage(core: DispatchCore, error: unknown): string {
 }
 
 export effect function recordFailedModelTrajectory(core: DispatchCore, args: FailedModelTrajectory) {
-  if (core.host.initResolver()) return
+  if (core.host.initializationPending()) return
   effect {
     activateDeferredChildStep()
     const trajCtx = getTrajectoryContext()
@@ -2274,18 +2296,7 @@ export effect function recordFailedModelTrajectory(core: DispatchCore, args: Fai
       const failureEvidence = modelOutputIncompleteEvidence(args.error)
       const activeTrace = core.runtime.getActiveTrace(core.runtime.getCurrentRunId())
       trajLogger.logLlmCall({
-        stepId,
-        model: args.resolvedModelKey,
-        modelType: args.modelType,
-        provider: args.provider,
-        systemPrompt: fields.systemPrompt,
-        userPrompt: fields.userPrompt,
-        prompt: fields.prompt,
-        messages: fields.messages,
-        tools: fields.paramsRecord.tools,
-        toolChoice: fields.paramsRecord.toolChoice,
-        responseSchema: fields.paramsRecord.responseSchema,
-        providerOptions: fields.paramsRecord.providerOptions,
+        ...trajectoryCallHead(stepId, args, fields),
         response: `[model call failed] ${sanitizedMessage}`,
         finishReason: failureEvidence?.finishReason ?? "error",
         ...(failureEvidence
@@ -2310,13 +2321,7 @@ export effect function recordFailedModelTrajectory(core: DispatchCore, args: Fai
         purpose: trajCtx.purpose ?? "action",
         actionType: "runtime.useModel",
         latencyMs: Math.max(0, Math.round(args.elapsedTime)),
-        modelSlot: args.modelType,
-        runId: trajCtx.runId,
-        roomId: trajCtx.roomId,
-        messageId: trajCtx.messageId,
-        executionTraceId: activeTrace?.id,
-        providerOrder: fields.providerOrder,
-        providerAttributions: fields.providerAttributions,
+        ...trajectoryCallTail(trajCtx, args, fields, activeTrace?.id),
       })
     })
   } catch (failure) => {
@@ -2329,7 +2334,6 @@ export effect function recordFailedModelTrajectory(core: DispatchCore, args: Fai
 
 module edge {
   import { runDetached, runDetachedSync } from "../edge.vibe"
-  import type { ElizaError } from "../errors.vibe"
   import { isModelProviderFallbackError } from "../security/model-failure.vibe"
   import type { ModelParamsMap, ModelRegistrationInfo, ModelRegistrationMetadata, ModelResultMap, ModelTypeName } from "../types/model.vibe"
   import type { IAgentRuntime } from "../types/runtime.vibe"
@@ -2351,7 +2355,7 @@ module edge {
     getModelSettings,
     logModelCall,
     logModelProviderFailover,
-    makeDispatchCore,
+    standaloneDispatchCore,
     type ModelCallHandler,
     noteResolvedModelProvider,
     recordFailedModelTrajectory,
@@ -2371,8 +2375,8 @@ module edge {
     readonly #core: DispatchCore
 
     /** @throws {never} */
-    constructor(runtime: IAgentRuntime, host: RuntimeModelDispatchHost) {
-      this.#core = runDetachedSync(makeDispatchCore(runtime, host))
+    constructor(runtime: IAgentRuntime, host: RuntimeModelDispatchHost, core?: DispatchCore) {
+      this.#core = core ?? runDetachedSync(standaloneDispatchCore(runtime, host))
     }
 
     /** @throws {never} */

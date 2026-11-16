@@ -112,7 +112,7 @@ const NESTED_RECEIPT_FIELDS: ReadonlySet<string> = new Set([
   "rollback",
 ])
 
-error ReceiptTableUnreadable { message: string; cause: unknown }
+export error ReceiptTableUnreadable { message: string; cause: unknown }
 
 interface ReceiptTable {
   encoding: string

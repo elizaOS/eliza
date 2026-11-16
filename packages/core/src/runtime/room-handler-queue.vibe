@@ -189,7 +189,7 @@ export interface RoomTable {
   admissionClosedReason: string | null
 }
 
-error InvalidRoomQueueLimit { message: string }
+export error InvalidRoomQueueLimit { message: string }
 
 export effect function roomQueueLimits(options: RoomHandlerQueueOptions): RoomQueueLimits!InvalidRoomQueueLimit {
   const maxPendingPerRoom = options.maxPendingPerRoom
