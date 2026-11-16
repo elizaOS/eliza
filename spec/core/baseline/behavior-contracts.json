@@ -38028,7 +38028,7 @@
       ],
       "reexports": [],
       "tests": [],
-      "proofBoundary": "Generated state laws cover the mapped lifecycle. Pure parser/codec algorithms retain these documented contracts and source test vectors; their future implementation needs a proved //@ contract or adapter conformance.",
+      "proofBoundary": "Built-in keyword policy is modeled in spec/core/protocols.md over normalized UTF-16 observations, including exact literal and ASCII boundary matching, raw versus normalized deduplication, text-first match order, and longest raw UTF-16 length with stable ties. Normalization and lexical conversion, catalog and locale selection, and arbitrary public PreparedKeywordTerm.matches callback invocation, results, and failures remain host conformance boundaries. Source-to-model refinement is pending.",
       "functionContracts": [
         {
           "name": "isValidationKeywordDoc",

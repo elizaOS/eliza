@@ -1637,14 +1637,15 @@
       "source": "packages/core/src/i18n/keyword-matching.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "Literal keyword spans use both ASCII boundaries only for eligible terms",
+        "Preparation deduplicates raw spellings while documents deduplicate normalized spellings",
+        "Collected matches keep text-first order and longest selection keeps the first length tie"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "c249c36a3af01e7b73526779b5772c15d7921da57a66387da2454b09befab90c",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/i18n/keyword-matching.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
+      "implementationProofBoundary": "Built-in keyword compilation, UTF-16 literal and ASCII-boundary matching, raw preparation deduplication, normalized document deduplication, ordered collection, and longest raw-length selection are modeled in protocols.md. ECMAScript normalization, lowercase conversion, whitespace collapse, trimming, splitting, UTF-16 conversion, catalog and locale lookup, and arbitrary caller-authored PreparedKeywordTerm.matches callbacks require host conformance. Model proofs do not establish source-to-model refinement.",
       "relatedSpecs": [
         "spec/core/protocols.md"
       ]
