@@ -163,21 +163,27 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
       said(false, `${f} belongs to no proof unit: spec/<name>.proof.dfy belongs to spec/<name>.md, and src/<path>.proof.dfy to src/<path>.ts if that file contains //@`, "", f);
     const lib = fs.readFileSync(LIB_FILE, "utf8");
     const proved = new Map<string, Proof>();
-    // Units are proved at the same time and reported in order. One with a proof file is offered every `_ensures`
-    // lemma of the units it imports, and keeps that result only if each of those units proved them all in this run;
+    // Units are proved at the same time and reported in order. One with a proof file is offered the clauses of each
+    // `_ensures` lemma of the units it imports that those units proved in this run. While one of them is still being
+    // proved, it is proved meanwhile with all of them offered, and keeps that result only if they proved them all;
     // otherwise it is proved again with the clauses they did prove.
     const running = new Map<string, Promise<Proof>>();
+    const remembering = new Map<string, Promise<boolean>>();
     const proofTexts = new Map<string, string | undefined>();
     for (const u of units) {
       const proofPath = located(root, u.proofFile);
       const proofText = fs.existsSync(proofPath) ? fs.readFileSync(proofPath, "utf8") : undefined;
       proofTexts.set(u.unit, proofText);
+      let recalled!: (hit: boolean) => void;
+      remembering.set(u.unit, new Promise((settle) => { recalled = settle; }));
       const proving = (axioms: Offered[]) => remembered(memory, entry(root, "prove", [JSON.stringify({ ...u, text: undefined }), proofText ?? "", proofText === undefined ? "" : libraryFor(lib, proofText) ?? "", JSON.stringify(axioms)]),
-        (memory) => prove(memory, u, { proof: proofText === undefined ? undefined : { file: u.proofFile, text: proofText }, lib, axioms }), (p) => !p.errors.length);
+        (memory) => { recalled(false); return prove(memory, u, { proof: proofText === undefined ? undefined : { file: u.proofFile, text: proofText }, lib, axioms }); }, (p) => !p.errors.length);
       running.set(u.unit, (async () => {
         const offered = proofText === undefined ? [] : u.imports.lemmas.map(({ fn }) => ({ fn }));
-        const first = proving(offered);
-        await Promise.allSettled([first, ...(offered.length ? u.imports.lemmas.map((l) => running.get(l.from)) : [])]);
+        const from = offered.length ? u.imports.lemmas.map((l) => l.from) : [];
+        const settled = (await Promise.all(from.map((f) => remembering.get(f) ?? Promise.resolve(false)))).every(Boolean);
+        const first = settled ? undefined : proving(offered);
+        await Promise.allSettled([first, ...from.map((f) => running.get(f))]);
         // A clause of an imported lemma is offered only if its own unit proved it, in this run; none of them is if
         // one of the lemma's failures is not one of its clauses. A lemma its unit does not generate has none.
         const resolved = offered.length ? u.imports.lemmas.map(({ fn, def, from }) => {
@@ -188,11 +194,11 @@ async function proofStage(root: string, memory: Memory, specs: Spec[], models: M
           const known = failed.every((x) => clauses.includes(x));
           return { fn, proved: clauses.map((c) => known && !failed.includes(c)) };
         }) : [];
-        const proof = resolved.every((r) => r?.proved.every(Boolean)) ? await first
+        const proof = resolved.every((r) => r?.proved.every(Boolean)) ? await (first ?? proving(offered))
           : await proving(resolved.filter((r): r is Required<Offered> => !!r?.proved.length));
         proved.set(u.unit, proof);
         return proof;
-      })());
+      })().finally(() => recalled(true)));
     }
     // Every unit finishes, whatever another one does, before anything is reported.
     await allDone(units.map((u) => running.get(u.unit)!));

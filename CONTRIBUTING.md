@@ -128,13 +128,20 @@ imports `gen/` only as types, so it does not compare the model with itself.
 Core generation produces deterministic code and rebuilds `gen/` to remove
 stale modules. Story and property-test generators write files only when their
 bytes change and remove outputs whose sources have gone. `.spec-cache/`
-remembers each run of Quint, and of Dafny on a proof, under the program as installed, its arguments and
+remembers each run of Quint, and of LemmaScript and Dafny on a proof, under the program as installed, its arguments and
 the files it reads, without their prose, comments and layout (`vibestack/action.ts`),
 and each simulation and proof result under a fingerprint of a spec and its
 imports, the versions of the programs beneath (Quint and Node for a
 simulation; Node, LemmaScript, Dafny and Z3 for a proof, whose key holds the
 whole unit) and the code of only the tools that stage runs: `simulate.ts`,
-`units.ts` and what they import, or `prove.ts` and what it imports. A test run
+`units.ts` and what they import, or `prove.ts` and what it imports. A run
+of a tool is remembered when it reached its answer, a refusal of its input
+included, never when it was stopped, timed out or failed for want of a file or
+program: an unchanged unit whose proof failed runs neither again, and an edit
+to a proof file only checks and verifies the Dafny it changes. A unit offered
+what the units it imports proved is proved once when their results are
+remembered, and meanwhile, to be proved again if they fail, only while one of
+them is still being proved. A test run
 or an exploration may run any tool, as Studio's do, so it is keyed by all of
 them, and with a typecheck and a driver's run by VibeLang's version and bytes.
 It also remembers a package's passing test run under a hash of what its tests

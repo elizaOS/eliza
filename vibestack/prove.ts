@@ -19,9 +19,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { SENDER } from "./gen/classify.ts";
-import { act } from "./action.ts";
+import { act, type Input } from "./action.ts";
 import type { Memory } from "./cache.ts";
-import { bin, run, solver } from "./run.ts";
+import { bin, solver } from "./run.ts";
 import { plainText } from "./scan.ts";
 
 /** The library of general lemmas that proof files call as ProofLib.<Name>. */
@@ -751,30 +751,26 @@ export async function prove(memory: Memory, u: Unit, offered: { proof?: { file: 
   const dir = path.join(root, where.dir);
   const file = path.basename(where.dfy);
   fs.rmSync(dir, { recursive: true, force: true });
-  const place = (at: string, text: string) => {
-    fs.mkdirSync(at, { recursive: true });
-    fs.writeFileSync(path.join(at, u.unit), text);
-    // A configuration of our own, so that one further up cannot redirect the proof or relax it, and a TypeScript
-    // project of our own, so that the project's tsconfig.json cannot add files, globals or options to it.
-    fs.writeFileSync(path.join(at, "lemmascript.json"), JSON.stringify({ "unread-annotations": "error", "run-log": false }));
-    fs.writeFileSync(path.join(at, "tsconfig.json"), JSON.stringify({
+  fs.mkdirSync(dir, { recursive: true });
+  // A configuration of our own, so that one further up cannot redirect the proof or relax it, and a TypeScript
+  // project of our own, so that the project's tsconfig.json cannot add files, globals or options to it.
+  const sources = (text: string): Record<string, Input> => Object.fromEntries(Object.entries({
+    [u.unit]: text,
+    "lemmascript.json": JSON.stringify({ "unread-annotations": "error", "run-log": false }),
+    "tsconfig.json": JSON.stringify({
       compilerOptions: { target: "es2023", lib: ["es2023"], module: "nodenext", strict: true, noEmit: true, allowImportingTsExtensions: true, types: [] },
       files: [u.unit],
-    }));
-  };
-  place(dir, u.text);
+    }),
+  }).map(([f, t]) => [f, { text: t, key: t }]));
   let total = 0;
   const result = (errors: string[], log: string, dfy = ""): Proof => ({ total, unproved: [], exhausted: [], resting: {}, errors, log, dfy, scaffold: "" });
   // What imported units proved, and the library, are only of use to a proof file. The imported modules are generated
   // again beside the unit, with their obligations, for the lemmas that state them.
-  const importing = offered.proof && offered.axioms.length ? path.join(dir, "imported") : undefined;
-  if (importing) place(importing, u.imports.text);
-  const lsc = async (at: string) => {
-    const { ok, out } = await run("lsc", ["gen", "--backend=dafny", u.unit], at);
-    const genFile = path.join(at, `${file}.gen`);
-    return { out, gen: ok && fs.existsSync(genFile) ? fs.readFileSync(genFile, "utf8") : undefined };
+  const lsc = async (at: string, text: string) => {
+    const { ok, out, files } = await act(memory, "lsc", ["gen", "--backend=dafny", u.unit], path.join(dir, at), sources(text));
+    return { out, gen: ok ? files[`${file}.gen`] : undefined };
   };
-  const [generated, imported] = await Promise.all([lsc(dir), importing ? lsc(importing) : undefined]);
+  const [generated, imported] = await Promise.all([lsc("gen", u.text), offered.proof && offered.axioms.length ? lsc("imported", u.imports.text) : undefined]);
   for (const g of [generated, imported]) if (g && !g.gen) return result([lastLines(g.out) || "lsc generated nothing"], g.out);
   const gen = generated.gen!;
   const prelude = await helperNames(root);
@@ -791,11 +787,10 @@ export async function prove(memory: Memory, u: Unit, offered: { proof?: { file: 
   }
   const axiomNames = new Set([...axioms.map((a) => a.name), ...u.externs]);
   const { dfy } = spliced;
-  fs.writeFileSync(path.join(dir, file), dfy);
   // LemmaScript checks the exact generated-output relationship; Dafny verifies the same file with the pinned solver.
   const [audited, integrity, checked] = await Promise.all([
     audit(memory, dir, dfy, file, axiomNames),
-    run("lsc", ["gen-check", "--backend=dafny", u.unit], dir),
+    act(memory, "lsc", ["gen-check", "--backend=dafny", u.unit], path.join(dir, "check"), { ...sources(u.text), [file]: { text: dfy, key: dfy } }),
     act(memory, "dafny", [...verifyArgs(dfy, selectedSolver.path), file], path.join(dir, "verify"), { [file]: { text: dfy, key: dfy } }),
   ]);
   let log = `solver: Z3 ${selectedSolver.version} (${selectedSolver.path})\n${generated.out}${integrity.out}${checked.out}`;

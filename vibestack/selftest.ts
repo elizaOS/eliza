@@ -1184,7 +1184,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(configured.said("proof", unproved), configured.text);
     // Nor can the project's tsconfig.json add files, globals or options to the proof: each unit has its own.
     assert.ok(ownConfig.said("proof", unproved), ownConfig.text);
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(tsconfigured, "gen/proof/index/tsconfig.json"), "utf8")).files, ["index.ts"]);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(tsconfigured, "gen/proof/index/gen/tsconfig.json"), "utf8")).files, ["index.ts"]);
     // An annotation that asks the prover for trust is refused wherever it sits on the line.
     assert.ok(sneaky.said("proof", /`\/\/@ assume` is not allowed/), sneaky.text);
     // So is an import of anything but a generated module, however it is indented, or of a look-alike of one.
@@ -1196,10 +1196,11 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
   test("a law that needs induction is proved by a proof file, and only then offered to the spec that imports it", async () => {
     const project = (edit: (f: Record<string, string>) => void = () => {}) => fixtures(["highest", "ticket"], edit);
     const root = project();
+    const unofferedRoot = project((f) => { delete f["spec/highest.proof.dfy"]; });
     const [bare, proved, unoffered, trusting] = await Promise.all([
       run(project((f) => { delete f["spec/highest.proof.dfy"]; delete f["spec/ticket.proof.dfy"]; f["spec/typo.proof.dfy"] = ""; })),
       run(root),
-      run(project((f) => { delete f["spec/highest.proof.dfy"]; })),
+      run(unofferedRoot),
       run(project((f) => { f["spec/highest.proof.dfy"] = f["spec/highest.proof.dfy"].replace("ProofLib.FoldLeftMax", "assume false;\n  ProofLib.FoldLeftMax"); })),
     ]);
     // Without a proof file the law is not proved, and a proof file that belongs to nothing is pointed out.
@@ -1211,6 +1212,13 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.match(fs.readFileSync(path.join(root, "gen/proof/ticket/ticket.dfy"), "utf8"), /lemma \{:axiom\} highest_lawTheHighestIsAtLeastTheStart_ensures/);
     // A law its own unit does not prove is not offered.
     assert.equal(unoffered.said("proof", /^ticket\.ts: Dafny could not check it[\s\S]*unresolved identifier: highest_lawTheHighestIsAtLeastTheStart_ensures/)?.ok, false, unoffered.text);
+    // That refusal is remembered: checked again, the unit runs neither LemmaScript nor Dafny, and says the same.
+    const refusedAgain = await run(unofferedRoot);
+    assert.equal(refusedAgain.said("proof", /^ticket\.ts: /)?.detail, unoffered.said("proof", /^ticket\.ts: /)?.detail, refusedAgain.text);
+    assert.ok(!["gen", "check", "verify", "audit"].some((ran) => fs.existsSync(path.join(unofferedRoot, "gen/proof/ticket", ran))), refusedAgain.text);
+    // Once the law is proved it is offered, and the importer is proved again.
+    fs.copyFileSync(path.join(root, "spec/highest.proof.dfy"), path.join(unofferedRoot, "spec/highest.proof.dfy"));
+    assert.ok((await run(unofferedRoot)).said("proof", /^ticket\.ts: all 3 obligations proved/));
     // A proof file that asks for trust is refused, with its file and line.
     assert.equal(trusting.said("proof", /spec\/highest\.proof\.dfy:4: `assume` is not allowed/)?.ok, false, trusting.text);
   });
@@ -1232,6 +1240,13 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.equal(consumer?.ok, false, mixed.text);
     assert.match(consumer!.detail, /lawBad: /);
     assert.doesNotMatch(consumer!.detail, /lawGood: /);
+    // Edited while what it imports is remembered, the importer is proved once, with only the clauses proved offered.
+    const proofs = () => fs.readdirSync(path.join(mixedRoot, ".spec-cache")).filter((f) => f.startsWith("prove-"));
+    const before = proofs();
+    fs.appendFileSync(path.join(mixedRoot, "spec/consumer.proof.dfy"), "\n// Proved again.\n");
+    const edited = await run(mixedRoot);
+    assert.equal(edited.said("proof", /^consumer\.ts: 1 of 2 obligations not proved/)?.detail, consumer!.detail, edited.text);
+    assert.equal(proofs().filter((f) => !before.includes(f)).length, 1, edited.text);
   });
 
   test("a proof file may only add lemmas, and only bodies to the generated ones; a body is the brace group that ends a lemma, after a complete header", () => {
@@ -1824,7 +1839,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const rescanned = await runCli(script, root, "check", "--json");
     assert.ok(answer(rescanned.stdout).results.some((r: Result) => r.stage === "proof" && r.ok), rescanned.stdout + rescanned.stderr);
     assert.notEqual(remembered(), proved, "a change to the prover's code proves again");
-    assert.ok(!["verify", "audit"].some((run) => fs.existsSync(path.join(root, "gen/proof/highest", run))), "a remembered run of Dafny is not run again");
+    assert.ok(!["gen", "check", "verify", "audit"].some((run) => fs.existsSync(path.join(root, "gen/proof/highest", run))), "a remembered run of LemmaScript or Dafny is not run again");
     const before = remembered();
     const marker = "// A distinct proof-library version for this scratch project.";
     fs.appendFileSync(path.join(root, "vibestack/proof/lib.dfy"), `\n${marker}\n`);
@@ -1851,12 +1866,13 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
       fs.writeFileSync(compiler, "#!/bin/sh\nexit 1\n");
       fs.chmodSync(compiler, 0o644);
     }
-    fs.appendFileSync(path.join(root, "spec/highest.proof.dfy"), "// Recheck the proof beside the failed compiler.\n");
+    fs.appendFileSync(path.join(root, "spec/highest.proof.dfy"), "\nlemma RecheckedBesideTheFailedCompiler()\n  ensures true\n{\n}\n");
     const failed = await runCli(script, root, "check", "--json");
     const result = answer(failed.stdout);
     assert.equal(failed.status, 1, failed.stdout + failed.stderr);
     assert.ok(result.results.some((r: Result) => r.stage === "types" && !r.ok), failed.stdout);
     assert.ok(result.results.some((r: Result) => r.stage === "proof" && r.ok), failed.stdout);
+    assert.deepEqual(["gen", "check", "verify"].map((run) => fs.existsSync(path.join(root, "gen/proof/highest", run))), [false, true, true], "an edit to the proof file generates nothing again, and checks and verifies the Dafny it changed");
     assert.ok(!fs.existsSync(path.join(root, ".spec-cache/lock")));
   });
 

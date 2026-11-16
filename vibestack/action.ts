@@ -40,33 +40,47 @@ function packages(dir: string, found = new Map<string, string>()): Map<string, s
 interface Program { exe: string; id: string; since?: string }
 const programs = new Map<string, Promise<Program>>();
 
+/** An executable of the toolchain's dependencies, told apart by its launcher, every package it loads, and the Node and platform that run them. */
+function packaged(root: string, cmd: string, name: string): Program {
+  const exe = bin(cmd, root);
+  const at = installed(name, path.resolve(exe, "../../.."));
+  if (!at) throw new Error(`no ${name} is installed beside ${exe}; run pnpm install`);
+  return { exe, id: [executableDigest(exe), ...[...packages(at).values()].sort(), `node@${process.versions.node}:${process.platform}:${process.arch}`].join(" "), since: exe };
+}
+
+/** Whether Dafny refused a file it could not parse or resolve, which it does again for the same file. */
+const refused = (r: Ran) => r.status === 2 && /^\d+ (?:resolution\/type|parse) errors? detected in /m.test(r.out);
+
+/** Whether LemmaScript refused its input, as it does again for the same input: an error of its own, not of the system it runs on. */
+const declined = (r: Ran) => r.status === 1 && /^(?:ERROR|WARNING): /m.test(r.stderr) && !/\bE[A-Z]{2,}: |could not run `git diff`/.test(r.stderr);
+
 /**
- * The tools run as actions. Each names its program: Quint by the bytes of its launcher, every package it loads, and the
- * Node and platform that run them; Dafny by its installation and the solver it is given. And each says whether a run
- * reached its answer, the only kind remembered: a typecheck that found no error and wrote the IR, or a simulation that
- * held or broke the invariant and wrote its traces; an audit that completed, or a verification that counts no failure
- * but the ones it would count again, obligations not proved or out of resources. A run that ran out of time or memory,
- * or was stopped, is tried again.
+ * The tools run as actions. Each names its program: Quint and LemmaScript by the bytes of their launchers, every package
+ * they load, and the Node and platform that run them; Dafny by its installation and the solver it is given. And each
+ * says whether a run reached its answer, the only kind remembered: a typecheck that found no error and wrote the IR, or
+ * a simulation that held or broke the invariant and wrote its traces; LemmaScript generating the Dafny, or refusing its
+ * input; Dafny refusing a file it cannot parse or resolve, an audit that completed, or a verification that counts no
+ * failure but the ones it would count again, obligations not proved or out of resources. A run that ran out of time or
+ * memory, failed for want of a file, a process or a program, or was stopped, is tried again.
  */
 const TOOLS = {
   quint: {
-    program: (root: string): Program => {
-      const exe = bin("quint", root);
-      const at = installed("@informalsystems/quint", path.resolve(exe, "../../.."));
-      if (!at) throw new Error(`no @informalsystems/quint is installed beside ${exe}; run pnpm install`);
-      return { exe, id: [executableDigest(exe), ...[...packages(at).values()].sort(), `node@${process.versions.node}:${process.platform}:${process.arch}`].join(" "), since: exe };
-    },
+    program: (root: string) => packaged(root, "quint", "@informalsystems/quint"),
     answered: (args: string[], r: Ran) => args[0] === "typecheck" ? r.ok && Object.keys(r.files).length > 0
       : (r.ok || violated(r)) && Object.keys(r.files).some((f) => f.endsWith(".itf.json")),
+  },
+  lsc: {
+    program: (root: string) => packaged(root, "lsc", "lemmascript"),
+    answered: (_args: string[], r: Ran) => declined(r) || (r.ok && Object.keys(r.files).some((f) => f.endsWith(".dfy.gen"))),
   },
   dafny: {
     program: async (): Promise<Program> => {
       const [dafny, z3] = await Promise.all([dafnyIdentity(), solver()]);
       return { exe: "dafny", id: JSON.stringify({ dafny, z3: `${z3.version}:${executableDigest(z3.path)}`, platform: `${process.platform}:${process.arch}` }) };
     },
-    answered: (args: string[], r: Ran) => args[0] === "audit" ? /Dafny auditor completed/.test(r.out)
+    answered: (args: string[], r: Ran) => refused(r) || (args[0] === "audit" ? /Dafny auditor completed/.test(r.out)
       : (r.status === 0 || r.status === 4) && !/timed out|out of memory|solver exception|inconclusive/i.test(r.out)
-        && (r.out.match(DAFNY_SUMMARY)?.[1].split(", ").filter(Boolean).every((counted) => counted.endsWith(" out of resource")) ?? false),
+        && (r.out.match(DAFNY_SUMMARY)?.[1].split(", ").filter(Boolean).every((counted) => counted.endsWith(" out of resource")) ?? false)),
   },
 };
 
