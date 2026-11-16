@@ -360,7 +360,13 @@ pure val weight_withdrawNextType = 2
 pure val weight_finishNextPluginDisposal = 3
 pure val weight_finishNextRegistration = 3
 pure val weight_requestOwnedStops = 2
-pure val weight_skipMissingStop = 2
-pure val weight_claimInstanceStop = 20
-pure val weight_observeInstanceStop = 20
+pure val weight_skipMissingStop = 8
+pure val weight_claimInstanceStop = 6
+pure val weight_observeInstanceStop = 6
+pure val weight_beginPlugin = 4
+pure val weight_registerOwnedClass = 6
+pure val weight_ensureServices = 4
+pure val weight_finishClassStart = 6
+pure val weight_resolveNextStart = 4
+pure val weight_finishNextObserver = 4
 ```
