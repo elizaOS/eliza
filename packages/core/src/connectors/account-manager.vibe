@@ -1765,14 +1765,14 @@ effect function finishOAuthCompletion(
       cause: thrownValue(failure),
       context: { provider: providerId, flowId: flow.id },
     })
-    const persistenceError: unknown = Effect.map(
+    // A null record and a nullish thrown value both mean the consumed flow was never marked failed.
+    const write: { persisted: ConnectorOAuthFlow | null; error: unknown } = Effect.map(
       markFlowFailed(state, providerId, flow.id, publicFailureMessage),
-      (persisted) =>
-        persisted
-          ? undefined
-          : new Error(`updateOAuthFlow returned null persisting the failed state for flow ${flow.id}`),
-    ) catch (writeError) => thrownValue(writeError)
-    if (persistenceError !== undefined) {
+      (persisted) => ({ persisted, error: undefined }),
+    ) catch (writeError) => ({ persisted: null, error: thrownValue(writeError) })
+    if (!write.persisted) {
+      const persistenceError =
+        write.error ?? new Error(`updateOAuthFlow returned null persisting the failed state for flow ${flow.id}`)
       throw new ElizaError(
         `OAuth completion and failure-state persistence both failed for ${providerId}; the consumed flow could not be marked failed. Start the flow again.`,
         {

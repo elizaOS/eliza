@@ -1,5 +1,5 @@
 // spec/core/guardedStream.md, "Story: Retain incomplete sensitive text across stream chunks"; spec/core/guardedStream.md, "Appending and releasing conserve every source character"
-import { foreignSync } from "../edge.vibe"
+import { Foreign } from "../edge.vibe"
 import { BIP39_WORD_SET } from "./bip39-wordlist.vibe"
 import type { PseudonymSession } from "./pii-pseudonymizer.vibe"
 import type { SecretSwapSession } from "./secret-swap.vibe"
@@ -63,13 +63,13 @@ function isGroupSeparator(code: number): boolean {
   return code === 32 || code === 9 || code === 45
 }
 
-export function findSafeCut(p: string, maxTokenLength: number, keys: readonly string[]): number {
+export function findSafeCut(p: string, maxTokenLength: number, tokenKeys: () => readonly string[]): number {
   const n = p.length
   if (n === 0) return 0
   let cut = n - maxTokenLength
   if (cut > n) cut = n
   if (cut <= 0) return 0
-
+  const keys = tokenKeys()
   for (let iterations = 0; iterations <= n + 2; iterations += 1) {
     let next = snapToWhitespace(p, cut)
     next = Math.min(next, groupedNumberRunStart(p, next))
@@ -92,18 +92,19 @@ function snapToWhitespace(p: string, index: number): number {
   return i
 }
 
+function separatorEnd(p: string, i: number, cut: number): number {
+  if (i > 0 && isGroupSeparator(p.charCodeAt(i - 1))) return i - 1
+  return i === cut ? i : -1
+}
+
 function groupedNumberRunStart(p: string, cut: number): number {
   let i = cut
   let groups = 0
   let hasDigitGroup = false
   let runStart = cut
   for (;;) {
-    let sepEnd = i
-    if (sepEnd > 0 && isGroupSeparator(p.charCodeAt(sepEnd - 1))) {
-      sepEnd -= 1
-    } else if (i !== cut) {
-      break
-    }
+    const sepEnd = separatorEnd(p, i, cut)
+    if (sepEnd < 0) break
     let k = sepEnd
     let len = 0
     let digitInGroup = false
@@ -135,12 +136,8 @@ function phoneRunStart(p: string, cut: number): number {
   let groups = 0
   let hasParen = false
   for (;;) {
-    let sepEnd = i
-    if (sepEnd > 0 && isGroupSeparator(p.charCodeAt(sepEnd - 1))) {
-      sepEnd -= 1
-    } else if (i !== cut) {
-      break
-    }
+    const sepEnd = separatorEnd(p, i, cut)
+    if (sepEnd < 0) break
     let k = sepEnd
     let paren = false
 
@@ -259,7 +256,8 @@ function openArmorStart(p: string, cut: number): number {
   return n
 }
 
-function knownTokenCrossingStart(p: string, 
+function knownTokenCrossingStart(
+  p: string,
   cut: number,
   keys: readonly string[],
 ): number {
@@ -286,12 +284,12 @@ export effect function transformGuardedText(
   raw: string,
 ) {
   let safe = raw
-  if (secretSession) safe = try foreignSync(() => secretSession.substituteText(raw))
+  if (secretSession) {
+    safe = try Effect.try({ try: () => secretSession.substituteText(raw), catch: (cause) => new Foreign({ cause }) })
+  }
   if (piiSession) safe = piiSession.substituteText(safe)
   const restoredPii = piiSession ? piiSession.restoreText(safe) : safe
-  const visible = secretSession
-    ? try foreignSync(() => secretSession.restoreUserReplyText(restoredPii))
-    : restoredPii
+  const visible = secretSession ? secretSession.restoreUserReplyText(restoredPii) : restoredPii
   return { safe, visible }
 }
 
@@ -322,7 +320,7 @@ module edge {
     push(chunk: string): GuardedStreamOutput {
       if (!chunk) return NOTHING
       this.pending += chunk
-      const cut = findSafeCut(this.pending, this.maxTokenLength(), this.tokenKeys())
+      const cut = findSafeCut(this.pending, this.maxTokenLength(), () => this.tokenKeys())
       if (cut <= 0) return NOTHING
       const raw = this.pending.slice(0, cut)
       this.pending = this.pending.slice(cut)

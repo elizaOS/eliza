@@ -1,11 +1,12 @@
 // spec/core/atomicWriters.md, "The latest successful rename owns the whole final snapshot"; spec/core/temporaryNames.md, "Every allocated name carries a never-repeated process ordinal"; spec/core/serialisation.md, "Only the head callback executes and every settlement releases its successor"
 import * as EffectSemaphore from "effect/Semaphore"
-import { failingAs, Foreign, promised, thrown } from "../edge.vibe"
+import { failingAs, foreign, Foreign, promised, thrown } from "../edge.vibe"
 import { logger } from "../logger.vibe"
-import { onNode, UnserializableJson } from "./filesystem.vibe"
+import { UnserializableJson } from "./filesystem.vibe"
 
 module node {
   import fs from "node:fs"
+  import fsp from "node:fs/promises"
   import path from "node:path"
 
   /** @throws {never} */
@@ -16,11 +17,6 @@ module node {
   /** @throws {never} */
   export function resolvePath(target: string): string {
     return path.resolve(target)
-  }
-
-  /** @throws {never} */
-  export function parentDir(target: string): string {
-    return path.dirname(target)
   }
 
   /** @throws {unknown} */
@@ -38,8 +34,33 @@ module node {
   export function removeSync(target: string): void {
     fs.rmSync(target, { force: true })
   }
+
+  /** @throws {never} */
+  export function makeParent(file: string, dirMode: number): Promise<string | undefined> {
+    return fsp.mkdir(path.dirname(file), { recursive: true, mode: dirMode })
+  }
+
+  /** @throws {never} */
+  export function writeTemporary(tmp: string, body: string, mode: number): Promise<void> {
+    return fsp.writeFile(tmp, body, { encoding: "utf-8", mode, flag: "wx" })
+  }
+
+  /** @throws {never} */
+  export function rename(from: string, to: string): Promise<void> {
+    return fsp.rename(from, to)
+  }
+
+  /** @throws {never} */
+  export function remove(target: string): Promise<void> {
+    return fsp.rm(target, { force: true })
+  }
+
+  /** @throws {never} */
+  export function readUtf8(file: string): Promise<string> {
+    return fsp.readFile(file, "utf-8")
+  }
 }
-import { makeParentSync, parentDir, processId, publishSync, removeSync, resolvePath } from node
+import { makeParent, makeParentSync, processId, publishSync, readUtf8, remove, removeSync, rename, resolvePath, writeTemporary } from node
 
 export interface WriteJsonAtomicOptions {
   mode?: number
@@ -121,16 +142,15 @@ effect function serializeAsyncWrite<A, E, R>(filePath: string, write: A!E!R): A!
 }
 
 effect function publishAsync(filePath: string, body: string, o: NormalizedWriteOptions) {
-  const fs = try FileSystem.FileSystem
-  if (!o.skipMkdir) try fs.makeDirectory(parentDir(filePath), { recursive: true, mode: o.dirMode })
+  if (!o.skipMkdir) try foreign(() => makeParent(filePath, o.dirMode))
   const tmp = tmpPathFor(filePath)
   try ensuring(
     effect {
-      try fs.writeFileString(tmp, body, { mode: o.mode, flag: "wx" })
-      try fs.rename(tmp, filePath)
+      try foreign(() => writeTemporary(tmp, body, o.mode))
+      try foreign(() => rename(tmp, filePath))
     },
     effect {
-      fs.remove(tmp, { force: true }) catch (error) => warnTemporaryLeft(tmp, error.cause ?? error)
+      foreign(() => remove(tmp)) catch (error) => warnTemporaryLeft(tmp, error.cause)
     },
   )
 }
@@ -142,7 +162,7 @@ export effect function writeJsonAtomic(filePath: string, value: unknown, opts?: 
   try serializeAsyncWrite(filePath, publishAsync(filePath, body, o))
 }
 
-export const writeJsonAtomicPromise = promised(failingAs(TypeError, (filePath: string, value: unknown, opts?: WriteJsonAtomicOptions) => onNode(writeJsonAtomic(filePath, value, opts))))
+export const writeJsonAtomicPromise = promised(failingAs(TypeError, writeJsonAtomic))
 
 export effect function writeJsonAtomicSync(filePath: string, value: unknown, opts?: WriteJsonAtomicOptions) {
   try assertFilePath(filePath)
@@ -162,8 +182,8 @@ export const writeJsonAtomicSyncOrThrow = thrown(failingAs(TypeError, writeJsonA
 
 export effect function readJsonFile<T>(filePath: string) {
   try assertFilePath(filePath)
-  const raw = (try FileSystem.FileSystem).readFileString(filePath, "utf-8") catch effect (error) => {
-    if (error.reason._tag === "NotFound") return null
+  const raw = foreign(() => readUtf8(filePath)) catch effect (error) => {
+    if ((error.cause as { code?: unknown } | null | undefined)?.code === "ENOENT") return null
     throw error
   }
   if (raw === null) return null
@@ -172,12 +192,11 @@ export effect function readJsonFile<T>(filePath: string) {
 
 module edge {
   import { asLegacy, runDetached } from "../edge.vibe"
-  import { onNode } from "./filesystem.vibe"
   import { readJsonFile } from "./atomic-json.vibe"
 
   /** @throws {never} */
   export function readJsonFilePromise<T>(filePath: string): Promise<T | null> {
-    return runDetached(asLegacy(TypeError, onNode(readJsonFile<T>(filePath))))
+    return runDetached(asLegacy(TypeError, readJsonFile<T>(filePath)))
   }
 }
 import { readJsonFilePromise } from edge

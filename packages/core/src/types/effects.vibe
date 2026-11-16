@@ -194,18 +194,17 @@ effect function normalizeStringArray(
   if (!Array.isArray(value)) {
     throw invalid(`Effect receipt field '${field}' must be an array.`, { ...context, field })
   }
-  // The original mapped the input: holes stay holes and an Array subclass
-  // keeps its species, so the result comes from the input's own map.
-  const trimmed: string[] = []
-  for (let index = 0; index < value.length; index++) {
-    if (!(index in value)) continue
-    trimmed[index] = try nonEmptyString(value[index], `${field}[${index}]`, context)
+  // One map snapshot reads the input once, as the original map did: holes
+  // stay holes and an Array subclass keeps its species.
+  const values = value.map((entry: unknown) => entry)
+  for (let index = 0; index < values.length; index++) {
+    if (!(index in values)) continue
+    values[index] = try nonEmptyString(values[index], `${field}[${index}]`, context)
   }
-  const values = value.map((_entry: unknown, index: number) => trimmed[index])
   if (new Set(values).size !== values.length) {
     throw invalid(`Effect receipt field '${field}' contains duplicate IDs.`, { ...context, field })
   }
-  return Object.freeze(values)
+  return Object.freeze(values as string[])
 }
 
 export effect function normalizeUserFacingEffectReceiptIds(
@@ -228,14 +227,12 @@ export effect function normalizeEffectReceipt(value: unknown): EffectReceipt!Eli
   if (!Array.isArray(raw.artifacts)) {
     throw invalid("Effect receipt field 'artifacts' must be an array.", context)
   }
-  const artifactRefs: EffectResourceRef[] = []
-  for (let index = 0; index < raw.artifacts.length; index++) {
-    if (!(index in raw.artifacts)) continue
-    artifactRefs[index] = try normalizeResourceRef(raw.artifacts[index], `artifacts[${index}]`, context)
+  const artifactRefs = raw.artifacts.map((artifact: unknown) => artifact)
+  for (let index = 0; index < artifactRefs.length; index++) {
+    if (!(index in artifactRefs)) continue
+    artifactRefs[index] = try normalizeResourceRef(artifactRefs[index], `artifacts[${index}]`, context)
   }
-  const artifacts = Object.freeze(
-    raw.artifacts.map((_artifact: unknown, index: number) => artifactRefs[index]),
-  )
+  const artifacts = Object.freeze(artifactRefs as EffectResourceRef[])
   const idempotencyRaw = asObjectRecord(raw.idempotency)
   if (!idempotencyRaw) {
     throw invalid("Effect receipt field 'idempotency' must be an object.", context)

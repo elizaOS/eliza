@@ -1,5 +1,5 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"
-import { foreign, foreignSync, runDetached, type Foreign } from "../edge.vibe"
+import { foreignSync, runDetached, type Foreign } from "../edge.vibe"
 import { getTrajectoryContext } from "../trajectory-context.vibe"
 import type { RecordedStage, TrajectoryRecorder } from "./trajectory-recorder.vibe"
 
@@ -41,32 +41,22 @@ effect function reportStageFailure(
   try foreignSync(() => runtime.reportError(scope, error, { trajectoryId, stageKind: stage.kind, diagnosticOnly: true }))
 }
 
-effect function persistStage(
-  persisting: Promise<void>,
-  runtime: SemanticStageFanOutRuntime,
-  trajectoryId: string,
-  stage: RecordedStage,
-): void!Foreign {
-  foreign(() => persisting) catch effect ({ cause }) => {
-    try reportStageFailure(
-      runtime,
-      "TrajectorySemanticStageSink.persistStage",
-      "[TrajectoryRecorder] failed to persist stage file",
-      cause,
-      trajectoryId,
-      stage,
-    )
-  }
-}
-
 effect function recordSemanticStage(
   inner: TrajectoryRecorder,
   runtime: SemanticStageFanOutRuntime,
   trajectoryId: string,
   stage: RecordedStage,
 ): void!Foreign {
-  const persisting = try foreignSync(() => inner.recordStage(trajectoryId, stage))
-  fork.detached persistStage(persisting, runtime, trajectoryId, stage)
+  try foreignSync(() => {
+    void inner.recordStage(trajectoryId, stage).catch((error: unknown) => runDetached(reportStageFailure(
+      runtime,
+      "TrajectorySemanticStageSink.persistStage",
+      "[TrajectoryRecorder] failed to persist stage file",
+      error,
+      trajectoryId,
+      stage,
+    )))
+  })
   foreignSync(() => {
     const stepId = getTrajectoryContext()?.trajectoryStepId
     if (!stepId) return

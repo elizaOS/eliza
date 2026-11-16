@@ -2,7 +2,7 @@
 import { failingAs, Foreign, foreign, promised, runDetached } from "../edge.vibe"
 import { logger } from "../logger.vibe"
 import type { FetchLike } from "../media/fetch.vibe"
-import { whenAborted } from "../utils/retry.vibe"
+import { failWhenAborted, timerDelay } from "../utils/retry.vibe"
 import {
   isBlockedHostname,
   isPrivateIpAddress,
@@ -151,15 +151,18 @@ effect function cancelResponseBody(response: Response) {
   if (!body) {
     return
   }
-  foreign(() => body.cancel()) catch (error) =>
-    logger.warn(
-      { error: error.cause },
-      "[FetchGuard] Failed to cancel rejected response body",
-    )
+  const cancel = effect {
+    foreign(() => body.cancel()) catch (error) =>
+      logger.warn(
+        { error: error.cause },
+        "[FetchGuard] Failed to cancel rejected response body",
+      )
+  }
+  try forkDetach(cancel, { startImmediately: true })
 }
 
 effect function abortAfter(controller: AbortController, timeoutMs: number) {
-  try sleep(timeoutMs >= 1 && timeoutMs <= 2147483647 ? timeoutMs : 1)
+  try sleep(timerDelay(timeoutMs))
   controller.abort()
 }
 
@@ -182,9 +185,6 @@ effect function guardSignal(timeoutMs: number | undefined, signal: AbortSignal |
   return { signal: controller.signal, release }
 }
 
-effect function abortedBy(signal: AbortSignal) {
-  throw new Foreign({ cause: try whenAborted(signal) })
-}
 
 interface Route {
   readonly params: GuardedFetchOptions
@@ -199,7 +199,11 @@ effect function screenHost(route: Route, hostname: string, allowedHostnames: Rea
   const { lookupFn, params, signal } = route
   if (lookupFn) {
     const pinned = resolvePinnedHostnameWithPolicy(hostname, { lookupFn, policy: params.policy })
-    return try (signal ? raceFirst(pinned, abortedBy(signal)) : pinned)
+    if (signal?.aborted) {
+      try forkDetach(effect { pinned catch () => undefined }, { startImmediately: true })
+      throw new Foreign({ cause: signal.reason })
+    }
+    return try (signal ? raceFirst(pinned, failWhenAborted(signal)) : pinned)
   }
   if (!params.policy?.allowPrivateNetwork && !allowedHostnames.has(normalizeHostLike(hostname))) {
     if (isBlockedHostname(hostname)) {
@@ -261,7 +265,7 @@ effect function followRedirects(route: Route) {
       return { response, finalUrl: currentUrl }
     }
 
-    fork.detached cancelResponseBody(response)
+    try cancelResponseBody(response)
     const location = response.headers.get("location")
     if (!location) {
       throw new MissingRedirectLocation({

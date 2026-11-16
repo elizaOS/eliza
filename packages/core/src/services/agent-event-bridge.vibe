@@ -82,10 +82,6 @@ function isRuntimeServiceHost(value: unknown): value is RuntimeServiceHost {
   )
 }
 
-function readRuntime(value: unknown): RuntimeServiceHost | null {
-  return isRuntimeServiceHost(value) ? value : null
-}
-
 function reportBridgeError(
   runtime: RuntimeServiceHost,
   scope: string,
@@ -184,20 +180,12 @@ function readContentRunId(payload: ActionEventPayload): string | undefined {
 }
 
 function messageMetadata(payload: MessagePayload): Record<string, unknown> {
-  return isObjectRecord(payload.message.metadata)
-    ? payload.message.metadata
-    : {}
-}
-
-function messageMetadataBase(
-  metadata: Record<string, unknown>,
-): Record<string, unknown> {
-  return isObjectRecord(metadata.base) ? metadata.base : {}
+  return readRecord(payload.message.metadata)
 }
 
 function resolveMessageSource(payload: MessagePayload): string {
   const metadata = messageMetadata(payload)
-  const base = messageMetadataBase(metadata)
+  const base = readRecord(metadata.base)
   return (
     readString(payload.source)
       ?? readString(payload.message.content.source)
@@ -372,7 +360,7 @@ function normalizeRawConnectorMessage(
   const source = CONNECTOR_EVENT_SOURCES[eventType]
   if (!source) return null
   const root = readRecord(payload)
-  const runtime = readRuntime(root.runtime)
+  const runtime = isRuntimeServiceHost(root.runtime) ? root.runtime : null
   if (!runtime) return null
 
   const message = readRecord(root.message)

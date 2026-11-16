@@ -412,8 +412,12 @@ export effect function stopReader(reader: ReaderRuntime) {
   try orDie(reader.owned.step({ type: "stop" }, (payload) => [undefined, { ...payload, timer: undefined }]))
 }
 
-export effect function startReader(reader: ReaderRuntime, taskId: string): number!InvalidTaskId {
+export effect function startReader(reader: ReaderRuntime, taskId: string): (number | undefined)!InvalidTaskId {
   if (!OPAQUE_REF_PATTERN.test(taskId)) throw new InvalidTaskId({ message: "Invalid task ID" })
+  if (!taskId) {
+    try stopReader(reader)
+    return undefined
+  }
   try cancelTimer(reader)
   return try orDie(reader.owned.step({ type: "start", task: taskId }, (_, state) => [state.ticket, { page: null, timer: undefined }]))
 }
@@ -432,7 +436,7 @@ effect function notify(reader: ReaderRuntime) {
     pending: state.pending,
     failed: state.failed,
   }))
-  return foreignSync(() => reader.options.changed(structuredClone(view))) catch (failure) => ({ cause: failure.cause })
+  return foreignSync(() => { reader.options.changed(structuredClone(view)) }) catch (failure) => ({ cause: failure.cause })
 }
 
 function observerFailed(failure: { cause: unknown }): ElizaError {
@@ -516,7 +520,7 @@ module edge {
     /** @throws {Error} */
     start(taskId: string): Promise<void> {
       const ticket = runDetachedSync(asLegacy(Error, startReader(this.#reader, taskId)))
-      return runDetached(pollReader(this.#reader, ticket))
+      return ticket === undefined ? Promise.resolve() : runDetached(pollReader(this.#reader, ticket))
     }
 
     /** @throws {never} */

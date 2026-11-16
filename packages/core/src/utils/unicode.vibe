@@ -1,12 +1,13 @@
 // spec/core/unicode.md, "Byte counting combines surrogate pairs and replaces unpaired surrogates"; spec/core/unicode.md, "Prefix and suffix boundaries cannot introduce a split surrogate pair"
-import { highSurrogate, lowSurrogate, utf8Length } from "../../gen/core__unicode.effect.vibe"
+import { countCodeUnit, highSurrogate, lowSurrogate } from "../../gen/core__unicode.effect.vibe"
+import type { Utf8Counter } from "../../gen/core__unicode.ts"
 import { Foreign, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 
 export function utf8ByteLength(text: string): number {
-  const codeUnits: number[] = []
-  for (let index = 0; index < text.length; index += 1) codeUnits.push(text.charCodeAt(index))
-  return utf8Length(codeUnits)
+  let counter: Utf8Counter = { pendingHigh: false, bytes: 0 }
+  for (let index = 0; index < text.length; index += 1) counter = countCodeUnit(counter, text.charCodeAt(index))
+  return counter.bytes + (counter.pendingHigh ? 3 : 0)
 }
 
 export function toWellFormedUnicode(text: string): string {
@@ -556,20 +557,20 @@ module walk {
 }
 import { assertAnnotationsFromRoot, walkDeepFromRoot, walkSchemaFromRoot } from walk
 
-function uninspectable(cause: unknown): ElizaError | Foreign {
+export function elizaErrorOrForeign(cause: unknown): ElizaError | Foreign {
   return cause instanceof ElizaError ? cause : new Foreign({ cause })
 }
 
 export effect function deepToWellFormedUnicode<T>(value: T) {
-  return try Effect.try({ try: () => walkDeepFromRoot(value), catch: uninspectable })
+  return try Effect.try({ try: () => walkDeepFromRoot(value), catch: elizaErrorOrForeign })
 }
 
 export effect function wellFormedUnicodeSchemaStructure<T>(value: T, options: { maxDepth?: number } = {}) {
-  return try Effect.try({ try: () => walkSchemaFromRoot(value, options), catch: uninspectable })
+  return try Effect.try({ try: () => walkSchemaFromRoot(value, options), catch: elizaErrorOrForeign })
 }
 
 export effect function assertSchemaAnnotationsSerializable(value: unknown, options: { maxDepth?: number } = {}) {
-  try Effect.try({ try: () => assertAnnotationsFromRoot(value, options), catch: uninspectable })
+  try Effect.try({ try: () => assertAnnotationsFromRoot(value, options), catch: elizaErrorOrForeign })
 }
 
 export const assertSchemaAnnotationsSerializableOrThrow = thrown(assertSchemaAnnotationsSerializable)

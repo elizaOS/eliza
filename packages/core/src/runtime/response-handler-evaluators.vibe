@@ -13,6 +13,7 @@ import type { State } from "../types/state.vibe"
 import type { ContextProviderEvent } from "./context-object.vibe"
 import type { DirectActionRoutingRule } from "./direct-action-routing.vibe"
 import { TurnAbortedError } from "./turn-aborted-error.vibe"
+import { scopeProtectedKeys } from "../../gen/core__responseEvaluation.effect.vibe"
 
 export interface ResponseHandlerPatch {
   processMessage?: MessageHandlerAction
@@ -181,40 +182,7 @@ function filterAvailableContexts(
   return result
 }
 
-const PROTECTED_SCOPE_FIELDS: ReadonlySet<string> = new Set([
-  "contexts",
-  "reply",
-  "replyeffectstatus",
-  "requirestool",
-  "contextslices",
-  "completioncontext",
-  "candidateactions",
-  "intents",
-  "parentactionhints",
-  "requiredtoolmissbudget",
-  "requiredtoolevidence",
-  "deterministictoolcall",
-  "simple",
-  "metadata",
-  "data",
-  "state",
-  "messages",
-  "originalmessages",
-  "originalrequest",
-  "history",
-  "receipts",
-  "effectreceipts",
-  "source",
-  "sources",
-  "sourcecontext",
-  "sourcesetid",
-  "sourceselection",
-  "currentsourcerevisions",
-  "invalidatedscopefields",
-  "constructor",
-  "prototype",
-  "__proto__",
-])
+const PROTECTED_SCOPE_FIELDS: ReadonlySet<string> = new Set(scopeProtectedKeys)
 
 effect function applyResponseHandlerPatch(
   evaluatorName: string,
@@ -464,7 +432,7 @@ export effect function runResponseHandlerEvaluators(args: ResponseHandlerEvaluat
     result,
   }
   for (const evaluator of candidates) {
-    runCandidate(run, evaluator) catch effect (failure) => {
+    Effect.catchDefect(runCandidate(run, evaluator), (cause) => fail(new Foreign({ cause }))) catch effect (failure) => {
       try recordEvaluatorFailure(run, evaluator, failure)
     }
   }

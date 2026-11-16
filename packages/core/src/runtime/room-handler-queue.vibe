@@ -245,8 +245,8 @@ function emit(table: RoomTable, event: RoomQueueEvent): void {
 
 effect function runActive(queue: RoomQueue, item: QueuedItem): void!! {
   const outcome = try exit(item.run)
-  Deferred.doneUnsafe(item.done, outcome)
   queue.active = null
+  Deferred.doneUnsafe(item.done, outcome)
   drainRoom(queue)
 }
 
@@ -361,7 +361,10 @@ effect function settleRoomWork(
     const value = Deferred.await(done) catch effect (failure) => {
       const error = failure instanceof Foreign ? failure.cause : failure
       if (error instanceof RoomHandlerQueueAbortedError) {
-        emit(table, { type: "cancelled", roomId })
+        try forkDetach(effect {
+          try Effect.promise(() => Promise.resolve())
+          emit(table, { type: "cancelled", roomId })
+        }, { startImmediately: true })
       } else {
         emit(table, {
           type: "errored",
@@ -467,7 +470,7 @@ export function ownsLease(
   )
 }
 
-export function liveAmbientLeases(table: RoomTable): Map<string, RoomHandlerLease> {
+function liveAmbientLeases(table: RoomTable): Map<string, RoomHandlerLease> {
   const live = new Map<string, RoomHandlerLease>()
   for (const [roomId, lease] of table.ownershipStorage?.current() ?? []) {
     if (ownsLease(table, roomId, lease)) live.set(roomId, lease)
@@ -667,7 +670,7 @@ module edge {
     }
 
     /** @throws {never} */
-    async runWith<T>(
+    runWith<T>(
       roomId: string,
       fn: () => Promise<T>,
       options?: RunWithOptions,

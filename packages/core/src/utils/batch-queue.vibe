@@ -2,7 +2,7 @@
 import { asLegacy, foreign, Foreign, foreignSync, runDetached } from "../edge.vibe"
 import { logger } from "../logger.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
-import { type BackoffPolicy, computeBackoff, type RetryConfig, resolveRetryConfig } from "./retry.vibe"
+import { type BackoffPolicy, computeBackoff, type RetryConfig, resolveRetryConfig, sleepWithAbort } from "./retry.vibe"
 import { acquirePermit, disposeTaskDrain, Semaphore, startTaskDrain, TaskDrain, updateTaskDrainInterval } from "./task-scheduling.vibe"
 
 export interface DrainStats {
@@ -137,7 +137,7 @@ effect function drainSlice<T>(state: QueueState<T>) {
   return batch.length
 }
 
-export effect function drainBatchQueue<T>(queue: BatchQueue<T>) {
+effect function drainBatchQueue<T>(queue: BatchQueue<T>) {
   const state = queue.state
   if (state.disposed || state.isDraining) return 0
   state.isDraining = true
@@ -173,7 +173,7 @@ export effect function startBatchQueue<T>(queue: BatchQueue<T>, runtime: IAgentR
   }
 }
 
-export effect function updateBatchQueueDrainInterval<T>(queue: BatchQueue<T>, runtime: IAgentRuntime, ms: number) {
+effect function updateBatchQueueDrainInterval<T>(queue: BatchQueue<T>, runtime: IAgentRuntime, ms: number) {
   const drain = queue.state.taskDrain
   if (drain) try updateTaskDrainInterval(drain, runtime, ms)
 }
@@ -457,12 +457,12 @@ effect function processBatchItem<T>(state: ProcessorState<T>, item: T) {
     }
     retryCount++
     const delayMs = computeBackoff(state.policy, attempt)
-    if (delayMs > 0) try sleep(delayMs <= 2147483647 ? delayMs : 1)
+    if (delayMs > 0) try sleepWithAbort(delayMs)
   }
   return { item, success: false, error: lastError, retryCount } satisfies BatchItemOutcome<T>
 }
 
-export effect function processBatchItems<T>(processor: BatchProcessor<T>, items: T[]) {
+effect function processBatchItems<T>(processor: BatchProcessor<T>, items: T[]) {
   const outcomes: Array<BatchItemOutcome<T>!Foreign> = []
   for (const item of items) outcomes.push(Fiber.join(fork.detached processBatchItem(processor.state, item)))
   return try.all outcomes

@@ -66,7 +66,13 @@ effect function catalogMachine() {
   }
 }
 
-const catalog = Effect.runSync(catalogMachine())
+type CatalogOwned = Effect.Success<ReturnType<typeof catalogMachine>>
+
+function catalog(): CatalogOwned {
+  catalog.slot ??= Effect.runSync(catalogMachine())
+  return catalog.slot
+}
+catalog.slot = undefined as CatalogOwned | undefined
 
 export effect function registerRegistryEntry(entry: RegistryEntry) {
   const parsed = try Effect.try({ try: () => registryEntrySchema.safeParse(entry), catch: (cause) => new Foreign({ cause }) })
@@ -82,7 +88,7 @@ export effect function registerRegistryEntry(entry: RegistryEntry) {
   const idx = entries.findIndex((e) => e.id === normalized.id)
   const position = idx >= 0 ? idx : entries.length
   entries[position] = normalized
-  try catalog.step({ type: "register", id: normalized.id, version: position, valid: true }, () => [undefined, null] as const)
+  try catalog().step({ type: "register", id: normalized.id, version: position, valid: true }, () => [undefined, null] as const)
 }
 
 export const registerRegistryEntryOrThrow = thrown(failingAs(Error, registerRegistryEntry))
@@ -113,12 +119,12 @@ effect function readEntriesFromDisk() {
 }
 
 export effect function loadRegistry() {
-  const cached = try catalog.read((state, registry) => state.cached ? registry : null)
+  const cached = try catalog().read((state, registry) => state.cached ? registry : null)
   if (cached) return cached
   const fileEntries = try readEntriesFromDisk()
   const merged = new Map([...fileEntries, ...runtimeEntries()].map((e) => [e.id, e]))
   const registry = indexEntries([...merged.values()])
-  return try catalog.step({ type: "load" }, () => [registry, registry] as const)
+  return try catalog().step({ type: "load" }, () => [registry, registry] as const)
 }
 
 export const loadRegistryOrThrow = thrown(loadRegistry)

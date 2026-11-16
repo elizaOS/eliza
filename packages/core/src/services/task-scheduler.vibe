@@ -180,16 +180,17 @@ effect function tick(generation: number) {
   const agentIds = Array.from(registrations.keys()) as UUID[]
   const queryDone = try Deferred.make<void>()
   pendingQueries.set(queryDone, { adapters: new Set([adp]), services: queryOwners })
-  const queried: { tasks: Task[] } | { failed: unknown } = map(
-    foreign(() => adp.getTasks({ tags: ["queue"], agentIds })),
-    (tasks) => ({ tasks }),
-  ) catch ({ cause }) => ({ failed: cause })
-  const failure = "failed" in queried ? queryFailure(generation, registrations, agentIds, queried.failed) : undefined
-  pendingQueries.delete(queryDone)
-  try Deferred.succeed(queryDone, undefined)
-  if (failure) throw failure
+  const allTasks = try ensuring(
+    mapError(
+      foreign(() => adp.getTasks({ tags: ["queue"], agentIds })),
+      ({ cause }) => queryFailure(generation, registrations, agentIds, cause),
+    ),
+    sync(() => {
+      pendingQueries.delete(queryDone)
+      Deferred.doneUnsafe(queryDone, Exit.void)
+    }),
+  )
   if (generation !== schedulerGeneration) throw staleGenerationError(generation)
-  const allTasks = "tasks" in queried ? queried.tasks : []
 
   const byAgent = new Map<string, { registrationId: number; tasks: Task[] }>()
   const staleRegistrations = new Set<string>()

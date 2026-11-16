@@ -16,7 +16,7 @@ module node {
 import { unrefSleep } from node
 export { unrefSleep }
 
-function timerDelay(ms: unknown): number {
+export function timerDelay(ms: unknown): number {
   const delay = Number(ms)
   return delay >= 1 && delay <= 2147483647 ? delay : 1
 }
@@ -37,7 +37,7 @@ export function whenAborted(signal: AbortSignal) {
   })
 }
 
-effect function failWhenAborted(signal: AbortSignal) {
+export effect function failWhenAborted(signal: AbortSignal) {
   throw new Foreign({ cause: try whenAborted(signal) })
 }
 

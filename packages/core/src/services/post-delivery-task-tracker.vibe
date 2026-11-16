@@ -44,10 +44,10 @@ function leaseMismatch(): ElizaError {
   })
 }
 
-function indexed<K, V>(index: WeakMap<object, Map<K, V>>, runtime: object): Map<K, V> {
+function indexed<V>(index: WeakMap<object, V>, runtime: object, create: () => V): V {
   const existing = index.get(runtime)
   if (existing) return existing
-  const created = new Map<K, V>()
+  const created = create()
   index.set(runtime, created)
   return created
 }
@@ -76,7 +76,7 @@ export effect function withRoomDeliverySettlement<T>(
   deliver: () => Promise<T>,
 ) {
   if (!runtime.roomHandlerQueue?.ownsLease(roomId, lease)) throw leaseMismatch()
-  const rooms = indexed(deliveryByRuntimeRoom, runtime)
+  const rooms = indexed(deliveryByRuntimeRoom, runtime, () => new Map())
   if (rooms.has(roomId)) {
     throw new ElizaError("A delivery boundary already owns this room", {
       code: "POST_DELIVERY_SETTLEMENT_ALREADY_ACTIVE",
@@ -94,14 +94,6 @@ export effect function withRoomDeliverySettlement<T>(
 }
 
 export const withRoomDeliverySettlementPromise = promised(withRoomDeliverySettlement)
-
-function pendingSet(runtime: TrackableRuntime): Set<TrackedPostDeliveryTask> {
-  const existing = pendingByRuntime.get(runtime)
-  if (existing) return existing
-  const created = new Set<TrackedPostDeliveryTask>()
-  pendingByRuntime.set(runtime, created)
-  return created
-}
 
 function release(
   runtime: TrackableRuntime,
@@ -127,6 +119,7 @@ effect function runTracked(
 ) {
   const signal = tracked.controller.signal
   const attempt = effect {
+    try yieldNow
     if (signal.aborted) throw new Foreign({ cause: signal.reason })
     try foreign(() => task(signal))
   }
@@ -150,7 +143,7 @@ export effect function trackPostDeliveryTask(
       context: { label, quarantineReason: quarantine.reason },
     })
   }
-  const pending = pendingSet(runtime)
+  const pending = indexed(pendingByRuntime, runtime, () => new Set<TrackedPostDeliveryTask>())
   const explicitRoomId = options.kind === "room-state" ? options.roomId : undefined
   const explicitLease = options.kind === "room-state" ? options.roomHandlerLease : undefined
   if ((explicitRoomId === undefined) !== (explicitLease === undefined)) {
@@ -176,7 +169,7 @@ export effect function trackPostDeliveryTask(
   }
   let roomPending: Set<TrackedPostDeliveryTask> | undefined
   if (roomId) {
-    const rooms = indexed(pendingByRuntimeRoom, runtime)
+    const rooms = indexed(pendingByRuntimeRoom, runtime, () => new Map())
     roomPending = rooms.get(roomId) ?? new Set()
     rooms.set(roomId, roomPending)
   }

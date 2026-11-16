@@ -27,10 +27,6 @@ function getIdentityClusterResolver(
   return service
 }
 
-function getIdentityAuthority(runtime: IAgentRuntime): PrincipalService | null {
-  return runtime.getService<PrincipalService>(ServiceType.PRINCIPAL)
-}
-
 export effect function getRelatedEntityIds(
   runtime: IAgentRuntime,
   entityId: UUID,
@@ -53,7 +49,7 @@ export effect function getRelatedEntityIds(
 export const getRelatedEntityIdsPromise = promised(getRelatedEntityIds)
 
 effect function verifiedClusterIds(runtime: IAgentRuntime, entityId: UUID) {
-  const authority = getIdentityAuthority(runtime)
+  const authority = runtime.getService<PrincipalService>(ServiceType.PRINCIPAL)
   if (authority) {
     const cluster = try foreign(() => authority.getCluster(runtime.agentId, entityId))
     if (!cluster) return [entityId]

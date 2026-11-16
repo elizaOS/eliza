@@ -1,4 +1,4 @@
-// spec/core/embeddingSpace.md, "A probe prepares dimensions and representation before pinning"
+// spec/core/embeddingSpace.md, "Story: Keep stored vectors in their verified representation"; spec/core/embeddingSpace.md, "The vector write rechecks captured representation after every await"
 import { thrown } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 

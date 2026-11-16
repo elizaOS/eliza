@@ -91,12 +91,15 @@ effect function cleanupExpiredRequests(runtime: IAgentRuntime, pairing: Pairing,
   }
   if (expiredIds.length > 0) {
     const deletions = try foreignSync(() => expiredIds.map((id) => runtime.deletePairingRequest(id)))
-    fork.detached effect {
+    const cleanup = effect {
       forEach(deletions, (deletion) => foreign(() => deletion), { concurrency: "unbounded", discard: true }) catch ({ cause }) => {
         runtime.reportError("PairingService.expiredCleanup", cause, { requestCount: expiredIds.length })
         runtime.logger.warn({ src: "service:pairing", error: cause }, "Failed to clean up expired pairing requests")
       }
     }
+    try forkDetach(Effect.catchCause(cleanup, (cause) => sync(() => {
+      void Promise.reject(Cause.squash(cause))
+    })), { startImmediately: true })
   }
   return validRequests
 }

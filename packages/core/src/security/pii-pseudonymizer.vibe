@@ -57,6 +57,14 @@ export const DEFAULT_PSEUDONYM_BLOCKLIST: readonly string[] = [
   "system",
 ]
 
+export function pseudonymBlocklist(options: { readonly blocklist?: Iterable<string> }): ReadonlySet<string> {
+  return new Set(
+    [...DEFAULT_PSEUDONYM_BLOCKLIST, ...(options.blocklist ?? [])]
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean),
+  )
+}
+
 export const PII_SWAP_ENABLED_SETTING = "ELIZA_PII_SWAP_ENABLED"
 
 export const PII_SWAP_EXEMPT_VALUES_SETTING = "ELIZA_PII_SWAP_EXEMPT_VALUES"
@@ -253,7 +261,6 @@ const STREET_TYPES: readonly string[] = [
 function pick<T>(pool: readonly T[], seed: number): T {
   return pool[seed % pool.length] as T
 }
-
 
 export function isPiiPseudonymUnbounded(error: unknown): boolean {
   return error instanceof ElizaError && error.code === PII_PSEUDONYM_UNBOUNDED
@@ -566,9 +573,9 @@ module edge {
   import type { EntitySpan, PiiEntityRecognizer } from "./entity-recognizer.vibe"
   import {
     compileReplacer,
-    DEFAULT_PSEUDONYM_BLOCKLIST,
     learnPseudonyms,
     mintSurrogate,
+    pseudonymBlocklist,
     type PseudonymEntry,
     type PseudonymSessionOptions,
     restorePseudonymsInValue,
@@ -605,11 +612,7 @@ module edge {
     /** @throws {never} */
     constructor(options: PseudonymSessionOptions = {}) {
       this.salt = options.salt ?? BufferUtils.toHex(BufferUtils.randomBytes(16))
-      this.blocklist = new Set(
-        [...DEFAULT_PSEUDONYM_BLOCKLIST, ...(options.blocklist ?? [])]
-          .map((v) => v.trim().toLowerCase())
-          .filter(Boolean),
-      )
+      this.blocklist = pseudonymBlocklist(options)
       this.disabledKinds = new Set(
         [...(options.disabledKinds ?? [])].map((v) => v.trim()).filter(Boolean),
       )

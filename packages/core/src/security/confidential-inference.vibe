@@ -91,7 +91,7 @@ export interface ConfidentialInferenceAuthorityOptions {
   readonly redispatchPolicy?: "deny-after-authorization"
 }
 
-export error RedirectRefused { message: string }
+error RedirectRefused { message: string }
 
 function rejection(code: string): ElizaError {
   return new ElizaError(
@@ -186,7 +186,7 @@ effect function currentProfile(
   scope: AttemptScope,
   prior?: ConfidentialInferenceAuditRecord,
 ) {
-  return checkedProfile(scope.authority) catch effect () => {
+  const profile = checkedProfile(scope.authority) catch effect () => {
     return try deny(
       scope,
       "CONFIDENTIAL_INFERENCE_POLICY_UNAVAILABLE",
@@ -195,6 +195,8 @@ effect function currentProfile(
       prior?.routeId,
     )
   }
+  try foreign(() => undefined)
+  return profile
 }
 
 export effect function runWithConfidentialInference<T>(

@@ -64,7 +64,7 @@ export effect function startServiceEagerly(
 ): void!! {
   const { runtime, host } = lifecycle
   for (let attempt = 0;; attempt += 1) {
-    const started = try result(ensureServiceStarted(lifecycle, serviceType))
+    const started = try result(Effect.catchDefect(ensureServiceStarted(lifecycle, serviceType), (cause) => fail(new Foreign({ cause }))))
     if (Result.isSuccess(started)) return
     const err = started.failure instanceof Foreign ? started.failure.cause : started.failure
     const delayMs = EAGER_SERVICE_START_RETRY_DELAYS_MS[attempt]
@@ -94,7 +94,7 @@ effect function stopServiceOperation(
   serviceType: string,
   service: Service,
 ): void!Foreign {
-  foreign(() => Promise.resolve().then(() => service.stop())) catch effect (failure) => {
+  foreign(() => service.stop()) catch effect (failure) => {
     retirement.recordFailure(`stop:${serviceType}`, failure.cause)
     throw failure
   }
@@ -146,11 +146,10 @@ export effect function stopServiceInstance(
 
 effect function startServiceClass(
   host: RuntimeServiceLifecycleHost,
-  key: ServiceTypeName,
-  serviceType: string,
   serviceClass: ServiceClass,
+  starting: Promise<Service | null>,
 ): Service!(Foreign | ServiceImplementationDidNotStart) {
-  const service = foreign(() => host.runServiceStart(key, serviceType, serviceClass)) catch effect (failure) => {
+  const service = foreign(() => starting) catch effect (failure) => {
     host.failedServiceClasses().add(serviceClass)
     throw failure
   }
@@ -163,56 +162,57 @@ effect function startServiceClass(
   return service
 }
 
-function startPendingClass(
+function classStart(
   host: RuntimeServiceLifecycleHost,
   key: ServiceTypeName,
   serviceType: string,
   serviceClass: ServiceClass,
+  startedImplementation: Service | undefined,
 ): Promise<Service> {
-  const starting = onExit(
-    asLegacy(Error, startServiceClass(host, key, serviceType, serviceClass)),
+  const started = host.serviceInstancesByClass().get(serviceClass)
+  if (started) return Promise.resolve(started)
+  const pending = host.startingServiceClasses().get(serviceClass)
+  if (pending) return pending
+  if (startedImplementation && host.failedServiceClasses().has(serviceClass)) {
+    return Promise.resolve(startedImplementation)
+  }
+  const starting = host.runServiceStart(key, serviceType, serviceClass).then((service) => service)
+  const start = runDetached(onExit(
+    asLegacy(Error, startServiceClass(host, serviceClass, starting)),
     () => sync(() => host.startingServiceClasses().delete(serviceClass)),
-  )
-  const start = runDetached(starting)
+  ))
   host.startingServiceClasses().set(serviceClass, start)
   return start
 }
 
-function serviceStarts(
+effect function serviceStarts(
   host: RuntimeServiceLifecycleHost,
   key: ServiceTypeName,
   serviceType: string,
   classes: readonly ServiceClass[],
-): Promise<Service>[] {
+): Promise<Service>[]!Foreign {
   const instances = host.serviceInstancesByClass()
   const startedClass = classes.find((serviceClass) => instances.has(serviceClass))
   const startedImplementation = startedClass && instances.get(startedClass)
-  return classes.map((serviceClass) => {
-    const started = host.serviceInstancesByClass().get(serviceClass)
-    if (started) return Promise.resolve(started)
-    const pending = host.startingServiceClasses().get(serviceClass)
-    if (pending) return pending
-    if (
-      startedImplementation
-      && host.failedServiceClasses().has(serviceClass)
-    ) {
-      return Promise.resolve(startedImplementation)
-    }
-    return startPendingClass(host, key, serviceType, serviceClass)
-  })
+  const starts: Promise<Service>[] = []
+  for (const serviceClass of classes) {
+    const { start } = try foreignSync(() => ({ start: classStart(host, key, serviceType, serviceClass, startedImplementation) }))
+    starts.push(start)
+  }
+  return starts
 }
 
-effect function settleStarts(starts: readonly Promise<Service>[]): Exit.Exit<Service, Foreign>[]!! {
-  const settled: Exit.Exit<Service, Foreign>[] = []
+effect function settleStarts(starts: readonly Promise<Service>[]): Result.Result<Service, Foreign>[]!! {
+  const settled: Result.Result<Service, Foreign>[] = []
   for concurrent (const [index, start] of starts.entries()) {
-    settled[index] = try exit(foreign(() => start))
+    settled[index] = try result(foreign(() => start))
   }
   return settled
 }
 
 effect function firstStarted(starts: readonly Promise<Service>[]): (Service | null)!! {
   const settled = try settleStarts(starts)
-  return settled.find(Exit.isSuccess)?.value ?? null
+  return settled.find(Result.isSuccess)?.success ?? null
 }
 
 function publishAggregateStart(
@@ -229,12 +229,6 @@ function publishAggregateStart(
     }),
   ))
   host.startingServices().set(key, allStarts)
-}
-
-function rejectionOf(settled: Exit.Exit<Service, Foreign>): unknown[] {
-  if (Exit.isSuccess(settled)) return []
-  const failure = Cause.squash(settled.cause)
-  return [failure instanceof Foreign ? failure.cause : failure]
 }
 
 export effect function ensureServiceStarted(
@@ -258,7 +252,7 @@ export effect function ensureServiceStarted(
   if (!classes || classes.length === 0) {
     return null
   }
-  const starts = serviceStarts(host, key, serviceType, classes)
+  const starts = try serviceStarts(host, key, serviceType, classes)
   publishAggregateStart(host, key, starts)
 
   const settled = try settleStarts(starts)
@@ -274,7 +268,7 @@ export effect function ensureServiceStarted(
   }
 
   const cause = new AggregateError(
-    settled.flatMap(rejectionOf),
+    settled.flatMap((settledStart) => Result.isFailure(settledStart) ? [settledStart.failure.cause] : []),
     `All implementations of service ${serviceType} failed`,
   )
   const startupError = new ElizaError(
@@ -357,8 +351,7 @@ effect function publishStartedService(
   runtime.services.set(key, orderedInstances)
   host.serviceRegistrationStatus().set(key, "registered")
   if (serviceDef.registerSendHandlers) {
-    const registerSendHandlers = serviceDef.registerSendHandlers
-    try foreignSync(() => registerSendHandlers(runtime, serviceInstance))
+    try foreignSync(() => serviceDef.registerSendHandlers!(runtime, serviceInstance))
   }
 
   foreign(() => runtime.emitEvent(EventType.SERVICE_STARTED, {
@@ -393,7 +386,7 @@ effect function runServiceStart(
       context: { serviceType },
     })
   }
-  return publishStartedService(lifecycle, key, serviceType, serviceDef) catch effect (failure) => {
+  return Effect.catchDefect(publishStartedService(lifecycle, key, serviceType, serviceDef), (cause) => fail(new Foreign({ cause }))) catch effect (failure) => {
     const error = thrownValue(failure)
     runtime.reportError("AgentRuntime.serviceStart", error, {
       serviceType,
@@ -426,7 +419,7 @@ export class RuntimeServiceLifecycle {
   stopServiceOnce(serviceType: string, service: Service): Promise<void> {
     let operation = this.stopOperations.get(service)
     if (!operation) {
-      operation = this.retirement.run(() => runDetached(stopServiceOperation(this.retirement, serviceType, service)))
+      operation = this.retirement.run(() => Promise.resolve().then(() => runDetached(stopServiceOperation(this.retirement, serviceType, service))))
       this.stopOperations.set(service, operation)
     }
     return operation

@@ -1,6 +1,6 @@
 // spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
-import { Foreign, thrown } from "../edge.vibe"
-import { ElizaError } from "../errors.vibe"
+import { thrown } from "../edge.vibe"
+import { elizaErrorOrForeign } from "./unicode.vibe"
 
 export const MAX_TEXT_NORMALIZE_DEPTH = 64
 
@@ -164,7 +164,7 @@ import { flattenFromRoot } from walk
 export effect function flattenTextValues(value: unknown) {
   return try Effect.try({
     try: () => flattenFromRoot(value),
-    catch: (cause) => cause instanceof ElizaError ? cause : new Foreign({ cause }),
+    catch: elizaErrorOrForeign,
   })
 }
 
