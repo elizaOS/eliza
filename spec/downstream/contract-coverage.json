@@ -2775,7 +2775,7 @@
       ],
       "priority": "priority-consumer-path",
       "relatedSpec": "spec/downstream/reminderCustody.md",
-      "coverage": "related-contract"
+      "coverage": "direct-contract"
     },
     {
       "source": "plugins/plugin-assistant/src/services/device-actions/telephony-actions-contract.ts",
