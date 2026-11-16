@@ -15,6 +15,7 @@ lemma withdrawNextType_ensures(s: PluginServices, epochId: int)
     PluginRetirementWithdrawalPreservesTypePlan(s, epochId);
     PluginWithdrawalPreservesServiceReceiptIdentity(s, epochId);
     PluginWithdrawalKeepsEarlierTypeStatus(s, epochId);
+    PluginWithdrawalKeepsStopReceipts(s, epochId);
   }
 }
 
@@ -4354,5 +4355,62 @@ lemma finishNextClassHook_ensures(s: PluginServices, ok: bool, errorId: string)
   reveal canFinishNextClassHook(), finishNextClassHook();
   if inv(s) && canFinishNextClassHook(s, ok, errorId) {
     finishClassHook_ensures(s, pendingClassHookEpoch(s), ok, errorId);
+  }
+}
+
+lemma PluginWithdrawalKeepsStopReceipts(s: PluginServices, epochId: int)
+  requires inv(s) && canWithdrawNextType(s, epochId)
+  requires alwaysRetirementsFollowTypePlan(withdrawNextType(s, epochId))
+  ensures alwaysStopObservationsFollowSlots(withdrawNextType(s, epochId))
+  ensures alwaysRetiredEpochHasNoResources(withdrawNextType(s, epochId))
+{
+  hide *;
+  reveal inv(), canWithdrawNextType(), withdrawNextType(), alwaysStopObservationsFollowSlots();
+  reveal alwaysRetiredEpochHasNoResources(), retirementSettled(), allStopObservationsValid(), classPhaseFollowsInstances();
+  reveal core__pluginRegistry_epochRetiring(), core__pluginRegistry_epochOwnsResources();
+  reveal withdrawRetiringClasses(), core__serviceInstances_removePublishedInstances(), core__serviceInstances_replacePublication();
+  reveal missingGroupPhase, skippedGroupPhase, uncheckedSequence, Std.Collections.Seq.FoldLeft();
+  var prior := retirement(s, epochId);
+  var serviceType := prior.plan[prior.cursor];
+  var classes := retirementClassesForType(s, epochId, serviceType);
+  PluginWithdrawalFoldKeepsClassIdentity(classes, s.services);
+  var after := withdrawNextType(s, epochId);
+  assert after.services.objects == s.services.objects && after.plugins == s.plugins;
+  var frame := s.(services := after.services);
+  PluginMappedObjectsRetainStopReceipts(s, frame);
+  PluginWithdrawalGroupsKeepEarlierEntries(s, epochId);
+  forall row | row in after.retirements
+    ensures forall g | g in row.groups ::
+      0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
+        && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g)
+        && allStopObservationsValid(g, after.services)
+    ensures !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) ==> retirementSettled(after, row.epochId)
+    ensures forall g | g in row.groups && !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) ::
+      g.instanceCursor == |g.instances| && (forall slot | slot in g.observedStops :: stopSlotSettled(slot, after.services))
+  {
+    var i :| 0 <= i < |after.retirements| && after.retirements[i] == row;
+    var before := s.retirements[i];
+    assert before in frame.retirements && row.epochId == before.epochId;
+    if !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) {
+      assert row.epochId != epochId && row == before;
+      PluginRetirementPlanLookup(s, before);
+      PluginRetirementPlanLookup(after, row);
+    }
+    forall g | g in row.groups
+      ensures 0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
+        && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g)
+        && allStopObservationsValid(g, after.services)
+      ensures !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) ==>
+        (g.instanceCursor == |g.instances| && (forall slot | slot in g.observedStops :: stopSlotSettled(slot, after.services)))
+    {
+      var j :| 0 <= j < |row.groups| && row.groups[j] == g;
+      if j < |before.groups| {
+        assert g in before.groups;
+      } else {
+        assert j == |before.groups| && before.epochId == epochId;
+        assert g.observedStops == [] && g.instanceCursor == 0;
+        assert g.phase.GroupWaiting? || (g.phase.GroupSkipped? && g.instances == []);
+      }
+    }
   }
 }
