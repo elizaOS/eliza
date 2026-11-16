@@ -71,7 +71,11 @@ import {
  * idempotency key: when Slack stored the message but the answer was lost, the
  * retry posts it again. Only a rate limit (Slack stored nothing) is retried.
  */
-export const OUTBOUND_RETRY_CONFIG: RetryOptions = {
+export const OUTBOUND_RETRY_CONFIG: RetryOptions & {
+  // `WebClient` hands `retryConfig` to p-retry, which stops when this throws.
+  // The exported `RetryOptions` type does not list it.
+  onFailedAttempt: (error: Error) => void;
+} = {
   ...retryPolicies.tenRetriesInAboutThirtyMinutes,
   onFailedAttempt: (error) => {
     if (!error.message.startsWith("A rate limit was exceeded")) throw error;
