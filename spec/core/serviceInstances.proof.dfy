@@ -600,7 +600,15 @@ lemma ServiceClearUpdatesOnlyTypeMetadata(s: ServiceInstances, callId: int)
   ensures forall i :: 0 <= i < |s.typeEntries| ==>
     clearTypeAggregate(s, callId).typeEntries[i] ==
       (if s.typeEntries[i].latestAggregate == callId then s.typeEntries[i].(latestAggregate := 0) else s.typeEntries[i])
-{}
+  ensures alwaysClassAndObjectIdentities(s) ==> alwaysClassAndObjectIdentities(clearTypeAggregate(s, callId))
+{
+  if alwaysClassAndObjectIdentities(s) {
+    var after := clearTypeAggregate(s, callId);
+    assert after.classes == s.classes && after.objects == s.objects;
+    ServiceObjectIdentityFilters(s);
+    ServiceObjectIdentityFilters(after);
+  }
+}
 
 lemma ServiceClearPreservesFailedStatus(s: ServiceInstances, callId: int)
   requires alwaysFailedTypeHasNoPublication(s)
@@ -1650,6 +1658,50 @@ lemma ServiceDeclarationAppended(s: ServiceInstances, after: ServiceInstances, c
   }
 }
 
+lemma ServiceRetainedClassGenerationsPreserveAttempts(s: ServiceInstances, after: ServiceInstances)
+  requires alwaysAttemptGeneration(s) && alwaysClassAndObjectIdentities(after)
+  requires after.nextAttempt == s.nextAttempt && after.attempts == s.attempts
+  requires |s.classes| <= |after.classes|
+  requires forall i :: 0 <= i < |s.classes| ==>
+    (after.classes[i].id == s.classes[i].id && after.classes[i].generation == s.classes[i].generation)
+  ensures alwaysAttemptGeneration(after)
+{
+  ServiceAttemptFilters(s);
+  ServiceAttemptFilters(after);
+  forall attempt | attempt in after.attempts
+    ensures attempt.generation <= serviceClass(after, attempt.classId).generation
+  {
+    assert attempt in s.attempts;
+    var prior := serviceClass(s, attempt.classId);
+    assert 0 < attempt.generation <= prior.generation;
+    ServiceClassLookupMember(s, attempt.classId);
+    var i :| 0 <= i < |s.classes| && s.classes[i] == prior;
+    var retained := after.classes[i];
+    assert retained in after.classes && retained.id == attempt.classId && retained.generation == prior.generation;
+    ServiceClassFind(after, attempt.classId);
+  }
+}
+
+lemma ServiceRetainedPublicationsHaveOwners(s: ServiceInstances, after: ServiceInstances)
+  requires alwaysPublicationIdentitiesValid(s) && after.published == s.published
+  requires |s.classes| <= |after.classes|
+  requires forall i :: 0 <= i < |s.classes| ==>
+    (after.classes[i].serviceType == s.classes[i].serviceType && after.classes[i].live == s.classes[i].live)
+  ensures alwaysPublicationIdentitiesValid(after)
+{
+  forall publication | publication in after.published
+    ensures forall id :: id in publication.instances ==>
+      (exists owner :: owner in after.classes && owner.serviceType == publication.serviceType && owner.live == id)
+  {
+    forall id | id in publication.instances
+      ensures (exists owner :: owner in after.classes && owner.serviceType == publication.serviceType && owner.live == id)
+    {
+      var i :| 0 <= i < |s.classes| && s.classes[i].serviceType == publication.serviceType && s.classes[i].live == id;
+      assert after.classes[i] in after.classes;
+    }
+  }
+}
+
 lemma registerClass_ensures(s: ServiceInstances, classId: int, serviceType: string)
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysTypeEntriesUnique(registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysAggregateAndLoadIdsUnique(registerClass(s, classId, serviceType)))
@@ -1673,6 +1725,8 @@ lemma registerClass_ensures(s: ServiceInstances, classId: int, serviceType: stri
     var after := registerClass(s, classId, serviceType);
     ServiceClassRegisteredIdentity(s, after, classId, serviceType);
     ServiceDeclarationAppended(s, after, classId, serviceType);
+    ServiceRetainedClassGenerationsPreserveAttempts(s, after);
+    ServiceRetainedPublicationsHaveOwners(s, after);
     var contextual := s.(classes := after.classes, declarations := after.declarations);
     assert after == registerType(serviceType, contextual);
     ServiceRegisterLoadIdentity(contextual, serviceType);
@@ -1795,7 +1849,7 @@ lemma ServiceReturnedPublicationInstances(s: ServiceInstances, after: ServiceIns
   }
 }
 
-lemma ServiceReturnedOtherPublicationOwners(s: ServiceInstances, after: ServiceInstances, classId: int, serviceType: string)
+lemma ServiceOtherPublicationOwners(s: ServiceInstances, after: ServiceInstances, classId: int, serviceType: string)
   requires alwaysPublicationIdentitiesValid(s) && alwaysClassAndObjectIdentities(s)
   requires serviceClass(s, classId).serviceType == serviceType && |after.classes| == |s.classes|
   requires forall i :: 0 <= i < |s.classes| && s.classes[i].id != classId ==> after.classes[i] == s.classes[i]
@@ -1923,7 +1977,7 @@ lemma ServiceReturnedPublication(s: ServiceInstances, after: ServiceInstances, a
     assert after.published == replacePublication(owner.serviceType, classInstances(prepared, owner.serviceType), prepared).published;
     ServiceClassInstancesSameClasses(prepared, after, owner.serviceType);
     ServiceReturnedPublicationInstances(s, after, classId, owner.serviceType, instanceId);
-    ServiceReturnedOtherPublicationOwners(s, after, classId, owner.serviceType);
+    ServiceOtherPublicationOwners(s, after, classId, owner.serviceType);
     ServiceReplacedPublicationValid(s, after, owner.serviceType, classInstances(after, owner.serviceType));
   }
 }
@@ -2297,6 +2351,8 @@ lemma ServiceTypeReconciliationRetainsReferences(s: ServiceInstances, serviceTyp
   requires alwaysTypeEntriesUnique(s) && alwaysTypeReferencesRetained(s)
   ensures alwaysTypeEntriesUnique(reconcileType(serviceType, s))
   ensures alwaysTypeReferencesRetained(reconcileType(serviceType, s))
+  ensures forall e :: e in reconcileType(serviceType, s).typeEntries && e.status.TypeFailed? ==>
+    (e in s.typeEntries && e.serviceType != serviceType)
 {
   var entry := serviceTypeEntry(s, serviceType);
   var published := firstLive(s, serviceType) != 0;
@@ -2313,6 +2369,7 @@ lemma ServiceTypeReconciliationRetainsReferences(s: ServiceInstances, serviceTyp
     ensures (e.promiseId == 0 || (exists p :: p in after.loadPromises && p.id == e.promiseId && p.serviceType == e.serviceType))
     ensures (e.handlerId == 0 || (e.handlerId == e.promiseId && (exists p :: p in after.loadPromises && p.id == e.handlerId && p.phase.LoadPending?)))
     ensures (e.latestAggregate == 0 || (exists a :: a in after.aggregates && a.id == e.latestAggregate && a.serviceType == e.serviceType))
+    ensures e.status.TypeFailed? ==> (e in s.typeEntries && e.serviceType != serviceType)
   {
     if e == updated {
       if entry !in s.typeEntries { assert entry == noTypeEntry; }
@@ -2320,6 +2377,97 @@ lemma ServiceTypeReconciliationRetainsReferences(s: ServiceInstances, serviceTyp
       assert e in s.typeEntries;
     }
   }
+}
+
+lemma ServiceWithdrawnDeclarationOwners(s: ServiceInstances, after: ServiceInstances, classId: int)
+  requires alwaysDeclarationsMatch(s) && alwaysClassAndObjectIdentities(after)
+  requires after.classes == withdrawClass(classId, s).classes
+  requires after.declarations == withdrawClass(classId, s).declarations
+  ensures alwaysDeclarationsMatch(after)
+{
+  var retained := (d: ServiceDeclaration) => d.classId != classId;
+  assert after.declarations == ProofLib.Filter(retained, s.declarations);
+  forall d | d in after.declarations
+    ensures d.serviceType != "" && serviceClass(after, d.classId).registered && serviceClass(after, d.classId).serviceType == d.serviceType
+  {
+    ProofLib.FilterMember(retained, s.declarations, d);
+    var owner := serviceClass(s, d.classId);
+    assert owner.registered;
+    ServiceClassLookupMember(s, d.classId);
+    var i :| 0 <= i < |s.classes| && s.classes[i] == owner;
+    assert after.classes[i] == owner && owner in after.classes;
+    ServiceClassFind(after, d.classId);
+  }
+  forall cls | cls in after.classes
+    ensures cls.registered <==> (exists d :: d in after.declarations && d.classId == cls.id)
+  {
+    var i :| 0 <= i < |after.classes| && after.classes[i] == cls;
+    var prior := s.classes[i];
+    assert prior in s.classes && prior.id == cls.id;
+    if cls.registered {
+      assert prior.registered && cls.id != classId;
+      var d :| d in s.declarations && d.classId == cls.id;
+      ProofLib.FilterMember(retained, s.declarations, d);
+    }
+    if exists d :: d in after.declarations && d.classId == cls.id {
+      var d :| d in after.declarations && d.classId == cls.id;
+      ProofLib.FilterMember(retained, s.declarations, d);
+      assert prior.registered && cls.id != classId;
+    }
+  }
+}
+
+lemma ServiceWithdrawalInstancesHaveOwners(s: ServiceInstances, after: ServiceInstances, classId: int, serviceType: string, remaining: seq<int>)
+  requires alwaysPublicationIdentitiesValid(s) && alwaysClassAndObjectIdentities(s)
+  requires serviceClass(s, classId).serviceType == serviceType && |after.classes| == |s.classes|
+  requires forall i :: 0 <= i < |s.classes| && s.classes[i].id != classId ==> after.classes[i] == s.classes[i]
+  requires remaining == ProofLib.Filter((id: int) => id != serviceClass(s, classId).live, publishedInstances(s, serviceType))
+  ensures forall id :: id in remaining ==>
+    (id > 0 && (exists owner :: owner in after.classes && owner.serviceType == serviceType && owner.live == id))
+{
+  var published := publishedInstances(s, serviceType);
+  var byType := (p: ServicePublication) => p.serviceType == serviceType;
+  var candidates := ProofLib.Filter(byType, s.published);
+  ServicePublishedInstancesProjection(s, serviceType);
+  ServiceClassFind(s, classId);
+  forall id | id in remaining
+    ensures id > 0 && (exists owner :: owner in after.classes && owner.serviceType == serviceType && owner.live == id)
+  {
+    ProofLib.FilterMember((id: int) => id != serviceClass(s, classId).live, published, id);
+    assert id in published && id != serviceClass(s, classId).live;
+    assert |candidates| > 0;
+    var publication := candidates[0];
+    ProofLib.FilterMember(byType, s.published, publication);
+    var i :| 0 <= i < |s.classes| && s.classes[i].serviceType == serviceType && s.classes[i].live == id;
+    assert s.classes[i] in s.classes;
+    assert s.classes[i].id != classId && after.classes[i] == s.classes[i];
+    assert after.classes[i] in after.classes;
+  }
+}
+
+lemma ServiceWithdrawalPreservesPublications(s: ServiceInstances, after: ServiceInstances, classId: int)
+  requires alwaysPublicationIdentitiesValid(s) && alwaysClassAndObjectIdentities(s) && alwaysDeclarationsMatch(s)
+  requires canUnregisterClass(s, classId) && after == unregisterClass(s, classId)
+  ensures alwaysPublicationIdentitiesValid(after)
+  ensures forall p :: p in after.published && p.serviceType != serviceClass(s, classId).serviceType ==> p in s.published
+{
+  var owner := serviceClass(s, classId);
+  ServiceClassLookupMember(s, classId);
+  var declaration :| declaration in s.declarations && declaration.classId == classId;
+  assert declaration.serviceType == owner.serviceType && owner.serviceType != "";
+  var original := publishedInstances(s, owner.serviceType);
+  var removed := [owner.live];
+  var retained := (id: int) => id != owner.live;
+  var remaining := ProofLib.Filter(retained, original);
+  ProofLib.FilterSamePredicate(retained, (id: int) => !((id in removed)), original);
+  var stopped := if owner.live != 0 then stopObjectOnce(owner.live, s) else s;
+  var withdrawn := withdrawClass(classId, stopped);
+  assert withdrawn.published == s.published && publishedInstances(withdrawn, owner.serviceType) == original;
+  assert after.published == replacePublication(owner.serviceType, remaining, withdrawn).published;
+  assert after.published == replacePublication(owner.serviceType, remaining, after.(published := s.published)).published;
+  ServiceWithdrawalInstancesHaveOwners(s, after, classId, owner.serviceType, remaining);
+  ServiceOtherPublicationOwners(s, after, classId, owner.serviceType);
+  ServiceReplacedPublicationValid(s, after, owner.serviceType, remaining);
 }
 
 lemma unregisterClass_ensures(s: ServiceInstances, classId: int)
@@ -2350,5 +2498,9 @@ lemma unregisterClass_ensures(s: ServiceInstances, classId: int)
     ServiceStopWorkProjection(s, stopped);
     ServiceClassWithdrawalKeepsKnownObjects(stopped, after, classId);
     ServiceTypeReconciliationRetainsReferences(withdrawn, selected.serviceType);
+    ServiceWithdrawnDeclarationOwners(s, after, classId);
+    ServiceRetainedClassGenerationsPreserveAttempts(s, after);
+    ServiceWithdrawalPreservesPublications(s, after, classId);
+    ServiceOtherFailedTypesRemainUnpublished(s, after, selected.serviceType);
   }
 }
