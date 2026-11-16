@@ -1,68 +1,64 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 const ENGLISH_COUNT_WORD = "(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty)"
 
-const ASCII_RECURRENCE_PATTERNS: readonly RegExp[] = [
+const RECURRENCE_PATTERNS: readonly RegExp[] = [
   new RegExp(
     String
       .raw`\b(?:every|each)\s+(?:(?:other|\d+|${ENGLISH_COUNT_WORD})\s+)?(?:second|minute|hour|day|week|month|year|morning|afternoon|evening|night|weekday|weekend|mon(?:day)?|tues?(?:day)?|wed(?:nesday)?|thur?s?(?:day)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)s?\b`,
-    "i",
+    "gi",
   ),
-  /\bdaily\b/i,
-  /\b(?:weekly|monthly|nightly|hourly|yearly|annually|quarterly|biweekly|fortnightly)\b/i,
-  /\brepeat(?:s|ing)\b|\brecurring\b|\brecurs?\b/i,
+  /\bdaily\b/gi,
+  /\b(?:weekly|monthly|nightly|hourly|yearly|annually|quarterly|biweekly|fortnightly)\b/gi,
+  /\brepeat(?:s|ing)\b|\brecurring\b|\brecurs?\b/gi,
   new RegExp(
     String
       .raw`\b(?:once|twice|thrice|(?:\d+\s*|${ENGLISH_COUNT_WORD}\s+)times)\s+(?:a|per|each|every)\s+(?:day|week|month|year)\b`,
-    "i",
+    "gi",
   ),
-  /\bper\s+(?:day|week|month|year)\b/i,
-  /\b(?:on\s+)?(?:mondays|tuesdays|wednesdays|thursdays|fridays|saturdays|sundays)\b/i,
-  /\b(?:weekdays|weekends)\b/i,
+  /\bper\s+(?:day|week|month|year)\b/gi,
+  /\b(?:on\s+)?(?:mondays|tuesdays|wednesdays|thursdays|fridays|saturdays|sundays)\b/gi,
+  /\b(?:weekdays|weekends)\b/gi,
 
-  /\b(?:cada|todos\s+los|todas\s+las)\s+(?:d[ií]as?|semanas?|mes(?:es)?|años?|mañanas?|noches?|tardes?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b/i,
-  /\bdiario\b/i,
-  /\b(?:diaria(?:mente)?|semanal(?:mente)?|mensual(?:mente)?|anual(?:mente)?)\b/i,
-  /\blos\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados|domingos)\b/i,
-  /\buna\s+vez\s+(?:a\s+la|por)\s+semana\b/i,
+  /\b(?:cada|todos\s+los|todas\s+las)\s+(?:d[ií]as?|semanas?|mes(?:es)?|años?|mañanas?|noches?|tardes?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b/gi,
+  /\bdiario\b/gi,
+  /\b(?:diaria(?:mente)?|semanal(?:mente)?|mensual(?:mente)?|anual(?:mente)?)\b/gi,
+  /\blos\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados|domingos)\b/gi,
+  /\buna\s+vez\s+(?:a\s+la|por)\s+semana\b/gi,
 
-  /\b(?:cada|todos\s+os|todas\s+as)\s+(?:dias?|semanas?|m[eê]s(?:es)?|anos?|manh[aã]s?|noites?|tardes?|segundas?|ter[cç]as?|quartas?|quintas?|sextas?|s[aá]bados?|domingos?)(?![\p{L}\p{N}_])/iu,
-  /\b(?:diariamente|semanal(?:mente)?|mensal(?:mente)?|anual(?:mente)?)\b/i,
-  /\b(?:toda|todo)\s+(?:semana|m[eê]s|ano|segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)\b/i,
-  /\buma\s+vez\s+por\s+(?:semana|m[eê]s)\b/i,
+  /\b(?:cada|todos\s+os|todas\s+as)\s+(?:dias?|semanas?|m[eê]s(?:es)?|anos?|manh[aã]s?|noites?|tardes?|segundas?|ter[cç]as?|quartas?|quintas?|sextas?|s[aá]bados?|domingos?)(?![\p{L}\p{N}_])/giu,
+  /\b(?:diariamente|semanal(?:mente)?|mensal(?:mente)?|anual(?:mente)?)\b/gi,
+  /\b(?:toda|todo)\s+(?:semana|m[eê]s|ano|segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)\b/gi,
+  /\buma\s+vez\s+por\s+(?:semana|m[eê]s)\b/gi,
 
-  /(?:mỗi|hàng|hằng)\s*(?:ngày|tuần|tháng|năm|sáng|tối|chiều)/i,
+  /(?:mỗi|hàng|hằng)\s*(?:ngày|tuần|tháng|năm|sáng|tối|chiều)/gi,
 
-  /\b(?:araw-araw|linggo-linggo|buwan-buwan|taon-taon|gabi-gabi|tuwing|bawat\s+(?:araw|linggo|buwan|taon))\b/i,
-]
+  /\b(?:araw-araw|linggo-linggo|buwan-buwan|taon-taon|gabi-gabi|tuwing|bawat\s+(?:araw|linggo|buwan|taon))\b/gi,
 
-const CJK_RECURRENCE_MARKERS: readonly string[] = [
-  "每天",
-  "每日",
-  "每周",
-  "每星期",
-  "每个星期",
-  "每月",
-  "每个月",
-  "每年",
-  "天天",
-  "周一到周五",
-  "一周一次",
-  "每逢",
+  /毎日(?!新聞|放送)/g,
+  /毎(?:週|月|年|朝|晩|夜|回|曜日)/g,
+  /(?:隔週|隔月|隔年)/g,
+  /(?:日|週|月|年)に(?:一|1|二|2|三|3)(?:度|回)/g,
+  /(?:一|1|二|2|三|3)(?:日|週|か月|ヶ月|年)ごと/g,
 
-  "마다",
-  "매일",
-  "매주",
-  "매월",
-  "매달",
-  "매년",
-  "격주",
-]
-
-const JAPANESE_RECURRENCE_PATTERNS: readonly RegExp[] = [
-  /毎日(?!新聞|放送)/,
-  /毎(?:週|月|年|朝|晩|夜|回|曜日)/,
-  /(?:隔週|隔月|隔年)/,
-  /(?:日|週|月|年)に(?:一|1|二|2|三|3)(?:度|回)/,
-  /(?:一|1|二|2|三|3)(?:日|週|か月|ヶ月|年)ごと/,
+  /每天/g,
+  /每日/g,
+  /每周/g,
+  /每星期/g,
+  /每个星期/g,
+  /每月/g,
+  /每个月/g,
+  /每年/g,
+  /天天/g,
+  /周一到周五/g,
+  /一周一次/g,
+  /每逢/g,
+  /마다/g,
+  /매일/g,
+  /매주/g,
+  /매월/g,
+  /매달/g,
+  /매년/g,
+  /격주/g,
 ]
 
 const NAME_LIKE_RECURRENCE_PATTERNS: readonly RegExp[] = [
@@ -78,17 +74,17 @@ const PLURAL_WEEKDAY = String
 const ONE_SHOT_DIRECTIVE_PATTERNS: readonly RegExp[] = [
   new RegExp(
     `${NEGATION_WORD}\\s+(?:a\\s+)?(?:recurr(?:ing|ence)|repeat(?:ed|ing)?|every|each)\\b(?:(?![,.;!?]|\\b(?:but|rather|instead|actually|make\\s+it)\\b)[\\s\\S])*`,
-    "i",
+    "gi",
   ),
   new RegExp(
     `${NEGATION_WORD}\\s+(?:on\\s+|a\\s+|an\\s+)?(?:${CADENCE_ADJECTIVE}|${PLURAL_WEEKDAY})(?:\\s+(?:or|and)\\s+(?:${CADENCE_ADJECTIVE}|${PLURAL_WEEKDAY}))*(?:(?![,.;!?]|\\b(?:but|rather|instead|actually|make\\s+it)\\b)[\\s\\S])*`,
-    "i",
+    "gi",
   ),
-  /\b(?:do\s+not|don't)\s+repeat\b(?:(?![,.;!?]|\b(?:but|rather|instead|actually|make\s+it)\b)[\s\S])*/i,
-  /\b(?:just|only)\s+(?:once|one\s+time)\b(?!\s+(?:a|per|each|every)\s+(?:day|week|month|year))/i,
-  /\b(?:once|one\s+time)\s+only\b/i,
-  /(?:一度だけ|1回だけ)/,
-  /(?:繰り返さない|毎日ではない)(?:(?![、。！？]|(?:代わり|むしろ|実際には))[\s\S])*/,
+  /\b(?:do\s+not|don't)\s+repeat\b(?:(?![,.;!?]|\b(?:but|rather|instead|actually|make\s+it)\b)[\s\S])*/gi,
+  /\b(?:just|only)\s+(?:once|one\s+time)\b(?!\s+(?:a|per|each|every)\s+(?:day|week|month|year))/gi,
+  /\b(?:once|one\s+time)\s+only\b/gi,
+  /(?:一度だけ|1回だけ)/g,
+  /(?:繰り返さない|毎日ではない)(?:(?![、。！？]|(?:代わり|むしろ|実際には))[\s\S])*/g,
 ]
 
 type IntentMarker = {
@@ -97,31 +93,12 @@ type IntentMarker = {
   start: number
 }
 
-function toGlobal(patterns: readonly RegExp[]): readonly RegExp[] {
-  return patterns.map((pattern) => pattern.global ? pattern : new RegExp(pattern.source, `${pattern.flags}g`))
-}
-const GLOBAL_ONE_SHOT_PATTERNS = toGlobal(ONE_SHOT_DIRECTIVE_PATTERNS)
-const GLOBAL_RECURRENCE_PATTERNS = toGlobal([
-  ...ASCII_RECURRENCE_PATTERNS,
-  ...JAPANESE_RECURRENCE_PATTERNS,
-])
 const ROLE_LABELS = new Set(["user", "owner", "assistant", "agent", "system"])
 
-function pushPatternMatches(
-  out: IntentMarker[],
-  text: string,
-  patterns: readonly RegExp[],
-  kind: IntentMarker["kind"],
-): void {
-  for (const pattern of patterns) {
-    for (const match of text.matchAll(pattern)) {
-      out.push({
-        end: match.index + match[0].length,
-        kind,
-        start: match.index,
-      })
-    }
-  }
+function patternMarkers(text: string, patterns: readonly RegExp[], kind: IntentMarker["kind"]): IntentMarker[] {
+  return patterns.flatMap((pattern) =>
+    Array.from(text.matchAll(pattern), (match) => ({ end: match.index + match[0].length, kind, start: match.index }))
+  )
 }
 
 function orderedIntentMarkers(text: string): IntentMarker[] {
@@ -129,35 +106,11 @@ function orderedIntentMarkers(text: string): IntentMarker[] {
     (value, pattern) => value.replace(pattern, (match) => " ".repeat(match.length)),
     text,
   )
-  const oneShot: IntentMarker[] = []
-  pushPatternMatches(oneShot, sanitized, GLOBAL_ONE_SHOT_PATTERNS, "one-shot")
-  const recurrence: IntentMarker[] = []
-  pushPatternMatches(
-    recurrence,
-    sanitized,
-    GLOBAL_RECURRENCE_PATTERNS,
-    "recurrence",
+  const oneShot = patternMarkers(sanitized, ONE_SHOT_DIRECTIVE_PATTERNS, "one-shot")
+  const recurrence = patternMarkers(sanitized, RECURRENCE_PATTERNS, "recurrence").filter(
+    (positive) => !oneShot.some((negative) => positive.start >= negative.start && positive.start < negative.end),
   )
-  for (const marker of CJK_RECURRENCE_MARKERS) {
-    let start = sanitized.indexOf(marker)
-    while (start >= 0) {
-      recurrence.push({
-        end: start + marker.length,
-        kind: "recurrence",
-        start,
-      })
-      start = sanitized.indexOf(marker, start + marker.length)
-    }
-  }
-  const nonNegatedRecurrence = recurrence.filter(
-    (positive) =>
-      !oneShot.some(
-        (negative) => positive.start >= negative.start && positive.start < negative.end,
-      ),
-  )
-  return [...oneShot, ...nonNegatedRecurrence].sort(
-    (left, right) => left.start - right.start || left.end - right.end,
-  )
+  return [...oneShot, ...recurrence].sort((left, right) => left.start - right.start || left.end - right.end)
 }
 
 function authoritativeSegments(text: string): string[] {

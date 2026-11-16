@@ -1,74 +1,79 @@
-import type { JsonValue, UUID } from "../types/primitives.vibe"
+// spec/core/serialisation.md, "Only the head callback executes and every settlement releases its successor"; spec/core/semaphore.md, "A permit is always available or owned by one caller"; spec/core/semaphore.md, "A release skips cancelled waiters before granting the oldest live ticket"; spec/core/taskDrain.md, "Every asynchronous start retains its own storage operation and checks disposal after lookup"; spec/core/taskDrain.md, "Interval writes and disposal use captured IDs while retaining their source-visible races"
+import * as EffectSemaphore from "effect/Semaphore"
+import type { UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import type { Task } from "../types/task.vibe"
+import { Foreign, foreign, runDetached } from "../edge.vibe"
+import { whenAborted } from "./retry.vibe"
 
 export function createSerialise(): <T>(fn: () => Promise<T>) => Promise<T> {
-  let lock: Promise<void> = Promise.resolve()
-  return <T>(fn: () => Promise<T>): Promise<T> => {
-    const prev = lock
-    let release: () => void
-    lock = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    return prev.then(fn).finally(() => release())
+  const lock = EffectSemaphore.makeUnsafe(1)
+  return <T>(fn: () => Promise<T>): Promise<T> => runDetached(lock.withPermit(foreign(() => Promise.resolve().then(fn))))
+}
+
+interface PermitWaiter {
+  readonly signal: AbortSignal | undefined
+  readonly turn: Deferred.Deferred<void, Foreign>
+}
+
+interface Permits {
+  available: number
+  readonly waiters: PermitWaiter[]
+}
+
+effect function cancelWhenAborted(permits: Permits, waiter: PermitWaiter, signal: AbortSignal) {
+  const reason = try whenAborted(signal)
+  const index = permits.waiters.indexOf(waiter)
+  if (index < 0) return
+  permits.waiters.splice(index, 1)
+  try Deferred.fail(waiter.turn, new Foreign({ cause: reason }))
+}
+
+export effect function acquirePermit(semaphore: Semaphore, signal?: AbortSignal) {
+  const permits = semaphore.permits
+  if (signal?.aborted) throw new Foreign({ cause: signal.reason })
+  if (permits.available > 0) {
+    permits.available -= 1
+    return
   }
+  const waiter: PermitWaiter = { signal, turn: try Deferred.make<void, Foreign>() }
+  permits.waiters.push(waiter)
+  try scoped(effect {
+    if (signal) fork.scoped cancelWhenAborted(permits, waiter, signal)
+    try Deferred.await(waiter.turn)
+  })
 }
 
 export class Semaphore {
-  private permits: number
-  private waiters: Array<() => boolean> = []
+  readonly permits: Permits
 
   constructor(count: number) {
-    this.permits = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1
+    this.permits = { available: Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1, waiters: [] }
   }
 
   get availablePermits(): number {
-    return this.permits
+    return this.permits.available
   }
 
   get queueLength(): number {
-    return this.waiters.length
+    return this.permits.waiters.length
   }
 
   async acquire(signal?: AbortSignal): Promise<void> {
-    signal?.throwIfAborted()
-    if (this.permits > 0) {
-      this.permits -= 1
-      return
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      const admitted = () => {
-        signal?.removeEventListener("abort", cancelled)
-        if (signal?.aborted) {
-          reject(signal.reason)
-          return false
-        }
-        resolve()
-        return true
-      }
-      const cancelled = () => {
-        const index = this.waiters.indexOf(admitted)
-        if (index < 0) return
-        this.waiters.splice(index, 1)
-        signal?.removeEventListener("abort", cancelled)
-        reject(signal?.reason)
-      }
-      this.waiters.push(admitted)
-      signal?.addEventListener("abort", cancelled, { once: true })
-    })
+    return runDetached(acquirePermit(this, signal))
   }
 
   release(): void {
-    this.permits += 1
-    while (this.permits > 0) {
-      const next = this.waiters.shift()
-      if (!next) return
-      this.permits -= 1
-      if (next()) return
-
-      this.permits += 1
+    const permits = this.permits
+    for (let next = permits.waiters.shift(); next; next = permits.waiters.shift()) {
+      if (next.signal?.aborted) {
+        Deferred.doneUnsafe(next.turn, fail(new Foreign({ cause: next.signal.reason })))
+        continue
+      }
+      Deferred.doneUnsafe(next.turn, Effect.void)
+      return
     }
+    permits.available += 1
   }
 }
 
@@ -90,185 +95,146 @@ export interface TaskDrainOptions {
   idleIntervalMs?: number
 }
 
-export class TaskDrain {
-  private readonly taskName: string
-  private readonly taskMetadata: Record<string, unknown>
-  private readonly skipRegisterWorker: boolean
-  private readonly onDrain?: (
-    runtime: IAgentRuntime,
-  ) => Promise<void> | Promise<number | undefined>
-  private readonly idleIntervalMs?: number
-  private intervalMs: number
-  private taskId: UUID | null = null
-  private disposed = false
+interface DrainState {
+  readonly taskName: string
+  readonly description: string
+  readonly taskMetadata: Record<string, unknown>
+  readonly skipRegisterWorker: boolean
+  readonly onDrain: TaskDrainOptions["onDrain"]
+  readonly idleIntervalMs: number | undefined
+  intervalMs: number
+  taskId: UUID | null
+  disposed: boolean
+}
 
-  private readonly description: string
+export error TaskDrainMisconfigured { message: string }
+
+function matchesTask(state: DrainState, t: Task, agentId: string): boolean {
+  if (t.agentId == null || String(t.agentId) !== agentId) return false
+  const tags = Array.isArray(t.tags) ? t.tags : []
+  if (!tags.includes("queue") || !tags.includes("repeat")) return false
+  const meta = (t.metadata ?? {}) as Record<string, unknown>
+  return Object.entries(state.taskMetadata).every(([key, value]) => meta[key] === value)
+}
+
+effect function drainOnce(state: DrainState, onDrain: NonNullable<TaskDrainOptions["onDrain"]>, rt: IAgentRuntime) {
+  const processed = try foreign<number | void>(() => onDrain(rt))
+  if (state.idleIntervalMs === undefined || typeof processed !== "number") return undefined
+  return { nextInterval: processed > 0 ? state.intervalMs : state.idleIntervalMs }
+}
+
+export effect function startTaskDrain(drain: TaskDrain, runtime: IAgentRuntime) {
+  const state = drain.state
+  if (state.disposed) return
+  if (!state.skipRegisterWorker) {
+    const onDrain = state.onDrain
+    if (!onDrain) throw new TaskDrainMisconfigured({ message: "TaskDrain: onDrain is required when registerWorker is enabled" })
+    try Effect.try({
+      try: () => runtime.registerTaskWorker({ name: state.taskName, execute: (rt) => runDetached(drainOnce(state, onDrain, rt)) }),
+      catch: (cause) => new Foreign({ cause }),
+    })
+  }
+  try ensureTask(drain, runtime)
+}
+
+effect function ensureTask(drain: TaskDrain, runtime: IAgentRuntime) {
+  const state = drain.state
+  if (typeof runtime.getTasksByName !== "function" || typeof runtime.createTask !== "function") return
+  const agentId = runtime.agentId
+  const existing = try foreign(() => runtime.getTasksByName(state.taskName))
+  if (state.disposed) return
+  const matchingTasks = existing.filter((t) => matchesTask(state, t, String(agentId)))
+  const mine = matchingTasks[0]
+  if (mine?.id) {
+    state.taskId = mine.id
+    if (matchingTasks.length > 1 && typeof runtime.deleteTask === "function") {
+      for concurrent (const task of matchingTasks.slice(1)) {
+        const taskId = task.id
+        if (taskId) foreign(() => runtime.deleteTask(taskId)) catch () => undefined
+      }
+    }
+    if (typeof runtime.getTask === "function" && typeof runtime.updateTask === "function") {
+      try updateTaskDrainInterval(drain, runtime, state.intervalMs)
+    }
+    return
+  }
+  state.taskId = try foreign(() => runtime.createTask({
+    name: state.taskName,
+    description: state.description,
+    tags: ["queue", "repeat"],
+    agentId: agentId as UUID,
+    worldId: agentId as UUID,
+    metadata: {
+      ...state.taskMetadata,
+      updateInterval: state.intervalMs,
+      baseInterval: state.intervalMs,
+      updatedAt: Date.now(),
+      maxFailures: -1,
+    },
+  }))
+  if (state.disposed) try disposeTaskDrain(drain, runtime)
+}
+
+export effect function updateTaskDrainInterval(drain: TaskDrain, runtime: IAgentRuntime, newIntervalMs: number) {
+  const state = drain.state
+  state.intervalMs = newIntervalMs
+  const taskId = state.taskId
+  if (!taskId || typeof runtime.getTask !== "function" || typeof runtime.updateTask !== "function") return
+  const task = try foreign(() => runtime.getTask(taskId))
+  if (!task) {
+    state.taskId = null
+    return
+  }
+  const current = (task.metadata as Record<string, unknown> | undefined)?.updateInterval
+  if (current === newIntervalMs && task.metadata?.baseInterval === newIntervalMs) return
+  try foreign(() => runtime.updateTask(taskId, {
+    metadata: { ...task.metadata, updateInterval: newIntervalMs, baseInterval: newIntervalMs },
+  }))
+}
+
+export effect function disposeTaskDrain(drain: TaskDrain, runtime: IAgentRuntime) {
+  const state = drain.state
+  state.disposed = true
+  const taskId = state.taskId
+  if (!taskId || typeof runtime.deleteTask !== "function") return
+  foreign(() => runtime.deleteTask(taskId)) catch (err) => runtime.reportError("TaskDrain.dispose", err.cause, { taskId })
+  state.taskId = null
+}
+
+export class TaskDrain {
+  readonly state: DrainState
 
   constructor(options: TaskDrainOptions, initialIntervalMs?: number) {
-    this.taskName = options.taskName
-    this.description = options.description ?? `Repeat drain: ${options.taskName}`
-    this.taskMetadata = { ...(options.taskMetadata ?? {}) }
-    this.skipRegisterWorker = options.skipRegisterWorker ?? false
-    this.onDrain = options.onDrain
-    this.idleIntervalMs = options.idleIntervalMs
-    this.intervalMs = initialIntervalMs ?? options.intervalMs
+    this.state = {
+      taskName: options.taskName,
+      description: options.description ?? `Repeat drain: ${options.taskName}`,
+      taskMetadata: { ...(options.taskMetadata ?? {}) },
+      skipRegisterWorker: options.skipRegisterWorker ?? false,
+      onDrain: options.onDrain,
+      idleIntervalMs: options.idleIntervalMs,
+      intervalMs: initialIntervalMs ?? options.intervalMs,
+      taskId: null,
+      disposed: false,
+    }
   }
 
   get id(): UUID | null {
-    return this.taskId
+    return this.state.taskId
   }
 
   async start(runtime: IAgentRuntime): Promise<void> {
-    if (this.disposed) {
-      return
-    }
-    if (!this.skipRegisterWorker) {
-      const onDrain = this.onDrain
-      if (!onDrain) {
-        throw new Error(
-          "TaskDrain: onDrain is required when registerWorker is enabled",
-        )
-      }
-      runtime.registerTaskWorker({
-        name: this.taskName,
-        execute: async (
-          rt: IAgentRuntime,
-          _options: Record<string, JsonValue | object>,
-          _task: Task,
-        ) => {
-          const processed = await onDrain(rt)
-          if (
-            this.idleIntervalMs === undefined
-            || typeof processed !== "number"
-          ) {
-            return undefined
-          }
-          return {
-            nextInterval: processed > 0 ? this.intervalMs : this.idleIntervalMs,
-          }
-        },
-      })
-    }
-
-    await this.ensureTask(runtime)
+    return runDetached(startTaskDrain(this, runtime))
   }
 
-  private matchesTask(t: Task, agentId: string): boolean {
-    if (t.agentId == null || String(t.agentId) !== String(agentId)) {
-      return false
-    }
-    const tags = Array.isArray(t.tags) ? t.tags : []
-    if (!tags.includes("queue") || !tags.includes("repeat")) {
-      return false
-    }
-    const meta = (t.metadata ?? {}) as Record<string, unknown>
-    for (const [key, value] of Object.entries(this.taskMetadata)) {
-      if (meta[key] !== value) {
-        return false
-      }
-    }
-    return true
-  }
-
-  private async ensureTask(runtime: IAgentRuntime): Promise<void> {
-    if (
-      typeof runtime.getTasksByName !== "function"
-      || typeof runtime.createTask !== "function"
-    ) {
-      return
-    }
-    const agentId = runtime.agentId
-    const existing = await runtime.getTasksByName(this.taskName)
-    if (this.disposed) return
-    const matchingTasks = existing.filter((t) => this.matchesTask(t, String(agentId)))
-    const mine = matchingTasks[0]
-    if (mine?.id) {
-      this.taskId = mine.id
-      if (
-        matchingTasks.length > 1
-        && typeof runtime.deleteTask === "function"
-      ) {
-        await Promise.allSettled(
-          matchingTasks
-            .slice(1)
-            .filter((task): task is Task & { id: UUID } => Boolean(task.id))
-            .map((task) => runtime.deleteTask(task.id)),
-        )
-      }
-
-      if (
-        typeof runtime.getTask === "function"
-        && typeof runtime.updateTask === "function"
-      ) {
-        await this.updateInterval(runtime, this.intervalMs)
-      }
-      return
-    }
-    this.taskId = await runtime.createTask({
-      name: this.taskName,
-      description: this.description,
-      tags: ["queue", "repeat"],
-      agentId: agentId as UUID,
-      worldId: agentId as UUID,
-      metadata: {
-        ...this.taskMetadata,
-        updateInterval: this.intervalMs,
-        baseInterval: this.intervalMs,
-        updatedAt: Date.now(),
-        maxFailures: -1,
-      },
-    })
-    if (this.disposed) await this.dispose(runtime)
-  }
-
-  async updateInterval(
-    runtime: IAgentRuntime,
-    newIntervalMs: number,
-  ): Promise<void> {
-    this.intervalMs = newIntervalMs
-    const taskId = this.taskId
-    if (
-      !taskId
-      || typeof runtime.getTask !== "function"
-      || typeof runtime.updateTask !== "function"
-    ) {
-      return
-    }
-    const task = await runtime.getTask(taskId)
-    if (!task) {
-      this.taskId = null
-      return
-    }
-    const current = (task.metadata as Record<string, unknown>)
-      ?.updateInterval as number | undefined
-    if (
-      current === newIntervalMs
-      && task.metadata?.baseInterval === newIntervalMs
-    ) {
-      return
-    }
-    await runtime.updateTask(taskId, {
-      metadata: {
-        ...task.metadata,
-        updateInterval: newIntervalMs,
-        baseInterval: newIntervalMs,
-      },
-    })
+  async updateInterval(runtime: IAgentRuntime, newIntervalMs: number): Promise<void> {
+    return runDetached(updateTaskDrainInterval(this, runtime, newIntervalMs))
   }
 
   getIntervalMs(): number {
-    return this.intervalMs
+    return this.state.intervalMs
   }
 
   async dispose(runtime: IAgentRuntime): Promise<void> {
-    this.disposed = true
-    if (this.taskId && typeof runtime.deleteTask === "function") {
-      const taskId = this.taskId
-
-      await runtime
-        .deleteTask(taskId)
-        .catch((err) => runtime.reportError("TaskDrain.dispose", err, { taskId }))
-      this.taskId = null
-    }
+    return runDetached(disposeTaskDrain(this, runtime))
   }
 }

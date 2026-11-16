@@ -1,20 +1,23 @@
-type AmbientSlot = Record<PropertyKey, unknown>
+// spec/core/ambientManagers.md, "A symbol slot is the single source of manager identity"; spec/core/accountBridges.md, "Each bridge slot preserves the last installed object identity"
 
-function ambientSlot(): AmbientSlot {
-  return globalThis as AmbientSlot
+module node {
+  /** @throws {never} */
+  export function ambientSlots(): Record<symbol, unknown> {
+    return globalThis as unknown as Record<symbol, unknown>
+  }
 }
+import { ambientSlots } from node
+export { ambientSlots }
 
 export function getAmbientSingleton<T>(key: symbol, factory: () => T): T {
-  const slot = ambientSlot()
-  const existing = slot[key]
-  if (existing !== undefined) {
-    return existing as T
-  }
+  const slots = ambientSlots()
+  const existing = slots[key]
+  if (existing !== undefined) return existing as T
   const created = factory()
-  slot[key] = created
+  slots[key] = created
   return created
 }
 
 export function setAmbientSingleton<T>(key: symbol, value: T): void {
-  ambientSlot()[key] = value
+  ambientSlots()[key] = value
 }

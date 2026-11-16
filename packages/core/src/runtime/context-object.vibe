@@ -1,3 +1,4 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
 import type { Action, ProviderResult } from "../types/components.vibe"
 import type { AgentContext, ContextDefinition } from "../types/contexts.vibe"
 import type { Memory } from "../types/memory.vibe"

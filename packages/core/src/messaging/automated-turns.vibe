@@ -1,15 +1,11 @@
+// spec/core/messaging.md, "Story: Dispatch through a selected connector account"
 import type { Memory } from "../types/memory.vibe"
+import { asObjectRecordOrUndefined } from "../utils/type-guards.vibe"
 
 export const INTERNAL_BRIDGE_MESSAGE_SOURCES: ReadonlySet<string> = new Set([
   "acpx:sub-agent-router",
   "swarm_synthesis",
 ])
-
-function metadataRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined
-}
 
 export function isInternalBridgeMessage(memory: Memory): boolean {
   const source = typeof memory.content?.source === "string"
@@ -18,5 +14,5 @@ export function isInternalBridgeMessage(memory: Memory): boolean {
   if (INTERNAL_BRIDGE_MESSAGE_SOURCES.has(source)) {
     return true
   }
-  return metadataRecord(memory.content?.metadata)?.subAgent === true
+  return asObjectRecordOrUndefined(memory.content?.metadata)?.subAgent === true
 }

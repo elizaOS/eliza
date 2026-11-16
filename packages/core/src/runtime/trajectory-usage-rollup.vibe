@@ -1,3 +1,4 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
 import type { RecordedTrajectory, RecordedTrajectoryMetrics } from "./trajectory-recorder.vibe"
 
 export interface TrajectoryUsageTotals {

@@ -1,3 +1,4 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
 import type {
   ConnectorAccountRef,
   ConnectorContentShaping,
@@ -87,16 +88,57 @@ function normalizeConnectorAccountRef(
   )
 }
 
-export function cloneMessageConnector(
-  connector: MessageConnector,
-): MessageConnector {
+type ConnectorCore = Pick<
+  PostConnector,
+  "source" | "accountId" | "account" | "accountRouting" | "label" | "description" | "contexts" | "metadata" | "contentShaping"
+>
+
+const MESSAGE_CONNECTOR_HANDLERS = [
+  "resolveTargets",
+  "resolveIdentityClaimTarget",
+  "listRecentTargets",
+  "listRooms",
+  "getChatContext",
+  "getUserContext",
+  "listServers",
+  "fetchMessages",
+  "searchMessages",
+  "reactHandler",
+  "editHandler",
+  "deleteHandler",
+  "pinHandler",
+  "joinHandler",
+  "leaveHandler",
+  "getUser",
+  "typingHandler",
+  "stopTypingHandler",
+  "createThreadHandler",
+  "postToThreadHandler",
+  "resolveManageServerDestination",
+  "manageServerHandler",
+] as const satisfies readonly (keyof MessageConnector)[]
+
+const POST_CONNECTOR_HANDLERS = [
+  "postHandler",
+  "fetchFeed",
+  "searchPosts",
+] as const satisfies readonly (keyof PostConnector)[]
+
+function presentFields<T, K extends keyof T>(source: T, keys: readonly K[]): Partial<Pick<T, K>> {
+  const picked: Partial<Pick<T, K>> = {}
+  for (const key of keys) {
+    if (source[key]) picked[key] = source[key]
+  }
+  return picked
+}
+
+function cloneConnector<C extends ConnectorCore, K extends object>(connector: C, kindFields: K) {
   return {
     ...connector,
     account: connector.account
       ? cloneConnectorAccountRef(connector.account, connector.source)
       : undefined,
-    capabilities: [...connector.capabilities],
-    supportedTargetKinds: [...connector.supportedTargetKinds],
+    ...kindFields,
     contexts: [...connector.contexts],
     metadata: connector.metadata ? { ...connector.metadata } : undefined,
     contentShaping: connector.contentShaping
@@ -105,18 +147,39 @@ export function cloneMessageConnector(
   }
 }
 
-export function clonePostConnector(connector: PostConnector): PostConnector {
-  return {
-    ...connector,
-    account: connector.account
-      ? cloneConnectorAccountRef(connector.account, connector.source)
-      : undefined,
+export function cloneMessageConnector(
+  connector: MessageConnector,
+): MessageConnector {
+  return cloneConnector(connector, {
     capabilities: [...connector.capabilities],
-    contexts: [...connector.contexts],
-    metadata: connector.metadata ? { ...connector.metadata } : undefined,
-    contentShaping: connector.contentShaping
-      ? cloneContentShaping(connector.contentShaping)
-      : undefined,
+    supportedTargetKinds: [...connector.supportedTargetKinds],
+  })
+}
+
+export function clonePostConnector(connector: PostConnector): PostConnector {
+  return cloneConnector(connector, { capabilities: [...connector.capabilities] })
+}
+
+function normalizeConnector<K extends object, H extends object>(
+  source: string,
+  metadata: Partial<ConnectorCore>,
+  kindFields: K,
+  handlers: H,
+) {
+  const accountId = normalizeConnectorAccountId(metadata.accountId)
+    ?? normalizeConnectorAccountId(metadata.account?.accountId)
+  return {
+    source,
+    accountId,
+    account: normalizeConnectorAccountRef(source, metadata.account, accountId),
+    label: metadata.label?.trim() || labelFromMessageConnectorSource(source),
+    ...kindFields,
+    contexts: metadata.contexts ? [...metadata.contexts] : [],
+    ...(metadata.accountRouting === "connector" && !accountId && { accountRouting: metadata.accountRouting }),
+    ...(metadata.description && { description: metadata.description }),
+    ...(metadata.metadata && { metadata: { ...metadata.metadata } }),
+    ...handlers,
+    ...(metadata.contentShaping && { contentShaping: cloneContentShaping(metadata.contentShaping) }),
   }
 }
 
@@ -124,104 +187,29 @@ export function normalizeMessageConnector(
   source: string,
   metadata: MessageConnectorMetadata = {},
 ): MessageConnector {
-  const accountId = normalizeConnectorAccountId(metadata.accountId)
-    ?? normalizeConnectorAccountId(metadata.account?.accountId)
-  const connector: MessageConnector = {
+  return normalizeConnector(
     source,
-    accountId,
-    account: normalizeConnectorAccountRef(source, metadata.account, accountId),
-    label: metadata.label?.trim() || labelFromMessageConnectorSource(source),
-    capabilities: metadata.capabilities
-      ? [...metadata.capabilities]
-      : ["send_message"],
-    supportedTargetKinds: metadata.supportedTargetKinds
-      ? [...metadata.supportedTargetKinds]
-      : [],
-    contexts: metadata.contexts ? [...metadata.contexts] : [],
-  }
-
-  if (metadata.accountRouting === "connector" && !accountId) {
-    connector.accountRouting = metadata.accountRouting
-  }
-  if (metadata.description) connector.description = metadata.description
-  if (metadata.metadata) connector.metadata = { ...metadata.metadata }
-  if (metadata.resolveTargets) {
-    connector.resolveTargets = metadata.resolveTargets
-  }
-  if (metadata.resolveIdentityClaimTarget) {
-    connector.resolveIdentityClaimTarget = metadata.resolveIdentityClaimTarget
-  }
-  if (metadata.listRecentTargets) {
-    connector.listRecentTargets = metadata.listRecentTargets
-  }
-  if (metadata.listRooms) connector.listRooms = metadata.listRooms
-  if (metadata.getChatContext) {
-    connector.getChatContext = metadata.getChatContext
-  }
-  if (metadata.getUserContext) {
-    connector.getUserContext = metadata.getUserContext
-  }
-  if (metadata.listServers) connector.listServers = metadata.listServers
-  if (metadata.fetchMessages) connector.fetchMessages = metadata.fetchMessages
-  if (metadata.searchMessages) {
-    connector.searchMessages = metadata.searchMessages
-  }
-  if (metadata.reactHandler) connector.reactHandler = metadata.reactHandler
-  if (metadata.editHandler) connector.editHandler = metadata.editHandler
-  if (metadata.deleteHandler) connector.deleteHandler = metadata.deleteHandler
-  if (metadata.pinHandler) connector.pinHandler = metadata.pinHandler
-  if (metadata.joinHandler) connector.joinHandler = metadata.joinHandler
-  if (metadata.leaveHandler) connector.leaveHandler = metadata.leaveHandler
-  if (metadata.getUser) connector.getUser = metadata.getUser
-  if (metadata.typingHandler) connector.typingHandler = metadata.typingHandler
-  if (metadata.stopTypingHandler) {
-    connector.stopTypingHandler = metadata.stopTypingHandler
-  }
-  if (metadata.createThreadHandler) {
-    connector.createThreadHandler = metadata.createThreadHandler
-  }
-  if (metadata.postToThreadHandler) {
-    connector.postToThreadHandler = metadata.postToThreadHandler
-  }
-  if (metadata.resolveManageServerDestination) {
-    connector.resolveManageServerDestination = metadata.resolveManageServerDestination
-  }
-  if (metadata.manageServerHandler) {
-    connector.manageServerHandler = metadata.manageServerHandler
-  }
-  if (metadata.contentShaping) {
-    connector.contentShaping = cloneContentShaping(metadata.contentShaping)
-  }
-
-  return connector
+    metadata,
+    {
+      capabilities: metadata.capabilities
+        ? [...metadata.capabilities]
+        : ["send_message"],
+      supportedTargetKinds: metadata.supportedTargetKinds
+        ? [...metadata.supportedTargetKinds]
+        : [],
+    },
+    presentFields(metadata, MESSAGE_CONNECTOR_HANDLERS),
+  )
 }
 
 export function normalizePostConnector(
   source: string,
   metadata: PostConnectorMetadata = {},
 ): PostConnector {
-  const accountId = normalizeConnectorAccountId(metadata.accountId)
-    ?? normalizeConnectorAccountId(metadata.account?.accountId)
-  const connector: PostConnector = {
+  return normalizeConnector(
     source,
-    accountId,
-    account: normalizeConnectorAccountRef(source, metadata.account, accountId),
-    label: metadata.label?.trim() || labelFromMessageConnectorSource(source),
-    capabilities: metadata.capabilities ? [...metadata.capabilities] : ["post"],
-    contexts: metadata.contexts ? [...metadata.contexts] : [],
-  }
-
-  if (metadata.accountRouting === "connector" && !accountId) {
-    connector.accountRouting = metadata.accountRouting
-  }
-  if (metadata.description) connector.description = metadata.description
-  if (metadata.metadata) connector.metadata = { ...metadata.metadata }
-  if (metadata.postHandler) connector.postHandler = metadata.postHandler
-  if (metadata.fetchFeed) connector.fetchFeed = metadata.fetchFeed
-  if (metadata.searchPosts) connector.searchPosts = metadata.searchPosts
-  if (metadata.contentShaping) {
-    connector.contentShaping = cloneContentShaping(metadata.contentShaping)
-  }
-
-  return connector
+    metadata,
+    { capabilities: metadata.capabilities ? [...metadata.capabilities] : ["post"] },
+    presentFields(metadata, POST_CONNECTOR_HANDLERS),
+  )
 }

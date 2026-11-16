@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 export type AgentExecutionTier = "shared" | "personal"
 
 export type AgentCapabilityAvailability =
@@ -129,12 +130,6 @@ function boundedHandoffText(value: unknown, maximum: number): string | null {
   return trimmed && trimmed.length <= maximum ? trimmed : null
 }
 
-function completeHandoffText(value: unknown): string | null {
-  if (typeof value !== "string") return null
-  const trimmed = value.trim()
-  return trimmed || null
-}
-
 export function capabilityHandoffTargetAgentId(href: string): string | null {
   const match = /^\/cloud\/agents\/([^/?#]+)$/.exec(href)
   if (!match) return null
@@ -165,79 +160,69 @@ export function parsePersonalWorkspaceCapabilityHandoff(
   expectedAgentId?: string | null,
 ): CapabilityHandoffRequest | null {
   try {
-    return parsePersonalWorkspaceCapabilityHandoffUnsafe(
-      value,
-      expectedAgentId,
-    )
+    const handoff = handoffRecord(value)
+    if (!handoff) return null
+    if (
+      handoff.version !== 1
+      || handoff.kind !== "capability_handoff"
+      || handoff.currentTier !== "shared"
+      || handoff.requiredTier !== "personal"
+      || handoff.availability !== "needs_workspace"
+      || handoff.nextAction !== "upgrade_workspace"
+      || handoff.requiresConfirmation !== true
+      || typeof handoff.capabilityId !== "string"
+      || !PERSONAL_WORKSPACE_CAPABILITY_IDS.has(handoff.capabilityId)
+    ) {
+      return null
+    }
+    const label = boundedHandoffText(handoff.label, 120)
+    const reason = boundedHandoffText(handoff.reason, 500)
+    const cta = handoffRecord(handoff.cta)
+    const ctaLabel = boundedHandoffText(cta?.label, 120)
+    const href = boundedHandoffText(cta?.href, 512)
+    if (!label || !reason || !cta || !ctaLabel || !href) return null
+    const agentId = capabilityHandoffTargetAgentId(href)
+    if (!agentId || (expectedAgentId && agentId !== expectedAgentId)) return null
+    let originalIntent: string | null = null
+    let clientMessageId: string | null = null
+    if (Object.hasOwn(handoff, "continuation")) {
+      const continuation = handoffRecord(handoff.continuation)
+      if (!continuation) return null
+      if (Object.hasOwn(continuation, "originalIntent")) {
+        originalIntent = boundedHandoffText(continuation.originalIntent, Infinity)
+        if (!originalIntent) return null
+      }
+      if (Object.hasOwn(continuation, "clientMessageId")) {
+        clientMessageId = boundedHandoffText(continuation.clientMessageId, 128)
+        if (!clientMessageId) return null
+      }
+    }
+    return {
+      version: 1,
+      kind: "capability_handoff",
+      capabilityId: handoff.capabilityId as AgentCapabilityId,
+      label,
+      availability: "needs_workspace",
+      reason,
+      currentTier: "shared",
+      requiredTier: "personal",
+      nextAction: "upgrade_workspace",
+      requiresConfirmation: true,
+      cta: {
+        label: ctaLabel,
+        href: `/cloud/agents/${encodeURIComponent(agentId)}`,
+      },
+      ...(originalIntent || clientMessageId
+        ? {
+          continuation: {
+            ...(originalIntent ? { originalIntent } : {}),
+            ...(clientMessageId ? { clientMessageId } : {}),
+          },
+        }
+        : {}),
+    }
   } catch {
     return null
-  }
-}
-
-function parsePersonalWorkspaceCapabilityHandoffUnsafe(
-  value: unknown,
-  expectedAgentId?: string | null,
-): CapabilityHandoffRequest | null {
-  const handoff = handoffRecord(value)
-  if (!handoff) return null
-  if (
-    handoff.version !== 1
-    || handoff.kind !== "capability_handoff"
-    || handoff.currentTier !== "shared"
-    || handoff.requiredTier !== "personal"
-    || handoff.availability !== "needs_workspace"
-    || handoff.nextAction !== "upgrade_workspace"
-    || handoff.requiresConfirmation !== true
-    || typeof handoff.capabilityId !== "string"
-    || !PERSONAL_WORKSPACE_CAPABILITY_IDS.has(handoff.capabilityId)
-  ) {
-    return null
-  }
-  const label = boundedHandoffText(handoff.label, 120)
-  const reason = boundedHandoffText(handoff.reason, 500)
-  const cta = handoffRecord(handoff.cta)
-  const ctaLabel = boundedHandoffText(cta?.label, 120)
-  const href = boundedHandoffText(cta?.href, 512)
-  if (!label || !reason || !cta || !ctaLabel || !href) return null
-  const agentId = capabilityHandoffTargetAgentId(href)
-  if (!agentId || (expectedAgentId && agentId !== expectedAgentId)) return null
-  let originalIntent: string | null = null
-  let clientMessageId: string | null = null
-  if (Object.hasOwn(handoff, "continuation")) {
-    const continuation = handoffRecord(handoff.continuation)
-    if (!continuation) return null
-    if (Object.hasOwn(continuation, "originalIntent")) {
-      originalIntent = completeHandoffText(continuation.originalIntent)
-      if (!originalIntent) return null
-    }
-    if (Object.hasOwn(continuation, "clientMessageId")) {
-      clientMessageId = boundedHandoffText(continuation.clientMessageId, 128)
-      if (!clientMessageId) return null
-    }
-  }
-  return {
-    version: 1,
-    kind: "capability_handoff",
-    capabilityId: handoff.capabilityId as AgentCapabilityId,
-    label,
-    availability: "needs_workspace",
-    reason,
-    currentTier: "shared",
-    requiredTier: "personal",
-    nextAction: "upgrade_workspace",
-    requiresConfirmation: true,
-    cta: {
-      label: ctaLabel,
-      href: `/cloud/agents/${encodeURIComponent(agentId)}`,
-    },
-    ...(originalIntent || clientMessageId
-      ? {
-        continuation: {
-          ...(originalIntent ? { originalIntent } : {}),
-          ...(clientMessageId ? { clientMessageId } : {}),
-        },
-      }
-      : {}),
   }
 }
 

@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 const UNSAFE_CHARS = /[\0\r\n;&|`$<>"']/
 const BARE_NAME = /^[A-Za-z0-9._+-]+$/
 

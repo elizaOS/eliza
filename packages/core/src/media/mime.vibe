@@ -1,3 +1,7 @@
+// spec/core/media.md, "Specific sniffed types win and generic containers defer to a known extension"
+import { chooseMime, type MimeCandidate } from "../../gen/core__media.effect.vibe"
+import { foreign, promised } from "../edge.vibe"
+
 const EXT_BY_MIME: Record<string, string> = {
   "image/heic": ".heic",
   "image/heif": ".heif",
@@ -46,11 +50,8 @@ export function getFileExtension(filePath?: string | null): string | undefined {
   if (!filePath) return undefined
   let candidate = filePath
   try {
-    if (/^https?:\/\//i.test(filePath)) {
-      candidate = new URL(filePath).pathname
-    }
-  } catch {
-  }
+    if (/^https?:\/\//i.test(filePath)) candidate = new URL(filePath).pathname
+  } catch {}
 
   const base = candidate.split(/[\\/]/).pop() ?? ""
   const dotIndex = base.lastIndexOf(".")
@@ -65,36 +66,33 @@ function isGenericMime(mime?: string): boolean {
   return m === "application/octet-stream" || m === "application/zip"
 }
 
-export async function detectMime(opts: {
-  buffer?: Buffer | Uint8Array
+function mimeCandidate(value: string | undefined): MimeCandidate {
+  return { present: value !== undefined, generic: isGenericMime(value), value: value ?? "" }
+}
+
+export effect function detectMime(opts: {
+  buffer?: Uint8Array
   headerMime?: string | null
   filePath?: string
-}): Promise<string | undefined> {
+}) {
   const ext = getFileExtension(opts.filePath)
-  const extMime = ext ? MIME_BY_EXT[ext] : undefined
-  const headerMime = normalizeHeaderMime(opts.headerMime)
-  const sniffed = await sniffMime(opts.buffer)
-
-  if (sniffed && (!isGenericMime(sniffed) || !extMime)) {
-    return sniffed
-  }
-  if (extMime) return extMime
-  if (headerMime && !isGenericMime(headerMime)) return headerMime
-  if (sniffed) return sniffed
-  if (headerMime) return headerMime
-
-  return undefined
+  const sniffed = try sniffMime(opts.buffer)
+  return chooseMime(
+    mimeCandidate(sniffed),
+    mimeCandidate(ext ? MIME_BY_EXT[ext] : undefined),
+    mimeCandidate(normalizeHeaderMime(opts.headerMime)),
+  ) || undefined
 }
+export const detectMimePromise = promised(detectMime)
 
 export function extensionForMime(mime?: string | null): string | undefined {
   if (!mime) return undefined
   return EXT_BY_MIME[mime.toLowerCase()]
 }
 
-export async function sniffMime(
-  buffer?: Buffer | Uint8Array,
-): Promise<string | undefined> {
+export effect function sniffMime(buffer?: Uint8Array) {
   if (!buffer) return undefined
-  const { fileTypeFromBuffer } = await import("file-type")
-  return (await fileTypeFromBuffer(buffer))?.mime
+  const { fileTypeFromBuffer } = try foreign(() => import("file-type"))
+  return (try foreign(() => fileTypeFromBuffer(buffer)))?.mime
 }
+export const sniffMimePromise = promised(sniffMime)

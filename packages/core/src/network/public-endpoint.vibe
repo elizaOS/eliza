@@ -1,3 +1,6 @@
+// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
+import { failingAs, thrown } from "../edge.vibe"
+
 function containsAsciiControl(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index)
@@ -168,6 +171,11 @@ function isPublicIpv6(address: string, allowTranslatedIpv4: boolean): boolean {
   return true
 }
 
+function ipFamily(address: string): 0 | 4 | 6 {
+  if (ipv4ToUint32(address) !== null) return 4
+  return expandIpv6Words(address) !== null ? 6 : 0
+}
+
 export function isPublicInternetAddress(
   address: string,
   family?: number,
@@ -175,64 +183,41 @@ export function isPublicInternetAddress(
 ): boolean {
   if (address.includes("%") || address !== address.trim()) return false
   const normalized = address.toLowerCase().replace(/^\[|\]$/g, "")
-  const detected = ipv4ToUint32(normalized) !== null
-    ? 4
-    : expandIpv6Words(normalized) !== null
-    ? 6
-    : 0
-  if (family !== undefined && family !== 4 && family !== 6) return false
+  const detected = ipFamily(normalized)
   if (family !== undefined && detected !== family) return false
   if (detected === 4) return isPublicIpv4(normalized)
-  if (detected === 6) {
-    return isPublicIpv6(normalized, options.allowTranslatedIpv4 ?? false)
-  }
+  if (detected === 6) return isPublicIpv6(normalized, options.allowTranslatedIpv4 ?? false)
   return false
 }
 
-export function assertPublicInternetAddress(
-  address: string,
-  family: number,
-  resource: string,
-): void {
+export error NonPublicAddress { message: string }
+export error NonPublicHttpsUrl { message: string }
+
+export effect function assertPublicInternetAddress(address: string, family: number, resource: string) {
   if (!isPublicInternetAddress(address, family)) {
-    throw new Error(`${resource} must resolve to a public address`)
+    throw new NonPublicAddress({ message: `${resource} must resolve to a public address` })
   }
 }
 
-export function assertPublicHttpsEndpoint(
-  value: string,
-  resource: string,
-): URL {
-  let url: URL
-  try {
-    if (value.length > 2_048 || containsAsciiControl(value)) throw new Error()
-    url = new URL(value)
-  } catch {
-    throw new Error(`${resource} must be a public https URL`)
-  }
-  const hostname = url.hostname
-    .replace(/^\[|\]$/g, "")
-    .replace(/\.+$/g, "")
-    .toLowerCase()
-  const literalFamily = ipv4ToUint32(hostname) !== null
-    ? 4
-    : expandIpv6Words(hostname) !== null
-    ? 6
-    : 0
-  if (
-    url.protocol !== "https:"
-    || url.port === "0"
-    || url.username !== ""
-    || url.password !== ""
-    || !hostname
-    || (literalFamily === 0
-      && (!hostname.includes(".") || !isValidDnsHostname(hostname)))
-    || BLOCKED_PUBLIC_ENDPOINT_DNS_SUFFIXES.some(
-      (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`),
-    )
-    || (literalFamily !== 0 && !isPublicInternetAddress(hostname, literalFamily))
-  ) {
-    throw new Error(`${resource} must be a public https URL`)
-  }
+export const assertPublicInternetAddressOrThrow = thrown(failingAs(Error, assertPublicInternetAddress))
+
+function isPublicHttpsUrl(url: URL): boolean {
+  const hostname = url.hostname.replace(/^\[|\]$/g, "").replace(/\.+$/g, "").toLowerCase()
+  const literalFamily = ipFamily(hostname)
+  return url.protocol === "https:"
+    && url.port !== "0"
+    && url.username === ""
+    && url.password === ""
+    && hostname !== ""
+    && (literalFamily !== 0 || (hostname.includes(".") && isValidDnsHostname(hostname)))
+    && !BLOCKED_PUBLIC_ENDPOINT_DNS_SUFFIXES.some((suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`))
+    && (literalFamily === 0 || isPublicInternetAddress(hostname, literalFamily))
+}
+
+export effect function assertPublicHttpsEndpoint(value: string, resource: string) {
+  const url = value == null || value.length > 2_048 || containsAsciiControl(value) ? null : URL.parse(value)
+  if (!url || !isPublicHttpsUrl(url)) throw new NonPublicHttpsUrl({ message: `${resource} must be a public https URL` })
   return url
 }
+
+export const assertPublicHttpsEndpointOrThrow = thrown(failingAs(Error, assertPublicHttpsEndpoint))

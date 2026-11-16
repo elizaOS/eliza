@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { AgentContext } from "./components.vibe"
 import type { JsonValue } from "./primitives.vibe"
 import type { ServiceTypeName } from "./service.vibe"
@@ -35,7 +36,6 @@ export interface SearchCategoryRegistration {
   filters?: SearchCategoryFilter[]
   resultSchemaSummary?: string
   capabilities?: string[]
-
   enabled?: boolean
   disabledReason?: string
   source?: string
@@ -55,18 +55,12 @@ export type SearchCategoryRegistryErrorCode =
   | "SEARCH_CATEGORY_NOT_FOUND"
   | "SEARCH_CATEGORY_DISABLED"
 
-export class SearchCategoryRegistryError extends Error {
+export class SearchCategoryRegistryError extends Data.TaggedError("SearchCategoryRegistryError")<{
   readonly code: SearchCategoryRegistryErrorCode
   readonly category: string
-
-  constructor(
-    code: SearchCategoryRegistryErrorCode,
-    category: string,
-    message: string,
-  ) {
-    super(message)
-    this.name = "SearchCategoryRegistryError"
-    this.code = code
-    this.category = category
+}> {
+  constructor(code: SearchCategoryRegistryErrorCode, category: string, message: string) {
+    super({ code, category })
+    this.message = message
   }
 }

@@ -1,4 +1,14 @@
-const bridgeSlot = globalThis as Record<symbol, unknown>
+// spec/core/accountBridges.md, "Story: Install and clear shared account-selection contracts"; spec/core/accountBridges.md, "Each bridge slot preserves the last installed object identity"
+import { ambientSlots } from "./ambient-context.vibe"
+
+function installedBridge<B>(key: symbol): B | null {
+  return (ambientSlots()[key] as B | undefined) ?? null
+}
+
+function installBridge<B extends object>(key: symbol, bridge: B | null): void {
+  if (bridge) ambientSlots()[key] = bridge
+  else delete ambientSlots()[key]
+}
 
 export const ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL: unique symbol = Symbol.for(
   "eliza.account-pool.anthropic.v1",
@@ -25,21 +35,11 @@ export interface AnthropicAccountPoolBridge {
 }
 
 export function getAnthropicAccountPoolBridge(): AnthropicAccountPoolBridge | null {
-  return (
-    (bridgeSlot[ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL] as
-      | AnthropicAccountPoolBridge
-      | undefined) ?? null
-  )
+  return installedBridge(ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL)
 }
 
-export function setAnthropicAccountPoolBridge(
-  bridge: AnthropicAccountPoolBridge | null,
-): void {
-  if (bridge) {
-    bridgeSlot[ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL] = bridge
-  } else {
-    delete bridgeSlot[ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL]
-  }
+export function setAnthropicAccountPoolBridge(bridge: AnthropicAccountPoolBridge | null): void {
+  installBridge(ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL, bridge)
 }
 
 export const CODING_AGENT_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(
@@ -123,21 +123,11 @@ export interface CodingAgentSelectorBridge {
 }
 
 export function getCodingAgentSelectorBridge(): CodingAgentSelectorBridge | null {
-  return (
-    (bridgeSlot[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL] as
-      | CodingAgentSelectorBridge
-      | undefined) ?? null
-  )
+  return installedBridge(CODING_AGENT_SELECTOR_BRIDGE_SYMBOL)
 }
 
-export function setCodingAgentSelectorBridge(
-  bridge: CodingAgentSelectorBridge | null,
-): void {
-  if (bridge) {
-    bridgeSlot[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL] = bridge
-  } else {
-    delete bridgeSlot[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL]
-  }
+export function setCodingAgentSelectorBridge(bridge: CodingAgentSelectorBridge | null): void {
+  installBridge(CODING_AGENT_SELECTOR_BRIDGE_SYMBOL, bridge)
 }
 
 export interface AccountPoolBrokerLastLease {

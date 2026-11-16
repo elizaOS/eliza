@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 export const DEFAULT_AGENT_ID = "main"
 export const DEFAULT_MAIN_KEY = "main"
 export const DEFAULT_ACCOUNT_ID = "default"
@@ -107,8 +108,7 @@ function normalizeToken(value: string | undefined | null): string {
 }
 
 export function normalizeMainKey(value: string | undefined | null): string {
-  const trimmed = trimOptionalString(value)
-  return trimmed ? trimmed.toLowerCase() : DEFAULT_MAIN_KEY
+  return normalizeToken(value) || DEFAULT_MAIN_KEY
 }
 
 function normalizeIdToken(
@@ -189,6 +189,8 @@ export function buildAgentPeerSessionKey(params: {
     | "per-account-channel-peer"
 }): string {
   const peerKind = params.peerKind ?? "dm"
+  const agent = `agent:${normalizeAgentId(params.agentId)}`
+  const channel = () => params.channel.trim().toLowerCase() || "unknown"
   if (peerKind === "dm") {
     const dmScope = params.dmScope ?? "main"
     let peerId = trimOptionalString(params.peerId)
@@ -204,25 +206,17 @@ export function buildAgentPeerSessionKey(params: {
     }
     peerId = peerId.toLowerCase()
     if (dmScope === "per-account-channel-peer" && peerId) {
-      const channel = params.channel.trim().toLowerCase() || "unknown"
-      const accountId = normalizeAccountId(params.accountId)
-      return `agent:${normalizeAgentId(params.agentId)}:${channel}:${accountId}:dm:${peerId}`
+      return `${agent}:${channel()}:${normalizeAccountId(params.accountId)}:dm:${peerId}`
     }
-    if (dmScope === "per-channel-peer" && peerId) {
-      const channel = params.channel.trim().toLowerCase() || "unknown"
-      return `agent:${normalizeAgentId(params.agentId)}:${channel}:dm:${peerId}`
-    }
-    if (dmScope === "per-peer" && peerId) {
-      return `agent:${normalizeAgentId(params.agentId)}:dm:${peerId}`
-    }
+    if (dmScope === "per-channel-peer" && peerId) return `${agent}:${channel()}:dm:${peerId}`
+    if (dmScope === "per-peer" && peerId) return `${agent}:dm:${peerId}`
     return buildAgentMainSessionKey({
       agentId: params.agentId,
       mainKey: params.mainKey,
     })
   }
-  const channel = params.channel.trim().toLowerCase() || "unknown"
   const peerId = (trimOptionalString(params.peerId) || "unknown").toLowerCase()
-  return `agent:${normalizeAgentId(params.agentId)}:${channel}:${peerKind}:${peerId}`
+  return `${agent}:${channel()}:${peerKind}:${peerId}`
 }
 
 function resolveLinkedPeerId(params: {

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
 import type { ChatMessage } from "../types/model.vibe"
 import type { State } from "../types/state.vibe"
 
@@ -21,9 +21,16 @@ interface ProviderTextSnapshot {
   position: number
 }
 
-export function sha256Hex(value: string | Uint8Array): string {
-  return createHash("sha256").update(value).digest("hex")
+module node {
+  import { createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function sha256Hex(value: string | Uint8Array): string {
+    return createHash("sha256").update(value).digest("hex")
+  }
 }
+import { sha256Hex } from node
+export { sha256Hex }
 
 export function estimateTrajectoryTextTokens(text: string): number {
   return Math.ceil(text.length / 3.5)

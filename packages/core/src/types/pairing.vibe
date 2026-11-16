@@ -1,3 +1,5 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { failingAs, thrown } from "../edge.vibe"
 import type { UUID } from "./primitives.vibe"
 
 export type PairingChannel =
@@ -81,27 +83,22 @@ export interface PairingAllowlistQuery extends PairingQueryOptions {
   agentId: UUID
 }
 
-export function normalizePairingPageOptions(
+export error InvalidPairingPageOptions { message: string }
+
+export effect function normalizePairingPageOptions(
   options: PairingPageOptions = {},
-): Required<PairingPageOptions> {
+): Required<PairingPageOptions>!InvalidPairingPageOptions {
   const limit = options.limit ?? DEFAULT_PAIRING_PAGE_LIMIT
   const offset = options.offset ?? 0
-
-  if (
-    !Number.isSafeInteger(limit)
-    || limit < 1
-    || limit > MAX_PAIRING_PAGE_LIMIT
-  ) {
-    throw new RangeError(
-      `Pairing page limit must be an integer between 1 and ${MAX_PAIRING_PAGE_LIMIT}`,
-    )
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_PAIRING_PAGE_LIMIT) {
+    throw new InvalidPairingPageOptions({ message: `Pairing page limit must be an integer between 1 and ${MAX_PAIRING_PAGE_LIMIT}` })
   }
   if (!Number.isSafeInteger(offset) || offset < 0) {
-    throw new RangeError("Pairing page offset must be a non-negative integer")
+    throw new InvalidPairingPageOptions({ message: "Pairing page offset must be a non-negative integer" })
   }
-
   return { limit, offset }
 }
+export const normalizePairingPageOptionsOrThrow = thrown(failingAs(RangeError, normalizePairingPageOptions))
 
 export interface UpsertPairingRequestResult {
   code: string

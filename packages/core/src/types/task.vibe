@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { Memory } from "./memory.vibe"
 import type { JsonValue, UUID } from "./primitives.vibe"
 import type { IAgentRuntime } from "./runtime.vibe"
@@ -25,7 +26,6 @@ export type TaskMetadataPatchOutcome = "patched" | "missing" | "unsupported"
 
 export interface TaskWorker {
   name: string
-
   execute: (
     runtime: IAgentRuntime,
     options: Record<string, JsonValue | object>,
@@ -34,9 +34,7 @@ export interface TaskWorker {
     | undefined
     | { nextInterval?: number; nextWakeAt?: number; preserveTask?: boolean }
   >
-
   shouldRun?: (runtime: IAgentRuntime, task: Task) => Promise<boolean>
-
   canExecute?: (
     runtime: IAgentRuntime,
     message: Memory,
@@ -58,41 +56,25 @@ export interface TaskMetadata {
   completionNotes?: string
   lastExecuted?: string
   updatedAt?: number
-
   updateInterval?: number
-
   wakeAt?: number
   wakeRevision?: number
-
   baseInterval?: number
-
   notBefore?: number
-
   notAfter?: number
-
   paused?: boolean
-
   orphanedNoWorker?: boolean
-
   failureCount?: number
-
   maxFailures?: number
-
   lastError?: string
-
   blocking?: boolean
-
   options?: {
     name: string
     description: string
-
     isCancel?: boolean
   }[]
-
   values?: Record<string, JsonValue | object>
-
   trigger?: TriggerConfig
-
   triggerRuns?: TriggerRunRecord[]
   [key: string]: JsonValue | object | undefined
 }
@@ -105,14 +87,11 @@ export interface Task {
   roomId?: UUID
   worldId?: UUID
   entityId?: UUID
-
   agentId?: UUID
   metadata?: TaskMetadata
   createdAt?: number | bigint
   updatedAt?: number | bigint
-
   dueAt?: number | bigint | null
-
   scheduleError?: string
   status?: TaskStatus
 }

@@ -1,3 +1,4 @@
+// spec/core/plugins.md, "Story: Load and roll back a plugin"
 import type { ConnectorAccount } from "./account-manager.vibe"
 
 export type PrivacyLevel =

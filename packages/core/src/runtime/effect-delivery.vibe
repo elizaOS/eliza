@@ -1,3 +1,4 @@
+// spec/core/receiptBindings.md, "Distinct bindings retain exact ordered receipt IDs and text"; spec/core/receipts.md, "Delivery rechecks the exact text and receipt IDs after hooks have run"; spec/core/execution.md, "Mutation delivery requires bound receipts and matching canonical text"
 import type { Content } from "../types/primitives.vibe"
 
 const EFFECT_DELIVERY_BINDING = Symbol("@elizaos/core/effect-delivery-binding")

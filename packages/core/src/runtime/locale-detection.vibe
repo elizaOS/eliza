@@ -1,3 +1,4 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
 export type SupportedLocale = "en" | "es" | "fr" | "ja" | "zh-Hans"
 
 const ZH_HANS_RANGE = /[一-鿿]/

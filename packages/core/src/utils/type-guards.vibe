@@ -1,20 +1,23 @@
+// spec/core/valueGuards.md, "Plain records require the intrinsic object prototype or a null prototype"
+import { objectRecord, plainObjectTag, plainRecord, type ObjectKind } from "../../gen/core__valueGuards.effect.vibe"
+
 export type UnknownRecord = Record<string, unknown>
 
-export function isPlainObject(
-  value: unknown,
-): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object") {
-    return false
-  }
-
+function objectKind(value: unknown): ObjectKind {
+  if (value === null) return "NullValue"
+  if (typeof value !== "object") return "PrimitiveValue"
+  if (Array.isArray(value)) return "ArrayValue"
   const proto = Object.getPrototypeOf(value)
-  return proto === null || proto === Object.prototype
+  if (proto === null) return "NullPrototypeObject"
+  return proto === Object.prototype ? "PlainObject" : "ClassObject"
 }
 
-export function isObjectRecord(
-  value: unknown,
-): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return plainRecord(objectKind(value))
+}
+
+export function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return objectRecord(objectKind(value))
 }
 
 export function asRecord(value: unknown): Record<string, unknown> | null {
@@ -38,10 +41,7 @@ export function asObjectRecordOrUndefined(
 }
 
 export function hasPlainObjectTag(value: unknown): value is UnknownRecord {
-  return (
-    isObjectRecord(value)
-    && Object.prototype.toString.call(value) === "[object Object]"
-  )
+  return plainObjectTag(objectKind(value), Object.prototype.toString.call(value) === "[object Object]")
 }
 
 export function asObjectArray(value: unknown): UnknownRecord[] {

@@ -1,3 +1,4 @@
+// spec/core/voice.md, "Reason ownership precedes unlinking and signal abortion follows callbacks"; spec/core/voiceRegistry.md, "Captured calls retain token identity through callbacks and publication"
 export type VoiceCancellationReason =
   | "barge-in"
   | "eot-revoked"
@@ -32,6 +33,14 @@ export interface CreateVoiceCancellationTokenOptions {
   linkSignal?: AbortSignal
 }
 
+function notify(listener: VoiceCancellationListener, reason: VoiceCancellationReason): void {
+  try {
+    listener(reason)
+  } catch {
+    return
+  }
+}
+
 export function createVoiceCancellationToken(
   opts: CreateVoiceCancellationTokenOptions,
 ): VoiceCancellationToken {
@@ -47,12 +56,7 @@ export function createVoiceCancellationToken(
     unlinkSignal?.()
     unlinkSignal = null
 
-    for (const listener of Array.from(listeners)) {
-      try {
-        listener(reason)
-      } catch {
-      }
-    }
+    for (const listener of Array.from(listeners)) notify(listener, reason)
 
     listeners.clear()
     controller.abort()
@@ -82,10 +86,7 @@ export function createVoiceCancellationToken(
     abort: trip,
     onAbort(listener: VoiceCancellationListener) {
       if (abortReason !== null) {
-        try {
-          listener(abortReason)
-        } catch {
-        }
+        notify(listener, abortReason)
         return () => undefined
       }
       listeners.add(listener)

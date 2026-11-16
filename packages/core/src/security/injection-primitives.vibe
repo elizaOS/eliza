@@ -1,3 +1,4 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
 export const INJECTION_PATTERNS: readonly RegExp[] = [
   /ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|commands?|prompts?)/i,
   /disregard\s+(all\s+)?(previous|prior|above)/i,
@@ -14,14 +15,12 @@ export const INJECTION_PATTERNS: readonly RegExp[] = [
   /make\s+me\s+(an\s+)?(admin|owner)/i,
   /this\s+is\s+a\s+system\s+command/i,
   /execute\s+privileged/i,
-
   /ignora\s+(todas?\s+)?las?\s+instrucciones?\s+anteriores?/i,
   /ignorez?\s+(toutes?\s+)?les?\s+instructions?\s+pr[eé]c[eé]dentes?/i,
   /ignoriere?\s+(alle\s+)?vorherigen?\s+Anweisungen/i,
   /忽略之前的指令/,
   /前の指示を無視/,
   /이전\s*지시를?\s*무시/,
-
   /aXdub3JlIHByZXZpb3VzIGluc3RydWN0aW9ucw/i,
   /ig\s*no\s*re\s+pre\s*vi\s*ous/i,
   /d[1i]sr[e3]g[a4]rd\s+(all\s+)?pr[1i][o0]r/i,

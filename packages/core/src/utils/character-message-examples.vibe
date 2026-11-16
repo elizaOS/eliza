@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import type { MessageExampleGroup } from "../types/agent.vibe"
 import type { Content } from "../types/primitives.vibe"
 

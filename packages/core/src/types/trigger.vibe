@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { UUID } from "./primitives.vibe"
 
 export const TRIGGER_SCHEMA_VERSION = 1 as const
@@ -18,16 +19,13 @@ interface TriggerConfigBase {
   enabled: boolean
   wakeMode: TriggerWakeMode
   createdBy: string
-
   notifyOnOutcome?: boolean
   timezone?: string
   intervalMs?: number
   scheduledAtIso?: string
-
   delayMs?: number
   cronExpression?: string
   eventKind?: string
-
   eventFilter?: Record<string, unknown>
   maxRuns?: number
   runCount: number
@@ -61,6 +59,5 @@ export interface TriggerRunRecord {
   latencyMs: number
   source: "scheduler" | "manual" | "event"
   eventKind?: string
-
   missedOccurrenceAt?: number
 }

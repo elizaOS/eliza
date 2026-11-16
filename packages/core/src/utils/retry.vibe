@@ -1,27 +1,54 @@
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { Foreign, promised, runDetached } from "../edge.vibe"
+
+module node {
+  import { Effect } from "effect"
+
+  /** @throws {never} */
+  export function unrefSleep(ms: number): Effect.Effect<void> {
+    return Effect.callback<void>((resume) => {
+      const timer = setTimeout(() => resume(Effect.void), ms)
+      timer.unref?.()
+      return Effect.sync(() => clearTimeout(timer))
+    })
+  }
+}
+import { unrefSleep } from node
+export { unrefSleep }
+
+function timerDelay(ms: unknown): number {
+  const delay = Number(ms)
+  return delay >= 1 && delay <= 2147483647 ? delay : 1
 }
 
-export async function sleepWithAbort(
-  ms: number,
-  abortSignal?: AbortSignal,
-): Promise<void> {
-  abortSignal?.throwIfAborted()
-  if (ms <= 0) {
-    return
-  }
-  return new Promise((resolve, reject) => {
-    const onAbort = () => {
-      clearTimeout(timeoutId)
-      reject(abortSignal?.reason)
+export function sleep(ms: number): Promise<void> {
+  return runDetached(Effect.sleep(timerDelay(ms)))
+}
+
+export function whenAborted(signal: AbortSignal) {
+  return callback<unknown>((resume) => {
+    if (signal.aborted) {
+      resume(succeed(signal.reason))
+      return
     }
-    const timeoutId = setTimeout(() => {
-      abortSignal?.removeEventListener("abort", onAbort)
-      resolve()
-    }, ms)
-    abortSignal?.addEventListener("abort", onAbort, { once: true })
+    const onAbort = () => resume(succeed(signal.reason))
+    signal.addEventListener("abort", onAbort, { once: true })
+    return sync(() => signal.removeEventListener("abort", onAbort))
   })
 }
+
+effect function failWhenAborted(signal: AbortSignal) {
+  throw new Foreign({ cause: try whenAborted(signal) })
+}
+
+export effect function sleepWithAbort(ms: number, abortSignal?: AbortSignal) {
+  if (abortSignal?.aborted) throw new Foreign({ cause: abortSignal.reason })
+  if (ms <= 0) return
+  const delay = Effect.sleep(timerDelay(ms))
+  try (abortSignal ? raceFirst(delay, failWhenAborted(abortSignal)) : delay)
+}
+
+export const sleepWithAbortPromise = promised(sleepWithAbort)
 
 export type BackoffPolicy = {
   initialMs: number

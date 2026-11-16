@@ -1,3 +1,5 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { failingAs, thrown } from "../edge.vibe"
 import type { Memory } from "./memory.vibe"
 import type { Content, Metadata, UUID } from "./primitives.vibe"
 import type { IAgentRuntime } from "./runtime.vibe"
@@ -327,29 +329,29 @@ export function inspectSendHandlerResult(
   }
 }
 
-export function requireConfirmedSendHandlerDelivery(
+export error DeliveryNotConfirmed { message: string }
+
+export error DeliveryEvidenceIncomplete { message: string }
+
+export effect function requireConfirmedSendHandlerDelivery(
   value: Awaited<SendHandlerResult>,
-): Extract<SendHandlerDisposition, { kind: "delivered" }> {
+): Extract<SendHandlerDisposition, { kind: "delivered" }>!(DeliveryNotConfirmed | DeliveryEvidenceIncomplete) {
   const disposition = inspectSendHandlerResult(value)
   if (disposition.kind !== "delivered") {
-    throw new Error(
-      `Connector delivery is not confirmed: ${disposition.message}`,
-    )
+    throw new DeliveryNotConfirmed({ message: `Connector delivery is not confirmed: ${disposition.message}` })
   }
-  if (
-    disposition.receipt
-    && (disposition.receipt.persistence.status === "partial"
-      || disposition.receipt.persistence.status === "failed")
-  ) {
-    const acceptance = disposition.receipt.evidenceKind === "local-effect"
+  const receipt = disposition.receipt
+  if (receipt && (receipt.persistence.status === "partial" || receipt.persistence.status === "failed")) {
+    const acceptance = receipt.evidenceKind === "local-effect"
       ? "The local transport reported completion without provider message IDs"
-      : `The provider accepted messages ${disposition.receipt.providerMessageIds.join(", ")}`
-    throw new Error(
-      `${acceptance}, but local delivery evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
-    )
+      : `The provider accepted messages ${receipt.providerMessageIds.join(", ")}`
+    throw new DeliveryEvidenceIncomplete({
+      message: `${acceptance}, but local delivery evidence is ${receipt.persistence.status}; do not retry blindly.`,
+    })
   }
   return disposition
 }
+export const requireConfirmedSendHandlerDeliveryOrThrow = thrown(failingAs(Error, requireConfirmedSendHandlerDelivery))
 
 export const SEND_HANDLER_NOT_FOUND = "SEND_HANDLER_NOT_FOUND" as const
 

@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { NotesRequestInterpretation } from "../actions/task-extraction-context.vibe"
 
 import type { ActionFailureProvenance } from "./action-failure.vibe"

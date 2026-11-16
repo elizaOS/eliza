@@ -1,3 +1,5 @@
+// spec/core/chatPreHandlers.md, "A drain owns its ordered snapshot and cancellation signal"
+import { Foreign, foreign, runDetached } from "../edge.vibe"
 import type { ChatPreHandler, ChatPreHandlerContext, ChatPreHandlerResult } from "../types/chat-pre-handler.vibe"
 
 export class ChatPreHandlerRegistry {
@@ -21,15 +23,24 @@ export class ChatPreHandlerRegistry {
     )
   }
 
-  async drain(
-    ctx: ChatPreHandlerContext,
-  ): Promise<ChatPreHandlerResult | null> {
-    for (const handler of this.list()) {
-      ctx.abortSignal?.throwIfAborted()
-      const result = await handler.tryHandle(ctx)
-      ctx.abortSignal?.throwIfAborted()
-      if (result) return result
-    }
-    return null
+  drain(ctx: ChatPreHandlerContext): Promise<ChatPreHandlerResult | null> {
+    return runDetached(drainChatPreHandlers(this, ctx))
   }
+}
+
+effect function throwIfAborted(signal: AbortSignal | undefined): void!Foreign {
+  return try Effect.try({ try: () => signal?.throwIfAborted(), catch: (cause) => new Foreign({ cause }) })
+}
+
+export effect function drainChatPreHandlers(
+  registry: ChatPreHandlerRegistry,
+  ctx: ChatPreHandlerContext,
+): (ChatPreHandlerResult | null)!Foreign {
+  for (const handler of registry.list()) {
+    try throwIfAborted(ctx.abortSignal)
+    const result = try foreign(() => handler.tryHandle(ctx))
+    try throwIfAborted(ctx.abortSignal)
+    if (result) return result
+  }
+  return null
 }

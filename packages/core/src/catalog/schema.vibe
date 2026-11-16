@@ -1,6 +1,5 @@
-import * as zod from "zod"
-
-const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod
+// spec/core/catalog.md, "Story: Discover and register first-party capabilities"
+import { z } from "zod"
 
 const configFieldType = z.enum([
   "string",
@@ -23,7 +22,7 @@ const configFieldOption = z.object({
   disabled: z.boolean().optional(),
 })
 
-const visibilityCondition: zod.ZodType<{
+const visibilityCondition: z.ZodType<{
   key: string
   equals?: unknown
   in?: unknown[]
@@ -40,7 +39,6 @@ export const configFieldSchema = z.object({
   required: z.boolean(),
   sensitive: z.boolean().optional(),
   default: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
-
   label: z.string().optional(),
   help: z.string().optional(),
   placeholder: z.string().optional(),
@@ -51,7 +49,6 @@ export const configFieldSchema = z.object({
   hidden: z.boolean().optional(),
   readonly: z.boolean().optional(),
   icon: z.string().optional(),
-
   options: z.array(configFieldOption).optional(),
   pattern: z.string().optional(),
   patternError: z.string().optional(),
@@ -59,13 +56,11 @@ export const configFieldSchema = z.object({
   max: z.number().optional(),
   step: z.number().optional(),
   unit: z.string().optional(),
-
   visible: visibilityCondition.optional(),
-
   autoEnableProvider: z.boolean().optional(),
 })
 
-export type ConfigField = zod.infer<typeof configFieldSchema>
+export type ConfigField = z.infer<typeof configFieldSchema>
 
 const renderActionSchema = z.enum([
   "enable",
@@ -82,26 +77,22 @@ const renderActionSchema = z.enum([
 const secondarySurfaceSchema = z.enum([
   "chat-apps-section",
   "settings-integrations",
-
   "os-shell",
 ])
 
 export const renderSchema = z.object({
   visible: z.boolean().default(true),
   pinTo: z.array(secondarySurfaceSchema).default([]),
-
   style: z.enum(["card", "setup-panel", "hero-card"]).default("card"),
   icon: z.string().optional(),
   heroImage: z.string().optional(),
-
   group: z.string(),
   groupOrder: z.number().int().optional(),
-
   actions: z.array(renderActionSchema).default([]),
 })
 
-export type RenderHints = zod.infer<typeof renderSchema>
-export type SecondarySurface = zod.infer<typeof secondarySurfaceSchema>
+export type RenderHints = z.infer<typeof renderSchema>
+export type SecondarySurface = z.infer<typeof secondarySurfaceSchema>
 
 export const resourcesSchema = z.object({
   homepage: z.string().url().optional(),
@@ -109,7 +100,7 @@ export const resourcesSchema = z.object({
   setupGuideUrl: z.string().url().optional(),
 })
 
-export type Resources = zod.infer<typeof resourcesSchema>
+export type Resources = z.infer<typeof resourcesSchema>
 
 export const appViewerSchema = z.object({
   url: z.string(),
@@ -177,11 +168,10 @@ export const appLaunchSchema = z.object({
   routePlugin: appRoutePluginSchema.optional(),
   runtimeHook: appRuntimeHookSchema.optional(),
   bootHook: appBootHookSchema.optional(),
-
   mainTab: z.boolean().optional(),
 })
 
-export type AppLaunch = zod.infer<typeof appLaunchSchema>
+export type AppLaunch = z.infer<typeof appLaunchSchema>
 
 const commonFields = {
   id: z
@@ -199,11 +189,8 @@ const commonFields = {
   render: renderSchema,
   resources: resourcesSchema.default({}),
   dependsOn: z.array(z.string()).default([]),
-
   channels: z.array(z.string()).default([]),
-
   shortIds: z.array(z.string()).default([]),
-
   curatedApp: z
     .object({
       slug: z.string(),
@@ -265,8 +252,8 @@ export const accountConfigSchema = z.object({
   notes: z.string().optional(),
 })
 
-export type AccountConfig = zod.infer<typeof accountConfigSchema>
-export type AccountAuthKind = zod.infer<typeof accountAuthKind>
+export type AccountConfig = z.infer<typeof accountConfigSchema>
+export type AccountAuthKind = z.infer<typeof accountAuthKind>
 
 export const connectorEntrySchema = z.object({
   ...commonFields,
@@ -303,10 +290,10 @@ export const registryEntrySchema = z.discriminatedUnion("kind", [
   appEntrySchema,
 ])
 
-export type PluginEntry = zod.infer<typeof pluginEntrySchema>
-export type ConnectorEntry = zod.infer<typeof connectorEntrySchema>
-export type AppEntry = zod.infer<typeof appEntrySchema>
-export type RegistryEntry = zod.infer<typeof registryEntrySchema>
+export type PluginEntry = z.infer<typeof pluginEntrySchema>
+export type ConnectorEntry = z.infer<typeof connectorEntrySchema>
+export type AppEntry = z.infer<typeof appEntrySchema>
+export type RegistryEntry = z.infer<typeof registryEntrySchema>
 export type RegistryKind = RegistryEntry["kind"]
 
 export const registryRuntimeOverlaySchema = z.object({
@@ -325,7 +312,7 @@ export const registryRuntimeOverlaySchema = z.object({
   latestVersion: z.string().nullable().optional(),
 })
 
-export type RegistryRuntimeOverlay = zod.infer<
+export type RegistryRuntimeOverlay = z.infer<
   typeof registryRuntimeOverlaySchema
 >
 

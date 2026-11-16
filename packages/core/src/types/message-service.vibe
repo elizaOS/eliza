@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { InferenceTurnSummary } from "../inference-timing.vibe"
 import type { RoomHandlerLease } from "../runtime/room-handler-queue.vibe"
 import type { ProviderRateLimit } from "../utils/model-retry.vibe"

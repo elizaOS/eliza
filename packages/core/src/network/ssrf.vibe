@@ -1,3 +1,6 @@
+// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
+import { failingAs, foreign, promised } from "../edge.vibe"
+
 export type LookupAddress = { address: string; family: number }
 
 export type LookupCallback = (
@@ -18,12 +21,16 @@ export type PinnedLookup = {
   (hostname: string, options: LookupOptions, callback: LookupCallback): void
 }
 
-export class SsrfBlockedError extends Error {
+export class SsrfBlockedError extends Data.TaggedError("SsrfBlockedError") {
   constructor(message: string) {
-    super(message)
-    this.name = "SsrfBlockedError"
+    super()
+    this.message = message
   }
 }
+
+export error InvalidHostname { message: string }
+export error MissingLookup { message: string }
+export error UnresolvedHostname { message: string }
 
 export type SsrfPolicy = {
   allowPrivateNetwork?: boolean
@@ -353,65 +360,54 @@ export function isBlockedHostname(hostname: string): boolean {
   )
 }
 
-export function createPinnedLookup(params: {
-  hostname: string
-  addresses: string[]
-  fallback?: PinnedLookup
-}): PinnedLookup {
-  const normalizedHost = normalizeHostLike(params.hostname)
-  const fallback = params.fallback
+module pinning {
+  import { normalizeHostLike, type LookupCallback, type LookupOptions, type PinnedLookup } from "./ssrf.vibe"
 
-  const records = params.addresses
-    .filter(
-      (address): address is string => typeof address === "string" && address.length > 0,
-    )
-    .map((address) => ({
-      address,
-      family: address.includes(":") ? 6 : 4,
-    }))
-  let index = 0
+  /** @throws {never} */
+  export function createPinnedLookup(params: {
+    hostname: string
+    addresses: string[]
+    fallback?: PinnedLookup
+  }): PinnedLookup {
+    const normalizedHost = normalizeHostLike(params.hostname)
+    const fallback = params.fallback
+    const records = params.addresses
+      .filter((address): address is string => typeof address === "string" && address.length > 0)
+      .map((address) => ({ address, family: address.includes(":") ? 6 : 4 }))
+    let index = 0
 
-  const lookup: PinnedLookup = (
-    host: string,
-    options?: LookupOptions | LookupCallback,
-    callback?: LookupCallback,
-  ) => {
-    const cb = typeof options === "function" ? options : callback
-    if (!cb) {
-      return
-    }
-    const normalized = normalizeHostLike(host)
-    if (!normalized || normalized !== normalizedHost) {
-      if (fallback) {
-        if (typeof options === "function" || options === undefined) {
-          return fallback(host, cb)
-        }
+    const lookup: PinnedLookup = (
+      host: string,
+      options?: LookupOptions | LookupCallback,
+      callback?: LookupCallback,
+    ) => {
+      const cb = typeof options === "function" ? options : callback
+      if (!cb) return
+      const normalized = normalizeHostLike(host)
+      if (!normalized || normalized !== normalizedHost) {
+        if (!fallback) throw new Error("DNS Context restricted: fallback missing.")
+        if (typeof options === "function" || options === undefined) return fallback(host, cb)
         return fallback(host, options, cb)
       }
-      throw new Error("DNS Context restricted: fallback missing.")
+      const opts = typeof options === "object" && options !== null ? options : {}
+      const requestedFamily = typeof options === "number" ? options : typeof opts.family === "number" ? opts.family : 0
+      const candidates = requestedFamily === 4 || requestedFamily === 6
+        ? records.filter((entry) => entry.family === requestedFamily)
+        : records
+      const usable = candidates.length > 0 ? candidates : records
+      if (opts.all) {
+        cb(null, usable)
+        return
+      }
+      const chosen = usable[index % usable.length]
+      index += 1
+      cb(null, chosen.address, chosen.family)
     }
-
-    const opts = typeof options === "object" && options !== null ? options : {}
-    const requestedFamily = typeof options === "number"
-      ? options
-      : typeof opts.family === "number"
-      ? opts.family
-      : 0
-    const candidates = requestedFamily === 4 || requestedFamily === 6
-      ? records.filter((entry) => entry.family === requestedFamily)
-      : records
-    const usable = candidates.length > 0 ? candidates : records
-    if (opts.all) {
-      cb(null, usable)
-      return
-    }
-    const chosen = usable[index % usable.length]
-    index += 1
-    cb(null, chosen.address, chosen.family)
+    return lookup
   }
-
-  return lookup
 }
+import { createPinnedLookup } from pinning
+export { createPinnedLookup }
 
 export type PinnedHostname = {
   hostname: string
@@ -419,70 +415,44 @@ export type PinnedHostname = {
   lookup: PinnedLookup
 }
 
-export async function resolvePinnedHostnameWithPolicy(
+export effect function resolvePinnedHostnameWithPolicy(
   hostname: string,
   params: { lookupFn?: LookupFn; policy?: SsrfPolicy } = {},
-): Promise<PinnedHostname> {
+) {
   const normalized = normalizeHostLike(hostname)
-  if (!normalized) {
-    throw new Error("Invalid hostname")
-  }
+  if (!normalized) throw new InvalidHostname({ message: "Invalid hostname" })
 
-  const allowPrivateNetwork = Boolean(params.policy?.allowPrivateNetwork)
-  const allowedHostnames = normalizeHostnameSet(
-    params.policy?.allowedHostnames,
-  )
-  const isExplicitAllowed = allowedHostnames.has(normalized)
-
-  if (!allowPrivateNetwork && !isExplicitAllowed) {
-    if (isBlockedHostname(normalized)) {
-      throw new SsrfBlockedError(`Blocked hostname: ${hostname}`)
-    }
-
-    if (isPrivateIpAddress(normalized)) {
-      throw new SsrfBlockedError("Blocked: private/internal IP address")
-    }
-  }
+  const allowed = normalizeHostnameSet(params.policy?.allowedHostnames)
+  const screened = !params.policy?.allowPrivateNetwork && !allowed.has(normalized)
+  if (screened && isBlockedHostname(normalized)) throw new SsrfBlockedError(`Blocked hostname: ${hostname}`)
+  if (screened && isPrivateIpAddress(normalized)) throw new SsrfBlockedError("Blocked: private/internal IP address")
 
   const lookupFn = params.lookupFn
-  if (!lookupFn) {
-    throw new Error("lookupFn is required in environment agnostic core")
-  }
-  const results = await lookupFn(normalized, { all: true })
-
+  if (!lookupFn) throw new MissingLookup({ message: "lookupFn is required in environment agnostic core" })
+  const results = try foreign(() => lookupFn(normalized, { all: true }))
   const addresses = Array.from(
     new Set(
       results
         .map((entry) => entry.address)
-        .filter(
-          (address): address is string => typeof address === "string" && address.length > 0,
-        ),
+        .filter((address): address is string => typeof address === "string" && address.length > 0),
     ),
   )
-  if (addresses.length === 0) {
-    throw new Error(`Unable to resolve hostname: ${hostname}`)
-  }
-
-  if (!allowPrivateNetwork && !isExplicitAllowed) {
-    for (const address of addresses) {
-      if (isPrivateIpAddress(address)) {
-        throw new SsrfBlockedError(
-          "Blocked: resolves to private/internal IP address",
-        )
-      }
-    }
+  if (addresses.length === 0) throw new UnresolvedHostname({ message: `Unable to resolve hostname: ${hostname}` })
+  if (screened && addresses.some(isPrivateIpAddress)) {
+    throw new SsrfBlockedError("Blocked: resolves to private/internal IP address")
   }
 
   return {
     hostname: normalized,
     addresses,
     lookup: createPinnedLookup({ hostname: normalized, addresses }),
-  }
+  } satisfies PinnedHostname
 }
 
-export async function resolvePinnedHostname(
-  hostname: string,
-  lookupFn?: LookupFn,
-): Promise<PinnedHostname> {
-  return resolvePinnedHostnameWithPolicy(hostname, { lookupFn })
+export const resolvePinnedHostnameWithPolicyPromise = promised(failingAs(Error, resolvePinnedHostnameWithPolicy, SsrfBlockedError))
+
+export effect function resolvePinnedHostname(hostname: string, lookupFn?: LookupFn) {
+  return try resolvePinnedHostnameWithPolicy(hostname, { lookupFn })
 }
+
+export const resolvePinnedHostnamePromise = promised(failingAs(Error, resolvePinnedHostname, SsrfBlockedError))

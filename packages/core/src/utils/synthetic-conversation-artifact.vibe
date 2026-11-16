@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import type { Memory } from "../types/memory.vibe"
 
 const SYNTHETIC_SOURCE_RE = /\b(?:compaction|compactor|synthetic|summary)\b/i
@@ -7,11 +8,7 @@ export function isSyntheticConversationArtifactText(text: string): boolean {
   const trimmed = text.trim()
   return (
     SYNTHETIC_MARKER_RE.test(trimmed)
-    || /^compacted prior planner trajectory steps/i.test(trimmed)
-    || /^#{1,3}\s*Conversation Summary\b/i.test(trimmed)
-    || /\b(?:conversation summary|compacted prior planner|compactor|summary mode)\b/i.test(
-      trimmed,
-    )
+    || /\b(?:conversation summary|compacted prior planner|compactor|summary mode)\b/i.test(trimmed)
   )
 }
 

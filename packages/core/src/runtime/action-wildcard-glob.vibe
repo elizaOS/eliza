@@ -1,3 +1,4 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
 export function matchActionWildcardParts(
   parts: readonly string[],
   name: string,

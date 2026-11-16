@@ -2,8 +2,8 @@
 
 export error Foreign { cause: unknown }
 
-export effect function foreign<A>(call: (signal: AbortSignal) => PromiseLike<A>): A!Foreign {
-  return try tryPromise({ try: (signal) => call(signal), catch: (cause) => new Foreign({ cause }) })
+export effect function foreign<A>(call: (signal: AbortSignal) => A | PromiseLike<A>): A!Foreign {
+  return try tryPromise({ try: async (signal) => await call(signal), catch: (cause) => new Foreign({ cause }) })
 }
 
 module edge {
@@ -60,6 +60,28 @@ module edge {
   }
 
   /** @throws {never} */
+  export function asLegacy<A, E extends Error, R>(
+    Legacy: new (message: string) => Error,
+    effect: Effect.Effect<A, E, R>,
+    ...kept: ReadonlyArray<abstract new (...args: never[]) => Error>
+  ): Effect.Effect<A, Error, R> {
+    const unchanged: ReadonlyArray<abstract new (...args: never[]) => Error> = [Foreign, Legacy, ...kept]
+    return Effect.mapError(effect, (error): Error => {
+      const passes = unchanged.some((Kind) => error instanceof Kind)
+      return passes ? error : new Legacy(error.message)
+    })
+  }
+
+  /** @throws {never} */
+  export function failingAs<Args extends readonly unknown[], A, E extends Error>(
+    Legacy: new (message: string) => Error,
+    run: (...args: Args) => Effect.Effect<A, E>,
+    ...kept: ReadonlyArray<abstract new (...args: never[]) => Error>
+  ): (...args: Args) => Effect.Effect<A, Error> {
+    return (...args) => asLegacy(Legacy, run(...args), ...kept)
+  }
+
+  /** @throws {never} */
   export function promised<Args extends readonly unknown[], A, E>(run: (...args: Args) => Effect.Effect<A, E>): (...args: Args) => Promise<A> {
     return (...args) => runDetached(run(...args))
   }
@@ -69,5 +91,5 @@ module edge {
     return (...args) => runDetachedSync(run(...args))
   }
 }
-import { Kernel, promised, runDetached, runDetachedSync, settle, thrown } from edge
-export { Kernel, promised, runDetached, runDetachedSync, settle, thrown }
+import { Kernel, asLegacy, failingAs, promised, runDetached, runDetachedSync, settle, thrown } from edge
+export { Kernel, asLegacy, failingAs, promised, runDetached, runDetachedSync, settle, thrown }

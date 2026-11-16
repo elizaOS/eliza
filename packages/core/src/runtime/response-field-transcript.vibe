@@ -1,3 +1,4 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
 export const RESPONSE_HANDLER_FIELD_NAMES = [
   "shouldRespond",
   "contexts",

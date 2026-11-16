@@ -1,3 +1,4 @@
+// spec/core/views.md, "Story: Deliver a completed action to the intended view"
 import type { CollapsedView, ViewDeclaration } from "../types/plugin.vibe"
 import type { ViewKind } from "../types/view-kind.vibe"
 
@@ -5,7 +6,6 @@ export type { ViewKind } from "../types/view-kind.vibe"
 
 export interface EnabledViewKinds {
   developer: boolean
-
   preview: boolean
 }
 

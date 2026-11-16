@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { ContextEvent } from "../runtime/context-object.vibe"
 import type { EvaluationResult } from "./components.vibe"
 import type { ToolCall } from "./model.vibe"
@@ -41,24 +42,18 @@ export interface StreamingEventHooks {
 
 export interface IStreamExtractor {
   readonly done: boolean
-
   push(chunk: string): string
-
   flush?(): string
-
   reset?(): void
 }
 
 export interface StructuredFieldEventCallbacks {
   onFieldStart?: (field: string) => void
-
   onFieldDone?: (field: string, value: string) => void
 }
 
 export interface IStreamingRetryState {
   getStreamedText(): string
-
   isComplete(): boolean
-
   reset(): void
 }

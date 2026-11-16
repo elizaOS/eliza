@@ -1,3 +1,4 @@
+// spec/core/views.md, "Story: Deliver a completed action to the intended view"
 import type {
   AppShellBackgroundPolicy,
   PageLayoutManifest,

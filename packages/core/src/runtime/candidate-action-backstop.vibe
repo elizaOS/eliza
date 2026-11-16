@@ -1,3 +1,4 @@
+// spec/core/routingRegistries.md, "Each registry follows its source identity and ordering policy"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 
 export interface CandidateActionBackstopRule {

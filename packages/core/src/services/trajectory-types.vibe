@@ -1,3 +1,4 @@
+// spec/core/services.md, "Story: Acquire a declared service"
 import type { TrajectoryProviderAttribution } from "../runtime/trajectory-provider-attribution.vibe"
 import type { JsonValue } from "../types/primitives.vibe"
 import type { TrajectorySemanticStageRecord } from "./trajectory-semantic-stage.vibe"
@@ -179,23 +180,14 @@ export interface TrajectorySkillInvocationTruncationMarker {
 
 export interface TrajectorySkillInvocationRecord {
   skillSlug: string
-
   args?: string
-
   result?: string
-
   durationMs: number
-
   parentStepId: TrajectoryStepId
-
   script?: string
-
   mode?: "script" | "guidance"
-
   success: boolean
-
   startedAt: number
-
   truncated?: TrajectorySkillInvocationTruncationMarker[]
 }
 
@@ -211,11 +203,8 @@ export interface TrajectoryStepRecord {
   script?: string
   scriptHash?: string
   usedSkills?: string[]
-
   skillInvocations?: TrajectorySkillInvocationRecord[]
-
   evaluatorName?: string
-
   semanticStages?: TrajectorySemanticStageRecord[]
 }
 
@@ -254,7 +243,6 @@ export interface TrajectoryDetailRecord {
   steps?: TrajectoryStepRecord[]
   metrics?: Record<string, JsonValue | undefined> & {
     finalStatus?: string
-
     episodeLength?: number
   }
 

@@ -1,4 +1,7 @@
-export const SWARM_COORDINATOR_SERVICE_TYPE = "SWARM_COORDINATOR"
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { ServiceType } from "./service.vibe"
+
+export const SWARM_COORDINATOR_SERVICE_TYPE = ServiceType.SWARM_COORDINATOR
 
 export interface SwarmCoordinatorBindState {
   status: "pending" | "bound" | "unbound"
@@ -11,11 +14,8 @@ export interface SwarmEvent {
   sessionId: string
   timestamp: number
   data: unknown
-
   seq?: number
-
   taskId?: string
-
   parentSessionId?: string
 }
 
@@ -70,7 +70,6 @@ export interface SwarmActivityToolStep extends SwarmActivityBase {
 }
 export interface SwarmActivityLifecycle extends SwarmActivityBase {
   kind: "lifecycle"
-
   event: string
   status: SwarmActivityStatus
   label?: string

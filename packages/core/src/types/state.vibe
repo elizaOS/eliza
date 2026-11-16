@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { ActionResult, ProviderValue } from "./components.vibe"
 import type { Entity, Room, World } from "./environment.vibe"
 
@@ -60,33 +61,21 @@ export type WorkingMemory = Record<string, WorkingMemoryEntry>
 
 export interface StateData {
   room?: Room
-
   world?: World
-
   entity?: Entity
-
   providers?: Record<string, ProviderCacheEntry>
-
   actionPlan?: ActionPlan
-
   actionResults?: ActionResult[]
-
   workingMemory?: WorkingMemory
-
   structuredOutputFailure?: StructuredOutputFailure
-
   [key: string]: StateValue | undefined
 }
 
 export interface StateValues {
   agentName?: string
-
   actionNames?: string
-
   providers?: string
-
   structuredOutputFailureSummary?: string
-
   [key: string]: StateValue | undefined
 }
 
@@ -106,29 +95,21 @@ export type SchemaValueType =
 
 export type SchemaValueSpec = {
   description: string
-
   type?: SchemaValueType
-
   required?: boolean
-
   properties?: SchemaRow[]
-
   items?: SchemaValueSpec
 }
 
 export type SchemaRow = SchemaValueSpec & {
   field: string
-
   validateField?: boolean
-
   streamField?: boolean
 }
 
 export interface RetryBackoffConfig {
   initialMs: number
-
   multiplier: number
-
   maxMs: number
 }
 
@@ -141,14 +122,9 @@ export type StreamEventType =
 
 export interface StreamEvent {
   eventType: StreamEventType
-
   field?: string
-
   chunk?: string
-
   retryCount?: number
-
   error?: string
-
   timestamp: number
 }

@@ -1,3 +1,5 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { foreign, promised } from "../edge.vibe"
 import type { PermissionId } from "../types/permissions.vibe"
 
 const ROOT_PRIVACY = "x-apple.systempreferences:com.apple.preference.security?Privacy"
@@ -38,23 +40,28 @@ export function getMacPermissionDeepLink(id: PermissionId): string {
   return MAC_DEEP_LINKS[id] ?? ROOT_PRIVACY
 }
 
-type Platform = "darwin" | "win32" | "linux" | "unknown"
+module node {
+  export type Platform = "darwin" | "win32" | "linux" | "unknown"
 
-function detectPlatform(): Platform {
-  const p = (globalThis as { process?: { platform?: unknown } }).process
-    ?.platform
-  if (p === "darwin" || p === "win32" || p === "linux") return p
-  if (
-    typeof navigator !== "undefined"
-    && typeof navigator.userAgent === "string"
-  ) {
-    const ua = navigator.userAgent
-    if (/Mac/.test(ua)) return "darwin"
-    if (/Win/.test(ua)) return "win32"
-    if (/Linux/.test(ua)) return "linux"
+  /** @throws {never} */
+  export function detectPlatform(): Platform {
+    const p = (globalThis as { process?: { platform?: unknown } }).process?.platform
+    if (p === "darwin" || p === "win32" || p === "linux") return p
+    if (typeof navigator !== "undefined" && typeof navigator.userAgent === "string") {
+      const ua = navigator.userAgent
+      if (/Mac/.test(ua)) return "darwin"
+      if (/Win/.test(ua)) return "win32"
+      if (/Linux/.test(ua)) return "linux"
+    }
+    return "unknown"
   }
-  return "unknown"
+
+  /** @throws {never} */
+  export function openInWindow(url: string): void {
+    if (typeof window !== "undefined" && typeof window.open === "function") window.open(url, "_self")
+  }
 }
+import { detectPlatform, openInWindow, type Platform } from node
 
 export interface OpenPermissionSettingsDeps {
   open?: (url: string) => void | Promise<void>
@@ -62,23 +69,15 @@ export interface OpenPermissionSettingsDeps {
   platform?: Platform
 }
 
-export async function openPermissionSettings(
-  id: PermissionId,
-  deps: OpenPermissionSettingsDeps = {},
-): Promise<void> {
+export effect function openPermissionSettings(id: PermissionId, deps: OpenPermissionSettingsDeps = {}) {
   const platform = deps.platform ?? detectPlatform()
   if (platform !== "darwin") {
-    console.warn(
-      `[permission-deep-links] openPermissionSettings: no system-settings deep link for platform=${platform} (id=${id}); please open settings manually.`,
-    )
+    try logWarning(`[permission-deep-links] openPermissionSettings: no system-settings deep link for platform=${platform} (id=${id}); please open settings manually.`)
     return
   }
   const url = getMacPermissionDeepLink(id)
-  const opener = deps.open
-    ?? ((u: string) => {
-      if (typeof window !== "undefined" && typeof window.open === "function") {
-        window.open(u, "_self")
-      }
-    })
-  await opener(url)
+  const opener = deps.open ?? openInWindow
+  try foreign(() => Promise.resolve(opener(url)))
 }
+
+export const openPermissionSettingsPromise = promised(openPermissionSettings)

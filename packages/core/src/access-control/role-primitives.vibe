@@ -1,3 +1,5 @@
+// spec/core/authorization.md, "Role gates combine exclusions, minimum rank and all required memberships"
+
 export type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST"
 export const CANONICAL_ROLE_RANK = {
   NONE: 0,
@@ -33,15 +35,12 @@ export type RoleGateRole = keyof typeof CANONICAL_ROLE_RANK
 
 export interface RoleGate {
   roles?: RoleGateRole[]
-
   anyOf?: RoleGateRole[]
-
   allOf?: RoleGateRole[]
-
   noneOf?: RoleGateRole[]
-
   minRole?: RoleGateRole
 }
+
 export function normalizeGateRole(role: RoleGateRole): RoleGateRole {
   const normalized = String(role).trim().toUpperCase()
   return (normalized === "USER" ? "MEMBER" : normalized) as RoleGateRole
@@ -58,36 +57,18 @@ export function satisfiesRoleGate(
   if (!gate) {
     return true
   }
-
-  const normalizedRoles = new Set<RoleGateRole>()
-  let highestRank = 0
-  for (const userRole of userRoles ?? []) {
-    const role = normalizeGateRole(userRole)
-    normalizedRoles.add(role)
-    highestRank = Math.max(highestRank, CANONICAL_ROLE_RANK[role] ?? 0)
-  }
+  const normalizedRoles = new Set((userRoles ?? []).map(normalizeGateRole))
+  const highestRank = Math.max(0, ...[...normalizedRoles].map((role) => CANONICAL_ROLE_RANK[role] ?? 0))
   const hasRole = (role: RoleGateRole) => normalizedRoles.has(normalizeGateRole(role))
-
   if (gate.noneOf?.some(hasRole)) {
     return false
   }
-
   if (gate.minRole && highestRank < roleRank(gate.minRole)) {
     return false
   }
-
   const anyOfCount = (gate.roles?.length ?? 0) + (gate.anyOf?.length ?? 0)
-  if (
-    anyOfCount > 0
-    && !gate.roles?.some(hasRole)
-    && !gate.anyOf?.some(hasRole)
-  ) {
+  if (anyOfCount > 0 && !gate.roles?.some(hasRole) && !gate.anyOf?.some(hasRole)) {
     return false
   }
-
-  if (gate.allOf?.length && !gate.allOf.every(hasRole)) {
-    return false
-  }
-
-  return true
+  return !(gate.allOf?.length && !gate.allOf.every(hasRole))
 }

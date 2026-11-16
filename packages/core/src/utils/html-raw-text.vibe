@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 const RAW_TEXT_TAGS = ["script", "style"] as const
 
 function isAsciiWhitespace(character: string): boolean {
@@ -50,21 +51,6 @@ function findTagEnd(value: string, index: number): number {
   return value.length
 }
 
-function matchTag(
-  value: string,
-  index: number,
-  tagName: (typeof RAW_TEXT_TAGS)[number],
-  closing: boolean,
-): number | null {
-  if (value[index] !== "<") return null
-  const nameIndex = index + (closing ? 2 : 1)
-  if (closing && value[index + 1] !== "/") return null
-  if (!matchesAsciiCaseInsensitive(value, nameIndex, tagName)) return null
-  const afterName = nameIndex + tagName.length
-  if (!isTagNameDelimiter(value[afterName])) return null
-  return findTagEnd(value, afterName)
-}
-
 function hasDelimitedTagName(
   value: string,
   nameIndex: number,
@@ -74,6 +60,18 @@ function hasDelimitedTagName(
     matchesAsciiCaseInsensitive(value, nameIndex, tagName)
     && isTagNameDelimiter(value[nameIndex + tagName.length])
   )
+}
+
+function matchTag(
+  value: string,
+  index: number,
+  tagName: (typeof RAW_TEXT_TAGS)[number],
+  closing: boolean,
+): number | null {
+  if (value[index] !== "<") return null
+  const nameIndex = index + (closing ? 2 : 1)
+  if (closing && value[index + 1] !== "/") return null
+  return hasDelimitedTagName(value, nameIndex, tagName) ? findTagEnd(value, nameIndex + tagName.length) : null
 }
 
 function findRawTextClosingEnd(

@@ -1,46 +1,35 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { Foreign, foreign } from "../edge.vibe"
+import { unrefSleep } from "./retry.vibe"
+
 export interface DeadlineOptions<TTimeout> {
   timeoutMs: number
   onTimeout: () => TTimeout
 }
 
-function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
-  if (typeof timer === "object" && timer !== null && "unref" in timer) {
-    ;(timer as { unref: () => void }).unref()
-  }
+export effect function resolveAtDeadline<T, TTimeout>(promise: Promise<T>, options: DeadlineOptions<TTimeout>) {
+  const onTimeout = Effect.try({ try: () => options.onTimeout(), catch: (cause) => new Foreign({ cause }) })
+  return try Effect.raceFirst(foreign(() => promise), Effect.andThen(unrefSleep(options.timeoutMs), onTimeout))
 }
 
-export async function resolveAtDeadline<T, TTimeout>(
-  promise: Promise<T>,
-  options: DeadlineOptions<TTimeout>,
-): Promise<T | TTimeout> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<TTimeout>((resolve, reject) => {
-        timer = setTimeout(() => {
-          try {
-            resolve(options.onTimeout())
-          } catch (error) {
-            reject(error)
-          }
-        }, options.timeoutMs)
-        unrefTimer(timer)
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
+module edge {
+  import { runDetached } from "../edge.vibe"
+  import { resolveAtDeadline, type DeadlineOptions } from "./deadline.vibe"
+
+  /** @throws {never} */
+  export function resolveAtDeadlinePromise<T, TTimeout>(promise: Promise<T>, options: DeadlineOptions<TTimeout>): Promise<T | TTimeout> {
+    return runDetached(resolveAtDeadline(promise, options))
+  }
+
+  /** @throws {never} */
+  export function rejectAtDeadline<T>(promise: Promise<T>, options: DeadlineOptions<Error>): Promise<T> {
+    return runDetached(resolveAtDeadline(promise, {
+      timeoutMs: options.timeoutMs,
+      onTimeout: (): never => {
+        throw options.onTimeout()
+      },
+    }))
   }
 }
-
-export function rejectAtDeadline<T>(
-  promise: Promise<T>,
-  options: DeadlineOptions<Error>,
-): Promise<T> {
-  return resolveAtDeadline(promise, {
-    timeoutMs: options.timeoutMs,
-    onTimeout: () => {
-      throw options.onTimeout()
-    },
-  })
-}
+import { rejectAtDeadline, resolveAtDeadlinePromise } from edge
+export { rejectAtDeadline, resolveAtDeadlinePromise }

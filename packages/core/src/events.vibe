@@ -1,3 +1,4 @@
+// spec/core/views.md, "Completion requires matching request renderer installation and view identities"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import type { UiLanguage } from "./i18n/language.vibe"
 
 export const COMMAND_PALETTE_EVENT = "eliza:command-palette" as const

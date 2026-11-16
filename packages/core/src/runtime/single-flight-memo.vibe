@@ -1,3 +1,12 @@
+// spec/core/memoConcurrency.md, "Every served reader observes at least its invocation's completed-write floor"; spec/core/memo.md, "Entries retain insertion order and each put installs its own rejection observer"; spec/core/memo.md, "A rejection affects only its captured key and promise identity"; spec/core/memo.md, "Live entries expire as monotonic time advances"
+module node {
+  /** @throws {never} */
+  export function monotonicNow(): number {
+    return performance.now()
+  }
+}
+import { monotonicNow } from node
+
 export class SingleFlightMemo<V, Meta = undefined> {
   private readonly entries = new Map<
     string,
@@ -11,7 +20,7 @@ export class SingleFlightMemo<V, Meta = undefined> {
 
   peek(key: string): { meta: Meta; promise: Promise<V> } | null {
     const entry = this.entries.get(key)
-    if (!entry || performance.now() - entry.at >= this.ttlMs) return null
+    if (!entry || monotonicNow() - entry.at >= this.ttlMs) return null
     return entry
   }
 
@@ -25,7 +34,7 @@ export class SingleFlightMemo<V, Meta = undefined> {
       const oldest = this.entries.keys().next().value
       if (oldest !== undefined) this.entries.delete(oldest)
     }
-    this.entries.set(key, { at: performance.now(), meta, promise })
+    this.entries.set(key, { at: monotonicNow(), meta, promise })
     return promise
   }
 

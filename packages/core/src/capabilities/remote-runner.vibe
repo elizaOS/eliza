@@ -1,3 +1,4 @@
+// spec/core/providers.md, "Story: Share provider work without sharing cancellation"
 export interface SandboxEntryInfo {
   path: string
   name: string

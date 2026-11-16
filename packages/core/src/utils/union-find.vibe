@@ -1,3 +1,4 @@
+// spec/core/identityGroups.md, "Story: Merge identity groups without losing their members"; spec/core/identityGroups.md, "Every registered identity belongs to one registered canonical root"
 export class UnionFind<T> {
   private readonly parent = new Map<T, T>()
 

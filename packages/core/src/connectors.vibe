@@ -1,3 +1,4 @@
+// spec/core/connectorSources.md, "Owner registration merges aliases and replaces only supplied metadata fields"; spec/core/connectorSources.md, "Removing an owner rebuilds aliases and metadata from surviving owners"
 export type ConnectorSourceKind = "passive" | "active"
 
 export interface ConnectorIdentityMetadataMapping {

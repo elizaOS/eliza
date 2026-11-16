@@ -1,12 +1,9 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 export type FenceSpan = {
   start: number
-
   end: number
-
   openLine: string
-
   marker: string
-
   indent: string
 }
 
@@ -24,6 +21,12 @@ export type FenceScan = {
   open: OpenFence | undefined
   offset: number
   done: boolean
+}
+
+const FENCE_LINE_RE = /^( {0,3})(`{3,}|~{3,})(.*)$/
+
+function closedSpan(open: OpenFence, end: number): FenceSpan {
+  return { start: open.start, end, openLine: open.openLine, marker: open.marker, indent: open.indent }
 }
 
 export function startFenceScan(): FenceScan {
@@ -64,13 +67,7 @@ export function advanceFenceScan(
         && markerLen >= open.markerLen
         && /^[ \t]*$/.test(match[3])
       ) {
-        scan.spans.push({
-          start: open.start,
-          end: lineEnd,
-          openLine: open.openLine,
-          marker: open.marker,
-          indent: open.indent,
-        })
+        scan.spans.push(closedSpan(open, lineEnd))
         scan.open = undefined
       }
     }
@@ -79,13 +76,7 @@ export function advanceFenceScan(
       scan.done = true
       const unclosed = scan.open
       if (unclosed) {
-        scan.spans.push({
-          start: unclosed.start,
-          end: buffer.length,
-          openLine: unclosed.openLine,
-          marker: unclosed.marker,
-          indent: unclosed.indent,
-        })
+        scan.spans.push(closedSpan(unclosed, buffer.length))
         scan.open = undefined
       }
       return
@@ -93,8 +84,6 @@ export function advanceFenceScan(
     scan.offset = nextNewline + 1
   }
 }
-
-const FENCE_LINE_RE = /^( {0,3})(`{3,}|~{3,})(.*)$/
 
 export function parseFenceSpans(buffer: string): FenceSpan[] {
   const scan = startFenceScan()

@@ -1,3 +1,4 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
 export function basicEmailValid(value: string): boolean {
   const at = value.indexOf("@")
   if (at <= 0 || at !== value.lastIndexOf("@")) return false

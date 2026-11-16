@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 export function replaceNameTokens(text: string, name: string): string {
   if (!text) return text
   return text.replace(/\{\{\s*(?:name|agentName)\s*\}\}/g, () => name)

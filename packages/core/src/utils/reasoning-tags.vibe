@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 export const REASONING_TAG_NAMES = [
   "think",
   "thinking",
@@ -76,10 +77,7 @@ export function findNextCloseTag(
   return null
 }
 
-export function stripPairedTagBlocks(
-  text: string,
-  tagAlternation: string,
-): string {
+function lastCloseTagEnd(text: string, tagAlternation: string): number {
   let lastCloseEnd = -1
   for (
     let close = findNextCloseTag(text, 0, tagAlternation);
@@ -88,6 +86,14 @@ export function stripPairedTagBlocks(
   ) {
     lastCloseEnd = close.end
   }
+  return lastCloseEnd
+}
+
+export function stripPairedTagBlocks(
+  text: string,
+  tagAlternation: string,
+): string {
+  const lastCloseEnd = lastCloseTagEnd(text, tagAlternation)
   if (lastCloseEnd < 0) return text
 
   let out = ""
@@ -113,23 +119,11 @@ export function stripUnclosedTagSuffix(
   return open ? text.slice(0, open.start) : text
 }
 
-const REASONING_OPEN_PREFIX_SOURCE = `<\\s*(?:${REASONING_TAG_ALTERNATION})(?=[\\s/>])`
-const REASONING_CLOSE_PREFIX_SOURCE = `<\\s*\\/\\s*(?:${REASONING_TAG_ALTERNATION})(?=[\\s>])`
-
-const REASONING_TAG_PREFIX_TEST_RE = new RegExp(
-  `${REASONING_OPEN_PREFIX_SOURCE}|${REASONING_CLOSE_PREFIX_SOURCE}`,
-  "i",
-)
+const reasoningTags = tagRegexes(REASONING_TAG_ALTERNATION)
+const REASONING_TAG_PREFIX_TEST_RE = new RegExp(`${reasoningTags.open.source}|${reasoningTags.close.source}`, "i")
 
 export function stripReasoningPrefixes(text: string): string {
-  let lastCloseEnd = -1
-  for (
-    let close = findNextCloseTag(text, 0, REASONING_TAG_ALTERNATION);
-    close;
-    close = findNextCloseTag(text, close.end, REASONING_TAG_ALTERNATION)
-  ) {
-    lastCloseEnd = close.end
-  }
+  const lastCloseEnd = lastCloseTagEnd(text, REASONING_TAG_ALTERNATION)
   return lastCloseEnd >= 0 ? text.slice(lastCloseEnd) : text
 }
 

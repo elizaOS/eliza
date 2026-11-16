@@ -1,11 +1,8 @@
-const TRUTHY = new Set(["1", "true", "yes", "on"])
+// spec/core/privacy.md, "Trajectory persistence follows the existing precedence order"
+import { trajectoryEnabled, type LoggingChoice } from "../../gen/core__privacy.effect.vibe"
+import { processEnv } from "../utils/environment.vibe"
 
-function coerceFlag(raw: string | undefined): boolean | undefined {
-  if (raw === undefined) return undefined
-  const trimmed = raw.trim()
-  if (trimmed === "") return undefined
-  return TRUTHY.has(trimmed.toLowerCase())
-}
+const TRUTHY = new Set(["1", "true", "yes", "on"])
 
 export interface TrajectoryGateDecision {
   enabled: boolean
@@ -13,29 +10,38 @@ export interface TrajectoryGateDecision {
   reason: string
 }
 
+function loggingChoice(raw: string | undefined): LoggingChoice {
+  const trimmed = raw?.trim()
+  if (!trimmed) return "Unspecified"
+  return TRUTHY.has(trimmed.toLowerCase()) ? "Enabled" : "Disabled"
+}
+
+function decisionReason(
+  hardDisabled: boolean,
+  explicit: LoggingChoice,
+  protectedProfile: boolean,
+  testProfile: boolean,
+  productionProfile: boolean,
+): string {
+  if (hardDisabled) return "disable-flag"
+  if (explicit !== "Unspecified") return "explicit-logging"
+  if (protectedProfile) return "protected-profile-default-off"
+  if (testProfile) return "test-default-off"
+  if (productionProfile) return "production-opt-in"
+  return "dev-default-on"
+}
+
 export function resolveTrajectoryGate(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = processEnv(),
 ): TrajectoryGateDecision {
-  if (env.ELIZA_DISABLE_TRAJECTORY_LOGGING === "1") {
-    return { enabled: false, reason: "disable-flag" }
+  const hardDisabled = env.ELIZA_DISABLE_TRAJECTORY_LOGGING === "1"
+  const explicit = hardDisabled ? "Unspecified" : loggingChoice(env.ELIZA_TRAJECTORY_LOGGING)
+  const protectedProfile = !hardDisabled && explicit === "Unspecified"
+    && (env.ELIZA_PROTECTED_PROFILE ?? "").trim() !== ""
+  const testProfile = env.NODE_ENV === "test"
+  const productionProfile = env.NODE_ENV === "production"
+  return {
+    enabled: trajectoryEnabled(hardDisabled, explicit, protectedProfile, testProfile, productionProfile),
+    reason: decisionReason(hardDisabled, explicit, protectedProfile, testProfile, productionProfile),
   }
-
-  const explicit = coerceFlag(env.ELIZA_TRAJECTORY_LOGGING)
-  if (explicit !== undefined) {
-    return { enabled: explicit, reason: "explicit-logging" }
-  }
-
-  if ((env.ELIZA_PROTECTED_PROFILE ?? "").trim() !== "") {
-    return { enabled: false, reason: "protected-profile-default-off" }
-  }
-
-  if (env.NODE_ENV === "test") {
-    return { enabled: false, reason: "test-default-off" }
-  }
-
-  if (env.NODE_ENV === "production") {
-    return { enabled: false, reason: "production-opt-in" }
-  }
-
-  return { enabled: true, reason: "dev-default-on" }
 }

@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 export const MAX_CHAT_UPLOAD_ATTACHMENTS = 4
 
 export const MAX_CHAT_IMAGE_BASE64_BYTES = 5 * 1_048_576

@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 function isPropertyContainer(
   value: unknown,
 ): value is Record<PropertyKey, unknown> | ((...args: never[]) => unknown) {
@@ -26,9 +27,9 @@ function readNonBlankString(
   return typeof candidate === "string" && candidate.trim() ? candidate : null
 }
 
-function safeString(value: unknown): string {
+function safeString(value: unknown, read: () => unknown = () => value): string {
   try {
-    return String(value)
+    return String(read())
   } catch {
     try {
       return Object.prototype.toString.call(value)
@@ -47,20 +48,10 @@ export function formatDiagnosticError(value: unknown): string {
 }
 
 export function formatError(error: unknown): string {
-  try {
-    return String(error instanceof Error ? error.message : error)
-  } catch {
-    try {
-      return Object.prototype.toString.call(error)
-    } catch {
-      return "[unstringifiable error]"
-    }
-  }
+  return safeString(error, () => error instanceof Error ? error.message : error)
 }
 
-export function formatErrorWithStack(error: unknown): string {
-  return formatDiagnosticError(error)
-}
+export const formatErrorWithStack = formatDiagnosticError
 
 export function isTimeoutError(error: unknown): boolean {
   const name = readDiagnosticProperty(error, "name")

@@ -1,5 +1,25 @@
-import { timingSafeEqual } from "node:crypto"
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
 import type http from "node:http"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { timingSafeEqual } from "node:crypto"
+
+  /** @throws {never} */
+  export function tokenMatches(expected: string, provided: string): boolean {
+    const a = Buffer.from(expected, "utf8")
+    const b = Buffer.from(provided, "utf8")
+    const length = Math.max(a.length, b.length)
+    const paddedA = Buffer.alloc(length)
+    const paddedB = Buffer.alloc(length)
+    a.copy(paddedA)
+    b.copy(paddedB)
+    const contentMatches = timingSafeEqual(paddedA, paddedB)
+    return a.length === b.length && contentMatches
+  }
+}
+import { tokenMatches } from node
+export { tokenMatches }
 
 export function firstHeaderValue(
   value: string | string[] | undefined,
@@ -7,18 +27,6 @@ export function firstHeaderValue(
   if (typeof value === "string") return value
   if (Array.isArray(value) && typeof value[0] === "string") return value[0]
   return null
-}
-
-export function tokenMatches(expected: string, provided: string): boolean {
-  const a = Buffer.from(expected, "utf8")
-  const b = Buffer.from(provided, "utf8")
-  const length = Math.max(a.length, b.length)
-  const paddedA = Buffer.alloc(length)
-  const paddedB = Buffer.alloc(length)
-  a.copy(paddedA)
-  b.copy(paddedB)
-  const contentMatches = timingSafeEqual(paddedA, paddedB)
-  return a.length === b.length && contentMatches
 }
 
 export function getProvidedApiToken(

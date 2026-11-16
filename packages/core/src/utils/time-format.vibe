@@ -1,3 +1,4 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 function describeRelativeTime(
   timestamp: number,
   style: "compact" | "verbose",
@@ -23,10 +24,10 @@ function describeRelativeTime(
 
   const tense = (magnitude: string): string => future ? `in ${magnitude}` : `${magnitude} ago`
 
+  if (absDiff < 60000) {
+    return "just now"
+  }
   if (style === "verbose") {
-    if (absDiff < 60000) {
-      return "just now"
-    }
     if (minutes < 60) {
       return tense(`${minutes} minute${minutes !== 1 ? "s" : ""}`)
     }
@@ -34,10 +35,6 @@ function describeRelativeTime(
       return tense(`${hours} hour${hours !== 1 ? "s" : ""}`)
     }
     return tense(`${days} day${days !== 1 ? "s" : ""}`)
-  }
-
-  if (absDiff < 60000) {
-    return "just now"
   }
   if (minutes < 60) {
     return tense(`${minutes}m`)

@@ -1,54 +1,44 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { readEnv } from "./environment.vibe"
+
+module node {
+  type RuntimeProcess = { argv?: string[]; env?: NodeJS.ProcessEnv }
+
+  function runtimeProcess(): RuntimeProcess | undefined {
+    const candidate = (globalThis as { process?: RuntimeProcess }).process
+    return candidate && typeof candidate === "object" ? candidate : undefined
+  }
+
+  /** @throws {never} */
+  export function processArgs(): readonly string[] {
+    const argv = runtimeProcess()?.argv
+    return Array.isArray(argv) ? argv : []
+  }
+
+  /** @throws {never} */
+  export function processEnv(): NodeJS.ProcessEnv {
+    return runtimeProcess()?.env ?? {}
+  }
+}
+import { processArgs, processEnv } from node
+
 let cachedPrefix: string | null = null
 
-type RuntimeProcess = {
-  argv?: string[]
-  env?: Record<string, string | undefined>
-}
-
-function getRuntimeProcess(): RuntimeProcess | undefined {
-  const candidate = (globalThis as { process?: RuntimeProcess }).process
-  return candidate && typeof candidate === "object" ? candidate : undefined
-}
-
 function prefixFromPackageName(name: string): string {
-  let packageName = name
-  if (packageName.startsWith("@")) {
-    packageName = packageName.split("/")[1] ?? packageName
-  }
-  if (packageName.includes("eliza")) {
-    return "[eliza]"
-  }
-  return `[${packageName}]`
+  const packageName = name.startsWith("@") ? (name.split("/")[1] ?? name) : name
+  return packageName.includes("eliza") ? "[eliza]" : `[${packageName}]`
+}
+
+function resolveLogPrefix(): string {
+  const appCliName = readEnv("APP_CLI_NAME", { env: processEnv() })
+  if (appCliName) return `[${appCliName}]`
+  const packageName = readEnv("npm_package_name", { env: processEnv() })
+  if (packageName) return prefixFromPackageName(packageName)
+  const name = processArgs().find((a) => a.startsWith("--name="))?.slice("--name=".length).trim()
+  return name ? `[${name}]` : "[eliza]"
 }
 
 export function getLogPrefix(): string {
-  if (cachedPrefix !== null) {
-    return cachedPrefix
-  }
-
-  const runtimeProcess = getRuntimeProcess()
-
-  const appCliName = runtimeProcess?.env?.APP_CLI_NAME?.trim()
-  if (appCliName) {
-    cachedPrefix = `[${appCliName}]`
-    return cachedPrefix
-  }
-
-  const packageName = runtimeProcess?.env?.npm_package_name?.trim()
-  if (packageName) {
-    cachedPrefix = prefixFromPackageName(packageName)
-    return cachedPrefix
-  }
-
-  const nameArgMatch = runtimeProcess?.argv?.find((a) => a.startsWith("--name="))
-  if (nameArgMatch) {
-    const name = nameArgMatch.slice("--name=".length).trim()
-    if (name) {
-      cachedPrefix = `[${name}]`
-      return cachedPrefix
-    }
-  }
-
-  cachedPrefix = "[eliza]"
+  cachedPrefix ??= resolveLogPrefix()
   return cachedPrefix
 }

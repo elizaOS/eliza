@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 export type AppShellBackgroundPolicy = "opaque" | "shared"
 
 export type ViewHeaderPolicy = "normal" | "fullscreen" | "modal" | "immersive"
@@ -42,15 +43,10 @@ export type PageLayoutManifest =
 
 export interface SurfaceManifest {
   background?: AppShellBackgroundPolicy
-
   header?: ViewHeaderPolicy
-
   isolation?: SurfaceIsolationLevel
-
   lifecycle?: SurfaceLifecyclePolicy
-
   layout?: PageLayoutManifest
-
   capabilities?: readonly SurfaceCapability[]
 }
 
@@ -60,7 +56,6 @@ export interface ResolvedSurfaceManifest {
   isolation: SurfaceIsolationLevel
   lifecycle: SurfaceLifecyclePolicy
   layout: PageLayoutManifest
-
   capabilities: ReadonlySet<SurfaceCapability>
 }
 

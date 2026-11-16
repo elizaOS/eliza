@@ -1,11 +1,19 @@
-import { AsyncLocalStorage } from "node:async_hooks"
+// spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "A continuation owns its current context and restoration stack"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"
 
-export class AsyncContextManager<TContext> {
-  private readonly storage = new AsyncLocalStorage<TContext>()
-  run<T>(context: TContext, fn: () => T): T {
-    return this.storage.run(context, fn)
-  }
-  active(): TContext | undefined {
-    return this.storage.getStore()
+module node {
+  import { AsyncLocalStorage } from "node:async_hooks"
+
+  export class AsyncContextManager<TContext> {
+    private readonly storage = new AsyncLocalStorage<TContext>()
+    /** @throws {never} */
+    run<T>(context: TContext, fn: () => T): T {
+      return this.storage.run(context, fn)
+    }
+    /** @throws {never} */
+    active(): TContext | undefined {
+      return this.storage.getStore()
+    }
   }
 }
+import { AsyncContextManager } from node
+export { AsyncContextManager }

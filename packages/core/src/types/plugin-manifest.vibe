@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 export interface PluginAutoEnableContext {
   env: NodeJS.ProcessEnv
 

@@ -1,11 +1,13 @@
+// spec/core/inferenceGate.md, "Story: Prioritize interactive inference without changing requests"; spec/core/inferenceGate.md, "Native inference starts only for lane owners"; spec/core/inferenceGate.md, "Handoff prunes the examined background prefix only"; spec/core/inferenceGate.md, "Queued timeout and signal callbacks release only their own attachment"
 import type { LocalInferencePriority } from "../types/model.vibe"
+import { foreign, runDetached } from "../edge.vibe"
+import { readEnv } from "./environment.vibe"
+import { unrefSleep, whenAborted } from "./retry.vibe"
 
 export type InferenceRamClass = "constrained" | "standard"
 
-export function inferenceRamClassFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
-): InferenceRamClass | null {
-  const raw = env.ELIZA_INFERENCE_RAM_CLASS?.trim().toLowerCase()
+export function inferenceRamClassFromEnv(env?: NodeJS.ProcessEnv): InferenceRamClass | null {
+  const raw = readEnv("ELIZA_INFERENCE_RAM_CLASS", { env })?.toLowerCase()
   return raw === "constrained" || raw === "standard" ? raw : null
 }
 
@@ -13,20 +15,12 @@ export interface BackgroundInferenceBudget {
   lockWaitMs: number
 }
 
-const CONSTRAINED_BACKGROUND_BUDGET: BackgroundInferenceBudget = {
-  lockWaitMs: 120_000,
-}
+const CONSTRAINED_BACKGROUND_BUDGET: BackgroundInferenceBudget = { lockWaitMs: 120_000 }
 
-const STANDARD_BACKGROUND_BUDGET: BackgroundInferenceBudget = {
-  lockWaitMs: 300_000,
-}
+const STANDARD_BACKGROUND_BUDGET: BackgroundInferenceBudget = { lockWaitMs: 300_000 }
 
-export function resolveBackgroundInferenceBudget(
-  ramClass: InferenceRamClass,
-): BackgroundInferenceBudget {
-  return ramClass === "constrained"
-    ? CONSTRAINED_BACKGROUND_BUDGET
-    : STANDARD_BACKGROUND_BUDGET
+export function resolveBackgroundInferenceBudget(ramClass: InferenceRamClass): BackgroundInferenceBudget {
+  return ramClass === "constrained" ? CONSTRAINED_BACKGROUND_BUDGET : STANDARD_BACKGROUND_BUDGET
 }
 
 export function applyBackgroundInferenceBudget(
@@ -36,27 +30,27 @@ export function applyBackgroundInferenceBudget(
   return { prompt: args.prompt, maxTokens: args.maxTokens, clamped: [] }
 }
 
-export class InferenceBackgroundWaitTimeoutError extends Error {
-  readonly code = "INFERENCE_BACKGROUND_WAIT_TIMEOUT"
+export class InferenceBackgroundWaitTimeoutError extends Data.TaggedError("InferenceBackgroundWaitTimeoutError")<{
+  readonly code: "INFERENCE_BACKGROUND_WAIT_TIMEOUT"
+}> {
   constructor(waitedMs: number, holder: string | null) {
-    super(
-      `[InferencePriorityGate] background inference request timed out after ${waitedMs}ms waiting for the local model lane`
-        + (holder ? ` (held by ${holder})` : "")
-        + "; the job was not started and will be retried by its scheduler",
-    )
-    this.name = "InferenceBackgroundWaitTimeoutError"
+    super({ code: "INFERENCE_BACKGROUND_WAIT_TIMEOUT" })
+    this.message = `[InferencePriorityGate] background inference request timed out after ${waitedMs}ms waiting for the local model lane`
+      + (holder ? ` (held by ${holder})` : "")
+      + "; the job was not started and will be retried by its scheduler"
   }
 }
+
+error InferenceAcquireAborted { message: string }
+
+type GateFailure = InferenceBackgroundWaitTimeoutError | InferenceAcquireAborted
 
 interface GateWaiter {
   priority: LocalInferencePriority
   label: string
   enqueuedAtMs: number
   expiresAtMs?: number
-  grant: () => void
-  fail: (err: Error) => void
-
-  settle: () => void
+  turn: Deferred.Deferred<void, GateFailure>
 }
 
 export interface InferencePriorityGateOptions {
@@ -86,178 +80,129 @@ export interface RunExclusiveOptions {
   label?: string
 }
 
-export class InferencePriorityGate {
-  private readonly now: () => number
-  private readonly logger: InferencePriorityGateOptions["logger"]
+interface Lane {
+  readonly now: () => number
+  readonly logger: InferencePriorityGateOptions["logger"]
+  holder: { priority: LocalInferencePriority; label: string; acquiredAtMs: number } | null
+  readonly interactive: GateWaiter[]
+  readonly background: GateWaiter[]
+}
 
-  private holder: {
-    priority: LocalInferencePriority
-    label: string
-    acquiredAtMs: number
-  } | null = null
-  private readonly interactiveQueue: GateWaiter[] = []
-  private readonly backgroundQueue: GateWaiter[] = []
+function queueOf(lane: Lane, priority: LocalInferencePriority): GateWaiter[] {
+  return priority === "interactive" ? lane.interactive : lane.background
+}
+
+function dequeue(lane: Lane, waiter: GateWaiter): boolean {
+  const queue = queueOf(lane, waiter.priority)
+  const index = queue.indexOf(waiter)
+  if (index < 0) return false
+  queue.splice(index, 1)
+  return true
+}
+
+effect function reject(lane: Lane, waiter: GateWaiter, failure: () => GateFailure) {
+  if (dequeue(lane, waiter)) try Deferred.fail(waiter.turn, failure())
+}
+
+effect function expireAfter(lane: Lane, waiter: GateWaiter, waitMs: number) {
+  try unrefSleep(waitMs)
+  if (!queueOf(lane, waiter.priority).includes(waiter)) return
+  lane.logger?.warn(
+    `[InferencePriorityGate] background ${waiter.label} gave up after ${lane.now() - waiter.enqueuedAtMs}ms waiting for the local model lane (holder=${lane.holder?.label ?? "none"}, interactiveWaiting=${lane.interactive.length})`,
+  )
+  try reject(lane, waiter, () => new InferenceBackgroundWaitTimeoutError(lane.now() - waiter.enqueuedAtMs, lane.holder?.label ?? null))
+}
+
+effect function abortOn(lane: Lane, waiter: GateWaiter, signal: AbortSignal) {
+  try whenAborted(signal)
+  try reject(lane, waiter, () => new InferenceAcquireAborted({
+    message: `[InferencePriorityGate] ${waiter.priority} ${waiter.label} aborted while waiting for the local model lane`,
+  }))
+}
+
+effect function acquire(lane: Lane, opts: RunExclusiveOptions) {
+  const label = opts.label ?? "generate"
+  const priority = opts.priority
+  if (opts.signal?.aborted) {
+    throw new InferenceAcquireAborted({ message: `[InferencePriorityGate] ${priority} ${label} aborted before acquiring the local model lane` })
+  }
+  if (lane.holder === null && (priority === "interactive" || lane.interactive.length === 0)) {
+    lane.holder = { priority, label, acquiredAtMs: lane.now() }
+    return
+  }
+  if (priority === "interactive" && lane.holder?.priority === "background") {
+    lane.logger?.warn(
+      `[InferencePriorityGate] interactive ${label} waiting on a background job (${lane.holder.label}) that has held the local model lane for ${lane.now() - lane.holder.acquiredAtMs}ms; it will run next — ahead of ${lane.background.length} queued background job(s)`,
+    )
+  }
+  const enqueuedAtMs = lane.now()
+  const waitMs = priority === "background" && opts.waitMs !== undefined ? Math.max(0, opts.waitMs) : undefined
+  const waiter: GateWaiter = {
+    priority,
+    label,
+    enqueuedAtMs,
+    expiresAtMs: waitMs === undefined ? undefined : enqueuedAtMs + waitMs,
+    turn: try Deferred.make<void, GateFailure>(),
+  }
+  const signal = opts.signal
+  try scoped(effect {
+    queueOf(lane, priority).push(waiter)
+    if (waitMs !== undefined) fork.scoped expireAfter(lane, waiter, waitMs)
+    if (signal) fork.scoped abortOn(lane, waiter, signal)
+    try Deferred.await(waiter.turn)
+  })
+}
+
+function nextWaiter(lane: Lane): GateWaiter | undefined {
+  return lane.interactive.shift() ?? lane.background.shift()
+}
+
+effect function release(lane: Lane) {
+  const holderLabel = lane.holder?.label ?? null
+  lane.holder = null
+  for (let next = nextWaiter(lane); next; next = nextWaiter(lane)) {
+    if (next.expiresAtMs !== undefined && lane.now() >= next.expiresAtMs) {
+      try Deferred.fail(next.turn, new InferenceBackgroundWaitTimeoutError(lane.now() - next.enqueuedAtMs, holderLabel))
+      continue
+    }
+    lane.holder = { priority: next.priority, label: next.label, acquiredAtMs: lane.now() }
+    try Deferred.succeed(next.turn, undefined)
+    return
+  }
+}
+
+effect function runExclusive<T>(lane: Lane, opts: RunExclusiveOptions, fn: () => Promise<T>) {
+  try acquire(lane, opts)
+  return try ensuring(foreign(() => Promise.resolve().then(fn)), release(lane))
+}
+
+export class InferencePriorityGate {
+  private readonly lane: Lane
 
   constructor(opts: InferencePriorityGateOptions = {}) {
-    this.now = opts.now ?? (() => Date.now())
-    this.logger = opts.logger
+    this.lane = { now: opts.now ?? (() => Date.now()), logger: opts.logger, holder: null, interactive: [], background: [] }
   }
 
   snapshot(): InferencePriorityGateSnapshot {
+    const { holder, now, interactive, background } = this.lane
     return {
-      held: this.holder !== null,
-      holderPriority: this.holder?.priority ?? null,
-      holderLabel: this.holder?.label ?? null,
-      holderHeldMs: this.holder ? this.now() - this.holder.acquiredAtMs : 0,
-      interactiveWaiting: this.interactiveQueue.length,
-      backgroundWaiting: this.backgroundQueue.length,
+      held: holder !== null,
+      holderPriority: holder?.priority ?? null,
+      holderLabel: holder?.label ?? null,
+      holderHeldMs: holder ? now() - holder.acquiredAtMs : 0,
+      interactiveWaiting: interactive.length,
+      backgroundWaiting: background.length,
     }
   }
 
-  async runExclusive<T>(
-    opts: RunExclusiveOptions,
-    fn: () => Promise<T>,
-  ): Promise<T> {
-    await this.acquire(opts)
-    try {
-      return await fn()
-    } finally {
-      this.release()
-    }
-  }
-
-  private acquire(opts: RunExclusiveOptions): Promise<void> {
-    const label = opts.label ?? "generate"
-    const priority = opts.priority
-
-    if (opts.signal?.aborted) {
-      return Promise.reject(
-        new Error(
-          `[InferencePriorityGate] ${priority} ${label} aborted before acquiring the local model lane`,
-        ),
-      )
-    }
-
-    const canStartNow = this.holder === null
-      && (priority === "interactive" || this.interactiveQueue.length === 0)
-    if (canStartNow) {
-      this.holder = { priority, label, acquiredAtMs: this.now() }
-      return Promise.resolve()
-    }
-
-    if (priority === "interactive" && this.holder?.priority === "background") {
-      this.logger?.warn(
-        `[InferencePriorityGate] interactive ${label} waiting on a background job (${this.holder.label}) that has held the local model lane for ${
-          this.now() - this.holder.acquiredAtMs
-        }ms; it will run next — ahead of ${this.backgroundQueue.length} queued background job(s)`,
-      )
-    }
-
-    return new Promise<void>((resolve, reject) => {
-      const enqueuedAtMs = this.now()
-      let timer: NodeJS.Timeout | null = null
-      let abortListener: (() => void) | null = null
-
-      const waiter: GateWaiter = {
-        priority,
-        label,
-        enqueuedAtMs,
-        expiresAtMs: priority === "background" && opts.waitMs !== undefined
-          ? enqueuedAtMs + Math.max(0, opts.waitMs)
-          : undefined,
-        grant: () => {
-          waiter.settle()
-          this.holder = { priority, label, acquiredAtMs: this.now() }
-          resolve()
-        },
-        fail: (err: Error) => {
-          waiter.settle()
-          this.removeWaiter(waiter)
-          reject(err)
-        },
-        settle: () => {
-          if (timer) {
-            clearTimeout(timer)
-            timer = null
-          }
-          if (abortListener && opts.signal) {
-            opts.signal.removeEventListener("abort", abortListener)
-            abortListener = null
-          }
-        },
-      }
-
-      if (priority === "background" && opts.waitMs !== undefined) {
-        const waitMs = Math.max(0, opts.waitMs)
-        timer = setTimeout(() => {
-          this.logger?.warn(
-            `[InferencePriorityGate] background ${label} gave up after ${
-              this.now() - enqueuedAtMs
-            }ms waiting for the local model lane (holder=${
-              this.holder?.label ?? "none"
-            }, interactiveWaiting=${this.interactiveQueue.length})`,
-          )
-          waiter.fail(
-            new InferenceBackgroundWaitTimeoutError(
-              this.now() - enqueuedAtMs,
-              this.holder ? this.holder.label : null,
-            ),
-          )
-        }, waitMs)
-        timer.unref?.()
-      }
-
-      if (opts.signal) {
-        abortListener = () => {
-          waiter.fail(
-            new Error(
-              `[InferencePriorityGate] ${priority} ${label} aborted while waiting for the local model lane`,
-            ),
-          )
-        }
-        opts.signal.addEventListener("abort", abortListener, { once: true })
-      }
-
-      ;(priority === "interactive"
-        ? this.interactiveQueue
-        : this.backgroundQueue).push(waiter)
-    })
-  }
-
-  private removeWaiter(waiter: GateWaiter): void {
-    const queue = waiter.priority === "interactive"
-      ? this.interactiveQueue
-      : this.backgroundQueue
-    const index = queue.indexOf(waiter)
-    if (index >= 0) queue.splice(index, 1)
-  }
-
-  private release(): void {
-    const holderLabel = this.holder?.label ?? null
-    this.holder = null
-    let next = this.interactiveQueue.shift() ?? this.backgroundQueue.shift()
-    while (next) {
-      if (next.expiresAtMs !== undefined && this.now() >= next.expiresAtMs) {
-        next.fail(
-          new InferenceBackgroundWaitTimeoutError(
-            this.now() - next.enqueuedAtMs,
-            holderLabel,
-          ),
-        )
-        next = this.interactiveQueue.shift() ?? this.backgroundQueue.shift()
-        continue
-      }
-      next.grant()
-      break
-    }
+  async runExclusive<T>(opts: RunExclusiveOptions, fn: () => Promise<T>): Promise<T> {
+    return runDetached(runExclusive(this.lane, opts, fn))
   }
 }
 
 let globalGate: InferencePriorityGate | null = null
 
 export function getInferencePriorityGate(): InferencePriorityGate {
-  if (!globalGate) {
-    globalGate = new InferencePriorityGate()
-  }
+  globalGate ??= new InferencePriorityGate()
   return globalGate
 }

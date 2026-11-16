@@ -1,3 +1,6 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { thrown } from "../edge.vibe"
+
 const DURATION_UNIT_MS = {
   ms: 1,
   s: 1000,
@@ -12,35 +15,18 @@ export type DurationMsParseOptions = {
   defaultUnit?: DurationUnit
 }
 
-export function parseDurationMs(
-  raw: string,
-  opts?: DurationMsParseOptions,
-): number {
-  if (typeof raw !== "string") {
-    throw new Error("invalid duration (empty)")
-  }
-  const trimmed = raw.trim().toLowerCase()
-  if (!trimmed) {
-    throw new Error("invalid duration (empty)")
-  }
+export error InvalidDuration { message: string }
 
+export effect function parseDurationMs(raw: string, opts?: DurationMsParseOptions) {
+  const trimmed = typeof raw === "string" ? raw.trim().toLowerCase() : ""
+  if (!trimmed) throw new InvalidDuration({ message: "invalid duration (empty)" })
   const m = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)?$/.exec(trimmed)
-  if (!m) {
-    throw new Error(`invalid duration: ${raw}`)
-  }
-
-  const value = Number(m[1])
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`invalid duration: ${raw}`)
-  }
-
-  const unit = (m[2] as DurationUnit | undefined) ?? opts?.defaultUnit ?? "ms"
-  const milliseconds = value * DURATION_UNIT_MS[unit]
-  if (
-    !Number.isFinite(milliseconds)
-    || !Number.isSafeInteger(Math.round(milliseconds))
-  ) {
-    throw new Error(`invalid duration: ${raw}`)
+  const unit = (m?.[2] as DurationUnit | undefined) ?? opts?.defaultUnit ?? "ms"
+  const milliseconds = Number(m?.[1]) * DURATION_UNIT_MS[unit]
+  if (!m || !Number.isFinite(milliseconds) || !Number.isSafeInteger(Math.round(milliseconds))) {
+    throw new InvalidDuration({ message: `invalid duration: ${raw}` })
   }
   return Math.round(milliseconds)
 }
+
+export const parseDurationMsOrThrow = thrown(parseDurationMs)

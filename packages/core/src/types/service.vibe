@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { Metadata } from "./primitives.vibe"
 import type { IAgentRuntime } from "./runtime.vibe"
 
@@ -51,30 +52,20 @@ export const ServiceType = {
 
 export abstract class Service {
   protected runtime!: IAgentRuntime
-
   constructor(runtime?: IAgentRuntime) {
     if (runtime) {
       this.runtime = runtime
     }
   }
-
   abstract stop(): Promise<void>
-
   prepareStop?(_reason: string): void
-
   static serviceType: string
-
   static allowsMultiple?: boolean
-
   abstract capabilityDescription: string
-
   config?: Metadata
-
   static async start(_runtime: IAgentRuntime): Promise<Service> {
     throw new Error("Service.start() must be implemented by subclass")
   }
-
   static stopRuntime?(_runtime: IAgentRuntime): Promise<void>
-
   static registerSendHandlers?(runtime: IAgentRuntime, service: Service): void
 }

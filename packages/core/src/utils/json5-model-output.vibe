@@ -1,39 +1,37 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import JSON5 from "json5"
+import { thrown } from "../edge.vibe"
 
 const jsonBlockPattern = /```(?:(?:json5|json)(?![A-Za-z0-9_-]))?\s*\r?\n?([\s\S]*?)\r?\n?```/i
 
-export function extractAndParseJSONObjectFromText(
-  text: string,
-): Record<string, unknown> | unknown[] {
-  if (!text || typeof text !== "string") {
-    throw new Error("Invalid input: text must be a non-empty string")
-  }
+export error InvalidModelText { message: string }
+export error UnparsableModelJson { message: string; cause: unknown }
+error NotAJsonObject { message: string }
 
-  try {
-    let parsed: unknown
-    try {
-      parsed = JSON5.parse(text.trim())
-    } catch (error) {
-      const match = text.match(jsonBlockPattern)
-      if (!match) throw error
-      parsed = JSON5.parse(match[1].trim())
-    }
-    if (parsed === null || typeof parsed !== "object") {
-      throw new Error("Parsed JSON must be an object or array")
-    }
-    return parsed as Record<string, unknown> | unknown[]
-  } catch (error) {
-    throw new Error("Failed to parse invalid JSON", { cause: error })
-  }
+function unparsable(cause: unknown): UnparsableModelJson {
+  return new UnparsableModelJson({ message: "Failed to parse invalid JSON", cause })
 }
 
-export function parseJSONObjectFromText(
-  text: string,
-): Record<string, unknown> | null {
-  try {
-    const result = extractAndParseJSONObjectFromText(text)
-    return Array.isArray(result) ? null : result
-  } catch (_error) {
-    return null
+function parseJson5(source: string) {
+  return Effect.try({ try: (): unknown => JSON5.parse(source.trim()), catch: unparsable })
+}
+
+export effect function extractAndParseJSONObjectFromText(text: string) {
+  if (!text || typeof text !== "string") throw new InvalidModelText({ message: "Invalid input: text must be a non-empty string" })
+  const parsed = parseJson5(text) catch effect (error) => {
+    const match = text.match(jsonBlockPattern)
+    if (!match) throw error
+    return try parseJson5(match[1])
+  }
+  if (parsed === null || typeof parsed !== "object") throw unparsable(new NotAJsonObject({ message: "Parsed JSON must be an object or array" }))
+  return parsed as Record<string, unknown> | unknown[]
+}
+
+export const extractAndParseJSONObjectFromTextOrThrow = thrown(extractAndParseJSONObjectFromText)
+
+export function parseJSONObjectFromText(text: string): Record<string, unknown> | null {
+  return match (runSyncExit(extractAndParseJSONObjectFromText(text))) {
+    when Exit.Success(let value): Array.isArray(value) ? null : value;
+    default: null;
   }
 }

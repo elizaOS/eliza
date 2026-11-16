@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { AccessContext } from "./access-context.vibe"
 import type { Agent } from "./agent.vibe"
 import type { ReadRangeUnit } from "./content.vibe"

@@ -1,10 +1,12 @@
+// spec/core/views.md, "Completion requires matching request renderer installation and view identities"
+import { asObjectRecordOrUndefined } from "../utils/type-guards.vibe"
+
 export interface ViewInteractRequest {
   viewId: string
   capability: string
   params?: Record<string, unknown>
 
   requestId: string
-
   timeoutMs?: number
 }
 
@@ -18,19 +20,7 @@ export interface ViewInteractResult {
 export function readViewInteractionClientId(message: {
   content: unknown
 }): string | undefined {
-  if (
-    !message.content
-    || typeof message.content !== "object"
-    || Array.isArray(message.content)
-  ) {
-    return undefined
-  }
-  const metadata = (message.content as Record<string, unknown>).metadata
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return undefined
-  }
-  const clientId = (metadata as Record<string, unknown>).viewClientId
-  return parseViewInteractionClientId(clientId)
+  return parseViewInteractionClientId(asObjectRecordOrUndefined(asObjectRecordOrUndefined(message.content)?.metadata)?.viewClientId)
 }
 
 export function parseViewInteractionClientId(
@@ -43,15 +33,10 @@ export function parseViewInteractionClientId(
 
 export const STANDARD_CAPABILITIES = {
   GET_STATE: "get-state",
-
   REFRESH: "refresh",
-
   FOCUS_ELEMENT: "focus-element",
-
   GET_TEXT: "get-text",
-
   CLICK_ELEMENT: "click-element",
-
   FILL_INPUT: "fill-input",
 } as const
 

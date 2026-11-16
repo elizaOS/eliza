@@ -1,4 +1,7 @@
-import type { TriggerConfig, TriggerType } from "../types/trigger.vibe"
+// spec/core/services.md, "Story: Acquire a declared service"
+import { failingAs, thrown } from "../edge.vibe"
+import { rawEnv } from "../utils/environment.vibe"
+import type { TriggerConfig } from "../types/trigger.vibe"
 
 export const MIN_TRIGGER_INTERVAL_MS = 60_000
 export const MAX_TRIGGER_INTERVAL_MS = 31 * 24 * 60 * 60 * 1000
@@ -27,9 +30,7 @@ const MAX_REPRESENTABLE_MS = 8_640_000_000_000_000
 interface CronRange {
   min: number
   max: number
-
   sundayIsSeven?: boolean
-
   names?: Readonly<Record<string, number>>
 }
 
@@ -178,7 +179,6 @@ export function parseCronExpression(expression: string): CronSchedule | null {
     dayOfMonth,
     month,
     dayOfWeek,
-
     dayOfMonthRestricted: !parts[2].trim().startsWith("*"),
     dayOfWeekRestricted: !parts[4].trim().startsWith("*"),
   }
@@ -353,34 +353,32 @@ export function computeNextCronRunAtMs(
 
 const OFFSETLESS_ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/
 
-export function resolveScheduledAtIsoInTimeZone(
+export error InvalidTimeZone { message: string }
+
+export effect function resolveScheduledAtIsoInTimeZone(
   scheduledAtIso: string,
   timezone: string,
-): string {
+): string!InvalidTimeZone {
   const trimmed = scheduledAtIso.trim()
   if (!OFFSETLESS_ISO_DATE_TIME.test(trimmed)) return scheduledAtIso
   const wallMs = Date.parse(`${trimmed}Z`)
   if (!Number.isFinite(wallMs)) return scheduledAtIso
   const formatter = buildTzFormatter(timezone)
-  if (!formatter) {
-    throw new RangeError(`Invalid time zone: ${timezone}`)
-  }
+  if (!formatter) throw new InvalidTimeZone({ message: `Invalid time zone: ${timezone}` })
 
   const fractionMs = wallMs % 1000
   const wallSecondMs = wallMs - fractionMs
   const offsetAt = (atMs: number) => offsetMsFromFormatter(formatter, atMs)
-
-  const dayMs = 24 * 60 * 60 * 1000
-  const offsetBefore = offsetAt(wallSecondMs - dayMs)
-  const offsetAfter = offsetAt(wallSecondMs + dayMs)
+  const offsetBefore = offsetAt(wallSecondMs - CRON_DAY_MS)
+  const offsetAfter = offsetAt(wallSecondMs + CRON_DAY_MS)
   const early = wallSecondMs - offsetBefore
   const late = wallSecondMs - offsetAfter
-
   const instantMs = offsetAt(early) !== offsetBefore && offsetAt(late) === offsetAfter
     ? late
     : early
   return new Date(instantMs + fractionMs).toISOString()
 }
+export const resolveScheduledAtIsoInTimeZoneOrThrow = thrown(failingAs(RangeError, resolveScheduledAtIsoInTimeZone))
 
 export function parseScheduledAtIso(scheduledAtIso: string): number | null {
   const timestamp = Date.parse(scheduledAtIso)
@@ -394,80 +392,42 @@ export interface TriggerTiming {
   nextRunAtMs: number
 }
 
-function resolveIntervalTiming(
-  trigger: TriggerConfig,
-  nowMs: number,
-): TriggerTiming {
-  const interval = normalizeTriggerIntervalMs(trigger.intervalMs ?? 0)
-  return {
-    updatedAt: nowMs,
-    updateIntervalMs: interval,
-    nextRunAtMs: nowMs + interval,
-  }
-}
-
-function resolveOnceTiming(
-  trigger: TriggerConfig,
-  nowMs: number,
-): TriggerTiming | null {
-  if (!trigger.scheduledAtIso) return null
-  const scheduledAt = parseScheduledAtIso(trigger.scheduledAtIso)
-  if (scheduledAt === null) return null
-
-  const nextRunAtMs = Math.max(scheduledAt, nowMs)
-  return {
-    updatedAt: nowMs,
-    updateIntervalMs: Math.max(0, nextRunAtMs - nowMs),
-    nextRunAtMs,
-  }
-}
-
-function resolveCronTiming(
-  trigger: TriggerConfig,
-  nowMs: number,
-): TriggerTiming | null {
-  if (!trigger.cronExpression) return null
-  const nextRunAtMs = computeNextCronRunAtMs(
-    trigger.cronExpression,
-    nowMs,
-    trigger.timezone,
-  )
+function timingUntil(nowMs: number, nextRunAtMs: number | null): TriggerTiming | null {
   if (nextRunAtMs === null) return null
-  return {
-    updatedAt: nowMs,
-    updateIntervalMs: Math.max(0, nextRunAtMs - nowMs),
-    nextRunAtMs,
-  }
+  return { updatedAt: nowMs, updateIntervalMs: Math.max(0, nextRunAtMs - nowMs), nextRunAtMs }
 }
 
-function resolveEventTiming(nowMs: number): TriggerTiming {
-  return {
-    updatedAt: nowMs,
-    updateIntervalMs: DISABLED_TRIGGER_INTERVAL_MS,
-    nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS,
-  }
+function timingEvery(nowMs: number, interval: number): TriggerTiming {
+  return { updatedAt: nowMs, updateIntervalMs: interval, nextRunAtMs: nowMs + interval }
 }
 
-export function resolveTriggerTiming(
+export error UnsupportedTriggerType { message: string }
+
+export effect function resolveTriggerTiming(
   trigger: TriggerConfig,
   nowMs: number,
-): TriggerTiming | null {
+): (TriggerTiming | null)!UnsupportedTriggerType {
   if (!trigger.enabled) return null
   switch (trigger.triggerType) {
     case "interval":
-      return resolveIntervalTiming(trigger, nowMs)
-    case "once":
-      return resolveOnceTiming(trigger, nowMs)
+      return timingEvery(nowMs, normalizeTriggerIntervalMs(trigger.intervalMs ?? 0))
+    case "once": {
+      const scheduledAt = trigger.scheduledAtIso ? parseScheduledAtIso(trigger.scheduledAtIso) : null
+      return timingUntil(nowMs, scheduledAt === null ? null : Math.max(scheduledAt, nowMs))
+    }
     case "cron":
-      return resolveCronTiming(trigger, nowMs)
+      return trigger.cronExpression
+        ? timingUntil(nowMs, computeNextCronRunAtMs(trigger.cronExpression, nowMs, trigger.timezone))
+        : null
     case "event":
-      return resolveEventTiming(nowMs)
+      return timingEvery(nowMs, DISABLED_TRIGGER_INTERVAL_MS)
     default: {
-      const exhaustiveCheck: TriggerType = trigger.triggerType
-      throw new Error(`Unsupported trigger type: ${exhaustiveCheck}`)
+      const exhaustiveCheck: never = trigger.triggerType
+      throw new UnsupportedTriggerType({ message: `Unsupported trigger type: ${String(exhaustiveCheck)}` })
     }
   }
 }
+export const resolveTriggerTimingOrThrow = thrown(failingAs(Error, resolveTriggerTiming))
 
 export const MISSED_SCHEDULED_OCCURRENCES_SETTING = "ELIZA_MISSED_SCHEDULED_OCCURRENCES"
 
@@ -483,17 +443,20 @@ export function recordsMissedScheduledOccurrences(
     : undefined
   const value = typeof configured === "string"
     ? configured
-    : typeof process !== "undefined"
-    ? process.env?.[MISSED_SCHEDULED_OCCURRENCES_SETTING]
-    : undefined
+    : rawEnv(MISSED_SCHEDULED_OCCURRENCES_SETTING)
   return value === "record"
 }
 
+module node {
+  /** @throws {never} */
+  export function processUptimeSeconds(): number {
+    return typeof process !== "undefined" && typeof process.uptime === "function" ? process.uptime() : 0
+  }
+}
+import { processUptimeSeconds } from node
+
 export function agentProcessStartedAtMs(nowMs: number = Date.now()): number {
-  const uptime = typeof process !== "undefined" && typeof process.uptime === "function"
-    ? process.uptime()
-    : 0
-  return nowMs - Math.round(uptime * 1000)
+  return nowMs - Math.round(processUptimeSeconds() * 1000)
 }
 
 export function isMissedScheduledOccurrence(

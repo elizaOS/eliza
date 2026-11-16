@@ -1,3 +1,6 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { Foreign, foreign, runDetached } from "../edge.vibe"
+
 export type NormalizedChatType = "direct" | "group" | "channel"
 
 export function normalizeChatType(raw?: string): NormalizedChatType {
@@ -99,24 +102,21 @@ export type TypingCallbackParams = {
   onStopError?: (err: unknown) => void
 }
 
+effect function reportFailure(work: void!Foreign, onError: (err: unknown) => void) {
+  work catch (err) => onError(err.cause)
+}
+
 export function createTypingCallbacks(
   params: TypingCallbackParams,
 ): TypingCallbacks {
   const stop = params.stop
-  const onReplyStart = async () => {
-    try {
-      await params.start()
-    } catch (err) {
-      params.onStartError(err)
-    }
-  }
-
+  const onReplyStart = () => runDetached(reportFailure(foreign(() => params.start()), params.onStartError))
   const onIdle = stop
     ? () => {
-      void stop().catch((err) => (params.onStopError ?? params.onStartError)(err))
+      const pending = stop()
+      void runDetached(reportFailure(foreign(() => pending), params.onStopError ?? params.onStartError))
     }
     : undefined
-
   return { onReplyStart, onIdle }
 }
 
@@ -211,26 +211,16 @@ export type RemoveAckReactionParams = {
   onError?: (err: unknown) => void
 }
 
+effect function removeAfterAck(ack: Promise<boolean>, remove: () => Promise<void>) {
+  if (try foreign(() => ack)) try foreign(() => remove())
+}
+
 export function removeAckReactionAfterReply(
   params: RemoveAckReactionParams,
 ): void {
-  if (!params.removeAfterReply) {
-    return
-  }
-  if (!params.ackReactionPromise) {
-    return
-  }
-  if (!params.ackReactionValue) {
-    return
-  }
-  void params.ackReactionPromise
-    .then((didAck) => {
-      if (!didAck) {
-        return
-      }
-      return params.remove()
-    })
-    .catch((err) => params.onError?.(err))
+  const ack = params.ackReactionPromise
+  if (!params.removeAfterReply || !ack || !params.ackReactionValue) return
+  runFork(reportFailure(removeAfterAck(ack, params.remove), (err) => params.onError?.(err)))
 }
 
 export type SenderLabelParams = {

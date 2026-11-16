@@ -1,3 +1,4 @@
+// spec/core/providers.md, "Story: Share provider work without sharing cancellation"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
 import type { JsonObject, JsonValue } from "../types/primitives.vibe"
 import type { PageLayoutManifest, SurfaceCapability } from "../types/surface-manifest.vibe"
 import type { WorkspaceDeltaReceipt } from "../types/workspace-delta.vibe"
@@ -38,19 +39,10 @@ export type CapabilityErrorPayload = {
   details?: JsonValue
 }
 
-export class CapabilityError extends Error {
-  readonly code: CapabilityErrorCode
-  readonly capability?: CapabilityName
-  readonly method?: string
-  readonly details?: JsonValue
-
-  constructor(payload: CapabilityErrorPayload) {
-    super(payload.message)
-    this.name = "CapabilityError"
-    this.code = payload.code
-    this.capability = payload.capability
-    this.method = payload.method
-    this.details = payload.details
+export class CapabilityError extends Data.TaggedError("CapabilityError")<Omit<CapabilityErrorPayload, "message">> {
+  constructor({ message, code, capability, method, details }: CapabilityErrorPayload) {
+    super({ code, capability, method, details })
+    this.message = message
   }
 
   toJSON(): CapabilityErrorPayload {

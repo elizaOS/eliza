@@ -1,3 +1,4 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { LongTermMemory, LongTermMemoryCategory } from "./long-term-memory.vibe"
 import type { UUID } from "./primitives.vibe"
 

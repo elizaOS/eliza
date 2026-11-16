@@ -1,4 +1,5 @@
-import type * as zod from "zod"
+// spec/core/curatedApps.md, "Slug replacement retains registration order and every module copy refreshes from the shared store"; spec/core/catalog.md, "Story: Discover and register first-party capabilities"
+import type { z } from "zod"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import type { ViewKind } from "../views/declarations.vibe"
 import curatedAppDefinitions from "./curated-app-definitions.json" with {
@@ -17,36 +18,27 @@ export function isValidAppRouteSlug(value: unknown): value is string {
   )
 }
 
-const ELIZA_CURATED_APP_REGISTRY_KEY = Symbol.for(
-  "elizaos.curated-app-registry",
-)
-interface CuratedAppRegistryStore {
-  entries: ElizaCuratedAppDefinition[]
-}
-function getCuratedAppRegistryStore(): CuratedAppRegistryStore {
-  const globalObject = globalThis as Record<PropertyKey, unknown>
-  const existing = globalObject[ELIZA_CURATED_APP_REGISTRY_KEY] as
-    | CuratedAppRegistryStore
-    | null
-    | undefined
-  if (existing) return existing
-  const created: CuratedAppRegistryStore = { entries: [] }
-  globalObject[ELIZA_CURATED_APP_REGISTRY_KEY] = created
-  return created
-}
-function registerCoreCuratedApp(def: ElizaCuratedAppDefinition): void {
-  const store = getCuratedAppRegistryStore()
-  const existing = store.entries.findIndex((d) => d.slug === def.slug)
-  if (existing >= 0) {
-    store.entries[existing] = def
-  } else {
-    store.entries.push(def)
+module shared {
+  import type { ElizaCuratedAppDefinition } from "./apps.vibe"
+
+  const ELIZA_CURATED_APP_REGISTRY_KEY = Symbol.for("elizaos.curated-app-registry")
+
+  /** @throws {never} */
+  export function curatedAppRegistry(): ElizaCuratedAppDefinition[] {
+    const globalObject = globalThis as Record<PropertyKey, unknown>
+    const existing = globalObject[ELIZA_CURATED_APP_REGISTRY_KEY] as { entries: ElizaCuratedAppDefinition[] } | null | undefined
+    if (existing) return existing.entries
+    const created = { entries: [] as ElizaCuratedAppDefinition[] }
+    globalObject[ELIZA_CURATED_APP_REGISTRY_KEY] = created
+    return created.entries
   }
 }
+import { curatedAppRegistry } from shared
+
 export function getRegisteredCuratedApps(): ElizaCuratedAppDefinition[] {
-  return [...getCuratedAppRegistryStore().entries]
+  return [...curatedAppRegistry()]
 }
-export type AppSessionConfig = zod.infer<typeof appSessionSchema>
+export type AppSessionConfig = z.infer<typeof appSessionSchema>
 export type AppSessionMode = AppSessionConfig["mode"]
 export type AppSessionFeature = NonNullable<
   AppSessionConfig["features"]
@@ -110,8 +102,8 @@ export interface AppViewerConfig {
 export interface AppUiExtensionConfig {
   detailPanelId: string
 }
-export type RegistryAppSupports = zod.infer<typeof appSupportsSchema>
-export type RegistryAppNpmInfo = zod.infer<typeof appNpmSchema>
+export type RegistryAppSupports = z.infer<typeof appSupportsSchema>
+export type RegistryAppNpmInfo = z.infer<typeof appNpmSchema>
 export interface RegistryAppInfo {
   name: string
   displayName: string
@@ -120,7 +112,6 @@ export interface RegistryAppInfo {
   launchType: string
   launchUrl: string | null
   icon: string | null
-
   heroImage: string | null
   capabilities: string[]
   stars: number
@@ -140,19 +131,12 @@ export interface RegistryAppInfo {
   uiExtension?: AppUiExtensionConfig
   viewer?: Omit<AppViewerConfig, "authMessage">
   session?: AppSessionConfig
-
   viewKind?: ViewKind
-
   visibleInAppStore?: boolean
-
   mainTab?: boolean
-
   catalogSection?: string
-
   featured?: boolean
-
   defaultHidden?: boolean
-
   scope?: string
 }
 export interface AppSessionState {
@@ -377,7 +361,7 @@ export function getElizaCuratedAppDefinition(
   const trimmed = value.trim()
   if (!trimmed) return null
 
-  _rebuildCuratedAppLookup()
+  refreshCuratedAppLookup()
   const directMatch = ELIZA_CURATED_APP_DEFINITION_BY_KEY.get(
     trimmed.toLowerCase(),
   )
@@ -398,9 +382,14 @@ export function isElizaCuratedAppName(value: string): boolean {
 }
 
 export function registerCuratedApp(def: ElizaCuratedAppDefinition): void {
-  registerCoreCuratedApp(def)
-
-  _rebuildCuratedAppLookup()
+  const entries = curatedAppRegistry()
+  const existing = entries.findIndex((d) => d.slug === def.slug)
+  if (existing >= 0) {
+    entries[existing] = def
+  } else {
+    entries.push(def)
+  }
+  refreshCuratedAppLookup()
 }
 
 export function getCuratedAppDefinitions(): ElizaCuratedAppDefinition[] {
@@ -415,8 +404,8 @@ export function getCuratedAppDefinitions(): ElizaCuratedAppDefinition[] {
 }
 
 let foldedCuratedApps: readonly ElizaCuratedAppDefinition[] = []
-function _rebuildCuratedAppLookup(): void {
-  const entries = getCuratedAppRegistryStore().entries
+function refreshCuratedAppLookup(): void {
+  const entries = curatedAppRegistry()
   if (
     entries.length === foldedCuratedApps.length
     && entries.every((def, index) => def === foldedCuratedApps[index])

@@ -1,3 +1,4 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
 import type { AgentContext, FirstPartyAgentContext } from "../types/contexts.vibe"
 
 export const FIRST_PARTY_CONTEXT_IDS = [
@@ -62,37 +63,13 @@ export function normalizeContextId(context: string): AgentContext {
     .replace(/[\s-]+/g, "_") as AgentContext
 }
 
-function aliasExpansion(
-  normalized: AgentContext,
-): readonly AgentContext[] | undefined {
-  return Object.hasOwn(CONTEXT_ALIASES, normalized)
-    ? CONTEXT_ALIASES[normalized]
-    : undefined
-}
-
 export function expandContextAliases(context: AgentContext): AgentContext[] {
   const normalized = normalizeContextId(context)
-  const alias = aliasExpansion(normalized)
-  return alias ? [...alias] : [normalized]
+  return Object.hasOwn(CONTEXT_ALIASES, normalized) ? [...CONTEXT_ALIASES[normalized]] : [normalized]
 }
 
 export function normalizeContextList(
   contexts: readonly AgentContext[] | undefined,
 ): AgentContext[] {
-  if (!contexts?.length) {
-    return []
-  }
-  const normalized = new Set<AgentContext>()
-  for (const context of contexts) {
-    const id = normalizeContextId(context)
-    const alias = aliasExpansion(id)
-    if (!alias) {
-      normalized.add(id)
-      continue
-    }
-    for (const expanded of alias) {
-      normalized.add(expanded)
-    }
-  }
-  return [...normalized]
+  return [...new Set(contexts?.flatMap(expandContextAliases))]
 }

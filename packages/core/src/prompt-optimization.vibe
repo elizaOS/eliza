@@ -1,3 +1,4 @@
+// spec/core/scoreCard.md, "Numeric signals remain ordered and NaN values are skipped only during aggregation"; spec/core/scoreCard.md, "Signal weight wins over exact call and constructor overrides"
 import type { UUID } from "./types/primitives.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 import type { SchemaRow } from "./types/state.vibe"
