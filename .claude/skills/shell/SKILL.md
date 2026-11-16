@@ -85,9 +85,11 @@ it.effect("Check out", effect () => {
   `machineOver` or on `apply` and the decoders, needs a driver that `check`
   compares with the spec ([SPEC.md, "Conformance"](../../../SPEC.md#conformance)):
   `check` writes one to fill in when `src/` imports `apply`.
-- **Match an event by its `type`**: `match (event.type) { when "pay": …; }`.
-  The compiler does not yet check that a `match` on the event itself, or on
-  a variant by its `tag`, covers every case.
+- **Cover every case in a finite match.** Match `event.type` with literal
+  patterns or match the event itself with patterns such as
+  `when { type: "pay", let amount }: …`. A match without `default` must
+  cover the whole finite union (`EK4701`), including variants distinguished
+  by `tag`.
 - **A `.vibe` file reaches the platform through Effect**, not through
   `node:*` imports, `console`, `fetch` or the DOM: an Effect service
   (`Console`, `FileSystem`, `HttpClient`, …), a `module node { … }` body in
