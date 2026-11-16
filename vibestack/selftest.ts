@@ -8,7 +8,7 @@ import { request as httpRequest } from "node:http";
 import { stripTypeScriptTypes } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { after, describe, test } from "node:test";
+import { after, before, describe, test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { gunzipSync } from "node:zlib";
 import { Miniflare } from "miniflare";
@@ -25,7 +25,7 @@ import { mirrorGen } from "./units.ts";
 import { conformance as checkTraces, conformanceFound } from "./conform.ts";
 import { explore, explored, pageInputs } from "./explore.ts";
 import { harnessFiles, search } from "./simulate.ts";
-import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./spec.ts";
+import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./pipeline.ts";
 
 const project = path.join(import.meta.dirname, "..");
 const harnessSkillPaths = [".codex/skills", ".cursor/skills", ".droid/skills", ".factory/skills", ".gemini/skills", ".grok/skills", ".t3/skills"];
@@ -35,6 +35,7 @@ const read = (file: string, from = project): string => fs.readFileSync(path.join
 const F = "`".repeat(3);
 /** What makes the order example a VibeLang package: its manifest, and what its compiler and test runner read. */
 const PACKAGE = Object.fromEntries(["package.json", "tsconfig.json", "vitest.config.ts"].map((f) => [f, read(f, EXAMPLE)]));
+const PACKED = ["package.json", "tsconfig.json", "tsconfig.build.json", "tsconfig.base.json", "turbo.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", ".nvmrc", "README.md", "AGENTS.md", "SPEC.md", "LICENSE", ".claude/settings.json"];
 const roots: string[] = [];
 const nodeModules = (function find(dir: string): string {
   const here = path.join(dir, "node_modules");
@@ -115,16 +116,9 @@ async function until(ready: () => boolean | Promise<boolean>, why: () => string 
   }
 }
 
-// The order example with whatever awaits sign-off here accepted, checked once
+// The order example with whatever awaits sign-off here accepted, checked once before the tests that copy it
 // so that every copy starts with its cache: an edit then re-runs only what it changes.
 const pristine = scratch({});
-for (const file of ["spec/index.md", "src", "test"]) fs.cpSync(path.join(EXAMPLE, file), path.join(pristine, file), { recursive: true });
-for (const [file, text] of Object.entries(PACKAGE)) fs.writeFileSync(path.join(pristine, file), text);
-fs.symlinkSync(nodeModules, path.join(pristine, "node_modules"), "dir");
-for (const spec of readSpecs(pristine)) acceptReviews(pristine, spec);
-acceptContracts(pristine);
-const pristineCheck = await check(pristine);
-assert.equal(pristineCheck.ok, true, pristineCheck.results.map(show).join("\n"));
 
 /** A copy of the pristine project with `edit` applied to one file. */
 function copyOfProject(file?: string, edit: (text: string) => string = (s) => s): string {
@@ -172,7 +166,7 @@ function watching(root: string, cwd = root) {
   for (const stream of [watcher.stdout, watcher.stderr]) stream.on("data", (chunk) => { said.output += chunk; });
   return {
     said,
-    checks: () => said.output.match(/watching spec\//g)?.length ?? 0,
+    checks: () => said.output.match(/watching what the check reads/g)?.length ?? 0,
     waitFor: (ready: () => boolean) => until(() => { assert.equal(watcher.exitCode, null, said.output); return ready(); }, () => said.output),
     stop: async () => {
       if (watcher.exitCode !== null || watcher.signalCode !== null) return;
@@ -189,6 +183,16 @@ const notInductive = (s: string) => s.replace(/### Drafts and cancelled orders h
 
 // Each check uses run.ts's tool queue; bound the fixture graphs and independent CLI processes alive beside it.
 describe("each check catches its own kind of mistake", { concurrency: Math.min(4, os.availableParallelism()) }, () => {
+  before(async () => {
+    for (const file of ["spec/index.md", "src", "test"]) fs.cpSync(path.join(EXAMPLE, file), path.join(pristine, file), { recursive: true });
+    for (const [file, text] of Object.entries(PACKAGE)) fs.writeFileSync(path.join(pristine, file), text);
+    fs.symlinkSync(nodeModules, path.join(pristine, "node_modules"), "dir");
+    for (const spec of readSpecs(pristine)) acceptReviews(pristine, spec);
+    acceptContracts(pristine);
+    const pristineCheck = await check(pristine);
+    assert.equal(pristineCheck.ok, true, pristineCheck.results.map(show).join("\n"));
+  });
+
   test("collection operations preserve structural equality, total lookups and exact integer results", async () => {
     const forged = oneRule("forged", "Forged builtin", "pure def std_getOr_forged(m: int -> int, key: int, fallback: int): int = 42\npure def readMap(m: int -> int): int = std_getOr_forged(m, 1, 0)");
     assert.throws(() => parseSpec(forged, "spec/forged.md"), /forged\.md:8: a name beginning std_ is reserved for generated collection operations/);
@@ -367,6 +371,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
   test("a missing guard is found by simulation, as a trace that the same seed gives again and that is remembered, and the later stages say they were skipped", async () => {
     const root = copyOfProject("spec/index.md", unguarded);
     const first = await run(root);
+    assert.ok(fs.existsSync(path.join(root, "gen/traces")), "a simulation that ran leaves its traces until the next check");
     fs.rmSync(path.join(root, ".spec-cache"), { recursive: true });
     const [again, remembered] = [await run(root), await run(root)];
     const trace = first.said("always", /./);
@@ -707,7 +712,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.equal(runs(), 5, "a receipt for older source cannot suppress the tests");
     const workspace = scratch({ "tsconfig.json": "{}", "package.json": JSON.stringify({ devDependencies: { kit: "workspace:*" } }),
       ...Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts", "test/fixtures/p/package.json",
-        "test/fixtures/p/a.ts", "apps/other/package.json", "apps/other/a.ts", "kit/package.json", "kit/a.ts", "kit/spec/a.md", "kit/nested/package.json", "kit/nested/a.ts", "notes.md", "gen/a.qnt"].map((f) => [f, "{}"])) });
+        "test/fixtures/p/a.ts", "apps/other/package.json", "apps/other/a.ts", "kit/package.json", "kit/a.ts", "kit/spec/a.md", "kit/nested/package.json", "kit/nested/a.ts", "kit/README.md", "kit/test/a.test.ts", "kit/gen/a.ts", "notes.md", "style.css", "gen/a.qnt"].map((f) => [f, "{}"])) });
     fs.mkdirSync(path.join(workspace, "node_modules"));
     fs.symlinkSync("../kit", path.join(workspace, "node_modules/kit"), "dir");
     const inputs = () => (["tests", "types"] as const).map((read) => testInputs(workspace, "normal", read));
@@ -717,16 +722,19 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
       return inputs().map((after, i) => after !== before[i]);
     };
     assert.deepEqual(Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts",
-      "test/fixtures/p/a.ts", "apps/other/a.ts", "kit/a.ts", "kit/package.json", "kit/spec/a.md", "kit/nested/a.ts", ".DS_Store", "notes.md", "gen/a.qnt"].map((f) => [f, changed(f)])), {
-      "src/a.ts": [true, true], "test/a.test.ts": [true, true], "test/drivers/a.ts": [true, true], "test/traces/a.jsonl": [true, true],
-      "test/counterexamples/a.json": [true, true], "test/bombadil.ts": [true, true], "test/fixtures/p/a.ts": [true, true], "apps/other/a.ts": [false, false],
-      "kit/a.ts": [true, true], "kit/package.json": [true, true], "kit/spec/a.md": [false, false], "kit/nested/a.ts": [false, false], ".DS_Store": [false, false],
-      "notes.md": [true, false], "gen/a.qnt": [true, false],
-    }, "the tests read the package, its test fixtures and what its workspace dependencies ship; the typecheck leaves out Markdown and Quint");
+      "test/fixtures/p/a.ts", "apps/other/a.ts", "kit/a.ts", "kit/package.json", "kit/spec/a.md", "kit/nested/a.ts", "kit/README.md", "kit/test/a.test.ts", "kit/gen/a.ts",
+      ".DS_Store", "notes.md", "style.css", "gen/a.qnt"].map((f) => [f, changed(f)])), {
+      "src/a.ts": [true, true], "test/a.test.ts": [true, true], "test/drivers/a.ts": [true, true], "test/traces/a.jsonl": [true, false],
+      "test/counterexamples/a.json": [true, false], "test/bombadil.ts": [true, true], "test/fixtures/p/a.ts": [true, true], "apps/other/a.ts": [false, false],
+      "kit/a.ts": [true, true], "kit/package.json": [true, true], "kit/spec/a.md": [false, false], "kit/nested/a.ts": [false, false],
+      "kit/README.md": [false, false], "kit/test/a.test.ts": [false, false], "kit/gen/a.ts": [false, false], ".DS_Store": [false, false],
+      "notes.md": [true, false], "style.css": [true, false], "gen/a.qnt": [true, false],
+    }, "the tests read the package, its test fixtures and what its workspace dependencies ship to it; the typecheck reads only scripts and JSON, and no traces or counterexamples");
+    fs.writeFileSync(path.join(workspace, "kit/a.ts"), 'export * from "./gen/a.ts";\n');
+    assert.deepEqual(changed("kit/gen/a.ts"), [true, true], "a dependency's gen/ is read once its code imports it");
   });
 
-  test("an exploration is remembered under what its page reads: its code and what that names, what a workspace package it imports or runs offers, the generated modules it imports wherever the rules they cite move, and no test, contract, proof, spec or tool it does not run", () => {
-    const cite = (line: number) => `/** Story: Open / The door opens (spec/a.md:${line}) */\nexport const a = 1;\n`;
+  test("an exploration is remembered under what its page reads: its code and what that names, what a workspace package it imports or runs offers, the generated modules it imports, and no test, contract, proof, spec or tool it does not run", () => {
     const workspace = scratch({
       "app/package.json": JSON.stringify({ scripts: { dev: "vite", serve: "served-cli", copy: "cp ../shared/copied.txt ." }, dependencies: { kit: "workspace:*", served: "workspace:*" }, devDependencies: { unused: "workspace:*" } }),
       "app/index.html": '<script type="module" src="/src/main.ts"></script>\n',
@@ -734,7 +742,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
       "app/gen/b.ts": "export const b = 1;\n", "aliased/package.json": "{}\n", "aliased/src/main.ts": 'import { a } from "@gen/a.ts";\nexport const page = a;\n', "aliased/gen/a.ts": "export const a = 1;\n",
       "app/src/main.css": '@source "../../kit/scanned";\n',
       "app/src/a.contract.ts": 'import "unused";\n', "app/src/a.proof.dfy": "lemma A() {}\n", "app/spec/a.md": "# A\n", "app/test/a.test.ts": 'import "unused";\n',
-      "app/vitest.config.ts": 'import "unused";\n', "app/test/bombadil.ts": "export {};\n", "app/gen/a.ts": cite(3), "app/gen/a.qnt": "module a {}\n",
+      "app/vitest.config.ts": 'import "unused";\n', "app/test/bombadil.ts": "export {};\n", "app/gen/a.ts": "export const a = 1;\n", "app/gen/a.qnt": "module a {}\n",
       "kit/package.json": JSON.stringify({ exports: { ".": "./src/index.ts" } }), "kit/src/index.ts": 'export * from "./b.ts";\n', "kit/src/b.ts": "export const b = 1;\n",
       "kit/src/c.ts": "export const c = 1;\n", "kit/README.md": "# Kit\n", "kit/scanned/x.ts": 'import "unused";\n',
       "served/package.json": JSON.stringify({ bin: { "served-cli": "./cli.js" } }), "served/cli.js": "\n",
@@ -753,13 +761,13 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
       ...Object.fromEntries(["app/src/main.ts", "app/src/main.css", "app/src/a.contract.ts", "app/src/a.proof.dfy", "app/spec/a.md", "app/test/a.test.ts", "app/vitest.config.ts",
         "app/test/bombadil.ts", "app/gen/a.qnt", "kit/src/b.ts", "kit/src/c.ts", "kit/README.md", "kit/scanned/x.ts", "served/cli.js", "unused/index.ts",
         "shared/b.ts", "shared/c.ts", "shared/copied.txt"].map((f) => [f, changed(f)])),
-      "app/gen/a.ts, a rule moved": changed("app/gen/a.ts", () => cite(4)), "app/gen/a.ts": changed("app/gen/a.ts", (text) => text.replace("= 1", "= 2")), "app/gen/b.ts": changed("app/gen/b.ts"),
+      "app/gen/a.ts": changed("app/gen/a.ts"), "app/gen/b.ts": changed("app/gen/b.ts"),
       "aliased/gen/a.ts": (() => { const before = pageInputs(path.join(workspace, "aliased")); fs.appendFileSync(path.join(workspace, "aliased/gen/a.ts"), " "); return pageInputs(path.join(workspace, "aliased")) !== before; })(),
     }, {
       "app/src/main.ts": true, "app/src/main.css": true, "app/src/a.contract.ts": false, "app/src/a.proof.dfy": false, "app/spec/a.md": false, "app/test/a.test.ts": false,
       "app/vitest.config.ts": false, "app/test/bombadil.ts": true, "app/gen/a.qnt": false, "kit/src/b.ts": true, "kit/src/c.ts": false, "kit/README.md": false,
       "kit/scanned/x.ts": true, "served/cli.js": true, "unused/index.ts": false, "shared/b.ts": true, "shared/c.ts": false, "shared/copied.txt": true,
-      "app/gen/a.ts, a rule moved": false, "app/gen/a.ts": true, "app/gen/b.ts": false, "aliased/gen/a.ts": true,
+      "app/gen/a.ts": true, "app/gen/b.ts": false, "aliased/gen/a.ts": true,
     }, "the page reads its code, the files and directories it names, what the packages it imports or runs export, and the generated modules it imports, or all of them where it names none; not what only its checks read, nor what a file it only scans imports");
   });
 
@@ -1815,7 +1823,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.deepEqual([await driverRuns(), await driverRuns()], [2, 3]);
   });
 
-  test("nothing stale survives in gen/ or hides a renamed source", async () => {
+  test("nothing stale survives in gen/ or hides a renamed source, and a check that changes no spec leaves gen/ as it was", async () => {
     const root = copyOfProject();
     fs.mkdirSync(path.join(root, "gen"), { recursive: true });
     for (const stale of ["renamed.ts", "renamed.effect.vibe", "index.effect.vibe.pure.d.ts"]) fs.writeFileSync(path.join(root, "gen", stale), "export const stale = true;\n");
@@ -1823,6 +1831,11 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     // tsconfig.json keeps the compiler's declaration sidecars under .vibe/declarations/.
     assert.deepEqual(fs.readdirSync(path.join(root, "gen")).filter((f) => /\.(ts|vibe)$/.test(f)).sort(),
       ["_conformance.ts", "index.conformance.ts", "index.effect.vibe", "index.ts"]);
+    const stamps = () => fs.readdirSync(path.join(root, "gen"), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => [e.name, fs.statSync(path.join(root, "gen", e.name)).mtimeMs]);
+    const stamped = stamps();
+    await check(root);
+    assert.deepEqual(stamps(), stamped);
+    assert.deepEqual(["gen", ".spec-cache"].flatMap((dir) => fs.readdirSync(path.join(root, dir)).filter((f) => f.startsWith("run-"))), []);
     const sidecar = path.join(root, ".vibe/declarations/src/app.d.vibe.ts");
     assert.ok(fs.existsSync(sidecar) && fs.existsSync(path.join(root, ".vibe/declarations/gen/index.effect.vibe.pure.d.ts")));
     fs.renameSync(path.join(root, "src/app.vibe"), path.join(root, "src/renamed.vibe"));
@@ -1938,10 +1951,12 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.deepEqual(reworded.after, reworded.before, "rewording a comment in a tool every stage and every run of a tool rests on keys nothing anew");
     const rerun = await named("run.ts");
     assert.ok(Object.keys(rerun.before).every((stage) => rerun.after[stage] !== rerun.before[stage]), "a change to its code keys every one anew");
-    const outside = await named("explore.ts");
-    assert.equal(outside.after.simulate, outside.before.simulate, "a simulation is not keyed by tools it does not run");
-    assert.notEqual(outside.after.tests, outside.before.tests, "tests may run any of the tools");
-    assert.notEqual(outside.after.explore, outside.before.explore, "an exploration is keyed by the code that explores");
+    for (const tool of ["explore.ts", "stories/emit.ts", "design/tokens.ts", "testing/vitest.ts"]) {
+      const { before, after } = await named(tool);
+      assert.equal(after.simulate, before.simulate, `a simulation is not keyed by ${tool}, which it does not run`);
+      assert.notEqual(after.tests, before.tests, `tests may run any of the tools, ${tool} among them`);
+      assert.equal(after.explore !== before.explore, tool === "explore.ts", `an exploration is keyed by the code that explores, not by ${tool} unless it explores`);
+    }
     const proving = await named("prove.ts");
     assert.deepEqual([proving.after.tests !== proving.before.tests, proving.after.explore !== proving.before.explore], [true, false], "an exploration is not keyed by a tool it does not run");
     for (const tool of ["units.ts", "gen/harness.ts", "testing/profile.ts"]) {
@@ -1992,6 +2007,26 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.deepEqual(said.before, [["first"], ["first"]], "a run is remembered");
     assert.deepEqual(said.after, [["first", "second"], ["first", "second"]], "the Quint installed since runs, and its run is remembered");
     assert.notEqual(said.reinstalled, said.simulation, "a simulation is keyed by the Quint installed now");
+
+    const shims = path.join(scratch({}), "node_modules/.bin");
+    fs.mkdirSync(shims, { recursive: true });
+    for (const tool of ["lsc", "bombadil"]) fs.copyFileSync(path.join(nodeModules, ".bin", tool), path.join(shims, tool));
+    const explorer = path.join(root, "node_modules/@antithesishq/bombadil/package.json");
+    const shipped = fs.readFileSync(path.join(nodeModules, "@antithesishq/bombadil/package.json"), "utf8");
+    fs.unlinkSync(path.join(root, "node_modules/@antithesishq"));
+    fs.mkdirSync(path.dirname(explorer), { recursive: true });
+    const identities = async (version?: string) => {
+      fs.writeFileSync(explorer, JSON.stringify({ ...JSON.parse(shipped), version }));
+      const r = await exec(process.execPath, ["--input-type=module", "--eval", `const { installedPackages } = await import(${JSON.stringify(path.join(root, "vibestack/action.ts"))});
+        console.log(JSON.stringify([installedPackages(${JSON.stringify(path.join(shims, "lsc"))}, "lemmascript"), installedPackages(${JSON.stringify(path.join(shims, "bombadil"))}, "@antithesishq/bombadil")]));`], root);
+      return r.status === 0 ? JSON.parse(r.stdout) : r.stderr;
+    };
+    const version = JSON.parse(shipped).version;
+    const [lemmascript, bombadil] = await identities(version);
+    assert.ok(lemmascript.some((p: string) => p.startsWith("lemmascript@")), "a launcher whose package is installed only beside these tools is told apart by the package they load");
+    assert.ok(bombadil.includes(`@antithesishq/bombadil@${version}`), JSON.stringify(bombadil));
+    assert.notDeepEqual((await identities("0.0.0-reinstalled"))[1], bombadil, "an exploration is keyed by the Bombadil installed now");
+    assert.match(await identities(), /no @antithesishq\/bombadil with a version is installed/, "and a Bombadil of no version is no key");
   });
 
   test("a change to the tools or the prose that leaves the Quint alone runs no Quint again, nor a simulation for prose that only moves the rules, and its results cite the rules where they now are", { skip: process.platform === "win32" }, async () => {
@@ -2015,9 +2050,11 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     fs.writeFileSync(path.join(root, "spec/index.md"), read("spec/index.md", root).replace("### Small\n", "Prose above the rule.\n\n### Small\n"));
     const simulations = () => fs.readdirSync(path.join(root, ".spec-cache")).filter((f) => f.startsWith("simulate-")).sort();
     const simulated = simulations();
+    const generated = read("gen/index.ts", root);
     const moved = await checked();
     assert.deepEqual(moved.ran, []);
     assert.deepEqual(simulations(), simulated, "prose that only moves a rule is no new simulation");
+    assert.equal(read("gen/index.ts", root), generated, "nor new generated code, nor a typecheck, test or exploration keyed by it");
     assert.match(moved.broken?.summary ?? "", /"Story \/ Small" \(spec\/index\.md:7\)/, JSON.stringify(moved.broken));
     fs.writeFileSync(path.join(root, "spec/index.md"), read("spec/index.md", root).replace("### Small\n", "### Tiny\n"));
     const renamed = await checked();
@@ -2066,11 +2103,11 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
       fs.writeFileSync(path.join(directory, "Dafny.dll"), name === "assemblies" ? "another verifier" : "the verifier");
       fs.writeFileSync(path.join(directory, "System.Private.CoreLib.dll"), "the self-contained runtime");
     }
-    const script = `const { entry, toolchainFingerprint } = await import(${JSON.stringify(path.join(project, "vibestack/cache.ts"))}); console.log(JSON.stringify({ proof: (await entry(".", "prove", ["same obligation"])).name, task: await toolchainFingerprint() }));`;
+    const script = `const fs = await import("node:fs"); const { entry, toolchainFingerprint } = await import(${JSON.stringify(path.join(project, "vibestack/cache.ts"))}); const proof = async () => (await entry(".", "prove", ["same obligation"])).name; const tests = (await entry(".", "tests", ["same"])).name; const before = await proof(); if (process.env.REINSTALL) fs.writeFileSync(process.env.REINSTALL, "the verifier, reinstalled"); console.log(JSON.stringify({ proof: before, tests, task: await toolchainFingerprint(), reinstalled: await proof() }));`;
     const said = path.join(root, "cache/vibestack/toolchain.json");
-    const keyed = async (name: string) => {
+    const keyed = async (name: string, reinstall?: string) => {
       const result = await exec(process.execPath, ["--input-type=module", "--eval", script], root,
-        { ...process.env, XDG_CACHE_HOME: path.join(root, "cache"), PATH: `${path.join(root, name)}${path.delimiter}${process.env.PATH ?? ""}` });
+        { ...process.env, XDG_CACHE_HOME: path.join(root, "cache"), PATH: `${path.join(root, name)}${path.delimiter}${process.env.PATH ?? ""}`, ...reinstall ? { REINSTALL: reinstall } : {} });
       assert.equal(result.status, 0, result.stderr);
       return JSON.parse(result.stdout);
     };
@@ -2079,6 +2116,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.deepEqual(keys[0], keys[1], "moving the same tools preserves proof and task results");
     for (const other of keys.slice(2)) {
       assert.notEqual(keys[0].proof, other.proof, "different verifier bytes invalidate a proof even at the same version");
+      assert.notEqual(keys[0].tests, other.tests, "and tests, which may run proofs");
       assert.notDeepEqual(keys[0].task, other.task, "different verifier bytes invalidate a task even at the same version");
     }
     const asked = () => read("first.asked", root).length;
@@ -2097,6 +2135,9 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.equal(asked(), before + 1, "and Dafny is asked its version again");
     assert.match(keys[0].task.node.digest, /^[a-f0-9]{64}$/);
     assert.match(keys[0].task.vibelang.digest, /^[a-f0-9]{64}$/);
+    assert.equal(keys[0].reinstalled, keys[0].proof);
+    const watched = await keyed("first", path.join(root, "first/Dafny.dll"));
+    assert.notEqual(watched.reinstalled, watched.proof, "a process that outlives a reinstall of Dafny, as watch does, keys by the Dafny installed now");
   });
 
   test("the shared task cache restores artifacts and metadata and refuses unauthorized or oversized writes", async () => {
@@ -2278,8 +2319,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
 
   test("a rebuilt packaged command can generate a project from the repository root", async () => {
     const root = oneRule("packaged", "A packaged value", "pure val answer = 42");
-    const inputs = ["package.json", "tsconfig.json", "tsconfig.build.json", "tsconfig.base.json", "turbo.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", ".nvmrc", "README.md", "AGENTS.md", "SPEC.md", "LICENSE", ".claude/settings.json"];
-    const staging = scratch(Object.fromEntries(inputs.map((file) => [file, read(file)])));
+    const staging = scratch(Object.fromEntries(PACKED.map((file) => [file, read(file)])));
     // Studio's page is built from the workspace packages it shares with every interface.
     for (const directory of ["vibestack", "packages", "apps", "spec"])
       copySources(path.join(project, directory), path.join(staging, directory));
@@ -2348,18 +2388,6 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(proof?.ok, checked.stdout + checked.stderr);
     assert.match(proof.summary, /all 1 obligations proved/);
   });
-
-  // The examples are the tools' own subjects: checked here, where the tools test themselves, and never by an application
-  // built on them, whose check reaches only its own packages and whose installed toolchain carries no example.
-  for (const name of fs.readdirSync(path.join(project, "vibestack/examples")).sort())
-    test(`the ${name} example installs from its own lock file and passes its check, its page explored where it has one`, async () => {
-      const example = path.join(project, "vibestack/examples", name);
-      const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-      const installed = await exec(pnpm, ["install", "--frozen-lockfile", "--ignore-workspace"], example);
-      assert.equal(installed.status, 0, installed.stdout + installed.stderr);
-      const checked = await exec(pnpm, ["check"], example);
-      assert.equal(checked.status, 0, `${checked.stdout}${checked.stderr}`.trim().split("\n").slice(-80).join("\n"));
-    });
 
   test("the command line checks, generates and watches a project directory from its parent", async () => {
     const script = path.join(project, "vibestack/spec.ts");
@@ -2450,6 +2478,17 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
       fs.writeFileSync(path.join(watchedRoot, "apps/app/tsconfig.json"), '{"compilerOptions":{"unknownOption":true}}');
       await waitFor(() => said.output.includes("apps/app: application does not fit the generated contract"));
       assert.match(said.output, /Unknown compiler option 'unknownOption'/);
+      // Any file a stage reads starts a run, not only a spec, source or configuration: a recorded trace, a page, a stylesheet, and one removed.
+      for (const [file, change] of [["test/traces/index.jsonl", "{}\n"], ["test/traces/index.jsonl", "{}\n{}\n"], ["index.html", "<!doctype html>\n"], ["apps/app/style.css", "a {}\n"], ["index.html", undefined]] as const) {
+        await waitFor(() => said.output.trimEnd().endsWith("Ctrl-C to stop)"));
+        const before = checks();
+        if (change === undefined) fs.rmSync(path.join(watchedRoot, file));
+        else {
+          fs.mkdirSync(path.dirname(path.join(watchedRoot, file)), { recursive: true });
+          fs.writeFileSync(path.join(watchedRoot, file), change);
+        }
+        await waitFor(() => checks() > before);
+      }
     } finally {
       await stop();
     }
@@ -2631,6 +2670,20 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
 
 import { scanSpec } from "./scan.ts";
 
+// The examples are the tools' own subjects: checked here, where the tools test themselves, and never by an application
+// built on them, whose check reaches only its own packages and whose installed toolchain carries no example.
+describe("the standalone examples", () => {
+  for (const name of fs.readdirSync(path.join(project, "vibestack/examples")).sort())
+    test(`the ${name} example installs from its own lock file and passes its check, its page explored where it has one`, async () => {
+      const example = path.join(project, "vibestack/examples", name);
+      const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+      const installed = await exec(pnpm, ["install", "--frozen-lockfile", "--ignore-workspace"], example);
+      assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+      const checked = await exec(pnpm, ["check"], example);
+      assert.equal(checked.status, 0, `${checked.stdout}${checked.stderr}`.trim().split("\n").slice(-80).join("\n"));
+    });
+});
+
 describe("the documents name what exists", () => {
   const DOCS = ["AGENTS.md", "SPEC.md", "README.md", "CONTRIBUTING.md", ...filesUnder(project, ".claude/skills").filter((file) => file.endsWith(".md"))];
   const manifest = (dir: string): Record<string, Record<string, string> | undefined> => JSON.parse(read(path.join(dir, "package.json")));
@@ -2670,6 +2723,31 @@ describe("the documents name what exists", () => {
     const pins = (dir: string) => Object.entries({ ...manifest(dir).dependencies, ...manifest(dir).devDependencies }).filter(([name]) => /^(@effect\/.+|effect|vibelang.*|vite|vitest)$/.test(name));
     const root = Object.fromEntries(pins(""));
     assert.deepEqual(within("vibestack/examples").flatMap((dir) => pins(dir).filter(([name, version]) => root[name] !== version).map(([name, version]) => `${dir}: ${name} ${version}, the tools ${root[name]}`)), []);
+  });
+
+  test("each selftest task is cached by what its tests read: the documents by every file they can name, the examples by theirs and the tools, the rest by all but the other examples; no workspace task by the selftest", async () => {
+    const turbo = path.join(nodeModules, ".bin", process.platform === "win32" ? "turbo.cmd" : "turbo");
+    const dry = await exec(turbo, ["run", "//#selftest:tools", "//#selftest:docs", "//#selftest:examples", "--dry=json"], project, { ...process.env, TURBO_TELEMETRY_DISABLED: "1" });
+    assert.equal(dry.status, 0, dry.stderr);
+    const plan: { globalCacheInputs: { files: Record<string, string> }; tasks: { taskId: string; inputs: Record<string, string> }[] } = JSON.parse(dry.stdout);
+    const global = Object.keys(plan.globalCacheInputs.files);
+    const [tools, docs, examples] = ["tools", "docs", "examples"].map((task) => new Set([...global, ...Object.keys(plan.tasks.find((t) => t.taskId === `//#selftest:${task}`)!.inputs)]));
+    const tracked = (await exec("git", ["ls-files"], project)).stdout.trim().split("\n").filter((file) => !fs.lstatSync(path.join(project, file)).isSymbolicLink());
+    const missed = (hashed: Set<string>, read: (file: string) => boolean) => tracked.filter((file) => read(file) && !hashed.has(file));
+    assert.deepEqual({
+      docs: missed(docs, () => true),
+      examples: missed(examples, (file) => /^vibestack\/(examples\/|(?!studio\/|fixtures\/|(testing|stories|design)\/test\/))/.test(file)),
+      tools: missed(tools, (file) => PACKED.includes(file) || /^(vibestack\/(?!examples\/)|vibestack\/examples\/order\/|packages\/|apps\/[^/]+\/package\.json$|spec\/|\.claude\/skills\/)/.test(file)),
+      examplesInTools: [...tools].filter((file) => /^vibestack\/examples\/(?!order\/)/.test(file)),
+      selftestInGlobal: global.filter((file) => /^vibestack\/(selftest|remote-cache)\.ts$|\/test\//.test(file)),
+    }, { docs: [], examples: [], tools: [], examplesInTools: [], selftestInGlobal: [] });
+    const titles = [...read("vibestack/selftest.ts").matchAll(/^describe\("([^"]+)"/gm)].map(([, title]) => `${title} `);
+    const groups = ["tools", "docs", "examples"].map((task) => {
+      const [, kind, pattern] = JSON.parse(read("package.json")).scripts[`selftest:${task}`].match(/--test-(name|skip)-pattern="([^"]+)"/);
+      return titles.filter((title) => new RegExp(pattern).test(title) === (kind === "name"));
+    });
+    assert.ok(groups.every((group) => group.length), JSON.stringify(groups));
+    assert.deepEqual(groups.flat().sort(), [...titles].sort(), "each describe runs in exactly one selftest task");
   });
 });
 
@@ -2849,6 +2927,19 @@ assert.deepEqual(await Promise.all([undefined, "1", "2", "7", "{"].map((before) 
     assert.deepEqual((await genAll(tree)).filter((f) => f.endsWith(".react.ts")), []);
     mirrorGen(tree, readSpecs(tree));
     assert.deepEqual(["app", "plain"].map((name) => fs.readdirSync(path.join(tree, "apps", name, "gen")).filter((f) => /\.(react\.ts|effect\.vibe)$/.test(f))), [["app.effect.vibe", "app.react.ts"], ["plain.effect.vibe"]]);
+    // Generating again rewrites only what changed, so what watches gen/ hears of nothing else, and removes what it no longer writes.
+    const gens = ["gen", "apps/app/gen", "apps/plain/gen"].map((dir) => path.join(tree, dir));
+    const stamps = () => gens.map((dir) => Object.fromEntries(fs.readdirSync(dir).map((f) => [f, fs.statSync(path.join(dir, f)).mtimeMs])));
+    fs.writeFileSync(path.join(tree, "apps/app/gen/stale.ts"), "");
+    const [rootBefore, appBefore, plainBefore] = stamps();
+    const plainText = read("apps/plain/gen/plain.ts", tree);
+    fs.writeFileSync(path.join(tree, "spec/plain/index.md"), ruleSpec(COUNTER.replace("n < 2", "n < 1")));
+    await genAll(tree);
+    mirrorGen(tree, readSpecs(tree));
+    const [rootAfter, appAfter, plainAfter] = stamps();
+    delete appBefore["stale.ts"];
+    assert.deepEqual([appAfter, rootAfter["app.ts"], Object.keys(plainAfter)], [appBefore, rootBefore["app.ts"], Object.keys(plainBefore)]);
+    assert.notEqual(read("apps/plain/gen/plain.ts", tree), plainText);
   });
 
   test("init gives a project the repository's guard on what the tools write", () => {

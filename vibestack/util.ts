@@ -4,7 +4,7 @@ import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { exec } from "./run.ts";
 import { heading, isStd, type Spec } from "./parse.ts";
-import type { Result } from "./spec.ts";
+import type { Result } from "./pipeline.ts";
 import ts from "typescript";
 import { profile, type TestProfile } from "./testing/profile.ts";
 
@@ -199,38 +199,63 @@ function addVitest(root: string): string {
 }
 
 /**
- * What a fingerprint covers: what a package's tests read, or what its typecheck may read, which leaves out the
- * Markdown, Quint and Dafny no TypeScript compiler reads. What its page reads is explore.ts's `pageInputs`.
+ * What a fingerprint covers: what a package's tests read, or what its typecheck may read, its scripts and JSON but the
+ * traces and counterexamples. What its page reads is explore.ts's `pageInputs`.
  */
 export type Inputs = "tests" | "types";
 
-/**
- * A fingerprint of what a package's tests or its typecheck read: its files and the top of its gen/ (an owner's is
- * mirrored from the root's), the fixtures nested under its test/, the workspace packages it depends on without their
- * spec/ or the packages nested in them, the lock file and the fuzzing budget.
- */
-export function testInputs(root: string, mode: TestProfile = "normal", read: Inputs = "tests"): string {
-  const hash = createHash("sha256").update(JSON.stringify(["tests-v3", read, process.versions.node, process.platform, process.arch, profile(mode)]));
+/** A package and the workspace packages it depends on, and theirs, each once: by its real directory and the name it is depended on by. */
+export function workspacePackages(root: string): { directory: string; name: string }[] {
+  const found = new Map<string, string>();
   const pending = [{ directory: root, name: "." }];
-  const seen = new Set<string>();
   for (const { directory, name } of pending) {
     const from = fs.realpathSync(directory);
-    if (seen.has(from)) continue;
-    seen.add(from);
-    hash.update(JSON.stringify(name));
+    if (found.has(from)) continue;
+    found.set(from, name);
     const pkg = manifest(from);
     for (const [dependency, version] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }).sort(([a], [b]) => a.localeCompare(b))) {
-      const directory = path.join(from, "node_modules", dependency);
-      if (String(version).startsWith("workspace:") && fs.existsSync(directory)) pending.push({ directory, name: dependency });
+      const at = path.join(from, "node_modules", dependency);
+      if (String(version).startsWith("workspace:") && fs.existsSync(at)) pending.push({ directory: at, name: dependency });
     }
+  }
+  return [...found].map(([directory, name]) => ({ directory, name }));
+}
+
+/** A relative module a script names, by import, export or `import()`. */
+const SPECIFIER = /(?:\bfrom\s+|\bimport\s*\(\s*|^\s*import\s+)["'](\.\.?\/[^"']+)["']/gm;
+
+/**
+ * A fingerprint of what a package's tests or its typecheck read: its files and the top of its gen/ (an owner's is
+ * mirrored from the root's), the fixtures nested under its test/, the workspace packages it depends on, the lock file
+ * and the fuzzing budget. Of a workspace package depended on, only what a dependent can load: not its spec/, Markdown,
+ * tests, drivers, traces or counterexamples, nor the packages nested in it, nor its gen/ unless its scripts or its
+ * manifest reach into it.
+ */
+export function testInputs(root: string, mode: TestProfile = "normal", read: Inputs = "tests"): string {
+  const hash = createHash("sha256").update(JSON.stringify(["tests-v4", read, process.versions.node, process.platform, process.arch, profile(mode)]));
+  const served = (file: string) => !isTestFile(file) && ![DRIVERS, TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`));
+  const reads: Record<Inputs, (file: string) => boolean> = {
+    tests: () => true,
+    types: (file) => /\.(?:[cm]?[jt]sx?|json|vibex?)$/.test(file) && ![TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`)),
+  };
+  const update = (from: string, file: string) => {
+    const bytes = fs.readFileSync(path.join(from, file));
+    hash.update(`${file}\0${bytes.length}\0`).update(bytes);
+    return bytes;
+  };
+  for (const { directory: from, name } of workspacePackages(root)) {
+    hash.update(JSON.stringify(name));
     const own = name === ".";
-    const gen = path.join(from, "gen");
-    const top = fs.existsSync(gen) ? fs.readdirSync(gen, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `gen/${e.name}`) : [];
-    const keep = (file: string) => (own || !file.startsWith("spec/")) && ({ tests: true, types: !/\.(?:md|qnt|dfy)$/.test(file) } satisfies Record<Inputs, boolean>)[read];
-    for (const file of [...packageFiles(from, keep, "", own), ...top.filter(keep)]) {
-      const bytes = fs.readFileSync(path.join(from, file));
-      hash.update(`${file}\0${bytes.length}\0`).update(bytes);
+    const keep = (file: string) => reads[read](file) && (own || (served(file) && !/^(?:spec|gen)\//.test(file) && !file.endsWith(".md")));
+    const pkg = manifest(from);
+    let gen = own || /(?:^|["/.])gen\//.test(JSON.stringify([pkg.exports, pkg.main, pkg.module, pkg.types]));
+    for (const file of packageFiles(from, keep, "", own)) {
+      const bytes = update(from, file);
+      if (!gen && /\.(?:[cm]?[jt]sx?|vibex?)$/.test(file))
+        gen = [...bytes.toString("utf8").matchAll(SPECIFIER)].some(([, to]) => path.posix.join(path.posix.dirname(file), to).startsWith("gen/"));
     }
+    const top = gen && fs.existsSync(path.join(from, "gen")) ? fs.readdirSync(path.join(from, "gen"), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `gen/${e.name}`) : [];
+    for (const file of top.filter(reads[read])) update(from, file);
   }
   const { lock } = packageManager(root);
   if (lock) hash.update(fs.readFileSync(lock));
@@ -254,6 +279,9 @@ export function danglingCitations(root: string, specs: Spec[], dir = ""): string
   return citations(root, [dir]).filter((c) => !specs.some((s) => s.file === c.spec && names(s, c.heading))).map((c) => `${c.at}  ${c.spec}, "${c.heading}"`);
 }
 
+/** A directory no stage reads in a package: build output, dependencies, saved explorations and hidden directories. */
+export const UNREAD = /^(node_modules|dist|build|out|coverage|storybook-static|__traces__|__screenshots__|\..*)$/;
+
 /**
  * A package's files that `keep` accepts, as paths from it: not gen/, build output, dependencies, hidden directories
  * (such as `.cache/`) or `.DS_Store`, nor the packages nested in it, which are checked on their own, except, with
@@ -265,7 +293,7 @@ export function packageFiles(root: string, keep: (file: string) => boolean, dir 
     if (e.name === ".git" || e.name === ".DS_Store") return [];
     if (e.isFile()) return keep(rel) ? [rel] : [];
     const nested = fs.existsSync(path.join(root, rel, "package.json"));
-    const skip = /^(node_modules|dist|build|out|coverage|storybook-static|__traces__|__screenshots__|\..*)$/.test(e.name)
+    const skip = UNREAD.test(e.name)
       || (nested && (e.name === "gen" || !fixtures || !/(?:^|\/)test\//.test(rel)));
     return e.isDirectory() && !skip ? packageFiles(root, keep, rel, fixtures) : [];
   }).sort();

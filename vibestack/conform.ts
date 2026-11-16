@@ -42,11 +42,10 @@ export function conformanceFound(model: Model, spec: Spec, traces: Step[][], wit
 }
 
 /** gen/<name>.conformance.ts: the types a test/drivers/<name>.ts is written to, over a copy of conformance.ts. */
-export function writeConformance(root: string, model: Model) {
+export function writeConformance(model: Model, write: (name: string, text: string) => void) {
   if (!model.stateType || !model.transitions.length) return;
-  const dir = path.join(root, "gen");
-  fs.copyFileSync(path.join(import.meta.dirname, "conformance.ts"), path.join(dir, "_conformance.ts"));
-  fs.writeFileSync(path.join(dir, `${model.name}.conformance.ts`), [
+  write("_conformance.ts", fs.readFileSync(path.join(import.meta.dirname, "conformance.ts"), "utf8"));
+  write(`${model.name}.conformance.ts`, [
     `// Generated from ${model.source}; do not edit. What test/drivers/${model.name}.ts exports, as \`driver\` and \`options\`.`,
     `import type * as oracle from "./${model.name}.ts";`,
     `import type { Driver as Reaching, Options as Choosing } from "./_conformance.ts";`,

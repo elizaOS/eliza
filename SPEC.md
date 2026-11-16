@@ -549,13 +549,14 @@ under `src/`.
   cannot run keeps it, and one that breaks nothing or no longer applies to
   the page removes it. A bug worth keeping fixed becomes a step of the journey it broke.
 - **A pass is remembered** until what the page reads changes, or the
-  installed Bombadil or the script: the package's files but its tests and
-  their configuration, drivers, traces, counterexamples, contracts, proofs and
-  `spec/`; each file and directory its code or scripts name by a path; what
-  each workspace package its code imports, or its scripts run, exports; and
-  the generated modules it imports, whatever line the rules they cite are on,
+  installed Bombadil and the packages it loads, or the script: the package's
+  files but its tests and their configuration, drivers, traces,
+  counterexamples, contracts, proofs and `spec/`; each file and directory its
+  code or scripts name by a path; what each workspace package its code
+  imports, or its scripts run, exports; and the generated modules it imports,
   or all of them where its code names none. A page that runs the tools, as
-  Studio's does, reads them all. The nightly check always explores afresh.
+  Studio's does, reads the code of them all. The nightly check always
+  explores afresh.
 
 ## Large applications
 

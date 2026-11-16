@@ -311,13 +311,13 @@ current one. Installed as a package, use `pnpm exec spec <command> [<dir>]`.
 | `pnpm quick` | Types, lint and tests of what changed |
 | `pnpm verify` | Everything CI runs: build, types, tests, browser tests, checks, lint, Knip, Madge, jscpd and the selftest, for every workspace package |
 | `pnpm gen [<dir>]` | Generates `gen/` only |
-| `node vibestack/spec.ts watch [<dir>]` | Rechecks when a spec, source file or test changes |
+| `node vibestack/spec.ts watch [<dir>]` | Rechecks when any file the check reads changes |
 | `pnpm accept [<dir>]` | The user's sign-off: checks afresh and records what `review` lists, [all or nothing](SPEC.md#review) |
 | `pnpm accept unproved` | Records the listed obligations as simulated only. The user's decision |
 | `pnpm new [<path>]` | Fills an empty root index or creates a child [starter spec](SPEC.md#writing-a-spec) |
 | `node vibestack/spec.ts init [<dir>]` | Sets up an existing project ([above](#using-it-from-another-package)) |
 | `pnpm demo` | Runs the order example's scripted checkout session |
-| `pnpm selftest` | Breaks the pipeline one way at a time and checks each break is caught, then installs and checks every example |
+| `pnpm selftest` | Breaks the pipeline one way at a time and checks each break is caught, checks what the documents name, and installs and checks every example, as three cached tasks |
 | `pnpm build` | Compiles the tools into `dist/`, the packaged `spec` command |
 
 | Exit code | Means |

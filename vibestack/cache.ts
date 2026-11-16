@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { filesUnder, sha, tokenize, writeWhole } from "./util.ts";
-import { NEEDS_DAFNY, exec, onPath, solver } from "./run.ts";
+import { NEEDS_DAFNY, exec, onPath, solver, stamp } from "./run.ts";
 
 /** Load an operator's publishing credential only for the exact cache endpoint it belongs to. */
 export function cacheCredentials(env: NodeJS.ProcessEnv, args: string[], declared: string | undefined, credentials: { apiUrl: string; writeToken: string }): NodeJS.ProcessEnv {
@@ -32,11 +32,14 @@ const packageVersion = (dep: string) => {
  * and modification and change times, which a copy or an archive cannot set back. An unchanged toolchain is not read again.
  */
 const LASTING = path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"), "vibestack", "toolchain.json");
-type Said = Record<string, { files: string[]; stamp: string; value: string }>;
+interface Known { files: string[]; stamp: string; value: string }
+type Said = Record<string, Known>;
+const isKnown = (k: unknown): k is Known => typeof k === "object" && k !== null && "files" in k && Array.isArray(k.files) && k.files.every((f) => typeof f === "string")
+  && "stamp" in k && typeof k.stamp === "string" && "value" in k && typeof k.value === "string";
 const readSaid = (): Said => {
   try {
     const said: unknown = JSON.parse(fs.readFileSync(LASTING, "utf8"));
-    return said && typeof said === "object" ? said as Said : {};
+    return typeof said === "object" && said !== null ? Object.fromEntries(Object.entries(said).filter(([, k]) => isKnown(k))) : {};
   } catch {
     return {};
   }
@@ -45,20 +48,20 @@ let said: Said | undefined;
 const learned: Said = {};
 const keepSaid = () => {
   try {
-    writeWhole(LASTING, JSON.stringify(Object.fromEntries(Object.entries({ ...readSaid(), ...learned }).filter(([, k]) => k.files?.every((f) => fs.existsSync(f))))));
+    writeWhole(LASTING, JSON.stringify(Object.fromEntries(Object.entries({ ...readSaid(), ...learned }).filter(([, k]) => k.files.every((f) => fs.existsSync(f))))));
     return true;
   } catch {
     return false;
   }
 };
 function lasting(key: string, files: string[]) {
-  const stamp = files.map((f) => { const s = fs.statSync(f, { bigint: true }); return `${s.dev}:${s.ino}:${s.size}:${s.mtimeNs}:${s.ctimeNs}`; }).join(" ");
+  const now = stamp(files);
   const known = (said ??= readSaid())[key];
   return {
-    value: known?.stamp === stamp ? known.value : undefined,
+    value: known?.stamp === now ? known.value : undefined,
     keep: (value: string) => {
       if (!Object.keys(learned).length) process.once("exit", keepSaid);
-      (said ??= readSaid())[key] = learned[key] = { files, stamp, value };
+      (said ??= readSaid())[key] = learned[key] = { files, stamp: now, value };
       return value;
     },
   };
@@ -110,10 +113,30 @@ const dafnySaid = (version: string | undefined, stopped?: string, out = "") => {
     : !version.startsWith("4.11.") ? `this is Dafny ${version}, and LemmaScript targets Dafny 4.11.x` : undefined;
   return { version, problem: stopped ?? (problem && `${problem}: ${NEEDS_DAFNY} (see README, "Getting started")`) };
 };
-/** The version of Dafny on the PATH, read once it is read without a problem, or why it could not be read: asked of Dafny only when its installation changed. */
-let dafny: Promise<{ version?: string; problem?: string }> | undefined;
-export function dafnyVersion(): Promise<{ version?: string; problem?: string }> {
-  return (dafny ??= (async () => {
+/**
+ * What is read of Dafny once for its installation as it is now: its launchers, its assemblies and Z3 on the PATH. A
+ * process that outlives a reinstall, as `watch` does, reads it again. A value `kept` refuses is read again next time.
+ */
+function perDafny<T>(read: () => Promise<T>, kept: (value: T) => boolean = () => true): () => Promise<T> {
+  const known = new Map<string, Promise<T>>();
+  return () => {
+    let at: string;
+    try {
+      const { launchers, assemblies } = dafnyInstallation();
+      const z3 = onPath("z3");
+      at = stamp([...launchers, path.join(assemblies, "Dafny.dll"), ...z3 ? [z3, fs.realpathSync(z3)] : []]);
+    } catch (e) {
+      at = (e as Error).message;
+    }
+    let value = known.get(at);
+    if (!value) known.set(at, value = read().then((v) => { if (!kept(v)) known.delete(at); return v; }, (e) => { known.delete(at); throw e; }));
+    return value;
+  };
+}
+
+/** The version of Dafny on the PATH, or why it could not be read: asked of Dafny only when its installation changed. */
+export const dafnyVersion = perDafny(async (): Promise<{ version?: string; problem?: string }> => {
+  try {
     const files = dafnyFiles();
     const installed = files && lasting(`dafny --version ${files[0]}`, files);
     if (installed?.value) return dafnySaid(installed.value);
@@ -121,17 +144,22 @@ export function dafnyVersion(): Promise<{ version?: string; problem?: string }> 
     const version = r.status === 0 ? r.stdout.match(/\d+\.\d+\.\d+/)?.[0] : undefined;
     if (version && !r.stopped) installed?.keep(version);
     return dafnySaid(version, r.stopped, `${r.stdout}${r.stderr}`);
-  })().catch((e: Error) => ({ problem: `Dafny could not be run (${e.message}): ${NEEDS_DAFNY} (see README, "Getting started")` }))
-    .then((r) => { if (r.problem) dafny = undefined; return r; }));
-}
+  } catch (e) {
+    return { problem: `Dafny could not be run (${(e as Error).message}): ${NEEDS_DAFNY} (see README, "Getting started")` };
+  }
+}, (r) => !r.problem);
 
 /** The verifier's launchers, managed assemblies, and any separately installed .NET host, by their bytes. */
-let verifier: ReturnType<typeof readDafnyIdentity> | undefined;
-export const dafnyIdentity = () => (verifier ??= readDafnyIdentity().catch((e) => { verifier = undefined; throw e; }));
-async function readDafnyIdentity() {
+export const dafnyIdentity = perDafny(async () => {
   const { launchers, assemblies, runtime } = dafnyInstallation();
   return { version: (await dafnyVersion()).version, launchers: launchers.map(executableDigest), assemblies: treeDigest(assemblies), runtime: runtime.map((dir) => [path.basename(dir), treeDigest(dir)]) };
-}
+});
+
+/** Dafny, told apart by its installation and the solver it is given. */
+export const verifierIdentity = perDafny(async () => {
+  const [dafny, z3] = await Promise.all([dafnyIdentity(), solver()]);
+  return JSON.stringify({ dafny, z3: `${z3.version}:${executableDigest(z3.path)}`, platform: `${process.platform}:${process.arch}` });
+});
 
 /** The native toolchain that a Turbo task's inputs cannot read from the repository. */
 export async function toolchainFingerprint() {
@@ -150,13 +178,15 @@ export async function toolchainFingerprint() {
 }
 
 const ext = path.extname(import.meta.filename);
-/** A tool's imports of other tools that run with it: `import type` and `export type` load nothing. */
-const IMPORT = /^(?:import\s+(?!type\b)(?:[^;"]*?\bfrom\s+)?|export\s+(?!type\b)[^;"]*?\bfrom\s+)"(\.\.?\/[^"$]+)"/gm;
+/** A tool's imports of other tools that run with it, as it starts or once it asks for them: `import type` and `export type` load nothing. */
+const IMPORT = /(?:^(?:import\s+(?!type\b)(?:[^;"]*?\bfrom\s+)?|export\s+(?!type\b)[^;"]*?\bfrom\s+)|\bimport\(\s*)"(\.\.?\/[^"$]+)"/gm;
+/** The tools' directories: their commands, the generator, and what a project's tests, stories and design tokens load of them. */
+const TOOL_DIRS = ["", "gen", "testing", "stories", "design"];
 /**
- * The tools' own scripts, as source or as built: this directory and gen/, never the projects below it (examples,
- * Studio), whose checks rewrite their gen/ while this one reads, and every script they import. Read once, as this
- * process loads them, so that a key names the code that runs, however the files change after. A script is named by
- * its tokens and the line breaks between them, which decide what it does, and not by its comments or indentation,
+ * The tools' own scripts, as source or as built: `TOOL_DIRS`, never the projects below them (examples, Studio, the
+ * tools' own tests), whose checks rewrite their gen/ while this one reads, and every script they import. Read once, as
+ * this process loads them, so that a key names the code that runs, however the files change after. A script is named
+ * by its tokens and the line breaks between them, which decide what it does, and not by its comments or indentation,
  * so that rewording a comment runs nothing again; that name is remembered across processes while the file is
  * unchanged, from before it was read.
  */
@@ -170,7 +200,7 @@ const load = (f: string) => {
   tools.set(f, { code: value ?? keep(sha(...tokenize(text)?.map((t) => `${t.fresh ? "\n" : ""}${t.text}`) ?? [text])), imports });
   imports.forEach(load);
 };
-["", "gen"].flatMap((dir) => fs.readdirSync(path.join(import.meta.dirname, dir)).map((f) => path.join(dir, f)))
+TOOL_DIRS.flatMap((dir) => fs.readdirSync(path.join(import.meta.dirname, dir)).map((f) => path.join(dir, f)))
   .filter((f) => f.endsWith(ext) && f !== `selftest${ext}`).sort().forEach(load);
 /** The code of these scripts, by their names and tokens. */
 const code = (files: string[]) => sha(...files.sort().map((f) => `${f}\0${tools.get(f)?.code}`)).slice(0, 12);
@@ -190,7 +220,7 @@ const closure = (...roots: string[]) => {
  * runs may not be the code its keys name, and it remembers nothing. The change time, which a copy or an archive cannot
  * set back, never the modification time.
  */
-const unsure = ["", "gen", ...tools.keys()].some((f) => fs.statSync(path.join(import.meta.dirname, f)).ctimeMs >= performance.timeOrigin);
+const unsure = [...TOOL_DIRS, ...tools.keys()].some((f) => fs.statSync(path.join(import.meta.dirname, f)).ctimeMs >= performance.timeOrigin);
 
 /** The stages whose results are remembered, and the runs of an outside tool any of them asks for (action.ts). */
 const STAGES = ["simulate", "prove", "types", "tests", "traces", "explore", "action"] as const;
@@ -201,29 +231,31 @@ type Stage = (typeof STAGES)[number];
  * programs beneath. A simulation depends on Quint, Node and the code that simulates and generates the model it
  * simulates; a proof on Node, LemmaScript, Dafny, Z3 and the prover's code, since its unit's key holds all the unit
  * says, whichever code generated it. The part of the proof library a proof file calls (prove.ts, `libraryFor`) is part
- * of that key too. A typecheck, tests and a driver's run use VibeLang's compiler, and may run any of these tools, as
- * Studio's do, so they depend on all of them. An exploration runs only the code that explores: a page that runs the
- * tools has them in what it reads (explore.ts, `pageInputs`).
+ * of that key too. A typecheck runs VibeLang's compiler, and its key holds every tool's code. Tests, a driver's run and
+ * an exploration may run any of these tools, as Studio's do, proofs included, so they depend on the verifier, or on
+ * there being none; tests and a driver's run on all the tools' code too, and an exploration on the code that explores:
+ * a page that runs the tools has their code in what it reads (explore.ts, `pageInputs`).
  * An action depends only on the code that runs a tool and keeps what it said: its key names the tool and all the tool reads.
- * The versions are read for each key, so a process that outlives a reinstall, as `watch` does, keys by what is installed now.
+ * The versions and the verifier are read for each key, so a process that outlives a reinstall, as `watch` does, keys by
+ * what is installed now.
  */
 const toolchains = new Map<string, Promise<string>>();
-function toolchainId(stage: Stage): Promise<string> {
-  const versions = (stage === "action" ? [] : stage === "prove" ? ["lemmascript"] : stage === "simulate" ? ["@informalsystems/quint"] : ["@informalsystems/quint", "typescript", "vibelang"]).map(packageVersion);
-  const known = [stage, ...versions].join(" ");
+async function toolchainId(stage: Stage): Promise<string> {
+  const everything = stage === "tests" || stage === "traces" || stage === "explore";
+  const versions = (stage === "action" ? [] : stage === "prove" ? ["lemmascript"] : stage === "simulate" ? ["@informalsystems/quint"]
+    : ["@informalsystems/quint", "typescript", "vibelang", ...everything ? ["lemmascript"] : []]).map(packageVersion);
+  const verifier = stage === "prove" ? await verifierIdentity() : everything ? await verifierIdentity().catch(() => "no verifier") : "";
+  const known = [stage, ...versions, verifier].join(" ");
   let id = toolchains.get(known);
   if (id) return id;
   toolchains.set(known, (id = (async () => {
     if (stage === "action") return `${stage} ${code([`action${ext}`, `run${ext}`])}`;
     const node = `node@${process.versions.node}:${process.platform}:${process.arch}`;
-    if (stage === "prove") {
-      const z3 = await solver();
-      return [stage, node, code(closure("prove")), ...versions, `dafny@${JSON.stringify(await dafnyIdentity())}`, `z3@${z3.version}:${executableDigest(z3.path)}`].join(" ");
-    }
+    if (stage === "prove") return [stage, node, code(closure("prove")), ...versions, verifier].join(" ");
     if (stage === "simulate") return [stage, ...versions, node, code(closure("simulate", "units"))].join(" ");
-    const [quint, typescript, vibelang] = versions;
+    const [quint, typescript, vibelang, ...rest] = versions;
     const { findBinary } = await import("vibelang/binary");
-    return [stage, quint, node, code(stage === "explore" ? closure("explore") : [...tools.keys()]), typescript, `${vibelang}:${executableDigest(findBinary())}`].join(" ");
+    return [stage, quint, node, code(stage === "explore" ? closure("explore") : [...tools.keys()]), typescript, `${vibelang}:${executableDigest(findBinary())}`, ...rest, verifier].filter(Boolean).join(" ");
   })()));
   // A failed probe is not remembered: the next check probes again.
   id.catch(() => toolchains.delete(known));

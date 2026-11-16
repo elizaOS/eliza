@@ -11,7 +11,8 @@ import { entry, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { simulated } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
-import type { Result } from "./spec.ts";
+import type { Result } from "./pipeline.ts";
+import { SIMULATIONS } from "./units.ts";
 import { allDone, digest, indent } from "./util.ts";
 
 const SAMPLES = 10000;
@@ -124,10 +125,10 @@ export function harnessFiles(spec: Spec, specs: Spec[], model: Model): Record<st
  * simulation again. One run of Quint uses one core, so with `split` a large budget is split among up to four runs of a
  * single thread, each with a seed of its own; how it is split depends only on the budget, so the same harness always gives
  * the same traces. When a run breaks the invariant, the command is the one for that run. A run that ran is in
- * gen/traces; one remembered (action.ts) is not.
+ * gen/traces until the next check; one remembered (action.ts) is not.
  */
 export async function simulate({ memory, model, files }: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
-  const dir = `gen/traces/${model.name}.${invariant}.${step}`;
+  const dir = `${SIMULATIONS}/${model.name}.${invariant}.${step}`;
   const shards = !split ? 1 : Math.max(1, Math.min(MAX_SHARDS, Math.floor(samples / SHARD_SAMPLES)));
   const runs = Array.from({ length: shards }, async (_, k) => {
     const derivedSeed = seedFor(seed, model.harness, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));

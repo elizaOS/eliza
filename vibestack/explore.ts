@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { installedPackages } from "./action.ts";
 import { toolScripts, toolsCode } from "./cache.ts";
 import { bin, exec, startGroup } from "./run.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
@@ -37,8 +38,6 @@ const QUOTED = /(["'`])([^"'`\s$?#]+)(?:[?#][^"'`\s]*)?\1/g;
 const BARE = /^((?:@[\w.-]+\/)?[\w.-]+)(?:\/|$)/;
 /** How a module path may leave out its extension, or name a directory by its index. */
 const SUFFIXES = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".vibe", ".vibex", ".css", ".json", "/index.ts", "/index.tsx", "/index.js"];
-/** Where a generated doc comment cites the line its rule is on (gen.ts): what the page runs does not depend on it. */
-const CITED_LINE = /^(\s*\/\*\* .* \([^()\n]+\.md):\d+(\) \*\/)$/gm;
 
 const isFile = (file: string) => { try { return fs.statSync(file).isFile(); } catch { return false; } };
 const isDirectory = (dir: string) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
@@ -73,9 +72,9 @@ function offered(dir: string): string[] {
  * What the page of the package at `root` reads, which its exploration is remembered under: the package's files but
  * those only its checks read; each file its code or its scripts name by a path, and each directory, which Tailwind
  * scans as text; what each workspace package its code imports, or its scripts run, offers; and, in turn, what those
- * name. The generated modules it imports are read without the lines the rules they cite are on; where its code names
- * none, as through an alias, all of them are. A page that runs one of these tools may run any of them, as Studio's
- * does, and reads the code of them all, as the stages do (cache.ts).
+ * name, the generated modules it imports among them, or all of them where its code names none, as through an alias.
+ * A page that runs one of these tools may run any of them, as Studio's does, and reads the code of them all, as the
+ * stages do (cache.ts).
  */
 export function pageInputs(root: string, mode: TestProfile = "normal"): string {
   const base = fs.realpathSync(root);
@@ -133,7 +132,7 @@ export function pageInputs(root: string, mode: TestProfile = "normal"): string {
   const runsTools = [...tools].some((tool) => reads.has(tool));
   const hash = createHash("sha256").update(JSON.stringify(["page-v1", process.versions.node, process.platform, process.arch, profile(mode), runsTools && toolsCode()]));
   for (const [name, file] of [...reads.keys()].filter((file) => !tools.has(file)).map((file) => [path.relative(base, file).split(path.sep).join("/"), file]).sort(([a], [b]) => a.localeCompare(b))) {
-    const bytes = path.dirname(file) === gen ? Buffer.from(fs.readFileSync(file, "utf8").replace(CITED_LINE, "$1$2")) : fs.readFileSync(file);
+    const bytes = fs.readFileSync(file);
     hash.update(`${name}\0${bytes.length}\0`).update(bytes);
   }
   const { lock } = packageManager(root);
@@ -213,7 +212,7 @@ async function served(root: string, script: string, checking: string, explore: (
 /**
  * The explore stage of the package `directory`, checked from `checking`: nothing if it has no page. A trace saved by
  * an earlier failure is replayed first; then the page is explored for the profile's time. A pass is remembered until
- * what the page reads (`pageInputs`), the installed Bombadil or the script change.
+ * what the page reads (`pageInputs`), the installed Bombadil and the packages it loads, or the script change.
  */
 export async function explore(directory: string, remember: Remember, mode: TestProfile = "normal", checking = directory): Promise<Reported<"explore" | "skipped">[]> {
   const root = path.resolve(directory);
@@ -246,8 +245,8 @@ export async function explore(directory: string, remember: Remember, mode: TestP
       results.push([true, "explore", `${page}: the replay of ${SAVED} ${again.kind === "held" ? "breaks nothing now" : "no longer applies to the page"}, so it was removed`, "", page]);
     }
     const { explore: seconds } = profile(mode);
-    const version = manifest(path.join(path.dirname(bin("bombadil", root)), "../@antithesishq/bombadil")).version;
-    results.push(await remember(JSON.stringify([pageInputs(root, mode), version, script]), async (): Promise<Reported<"explore">> => {
+    const explorer = installedPackages(bin("bombadil", root), "@antithesishq/bombadil");
+    results.push(await remember(JSON.stringify([pageInputs(root, mode), explorer, script]), async (): Promise<Reported<"explore">> => {
       fs.mkdirSync(path.dirname(saved), { recursive: true });
       const fresh = await served(root, script, resolved, (origin) => bombadil(root, origin, { seconds }, saved));
       if (fresh.kind !== "broke") drop();
