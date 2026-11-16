@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import type { Model } from "./gen.ts";
 import { SENDER } from "./gen/classify.ts";
+import { positiveGuardEvaluation, positiveGuardProbe } from "./gen/harness.ts";
 import { entry, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { importedMeanings, type Rule, type Spec } from "./parse.ts";
@@ -15,7 +16,7 @@ import { allDone, digest, indent } from "./util.ts";
 
 const SAMPLES = 10000;
 const WITNESS_SAMPLES = 20 * SAMPLES;
-const WITNESS_PREFLIGHT_SAMPLES = 32;
+const WITNESS_PREFLIGHT_SAMPLES = [32, 1024];
 const COMPARED_SAMPLES = 2000;
 const REPLAYED = 200;
 /** Traces of the first simulation kept, for a spec with `leadsTo` rules, to look for runs that break one (`lasso`). */
@@ -49,7 +50,7 @@ function readTrace(file: string, model: Model): Step[] {
     const picked = (ps: { name: string; type: any }[]) => Object.fromEntries(ps.map((p) => [p.name, read(p.type, st["mbt::nondetPicks"][p.name].value)]));
     const taken: string = st["mbt::actionTaken"];
     const t = model.transitions.find((t) => t.name === taken);
-    const v = model.evals.find((v) => `eval_${v.name}` === taken);
+    const v = model.evals.find((v) => `eval_${v.name}` === taken || positiveGuardEvaluation(v.name) === taken);
     const l = model.laws.find((l) => l.name === taken);
     return {
       event: t && { type: t.name, ...picked(t.params) },
@@ -117,6 +118,7 @@ const MAX_SHARDS = 4;
  * the same traces. When a run breaks the invariant, the command is the one for that run.
  */
 export async function simulate(root: string, model: Model, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
+  const harness = step.startsWith("eval_") && step.endsWith("__1") ? model.guardHarness : model.harness;
   const dir = path.join(root, "gen/traces", `${model.name}.${invariant}.${step}`);
   fs.rmSync(dir, { recursive: true, force: true });
   const shards = !split ? 1 : Math.max(1, Math.min(MAX_SHARDS, Math.floor(samples / SHARD_SAMPLES)));
@@ -124,7 +126,7 @@ export async function simulate(root: string, model: Model, invariant: string, tr
   const runs = Array.from({ length: shards }, async (_, k) => {
     const out = shards === 1 ? dir : path.join(dir, String(k));
     fs.mkdirSync(out, { recursive: true });
-    const derivedSeed = seedFor(seed, model.harness, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));
+    const derivedSeed = seedFor(seed, harness, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));
     const args = ["run", `gen/${model.name}.run.qnt`, "--main", `${model.name}_run`, "--step", step, "--invariant", invariant,
       "--max-samples", String(Math.ceil(sampleLimit / shards)), "--max-steps", String(steps), "--mbt", "--seed", derivedSeed, ...(singleThread ? ["--n-threads", "1"] : [])];
     const r = await simulating(root, () => run("quint", [...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", path.join(out, "{seq}.itf.json")], root));
@@ -145,13 +147,16 @@ export async function simulate(root: string, model: Model, invariant: string, tr
  * Look for a state that breaks `invariant`, which is how a goal is shown reachable: in longer traces while none is
  * found, fewer of them as they lengthen, so each depth costs about as many events as `samples` traces of the first.
  */
-export async function search(root: string, model: Model, invariant: string, step = "step", depths = DEPTHS, samples = WITNESS_SAMPLES, seed = 1): ReturnType<typeof simulate> {
+export async function search(root: string, model: Model, invariant: string, step = "step", depths = DEPTHS, samples = WITNESS_SAMPLES, seed = 1, focused?: string): ReturnType<typeof simulate> {
   const searches = depths.map((steps) => ({ steps, budget: Math.ceil(samples * STEPS / steps) }));
   if (searches.length > 1) {
-    for (const { steps, budget } of searches) {
-      if (budget <= WITNESS_PREFLIGHT_SAMPLES) continue;
-      const run = await simulate(root, model, invariant, 1, budget, step, false, steps, seed, WITNESS_PREFLIGHT_SAMPLES);
-      if (run.broken) return run;
+    const preflight = focused ? [step, focused] : [step];
+    for (const limit of WITNESS_PREFLIGHT_SAMPLES) {
+      for (const action of preflight) for (const { steps, budget } of searches) {
+        if (budget <= limit) continue;
+        const run = await simulate(root, model, invariant, 1, budget, action, false, steps, seed, limit);
+        if (run.broken) return run;
+      }
     }
   }
   let run!: Awaited<ReturnType<typeof simulate>>;
@@ -300,7 +305,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
     return rule ? citation(rule) : def;
   };
   const simulationSteps = STEPS + Math.max(0, ...model.within.values());
-  const key = [importedMeanings(spec, specs), spec.meaning, spec.rules.map((r) => r.key).join("\n"), model.harness, String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
+  const key = [importedMeanings(spec, specs), spec.meaning, spec.rules.map((r) => r.key).join("\n"), model.guardHarness || model.harness, String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
   return remembered<Simulation>(memory, entry(memory.root, "simulate", key), async () => {
     const said: Result[] = [];
     let tested: Simulated | undefined;
@@ -368,7 +373,9 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // only that search goes deeper and gets the witness budget; one that never refuses it is only reported.
       const missing = guarded.flatMap((t) => (["allows", "refuses"] as const).filter((side) => !seen.get(t.guard!)![side]).map((side) => ({ t, side })));
       const searched = await allDone(missing.map(({ t, side }) => model.evals.some((v) => v.name === t.guard)
-        ? search(memory.root, model, `never_${side}_${t.guard}`, "probe", side === "allows" ? DEPTHS : [STEPS], side === "allows" ? WITNESS_SAMPLES : SAMPLES, seed)
+        ? side === "allows"
+          ? search(memory.root, model, `never_allows_${t.guard}`, "probe", DEPTHS, WITNESS_SAMPLES, seed, positiveGuardProbe(t.guard!))
+          : search(memory.root, model, `never_refuses_${t.guard}`, "probe", [STEPS], SAMPLES, seed)
         : Promise.resolve(undefined)));
       for (const [i, { t, side }] of missing.entries()) {
         const found = searched[i];
