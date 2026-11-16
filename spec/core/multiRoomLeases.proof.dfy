@@ -755,3 +755,55 @@ lemma OpenBatchPreservesWaiters(s: MultiRoomLeases, caller: int, rooms: seq<int>
   }
   assert forall c | c in after.calls && c.phase.BatchWaiting? :: c in s.calls && c != added;
 }
+
+lemma closeAdmission_ensures(s: MultiRoomLeases, cause: int)
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysNestedReuseExact(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysQueueInvariant(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysBatchIdentitiesUnique(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysBatchesHaveValidPosition(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysStoredResultFollowsPhase(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysQueueConfiguredForCalls(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysLeasesBelongToBatch(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysWaiterHasOwner(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysHeldPrefixMatchesRequests(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysInvocationHoldsAllRooms(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysWaiterMatchesNextRoom(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysWaitsAboveHeldRooms(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysDoneHasNoLease(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysAcquiringQueueAuthority(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysReverseReleaseRank(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> alwaysBatchProgressOrTerminal(closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> stepNestedDoesNotAcquire(s, "closeAdmission", closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> stepClosedAdmissionCannotGrow(s, closeAdmission(s, cause)))
+  ensures (inv(s) ==> canCloseAdmission(s, cause) ==> stepReleasedAfterWriteSettlement(s, closeAdmission(s, cause)))
+{
+  if inv(s) && canCloseAdmission(s, cause) {
+    RoomBatchProgress(closeAdmission(s, cause));
+  }
+}
+
+lemma resolveNested_ensures(s: MultiRoomLeases, requestedRooms: seq<int>, ambient: int, explicitOwner: int, explicitRoom: int)
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysNestedReuseExact(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysQueueInvariant(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysBatchIdentitiesUnique(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysBatchesHaveValidPosition(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysStoredResultFollowsPhase(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysQueueConfiguredForCalls(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysLeasesBelongToBatch(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysWaiterHasOwner(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysHeldPrefixMatchesRequests(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysInvocationHoldsAllRooms(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysWaiterMatchesNextRoom(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysWaitsAboveHeldRooms(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysDoneHasNoLease(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysAcquiringQueueAuthority(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysReverseReleaseRank(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> alwaysBatchProgressOrTerminal(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> stepNestedDoesNotAcquire(s, "resolveNested", resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> stepClosedAdmissionCannotGrow(s, resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+  ensures (inv(s) ==> canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) ==> stepReleasedAfterWriteSettlement(s, resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom)))
+{
+  if inv(s) && canResolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom) {
+    RoomBatchProgress(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom));
+  }
+}
