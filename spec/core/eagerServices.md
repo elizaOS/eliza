@@ -28,7 +28,7 @@ pure val serviceTypeValues = I::serviceTypeValues
 pure val attemptIdValues = I::attemptIdValues
 pure val instanceIdValues = I::instanceIdValues
 pure val errorIdValues = I::errorIdValues
-pure val elapsedMsValues = Set(0, 1, 1999, 2000, 5000, 10000)
+pure val elapsedMsValues = Set(-1, 0, 1, 1999, 2000, 5000, 10000)
 pure val missingEagerJob: EagerRequest = {id: 0, serviceType: "", phase: EagerDone, attempts: 0, callId: 0, wakeAt: 0, failures: 0}
 pure def eagerJob(s: EagerServices, jobId: int): EagerRequest = s.jobs.select(j => j.id == jobId).nthOr(0, missingEagerJob)
 pure def retryDelay(attempts: int): int = if (attempts == 1) 2000 else if (attempts == 2) 5000 else if (attempts == 3) 10000 else 0
