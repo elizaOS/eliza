@@ -46,6 +46,12 @@ and page publication. Every non-idle stage retains the same attached task and
 generation; only an idle reader owns a timer. A finishing page can request
 another poll only while its preceding publication has succeeded.
 
+Discovered by simulation: an observer completion from a replaced generation
+could advance a newer generation waiting at the same publication stage.
+Each start, page and finish completion carries the ticket of the observer
+it notified. Failure and success can advance only that ticket's current
+publication.
+
 ```quint
 type ReaderPhase = ReaderIdle | PublishStart | ReadingPage | PublishPage | PublishFinish
 type ReaderError = NoReaderError | ReadOrMergeFailure | ObserverFailure
@@ -55,18 +61,22 @@ pure def stop(s: TaskReader): TaskReader = { ...s, task: "", generation: s.gener
 pure def canStart(s: TaskReader, task: str): bool = task != ""
 pure def start(s: TaskReader, task: str): TaskReader = { ...initial, task: task, generation: s.generation + 2, ticket: s.generation + 2, pending: true, phase: PublishStart, publishes: s.publishes }
 pure def refresh(s: TaskReader): TaskReader = if (s.task == "" or s.pending) s else { ...s, generation: s.generation + 1, ticket: s.generation + 1, phase: PublishStart, pending: true, failed: false, timer: false, again: false, error: NoReaderError }
-pure def canPublishedStart(s: TaskReader): bool = s.phase == PublishStart
-pure def publishedStart(s: TaskReader, success: bool): TaskReader = { ...s, publishes: s.publishes + 1, phase: if (success) ReadingPage else ReaderIdle, pending: success, failed: not(success), error: if (success) NoReaderError else ObserverFailure }
-pure def canReceivePage(s: TaskReader, ticket: int): bool = s.phase == ReadingPage and s.ticket == ticket and s.generation == ticket
+pure def ownsRead(s: TaskReader, ticket: int): bool = s.ticket == ticket and s.generation == ticket
+pure def canPublishedStart(s: TaskReader, ticket: int): bool = s.phase == PublishStart and ownsRead(s, ticket)
+pure def publishedStart(s: TaskReader, ticket: int, success: bool): TaskReader = { ...s, publishes: s.publishes + 1, phase: if (success) ReadingPage else ReaderIdle, pending: success, failed: not(success), error: if (success) NoReaderError else ObserverFailure }
+pure def canReceivePage(s: TaskReader, ticket: int): bool = s.phase == ReadingPage and ownsRead(s, ticket)
 pure def receivePage(s: TaskReader, ticket: int, incoming: TaskPage, readSucceeded: bool): TaskReader = {
   val valid = readSucceeded and acceptsPage(s.task, s.page, incoming)
   { ...s, page: if (valid) combinePage(s.task, s.page, incoming) else s.page, failed: not(valid), error: if (valid) NoReaderError else ReadOrMergeFailure, phase: if (valid) PublishPage else PublishFinish, pending: valid, again: false }
 }
-pure def canPublishedPage(s: TaskReader): bool = s.phase == PublishPage
-pure def publishedPage(s: TaskReader, success: bool): TaskReader = { ...s, publishes: s.publishes + 1, failed: not(success), error: if (success) NoReaderError else ObserverFailure, pending: success and s.page.hasMore, phase: if (success and s.page.hasMore) ReadingPage else PublishFinish, again: success and not(s.page.hasMore) and ((s.page.status != CompletedTask and s.page.status != CancelledTask) or s.page.unknownOutcome) }
-pure def canPublishedFinish(s: TaskReader): bool = s.phase == PublishFinish
-pure def publishedFinish(s: TaskReader, success: bool): TaskReader = { ...s, publishes: s.publishes + 1, pending: false, failed: s.failed or not(success), error: if (success) s.error else ObserverFailure, phase: ReaderIdle, timer: success and s.again }
+pure def canPublishedPage(s: TaskReader, ticket: int): bool = s.phase == PublishPage and ownsRead(s, ticket)
+pure def publishedPage(s: TaskReader, ticket: int, success: bool): TaskReader = { ...s, publishes: s.publishes + 1, failed: not(success), error: if (success) NoReaderError else ObserverFailure, pending: success and s.page.hasMore, phase: if (success and s.page.hasMore) ReadingPage else PublishFinish, again: success and not(s.page.hasMore) and ((s.page.status != CompletedTask and s.page.status != CancelledTask) or s.page.unknownOutcome) }
+pure def canPublishedFinish(s: TaskReader, ticket: int): bool = s.phase == PublishFinish and ownsRead(s, ticket)
+pure def publishedFinish(s: TaskReader, ticket: int, success: bool): TaskReader = { ...s, publishes: s.publishes + 1, pending: false, failed: s.failed or not(success), error: if (success) s.error else ObserverFailure, phase: ReaderIdle, timer: success and s.again }
 pure def stalePage(s: TaskReader, ticket: int, incoming: TaskPage): TaskReader = s
+pure def lawStalePublicationCannotComplete(s: TaskReader, ticket: int): bool =
+  ticket != s.generation implies
+    not(canPublishedStart(s, ticket) or canPublishedPage(s, ticket) or canPublishedFinish(s, ticket))
 pure def alwaysTimerOwnsLiveReader(s: TaskReader): bool = s.timer implies s.task != "" and not(s.pending) and not(s.failed)
 pure def alwaysPendingHasOwner(s: TaskReader): bool = s.pending implies s.task != "" and s.ticket == s.generation
 pure def alwaysReaderPhaseOwnsPending(s: TaskReader): bool = (s.pending iff (s.phase == PublishStart or s.phase == ReadingPage or s.phase == PublishPage)) and (s.phase != ReaderIdle implies s.task != "" and s.ticket == s.generation) and (s.timer implies s.phase == ReaderIdle)
