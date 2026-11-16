@@ -211,7 +211,7 @@ when reopened for review or when external OS permission status changes.
 Initial restoration uses the preceding reader and Alpha fallback policy.
 It keeps a validated durable snapshot separate from the adopted UI cursor
 and choices. No known snapshot means no claim about stored progress.
-An active Access checklist and a session awaiting a failed-write retry
+Discovered by the proof: an active Access checklist and a session awaiting a failed-write retry
 retain exactly one choice per completed step. Only a completed idle
 projection without a storage warning may omit that UI history. This
 cardinality fact prevents a fabricated retry from copying incomplete
