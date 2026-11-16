@@ -4371,21 +4371,25 @@
     },
     {
       "source": "packages/core/src/security/trusted-delivery-audience.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/trustedAudience.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Trajectory persistence follows the existing precedence order",
-        "Fairly settling startup and active work lets shutdown finish"
+        "Attestation binds an exact runtime and audience",
+        "Renewal rechecks lease identity and audience after the authority await",
+        "Sensitive-use and suppression evidence stays attached to the exact turn",
+        "External event payloads cannot mint an attestation",
+        "Binding objects share one global sequence and retain their own lease",
+        "Renewal validates the captured record after the asynchronous authority lookup",
+        "Suppression aliases follow the separately attached message carrier"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "3dce8068a5f744eac08e292b3d5bcdbbc8425ce0518044de210bfa8ad2f29b04",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/trusted-delivery-audience.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
+      "implementationProofBoundary": "Retained audience/lease/call state and composed binding/sequence/signal/carrier state follow the stated pure rules. Actual runtime/binding/record/lease/signal identity, principal revalidation, participant normalization and database observations remain adapter contracts. Finite pinned-source comparisons and generated model proofs are distinct evidence; no universal TypeScript-to-model or source-product refinement theorem is claimed.",
       "relatedSpecs": [
-        "spec/core/privacy.md"
+        "spec/core/trustedAudience.md",
+        "spec/core/audienceRegistry.md",
+        "spec/core/internalActors.md"
       ]
     },
     {
