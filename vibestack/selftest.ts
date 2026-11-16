@@ -313,6 +313,36 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.equal((await run(root)).said("always", /./)?.detail, trace!.detail, "the normal profile retains its own seed and remembered result");
   });
 
+  test("Quint's violation on stderr counts, while the same text in a failed run's state does not", async () => {
+    const quiet = toolchain(oneRule("index", "The counter stays zero", [
+      "pure val initial: int = 0",
+      "pure def increment(n: int): int = n + 1",
+      "pure def alwaysZero(n: int): bool = n == 0",
+    ].join("\n")), "quint");
+    const win = process.platform === "win32";
+    const relative = path.join(".bin", win ? "quint.cmd" : "quint");
+    const bin = path.join(quiet, "node_modules", relative);
+    const quint = path.join(nodeModules, relative);
+    fs.unlinkSync(bin);
+    fs.writeFileSync(bin, win
+      ? `@if "%~1"=="run" (call "${quint}" %* --verbosity 0) else (call "${quint}" %*)\r\n`
+      : `#!/bin/sh\nif [ "$1" = run ]; then set -- "$@" --verbosity 0; fi\nexec '${quint.replaceAll("'", "'\\''")}' "$@"\n`,
+    { mode: 0o755 });
+    const witness = await runCli(path.join(quiet, "vibestack/spec.ts"), quiet, "check", "--json");
+    const broken = answer(witness.stdout).results.find((r: Result) => r.stage === "always");
+    assert.match(broken?.summary ?? "", /a reachable state breaks/, witness.stdout + witness.stderr);
+    assert.match(broken?.detail ?? "", /increment\s+-> state = 1/);
+
+    const runtime = await run(oneRule("index", "The counter can be checked", [
+      "type Counter = { count: int, message: str }",
+      'pure val initial: Counter = { count: 0, message: "error: Invariant violated" }',
+      "pure def increment(c: Counter): Counter = { count: c.count + 1, message: c.message }",
+      "pure def alwaysChecked(c: Counter): bool = if (c.count == 0) true else c.count / (c.count - c.count) == 1",
+    ].join("\n")));
+    const error = runtime.said("always", /the simulator could not run/);
+    assert.match(error?.detail ?? "", /message: "error: Invariant violated"[\s\S]*Division by zero/, runtime.text);
+  });
+
   test("a rule set that holds in simulation but is not inductive is caught by the proof, and the deleted rule awaits review", async () => {
     const { failed, said, text } = await run(copyOfProject("spec/index.md", notInductive));
     assert.deepEqual(failed, ["proof", "review"], text);
@@ -1592,7 +1622,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.match(read("test/drivers/index.ts", missing), /^\/\/ The driver of spec\/index\.md[\s\S]*import type \{ Driver \} from "\.\.\/\.\.\/gen\/index\.conformance\.ts";[\s\S]*\/\/ begun\n$/);
   });
 
-  test("nothing stale survives in gen/", async () => {
+  test("nothing stale survives in gen/ or hides a renamed source", async () => {
     const root = copyOfProject();
     fs.mkdirSync(path.join(root, "gen"), { recursive: true });
     for (const stale of ["renamed.ts", "renamed.effect.vibe", "index.effect.vibe.pure.d.ts"]) fs.writeFileSync(path.join(root, "gen", stale), "export const stale = true;\n");
@@ -1600,6 +1630,14 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     // tsconfig.json keeps the compiler's declaration sidecars under .vibe/declarations/.
     assert.deepEqual(fs.readdirSync(path.join(root, "gen")).filter((f) => /\.(ts|vibe)$/.test(f)).sort(),
       ["_conformance.ts", "index.conformance.ts", "index.effect.vibe", "index.ts"]);
+    const sidecar = path.join(root, ".vibe/declarations/src/app.d.vibe.ts");
+    assert.ok(fs.existsSync(sidecar) && fs.existsSync(path.join(root, ".vibe/declarations/gen/index.effect.vibe.pure.d.ts")));
+    fs.renameSync(path.join(root, "src/app.vibe"), path.join(root, "src/renamed.vibe"));
+    const renamed = await check(root);
+    const types = renamed.results.find((r) => r.stage === "types")!;
+    assert.equal(types.ok, false, renamed.results.map(show).join("\n"));
+    assert.match(types.detail, /TS2307: Cannot find module ['"][^'"]*app\.vibe['"]/);
+    assert.ok(!fs.existsSync(sidecar));
   });
 
   test("a truncated cache entry is recomputed and generated modules run in a CommonJS project", async () => {

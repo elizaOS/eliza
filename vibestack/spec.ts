@@ -15,7 +15,7 @@ import { contracts, pending, pendingKey, pendingContracts, acceptAllReviews, pen
 import { cacheCredentials, entry, remembered, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
-import { sha, indent, packageScripts, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, type Reported, type SrcFile } from "./util.ts";
+import { sha, indent, packageScripts, pruneSidecars, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
 import { availableDirectory, generatedSkillIgnores, linkProjectSkills, skillRoot } from "./skill-links.ts";
 
@@ -325,7 +325,11 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     // The typecheck runs while the proofs do; it is reported first.
     // VibeLang's compiler checks `.vibe`, `.ts` and `.tsx` as one program.
     // Each of the root and the owners is a program of its own, checked against its own gen/.
-    const typechecks = dirs.map(async (dir) => fs.existsSync(path.join(root, dir, "tsconfig.json")) ? run("vibelang", ["--noEmit", "-p", "."], path.join(root, dir)) : undefined);
+    const typechecks = dirs.map(async (dir) => {
+      if (!fs.existsSync(path.join(root, dir, "tsconfig.json"))) return undefined;
+      pruneSidecars(path.join(root, dir));
+      return run("vibelang", ["--noEmit", "-p", "."], path.join(root, dir));
+    });
     const proving = proofStage(root, memory, specs, models, srcFiles, lock.unproved, accept);
     // A missing or unexecutable compiler must not release the project lock while proofs still write into gen/.
     const typesResults = await Promise.allSettled(typechecks);
