@@ -12647,7 +12647,7 @@
             "attempted",
             "handled",
             "errors",
-            "preempted",
+            "preemption",
             "aborted"
           ],
           "transitions": [
@@ -12659,7 +12659,7 @@
             "handleField",
             "finishDispatch"
           ],
-          "specSha256": "8899381f6da7a8dd0ea154f39eac2b4a4e4408f07b36b4f3c9e857d9047f8a89"
+          "specSha256": "a7bdeeebe891789bbfbdce4cb5e5ba3cc79f4ebbbc616368d2628db49cd6d84c"
         },
         "mappedStateFields": [
           "registered",
@@ -12743,7 +12743,7 @@
             "attempted",
             "handled",
             "errors",
-            "preempted",
+            "preemption",
             "aborted"
           ],
           "transitions": [
@@ -12755,7 +12755,7 @@
             "handleField",
             "finishDispatch"
           ],
-          "specSha256": "8899381f6da7a8dd0ea154f39eac2b4a4e4408f07b36b4f3c9e857d9047f8a89"
+          "specSha256": "a7bdeeebe891789bbfbdce4cb5e5ba3cc79f4ebbbc616368d2628db49cd6d84c"
         },
         "mappedStateFields": [
           "registered",
@@ -19358,7 +19358,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Evaluation registry and cached schema/sorted snapshot are model-owned; schema bytes retained as definition identity at boundary.",
+        "representation": "Registry/schema/sorted snapshot and pending/ready/attempted sets are model-owned. One preemption record retains field, exact mode and required reason and projects run/trace observations. Typed callback-versus-effect failures and cancellations preserve the handled stage. Schema bytes, callback payloads, diagnostics and comparator tie order remain host boundaries. Run/trace projection equality covers fully observed stable nonthrowing data effects. A mode/reason getter failure can retain partial raw trace diagnostics before accepted run preemption exists; the host adapter must preserve those diagnostics and source read order separately.",
         "model": {
           "spec": "spec/core/responseFields.md",
           "stateType": "FieldDispatch",
@@ -19375,7 +19375,7 @@
             "attempted",
             "handled",
             "errors",
-            "preempted",
+            "preemption",
             "aborted"
           ],
           "transitions": [
@@ -19387,7 +19387,7 @@
             "handleField",
             "finishDispatch"
           ],
-          "specSha256": "8899381f6da7a8dd0ea154f39eac2b4a4e4408f07b36b4f3c9e857d9047f8a89"
+          "specSha256": "a7bdeeebe891789bbfbdce4cb5e5ba3cc79f4ebbbc616368d2628db49cd6d84c"
         },
         "mappedStateFields": [
           "registered",
@@ -19401,7 +19401,7 @@
           "attempted",
           "handled",
           "errors",
-          "preempted",
+          "preemption",
           "aborted"
         ],
         "unmodeledState": null
@@ -19436,7 +19436,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Evaluation registry and cached schema/sorted snapshot are model-owned; schema bytes retained as definition identity at boundary.",
+        "representation": "Registry/schema/sorted snapshot and pending/ready/attempted sets are model-owned. One preemption record retains field, exact mode and required reason and projects run/trace observations. Typed callback-versus-effect failures and cancellations preserve the handled stage. Schema bytes, callback payloads, diagnostics and comparator tie order remain host boundaries. Run/trace projection equality covers fully observed stable nonthrowing data effects. A mode/reason getter failure can retain partial raw trace diagnostics before accepted run preemption exists; the host adapter must preserve those diagnostics and source read order separately.",
         "model": {
           "spec": "spec/core/responseFields.md",
           "stateType": "FieldDispatch",
@@ -19453,7 +19453,7 @@
             "attempted",
             "handled",
             "errors",
-            "preempted",
+            "preemption",
             "aborted"
           ],
           "transitions": [
@@ -19465,7 +19465,7 @@
             "handleField",
             "finishDispatch"
           ],
-          "specSha256": "8899381f6da7a8dd0ea154f39eac2b4a4e4408f07b36b4f3c9e857d9047f8a89"
+          "specSha256": "a7bdeeebe891789bbfbdce4cb5e5ba3cc79f4ebbbc616368d2628db49cd6d84c"
         },
         "mappedStateFields": [
           "registered",
@@ -19479,7 +19479,7 @@
           "attempted",
           "handled",
           "errors",
-          "preempted",
+          "preemption",
           "aborted"
         ],
         "unmodeledState": null
@@ -19514,7 +19514,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Evaluation registry and cached schema/sorted snapshot are model-owned; schema bytes retained as definition identity at boundary.",
+        "representation": "Registry/schema/sorted snapshot and pending/ready/attempted sets are model-owned. One preemption record retains field, exact mode and required reason and projects run/trace observations. Typed callback-versus-effect failures and cancellations preserve the handled stage. Schema bytes, callback payloads, diagnostics and comparator tie order remain host boundaries. Run/trace projection equality covers fully observed stable nonthrowing data effects. A mode/reason getter failure can retain partial raw trace diagnostics before accepted run preemption exists; the host adapter must preserve those diagnostics and source read order separately.",
         "model": {
           "spec": "spec/core/responseFields.md",
           "stateType": "FieldDispatch",
@@ -19531,7 +19531,7 @@
             "attempted",
             "handled",
             "errors",
-            "preempted",
+            "preemption",
             "aborted"
           ],
           "transitions": [
@@ -19543,7 +19543,7 @@
             "handleField",
             "finishDispatch"
           ],
-          "specSha256": "8899381f6da7a8dd0ea154f39eac2b4a4e4408f07b36b4f3c9e857d9047f8a89"
+          "specSha256": "a7bdeeebe891789bbfbdce4cb5e5ba3cc79f4ebbbc616368d2628db49cd6d84c"
         },
         "mappedStateFields": [
           "registered",
@@ -19557,7 +19557,7 @@
           "attempted",
           "handled",
           "errors",
-          "preempted",
+          "preemption",
           "aborted"
         ],
         "unmodeledState": null
@@ -19592,7 +19592,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Evaluation registry and cached schema/sorted snapshot are model-owned; schema bytes retained as definition identity at boundary.",
+        "representation": "Registry/schema/sorted snapshot and pending/ready/attempted sets are model-owned. One preemption record retains field, exact mode and required reason and projects run/trace observations. Typed callback-versus-effect failures and cancellations preserve the handled stage. Schema bytes, callback payloads, diagnostics and comparator tie order remain host boundaries. Run/trace projection equality covers fully observed stable nonthrowing data effects. A mode/reason getter failure can retain partial raw trace diagnostics before accepted run preemption exists; the host adapter must preserve those diagnostics and source read order separately.",
         "model": {
           "spec": "spec/core/responseFields.md",
           "stateType": "FieldDispatch",
@@ -19609,7 +19609,7 @@
             "attempted",
             "handled",
             "errors",
-            "preempted",
+            "preemption",
             "aborted"
           ],
           "transitions": [
@@ -19621,7 +19621,7 @@
             "handleField",
             "finishDispatch"
           ],
-          "specSha256": "8899381f6da7a8dd0ea154f39eac2b4a4e4408f07b36b4f3c9e857d9047f8a89"
+          "specSha256": "a7bdeeebe891789bbfbdce4cb5e5ba3cc79f4ebbbc616368d2628db49cd6d84c"
         },
         "mappedStateFields": [
           "registered",
@@ -19635,7 +19635,7 @@
           "attempted",
           "handled",
           "errors",
-          "preempted",
+          "preemption",
           "aborted"
         ],
         "unmodeledState": null
