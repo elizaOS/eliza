@@ -36,16 +36,23 @@ function packages(dir: string, found = new Map<string, string>()): Map<string, s
   return found;
 }
 
-/** The program a tool runs as: where it is, what tells it from another, and the file that changes when it is installed again. */
-interface Program { exe: string; id: string; since?: string }
-const programs = new Map<string, Promise<Program>>();
+/** What tells each program from another, by the program and, for one installed as a package, its launcher as it was when read. */
+const programs = new Map<string, Promise<string>>();
+
+/** A launcher as installed: a reinstall writes it again, at a new inode or change time. */
+const stamp = (file: string) => { const s = fs.statSync(file, { bigint: true }); return `${s.ino}:${s.ctimeNs}`; };
 
 /** An executable of the toolchain's dependencies, told apart by its launcher, every package it loads, and the Node and platform that run them. */
-function packaged(root: string, cmd: string, name: string): Program {
-  const exe = bin(cmd, root);
+function packaged(exe: string, name: string): string {
   const at = installed(name, path.resolve(exe, "../../.."));
   if (!at) throw new Error(`no ${name} is installed beside ${exe}; run pnpm install`);
-  return { exe, id: [executableDigest(exe), ...[...packages(at).values()].sort(), `node@${process.versions.node}:${process.platform}:${process.arch}`].join(" "), since: exe };
+  return [executableDigest(exe), ...[...packages(at).values()].sort(), `node@${process.versions.node}:${process.platform}:${process.arch}`].join(" ");
+}
+
+/** Dafny, told apart by its installation and the solver it is given. */
+async function verifier(): Promise<string> {
+  const [dafny, z3] = await Promise.all([dafnyIdentity(), solver()]);
+  return JSON.stringify({ dafny, z3: `${z3.version}:${executableDigest(z3.path)}`, platform: `${process.platform}:${process.arch}` });
 }
 
 /** Whether Dafny refused a file it could not parse or resolve, which it does again for the same file. */
@@ -65,19 +72,16 @@ const declined = (r: Ran) => r.status === 1 && /^(?:ERROR|WARNING): /m.test(r.st
  */
 const TOOLS = {
   quint: {
-    program: (root: string) => packaged(root, "quint", "@informalsystems/quint"),
+    installs: "@informalsystems/quint",
     answered: (args: string[], r: Ran) => args[0] === "typecheck" ? r.ok && Object.keys(r.files).length > 0
       : (r.ok || violated(r)) && Object.keys(r.files).some((f) => f.endsWith(".itf.json")),
   },
   lsc: {
-    program: (root: string) => packaged(root, "lsc", "lemmascript"),
+    installs: "lemmascript",
     answered: (_args: string[], r: Ran) => declined(r) || (r.ok && Object.keys(r.files).some((f) => f.endsWith(".dfy.gen"))),
   },
   dafny: {
-    program: async (): Promise<Program> => {
-      const [dafny, z3] = await Promise.all([dafnyIdentity(), solver()]);
-      return { exe: "dafny", id: JSON.stringify({ dafny, z3: `${z3.version}:${executableDigest(z3.path)}`, platform: `${process.platform}:${process.arch}` }) };
-    },
+    installs: undefined,
     answered: (args: string[], r: Ran) => refused(r) || (args[0] === "audit" ? /Dafny auditor completed/.test(r.out)
       : (r.status === 0 || r.status === 4) && !/timed out|out of memory|solver exception|inconclusive/i.test(r.out)
         && (r.out.match(DAFNY_SUMMARY)?.[1].split(", ").filter(Boolean).every((counted) => counted.endsWith(" out of resource")) ?? false)),
@@ -89,13 +93,16 @@ const TOOLS = {
  * say what the same run said before. A run is remembered under the program, the arguments and what decides each file,
  * and the code of this file and run.ts: a change elsewhere in these tools runs the tool again only where it changes
  * what the tool reads, and a file left out of `files` is one the tool cannot find. Only a run that reached its answer
- * is remembered, and not when the program was installed again during the check.
+ * is remembered, and not when the program was installed again during the run; a process that outlives a reinstall
+ * names the program installed now.
  */
 export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string[], dir: string, files: Record<string, Input>): Promise<Ran> {
-  const { program, answered } = TOOLS[tool];
-  const key = `${tool}\0${memory.root}`;
-  if (!programs.has(key)) programs.set(key, Promise.resolve(memory.root).then((root) => program(root)).catch((e) => { programs.delete(key); throw e; }));
-  const { exe, id, since } = await programs.get(key)!;
+  const { installs, answered } = TOOLS[tool];
+  const exe = installs ? bin(tool, memory.root) : tool;
+  const since = installs && stamp(exe);
+  const key = `${exe}\0${since}`;
+  if (!programs.has(key)) programs.set(key, Promise.resolve(exe).then((exe) => installs ? packaged(exe, installs) : verifier()).catch((e) => { programs.delete(key); throw e; }));
+  const id = await programs.get(key)!;
   const at = await entry(memory.root, "action", [id, JSON.stringify(args), ...Object.keys(files).sort().flatMap((f) => [f, files[f].key])]);
   const known = recall<Ran>(memory, at);
   if (known) return known;
@@ -107,6 +114,6 @@ export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string
   const written = fs.readdirSync(where, { withFileTypes: true }).filter((f) => f.isFile() && !Object.hasOwn(files, f.name)).map((f) => f.name).sort();
   const ran: Ran = { ok: r.status === 0 && !r.stopped, status: r.status, out: `${r.stdout}${r.stderr}${r.stopped ? `\n${r.stopped}\n` : ""}`, stderr: r.stderr, stopped: r.stopped,
     files: Object.fromEntries(written.map((f) => [f, fs.readFileSync(path.join(where, f), "utf8")])) };
-  if (!ran.stopped && answered(args, ran) && !(since && fs.statSync(since).ctimeMs >= performance.timeOrigin)) store(memory, at, ran);
+  if (!ran.stopped && answered(args, ran) && (!installs || stamp(exe) === since)) store(memory, at, ran);
   return ran;
 }

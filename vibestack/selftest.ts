@@ -1905,7 +1905,39 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     }
   });
 
-  test("a change to the tools or the prose that leaves the Quint alone runs no Quint again, and its results cite the rules where they now are", { skip: process.platform === "win32" }, async () => {
+  test("a process that outlives a reinstall of Quint, as watch does, keys what it runs and simulates by the Quint installed now, and remembers its runs again", { skip: process.platform === "win32" }, async () => {
+    const root = toolchain(scratch({}));
+    const log = path.join(root, "quint.log");
+    const shim = path.join(root, "node_modules/.bin/quint");
+    const scope = path.join(root, "node_modules/@informalsystems");
+    const manifest = path.join(scope, "quint/package.json");
+    const original = fs.readFileSync(path.join(nodeModules, "@informalsystems/quint/package.json"), "utf8");
+    fs.unlinkSync(scope);
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, original);
+    const install = (build: string) => fs.writeFileSync(shim, `#!/bin/sh\necho ${build} >> '${log}'\necho '{}' > ir.json\n`, { mode: 0o755 });
+    install("first");
+    const script = [
+      'const fs = await import("node:fs");',
+      `const { act } = await import(${JSON.stringify(path.join(root, "vibestack/action.ts"))});`,
+      `const { entry } = await import(${JSON.stringify(path.join(root, "vibestack/cache.ts"))});`,
+      'const memory = { root: ".", fresh: false, used: new Set() };',
+      `const runs = async () => { await act(memory, "quint", ["typecheck"], "typed", { "a.qnt": { text: "module a {}", key: "a" } }); return fs.readFileSync(${JSON.stringify(log)}, "utf8").trim().split("\\n"); };`,
+      'const simulation = async () => (await entry(".", "simulate", ["same"])).name;',
+      'const said = { before: [await runs(), await runs()], simulation: await simulation() };',
+      `fs.writeFileSync(${JSON.stringify(shim)}, fs.readFileSync(${JSON.stringify(shim)}, "utf8").replace("first", "second"));`,
+      `fs.writeFileSync(${JSON.stringify(manifest)}, JSON.stringify({ ...JSON.parse(fs.readFileSync(${JSON.stringify(manifest)}, "utf8")), version: "0.0.0-reinstalled" }));`,
+      'console.log(JSON.stringify({ ...said, after: [await runs(), await runs()], reinstalled: await simulation() }));',
+    ].join("\n");
+    const r = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
+    assert.equal(r.status, 0, r.stderr);
+    const said = JSON.parse(r.stdout);
+    assert.deepEqual(said.before, [["first"], ["first"]], "a run is remembered");
+    assert.deepEqual(said.after, [["first", "second"], ["first", "second"]], "the Quint installed since runs, and its run is remembered");
+    assert.notEqual(said.reinstalled, said.simulation, "a simulation is keyed by the Quint installed now");
+  });
+
+  test("a change to the tools or the prose that leaves the Quint alone runs no Quint again, nor a simulation for prose that only moves the rules, and its results cite the rules where they now are", { skip: process.platform === "win32" }, async () => {
     const root = toolchain(oneRule("index", "Small", "pure val initial: int = 0\npure def up(n: int): int = n + 1\npure def alwaysSmall(n: int): bool = n < 3"), "quint");
     const log = path.join(root, "quint.log");
     const shim = path.join(root, "node_modules/.bin/quint");
@@ -1924,9 +1956,16 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const tooled = await checked();
     assert.deepEqual(tooled, { broken: first.broken, ran: [] });
     fs.writeFileSync(path.join(root, "spec/index.md"), read("spec/index.md", root).replace("### Small\n", "Prose above the rule.\n\n### Small\n"));
+    const simulations = () => fs.readdirSync(path.join(root, ".spec-cache")).filter((f) => f.startsWith("simulate-")).sort();
+    const simulated = simulations();
     const moved = await checked();
     assert.deepEqual(moved.ran, []);
+    assert.deepEqual(simulations(), simulated, "prose that only moves a rule is no new simulation");
     assert.match(moved.broken?.summary ?? "", /"Story \/ Small" \(spec\/index\.md:7\)/, JSON.stringify(moved.broken));
+    fs.writeFileSync(path.join(root, "spec/index.md"), read("spec/index.md", root).replace("### Small\n", "### Tiny\n"));
+    const renamed = await checked();
+    assert.equal(simulations().length, simulated.length + 1, "a rule renamed is simulated again");
+    assert.match(renamed.broken?.summary ?? "", /"Story \/ Tiny" \(spec\/index\.md:7\)/, JSON.stringify(renamed.broken));
   });
 
   test("a Quint string ends at its next quote, as Quint reads it, and a change inside one is simulated again", async () => {

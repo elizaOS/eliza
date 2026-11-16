@@ -134,7 +134,11 @@ and each simulation and proof result under a fingerprint of a spec and its
 imports, the versions of the programs beneath (Quint and Node for a
 simulation; Node, LemmaScript, Dafny and Z3 for a proof, whose key holds the
 whole unit) and the code of only the tools that stage runs: `simulate.ts`,
-`units.ts` and what they import, or `prove.ts` and what it imports. A run
+`units.ts` and what they import, or `prove.ts` and what it imports. A
+simulation cites each rule at the line it is on now, so prose that only moves
+the rules simulates nothing again. The programs and their versions are read
+for each key, so a process that outlives a reinstall, as `watch` does, runs and
+remembers under the programs installed now. A run
 of a tool is remembered when it reached its answer, a refusal of its input
 included, never when it was stopped, timed out or failed for want of a file or
 program: an unchanged unit whose proof failed runs neither again, and an edit

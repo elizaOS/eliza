@@ -193,25 +193,29 @@ type Stage = (typeof STAGES)[number];
  * of that key too. A typecheck, tests, a driver's run and an exploration run VibeLang's compiler, and may run any of
  * these tools, as Studio's do, so they depend on all of them.
  * An action depends only on the code that runs a tool and keeps what it said: its key names the tool and all the tool reads.
+ * The versions are read for each key, so a process that outlives a reinstall, as `watch` does, keys by what is installed now.
  */
 const toolchains = new Map<string, Promise<string>>();
 function toolchainId(stage: Stage): Promise<string> {
-  let id = toolchains.get(stage);
+  const versions = (stage === "action" ? [] : stage === "prove" ? ["lemmascript"] : stage === "simulate" ? ["@informalsystems/quint"] : ["@informalsystems/quint", "typescript", "vibelang"]).map(packageVersion);
+  const known = [stage, ...versions].join(" ");
+  let id = toolchains.get(known);
   if (id) return id;
-  toolchains.set(stage, (id = (async () => {
+  toolchains.set(known, (id = (async () => {
     const code = (files: string[]) => sha(...files.sort().map((f) => `${f}\0${tools.get(f)?.text}`)).slice(0, 12);
     if (stage === "action") return `${stage} ${code([`action${ext}`, `run${ext}`])}`;
     const node = `node@${process.versions.node}:${process.platform}:${process.arch}`;
     if (stage === "prove") {
       const z3 = await solver();
-      return [stage, node, code(closure("prove")), packageVersion("lemmascript"), `dafny@${JSON.stringify(await dafnyIdentity())}`, `z3@${z3.version}:${executableDigest(z3.path)}`].join(" ");
+      return [stage, node, code(closure("prove")), ...versions, `dafny@${JSON.stringify(await dafnyIdentity())}`, `z3@${z3.version}:${executableDigest(z3.path)}`].join(" ");
     }
-    if (stage === "simulate") return [stage, packageVersion("@informalsystems/quint"), node, code(closure("simulate", "units"))].join(" ");
+    if (stage === "simulate") return [stage, ...versions, node, code(closure("simulate", "units"))].join(" ");
+    const [quint, typescript, vibelang] = versions;
     const { findBinary } = await import("vibelang/binary");
-    return [stage, packageVersion("@informalsystems/quint"), node, code([...tools.keys()]), packageVersion("typescript"), `${packageVersion("vibelang")}:${executableDigest(findBinary())}`].join(" ");
+    return [stage, quint, node, code([...tools.keys()]), typescript, `${vibelang}:${executableDigest(findBinary())}`].join(" ");
   })()));
   // A failed probe is not remembered: the next check probes again.
-  id.catch(() => toolchains.delete(stage));
+  id.catch(() => toolchains.delete(known));
   return id;
 }
 

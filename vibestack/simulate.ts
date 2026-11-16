@@ -297,19 +297,20 @@ export interface Simulation { said: Result[]; tested?: Simulated }
 
 /**
  * Simulate one spec and replay its traces through `domain`, its generated module. A spec is not simulated again while
- * what Quint reads is unchanged, and its results are not said again while the rules they cite are where they were, with
- * the definitions they held: the seed is part of what is simulated, so a failure comes back the same. Only a simulator
- * that could not run is tried again.
+ * what Quint reads is unchanged, and its results are not said again while its rules keep their names and the
+ * definitions they held: the seed is part of what is simulated, so a failure comes back the same. A result cites a
+ * rule at the line it is on now, so prose that moves the rules simulates nothing again. Only a simulator that could
+ * not run is tried again.
  */
 export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Model, domain: any, seed: number): Promise<Simulation> {
-  const citation = (rule: Rule) => `"${rule.key}" (${spec.file}:${rule.line})`;
+  const citation = (rule: Rule) => `"${rule.key}" (${spec.file}:\0${rule.key}\0)`;
   const cite = (def: string) => {
     const rule = spec.rules.find((r) => r.defs.includes(def));
     return rule ? citation(rule) : def;
   };
   const simulationSteps = STEPS + Math.max(0, ...model.within.values());
   const files = harnessFiles(spec, specs, model);
-  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), spec.file, spec.rules.map((r) => `${r.key}\0${r.line}\0${r.defs.join(" ")}`).join("\n"),
+  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
     String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
   return remembered<Simulation>(memory, entry(memory.root, "simulate", key), async (memory) => {
     const harness: Harness = { memory, model, files };
@@ -433,5 +434,9 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));
     }
     return { said, tested };
-  }, ({ said }) => !said.some((r) => r.summary === COULD_NOT_RUN));
+  }, ({ said }) => !said.some((r) => r.summary === COULD_NOT_RUN)).then(({ said, tested }) => {
+    const lines = new Map(spec.rules.map((r) => [r.key, r.line]));
+    const placed = (text: string) => text.replace(/\0([^\0]*)\0/g, (_, key: string) => String(lines.get(key)));
+    return { said: said.map((r) => ({ ...r, summary: placed(r.summary), detail: placed(r.detail) })), tested };
+  });
 }
