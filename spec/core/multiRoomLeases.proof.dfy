@@ -820,3 +820,184 @@ lemma resolveNested_ensures(s: MultiRoomLeases, requestedRooms: seq<int>, ambien
     RoomBatchProgress(resolveNested(s, requestedRooms, ambient, explicitOwner, explicitRoom));
   }
 }
+
+lemma abortBatch_ensures(s: MultiRoomLeases, caller: int, cause: int)
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysNestedReuseExact(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysQueueInvariant(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysBatchIdentitiesUnique(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysBatchesHaveValidPosition(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysStoredResultFollowsPhase(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysQueueConfiguredForCalls(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysLeasesBelongToBatch(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysWaiterHasOwner(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysHeldPrefixMatchesRequests(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysInvocationHoldsAllRooms(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysWaiterMatchesNextRoom(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysWaitsAboveHeldRooms(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysDoneHasNoLease(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysAcquiringQueueAuthority(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysReverseReleaseRank(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> alwaysBatchProgressOrTerminal(abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> stepNestedDoesNotAcquire(s, "abortBatch", abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> stepClosedAdmissionCannotGrow(s, abortBatch(s, caller, cause)))
+  ensures (inv(s) ==> canAbortBatch(s, caller, cause) ==> stepReleasedAfterWriteSettlement(s, abortBatch(s, caller, cause)))
+{
+  if inv(s) && canAbortBatch(s, caller, cause) {
+    var after := abortBatch(s, caller, cause);
+    AbortBatchFrame(s, caller, cause);
+    if batchAt(s, caller).phase.BatchWaiting? {
+      reveal canAbortBatch();
+      core__concurrency_cancelQueued_ensures(s.queue, caller);
+    }
+    RoomBatchMapIdentities(s, after);
+    AbortBatchPreservesWaiters(s, caller, cause);
+    AbortBatchPreservesOwners(s, caller, cause);
+    RoomBatchProgress(after);
+  }
+}
+
+lemma AbortBatchFrame(s: MultiRoomLeases, caller: int, cause: int)
+  requires alwaysBatchIdentitiesUnique(s) && canAbortBatch(s, caller, cause)
+  ensures var after := abortBatch(s, caller, cause);
+    var batch := batchAt(s, caller);
+    batch in s.calls && batch.id == caller &&
+    after.queue.leases == s.queue.leases && after.queue.configured == s.queue.configured &&
+    after.queue.sealedCallers == s.queue.sealedCallers && after.queue.finishedCallers == s.queue.finishedCallers &&
+    |after.calls| == |s.calls| &&
+    (forall i | 0 <= i < |s.calls| ::
+      var prior := s.calls[i];
+      var next := after.calls[i];
+      next.id == prior.id && next.position == prior.position && next.wanted == prior.wanted &&
+      (if prior.id == caller && batch.phase.BatchWaiting? then prior == batch && next.phase.BatchReleasing?
+       else next.phase == prior.phase && next.resultKind == prior.resultKind)) &&
+    (if batch.phase.BatchWaiting? then
+      (forall w :: w in after.queue.waiting <==> w in s.queue.waiting && w.caller != caller) &&
+      (forall id :: id in after.queue.cancelled <==> id in s.queue.cancelled || id == caller)
+     else after.queue == s.queue)
+{
+  reveal canAbortBatch(), batchAt(), abortBatch();
+  var ids := (c: BatchLeaseCall) => c.id == caller;
+  var matches := ProofLib.Filter(ids, s.calls);
+  var batch := batchAt(s, caller);
+  assert |matches| > 0 && batch == matches[0];
+  ProofLib.FilterMember(ids, s.calls, batch);
+  var after := abortBatch(s, caller, cause);
+  forall i | 0 <= i < |s.calls|
+    ensures var prior := s.calls[i];
+      var next := after.calls[i];
+      next.id == prior.id && next.position == prior.position && next.wanted == prior.wanted &&
+      (if prior.id == caller && batch.phase.BatchWaiting? then prior == batch && next.phase.BatchReleasing?
+       else next.phase == prior.phase && next.resultKind == prior.resultKind)
+  {
+    if s.calls[i].id == caller {
+      RoomBatchIdentityLookup(s, s.calls[i]);
+    }
+  }
+  if batch.phase.BatchWaiting? {
+    reveal core__concurrency_cancelQueued();
+    forall w: core__concurrency_RoomWaiter
+      ensures w in after.queue.waiting <==> w in s.queue.waiting && w.caller != caller
+    {
+      ProofLib.FilterMember((w: core__concurrency_RoomWaiter) => w.caller != caller, s.queue.waiting, w);
+    }
+    var unrecorded := (id: int) => id !in s.queue.cancelled;
+    var appended := ProofLib.Filter(unrecorded, [caller]);
+    assert after.queue.cancelled == s.queue.cancelled + appended;
+    forall id: int
+      ensures id in after.queue.cancelled <==> id in s.queue.cancelled || id == caller
+    {
+      ProofLib.FilterMember(unrecorded, [caller], id);
+      assert id in appended <==> id == caller && unrecorded(id);
+    }
+  }
+}
+
+lemma RoomBatchMapIdentities(before: MultiRoomLeases, after: MultiRoomLeases)
+  requires alwaysBatchIdentitiesUnique(before)
+  requires |before.calls| == |after.calls|
+  requires forall i | 0 <= i < |before.calls| :: before.calls[i].id == after.calls[i].id
+  ensures alwaysBatchIdentitiesUnique(after)
+{
+  RoomBatchIdentityProjection(before);
+  RoomBatchIdentityProjection(after);
+  forall c | c in after.calls
+    ensures c.id > 0 && |ProofLib.Filter((other: BatchLeaseCall) => other.id == c.id, after.calls)| == 1
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == c;
+    assert before.calls[i] in before.calls;
+    var byId := (other: BatchLeaseCall) => other.id == c.id;
+    ProofLib.FilterLengthPointwise(byId, byId, before.calls, after.calls);
+  }
+}
+
+lemma AbortBatchPreservesWaiters(s: MultiRoomLeases, caller: int, cause: int)
+  requires inv(s) && canAbortBatch(s, caller, cause)
+  ensures alwaysWaiterMatchesNextRoom(abortBatch(s, caller, cause))
+  ensures alwaysWaiterHasOwner(abortBatch(s, caller, cause))
+  ensures stepClosedAdmissionCannotGrow(s, abortBatch(s, caller, cause))
+{
+  var after := abortBatch(s, caller, cause);
+  AbortBatchFrame(s, caller, cause);
+  RoomBatchMapIdentities(s, after);
+  forall w | w in after.queue.waiting
+    ensures w in s.queue.waiting && batchAt(after, w.caller).phase.BatchWaiting? &&
+      wantedRoom(batchAt(after, w.caller)) == w.room
+  {
+    var prior := batchAt(s, w.caller);
+    reveal batchAt();
+    var byId := (c: BatchLeaseCall) => c.id == w.caller;
+    var matches := ProofLib.Filter(byId, s.calls);
+    assert prior.phase.BatchWaiting? && |matches| > 0 && prior == matches[0];
+    ProofLib.FilterMember(byId, s.calls, prior);
+    var i :| 0 <= i < |s.calls| && s.calls[i] == prior;
+    var next := after.calls[i];
+    assert next in after.calls && next.id == prior.id && next.phase == prior.phase;
+    RoomBatchIdentityLookup(after, next);
+  }
+  forall c | c in after.calls && c.phase.BatchWaiting?
+    ensures exists w :: w in after.queue.waiting && w.caller == c.id && w.room == wantedRoom(c)
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == c;
+    var prior := s.calls[i];
+    assert prior in s.calls && prior.phase.BatchWaiting?;
+    var w :| w in s.queue.waiting && w.caller == prior.id && w.room == wantedRoom(prior);
+    assert w in after.queue.waiting && w.room == wantedRoom(c);
+  }
+}
+
+lemma AbortBatchPreservesOwners(s: MultiRoomLeases, caller: int, cause: int)
+  requires inv(s) && canAbortBatch(s, caller, cause)
+  ensures alwaysLeasesBelongToBatch(abortBatch(s, caller, cause))
+  ensures alwaysDoneHasNoLease(abortBatch(s, caller, cause))
+  ensures alwaysAcquiringQueueAuthority(abortBatch(s, caller, cause))
+{
+  var after := abortBatch(s, caller, cause);
+  AbortBatchFrame(s, caller, cause);
+  forall l | l in after.queue.leases
+    ensures exists c :: c in after.calls && c.id == l.caller && !c.phase.BatchDone? && l.room in c.wanted
+  {
+    var prior :| prior in s.calls && prior.id == l.caller && !prior.phase.BatchDone? && l.room in prior.wanted;
+    var i :| 0 <= i < |s.calls| && s.calls[i] == prior;
+    assert after.calls[i] in after.calls;
+  }
+  forall c | c in after.calls && c.phase.BatchDone?
+    ensures |heldRooms(after, c.id)| == 0 &&
+      (forall w :: w in after.queue.waiting ==> w.caller != c.id) && !c.resultKind.BatchPending?
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == c;
+    assert s.calls[i] in s.calls && s.calls[i].phase.BatchDone?;
+  }
+  forall id | id in after.queue.cancelled
+    ensures exists c :: c in after.calls && c.id == id
+  {
+    var prior :| prior in s.calls && prior.id == id;
+    var i :| 0 <= i < |s.calls| && s.calls[i] == prior;
+    assert after.calls[i] in after.calls;
+  }
+  forall c | c in after.calls && c.phase.BatchAcquiring?
+    ensures c.id !in after.queue.cancelled
+  {
+    var i :| 0 <= i < |after.calls| && after.calls[i] == c;
+    assert s.calls[i] in s.calls && s.calls[i].phase.BatchAcquiring?;
+  }
+}
