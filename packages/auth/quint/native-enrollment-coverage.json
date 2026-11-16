@@ -419,5 +419,52 @@
       "Generated and specified scenario traces replay through real AccountPool.select with controlled metadata-write promises. A persistence rejection fails selection without changing affinity/cursor. The in-memory adapter does not prove encrypted storage or cross-process metadata locking; existing default-pool tests cover real storage.",
       "Other strategies, health/time classifiers, repeated eligibility changes, usage polling, 10,000-entry eviction and credential effect admission are separate obligations. Weak fairness of selection completion is the progress assumption. There is no cancellation input in AccountPool.select."
     ]
+  },
+  {
+    "id": "auth.NativeAndroidSignOut",
+    "model": "packages/auth/quint/NativeAndroidSignOut.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRevocation.java"
+    ],
+    "invariants": [
+      "OwedUntilEnded",
+      "SavedKeyKept",
+      "NewerKeyKept",
+      "DamagedOwesNothing",
+      "AttemptEnded",
+      "RemovedTogether",
+      "RevokedMeansEnded",
+      "RetryBudget"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Android deployment, one sign-out of a working or damaged saved record, restarts at any point, one newer sign-in after the removal.",
+      "Conformance executes the exact signOut, retireReplaced, retryRetirement and retireStored methods with synthetic storage and HTTPS in the JVM harness.",
+      "A storage failure that refuses the sign-out, a renewal running beside it and the Google picker state remain separate."
+    ]
+  },
+  {
+    "id": "auth.NativeGoogleGmail",
+    "model": "packages/auth/quint/NativeGoogleGmail.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/NativeGoogleCredential.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInConfig.java"
+    ],
+    "invariants": [
+      "CodeAtMostOnce",
+      "ConnectOnlyConfirmed",
+      "NoCodeLeftHeld",
+      "ConnectionReported",
+      "NoScopesNoGoogle",
+      "GoogleNeverFailsSignIn"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One native Google attempt with or without registered Google scopes, one Cloud call, an optional second factor and the acknowledgement's final answer.",
+      "Conformance executes the exact signInWithGoogle, commit and connectGmail methods with the account picker, permission sheet and authorization dialog stubbed in the JVM harness.",
+      "The account picker and Google's permission sheet run only on a device with Play services and are not exercised here."
+    ]
   }
 ]

@@ -1,0 +1,35 @@
+{
+  "sources": [
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRevocation.java",
+    "packages/auth/android/test/native-sign-in.test.mjs",
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest.java.txt"
+  ],
+  "bounds": {
+    "domain": "One Android deployment whose saved record is a working key or damaged, with its receipt and the pending record, and a sign-in in progress. One sign-out, process restarts at any point, Cloud answers 2xx, 401 or nothing, the key may lapse, and one newer sign-in may follow the removal.",
+    "assumptions": "The host's credential intent fence orders the sign-out's writes after the attempt it ends. Storage writes and removals are durable when they return. The two in-memory retries are projected to a budget; the hourly check is the same step as a start.",
+    "limitations": "A storage failure that refuses the sign-out, other deployments' slots, a renewal running beside the sign-out and the Google picker state are outside this model; the JVM fixture runs the exact signOut, retireReplaced, retryRetirement and retireStored methods for them."
+  },
+  "conformance": "packages/auth/quint/check-native-android-sign-in.mjs",
+  "cases": [
+    {
+      "name": "sign-out-revocation-duty",
+      "main": "NativeAndroidSignOut",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OwedUntilEnded",
+        "SavedKeyKept",
+        "NewerKeyKept",
+        "DamagedOwesNothing",
+        "AttemptEnded",
+        "RemovedTogether",
+        "RevokedMeansEnded",
+        "RetryBudget"
+      ],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 1000
+    }
+  ]
+}
