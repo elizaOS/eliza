@@ -6,7 +6,7 @@ The installed Grace task gateway at `48b43b9ca6ade7b72c6488f92bee6d4a3ddcf154` i
 
 ### Only the current private lock permits key resolution
 
-The provider's `open({path})` requires an absolute canonical path and a private database parent before acquiring the native lease. The first synchronous `checkOwner` must return undefined. A thrown or other returned value fails admission. The provider normalizes failures caught during open to TASK_STORAGE_UNAVAILABLE. The native lease opens `<database>.writer.lock` read/write with create, close-on-exec and no-follow flags. It checks a single-link regular file owned by the effective user at mode 0600, gets an exclusive nonblocking flock, and checks the named entry still matches the admitted device and inode of the descriptor. Only after acquisition and another successful owner check does the provider call `resolveKey({path})`. A contending opener fails without requesting a key or creating a database. File validation and the kernel's acquisition are inputs to this predicate, with the single current inode modeled below.
+The provider's `open({path})` requires an absolute canonical path and a private database parent before acquiring the native lease. The first synchronous `checkOwner` must return undefined. A thrown or other returned value fails admission. With native cleanup complete, the provider reports TASK_STORAGE_UNAVAILABLE for a refused or thrown owner check during open. The native lease opens `<database>.writer.lock` read/write with create, close-on-exec and no-follow flags. It checks a single-link regular file owned by the effective user at mode 0600, gets an exclusive nonblocking flock, and checks the named entry still matches the admitted device and inode of the descriptor. Only after acquisition and another successful owner check does the provider call `resolveKey({path})`. A contending opener fails without requesting a key or creating a database. File validation and the kernel's acquisition are inputs to this predicate, with the single current inode modeled below.
 
 Grace `apps/app/host/task-storage-native.ts:14,88–107`. Eliza `packages/host/native-host/task-sqlcipher.mjs:121–153,164–199` and `task-sqlcipher/writer-lease.h:18–61`.
 
@@ -114,19 +114,12 @@ pure val writerValues = Set(initial, { ...initial, phase: "key-pending", lastLea
 
 ### A post-operation refusal can coexist with a committed write
 
-The adapter checks that the provider connection is live and `checkOwner` still returns undefined before and after each `exec` and each prepared `get`, `run`, or `all`. Native execution resolves the tagged handle and verifies its lock inode. `assertEncryption` requires the exact connection object and path recorded by this provider, checks owner before and after native verification, and only accepts a literal true native result. A prepared statement carries no independent ownership. Any guard failure prevents returning that operation's result. Outside open, a thrown synchronous owner error propagates unchanged, while a non-undefined return or a closed connection produces TASK_STORAGE_UNAVAILABLE. The native driver has its own TASK_SQLCIPHER_FAILED error. The reviewed provider unit test expects the storage-unavailable code even when its injected owner callback throws a plain error. The pinned provider preserves the callback error, as observed on Linux with an unprivileged caller. At this pin, Grace passes the derived-key resolver and no checkOwner callback. The provider's callback seam is generic and Grace's surrounding task-gateway fences own account authorization. The injected error mismatch therefore tests the generic seam, while lock admission and release both apply on the installed path. A failure after calling a write-capable native command says nothing about committed changes. SQLite may have made an autocommit write before the last owner check, or an earlier statement in a native `exec` can have completed before a later one failed. The output below classifies caller knowledge. It never retries a write or interprets an exception as rollback. Reconciliation must establish actual durable state through a separately authorized read.
+The adapter checks that the provider connection is live and `checkOwner` still returns undefined before and after each `exec` and each prepared `get`, `run`, or `all`. Native execution resolves the tagged handle and verifies its lock inode. `assertEncryption` requires the exact connection object and path recorded by this provider, checks owner before and after native verification, and only accepts a literal true native result. A prepared statement carries no independent ownership. Any guard failure prevents returning that operation's result. The native driver has its own TASK_SQLCIPHER_FAILED error. A failure after calling a write-capable native command says nothing about committed changes. SQLite may have made an autocommit write before the last owner check, or an earlier statement in a native `exec` can have completed before a later one failed. The output below classifies caller knowledge. It never retries a write or interprets an exception as rollback. Reconciliation must establish actual durable state through a separately authorized read.
 
 Grace `apps/app/host/task-storage-encryption.ts:164–185`. Eliza `task-sqlcipher.mjs:164–175,211–256`; `task-sqlcipher/driver.c:45–55,288–308,398–473`. The pinned `task-sqlcipher/lease.integration.mjs` tests competing admission, release with persistent inode, ownership retirement and key wiping, replaced/invalid locks, one-time path binding, broker death, actual writer death and descriptor inheritance. Its post-write scenario sees an exception then reopens and finds the written row. The pinned `task-sqlcipher.test.mjs` exercises provider/artifact behavior and a controlled native API. Linux tests qualify the reviewed host build. Installed Android musl and SELinux are a separate external boundary.
 
 ```quint
 type OperationEvidence = { connectionAdmitted: bool, ownerBefore: bool, nativeHandleCurrent: bool, canWrite: bool, nativeSucceeded: bool, ownerAfter: bool }
-pure def ownerGuardResult(guardObservation: str): str =
-  if (guardObservation == "returned-undefined") "continue"
-  else if (guardObservation == "threw") "preserve-callback-error"
-  else "TASK_STORAGE_UNAVAILABLE"
-pure def lawThrownOwnerErrorSurvivesOperationSentinel(guardObservation: str): bool =
-  guardObservation == "threw" implies ownerGuardResult(guardObservation) == "preserve-callback-error"
-pure val guardObservationValues = Set("returned-undefined", "threw", "returned-other")
 pure def operationReceipt(operation: OperationEvidence): str =
   if (not(operation.connectionAdmitted and operation.ownerBefore and operation.nativeHandleCurrent)) "refused-before-native-sql"
   else if (operation.nativeSucceeded and operation.ownerAfter) "returned"
@@ -142,4 +135,48 @@ pure def lawVerificationRequiresOwnConnection(exactProviderConnection: bool, exa
   not(exactProviderConnection and exactDatabasePath) implies not(verifiesBoundConnection(exactProviderConnection, exactDatabasePath, operation, nativeTrue))
 pure val knownOperation: OperationEvidence = { connectionAdmitted: true, ownerBefore: true, nativeHandleCurrent: true, canWrite: true, nativeSucceeded: true, ownerAfter: true }
 pure val operationValues = Set(knownOperation, { ...knownOperation, ownerAfter: false }, { ...knownOperation, ownerBefore: false }, { ...knownOperation, nativeHandleCurrent: false }, { ...knownOperation, nativeSucceeded: false }, { ...knownOperation, canWrite: false, ownerAfter: false }, { ...knownOperation, connectionAdmitted: false })
+```
+
+### Open normalizes owner refusal and a live operation preserves a thrown callback value
+
+Opening checks the owner before acquiring the lease, before requesting the key,
+after the key returns, and after native open. A return other than undefined or
+a throw by any of these checks fails open with `TASK_STORAGE_UNAVAILABLE`
+when cleanup completes. After open, preparing, executing and verifying a live
+connection preserve the precise value thrown by the callback, whether the
+check happens before or after the native call. A non-undefined return gives
+`TASK_STORAGE_UNAVAILABLE` at either boundary. A closed connection or wrong
+connection binding fails before consulting the callback. Open validates the path
+shape before the first owner check. `close` runs independently of the
+callback. This rule models the adapter's callback decision. A separate failure
+of a native cleanup call remains a native error.
+
+The pinned provider fixture at `task-sqlcipher.test.mjs:266–284` injects a
+plain thrown `Error` in a prepared `all` call and expects a storage-unavailable
+code. The same pinned adapter at `task-sqlcipher.mjs:174–175,194–210,213–264`
+propagates the same error object. The matching fixture asserts the thrown value
+by identity and retains the storage-unavailable assertion after close. Grace
+at its pinned revision passes the derived-key resolver without a custom owner
+callback (`apps/app/host/task-storage-encryption.ts:180–185`). Its separate
+[task owner fence](./taskOwner.md) owns account authorization.
+
+```quint
+type OwnerCheckBoundary = OpeningConnection | UsingConnection
+type OwnerCheckObservation = CallbackAllowed | CallbackReturnedValue | CallbackThrew
+type OwnerGuardResult = OwnerCheckPassed | StorageUnavailable | PropagateCallbackValue
+type OwnerGuardDecision = { checkedOwner: bool, outcome: OwnerGuardResult }
+pure def ownerGuardResult(guardBoundary: OwnerCheckBoundary, boundaryAdmitted: bool, guardObservation: OwnerCheckObservation): OwnerGuardDecision =
+  if (not(boundaryAdmitted)) { checkedOwner: false, outcome: StorageUnavailable }
+  else { checkedOwner: true, outcome:
+    if (guardObservation == CallbackAllowed) OwnerCheckPassed
+    else if (guardBoundary == UsingConnection and guardObservation == CallbackThrew) PropagateCallbackValue
+    else StorageUnavailable }
+pure def lawThrownOwnerErrorSurvivesOperationSentinel(boundaryAdmitted: bool): bool =
+  boundaryAdmitted implies ownerGuardResult(UsingConnection, boundaryAdmitted, CallbackThrew).outcome == PropagateCallbackValue
+pure def lawOpenNormalizesOwnerRefusal(guardObservation: OwnerCheckObservation): bool =
+  guardObservation != CallbackAllowed implies ownerGuardResult(OpeningConnection, true, guardObservation).outcome == StorageUnavailable
+pure def lawIneligibleBoundaryRefusesBeforeOwnerCallback(guardBoundary: OwnerCheckBoundary, guardObservation: OwnerCheckObservation): bool = {
+  val decision = ownerGuardResult(guardBoundary, false, guardObservation)
+  not(decision.checkedOwner) and decision.outcome == StorageUnavailable
+}
 ```
