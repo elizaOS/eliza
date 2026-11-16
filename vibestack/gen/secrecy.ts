@@ -21,8 +21,9 @@ interface Flow {
 
 /** Fails with every place a secret reaches that is not secret. */
 export function checkSecrets({ funs, vals, sig, inferred, where, variants }: Flow, roles: Roles, { typedef, resolve, fields, payload, ownerOf, named }: Types) {
-  /** A type that is secret itself, directly or as an alias of one. */
-  const secret = (t: Json | undefined): boolean => t?.kind === "const" && (SECRET.test(t.name.split("::").pop()) || SECRET.test(typedef(t.name).base ?? "") || secret(typedef(t.name).type));
+  /** A type that is secret itself, directly or as an alias of one, or a list, set or map of such: what is read from it is secret. */
+  const secret = (t: Json | undefined): boolean => (t?.kind === "const" ? SECRET.test(t.name.split("::").pop()) || SECRET.test(typedef(t.name).base ?? "") || secret(typedef(t.name).type)
+    : t?.kind === "list" || t?.kind === "set" ? secret(t.elem) : t?.kind === "fun" && secret(t.res));
   const name = (t: Json) => (t.kind === "const" ? t.name : t.kind);
   const byName = new Map(funs.map((d) => [d.name as string, d]));
   const valsByName = new Map(vals.map((d) => [d.name as string, d]));
@@ -47,8 +48,11 @@ export function checkSecrets({ funs, vals, sig, inferred, where, variants }: Flo
    */
   const carries = (e: Json, env: Map<string, boolean>, at: string, slot?: Json): boolean => {
     const own = secret(inferred(e.id));
-    const into = (x: Json, t: Json | undefined, what: string) => {
-      if (carries(x, env, at, t) && !secret(t)) found.add(`${at}: a secret reaches ${what}${t ? `, of type ${name(t)},` : ""} which is not secret: give that place a Secret type, or pass the value through a declassify function`);
+    /** Whether `x` carries a secret into a place of type `t`, which must then be secret. */
+    const into = (x: Json, t: Json | undefined, what: string): boolean => {
+      const carried = carries(x, env, at, t);
+      if (carried && !secret(t)) found.add(`${at}: a secret reaches ${what}${t ? `, of type ${name(t)},` : ""} which is not secret: give that place a Secret type, or pass the value through a declassify function`);
+      return carried;
     };
     // A lambda's parameters carry what the values it is applied to carry.
     const all = (xs: Json[]) => {
@@ -76,9 +80,10 @@ export function checkSecrets({ funs, vals, sig, inferred, where, variants }: Flo
       into(a[2], field(declared(e, slot), a[1].value), `the field ${a[1].value}`);
       return carries(a[0], env, at, slot);
     }
-    if (op === "List" || op === "Set") { for (const x of a) into(x, elem(slot ?? inferred(e.id)), "an element of a collection"); return false; }
-    if (op === "append") { into(a[1], elem(slot ?? inferred(e.id)), "an element of a list"); return carries(a[0], env, at, slot); }
-    if (op === "put" || op === "set") { into(a[2], elem(slot ?? inferred(e.id)), "a value in a map"); return carries(a[0], env, at, slot) || carries(a[1], env, at); }
+    // A collection is as secret as what it holds: whatever reads an element reads a secret.
+    if (op === "List" || op === "Set") return a.map((x) => into(x, elem(slot ?? inferred(e.id)), "an element of a collection")).some(Boolean);
+    if (op === "append") return [into(a[1], elem(slot ?? inferred(e.id)), "an element of a list"), carries(a[0], env, at, slot)].some(Boolean);
+    if (op === "put" || op === "set") return [into(a[2], elem(slot ?? inferred(e.id)), "a value in a map"), carries(a[0], env, at, slot), carries(a[1], env, at)].some(Boolean);
     if (op === "field") return own || secret(field(inferred(a[0].id), a[1].value)) || carries(a[0], env, at);
     return own || all(a);
   };

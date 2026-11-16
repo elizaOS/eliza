@@ -90,7 +90,8 @@ pure def sometimesEditingWhileChecking(s: Session): bool = s.unpublished and s.j
 An agent or an editor may change a spec while the page is open.
 
 ```quint
-pure def touch(s: Session): Session = { ...s, verdict: Unknown }
+pure def stepATouchForgetsTheVerdict(before: Session, via: str, after: Session): bool =
+  via == "touch" implies after.verdict == Unknown
 ```
 
 ## Story: Sync with an agent
@@ -163,6 +164,19 @@ pure def sometimesSyncing(s: Session): bool = s.job == Syncing and s.waiting > 0
 ```quint
 pure def canCheck(s: Session): bool = s.job == Idle
 pure def check(s: Session): Session = { ...s, job: Checking, verdict: Unknown }
+```
+
+### A change to the specs on disk is checked when no job runs and nothing is unpublished
+
+So an edit made outside the studio is checked without asking. The server
+waits until the changes stop for a moment, so a burst of saves is checked
+once. While a job runs, or edits wait in the page, the verdict is only
+forgotten.
+
+```quint
+pure def touch(s: Session): Session =
+  if (s.job == Idle and not(s.unpublished)) { ...s, job: Checking, verdict: Unknown }
+  else { ...s, verdict: Unknown }
 ```
 
 ### A finished check gives its verdict

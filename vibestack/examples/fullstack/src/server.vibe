@@ -1,5 +1,5 @@
 // spec/server.md, "The log tells which requests were answered, and with which edit each was accepted"; spec/server.md, "Every new request is answered by applying its edit if it makes sense and refusing it if not"; spec/client.md, "Story: Hear back from the server"
-import { type Event, type Server, Machine, NotAnEvent, acceptedAs, apply, decodeEvent, decodeState, initial, parseEvent, parseState } from "../gen/server.effect.vibe"
+import { type Server, Machine, NotAnEvent, acceptedAs, decodeEvent, decodeState, initial, machineOver } from "../gen/server.effect.vibe"
 import type { Answer, Request, Snapshot } from "./protocol.vibe"
 
 module node {
@@ -69,7 +69,7 @@ export error NotAStateFile { file: string; cause: unknown }
 effect function load(file: string) {
   const fs = try FileSystem.FileSystem
   return effect {
-    if (!(try fs.exists(file))) return parseState(initial)!
+    if (!(try fs.exists(file))) return initial
     const text = try fs.readFileString(file)
     return try decodeState(try Effect.try(() => JSON.parse(text) as unknown))
   } catch effect (cause) => { throw new NotAStateFile({ file, cause }) }
@@ -91,32 +91,16 @@ effect function save(file: string, dir: string, s: Server) {
  * answered. One event at a time, so two requests never interleave their saves. A failed save fails the request and
  * changes nothing.
  */
-function stored(file: string) {
+function kept(file: string) {
   return Layer.effect(Machine, effect {
     const fs = try FileSystem.FileSystem
     const dir = (try Path.Path).dirname(file)
-    const held = try SubscriptionRef.make(try load(file))
-    effect function send(event: Event) {
-      const input = parseEvent(event)!
-      uninterruptible {
-        return try SubscriptionRef.modifyEffect(held, effect (current) => {
-          const next = try apply(parseState(current)!, input)
-          try orDie(provideService(save(file, dir, next), FileSystem.FileSystem, fs))
-          return [next, parseState(next)!] as const
-        })
-      }
-    }
-    return {
-      changes: Stream.map(SubscriptionRef.changes(held), (state) => parseState(state)!),
-      get: () => map(SubscriptionRef.get(held), (state) => parseState(state)!),
-      send,
-      effect receive(input: unknown) { return try send(try decodeEvent(input)) }
-    }
+    return try machineOver(try load(file), (next) => orDie(provideService(save(file, dir, next), FileSystem.FileSystem, fs)))
   })
 }
 
 /** The HTTP API and the page's files in `web`, on `listener`, over the server machine kept in `file`. */
 export function server(web: string, listener: ReturnType<typeof listening>, file: string) {
   const app = Layer.mergeAll(Api, HttpStaticServer.layer({ root: web }))
-  return Layer.provideMerge(HttpRouter.serve(app, { disableLogger: true, disableListenLog: true }), Layer.provideMerge(stored(file), listener))
+  return Layer.provideMerge(HttpRouter.serve(app, { disableLogger: true, disableListenLog: true }), Layer.provideMerge(kept(file), listener))
 }

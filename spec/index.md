@@ -8,7 +8,7 @@ will use Effect services and typed failures internally.
 
 The research baseline is elizaOS/eliza commit
 `72fed7e4069ecd35d61d886ab6eec5c02c137517`. The imported toolchain is
-elizaOS/eliza-vibestack commit `71d7b30f404b91d7ec48741ac288d6c8d911f3e2`.
+lalalune/vibestack commit `f3701e96e0e6845a4c67741433c76c50f3ffd9e4`.
 The original core source, declarations, consumers, formal assertions and
 scenario bounds are traceable from the core specification.
 

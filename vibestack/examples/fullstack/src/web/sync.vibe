@@ -1,6 +1,7 @@
 // spec/system.md, "Only a tab's oldest queued edit can be on its way unanswered"; spec/client.md, "Story: Hear back from the server"
-// Shared by useTab.ts, test/app.test.vibe and test/drivers/client.ts.
+// Shared by main.tsx, test/app.test.vibe and test/drivers/client.ts.
 import { type Client, type Event, type Pending, Machine, NotAnEvent, Rejected, machine } from "../../gen/client.effect.vibe"
+import type { Op } from "../../gen/todo.ts"
 import type { Request } from "../protocol.vibe"
 
 /** How long a tab waits before it tries the network again. */
@@ -10,9 +11,6 @@ const RESPONSE_TIMEOUT = "10 seconds"
 /** The server did not answer, or said something that is no answer. */
 export error Unanswered { cause: unknown }
 
-/** An edit the user makes. */
-export type Edit = Extract<Event, { type: "create" | "setDone" | "rename" | "remove" }>
-
 /** One browser tab: a client of spec/client.md, and the requests that keep it in step with the server. */
 export service Tab {
   readonly changes: Stream.Stream<Client>
@@ -20,7 +18,7 @@ export service Tab {
   /** One event of the client machine, and whether the rules allowed it; one they do not changes nothing. */
   dispatch(event: Event): boolean!!
   /** A user edit: queued at once, and sent after the edits queued before it, for as long as the tab is online. */
-  edit(event: Edit): void!!
+  edit(op: Op): void!!
   /** Send one queued edit and take in the answer, as a retry does. */
   send(p: Pending): void!Unanswered
   /** Take in the list as the server has it now. */
@@ -101,8 +99,8 @@ export effect function open(base: string, name: string) {
     changes: held.changes,
     get,
     dispatch,
-    effect edit(event: Edit) {
-      try dispatch(event)
+    effect edit(op: Op) {
+      try dispatch({ type: "queue", op })
       try flush
     },
     send: (p: Pending) => asked(send(p)),
@@ -122,7 +120,7 @@ export effect function open(base: string, name: string) {
   }
 }
 
-/** The page's tab: `open`, over a client machine in memory and the browser's fetch. */
+/** The page's tab and its client Machine in memory, over the browser's fetch. */
 export function browser(base: string, name: string) {
-  return Layer.provide(Layer.effect(Tab, open(base, name)), [machine(), FetchHttpClient.layer])
+  return Layer.provide(Layer.provideMerge(Layer.effect(Tab, open(base, name)), machine()), FetchHttpClient.layer)
 }

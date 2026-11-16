@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { filesUnder, sha } from "./util.ts";
+import { filesUnder, sha, writeWhole } from "./util.ts";
 import { dafnyVersion, solver } from "./prove.ts";
 import { executableDigest } from "./run.ts";
 
@@ -80,8 +80,7 @@ export async function toolchainFingerprint() {
  * What a remembered result of one stage was produced by: a different Quint, Node or version of these tools must not
  * reuse a model or a simulation, and a proof also depends on LemmaScript, Dafny and the prover's own code. Each stage
  * has its own, so that a change that matters only to the proof (prove.ts, Dafny, LemmaScript) does not simulate
- * everything again. The proof library is part of the key of each unit that has a proof file, the only ones it is
- * offered to.
+ * everything again. The part of the proof library a proof file calls (prove.ts, `libraryFor`) is part of its unit's key.
  */
 const toolchains = new Map<string, Promise<string>>();
 function toolchainId(stage: "model" | "simulate" | "prove" | "tests"): Promise<string> {
@@ -109,11 +108,11 @@ function toolchainId(stage: "model" | "simulate" | "prove" | "tests"): Promise<s
 
 /** The remembered results of one check: whether it may read them, and every entry it read or wrote. */
 export interface Memory { root: string; fresh: boolean; used: Set<string> }
-/** An entry of `.spec-cache`. A simulation's entry names its budget, so that a check with another budget leaves it alone. */
+/** An entry of `.spec-cache`. */
 interface Entry { name: string; file: string }
 const cacheDir = (root: string) => path.join(root, ".spec-cache");
-export async function entry(root: string, stage: "model" | "simulate" | "prove" | "tests", key: string[], profile = ""): Promise<Entry> {
-  const name = `${stage}-${profile ? `${profile}-` : ""}${sha(await toolchainId(stage), ...key).slice(0, 24)}.json`;
+export async function entry(root: string, stage: "model" | "simulate" | "prove" | "tests", key: string[]): Promise<Entry> {
+  const name = `${stage}-${sha(await toolchainId(stage), ...key).slice(0, 24)}.json`;
   return { name, file: path.join(cacheDir(root), name) };
 }
 /** What an entry holds, or undefined. An entry that cannot be read, cut short by a kill or a full disk, is deleted and is a miss. */
@@ -136,18 +135,9 @@ export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined 
     return undefined;
   }
 }
-/** Write an entry whole or not at all: to a file of its own, then renamed into place. */
 export function store(memory: Memory, { name, file }: Entry, value: unknown) {
   memory.used.add(name);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-  try {
-    fs.writeFileSync(temporary, JSON.stringify(value));
-    fs.renameSync(temporary, file);
-  } catch (e) {
-    fs.rmSync(temporary, { force: true });
-    throw e;
-  }
+  writeWhole(file, JSON.stringify(value));
 }
 
 /**

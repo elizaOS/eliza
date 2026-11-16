@@ -23,7 +23,7 @@ effect function main() {
     for (const event of events) {
       const shown = Object.values(event).join(" ").padEnd(10)
       const line = effect {
-        const order = try book.dispatch("A1", event)
+        const order = try book.dispatch("A1", event, "Shopper")
         return `✓ ${shown} ${order.status.padEnd(9)} ${paidBar(order)}`
       } catch (error) => `✗ ${shown} ${reason(error)}`
       try Console.log(line)

@@ -14,7 +14,7 @@ const SET_OPS: Record<string, (x: SetArgs) => string> = {
   contains: ({ a, b }) => `${a}.includes(${b})`,
   in: ({ a, b }) => `${a}.includes(${b})`,
   size: ({ a }) => `${a}.length`,
-  union: ({ a, b, el }) => `[...${a}, ...${b}.filter((set_x: ${el}) => !${a}.includes(set_x))]`,
+  union: ({ a, b, el }) => `${a}.concat(${b}.filter((set_x: ${el}) => !${a}.includes(set_x)))`, // not a literal: see `joined`
   intersect: ({ a, b, el }) => `${a}.filter((set_x: ${el}) => ${b}.includes(set_x))`,
   exclude: ({ a, b, el }) => `${a}.filter((set_x: ${el}) => !${b}.includes(set_x))`,
   subseteq: ({ a, b, el }) => `!${a}.some((set_x: ${el}) => !${b}.includes(set_x))`,
@@ -24,6 +24,13 @@ const SET_OPS: Record<string, (x: SetArgs) => string> = {
   map: ({ a, b, out }) => `${a}.map(${b}).reduce((set_acc: ${out}[], set_x: ${out}) => set_acc.includes(set_x) ? set_acc : [...set_acc, set_x], ([] as ${out}[]))`,
 };
 
+/** Every Quint operator a spec may use, beside the list helpers and builtins below: `print` refuses any other. */
+export const OPERATORS = new Set([
+  ...Object.keys(BINARY), ...Object.keys(SET_OPS), "Set", "iuminus", "idiv", "imod", "not", "and", "or", "implies", "iff", "ite",
+  "Map", "put", "set", "get", "keys", "field", "Rec", "with", "matchVariant",
+  "List", "append", "concat", "length", "nth", "head", "tail", "select", "foldl",
+]);
+
 /** What the printer needs to know about the module an expression is in. */
 export interface Scope {
   types: Types;
@@ -31,7 +38,7 @@ export interface Scope {
   inferred: (id: number) => Json | undefined;
   /** A reference to a definition, as TypeScript spells it. */
   ref: (name: string) => string;
-  /** The name of a helper function the module carries for itself: quotient, remainder, lookup<n>. */
+  /** The name of a helper function the module carries for itself (HELPERS in typescript.ts). */
   helper: (which: string) => string;
   /** Checks that a name the spec binds survives translation unchanged. */
   bind: (name: string) => string;
@@ -42,8 +49,9 @@ export interface Scope {
   /**
    * Whether the code is for the prover rather than for Node. Node's code checks at run time two things the proof takes
    * as given: that integer arithmetic is exact (a number past 2^53 is rounded, where Quint's and Dafny's integers are
-   * not, so such a result throws a RangeError), and that `==` on records, lists and variants compares their structure
-   * (which JavaScript's `===` does not, but Dafny's `==` does). Otherwise the two are the same text.
+   * not, so such a result throws a RangeError), that a divisor is not zero and a list or map holds what is read from
+   * it (a RangeError too), and that `==` on records, lists and variants compares their structure (which JavaScript's
+   * `===` does not, but Dafny's `==` does). Otherwise the two are the same text.
    */
   proof: boolean;
 }
@@ -131,6 +139,9 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
   };
   /** An integer result of arithmetic, which Node's code checks is exact (Scope.proof). */
   const exact = (text: string, prec: number): [string, number] => (proof ? [text, prec] : [`${helper("exact")}(${(helpers.add("exact"), text)})`, ATOM]);
+  /** A read that is undefined outside the list or map, where Node's code throws a RangeError (Scope.proof). */
+  const partial = (which: "nth" | "get", from: string, at: string): [string, number] =>
+    [proof ? `${from}[${at}]` : `${helper(which)}(${(helpers.add(which), from)}, ${at})`, ATOM];
   /** Records, lists and variants compare by structure (Scope.proof); a set inside one would compare in order in the proof. */
   const comparable = (e: Json) => !holdsSet(typeOf(e.id)) || fail("== and includes on a value that holds a set are not supported: in the proof a set is a sequence, compared in order; compare sets with subseteq both ways");
   const equal = (a: string, b: string) => `${helper("equal")}(${(helpers.add("equal"), a)}, ${b})`;
@@ -158,7 +169,7 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
   const joined = (e: Json): string => {
     const [first, ...rest] = parts(e);
     const args = rest.reduce<(string | string[])[]>((all, p) => (Array.isArray(p) && Array.isArray(all.at(-1)) ? [...all.slice(0, -1), [...all.at(-1)!, ...p]] : [...all, p]), []);
-    return `${first}.concat(${args.map((p) => (Array.isArray(p) ? `[${p.join(", ")}]` : p)).join(", ")})`;
+    return `${first as string}.concat(${args.map((p) => (Array.isArray(p) ? `[${p.join(", ")}]` : p)).join(", ")})`;
   };
   /** A lambda, or with `not` its negation. Its parameters carry their types, which LemmaScript cannot always infer. */
   const arrow = (params: Json[], result: Json, not = false): string => {
@@ -167,9 +178,7 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
     for (const [n] of hidden) { renamed.delete(n); matchedAs.delete(n); }
     const text = scoped(params.map((p) => p.name), () => not ? `!${ex(result, ATOM)}` : ex(result, TERNARY));
     for (const [n, r, m] of hidden) { restore(renamed, n, r); restore(matchedAs, n, m); }
-    // The item of a point-free helper is the tangler's own name (expandListHelpers in parse.ts), which no spec can bind.
-    const name = (p: Json) => (/^std_x_\d+$/.test(p.name) ? p.name : bind(p.name));
-    const param = (p: Json) => (inferred(p.id) ? `${name(p)}: ${tsType(typeOf(p.id))}` : name(p));
+    const param = (p: Json) => (inferred(p.id) ? `${bind(p.name)}: ${tsType(typeOf(p.id))}` : bind(p.name));
     return `(${params.map(param).join(", ")}) => ${text.startsWith("{") ? `(${text})` : text}`;
   };
 
@@ -194,6 +203,8 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
     }
     const a: Json[] = e.args;
     const op: string = e.opcode;
+    if (!OPERATORS.has(op) && !BUILTIN.test(op) && !variants.has(op) && !definitions.has(op))
+      return simulatorOnly.has(op) ? forSimulator(op) : fail(`\`${op}\` is not in the Quint a spec may use (SPEC.md, "Supported Quint"); write it with the operators listed there`);
     if (negative(e)) return print(negative(e));
     if (BINARY[op]) {
       const [symbol, prec] = BINARY[op];
@@ -218,7 +229,7 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       // A map is an object. Looking a key up is only safe where the same definition has tested for it.
       case "Map": return [a.reduce((m, pair) => put(m, typeOf(e.id), mapKey(e, pair.args[0]), ex(pair.args[1], TERNARY)), `({} as ${tsType(typeOf(e.id))})`), ATOM];
       case "put": case "set": return [put(recv(), typeOf(a[0].id), mapKey(a[0], a[1]), ex(a[2], TERNARY)), ATOM];
-      case "get": return [`${recv()}[${mapKey(a[0], a[1])}]!`, ATOM];
+      case "get": return partial("get", recv(), mapKey(a[0], a[1]));
       case "keys": return fail("a map cannot be listed or iterated, only asked about one key: write `m.keys().contains(k)`, and keep a list of keys beside the map if you need to go through them");
       case "not": return [`!${ex(a[0], ATOM)}`, UNARY];
       case "and": return [flat(e, "and").map((x) => ex(x, AND + 1)).join(" && "), AND];
@@ -236,8 +247,8 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       case "List": return [a.length ? `[${a.map((x) => ex(x, TERNARY)).join(", ")}]` : `([] as ${tsType(typeOf(e.id))})`, ATOM];
       case "append": case "concat": return [joined(e), ATOM];
       case "length": return [`${recv()}.length`, ATOM];
-      case "nth": return [`${recv()}[${ex(a[1])}]`, ATOM];
-      case "head": return [`${recv()}[0]`, ATOM];
+      case "nth": return partial("nth", recv(), ex(a[1]));
+      case "head": return partial("nth", recv(), "0");
       case "tail": return [`${recv()}.slice(1)`, ATOM];
       case "select": return [`${recv()}.filter(${ex(a[1])})`, ATOM];
       case "foldl": {
@@ -304,9 +315,7 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       if (a.length > 1 && !a.every(literal)) fail("Set(…) with several members that are not literals could hold the same value twice; write Set(a).union(Set(b))");
       return [distinct.length ? `[${distinct.join(", ")}]` : `([] as ${tsType(t.elem)}[])`, ATOM];
     }
-    if (definitions.has(op)) return [`${reference(op)}(${a.map((x) => ex(x, TERNARY)).join(", ")})`, ATOM];
-    if (simulatorOnly.has(op)) return forSimulator(op);
-    return fail(`\`${op}\` is not in the Quint a spec may use (SPEC.md, "Supported Quint"); write it with the operators listed there`);
+    return [`${reference(op)}(${a.map((x) => ex(x, TERNARY)).join(", ")})`, ATOM];
   };
 
   /** A definition body: leading `val`s become `const`s, the rest is returned. */
@@ -324,6 +333,6 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
     return [...lines, `return ${ex(e)};`];
   });
 
-  return { ex, body, helpers, lookups };
+  return { ex, body, helpers, lookups, proof };
 }
 export type Printer = ReturnType<typeof printer>;
