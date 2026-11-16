@@ -64,9 +64,10 @@ an effect or prove an adapter is live. The native image gates Phone,
 Messages and Contacts; Wallet is outside the release MVP. The reference
 fixtures only appear in explicitly flagged development builds.
 
-The pinned managed Gmail host reports marked partial body text above 32,000
-UTF-16 units. The replacement returns an explicit oversize refusal at that
-boundary and returns the complete body below it. [Managed Google read policy](./managedGoogle.md).
+The pinned managed Gmail broker marks partial bodies above 32,000 UTF-16
+units. The pinned Inbox message reader drops that mark. The proposed
+replacement delivers the complete body under both read limits and an
+explicit size refusal otherwise. [Managed Google read policy](./managedGoogle.md).
 
 The state models cover the admission, ownership and receipt rules in
 the table. Before declaring replacement parity, confirm the host
