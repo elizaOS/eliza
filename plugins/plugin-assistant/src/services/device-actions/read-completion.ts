@@ -33,7 +33,6 @@ import {
   runWithTrajectoryContext,
   stringToUuid,
   validateUuid,
-  withSemanticStageFanOut,
 } from "@elizaos/core";
 import { renderContextObject } from "@elizaos/core/protocol";
 import {
@@ -41,8 +40,8 @@ import {
   type ReviewedAvailabilityRequest,
   validateReviewedAvailabilityRequest,
 } from "../../../../plugin-calendar/src/internal/reviewed-availability.ts";
+import { createTrajectoryRecorder } from "../../features/trajectories/recorded-trajectories.ts";
 import { runPlannerLoop } from "../../runtime/planner-loop.ts";
-import { createJsonFileTrajectoryRecorder } from "../../runtime/trajectory-recorder.ts";
 import {
   executeRawSqlTx,
   sqlJson,
@@ -764,13 +763,7 @@ export async function synthesizeDeviceReadReply(
     data: { proposalId: request.id, executed: false, result },
   };
   const recorder = isTrajectoryRecordingEnabled()
-    ? withSemanticStageFanOut(
-        createJsonFileTrajectoryRecorder({
-          reportError: runtime.reportError.bind(runtime),
-          redactSecrets: runtime.redactSecrets.bind(runtime),
-        }),
-        runtime,
-      )
+    ? createTrajectoryRecorder({ runtime })
     : undefined;
   const trajectoryId = recorder?.startTrajectory({
     agentId: binding.agentId,

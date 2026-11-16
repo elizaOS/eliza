@@ -137,6 +137,7 @@ function fixture(responses: unknown[]) {
     providers: [{ name: "CHOICE", get: vi.fn() }],
     evaluators: [],
     getService: vi.fn(() => null),
+    getServicesByType: vi.fn(() => []),
     getRoom: vi.fn(async () => null),
     getModelRegistrations: vi.fn(() => []),
     getSetting: vi.fn(),

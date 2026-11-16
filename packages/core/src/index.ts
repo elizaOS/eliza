@@ -258,7 +258,6 @@ export * from "./runtime/trace-correlation";
 export * from "./runtime/trajectory-gate";
 export * from "./runtime/trajectory-provider-attribution";
 export * from "./runtime/trajectory-recorder";
-export { withSemanticStageFanOut } from "./runtime/trajectory-semantic-stage-sink.ts";
 export * from "./runtime/turn-controller";
 export {
 	type CallModelWithValidationOptions,

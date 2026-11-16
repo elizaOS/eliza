@@ -2,7 +2,11 @@
 // Sources: plugin-assistant's TrajectoriesService and its row store
 // (features/trajectories/store/trajectory-{storage,internals}.ts), the single
 // owner of trajectory persistence, plus the host's dev-trajectory-recovery.ts
-// and dev-trajectory-recovery-protocol.ts.
+// and dev-trajectory-recovery-protocol.ts. The runtime recorder
+// (recorded-trajectories.ts, store/recorded-trajectory.ts) uses the same
+// transitions: its start opens its own row or joins the open turn row, each
+// stage is a capture, and its end waits for its stage writes before the row
+// finishes. A header after the turn row closes is rejected like any capture.
 // Two captures and two execution identities abstract payloads and arbitrary IDs.
 // Database transactions, compare-and-set and the supervisor's exit proof are trusted boundaries.
 // A crash may lose uncommitted in-memory captures; graceful stop must drain them.
