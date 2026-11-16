@@ -189,7 +189,6 @@ import {
   trackDeferredBootTask,
 } from "./deferred-boot-owner.ts";
 import { markDeferredBootPhase } from "./deferred-boot-status.ts";
-import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
 import { createElizaPlugin } from "./eliza-plugin.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { getAgentHostBridge, hasDurableHostVault } from "./host-bridge.ts";
@@ -5508,8 +5507,6 @@ export async function startEliza(
     bootTimer.lap("svc:runtime.initialize");
     await ensureConnectorCredentialStoreStarted();
     bootTimer.lap("svc:connector-credential-store-start");
-    await registerDesktopScreenCaptureBridgeService(runtime);
-    bootTimer.lap("svc:desktop-screen-capture");
   };
   const registerDeferredRuntimePlugins = async (
     deferredResolvedPlugins: RuntimeResolvedPlugin[],
