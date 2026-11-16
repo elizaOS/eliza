@@ -1,4 +1,4 @@
-// spec/app/index.md, "Every step adds exactly one greeting"; spec/app/index.md, "Only a name that is not empty can be greeted"
+// spec/app/index.md, "Every step adds exactly one greeting"; spec/app/index.md, "Only a name that is not empty can be greeted, and a link greets only a name not greeted last"
 // What Bombadil checks on every state it reaches while it clicks, types, scrolls and reloads the page (SPEC.md,
 // "Exploring the page"): its default properties, the greeter kept in the browser's storage, and the Greet button.
 import { always, next, now } from "@antithesishq/bombadil";
