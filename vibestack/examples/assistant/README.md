@@ -56,11 +56,12 @@ says.
 through Effect's `FileSystem`, and `durable(file)`, the same as a layer:
 opening it reads the file (a missing one is `initial`, one that is no state
 fails with `NotAState`) and applies `restart` from the world; each accepted
-event is written to a temporary file, synced to the disk and renamed before
-`send` returns, one event at a time. The card, pending effects and last
-acknowledged delivery number are saved there too, since the spec says they
-survive a restart. It is for one process: nothing locks the file, so two
-processes would overwrite each other.
+event is applied to what the file holds when it is sent, written to a
+temporary file, synced to the disk and renamed before `send` returns, one
+event at a time. The card, pending effects and last acknowledged delivery
+number are saved there too, since the spec says they survive a restart. It
+is for one process: nothing locks the file, so two processes that send at
+once can overwrite each other.
 
 `src/scripted.vibe` is a `Model` and a `World` that follow a script. The demo
 and [the journey](test/assistant.test.vibe) share it: a real model costs

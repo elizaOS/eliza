@@ -2480,6 +2480,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
       manifest.pnpm.overrides[`${sourceManifest.name}@${sourceManifest.version}>${name}`] = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8")).version;
       return directory;
     });
+    dependencyDirectories.push(...Object.keys({ ...manifest.dependencies, ...manifest.devDependencies }).map((name) => fs.realpathSync(path.join(nodeModules, name))));
     const visited = new Set<string>();
     for (const directory of dependencyDirectories) {
       if (visited.has(directory)) continue;
@@ -2499,7 +2500,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     fs.writeFileSync(path.join(scaffold, "package.json"), JSON.stringify(manifest));
     fs.writeFileSync(path.join(scaffold, ".agents/skills/sync/SKILL.md"), "My installed project instructions.\n");
     for (const alias of [...harnessSkillPaths, "CLAUDE.md", ".claude/settings.json"]) fs.unlinkSync(path.join(scaffold, alias));
-    const reinstalled = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["install", "--offline", "--ignore-workspace"], scaffold);
+    const reinstalled = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["install", "--prefer-offline", "--ignore-workspace", `--config.cache-dir=${scratch({})}`], scaffold);
     assert.equal(reinstalled.status, 0, reinstalled.stdout + reinstalled.stderr);
     for (const alias of harnessSkillPaths) assert.equal(fs.realpathSync(path.join(scaffold, alias)), path.join(scaffold, ".agents/skills"));
     assert.equal(fs.readlinkSync(path.join(scaffold, "CLAUDE.md")), "AGENTS.md");
@@ -2992,7 +2993,7 @@ pure def left(a: int, b: int): int = a % b`);
     leaks.forEach((quint, i) => assert.equal(leaked[i].said("model", /\bleak \(spec\/cards\.md:\d+\): (what it returns depends on a secret|a secret reaches an element)/)?.ok, false, `${quint}\n${leaked[i].text}`));
   });
 
-  test("a machine is kept in a store from one run to the next, and a package that depends on react gets a hook over its machine, in an owner's gen/ as in its own", async () => {
+  test("a machine is kept in a store from one run to the next and steps from what another machine stored since, and a package that depends on react gets a hook over its machine, in an owner's gen/ as in its own", async () => {
     const manifest = (name: string) => JSON.stringify({ name, type: "module", dependencies: { react: "19" } });
     const root = scratch({
       "package.json": manifest("kept"),
@@ -3014,6 +3015,24 @@ export effect function counted(before: string | undefined) {
     if (before !== undefined) try store.set("n", before)
     const outcome = once() catch (error) => error._tag
     return [outcome, try store.get("n")] as const
+  }
+}
+
+/** Two pages open on one store, the later counting first: what the earlier finds and counts, what the later is then refused, and what the store holds. */
+export effect function twoPages() {
+  provide KeyValueStore.layerMemory {
+    const store = try KeyValueStore.KeyValueStore
+    provide stored("n") {
+      const earlier = try Machine
+      provide stored("n") {
+        const later = try Machine
+        try later.send({ type: "inc" })
+        const found = try earlier.get()
+        const second = try earlier.send({ type: "inc" })
+        const refused = later.send({ type: "inc" }) catch (error) => error._tag
+        return [found, second, refused, try store.get("n")] as const
+      }
+    }
   }
 }
 `,
@@ -3041,9 +3060,10 @@ export function useShown(counter: ManagedRuntime.ManagedRuntime<Machine, never>,
     assert.deepEqual((await genAll(root)).filter((f) => f.endsWith(".react.ts")), ["index.react.ts", "vault.react.ts"]);
     const compiled = await tool("vibelang", ["--noEmit", "-p", "."], root);
     assert.ok(compiled.ok, compiled.out);
-    // Nothing stored starts from `initial`, and a stored state goes on from where it was; what the rules refuse, or what is no state, leaves the store as it is.
-    const kept = await exec(process.execPath, ["--import", "vibelang/register", "--input-type=module", "-e", `import assert from "node:assert/strict"; import { Effect } from "effect"; import { counted } from "./src/kept.vibe";
-assert.deepEqual(await Promise.all([undefined, "1", "2", "7", "{"].map((before) => Effect.runPromise(counted(before)))), [[1, "1"], [2, "2"], ["Rejected", "2"], ["NotAState", "7"], ["NotAState", "{"]]);`], root);
+    // Nothing stored starts from `initial`, and a stored state goes on from where it was; what the rules refuse, or what is no state, leaves the store as it is; a machine steps from what another over the same store stored since, and its guard is judged by it.
+    const kept = await exec(process.execPath, ["--import", "vibelang/register", "--input-type=module", "-e", `import assert from "node:assert/strict"; import { Effect } from "effect"; import { counted, twoPages } from "./src/kept.vibe";
+assert.deepEqual(await Promise.all([undefined, "1", "2", "7", "{"].map((before) => Effect.runPromise(counted(before)))), [[1, "1"], [2, "2"], ["Rejected", "2"], ["NotAState", "7"], ["NotAState", "{"]]);
+assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`], root);
     assert.equal(kept.status, 0, kept.stdout + kept.stderr);
     // An owner's package.json decides for its own gen/, whatever the root's says.
     const tree = scratch({ "spec/index.md": "# Product\n", "spec/app/index.md": ruleSpec(COUNTER), "spec/plain/index.md": ruleSpec(COUNTER), "apps/app/package.json": manifest("@scratch/app"), "apps/plain/package.json": "{}" });

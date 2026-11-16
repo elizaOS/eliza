@@ -6,10 +6,12 @@ import type * as T from "../gen/assistant.effect.vibe"
 /**
  * A Machine kept in `file`: a missing file starts from `initial`, one that holds no state fails with `NotAState`.
  * Opening it is a restart, which comes from the world (spec/assistant.md, "A restart loses what was in memory and keeps
- * what was saved"). Each accepted event is in the file, written to a temporary file, synced to the disk and renamed,
- * before `send` returns; one that cannot be written is a defect, and the state stays as the file has it.
+ * what was saved"). Each accepted event is applied to what the file holds when it is sent, and is in the file, written
+ * to a temporary file, synced to the disk and renamed, before `send` returns; one that cannot be read or written is a
+ * defect, and the state stays as the file has it.
  *
- * It is for one process: nothing locks the file, so two processes that open it overwrite each other's events.
+ * It is for one process: nothing locks the file between an event's read and its rename, so two processes that send at
+ * once can overwrite each other's events.
  * Pending effects and their delivery counter are saved with the state. `deliver` in agent.vibe retries them with
  * their original number after a restart; the World confirms each number idempotently before it is removed.
  */
@@ -28,13 +30,14 @@ export effect function opened(file: string) {
       try fs.rename(temporary, file)
     })
   }
-  const text = (try fs.exists(file)) ? try fs.readFileString(file) : undefined
-  const saved = text === undefined
-    ? initial
-    : try mapError(flatMap(Effect.try(() => JSON.parse(text)), decodeState), () => new NotAState({ input: "saved assistant state" }))
-  const restarted = (try apply(saved, { type: "restart" }, "World")).state
-  try save(restarted)
-  return try machineOver(restarted, (next) => orDie(save(next)))
+  effect function load() {
+    const text = (try fs.exists(file)) ? try fs.readFileString(file) : undefined
+    return text === undefined
+      ? initial
+      : try mapError(flatMap(Effect.try(() => JSON.parse(text)), decodeState), () => new NotAState({ input: "saved assistant state" }))
+  }
+  try save((try apply(try load(), { type: "restart" }, "World")).state)
+  return try machineOver(load, (next) => orDie(save(next)))
 }
 
 /** `opened(file)` as the Machine service. */

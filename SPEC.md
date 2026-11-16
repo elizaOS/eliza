@@ -465,7 +465,7 @@ line.
 - Calling a transition directly (`pay(o, 5)`) is only meaningful when its
   guard holds. Application code goes through `apply`, or a `Machine` in memory
   (`machine()`), kept in a store (`stored(key)`) or kept by the shell
-  (`machineOver(start, keep, latest?)`), of the Effect adapter
+  (`machineOver(load, keep)`), of the Effect adapter
   `gen/<name>.effect.vibe`, which use `enabled` and `step`; a React component
   goes through `useMachine` of `gen/<name>.react.ts`
   ([shell skill](.agents/skills/shell/SKILL.md)).
