@@ -91,6 +91,19 @@ const TRAVEL_MODES: Record<MapsTravelMode, string> = {
 const GOOGLE_PLACE_ID = /^[A-Za-z0-9_-]{10,255}$/;
 /** Search bias radius around `near` (the Places API maximum). */
 const NEAR_RADIUS_METERS = 50_000;
+/** The most places one Text Search request returns. */
+const MAX_SEARCH_PAGE = 20;
+
+/** Great-circle distance in metres between two points on the Earth. */
+function metersBetween(a: MapsCoordinate, b: MapsCoordinate): number {
+  const rad = Math.PI / 180;
+  const h =
+    Math.sin(((b.latitude - a.latitude) * rad) / 2) ** 2 +
+    Math.cos(a.latitude * rad) *
+      Math.cos(b.latitude * rad) *
+      Math.sin(((b.longitude - a.longitude) * rad) / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.sqrt(h));
+}
 /** Renew a tile session this long before Google says it expires. */
 const SESSION_RENEW_MARGIN_MS = 60 * 60 * 1000;
 
@@ -392,6 +405,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
         geocode: true,
         reverseGeocode: true,
         placeLookup: true,
+        distanceRank: true,
         modes: this.transit
           ? ["drive", "walk", "bicycle", "transit"]
           : ["drive", "walk", "bicycle"],
@@ -421,9 +435,13 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     reportPrice?: MapsPriceObserver,
   ): Promise<MapsPlace[]> {
     if (request.near) this.requireCovered(request.near);
+    const limit = request.limit ?? 10;
+    // Text Search orders by relevance inside the bias circle. For the closest
+    // places Cloud reads the largest page (same price) and orders it by distance.
+    const nearest = request.rank === "distance" ? request.near : undefined;
     const body: Record<string, unknown> = {
       textQuery: request.query,
-      pageSize: request.limit ?? 10,
+      pageSize: nearest ? MAX_SEARCH_PAGE : limit,
       ...(this.language ? { languageCode: this.language } : {}),
       ...(this.region ? { regionCode: this.region } : {}),
       ...(request.near
@@ -454,7 +472,10 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     const places = (json as { places?: unknown }).places;
     if (places === undefined) return [];
     if (!Array.isArray(places)) throw invalidResponse();
-    return this.covered(places.map((entry) => this.placeCandidate(entry)));
+    const found = this.covered(places.map((entry) => this.placeCandidate(entry)));
+    if (!nearest) return found;
+    const away = new Map(found.map((place) => [place, metersBetween(nearest, place.coordinate)]));
+    return found.sort((a, b) => (away.get(a) ?? 0) - (away.get(b) ?? 0)).slice(0, limit);
   }
 
   async geocode(
