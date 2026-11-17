@@ -1,4 +1,4 @@
-// spec/cloud/shared/metering.md, "Story: Never overdraw an account, and settle every call once"; spec/cloud/billing/funds.md, "Story: Spend only money the account has"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/billing/funds.md, "Story: Spend only money the account has"
 import { StoreFailure, toInt, type Tx } from "./connection.vibe"
 
 export error RowCorrupt { table: string; key: string; cause: unknown }

@@ -14,7 +14,7 @@ export const AGENT_EXIT_CODES = {
 const frameLimit = 16 * 1024
 const documentLimit = 256 * 1024
 const ipv4Loopback = /^127\.0\.0\.1:(\d{1,5})$/
-type Endpoint = { kind: "http"; port: number } | { kind: "socket"; path: string }
+export type Endpoint = { kind: "http"; port: number } | { kind: "socket"; path: string }
 
 function endpoint(mode: string, address: string): Endpoint | undefined {
   if (mode === "--socket" && address.startsWith("/") && !address.includes("\u0000")) return { kind: "socket", path: address }

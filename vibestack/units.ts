@@ -112,18 +112,19 @@ function namespace(dir: string, name: unknown): string {
  * check's simulations write what they run (simulate.ts), still running as this does, and which the next generation
  * begins by removing.
  */
-export function mirrorGen(root: string, specs: Spec[]) {
-  const written = generations.get(root) ?? new Set<string>();
-  generations.set(root, written);
-  written.add(path.join(root, SIMULATIONS));
+export function mirrorGen(root: string, specs: Spec[], scope?: { scratch: string; ownerDir: string }) {
+  const output = scope?.scratch ?? root;
+  const written = generations.get(output) ?? new Set<string>();
+  generations.set(output, written);
+  written.add(path.join(output, SIMULATIONS));
   const sweep = (dir: string) => {
     if (!fs.existsSync(dir)) return;
     for (const f of fs.readdirSync(dir)) if (!written.has(path.join(dir, f))) fs.rmSync(path.join(dir, f), { recursive: true, force: true });
     if (!fs.readdirSync(dir).length) fs.rmSync(dir, { recursive: true });
   };
-  const from = path.join(root, "gen");
+  const from = path.join(output, "gen");
   sweep(from);
-  for (const dir of codeDirs(root).filter(Boolean)) {
+  for (const dir of scope ? [scope.ownerDir] : codeDirs(root).filter(Boolean)) {
     const needed = new Set<string>();
     const need = (name: string) => { if (!needed.has(name)) { needed.add(name); specs.find((s) => s.name === name)?.imports.forEach(need); } };
     for (const spec of specs) if (`${owner(root, spec.file)}/` === dir) need(spec.name);
@@ -131,12 +132,12 @@ export function mirrorGen(root: string, specs: Spec[]) {
     const files = fs.existsSync(from) ? fs.readdirSync(from).filter((f) => needed.has(f.match(/^(\w+)\.(?:ts|conformance\.ts)$/)?.[1] ?? "")) : [];
     if (files.length) {
       fs.mkdirSync(to, { recursive: true });
-      for (const f of [...files, "package.json", ...files.some((f) => f.endsWith(".conformance.ts")) ? ["_conformance.ts"] : []]) put(root, path.join(to, f), fs.readFileSync(path.join(from, f), "utf8"));
+      for (const f of [...files, "package.json", ...files.some((f) => f.endsWith(".conformance.ts")) ? ["_conformance.ts"] : []]) put(output, path.join(to, f), fs.readFileSync(path.join(from, f), "utf8"));
     }
-    for (const spec of specs) if (files.includes(`${spec.name}.ts`)) writeFaces(root, path.join(root, dir), to, spec, fs.readFileSync(path.join(from, `${spec.name}.ts`), "utf8"));
+    for (const spec of specs) if (files.includes(`${spec.name}.ts`)) writeFaces(output, path.join(root, dir), to, spec, fs.readFileSync(path.join(from, `${spec.name}.ts`), "utf8"));
     sweep(to);
   }
-  generations.delete(root);
+  generations.delete(output);
 }
 
 /**
@@ -145,11 +146,11 @@ export function mirrorGen(root: string, specs: Spec[]) {
  * generation of gen/ (`mirrorGen` ends it); gen/<name>.qnt is written for every spec, since the simulation harness
  * imports it.
  */
-export function typecheckAll(memory: Memory, specs: Spec[]): Map<string, Promise<any>> {
-  generations.set(memory.root, new Set());
-  fs.rmSync(path.join(memory.root, SIMULATIONS), { recursive: true, force: true });
-  const dir = genDir(memory.root);
-  for (const spec of specs) put(memory.root, path.join(dir, `${spec.name}.qnt`), spec.qnt);
+export function typecheckAll(memory: Memory, specs: Spec[], output = memory.root): Map<string, Promise<any>> {
+  generations.set(output, new Set());
+  fs.rmSync(path.join(output, SIMULATIONS), { recursive: true, force: true });
+  const dir = genDir(output);
+  for (const spec of specs) put(output, path.join(dir, `${spec.name}.qnt`), spec.qnt);
   return new Map(specs.map((spec) => {
     const ir = (async () => {
       const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-typecheck-"));

@@ -93,6 +93,7 @@ async function reconcile(stripe: Stripe, env: BillingEnv, db: Client, organizati
   if (subscription && (!item || subscription.items.has_more || subscription.items.data.length !== 1)) throw new Error("Unexpected subscription items")
   let observation: SubscriptionObservation = {customerId:customer, subscriptionId:null, plan:"free", status:"none", endsAt:0}
   if (subscription && item) {
+    if (!await catalogMatches(stripe, env, false)) throw new Error("Unexpected subscription catalog terms")
     const states = {active:"active", canceled:"canceled", incomplete:"incomplete", incomplete_expired:"incomplete_expired", past_due:"past_due", unpaid:"unpaid", trialing:"incomplete", paused:"incomplete"} as const
     const status = Object.entries(states).find(([name]) => name === subscription.status)?.[1]
     if (!status) throw new Error("Unknown subscription status")
@@ -101,6 +102,39 @@ async function reconcile(stripe: Stripe, env: BillingEnv, db: Client, organizati
   }
   await projectSubscription(db, organization, observation, Date.now())
   return { active:observation.status === "active", ongoing: Boolean(current) }
+}
+
+type BillingOwner = { organization_id: string; customer_id: string }
+
+async function refreshDue(stripe: Stripe, env: BillingEnv, db: Client, owner: BillingOwner) {
+  await billingTransaction(db, owner.organization_id, async () => {
+    const stale = await db.query("SELECT key FROM subscriptions WHERE key=$1 AND updated_at <= $2", [owner.organization_id, Date.now() - 300_000])
+    if (stale.rowCount) await reconcile(stripe, env, db, owner.organization_id, owner.customer_id)
+  })
+}
+
+export async function refreshPaidAccess(env: BillingEnv, db: Client, account: string) {
+  const result = await db.query<BillingOwner>(`SELECT c.organization_id, c.customer_id FROM cloud_checkout_customers c
+    JOIN accounts a ON a.organization_id=c.organization_id JOIN subscriptions s ON s.key=c.organization_id
+    WHERE a.key=$1 AND a.status='active' AND s.updated_at <= $2`, [account, Date.now() - 300_000])
+  const owner = result.rows[0]
+  if (owner) await refreshDue(provider(env), env, db, owner)
+}
+
+export async function sweepSubscriptions(env: BillingEnv, db: Client) {
+  if (!env.STRIPE_SECRET_KEY) return
+  const stripe = provider(env)
+  const due = await db.query<BillingOwner>(`SELECT c.organization_id, c.customer_id FROM cloud_checkout_customers c
+    JOIN subscriptions s ON s.key=c.organization_id WHERE s.stale_after <= $1 AND s.status IN ('active','incomplete','past_due','unpaid','dunning')
+    ORDER BY s.stale_after,s.key LIMIT 12`, [Date.now()])
+  for (const owner of due.rows) {
+    try {
+      await refreshDue(stripe, env, db, owner)
+    } catch {
+      await db.query("UPDATE subscriptions SET stale_after=$2 WHERE key=$1 AND stale_after <= $3", [owner.organization_id, Date.now() + 300_000, Date.now()])
+      await Effect.runPromise(Effect.logWarning("Subscription reconciliation will retry").pipe(Effect.annotateLogs({ organizationId: owner.organization_id })))
+    }
+  }
 }
 
 export const stripeWebhookRoute = "/api/v1/billing/webhook"
@@ -128,13 +162,13 @@ export async function stripeWebhook(request: Request, raw: Uint8Array, env: Bill
   return new WorkerResponse(null,{status:204})
 }
 
-async function priceForCheckout(stripe: Stripe, env: BillingEnv) {
+async function catalogMatches(stripe: Stripe, env: BillingEnv, forSale: boolean) {
   if (env.STRIPE_PLAN !== "plus_monthly" && env.STRIPE_PLAN !== "pro_monthly") return false
   const plan = env.STRIPE_PLAN === "plus_monthly" ? "PlusMonthly" : "ProMonthly"
   const price = await stripe.prices.retrieve(env.STRIPE_PRICE_ID, { expand: ["product"] })
   const product = price.product
   return typeof product === "object" && !product.deleted && product.id === env.STRIPE_PRODUCT_ID &&
-    product.active && price.active && price.livemode === (env.CLOUD_ENVIRONMENT === "production") &&
+    (!forSale || (product.active && price.active)) && price.livemode === (env.CLOUD_ENVIRONMENT === "production") &&
     product.livemode === price.livemode && price.type === "recurring" && price.currency === "usd" &&
     price.unit_amount === amountCentsOf(plan) && price.billing_scheme === "per_unit" && price.transform_quantity === null &&
     price.recurring?.interval === "month" && price.recurring.interval_count === 1 && price.recurring.usage_type === "licensed" &&
@@ -145,6 +179,15 @@ export async function billingRequest(request: Request, env: BillingEnv, db: Clie
   const account = (await db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active'", [user])).rows[0]?.organization_id
   if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
   const route = new URL(request.url).pathname
+  const configured = Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.STRIPE_PRICE_ID && env.STRIPE_PRODUCT_ID &&
+    (env.STRIPE_PLAN === "plus_monthly" || env.STRIPE_PLAN === "pro_monthly"))
+  if (!configured) {
+    if (route === "/api/v1/billing/subscription" && request.method === "GET") {
+      if (await customerFor(db, account)) return WorkerResponse.json({error:"billing_unavailable"}, {status:503})
+      return WorkerResponse.json({status:"inactive",canManage:false,canCheckout:false})
+    }
+    return WorkerResponse.json({error:"billing_unavailable"}, {status:503})
+  }
   if (route === "/api/v1/billing/subscription" && request.method === "GET") {
     const customer = await customerFor(db, account)
     const state = customer ? await billingTransaction(db, account, () => reconcile(provider(env), env, db, account, customer.customer_id)) : { active: false, ongoing: false }
@@ -162,7 +205,7 @@ export async function billingRequest(request: Request, env: BillingEnv, db: Clie
       const session = await stripe.billingPortal.sessions.create({ customer: customer.customer_id, return_url: returnUrl })
       return WorkerResponse.json({ url: session.url })
     }
-    if (!await priceForCheckout(stripe, env)) return WorkerResponse.json({ error: "billing_catalog_mismatch" }, { status: 503 })
+    if (!await catalogMatches(stripe, env, true)) return WorkerResponse.json({ error: "billing_catalog_mismatch" }, { status: 503 })
     if (!customer) {
       const created = await stripe.customers.create({ metadata: { organization_id: account } }, { idempotencyKey: "cloud-customer-" + account })
       customer = { customer_id: created.id, checkout_id: null }

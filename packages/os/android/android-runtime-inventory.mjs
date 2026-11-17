@@ -53,7 +53,7 @@ export function stageRuntimePayload({ runtime, nodeLock, bundle, bundleManifest,
     || manifest.bundleSha256 !== digest(agent) || !Array.isArray(manifest.packages) || !manifest.packages.length
     || manifest.localInference !== false || manifest.workflowWorkerSha256)
     fail("Agent bundle does not match the pinned cloud-only package");
-  const dataFiles = ["pglite.wasm", "pglite.data", "pglite-migrated.bin"].map((name) => ({
+  const dataFiles = ["pglite.wasm", "initdb.wasm", "pglite.data", "pglite-migrated.bin"].map((name) => ({
     path: `assets/agent/${name}`, bytes: regular(path.join(path.dirname(bundle), name)), mode: 0o644,
   }));
   const payload = [
