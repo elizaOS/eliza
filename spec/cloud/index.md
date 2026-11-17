@@ -85,3 +85,74 @@ have separate permissions.
 pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
   ownerSessionActive and connectionPresent and grantOwnerMatches and selected.contains(requested)
 ```
+
+## Story: Back up my passwords for another device
+
+> As a person using Passwords, I can choose to keep an encrypted backup.
+> I can restore it on another device with my recovery key or remove the
+> backup when I no longer want it.
+
+### Only a current, separately approved device grant accesses the owner’s backup
+
+Opting in needs an explicit native request and recent interactive approval. The
+registered native client binds the approval to its own one-time verifier.
+The backup grant belongs to the current deployment, registered product and
+account. The cloud refuses a grant after expiry or revocation, or if the
+account or registration is no longer eligible. An inference credential
+never authorizes backup access. The native client encrypts the snapshot
+before sending it and holds the recovery key. The owner must have that key
+to restore. The cloud receives only the encrypted snapshot.
+
+```quint
+type BackupAccess = BackupDeviceGrant | BackupInferenceCredential
+pure def canAccessPasswordBackup(access: BackupAccess, active: bool, scopeMatches: bool): bool =
+  access == BackupDeviceGrant and active and scopeMatches
+pure def lawInferenceCannotAccessPasswordBackup(active: bool, scopeMatches: bool): bool =
+  not(canAccessPasswordBackup(BackupInferenceCredential, active, scopeMatches))
+pure def lawOtherAccountsCannotAccessPasswordBackup(access: BackupAccess, active: bool): bool =
+  not(canAccessPasswordBackup(access, active, false))
+type PasswordBackupPurpose = BackupRead | BackupWrite | BackupRemove
+pure def canApprovePasswordBackup(active: bool, recent: bool, registered: bool): bool =
+  active and recent and registered
+pure def lawStaleSignInCannotApprovePasswordBackup(active: bool, registered: bool): bool =
+  not(canApprovePasswordBackup(active, false, registered))
+pure def canRedeemBackupApproval(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, grantLive: bool, unspent: bool): bool =
+  approved == requested and exactVerifier and exactState and grantLive and unspent
+pure def lawBackupApprovalCannotBeReplayed(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, grantLive: bool): bool =
+  not(canRedeemBackupApproval(approved, requested, exactVerifier, exactState, grantLive, false))
+```
+
+### Every backup change matches the current revision
+
+The service stores at most one complete snapshot per product and account.
+A write carries the expected revision and one through 2,097,152 encrypted
+bytes. Only an empty slot that has never been used accepts an initial write
+without a revision. Deletion removes the live snapshot while advancing its
+revision. A new backup after deletion must match that revision. A retry with
+an earlier revision has no effect, including an initial write sent before
+deletion.
+
+```quint
+type PasswordBackupSlot = { revision: int, bytes: int }
+type PasswordBackupChange = BackupSave({ bytes: int }) | BackupDelete
+pure val slotValues = Set({ revision: 0, bytes: 0 }, { revision: 1, bytes: 9 }, { revision: 2, bytes: 0 })
+pure val changeValues = Set(BackupDelete, BackupSave({ bytes: 0 }), BackupSave({ bytes: 1 }), BackupSave({ bytes: 2097152 }), BackupSave({ bytes: 2097153 }))
+pure def changePasswordBackup(slot: PasswordBackupSlot, authorized: bool, expected: int, change: PasswordBackupChange): PasswordBackupSlot = {
+  val valid = match change {
+    | BackupSave(snapshot) => snapshot.bytes > 0 and snapshot.bytes <= 2097152
+    | BackupDelete => slot.bytes > 0
+  }
+  if (authorized and expected == slot.revision and expected >= 0 and expected < 2147483647 and valid)
+    { revision: slot.revision + 1, bytes: match change { | BackupSave(snapshot) => snapshot.bytes | BackupDelete => 0 } }
+  else slot
+}
+pure def lawStaleBackupWriteKeepsSnapshot(slot: PasswordBackupSlot, authorized: bool, expected: int, change: PasswordBackupChange): bool =
+  expected != slot.revision implies changePasswordBackup(slot, authorized, expected, change) == slot
+pure def lawUnauthorizedBackupWriteKeepsSnapshot(slot: PasswordBackupSlot, expected: int, change: PasswordBackupChange): bool =
+  changePasswordBackup(slot, false, expected, change) == slot
+pure def lawDeletedPasswordBackupRejectsInitialRetry(slot: PasswordBackupSlot, bytes: int): bool = {
+  val deleted = changePasswordBackup(slot, true, slot.revision, BackupDelete)
+  (slot.revision >= 0 and slot.revision < 2147483647 and slot.bytes > 0) implies
+    (deleted.bytes == 0 and changePasswordBackup(deleted, true, 0, BackupSave({ bytes: bytes })) == deleted)
+}
+```
