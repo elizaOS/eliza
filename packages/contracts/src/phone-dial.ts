@@ -25,9 +25,10 @@ export const CONTACT_LOOKUP_CAPABILITY = "contacts.lookup.v1";
 /** Digits with an optional leading +, the same shape the native dial handoff accepts. */
 export const PHONE_DIAL_NUMBER = /^\+?[0-9]{2,20}$/;
 // One number as a person writes it: digit groups, each joined by at most one
-// space, dash or dot. Only the first group (a country code) may be one digit.
+// space, dash or dot. Only the first group (a country code) may be one digit,
+// and the first national group after a +country code, as in +33 1 23 45 67 89.
 const WRITTEN_DIAL_NUMBER =
-  /^\+?(?:\(\d+\)|\d+)(?:[ .-]?(?:\(\d{2,}\)|\d{2,}))*$/;
+  /^(?:\+\d{1,3}[ .-]\d(?=[ .-]\d{2})|\+?(?:\(\d+\)|\d+))(?:[ .-]?(?:\(\d{2,}\)|\d{2,}))*$/;
 /**
  * A number as a person writes it, such as "(415) 555-0100", in the exact dial
  * form. Single spaces, dashes and dots between digit groups and one bracket
