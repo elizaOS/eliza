@@ -18,12 +18,12 @@ import {
   type ApprovalRequest,
   ApprovalStateTransitionError,
   DEVICE_ACTION_CAPABILITIES,
-  DEVICE_VIEWS,
   DeviceActionError,
   DeviceActionService,
   type DeviceCredential,
   type DeviceReadCompletionHint,
   deviceProposalDigest,
+  deviceViewsForCapabilities,
 } from "@elizaos/plugin-assistant";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
@@ -204,7 +204,7 @@ export async function handleDeviceActionRoutes(
       if (method === "GET") {
         json(res, {
           version: 1,
-          supportedViews: DEVICE_VIEWS,
+          supportedViews: deviceViewsForCapabilities(credential.capabilities),
           profile: await service.viewProfile(credential),
         });
         return true;

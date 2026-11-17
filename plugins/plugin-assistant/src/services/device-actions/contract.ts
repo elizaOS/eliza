@@ -126,14 +126,24 @@ export const DEVICE_VIEWS = [
 ] as const;
 /**
  * Views that only some hosts have. A host must enable them in its view
- * profile; an installation without a profile is never offered them, so an
- * older client that cannot open them is unaffected.
+ * profile, and only a phone that advertises `views.telephony.v1` may list,
+ * enroll or be offered them. An installation without a profile, or a client
+ * from before these views, is never offered a view it cannot open.
  */
 export const PROFILE_ONLY_DEVICE_VIEWS: readonly string[] = [
   "phone",
   "messages",
   "contacts",
 ];
+export const TELEPHONY_VIEWS_CAPABILITY = "views.telephony.v1";
+/** The views a phone with these capabilities may enroll and be offered. */
+export function deviceViewsForCapabilities(
+  capabilities: readonly string[] | undefined,
+): readonly string[] {
+  return capabilities?.includes(TELEPHONY_VIEWS_CAPABILITY)
+    ? DEVICE_VIEWS
+    : DEVICE_VIEWS.filter((view) => !PROFILE_ONLY_DEVICE_VIEWS.includes(view));
+}
 export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation

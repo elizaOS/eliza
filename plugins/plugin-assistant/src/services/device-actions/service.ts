@@ -112,10 +112,12 @@ import {
   type DeviceActionPayload,
   deviceOperationFormSupported,
   deviceOperationSupportedByCapabilities,
+  deviceViewsForCapabilities,
   exactKeys,
   identifier,
   object,
   PROFILE_ONLY_DEVICE_VIEWS,
+  TELEPHONY_VIEWS_CAPABILITY,
   text,
   validateDeviceOperation,
   validateDevicePayload,
@@ -738,7 +740,8 @@ export const DEVICE_RECORD_ADMISSION: Readonly<
   },
   // Native code fixes the window or the default calendar from any open screen.
   // A host with a canonical CALENDAR action also needs a selected phone
-  // calendar for the local create (see deviceAppRecordOperationAvailable).
+  // calendar, or the owner's words naming the phone's calendar, for the local
+  // create (see deviceAppRecordOperationAvailable).
   calendar_read_next: { domain: "calendar", views: "any", selection: "none" },
   calendar_create_local: {
     domain: "calendar",
@@ -772,6 +775,11 @@ export const DEVICE_RECORD_ADMISSION: Readonly<
   },
 };
 
+// The owner names the phone's own calendar: "my phone's calendar", "the
+// calendar on this phone".
+const PHONE_CALENDAR_REQUEST =
+  /\b(?:phone|device|android|system|os)(?:['’]s)?\s+(?:own\s+)?calendar\b|\bcalendar\s+(?:app\s+)?on\s+(?:this|my|the)\s+(?:phone|device)\b/i;
+
 /** Availability is the same domain fence as enqueue; capability alone never owns records. */
 export function deviceAppRecordOperationAvailable(
   runtime: IAgentRuntime,
@@ -797,14 +805,17 @@ export function deviceAppRecordOperationAvailable(
   if (!current.active || !current.isCurrent()) return false;
   const source = currentAppRecordSource(runtime, rule.domain, message);
   if (rule.selection === "device") return source === "device";
+  message ??= current.requestMessage?.message ?? current.replyContext?.message;
   // A new event has one store per turn. With a canonical CALENDAR action it
   // is the runtime calendar, so the phone's own create needs a selected phone
-  // calendar; without that selection two create tools would write to
-  // different stores and a later read would miss the phone's copy.
+  // calendar or the owner's own words naming the phone's calendar. Otherwise
+  // two create tools would write to different stores and a later read would
+  // miss the phone's copy.
   if (
     type === "calendar_create_local" &&
     source !== "device" &&
-    runtime.actions.some((action) => action.name === "CALENDAR")
+    runtime.actions.some((action) => action.name === "CALENDAR") &&
+    !PHONE_CALENDAR_REQUEST.test(message?.content.text ?? "")
   )
     return false;
   if (
@@ -815,7 +826,6 @@ export function deviceAppRecordOperationAvailable(
     )
   )
     return false;
-  message ??= current.requestMessage?.message ?? current.replyContext?.message;
   const context = message && turnObservation(message.content.metadata);
   if (!context?.view) return false;
   if (rule.selection === "canonical-notes-list")
@@ -1222,6 +1232,7 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   BROWSER_TABS_CAPABILITY,
   BROWSER_FIND_CAPABILITY,
   BROWSER_HISTORY_CAPABILITY,
+  TELEPHONY_VIEWS_CAPABILITY,
 ];
 export class DeviceActionService {
   constructor(private readonly runtime: IAgentRuntime) {}
@@ -2092,7 +2103,7 @@ export class DeviceActionService {
   }
   async viewProfile(c: DeviceCredential): Promise<DeviceViewProfile | null> {
     return this.access(c, async (_q, row) =>
-      storedDeviceViewProfile(row.view_profile),
+      storedDeviceViewProfile(row.view_profile, c.capabilities),
     );
   }
   async setViewProfile(
@@ -2110,8 +2121,18 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Unsupported view profile");
     const views = enabledDeviceViews(value.views);
+    // A phone enrolls only the views its capabilities cover.
+    if (
+      views.some(
+        (view) => !deviceViewsForCapabilities(c.capabilities).includes(view),
+      )
+    )
+      throw new DeviceActionError("Invalid enabled views");
     return this.access(c, async (_q, row, tx) => {
-      const previous = storedDeviceViewProfile(row.view_profile);
+      const previous = storedDeviceViewProfile(
+        row.view_profile,
+        c.capabilities,
+      );
       if ((previous?.revision ?? null) !== value.expectedRevision)
         throw new DeviceActionError("View profile changed");
       if (previous && JSON.stringify(previous.views) === JSON.stringify(views))
@@ -2129,11 +2150,12 @@ export class DeviceActionService {
     });
   }
   private assertViewProfile(
+    c: DeviceCredential,
     row: Record<string, unknown>,
     payload: DeviceActionPayload,
   ): void {
     if (payload.operation.type !== "open_view") return;
-    const profile = storedDeviceViewProfile(row.view_profile);
+    const profile = storedDeviceViewProfile(row.view_profile, c.capabilities);
     if (
       profile
         ? profile.revision !== payload.viewProfileRevision ||
@@ -2343,7 +2365,11 @@ export class DeviceActionService {
     const signal = foregroundTurn && getStreamingContext()?.abortSignal;
     const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
       allowReviewed: browserRequest || selectedTelephony,
-      readText: browserRequest,
+      // A tab word and find text are compared with the owner's words too.
+      readText:
+        browserRequest ||
+        validated.type === "browser_tab_switch" ||
+        validated.type === "browser_find",
     });
     // Reviewed Photos and Files proposals retain their foreground owner
     // even without a direct-request message binding.
@@ -2392,7 +2418,13 @@ export class DeviceActionService {
     }
     // An open or a search runs without a review only when the whole message
     // is that direct request. Any other typed address or query is reviewed.
+    // A tab word or find text runs without a review only when the owner typed
+    // it in this message: the phone's answer to a word the model chose would
+    // tell the agent about the owner's tabs or page.
     const assistantName = this.runtime.character.name;
+    const typedWords = (words: string) =>
+      groundBrowserSearchQuery(requestOrigin?.requestText ?? "", words) !==
+      undefined;
     const reviewedBrowserRequest =
       validated.type === "browser_navigate"
         ? !browserDestinationMatches(
@@ -2402,14 +2434,17 @@ export class DeviceActionService {
               assistantName,
             ),
           )
-        : validated.type === "browser_search" &&
-          !browserSearchQueryMatches(
-            validated.query,
-            directBrowserSearchQuery(
-              requestOrigin?.requestText ?? "",
-              assistantName,
-            ),
-          );
+        : validated.type === "browser_search"
+          ? !browserSearchQueryMatches(
+              validated.query,
+              directBrowserSearchQuery(
+                requestOrigin?.requestText ?? "",
+                assistantName,
+              ),
+            )
+          : (validated.type === "browser_tab_switch" &&
+              !typedWords(validated.target)) ||
+            (validated.type === "browser_find" && !typedWords(validated.text));
     const originMessageId = requestOrigin?.messageId;
     if (
       agenda &&
@@ -2424,7 +2459,10 @@ export class DeviceActionService {
       c,
       async (queue, row, tx) => {
         assertCurrent?.();
-        const viewProfile = storedDeviceViewProfile(row.view_profile);
+        const viewProfile = storedDeviceViewProfile(
+          row.view_profile,
+          c.capabilities,
+        );
         if (
           validated.type === "open_view" &&
           (viewProfile
@@ -3086,7 +3124,7 @@ export class DeviceActionService {
     return this.access(c, async (q, row, tx) => {
       const request = await this.proposal(q, row, c, id, expectedDigest, tx);
       if (approve)
-        this.assertViewProfile(row, validateDevicePayload(request.payload));
+        this.assertViewProfile(c, row, validateDevicePayload(request.payload));
       const target = approve ? "approved" : "rejected";
       if (request.state === target) return request;
       // An approval whose claim never arrived ran nothing; the owner can still close it.
@@ -3111,7 +3149,7 @@ export class DeviceActionService {
   ): Promise<ApprovalRequest> {
     const result = await this.access(c, async (q, row, tx) => {
       const request = await this.proposal(q, row, c, id, expectedDigest, tx);
-      this.assertViewProfile(row, validateDevicePayload(request.payload));
+      this.assertViewProfile(c, row, validateDevicePayload(request.payload));
       // A lapsed approval that was never claimed closes here, so it cannot sit in approved.
       if (
         request.state === "approved" &&

@@ -703,22 +703,57 @@ it("refuses a search for words the user did not type, and an unnegotiated Browse
     await f.pg.close();
   }
 });
+const generic = "do that in the browser";
 it.each([
-  [{ type: "browser_tab_new", private: true }, "browser.tabs.v1", true],
-  [{ type: "browser_tab_switch", target: "bbc" }, "browser.tabs.v1", true],
-  [{ type: "browser_find", text: "refund" }, "browser.find.v1", true],
-  [{ type: "browser_history", action: "stop" }, "browser.history.v1", true],
+  [
+    { type: "browser_tab_new", private: true },
+    "browser.tabs.v1",
+    true,
+    generic,
+  ],
+  [
+    { type: "browser_tab_switch", target: "bbc" },
+    "browser.tabs.v1",
+    true,
+    "switch to the BBC tab",
+  ],
+  [
+    { type: "browser_find", text: "refund" },
+    "browser.find.v1",
+    true,
+    "find refund on this page",
+  ],
+  // A tab word or find text the owner did not type is reviewed, so the
+  // model cannot probe the owner's tabs or page without a card.
+  [
+    { type: "browser_tab_switch", target: "chase" },
+    "browser.tabs.v1",
+    false,
+    "summarize what I was reading",
+  ],
+  [{ type: "browser_find", text: "refund" }, "browser.find.v1", false, generic],
+  [
+    { type: "browser_history", action: "stop" },
+    "browser.history.v1",
+    true,
+    generic,
+  ],
   // Closing a tab is reviewed even when the owner asked for it directly.
-  [{ type: "browser_tab_close", target: "bbc" }, "browser.tabs.v1", false],
+  [
+    { type: "browser_tab_close", target: "bbc" },
+    "browser.tabs.v1",
+    false,
+    "close the bbc tab",
+  ],
 ] as const)(
   "queues the negotiated Browser control %o",
-  async (operation, capability, handoff) => {
+  async (operation, capability, handoff, request) => {
     const f = await fixture();
     try {
       Object.assign(f.credential, { capabilities: [capability] });
       for (const direct of [true, false]) {
         const result = await f.run(
-          "do that in the browser",
+          request,
           false,
           direct,
           undefined,

@@ -1,6 +1,7 @@
 import {
   DEVICE_VIEWS,
   DeviceActionError,
+  deviceViewsForCapabilities,
   exactKeys,
   object,
 } from "./contract.ts";
@@ -23,8 +24,14 @@ export function enabledDeviceViews(value: unknown): string[] {
     throw new DeviceActionError("Invalid enabled views");
   return [...value].sort();
 }
+/**
+ * The stored profile as this phone may use it. A view the phone's
+ * capabilities do not cover is left out, so a client that cannot open it is
+ * never offered it.
+ */
 export function storedDeviceViewProfile(
   value: unknown,
+  capabilities: readonly string[] | undefined,
 ): DeviceViewProfile | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== "string" || value.length > 2048)
@@ -47,6 +54,8 @@ export function storedDeviceViewProfile(
   return {
     version: 1,
     revision: row.revision,
-    views: enabledDeviceViews(row.views),
+    views: enabledDeviceViews(row.views).filter((view) =>
+      deviceViewsForCapabilities(capabilities).includes(view),
+    ),
   };
 }

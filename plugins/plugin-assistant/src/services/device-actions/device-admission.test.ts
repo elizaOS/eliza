@@ -73,6 +73,7 @@ async function admitted(
   types: readonly string[],
   capabilities: string[] = ALL,
   actions: { name: string }[] = [],
+  text = "Synthetic request.",
 ) {
   const runtime = {
     agentId,
@@ -87,7 +88,7 @@ async function admitted(
     entityId: owner,
     roomId: "55555555-5555-4555-8555-555555555555",
     content: {
-      text: "Synthetic request.",
+      text,
       metadata: { clientDevice: { context: { revision: 1, ...context } } },
     },
   } as Memory;
@@ -229,6 +230,25 @@ describe("device Notes/Calendar admission", () => {
     );
     expect(selected.calendar).toBe("device");
     expect(selected.admitted.calendar_create_local).toBe(true);
+    // The owner's own words naming the phone's calendar keep the native
+    // create open from Home.
+    for (const [text, open] of [
+      ["Add dentist Friday 3pm to my phone's calendar", true],
+      ["Put lunch tomorrow in the calendar on this phone", true],
+      ["Add dentist Friday 3pm to my calendar", false],
+      ["Phone the dentist, then add it to my calendar", false],
+    ] as const)
+      expect(
+        (
+          await admitted(
+            { view: "home", sensitive: false, timeZone },
+            types,
+            ALL,
+            canonical,
+            text,
+          )
+        ).admitted.calendar_create_local,
+      ).toBe(open);
   });
 
   it("keeps Home reviews closed without their capability, with a canonical selection, or on a private screen", async () => {

@@ -29,6 +29,7 @@ import { readDeviceConversationReceipts } from "../device-actions/conversation-r
 import {
   currentAppRecordSource,
   deviceActionToolGuidance,
+  deviceAppRecordOperationAvailable,
   getDeviceActionTurn,
 } from "../device-actions/service.ts";
 import {
@@ -144,8 +145,9 @@ export async function createV5MessageContextObject(args: {
                 args.selectedContexts?.includes(context),
               )),
       );
-    // Without these capabilities no tool can call or text, so the reply must
-    // say so instead of implying that something happened.
+    // Without these capabilities the phone's own Phone and Messages apps are
+    // closed to the device tool. The runtime may still have another tool that
+    // calls or messages, so the sentence names only the device tool.
     const phoneCapabilities =
       authenticatedDeviceTurn.credential.capabilities ?? [];
     const unavailableTelephony = [
@@ -163,7 +165,7 @@ export async function createV5MessageContextObject(args: {
         : ["send or draft text messages"]),
     ];
     const telephonyGuidance = unavailableTelephony.length
-      ? `This phone cannot ${unavailableTelephony.join(" or ")} for the owner. When asked to, say plainly that this is not available on this phone; never claim or imply that a call or message was started. `
+      ? `PROPOSE_DEVICE_ACTION cannot ${unavailableTelephony.join(" or ")} with this phone's own Phone and Messages apps. Another exposed tool that calls or messages works as usual. When no tool can do it, say plainly that it is not available on this phone; never claim or imply that a call or message was started without a tool result. `
       : "";
     // The assistant's own people records (ENTITY, CONTACT) share the contacts
     // domain with the phone's address book. Without this boundary a phone
@@ -208,8 +210,12 @@ export async function createV5MessageContextObject(args: {
           )
             ? "Notes capability notes.local-record.v1 supports selected read, update and delete. Use exact sourceId/sourceRevision/noteId/revision from the current selected note. It grants no read permission; request approval first. Repeat an identical operation/key only to retrieve its historical receipt, never to refresh content. create_note remains available for new text notes. "
             : "") +
-          (getDeviceActionTurn()?.credential.capabilities?.includes(
-            "calendar.create.v1",
+          // Named only on a turn that offers it: with a canonical CALENDAR
+          // action that is a selected phone calendar or the owner's own words.
+          (deviceAppRecordOperationAvailable(
+            args.runtime,
+            { type: "calendar_create_local" },
+            args.message,
           )
             ? "For an explicit separate phone/OS-calendar request, calendar_create_local resolves the owner-confirmed native destination. This capability does not replace ordinary app Calendar creation through CALENDAR. Do not invent a source ID or require a New Event form. Native approval is required before creation. "
             : "") +

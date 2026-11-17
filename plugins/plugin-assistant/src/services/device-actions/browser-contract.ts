@@ -10,8 +10,9 @@
  * address or page content.
  *
  * A search uses only words the owner typed in the current message. Closing a tab is
- * always reviewed by the owner. The other controls may run without a review when the
- * owner's own current message asked for them; otherwise they are reviewed. */
+ * always reviewed by the owner. The other controls may run without a review when they
+ * are bound to the owner's own current message; otherwise they are reviewed. A tab
+ * switch or a find is bound only when the owner typed its words in that message. */
 import { BROWSER_SEARCH_QUERY_MAX } from "@elizaos/contracts/browser-request-grounding";
 
 export const BROWSER_SEARCH_CAPABILITY = "browser.search.v1";

@@ -166,7 +166,7 @@ owned-alarm clients receive only the owned operation schemas.
 
 Device enrollment retains the authenticated subject for approval review, claims and receipts. The host may separately bind a verified local OWNER enrollment to the canonical workflow owner; external identities and USER/ADMIN subjects keep their own scope. Request JSON cannot choose that owner. Nullable `workflow_owner_id` preserves legacy enrollment fallback.
 
-An authenticated installation can read or revise its enabled-view subset at `/api/client-devices/view-profile`. Updates use an expected revision; empty subsets disable all view proposals, while a null legacy profile preserves existing behavior. Open-view proposals bind the current profile revision and revalidate at approval and claim. Per-turn tool schemas are cloned, so one installation cannot narrow another installation’s registered catalog. These restrictions do not authorize execution. Nullable `view_profile` migrates without replacing device keys or enrollment identities.
+An authenticated installation can read or revise its enabled-view subset at `/api/client-devices/view-profile`. Updates use an expected revision; empty subsets disable all view proposals, while a null legacy profile preserves existing behavior. The Phone, Messages and Contacts views are listed, enrolled and offered only for a phone that advertises `views.telephony.v1`, so a client from before these views is never offered one it cannot open. Open-view proposals bind the current profile revision and revalidate at approval and claim. Per-turn tool schemas are cloned, so one installation cannot narrow another installation’s registered catalog. These restrictions do not authorize execution. Nullable `view_profile` migrates without replacing device keys or enrollment identities.
 
 Run `vitest run --config vitest.device-actions.config.ts` from this package for real HTTP/SQL device lifecycle, workflow-owner dispatch/receipt and additive-migration scenarios.
 
@@ -251,6 +251,9 @@ content.
 - `browser.find.v1`: `browser_find {text}` shows the matches on the open page.
 - `browser.history.v1`: `browser_history {action}` with `back`, `forward`,
   `reload` or `stop`.
+
+A tab switch or a find runs without a review only when the owner typed its
+`target` or `text` in the current message. Other words are reviewed.
 
 ## Requested Camera capture
 

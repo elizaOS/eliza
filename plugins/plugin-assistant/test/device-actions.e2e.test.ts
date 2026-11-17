@@ -2074,6 +2074,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "browser.tabs.v1",
           "browser.find.v1",
           "browser.history.v1",
+          "views.telephony.v1",
           "messages.read.v1",
           "voicemail.read.v1",
           "voicemail.delete.v1",
@@ -4130,7 +4131,32 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         status: 200,
         body: { version: 1, profile: null },
       });
-      expect(discovery.body.supportedViews).toEqual(
+      // Phone, Messages and Contacts are listed and enrolled only for a
+      // phone that advertises views.telephony.v1; an older client never
+      // enrolls a view it cannot open.
+      expect(discovery.body.supportedViews).toContain("workflows");
+      for (const view of ["phone", "messages", "contacts"])
+        expect(discovery.body.supportedViews).not.toContain(view);
+      expect(
+        (
+          await request("/view-profile", {
+            version: 1,
+            views: ["notes", "phone"],
+            expectedRevision: null,
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await request(
+            "/view-profile",
+            undefined,
+            "a",
+            deviceKey,
+            "notes.local-record.v1,views.telephony.v1",
+          )
+        ).body.supportedViews,
+      ).toEqual(
         expect.arrayContaining(["workflows", "phone", "messages", "contacts"]),
       );
       expect(
