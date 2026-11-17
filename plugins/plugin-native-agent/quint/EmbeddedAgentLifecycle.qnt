@@ -10,15 +10,15 @@ module EmbeddedAgentLifecycle {
   pure val CHECKS = Set("config", "payload", "storage", "credential")
   var s: {
     state: str, failure: str, phase: str, attempt: int,
-    childLive: bool, ready: bool, gateway: bool
+    childLive: bool, ready: bool
   }
   action begin(attempt: int): bool = s' = {
     state: "starting", failure: "none", phase: "check", attempt: attempt,
-    childLive: false, ready: false, gateway: false
+    childLive: false, ready: false
   }
   action init = s' = {
     state: "stopped", failure: "none", phase: "idle", attempt: 0,
-    childLive: false, ready: false, gateway: false
+    childLive: false, ready: false
   }
   action start = all { Set("stopped", "failed").contains(s.state), begin(0) }
   action restart = begin(0)
@@ -55,7 +55,6 @@ module EmbeddedAgentLifecycle {
   }
   action step = any { advance, start, restart, stop, childExits, s' = s }
 
-  val AgentAlone = not(s.gateway)
   val FailureNamesCause = (s.state == "failed") iff (s.failure != "none")
   val RunningWasReady = s.state == "running" implies s.ready
   val ChildOnlyWhileLaunched = Set("stopped", "failed").contains(s.state) implies not(s.childLive)
@@ -63,8 +62,8 @@ module EmbeddedAgentLifecycle {
   val CrashedOnlyAfterReadiness = s.failure == "crashed" implies s.ready and s.attempt == MAX_RESTARTS
   val StartupFailureIsNotACrash = s.failure == "agent" implies not(s.ready)
   val BoundedRestarts = s.attempt >= 0 and s.attempt <= MAX_RESTARTS
-  val safety = AgentAlone and FailureNamesCause and RunningWasReady and ChildOnlyWhileLaunched and
-    ChecksBeforeChild and CrashedOnlyAfterReadiness and StartupFailureIsNotACrash and BoundedRestarts
+  val safety = FailureNamesCause and RunningWasReady and ChildOnlyWhileLaunched and ChecksBeforeChild and
+    CrashedOnlyAfterReadiness and StartupFailureIsNotACrash and BoundedRestarts
 
   val Waiting = s.state == "starting" and s.phase == "spawned"
   temporal ReadinessWaitSettles = advance.weakFair(s).implies(Waiting.leadsTo(not(Waiting)))
