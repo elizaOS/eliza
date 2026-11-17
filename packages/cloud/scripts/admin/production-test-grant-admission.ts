@@ -57,7 +57,7 @@ export async function repairUnusedProductionTestGrant(
     await admitProductionTestGrant(client);
     const result = await client.query(`SELECT code.id, code.family,
       (code.plan_key = 'plus_monthly' AND code.catalog_version = 'v1'
-       AND code.duration_days = 1 AND code.duration_months IS NULL
+       AND code.duration_days BETWEEN 1 AND 31 AND code.duration_months IS NULL
        AND code.requires_no_paid_plan AND code.max_redemptions = 1
        AND code.redeemed_count = 0 AND code.disabled_at IS NULL
        AND code.expires_at > clock_timestamp()
