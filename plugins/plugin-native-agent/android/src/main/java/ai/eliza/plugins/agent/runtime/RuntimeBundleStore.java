@@ -50,6 +50,11 @@ public class RuntimeBundleStore {
     }
   }
 
+  /** The device has too little free space to unpack a complete runtime. */
+  public static final class InsufficientSpace extends IOException {
+    InsufficientSpace() { super("Insufficient space for a complete runtime"); }
+  }
+
   /** A prepared bundle. When the launch used a seal, verify() still owes the full hash. */
   public static final class Prepared {
     public final Path bundle;
@@ -156,7 +161,7 @@ public class RuntimeBundleStore {
       }
       long bytes = 0;
       for (Entry entry : entries) if ("asset".equals(entry.kind)) bytes = Math.addExact(bytes, entry.size);
-      if (durability.usableSpace(root) < bytes + 64L * 1024 * 1024) throw new IOException("Insufficient space for a complete runtime");
+      if (durability.usableSpace(root) < bytes + 64L * 1024 * 1024) throw new InsufficientSpace();
       Path staging = root.resolve(".staging-" + UUID.randomUUID());
       privateDirectory(staging);
       faults.boundary("staging-created");
@@ -214,7 +219,7 @@ public class RuntimeBundleStore {
       total += entry.size; if (total > MAX_TOTAL) throw new IOException("Runtime inventory exceeds limit");
       entries.add(entry);
     }
-    for (String required : new String[]{"bundle/agent-bundle.js", "bundle/gateway/bootstrap.mjs", "bundle/gateway/local-agent-gateway.mjs"}) if (!destinations.contains(required)) throw new IOException("Incomplete runtime inventory");
+    if (!destinations.contains("bundle/agent-bundle.js")) throw new IOException("Incomplete runtime inventory");
     if (!libraries.contains("libeliza_bun.so") ||
         libraries.contains("libeliza_ld_musl_aarch64.so") == libraries.contains("libeliza_ld_musl_x86_64.so"))
       throw new IOException("Native inventory requires Bun and exactly one supported loader");

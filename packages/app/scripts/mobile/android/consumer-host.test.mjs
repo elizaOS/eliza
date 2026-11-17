@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   AndroidConsumerHostError,
+  EMBEDDED_AGENT_SOURCES,
   generateAndroidConsumerHost,
 } from "./consumer-host.mjs";
 import { createConsumerFixture } from "./consumer-host-fixture.mjs";
@@ -366,7 +367,8 @@ test("a dependency link outside the allowed roots, or not its package, is refuse
     assert.throws(
       generate,
       (error) =>
-        error instanceof AndroidConsumerHostError && pattern.test(error.message),
+        error instanceof AndroidConsumerHostError &&
+        pattern.test(error.message),
     );
     assert.equal(fs.existsSync(options.output), false);
   };
@@ -763,4 +765,99 @@ test("build types, test mocks, admission and staged assets are normalized data",
       false,
     );
   }
+});
+
+test("an embedded agent is three data files: the host declares its service, sources and assets", (t) => {
+  const { options, generate } = setup(t);
+  const write = (name, value) => {
+    fs.writeFileSync(
+      path.join(options.consumerRoot, name),
+      JSON.stringify(value),
+    );
+    return { root: "consumer", path: name };
+  };
+  const host = {
+    schema: 1,
+    service: "example.consumer.HelperService",
+    notification: { channel: "Helper", title: "Helper", text: "Ready" },
+    cloud: { baseUrl: "https://cloud.example" },
+    routes: [{ method: "GET", path: "/api/status" }],
+  };
+  options.profile.modules.push({
+    name: "capacitor-android",
+    source: { root: "consumer", path: "library" },
+  });
+  options.profile.embeddedAgent = {
+    host: write("agent.json", host),
+    character: write("character.json", { name: "Helper", system: "Be kind." }),
+    policy: write("policy.json", {
+      schema: 1,
+      actions: { allowed: { REPLY: "talk" } },
+    }),
+  };
+  assert.throws(generate, /needs the staged Android runtime payload/);
+  const main = path.join(options.consumerRoot, "runtime/android/app/src/main");
+  fs.mkdirSync(path.join(main, "assets/agent"), { recursive: true });
+  fs.writeFileSync(path.join(main, "assets/agent/agent-bundle.js"), "fixture");
+  fs.writeFileSync(
+    path.join(main, "assets/agent-runtime.inventory"),
+    "fixture",
+  );
+  options.runtimeDirectory = path.join(options.consumerRoot, "runtime");
+  generate();
+  const manifest = fs.readFileSync(
+    path.join(
+      options.output,
+      "eliza-embedded-agent/src/main/AndroidManifest.xml",
+    ),
+    "utf8",
+  );
+  assert.match(manifest, /android:name="example\.consumer\.HelperService"/);
+  assert.match(manifest, /foregroundServiceType="specialUse"/);
+  assert.deepEqual(
+    [
+      ...manifest.matchAll(
+        /uses-permission android:name="android\.permission\.(\w+)"/g,
+      ),
+    ].map(([, name]) => name),
+    [
+      "INTERNET",
+      "ACCESS_NETWORK_STATE",
+      "FOREGROUND_SERVICE",
+      "FOREGROUND_SERVICE_SPECIAL_USE",
+    ],
+  );
+  const normalized = JSON.parse(
+    fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
+  );
+  assert.deepEqual(
+    normalized.assetFiles.map(({ name }) => name),
+    [
+      "eliza-agent.json",
+      "eliza-agent-character.json",
+      "eliza-agent-policy.json",
+    ],
+  );
+  const module = normalized.modules.find(
+    ({ name }) => name === "eliza-embedded-agent",
+  );
+  assert.equal(module.appDependency, true);
+  for (const source of EMBEDDED_AGENT_SOURCES) {
+    const text = fs.readFileSync(
+      path.join(options.output, "eliza-embedded-agent/src/main/java", source),
+      "utf8",
+    );
+    assert.doesNotMatch(text, /local[-_]?inference|ai\.eliza\.voice|kotlin/i);
+  }
+  // A changed data file or upstream source makes the generated host refuse to configure.
+  assert.equal(
+    normalized.generationInputs.length,
+    3 + EMBEDDED_AGENT_SOURCES.length,
+  );
+  // Data the device service would refuse fails the generation instead.
+  options.profile.embeddedAgent.host = write("agent.json", {
+    ...host,
+    environment: { ELIZAOS_CLOUD_API_KEY: "secret" },
+  });
+  assert.throws(generate, /Invalid embedded agent data/);
 });
