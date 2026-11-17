@@ -1,0 +1,144 @@
+name: Android Node runtime
+
+on:
+  pull_request:
+    branches: [vibestack]
+    paths: [.github/workflows/android-node.yml]
+  push:
+    branches: [vibestack]
+    paths: [.github/workflows/android-node.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-node-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "26.13.1"
+  NODE_SOURCE_SHA256: a7f6204ff63b6a2cd274d48903285abb86ed53a99070e532d4c2fd787457d9e6
+  NDK_VERSION: "29.0.13113456"
+  ANDROID_API_LEVEL: "29"
+
+jobs:
+  runtime:
+    name: Node 26 for ${{ matrix.abi }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            node_arch: arm64
+            target: aarch64-linux-android
+            machine: AArch64
+          - abi: x86_64
+            node_arch: x64
+            target: x86_64-linux-android
+            machine: Advanced Micro Devices X86-64
+    env:
+      ABI: ${{ matrix.abi }}
+      NODE_ARCH: ${{ matrix.node_arch }}
+      NDK_TARGET: ${{ matrix.target }}
+      ELF_MACHINE: ${{ matrix.machine }}
+    steps:
+      - name: Install pinned Android compiler
+        shell: bash
+        run: |
+          sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:?Android SDK is required}}
+          "$sdk/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"
+          printf 'NDK_BIN=%s\n' "$sdk/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_ENV"
+
+      - name: Verify and extract the official Node sources
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          archive="node-v$NODE_VERSION.tar.xz"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://nodejs.org/dist/v$NODE_VERSION/$archive" --output "$archive"
+          printf '%s  %s\n' "$NODE_SOURCE_SHA256" "$archive" | sha256sum --check --strict
+          tar -xf "$archive"
+          mkdir -p android-node
+
+      - name: Build the Android executable
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/node-v$NODE_VERSION"
+          ndk=${NDK_BIN%/toolchains/llvm/prebuilt/linux-x86_64/bin}
+          target="$NDK_BIN/$NDK_TARGET$ANDROID_API_LEVEL"
+          export CC="$target-clang" CXX="$target-clang++"
+          export GYP_DEFINES="target_arch=$NODE_ARCH v8_target_arch=$NODE_ARCH android_target_arch=$NODE_ARCH host_os=linux OS=android android_ndk_path=$ndk"
+          export SOURCE_DATE_EPOCH
+          SOURCE_DATE_EPOCH=$(stat -c %Y configure.py)
+          log="$RUNNER_TEMP/android-node/build.log"
+          ./configure --dest-cpu="$NODE_ARCH" --dest-os=android --cross-compiling \
+            --openssl-no-asm --shared-zlib --v8-disable-temporal-support \
+            --without-node-snapshot 2>&1 | tee "$log"
+          make -j "$(nproc)" CC.host=/usr/bin/gcc CXX.host=/usr/bin/g++ AR.host=/usr/bin/ar \
+            AR.target="$NDK_BIN/llvm-ar" \
+            'LDFLAGS.target=-static-libstdc++ -Wl,-z,max-page-size=16384' \
+            2>&1 | tee -a "$log"
+          test -x out/Release/node
+          "$NDK_BIN/llvm-strip" --strip-debug out/Release/node \
+            -o "$RUNNER_TEMP/android-node/libeliza_node.so"
+
+      - name: Verify ABI, Android interpreter and dependency closure
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/android-node"
+          chmod 755 libeliza_node.so
+          "$NDK_BIN/llvm-readelf" --file-header --program-headers --dynamic libeliza_node.so > elf.txt
+          grep -F "$ELF_MACHINE" elf.txt
+          grep -F 'Requesting program interpreter: /system/bin/linker64' elf.txt
+          grep -E '^ *Type: +DYN' elf.txt
+          if grep -E 'Shared library: \[(libc\+\+_shared\.so|libstdc\+\+\.so\.6|libgcc_s\.so\.1)\]' elf.txt; then
+            exit 1
+          fi
+          sha256sum libeliza_node.so > SHA256SUMS
+          python3 - <<'PY'
+          import hashlib, json, os, re
+          from pathlib import Path
+          elf = Path("elf.txt").read_text()
+          allowed = {"libandroid.so", "libc.so", "libdl.so", "liblog.so", "libm.so", "libz.so"}
+          needed = set(re.findall(r"Shared library: \[([^\]]+)\]", elf))
+          loads = [line.split() for line in elf.splitlines() if line.strip().startswith("LOAD ")]
+          if not needed or needed - allowed or not loads or any(int(line[-1], 16) < 16 * 1024 for line in loads):
+              raise SystemExit("Android executable has unexpected dependencies or page alignment")
+          with Path("libeliza_node.so").open("rb") as binary:
+              digest = hashlib.file_digest(binary, "sha256").hexdigest()
+          manifest = {
+              "schema": 1,
+              "abi": os.environ["ABI"],
+              "version": os.environ["NODE_VERSION"],
+              "ndk": os.environ["NDK_VERSION"],
+              "apiLevel": int(os.environ["ANDROID_API_LEVEL"]),
+              "sha256": digest,
+              "sourceSha256": os.environ["NODE_SOURCE_SHA256"],
+              "sourceUrl": f"https://nodejs.org/dist/v{os.environ['NODE_VERSION']}/node-v{os.environ['NODE_VERSION']}.tar.xz",
+              "buildCommit": os.environ["GITHUB_SHA"],
+              "systemLibraries": sorted(needed),
+          }
+          Path("manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+
+      - name: Upload verified Android runtime
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-${{ env.NODE_VERSION }}-android-${{ matrix.abi }}
+          path: |
+            ${{ runner.temp }}/android-node/libeliza_node.so
+            ${{ runner.temp }}/android-node/manifest.json
+            ${{ runner.temp }}/android-node/SHA256SUMS
+            ${{ runner.temp }}/android-node/elf.txt
+          if-no-files-found: error
+
+      - name: Upload failed build log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-${{ env.NODE_VERSION }}-android-${{ matrix.abi }}-log
+          path: ${{ runner.temp }}/android-node/build.log
+          if-no-files-found: ignore

@@ -1,0 +1,114 @@
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"; spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"
+import { profileValid, routeAdmitted, methodsOffered, type Capability as SpecCapability, type EnvironmentRow, type OfferedMethods } from "../../gen/cloud__deployment.effect.vibe"
+import { CloudEnvironment, CloudProfile, type Capability, type EnvironmentProfile, type LegalDocument } from "./profile.schema.ts"
+
+export type { Capability, CloudProfile, EnvironmentProfile, LegalDocument }
+export type CloudEnvironment = typeof CloudEnvironment.Type
+
+export error ProfileInvalid { problem: string }
+export error SecretMissing { name: string }
+
+export const capabilityOf: Readonly<Record<Capability, SpecCapability>> = {
+  inference: "Inference",
+  speech: "Speech",
+  maps: "Maps",
+  managedGoogle: "ManagedGoogle",
+  billing: "Billing"
+}
+
+function isLoopback(origin: string): boolean {
+  return /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(origin)
+}
+
+function rowOf(settings: EnvironmentProfile): EnvironmentRow {
+  return {
+    api: settings.api,
+    web: settings.web,
+    mailSender: settings.mailSender,
+    capabilities: settings.capabilities.map((capability) => capabilityOf[capability]),
+    loopbackFirstParty: settings.firstPartyOrigins.some(isLoopback),
+    billingConfigured: settings.billing !== undefined,
+    inferenceConfigured: settings.inference !== undefined,
+    speechConfigured: settings.speech !== undefined,
+    mapsConfigured: settings.maps !== undefined,
+    googleConfigured: settings.google !== undefined
+  }
+}
+
+export effect function parseProfile(input: unknown): CloudProfile!ProfileInvalid {
+  const profile = try Schema.decodeUnknownEffect(CloudProfile)(input) catch effect (failure) => { throw new ProfileInvalid({ problem: failure.message }) }
+  if (!profileValid({ production: rowOf(profile.environments.production), staging: rowOf(profile.environments.staging) })) {
+    throw new ProfileInvalid({ problem: "the profile breaks a deployment rule: distinct API origins, a mail sender, configured providers for every enabled capability and no loopback first-party origin in production" })
+  }
+  return profile
+}
+
+export effect function parseEnvironment(input: string): CloudEnvironment!ProfileInvalid {
+  return try Schema.decodeUnknownEffect(CloudEnvironment)(input) catch effect () => { throw new ProfileInvalid({ problem: `environment must be production or staging, not ${JSON.stringify(input)}` }) }
+}
+
+export effect function readProfile(file: string): CloudProfile!ProfileInvalid!FileSystem.FileSystem {
+  const fs = try FileSystem.FileSystem
+  const text = try fs.readFileString(file) catch effect () => { throw new ProfileInvalid({ problem: `cannot read ${file}` }) }
+  const parsed = try Effect.try({ try: () => JSON.parse(text) as unknown, catch: () => new ProfileInvalid({ problem: `${file} is not JSON` }) })
+  return try parseProfile(parsed)
+}
+
+export service Deployment {
+  static readonly key = "@elizaos/cloud/profile/Deployment"
+  readonly profile: CloudProfile
+  readonly environment: CloudEnvironment
+  readonly settings: EnvironmentProfile
+  secret(name: string): string!SecretMissing
+}
+
+export function deploymentLayer(profile: CloudProfile, environment: CloudEnvironment): Layer.Layer<Deployment> {
+  return Layer.effect(Deployment, effect {
+    const provider = try ConfigProvider.ConfigProvider
+    return {
+      profile,
+      environment,
+      settings: profile.environments[environment],
+      secret: effect (name: string) => {
+        const value = try provideService(Config.Redacted(name), ConfigProvider.ConfigProvider, provider) catch effect () => { throw new SecretMissing({ name }) }
+        return Redacted.value(value)
+      }
+    }
+  })
+}
+
+export effect function requireSecrets(): void!SecretMissing!Deployment {
+  const deployment = try Deployment
+  const settings = deployment.settings
+  const names = [
+    settings.digestKeyEnv,
+    settings.entitlement.signingKeyEnv,
+    ...settings.sealing.keys.map((key) => key.env),
+    ...(settings.mail.kind === "https" ? [settings.mail.apiKeyEnv] : []),
+    ...(settings.sms.kind === "https" ? [settings.sms.accountEnv, settings.sms.tokenEnv] : []),
+    ...(settings.google === undefined ? [] : [settings.google.clientSecretEnv]),
+    ...(settings.billing === undefined ? [] : [settings.billing.secretKeyEnv, settings.billing.webhookSecretEnv]),
+    ...(settings.inference?.providers.map((provider) => provider.apiKeyEnv) ?? []),
+    ...(settings.speech === undefined ? [] : [settings.speech.apiKeyEnv]),
+    ...(settings.maps?.provider === "google" ? [settings.maps.apiKeyEnv] : [])
+  ]
+  for (const name of names) try deployment.secret(name)
+}
+
+export function capabilityEnabled(settings: EnvironmentProfile, capability: Capability): boolean {
+  return routeAdmitted(settings.capabilities.map((offered) => capabilityOf[offered]), capabilityOf[capability])
+}
+
+export function signInMethods(settings: EnvironmentProfile): OfferedMethods {
+  return methodsOffered({ mailConfigured: true, smsConfigured: settings.sms.kind !== "none", googleConfigured: settings.google !== undefined })
+}
+
+export interface ServiceDocument {
+  readonly success: true
+  readonly version: 1
+  readonly service: { readonly name: string; readonly terms: LegalDocument; readonly privacy: LegalDocument }
+}
+
+export function serviceDocument(profile: CloudProfile, settings: EnvironmentProfile): ServiceDocument {
+  return { success: true, version: 1, service: { name: profile.name, terms: settings.documents.terms, privacy: settings.documents.privacy } }
+}

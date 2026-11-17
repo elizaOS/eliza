@@ -7,9 +7,6 @@ calendar in step with a linked provider calendar without overwriting an
 independent edit. Provider access for managed accounts is the Cloud's
 [managed Google](../cloud/index.md) connection.
 
-The linked cloud contracts are being rebuilt. Their detailed models and
-execution evidence remain pending.
-
 | Area | Specifications |
 | --- | --- |
 | Reading | [Reviewed reads](./reviewedReads.md), [availability](./availability.md), [read clock](./readClock.md), [occurrence grouping](./aggregateMerge.md) |

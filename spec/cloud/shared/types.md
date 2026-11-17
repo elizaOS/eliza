@@ -1,0 +1,221 @@
+# Shared cloud vocabulary
+
+The words every cloud spec uses: units, keys, secrets, sign-in methods and the
+one refusal language. Sources are develop `packages/cloud/shared/src/lib/api/`
+(`cloud-worker-errors.ts`, `mobile-client.ts`) and the refusal tables of the
+old `spec/cloud/nativeClients.md` and `spec/auth/index.md`. Downstream readers
+of the refusal body are the products' cloud gateways and voice clients.
+
+This library has no state. String formats stay in the Effect Schemas
+(`src/**/*.schema.ts`): a client idempotency key matches
+`^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$`, and the shell renders keys, codes and
+reasons to their snake_case wire names. Sealing and opening secrets is code
+only; no spec verifies cryptography. Constructor names carry their type's
+meaning (`EmailSignIn`, not `Email`) so that an importer can declare its own
+`Email`, `Session` or `Window` next to `import types.*`.
+
+## Story: Use one vocabulary across the cloud
+
+> As a maintainer of a cloud service, I want one unit for money, time and
+> text, and one shape for each key, so that two services never disagree about
+> an amount or a request.
+
+### Money, time and text length each have one unit
+
+Money is whole micro-dollars (one US dollar is 1,000,000 µUSD), time is epoch
+milliseconds, and a `CharCount` is the number of UTF-16 code units of a
+string, counted by the shell as `spec/core/unicode.md` models them. Wire
+encodings in seconds or ISO-8601 are converted at the boundary.
+
+```quint
+type Micros = int
+type Millis = int
+type CharCount = int
+pure val microsPerUsd: Micros = 1000000
+pure val microsPerCent: Micros = 10000
+pure val millisPerSecond: Millis = 1000
+pure val millisPerMinute: Millis = 60000
+pure val millisPerHour: Millis = 3600000
+pure val millisPerDay: Millis = 86400000
+```
+
+### An amount of whole cents converts to cents and back without loss
+
+Plan prices are kept in µUSD and read on the wire as `amountCents`. Only an
+amount of whole cents is converted; amounts due arrive from the payment
+provider already in cents.
+
+```quint
+pure def microsOfCents(cents: int): Micros = cents * microsPerCent
+pure def isWholeCents(amount: Micros): bool = amount % microsPerCent == 0
+pure def centsOf(amount: Micros): int = amount / microsPerCent
+pure def lawCentsOfWholeIsExact(amount: Micros): bool = isWholeCents(amount) implies microsOfCents(centsOf(amount)) == amount
+```
+
+### A hold is keyed by its service, caller, request and part, and a provider call by its kind and id
+
+Keys are records compared by structure; the shell renders them. The caller
+is the calling credential for maps, so two credentials never share a maps
+hold, and the organization for inference and speech. A speech session holds
+one key per window and direction; inference, batch speech and maps hold one
+`WholeRequest` key per request.
+
+```quint
+type MeteredService = MeteredInference | MeteredSpeech | MeteredMaps
+type SpeechDirection = Transcribe | Synthesize
+type HoldPart = WholeRequest | SpeechWindow({ direction: SpeechDirection, window: int })
+type HoldKey = { service: MeteredService, caller: str, requestId: str, part: HoldPart }
+type ProviderKind = CheckoutSession | SubscriptionUpdate | SubscriptionSchedule | GmailOperation | CalendarEvent | GoogleGrant
+type ProviderKey = { providerKind: ProviderKind, providerId: str }
+```
+
+### A person signs in by email, phone or Google, and a request carries a device key or a session
+
+A spec that accepts only some methods, such as code sign-in by email or
+phone, guards `SignInMethod` rather than declaring its own.
+
+```quint
+type SignInMethod = EmailSignIn | PhoneSignIn | GoogleSignIn
+type CredentialKind = DeviceKeyCredential | SessionCredential
+type IdempotencyKey = str
+```
+
+## Story: Keep secrets out of every answer
+
+> As an account owner, I want my codes, tokens and keys kept out of logs,
+> receipts and any answer that does not hand them to me, so that nobody who
+> reads those can act as me.
+
+### Codes, tokens, device keys, verifiers and provider tokens are secret
+
+A value of these types may reach only another secret place; `model` refuses
+any spec that lets one reach a public field. The one answer that hands a
+device key or a token to its owner declassifies it in the spec that mints it.
+
+```quint
+type SecretCode = str
+type SecretToken = str
+type SecretDeviceKey = str
+type SecretVerifier = str
+type SecretProviderToken = str
+```
+
+### A sealed value names its purpose and its key and nothing of its plaintext
+
+A sealed copy of a device key, a Google token pair or a TOTP seed is stored
+with the purpose it was sealed for and the id of the key that sealed it.
+
+```quint
+type SealPurpose = DeviceKeyCopy | GoogleTokens | TotpSeed
+type Sealed = { purpose: SealPurpose, keyId: int }
+```
+
+## Story: Speak one refusal language
+
+> As the developer of a client of the cloud, I want every refusal to carry a
+> stable code, a status, whether trying again can help and, where it matters,
+> why and when, so that my client retries only what can succeed and tells
+> the person what to do.
+
+Every refusal is answered with the status of its code and the body
+`{error, errorDescription, retryable, retryAt?, resetsAt?, reason?}`, both
+times in epoch milliseconds; an answer with `retryAt` also sets
+`Retry-After` to the same time in whole seconds from now, rounded up. No spec
+refuses with a code outside this list, and a spec that builds a refusal
+states that it is `wellFormed`.
+
+### Every refusal code has exactly one HTTP status
+
+```quint
+type RefusalCode =
+  InvalidRequest | ModelUnavailable | InvalidClient | RedirectMismatch | GrantCodeInvalid
+  | AuthenticationRequired | CredentialProofInvalid
+  | InsufficientCredits | AllowanceExhausted
+  | AccessDenied | ClientDisabled | SpeechConsentRequired
+  | NotFound | CapabilityUnavailable
+  | IdempotencyConflict | StaleRevision | BillingStateConflict | IdentityInUse | LastMethod | GoogleReauthRequired | SubscriptionGrantAlreadyRedeemed | SubscriptionGrantPaidPlanActive | ReferralAlreadyApplied
+  | SessionClosed | PreconditionFailed | ContentTooLarge
+  | NoRoute | UnsupportedMode | UnsupportedRegion
+  | FreshSessionRequired | RateLimited | ProviderInvalidResponse
+  | ServiceUnavailable | ProviderUnavailable | RateLimitUnavailable
+pure def statusOf(code: RefusalCode): int =
+  if (Set(InvalidRequest, ModelUnavailable, InvalidClient, RedirectMismatch, GrantCodeInvalid).contains(code)) 400
+  else if (Set(AuthenticationRequired, CredentialProofInvalid).contains(code)) 401
+  else if (Set(InsufficientCredits, AllowanceExhausted).contains(code)) 402
+  else if (Set(AccessDenied, ClientDisabled, SpeechConsentRequired).contains(code)) 403
+  else if (Set(NotFound, CapabilityUnavailable).contains(code)) 404
+  else if (Set(IdempotencyConflict, StaleRevision, BillingStateConflict, IdentityInUse, LastMethod, GoogleReauthRequired, SubscriptionGrantAlreadyRedeemed, SubscriptionGrantPaidPlanActive, ReferralAlreadyApplied).contains(code)) 409
+  else if (code == SessionClosed) 410
+  else if (code == PreconditionFailed) 412
+  else if (code == ContentTooLarge) 413
+  else if (Set(NoRoute, UnsupportedMode, UnsupportedRegion).contains(code)) 422
+  else if (code == FreshSessionRequired) 428
+  else if (code == RateLimited) 429
+  else if (code == ProviderInvalidResponse) 502
+  else 503
+```
+
+### A reason refines only the code it belongs to
+
+`account_inactive` answers an action on an account that is not Active (the
+operator adding credits, a redeem); a credential of such an account is
+refused as `401` by `requestAuth`.
+
+```quint
+type RefusalReason =
+  NoReason | GrantRequired | UnsupportedField
+  | CredentialExpired | CredentialRevoked | CredentialUnknown
+  | ChallengeLocked | GoogleAccountChanged | AccountInactive | CapabilityMissing
+  | GoogleNotConfigured
+pure def isCredentialReason(reason: RefusalReason): bool = Set(CredentialExpired, CredentialRevoked, CredentialUnknown).contains(reason)
+pure def reasonFits(code: RefusalCode, reason: RefusalReason): bool =
+  if (code == AuthenticationRequired) isCredentialReason(reason)
+  else if (reason == NoReason) true
+  else if (code == InvalidRequest) Set(GrantRequired, UnsupportedField).contains(reason)
+  else if (code == AccessDenied) Set(ChallengeLocked, GoogleAccountChanged, AccountInactive, CapabilityMissing).contains(reason)
+  else if (code == ProviderUnavailable) reason == GoogleNotConfigured
+  else false
+```
+
+### A refusal names a credential fault exactly when its code is authentication_required
+
+```quint
+pure def lawCredentialFaultIffAuthenticationRequired(code: RefusalCode, reason: RefusalReason): bool =
+  reasonFits(code, reason) implies (code == AuthenticationRequired iff isCredentialReason(reason))
+```
+
+### Only a rate limit, an outage or a spent allowance carries a time
+
+A rate limit always says when to retry and an outage may; a spent allowance
+always says when it resets.
+
+```quint
+type WaitTime = NoWait | RetryAt({ retryAtMs: Millis }) | ResetsAt({ resetsAtMs: Millis })
+pure def waitFits(code: RefusalCode, wait: WaitTime): bool = match wait {
+  | NoWait => code != RateLimited and code != AllowanceExhausted
+  | RetryAt(x) => code == RateLimited or statusOf(code) == 503
+  | ResetsAt(x) => code == AllowanceExhausted
+}
+```
+
+### Only a rate limit or a passing outage is retryable
+
+A client retries a retryable refusal unchanged; any other refusal needs the
+person or the request to change first. A spent allowance is not retryable,
+and neither is a missing configuration (`google_not_configured`).
+
+```quint
+type Refusal = { code: RefusalCode, reason: RefusalReason, wait: WaitTime }
+pure def isRetryable(code: RefusalCode): bool = statusOf(code) == 429 or statusOf(code) == 503
+pure def retryableOf(r: Refusal): bool = isRetryable(r.code) and r.reason != GoogleNotConfigured
+```
+
+### A refusal is well formed when its reason and its time fit its code
+
+```quint
+pure def wellFormed(r: Refusal): bool = reasonFits(r.code, r.reason) and waitFits(r.code, r.wait)
+pure def refuse(code: RefusalCode): Refusal = { code: code, reason: NoReason, wait: NoWait }
+pure def refuseFor(code: RefusalCode, reason: RefusalReason): Refusal = { code: code, reason: reason, wait: NoWait }
+pure def refuseUntil(code: RefusalCode, at: Millis): Refusal = { code: code, reason: NoReason, wait: RetryAt({ retryAtMs: at }) }
+pure def refuseAllowance(resetsAt: Millis): Refusal = { code: AllowanceExhausted, reason: NoReason, wait: ResetsAt({ resetsAtMs: resetsAt }) }
+```

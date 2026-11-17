@@ -1,0 +1,66 @@
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/resources.md, "Story: Release everything I acquired, once"
+import { freePort, startAgentChild, type AgentChild, type AgentRun, type Transport } from "./child.ts"
+import { startCloudFake, type CloudFake } from "./cloud-fake.ts"
+import { launchDocument, launchFrame, scratchDirectory, writeLaunch, type FrameOptions, type LaunchFrame, type LaunchOptions, type Scratch } from "./scratch.ts"
+
+export error SupportFailed { step: string; cause: unknown }
+
+export effect function host<A>(step: string, call: () => Promise<A>) {
+  return try tryPromise({ try: () => call(), catch: (cause) => new SupportFailed({ step, cause }) })
+}
+
+export effect function scratch(prefix: string) {
+  return try acquireRelease(host("scratch", () => scratchDirectory(prefix)), (made: Scratch) => orDie(host("scratch removal", () => made.remove())))
+}
+
+export effect function cloudFake(deviceKey: string) {
+  return try acquireRelease(host("cloud fake", () => startCloudFake({ deviceKey })), (fake: CloudFake) => orDie(host("cloud fake close", () => fake.close())))
+}
+
+export effect function agentChild(run: AgentRun) {
+  return try acquireRelease(
+    Effect.try({ try: () => startAgentChild(run), catch: (cause) => new SupportFailed({ step: "agent child", cause }) }),
+    (child: AgentChild) => orDie(host("agent child stop", () => child.stop())),
+  )
+}
+
+export interface Booted {
+  readonly child: AgentChild
+  readonly state: Scratch
+  readonly frame: LaunchFrame
+  readonly transport: Transport
+  readonly cloud: CloudFake | undefined
+}
+
+export interface BootOptions {
+  readonly launch?: LaunchOptions
+  readonly frame?: FrameOptions
+  readonly cloud?: boolean
+  readonly http?: boolean
+  readonly env?: Readonly<Record<string, string>>
+}
+
+export const deviceKey = "device-key-1"
+
+export effect function boot(options: BootOptions = {}) {
+  const state = try scratch("agent-state")
+  const cloud = options.cloud === true ? try cloudFake(deviceKey) : undefined
+  const launch = cloud === undefined ? options.launch : { ...options.launch, backend: options.launch?.backend ?? { kind: "cloud" as const, origin: cloud.origin } }
+  const launchFile = try host("launch file", () => writeLaunch(state, launchDocument(launch)))
+  const frame = launchFrame(cloud === undefined ? options.frame : { credential: { version: 1, value: deviceKey }, ...options.frame })
+  const transport: Transport = options.http === true
+    ? { kind: "http", port: try host("free port", () => freePort()) }
+    : { kind: "socket", path: state.file("agent.sock") }
+  const child = try agentChild({
+    launchFile,
+    stateDir: state.path,
+    frame,
+    transport,
+    env: { ...options.env, ...(cloud === undefined ? {} : { NODE_EXTRA_CA_CERTS: cloud.caFile }) },
+  })
+  return { child, state, frame, transport, cloud } satisfies Booted
+}
+
+export effect function ready(booted: Booted) {
+  return try host("readiness", () => booted.child.ready())
+}

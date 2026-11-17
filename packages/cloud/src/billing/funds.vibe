@@ -1,0 +1,53 @@
+// spec/cloud/billing/funds.md, "Story: Spend only money the account has"
+import { Rejected, apply, decodeState, initial, type Event, type Funds } from "../../gen/cloud__billing__funds.effect.vibe"
+import { loadRow, machineRows, RowConflict, RowCorrupt, stepRow } from "../store/rows.vibe"
+import { Store, StoreFailure, type Tx } from "../store/store.vibe"
+
+export type { Funds }
+
+export error OrganizationUnknown { organizationId: string }
+
+export const fundsRows = machineRows<Funds, Event, Rejected, unknown>("funds", { initial, decodeState, apply })
+
+export type FundsFailure = StoreFailure | RowCorrupt | RowConflict | Rejected
+
+export effect function readFunds(tx: Tx, organizationId: string, lock = true): Funds!(StoreFailure | RowCorrupt) {
+  return (try loadRow(tx, fundsRows, organizationId, lock)).state
+}
+
+export function creditAvailable(funds: Funds): number {
+  return funds.creditBalance - funds.creditHeld
+}
+
+export effect function stepFunds(tx: Tx, organizationId: string, event: Event, now: number, requestKey: string): Funds!FundsFailure {
+  const before = try readFunds(tx, organizationId)
+  const { state } = try stepRow(tx, fundsRows, organizationId, event, () => ({ updated_at: now }))
+  try tx.query("UPDATE organizations SET credit_balance = $2 WHERE id = $1", [organizationId, state.creditBalance])
+  const moved = state.creditBalance - before.creditBalance
+  if (moved !== 0) {
+    try tx.query(
+      "INSERT INTO credit_entries (id, organization_id, kind, amount, request_key, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+      [`${organizationId}:${event.type}:${requestKey}`, organizationId, event.type === "add" ? "add" : "settle", moved, requestKey, now]
+    )
+  }
+  return state
+}
+
+export interface CreditsAdded {
+  readonly organizationId: string
+  readonly balance: number
+  readonly replayed: boolean
+}
+
+export effect function addCredits(input: { readonly organizationId: string; readonly amount: number; readonly requestKey: string }): CreditsAdded!(FundsFailure | OrganizationUnknown)!Store {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  return try store.transaction(effect (tx: Tx) => {
+    const organization = try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [input.organizationId])
+    if (organization.length === 0) throw new OrganizationUnknown({ organizationId: input.organizationId })
+    const done = try tx.query("SELECT 1 FROM credit_entries WHERE organization_id = $1 AND kind = 'add' AND request_key = $2", [input.organizationId, input.requestKey])
+    if (done.length > 0) return { organizationId: input.organizationId, balance: (try readFunds(tx, input.organizationId)).creditBalance, replayed: true }
+    const funds = try stepFunds(tx, input.organizationId, { type: "add", amount: input.amount }, now, input.requestKey)
+    return { organizationId: input.organizationId, balance: funds.creditBalance, replayed: false }
+  })
+}

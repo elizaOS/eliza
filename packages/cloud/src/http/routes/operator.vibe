@@ -1,0 +1,4 @@
+// spec/cloud/identity/deletion.md, "Story: Delete an account once the person asked support"
+import type { Area } from "../routes.vibe"
+
+export const area: Area = { routes: [], sweeps: [] }

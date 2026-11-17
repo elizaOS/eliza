@@ -1,16 +1,16 @@
 /** Validates native commands and admits complete messages within Chromium's native-message limit. */
 export const MAX_NATIVE_BYTES = 48 * 1024;
 export class BridgeError extends Error {
-  readonly kind: string;
+  kind;
   /** Stable machine-readable cause, sent beside `kind` so callers never match `message`. */
-  readonly reason: string | undefined;
-  constructor(kind: string, message: string, reason?: string) {
+  reason;
+  constructor(kind, message, reason) {
     super(message);
     this.kind = kind;
     this.reason = reason;
   }
 }
-export function serializeCompleteMessage(value: unknown) {
+export function serializeCompleteMessage(value) {
   const json = JSON.stringify(value);
   if (new TextEncoder().encode(json).byteLength > MAX_NATIVE_BYTES)
     throw new BridgeError(
@@ -34,12 +34,7 @@ const actions = new Set([
   "reload",
   "close",
 ]);
-export function parseCommand(input: unknown) {
-  const value = input as {
-    type?: unknown;
-    id?: unknown;
-    command?: Record<string, unknown>;
-  } | null;
+export function parseCommand(value) {
   if (
     !value ||
     typeof value !== "object" ||
@@ -69,7 +64,7 @@ export function parseCommand(input: unknown) {
       "An explicit Chromium tab ID is required.",
     );
   if (["open", "navigate"].includes(String(command.subaction))) {
-    let url: URL;
+    let url;
     try {
       url = new URL(String(command.url));
     } catch {
@@ -109,7 +104,7 @@ export function parseCommand(input: unknown) {
   return { id: value.id, command };
 }
 
-export function encodeNativeMessage(message: unknown) {
+export function encodeNativeMessage(message) {
   const bytes = new TextEncoder().encode(JSON.stringify(message));
   if (bytes.byteLength <= MAX_NATIVE_BYTES) return [message];
   const id = crypto.randomUUID();
@@ -125,20 +120,10 @@ export function encodeNativeMessage(message: unknown) {
 }
 
 export class NativeMessageAssembler {
-  private pending = new Map<
-    string,
-    { count: number; parts: Uint8Array[]; length: number }
-  >();
-  accept(input: unknown): unknown {
-    serializeCompleteMessage(input);
-    const frame = input as {
-      type?: unknown;
-      id: string;
-      index: number;
-      count: number;
-      data: string;
-    };
-    if (frame?.type !== "chunk") return input;
+  pending = new Map();
+  accept(frame) {
+    serializeCompleteMessage(frame);
+    if (frame?.type !== "chunk") return frame;
     if (
       typeof frame.id !== "string" ||
       !Number.isSafeInteger(frame.index) ||
@@ -189,28 +174,16 @@ export class NativeMessageAssembler {
 /** Stops one-way Binder queues from exhausting their shared buffer. Acknowledgements
  * confirm receipt of a chunk only; they never acknowledge the browser effect. */
 export class NativeMessageSender {
-  private waiting = new Map<
-    string,
-    {
-      resolve(): void;
-      reject(error: Error): void;
-      timer: ReturnType<typeof setTimeout>;
-    }
-  >();
-  private ended: Error | null = null;
-  private readonly post: (frame: unknown) => void;
-  constructor(post: (frame: unknown) => void) {
+  waiting = new Map();
+  ended = null;
+  post;
+  constructor(post) {
     this.post = post;
   }
 
-  acceptAcknowledgement(input: unknown): boolean {
-    if (
-      !input ||
-      typeof input !== "object" ||
-      (input as { type?: unknown }).type !== "chunk-ack"
-    )
+  acceptAcknowledgement(frame) {
+    if (!frame || typeof frame !== "object" || frame.type !== "chunk-ack")
       return false;
-    const frame = input as { id?: unknown; index?: unknown };
     if (typeof frame.id !== "string" || !Number.isSafeInteger(frame.index))
       throw new BridgeError(
         "INVALID_REQUEST",
@@ -229,16 +202,15 @@ export class NativeMessageSender {
     return true;
   }
 
-  async send(message: unknown): Promise<void> {
+  async send(message) {
     for (const frame of encodeNativeMessage(message)) {
       if (this.ended) throw this.ended;
-      const chunk = frame as { type?: unknown; id?: string; index?: number };
-      if (chunk.type !== "chunk") {
+      if (frame.type !== "chunk") {
         this.post(frame);
         continue;
       }
-      await new Promise<void>((resolve, reject) => {
-        const key = `${chunk.id}:${chunk.index}`;
+      await new Promise((resolve, reject) => {
+        const key = `${frame.id}:${frame.index}`;
         const timer = setTimeout(() => {
           this.waiting.delete(key);
           reject(
@@ -260,7 +232,7 @@ export class NativeMessageSender {
     }
   }
 
-  close(error: Error): void {
+  close(error) {
     this.ended = error;
     for (const pending of this.waiting.values()) {
       clearTimeout(pending.timer);
@@ -271,11 +243,7 @@ export class NativeMessageSender {
 }
 
 /** Call only after the assembler has validated and retained the complete chunk. */
-export function acknowledgeNativeChunk(
-  input: unknown,
-  post: (frame: unknown) => void,
-): void {
-  const frame = input as { type?: unknown; id?: string; index?: number } | null;
+export function acknowledgeNativeChunk(frame, post) {
   if (frame?.type === "chunk")
     post({ type: "chunk-ack", id: frame.id, index: frame.index });
 }

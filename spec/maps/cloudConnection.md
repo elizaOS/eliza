@@ -6,9 +6,6 @@ owns routes, live location, and guidance.
 [Request pauses](./requests.md) and [attribution](./attribution.md)
 cover what the connected provider returns.
 
-The linked cloud contracts are being rebuilt. Their detailed models and
-execution evidence remain pending.
-
 ## Story: Keep Cloud Maps on the account that requested it
 
 > As the owner, I want map data I see to come from the account I am signed

@@ -1,0 +1,566 @@
+// spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write"; spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for"; spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"
+module node {
+  import { randomUUID } from "node:crypto"
+  import { PGlite, type Transaction } from "@electric-sql/pglite"
+  import {
+    DatabaseAdapter, filterMemoryReadByAccessContext,
+    type Agent, type Entity, type IDatabaseAdapter, type Log, type Memory, type Room, type Task,
+    type UUID, type World,
+  } from "@elizaos/core"
+  import { migrations } from "./schema.vibe"
+  import { claimDeviceState } from "./identity.vibe"
+
+  export interface DeviceStorageOptions {
+    stateDirectory: string
+    persistMemory: boolean
+    account: { userId: string; organizationId: string } | null
+    embeddingDimensions: number
+  }
+
+  type DB = PGlite | Transaction
+  type Collection = "agents" | "entities" | "worlds" | "rooms" | "participants" | "memories" | "logs" | "cache" | "tasks"
+  type StoredParticipant = { id: UUID; entityId: UUID; roomId: UUID; userState: "FOLLOWED" | "MUTED" | null }
+  type Write = { key: string; data: unknown; createdAt: number; tableName: string | null }
+
+  class UnsupportedStorageOperation extends Error {
+    constructor(operation: string) {
+      super(`The device storage does not support ${operation}`)
+      this.name = "UnsupportedStorageOperation"
+    }
+  }
+
+  function unsupported(operation: string) {
+    return (..._args: unknown[]): Promise<never> => Promise.reject(new UnsupportedStorageOperation(operation))
+  }
+
+  async function migrate(db: PGlite, agentId: UUID, options: DeviceStorageOptions): Promise<void> {
+    const user = options.account?.userId ?? null
+    const organization = options.account?.organizationId ?? null
+    await db.transaction(async (transaction) => {
+      const result = await transaction.query<{ exists: boolean }>("SELECT to_regclass('public.device_owner') IS NOT NULL AS exists")
+      if (!result.rows[0]?.exists) {
+        const previous = await transaction.query("SELECT 1 FROM pg_tables WHERE schemaname = 'public' LIMIT 1")
+        if (previous.rows.length > 0) throw new Error("The device store has no ownership metadata")
+        await transaction.exec(migrations[0])
+        await transaction.query(
+          "INSERT INTO device_owner VALUES (true, $1, $2, $3, $4, 1)",
+          [agentId, user, organization, options.embeddingDimensions],
+        )
+        return
+      }
+      const owners = await transaction.query<{ agent_id: string; user_id: string | null; organization_id: string | null; embedding_dimensions: number; version: number }>(
+        "SELECT agent_id, user_id, organization_id, embedding_dimensions, version FROM device_owner WHERE singleton",
+      )
+      const owner = owners.rows[0]
+      if (!owner || owner.agent_id !== agentId || owner.user_id !== user ||
+        owner.organization_id !== organization || owner.embedding_dimensions !== options.embeddingDimensions) {
+        throw new Error("The device store belongs to a different agent, account or embedding space")
+      }
+      if (owner.version !== migrations.length) throw new Error("The device store schema version is unsupported")
+      await transaction.query("SELECT key, data, table_name FROM device_records LIMIT 0")
+    })
+  }
+
+  function record(key: string, data: unknown, createdAt = Date.now(), tableName: string | null = null): Write {
+    return { key, data, createdAt, tableName }
+  }
+
+  function participantKey(roomId: UUID, entityId: UUID): string {
+    return JSON.stringify([roomId, entityId])
+  }
+
+  class DeviceAdapter extends DatabaseAdapter<DB> {
+    readonly messageContentSegmentCapability = 1 as const
+    get documentListQueryCapability(): 4 {
+      throw new UnsupportedStorageOperation("document listing")
+    }
+
+    private closing: Promise<void> | undefined
+    private readonly running = new Set<Promise<unknown>>()
+
+    constructor(
+      db: DB,
+      private readonly agentId: UUID,
+      private readonly dimensions: number,
+      private readonly release?: () => Promise<void>,
+    ) {
+      super()
+      this.db = db
+    }
+
+    private dispatch<A>(operation: () => Promise<A>): Promise<A> {
+      if (this.closing || this.db.closed) return Promise.reject(new Error("The device store is closed"))
+      const running = operation()
+      this.running.add(running)
+      const finish = () => { this.running.delete(running) }
+      void running.then(finish, finish)
+      return running
+    }
+
+    async initialize(): Promise<void> {
+      if (!await this.isReady()) throw new Error("The device store was closed")
+    }
+
+    async isReady(): Promise<boolean> {
+      return !this.closing && !this.db.closed
+    }
+
+    close(): Promise<void> {
+      if (!(this.db instanceof PGlite)) return Promise.reject(new Error("Cannot close a transaction as a store"))
+      const db = this.db
+      this.closing ??= Promise.allSettled(this.running).then(async () => {
+        await db.close()
+        await this.release?.()
+      })
+      return this.closing
+    }
+
+    async getConnection(): Promise<DB> {
+      if (!await this.isReady()) throw new Error("The device store is closed")
+      return this.db
+    }
+
+    async runPluginMigrations(plugins: Array<{ name: string; schema?: Record<string, unknown> }>): Promise<void> {
+      const withSchema = plugins.find((plugin) => plugin.schema && Object.keys(plugin.schema).length > 0)
+      if (withSchema !== undefined) throw new UnsupportedStorageOperation(`plugin migrations for ${withSchema.name}`)
+      await this.initialize()
+    }
+
+    transaction<A>(callback: (tx: IDatabaseAdapter<DB>) => Promise<A>): Promise<A> {
+      const db = this.db
+      if (!(db instanceof PGlite)) return Promise.reject(new UnsupportedStorageOperation("nested transactions"))
+      return this.dispatch(() => db.transaction((tx) => callback(new DeviceAdapter(tx, this.agentId, this.dimensions))))
+    }
+
+    private async records<A>(collection: Collection, filters: { keys?: readonly string[]; rooms?: readonly UUID[]; worlds?: readonly UUID[]; tableName?: string } = {}): Promise<Array<{ key: string; data: A; table_name: string | null }>> {
+      const result = await this.dispatch(() => this.db.query<{ key: string; data: A; table_name: string | null }>(
+        `SELECT key, data, table_name FROM device_records
+          WHERE collection = $1 AND ($2::text[] IS NULL OR key = ANY($2))
+            AND ($3::text[] IS NULL OR room_id = ANY($3))
+            AND ($4::text[] IS NULL OR world_id = ANY($4))
+            AND ($5::text IS NULL OR table_name = $5)
+          ORDER BY created_at, key`,
+        [collection, filters.keys ?? null, filters.rooms ?? null, filters.worlds ?? null, filters.tableName ?? null],
+      ))
+      return result.rows
+    }
+
+    private async values<A>(collection: Collection, filters?: Parameters<DeviceAdapter["records"]>[1]): Promise<A[]> {
+      return (await this.records<A>(collection, filters)).map((row) => row.data)
+    }
+
+    private async write(collection: Collection, rows: Write[], mode: "create" | "put" | "update"): Promise<UUID[]> {
+      if (rows.length === 0) return []
+      const sql = mode === "update"
+        ? `UPDATE device_records d SET data = item.data
+           FROM jsonb_to_recordset($2::jsonb) AS item(key text, data jsonb)
+           WHERE d.collection = $1 AND d.key = item.key RETURNING d.key`
+        : `INSERT INTO device_records (collection,key,data,created_at,table_name)
+           SELECT $1,key,data,"createdAt","tableName"
+           FROM jsonb_to_recordset($2::jsonb) AS item(key text, data jsonb, "createdAt" bigint, "tableName" text)
+           ON CONFLICT (collection,key) ${mode === "create" ? "DO NOTHING" : "DO UPDATE SET data=EXCLUDED.data, table_name=EXCLUDED.table_name"}
+           RETURNING key`
+      const result = await this.dispatch(() => this.db.query<{ key: UUID }>(sql, [collection, JSON.stringify(rows)]))
+      return result.rows.map((row) => row.key)
+    }
+
+    private async remove(collection: Collection, keys: readonly string[]): Promise<boolean> {
+      const result = await this.dispatch(() => this.db.query("DELETE FROM device_records WHERE collection = $1 AND key = ANY($2::text[])", [collection, keys]))
+      return (result.affectedRows ?? 0) > 0
+    }
+
+    private own(candidate: UUID): UUID {
+      if (candidate !== this.agentId) throw new Error("The record belongs to another agent")
+      return candidate
+    }
+
+    private keepAgent(agent: Partial<Agent>): Write {
+      const { secrets: _secrets, settings, ...publicAgent } = agent
+      const publicSettings = settings === undefined ? undefined : { ...settings, secrets: undefined }
+      const id = this.own(agent.id ?? this.agentId)
+      const createdAt = Number(agent.createdAt ?? Date.now())
+      return record(id, { ...publicAgent, id, settings: publicSettings, createdAt, updatedAt: Number(agent.updatedAt ?? Date.now()) }, createdAt)
+    }
+
+    getAgents(): Promise<Agent[]> { return this.values("agents") }
+    getAgentsByIds(keys: UUID[]): Promise<Agent[]> { return this.values("agents", { keys }) }
+    createAgents(agents: Partial<Agent>[]): Promise<UUID[]> { return this.write("agents", agents.map((agent) => this.keepAgent(agent)), "create") }
+    async upsertAgents(agents: Partial<Agent>[]): Promise<void> { await this.write("agents", agents.map((agent) => this.keepAgent(agent)), "put") }
+    async countAgents(): Promise<number> { return (await this.getAgents()).length }
+    deleteAgents(keys: UUID[]): Promise<boolean> { return this.remove("agents", keys) }
+
+    private entity(entity: Entity): Write {
+      this.own(entity.agentId)
+      const id = entity.id ?? randomUUID()
+      return record(id, { ...entity, id })
+    }
+
+    getEntitiesByIds(keys: UUID[]): Promise<Entity[]> { return this.values("entities", { keys }) }
+    createEntities(entities: Entity[]): Promise<UUID[]> { return this.write("entities", entities.map((entity) => this.entity(entity)), "create") }
+    async upsertEntities(entities: Entity[]): Promise<void> { await this.write("entities", entities.map((entity) => this.entity(entity)), "put") }
+    async updateEntities(entities: Entity[]): Promise<void> { await this.write("entities", entities.map((entity) => this.entity(entity)), "update") }
+    async deleteEntities(keys: UUID[]): Promise<void> { await this.remove("entities", keys) }
+
+    async getEntitiesByNames(input: Parameters<IDatabaseAdapter["getEntitiesByNames"]>[0]): Promise<Entity[]> {
+      this.own(input.agentId)
+      const names = new Set(input.names.map((name) => name.toLowerCase()))
+      return (await this.values<Entity>("entities")).filter((entity) => entity.names.some((name) => names.has(name.toLowerCase())))
+    }
+
+    private world(world: World): Write {
+      this.own(world.agentId)
+      return record(world.id, world)
+    }
+
+    getAllWorlds(): Promise<World[]> { return this.values("worlds") }
+    getWorldsByIds(keys: UUID[]): Promise<World[]> { return this.values("worlds", { keys }) }
+    createWorlds(worlds: World[]): Promise<UUID[]> { return this.write("worlds", worlds.map((world) => this.world(world)), "create") }
+    async upsertWorlds(worlds: World[]): Promise<void> { await this.write("worlds", worlds.map((world) => this.world(world)), "put") }
+    async updateWorlds(worlds: World[]): Promise<void> { await this.write("worlds", worlds.map((world) => this.world(world)), "update") }
+    async deleteWorlds(keys: UUID[]): Promise<void> { await this.remove("worlds", keys) }
+
+    private room(room: Room): Write {
+      this.own(room.agentId ?? this.agentId)
+      return record(room.id, { ...room, agentId: this.agentId })
+    }
+
+    getRoomsByIds(keys: UUID[]): Promise<Room[]> { return this.values("rooms", { keys }) }
+    createRooms(rooms: Room[]): Promise<UUID[]> { return this.write("rooms", rooms.map((room) => this.room(room)), "create") }
+    async upsertRooms(rooms: Room[]): Promise<void> { await this.write("rooms", rooms.map((room) => this.room(room)), "put") }
+    async updateRooms(rooms: Room[]): Promise<void> { await this.write("rooms", rooms.map((room) => this.room(room)), "update") }
+    async deleteRooms(keys: UUID[]): Promise<void> { await this.remove("rooms", keys) }
+    async getRoomsByWorlds(worlds: UUID[], limit?: number, offset = 0): Promise<Room[]> {
+      return (await this.values<Room>("rooms", { worlds })).slice(offset, limit === undefined ? undefined : offset + limit)
+    }
+
+    async createRoomParticipants(entities: UUID[], roomId: UUID): Promise<UUID[]> {
+      if (this.db instanceof PGlite) return this.transaction((tx) => tx.createRoomParticipants(entities, roomId))
+      const [room] = await this.getRoomsByIds([roomId])
+      const known = await this.getEntitiesByIds(entities)
+      if (!room || known.length !== new Set(entities).size) throw new Error("A participant requires an existing room and entity")
+      const ids = entities.map((entityId) => ({
+        id: randomUUID(), entityId, roomId, userState: null,
+      }))
+      await this.write("participants", ids.map((value) => record(participantKey(roomId, value.entityId), value)), "create")
+      return (await this.values<StoredParticipant>("participants", { keys: entities.map((id) => participantKey(roomId, id)) })).map((participant) => participant.id)
+    }
+
+    async getParticipantsForRooms(rooms: UUID[]): ReturnType<IDatabaseAdapter["getParticipantsForRooms"]> {
+      const participants = await this.values<StoredParticipant>("participants", { rooms })
+      return rooms.map((roomId) => ({ roomId, entityIds: participants.filter((p) => p.roomId === roomId).map((p) => p.entityId) }))
+    }
+
+    async getRoomsForParticipants(entities: UUID[]): Promise<UUID[]> {
+      const participants = await this.values<StoredParticipant>("participants")
+      return [...new Set(participants.filter((p) => entities.includes(p.entityId)).map((p) => p.roomId))]
+    }
+
+    async areRoomParticipants(pairs: Parameters<IDatabaseAdapter["areRoomParticipants"]>[0]): ReturnType<IDatabaseAdapter["areRoomParticipants"]> {
+      const keys = pairs.map((value) => participantKey(value.roomId, value.entityId))
+      const participants = new Set((await this.records<StoredParticipant>("participants", { keys })).map((p) => p.key))
+      return keys.map((key) => participants.has(key))
+    }
+
+    deleteParticipants(pairs: Parameters<IDatabaseAdapter["deleteParticipants"]>[0]): Promise<boolean> {
+      return this.remove("participants", pairs.map((pair) => participantKey(pair.roomId, pair.entityId)))
+    }
+
+    async getEntitiesForRooms(rooms: UUID[]): ReturnType<IDatabaseAdapter["getEntitiesForRooms"]> {
+      const participants = await this.getParticipantsForRooms(rooms)
+      const entities = await this.getEntitiesByIds([...new Set(participants.flatMap((room) => room.entityIds))])
+      return participants.map(({ roomId, entityIds }) => ({ roomId, entities: entities.filter((entity) => entity.id !== undefined && entityIds.includes(entity.id)) }))
+    }
+
+    async getParticipantUserStates(pairs: Parameters<IDatabaseAdapter["getParticipantUserStates"]>[0]): ReturnType<IDatabaseAdapter["getParticipantUserStates"]> {
+      const keys = pairs.map((pair) => participantKey(pair.roomId, pair.entityId))
+      const states = new Map((await this.records<StoredParticipant>("participants", { keys })).map((p) => [p.key, p.data.userState]))
+      return keys.map((key) => states.get(key) ?? null)
+    }
+
+    private memory(input: Memory, tableName: string, unique?: boolean): Write {
+      this.own(input.agentId ?? this.agentId)
+      if (tableName.length === 0) throw new Error("A memory table is required")
+      if (input.embedding && (input.embedding.length !== this.dimensions || !input.embedding.every(Number.isFinite))) {
+        throw new Error("Memory embedding does not match the device store")
+      }
+      const id = input.id ?? randomUUID()
+      const createdAt = input.createdAt ?? Date.now()
+      return record(id, { ...input, id, agentId: this.agentId, createdAt, unique: unique ?? input.unique }, createdAt, tableName)
+    }
+
+    createMemories(inputs: Parameters<IDatabaseAdapter["createMemories"]>[0]): Promise<UUID[]> {
+      return this.write("memories", inputs.map(({ memory, tableName, unique }) => this.memory(memory, tableName, unique)), "create")
+    }
+
+    async upsertMemories(inputs: Parameters<IDatabaseAdapter["upsertMemories"]>[0]): Promise<void> {
+      await this.write("memories", inputs.map(({ memory, tableName }) => this.memory(memory, tableName)), "put")
+    }
+
+    async updateMemories(updates: Parameters<IDatabaseAdapter["updateMemories"]>[0]): Promise<void> {
+      if (this.db instanceof PGlite) return this.transaction((tx) => tx.updateMemories(updates))
+      const existing = await this.records<Memory>("memories", { keys: updates.map((value) => value.id) })
+      const rows = new Map(existing.map((row) => [row.key, row]))
+      const writes = updates.flatMap((update) => {
+        const found = rows.get(update.id)
+        return found?.table_name ? [this.memory({ ...found.data, ...update }, found.table_name)] : []
+      })
+      await this.write("memories", writes, "update")
+    }
+
+    getMemoriesByIds(keys: UUID[], tableName?: string): Promise<Memory[]> {
+      return this.values("memories", { keys, tableName })
+    }
+
+    async getMemories(input: Parameters<IDatabaseAdapter["getMemories"]>[0]): Promise<Memory[]> {
+      if (input.agentId !== undefined) this.own(input.agentId)
+      if (input.cursor && input.offset !== undefined) throw new Error("Choose cursor or offset")
+      const rows = await this.values<Memory>("memories", {
+        rooms: input.roomId === undefined ? undefined : [input.roomId],
+        worlds: input.worldId === undefined ? undefined : [input.worldId],
+        tableName: input.tableName,
+      })
+      const memberRooms = input.entityId === undefined ? undefined : new Set(await this.getRoomsForParticipants([input.entityId]))
+      const text = input.textContains?.trim().toLowerCase()
+      const ascending = input.orderDirection === "asc"
+      const selected = rows.filter((memory) => {
+        const recorded = memory.createdAt ?? 0
+        const tie = (memory.id ?? "").localeCompare(input.cursor?.id ?? "")
+        const afterCursor = input.cursor === undefined || (ascending
+          ? recorded > input.cursor.createdAt || (recorded === input.cursor.createdAt && tie > 0)
+          : recorded < input.cursor.createdAt || (recorded === input.cursor.createdAt && tie < 0))
+        return afterCursor
+          && (memberRooms === undefined || memberRooms.has(memory.roomId))
+          && (input.authorEntityIds === undefined || input.authorEntityIds.includes(memory.entityId))
+          && !(input.excludeRoomIds?.includes(memory.roomId))
+          && (input.unique === undefined || memory.unique === input.unique)
+          && (input.start === undefined || recorded >= input.start)
+          && (input.end === undefined || recorded <= input.end)
+          && (!text || memory.content.text?.toLowerCase().includes(text))
+          && Object.entries(input.metadata ?? {}).every(([key, value]) =>
+            JSON.stringify(Reflect.get(memory.metadata ?? {}, key)) === JSON.stringify(value))
+      })
+      if (!ascending) selected.reverse()
+      const readable = input.accessContext ? filterMemoryReadByAccessContext(
+        selected, input.accessContext, this.agentId,
+        input.tableName === "messages" && input.accessContext.authorizedRoomIds !== undefined ? "room" : "private",
+      ) : selected
+      const offset = input.offset ?? 0
+      const limit = input.limit ?? input.count
+      return readable.slice(offset, limit === undefined ? undefined : offset + limit)
+        .map((memory) => input.includeEmbedding ? memory : { ...memory, embedding: undefined })
+    }
+
+    async getMemoriesByRoomIds(input: Parameters<IDatabaseAdapter["getMemoriesByRoomIds"]>[0]): Promise<Memory[]> {
+      const all = await this.getMemories({
+        tableName: input.tableName, textContains: input.textContains,
+        includeEmbedding: input.includeEmbedding, accessContext: input.accessContext,
+      })
+      const rooms = new Set(input.roomIds)
+      const offset = input.offset ?? 0
+      return all.filter((row) => rooms.has(row.roomId)).slice(offset, input.limit === undefined ? undefined : offset + input.limit)
+    }
+
+    async countMemories(params: Parameters<IDatabaseAdapter["countMemories"]>[0]): Promise<number> {
+      if (params.agentId !== undefined) this.own(params.agentId)
+      const rows = await this.values<Memory>("memories", { rooms: params.roomIds, tableName: params.tableName })
+      return rows.filter((memory) => (params.unique === undefined || memory.unique === params.unique)
+        && (params.entityId === undefined || memory.entityId === params.entityId)
+        && Object.entries(params.metadata ?? {}).every(([key, value]) =>
+          JSON.stringify(Reflect.get(memory.metadata ?? {}, key)) === JSON.stringify(value))).length
+    }
+
+    async deleteMemories(keys: UUID[]): Promise<void> { await this.remove("memories", keys) }
+
+    async deleteAllMemories(rooms: UUID[], tableName: string): Promise<void> {
+      await this.dispatch(() => this.db.query(
+        "DELETE FROM device_records WHERE collection = 'memories' AND room_id = ANY($1::text[]) AND table_name = $2",
+        [rooms, tableName],
+      ))
+    }
+
+    async ensureEmbeddingDimension(dimension: number): Promise<void> {
+      if (dimension !== this.dimensions) throw new Error("Embedding dimension differs from the device store")
+    }
+
+    async getLogs(input: Parameters<IDatabaseAdapter["getLogs"]>[0]): Promise<Log[]> {
+      const rows = await this.values<Omit<Log, "createdAt"> & { createdAt: string }>("logs", {
+        rooms: input.roomId === undefined ? undefined : [input.roomId],
+      })
+      const offset = input.offset ?? 0
+      return rows.filter((row) => (input.entityId === undefined || row.entityId === input.entityId)
+        && (input.type === undefined || row.type === input.type)).reverse()
+        .slice(offset, input.limit === undefined ? undefined : offset + input.limit)
+        .map((row) => ({ ...row, createdAt: new Date(row.createdAt) }))
+    }
+
+    async createLogs(inputs: Parameters<IDatabaseAdapter["createLogs"]>[0]): Promise<void> {
+      await this.write("logs", inputs.map((input) => {
+        const id = randomUUID()
+        const at = input.createdAt ?? new Date()
+        return record(id, { ...input, id, createdAt: at.toISOString() }, at.getTime())
+      }), "create")
+    }
+
+    async getLogInventory(input: Parameters<IDatabaseAdapter["getLogInventory"]>[0]): ReturnType<IDatabaseAdapter["getLogInventory"]> {
+      return (await this.getLogs({})).filter((row) => !input.excludeTypes?.includes(row.type))
+        .map(({ id, roomId, createdAt }) => ({ id, roomId, createdAt }))
+    }
+
+    async deleteLogs(keys: UUID[]): Promise<void> { await this.remove("logs", keys) }
+
+    async getCaches<A>(keys: string[]): Promise<Map<string, A>> {
+      const rows = await this.records<{ value: A }>("cache", { keys })
+      return new Map(rows.map(({ key, data }) => [key, data.value]))
+    }
+
+    async setCaches<A>(entries: Array<{ key: string; value: A }>): Promise<boolean> {
+      return (await this.write("cache", entries.map(({ key, value }) => record(key, { value })), "put")).length === entries.length
+    }
+
+    deleteCaches(keys: string[]): Promise<boolean> { return this.remove("cache", keys) }
+
+    async publishMessageContentSegments(input: Parameters<NonNullable<IDatabaseAdapter["publishMessageContentSegments"]>>[0]): ReturnType<NonNullable<IDatabaseAdapter["publishMessageContentSegments"]>> {
+      const db = this.db
+      if (db instanceof PGlite) return this.transaction((tx) => tx.publishMessageContentSegments!(input))
+      const parentId = input.mode === "create" ? input.parent.id : input.messageId
+      const agentId = input.mode === "create" ? input.parent.agentId : input.agentId
+      if (agentId !== this.agentId) throw new Error("Message content belongs to another agent")
+      const [existing] = await this.records<Memory>("memories", { keys: [parentId] })
+      if (input.mode === "create" && existing) return { status: "conflict" }
+      const removed = input.mode === "replace" ? input.removeSegmentIds : []
+      if (input.mode === "replace") {
+        if (!existing || existing.table_name !== "messages" || existing.data.agentId !== agentId) return { status: "not_found" }
+        const content = await db.query<{ equal: boolean }>("SELECT $1::jsonb = $2::jsonb AS equal", [
+          JSON.stringify(existing.data.content), JSON.stringify(input.expectedContent),
+        ])
+        if (!content.rows[0]?.equal) return { status: "conflict" }
+        const segments = await this.getMemoriesByIds(removed, "message_content_segments")
+        if (segments.length !== new Set(removed).size || segments.some((segment) =>
+          segment.agentId !== agentId || Reflect.get(segment.metadata ?? {}, "messageId") !== parentId)) {
+          throw new Error("Message replacement references an unrelated segment")
+        }
+      }
+      if (input.segments.some((segment) => !segment.id || segment.agentId !== agentId)) throw new Error("Content segment identity is missing")
+      await this.deleteMemories(removed)
+      const added = await this.createMemories(input.segments.map((memory) => ({ memory, tableName: "message_content_segments" })))
+      if (added.length !== input.segments.length) throw new Error("Content segment already exists")
+      const parent = input.mode === "create" ? { ...input.parent, unique: input.parent.unique ?? true } :
+        { ...existing!.data, id: parentId, content: input.replacementContent }
+      await this.write("memories", [this.memory(parent, "messages")], input.mode === "create" ? "create" : "update")
+      const [stored] = await this.getMemoriesByIds([parentId], "messages")
+      if (!stored) throw new Error("Message publication failed")
+      return { status: input.mode === "create" ? "created" : "updated", parent: stored, removedSegmentIds: [...removed] }
+    }
+
+    private task(task: Task): Write {
+      this.own(task.agentId ?? this.agentId)
+      const id = task.id ?? randomUUID()
+      const createdAt = Number(task.createdAt ?? Date.now())
+      return record(id, {
+        ...task, id, agentId: this.agentId, createdAt,
+        updatedAt: task.updatedAt === undefined ? undefined : Number(task.updatedAt),
+        dueAt: task.dueAt == null ? task.dueAt : Number(task.dueAt),
+      }, createdAt)
+    }
+
+    createTasks(tasks: Task[]): Promise<UUID[]> {
+      return this.write("tasks", tasks.map((task) => this.task(task)), "create")
+    }
+
+    getTasksByIds(keys: UUID[]): Promise<Task[]> { return this.values("tasks", { keys }) }
+
+    async getTasksByName(name: string): Promise<Task[]> {
+      return (await this.values<Task>("tasks")).filter((task) => task.name === name)
+    }
+
+    async getTasks(input: Parameters<IDatabaseAdapter["getTasks"]>[0]): Promise<Task[]> {
+      if (input.agentIds !== undefined && !input.agentIds.includes(this.agentId)) return []
+      const rows = await this.values<Task>("tasks", {
+        rooms: input.roomId === undefined ? undefined : [input.roomId],
+        worlds: input.worldId === undefined ? undefined : [input.worldId],
+      })
+      const offset = input.offset ?? 0
+      return rows.filter((task) => (input.entityId === undefined || task.entityId === input.entityId)
+        && (input.tags ?? []).every((tag) => task.tags?.includes(tag)))
+        .slice(offset, input.limit === undefined ? undefined : offset + input.limit)
+    }
+
+    async updateTasks(updates: Parameters<IDatabaseAdapter["updateTasks"]>[0]): Promise<void> {
+      if (this.db instanceof PGlite) return this.transaction((tx) => tx.updateTasks(updates))
+      const rows = await this.records<Task>("tasks", { keys: updates.map(({ id }) => id) })
+      const existing = new Map(rows.map((row) => [row.key, row.data]))
+      await this.write("tasks", updates.flatMap(({ id, task }) => {
+        const original = existing.get(id)
+        return original ? [this.task({ ...original, ...task, id })] : []
+      }), "update")
+    }
+
+    async deleteTasks(keys: UUID[]): Promise<void> { await this.remove("tasks", keys) }
+
+    readonly readMessageContentRange = unsupported("readMessageContentRange")
+    readonly queryDocuments = unsupported("queryDocuments")
+    readonly getDocument = unsupported("getDocument")
+    readonly queryDocumentFragments = unsupported("queryDocumentFragments")
+    readonly compareAndSwapDocument = unsupported("compareAndSwapDocument")
+    readonly updateDocumentDirectGrants = unsupported("updateDocumentDirectGrants")
+    readonly replaceDocumentRevision = unsupported("replaceDocumentRevision")
+    readonly deleteDocumentWithSnapshot = unsupported("deleteDocumentWithSnapshot")
+    readonly searchEntitiesByName = unsupported("searchEntitiesByName")
+    readonly queryEntities = unsupported("queryEntities")
+    readonly getComponentsByNaturalKeys = unsupported("getComponentsByNaturalKeys")
+    readonly getComponentsForEntities = unsupported("getComponentsForEntities")
+    readonly createComponents = unsupported("createComponents")
+    readonly getComponentsByIds = unsupported("getComponentsByIds")
+    readonly updateComponents = unsupported("updateComponents")
+    readonly deleteComponents = unsupported("deleteComponents")
+    readonly upsertComponents = unsupported("upsertComponents")
+    readonly patchComponents = unsupported("patchComponents")
+    readonly searchMessages = unsupported("searchMessages")
+    readonly getCachedEmbeddings = unsupported("getCachedEmbeddings")
+    readonly getLogsByIds = unsupported("getLogsByIds")
+    readonly updateLogs = unsupported("updateLogs")
+    readonly searchMemories = unsupported("searchMemories")
+    readonly updateMemoryEmbedding = unsupported("updateMemoryEmbedding")
+    readonly deleteRoomsByWorldIds = unsupported("deleteRoomsByWorldIds")
+    readonly updateParticipants = unsupported("updateParticipants")
+    readonly getParticipantsForEntities = unsupported("getParticipantsForEntities")
+    readonly updateParticipantUserStates = unsupported("updateParticipantUserStates")
+    readonly getRelationshipsByPairs = unsupported("getRelationshipsByPairs")
+    readonly getRelationships = unsupported("getRelationships")
+    readonly createRelationships = unsupported("createRelationships")
+    readonly getRelationshipsByIds = unsupported("getRelationshipsByIds")
+    readonly updateRelationships = unsupported("updateRelationships")
+    readonly deleteRelationships = unsupported("deleteRelationships")
+    readonly updateAgents = unsupported("updateAgents")
+    readonly cleanupAgents = unsupported("cleanupAgents")
+    readonly clearEmbeddingsOutsideActiveDimension = unsupported("clearEmbeddingsOutsideActiveDimension")
+    readonly getMemoriesByWorldId = unsupported("getMemoriesByWorldId")
+    readonly getPairingRequests = unsupported("getPairingRequests")
+    readonly getPairingAllowlists = unsupported("getPairingAllowlists")
+    readonly createPairingRequests = unsupported("createPairingRequests")
+    readonly updatePairingRequests = unsupported("updatePairingRequests")
+    readonly deletePairingRequests = unsupported("deletePairingRequests")
+    readonly createPairingAllowlistEntries = unsupported("createPairingAllowlistEntries")
+    readonly updatePairingAllowlistEntries = unsupported("updatePairingAllowlistEntries")
+    readonly deletePairingAllowlistEntries = unsupported("deletePairingAllowlistEntries")
+  }
+
+  export async function openDeviceStorage(options: DeviceStorageOptions): Promise<{ agentId: UUID; adapter: IDatabaseAdapter }> {
+    if (!Number.isSafeInteger(options.embeddingDimensions) || options.embeddingDimensions < 0 ||
+      (options.account !== null && (!options.account.userId.trim() || !options.account.organizationId.trim()))) {
+      throw new Error("Invalid device storage owner or embedding dimension")
+    }
+    const state = await claimDeviceState(options.stateDirectory, options.persistMemory)
+    let db: PGlite | undefined
+    try {
+      db = await PGlite.create(state.dataDirectory)
+      await migrate(db, state.agentId, options)
+      return { agentId: state.agentId, adapter: new DeviceAdapter(db, state.agentId, options.embeddingDimensions, state.release) }
+    } catch (error) {
+      await db?.close()
+      await state.release?.()
+      throw error
+    }
+  }
+}
+export { openDeviceStorage, type DeviceStorageOptions } from node

@@ -1,0 +1,55 @@
+// spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"
+import { effectivePolicy, fundingLane, type FundingLane, type GrantView, type MeteredService, type Policy, type SubscriptionStatus, type SubscriptionView } from "../../gen/cloud__billing__entitlements.effect.vibe"
+import { parsePlanKey } from "./plans.vibe"
+import { StoreFailure, toInt, toText, type Tx } from "../store/store.vibe"
+
+export type { FundingLane, MeteredService, Policy }
+
+export error PolicyUnreadable { organizationId: string; problem: string }
+
+const statuses: Readonly<Record<string, SubscriptionStatus>> = {
+  none: "None",
+  pending: "Pending",
+  incomplete: "Incomplete",
+  active: "Active",
+  dunning: "Dunning",
+  past_due: "PastDue",
+  unpaid: "Unpaid",
+  canceled: "Canceled",
+  incomplete_expired: "IncompleteExpired"
+}
+
+effect function subscriptionView(tx: Tx, organizationId: string): SubscriptionView!(StoreFailure | PolicyUnreadable) {
+  const row = (try tx.query("SELECT status, plan_key FROM subscriptions WHERE key = $1", [organizationId]))[0]
+  if (row === undefined) return { status: "None", planKey: "Free" }
+  const status = statuses[toText(row.status) ?? ""]
+  const planKey = parsePlanKey(row.plan_key)
+  if (status === undefined || planKey === undefined) throw new PolicyUnreadable({ organizationId, problem: "subscription row" })
+  return { status, planKey }
+}
+
+effect function grantViews(tx: Tx, organizationId: string, now: number): ReadonlyArray<GrantView>!(StoreFailure | PolicyUnreadable) {
+  const rows = try tx.query(
+    "SELECT plan_key, effective_from, effective_until, revoked FROM grants WHERE organization_id = $1 AND effective_from <= $2 AND effective_until > $2",
+    [organizationId, now]
+  )
+  const views: GrantView[] = []
+  for (const row of rows) {
+    const planKey = parsePlanKey(row.plan_key)
+    if (planKey === undefined) throw new PolicyUnreadable({ organizationId, problem: "grant row" })
+    views.push({ planKey, effectiveFrom: toInt(row.effective_from), effectiveUntil: toInt(row.effective_until), revoked: row.revoked === true })
+  }
+  return views
+}
+
+export effect function readPolicy(tx: Tx, organizationId: string, now: number): Policy!(StoreFailure | PolicyUnreadable) {
+  return effectivePolicy(try subscriptionView(tx, organizationId), try grantViews(tx, organizationId, now), now)
+}
+
+export effect function laneFor(tx: Tx, organizationId: string, service: MeteredService, now: number): FundingLane!StoreFailure {
+  const policy = try readPolicy(tx, organizationId, now) catch effect (failure) => match (failure) {
+    when PolicyUnreadable: undefined;
+    default: throw failure;
+  }
+  return policy === undefined ? "Refused" : fundingLane(policy, service)
+}

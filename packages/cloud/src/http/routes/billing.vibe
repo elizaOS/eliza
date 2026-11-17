@@ -1,0 +1,4 @@
+// spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"
+import type { Area } from "../routes.vibe"
+
+export const area: Area = { routes: [], sweeps: [] }

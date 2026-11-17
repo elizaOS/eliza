@@ -3,23 +3,23 @@
 The owner's approval queue as the optional `@elizaos/agent/approvals` module
 serves it: `GET /api/approvals` lists it and
 `POST /api/approvals/:id/resolve {decision, revision}` decides one request.
-Both routes are Root only. The source is
-`packages/agent/src/api/approval-routes.ts`, with the queue transitions of
+Both routes are Root only. The sources are
+`packages/agent/src/api/approval-routes.ts`, the queue transitions of
 `plugins/plugin-assistant/src/services/approval/store.ts` and the reviewed
 resolution of `plugins/plugin-calendar/src/mutations/resolve.ts`. A
-producer adds a pending request; the
-calendar mutation ledger (`spec/calendar/mutationLedger.md`) runs an approved
-calendar change and reports its outcome, which this spec takes as given. A
-device request is decided only by the device decide route of
-device actions (`spec/agent/deviceActions/index.md`).
+producer adds a pending request. The calendar mutation ledger
+(`spec/calendar/mutationLedger.md`) runs an approved
+calendar change and reports its outcome, which this spec takes as given.
+Device requests are not in this queue: device actions
+(`spec/agent/deviceActions/index.md`) holds them and decides them only by its own decide route.
 
 The wire names of the phases are `pending`, `approved`, `retryable`,
 `reconciliation_required`, `done`, `rejected` and `expired`, plus the
 ledger's in-flight `executing`, which no decision meets; `Declined` below
-is `rejected`. A row's `revision`
-is an opaque string that changes whenever a field the owner reviewed
-(subject, phase, action, payload, reason, expiry) or its update time
-changes; the model counts it.
+is `rejected`. A row's `revision` is the JSON array
+`[id, subjectUserId, state, action, payload, reason, expiresAt, updatedAt]`,
+which a client recomputes from the listed row; it changes whenever a field
+the owner reviewed or the update time changes. The model counts it.
 
 ## Story: Resolve what I reviewed, only on the screen
 
@@ -30,17 +30,19 @@ changes; the model counts it.
 ### Only the resolve route moves a request out of an open phase
 
 A request is open while it is pending, approved or retryable. No
-conversation turn, spoken or typed, and no action resolves a request.
+conversation turn, spoken or typed, and no action resolves a request:
+develop's owner-message resolution is not kept.
 
 ```quint
 type Phase = Pending | Approved | Retryable | ReconciliationRequired | Done | Declined | Expired
-type ApprovalKind = CalendarChange | DeviceRequest | OtherChange
+type ApprovalKind = CalendarChange | OtherChange
 type ApprovalRow = { kind: ApprovalKind, phase: Phase, revision: int, lapsed: bool }
 type Queue = { rows: str -> ApprovalRow, newestFirst: List[str] }
 type Decision = Approve | Reject
 type LedgerResult = ChangeSucceeded | ChangeInvalidated | ChangeRetryable | ChangeUnconfirmed
 type ResolveKind = KindSucceeded | KindRejected | KindInvalidated | KindRetryable | KindBlocked
 type Refusal = NotFound | Stale | Unavailable
+type PhaseFilter = AllPhases | OnlyPhase({ phase: Phase })
 type Reply = Resolved({ id: str, kind: ResolveKind }) | Refused({ id: str, refusal: Refusal }) | Listed({ ids: List[str], phases: PhaseFilter })
 type RouteStep = { state: Queue, out: List[Reply] }
 pure val initial: Queue = { rows: Map(), newestFirst: List() }
@@ -58,11 +60,10 @@ pure def stepOnlyResolveLeavesAnOpenPhase(before: Queue, via: str, after: Queue)
 
 ### A decision applies only to an open calendar request whose revision is the one reviewed
 
-A request that does not exist or is not a calendar change is not found
-(404), so a device request never resolves here. A request that is not
-open, or whose revision differs from the one reviewed, is stale (409). A
-refusal changes nothing, except that a pending request whose expiry has
-passed becomes expired as it is refused.
+An unknown request, or one that is not a calendar change, is not found
+(404). A request that is not open, or whose revision differs from the one
+reviewed, is stale (409). A refusal changes nothing, except that a pending
+request whose expiry has passed becomes expired as it is refused.
 
 ```quint
 type Verdict = { phase: Phase, reply: Reply, changed: bool }
@@ -87,9 +88,10 @@ pure def resolve(s: Queue, id: str, decision: Decision, reviewed: int, executorR
 pure def isRefusal(reply: Reply): bool = match reply { | Refused(x) => true | _ => false }
 pure def lapsedPendingExpires(b: ApprovalRow, a: ApprovalRow): bool = b.phase == Pending and b.lapsed and a.phase == Expired
 pure def stepRefusalChangesNothing(before: Queue, via: str, after: Queue, out: List[Reply]): bool = out.some(reply => isRefusal(reply)) implies before.newestFirst.every(id => rowAt(after, id) == rowAt(before, id) or lapsedPendingExpires(rowAt(before, id), rowAt(after, id)))
-pure def lawDeviceRequestNotFoundHere(phase: Phase, lapsed: bool, decision: Decision, executorReady: bool, result: LedgerResult): bool =
-  verdict("a1", { kind: DeviceRequest, phase: phase, revision: 0, lapsed: lapsed }, decision, 0, executorReady, result) == { phase: phase, reply: Refused({ id: "a1", refusal: NotFound }), changed: false }
+pure def lawOtherKindIsNotFoundHere(phase: Phase, lapsed: bool, decision: Decision, executorReady: bool, result: LedgerResult): bool =
+  verdict("a1", { kind: OtherChange, phase: phase, revision: 0, lapsed: lapsed }, decision, 0, executorReady, result) == { phase: phase, reply: Refused({ id: "a1", refusal: NotFound }), changed: false }
 pure def sometimesLapsedReviewExpired(s: Queue): bool = s.newestFirst.some(id => rowAt(s, id).phase == Expired and rowAt(s, id).lapsed and rowAt(s, id).revision == 1)
+pure def sometimesOtherKindWaits(s: Queue): bool = s.newestFirst.some(id => rowAt(s, id).kind == OtherChange) and s.newestFirst.some(id => rowAt(s, id).phase == Done)
 ```
 
 ### Every decision changes the revision, so one review decides at most once
@@ -109,10 +111,11 @@ pure def lawSameReviewDecidesOnce(phase: Phase, lapsed: bool, decision: Decision
 
 ### Declining never runs the change, and approving never declines
 
-A decline moves an open request to declined and answers `rejected`. An
-approval approves a pending request, has the ledger run the change, and
-answers its outcome: `succeeded` (done), `invalidated` (expired, always
-when the expiry has passed), `retryable`, or `blocked` when the outcome is
+The reply is `{requestId, decision, kind, text?, failure?}`. A decline
+moves an open request to declined and answers `rejected`. An approval
+approves a pending request, has the ledger run the change, and answers
+its outcome: `succeeded` (done), `invalidated` (expired, always when the
+expiry has passed), `retryable`, or `blocked` when the outcome is
 unconfirmed and needs reconciliation; it never declines the request or
 answers `rejected`.
 
@@ -152,26 +155,29 @@ pure def lapse(s: Queue, id: str): Queue = { ...s, rows: s.rows.put(id, { ...row
 pure def stepLapseKeepsPhaseAndRevision(before: Queue, via: str, after: Queue): bool = via == "lapse" implies before.newestFirst.every(id => rowAt(after, id).phase == rowAt(before, id).phase and rowAt(after, id).revision == rowAt(before, id).revision)
 ```
 
-### The list shows at most 500 requests of the asked phase, newest first, and never a device request
+## Story: See the requests waiting for me
+
+> As the owner, I want to list my approval requests by phase, newest
+> first, so that my client can show the one I am about to review.
+
+### The list shows at most 500 requests of the asked phase, newest first, and changes nothing
 
 The reply is `{ownerEntityId, approvals}`; each row carries `id`, `state`,
-`requestedBy`, `subjectUserId`, `action`, `payload`, `channel`, `reason`,
-`expiresAt`, `resolvedAt`, `resolvedBy`, `resolutionReason`, `execution`,
-`createdAt`, `updatedAt` and `revision`. The shell decodes an absent
-`state` as `pending` and `all` as every phase and refuses any other unknown
-value (400); an absent `limit` is 50, and one that is not a positive
-decimal is refused (400). Listing changes nothing.
+`subjectUserId`, `action`, `payload`, `reason`, `expiresAt`, `createdAt`,
+`updatedAt` and `revision`. The shell decodes an absent `state` as
+`pending` and `all` as every phase, and refuses any other unknown value
+(400); an absent `limit` is 50, and one that is not a positive decimal is
+refused (400).
 
 ```quint
-type PhaseFilter = AllPhases | OnlyPhase({ phase: Phase })
 type PageQuery = { phases: PhaseFilter, limit: int }
 pure val queryValues = Set({ phases: AllPhases, limit: 500 }, { phases: AllPhases, limit: 1 }, { phases: AllPhases, limit: 900 }, { phases: OnlyPhase({ phase: Pending }), limit: 50 }, { phases: OnlyPhase({ phase: Done }), limit: 50 }, { phases: AllPhases, limit: 0 })
 pure def pageSize(limit: int): int = if (limit > 500) 500 else limit
 pure def matchesFilter(wanted: PhaseFilter, phase: Phase): bool = match wanted { | AllPhases => true | OnlyPhase(f) => f.phase == phase }
-pure def listedIds(s: Queue, query: PageQuery): List[str] = s.newestFirst.select(id => rowAt(s, id).kind != DeviceRequest and matchesFilter(query.phases, rowAt(s, id).phase)).foldl(List(), (acc, id) => if (acc.length() < pageSize(query.limit)) acc.append(id) else acc)
+pure def listedIds(s: Queue, query: PageQuery): List[str] = s.newestFirst.select(id => matchesFilter(query.phases, rowAt(s, id).phase)).foldl(List(), (acc, id) => if (acc.length() < pageSize(query.limit)) acc.append(id) else acc)
 pure def canList(s: Queue, query: PageQuery): bool = query.limit >= 1
 pure def list(s: Queue, query: PageQuery): RouteStep = { state: s, out: List(Listed({ ids: listedIds(s, query), phases: query.phases })) }
-pure def listingFits(s: Queue, reply: Reply): bool = match reply { | Listed(x) => x.ids.length() <= 500 and x.ids.every(id => known(s, id) and rowAt(s, id).kind != DeviceRequest and matchesFilter(x.phases, rowAt(s, id).phase)) | _ => true }
-pure def stepListingIsBoundedAndHidesDeviceRequests(before: Queue, via: str, after: Queue, out: List[Reply]): bool = via == "list" implies (after == before and out.every(reply => listingFits(before, reply)))
-pure def sometimesDeviceRequestBesideReview(s: Queue): bool = s.newestFirst.some(id => rowAt(s, id).kind == DeviceRequest) and s.newestFirst.some(id => rowAt(s, id).kind == CalendarChange)
+pure def listingFits(s: Queue, reply: Reply): bool = match reply { | Listed(x) => x.ids.length() <= 500 and x.ids.every(id => known(s, id) and matchesFilter(x.phases, rowAt(s, id).phase)) | _ => true }
+pure def stepListingIsBoundedAndChangesNothing(before: Queue, via: str, after: Queue, out: List[Reply]): bool = via == "list" implies (after == before and out.every(reply => listingFits(before, reply)))
+pure def sometimesTwoListed(s: Queue): bool = listedIds(s, { phases: AllPhases, limit: 50 }).length() == 2
 ```

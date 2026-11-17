@@ -1,0 +1,26 @@
+// spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns"
+import { type AgentRuntime, type Plugin } from "@elizaos/core"
+import { type Route } from "../access/routes.vibe"
+
+export type AgentPlugin = Plugin & { readonly routes?: readonly Route[] }
+
+export interface AgentModule {
+  readonly name: string
+  readonly plugin: AgentPlugin
+}
+
+export error ModuleRefused { module: string; reason: string }
+
+export type ModuleFactory<R> = (runtime: AgentRuntime) => AgentModule!ModuleRefused!R
+
+export function routePrefix(path: string): string {
+  return `/${path.split("/").filter((segment) => segment !== "").slice(0, 2).join("/")}`
+}
+
+export function routePrefixes(plugin: AgentPlugin): string[] {
+  return [...new Set((plugin.routes ?? []).map((route) => routePrefix(route.path)))]
+}
+
+export function actionNames(runtime: AgentRuntime): Set<string> {
+  return new Set(runtime.actions.map((action) => action.name))
+}

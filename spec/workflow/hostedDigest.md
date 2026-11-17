@@ -7,9 +7,6 @@ and delivery into each client's inbox. The server stays authoritative for
 sources and results. [Result notices](../os/index.md)
 own OS delivery and taps.
 
-The linked OS contracts are being rebuilt. Their detailed models and execution
-evidence remain pending.
-
 ## Story: Review a missed digest only while its source and result are current
 
 > As the owner, I want to be offered a missed digest only while its source is

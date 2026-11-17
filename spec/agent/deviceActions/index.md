@@ -7,10 +7,10 @@ the enrollment of the device it is offered to. The request holds a core
 [interaction session](../../core/sessions.md), whose claim, commit, single
 invocation and ambiguity it reuses; dispatch to a device that declared the
 capability is the core [device bridge](../../core/deviceBridge.md). What the
-device does with a claimed request, its execution journal and the reviewed
-operation wire shapes belong to the [Android device](../../os/index.md) and
-are still being rebuilt there. This request model does not prove those device
-operations. The capability vocabulary and header negotiation are
+device does with a claimed request and its execution journal are
+[device execution](./execution.md); the reviewed wire shapes are
+[device operations](./operations.md). Native executors belong to the
+[Android device](../../os/index.md). The capability vocabulary and header negotiation are
 [capabilities](./capabilities.md).
 
 The routes are `POST /api/client-devices/{register,revoke}`,
@@ -141,7 +141,7 @@ pure def canExpire(d: DeviceRequest): bool = openOffer(d.phase) and not(beforeDe
 pure def expire(d: DeviceRequest): DeviceRequest = { ...d, phase: Expired, session: S::revoke(d.session) }
 pure def canEndTurn(d: DeviceRequest): bool = openOffer(d.phase)
 pure def endTurn(d: DeviceRequest): DeviceRequest = { ...d, phase: Retired, session: S::revoke(d.session) }
-pure def sometimesExpiredApproval(d: DeviceRequest): bool = d.phase == Expired and d.session.claimSequence == 0
+pure def sometimesOfferExpired(d: DeviceRequest): bool = d.phase == Expired
 pure def sometimesRetiredAtTurnEnd(d: DeviceRequest): bool = d.phase == Retired and isEnrolled(d.enrollment)
 ```
 
@@ -151,7 +151,7 @@ The device claims an approved request with the exact binding before the
 deadline. Acquiring the session, committing it and starting the bridge call
 are one transaction, so a lost reply to the claim cannot cause a second
 delivery. The session's claim token is the attempt id; its lease runs to the
-deadline.
+deadline. The held session keeps every rule of core sessions.
 
 ```quint
 pure def afterDispatch(phase: RequestPhase): bool = match phase { | Dispatched => true | Receipted(x) => true | Reviewed(x) => true | _ => false }
@@ -167,6 +167,7 @@ pure def claim(d: DeviceRequest, by: S::SessionOwner, digest: str): DeviceReques
   { ...d, phase: Dispatched, claimedAt: d.session.now, session: S::commit(acquired, by, acquired.currentClaim, digest), bridge: DB::invoke(d.bridge, acquired.currentClaim, by.connector, d.capability) }
 }
 pure def alwaysSessionFollowsTheRequest(d: DeviceRequest): bool = d.session.phase == sessionPhaseFor(d.phase) and d.session.claimSequence == (if (afterDispatch(d.phase)) 1 else 0) and d.session.currentClaim == d.session.claimSequence
+pure def alwaysSessionKeepsItsOwnRules(d: DeviceRequest): bool = S::alwaysEffectHasCommittedOwner(d.session) and S::alwaysAtMostOneInvocation(d.session) and S::alwaysCompletedHasOutcome(d.session) and S::alwaysLiveClaimHasToken(d.session) and S::alwaysClaimSequenceIsValid(d.session) and S::alwaysAmbiguousCommitRemainsDurable(d.session)
 pure def stepDispatchOnlyFromAnOpenApproval(before: DeviceRequest, after: DeviceRequest): bool = (not(afterDispatch(before.phase)) and afterDispatch(after.phase)) implies (before.phase == Approved and beforeDeadline(before) and isEnrolled(before.enrollment) and DB::declares(before.bridge, before.session.owner.connector, before.capability))
 ```
 
@@ -238,7 +239,8 @@ The hint `{proposalId, digest, attemptId, requestId, conversationId,
 inReplyTo}` must equal, field by field, the one retained with the offer and
 the claim. The deadline is the earlier of ten minutes after the claim and
 thirty minutes after the offer; preparing and delivering the reply need it
-open too.
+open too. A started completion always answers an applied read, and a request
+not yet offered has no completion.
 
 ```quint
 type CompletionHint = { proposalId: str, digest: str, attemptId: int, requestId: str, conversationId: str, inReplyTo: str }
@@ -254,6 +256,8 @@ pure def canPrepareCompletion(d: DeviceRequest): bool = d.completion == Completi
 pure def prepareCompletion(d: DeviceRequest): DeviceRequest = { ...d, completion: CompletionPrepared }
 pure def canDeliverCompletion(d: DeviceRequest): bool = d.completion == CompletionPrepared and completionOpen(d)
 pure def deliverCompletion(d: DeviceRequest): DeviceRequest = { ...d, completion: CompletionDelivered }
+pure def completionStarted(c: Completion): bool = c == CompletionClaimed or c == CompletionPrepared or c == CompletionDelivered or c == CompletionUnknown
+pure def alwaysStartedCompletionAnswersAnAppliedRead(d: DeviceRequest): bool = (completionStarted(d.completion) implies d.phase == Receipted({ reported: ReportedApplied })) and (d.phase == Unoffered implies d.completion == NoCompletion)
 pure def stepCompletionMovesOnlyBeforeItsDeadline(before: DeviceRequest, via: str, after: DeviceRequest): bool = ((via == "claimCompletion" or via == "prepareCompletion" or via == "deliverCompletion") and after.completion != before.completion) implies (completionOpen(before) and before.phase == Receipted({ reported: ReportedApplied }))
 ```
 
@@ -267,7 +271,7 @@ otherwise; neither admits a new inference.
 ```quint
 pure def canFailCompletion(d: DeviceRequest): bool = d.completion == CompletionClaimed
 pure def failCompletion(d: DeviceRequest, aborted: bool): DeviceRequest = { ...d, completion: if (aborted) CompletionCancelled else CompletionUnknown }
-pure def alwaysOneInferencePerCompletion(d: DeviceRequest): bool = d.inferences >= 0 and d.inferences <= 1 and ((d.completion == CompletionClaimed or d.completion == CompletionPrepared or d.completion == CompletionDelivered or d.completion == CompletionUnknown) implies d.inferences == 1) and ((d.completion == NoCompletion or d.completion == CompletionPending) implies d.inferences == 0)
+pure def alwaysOneInferencePerCompletion(d: DeviceRequest): bool = d.inferences >= 0 and d.inferences <= 1 and (completionStarted(d.completion) implies d.inferences == 1) and ((d.completion == NoCompletion or d.completion == CompletionPending) implies d.inferences == 0)
 pure def stepInferenceOnlyFromAPendingCompletion(before: DeviceRequest, after: DeviceRequest): bool = after.inferences > before.inferences implies before.completion == CompletionPending
 pure def sometimesCompletionDelivered(d: DeviceRequest): bool = d.completion == CompletionDelivered
 pure def sometimesLostOutcomeNeverRestarts(d: DeviceRequest): bool = d.completion == CompletionUnknown

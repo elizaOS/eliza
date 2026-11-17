@@ -24,7 +24,10 @@ itself immediately before every external effect.
 
 The first start binds the host to the launch account; a later start, after
 a restart, must name the same account. A task belongs to that account, and
-nothing is served before start or while the host is poisoned.
+nothing is served before start or while the host is poisoned. The account
+holds one task slot: a new task starts only once the previous one has ended
+with no operation left unknown (or its unknown outcome accepted), its
+cleanup confirmed and no actuator call in flight.
 
 ```quint
 import interactiveTask as I from "../../core/interactiveTask"
@@ -37,8 +40,9 @@ pure def serves(h: TaskHost, by: I::Owner): bool = h.started and not(h.poisoned)
 pure def unfinished(t: I::Interactive): bool = t.status != I::Absent and not(I::ended(t))
 pure def canStart(h: TaskHost, by: I::Owner): bool = not(h.started) and by.agentId != "" and by.actorId != "" and by.connector != "" and (h.owner == noOwner or h.owner == by)
 pure def start(h: TaskHost, by: I::Owner): TaskHost = { ...h, started: true, owner: by, task: if (unfinished(h.task)) I::interrupt(h.task, by, h.task.revision, I::Recover) else h.task }
-pure def canCreate(h: TaskHost, by: I::Owner, origins: Set[str], capabilities: Set[str], taskId: str, authorizationId: str): bool = serves(h, by) and h.actuator == ActuatorIdle and I::canCreate(h.task, by, origins, capabilities, taskId, authorizationId)
-pure def create(h: TaskHost, by: I::Owner, origins: Set[str], capabilities: Set[str], taskId: str, authorizationId: str): TaskHost = { ...h, task: I::create(h.task, by, origins, capabilities, taskId, authorizationId) }
+pure def holdsSlot(h: TaskHost): bool = unfinished(h.task) or (I::ended(h.task) and I::unresolved(h.task.operation) and not(h.acknowledged))
+pure def canCreate(h: TaskHost, by: I::Owner, origins: Set[str], capabilities: Set[str], taskId: str, authorizationId: str): bool = serves(h, by) and h.actuator == ActuatorIdle and h.cleanup == CleanupDone and not(holdsSlot(h)) and I::canCreate(I::initial, by, origins, capabilities, taskId, authorizationId)
+pure def create(h: TaskHost, by: I::Owner, origins: Set[str], capabilities: Set[str], taskId: str, authorizationId: str): TaskHost = { ...h, task: I::create(I::initial, by, origins, capabilities, taskId, authorizationId), acknowledged: false }
 pure def alwaysTaskBelongsToTheLaunchAccount(h: TaskHost): bool = (h.started implies h.owner != noOwner) and (h.task.status == I::Absent or (h.task.owner == h.owner and h.owner != noOwner))
 ```
 
@@ -108,6 +112,7 @@ the poison; the restarted host recovers from what was stored.
 ```quint
 pure def canFailStorage(h: TaskHost): bool = h.started and not(h.poisoned)
 pure def failStorage(h: TaskHost): TaskHost = { ...h, poisoned: true, actuator: abortedActuator(h.actuator), cleanup: Quiescing }
+pure def alwaysOnlyAStartedHostIsPoisoned(h: TaskHost): bool = h.poisoned implies h.started
 pure def stepPoisonedHostChangesNoTask(before: TaskHost, after: TaskHost): bool = before.poisoned implies (after.task.revision == before.task.revision and after.task.epoch == before.task.epoch)
 pure def sometimesPoisonedDuringDispatch(h: TaskHost): bool = h.poisoned and h.task.status == I::Waiting
 ```

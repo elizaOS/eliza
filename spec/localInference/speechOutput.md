@@ -12,11 +12,8 @@ state with one another, modeled side by side in one machine:
 
 Priming the audio output before the first reply, and trimming each
 utterance's silent lead, belong to the device's voice path:
-[speech output warm-up](../os/index.md). Device audio
+[speech output](../os/voice/speechOutput.md). Device audio
 hardware, the actual timings and network latency are outside this model.
-
-The linked OS contracts are being rebuilt. Their detailed models and execution
-evidence remain pending.
 
 ## Story: Speak a reply without cutting off what is playing
 

@@ -1,0 +1,48 @@
+// spec/cloud/shared/types.md, "Story: Speak one refusal language"
+import { refusal, type Refusal, type RefusalCode, type RefusalReason } from "../../gen/cloud__shared__types.effect.vibe"
+
+export type { Refusal, RefusalCode, RefusalReason }
+
+export error Refused { refusal: Refusal }
+
+export interface RefusalBody {
+  readonly error: string
+  readonly errorDescription: string
+  readonly retryable: boolean
+  readonly retryAt?: number
+  readonly resetsAt?: number
+  readonly reason?: string
+}
+
+export function wireName(name: string): string {
+  return name.replace(/(?<=[a-z0-9])(?=[A-Z])/g, "_").toLowerCase()
+}
+
+export function refused(code: RefusalCode, reason: RefusalReason = "NoReason", retryAt = 0): Refused {
+  return new Refused({ refusal: refusal(code, reason, retryAt) })
+}
+
+export function refusalBody(value: Refusal): RefusalBody {
+  const error = wireName(value.code)
+  const reason = value.reason === "NoReason" ? undefined : wireName(value.reason)
+  const words = error.replaceAll("_", " ")
+  return {
+    error,
+    errorDescription: `${words.charAt(0).toUpperCase()}${words.slice(1)}${reason === undefined ? "" : ` (${reason.replaceAll("_", " ")})`}.`,
+    retryable: value.retryable,
+    ...(value.retryAt > 0 && value.code !== "AllowanceExhausted" ? { retryAt: value.retryAt } : {}),
+    ...(value.retryAt > 0 && value.code === "AllowanceExhausted" ? { resetsAt: value.retryAt } : {}),
+    ...(reason === undefined ? {} : { reason })
+  }
+}
+
+export function refusalResponse(value: Refusal, now: number): HttpServerResponse.HttpServerResponse {
+  const waitSeconds = Math.max(1, Math.ceil((value.retryAt - now) / 1000))
+  return HttpServerResponse.jsonUnsafe(refusalBody(value), {
+    status: value.status,
+    headers: {
+      "cache-control": "no-store",
+      ...(value.retryAt > now && (value.status === 429 || value.status === 503) ? { "retry-after": String(waitSeconds) } : {})
+    }
+  })
+}

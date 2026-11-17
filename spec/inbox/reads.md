@@ -8,9 +8,6 @@ managed account route ([managed Gmail](../cloud/index.md)).
 [Drafts](./drafts.md) and reviewed sending are separate from cached state,
 and the [managed inbox read](./managedRead.md) is always fresh.
 
-The linked cloud contracts are being rebuilt. Their detailed models and
-execution evidence remain pending.
-
 ## Story: Read my mailbox without mixing account pages or endlessly reusing a cursor
 
 > As the owner, I want each page of my mailbox to belong to the account,

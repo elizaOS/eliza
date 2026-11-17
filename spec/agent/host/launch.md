@@ -18,8 +18,9 @@ memory), `callerRole`, `views`, `timeZone`, `privacy {secretSwap, piiSwap}`,
 `hostContextRevision` and `environment`. It carries no `agentId`: the store
 creates and keeps that identity in the `--state` directory. Facts that need
 string parsing (a URL's form, an environment key's class, a trimmed length,
-an IANA zone, a digest's shape) are decided by the schema and appear below
-as fields. Source: the pinned `EmbeddedAgentConfig.java` (character, cloud
+an IANA zone, a digest's shape) are decided by the schema; those a rule
+here needs appear below as fields. The workflow worker and privacy switches
+are checked by the plugin plan, which owns them. Source: the pinned `EmbeddedAgentConfig.java` (character, cloud
 origin, environment, allow list, in-memory default) and the launch settings
 of the device hosts it replaces.
 
@@ -146,20 +147,22 @@ type BootFailure = Config | Credential | Storage | Agent
 type LaunchVerdict = LaunchAdmitted | LaunchRefused({ cause: BootFailure })
 pure def launchVerdict(doc: LaunchDocument, f: LaunchFrame): LaunchVerdict =
   if (not(documentAdmitted(doc)) or not(frameAdmitted(f))) LaunchRefused({ cause: Config })
-  else if (needsCredential(doc.backend) and f.credential == NoCredential) LaunchRefused({ cause: Credential })
+  else if (needsCredential(doc.backend) and not(hasCredential(f.credential))) LaunchRefused({ cause: Credential })
   else LaunchAdmitted
-pure val goodCharacter: Character = { name: "Agent", nameUnits: 5, systemBlank: false }
-pure val goodPolicy: LaunchPolicy = { actionsAllowed: Set("REPLY"), pluginsLoad: List(), productPlugin: NoProductPlugin }
-pure val owner: OwnerAccount = SignedIn({ userId: "user1", organizationId: "org1" })
-pure val cloud: Backend = CloudBackend({ baseUrl: "https://cloud.example", baseUrlShape: HttpsOrigin, smallModel: "", largeModel: "", imageModel: "" })
-pure val goodDoc: LaunchDocument = { schema: 1, character: goodCharacter, policy: goodPolicy, backend: cloud, account: owner, embeddings: NoEmbeddings, persistMemory: false, callerRole: ChatAsUser, google: { gmailChanges: false, calendarEdits: false }, retention: KeepLogs, environment: List() }
-pure val docValues = Set(goodDoc,
-  { ...goodDoc, backend: NoBackend, account: NoAccount, callerRole: ChatAsOwner, embeddings: LocalEmbeddings({ dimensions: 384 }), retention: PruneLogs({ dayThousandths: 250, maxRowsPerRoom: 200, intervalMinutes: 30 }) },
-  { ...goodDoc, account: NoAccount, backend: OwnKeyBackend({ baseUrl: "https://own.example/v1", baseUrlShape: HttpsWithPath, smallModel: "small", largeModel: "large" }) },
-  { ...goodDoc, backend: CloudBackend({ baseUrl: "https://cloud.example/api/v1", baseUrlShape: HttpsWithPath, smallModel: "", largeModel: "", imageModel: "" }) },
-  { ...goodDoc, account: NoAccount },
-  { ...goodDoc, character: { ...goodCharacter, nameUnits: 0 } },
-  { ...goodDoc, environment: List({ key: "NODE_OPTIONS", keyKind: ReservedKey, singleLine: true }) })
+pure val docValues = {
+  val good: LaunchDocument = { schema: 1, character: { name: "Agent", nameUnits: 5, systemBlank: false },
+    policy: { actionsAllowed: Set("REPLY"), pluginsLoad: List(), productPlugin: NoProductPlugin },
+    backend: CloudBackend({ baseUrl: "https://cloud.example", baseUrlShape: HttpsOrigin, smallModel: "", largeModel: "", imageModel: "" }),
+    account: SignedIn({ userId: "user1", organizationId: "org1" }), embeddings: NoEmbeddings, persistMemory: false,
+    callerRole: ChatAsUser, google: { gmailChanges: false, calendarEdits: false }, retention: KeepLogs, environment: List() }
+  Set(good,
+    { ...good, backend: NoBackend, account: NoAccount, callerRole: ChatAsOwner, embeddings: LocalEmbeddings({ dimensions: 384 }), retention: PruneLogs({ dayThousandths: 250, maxRowsPerRoom: 200, intervalMinutes: 30 }) },
+    { ...good, account: NoAccount, backend: OwnKeyBackend({ baseUrl: "https://own.example/v1", baseUrlShape: HttpsWithPath, smallModel: "small", largeModel: "large" }) },
+    { ...good, backend: CloudBackend({ baseUrl: "https://cloud.example/api/v1", baseUrlShape: HttpsWithPath, smallModel: "", largeModel: "", imageModel: "" }) },
+    { ...good, account: NoAccount },
+    { ...good, character: { ...good.character, nameUnits: 0 } },
+    { ...good, environment: List({ key: "NODE_OPTIONS", keyKind: ReservedKey, singleLine: true }) })
+}
 pure val fValues = Set(
   { version: 1, token: "t", epoch: 1, credential: Keyed({ version: 1, value: "k" }), storageKey: StorageKey({ key: "s" }) },
   { version: 1, token: "t", epoch: 2, credential: NoCredential, storageKey: NoStorageKey },
@@ -168,7 +171,7 @@ pure val fValues = Set(
 pure def lawRefusedDocumentIsAConfigErrorWhateverTheFrame(doc: LaunchDocument, f: LaunchFrame): bool =
   not(documentAdmitted(doc)) implies launchVerdict(doc, f) == LaunchRefused({ cause: Config })
 pure def lawKeylessCloudOrOwnKeyLaunchIsACredentialError(doc: LaunchDocument, f: LaunchFrame): bool =
-  (documentAdmitted(doc) and frameAdmitted(f) and needsCredential(doc.backend) and f.credential == NoCredential) implies launchVerdict(doc, f) == LaunchRefused({ cause: Credential })
+  (documentAdmitted(doc) and frameAdmitted(f) and needsCredential(doc.backend) and not(hasCredential(f.credential))) implies launchVerdict(doc, f) == LaunchRefused({ cause: Credential })
 pure def lawLaunchWithoutBackendNeedsNoCredential(doc: LaunchDocument, f: LaunchFrame): bool =
   (documentAdmitted(doc) and frameAdmitted(f) and doc.backend == NoBackend) implies launchVerdict(doc, f) == LaunchAdmitted
 ```
@@ -197,11 +200,12 @@ type SecretStorageKey = str
 type FrameCredential = Keyed({ version: int, value: SecretCredential }) | NoCredential
 type FrameStorageKey = StorageKey({ key: SecretStorageKey }) | NoStorageKey
 type LaunchFrame = { version: int, token: SecretLaunchToken, epoch: int, credential: FrameCredential, storageKey: FrameStorageKey }
+pure def hasCredential(c: FrameCredential): bool = match c { | Keyed(_) => true | NoCredential => false }
 pure def credentialVersion(f: LaunchFrame): int = {
   val credential = f.credential
   match credential { | Keyed(k) => k.version | NoCredential => 0 }
 }
-pure def frameAdmitted(f: LaunchFrame): bool = f.version == 1 and f.epoch >= 1 and (f.credential == NoCredential or credentialVersion(f) >= 1)
+pure def frameAdmitted(f: LaunchFrame): bool = f.version == 1 and f.epoch >= 1 and (not(hasCredential(f.credential)) or credentialVersion(f) >= 1)
 ```
 
 ### Only the epoch and the credential version of a frame may be shown, never the token, the credential or the storage key
@@ -244,7 +248,6 @@ pure def exitClass(code: int): ExitClass =
   else Crash
 pure val codeValues = Set(-1, 0, 1, 2, 70, 74, 75, 77, 78, 137)
 pure def lawEachBootFailureExitsWithItsOwnCode(cause: BootFailure): bool = exitClass(exitCode(cause)) == BootFailed({ cause: cause })
-pure def lawNoBootFailureLooksLikeAStop(cause: BootFailure): bool = exitCode(cause) != 0 and exitCode(cause) != 1
 pure def lawUnlistedCodeIsACrash(code: int): bool = not(Set(0, 1, 70, 74, 77, 78).contains(code)) implies exitClass(code) == Crash
 pure def lawLaunchRefusalExitsAsConfigOrCredential(doc: LaunchDocument, f: LaunchFrame): bool = {
   val verdict = launchVerdict(doc, f)

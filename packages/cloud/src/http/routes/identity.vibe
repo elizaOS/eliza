@@ -1,0 +1,4 @@
+// spec/cloud/identity/accounts.md, "Story: Get one account on first sign-in"
+import type { Area } from "../routes.vibe"
+
+export const area: Area = { routes: [], sweeps: [] }

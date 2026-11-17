@@ -1,12 +1,11 @@
 # Conversations
 
-The owner's conversations on the device. A conversation is its own room:
-its record is the only holder of the room id, and every message and
-model-call log row belongs to one conversation. Turns add messages and log
-rows (`conversation/turns.md`). There is no rename, delete, truncate,
-restore or import. Every route is Root (`access/auth.md`); an unknown
+The owner's conversations on the device. A conversation's record is the
+only holder of its room id; every message and model-call log row belongs to
+one conversation, and turns add them (`conversation/turns.md`). No rename,
+delete, truncate, restore or import. Every route is Root; an unknown
 conversation is 404; `before`, `limit` and `offset` are core
-[canonical integers](../../core/numbers.md) decoded at the route.
+[canonical integers](../../core/numbers.md).
 
 ## Story: Create and find my conversations
 
@@ -43,7 +42,7 @@ pure def alwaysIdsAreFresh(s: Conversations): bool =
   s.nextConversation >= 1 and s.nextMessage >= 1 and s.now >= 0 and
   s.conversations.every(c => c.id >= 1 and c.id < s.nextConversation and c.createdAt <= c.updatedAt and c.updatedAt <= s.now) and
   s.messages.every(m => m.id >= 1 and m.id < s.nextMessage and m.at <= s.now and m.conversationId >= 1 and m.conversationId < s.nextConversation) and
-  s.forks.every(f => f.forkId < s.nextConversation and f.boundary < s.nextMessage and f.boundaryAt <= s.now)
+  s.forks.every(f => f.source >= 1 and f.source < f.forkId and f.forkId < s.nextConversation and f.boundary < s.nextMessage and f.boundaryAt <= s.now)
 pure def alwaysOneRecordPerConversation(s: Conversations): bool = s.conversations.every(c => s.conversations.select(d => d.id == c.id).length() == 1)
 ```
 
@@ -131,8 +130,7 @@ pure def lawLastPageHoldsEveryOlderMessage(rows: List[Row], c: Cursor, limit: in
 
 ### A jump to a message answers it with up to 100 messages on each side, and an unknown one is 404
 
-`?around=<messageId>` wins over a cursor and reports no `hasMore`. A
-message of another conversation, or none, is 404.
+`?around=<messageId>` wins over a cursor and reports no `hasMore`.
 
 ```quint
 type AroundAnswer = AroundUnknown | AroundRows({ rows: List[Row] })
@@ -147,8 +145,11 @@ pure def aroundAnswer(s: Conversations, conversationId: int, messageId: int): Ar
   if (not(isPublished(s, conversationId)) or messageAt(s, messageId).conversationId != conversationId) AroundUnknown
   else AroundRows({ rows: around(s.messages.select(m => m.conversationId == conversationId).listMap(m => rowOf(m)), rowOf(messageAt(s, messageId)), aroundRadius) })
 pure val pivotValues = Set({ id: 2, at: 2 }, { id: 4, at: 3 })
-pure def lawAroundHoldsThePivotAndAtMostNEachSide(rows: List[Row], pivot: Row, n: int): bool =
-  around(rows, pivot, n).includes(pivot) and around(rows, pivot, n).select(r => precedes(r, pivot)).length() <= n and around(rows, pivot, n).select(r => precedes(pivot, r)).length() <= n
+pure def lawAroundHoldsThePivotAndAtMostNEachSide(rows: List[Row], pivot: Row, n: int): bool = {
+  val shown = around(rows, pivot, n)
+  (n >= 0 and rows.every(r => rows.select(x => x == r).length() == 1)) implies
+    (shown.includes(pivot) and shown.select(r => precedes(r, pivot)).length() <= n and shown.select(r => precedes(pivot, r)).length() <= n)
+}
 ```
 
 ### A client pages back only while the agent reports more and the last page added a message
@@ -168,8 +169,9 @@ pure def lawPagingAgainNeedsReportedProgress(reply: PageReply, held: int, bound:
 
 ### A search page is a slice of the complete set of visible matches
 
-`GET /api/conversations/messages/search?q&limit&offset` needs a nonblank
-`q` (whitespace collapsed at the route) and `offset ≥ 0`, else 400;
+`GET /api/conversations/messages/search?q&limit&offset` needs a `q` of at
+least 2 units once trimmed and its whitespace collapsed, and `offset ≥ 0`,
+else 400;
 `limit` is 20 when absent or not positive and at most 50. Matches are
 messages of published conversations that still hold their text, filtered
 before the page is cut, so consecutive pages neither skip nor repeat one.
@@ -177,7 +179,8 @@ before the page is cut, so consecutive pages neither skip nor repeat one.
 ```quint
 pure val searchDefault = 20
 pure val searchMax = 50
-pure def searchAdmitted(query: str, offset: int): bool = query != "" and offset >= 0
+pure val searchMinUnits = 2
+pure def searchAdmitted(queryUnits: int, offset: int): bool = queryUnits >= searchMinUnits and offset >= 0
 pure def searchSize(limit: int): int = if (limit <= 0) searchDefault else if (limit > searchMax) searchMax else limit
 type Taking = { index: int, taken: List[int] }
 pure def pageOf(xs: List[int], offset: int, n: int): List[int] =
@@ -218,10 +221,9 @@ pure def alwaysOneForkPerRequest(s: Conversations): bool = s.forks.every(f => f.
 
 ### A fork copies every message before the chosen one, and only those, before it is listed
 
-The fork is a new conversation, titled as one more edit of its source
-(shown `<title> · edit`), holding a copy of each source message before the
-chosen one with its time. It is listed only once the copy is stored whole;
-a retry of a pending fork publishes the copy already stored.
+The fork, titled `<source title> · edit`, holds a timed copy of each source
+message before the chosen one. It is listed only once the copy is stored
+whole; a retry of a pending fork publishes the copy already stored.
 
 ```quint
 pure def conversationOf(s: Conversations, conversationId: int): Conversation = s.conversations.select(c => c.id == conversationId).nthOr(0, noConversation)
@@ -229,6 +231,7 @@ pure def beforeBoundary(m: Message, f: Fork): bool = precedes(rowOf(m), { id: f.
 pure def copiedFrom(copy: Message, original: Message): bool = copy.origin == Copied({ fromId: original.id })
 pure val messageIdValues = Set(1, 2, 3, 4)
 pure val requestIdValues = Set("r1", "r2")
+pure val expectedTextValues = Set("hi", "secret")
 pure val textDigestValues = Set(1, 2)
 pure def canFork(s: Conversations, conversationId: int, messageId: int, requestId: str, expectedText: str, textDigest: int): bool = forkAnswer(s, conversationId, messageId, requestId, expectedText, textDigest) == ForkNew
 pure def fork(s: Conversations, conversationId: int, messageId: int, requestId: str, expectedText: str, textDigest: int): Conversations = {
@@ -256,8 +259,7 @@ pure val weight_finishFork = 3
 
 ### No message is ever removed, and only redaction changes one
 
-Every other step leaves each stored message and log row as it was, so a
-fork never changes its original.
+Every other step leaves each stored message and log row as it was.
 
 ```quint
 pure def sameExceptBody(a: Message, b: Message): bool = a.id == b.id and a.conversationId == b.conversationId and a.at == b.at and a.author == b.author and a.origin == b.origin

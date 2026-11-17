@@ -1,0 +1,115 @@
+// spec/agent/storage/database.md, "Story: Keep one agent identity for my data across restarts"; spec/agent/storage/database.md, "Only one live process holds a data directory"
+module node {
+  import { randomUUID } from "node:crypto"
+  import { lstat, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises"
+  import { join, resolve } from "node:path"
+  import { validateUuid, type UUID } from "@elizaos/core"
+
+  function isError(error: unknown, code: string): boolean {
+    return typeof error === "object" && error !== null && "code" in error && error.code === code
+  }
+
+  async function privateDirectory(directory: string): Promise<void> {
+    await mkdir(directory, { mode: 0o700, recursive: true })
+    const status = await lstat(directory)
+    if (!status.isDirectory() || (status.mode & 0o077) !== 0 || status.uid !== process.getuid?.()) {
+      throw new Error("State directory must be private to this process owner")
+    }
+  }
+
+  function alive(pid: number): boolean {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (error) {
+      if (isError(error, "ESRCH")) return false
+      if (isError(error, "EPERM")) return true
+      throw error
+    }
+  }
+
+  async function claim(directory: string): Promise<() => Promise<void>> {
+    await privateDirectory(directory)
+    const ownName = `${process.pid}-${randomUUID()}`
+    const ownClaim = join(directory, ownName)
+    await mkdir(ownClaim, { mode: 0o700 })
+    const release = () => rm(ownClaim, { force: true, recursive: true })
+    try {
+      for (const name of await readdir(directory)) {
+        if (name === ownName) continue
+        const claimed = /^(\d+)-[a-f0-9-]{36}$/.exec(name)
+        const pid = Number(claimed?.[1])
+        if (!Number.isSafeInteger(pid) || pid < 1) throw new Error("Invalid storage owner claim")
+        if (alive(pid)) throw new Error("The device store is already open")
+        await rm(join(directory, name), { force: true, recursive: true })
+      }
+      return release
+    } catch (error) {
+      await release()
+      throw error
+    }
+  }
+
+  async function identityFile(directory: string): Promise<UUID> {
+    const file = join(directory, "agent-id")
+    try {
+      const status = await lstat(file)
+      if (!status.isFile() || status.nlink !== 1 || (status.mode & 0o077) !== 0 || status.uid !== process.getuid?.() || status.size > 38) {
+        throw new Error("Invalid device identity file")
+      }
+      const id = validateUuid((await readFile(file, "utf8")).trim())
+      if (id === null) throw new Error("Invalid device identity")
+      return id
+    } catch (error) {
+      if (!isError(error, "ENOENT")) throw error
+    }
+    const id = randomUUID()
+    const temporary = join(directory, `.identity-${randomUUID()}`)
+    try {
+      const handle = await open(temporary, "wx", 0o600)
+      try {
+        await handle.writeFile(id + "\n", "utf8")
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+      await rename(temporary, file)
+      const parent = await open(directory, "r")
+      try {
+        await parent.sync()
+      } finally {
+        await parent.close()
+      }
+      return id
+    } finally {
+      await rm(temporary, { force: true })
+    }
+  }
+
+  export async function claimDeviceState(stateDirectory: string, persist: boolean): Promise<{
+    agentId: UUID
+    dataDirectory?: string
+    release?: () => Promise<void>
+  }> {
+    const directory = resolve(stateDirectory)
+    await privateDirectory(directory)
+    const freeIdentity = await claim(join(directory, ".identity-owners"))
+    let agentId: UUID
+    try {
+      agentId = await identityFile(directory)
+    } finally {
+      await freeIdentity()
+    }
+    if (!persist) return { agentId }
+    const dataDirectory = join(directory, "store-v4")
+    const release = await claim(join(directory, ".store-v4-owners"))
+    try {
+      await privateDirectory(dataDirectory)
+      return { agentId, dataDirectory, release }
+    } catch (error) {
+      await release()
+      throw error
+    }
+  }
+}
+export { claimDeviceState } from node

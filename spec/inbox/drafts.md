@@ -6,9 +6,6 @@ reviewed draft into at most one provider request. [Mailbox reads](./reads.md) ow
 admission and its receipt. This model owns the installed client records
 and the transition from a reviewed local draft to one provider request.
 
-The linked cloud contracts are being rebuilt. Their detailed models and
-execution evidence remain pending.
-
 ## Story: Keep drafts recoverable across account switches and provider failures
 
 > As the owner, I want a draft I wrote to survive switching accounts, a

@@ -1,0 +1,222 @@
+#!/usr/bin/env node
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { buildChromium, prepareChromium } from "./browser/index.vibe"
+import { NATIVE_INSTALLS, NATIVE_TARGETS, decrypt, finalizeNative, generate, otaMain, parseArgs, stageLauncher } from "./image/index.vibe"
+
+module node {
+  /** @throws {never} */
+  export function commandLine(): string[] {
+    return process.argv.slice(2)
+  }
+
+  /** @throws {never} */
+  export function exitWith(code: number): void {
+    process.exitCode = code
+  }
+}
+import { commandLine, exitWith } from node
+
+export error UsageError { message: string }
+
+type StageOptions = Parameters<typeof stageLauncher>[0]
+type NativeAbi = NonNullable<StageOptions["nativeAbi"]>
+type NativeInstall = NonNullable<StageOptions["nativeInstall"]>
+
+interface FlagSpec {
+  readonly valued: readonly string[]
+  readonly switches?: readonly string[]
+  readonly repeated?: readonly string[]
+}
+
+interface Flags {
+  readonly values: Readonly<Record<string, string>>
+  readonly switches: ReadonlySet<string>
+  readonly repeated: Readonly<Record<string, readonly string[]>>
+}
+
+const USAGE = [
+  "eliza-os stage-launcher --descriptor FILE --apk FILE --output NEW_DIR [--aapt PATH] [--apksigner PATH] [--development] [--companion MODULE=FILE ...] [--native-abi arm64-v8a|x86_64 [--native-install make|soong]] [--defer-soong | --admission-only]",
+  "eliza-os stage-launcher --finalize-soong --output DIR",
+  "eliza-os ota check|apply|status|fallback|stock-archive|verify-stock|retain-known-good [options]",
+  "eliza-os keys generate --output NEW_DIR --passphrase-file FILE [--organization NAME] [--manifest FILE] [--only a,b] [--test-keys]",
+  "eliza-os keys decrypt --input DIR --output NEW_DIR --passphrase-file FILE [--only a,b]",
+  "eliza-os chromium prepare --source DIR --extension DIR --out NEW_DIR --certificate SHA256 [--application ID] [--revision REV]",
+  "eliza-os chromium build --source DIR --extension DIR --out NEW_DIR --certificate SHA256 --build DIR --args-file FILE [--jobs N] [--embed-host true|false] [--target NAME] [--application ID] [--revision REV]",
+].join("\n")
+
+const COMPANION = /^([A-Z][A-Za-z0-9]*)=(.+)$/
+
+effect function flags(argv: readonly string[], spec: FlagSpec) {
+  const values: Record<string, string> = {}
+  const switches = new Set<string>()
+  const repeated: Record<string, string[]> = {}
+  for (let index = 0; index < argv.length; index++) {
+    const argument = argv[index] ?? ""
+    const name = argument.startsWith("--") ? argument.slice(2) : ""
+    if (spec.switches?.includes(name)) {
+      if (switches.has(name)) throw new UsageError({ message: `${argument} is given twice` })
+      switches.add(name)
+      continue
+    }
+    const value = argv[index + 1]
+    const known = spec.valued.includes(name) || spec.repeated?.includes(name)
+    if (!known) throw new UsageError({ message: `unknown argument ${argument}` })
+    if (value === undefined || value === "" || value.startsWith("--")) throw new UsageError({ message: `${argument} needs a value` })
+    index++
+    if (spec.repeated?.includes(name)) {
+      repeated[name] = [...(repeated[name] ?? []), value]
+    } else if (Object.hasOwn(values, name)) {
+      throw new UsageError({ message: `${argument} is given twice` })
+    } else {
+      values[name] = value
+    }
+  }
+  const parsed: Flags = { values, switches, repeated }
+  return parsed
+}
+
+effect function required(found: Flags, ...names: string[]) {
+  const missing = names.filter((name) => found.values[name] === undefined)
+  if (missing.length) throw new UsageError({ message: `${missing.map((name) => `--${name}`).join(", ")} required` })
+  return names.map((name) => found.values[name] ?? "")
+}
+
+effect function companions(found: Flags) {
+  const byModule: Record<string, string> = {}
+  for (const entry of found.repeated.companion ?? []) {
+    const matched = COMPANION.exec(entry)
+    const moduleName = matched?.[1]
+    const apk = matched?.[2]
+    if (moduleName === undefined || apk === undefined) throw new UsageError({ message: `--companion takes MODULE=FILE, not ${entry}` })
+    if (Object.hasOwn(byModule, moduleName)) throw new UsageError({ message: `--companion ${moduleName} is given twice` })
+    byModule[moduleName] = apk
+  }
+  return byModule
+}
+
+effect function nativeAbi(found: Flags) {
+  const abi = found.values["native-abi"]
+  if (abi === undefined) return undefined
+  if (!Object.hasOwn(NATIVE_TARGETS, abi)) throw new UsageError({ message: `--native-abi must be one of ${Object.keys(NATIVE_TARGETS).join(", ")}` })
+  return abi as NativeAbi
+}
+
+effect function nativeInstall(found: Flags) {
+  const install = found.values["native-install"]
+  if (install === undefined) return undefined
+  if (!(NATIVE_INSTALLS as readonly string[]).includes(install)) throw new UsageError({ message: `--native-install must be one of ${NATIVE_INSTALLS.join(", ")}` })
+  return install as NativeInstall
+}
+
+effect function stage(argv: readonly string[]) {
+  const found = try flags(argv, {
+    valued: ["descriptor", "apk", "output", "aapt", "apksigner", "native-abi", "native-install"],
+    switches: ["development", "defer-soong", "finalize-soong", "admission-only"],
+    repeated: ["companion"],
+  })
+  const modes = ["defer-soong", "finalize-soong", "admission-only"].filter((mode) => found.switches.has(mode))
+  if (modes.length > 1) throw new UsageError({ message: `choose one of ${modes.map((mode) => `--${mode}`).join(", ")}` })
+  if (found.switches.has("finalize-soong")) {
+    const extra = [...Object.keys(found.values).filter((name) => name !== "output"), ...found.switches].filter((name) => name !== "finalize-soong")
+    if (extra.length || Object.keys(found.repeated).length) throw new UsageError({ message: "--finalize-soong takes only --output" })
+    const [output = ""] = try required(found, "output")
+    return try finalizeNative(output)
+  }
+  const [descriptor = "", apk = "", output = ""] = try required(found, "descriptor", "apk", "output")
+  const abi = try nativeAbi(found)
+  const install = try nativeInstall(found)
+  return try stageLauncher({
+    descriptor,
+    apk,
+    companions: try companions(found),
+    output,
+    aapt: found.values.aapt ?? "aapt",
+    apksigner: found.values.apksigner ?? "apksigner",
+    development: found.switches.has("development"),
+    ...(abi === undefined ? {} : { nativeAbi: abi }),
+    ...(install === undefined ? {} : { nativeInstall: install }),
+    deferSoong: found.switches.has("defer-soong"),
+    admissionOnly: found.switches.has("admission-only"),
+  })
+}
+
+effect function keys(argv: readonly string[]) {
+  const [command, ...rest] = argv
+  switch (command) {
+    case "generate":
+      return try generate(try parseArgs(rest))
+    case "decrypt": {
+      const found = try flags(rest, { valued: ["input", "output", "passphrase-file", "only"] })
+      const [input = "", output = "", passphraseFile = ""] = try required(found, "input", "output", "passphrase-file")
+      return try decrypt({ input, output, passphraseFile, ...(found.values.only === undefined ? {} : { only: found.values.only }) })
+    }
+    default:
+      throw new UsageError({ message: `keys takes generate or decrypt, not ${command ?? "nothing"}` })
+  }
+}
+
+const CHROMIUM_COMMON = ["source", "extension", "out", "certificate", "application", "revision"] as const
+
+effect function chromium(argv: readonly string[]) {
+  const [command, ...rest] = argv
+  switch (command) {
+    case "prepare": {
+      const found = try flags(rest, { valued: CHROMIUM_COMMON })
+      const [source = "", extension = "", out = "", certificate = ""] = try required(found, "source", "extension", "out", "certificate")
+      return try prepareChromium({ source, extension, out, certificate, application: found.values.application, revision: found.values.revision })
+    }
+    case "build": {
+      const found = try flags(rest, { valued: [...CHROMIUM_COMMON, "build", "args-file", "jobs", "embed-host", "target"] })
+      const [source = "", extension = "", out = "", certificate = "", build = "", argsFile = ""] = try required(found, "source", "extension", "out", "certificate", "build", "args-file")
+      const jobs = found.values.jobs
+      if (jobs !== undefined && !/^[1-9][0-9]{0,2}$/.test(jobs)) throw new UsageError({ message: "--jobs must be a whole number from 1 to 999" })
+      const embedHost = found.values["embed-host"]
+      if (embedHost !== undefined && embedHost !== "true" && embedHost !== "false") throw new UsageError({ message: "--embed-host must be true or false" })
+      return try buildChromium({
+        source,
+        extension,
+        out,
+        certificate,
+        build,
+        argsFile,
+        application: found.values.application,
+        revision: found.values.revision,
+        target: found.values.target,
+        jobs: jobs === undefined ? undefined : Number(jobs),
+        embedHost: embedHost === undefined ? undefined : embedHost === "true",
+      })
+    }
+    default:
+      throw new UsageError({ message: `chromium takes prepare or build, not ${command ?? "nothing"}` })
+  }
+}
+
+export effect function cli(argv: readonly string[]) {
+  const [command, ...rest] = argv
+  switch (command) {
+    case "stage-launcher":
+      return try stage(rest)
+    case "ota":
+      return try otaMain(rest)
+    case "keys":
+      return try keys(rest)
+    case "chromium":
+      return try chromium(rest)
+    default:
+      throw new UsageError({ message: command === undefined ? "a command is required" : `unknown command ${command}` })
+  }
+}
+
+effect function main(argv: readonly string[]) {
+  const result = try (cli(argv) catch effect (failure) => {
+    if (!(failure instanceof UsageError)) throw failure
+    try Console.error(`${failure.message}\n\n${USAGE}`)
+    try sync(() => exitWith(2))
+    return undefined
+  })
+  if (result !== undefined) try Console.log(JSON.stringify(result, null, 2))
+}
+
+if (import.meta.main) NodeRuntime.runMain(Effect.provide(main(commandLine()), NodeServices.layer))

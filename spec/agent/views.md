@@ -1,23 +1,37 @@
 # Views
 
-The agent's views are the declarations its plugins and its launch make:
-each names a view, its type and the installation the agent gave it. They
-are fixed at boot. A renderer reaches them through three Root routes:
-`POST /api/views/:id/navigate` with `prepareOnly: true`,
-`POST /api/views/interact-claim` and `POST /api/views/interact-result`.
-An interaction the agent asks of a view goes to the `view-interact` stream
-of that renderer's client only (`conversation/events.md`).
+The agent's views are the graphical views its plugins and its launch
+declare, fixed at boot. A renderer reaches them through three Root routes:
+`POST /api/views/:id/navigate` (prepare only), `POST
+/api/views/interact-claim` and `POST /api/views/interact-result`.
 [Core views](../core/views.md) own the request lifecycle and the rule that
-a completion matches its request, renderer, installation and view; core
-`viewNavigation` is the renderer's own queue and fences. This machine
-decides which requests the agent waits on, who may claim and answer each,
-and which view the agent records as shown.
+a completion matches its request, renderer, installation and view; the
+renderer's own queue and fences are core `viewNavigation`, which this
+machine does not hold. This machine decides which requests the agent waits
+on, which binding claims and answers each, and which view the agent records
+as shown. The routes are Root, so the one owner is the only caller: a
+binding routes a claim or a result to its request and carries no owner, and
+no role gate is checked at claim or result (`access/routes.md`).
 
-The binding a renderer presents is
-`{requestId, clientId, viewId, viewType, installationId}`; the prepare
-reply returns it, and claim and result must repeat it exactly. The shell
-makes each claim id a fresh UUID, and decodes a navigation's result body,
-which must be exactly `{switched}` with no error.
+A binding is `{requestId, clientId, viewId, viewType: "gui",
+installationId}`; the shell refuses any other `viewType`. Wire shapes:
+
+- Prepare: body exactly `{clientId, delivery: "completed-action",
+  prepareOnly: true, viewType: "gui", completedActionHandoffId,
+  resolvedAlias?, source?}`, where `source` is `agent` or `user` and the
+  request id is `completedActionHandoffId`. Reply `{ok: true, status:
+  "prepared", viewId, completedActionHandoffId, navigationBinding}`; a
+  refused prepare is 409.
+- Claim: body the binding; reply `{claimId}` (a fresh UUID); a refused
+  claim is 409.
+- Result: body the binding, `claimId`, `success`, and for a navigation
+  `result: {switched}`. Reply always `{ok: true, accepted}`; a refused
+  result is `accepted: false`.
+- The client id comes from the `x-elizaos-client-id` header or the body;
+  a missing binding field is 400.
+- An ask goes out as `{type: "view:interact", installationId, viewId,
+  viewType: "gui", capability, params, requestId}` with an agent-made UUID,
+  on the `view-interact` feed of that client (`conversation/events.md`).
 
 ## Story: Declare my views once
 
@@ -25,29 +39,66 @@ which must be exactly `{switched}` with no error.
 > while my agent runs, so that a binding a renderer holds always names a
 > view that exists.
 
-### Views are declared once at boot, each id and type once, and never change after
+### Views are declared once at boot with distinct ids, paths and names, and never change after
+
+A launch declaration (`launch.views`, at most 32 entries and 16384 bytes)
+is exactly `{id, label, path, aliases?}`: `id` matches
+`^[a-z][a-z0-9_-]{0,63}$`; `label` is trimmed, nonempty, at most 80
+characters, with no control character; `path` matches
+`^/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+$` and has at most 256 characters;
+`aliases` holds 1 to 4 entries matching `^[a-z](?:[a-z0-9 _-]{0,30}[a-z0-9])?$`.
+It may not replace a built-in view other than a preview one. Ids, labels
+and aliases are names, compared case-folded (the shell folds them): no name
+belongs to two views. An invalid declaration refuses boot with exit class
+`Config` (`host/launch.md`).
 
 ```quint
 import views as V from "../core/views"
-type ViewType = Gui | Tui | Xr
-type DeclaredView = { viewId: str, viewType: ViewType, installationId: str }
+type DeclaredView = { viewId: str, label: str, path: str, aliases: List[str], installationId: str }
 type HostPhase = Booting | Serving | Closed
 type WaiterKind = Navigation | Interaction
 type Claim = Unclaimed | Claimed({ claimId: str })
-type Waiter = { req: V::ViewRequest, kind: WaiterKind, viewType: ViewType, claim: Claim }
-type ViewHost = { phase: HostPhase, views: List[DeclaredView], requestIds: List[str], waiters: str -> Waiter, openNavigation: str -> str, shownClients: List[str], shown: str -> str }
+type WaitOutcome = Waiting | Replied | Unknown | Superseded | Stopped
+type Waiter = { req: V::ViewRequest, kind: WaiterKind, claim: Claim, outcome: WaitOutcome }
+type Shown = ShownView({ viewId: str }) | ShownUnknown
+type ViewHost = { phase: HostPhase, views: List[DeclaredView], requestIds: List[str], waiters: str -> Waiter, openNavigation: str -> str, shownClients: List[str], shown: str -> Shown }
 pure val initial: ViewHost = { phase: Booting, views: List(), requestIds: List(), waiters: Map(), openNavigation: Map(), shownClients: List(), shown: Map() }
+pure def namesOf(d: DeclaredView): List[str] = List(d.viewId, d.label).concat(d.aliases)
 pure def viewsDistinct(views: List[DeclaredView]): bool =
-  views.every(d => d.viewId != "" and d.installationId != "" and views.select(o => o.viewId == d.viewId and o.viewType == d.viewType).length() == 1)
+  views.every(d => d.viewId != "" and d.label != "" and d.path != "" and d.installationId != ""
+    and views.select(o => o.path == d.path or namesOf(o).some(n => namesOf(d).includes(n))).length() == 1)
 pure def canBootViews(h: ViewHost, views: List[DeclaredView]): bool = h.phase == Booting and viewsDistinct(views)
 pure def bootViews(h: ViewHost, views: List[DeclaredView]): ViewHost = { ...h, phase: Serving, views: views }
 pure def alwaysViewsDistinct(h: ViewHost): bool =
   viewsDistinct(h.views) and (h.phase == Booting implies (h.views == List() and h.requestIds == List() and h.shownClients == List()))
 pure def stepViewsFixedAfterBoot(before: ViewHost, after: ViewHost): bool = before.phase != Booting implies after.views == before.views
-pure val chatView: DeclaredView = { viewId: "chat", viewType: Gui, installationId: "i1" }
-pure val notesView: DeclaredView = { viewId: "notes", viewType: Gui, installationId: "i2" }
-pure val notesText: DeclaredView = { viewId: "notes", viewType: Tui, installationId: "i3" }
-pure val viewsValues = Set(List(chatView, notesView, notesText), List(chatView, { ...chatView, installationId: "i9" }))
+pure val viewsValues = Set(
+  List({ viewId: "chat", label: "Chat", path: "/chat", aliases: List("home"), installationId: "i1" },
+    { viewId: "notes", label: "Notes", path: "/notes", aliases: List("memo"), installationId: "i2" }),
+  List({ viewId: "chat", label: "Chat", path: "/chat", aliases: List(), installationId: "i1" },
+    { viewId: "chat", label: "Talk", path: "/talk", aliases: List(), installationId: "i9" }),
+  List({ viewId: "chat", label: "Chat", path: "/chat", aliases: List(), installationId: "i1" },
+    { viewId: "notes", label: "Notes", path: "/notes", aliases: List("chat"), installationId: "i2" }))
+```
+
+### Every request names a declared view, and its outcome agrees with its phase
+
+```quint
+pure val noView: DeclaredView = { viewId: "", label: "", path: "", aliases: List(), installationId: "" }
+pure val noWaiter: Waiter = { req: V::initial, kind: Interaction, claim: Unclaimed, outcome: Waiting }
+pure def declares(h: ViewHost, viewId: str): bool = h.views.some(d => d.viewId == viewId)
+pure def declaredAt(h: ViewHost, viewId: str): DeclaredView = h.views.select(d => d.viewId == viewId).nthOr(0, noView)
+pure def known(h: ViewHost, requestId: str): bool = h.requestIds.includes(requestId)
+pure def waiterAt(h: ViewHost, requestId: str): Waiter = if (h.waiters.keys().contains(requestId)) h.waiters.get(requestId) else noWaiter
+pure def pending(w: Waiter): bool = w.req.phase == V::Pending
+pure def isOpen(h: ViewHost, w: Waiter): bool = h.phase == Serving and pending(w)
+pure def isClaimed(c: Claim): bool = match c { | Unclaimed => false | _ => true }
+pure def withWaiter(id: str, changed: Waiter, h: ViewHost): ViewHost = { ...h, waiters: h.waiters.put(id, changed) }
+pure def namesDeclaredView(views: List[DeclaredView], id: str, w: Waiter): bool =
+  views.some(d => d.viewId == w.req.viewId and d.installationId == w.req.installationId) and w.req.requestId == id
+    and w.req.phase != V::Available and (pending(w) iff w.outcome == Waiting) and ((w.req.phase == V::Delivered) iff (w.outcome == Replied))
+pure def alwaysRequestsAreListed(h: ViewHost): bool = h.requestIds.every(id => h.waiters.keys().contains(id))
+pure def alwaysWaitersNameDeclaredViews(h: ViewHost): bool = h.requestIds.every(id => namesDeclaredView(h.views, id, waiterAt(h, id)))
 ```
 
 ## Story: Switch to the view the agent named
@@ -57,49 +108,42 @@ pure val viewsValues = Set(List(chatView, notesView, notesText), List(chatView, 
 > my renderer confirms the switch, so that it never believes I see a view
 > I do not.
 
-### A navigation is prepared only for a declared graphical view and a request id not seen before
+### A navigation is prepared only for a declared view and a request id not seen before
+
+Every request id the run has used stays known until the agent stops, so a
+late or replayed id is never a new request. A prepared navigation waits
+`navigationWaitMs`. A renderer may also prepare, with its own request id
+and `source: user`, a switch the owner already made, and confirm it the
+same way.
 
 ```quint
-pure val noView: DeclaredView = { viewId: "", viewType: Gui, installationId: "" }
-pure val noWaiter: Waiter = { req: V::initial, kind: Interaction, viewType: Gui, claim: Unclaimed }
-pure def declares(h: ViewHost, viewId: str, viewType: ViewType): bool = h.views.some(d => d.viewId == viewId and d.viewType == viewType)
-pure def declaredAt(h: ViewHost, viewId: str, viewType: ViewType): DeclaredView =
-  h.views.select(d => d.viewId == viewId and d.viewType == viewType).nthOr(0, noView)
-pure def known(h: ViewHost, requestId: str): bool = h.waiters.keys().contains(requestId)
-pure def waiterAt(h: ViewHost, requestId: str): Waiter = if (h.waiters.keys().contains(requestId)) h.waiters.get(requestId) else noWaiter
-pure def pending(w: Waiter): bool = w.req.phase == V::Pending
-pure def isOpen(h: ViewHost, w: Waiter): bool = h.phase == Serving and pending(w)
-pure def isClaimed(c: Claim): bool = match c { | Unclaimed => false | _ => true }
-pure def opened(h: ViewHost, requestId: str, clientId: str, viewId: str, viewType: ViewType): bool =
-  h.phase == Serving and declares(h, viewId, viewType) and not(known(h, requestId))
-    and V::canRequest(V::initial, requestId, clientId, declaredAt(h, viewId, viewType).installationId, viewId)
-pure def withNewWaiter(kind: WaiterKind, requestId: str, clientId: str, viewId: str, viewType: ViewType, h: ViewHost): ViewHost = {
-  val w = { req: V::request(V::initial, requestId, clientId, declaredAt(h, viewId, viewType).installationId, viewId), kind: kind, viewType: viewType, claim: Unclaimed }
+pure val navigationWaitMs = 120000
+pure def opened(h: ViewHost, requestId: str, clientId: str, viewId: str): bool =
+  h.phase == Serving and declares(h, viewId) and not(known(h, requestId))
+    and V::canRequest(V::initial, requestId, clientId, declaredAt(h, viewId).installationId, viewId)
+pure def withNewWaiter(kind: WaiterKind, requestId: str, clientId: str, viewId: str, h: ViewHost): ViewHost = {
+  val w = { req: V::request(V::initial, requestId, clientId, declaredAt(h, viewId).installationId, viewId), kind: kind, claim: Unclaimed, outcome: Waiting }
   { ...h, requestIds: h.requestIds.append(requestId), waiters: h.waiters.put(requestId, w) }
 }
 pure def canPrepareNavigation(h: ViewHost, requestId: str, clientId: str, viewId: str): bool =
-  opened(h, requestId, clientId, viewId, Gui) and not(busy(h, clientId))
+  opened(h, requestId, clientId, viewId) and not(busy(h, clientId))
 pure def prepareNavigation(h: ViewHost, requestId: str, clientId: str, viewId: str): ViewHost = {
   val old = openNavigationOf(h, clientId)
   val w = waiterAt(h, old)
-  val retired = if (known(h, old) and pending(w)) { ...h, waiters: h.waiters.put(old, { ...w, req: V::retire(w.req) }) } else h
-  { ...withNewWaiter(Navigation, requestId, clientId, viewId, Gui, retired), openNavigation: h.openNavigation.put(clientId, requestId) }
+  val retired = if (known(h, old) and pending(w)) withWaiter(old, { ...w, req: V::retire(w.req), outcome: Superseded }, h) else h
+  { ...withNewWaiter(Navigation, requestId, clientId, viewId, retired), openNavigation: h.openNavigation.put(clientId, requestId) }
 }
-pure def alwaysRequestsAreListed(h: ViewHost): bool = h.requestIds.every(id => known(h, id))
-pure def namesDeclaredView(views: List[DeclaredView], id: str, w: Waiter): bool =
-  views.includes({ viewId: w.req.viewId, viewType: w.viewType, installationId: w.req.installationId }) and w.req.requestId == id
-    and w.req.phase != V::Available and w.req.epoch == w.req.capturedEpoch and (w.kind == Navigation implies w.viewType == Gui)
-pure def alwaysWaitersNameDeclaredViews(h: ViewHost): bool = h.requestIds.every(id => namesDeclaredView(h.views, id, waiterAt(h, id)))
 pure val requestIdValues = Set("r1", "r2", "r3")
 pure val clientIdValues = Set("c1", "c2")
-pure val viewIdValues = Set("chat", "notes")
+pure val viewIdValues = Set("chat", "notes", "files")
 ```
 
 ### Preparing again supersedes the client's unclaimed navigation and is refused while one is claimed
 
 A navigation the renderer already claimed is being applied, so a second
-one could commit out of order; the client must wait for its result. A
-client's only pending navigation is therefore its latest.
+one could commit out of order; the client must wait for its result. The
+superseded navigation's wait ends with the outcome `Superseded`. A client's
+only pending navigation is therefore its latest.
 
 ```quint
 pure def openNavigationOf(h: ViewHost, clientId: str): str =
@@ -113,104 +157,159 @@ pure def latestIfPending(h: ViewHost, id: str): bool = {
   (w.kind == Navigation and pending(w)) implies openNavigationOf(h, w.req.clientId) == id
 }
 pure def alwaysPendingNavigationIsTheLatest(h: ViewHost): bool = h.requestIds.every(id => latestIfPending(h, id))
-pure def supersededBy(h: ViewHost, id: str): bool = {
-  val w = waiterAt(h, id)
-  w.kind == Navigation and w.req.phase == V::Retired and not(isClaimed(w.claim)) and isOpen(h, waiterAt(h, openNavigationOf(h, w.req.clientId)))
-}
-pure def sometimesNavigationSuperseded(h: ViewHost): bool = h.requestIds.some(id => supersededBy(h, id))
+pure def sometimesNavigationSuperseded(h: ViewHost): bool = h.phase == Serving and h.requestIds.some(id => waiterAt(h, id).outcome == Superseded)
 pure def sometimesNavigationBeingApplied(h: ViewHost): bool = h.requestIds.some(id => busy(h, waiterAt(h, id).req.clientId))
+```
+
+### The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to
+
+The show action reads the turn's renderer from message metadata
+(`viewClientId`, with `viewDelivery: "completed-action"`) and refuses a
+turn without one. It resolves the name to the one view with that id, label
+or alias; boot makes a name ambiguous never, so an unknown name is refused.
+It prepares with a fresh UUID, refuses unless the returned binding is
+exactly its own, and returns `values {mode: "show", viewId, viewPath,
+viewType: "gui", label, completedActionDelivered: false,
+completedActionHandoffId, navigationPrepared: true, navigationBinding}`
+and no other key (core views parses them).
+
+```quint
+pure def targets(h: ViewHost, target: str): List[DeclaredView] = h.views.select(d => namesOf(d).includes(target))
+pure def canShowView(h: ViewHost, requestId: str, clientId: str, target: str): bool =
+  targets(h, target).length() == 1 and canPrepareNavigation(h, requestId, clientId, targets(h, target).nthOr(0, noView).viewId)
+pure def showView(h: ViewHost, requestId: str, clientId: str, target: str): ViewHost =
+  prepareNavigation(h, requestId, clientId, targets(h, target).nthOr(0, noView).viewId)
+pure val targetValues = Set("Notes", "home", "nowhere")
 ```
 
 ### A claim names its request's exact binding and succeeds once
 
+A request is answered only after its claim, and a claim never changes.
+
 ```quint
-type Binding = { requestId: str, clientId: str, viewId: str, viewType: ViewType, installationId: str }
-pure def boundTo(w: Waiter, binding: Binding): bool =
-  V::canDeliver(w.req, binding.requestId, binding.clientId, binding.installationId, binding.viewId) and w.viewType == binding.viewType
-pure def withWaiter(changed: Waiter, h: ViewHost): ViewHost = { ...h, waiters: h.waiters.put(changed.req.requestId, changed) }
+type Binding = { requestId: str, clientId: str, viewId: str, installationId: str }
+pure def boundTo(w: Waiter, binding: Binding): bool = V::canDeliver(w.req, binding.requestId, binding.clientId, binding.installationId, binding.viewId)
 pure def canClaimRequest(h: ViewHost, binding: Binding, claimId: str): bool = {
   val w = waiterAt(h, binding.requestId)
   h.phase == Serving and known(h, binding.requestId) and boundTo(w, binding) and not(isClaimed(w.claim)) and claimId != ""
 }
 pure def claimRequest(h: ViewHost, binding: Binding, claimId: str): ViewHost =
-  withWaiter({ ...waiterAt(h, binding.requestId), claim: Claimed({ claimId: claimId }) }, h)
+  withWaiter(binding.requestId, { ...waiterAt(h, binding.requestId), claim: Claimed({ claimId: claimId }) }, h)
 pure def stepClaimIsFinal(before: ViewHost, after: ViewHost): bool =
   before.requestIds.every(id => isClaimed(waiterAt(before, id).claim) implies waiterAt(after, id).claim == waiterAt(before, id).claim)
-pure def bindingOf(requestId: str, clientId: str, view: DeclaredView): Binding =
-  { requestId: requestId, clientId: clientId, viewId: view.viewId, viewType: view.viewType, installationId: view.installationId }
+pure def alwaysAnsweredWasClaimed(h: ViewHost): bool = h.requestIds.every(id => waiterAt(h, id).req.phase == V::Delivered implies isClaimed(waiterAt(h, id).claim))
 pure val bindingValues = Set(
-  bindingOf("r1", "c1", chatView), bindingOf("r1", "c1", notesView), bindingOf("r2", "c1", chatView), bindingOf("r2", "c2", notesView),
-  bindingOf("r3", "c2", notesText), bindingOf("r3", "c1", chatView), bindingOf("r1", "c2", { ...chatView, installationId: "i9" }), bindingOf("r2", "c1", { ...notesView, viewType: Tui }))
+  { requestId: "r1", clientId: "c1", viewId: "chat", installationId: "i1" }, { requestId: "r1", clientId: "c1", viewId: "notes", installationId: "i2" },
+  { requestId: "r2", clientId: "c1", viewId: "chat", installationId: "i1" }, { requestId: "r2", clientId: "c2", viewId: "notes", installationId: "i2" },
+  { requestId: "r3", clientId: "c1", viewId: "chat", installationId: "i1" }, { requestId: "r1", clientId: "c2", viewId: "chat", installationId: "i9" })
 pure val claimIdValues = Set("k1", "k2", "")
 ```
 
 ### A result is accepted once, with its claim id, and a navigation result says whether it switched
 
+The shell decodes a navigation's `{success, result: {switched}}` into
+`Switched` or `NotSwitched`, and an interaction's into `Answered`.
+
 ```quint
-type Reply = Switched | NotSwitched | OtherReply
-pure def replyFits(kind: WaiterKind, success: bool, reply: Reply): bool = kind == Interaction or reply == (if (success) Switched else NotSwitched)
+type Reply = Switched | NotSwitched | Answered
+pure def replyFits(kind: WaiterKind, reply: Reply): bool = (kind == Navigation) iff (reply != Answered)
 pure def claimIdOf(c: Claim): str = match c { | Claimed(x) => x.claimId | Unclaimed => "" }
-pure def canAnswerRequest(h: ViewHost, binding: Binding, claimId: str, success: bool, reply: Reply): bool = {
+pure def listed(clients: List[str], clientId: str): List[str] = if (clients.includes(clientId)) clients else clients.append(clientId)
+pure def canAnswerRequest(h: ViewHost, binding: Binding, claimId: str, reply: Reply): bool = {
   val w = waiterAt(h, binding.requestId)
-  h.phase == Serving and known(h, binding.requestId) and boundTo(w, binding) and isClaimed(w.claim) and claimIdOf(w.claim) == claimId and replyFits(w.kind, success, reply)
+  h.phase == Serving and known(h, binding.requestId) and boundTo(w, binding) and isClaimed(w.claim) and claimIdOf(w.claim) == claimId and replyFits(w.kind, reply)
 }
-pure def answerRequest(h: ViewHost, binding: Binding, claimId: str, success: bool, reply: Reply): ViewHost = {
+pure def answerRequest(h: ViewHost, binding: Binding, claimId: str, reply: Reply): ViewHost = {
   val w = waiterAt(h, binding.requestId)
-  val answered = withWaiter({ ...w, req: V::deliver(w.req, binding.requestId, binding.clientId, binding.installationId, binding.viewId) }, h)
-  if (w.kind == Navigation and success)
-    { ...answered, shown: h.shown.put(binding.clientId, binding.viewId),
-      shownClients: if (h.shownClients.includes(binding.clientId)) h.shownClients else h.shownClients.append(binding.clientId) }
+  val answered = withWaiter(binding.requestId, { ...w, req: V::deliver(w.req, binding.requestId, binding.clientId, binding.installationId, binding.viewId), outcome: Replied }, h)
+  if (reply == Switched) { ...answered, shown: h.shown.put(binding.clientId, ShownView({ viewId: binding.viewId })), shownClients: listed(h.shownClients, binding.clientId) }
   else answered
 }
-pure def alwaysAnsweredWasClaimed(h: ViewHost): bool = h.requestIds.every(id => waiterAt(h, id).req.phase == V::Delivered implies isClaimed(waiterAt(h, id).claim))
-pure def lawNavigationReplyMatchesSuccess(success: bool, reply: Reply): bool =
-  replyFits(Navigation, success, reply) implies (reply != OtherReply and (reply == Switched iff success))
 ```
 
-### Only a confirmed switch changes the view the agent records as shown
+### Only a confirmed switch sets the shown view, and a navigation lost after its claim makes it unknown
 
 The shown view of each client feeds the planner's view-scoped actions
-(core views).
+(core views). A claimed navigation may still be applied late, so the agent
+no longer knows what that client shows until the next confirmed switch;
+the renderer's own fences order its applies.
 
 ```quint
-pure def shownViewOf(h: ViewHost, clientId: str): str = if (h.shown.keys().contains(clientId)) h.shown.get(clientId) else ""
-pure def alwaysShownViewsAreDeclaredGraphical(h: ViewHost): bool = h.shownClients.every(c => declares(h, shownViewOf(h, c), Gui))
+pure def shownAt(h: ViewHost, clientId: str): Shown = if (h.shown.keys().contains(clientId)) h.shown.get(clientId) else ShownUnknown
+pure def shownViewOf(h: ViewHost, clientId: str): str = match shownAt(h, clientId) { | ShownView(x) => x.viewId | ShownUnknown => "" }
+pure def alwaysShownViewsAreDeclaredGraphical(h: ViewHost): bool =
+  h.shownClients.every(c => shownViewOf(h, c) == "" or declares(h, shownViewOf(h, c)))
+pure def shownChangedBy(id: str, before: ViewHost, via: str, after: ViewHost): bool = {
+  val w = waiterAt(before, id)
+  w.kind == Navigation and pending(w) and (
+    (via == "answerRequest" and waiterAt(after, id).req.phase == V::Delivered and after.shown == before.shown.put(w.req.clientId, ShownView({ viewId: w.req.viewId })))
+    or (via == "abandonRequest" and isClaimed(w.claim) and after.shown == before.shown.put(w.req.clientId, ShownUnknown)))
+}
 pure def stepShownChangesOnlyOnConfirmedSwitch(before: ViewHost, via: str, after: ViewHost): bool =
-  not(after.shown == before.shown) implies via == "answerRequest"
-pure def sometimesSwitchConfirmed(h: ViewHost): bool = h.shownClients.length() > 0
+  not(after.shown == before.shown) implies before.requestIds.some(id => shownChangedBy(id, before, via, after))
+pure def sometimesSwitchConfirmed(h: ViewHost): bool = h.shownClients.some(c => shownViewOf(h, c) != "")
+pure def sometimesNavigationNotSwitched(h: ViewHost): bool =
+  h.requestIds.some(id => waiterAt(h, id).kind == Navigation and waiterAt(h, id).outcome == Replied and shownViewOf(h, waiterAt(h, id).req.clientId) == "")
+pure def sometimesShownUnknown(h: ViewHost): bool = h.shownClients.some(c => shownAt(h, c) == ShownUnknown)
 ```
 
 ## Story: Answer what the agent asks a view
 
 > As the owner, I want a question the agent sends to one of my views to be
-> answered at most once, by that view on the client it was sent to, so
-> that a lost or late answer never runs it twice.
+> answered at most once, by the renderer it was sent to, so that a lost or
+> late answer never runs it twice.
 
-### The agent asks only a declared view, on one client's interaction stream
+### The agent asks only a declared view, for a capability the view grants the agent, on a live feed
 
-The request is published on the `view-interact` stream bound to its
-client; it shares the claim and result rules above.
+The ask names a capability. It is admitted only when the caller's role
+meets the view's role gate, the capability is standard or the view
+declares it, the view's manifest allows it (a standard non-read-only
+surface capability needs the view's `agent-surface` grant), and the view
+does not reserve it for direct human use. The client must have a live
+`view-interact` feed: zero receivers refuses the ask as unavailable. A
+refused ask publishes no frame. An admitted ask waits `interactionWaitMs`.
 
 ```quint
-pure def canAskView(h: ViewHost, requestId: str, clientId: str, viewId: str, viewType: ViewType): bool = opened(h, requestId, clientId, viewId, viewType)
-pure def askView(h: ViewHost, requestId: str, clientId: str, viewId: str, viewType: ViewType): ViewHost =
-  withNewWaiter(Interaction, requestId, clientId, viewId, viewType, h)
+type CapabilityGrant = { roleAllowed: bool, standard: bool, declared: bool, manifestAllows: bool, agentAuthority: bool }
+pure val interactionWaitMs = 5000
+pure def viewInteractAdmitted(grant: CapabilityGrant): bool =
+  grant.roleAllowed and (grant.standard or grant.declared) and grant.manifestAllows and grant.agentAuthority
+pure def lawUndeclaredCapabilityIsRefused(grant: CapabilityGrant): bool = not(grant.standard or grant.declared) implies not(viewInteractAdmitted(grant))
+pure def lawManifestDecidesAgentAuthority(grant: CapabilityGrant): bool =
+  not(grant.manifestAllows and grant.agentAuthority) implies not(viewInteractAdmitted(grant))
+pure def canAskView(h: ViewHost, requestId: str, clientId: str, viewId: str, capability: str, grant: CapabilityGrant, subscribed: bool): bool =
+  opened(h, requestId, clientId, viewId) and capability != "" and viewInteractAdmitted(grant) and subscribed
+pure def askView(h: ViewHost, requestId: str, clientId: str, viewId: str, capability: str, grant: CapabilityGrant, subscribed: bool): ViewHost =
+  withNewWaiter(Interaction, requestId, clientId, viewId, h)
 pure def sometimesInteractionAnswered(h: ViewHost): bool =
   h.requestIds.some(id => waiterAt(h, id).kind == Interaction and waiterAt(h, id).req.phase == V::Delivered)
+pure val capabilityValues = Set("get-state", "")
+pure val grantValues = Set(
+  { roleAllowed: true, standard: true, declared: false, manifestAllows: true, agentAuthority: true },
+  { roleAllowed: true, standard: false, declared: false, manifestAllows: true, agentAuthority: true },
+  { roleAllowed: true, standard: false, declared: true, manifestAllows: true, agentAuthority: false },
+  { roleAllowed: false, standard: false, declared: true, manifestAllows: true, agentAuthority: true })
 ```
 
-### A request whose renderer left or whose wait ran out ends unknown and is never claimed or answered again
+### A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again
 
-The agent's wait sees a refusal whose outcome is unknown, never a failure
-or a success, and the request is not offered again.
+The shell abandons the request when its wait ends, its client's renderer
+disconnects, or publishing its frame throws. The agent's wait then sees the
+outcome `Unknown`, never a failure or a success, and the request is not
+offered again.
 
 ```quint
 pure def canAbandonRequest(h: ViewHost, requestId: str): bool = known(h, requestId) and isOpen(h, waiterAt(h, requestId))
-pure def abandonRequest(h: ViewHost, requestId: str): ViewHost = withWaiter({ ...waiterAt(h, requestId), req: V::retire(waiterAt(h, requestId).req) }, h)
+pure def abandonRequest(h: ViewHost, requestId: str): ViewHost = {
+  val w = waiterAt(h, requestId)
+  val ended = withWaiter(requestId, { ...w, req: V::retire(w.req), outcome: Unknown }, h)
+  if (w.kind == Navigation and isClaimed(w.claim)) { ...ended, shown: h.shown.put(w.req.clientId, ShownUnknown), shownClients: listed(h.shownClients, w.req.clientId) }
+  else ended
+}
 pure def stepEndedRequestStaysEnded(before: ViewHost, after: ViewHost): bool =
-  before.requestIds.every(id => V::stepTerminalHandoffStaysTerminal(waiterAt(before, id).req, waiterAt(after, id).req))
+  before.requestIds.every(id => not(pending(waiterAt(before, id))) implies waiterAt(after, id) == waiterAt(before, id))
 pure def sometimesClaimedRequestLost(h: ViewHost): bool =
-  h.phase == Serving and h.requestIds.some(id => waiterAt(h, id).req.phase == V::Retired and isClaimed(waiterAt(h, id).claim))
+  h.phase == Serving and h.requestIds.some(id => waiterAt(h, id).outcome == Unknown and isClaimed(waiterAt(h, id).claim))
 ```
 
 ## Story: Stop waiting when my agent stops
@@ -218,14 +317,14 @@ pure def sometimesClaimedRequestLost(h: ViewHost): bool =
 > As the owner, I want stopping my agent to end every request it waits
 > on, so that no renderer can claim or answer one afterwards.
 
-### Closing ends every open request, and nothing changes after
-
-A request still pending when the agent closes is no longer open: its wait
-ends unknown, and no route can prepare, ask, claim or answer again.
+### Closing ends every pending request with the outcome Stopped, and nothing changes after
 
 ```quint
+pure def stopped(m: str -> Waiter, id: str): str -> Waiter =
+  if (m.keys().contains(id) and m.get(id).req.phase == V::Pending) m.put(id, { ...m.get(id), req: V::retire(m.get(id).req), outcome: Stopped }) else m
 pure def canCloseHost(h: ViewHost): bool = h.phase != Closed
-pure def closeHost(h: ViewHost): ViewHost = { ...h, phase: Closed }
+pure def closeHost(h: ViewHost): ViewHost = { ...h, phase: Closed, waiters: h.requestIds.foldl(h.waiters, (m, id) => stopped(m, id)) }
+pure def alwaysClosedHoldsNoPending(h: ViewHost): bool = h.phase == Closed implies h.requestIds.every(id => not(pending(waiterAt(h, id))))
 pure def stepNothingChangesAfterClose(before: ViewHost, after: ViewHost): bool = before.phase == Closed implies after == before
-pure def sometimesClosedWithPendingRequest(h: ViewHost): bool = h.phase == Closed and h.requestIds.some(id => pending(waiterAt(h, id)))
+pure def sometimesRequestStoppedByClose(h: ViewHost): bool = h.phase == Closed and h.requestIds.some(id => waiterAt(h, id).outcome == Stopped)
 ```

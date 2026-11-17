@@ -1,0 +1,73 @@
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { checkCatalog, CatalogMismatch } from "./billing/plans.vibe"
+import { cloudServer, listening, sweepsLayer } from "./http/server.vibe"
+import { deploymentLayer, Deployment, parseEnvironment, parseProfile, ProfileInvalid, requireSecrets, SecretMissing, type CloudEnvironment, type CloudProfile } from "./profile/profile.vibe"
+import { DatabaseIdentityMismatch, migrate, parseStoreLocation, storeLayer, StoreFailure, StoreLocationInvalid, type StoreLocation } from "./store/store.vibe"
+
+export { parseProfile }
+export type { CloudEnvironment, CloudProfile }
+
+export type StartFailure = ProfileInvalid | SecretMissing | CatalogMismatch | StoreFailure | StoreLocationInvalid | DatabaseIdentityMismatch | HttpServerError.ServeError
+
+export interface CloudLayerOptions {
+  readonly profile: CloudProfile
+  readonly environment: CloudEnvironment
+  readonly store: StoreLocation
+  readonly port: number
+  readonly host: string
+}
+
+const startupChecks = Layer.effectDiscard(effect {
+  const deployment = try Deployment
+  try requireSecrets()
+  try checkCatalog()
+  const now = try Clock.currentTimeMillis
+  const report = try migrate({ digest: deployment.settings.databaseIdentity, environment: deployment.environment, now })
+  if (report.applied.length > 0) try annotateLogs(logInfo("migrations applied"), { applied: report.applied.join(", ") })
+})
+
+export function cloudLayer(options: CloudLayerOptions) {
+  const platform = Layer.mergeAll(
+    deploymentLayer(options.profile, options.environment),
+    storeLayer(options.store),
+    FetchHttpClient.layer
+  )
+  const serving = Layer.mergeAll(cloudServer(), sweepsLayer()).pipe(Layer.provideMerge(startupChecks))
+  return serving.pipe(Layer.provideMerge(listening(options.port, options.host)), Layer.provideMerge(platform))
+}
+
+export interface StartOptions {
+  readonly profile: unknown
+  readonly environment: string
+  readonly store: string
+  readonly port?: number
+  readonly host?: string
+}
+
+export interface RunningCloud {
+  readonly url: string
+  close(): Promise<void>
+}
+
+export effect function prepare(options: StartOptions): CloudLayerOptions!(ProfileInvalid | StoreLocationInvalid) {
+  return {
+    profile: try parseProfile(options.profile),
+    environment: try parseEnvironment(options.environment),
+    store: try parseStoreLocation(options.store),
+    port: options.port ?? 0,
+    host: options.host ?? "127.0.0.1"
+  }
+}
+
+export error NotTcp { address: string }
+
+export async function startCloud(options: StartOptions): Promise<RunningCloud> {
+  const runtime = ManagedRuntime.make(cloudLayer(await runPromise(prepare(options))))
+  const address = await runtime.runPromise(effect { return (try HttpServer.HttpServer).address })
+  if (!("port" in address)) {
+    await runtime.dispose()
+    throw new NotTcp({ address: JSON.stringify(address) })
+  }
+  const host = address.hostname.includes(":") ? `[${address.hostname}]` : address.hostname
+  return { url: `http://${host}:${address.port}`, close: () => runtime.dispose() }
+}

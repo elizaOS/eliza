@@ -82,7 +82,7 @@ one already handed over.
 ```quint
 pure val commandTimeoutMs = 30000
 pure val maxPending = 16
-pure def canSend(s: Channel, connection: int, effect: bool): bool = isCurrent(s, connection) and s.pending.length() < maxPending
+pure def canSend(s: Channel, connection: int): bool = isCurrent(s, connection) and s.pending.length() < maxPending
 pure def send(s: Channel, connection: int, effect: bool): Channel = { ...s, pending: s.pending.append({ id: s.nextId, effect: effect, deadline: s.now + commandTimeoutMs }), nextId: s.nextId + 1 }
 pure def alwaysIdsAreFresh(s: Channel): bool = s.lastSequence >= 0 and s.lastSequence < s.nextId and s.pending.every(c => c.id >= 1 and c.id < s.nextId)
 ```
@@ -123,7 +123,8 @@ pure def sometimesTwoAwaitReplies(s: Channel): bool = s.pending.select(c => hand
 The page answers with a result or with an error code, which reaches the
 browser task unchanged. A reply for another connection, for a command not
 handed over or already settled, or after the deadline is refused as
-`STALE_REF` and settles nothing.
+`STALE_REF` and settles nothing; the deadline itself settles the command
+(next rule).
 
 ```quint
 pure val idValues = Set(1, 2, 3)

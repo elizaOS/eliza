@@ -1,0 +1,4 @@
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"
+import type { Area } from "../routes.vibe"
+
+export const area: Area = { routes: [], sweeps: [] }

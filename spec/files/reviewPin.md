@@ -3,11 +3,8 @@
 A change the owner approves to a file on the device applies to the exact
 file shown in the review. Per-row mutation and batches are
 [scoped Files operations](./reviewedOperations.md); claim, journal and
-retry belong to the device's [execution custody](../os/index.md),
-and the review contracts are [device reviews](../os/index.md).
-
-The linked OS contracts are being rebuilt. Their detailed models and execution
-evidence remain pending.
+retry are the agent's [device action custody](../agent/deviceActions/execution.md),
+and the review contracts are [device action operations](../agent/deviceActions/operations.md).
 
 ## Story: Change only the file I reviewed
 

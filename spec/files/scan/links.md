@@ -5,9 +5,6 @@ requests](../../os/index.md) govern the
 external-link bridge. This spec governs which exact URLs the current scan offers and when
 a click or completion can act on that review.
 
-The linked OS contracts are being rebuilt. Their detailed models and execution
-evidence remain pending.
-
 ## Story: Review links in my scanned text and open the one I choose
 
 > As the owner, I want links found in a scan to open only when I choose
