@@ -330,22 +330,6 @@ export const browserPlugin: HttpPlugin = {
   name: "@elizaos/plugin-browser",
   description: "Authenticated native device browser control",
   services: [BrowserService],
-  views: [
-    {
-      id: "browser",
-      label: "Browser",
-      path: "/browser",
-      modalities: ["gui"],
-      roleGate: { minRole: "OWNER" },
-      capabilities: [
-        {
-          id: "browser-command",
-          description: "Control the authenticated mounted native Browser",
-          authority: "agent",
-        },
-      ],
-    },
-  ],
   routes: [
     nativeDeviceBrowserRoute,
     nativeDeviceBrowserStatusRoute,
