@@ -217,7 +217,8 @@ export function parseDateExpr(expr: string, now: Date): Date | null {
     // "next week" prefix sits before the weekday match, so the regex only sees
     // a bare weekday and resolved it to this week's Friday. Same six-days-early
     // error as the "Friday next week" suffix form fixed in #36789.
-    if (/(?:^|[\s,])next\s+week(?:'s)?,?\s*$/.test(expr.slice(0, m.index)))
+    // Case-insensitive: members write "Next week Friday" at a sentence start.
+    if (/(?:^|[\s,])next\s+week(?:'s)?,?\s*$/i.test(expr.slice(0, m.index)))
       return nextWeekday(
         WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase()),
         today,
@@ -226,7 +227,8 @@ export function parseDateExpr(expr: string, now: Date): Date | null {
     // "Friday next week" names the Friday of the next calendar week. The bare
     // weekday branch resolved it to this week's Friday, ending the window six
     // days early; "next Friday" already resolved to that date.
-    if (/^,?\s+(?:of\s+)?next\s+week\b/.test(rest))
+    // Case-insensitive, same as the prefix form above ("Friday Next Week").
+    if (/^,?\s+(?:of\s+)?next\s+week\b/i.test(rest))
       return nextWeekday(
         WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase()),
         today,
