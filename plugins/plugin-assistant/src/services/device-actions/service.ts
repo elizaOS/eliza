@@ -81,6 +81,7 @@ import {
 } from "./calendar-update-continuation.ts";
 import {
   CAMERA_CAPTURE_CAPABILITY,
+  CAMERA_LENS_CAPABILITY,
   isCameraCapture,
   validateCameraCaptureResult,
 } from "./camera-contract.ts";
@@ -96,6 +97,7 @@ import {
 import {
   DeviceActionError,
   type DeviceActionPayload,
+  deviceOperationFormSupported,
   deviceOperationSupportedByCapabilities,
   exactKeys,
   identifier,
@@ -204,6 +206,7 @@ import {
   MESSAGES_READ_CAPABILITY,
   PHONE_CALL_CAPABILITY,
   SMS_COMPOSE_CAPABILITY,
+  SMS_COMPOSE_TARGET_CAPABILITY,
   selectedTelephonyView,
   smsComposeNotSubmitted,
   smsReplyNotDrafted,
@@ -1182,6 +1185,8 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   VOICEMAIL_DELETE_CAPABILITY,
   PHOTO_LIBRARY_CAPABILITY,
   PHOTOS_VIEW_CAPABILITY,
+  CAMERA_LENS_CAPABILITY,
+  SMS_COMPOSE_TARGET_CAPABILITY,
 ];
 export class DeviceActionService {
   constructor(private readonly runtime: IAgentRuntime) {}
@@ -2198,7 +2203,10 @@ export class DeviceActionService {
           "The original owner request did not admit Notes deletion",
         );
     }
-    if (!deviceOperationSupportedByCapabilities(validated.type, c.capabilities))
+    if (
+      !deviceOperationSupportedByCapabilities(validated.type, c.capabilities) ||
+      !deviceOperationFormSupported(validated, c.capabilities)
+    )
       throw new DeviceActionError("Device operation capability unavailable");
     if (
       isClockOperation(validated) &&
@@ -2877,6 +2885,12 @@ export class DeviceActionService {
           operation.type,
           c.capabilities,
         );
+        // A phone that did not negotiate this form cannot parse it.
+        if (
+          supported &&
+          !deviceOperationFormSupported(operation, c.capabilities)
+        )
+          return false;
         if (
           (isCameraCapture(operation) ||
             isNativeNotesQuery(operation) ||
@@ -2917,7 +2931,8 @@ export class DeviceActionService {
       !deviceOperationSupportedByCapabilities(
         payload.operation.type,
         c.capabilities,
-      )
+      ) ||
+      !deviceOperationFormSupported(payload.operation, c.capabilities)
     )
       throw new DeviceActionError("Device operation capability unavailable");
     if (
@@ -3107,6 +3122,8 @@ export class DeviceActionService {
         )
       )
         throw new DeviceActionError("Telephony capability unavailable");
+      if (!deviceOperationFormSupported(payload.operation, c.capabilities))
+        throw new DeviceActionError("Device operation capability unavailable");
       if (
         isCalendarOperation(payload.operation) &&
         !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
@@ -3507,6 +3524,8 @@ export class DeviceActionService {
         )
       )
         throw new DeviceActionError("Telephony capability unavailable");
+      if (!deviceOperationFormSupported(payload.operation, c.capabilities))
+        throw new DeviceActionError("Device operation capability unavailable");
       if (
         isCalendarOperation(payload.operation) &&
         !calendarCapabilityAvailable(payload.operation.type, c.capabilities)

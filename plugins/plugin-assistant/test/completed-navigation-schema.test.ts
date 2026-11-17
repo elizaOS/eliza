@@ -12,7 +12,10 @@ import {
   deviceActionForCapabilities,
   proposeDeviceAction,
 } from "../src/services/device-actions/action";
-import { validateDevicePayload } from "../src/services/device-actions/contract";
+import {
+  deviceOperationFormSupported,
+  validateDevicePayload,
+} from "../src/services/device-actions/contract";
 
 const metadata = {
   viewDelivery: "completed-action",
@@ -138,6 +141,59 @@ it("offers camera capture only when the device negotiated it", () => {
       operation: { type: "camera_capture_photo", upload: true },
     }),
   ).toThrow();
+});
+
+it("offers a camera lens and an SMS target only to a phone that negotiated them", () => {
+  const branches = (capabilities: string[], type: string) =>
+    deviceActionForCapabilities(proposeDeviceAction, capabilities)
+      .parameters!.find((p: any) => p.name === "operation")!
+      .schema.anyOf!.filter((b: any) => b.properties?.type?.enum?.[0] === type);
+  const base = ["camera.capture-photo.v1", "sms.compose.v1"];
+  const older = deviceActionForCapabilities(proposeDeviceAction, base);
+  expect(branches(base, "camera_capture_photo")).toHaveLength(1);
+  expect(
+    branches(base, "camera_capture_photo")[0].properties,
+  ).not.toHaveProperty("lens");
+  expect(branches(base, "sms_compose")).toHaveLength(1);
+  expect(branches(base, "sms_compose")[0].properties).toHaveProperty("query");
+  expect(older.description).toContain(
+    "first show the camera view with VIEWS in this same turn",
+  );
+  expect(older.description).not.toContain("camera.capture-lens.v1");
+  expect(older.description).not.toContain("sms.compose.v2");
+  const next = [...base, "camera.capture-lens.v1", "sms.compose.v2"];
+  const newer = deviceActionForCapabilities(proposeDeviceAction, next);
+  expect(branches(next, "camera_capture_photo")).toHaveLength(1);
+  expect(
+    branches(next, "camera_capture_photo")[0].properties!.lens.enum,
+  ).toEqual(["front", "back"]);
+  expect(branches(next, "sms_compose")).toHaveLength(1);
+  expect(branches(next, "sms_compose")[0].properties).toHaveProperty("target");
+  expect(branches(next, "sms_compose")[0].properties).toHaveProperty("draft");
+  expect(newer.description).toContain("front for a selfie");
+  expect(newer.description).toContain("sms_compose {target, body}");
+  expect(newer.description).not.toContain("sms_compose {query, body}");
+  const payload = (operation: unknown) =>
+    validateDevicePayload({
+      action: "device_action",
+      version: 1,
+      installationId: "device",
+      enrollmentId: "enrollment",
+      operation,
+    }).operation;
+  const selfie = { type: "camera_capture_photo", lens: "front" };
+  expect(payload(selfie)).toEqual(selfie);
+  expect(() =>
+    payload({ type: "camera_capture_photo", lens: "wide" }),
+  ).toThrow();
+  expect(deviceOperationFormSupported(payload(selfie), base)).toBe(false);
+  expect(deviceOperationFormSupported(payload(selfie), next)).toBe(true);
+  expect(
+    deviceOperationFormSupported(
+      payload({ type: "camera_capture_photo" }),
+      base,
+    ),
+  ).toBe(true);
 });
 
 it("accepts the browser camera's 25-digit saved identity without numeric coercion", () => {

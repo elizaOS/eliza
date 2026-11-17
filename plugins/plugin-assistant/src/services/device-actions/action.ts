@@ -16,6 +16,7 @@ import {
   validateCalendarResult,
 } from "./calendar-contract.ts";
 import {
+  CAMERA_LENS_CAPABILITY,
   isCameraCapture,
   validateCameraCaptureResult,
 } from "./camera-contract.ts";
@@ -105,6 +106,7 @@ import {
   isTelephonyAction,
   isTelephonyActionType,
   isTelephonyRead,
+  SMS_COMPOSE_TARGET_CAPABILITY,
   telephonyActionResultText,
   validateTelephonyActionResult,
 } from "./telephony-actions-contract.ts";
@@ -853,6 +855,22 @@ const telephonyActionSchemas: ActionParameterSchema[] = [
       body: { type: "string" },
     },
   },
+  // Offered in place of the query form to a phone that negotiated sms.compose.v2.
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "target", "body"],
+    properties: {
+      type: { type: "string", enum: ["sms_compose"] },
+      target: phoneTargetSchema,
+      body: { type: "string" },
+      draft: {
+        type: "boolean",
+        description:
+          "true only puts the body into that conversation's text field. Nothing is sent.",
+      },
+    },
+  },
   {
     type: "object",
     additionalProperties: false,
@@ -877,11 +895,20 @@ const telephonyActionSchemas: ActionParameterSchema[] = [
 /** Proposal guidance by operation. A connection is told only about the operations its schema offers. */
 const PROPOSAL_GUIDANCE: ReadonlyArray<{
   types?: readonly string[];
+  /** Shown only with this negotiated capability. */
+  capability?: string;
+  /** Shown only without this negotiated capability. */
+  unlessCapability?: string;
   text: string;
 }> = [
   {
     types: ["camera_capture_photo"],
-    text: "camera_capture_photo takes one still image with the current camera and saves it in Photos. Requires camera.capture-photo.v1 and the visible Camera view. It sends no pixels to the model. A saved-photo receipt proves the capture; never repeat an uncertain capture automatically.",
+    text: "camera_capture_photo takes one still image with the current camera and saves it in Photos. Requires camera.capture-photo.v1 and the visible Camera view. When another view is showing, first show the camera view with VIEWS in this same turn, then propose camera_capture_photo as the last step; the phone takes the photo once Camera is showing. It sends no pixels to the model. A saved-photo receipt proves the capture; never repeat an uncertain capture automatically.",
+  },
+  {
+    types: ["camera_capture_photo"],
+    capability: CAMERA_LENS_CAPABILITY,
+    text: "With camera.capture-lens.v1, camera_capture_photo takes an optional lens: front for a selfie or a photo of the owner, back for the rear camera. Leave lens out to use the camera that is showing.",
   },
   {
     types: [
@@ -921,6 +948,12 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   },
   {
     types: ["sms_compose"],
+    capability: SMS_COMPOSE_TARGET_CAPABILITY,
+    text: "sms_compose {target, body} is a reviewed SMS to one recipient; requires sms.compose.v1 and sms.compose.v2. Use target {kind: contact, query: the contact name as the owner said it} or {kind: number, number: digits with optional leading +}; it works from any view and the phone chooses the SIM, so prefer it over sms_send. The phone resolves a contact locally and its number is never returned. The owner reviews the exact recipient and body on the unlocked phone. Add draft: true when the owner asks only to draft or write a message: the phone puts the body into that conversation's text field and sends nothing; drafted proves only that the draft is there. submitted proves submission only; sent is not delivery; only delivered establishes delivery. An unknown outcome must never be automatically retried.",
+  },
+  {
+    types: ["sms_compose"],
+    unlessCapability: SMS_COMPOSE_TARGET_CAPABILITY,
     text: "sms_compose {query, body} is a reviewed SMS to one contact named by text; requires sms.compose.v1. The phone resolves the name and the owner reviews the exact recipient and body on the unlocked phone. Use sms_send instead when the exact number is known. submitted proves submission only; sent is not delivery; only delivered establishes delivery. An unknown outcome must never be automatically retried.",
   },
   {
@@ -1023,6 +1056,21 @@ export const proposeDeviceAction: Action = {
             required: ["type"],
             properties: {
               type: { type: "string", enum: ["camera_capture_photo"] },
+            },
+          },
+          // Offered in place of the plain form to a phone that negotiated camera.capture-lens.v1.
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: {
+              type: { type: "string", enum: ["camera_capture_photo"] },
+              lens: {
+                type: "string",
+                enum: ["front", "back"],
+                description:
+                  "front for a selfie or a photo of the owner; back for the rear camera. Leave it out to use the camera that is showing.",
+              },
             },
           },
           {
@@ -1690,6 +1738,17 @@ export function deviceActionForCapabilities(
     )
       return false;
     const types = branch.properties?.type?.enum;
+    // Each of these operations has two forms; a phone is offered exactly one.
+    if (
+      capabilities !== undefined &&
+      ((types?.includes("camera_capture_photo") &&
+        Boolean(branch.properties?.lens) !==
+          capabilities.includes(CAMERA_LENS_CAPABILITY)) ||
+        (types?.includes("sms_compose") &&
+          Boolean(branch.properties?.target) !==
+            capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY)))
+    )
+      return false;
     if (!files && types?.some((type) => isFilesOperation({ type })))
       return false;
     const runtime = binding?.runtime ?? current?.runtime;
@@ -1770,7 +1829,11 @@ export function deviceActionForCapabilities(
   );
   const guidance = PROPOSAL_GUIDANCE.filter(
     (fragment) =>
-      !fragment.types || fragment.types.some((type) => types.has(type)),
+      (!fragment.types || fragment.types.some((type) => types.has(type))) &&
+      (!fragment.capability ||
+        capabilities?.includes(fragment.capability) === true) &&
+      (!fragment.unlessCapability ||
+        capabilities?.includes(fragment.unlessCapability) !== true),
   )
     .map((fragment) => fragment.text)
     .join(" ");

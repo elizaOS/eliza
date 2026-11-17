@@ -21,6 +21,11 @@
  * send as `sms.send.v1`. Under the same capability, `sms_reply_selected` puts
  * a draft into the text field of the conversation the owner has open. It names
  * no recipient and never sends: the owner edits it and taps Send.
+ * A phone that also negotiates `sms.compose.v2` accepts `sms_compose` with a
+ * `target`, like `phone_call`: a contact name or an exact number. The phone
+ * chooses the SIM, so a number can be texted from any view. With `draft: true`
+ * the phone only puts the body into that recipient's conversation text field;
+ * it never sends.
  *
  * `messages.read.v1` and `voicemail.read.v1` return what the owner has open in
  * front: the visible tail of one thread, or one voicemail's transcript. They
@@ -38,6 +43,8 @@ import {
 export const PHONE_CALL_CAPABILITY = "phone.call.v1";
 export const CONTACT_WRITE_CAPABILITY = "contacts.write.v1";
 export const SMS_COMPOSE_CAPABILITY = "sms.compose.v1";
+/** `sms_compose` with a `target` (a contact or a number) and the draft-only form. */
+export const SMS_COMPOSE_TARGET_CAPABILITY = "sms.compose.v2";
 export const MESSAGES_READ_CAPABILITY = "messages.read.v1";
 export const VOICEMAIL_READ_CAPABILITY = "voicemail.read.v1";
 export const VOICEMAIL_DELETE_CAPABILITY = "voicemail.delete.v1";
@@ -375,12 +382,20 @@ export function contactWriteResultText(result: ContactWriteResult): string {
 
 // ---- sms.compose.v1 --------------------------------------------------------
 
-/** A reviewed SMS to one contact named by search text. A known number uses `sms_send`. */
-export type SmsComposeOperation = {
-  type: "sms_compose";
-  query: string;
-  body: string;
-};
+/**
+ * A reviewed SMS to one recipient. The `query` form names a contact by search
+ * text and needs only `sms.compose.v1`. The `target` form names a contact or
+ * an exact number and needs `sms.compose.v2` as well. `draft: true` asks the
+ * phone to put the body into that recipient's conversation and send nothing.
+ */
+export type SmsComposeOperation =
+  | { type: "sms_compose"; query: string; body: string }
+  | {
+      type: "sms_compose";
+      target: PhoneDialTarget;
+      body: string;
+      draft?: true;
+    };
 export type SmsComposeStatus =
   | "drafted"
   | "submitted"
@@ -423,14 +438,49 @@ function body(value: unknown): string {
 }
 export function validateSmsCompose(value: unknown): SmsComposeOperation {
   const v = record(value, "message");
-  exact(v, ["type", "query", "body"], "message");
   if (v.type !== "sms_compose") throw Error("Invalid message");
+  if (!Object.hasOwn(v, "target")) {
+    exact(v, ["type", "query", "body"], "message");
+    const text = body(v.body);
+    return {
+      type: "sms_compose",
+      query: validateContactLookupQuery(v.query),
+      body: text,
+    };
+  }
+  exact(
+    v,
+    ["type", "target", "body", ...(Object.hasOwn(v, "draft") ? ["draft"] : [])],
+    "message",
+  );
+  if (Object.hasOwn(v, "draft") && typeof v.draft !== "boolean")
+    throw Error("Invalid message");
   const text = body(v.body);
   return {
     type: "sms_compose",
-    query: validateContactLookupQuery(v.query),
+    target: target(v.target, "message"),
     body: text,
+    ...(v.draft === true ? { draft: true as const } : {}),
   };
+}
+/** The recipient of either form; a `query` is a contact target. */
+export function smsComposeTarget(
+  operation: SmsComposeOperation,
+): PhoneDialTarget {
+  return "target" in operation
+    ? operation.target
+    : { kind: "contact", query: operation.query };
+}
+/** The `target` form is never sent to a phone that did not negotiate `sms.compose.v2`. */
+export function smsComposeCapabilityAvailable(
+  operation: SmsComposeOperation,
+  capabilities: readonly string[] | undefined,
+): boolean {
+  return (
+    capabilities?.includes(SMS_COMPOSE_CAPABILITY) === true &&
+    (!("target" in operation) ||
+      capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY))
+  );
 }
 export function validateSmsComposeResult(value: unknown): SmsComposeResult {
   const v = record(value, "message result");
@@ -443,8 +493,9 @@ export function validateSmsComposeResult(value: unknown): SmsComposeResult {
 }
 /**
  * `unknown` is not a failure and is never retried: the radio may have taken the
- * message. `drafted`: the contact's conversation was already open, so the body
- * went into its text field instead of a review; nothing was sent.
+ * message. `drafted`: the body went into the recipient's conversation text
+ * field, because that conversation was already open or the request was
+ * `draft: true`; nothing was sent.
  */
 export function smsComposeReceiptOutcome(
   result: SmsComposeResult,

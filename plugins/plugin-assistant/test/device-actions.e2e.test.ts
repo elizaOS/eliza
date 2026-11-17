@@ -2002,6 +2002,8 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "phone.call.v1",
           "contacts.write.v1",
           "sms.compose.v1",
+          "sms.compose.v2",
+          "camera.capture-lens.v1",
           "messages.read.v1",
           "voicemail.read.v1",
           "voicemail.delete.v1",
@@ -5891,6 +5893,27 @@ test("camera capture receipts bind a saved photo to one claimed operation withou
         "Take a photo",
       ),
     ).rejects.toThrow("capability");
+    // A lens is a negotiated extension: never sent to a phone without it.
+    const selfie = { type: "camera_capture_photo", lens: "front" };
+    await expect(
+      service.propose(credential, selfie, "selfie-no-lens", "Take a selfie"),
+    ).rejects.toThrow("capability");
+    expect(
+      (
+        await service.propose(
+          {
+            ...credential,
+            capabilities: [
+              ...credential.capabilities,
+              "camera.capture-lens.v1",
+            ],
+          },
+          selfie,
+          "selfie",
+          "Take a selfie",
+        )
+      ).payload,
+    ).toMatchObject({ operation: selfie });
     const proposal = await service.propose(
       credential,
       { type: "camera_capture_photo" },

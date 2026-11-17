@@ -71,9 +71,9 @@ import {
   validateCalendarResult,
 } from "./calendar-contract.ts";
 import {
-  CAMERA_CAPTURE_CAPABILITY,
   type CameraCaptureOperation,
   type CameraCaptureResult,
+  cameraCaptureCapabilityAvailable,
   isCameraCapture,
   validateCameraCapture,
   validateCameraCaptureResult,
@@ -177,6 +177,8 @@ import {
   isTelephonyAction,
   isTelephonyRead,
   selectedTelephonyView,
+  smsComposeCapabilityAvailable,
+  smsComposeTarget,
   type TelephonyActionOperation,
   type TelephonyActionResult,
   telephonyActionCapabilityAvailable,
@@ -1346,7 +1348,10 @@ export class DeviceActionCoordinator<
         payload.operation,
         this.profile.operations,
       );
-    if (isCameraCapture(op) && !this.capability(CAMERA_CAPTURE_CAPABILITY))
+    if (
+      isCameraCapture(op) &&
+      !cameraCaptureCapabilityAvailable(op, this.credential.capabilities)
+    )
       throw Error("Camera capture was not negotiated with this agent");
     if (
       isPhoneDial(op) &&
@@ -1355,7 +1360,12 @@ export class DeviceActionCoordinator<
       throw Error("Dialing was not negotiated with this phone");
     if (
       isTelephonyAction(op) &&
-      !telephonyActionCapabilityAvailable(op.type, this.credential.capabilities)
+      (!telephonyActionCapabilityAvailable(
+        op.type,
+        this.credential.capabilities,
+      ) ||
+        (isSmsCompose(op) &&
+          !smsComposeCapabilityAvailable(op, this.credential.capabilities)))
     )
       throw Error("This telephony action was not negotiated with this phone");
     if (isSmsSend(op) && !this.capability(SMS_SEND_CAPABILITY))
@@ -1563,8 +1573,7 @@ export class DeviceActionCoordinator<
       return {
         ...base,
         title: "Take photo",
-        description:
-          "Use the current camera and save one photo in Photos. The photo stays on this device.",
+        description: `Use the ${op.lens ?? "current"} camera and save one photo in Photos. The photo stays on this device.`,
       };
     if (isLibraryOperation(op))
       return { ...base, ...describeLibraryOperation(op, this.profile.appName) };
@@ -3669,11 +3678,22 @@ function describeTelephonyAction(operation: TelephonyActionOperation): {
         title: "Delete contact",
         description: `Contact: ${operation.query}\n\nDeletes this contact from your phone after you confirm.`,
       };
-    case "sms_compose":
-      return {
-        title: "Review SMS",
-        description: `To contact: ${operation.query}\n\n${operation.body}\n\nConfirm the recipient again in Android.`,
-      };
+    case "sms_compose": {
+      const target = smsComposeTarget(operation);
+      const to =
+        target.kind === "number"
+          ? `To: ${target.number}`
+          : `To contact: ${target.query}`;
+      return "draft" in operation
+        ? {
+            title: "Draft SMS",
+            description: `${to}\n\n${operation.body}\n\nPuts this in that conversation's text field. Nothing is sent until you tap Send there.`,
+          }
+        : {
+            title: "Review SMS",
+            description: `${to}\n\n${operation.body}\n\nConfirm the recipient again in Android.`,
+          };
+    }
     case "sms_reply_selected":
       return {
         title: "Draft reply",

@@ -16,6 +16,8 @@ import {
 import {
   CAMERA_CAPTURE_CAPABILITY,
   type CameraCaptureOperation,
+  cameraCaptureCapabilityAvailable,
+  isCameraCapture,
   validateCameraCapture,
 } from "./camera-contract.ts";
 import {
@@ -73,7 +75,9 @@ import {
   validateSmsSend,
 } from "./sms-contract.ts";
 import {
+  isSmsCompose,
   isTelephonyActionType,
+  smsComposeCapabilityAvailable,
   type TelephonyActionOperation,
   telephonyActionCapabilityAvailable,
   validateTelephonyAction,
@@ -207,6 +211,21 @@ export function deviceOperationSupportedByCapabilities(
         capability === CLOCK_REPEAT_CAPABILITY,
     );
   return !clockOnly;
+}
+/**
+ * An optional form of an operation needs its own negotiated capability: a
+ * requested camera lens, or an SMS `target`. It is never sent to a phone that
+ * did not advertise it.
+ */
+export function deviceOperationFormSupported(
+  operation: DeviceOperation,
+  capabilities?: readonly string[],
+): boolean {
+  if (isCameraCapture(operation))
+    return cameraCaptureCapabilityAvailable(operation, capabilities);
+  if (isSmsCompose(operation))
+    return smsComposeCapabilityAvailable(operation, capabilities);
+  return true;
 }
 export type DeviceActionPayload = {
   action: "device_action";

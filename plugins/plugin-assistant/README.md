@@ -203,6 +203,12 @@ effect receipt proves submission only. Unknown and partial failures require
 reconciliation; they do not permit automatic retry. This contract does not
 implement MMS, native transport, SIM qualification or device delivery evidence.
 
+A phone that also negotiates `sms.compose.v2` receives `sms_compose` with a
+`target`: a contact name or an exact number. The phone chooses the SIM, so a
+number can be texted from any view. `draft: true` puts the text into that
+conversation's text field and sends nothing. A phone without telephony
+capabilities is told to say that calls and texts are not available.
+
 ## Requested Camera capture
 
 The `camera.capture-photo.v1` device capability adds `camera_capture_photo`.
@@ -215,7 +221,9 @@ A request from Home uses the existing verified view handoff before capture.
 The current user message, device, foreground view and action preference must
 still match. A prior or uncertain request is not replayed. Camera permissions
 remain controlled by the device. Clients without this capability do not receive
-the operation in their tool schema.
+the operation in their tool schema. A device that also negotiates
+`camera.capture-lens.v1` can receive `lens: "front"` or `lens: "back"`; without
+it the phone uses the camera that is showing.
 
 ## Current-request Gmail policy
 

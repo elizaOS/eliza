@@ -11,8 +11,11 @@ import {
   phoneCallReceiptOutcome,
   phoneCallResultText,
   SMS_COMPOSE_CAPABILITY,
+  SMS_COMPOSE_TARGET_CAPABILITY,
+  smsComposeCapabilityAvailable,
   smsComposeReceiptOutcome,
   smsComposeResultText,
+  smsComposeTarget,
   smsReplyReceiptOutcome,
   smsReplyResultText,
   TELEPHONY_ACTION_OPERATION_TYPES,
@@ -319,6 +322,62 @@ test("a contact SMS names a contact by text and keeps an unknown outcome unknown
     { kind: "sms-compose" },
   ])
     assert.throws(() => validateSmsComposeResult(bad), REJECTED);
+});
+
+test("a targeted SMS names a number or a contact and needs its own capability", () => {
+  const toNumber = {
+    type: "sms_compose",
+    target: { kind: "number", number: "+15555550123" },
+    body: "Running late.",
+  };
+  const draft = {
+    type: "sms_compose",
+    target: { kind: "contact", query: "Ada" },
+    body: "Running late.",
+    draft: true,
+  };
+  assert.deepEqual(validateSmsCompose(toNumber), toNumber);
+  assert.deepEqual(validateSmsCompose(draft), draft);
+  // A send is the default; an explicit false is the same request.
+  assert.deepEqual(validateSmsCompose({ ...toNumber, draft: false }), toNumber);
+  assert.deepEqual(smsComposeTarget(validateSmsCompose(toNumber)), {
+    kind: "number",
+    number: "+15555550123",
+  });
+  assert.deepEqual(
+    smsComposeTarget(
+      validateSmsCompose({ type: "sms_compose", query: "Ada", body: "hi" }),
+    ),
+    { kind: "contact", query: "Ada" },
+  );
+  for (const bad of [
+    { ...toNumber, query: "Ada" },
+    { ...toNumber, draft: "yes" },
+    { ...toNumber, subscriptionId: 1 },
+    { ...toNumber, target: { kind: "number", number: "555-0100" } },
+    { ...toNumber, target: { kind: "number", number: "5", query: "Ada" } },
+    { ...toNumber, target: { kind: "thread", id: "4" } },
+    { type: "sms_compose", query: "Ada", body: "hi", draft: true },
+  ])
+    assert.throws(() => validateSmsCompose(bad), REJECTED);
+  const v1 = [SMS_COMPOSE_CAPABILITY];
+  const v2 = [SMS_COMPOSE_CAPABILITY, SMS_COMPOSE_TARGET_CAPABILITY];
+  const byQuery = validateSmsCompose({
+    type: "sms_compose",
+    query: "Ada",
+    body: "hi",
+  });
+  assert.equal(smsComposeCapabilityAvailable(byQuery, v1), true);
+  assert.equal(smsComposeCapabilityAvailable(byQuery, v2), true);
+  for (const operation of [toNumber, draft].map(validateSmsCompose)) {
+    assert.equal(smsComposeCapabilityAvailable(operation, v1), false);
+    assert.equal(smsComposeCapabilityAvailable(operation, v2), true);
+    assert.equal(
+      smsComposeCapabilityAvailable(operation, [SMS_COMPOSE_TARGET_CAPABILITY]),
+      false,
+    );
+    assert.equal(smsComposeCapabilityAvailable(operation, undefined), false);
+  }
 });
 
 test("a reply draft names no recipient and is placed or not, never sent", () => {
