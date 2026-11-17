@@ -75,3 +75,21 @@ pure def semaphoreProgressEnabled(s: SemaphoreState): bool = s.holders.exists(ca
 pure def alwaysSemaphoreDeadlockFree(s: SemaphoreState): bool = semaphoreQuiescent(s) or semaphoreProgressEnabled(s)
 pure def alwaysConfiguredSemaphoreHasCapacity(s: SemaphoreState): bool = (s.configured iff s.capacity > 0) and (not(s.configured) implies s.waiters.length() == 0 and s.holders.size() == 0)
 ```
+
+### Queue tickets and cancellation observations retain their allocation history
+
+Discovered by the proof: an empty queue otherwise permits a zero next ticket or a historical grant beyond the allocator, and a queued cancellation otherwise need not have an observed abort. Tickets start positive, every recorded grant precedes the next ticket, and a queued cancellation records an already observed abort.
+
+```quint
+pure def alwaysTicketAllocatorPositive(s: SemaphoreState): bool = s.nextTicket > 0
+pure def alwaysGrantsPrecedeNextTicket(s: SemaphoreState): bool = s.granted.every(g => g.ticket < s.nextTicket)
+pure def alwaysQueuedAbortWasObserved(s: SemaphoreState): bool = s.queuedAbort.subseteq(s.aborted)
+```
+
+### Each permit owner occurs once in the set representation
+
+Discovered by the proof: duplicate entries in a generated holder array would count one caller twice and let one release remove two counted permits. A holder set contains each caller once, as required by the set type and by fresh admission.
+
+```quint
+pure def alwaysPermitOwnersUnique(s: SemaphoreState): bool = s.holders.forall(owner => s.holders.filter(other => other == owner).size() == 1)
+```
