@@ -10,7 +10,10 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { getCompleteConversationMemories } from "./conversation-message-service.ts";
+import {
+  getCompleteConversationMemories,
+  readStoredMessageText,
+} from "./conversation-message-service.ts";
 
 export async function conversationForkSnapshot(
   runtime: AgentRuntime,
@@ -18,6 +21,7 @@ export async function conversationForkSnapshot(
   messageId: string,
   targetRoomId: UUID,
   sourceConversationId: string,
+  expectedText: string,
 ) {
   const all = await getCompleteConversationMemories(runtime, roomId);
   const boundary = all.findIndex((row) => row.id === messageId);
@@ -29,6 +33,16 @@ export async function conversationForkSnapshot(
     throw Object.assign(new Error("Editable message not found"), {
       status: 404,
     });
+  if (
+    (await readStoredMessageText(
+      runtime,
+      all[boundary] as Memory & { id: UUID },
+    )) !== expectedText
+  )
+    throw Object.assign(
+      new Error("The selected message changed. Reload before editing."),
+      { status: 409 },
+    );
   const prefix = all.slice(0, boundary);
   const ids = new Map(
     prefix.map((row) => [

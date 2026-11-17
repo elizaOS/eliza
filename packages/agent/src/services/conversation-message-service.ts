@@ -307,7 +307,7 @@ function storedPrefixForSpokenText(
  * The complete stored text of a message. Text over the inline limit lives in
  * content segments; read them page by page at one revision.
  */
-async function readStoredMessageText(
+export async function readStoredMessageText(
   runtime: AgentRuntime,
   memory: Memory & { id: UUID },
 ): Promise<string> {

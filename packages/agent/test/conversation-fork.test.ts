@@ -182,11 +182,30 @@ it("forks before an edited user message and preserves the original after restart
       state,
       "POST",
       `/api/conversations/${source.id}/fork`,
-      { messageId: randomUUID(), requestId: randomUUID() },
+      {
+        messageId: randomUUID(),
+        requestId: randomUUID(),
+        expectedText: "message 2",
+      },
     );
     expect(foreign.status).toBe(409);
+    const stale = await call(
+      state,
+      "POST",
+      `/api/conversations/${source.id}/fork`,
+      {
+        messageId: ids[2],
+        requestId: randomUUID(),
+        expectedText: "different text",
+      },
+    );
+    expect(stale.status).toBe(409);
     const initialCount = state.conversations.size;
-    const interruptedRequest = { messageId: ids[2], requestId: randomUUID() };
+    const interruptedRequest = {
+      messageId: ids[2],
+      requestId: randomUUID(),
+      expectedText: "message 2",
+    };
     const failure = vi
       .spyOn(runtime, "createMemories")
       .mockRejectedValueOnce(new Error("Interrupted branch copy"));
@@ -211,7 +230,11 @@ it("forks before an edited user message and preserves the original after restart
     const repairedId = (repaired.payload as { conversation: { id: string } })
       .conversation.id;
     expect(state.conversations.has(repairedId)).toBe(true);
-    const request = { messageId: ids[2], requestId: randomUUID() };
+    const request = {
+      messageId: ids[2],
+      requestId: randomUUID(),
+      expectedText: "message 2",
+    };
     const response = await call(
       state,
       "POST",

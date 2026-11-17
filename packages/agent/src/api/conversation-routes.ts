@@ -4539,7 +4539,7 @@ async function forkConversation(
     error(res, "A message and request UUID are required", 400);
     return true;
   }
-  const { messageId, requestId } = parsed.data;
+  const { messageId, requestId, expectedText } = parsed.data;
   const caller = resolveConversationCaller(
     req,
     state,
@@ -4603,6 +4603,7 @@ async function forkConversation(
       messageId,
       roomId,
       source.id,
+      expectedText,
     );
     const metadata = {
       ...source.metadata,
