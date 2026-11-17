@@ -17,7 +17,6 @@ it("does not reload the recent window when the older-page cursor is the epoch", 
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: join(directory, "config.json"),
     ELIZA_PERSIST_CONFIG_PATH: join(directory, "config.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: "",
     ELIZA_REQUIRE_LOCAL_AUTH: "0",
   }))

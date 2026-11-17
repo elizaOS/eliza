@@ -12,12 +12,15 @@ import {
   getBaseURL,
   getImageDescriptionModel,
   getImageGenerationModel,
+  getNativeApplicationSlot,
   getSetting,
+  nativeApplicationOperationHeaders,
   resolveCloudTimeoutMs,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { parseImageDescriptionResponse } from "../utils/helpers";
 import { createElizaCloudClient } from "../utils/sdk-client";
+import { nativeFundingFailure } from "../utils/native-funding";
 
 export async function handleImageGeneration(
   runtime: IAgentRuntime,
@@ -147,6 +150,8 @@ export async function handleImageDescription(
   ];
 
   const client = createElizaCloudClient(runtime);
+  const selectedFundingSlot = getNativeApplicationSlot(runtime);
+  const operationHeaders = nativeApplicationOperationHeaders(runtime);
 
   try {
     const requestBody: Record<string, unknown> = {
@@ -169,6 +174,7 @@ export async function handleImageDescription(
       signal?.throwIfAborted();
       const attemptResponse = await client.routes.postApiV1ChatCompletionsRaw({
         json: requestBody,
+        headers: operationHeaders,
         signal,
         timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_IMAGE_TIMEOUT_MS", 120_000),
       });
@@ -332,6 +338,9 @@ export async function handleImageDescription(
     // error-policy:J2 Preserve typed provider failures for the caller's boundary.
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(`Error analyzing image (failing closed): ${message}`);
-    throw error instanceof Error ? error : new Error(message);
+    throw nativeFundingFailure(
+      selectedFundingSlot,
+      error instanceof Error ? error : new Error(message),
+    );
   }
 }

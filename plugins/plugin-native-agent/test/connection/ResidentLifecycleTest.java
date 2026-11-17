@@ -288,8 +288,10 @@ public final class ResidentLifecycleTest {
     // Unbound launch: every provider credential and selector removed.
     Map<String, String> unbound = new HashMap<>();
     for (String name : NativeProviderSlot.PROVIDER_ENVIRONMENT) unbound.put(name, "stale");
+    unbound.put("ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL", "previous-cloud-vision");
     unbound.put("PATH", "/system/bin");
     NativeProviderSlot.applyUnboundEnvironment(unbound);
+    check(!unbound.containsKey("ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL"), "unbound removes the previous Cloud image model");
     for (String name : NativeProviderSlot.PROVIDER_ENVIRONMENT)
       check(!unbound.containsKey(name) || "false".equals(unbound.get(name)), "unbound removes " + name);
     check("false".equals(unbound.get("ELIZAOS_CLOUD_USE_INFERENCE")) && "true".equals(unbound.get("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) && "/system/bin".equals(unbound.get("PATH")), "unbound selectors");

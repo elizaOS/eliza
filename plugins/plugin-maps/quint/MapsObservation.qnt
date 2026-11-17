@@ -111,3 +111,30 @@ module MapsResultCamera {
   run clearedPinsCanReturnTest = init.then(update(1, 0)).then(update(0, 0)).then(update(1, 0)).expect(s.fits == (if (s.worldwide) 2 else 0))
   run closeRetiresCameraTest = init.then(close).then(render).expect(not(s.live) and s.fits == 0)
 }
+
+// One initial provider discovery and its deferred visible search continuation.
+module MapsInitialSearch {
+  var s: { live: bool, provider: bool, query: int, queued: int, waiting: bool, started: int }
+  action init = s' = { live: true, provider: false, query: 1, queued: 0, waiting: true, started: 0 }
+  action activate = all { not(s.provider),
+    s' = { ...s, provider: true, queued: if (s.waiting) s.query else 0 } }
+  action replace = all { s.live, s.query == 1,
+    s' = { ...s, query: 2, waiting: false, started: 0 } }
+  action leave = s' = { ...s, live: false, waiting: false }
+  action resume = all { s.queued > 0,
+    s' = if (s.live and s.provider and s.waiting and s.query == s.queued)
+      { ...s, queued: 0, waiting: false, started: s.query }
+      else { ...s, queued: 0 } }
+  action discoveryFailed = all { s.queued > 0, s' = { ...s, queued: 0, waiting: false } }
+  action typeOnly = s' = { ...s, waiting: false }
+  action step = any { activate, replace, leave, resume, discoveryFailed, s' = s }
+  val CurrentVisibleSearchOnly = s.started > 0 implies
+    (s.started == s.query and s.provider)
+  temporal ContinuationSettles = (s.queued > 0).leadsTo(s.queued == 0)
+  temporal FairContinuationSettles = resume.weakFair(s) implies ContinuationSettles
+  run typedTextDoesNotSubmitTest = init.then(typeOnly).then(activate).expect(s.queued == 0 and s.started == 0)
+  run failedDiscoveryDoesNotSubmitTest = init.then(activate).then(discoveryFailed).expect(s.started == 0)
+  run initialVisibleSearchResumesTest = init.then(activate).then(resume).expect(s.started == 1)
+  run replacedQueryDoesNotResumeTest = init.then(activate).then(replace).then(resume).expect(s.started == 0)
+  run hiddenSearchDoesNotResumeTest = init.then(activate).then(leave).then(resume).expect(s.started == 0)
+}

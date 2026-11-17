@@ -95,7 +95,11 @@ export function useContinuousVoiceSession(
   const stop = useCallback(async () => {
     // A stop during bring-up (connecting, not yet live) must cancel the pending
     // realtime lifecycle, not pause the (already disabled) batch path.
-    if (realtime.active || realtime.connecting) {
+    if (
+      realtime.active ||
+      realtime.connecting ||
+      realtime.error?.kind === "release"
+    ) {
       await realtime.stop();
       return;
     }

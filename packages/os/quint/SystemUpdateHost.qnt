@@ -2,12 +2,14 @@
 module SystemUpdateHost {
   type State = {phase: str, active: bool, eligible: bool, stopped: bool,
     verified: bool, checked: bool, storageReady: bool, scratch: str, writing: bool,
-    applyCalls: int, reboots: int, offerHold: str}
+    applyCalls: int, reboots: int, offerHold: str,
+    viewOpen: bool, viewGeneration: int, viewStage: str, viewPercent: int}
   var s: State
   pure def initial(storageReady: bool): State = {
     phase: "idle", active: false, eligible: true, stopped: false,
     verified: false, checked: false, storageReady: storageReady, scratch: "none",
-    writing: false, applyCalls: 0, reboots: 0, offerHold: "none"
+    writing: false, applyCalls: 0, reboots: 0, offerHold: "none",
+    viewOpen: false, viewGeneration: 0, viewStage: "", viewPercent: -1
   }
   action init = s' = initial(true)
   action storageBlockedInit = s' = initial(false)
@@ -31,6 +33,8 @@ module SystemUpdateHost {
     s' = {...s, active: false, scratch: "none", writing: false}}
   action reject = all {checkingUnapplied, s' = {...s, phase: "failed", active: false,
     scratch: if (s.writing) "none" else s.scratch, writing: false}}
+  action replaceRejected = all {not(s.active), s.phase == "failed", s.applyCalls == 0,
+    s' = {...s, phase: "idle", verified: false}}
   action apply = all {s.active, not(s.stopped), s.eligible, s.phase == "verified", s.checked,
     s' = {...s, phase: "applying", applyCalls: s.applyCalls + 1}}
   action callback = all {s.phase == "applying", s' = {...s, phase: "ready", active: false}}
@@ -55,18 +59,33 @@ module SystemUpdateHost {
   action conditions(eligible: bool): bool = s' = {...s, eligible: eligible}
   action storage(ready: bool): bool = all {s.storageReady != ready,
     s' = {...s, storageReady: ready}}
+  action openView = all {not(s.viewOpen), s.viewGeneration < 3,
+    s' = {...s, viewOpen: true, viewGeneration: s.viewGeneration + 1}}
+  action closeView = all {s.viewOpen,
+    s' = {...s, viewOpen: false, viewStage: "", viewPercent: -1}}
+  action observeView(generation: int, stage: str, percent: int): bool = all {
+    s.viewOpen, generation == s.viewGeneration,
+    stage.in(Set("installing", "verifying", "finishing")), percent >= 0, percent <= 100,
+    s' = {...s, viewStage: stage, viewPercent: percent}}
+  action staleObservation(generation: int): bool = all {
+    not(s.viewOpen) or generation != s.viewGeneration, s' = s}
   action stutter = s' = s
-  action step = any {start, download, writeScratch, reclaimScratch, refuseScratch, verify, deferStorage, reject, apply, callback, failure,
+  action step = any {start, download, writeScratch, reclaimScratch, refuseScratch, verify, deferStorage, reject, replaceRejected, apply, callback, failure,
     checkHeld(true), checkHeld(false), holdOffer("no-offer"), holdOffer("different-offer"), holdOffer("offer-unavailable"),
-    holdEngine, reboot, observeTarget, stop, crash, conditions(true), conditions(false), storage(true), storage(false), stutter}
+    holdEngine, reboot, observeTarget, stop, crash, conditions(true), conditions(false), openView, closeView,
+    observeView(s.viewGeneration, "installing", 0), observeView(s.viewGeneration, "verifying", 50),
+    observeView(s.viewGeneration, "finishing", 100), staleObservation(0), storage(true), storage(false), stutter}
   action stableStep = any {start, download, reclaimScratch, verify, deferStorage, apply, callback, checkHeld(true), reboot, observeTarget,
     storage(true), stutter}
+  val ValidProgress = (s.viewPercent == -1 and s.viewStage == "")
+    or (s.viewOpen and s.viewPercent >= 0 and s.viewPercent <= 100
+      and s.viewStage.in(Set("installing", "verifying", "finishing")))
   val NoUnverifiedApply = (s.applyCalls == 0 or s.verified) and (s.phase != "applying" or s.checked)
   val NoReplay = s.applyCalls >= 0 and s.applyCalls <= 1 and s.reboots >= 0 and s.reboots <= 1
   val UnknownNeverActive = s.phase != "unknown" or not(s.active)
   val OfferHoldKeepsApplied = s.offerHold == "none" or
     (s.phase == "ready" and not(s.active) and not(s.checked) and s.applyCalls == 1 and s.reboots == 0)
-  val ScratchNeverApplied = (s.scratch != "owned" or s.phase.in(Set("downloading", "verified", "failed")))
+  val ScratchNeverApplied = (s.scratch != "owned" or s.phase.in(Set("idle", "downloading", "verified", "failed")))
     and (not(s.writing) or (checkingUnapplied and s.scratch == "owned"))
   temporal StableDeliveryWork = start.weakFair(s) and download.weakFair(s) and verify.weakFair(s)
     and deferStorage.weakFair(s) and apply.weakFair(s) and callback.weakFair(s)
@@ -77,10 +96,17 @@ module SystemUpdateHost {
     implies eventually(s.phase == "complete")
   temporal DeliveryWithoutScratchFairness = (storage(true).weakFair(s) and StableDeliveryWork)
     implies eventually(s.phase == "complete")
+  run progressIsReadOnlyAndRetiresTest = init.then(openView)
+    .then(observeView(1, "installing", 50)).expect(s.viewPercent == 50 and s.applyCalls == 0 and s.reboots == 0)
+    .then(closeView).then(staleObservation(1)).expect(s.viewPercent == -1 and ValidProgress)
+    .then(openView).then(staleObservation(1)).expect(s.viewStage == "" and s.applyCalls == 0)
   run stoppedDownloadResumesBeforeApplyTest = init.then(start).then(download).then(stop)
     .then(start).then(verify).then(apply).expect(s.applyCalls == 1 and NoUnverifiedApply and NoReplay)
   run rejectedPackageNoApplyTest = init.then(start).then(download).then(reject)
     .expect(s.applyCalls == 0 and NoUnverifiedApply and NoReplay)
+  run replacedRejectedPackageTest = init.then(start).then(download).then(reject)
+    .then(replaceRejected).then(start).then(download).then(verify).then(apply)
+    .expect(s.applyCalls == 1 and NoUnverifiedApply and NoReplay)
   run interruptedApplyStaysUnknownTest = init.then(start).then(download).then(verify).then(apply)
     .then(crash).expect(s.phase == "unknown" and s.applyCalls == 1 and UnknownNeverActive)
   run stoppedVerificationCannotApplyTest = init.then(start).then(download).then(verify).then(stop)

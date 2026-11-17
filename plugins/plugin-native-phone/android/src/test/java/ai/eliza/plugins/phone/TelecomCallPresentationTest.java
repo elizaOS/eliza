@@ -147,6 +147,32 @@ public class TelecomCallPresentationTest {
         }
     }
 
+    @Test public void ringingAlertsAndConnectedCallsUseTheQuietChannel() throws Exception {
+        CallOwner owner = Robolectric.buildService(CallOwner.class).create().get();
+        try {
+            NotificationManager manager = owner.getSystemService(NotificationManager.class);
+            Call call = activeCall();
+            ReflectionHelpers.setField(call, "mState", Call.STATE_RINGING);
+            owner.onCallAdded(call);
+            Notification ringing = manager.getActiveNotifications()[0].getNotification();
+            assertEquals("ownership-test", ringing.getChannelId());
+            assertEquals(NotificationManager.IMPORTANCE_HIGH,
+                manager.getNotificationChannel(ringing.getChannelId()).getImportance());
+
+            ReflectionHelpers.setField(call, "mState", Call.STATE_ACTIVE);
+            queueState(call);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            Notification connected = manager.getActiveNotifications()[0].getNotification();
+            assertEquals("ownership-test-ongoing", connected.getChannelId());
+            android.app.NotificationChannel quiet = manager.getNotificationChannel(connected.getChannelId());
+            assertEquals(NotificationManager.IMPORTANCE_LOW, quiet.getImportance());
+            org.junit.Assert.assertNull(quiet.getSound());
+            org.junit.Assert.assertFalse(quiet.shouldVibrate());
+        } finally {
+            owner.onDestroy();
+        }
+    }
+
     private static Call activeCall() throws Exception {
         // API 35's actual Call constructor initializes Android's callback registry.
         for (Constructor<?> constructor : Call.class.getDeclaredConstructors()) {

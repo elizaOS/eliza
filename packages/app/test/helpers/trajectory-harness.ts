@@ -147,13 +147,7 @@ export function isTrajectoryCaptureEnabled(
 function isTrajectoryMarkdownReviewEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  const raw = (
-    env.ELIZA_TRAJECTORY_REVIEW_MODE ??
-    env.ELIZA_TRAJECTORY_MARKDOWN ??
-    env.ELIZA_TRAJECTORY_MARKDOWN
-  )
-    ?.trim()
-    .toLowerCase();
+  const raw = env.ELIZA_TRAJECTORY_REVIEW_MODE?.trim().toLowerCase();
   return (
     raw === "1" ||
     raw === "true" ||

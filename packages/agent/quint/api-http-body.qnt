@@ -136,3 +136,42 @@ module api_http_body {
   run prematureCloseMasksRejectionTest = init.then(declaredTooLarge)
     .then(queueRejection).then(flush).then(legacyClose).expect(not(safety))
 }
+
+// IPC serializes a body before the legacy route reads its HTTP-shaped headers.
+// Explicit framing stays authoritative. Positive unframed bytes acquire a length.
+module ipc_body_framing {
+  var s: {bytes: int, supplied: str, header: str, prepared: bool, read: bool, seen: int}
+  action initCase(bytes: int, header: str): bool = s' = {
+    bytes: bytes, supplied: header, header: header, prepared: false, read: false, seen: 0
+  }
+  action init = {
+    nondet bytes = Set(0, 1, 2).oneOf()
+    nondet header = Set("none", "length", "zero", "chunked").oneOf()
+    initCase(bytes, header)
+  }
+  action prepare = all {
+    not(s.prepared),
+    s' = {...s, prepared: true,
+      header: if (s.bytes > 0 and s.supplied == "none") "length" else s.supplied}
+  }
+  action read = all {
+    s.prepared, not(s.read),
+    s' = {...s, read: true,
+      seen: if (s.header.in(Set("length", "chunked"))) s.bytes else 0}
+  }
+  action idle = s' = s
+  action step = any {prepare, read, idle}
+  val safety = all {
+    s.supplied != "none" implies s.header == s.supplied,
+    (s.prepared and s.bytes == 0 and s.supplied == "none") implies s.header == "none",
+    (s.read and s.bytes > 0 and s.supplied == "none") implies s.seen == s.bytes
+  }
+  temporal FairReadCompletes = (prepare.weakFair(s) and read.weakFair(s)) implies eventually(s.read)
+  temporal ReadCompletes = eventually(s.read)
+  run missingLengthPreservesBodyTest = initCase(2, "none").then(prepare).then(read)
+    .expect(safety and s.seen == 2)
+  run explicitEmptyRemainsEmptyTest = initCase(2, "zero").then(prepare).then(read)
+    .expect(safety and s.seen == 0)
+  run chunkedRemainsChunkedTest = initCase(2, "chunked").then(prepare).then(read)
+    .expect(safety and s.header == "chunked" and s.seen == 2)
+}

@@ -23,6 +23,7 @@ const required = new Set([
   "a duplicate credit-funded request is rejected before another reservation",
   "billable response is observed before a failed response body is buffered",
   "Google billing statuses settle observed costs through the real route",
+  "Google billing follows business results across HTTP status classes",
 ]);
 const names = new Set();
 for (const [index, spec] of [

@@ -70,7 +70,8 @@ public final class StreamingSpeechPlayback {
  private final Clock clock;
  private final Object lock=new Object();
  private Output output; // Guarded by lock.
- private float volume=1f; // Guarded by lock.
+ private float volume=1f; // Audio-focus gain. Guarded by lock.
+ private boolean outputMuted; // Owner control. Guarded by lock.
  private boolean started,terminal; // Guarded by lock.
  private int open=1; // Segments still being produced: the first, plus each extend(). Guarded by lock.
  private int extensions; // extend() calls so far; the writer compares it with what it has played. Guarded by lock.
@@ -148,7 +149,11 @@ public final class StreamingSpeechPlayback {
  }
  /** Audio focus: lower the volume while another sound may duck this speech, restore after. */
  public void duck(boolean ducked){
-  synchronized(lock){volume=ducked?SpeechAudioFocusPolicy.DUCK_VOLUME:1f;if(output!=null)output.setVolume(volume);}
+  synchronized(lock){volume=ducked?SpeechAudioFocusPolicy.DUCK_VOLUME:1f;if(output!=null)output.setVolume(outputMuted?0f:volume);}
+ }
+ /** Keep the track and its queued frames playing at zero gain while the owner mutes it. */
+ public void setOutputMuted(boolean muted){
+  synchronized(lock){outputMuted=muted;if(output!=null)output.setVolume(outputMuted?0f:volume);}
  }
  public boolean stopped(){return stopped;}
  public int queuedSamples(){return queue.queuedSamples();}
@@ -164,7 +169,7 @@ public final class StreamingSpeechPlayback {
   catch(Exception|Error unavailable){if(settle()){stopped=true;queue.close();listener.failed("output-unavailable");}return;}
   synchronized(lock){
    if(stopped||terminal){out.release();return;}
-   output=out;out.setVolume(volume);
+   output=out;out.setVolume(outputMuted?0f:volume);
   }
   long written=0,lastChunkAt=clock.nanos(),headNs=VoiceLatencyTrials.UNSET;
   int served=0; // Extensions whose audio was all taken from the queue.

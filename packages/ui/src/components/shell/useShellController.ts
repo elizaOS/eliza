@@ -2097,7 +2097,7 @@ export function useShellController(): ShellController {
     setHandsFree(false);
     handsFreeRef.current = false;
     if (captureRef.current) stopCapture();
-    void realtimeVoiceRef.current.stop();
+    void realtimeVoiceRef.current.stop().catch(() => {});
     voiceOutput.stopSpeaking();
   }, [stopCapture, voiceOutput.stopSpeaking]);
   const startRealtimeVoice = React.useCallback(async () => {
@@ -2138,7 +2138,8 @@ export function useShellController(): ShellController {
     if (authGateRef.current.gated) return;
     const outcome = await realtimeVoiceRef.current.start();
     if (!realtimeVoiceWantedRef.current) {
-      if (outcome.kind === "live") void realtimeVoiceRef.current.stop();
+      if (outcome.kind === "live")
+        void realtimeVoiceRef.current.stop().catch(() => {});
       return;
     }
     if (outcome.kind === "live") return;

@@ -335,8 +335,8 @@ it("identical captured/current event copies cannot bypass the range guard", asyn
   ).toBe(false);
 });
 
-it("keeps the current-time observation guard independent of Calendar event times", () => {
-  const { result } = evidence("agent");
+it("keeps the current-time observation guard independent of Calendar event times", async () => {
+  const { runtime, result, message, calls } = fixture();
   const providers = {
     CURRENT_TIME: {
       text: "Current time",
@@ -348,24 +348,39 @@ it("keeps the current-time observation guard independent of Calendar event times
       },
     },
   };
+  const args = {
+    providers,
+    currentScope: context(runtime.agentId),
+    actionResults: [result],
+    actions: [calendar],
+  };
+  for (const request of [
+    "What time is it?",
+    "What time is it right now?",
+    "What time is it now?",
+  ]) {
+    expect(
+      evaluatePlannedReplyEgress({ ...args, request, reply: "It's 4:32 PM." }),
+    ).toEqual({ verdict: "allow" });
+    expect(
+      evaluatePlannedReplyEgress({ ...args, request, reply: "It's 5:32 PM." }),
+    ).toEqual({ verdict: "reject", kind: "stated_time" });
+  }
   expect(
     evaluatePlannedReplyEgress({
-      reply: "It's 4:32 PM.",
-      request: "What time is it?",
-      providers,
-      currentScope: context("agent"),
-      actionResults: [result],
-      actions: [calendar],
+      ...args,
+      request: "What time is it now that the meeting has ended?",
+      reply: "It's 5:32 PM.",
     }),
   ).toEqual({ verdict: "allow" });
   expect(
-    evaluatePlannedReplyEgress({
+    await resolvePlannedReplyEgress({
+      runtime,
+      message: { ...message, content: { text: "What time is it now?" } },
       reply: "It's 5:32 PM.",
-      request: "What time is it?",
       providers,
-      currentScope: context("agent"),
       actionResults: [result],
-      actions: [calendar],
     }),
-  ).toEqual({ verdict: "reject", kind: "stated_time" });
+  ).toEqual({ text: "It's 4:32 PM PDT.", effectReceiptIds: [] });
+  expect(calls()).toBe(0);
 });

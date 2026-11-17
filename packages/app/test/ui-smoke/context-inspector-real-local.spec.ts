@@ -246,8 +246,8 @@ test.describe("real-local context inspector", () => {
     });
     await expect(page.getByText("Trajectory window 21–40")).toBeVisible();
 
-    const visibleText = await view.innerText();
-    assertCanariesAbsent("context inspector rendered view", visibleText);
+    const renderedText = (await view.textContent()) ?? "";
+    assertCanariesAbsent("context inspector rendered view", renderedText);
     assertCanariesAbsent(
       "direct context inspector response set",
       inspectorResponses.join("\n"),

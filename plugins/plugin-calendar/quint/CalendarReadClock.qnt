@@ -82,6 +82,46 @@ module CalendarCreateClock {
   val invariant = ContextClockIgnoresPlanner and RequestClockSelected and NoProjectionBeforeResolution and StoredClockMatchesRequest
 }
 
+// A January 5 create requested after that date in 2026. Date correction keeps
+// the extracted wall clock and duration. The existing past-start guard decides
+// whether to ask for confirmation before the persistence path can be entered.
+module CalendarStatedCreateDate {
+  type State = { leading: str, trailing: int, extracted: int,
+    phase: int, year: int, startMinute: int, endMinute: int, outcome: str }
+  var s: State
+  action begin(leading: str, trailing: int, extracted: int): bool = s' = {
+    leading: leading, trailing: trailing, extracted: extracted, phase: 0,
+    year: extracted, startMinute: 720, endMinute: 780, outcome: "pending" }
+  action init = {
+    nondet leading = Set("numeric", "next", "current", "none").oneOf()
+    nondet trailing = Set(0, 2028).oneOf()
+    nondet extracted = Set(2026, 2027, 2028).oneOf()
+    begin(leading, trailing, extracted)
+  }
+  val chosenYear = if (s.trailing != 0) s.trailing
+    else if (Set("numeric", "next").contains(s.leading)) 2027 else 2026
+  action correct = all { s.phase == 0,
+    s' = s.with("year", chosenYear).with("phase", 1) }
+  action settle = all { s.phase == 1,
+    s' = s.with("phase", 2)
+      .with("outcome", if (s.year == 2026) "ask" else "ready") }
+  action step = any { correct, settle, all { s.phase == 2, s' = s } }
+  val StatedYearHasPrecedence = s.phase == 0 or s.year == chosenYear
+  val WallClockAndDurationKept = s.startMinute == 720 and s.endMinute - s.startMinute == 60
+  val PastStartMustAsk = (s.phase == 2 and s.year == 2026) implies s.outcome == "ask"
+  val FutureStartReady = (s.phase == 2 and s.year > 2026) implies s.outcome == "ready"
+  run explicitYearPreservesFutureExtractionTest = begin("numeric", 0, 2027)
+    .then(correct).then(settle).expect(s.year == 2027 and s.outcome == "ready")
+  run nextYearCorrectsWrongExtractionTest = begin("next", 0, 2028)
+    .then(correct).then(settle).expect(s.year == 2027 and WallClockAndDurationKept)
+  run yearlessPastStillAsksTest = begin("none", 0, 2027)
+    .then(correct).then(settle).expect(s.year == 2026 and s.outcome == "ask")
+  run explicitCurrentYearStillAsksTest = begin("current", 0, 2027)
+    .then(correct).then(settle).expect(s.year == 2026 and s.outcome == "ask")
+  run trailingYearStillWinsTest = begin("next", 2028, 2027)
+    .then(correct).then(settle).expect(s.year == 2028 and s.outcome == "ready")
+}
+
 // Whole-second provider filtering for one selected canonical event. Identity and
 // owner checks are external facts; a query window never grants read authority.
 module SelectedCalendarSecondWindow {

@@ -595,3 +595,37 @@ it("grounds named deletion history from retained Trash without exposing unrelate
   expect(restored.data?.namedDeletedNotes).toBeUndefined();
   expect(restored.data?.namedNotes).toHaveLength(1);
 });
+
+it("names the device's folders and their notes only when the message shares the list", async () => {
+  const service = await serviceWithNotes(["Weekend packing\nSocks"]);
+  const runtime = await runtimeWith(service);
+  const note = service.listNotes()[0];
+  if (!note) throw new Error("Missing seeded note");
+  await service.updateNote(
+    note.id,
+    { format: { kind: "text", data: { folderId: "f-travel" } } },
+    service.snapshot().revision,
+  );
+  const plain = recallMessage(runtime, "Where is Weekend packing?");
+  const shared: Memory = {
+    ...plain,
+    content: {
+      ...plain.content,
+      metadata: {
+        notesFolders: [
+          { id: "f-travel", name: "Travel" },
+          { id: "f-work", name: "Work" },
+        ],
+      },
+    },
+  };
+  for (const provider of [notesProvider, namedNotesProvider]) {
+    const without = await provider.get(runtime, plain, EMPTY_STATE);
+    expect(without.text).not.toContain("Notes folders");
+    expect(without.text).not.toContain("f-travel");
+    const result = await provider.get(runtime, shared, EMPTY_STATE);
+    expect(result.text).toContain(`- ["Travel",["${note.id}"]]`);
+    expect(result.text).toContain('- ["Work",[]]');
+    expect(result.text).not.toContain("f-travel");
+  }
+});

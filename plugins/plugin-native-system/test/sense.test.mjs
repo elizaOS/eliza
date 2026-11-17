@@ -687,6 +687,33 @@ test("the shared mobile default preserves verified AOSP invocation without chang
 });
 
 test("chat-only stop requires an exact raw acknowledgement", async () => {
+  const absent = { available: false, reason: "not-installed" };
+  assert.deepEqual(parseListenerStatus(absent), absent);
+  assert.equal(
+    await stopSenseListenerForChatOnly({ turnOff: async () => absent }),
+    true,
+  );
+  // Absence confirms the chat-only policy, never a saved provider action.
+  assert.deepEqual(parseListenerStopReceipt(absent, "turnOff"), {
+    available: false,
+  });
+  for (const contradiction of [
+    { available: true },
+    { reason: "unavailable" },
+    { state: "LISTENING" },
+    { state: "OFF" },
+    { listening: true },
+    { listening: "false" },
+    { microphoneOpen: true },
+    { microphoneOpen: 0 },
+  ]) {
+    const receipt = { ...absent, ...contradiction };
+    assert.deepEqual(parseListenerStatus(receipt), { available: false });
+    assert.equal(
+      await stopSenseListenerForChatOnly({ turnOff: async () => receipt }),
+      false,
+    );
+  }
   const accepted = {
     available: true,
     saved: true,

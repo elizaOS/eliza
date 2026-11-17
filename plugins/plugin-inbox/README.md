@@ -27,6 +27,9 @@ Each read verifies the live owner action. Exact-message text reads use MESSAGE's
 existing source identity and integrity contract. They support byte, line, and paragraph ranges with source digests and explicit
 continuation metadata; the host does not silently shorten message text. Inbox
 queries always revalidate the grant instead of returning an older account's cache.
+The aggregate Inbox and check-in summaries use the same live reader. Managed
+aggregate reads require an explicit limit; account overrides and missed-only
+views that would require an exhaustive mailbox read are rejected explicitly.
 It does not enable send, drafts, or mailbox changes. Without the setting the
 existing connector path is unchanged. Android hosts must supply their own
 qualified broker; a browser host test does not qualify Android.

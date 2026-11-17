@@ -1685,12 +1685,14 @@ export class RuntimeModelDispatch {
 					}
 					// The awaited detection step: learn every named entity in the assembled
 					// prompt (params + system prompt), then substitute synchronously. Ordered
-					// after the secret pass, so the NER model reads opaque
-					// `__ELIZA_SECRET_…__` placeholders, never a raw secret. The ONNX
+					// after the secret pass. Hide only own protocol references from local
+					// recognition so NER cannot learn them as names; model input retains them. The ONNX
 					// inference is offloaded to onnxruntime's threadpool, so it overlaps the
 					// event loop rather than blocking other turns.
 					await piiSwapSession.learn(
-						collectPiiPromptText(modelParams, effectiveSystemPrompt),
+						secretSwapSession?.maskReferencesForPiiRecognition(
+							collectPiiPromptText(modelParams, effectiveSystemPrompt),
+						) ?? collectPiiPromptText(modelParams, effectiveSystemPrompt),
 					);
 					modelParams = piiSwapSession.substituteInValue(modelParams);
 					effectiveSystemPrompt =
@@ -1735,7 +1737,11 @@ export class RuntimeModelDispatch {
 						effectiveSystemPrompt,
 					);
 					if (postHookText !== piiSubstitutedText) {
-						await piiSwapSession.learn(postHookText);
+						await piiSwapSession.learn(
+							secretSwapSession?.maskReferencesForPiiRecognition(
+								postHookText,
+							) ?? postHookText,
+						);
 					}
 					modelParams = piiSwapSession.substituteInValue(modelParams);
 					const postHookSystemPrompt = resolveEffectiveSystemPrompt({
@@ -1750,15 +1756,29 @@ export class RuntimeModelDispatch {
 
 				// Contact references are opaque handles, not credentials or prose.
 				// Attach after hooks/redaction so every text-provider attempt sees it.
+				const currentPromptText = collectPiiPromptText(
+					modelParams,
+					effectiveSystemPrompt,
+				);
+				const contactReferences =
+					secretSwapSession?.entries.filter(
+						(entry) =>
+							entry.placeholder.startsWith("__ELIZA_CONTACT_") &&
+							(entry.kind === "phone" || entry.kind === "email") &&
+							currentPromptText.includes(entry.placeholder),
+					) ?? [];
 				if (
-					secretSwapSession?.entries.some((entry) =>
-						entry.placeholder.startsWith("__ELIZA_CONTACT_"),
-					) &&
+					contactReferences.length > 0 &&
 					isTextGenerationModelKey(String(resolvedModelKey)) &&
 					isPlainObject(modelParams)
 				) {
 					const guidance =
-						"Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements.";
+						"Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. A phone reference denotes a numeric phone target, not a contact name; an email reference denotes an email address. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements." +
+						" Current contact reference kinds: " +
+						contactReferences
+							.map(({ placeholder, kind }) => `${placeholder}: ${kind}`)
+							.join(", ") +
+						".";
 					const record = modelParams as Record<string, unknown>;
 					// Remove only an exact existing duplicate before extending system.
 					// Otherwise the provider receives two different system messages.

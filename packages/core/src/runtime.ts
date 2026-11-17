@@ -4326,31 +4326,55 @@ export class AgentRuntime implements IAgentRuntime {
 			"transcripts",
 		];
 		const allMemories: Memory[] = [];
-
-		for (const tableName of tables) {
-			// Paginate until a short page: a single 10k-bounded read silently
-			// truncates a larger partition, and the media GC would then delete
-			// files referenced only by rows past the cap as "orphaned".
-			//
-			// Accepted race (wave-5 audit, W5-022): offset pagination is the only
-			// mechanism the IDatabaseAdapter contract guarantees — it has no
-			// unique-key cursor, and `createdAt` is optional and non-unique, so
-			// keyset pagination cannot be expressed through the interface. A
-			// `deleteMemory` racing the sweep shifts later pages up and can skip
-			// a row; media referenced only by that row is then collected after
-			// the grace window. The window is narrow (a delete must race the
-			// daily task) and the grace window protects fresh media, so this is
-			// documented rather than re-architected.
+		const seenIds = new Set<string>();
+		const append = (memories: Memory[]) => {
+			for (const memory of memories) {
+				if (memory.id) {
+					if (seenIds.has(memory.id)) continue;
+					seenIds.add(memory.id);
+				}
+				allMemories.push(memory);
+			}
+		};
+		// Paginate until a short page: a single 10k-bounded read silently
+		// truncates a larger partition, and the media GC would then delete
+		// files referenced only by rows past the cap as "orphaned".
+		//
+		// Accepted race (wave-5 audit, W5-022): offset pagination is the only
+		// mechanism the IDatabaseAdapter contract guarantees — it has no
+		// unique-key cursor, and `createdAt` is optional and non-unique, so
+		// keyset pagination cannot be expressed through the interface. A
+		// `deleteMemory` racing the sweep shifts later pages up and can skip
+		// a row; media referenced only by that row is then collected after
+		// the grace window. The window is narrow (a delete must race the
+		// daily task) and the grace window protects fresh media, so this is
+		// documented rather than re-architected.
+		const readPartition = async (
+			tableName: string,
+			metadata?: Record<string, unknown>,
+		) => {
 			for (let offset = 0; ; offset += GET_ALL_MEMORIES_PAGE_SIZE) {
 				const memories = await this.adapter.getMemories({
 					agentId: this.agentId,
 					tableName,
 					limit: GET_ALL_MEMORIES_PAGE_SIZE,
 					offset,
+					...(metadata ? { metadata } : {}),
 				});
-				allMemories.push(...memories);
+				append(memories);
 				if (memories.length < GET_ALL_MEMORIES_PAGE_SIZE) break;
 			}
+		};
+
+		for (const tableName of tables) {
+			await readPartition(tableName);
+			if (tableName !== "document_fragments") continue;
+			// The SQL list read hides fragmentRole "source-segment" unless the
+			// caller asks for that role. Those rows are the full text of a large
+			// document. A media URL that exists only there is invisible to the
+			// GC sweep, and a wipe misses a source segment whose parent document
+			// is already gone (fragment deletion follows the parent id).
+			await readPartition(tableName, { fragmentRole: "source-segment" });
 		}
 
 		return allMemories;

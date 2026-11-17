@@ -225,6 +225,7 @@ const DIALOGUE_METADATA_FIELDS = new Set([
 	"__responseContext",
 	"viewClientId",
 	"injectionRisk",
+	"notesFolders",
 ]);
 
 function isStringArray(value: unknown): boolean {
@@ -258,6 +259,11 @@ function isDialogueMetadataValue(key: string, value: unknown): boolean {
 		return true;
 	if (key === "uiViewCapabilities" || key === "uiViewActionNames")
 		return isStringArray(value);
+	// The device's Notes folder list rides each message for the Notes
+	// providers; it is host context, not dialogue, whatever its shape. The
+	// Notes plugin validates it and treats a list it rejects as absent, so a
+	// rejected list never reaches the model as raw JSON.
+	if (key === "notesFolders") return true;
 	if (key === "__responseContext" || key === "injectionRisk") {
 		if (!value || typeof value !== "object" || Array.isArray(value))
 			return false;

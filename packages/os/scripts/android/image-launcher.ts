@@ -27,7 +27,6 @@
  *     [--source-commit COMMIT] [--runtime-source ELIZA_ROOT] [--bun-target linux-musl|android]
  *     [--aapt PATH] [--apksigner PATH]
  */
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -44,10 +43,6 @@ import {
   stagedImageFeature,
   writeImageCapability,
 } from "./image-capability.mjs";
-import {
-  provisioningComponents,
-  writeProvisioningOverlay,
-} from "./launcher-provisioning.mjs";
 import {
   createDevelopmentLauncherDescriptor,
   renderOverlay,
@@ -298,7 +293,7 @@ export function stageImageLauncher(options: StageOptions) {
       `${JSON.stringify(descriptor, null, 2)}\n`,
     );
     const staged = path.join(temporary, LAUNCHER_DIRECTORY);
-    stageLauncher({
+    const { provisioning } = stageLauncher({
       descriptor: descriptorFile,
       apk: options.apk,
       output: staged,
@@ -306,16 +301,9 @@ export function stageImageLauncher(options: StageOptions) {
       apksigner: options.apksigner,
       development: options.development,
       env: options.env,
+      provisioning: { assistant: options.brand.assistantRole !== false },
     });
     const launcherApk = path.join(staged, "Launcher.apk");
-    const xml = execFileSync(
-      options.aapt,
-      ["dump", "xmltree", launcherApk, "AndroidManifest.xml"],
-      { encoding: "utf8", env: options.env, maxBuffer: 64 << 20 },
-    );
-    const components = provisioningComponents(xml, descriptor.packageName, {
-      assistant: options.brand.assistantRole !== false,
-    });
     let native = null;
     if (product.nativeTarget) {
       native = stageAndroidNative({
@@ -336,7 +324,6 @@ export function stageImageLauncher(options: StageOptions) {
           `${product.productName} requires the admitted resident runtime`,
         );
     }
-    writeProvisioningOverlay(staged, descriptor.packageName, components);
     writeImageCapability(staged, descriptor.packageName);
     const productMakefile = path.join(staged, "product.mk");
     fs.writeFileSync(
@@ -354,7 +341,7 @@ export function stageImageLauncher(options: StageOptions) {
       apkSha256: descriptor.apkSha256,
       certificateSha256: descriptor.certificateSha256,
       defaultPermissions: descriptor.defaultPermissions ?? [],
-      provisioning: components,
+      provisioning,
       imageFeature: stagedImageFeature(staged, descriptor.packageName),
       nativeTarget: product.nativeTarget,
       nativeLibrariesStaged: native !== null,

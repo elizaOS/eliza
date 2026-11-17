@@ -840,6 +840,7 @@ test("a Cloud raster basemap draws Cloud tiles through its own protocol and repo
   assert.deepEqual(plain(f.map.options.center), [0, 20]);
   assert.equal(f.map.options.maxBounds, undefined);
   assert.equal(f.map.options.maxZoom, 20);
+  assert.equal(f.map.options.cancelPendingTileRequestsWhileZooming, false);
   const signal = new AbortController();
   const result = await handler({ url: `${name}://tiles/3/4/2.png` }, signal);
   assert.deepEqual([...new Uint8Array(result.data)], [1, 2, 3]);
@@ -1015,4 +1016,21 @@ test("a settled world-copy viewport reports a valid wrapped search coordinate", 
     JSON.stringify([{ latitude: 0, longitude: -179 }]),
   );
   plane.destroy();
+});
+
+test("tile failures and cancelled requests retain a loaded map", () => {
+  const f = fixture(global);
+  f.map.events.load();
+  f.map.events.error({
+    error: Object.assign(new Error("cancelled"), { name: "AbortError" }),
+  });
+  f.map.events.error({ error: new Error("one tile failed"), tile: {} });
+  assert.equal(f.errors, 0);
+  assert.equal(f.container.dataset.mapReady, "true");
+  assert.equal(f.container.dataset.mapError, undefined);
+  assert.equal(f.container.dataset.mapTileError, "true");
+  f.map.events.error({ error: new Error("renderer failed") });
+  assert.equal(f.errors, 1);
+  assert.equal(f.container.dataset.mapError, "render-error");
+  f.plane.destroy();
 });

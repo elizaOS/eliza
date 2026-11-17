@@ -1,0 +1,50 @@
+{
+  "sources": [
+    "plugins/plugin-scheduling/src/scheduled-task/runner.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/runner-completion-settle.test.ts",
+    "plugins/plugin-personal-assistant/src/plugin.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/inbound-reply-completion.ts"
+  ],
+  "implementationTests": [
+    "plugins/plugin-scheduling/src/scheduled-task/runner-completion-settle.test.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/runner-host-admission.integration.test.ts"
+  ],
+  "conformance": "plugins/plugin-scheduling/quint/check-completion-settle.mjs",
+  "bounds": "Two owner-reply scans evaluate one fired task whose completion check passes and whose pipeline.onComplete holds one child. Each scan reads the row and then commits; a commit records the completed log row and creates the child in one step. The six generated read/commit interleavings are replayed through the production runner with the real user_replied_within check, in-memory stores and pipeline scheduling. A snooze between a scan's read and its commit is a separate test in runner-completion-settle.test.ts; a failing completion check, other verbs under the host mutation policy, and the SQL store's conditional write keep their existing coverage. Weak fairness of each scan read and commit proves that both scans reach a completed, raced or terminal result. Explicit stuttering models an indefinite delay and makes the no-fairness progress claim false; no elapsed-time bound is proved.",
+  "cases": [
+    {
+      "name": "two-reply-scans",
+      "main": "ScheduledTaskCompletionSettle",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "SettleAtMostOnce",
+        "OneWinner",
+        "ChildrenFollowWinner",
+        "CompletedRowSettledOnce",
+        "TerminalReadSawSettledRow",
+        "TypeOK"
+      ],
+      "temporal": ["ScansFinish", "ScansFinishWithoutFairness"],
+      "maxSteps": 5,
+      "samples": 500,
+      "temporalChecks": [
+        {
+          "property": "ScansFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Each continuously enabled scan read and conditional commit eventually runs (weak fairness). The completion check and the store call settle; arbitrary permanent provider or database failure is not included. A scan may otherwise stutter without a wall-clock bound."
+          ]
+        },
+        {
+          "property": "ScansFinishWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. An enabled scan can remain paused forever. A temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

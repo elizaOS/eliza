@@ -20,7 +20,6 @@ beforeAll(async () => {
     ELIZA_STATE_DIR: stateDirectory,
     ELIZA_CONFIG_PATH: path.join(stateDirectory, "eliza.json"),
     ELIZA_PERSIST_CONFIG_PATH: path.join(stateDirectory, "eliza.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: token,
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
     ELIZA_TEE_REQUIRED: "true",

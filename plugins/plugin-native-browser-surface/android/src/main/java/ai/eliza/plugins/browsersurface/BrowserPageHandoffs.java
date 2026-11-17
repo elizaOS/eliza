@@ -1,11 +1,13 @@
 package ai.eliza.plugins.browsersurface;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * Decisions for the moments a website hands control to someone else: a JavaScript dialog, a new
@@ -58,8 +60,9 @@ public final class BrowserPageHandoffs {
   }
 
   /**
-   * Pending dialog results of one surface, keyed by an unguessable id. Confined to the UI thread.
-   * {@link #take} hands a result out once, so a late or repeated answer does nothing.
+   * Pending results of one surface (page dialogs, site permission requests), keyed by an
+   * unguessable id. Confined to the UI thread. {@link #take} hands a result out once, so a late or
+   * repeated answer does nothing.
    */
   public static final class Dialogs<T> {
     private final Map<String, T> pending = new LinkedHashMap<>();
@@ -74,15 +77,34 @@ public final class BrowserPageHandoffs {
       return id;
     }
 
+    /** The pending result, left pending: for an answer that may not be given yet. */
+    public T get(String id) {
+      return id == null ? null : pending.get(id);
+    }
+
     public T take(String id) {
       return id == null ? null : pending.remove(id);
     }
 
     /** Every pending result, removed; the caller dismisses each one. */
     public List<T> drain() {
-      List<T> all = new ArrayList<>(pending.values());
-      pending.clear();
-      return all;
+      return new ArrayList<>(withdraw(result -> true).values());
+    }
+
+    /**
+     * The pending results that {@code match}, removed by id without an answer: for a request the
+     * page itself withdrew, or one the caller ends and must report by id.
+     */
+    public Map<String, T> withdraw(Predicate<T> match) {
+      Map<String, T> removed = new LinkedHashMap<>();
+      for (Iterator<Map.Entry<String, T>> it = pending.entrySet().iterator(); it.hasNext(); ) {
+        Map.Entry<String, T> entry = it.next();
+        if (!match.test(entry.getValue()))
+          continue;
+        removed.put(entry.getKey(), entry.getValue());
+        it.remove();
+      }
+      return removed;
     }
   }
 

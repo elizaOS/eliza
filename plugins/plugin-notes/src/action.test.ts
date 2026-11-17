@@ -91,9 +91,10 @@ async function run(
   operation: NotesRequestOperation,
   parameters: Record<string, unknown>,
   callback?: Parameters<typeof notesAction.handler>[4],
+  text = notesFixtureText[operation],
 ): Promise<ActionResult> {
   const request = await boundNotesRequest(runtime, {
-    text: notesFixtureText[operation],
+    text,
     operations: [operation],
   });
   return request.handler(notesAction, parameters, callback);
@@ -584,10 +585,13 @@ describe("promoted Notes execution", () => {
         { title: "Exact label", body: "\nChanged body." },
       ]);
       expect(
-        await execute(runtime, "delete", {
-          name: "NOTES_DELETE",
-          params: { [name]: "Exact label" },
-        }),
+        await execute(
+          runtime,
+          "delete",
+          { name: "NOTES_DELETE", params: { [name]: "Exact label" } },
+          ["OWNER"],
+          "Delete the Exact label note.",
+        ),
       ).toMatchObject({ success: true });
       expect(getNotesService(runtime).listNotes()).toEqual([]);
     },
@@ -1341,10 +1345,13 @@ describe("promoted Notes execution", () => {
       },
     ]);
     expect(listed.data?.filterApplied).toBe(false);
-    const deleted = await execute(runtime, "delete", {
-      name: "NOTES_DELETE",
-      params: { content: "Conversation context QA" },
-    });
+    const deleted = await execute(
+      runtime,
+      "delete",
+      { name: "NOTES_DELETE", params: { content: "Conversation context QA" } },
+      ["OWNER"],
+      "Delete the Conversation context QA note.",
+    );
     expect(deleted.success).toBe(true);
     expect(deleted.data?.deletedAt).toEqual(
       getNotesService(runtime)
@@ -1896,6 +1903,24 @@ describe("NOTES operation parsing", () => {
       filterApplied: true,
     });
 
+    // Checklist items live in the authored format, with an empty body.
+    const checklist = await getNotesService(runtime).createNote({
+      title: "Groceries",
+      body: "",
+      color: "yellow",
+      format: {
+        kind: "list",
+        data: { items: [{ t: "Oat milk", done: false }] },
+      },
+    });
+    const authored = await run(runtime, "list", {
+      action: "list",
+      content: "oat milk",
+    });
+    expect(authored.data).toMatchObject({ count: 1, total: 3 });
+    expect(authored.data?.notes).toMatchObject([{ id: checklist.id }]);
+    await getNotesService(runtime).deleteNote(checklist.id);
+
     const absent = await run(runtime, "list", {
       action: "list",
       query: "dentist",
@@ -2071,15 +2096,146 @@ describe("NOTES operation parsing", () => {
       title: "bins go out wednesday",
     });
 
-    const deleted = await run(runtime, "delete", {
+    // A text match is not enough to delete: the owner must name the title.
+    const unnamed = await run(runtime, "delete", {
       action: "delete",
       content: "wednesday",
     });
+    expect(unnamed).toMatchObject({
+      success: false,
+      error: "NOTES_DELETE_NAME_MISMATCH",
+      data: {
+        requiresInput: true,
+        candidates: [{ id: created.data?.noteId }],
+      },
+    });
+    expect(unnamed.effectReceipts).toBeUndefined();
+    expect(getNotesService(runtime).listNotes()).toHaveLength(1);
+
+    const deleted = await run(
+      runtime,
+      "delete",
+      { action: "delete", content: "wednesday" },
+      undefined,
+      "delete the bins go out wednesday note",
+    );
     expect(deleted.success).toBe(true);
     expect(deleted.data?.note).toEqual(updated.data?.note);
 
+    expect(
+      await run(runtime, "delete", { action: "delete", content: "dentist" }),
+    ).toMatchObject({ success: false, error: "NOTES_NOT_FOUND" });
+
     const after = await run(runtime, "list", { action: "list" });
     expect(after.data).toMatchObject({ count: 0, total: 0, notes: [] });
+  });
+});
+
+describe("restore and folder moves", () => {
+  it("restores a deleted note by text or ID and reports misses as results", async () => {
+    const runtime = await harness();
+    const service = getNotesService(runtime);
+    const packing = await service.createNote({ content: "Packing\nSocks" });
+    const taxes = await service.createNote({ content: "Taxes\nReceipts" });
+    await service.deleteNote(packing.id);
+    await service.deleteNote(taxes.id);
+
+    const byText = await run(runtime, "restore", {
+      action: "restore",
+      content: "packing",
+    });
+    expect(byText).toMatchObject({
+      success: true,
+      data: { op: "restore", noteId: packing.id },
+      effectReceipts: [
+        {
+          operation: "notes.note.restore",
+          resource: { kind: "notes.note", id: packing.id },
+        },
+      ],
+    });
+    expect(service.listNotes().map((note) => note.id)).toEqual([packing.id]);
+
+    // A current note is not in Recently deleted, so it cannot be restored.
+    expect(
+      await run(runtime, "restore", { action: "restore", content: "packing" }),
+    ).toMatchObject({ success: false, error: "NOTES_NOT_FOUND" });
+    expect(
+      await run(runtime, "restore", { action: "restore", noteId: taxes.id }),
+    ).toMatchObject({ success: true, data: { noteId: taxes.id } });
+    expect(service.snapshot().trash ?? []).toEqual([]);
+  });
+
+  it("moves a note by folder name only when the message shares the folder list", async () => {
+    const runtime = await harness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({ content: "Packing\nSocks" });
+    const move = async (
+      parameters: Record<string, unknown>,
+      notesFolders?: { id: string; name: string }[],
+    ) => {
+      const request = await boundNotesRequest(runtime, {
+        text: notesFixtureText.move,
+        operations: ["move"],
+        message: notesFolders
+          ? { content: { text: "", metadata: { notesFolders } } }
+          : undefined,
+      });
+      return {
+        offered: await notesPlugin.actions
+          ?.find((action) => action.name === "NOTES_MOVE")
+          ?.validate?.(runtime, request.message, request.state),
+        result: await request.handler(notesAction, {
+          action: "move",
+          ...parameters,
+        }),
+      };
+    };
+    const folders = [
+      { id: "f-travel", name: "Travel" },
+      { id: "f-work", name: "Work" },
+    ];
+
+    const unshared = await move({ noteId: note.id, folder: "Travel" });
+    expect(unshared.offered).toBe(false);
+    expect(unshared.result).toMatchObject({
+      success: false,
+      error: "NOTES_FOLDERS_UNAVAILABLE",
+    });
+
+    const unknown = await move({ noteId: note.id, folder: "Trips" }, folders);
+    expect(unknown.offered).toBe(true);
+    expect(unknown.result).toMatchObject({
+      success: false,
+      error: "NOTES_FOLDER_NOT_FOUND",
+      data: { requiresInput: true, folders: ["Travel", "Work"] },
+    });
+    expect(service.listNotes()[0]?.format).toBeUndefined();
+
+    const moved = await move(
+      { content: "packing", folder: " travel " },
+      folders,
+    );
+    expect(moved.result).toMatchObject({
+      success: true,
+      data: { op: "update", noteId: note.id, folder: "Travel" },
+      effectReceipts: [{ operation: "notes.note.update" }],
+    });
+    expect(service.listNotes()[0]).toMatchObject({
+      title: "Packing",
+      body: "\nSocks",
+      format: { kind: "text", data: { folderId: "f-travel" } },
+    });
+
+    const removed = await move({ noteId: note.id, folder: null }, folders);
+    expect(removed.result).toMatchObject({
+      success: true,
+      data: { folder: null },
+    });
+    expect(service.listNotes()[0]?.format).toEqual({ kind: "text", data: {} });
+    expect(
+      (await move({ content: "dentist", folder: "Work" }, folders)).result,
+    ).toMatchObject({ success: false, error: "NOTES_NOT_FOUND" });
   });
 });
 
@@ -2159,10 +2315,13 @@ describe("identical-duplicate notes", () => {
       content: "spare key under the mat",
     });
 
-    const result = await run(runtime, "delete", {
-      action: "delete",
-      content: "milk",
-    });
+    const result = await run(
+      runtime,
+      "delete",
+      { action: "delete", content: "milk" },
+      undefined,
+      "delete the i need to buy milk note",
+    );
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({
       removedCount: 4,
@@ -2186,9 +2345,23 @@ describe("identical-duplicate notes", () => {
       content: "buy milk for the cat",
     });
 
-    await expect(
-      run(runtime, "delete", { action: "delete", content: "milk" }),
-    ).rejects.toMatchObject({ code: "NOTES_AMBIGUOUS_NOTE" });
+    const result = await run(runtime, "delete", {
+      action: "delete",
+      content: "milk",
+    });
+    expect(result).toMatchObject({
+      success: false,
+      error: "NOTES_AMBIGUOUS_NOTE",
+      data: { requiresInput: true, awaitingUserInput: true },
+    });
+    expect(
+      (result.data?.candidates as StickyNote[] | undefined)?.map(
+        (note) => note.title,
+      ),
+    ).toEqual(
+      expect.arrayContaining(["buy milk at aldi", "buy milk for the cat"]),
+    );
+    expect(getNotesService(runtime).listNotes()).toHaveLength(2);
   });
 
   it("updates one logical note and consolidates its identical stored copies", async () => {
@@ -2218,14 +2391,17 @@ describe("identical-duplicate notes", () => {
     await service.createNote({ title: "buy milk", body: "", color: "yellow" });
     await service.createNote({ title: "buy milk", body: "", color: "green" });
 
-    await expect(
-      run(runtime, "delete", { action: "delete", content: "buy milk" }),
-    ).rejects.toMatchObject({ code: "NOTES_AMBIGUOUS_NOTE" });
+    expect(
+      await run(runtime, "delete", { action: "delete", content: "buy milk" }),
+    ).toMatchObject({ success: false, error: "NOTES_AMBIGUOUS_NOTE" });
 
-    const deleted = await run(runtime, "delete", {
-      action: "delete",
-      content: "buy milk green",
-    });
+    const deleted = await run(
+      runtime,
+      "delete",
+      { action: "delete", content: "buy milk green" },
+      undefined,
+      "delete the green buy milk note",
+    );
     expect(deleted.success).toBe(true);
     expect(service.listNotes().map((note) => note.color)).toEqual(["yellow"]);
   });

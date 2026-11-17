@@ -64,6 +64,7 @@ export {
   createInboxGmailGateway,
   type InboxGmailGateway,
 } from "./inbox/google-gmail-seam.ts";
+export { managedGmailReadFetcher } from "./inbox/managed-gmail-read.ts";
 export {
   fetchAllMessages,
   fetchChatMessages,

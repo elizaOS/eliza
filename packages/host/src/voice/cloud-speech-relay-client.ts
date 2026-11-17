@@ -16,6 +16,8 @@ import {
   SPEECH_ADMISSION_OUTCOME_HEADER,
   SPEECH_MINT_INTENT_HEADER,
   SPEECH_RECOVERY_HEADER,
+  SPEECH_RELAY_EXTEND_HEADER,
+  SPEECH_RELAY_EXTEND_OFFER,
   SPEECH_RELAY_ROUTES,
   SPEECH_RETIREMENT_HEADER,
   type SpeechRelayServerControl,
@@ -42,6 +44,9 @@ export interface CloudSpeechRelayTransportDiagnostic {
   liveElapsedMs: number | null;
   stage?:
     | "consent_post"
+    | "recovery_journal_write"
+    | "provider_admission_wait"
+    | "prior_session_retirement"
     | "mint_post"
     | "websocket_connect"
     | "relay_ready"
@@ -88,6 +93,8 @@ export interface CloudSpeechRelayClientOptions {
   credential(): Promise<string>;
   /** Pin owner/credential revision and local agent generation for this whole session. */
   assertCurrent(): void;
+  /** Trusted host callback after a paid window and its revocation fence renew. */
+  onLeaseExtended?(expiresAt: number): void;
   /** Stable owner/runtime/environment lineage, independent of key rotation; explicit reconciliation only. */
   assertRetirementLineage?(): void;
   signal?: AbortSignal;
@@ -197,8 +204,8 @@ const PRE_ADMISSION_CACHE_WARMING_CODES = new Set([
   "inference_admission_cache_warming",
 ]);
 
-// This refusal is emitted before authentication admits the operation. Never
-// replay a generic 503, network failure, or an already-admitted speech request.
+// This refusal is emitted before authentication admits the operation. A generic
+// 503 does not establish that a paid speech request can be replayed.
 function warmingDelay(
   response: Response,
   body: Record<string, unknown>,
@@ -255,6 +262,7 @@ export async function createCloudSpeechRelayPorts(
   reconcileRetirement?(credential: string): Promise<void>;
   sessionId: string;
   expiresAt: number;
+  renewable?: boolean;
 }> {
   if (options.enabled !== true)
     throw new CloudSpeechRelayClientError(
@@ -301,7 +309,9 @@ export async function createCloudSpeechRelayPorts(
     socket: WebSocket | undefined,
     expiryTimer: ReturnType<typeof setTimeout> | undefined,
     sessionId: string | undefined,
-    expiry = 0;
+    expiry = 0,
+    extendOffered = false,
+    windows = 1;
   let stt: ((event: CartesiaInkRealtimeEvent) => void) | undefined;
   const pendingStt: CartesiaInkRealtimeEvent[] = [];
   const contexts = new Map<
@@ -538,20 +548,40 @@ export async function createCloudSpeechRelayPorts(
             finishAdmission = resolve;
           });
         }
-        response = await (options.fetch ?? fetch)(new URL(path, origin), {
-          method: "POST",
-          redirect: "error",
-          headers: {
-            authorization: `Bearer ${credential}`,
-            "content-type": "application/json",
-            [SPEECH_RETIREMENT_HEADER]: "1",
-            ...(journal ? { [SPEECH_RECOVERY_HEADER]: "1" } : {}),
-            ...(mintIntent ? { [SPEECH_MINT_INTENT_HEADER]: mintIntent } : {}),
-          },
-          body: encoded,
-          // Drain a dispatched mint for its cleanup identity if Stop wins.
-          signal: requestSignal,
-        });
+        try {
+          response = await (options.fetch ?? fetch)(new URL(path, origin), {
+            method: "POST",
+            redirect: "error",
+            headers: {
+              authorization: `Bearer ${credential}`,
+              "content-type": "application/json",
+              [SPEECH_RETIREMENT_HEADER]: "1",
+              ...(journal ? { [SPEECH_RECOVERY_HEADER]: "1" } : {}),
+              ...(mintIntent
+                ? { [SPEECH_MINT_INTENT_HEADER]: mintIntent }
+                : {}),
+            },
+            body: encoded,
+            // Drain a dispatched mint for its cleanup identity if Stop wins.
+            signal: requestSignal,
+          });
+        } catch (error) {
+          const causes = [
+            error,
+            error instanceof Error ? error.cause : undefined,
+          ];
+          const reset = causes.some(
+            (cause) =>
+              cause instanceof Error &&
+              "code" in cause &&
+              cause.code === "ECONNRESET",
+          );
+          // Consent precedes paid admission. Retry one reset within its existing deadline.
+          if (path !== SPEECH_RELAY_ROUTES.consent || attempt !== 0 || !reset)
+            throw error;
+          await waitForWarming(100, startupSignal);
+          continue;
+        }
         headersMs = performance.now() - started;
         httpTraceId = undefined;
         try {
@@ -637,6 +667,11 @@ export async function createCloudSpeechRelayPorts(
         admissionState = "identified";
       }
       assertCurrent();
+      if (mintRequest)
+        extendOffered =
+          options.onLeaseExtended !== undefined &&
+          response.headers.get(SPEECH_RELAY_EXTEND_HEADER) ===
+            SPEECH_RELAY_EXTEND_OFFER;
       returned = true;
       return result;
     } finally {
@@ -678,6 +713,24 @@ export async function createCloudSpeechRelayPorts(
         "transport",
         "Cloud speech send failed",
       );
+    }
+  };
+  const timeBootstrap = async <T>(
+    stage: NonNullable<CloudSpeechRelayTransportDiagnostic["stage"]>,
+    run: () => Promise<T>,
+  ): Promise<T> => {
+    const started = performance.now();
+    let outcome: "returned" | "failed" = "failed";
+    try {
+      const result = await run();
+      outcome = "returned";
+      return result;
+    } finally {
+      diagnose("startup", {
+        stage,
+        durationMs: performance.now() - started,
+        outcome,
+      });
     }
   };
   const terminate = (error?: Error) => {
@@ -909,7 +962,8 @@ export async function createCloudSpeechRelayPorts(
       }
       assertCurrent();
     };
-    if (!options.beforeProviderAdmission) await recover();
+    if (journal && !options.beforeProviderAdmission)
+      await timeBootstrap("prior_session_retirement", recover);
     const consent = await request(SPEECH_RELAY_ROUTES.consent, {});
     exact(consent, [
       "consentNonce",
@@ -929,7 +983,9 @@ export async function createCloudSpeechRelayPorts(
       const preparedId = consent.recoverySessionId;
       requireValue(typeof preparedId === "string" && UUID.test(preparedId));
       sessionId = preparedId;
-      journalWrite = journal.record(preparedId);
+      journalWrite = timeBootstrap("recovery_journal_write", () =>
+        journal.record(preparedId),
+      );
       await journalWrite;
       assertCurrent();
     }
@@ -937,18 +993,22 @@ export async function createCloudSpeechRelayPorts(
     if (beforeProviderAdmission) {
       // Race the host fence with cancellation so an unclaimed successor cannot
       // retain a pending acquisition (or block host shutdown) indefinitely.
-      await new Promise<void>((resolve, reject) => {
-        const abort = () => reject(lifecycle.signal.reason);
-        lifecycle.signal.throwIfAborted();
-        lifecycle.signal.addEventListener("abort", abort, { once: true });
-        void beforeProviderAdmission()
-          .then(resolve, reject)
-          .finally(() => {
-            lifecycle.signal.removeEventListener("abort", abort);
-          });
-      });
+      await timeBootstrap(
+        "provider_admission_wait",
+        () =>
+          new Promise<void>((resolve, reject) => {
+            const abort = () => reject(lifecycle.signal.reason);
+            lifecycle.signal.throwIfAborted();
+            lifecycle.signal.addEventListener("abort", abort, { once: true });
+            void beforeProviderAdmission()
+              .then(resolve, reject)
+              .finally(() => {
+                lifecycle.signal.removeEventListener("abort", abort);
+              });
+          }),
+      );
       assertCurrent();
-      await recover();
+      if (journal) await timeBootstrap("prior_session_retirement", recover);
       requireValue(Date.parse(String(consent.expiresAt)) > Date.now());
     }
     const minted = await request(SPEECH_RELAY_ROUTES.mint, {
@@ -1007,23 +1067,26 @@ export async function createCloudSpeechRelayPorts(
         "websocket_connect";
       let phaseStarted = performance.now();
       let timer: ReturnType<typeof setTimeout>;
-      // Each startup phase has its own finite five-second budget. Upgrade time
-      // must not consume the hello-to-ready budget before hello can be sent.
+      // The network upgrade can include a cold Worker start. Keep its budget
+      // separate from the hello-to-ready budget; cancellation remains immediate.
       const armDeadline = () => {
-        timer = setTimeout(() => {
-          diagnose("startup_timeout", {
-            stage: startupStage,
-            durationMs: performance.now() - phaseStarted,
-            outcome: "failed",
-            clientCode: "transport",
-          });
-          fail(
-            new CloudSpeechRelayClientError(
-              "transport",
-              "Cloud speech did not become ready",
-            ),
-          );
-        }, 5000);
+        timer = setTimeout(
+          () => {
+            diagnose("startup_timeout", {
+              stage: startupStage,
+              durationMs: performance.now() - phaseStarted,
+              outcome: "failed",
+              clientCode: "transport",
+            });
+            fail(
+              new CloudSpeechRelayClientError(
+                "transport",
+                "Cloud speech did not become ready",
+              ),
+            );
+          },
+          startupStage === "websocket_connect" ? 10000 : 5000,
+        );
       };
       const fail = (error: Error) => {
         if (failed) return;
@@ -1068,6 +1131,7 @@ export async function createCloudSpeechRelayPorts(
             t: "hello",
             token: minted.token,
             errorReasons: true,
+            ...(extendOffered ? { extend: true } : {}),
           });
         } catch {
           fail(
@@ -1110,7 +1174,7 @@ export async function createCloudSpeechRelayPorts(
             );
             outputBytes += pcm.length;
             receivedPcmFrames++;
-            requireValue(outputBytes <= 8 * 1024 * 1024);
+            requireValue(outputBytes <= 8 * 1024 * 1024 * windows);
             const context = contexts.get(id);
             if (!context) {
               requireValue(retired.has(id));
@@ -1228,6 +1292,26 @@ export async function createCloudSpeechRelayPorts(
   }
   function handleControl(input: SpeechRelayServerControl) {
     const frame = record(input);
+
+    if (frame.t === "extended") {
+      requireValue(extendOffered);
+      exact(frame, ["t", "expiresAt"]);
+      const next =
+        typeof frame.expiresAt === "string"
+          ? Date.parse(frame.expiresAt)
+          : Number.NaN;
+      requireValue(
+        Number.isFinite(next) &&
+          next > expiry &&
+          next <= expiry + 60_000 &&
+          new Date(next).toISOString() === frame.expiresAt,
+      );
+      options.onLeaseExtended?.(next);
+      expiry = next;
+      windows++;
+      armExpiry();
+      return;
+    }
 
     if (frame.t === "error") {
       exact(
@@ -1386,7 +1470,7 @@ export async function createCloudSpeechRelayPorts(
                 bytes.byteLength % 2 === 0,
             );
             uplinkBytes += bytes.byteLength;
-            requireValue(uplinkBytes <= (60000 / 1000) * 32000);
+            requireValue(uplinkBytes <= (60000 / 1000) * 32000 * windows);
             const currentSocket = socket;
             requireValue(currentSocket && currentSocket.readyState === 1);
             currentSocket.send(new Uint8Array(bytes));
@@ -1413,7 +1497,7 @@ export async function createCloudSpeechRelayPorts(
     tts: {
       createStream(_options, callbacks) {
         assertCurrent();
-        requireValue(++contextsCreated <= 64);
+        requireValue(++contextsCreated <= 64 * windows);
         const id = crypto.randomUUID();
         let resolve!: () => void, reject!: (error: Error) => void;
         const closedPromise = new Promise<void>((yes, no) => {
@@ -1456,7 +1540,7 @@ export async function createCloudSpeechRelayPorts(
             requireValue(
               typeof phrase.text === "string" &&
                 phrase.text.length <= 1024 &&
-                ttsCharacters + phrase.text.length <= 4096 &&
+                ttsCharacters + phrase.text.length <= 4096 * windows &&
                 typeof phrase.continueContext === "boolean" &&
                 (phrase.flush === undefined ||
                   typeof phrase.flush === "boolean"),
@@ -1500,5 +1584,13 @@ export async function createCloudSpeechRelayPorts(
     },
   };
   requireValue(sessionId);
-  return { speechPorts, ...retirement, sessionId, expiresAt: expiry };
+  return {
+    speechPorts,
+    ...retirement,
+    sessionId,
+    get expiresAt() {
+      return expiry;
+    },
+    renewable: extendOffered,
+  };
 }

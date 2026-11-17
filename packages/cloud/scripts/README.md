@@ -117,6 +117,19 @@ It preserves the term, expiry and single-use limit. It refuses used, disabled,
 expired or non-test codes and does not mint a replacement. Run with `mint=false`
 and the exact original mint run ID, then redeem the same code normally.
 
+## Resume a new Cloud database migration
+
+Run the same `bun run db:cloud:migrate` command against the same reviewed
+database after an interrupted fresh installation. The first migration records
+fresh provisioning under the database lock. A retry checks the exact ordered
+ledger and uses that record to apply 0282 and its compatibility restore
+together. The transaction refuses to drop the quota table if it contains rows.
+
+A database with a pre-existing or unmarked ledger still stops at the
+compatibility release barrier. A pause leaves pending migrations. Check that
+the runner reports `migrations complete` before relying on tables introduced
+later in the journal. Use the existing release review for a paused database.
+
 ## Production pending migration review
 
 The read-only `Production Railway Database Authority Audit` reports

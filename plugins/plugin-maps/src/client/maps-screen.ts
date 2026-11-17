@@ -313,6 +313,7 @@ export class MapsScreenController {
   private backgroundRunning = false;
   private query = "";
   private searching = false;
+  private waitingSearch?: { query: string; intent: number };
   private message = "";
   private disposed = false;
   private revision = 0;
@@ -358,6 +359,30 @@ export class MapsScreenController {
           connection.config,
           connection.provider,
         );
+        // Initial discovery can settle after an early search was refused.
+        // Resume only the still-visible query from this same screen.
+        const pending = this.waitingSearch;
+        if (pending) {
+          const current = () =>
+            !this.disposed &&
+            this.host.active() &&
+            this.searching &&
+            this.waitingSearch === pending &&
+            this.searchIntent === pending.intent &&
+            this.query === pending.query;
+          void Promise.resolve(this.initialization).then(
+            () => {
+              if (current() && this.state?.search.phase === "idle")
+                this.submit();
+            },
+            (error) => {
+              if (!current()) return;
+              this.waitingSearch = undefined;
+              this.message = failure(error).message;
+              this.invalidate();
+            },
+          );
+        }
       } else this.release(false);
       this.invalidate();
     });
@@ -556,6 +581,7 @@ export class MapsScreenController {
     this.host.discardHandoff?.();
     ++this.searchIntent;
     this.query = text;
+    this.waitingSearch = undefined;
     this.selected = undefined;
     this.searching = true;
     this.message = "";
@@ -630,6 +656,7 @@ export class MapsScreenController {
     // A new explicit search also retries a failed configured connection. Never
     // poll in the background or replay the search after the user leaves or edits.
     const requested = this.query;
+    this.waitingSearch = { query: requested, intent };
     void (async () => {
       this.ensure();
       const diagnostics = this.host.diagnostics();
@@ -660,8 +687,16 @@ export class MapsScreenController {
         return;
       }
       this.message = "";
+      if (this.host.connection().config.status === "configured")
+        this.waitingSearch = undefined;
       void this.ensure().search(requested, this.viewport);
-    })();
+    })().catch((error) => {
+      if (this.disposed || intent !== this.searchIntent || !this.host.active())
+        return;
+      this.waitingSearch = undefined;
+      this.message = failure(error).message;
+      this.invalidate();
+    });
   }
 
   /** A quick category search (e.g. a chip). */
@@ -983,6 +1018,9 @@ export class MapsScreenController {
 
   /** Typing in the origin field clears the previous route. */
   setOriginText(text: string): void {
+    this.locating = false;
+    clearTimeout(this.locationTimeout);
+    this.locationTimeout = undefined;
     this.originMode = false;
     this.editOrigin(text);
   }

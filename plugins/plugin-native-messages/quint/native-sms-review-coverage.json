@@ -6,23 +6,29 @@
       "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/TelephonyPlugin.java",
       "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsTelephony.java",
       "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsSendJournal.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsStore.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/ReviewedSmsSend.java",
       "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/TelephonyPluginReviewTest.java",
       "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/SmsSendJournalTest.java",
+      "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/SmsOutgoingHistoryTest.java",
       "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/MmsSendJournalTest.java"
     ],
     "invariants": [
       "TypeOK",
       "AtMostOneInvocation",
+      "InvocationNeedsOwnerApproval",
       "DialogNeedsLiveOwner",
       "SettledOwnerReleased",
-      "CancelledMeansNoInvocation"
+      "CancelledMeansNoInvocation",
+      "ProviderRefusalMeansNoInvocation"
     ],
     "status": "partial",
     "limitations": [
       "One exact native SMS or MMS bridge call and its pending owner, one worker journal lookup, one main-queue native dialog, one owner Send tap, one queued dispatch, and one cancellation or foreground retirement. At most one platform invocation and one result; fixed operation and binding identity.",
-      "The call owner exists before the journal work is queued and remains until the original call resolves or rejects. Cancellation marks matching outstanding owners before its own acknowledgement. A retired owner cannot open a later dialog or dispatch after a Send tap waits on the worker. A recorded or admitted result is retained through cancellation. An unrelated operation cannot retire this owner.",
-      "The mandatory Android Gradle check compiles the real TelephonyPlugin and SmsTelephony and executes actual bridge methods under Robolectric29 with controlled worker/Main queues, a granted test foreground/SIM and an in-memory native journal. Six new cases exercise initial SMS/MMS cancellation, lifecycle retirement, cancellation after Send, unrelated cancellation, and already recorded submission readback. The existing SMS/MMS journal suites also execute; exact testcase names and zero skips are required.",
-      "The state model is a finite native queue boundary projection, not a refinement proof. The single abstract invocation does not enumerate multipart or multi-recipient partial sends. Native journal suites supplement those cases. Simultaneous independent hosts, arbitrary Android lifecycle delivery, storage write failures, callback batching/listener fanout, carrier/provider acceptance, real SIM roles/permissions and physical Android foreground-service behavior are outside this projection. Robolectric ports prove no radio or carrier delivery."
+      "The call owner exists before journal work is queued and remains until the call settles. A host-authorized composer or an accepted native dialog can queue one dispatch. Cancellation retires the matching owner before its acknowledgement. A retired owner cannot open a dialog or dispatch. A recorded result survives cancellation. The host's proof of an exact owner action is abstract.",
+      "The Android Gradle check runs bridge, journal and outgoing history tests under Robolectric29. The outgoing history tests use a controlled provider and SMS manager to check role ownership, provider refusal and operation replay. Exact testcase names and zero skips are required.",
+      "SMS role eligibility is an uncached Android IntentFilter/PackageManager boundary. The mandatory resolver regression checks MIME-qualified MMS delivery, each enabled host component and rejection of a foreign receiver without granting a role or sending. No new review ownership transition is introduced; actual device role-grant acceptance remains separate.",
+      "The model covers one abstract platform invocation and one pre-dispatch refusal. It does not enumerate multipart or multi-recipient partial sends, database writes, independent hosts or arbitrary Android lifecycle timing. The Android tests exercise these boundaries with controlled provider responses and journal state. Physical SIM, carrier and provider acceptance need device qualification."
     ]
   }
 ]

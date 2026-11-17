@@ -30,6 +30,12 @@ import {
   type State,
   stringToUuid,
 } from "@elizaos/core";
+import { authoredNoteText } from "./note-authored.js";
+import {
+  findNoteFolder,
+  readNoteFolders,
+  withNoteFolder,
+} from "./note-folders.js";
 import {
   getNotesService,
   type NotesService,
@@ -272,10 +278,43 @@ function updateNoteFromChatReference(
   return service.updateNoteWithCommit(noteId, patch, expectedRevision);
 }
 
+/**
+ * A lookup that finds no note, several notes, or a note the owner did not
+ * name is an answer for the model, not a crash. Several notes and a name
+ * mismatch need the owner's choice, so they list the candidates.
+ */
+function lookupFailure(
+  error: unknown,
+  pool: readonly StickyNote[],
+): ActionResult | undefined {
+  if (!(error instanceof ElizaError)) return undefined;
+  if (error.code === "NOTES_NOT_FOUND" || error.code === "NOTES_TRASH_EXPIRED")
+    return failure(error.message, error.code);
+  if (
+    error.code !== "NOTES_AMBIGUOUS_NOTE" &&
+    error.code !== "NOTES_DELETE_NAME_MISMATCH"
+  )
+    return undefined;
+  const ids = error.context?.candidateIds;
+  const rejected = failure(error.message, error.code);
+  return {
+    ...rejected,
+    data: {
+      ...rejected.data,
+      awaitingUserInput: true,
+      requiresInput: true,
+      candidates: pool
+        .filter((note) => Array.isArray(ids) && ids.includes(note.id))
+        .map(projectNoteForModel),
+    },
+  };
+}
+
 /** Known lookup/literal-edit guards reject before the store commits. */
 async function updateNoteResult(
   update: () => ReturnType<NotesService["updateNoteWithCommit"]>,
   service: NotesService,
+  facts: NonNullable<ActionResult["data"]> = {},
 ): Promise<ActionResult> {
   try {
     const updated = await update();
@@ -285,29 +324,13 @@ async function updateNoteResult(
       note: updated.value,
       notesRevision: updated.snapshot.revision,
       consolidatedCount: updated.consolidatedIds.length,
+      ...facts,
     });
   } catch (error) {
     // A valid edit with more than one target needs a user's selection, not
     // another planner attempt choosing an arbitrary ID from the note index.
-    if (error instanceof ElizaError && error.code === "NOTES_AMBIGUOUS_NOTE") {
-      const target = error.context?.target;
-      const rejected = failure(error.message, error.code);
-      return {
-        ...rejected,
-        data: {
-          ...rejected.data,
-          awaitingUserInput: true,
-          requiresInput: true,
-          ...(typeof target === "string"
-            ? {
-                candidates: service
-                  .findNotesByQuery(target)
-                  .map(projectNoteForModel),
-              }
-            : {}),
-        },
-      };
-    }
+    const rejected = lookupFailure(error, service.snapshot().notes);
+    if (rejected) return rejected;
     // error-policy:J3 literal-edit guards reject untrusted arguments before writing.
     if (
       error instanceof ElizaError &&
@@ -363,15 +386,24 @@ export const notesAction: Action = {
     "UPDATE_NOTE",
   ],
   description:
-    "Durable notes the user can write and read back. action=create writes a note from one content field; action=get reads one exact noteId; action=list reads/searches note text; action=patch appends text or edits selected title/body fields or exact text, preserving other content; action=update substitutes exact text, adds a NEW checklist item or edits authored checklist/transcript entries, or replaces complete plain-note content; action=delete removes one by exact noteId or matching title/body text. The first line is the note's label and later lines are its body. For append/add use action=patch with changes [] and textEdit append: field=item for one list item, field=body for an exact suffix; never rewrite existing content. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
+    "Durable notes the user can write and read back. action=create writes a note from one content field; action=get reads one exact noteId; action=list reads/searches note text; action=patch appends text or edits selected title/body fields or exact text, preserving other content; action=update substitutes exact text, adds a NEW checklist item or edits authored checklist/transcript entries, or replaces complete plain-note content; action=delete moves one to Recently deleted by exact noteId or by the title the user named; action=restore brings one back from Recently deleted; action=move puts one in a named folder or takes it out, only when the device shared its folder list. The first line is the note's label and later lines are its body. For append/add use action=patch with changes [] and textEdit append: field=item for one list item, field=body for an exact suffix; never rewrite existing content. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
   descriptionCompressed:
-    "notes: create, list/search, patch append/title/body/exact text, authored checklist append/edit or whole-note update, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
+    "notes: create, list/search, patch append/title/body/exact text, authored checklist append/edit or whole-note update, delete, restore from Recently deleted, move to folder; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
   routingHint:
     "Use the Notes store for saved-note work; MEMORY, documents, files and DATABASE do not search it. Do not use raw SQL. Prefer available NOTES child operations; discover the required operation when missing. Never substitute a read for a requested edit or deletion. A title index is not body or timestamp evidence; use supplied current complete records or the appropriate read. Keep exact wording, punctuation and line breaks. Dates inside note text are content unless scheduling or a reminder is explicitly requested. Opening Notes is separate navigation, only when requested.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
-  validate: async () => true,
+  // A folder move needs the device's folder list, which only a host with
+  // folders sends. Without it the move operation is not offered.
+  validate: async (_runtime, message, _state, options) => {
+    const parsed = readOp(readParams(options as HandlerOptions | undefined));
+    return (
+      !parsed?.recognized ||
+      parsed.op !== "move" ||
+      readNoteFolders(message.content?.metadata) !== undefined
+    );
+  },
   restrictRequestOperation: ({ runtime, message, state, action, params }) => {
     // The fixed operation is owned by actual promotion metadata, never by
     // splitting an arbitrary action name or accepting a caller origin flag.
@@ -399,7 +431,7 @@ export const notesAction: Action = {
       // error-policy:J3 an unrecognised operation is untrusted planner input;
       // it becomes an explicit invalid result, never a fake-valid default.
       return failure(
-        `I can create, get, list, update, or delete a note — I don't have a "${parsed.requested}" one.`,
+        `I can create, get, list, update, move, delete, or restore a note — I don't have a "${parsed.requested}" one.`,
         "NOTES_UNKNOWN_OP",
       );
     }
@@ -522,9 +554,11 @@ export const notesAction: Action = {
         ? notes.filter((note) => note.id === noteId)
         : normalizedTopic
           ? notes.filter((note) =>
-              normalizedLookup(reconstructNoteContent(note)).includes(
-                normalizedTopic,
-              ),
+              // Checklist items and link clips live in the authored format,
+              // not the body; update and delete lookups search them too.
+              normalizedLookup(
+                `${reconstructNoteContent(note)}\n${authoredNoteText(note.format)}`,
+              ).includes(normalizedTopic),
             )
           : notes;
       if (
@@ -665,15 +699,8 @@ export const notesAction: Action = {
     // may preserve an explicitly requested title and body as separate tool
     // arguments, so normalize that losslessly before deriving the label.
     const content = alternatives.value;
-    const noteId =
-      op === "update" || op === "delete"
-        ? readString(params.noteId)
-        : undefined;
-    if (
-      (op === "update" || op === "delete") &&
-      params.noteId !== undefined &&
-      !noteId
-    ) {
+    const noteId = op === "create" ? undefined : readString(params.noteId);
+    if (op !== "create" && params.noteId !== undefined && !noteId) {
       return parameterFailure(
         "Supply a nonempty exact note ID.",
         "NOTES_INVALID_ID",
@@ -689,7 +716,9 @@ export const notesAction: Action = {
     const target = noteId ?? content;
     if (!target) {
       return parameterFailure(
-        "Tell me what the note should say.",
+        op === "restore" || op === "move"
+          ? "Name the note or give its exact ID."
+          : "Tell me what the note should say.",
         "NOTES_MISSING_TEXT",
         "content",
       );
@@ -725,19 +754,116 @@ export const notesAction: Action = {
     }
 
     if (op === "delete") {
-      const removed = noteId
-        ? await service.deleteNoteWithCommit(noteId)
-        : await service.deleteNoteByLookupWithCommit("query", target);
-      return committed({
-        op,
-        noteId: removed.value.id,
-        note: removed.value,
-        deletedAt: removed.snapshot.trash?.findLast(
-          (entry) => entry.note.id === removed.value.id,
-        )?.deletedAt,
-        notesRevision: removed.snapshot.revision,
-        removedCount: removed.removedIds.length,
-      });
+      try {
+        // A text lookup can match body text. Deleting needs the note's title
+        // in the owner's own words; an exact ID comes from a current record.
+        // A message with no text names no title, so it deletes nothing.
+        const removed = noteId
+          ? await service.deleteNoteWithCommit(noteId)
+          : await service.deleteNoteByLookupWithCommit("query", target, {
+              requireTitleInText: message.content.text ?? "",
+            });
+        return committed({
+          op,
+          noteId: removed.value.id,
+          note: removed.value,
+          deletedAt: removed.snapshot.trash?.findLast(
+            (entry) => entry.note.id === removed.value.id,
+          )?.deletedAt,
+          notesRevision: removed.snapshot.revision,
+          removedCount: removed.removedIds.length,
+        });
+      } catch (error) {
+        const rejected = lookupFailure(error, service.snapshot().notes);
+        if (rejected) return rejected;
+        throw error;
+      }
+    }
+
+    if (op === "restore") {
+      const snapshot = service.snapshot();
+      const deleted = (snapshot.trash ?? []).map((entry) => entry.note);
+      try {
+        // A text lookup searches Recently deleted only, the same way an
+        // update finds a current note.
+        const id =
+          noteId ??
+          service.getNoteByLookup("query", target, {
+            ...snapshot,
+            notes: deleted,
+          }).id;
+        const restored = await service.restoreNoteWithCommit(
+          id,
+          params.expectedRevision ?? snapshot.revision,
+        );
+        return committed({
+          op,
+          noteId: restored.value.id,
+          note: restored.value,
+          notesRevision: restored.snapshot.revision,
+        });
+      } catch (error) {
+        const rejected = lookupFailure(error, deleted);
+        if (rejected) return rejected;
+        if (error instanceof ElizaError && error.code === "NOTES_EDIT_CONFLICT")
+          return failure(error.message, error.code);
+        throw error;
+      }
+    }
+
+    if (op === "move") {
+      const folders = readNoteFolders(message.content?.metadata);
+      if (!folders)
+        return failure(
+          "This device shared no Notes folder list, so a note cannot be moved from chat. Nothing changed.",
+          "NOTES_FOLDERS_UNAVAILABLE",
+        );
+      const wanted = params.folder;
+      if (wanted !== null && !readString(wanted))
+        return failure(
+          "Pass folder as an exact folder name, or null to take the note out of its folder.",
+          "NOTES_INVALID_FOLDER",
+        );
+      const folder =
+        typeof wanted === "string" ? findNoteFolder(folders, wanted) : null;
+      if (folder === undefined) {
+        // Chat cannot create a folder; the owner picks one that exists.
+        const rejected = failure(
+          `No Notes folder is named "${readString(wanted)}". Nothing changed.`,
+          "NOTES_FOLDER_NOT_FOUND",
+        );
+        return {
+          ...rejected,
+          data: {
+            ...rejected.data,
+            awaitingUserInput: true,
+            requiresInput: true,
+            folders: folders.map((entry) => entry.name),
+          },
+        };
+      }
+      return updateNoteResult(
+        async () => {
+          const snapshot = service.snapshot();
+          const note = noteId
+            ? snapshot.notes.find((entry) => entry.id === noteId)
+            : service.getNoteByLookup("query", target, snapshot);
+          if (!note)
+            throw new ElizaError(`Note "${noteId}" was not found.`, {
+              code: "NOTES_NOT_FOUND",
+              severity: "ephemeral",
+            });
+          // The revision read with the note guards the folder write against a
+          // change made in between.
+          return service.updateNoteWithCommit(
+            note.id,
+            { format: withNoteFolder(note.format, folder?.id ?? null) },
+            params.expectedRevision ?? snapshot.revision,
+          );
+        },
+        service,
+        { folder: folder?.name ?? null },
+      );
     }
 
     const replacements = readAlternatives(params, [
@@ -880,9 +1006,9 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; use latestBy for an explicit creation/update recency selection, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, put a known exact note ID in noteId; content searches the EXISTING note by title or body text, not by ID. For create, first resolve what the user wants stored versus instructions to the app. Do not assume every word after body is note content. An unquoted trailing app instruction can be ambiguous: ask before creating if it could belong to either. Quotation delimiters are not content unless explicitly requested; embedded or explicitly literal quote characters are content. Then preserve the resolved note text exactly, including punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
+        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; use latestBy for an explicit creation/update recency selection, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, put a known exact note ID in noteId; content searches the EXISTING note by title or body text, not by ID, and deletes only a note whose title the user named. For create, first resolve what the user wants stored versus instructions to the app. Do not assume every word after body is note content. An unquoted trailing app instruction can be ambiguous: ask before creating if it could belong to either. Quotation delimiters are not content unless explicitly requested; embedded or explicitly literal quote characters are content. Then preserve the resolved note text exactly, including punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
       required: false,
-      subactions: ["create", "list", "update", "delete"],
+      subactions: ["create", "list", "update", "delete", "restore", "move"],
       requiredForSubactions: ["create"],
       legacyRequiredAlternatives: ["text", "note", "title", "query", "noteId"],
       // Notes validates content-or-alternative before any write.
@@ -898,7 +1024,7 @@ export const notesAction: Action = {
       name,
       description:
         "Supported alternative to content; prefer content and never supply conflicting values.",
-      subactions: ["create", "list", "update", "delete"],
+      subactions: ["create", "list", "update", "delete", "restore", "move"],
       required: false,
       modelOmissionSentinels: [""],
       schema: { type: "string" as const, minLength: 1 },
@@ -916,11 +1042,20 @@ export const notesAction: Action = {
       name: "noteId",
       description:
         "Exact, case-sensitive note ID. Required for get. For update or delete choose this exact-ID target OR the content title/body text lookup, never both; omit content/text/note/title/query entirely when noteId is supplied. Update and delete validate this target choice before a write. A text search cannot establish whether an ID exists.",
-      subactions: ["list", "get", "update", "delete"],
+      subactions: ["list", "get", "update", "delete", "restore", "move"],
       required: false,
       requiredForSubactions: ["get"],
       modelOmissionSentinels: [""],
       schema: { type: "string", minLength: 1 },
+    },
+    {
+      name: "folder",
+      description:
+        "For move: the exact name of an existing folder from the Notes folders list, or null to take the note out of its folder. Chat cannot create or rename a folder.",
+      subactions: ["move"],
+      required: false,
+      requiredForSubactions: ["move"],
+      schema: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] },
     },
     {
       name: "body",
@@ -1001,7 +1136,7 @@ export const notesAction: Action = {
       name: "expectedRevision",
       description:
         "Required for every PATCH, including textEdit, and for UPDATE append, authoredEdit or replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
-      subactions: ["update", "patch"],
+      subactions: ["update", "patch", "restore", "move"],
       required: false,
       requiredForSubactions: ["patch"],
       schema: { type: "integer", minimum: 0 },

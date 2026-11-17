@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildVoiceTurnSignal, shouldRespondToVoiceTurn } from "./respond-gate";
+import {
+  buildVoiceTurnSignal,
+  mayBecomeNonSpeechVoiceTranscript,
+  shouldRespondToVoiceTurn,
+} from "./respond-gate";
 
 describe("shouldRespondToVoiceTurn", () => {
   it("answers a turn that is not written in Latin letters", () => {
@@ -84,4 +88,65 @@ describe("shouldRespondToVoiceTurn", () => {
         }),
       ).toBe(false);
   });
+});
+
+it("rejects whole sound annotations and preserves speech and short answers", () => {
+  for (const text of [
+    "*music*",
+    "*Tonk*",
+    "*Dramatic Music*",
+    "[ background music ]",
+    "(  music  )",
+    "[noise]",
+    "(laughter)",
+    " [music] *breathing* ",
+  ]) {
+    expect(shouldRespondToVoiceTurn(text), text).toBe(false);
+    expect(buildVoiceTurnSignal(text).agentShouldSpeak, text).toBe(false);
+    expect(
+      buildVoiceTurnSignal(text, { wakeWordActive: true }).agentShouldSpeak,
+      text,
+    ).toBe(false);
+  }
+  for (const text of [
+    "yes",
+    "no",
+    "15",
+    "music",
+    "dramatic music",
+    "[background music] turn it down",
+    "*yes*",
+    "play music",
+    "[noise] turn it down",
+    "你好",
+  ]) {
+    expect(shouldRespondToVoiceTurn(text), text).toBe(true);
+  }
+});
+
+it("defers only interim transcripts that can still become a whole annotation", () => {
+  for (const text of [
+    "*Dramatic",
+    "*Dramatic Mus",
+    "[ noi",
+    "(laugh",
+    "*music* *To",
+    "*music*",
+    "*Dramatic ",
+    "*music ",
+    "[",
+  ])
+    expect(mayBecomeNonSpeechVoiceTranscript(text), text).toBe(true);
+  for (const text of [
+    "",
+    "wait",
+    "[noise] wait",
+    "*yes* stop",
+    "(laughs) wait",
+    "(wait stop talking",
+    "*yes stop",
+    "[ speaking in foreign language",
+    "*music now",
+  ])
+    expect(mayBecomeNonSpeechVoiceTranscript(text), text).toBe(false);
 });

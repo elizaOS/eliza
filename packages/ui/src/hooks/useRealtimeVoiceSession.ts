@@ -50,6 +50,7 @@ import type {
 export type RealtimeVoiceErrorKind =
   | "refused" // admission refusal: never fall back to batch capture.
   | "permission" // mic permission denied — surface a re-enable CTA.
+  | "release" // the previous capture has not confirmed release.
   | "no-device" // no input device — surface an actionable notice.
   | "mint" // mint failed (not a 404; a real failure — 503/500/malformed).
   | "consent" // consent nonce could not be obtained (503 / store off).
@@ -209,6 +210,14 @@ function classifyError(error: Error): RealtimeVoiceError {
     };
   }
   if (error instanceof VoiceMicCaptureError) {
+    if (error.code === "release_unconfirmed") {
+      return {
+        kind: "release",
+        message:
+          "The microphone did not stop. Retry Stop before starting voice again.",
+        actionable: true,
+      };
+    }
     if (error.code === "permission_denied") {
       return {
         kind: "permission",
@@ -332,6 +341,7 @@ export function useRealtimeVoiceSession(
 
   const clientRef = useRef<VoiceSessionClient | null>(null);
   const teardownRef = useRef<Promise<void> | null>(null);
+  const retainedClientsRef = useRef(new Set<VoiceSessionClient>());
   // A generation counter so a stale client's async callbacks (a teardown that
   // races a new start) cannot write state for a session the component moved on
   // from.
@@ -427,24 +437,42 @@ export function useRealtimeVoiceSession(
     [],
   );
 
-  const teardownClient = useCallback(async () => {
+  const teardownClient = useCallback(async (candidate?: VoiceSessionClient) => {
+    const client = candidate ?? clientRef.current;
+    if (client) {
+      retainedClientsRef.current.add(client);
+      if (clientRef.current === client) clientRef.current = null;
+    }
     // A refused session already owns its shutdown. Never start a second close
     // or clear an unresolved capture fence during Stop or an identity change.
     if (teardownRef.current) {
       await teardownRef.current;
       return;
     }
-    const client = clientRef.current;
-    clientRef.current = null;
-    if (client) {
-      // error-policy:J6 Socket/microphone teardown is best effort after ownership is cleared.
-      const pending = client.stop().catch(() => {});
-      teardownRef.current = pending;
+    const pending = (async () => {
+      let failure: Error | undefined;
+      for (const held of [...retainedClientsRef.current]) {
+        try {
+          await held.stop();
+          retainedClientsRef.current.delete(held);
+        } catch (error) {
+          failure ??= error instanceof Error ? error : new Error(String(error));
+        }
+      }
+      if (failure) throw failure;
+    })();
+    teardownRef.current = pending;
+    try {
       await pending;
+    } catch (error) {
+      setError(
+        classifyError(
+          error instanceof Error ? error : new Error(String(error)),
+        ),
+      );
+      throw error;
+    } finally {
       if (teardownRef.current === pending) teardownRef.current = null;
-    } else {
-      // Rapid identity changes share the detached client's ongoing teardown.
-      await teardownRef.current;
     }
   }, []);
 
@@ -458,6 +486,7 @@ export function useRealtimeVoiceSession(
     // A newer lifecycle may start while an old AudioContext close is pending.
     // Only the generation that initiated this teardown may clear UI state.
     if (sessionGenRef.current === stoppedGeneration) {
+      setError((previous) => (previous?.kind === "release" ? null : previous));
       setActive(false);
       setConnecting(false);
       setAgentSpeaking(false);
@@ -489,6 +518,24 @@ export function useRealtimeVoiceSession(
 
     resetRefusal();
     startingRef.current = true;
+    const admissionGeneration = sessionGenRef.current;
+    if (retainedClientsRef.current.size > 0) {
+      try {
+        await teardownClient();
+      } catch (error) {
+        startingRef.current = false;
+        return {
+          kind: "error",
+          error: classifyError(
+            error instanceof Error ? error : new Error(String(error)),
+          ),
+        };
+      }
+    }
+    if (sessionGenRef.current !== admissionGeneration) {
+      startingRef.current = false;
+      return { kind: "unavailable" };
+    }
     micOwnedRef.current = false;
     setMicrophoneMuted(false);
     setError(null);
@@ -526,14 +573,21 @@ export function useRealtimeVoiceSession(
       const timeoutMessage = serverReadyForMic
         ? "Microphone setup timed out. Check browser microphone permission, then tap Talk to retry."
         : "Voice connection timed out. Tap the mic to try again.";
-      resolveStartOutcome(gen, {
-        kind: "fallback-to-batch",
-        reason: "transport",
-        ...(serverReadyForMic ? { message: timeoutMessage } : {}),
-      });
-      if (clientRef.current === client) clientRef.current = null;
-      // error-policy:J6 timed-out session teardown is best effort; the timeout error below is the surfaced failure.
-      void client.stop().catch(() => {});
+      void teardownClient(client).then(
+        () =>
+          resolveStartOutcome(gen, {
+            kind: "fallback-to-batch",
+            reason: "transport",
+            ...(serverReadyForMic ? { message: timeoutMessage } : {}),
+          }),
+        (error) =>
+          resolveStartOutcome(gen, {
+            kind: "error",
+            error: classifyError(
+              error instanceof Error ? error : new Error(String(error)),
+            ),
+          }),
+      );
       setError({
         kind: "transport",
         message: timeoutMessage,
@@ -705,14 +759,24 @@ export function useRealtimeVoiceSession(
           classified.kind === "mint" ||
           classified.kind === "consent"
         ) {
-          clientRef.current = null;
+          void teardownClient(client).catch(() => {});
         }
         const fallbackReason = fallbackReasonForError(classified);
         if (fallbackReason && !micOwnedRef.current) {
-          resolveStartOutcome(gen, {
-            kind: "fallback-to-batch",
-            reason: fallbackReason,
-          });
+          void teardownClient(client).then(
+            () =>
+              resolveStartOutcome(gen, {
+                kind: "fallback-to-batch",
+                reason: fallbackReason,
+              }),
+            (error) =>
+              resolveStartOutcome(gen, {
+                kind: "error",
+                error: classifyError(
+                  error instanceof Error ? error : new Error(String(error)),
+                ),
+              }),
+          );
         } else {
           resolveStartOutcome(gen, { kind: "error", error: classified });
         }
@@ -730,7 +794,7 @@ export function useRealtimeVoiceSession(
       if (!isCurrent()) {
         // A newer start/stop superseded us mid-connect; tear this one down.
         // error-policy:J6 A superseded session no longer owns UI state or media resources.
-        await client.stop().catch(() => {});
+        await teardownClient(client).catch(() => {});
         resolveStartOutcome(gen, { kind: "unavailable" });
         return await outcomePromise;
       }
@@ -763,9 +827,19 @@ export function useRealtimeVoiceSession(
       );
       // Same latch policy as onError: only failures whose copy promises the
       // batch path disarm realtime; actionable kinds stay retryable.
-      clientRef.current = null;
-      // error-policy:J6 Failed startup teardown follows the surfaced primary error.
-      await client.stop().catch(() => {});
+      try {
+        await teardownClient(client);
+      } catch (releaseError) {
+        resolveStartOutcome(gen, {
+          kind: "error",
+          error: classifyError(
+            releaseError instanceof Error
+              ? releaseError
+              : new Error(String(releaseError)),
+          ),
+        });
+        return await outcomePromise;
+      }
       setActive(false);
       setConnecting(false);
       setNeedsUnlock(false);
@@ -792,6 +866,7 @@ export function useRealtimeVoiceSession(
     flagEnabled,
     resetRefusal,
     resolveStartOutcome,
+    teardownClient,
   ]);
 
   const reportFallback = useCallback((reason: RealtimeVoiceFallbackReason) => {
@@ -838,16 +913,22 @@ export function useRealtimeVoiceSession(
       }
       const client = clientRef.current;
       clientRef.current = null;
-      // error-policy:J6 Component teardown has already detached ownership of the client.
-      void client?.stop().catch(() => {});
+      // error-policy:J6 Unmount retries retained release; the hook already reports failures.
+      if (client || retainedClientsRef.current.size > 0)
+        void teardownClient(client ?? undefined).catch(() => {});
     };
-  }, []);
+  }, [teardownClient]);
 
   // If the flag flips off while a session is live, tear it down — the batch
   // path takes over and a stale realtime socket must not linger.
   useEffect(() => {
-    if (!flagEnabled && (clientRef.current || startingRef.current)) {
-      void stop();
+    if (
+      !flagEnabled &&
+      (clientRef.current ||
+        startingRef.current ||
+        retainedClientsRef.current.size > 0)
+    ) {
+      void stop().catch(() => {});
     }
   }, [flagEnabled, stop]);
 
@@ -866,9 +947,9 @@ export function useRealtimeVoiceSession(
         clientRef.current ||
         startingRef.current,
     );
-    if (!shouldRestart) return;
+    if (!shouldRestart && retainedClientsRef.current.size === 0) return;
 
-    identityRestartPendingRef.current = true;
+    identityRestartPendingRef.current = shouldRestart;
     const changeGen = ++identityChangeGenRef.current;
     let cancelled = false;
     void (async () => {
@@ -884,6 +965,7 @@ export function useRealtimeVoiceSession(
         idsRef.current;
       identityRestartPendingRef.current = false;
       if (
+        shouldRestart &&
         !refusedRef.current &&
         flagEnabled &&
         nextAgentId &&
@@ -891,7 +973,7 @@ export function useRealtimeVoiceSession(
       ) {
         await start();
       }
-    })();
+    })().catch(() => {});
     return () => {
       cancelled = true;
     };

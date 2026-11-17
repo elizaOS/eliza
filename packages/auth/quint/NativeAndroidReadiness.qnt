@@ -9,7 +9,8 @@
 // keeps a fresh answer, and one in which only a method's own request got no
 // usable answer keeps that method as the fresh answer had it. A browser return link Android has not verified yet is
 // watched with bounded local checks, and readiness is measured once it is
-// verified. Callers join one probe.
+// verified. Callers join one probe. Android checks for a compatible browser
+// when measuring Google and again when returning a cached answer.
 module NativeAndroidReadiness {
   pure val WatchRounds = 6
   pure val MaxProbes = 5
@@ -23,7 +24,7 @@ module NativeAndroidReadiness {
     // A sign-in screen asked for status recently, or an attempt is in progress.
     surface: bool, resumes: int, resumeProbes: int, unaskedResumeProbes: int,
     // Android's verification of the return link, and the bounded watch.
-    linkVerified: bool, watching: bool, watchRound: int, watchProbes: int,
+    browserPresent: bool, linkVerified: bool, watching: bool, watchRound: int, watchProbes: int,
     announcements: int, changes: int,
     servedDueWithoutMeasuring: bool, waitedOnFreshAnswer: bool, lostFreshAnswer: bool,
     turnedOnUnmeasured: bool
@@ -33,7 +34,7 @@ module NativeAndroidReadiness {
   action init = s' = {
     cache: "none", recheckDue: false, passiveDue: false, expired: false, probing: false, waiters: 0, probes: 0,
     surface: false, resumes: 0, resumeProbes: 0, unaskedResumeProbes: 0,
-    linkVerified: false, watching: false, watchRound: 0, watchProbes: 0,
+    browserPresent: true, linkVerified: false, watching: false, watchRound: 0, watchProbes: 0,
     announcements: 0, changes: 0,
     servedDueWithoutMeasuring: false, waitedOnFreshAnswer: false, lostFreshAnswer: false,
     turnedOnUnmeasured: false
@@ -41,6 +42,7 @@ module NativeAndroidReadiness {
 
   pure def fresh(x: State): bool = x.cache != "none" and not(x.expired)
   pure def incomplete(x: State): bool = x.cache != "ready"
+  pure def reportedGoogle(x: State): bool = x.cache == "ready" and x.browserPresent
 
   // status() from a sign-in screen. A fresh answer is served at once; when a
   // method in it is due, a measurement starts behind it. The caller waits only
@@ -73,30 +75,31 @@ module NativeAndroidReadiness {
       unaskedResumeProbes: s.unaskedResumeProbes + (if (starts and not(first) and not(s.surface)) 1 else 0) }
   }
 
-  // The probe's answer. Google is ready only once Android verified the link.
+  // The probe's answer. Google needs a usable browser and a verified link.
   // A change from an earlier answer is announced; an unverified link is watched.
   // A measurement with no result keeps a fresh answer and announces nothing.
   action measured(failed: bool): bool = all {
     s.probing,
     val kept = failed and fresh(s)
-    val result = if (kept) s.cache else if (failed) "unavailable" else if (s.linkVerified) "ready" else "partial"
+    val result = if (kept) s.cache else if (failed) "unavailable" else if (s.linkVerified and s.browserPresent) "ready" else "partial"
     val changed = s.cache != "none" and s.cache != result
+    val startWatch = not(s.watching) and not(failed) and s.browserPresent and not(s.linkVerified)
     s' = { ...s, probing: false, waiters: 0, cache: result, recheckDue: false, passiveDue: false,
       expired: if (kept) s.expired else false,
       changes: s.changes + (if (changed) 1 else 0),
       announcements: s.announcements + (if (changed) 1 else 0),
       lostFreshAnswer: s.lostFreshAnswer or (failed and fresh(s) and result != s.cache),
-      watching: s.watching or (not(failed) and result == "partial"),
-      watchRound: if (not(s.watching) and not(failed) and result == "partial") 0 else s.watchRound }
+      watching: s.watching or startWatch,
+      watchRound: if (startWatch) 0 else s.watchRound }
   }
 
   // The probe answered, but the browser Google reads (authorize, the statement
   // list) got no usable answer: a timeout, a gateway error, a rate limit. Email
   // and SMS were measured. Google keeps what a fresh answer that knew the
   // methods said, with that answer's lifetime; otherwise it is not ready.
-  // Those reads are sent only over a verified link.
+  // Those reads require a compatible browser and a verified link.
   action measuredWithoutGoogle = all {
-    s.probing, s.linkVerified,
+    s.probing, s.linkVerified, s.browserPresent,
     val kept = fresh(s) and s.cache != "unavailable"
     val result = if (kept) s.cache else "partial"
     val changed = s.cache != "none" and s.cache != result
@@ -120,6 +123,7 @@ module NativeAndroidReadiness {
   }
 
   action linkVerifies = all { not(s.linkVerified), s' = { ...s, linkVerified: true } }
+  action changeBrowser = s' = { ...s, browserPresent: not(s.browserPresent) }
   action shortTtlEnds = all { s.cache.in(Set("partial", "unavailable")), not(s.recheckDue), s' = { ...s, recheckDue: true } }
   // The growing wait for measurements nobody asked for never ends before the short one.
   action passiveWaitEnds = all { s.recheckDue, not(s.passiveDue), s' = { ...s, passiveDue: true } }
@@ -136,7 +140,7 @@ module NativeAndroidReadiness {
     nondet failed = Set(true, false).oneOf()
     measured(failed),
     measuredWithoutGoogle,
-    watchTick, linkVerifies, shortTtlEnds, passiveWaitEnds, longTtlEnds, surfaceGoesQuiet, idle
+    watchTick, linkVerifies, changeBrowser, shortTtlEnds, passiveWaitEnds, longTtlEnds, surfaceGoesQuiet, idle
   }
 
   // A cached "not ready" is never served past its short TTL without a measurement running behind it.
@@ -196,6 +200,14 @@ module NativeAndroidReadiness {
 
   run readyAnswerStaysCachedTest = init.then(linkVerifies).then(status(false)).then(measured(false))
     .then(status(true)).expect(s.probes == 1 and s.cache == "ready" and not(s.watching))
+
+  run browserAvailabilityControlsGoogleWithAFreshCacheTest = init.then(changeBrowser).then(linkVerifies)
+    .then(status(false)).then(measured(false))
+    .expect(s.cache == "partial" and not(reportedGoogle(s)) and not(s.watching))
+    .then(changeBrowser).then(status(true)).then(measured(false))
+    .expect(reportedGoogle(s))
+    .then(changeBrowser).then(status(false))
+    .expect(s.cache == "ready" and not(reportedGoogle(s)) and not(s.probing))
 
   run resumeWithoutSignInScreenSendsNothingTest = init.then(resume(true)).then(measured(false))
     .then(shortTtlEnds).then(passiveWaitEnds).then(resume(false)).then(resume(false))

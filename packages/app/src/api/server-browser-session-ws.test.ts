@@ -113,7 +113,6 @@ describe("owner browser session WebSocket admission", {
     vi.stubEnv("ELIZA_CONFIG_PATH", path.join(stateDir, "eliza.json"));
     vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", path.join(stateDir, "eliza.json"));
     vi.stubEnv("ELIZA_API_BIND", "127.0.0.1");
-    vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
     vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
     vi.stubEnv("ELIZA_API_TOKEN", API_TOKEN);
     vi.stubEnv("ELIZA_API_AUTH_TOKEN", "");
@@ -237,7 +236,6 @@ describe("owner browser session WebSocket admission", {
       vi.stubEnv("ELIZA_CLOUD_PROVISIONED", "0");
     }
     vi.stubEnv("ELIZA_API_BIND", "0.0.0.0");
-    vi.stubEnv("ELIZA_API_BIND_HOST", "0.0.0.0");
     try {
       expect(
         await ping({
@@ -247,7 +245,6 @@ describe("owner browser session WebSocket admission", {
       ).toEqual({ code: 1008 });
     } finally {
       vi.stubEnv("ELIZA_API_BIND", "127.0.0.1");
-      vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
     }
   });
 

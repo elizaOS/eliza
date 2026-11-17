@@ -19,6 +19,7 @@
  *   bun packages/scripts/build-core.ts --force    # … forwarding extra turbo args
  */
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveCoreBuildPackages } from "./lib/script-metadata.ts";
@@ -43,6 +44,46 @@ export function isBuildCoreEntrypoint(moduleUrl, argvPath) {
   return moduleUrl === pathToFileURL(path.resolve(argvPath)).href;
 }
 
+/**
+ * The Bun the repository pins (`packageManager: bun@x.y.z`). Several package
+ * builds depend on bundler behaviour of that exact release: under another Bun,
+ * plugin-elizacloud's shared `lib/config-env` external is emitted as an
+ * extensionless relative import and the build fails only at its post-build
+ * self-check. Consumers that build outside the pinned CI (for example a
+ * product deploying its own Cloud) need the refusal up front.
+ */
+export function pinnedBunVersion(packageJsonText) {
+  const manager = JSON.parse(packageJsonText).packageManager;
+  const match = /^bun@(\d+\.\d+\.\d+)$/.exec(manager ?? "");
+  return match ? match[1] : null;
+}
+
+/** A refusal message when the running Bun is not the pinned one, else null. */
+export function bunVersionProblem(pinned, running, env = process.env) {
+  if (!pinned || !running || pinned === running) return null;
+  if (env.ELIZA_ALLOW_UNPINNED_BUN === "1") return null;
+  return (
+    `[build-core] Bun ${running} is running, but this repository pins bun@${pinned} ` +
+    `(package.json packageManager). Install it (for example \`bun upgrade --version ${pinned}\`) ` +
+    `or set ELIZA_ALLOW_UNPINNED_BUN=1 to build anyway.`
+  );
+}
+
+/**
+ * The environment for the Turbo build. Type-emitting builds (`tsc` in
+ * @elizaos/agent) exceed Node's default heap; CI sets an 8 GiB limit in each
+ * workflow, so local and downstream builds get the same default unless the
+ * caller already chose one.
+ */
+export function buildCoreEnvironment(env = process.env) {
+  const options = env.NODE_OPTIONS ?? "";
+  if (/--max-old-space-size(=|\s)/.test(options)) return { ...env };
+  return {
+    ...env,
+    NODE_OPTIONS: `${options} --max-old-space-size=8192`.trim(),
+  };
+}
+
 /** The exact `run-turbo.ts` argv for the core build, plus any forwarded args. */
 export function buildCoreTurboArgs(extra = []) {
   return [
@@ -55,6 +96,15 @@ export function buildCoreTurboArgs(extra = []) {
 
 function main() {
   const extra = process.argv.slice(2);
+  const pinned = pinnedBunVersion(
+    readFileSync(path.join(SCRIPT_DIR, "..", "..", "package.json"), "utf8"),
+  );
+  const problem = bunVersionProblem(pinned, process.versions.bun);
+  if (problem) {
+    console.error(problem);
+    process.exit(1);
+  }
+  const env = buildCoreEnvironment();
   for (const script of BUILD_CORE_PREREQUISITE_SCRIPTS) {
     console.log(`[build-core] running ${script}`);
     const prerequisite = spawnSync(
@@ -62,6 +112,7 @@ function main() {
       [path.join(SCRIPT_DIR, script)],
       {
         stdio: "inherit",
+        env,
       },
     );
     if (prerequisite.error) {
@@ -86,7 +137,7 @@ function main() {
   const result = spawnSync(
     process.execPath,
     [RUN_TURBO, ...buildCoreTurboArgs(extra)],
-    { stdio: "inherit" },
+    { stdio: "inherit", env },
   );
   if (result.error) {
     console.error(

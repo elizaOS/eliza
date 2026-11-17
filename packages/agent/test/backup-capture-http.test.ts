@@ -47,7 +47,6 @@ beforeAll(async () => {
     PGLITE_DATA_DIR: path.join(directory, ".elizadb"),
     ELIZA_CONFIG_PATH: path.join(directory, "eliza.json"),
     ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "eliza.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: token,
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
   }))

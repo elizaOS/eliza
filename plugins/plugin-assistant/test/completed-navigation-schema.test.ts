@@ -12,7 +12,10 @@ import {
   deviceActionForCapabilities,
   proposeDeviceAction,
 } from "../src/services/device-actions/action";
-import { validateDevicePayload } from "../src/services/device-actions/contract";
+import {
+  deviceOperationFormSupported,
+  validateDevicePayload,
+} from "../src/services/device-actions/contract";
 
 const metadata = {
   viewDelivery: "completed-action",
@@ -140,6 +143,109 @@ it("offers camera capture only when the device negotiated it", () => {
   ).toThrow();
 });
 
+it("offers a camera lens and an SMS target only to a phone that negotiated them", () => {
+  const branches = (capabilities: string[], type: string) =>
+    deviceActionForCapabilities(proposeDeviceAction, capabilities)
+      .parameters!.find((p: any) => p.name === "operation")!
+      .schema.anyOf!.filter((b: any) => b.properties?.type?.enum?.[0] === type);
+  const base = ["camera.capture-photo.v1", "sms.compose.v1"];
+  const older = deviceActionForCapabilities(proposeDeviceAction, base);
+  expect(branches(base, "camera_capture_photo")).toHaveLength(1);
+  expect(
+    branches(base, "camera_capture_photo")[0].properties,
+  ).not.toHaveProperty("lens");
+  expect(branches(base, "sms_compose")).toHaveLength(1);
+  expect(branches(base, "sms_compose")[0].properties).toHaveProperty("query");
+  expect(older.description).toContain(
+    "first show the camera view with VIEWS in this same turn",
+  );
+  expect(older.description).not.toContain("camera.capture-lens.v1");
+  expect(older.description).not.toContain("sms.compose.v2");
+  const next = [...base, "camera.capture-lens.v1", "sms.compose.v2"];
+  const newer = deviceActionForCapabilities(proposeDeviceAction, next);
+  expect(branches(next, "camera_capture_photo")).toHaveLength(1);
+  expect(
+    branches(next, "camera_capture_photo")[0].properties!.lens.enum,
+  ).toEqual(["front", "back"]);
+  expect(branches(next, "sms_compose")).toHaveLength(1);
+  expect(branches(next, "sms_compose")[0].properties).toHaveProperty("target");
+  expect(branches(next, "sms_compose")[0].properties).toHaveProperty("draft");
+  expect(newer.description).toContain("front for a selfie");
+  expect(newer.description).toContain("sms_compose {target, body}");
+  expect(newer.description).not.toContain("sms_compose {query, body}");
+  const payload = (operation: unknown) =>
+    validateDevicePayload({
+      action: "device_action",
+      version: 1,
+      installationId: "device",
+      enrollmentId: "enrollment",
+      operation,
+    }).operation;
+  const selfie = { type: "camera_capture_photo", lens: "front" };
+  expect(payload(selfie)).toEqual(selfie);
+  expect(() =>
+    payload({ type: "camera_capture_photo", lens: "wide" }),
+  ).toThrow();
+  expect(deviceOperationFormSupported(payload(selfie), base)).toBe(false);
+  expect(deviceOperationFormSupported(payload(selfie), next)).toBe(true);
+  expect(
+    deviceOperationFormSupported(
+      payload({ type: "camera_capture_photo" }),
+      base,
+    ),
+  ).toBe(true);
+});
+
+it("offers contact_update with add and remove only to a phone that negotiated contacts.write.v2", () => {
+  const branches = (capabilities: string[]) =>
+    deviceActionForCapabilities(proposeDeviceAction, capabilities)
+      .parameters!.find((p: any) => p.name === "operation")!
+      .schema.anyOf!.filter(
+        (b: any) => b.properties?.type?.enum?.[0] === "contact_update",
+      );
+  const base = ["contacts.write.v1"];
+  const next = [...base, "contacts.write.v2"];
+  expect(branches(base)).toHaveLength(1);
+  expect(branches(base)[0].properties).not.toHaveProperty("add");
+  expect(branches(base)[0].required).toContain("set");
+  expect(branches(next)).toHaveLength(1);
+  expect(branches(next)[0].properties).toHaveProperty("add");
+  expect(branches(next)[0].properties).toHaveProperty("remove");
+  expect(branches(next)[0].required).toEqual(["type", "query"]);
+  const newer = deviceActionForCapabilities(
+    proposeDeviceAction,
+    next,
+  ).description;
+  expect(newer).toContain("Use add when the owner asks to add a number");
+  expect(newer).not.toContain("This phone cannot add one number");
+  const payload = (operation: unknown) =>
+    validateDevicePayload({
+      action: "device_action",
+      version: 1,
+      installationId: "device",
+      enrollmentId: "enrollment",
+      operation,
+    }).operation;
+  const addEmail = {
+    type: "contact_update",
+    query: "Sam",
+    add: { emailAddresses: ["sam@example.com"] },
+  };
+  expect(payload(addEmail)).toEqual(addEmail);
+  expect(deviceOperationFormSupported(payload(addEmail), base)).toBe(false);
+  expect(deviceOperationFormSupported(payload(addEmail), next)).toBe(true);
+  expect(
+    deviceOperationFormSupported(
+      payload({
+        type: "contact_update",
+        query: "Sam",
+        set: { phoneNumbers: [] },
+      }),
+      base,
+    ),
+  ).toBe(true);
+});
+
 it("accepts the browser camera's 25-digit saved identity without numeric coercion", () => {
   const mediaId = "1792274767123" + "123456789012";
   const result = {
@@ -192,6 +298,8 @@ it("offers each telephony action only with its own capability and states its lim
   const telephony = {
     "phone.call.v1": ["phone_call"],
     "contacts.write.v1": ["contact_create", "contact_update", "contact_delete"],
+    "contacts.show.v1": ["contact_show"],
+    "contacts.read.v1": ["contact_read_selected"],
     "sms.compose.v1": ["sms_compose", "sms_reply_selected"],
     "messages.read.v1": ["messages_read_selected"],
     "voicemail.read.v1": ["voicemail_read_selected"],
@@ -240,11 +348,17 @@ it("offers each telephony action only with its own capability and states its lim
     "never a sent message",
     "return only what the owner has open in front",
     "never use them to enumerate",
+    "you receive only shown or not-found, never a name, number or count",
+    "returns only the one contact the owner has open in Contacts",
+    "This phone cannot add one number or email address to a contact",
   ])
     expect(text).toContain(required);
+  expect(text).not.toContain("contacts.write.v2");
   for (const operation of [
     { type: "phone_call", target: { kind: "contact", query: "Ada" } },
     { type: "contact_delete", query: "Ada" },
+    { type: "contact_show", query: "Ada" },
+    { type: "contact_read_selected" },
     { type: "sms_compose", query: "Ada", body: "Late." },
     { type: "sms_reply_selected", body: "Late." },
     { type: "messages_read_selected" },
@@ -270,6 +384,9 @@ it("offers each telephony action only with its own capability and states its lim
     { type: "sms_reply_selected", body: "Late.", threadId: "4" },
     { type: "sms_reply_selected", body: " " },
     { type: "contact_update", query: "Ada", set: {} },
+    { type: "contact_update", query: "Ada", add: { phoneNumbers: [] } },
+    { type: "contact_show", query: "Ada", limit: 5 },
+    { type: "contact_read_selected", query: "Ada" },
   ])
     expect(() =>
       validateDevicePayload({
@@ -280,4 +397,87 @@ it("offers each telephony action only with its own capability and states its lim
         operation,
       }),
     ).toThrow();
+});
+
+it("offers each Browser control only with its own capability and validates its exact form", () => {
+  const browser = {
+    "browser.search.v1": ["browser_search"],
+    "browser.tabs.v1": [
+      "browser_tab_new",
+      "browser_tab_switch",
+      "browser_tab_close",
+    ],
+    "browser.find.v1": ["browser_find"],
+    "browser.history.v1": ["browser_history"],
+  };
+  const all = Object.values(browser).flat();
+  for (const capabilities of [undefined, ["notes.local-record.v1"]]) {
+    const offered = deviceActionForCapabilities(
+      proposeDeviceAction,
+      capabilities,
+    );
+    for (const type of all) {
+      expect(types(offered)).not.toContain(type);
+      expect(offered.description).not.toContain(type);
+    }
+  }
+  for (const [capability, own] of Object.entries(browser)) {
+    const offered = deviceActionForCapabilities(proposeDeviceAction, [
+      "notes.local-record.v1",
+      capability,
+    ]);
+    for (const type of all)
+      expect(types(offered).includes(type)).toBe(own.includes(type));
+    expect(offered.description).toContain(capability);
+  }
+  const text = deviceActionForCapabilities(proposeDeviceAction, [
+    "notes.local-record.v1",
+    ...Object.keys(browser),
+  ]).description;
+  for (const required of [
+    "query must be words the user typed in this message",
+    "You never receive the list of tabs, a title or an address",
+    "Closing a tab is always reviewed by the owner",
+    "You receive no match count and no page content",
+  ])
+    expect(text).toContain(required);
+  const operation = (value: unknown) =>
+    validateDevicePayload({
+      action: "device_action",
+      version: 1,
+      installationId: "device",
+      enrollmentId: "enrollment",
+      operation: value,
+    }).operation;
+  for (const value of [
+    { type: "browser_search", query: "best pizza near me" },
+    { type: "browser_tab_new" },
+    { type: "browser_tab_new", private: true },
+    { type: "browser_tab_switch", target: "bbc" },
+    { type: "browser_tab_close" },
+    { type: "browser_tab_close", target: "bbc" },
+    { type: "browser_find", text: "refund" },
+    { type: "browser_history", action: "stop" },
+  ])
+    expect(operation(value)).toEqual(value);
+  for (const value of [
+    { type: "browser_search", query: " " },
+    { type: "browser_search", query: "cats", engine: "https://evil.example" },
+    { type: "browser_search", query: "x".repeat(513) },
+    { type: "browser_tab_new", private: "yes" },
+    { type: "browser_tab_switch" },
+    { type: "browser_tab_switch", target: "bbc", id: "3" },
+    { type: "browser_tab_close", target: "a\nb" },
+    { type: "browser_find", text: "" },
+    { type: "browser_history", action: "home" },
+  ])
+    expect(() => operation(value)).toThrow("Invalid Browser operation");
+  // A typed http:// address is stored as HTTPS.
+  expect(
+    operation({ type: "browser_navigate", url: "http://example.com:80/a" }),
+  ).toEqual({ type: "browser_navigate", url: "https://example.com/a" });
+  // A port typed with http:// serves plain HTTP, so it is refused.
+  expect(() =>
+    operation({ type: "browser_navigate", url: "http://example.com:8080/a" }),
+  ).toThrow("Only HTTPS browser destinations are supported");
 });

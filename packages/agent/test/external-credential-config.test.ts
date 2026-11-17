@@ -113,7 +113,6 @@ it.each([
   "applies authenticated $provider strategy changes to the live pool and durable config",
   async ({ provider, strategy }) => {
     const file = destination();
-    vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
     vi.stubEnv("ELIZA_API_TOKEN", "strategy-route-test-token");
     vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
     const { DIRECT_ACCOUNT_PROVIDER_ENV } = await import("@elizaos/auth/auth");

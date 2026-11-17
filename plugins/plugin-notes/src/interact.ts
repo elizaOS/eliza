@@ -386,7 +386,9 @@ async function dispatchCapability(
     // destructive capabilities. Id-selected deletes skip the fence (ids come
     // from structured contexts, not name translation).
     const ownerText =
-      typeof params.ownerText === "string" ? params.ownerText : undefined;
+      typeof params.ownerText === "string" && params.ownerText.trim()
+        ? params.ownerText
+        : undefined;
     const removed =
       target.selector === "id"
         ? await service.deleteNoteWithCommit(target.value)

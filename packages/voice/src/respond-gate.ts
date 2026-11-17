@@ -38,6 +38,56 @@ const DISFLUENCIES = new Set([
   "eh",
 ]);
 
+/** Recognizer sound labels, written inside `[...]`, `(...)` or `*...*`. */
+const NON_SPEECH_LABELS = [
+  "music",
+  "dramatic music",
+  "background music",
+  "noise",
+  "silence",
+  "inaudible",
+  "unintelligible",
+  "applause",
+  "laughter",
+  "laughing",
+  "coughing",
+  "sighing",
+  "breathing",
+  "tonk",
+];
+const NON_SPEECH_LABEL = `(?:${NON_SPEECH_LABELS.map((label) => label.replace(" ", "\\s+")).join("|")})`;
+const NON_SPEECH_ANNOTATION = new RegExp(
+  `\\[\\s*${NON_SPEECH_LABEL}\\s*\\]|\\(\\s*${NON_SPEECH_LABEL}\\s*\\)|\\*\\s*${NON_SPEECH_LABEL}\\s*\\*`,
+  "gi",
+);
+/** After whole annotations: one opener and text with no closer, such as `*Dramatic Mus`. */
+const OPEN_ANNOTATION = /^[[(*]([^\])*]*)$/;
+
+/** Whole recognizer annotations, without discarding spoken words beside them. */
+export function isNonSpeechVoiceTranscript(transcript: string): boolean {
+  const text = transcript.trim();
+  return (
+    text.length > 0 &&
+    text.replace(NON_SPEECH_ANNOTATION, "").trim().length === 0
+  );
+}
+
+/**
+ * An interim transcript that is, or can still become, a whole annotation. Only its final can be
+ * classified, so a partial like `*Dramatic Mus` must not interrupt a reply.
+ */
+export function mayBecomeNonSpeechVoiceTranscript(transcript: string): boolean {
+  const rest = transcript.replace(NON_SPEECH_ANNOTATION, "").trim();
+  if (rest === "") return transcript.trim().length > 0;
+  const open = OPEN_ANNOTATION.exec(rest);
+  if (!open) return false;
+  // Only the start of a sound label waits; `(wait stop talking` is speech now.
+  const text = open[1].toLowerCase().replace(/\s+/g, " ").trimStart();
+  return NON_SPEECH_LABELS.some(
+    (label) => label.startsWith(text) || label === text.trimEnd(),
+  );
+}
+
 /** How recent the agent's reply must be for the acoustic self-voice check to apply. */
 export const ECHO_WINDOW_MS = 9000;
 /**
@@ -99,6 +149,7 @@ export function shouldRespondToVoiceTurn(
   transcript: string,
   context: ShouldRespondContext = {},
 ): boolean {
+  if (isNonSpeechVoiceTranscript(transcript)) return false;
   const w = words(transcript);
   if (w.length === 0) return false;
 
@@ -229,7 +280,11 @@ export function buildVoiceTurnSignal(
 
   // The wake word is an explicit address: it overrides bystander doubt and a
   // soft echo/disfluency miss, because the user deliberately summoned the agent.
-  if (context.wakeWordActive === true) agentShouldSpeak = true;
+  if (
+    context.wakeWordActive === true &&
+    !isNonSpeechVoiceTranscript(transcript)
+  )
+    agentShouldSpeak = true;
 
   // Acoustic self-voice rejection: if the incoming voice MATCHES the agent's own
   // TTS imprint while it is (or just was) speaking, it is the agent hearing

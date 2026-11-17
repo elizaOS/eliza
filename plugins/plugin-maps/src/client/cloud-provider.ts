@@ -481,6 +481,7 @@ export function createCloudMaps(
   let coverage: CloudMapsCoverage | undefined;
   let tileFetch: CloudMapsTileRequest | undefined;
   let viewportRequest: CloudMapsRequest | undefined;
+  let cooldown: { until: number; error: unknown } | undefined;
   // Only a provider this instance installed is retired; another configured provider is left alone.
   let installed = false;
   const uninstall = () => {
@@ -605,16 +606,55 @@ export function createCloudMaps(
     diagnostic.message = "";
     try {
       const captured = captureRequest();
-      const request: CloudMapsRequest = async (route, signal, body) => {
+      // One server pause applies to every data request in this account, including tiles.
+      // Coverage can still restore the existing map while those requests wait.
+      const withCooldown = async <T>(
+        run: () => Promise<T>,
+        signal: AbortSignal,
+        metadata = false,
+      ): Promise<T> => {
         if (attempt !== generation)
           throw new MapsFailure("cancelled", "Maps connection changed.");
         signal.throwIfAborted();
-        const value = await captured(route, signal, body);
-        signal.throwIfAborted();
-        if (attempt !== generation)
-          throw new MapsFailure("cancelled", "Maps connection changed.");
-        return value;
+        if (!metadata && cooldown && Date.now() < cooldown.until)
+          throw cooldown.error;
+        try {
+          const value = await run();
+          signal.throwIfAborted();
+          if (attempt !== generation)
+            throw new MapsFailure("cancelled", "Maps connection changed.");
+          return value;
+        } catch (error) {
+          if (
+            attempt === generation &&
+            !signal.aborted &&
+            (error as { status?: number })?.status === 429
+          ) {
+            const now = Date.now(),
+              limit = serviceLimit(error, now);
+            const wait =
+              limit?.retryAfterMs ??
+              (limit?.resetsAt != null ? limit.resetsAt - now : null);
+            if (
+              wait != null &&
+              Number.isFinite(wait) &&
+              wait > 0 &&
+              wait <= MAX_PERIOD_RESET_MS
+            )
+              cooldown = {
+                until: Math.max(cooldown?.until ?? 0, now + wait),
+                error,
+              };
+          }
+          throw error;
+        }
       };
+      const request: CloudMapsRequest = (route, signal, body) =>
+        withCooldown(
+          () => captured(route, signal, body),
+          signal,
+          route === "capabilities",
+        );
       const meta = await call(request, "capabilities", signal);
       const caps = meta.capabilities as Record<string, unknown> | undefined;
       const regions = meta.regions;
@@ -659,8 +699,12 @@ export function createCloudMaps(
       const sources = sourcesOf(meta.sources),
         disclosure = disclosureOf(meta.disclosure),
         tiles = caps.map === true ? tilesOf(meta.tiles) : undefined;
-      tileFetch =
+      const tilesRequest =
         tiles && options.tileRequest ? options.tileRequest() : undefined;
+      tileFetch = tilesRequest
+        ? (z, x, y, signal) =>
+            withCooldown(() => tilesRequest(z, x, y, signal), signal)
+        : undefined;
       coverage = Object.freeze({
         providerId: meta.providerId,
         revision: meta.revision as string,
@@ -721,6 +765,7 @@ export function createCloudMaps(
     initializeCloudMaps,
     retireCloudMaps: () => {
       ++generation;
+      cooldown = undefined;
       coverage = undefined;
       tileFetch = undefined;
       viewportRequest = undefined;

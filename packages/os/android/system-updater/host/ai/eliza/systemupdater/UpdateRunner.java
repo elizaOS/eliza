@@ -50,6 +50,8 @@ final class UpdateRunner {
 
     private UpdateRunner(Context context) { this.context = context; }
 
+    synchronized boolean running() { return active != null; }
+
     synchronized boolean start(int job, Runnable finished) {
         if (active != null) return false;
         Run run = active = new Run(job, finished);
@@ -86,7 +88,7 @@ final class UpdateRunner {
             UpdateJournal observed = current.reconcile(android.os.Build.FINGERPRINT, boot());
             if (observed != current) { store.write(current, observed); current = observed; }
             if (current.phase == UpdateJournal.Phase.UNKNOWN
-                    || current.phase == UpdateJournal.Phase.FAILED
+                    || (current.phase == UpdateJournal.Phase.FAILED && !current.intentBoot.isEmpty())
                     || current.phase == UpdateJournal.Phase.REBOOT_INTENT) {
                 finish(run, "An earlier system update needs review"); return;
             }
@@ -101,7 +103,9 @@ final class UpdateRunner {
                 heldOfferUnavailable(run, unavailable);
                 return;
             }
-            if (current.isUnapplied() && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
+            if ((current.isUnapplied()
+                    || (current.phase == UpdateJournal.Phase.FAILED && current.intentBoot.isEmpty()))
+                    && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
                     || !current.packageSha256.equals(candidate.sha256))) {
                 UpdateJournal idle = current.cancelUnapplied();
                 store.write(current, idle); current = idle;
@@ -110,6 +114,9 @@ final class UpdateRunner {
                 finish(run, current.phase == UpdateJournal.Phase.REBOOT_READY
                         ? heldOfferStatus(null) : "No newer system update was offered");
                 return;
+            }
+            if (current.phase == UpdateJournal.Phase.FAILED) {
+                finish(run, "The rejected system update needs review"); return;
             }
             if (current.phase == UpdateJournal.Phase.IDLE || current.phase == UpdateJournal.Phase.COMPLETE
                     || current.phase == UpdateJournal.Phase.SOURCE_RETAINED) {
@@ -149,7 +156,7 @@ final class UpdateRunner {
                 rebootIfAllowed(run, store, channel, candidate); return;
             }
             if (current.phase != UpdateJournal.Phase.VERIFIED || !installAllowed()) {
-                SystemUpdateJob.schedule(context, true);
+                SystemUpdateJob.schedule(context, true, false);
                 finish(run, "System update will install when the phone is idle"); return;
             }
             if (!same(candidate, channel.discover())) {
@@ -175,7 +182,7 @@ final class UpdateRunner {
     private void rebootIfAllowed(Run run, JournalStore store, UpdateChannel channel,
             UpdateChannel.Candidate candidate) throws IOException {
         if (run.stopped || !installAllowed()) {
-            SystemUpdateJob.schedule(context, true);
+            SystemUpdateJob.schedule(context, true, false);
             finish(run, "System update is ready; waiting for idle restart conditions"); return;
         }
         UpdateChannel.Candidate offered;
@@ -186,14 +193,14 @@ final class UpdateRunner {
             return;
         }
         if (!same(candidate, offered)) {
-            SystemUpdateJob.schedule(context, true);
+            SystemUpdateJob.schedule(context, true, false);
             finish(run, heldOfferStatus(offered)); return;
         }
         if (EngineInstaller.observeStatus() != UpdateEngine.UpdateStatusConstants.UPDATED_NEED_REBOOT) {
             finish(run, "System update engine state needs review"); return;
         }
         if (run.stopped || !installAllowed()) {
-            SystemUpdateJob.schedule(context, true);
+            SystemUpdateJob.schedule(context, true, false);
             finish(run, "Waiting for idle restart conditions"); return;
         }
         UpdateJournal current = store.read();
@@ -202,7 +209,7 @@ final class UpdateRunner {
         if (run.stopped || !installAllowed()) {
             // The system reboot was not called; keep the verified ready state.
             store.write(intent, current);
-            SystemUpdateJob.schedule(context, true);
+            SystemUpdateJob.schedule(context, true, false);
             finish(run, "Restart conditions changed"); return;
         }
         status(context, "Restarting to finish the system update");
@@ -273,7 +280,7 @@ final class UpdateRunner {
                 Log.w("ElizaSystemUpdater", "Rejected-package state is unconfirmed", unconfirmed);
             }
         }
-        if (failure instanceof UpdateChannel.DownloadDeferred && !run.stopped) SystemUpdateJob.schedule(context, true);
+        if (failure instanceof UpdateChannel.DownloadDeferred && !run.stopped) SystemUpdateJob.schedule(context, true, false);
         finish(run, failure instanceof GeneralSecurityException
                 ? "System update signature was refused" : "System update could not be completed; its state is retained");
     }

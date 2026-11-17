@@ -72,11 +72,13 @@ async function admitted(
   context: Record<string, unknown>,
   types: readonly string[],
   capabilities: string[] = ALL,
+  actions: { name: string }[] = [],
+  text = "Synthetic request.",
 ) {
   const runtime = {
     agentId,
     getSetting: () => undefined,
-    actions: [],
+    actions,
     getService: () => null,
     logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
   } as unknown as IAgentRuntime;
@@ -86,7 +88,7 @@ async function admitted(
     entityId: owner,
     roomId: "55555555-5555-4555-8555-555555555555",
     content: {
-      text: "Synthetic request.",
+      text,
       metadata: { clientDevice: { context: { revision: 1, ...context } } },
     },
   } as Memory;
@@ -195,6 +197,58 @@ describe("device Notes/Calendar admission", () => {
       (await admitted({ view: "home", sensitive: false, timeZone }, [type]))
         .admitted[type],
     ).toBe(true);
+  });
+
+  it("leaves a new event to the canonical CALENDAR action unless a phone calendar is selected", async () => {
+    const canonical = [{ name: "CALENDAR" }];
+    const types = ["calendar_create_local", "calendar_read_next"];
+    for (const view of ["home", "calendar"])
+      expect(
+        (
+          await admitted(
+            { view, sensitive: false, timeZone },
+            types,
+            ALL,
+            canonical,
+          )
+        ).admitted,
+      ).toEqual({ calendar_create_local: false, calendar_read_next: true });
+    const selected = await admitted(
+      {
+        view: "calendar",
+        sensitive: false,
+        timeZone,
+        selectedObject: {
+          kind: "calendar-source",
+          id: "phone-calendar",
+          revision,
+        },
+      },
+      types,
+      ALL,
+      canonical,
+    );
+    expect(selected.calendar).toBe("device");
+    expect(selected.admitted.calendar_create_local).toBe(true);
+    // The owner's own words naming the phone's calendar keep the native
+    // create open from Home.
+    for (const [text, open] of [
+      ["Add dentist Friday 3pm to my phone's calendar", true],
+      ["Put lunch tomorrow in the calendar on this phone", true],
+      ["Add dentist Friday 3pm to my calendar", false],
+      ["Phone the dentist, then add it to my calendar", false],
+    ] as const)
+      expect(
+        (
+          await admitted(
+            { view: "home", sensitive: false, timeZone },
+            types,
+            ALL,
+            canonical,
+            text,
+          )
+        ).admitted.calendar_create_local,
+      ).toBe(open);
   });
 
   it("keeps Home reviews closed without their capability, with a canonical selection, or on a private screen", async () => {

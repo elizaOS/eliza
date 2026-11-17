@@ -328,6 +328,19 @@ function calendarSourceId(source: LifeOpsCalendarSourceHealth): string {
     .join(":");
 }
 
+/** Whether an owner-feed source id names this grant and calendar. */
+function calendarSourceIdNames(
+  id: string,
+  destination: { grantId: string; calendarId: string },
+): boolean {
+  const [scope, , , grantId, , calendarId] = id.split(":");
+  return (
+    scope === "owner-calendar" &&
+    grantId === encodeURIComponent(destination.grantId) &&
+    calendarId === encodeURIComponent(destination.calendarId)
+  );
+}
+
 function eventMatchesCalendarSource(
   event: LifeOpsCalendarEvent,
   source: LifeOpsCalendarSourceHealth,
@@ -454,7 +467,12 @@ export function createCalendarFeedConflictLoader(): Pick<
   };
 }
 
-/** Reuse the canonical owner-feed scan at the conversational write boundary. */
+/**
+ * Reuse the canonical owner-feed scan at the conversational write boundary.
+ * `writable` is false only when the calendar being written (`destination`)
+ * was not read fresh: an unreadable other calendar leaves `definitive` false,
+ * so the slot is never called free, but it does not stop the write.
+ */
 export async function evaluateCalendarWriteAvailability(args: {
   runtime: IAgentRuntime;
   startAt: string;
@@ -463,8 +481,10 @@ export async function evaluateCalendarWriteAvailability(args: {
   excludeEventId?: string;
   grantId?: string;
   calendarId?: string;
+  destination?: { grantId: string; calendarId: string };
 }): Promise<
   CalendarAvailabilityEvaluation & {
+    writable: boolean;
     localTimes: {
       timeZone: string;
       conflicts: { title: string; start: string; end: string }[];
@@ -501,8 +521,17 @@ export async function evaluateCalendarWriteAvailability(args: {
       { startAt, timezone: args.timeZone },
       { includeYear: true, includeTimeZoneName: true },
     );
+  const destination = args.destination;
   const evaluation = {
     ...observed,
+    writable:
+      observed.definitive ||
+      (destination !== undefined &&
+        sources.some(
+          (source) =>
+            source.status === "fresh" &&
+            calendarSourceIdNames(source.id, destination),
+        )),
     localTimes: {
       timeZone: args.timeZone,
       conflicts: observed.conflicts.map(({ eventB }) => ({

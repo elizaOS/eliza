@@ -12,6 +12,7 @@ import { testOutputPath } from "../../../packages/scripts/lib/test-output.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 const model = path.resolve(process.argv[2]);
+
 const output = testOutputPath("quint-checkin-summary");
 mkdirSync(output, { recursive: true });
 const directory = mkdtempSync(path.join(output, "run-"));
@@ -62,7 +63,7 @@ const result = spawnSync(
     path.join(root, "node_modules/vitest/vitest.mjs"),
     "run",
     "--config",
-    "plugins/plugin-personal-assistant/vitest.config.ts",
+    "plugins/plugin-personal-assistant/vitest.checkin.config.ts",
     "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts",
     "-t",
     "matches the generated summary persistence outcome",
@@ -84,4 +85,56 @@ assert.equal(summary.numPassedTests, 6);
 assert.equal(summary.numFailedTests, 0);
 console.log(
   "Six model-generated summary cases match the production service and report store",
+);
+
+const clockReport = path.join(directory, "calendar-clock.json");
+const clockResult = spawnSync(
+  process.execPath,
+  [
+    "--conditions=eliza-source",
+    path.join(root, "node_modules/vitest/vitest.mjs"),
+    "run",
+    "--config",
+    "plugins/plugin-personal-assistant/vitest.checkin.config.ts",
+    "-t",
+    "does not report old Google cache refreshes|keeps valid Calendar rows",
+    "--reporter=json",
+    `--outputFile=${clockReport}`,
+  ],
+  { cwd: root, stdio: "inherit", timeout: 180000 },
+);
+if (clockResult.error) throw clockResult.error;
+assert.equal(clockResult.status, 0, "Calendar source-clock conformance failed");
+const clockResultData = JSON.parse(readFileSync(clockReport, "utf8"));
+assert.equal(clockResultData.success, true);
+assert.equal(clockResultData.numFailedTests, 0);
+assert.equal(clockResultData.numFailedTestSuites, 0);
+assert.equal(clockResultData.numTodoTests, 0);
+assert.equal(clockResultData.numPassedTests, 2);
+assert.equal(clockResultData.testResults.length, 1);
+const clockFile = clockResultData.testResults[0];
+assert.equal(
+  path.resolve(clockFile.name),
+  path.join(
+    root,
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts",
+  ),
+);
+const requiredClockNames = new Set([
+  "check-in source availability and generation failures does not report old Google cache refreshes as recent Calendar changes",
+  "check-in source availability and generation failures keeps valid Calendar rows when another cached row has unreadable metadata",
+]);
+for (const test of clockFile.assertionResults) {
+  if (requiredClockNames.delete(test.fullName)) {
+    assert.equal(test.status, "passed");
+    assert.deepEqual(test.failureMessages, []);
+  } else assert.equal(test.status, "skipped");
+}
+assert.equal(requiredClockNames.size, 0, "Missing Calendar clock scenario");
+assert.equal(
+  clockResultData.numPendingTests,
+  clockFile.assertionResults.length - 2,
+);
+console.log(
+  "Calendar provider-clock cases passed against the real report collector",
 );

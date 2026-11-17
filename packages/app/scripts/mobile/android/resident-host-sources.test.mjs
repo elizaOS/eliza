@@ -199,7 +199,7 @@ test("lifecycle hooks wrap the one root publication and follow every running pat
     text.split(
       'currentStatus = "running"; HostNotifications.resume(getApplicationContext());',
     ).length,
-    3,
+    2,
   );
   // Without hooks the upstream lifecycle is unchanged.
   const plain = rewriteResidentClass(

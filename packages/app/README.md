@@ -390,6 +390,14 @@ declare, as data:
 - dependencies may name a `module` with a `toolchainVersion` key to take the
   reviewed toolchain version. A `path` of `.` names a declared root itself.
 
+A `dependencyRoot` that is a `node_modules` directory holds package links: an input
+under it, such as `@capacitor/android/capacitor`, may resolve into pnpm's `.pnpm`
+store or a workspace package, and must stay inside the real directory of the
+package it names. That directory must hold the named package (its `package.json`
+`name`) and lie inside the consumer, upstream or dependency root or the pnpm
+workspace above the dependency root; a path through `.pnpm` itself is refused. Name the Capacitor runtime module `capacitor-android`: the native
+plugins depend on `project(':capacitor-android')`.
+
 Modules from the upstream and dependency roots, and consumer modules marked
 `relocateBuild` (for example an authenticated staged copy), keep their build outputs
 under the generated host's `build/modules/<name>`, so shared checkouts, dependency
@@ -550,11 +558,13 @@ instrumentation), runs lint and product APK verification, then archives only the
 selected APKs plus verification manifest and host metadata. It never signs, installs
 or publishes a release. Hosts select environment, distribution names and archive
 identity. `lint: false` and `androidTest: false` skip lint and the instrumentation
-APKs, and the archive's `build-checks.json` records which of the two ran. A prepare
+APKs, and the archive's `build-checks.json` records which of the two ran.
+`release: false` builds only the debug APKs for a local build and cannot archive. A prepare
 step may also be a synchronous function or `{ gradleTasks }`, which adds tasks to the
 same Gradle run instead of starting another one; a step has exactly one of these
-shapes. The generated `variables.gradle` exposes `rootProject.ext.consumerIdentity`
-(`appId`, `namespace`) for extra modules.
+shapes. Extra modules read the SDK levels (`minSdkVersion`, `compileSdkVersion`,
+`targetSdkVersion`) and the reviewed toolchain versions from `rootProject.ext`, which
+the generated root `build.gradle` sets from the profile.
 Missing build outputs or failed verification prevent archive publication.
 Run `node --test scripts/mobile/android/build-consumer.test.mjs` for ordering, failure
 and stale-artifact isolation checks.

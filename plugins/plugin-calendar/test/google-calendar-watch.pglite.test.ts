@@ -3,7 +3,8 @@
  * ScheduledTask runner, and a loopback HTTP server around the public route.
  * Only Google's remote API is represented by a deterministic transport.
  */
-import { createServer, type Server } from "node:http";
+import { readFileSync } from "node:fs";
+import { createServer, request as httpRequest, type Server } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
 import type {
   LifeOpsConnectorGrant,
@@ -555,6 +556,102 @@ async function waitForSyncRetryTask(
   throw new Error("Google Calendar notification retry task was not scheduled.");
 }
 
+// Raw X-Forwarded-Proto header lines in Node's rawHeaders form, so a repeated
+// line stays two lines on the wire. The indices match `header` in
+// plugins/plugin-scheduling/quint/ForwardedProtoRouteBase.qnt.
+const FORWARDED_PROTO_LINES: readonly (readonly string[])[] = [
+  [],
+  ["X-Forwarded-Proto", "https"],
+  ["X-Forwarded-Proto", "https, http"],
+  ["X-Forwarded-Proto", "https", "X-Forwarded-Proto", "http"],
+  ["X-Forwarded-Proto", ""],
+];
+const GOOGLE_WEBHOOK_ROUTE = 1;
+
+// Google's delivery relayed by proxies in front of the agent.
+async function postRelayedNotification(
+  baseUrl: string,
+  headers: GoogleCalendarNotificationHeaders,
+  forwardedProto: readonly string[],
+): Promise<number> {
+  const url = new URL(`${baseUrl}${GOOGLE_CALENDAR_WEBHOOK_PATH}`);
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({
+      host: url.hostname,
+      port: url.port,
+      method: "POST",
+      path: url.pathname,
+      headers: [
+        "Host",
+        "calendar.example.com",
+        "Content-Length",
+        "0",
+        "X-Goog-Channel-ID",
+        headers.channelId,
+        "X-Goog-Channel-Token",
+        headers.channelToken,
+        "X-Goog-Resource-ID",
+        headers.resourceId,
+        "X-Goog-Resource-URI",
+        headers.resourceUri,
+        "X-Goog-Resource-State",
+        headers.resourceState,
+        "X-Goog-Message-Number",
+        headers.messageNumber,
+        ...forwardedProto,
+      ],
+    });
+    req.on("response", (res) => {
+      res.resume();
+      res.on("end", () => resolve(res.statusCode ?? 0));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+async function forwardedProtoReplay(
+  harness: Harness,
+  sequences: readonly (readonly number[])[],
+) {
+  await forceInitialSync(harness);
+  const request = harness.google.watchRequests[0];
+  expect(request).toBeDefined();
+  const results: Array<{
+    header: number;
+    status: number;
+    synced: boolean;
+    lastMessageNumber: unknown;
+  }> = [];
+  let messageNumber = 1;
+  for (const sequence of sequences) {
+    for (const index of sequence) {
+      messageNumber += 1;
+      const before = harness.google.eventPageRequests.length;
+      const status = await postRelayedNotification(
+        harness.baseUrl,
+        {
+          channelId: request?.channelId ?? "",
+          channelToken: request?.token ?? "",
+          resourceId: "resource-1",
+          resourceUri: RESOURCE_URI,
+          resourceState: "exists",
+          messageNumber: String(messageNumber),
+        },
+        FORWARDED_PROTO_LINES[index] ?? [],
+      );
+      const rows = await watchRows(harness.pg);
+      results.push({
+        header: index,
+        status,
+        synced: harness.google.eventPageRequests.length > before,
+        lastMessageNumber: rows[0]?.last_message_number,
+      });
+    }
+  }
+  return { results, lastMessageNumber: String(messageNumber) };
+}
+
 describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
   const harnesses: Harness[] = [];
 
@@ -934,6 +1031,52 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
     expect(rows[0]?.last_message_number).toBe("13");
     expect(rows[0]?.pending_message_number).toBeNull();
   });
+
+  it("processes a notification that proxies relay with any X-Forwarded-Proto chain", async () => {
+    const harness = await createHarness();
+    harnesses.push(harness);
+    const { results } = await forwardedProtoReplay(harness, [
+      FORWARDED_PROTO_LINES.map((_, header) => header),
+    ]);
+    expect(results).toEqual(
+      FORWARDED_PROTO_LINES.map((_, header) => ({
+        header,
+        status: 204,
+        synced: true,
+        lastMessageNumber: String(header + 2),
+      })),
+    );
+  });
+
+  it("replays the forwarded proto model through the Google Calendar webhook", async () => {
+    const casesFile = process.env.ELIZA_FORWARDED_PROTO_MODEL_CASES;
+    const sequences = casesFile
+      ? (
+          JSON.parse(readFileSync(casesFile, "utf8")) as Array<{
+            route: number;
+            headers: number[];
+          }>
+        )
+          .filter((item) => item.route === GOOGLE_WEBHOOK_ROUTE)
+          .map((item) => item.headers)
+      : [FORWARDED_PROTO_LINES.map((_, header) => header)];
+    expect(sequences.length).toBeGreaterThan(0);
+    // The route admits 60 notifications a minute from one address.
+    expect(sequences.flat().length).toBeLessThanOrEqual(60);
+    const harness = await createHarness();
+    harnesses.push(harness);
+    const { results, lastMessageNumber } = await forwardedProtoReplay(
+      harness,
+      sequences,
+    );
+    for (const result of results) {
+      expect(result, `X-Forwarded-Proto ${result.header}`).toMatchObject({
+        status: 204,
+        synced: true,
+      });
+    }
+    expect(results.at(-1)?.lastMessageNumber).toBe(lastMessageNumber);
+  }, 120_000);
 
   it("does not mutate durable channel state for an invalid capability token", async () => {
     const harness = await createHarness();

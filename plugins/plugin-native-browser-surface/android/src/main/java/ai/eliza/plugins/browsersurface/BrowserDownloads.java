@@ -20,6 +20,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import androidx.annotation.RequiresApi;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -41,8 +42,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -130,6 +133,7 @@ public final class BrowserDownloads {
   private Runnable update;
   /** Positive ids are DownloadManager IDs; negative ids are files the host saved to MediaStore. */
   private static final String TAG = "BrowserDownloads";
+  private static final Pattern CONTROL = Pattern.compile("[\\x00-\\x1f\\x7f]");
   private final BrowserDownloadPolicy.History history = new BrowserDownloadPolicy.History();
   private long localSequence;
   /** Set by destroy(): the activity is gone, so no dialog may be shown and no worker accepts work. */
@@ -219,6 +223,16 @@ public final class BrowserDownloads {
     if (uri.getHost() == null || uri.getUserInfo() != null)
       return false;
     return "https".equalsIgnoreCase(uri.getScheme()) || loopbackAllowed(uri);
+  }
+
+  /** A bounded address with no control characters: the shape every download address must have. */
+  private static boolean plainAddress(String raw) {
+    return raw != null && raw.length() <= 8192 && !CONTROL.matcher(raw).find();
+  }
+
+  /** A download address this instance may fetch: plain, absolute and allowed ({@link #allowed}). */
+  private boolean fetchable(String raw) {
+    return plainAddress(raw) && allowed(Uri.parse(raw));
   }
 
   /** Runs download work on a worker that destroy() stops; dropped work runs its cleanup instead. */
@@ -323,7 +337,7 @@ public final class BrowserDownloads {
     Uri uri;
     try {
       uri = Uri.parse(raw);
-      if (raw.length() > 8192 || raw.matches("(?s).*[\\x00-\\x1f\\x7f].*") || !allowed(uri))
+      if (!fetchable(raw))
         throw new IllegalArgumentException();
     } catch (Exception invalid) {
       refuse(source, "Only HTTPS file downloads are supported.");
@@ -381,6 +395,52 @@ public final class BrowserDownloads {
         message("The download could not be queued. Check Android storage and try again.");
       }
     });
+  }
+
+  /**
+   * Saves a file the host already confirmed with the person in its own interface, so nothing is
+   * reviewed or listed here. An https file is fetched in-app like a signed-in download (the page's
+   * cookie only on hops to its exact origin); a {@code data:} file is decoded natively. Either is
+   * published to Downloads. {@code done} gets the saved row, or null when nothing was saved, on the
+   * main thread. The address is never logged. Call only for a {@link #savable} address.
+   *
+   * <p>Returns a handle that stops the save before it is published: the owner calls it when the
+   * surface closes or its sign-ins are purged, so the cookie is never sent again and no file
+   * lands where the host can no longer hear about it. A stopped save reports null.
+   */
+  public Runnable save(Source source, String raw, String name, String mime, Consumer<Uri> done) {
+    if (!savable(raw))
+      throw new IllegalArgumentException("Unsupported download address");
+    String cookie = BrowserDownloadPolicy.cookieAllowed(raw, source.pageOrigin, true) ? cookie(source) : null;
+    String header = BrowserDownloadPolicy.cookieHeaderAcceptable(cookie) ? cookie : null;
+    long id = --localSequence;
+    transfers.put(id, TransferState.FETCHING);
+    work(network, () -> {
+      Uri saved = null;
+      try {
+        if (raw.regionMatches(true, 0, "data:", 0, 5))
+          saved = publish(new ByteArrayInputStream(BrowserDownloadPolicy.decodeData(raw)), name, mime, id);
+        else
+          saved = fetch(id, raw, source.pageOrigin, header, source.userAgent, name, mime);
+      } catch (Exception failed) {
+        // error-policy:J1 The host hears that the save failed or stopped; the address stays out of logs.
+      }
+      Uri result = saved;
+      handler.post(() -> {
+        transfers.remove(id);
+        received.remove(id);
+        done.accept(result);
+      });
+    }, () -> {
+      transfers.remove(id);
+      done.accept(null);
+    });
+    return () -> cancelTransfer(id);
+  }
+
+  /** Whether {@link #save} can save this address: an inline {@code data:} file or a fetchable one. */
+  public boolean savable(String raw) {
+    return plainAddress(raw) && (raw.regionMatches(true, 0, "data:", 0, 5) || fetchable(raw));
   }
 
   /** data: URLs carry their bytes inline; decode natively, never through page script. */
@@ -561,10 +621,10 @@ public final class BrowserDownloads {
         int code = connection.getResponseCode();
         if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
           String location = connection.getHeaderField("Location");
-          if (location == null || location.length() > 8192 || location.matches("(?s).*[\\x00-\\x1f\\x7f].*"))
+          if (!plainAddress(location))
             throw new Refused("The site redirected the download to an invalid address.");
           URL next = new URL(url, location);
-          if (!allowed(Uri.parse(next.toString())))
+          if (!fetchable(next.toString()))
             throw new Refused("The site redirected the download to an address that is not supported.");
           url = next;
           continue;

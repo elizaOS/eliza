@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "composite": false,
     "types": ["node"],
     "declaration": false,

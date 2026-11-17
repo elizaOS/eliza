@@ -1,0 +1,44 @@
+{
+	"sources": [
+		"packages/core/src/runtime.ts",
+		"packages/agent/src/api/media-runtime.ts",
+		"packages/agent/src/api/media-store.ts",
+		"packages/agent/test/source-segment-media-retention.test.ts",
+		"packages/core/quint/check-source-integrity.mjs"
+	],
+	"conformance": "packages/core/quint/check-source-integrity.mjs",
+	"bounds": "A stable three-row SQL snapshot contains one ordinary embedding row, one source-segment row with a media reference and one orphan source segment. A complete ordinary read hides source rows; the explicit source read returns both. All reads and writes succeed. Concurrent insertion/deletion, adapter failures, multiple pages and crash recovery are outside this projection. The real SQL/runtime test checks inclusion, uniqueness, media collection and wipe; it does not enumerate concurrent schedules.",
+	"cases": [
+		{
+			"name": "MemorySourceSweep",
+			"main": "MemorySourceSweep",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"CompleteSourceSet",
+				"SourceMediaRetained",
+				"WipeRemovesOrphans"
+			],
+			"temporal": ["SweepFinishes", "SweepFinishesWithoutFairness"],
+			"temporalChecks": [
+				{
+					"property": "SweepFinishes",
+					"expect": "holds",
+					"assumptions": [
+						"Each enabled read, collection or parser step eventually executes and settles (weak fairness). No wall-clock bound is proved."
+					]
+				},
+				{
+					"property": "SweepFinishesWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness is assumed. The environment may indefinitely delay the next enabled step."
+					]
+				}
+			],
+			"maxSteps": 8,
+			"samples": 100
+		}
+	]
+}

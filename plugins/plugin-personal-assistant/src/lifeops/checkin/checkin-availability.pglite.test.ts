@@ -1,11 +1,10 @@
 /** Exercises missing collectors, failed generation, and report persistence against real PGlite. No provider request is made. */
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
 import { LIFEOPS_INBOX_CHANNELS, type LifeOpsInbox } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveOwnerFactStore } from "../owner/fact-store.js";
-import { composeOwnerFacingScheduledTaskText } from "../scheduled-task/runtime-wiring.js";
 import type { RawSqlQuery } from "../sql.js";
 import {
   buildCheckinSummaryPrompt,
@@ -37,6 +36,7 @@ describe("check-in source availability and generation failures", () => {
       character: { name: "Brief fixture" },
       getSetting: () => undefined,
       getService: () => null,
+      reportError: vi.fn(),
       getCache: async (key: string) =>
         (
           await db.query<{ payload: unknown }>(
@@ -72,6 +72,64 @@ describe("check-in source availability and generation failures", () => {
   afterEach(async () => {
     await db.close();
     vi.unstubAllEnvs();
+  });
+
+  it("includes the current managed Gmail mailbox through the canonical Inbox service", async () => {
+    const token = "a".repeat(64);
+    const server = createServer((request, response) => {
+      expect(request.headers.authorization).toBe(`Bearer ${token}`);
+      response.setHeader("Content-Type", "application/json");
+      response.end(
+        JSON.stringify({
+          items: [
+            {
+              id: `alpha-gmail:${"b".repeat(64)}:one`,
+              platform: "gmail",
+              channel: "Inbox",
+              senderName: "Managed sender",
+              snippet: "Existing owner mailbox",
+              threadTopic: "Managed morning mail",
+              receivedAt: "2026-11-12T12:00:00.000Z",
+              unread: true,
+            },
+          ],
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing test listener");
+    vi.stubEnv(
+      "ELIZA_MANAGED_GMAIL_READ_BROKER",
+      `http://127.0.0.1:${address.port}/__alpha-owner-gmail`,
+    );
+    vi.stubEnv("ELIZA_API_TOKEN", token);
+    try {
+      const { LifeOpsService } = await import("../service.js");
+      const service = new LifeOpsService(runtime);
+      const report = await new CheckinService(runtime, {
+        sources: {
+          getGoogleConnectorAccounts: async () => [],
+          getInbox: (request) =>
+            service.getInbox({ ...request, channels: ["gmail"] }),
+        },
+      }).runMorningCheckin({
+        now: new Date("2026-11-12T12:30:00.000Z"),
+        timezone: "America/Los_Angeles",
+      });
+      expect(prompts.join("\n")).toContain("Managed morning mail");
+      expect(
+        report.briefingSections.find((section) => section.key === "inbox")
+          ?.error,
+      ).toBeNull();
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 
   it("includes ordinary Gmail through the Inbox when triage is not available", async () => {
@@ -189,15 +247,138 @@ describe("check-in source availability and generation failures", () => {
     },
   );
 
+  it("does not report old Google cache refreshes as recent Calendar changes", async () => {
+    await db.exec(`CREATE SCHEMA app_calendar;
+      CREATE TABLE app_calendar.life_calendar_events (
+        id text, agent_id text, side text, title text,
+        start_at text, end_at text, status text, html_link text,
+        updated_at text, is_all_day boolean,
+        provider text, metadata_json text
+      );
+      INSERT INTO app_calendar.life_calendar_events VALUES
+        ('old', 'checkin-availability', 'owner', 'Old cached event',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{"createdAt":"2025-01-01T00:00:00.000Z"}'),
+        ('unknown', 'checkin-availability', 'owner', 'Unknown provider revision',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{}'),
+        ('changed', 'checkin-availability', 'owner', 'Provider edit',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{"updatedAt":"2026-11-12T15:00:00.000Z"}'),
+        ('local', 'checkin-availability', 'owner', 'Local edit',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'eliza', '{}'),
+        ('today', 'checkin-availability', 'owner', 'Today',
+         '2026-11-12T18:00:00.000Z', '2026-11-12T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{}');`);
+    for (const [id, title, updatedAt] of [
+      ["offset", "Provider offset edit", "2026-11-11T09:30:00-08:00"],
+      ["no-fraction", "Provider edit without fraction", "2026-11-12T13:00:00Z"],
+      ...Array.from({ length: 45 }, (_, i) => [
+        `invalid-${i}`,
+        `Malformed provider revision ${i}`,
+        i % 2 === 0 ? "not-a-date" : 1762959600000,
+      ]),
+    ]) {
+      await db.query(
+        `INSERT INTO app_calendar.life_calendar_events VALUES
+          ($1, 'checkin-availability', 'owner', $2,
+           '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+           '2026-11-12T15:00:00.000Z', false, 'google', $3)`,
+        [id, title, JSON.stringify({ updatedAt })],
+      );
+    }
+    await db.query(
+      `INSERT INTO app_calendar.life_calendar_events VALUES
+        ('other-owner', 'other-owner', 'owner', 'Other owner event',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', $1)`,
+      [JSON.stringify({ updatedAt: "2026-11-12T15:00:00.000Z" })],
+    );
+    const before = await db.query(
+      "SELECT * FROM app_calendar.life_calendar_events ORDER BY id",
+    );
+    const report = await new CheckinService(runtime).runMorningCheckin({
+      now: new Date("2026-11-12T16:00:00.000Z"),
+      timezone: "America/Los_Angeles",
+    });
+    const section = report.briefingSections.find(
+      (item) => item.key === "calendar_changes",
+    );
+    expect(section?.items.map((item) => item.title).sort()).toEqual([
+      "Local edit",
+      "Provider edit",
+      "Provider edit without fraction",
+      "Provider offset edit",
+      "Today",
+    ]);
+    expect(section?.coverage).toBe("partial");
+    expect(section?.error).toContain(
+      "45 Calendar records have invalid source metadata or timestamps",
+    );
+    expect(section?.summary).toContain("4 calendar items added or updated");
+    expect(
+      await db.query(
+        "SELECT * FROM app_calendar.life_calendar_events ORDER BY id",
+      ),
+    ).toEqual(before);
+  });
+
+  it("keeps valid Calendar rows when another cached row has unreadable metadata", async () => {
+    await db.exec(`CREATE SCHEMA app_calendar;
+      CREATE TABLE app_calendar.life_calendar_events (
+        id text, agent_id text, side text, title text, start_at text, end_at text,
+        status text, html_link text, updated_at text, is_all_day boolean,
+        provider text, metadata_json text
+      );
+      INSERT INTO app_calendar.life_calendar_events VALUES
+        ('valid', 'checkin-availability', 'owner', 'Valid edit',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{"updatedAt":"2026-11-12T15:00:00.000Z"}'),
+        ('bad-old', 'checkin-availability', 'owner', 'Old broken metadata',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2025-01-01T15:00:00.000Z', false, 'google', '{'),
+        ('bad-current', 'checkin-availability', 'owner', 'Current broken metadata',
+         '2026-12-01T18:00:00.000Z', '2026-12-01T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{'),
+        ('bad-today', 'checkin-availability', 'owner', 'Today with unknown revision',
+         '2026-11-12T18:00:00.000Z', '2026-11-12T19:00:00.000Z', 'confirmed', null,
+         '2025-01-01T15:00:00.000Z', false, 'google', '[]'),
+        ('foreign', 'another-owner', 'owner', 'Private other owner',
+         '2026-11-12T18:00:00.000Z', '2026-11-12T19:00:00.000Z', 'confirmed', null,
+         '2026-11-12T15:00:00.000Z', false, 'google', '{');`);
+    const report = await new CheckinService(runtime).runMorningCheckin({
+      now: new Date("2026-11-12T16:00:00.000Z"),
+      timezone: "America/Los_Angeles",
+    });
+    const section = report.briefingSections.find(
+      (item) => item.key === "calendar_changes",
+    );
+    expect(section?.items.map((item) => item.title).sort()).toEqual([
+      "Today with unknown revision",
+      "Valid edit",
+    ]);
+    expect(section?.coverage).toBe("partial");
+    expect(section?.error).toContain(
+      "2 Calendar records have invalid source metadata or timestamps",
+    );
+    expect(section?.summary).toContain("1 calendar item added or updated");
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "CheckinService.calendarSourceClock",
+      expect.objectContaining({ code: "CALENDAR_SOURCE_METADATA_INVALID" }),
+      { invalidRecords: 2 },
+    );
+  });
+
   it("binds Calendar source identity and times before rendering one owner-local agenda entry", async () => {
     await db.exec(`
       CREATE SCHEMA app_calendar;
       CREATE TABLE app_calendar.life_calendar_events (
         id text PRIMARY KEY, agent_id text, side text, title text,
         start_at text, end_at text, status text, html_link text, updated_at text,
-        is_all_day boolean NOT NULL DEFAULT false
+        is_all_day boolean NOT NULL DEFAULT false, provider text NOT NULL DEFAULT 'eliza', metadata_json text NOT NULL DEFAULT '{}'
       );
-      INSERT INTO app_calendar.life_calendar_events VALUES (
+      INSERT INTO app_calendar.life_calendar_events (id, agent_id, side, title, start_at, end_at, status, html_link, updated_at, is_all_day) VALUES (
         'calendar-event', 'checkin-availability', 'owner', 'QA walkthrough',
         '2026-10-06T18:00:00.000Z', '2026-10-06T18:15:00.000Z',
         'confirmed', null, '2026-10-06T14:00:00.000Z', false
@@ -247,9 +428,9 @@ describe("check-in source availability and generation failures", () => {
         CREATE TABLE app_calendar.life_calendar_events (
           id text PRIMARY KEY, agent_id text, side text, title text,
           start_at text, end_at text, status text, html_link text, updated_at text,
-          is_all_day boolean NOT NULL DEFAULT false
+          is_all_day boolean NOT NULL DEFAULT false, provider text NOT NULL DEFAULT 'eliza', metadata_json text NOT NULL DEFAULT '{}'
         );
-        INSERT INTO app_calendar.life_calendar_events VALUES (
+        INSERT INTO app_calendar.life_calendar_events (id, agent_id, side, title, start_at, end_at, status, html_link, updated_at, is_all_day) VALUES (
           'all-day-event', 'checkin-availability', 'owner', 'All-day source',
           '2026-10-06T00:00:00.000Z', '2026-10-07T00:00:00.000Z',
           'confirmed', null, '2026-10-06T14:00:00.000Z', true
@@ -342,7 +523,7 @@ describe("check-in source availability and generation failures", () => {
         CREATE TABLE app_calendar.life_calendar_events (
           id text PRIMARY KEY, agent_id text, side text, title text,
           start_at text, end_at text, status text, html_link text, updated_at text,
-          is_all_day boolean NOT NULL DEFAULT false
+          is_all_day boolean NOT NULL DEFAULT false, provider text NOT NULL DEFAULT 'eliza', metadata_json text NOT NULL DEFAULT '{}'
         );`);
       const midnight = (date: string) => `${date}T00:00:00.000Z`;
       const rows = [
@@ -405,7 +586,7 @@ describe("check-in source availability and generation failures", () => {
       ];
       for (const [id, title, start, end, status, allDay] of rows)
         await db.query(
-          `INSERT INTO app_calendar.life_calendar_events VALUES
+          `INSERT INTO app_calendar.life_calendar_events (id, agent_id, side, title, start_at, end_at, status, html_link, updated_at, is_all_day) VALUES
            ($1, 'checkin-availability', 'owner', $2, $3, $4, $5, NULL, $6, $7)`,
           [
             id,
@@ -533,6 +714,13 @@ describe("check-in source availability and generation failures", () => {
   ])(
     "composes the scheduled brief with owner zone $ownerTimezone before configured zone $configuredTimezone",
     async ({ ownerTimezone, configuredTimezone }) => {
+      const [
+        { resolveOwnerFactStore },
+        { composeOwnerFacingScheduledTaskText },
+      ] = await Promise.all([
+        import("../owner/fact-store.js"),
+        import("../scheduled-task/runtime-wiring.js"),
+      ]);
       vi.stubEnv("TZ", "UTC");
       const now = new Date("2026-10-02T18:30:00.000Z");
       runtime.getSetting = (key) =>
@@ -546,10 +734,10 @@ describe("check-in source availability and generation failures", () => {
       await db.exec(`CREATE SCHEMA app_calendar;
       CREATE TABLE app_calendar.life_calendar_events (
         id text, agent_id text, title text, start_at text, end_at text,
-        status text, html_link text, updated_at text,
-        is_all_day boolean NOT NULL DEFAULT false
+        side text NOT NULL DEFAULT 'owner', status text, html_link text, updated_at text,
+        is_all_day boolean NOT NULL DEFAULT false, provider text NOT NULL DEFAULT 'eliza', metadata_json text NOT NULL DEFAULT '{}'
       );
-      INSERT INTO app_calendar.life_calendar_events VALUES
+      INSERT INTO app_calendar.life_calendar_events (id, agent_id, title, start_at, end_at, status, html_link, updated_at, is_all_day) VALUES
         ('owner-day', 'checkin-availability', 'Owner-zone meeting',
          '2026-10-03T05:00:00.000Z', '2026-10-03T06:00:00.000Z',
          'confirmed', NULL, '2026-10-02T18:00:00.000Z', false),

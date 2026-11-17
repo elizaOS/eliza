@@ -10,7 +10,7 @@
  *     and temporary legacy Headscale names during the eliza.app migration
  *     (TS2021/noise needs a no-http2 vhost with Upgrade/Connection passthrough
  *     + long timeouts — a CF-proxied or h2 origin breaks it)
- *   - enroll the CP itself as a tailscale node (cp-<env>-router, tag:eliza-proxy)
+ *   - enroll the CP itself as a tailscale node (cp-<env>-router, tag:eliza-cp)
  *     against its local Headscale, so the daemon can reach agent 100.64.x IPs
  *   - upsert the daemon env that makes sandbox provisioning require Headscale
  *   - restart Headscale and the provisioning worker, then health-check both
@@ -163,7 +163,7 @@ Optional:
   --headscale-user <user>              User for agent preauth keys (default agent).
   --cp-router-hostname <name>          Tailscale hostname the CP enrolls itself as
                                        (default derived from the public URL, e.g.
-                                       cp-staging-router). tag:eliza-proxy, owned
+                                       cp-staging-router). tag:eliza-cp, owned
                                        by the 'tunnel' headscale user.
   --certbot-email <email>              Email for the Let's Encrypt account / expiry
                                        notices (default ops@elizalabs.ai).
@@ -1120,7 +1120,7 @@ echo "public Headscale overlap is healthy on one exact dual-SAN leaf"
 
 // ── CP self-enrollment as a tailscale node (cp-<env>-router) ─────────────────
 // The CP enrolls ITSELF against its local headscale as cp-<env>-router with
-// tag:eliza-proxy (owned by the 'tunnel' user in acl.hujson). This is what lets
+// tag:eliza-cp (owned by the 'tunnel' user in acl.hujson). This is what lets
 // the daemon on the CP reach agent tag:agent 100.64.x IPs. Previously a manual
 // `tailscale up` per CP (the DR gap). Idempotence requires BOTH the durable
 // Headscale node and the local daemon's live identity/control URL: a database
@@ -1131,7 +1131,7 @@ echo "public Headscale overlap is healthy on one exact dual-SAN leaf"
 const cpRouterSteps = skipCpRouter
   ? `echo "skip-cp-router set: leaving CP tailscale enrollment untouched"`
   : `
-echo "--- CP self-enrollment: role=eliza-proxy ---"
+echo "--- CP self-enrollment: role=eliza-cp ---"
 CP_ROUTER_HOST=${shellQuote(cpRouterHostname)}
 LOGIN_SERVER=${shellQuote(publicUrl)}
 
@@ -1175,7 +1175,7 @@ else
   # authority for this non-interactive join: Headscale rejects a client-side
   # --advertise-tags request when a preauth key already supplies the tags.
   PREAUTH_KEY=$(sudo headscale preauthkeys create -u "$TUNNEL_UID" \\
-    --tags tag:eliza-proxy --expiration 1h -o json 2>/dev/null | jq -r '.key')
+    --tags tag:eliza-cp --expiration 1h -o json 2>/dev/null | jq -r '.key')
   [ -n "$PREAUTH_KEY" ] || { echo "CP router enrollment credential could not be minted (category=cp-router-key-failed)"; exit 1; }
 
   # Retire only the exact reviewed hostname on the current Headscale authority.

@@ -794,8 +794,17 @@ ${member(await read(engine), "static int observeStatus(")}
     ),
     "UpdateJournal.java": await read(journal),
     "VerifiedPayload.java": await read(payload),
-    "android/os/RecoverySystem.java": `package android.os;
-public final class RecoverySystem { public static void verifyPackage(java.io.File file, Object a, Object b) { } }`,
+    "android/os/RecoverySystem.java": heldBefore
+      ? `package android.os; public final class RecoverySystem { public static void verifyPackage(java.io.File file, Object a, Object b) {} }`
+      : `package android.os;
+public final class RecoverySystem { public static void verifyPackage(java.io.File file, Object a, Object b) {
+ try (java.util.zip.ZipFile selected = new java.util.zip.ZipFile((java.io.File) b)) {
+  if (selected.size() != 1) throw new AssertionError("Unexpected trust store size");
+  byte[] cert = selected.getInputStream(selected.entries().nextElement()).readAllBytes();
+  if (!java.util.Arrays.equals(cert, java.nio.file.Files.readAllBytes(java.nio.file.Path.of(System.getProperty("fixture.enrolled")))))
+   throw new AssertionError("Wrong enrolled certificate selected");
+ } catch (java.io.IOException error) { throw new AssertionError(error); }
+} }`,
   };
   const classes = path.join(out, "held-classes");
   await mkdir(classes);
@@ -838,6 +847,38 @@ public final class RecoverySystem { public static void verifyPackage(java.io.Fil
     cert,
   ]);
   await rm(key);
+  const rotationKey = path.join(out, "rotation-fixture.p12");
+  const rotationCert = path.join(out, "rotation-fixture.x509");
+  run(tool("keytool"), [
+    "-genkeypair",
+    "-alias",
+    "rotation",
+    "-keyalg",
+    "RSA",
+    "-storetype",
+    "PKCS12",
+    "-keystore",
+    rotationKey,
+    "-storepass",
+    "fixture-pass",
+    "-dname",
+    "CN=Rotation Fixture",
+    "-validity",
+    "2",
+    "-noprompt",
+  ]);
+  run(tool("keytool"), [
+    "-exportcert",
+    "-alias",
+    "rotation",
+    "-keystore",
+    rotationKey,
+    "-storepass",
+    "fixture-pass",
+    "-file",
+    rotationCert,
+  ]);
+  await rm(rotationKey);
   run(tool("javac"), [
     "--release",
     "17",
@@ -856,6 +897,7 @@ public final class RecoverySystem { public static void verifyPackage(java.io.Fil
     data,
     cert,
     heldBefore ? "before" : "after",
+    ...(heldBefore ? [] : [rotationCert]),
   ]);
   process.stdout.write(actual);
   const results = actual.trim().split("\n");

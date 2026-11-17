@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
+import { createSecureServer } from "node:http2";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { microphonePlatform } from "./speech-pipeline/local-microphone-platform.mjs";
 
@@ -25,6 +27,160 @@ const bridge = path.resolve(
 const fixtures = path.join(here, "speech-pipeline");
 const java = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
+
+test("speech bootstrap and WebSocket reuse one TLS connection with the production client", async () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "speech-http-reuse-"));
+  const servers = [];
+  const sockets = new Set();
+  const run = promisify(execFile);
+  try {
+    const certificate = path.join(folder, "certificate.pem");
+    const key = path.join(folder, "key.pem");
+    execFileSync(
+      "openssl",
+      [
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-nodes",
+        "-keyout",
+        key,
+        "-out",
+        certificate,
+        "-days",
+        "1",
+        "-subj",
+        "/CN=127.0.0.1",
+        "-addext",
+        "subjectAltName=IP:127.0.0.1",
+      ],
+      { stdio: "pipe" },
+    );
+    const source = fs.readFileSync(
+      path.join(bridge, "SpeechStreamBridgePlugin.java"),
+      "utf8",
+    );
+    const prefix = "private final OkHttpClient http=";
+    const begin = source.indexOf(prefix);
+    assert.ok(begin >= 0);
+    const initializer = source.slice(
+      begin + prefix.length,
+      source.indexOf(";", begin),
+    );
+    const harness = fs
+      .readFileSync(path.join(fixtures, "SpeechHttpReuseTest.java.in"), "utf8")
+      .replace("__PRODUCTION_CLIENT__", initializer);
+    const javaFile = path.join(folder, "SpeechHttpReuseTest.java");
+    fs.writeFileSync(javaFile, harness);
+    const okhttp = await dependency("okhttpJvm");
+    const classpath = [
+      folder,
+      okhttp,
+      await dependency("okio"),
+      await dependency("kotlin"),
+    ].join(path.delimiter);
+    execFileSync(
+      java("javac"),
+      ["--release", "21", "-cp", classpath, "-d", folder, javaFile],
+      { timeout: 30000 },
+    );
+    const observations = [];
+    for (const mode of ["before", "production", "production-closed"]) {
+      const calls = [];
+      const server = createSecureServer({
+        key: fs.readFileSync(key),
+        cert: fs.readFileSync(certificate),
+        allowHTTP1: true,
+      });
+      servers.push(server);
+      server.on("connection", (socket) => {
+        sockets.add(socket);
+        socket.on("close", () => sockets.delete(socket));
+      });
+      server.on("request", (request, response) => {
+        calls.push({
+          path: request.url,
+          version: request.httpVersion,
+          port: request.socket.remotePort,
+        });
+        assert.equal(request.headers.authorization, "Bearer synthetic-owner");
+        request.resume();
+        response.writeHead(200, {
+          "content-type": "application/json",
+          ...(mode === "production-closed" ? { connection: "close" } : {}),
+        });
+        response.end("{}");
+      });
+      server.on("upgrade", (request, socket) => {
+        calls.push({
+          path: request.url,
+          version: request.httpVersion,
+          port: socket.remotePort,
+        });
+        const accept = createHash("sha1")
+          .update(
+            `${request.headers["sec-websocket-key"]}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`,
+          )
+          .digest("base64");
+        socket.write(
+          `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
+        );
+        socket.write(Buffer.from([0x81, 5, ...Buffer.from("ready")]));
+      });
+      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const address = server.address();
+      assert.ok(address && typeof address === "object");
+      const result = await run(
+        java("java"),
+        [
+          "-cp",
+          classpath,
+          "SpeechHttpReuseTest",
+          `https://127.0.0.1:${address.port}`,
+          certificate,
+          mode,
+        ],
+        { timeout: 20000 },
+      );
+      assert.match(result.stdout, /^PASS /);
+      assert.deepEqual(
+        calls.map((call) => call.path),
+        [
+          "/api/v1/voice/speech/consent",
+          "/api/v1/voice/speech/session",
+          "/api/v1/voice/speech/ws?sessionId=synthetic",
+        ],
+      );
+      assert.deepEqual(
+        calls.map((call) => call.version),
+        mode === "before" ? ["2.0", "2.0", "1.1"] : ["1.1", "1.1", "1.1"],
+      );
+      const connections = new Set(calls.map((call) => call.port)).size;
+      assert.equal(
+        connections,
+        mode === "before" ? 2 : mode === "production" ? 1 : 3,
+      );
+      observations.push({
+        mode,
+        tlsConnections: connections,
+        protocols: calls.map((call) => call.version),
+      });
+    }
+    const output = testOutputPath("speech-http-reuse");
+    fs.mkdirSync(output, { recursive: true });
+    fs.writeFileSync(
+      path.join(output, "connections.json"),
+      `${JSON.stringify(observations, null, 2)}\n`,
+    );
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await Promise.all(
+      servers.map((server) => new Promise((resolve) => server.close(resolve))),
+    );
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+});
 
 // Resolve only the declared compile artifacts. Cold shards need no ambient Gradle cache.
 const dependencyManifest = JSON.parse(

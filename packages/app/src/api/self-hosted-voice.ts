@@ -75,6 +75,8 @@ interface Binding {
 interface Ticket extends Binding {
   /** Absent only on pre-upgrade in-process tickets, which cannot be admitted. */
   turnTerminal?: true;
+  renewalSupported?: boolean;
+  extendLease?: (expiresAt: number) => void;
   claims: VoiceSessionTokenClaims;
   token: string;
   expiresAt: number;
@@ -379,6 +381,20 @@ export function createSelfHostedVoice(
       ),
       registerRetirement,
       beforeProviderAdmission,
+      ...(ticket.renewalSupported
+        ? {
+            onLeaseExtended: (expiresAt: number) => {
+              if (
+                tickets.get(ticket.claims.sessionId) !== ticket ||
+                ticket.admissionClosed ||
+                !ticket.extendLease
+              )
+                throw new VoiceAdmissionError(401, "voice_session_revoked");
+              ticket.extendLease(expiresAt);
+              ticket.expiresAt = expiresAt;
+            },
+          }
+        : {}),
       assertCurrent: () => {
         const current = cloudSpeechConfiguration(ticket.runtime);
         if (
@@ -786,6 +802,7 @@ export function createSelfHostedVoice(
           expiresAt,
           claimed: false,
           turnTerminal: true,
+          renewalSupported: predecessor?.renewalSupported ?? false,
           origin,
           configuration: configured,
           ...(predecessor ? { predecessor } : {}),
@@ -806,6 +823,7 @@ export function createSelfHostedVoice(
           iceServers: null,
           turnTerminal: true,
           stopIntentVersion: 1,
+          ...(configured.route === "cloud" ? { leaseRenewal: true } : {}),
           stopIntentGeneration: sessionId,
           ...(configured.route === "cloud"
             ? { rotationPreparation: "retire-before-open-v1" }
@@ -948,7 +966,14 @@ export function createSelfHostedVoice(
             }
           },
           admitSession: () => registry.size() < MAX_SOCKETS,
-          buildSession: async ({ claims, jti, tokenExpSeconds, downlink }) => {
+          buildSession: async ({
+            claims,
+            jti,
+            tokenExpSeconds,
+            downlink,
+            leaseRenewal,
+          }) => {
+            ticket.renewalSupported = leaseRenewal === true;
             let currentConfiguration: Configuration | null;
             try {
               currentConfiguration = await configuration(ticket.runtime);
@@ -969,6 +994,11 @@ export function createSelfHostedVoice(
               | Awaited<ReturnType<typeof createCloudSpeechRelayPorts>>
               | undefined;
             let session: VoiceSessionLike | undefined;
+            ticket.extendLease = (expiresAt) => {
+              if (!session?.renewLease)
+                throw new VoiceAdmissionError(503, "voice_renewal_unavailable");
+              session.renewLease(expiresAt);
+            };
             let cleanup: CloudSpeechRelayRetirement | undefined =
               ticket.preparation?.cleanup;
             if (ticket.preparation) {
@@ -1266,7 +1296,14 @@ export function createSelfHostedVoice(
                   ...commonConfig,
                   speechProvider: "injected",
                   speechPorts: relay.speechPorts,
+                  ...(relay.renewable
+                    ? {
+                        renewableLease: true as const,
+                        leaseExpiresAt: relay.expiresAt,
+                      }
+                    : {}),
                 };
+                if (relay.renewable) ticket.expiresAt = relay.expiresAt;
               } else {
                 sessionConfig = {
                   ...commonConfig,

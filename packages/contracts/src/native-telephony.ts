@@ -315,6 +315,8 @@ export interface TelephonyNativePlugin {
     cursor?: string;
   }): Promise<unknown>;
   observeMessages(options: { enabled: boolean }): Promise<unknown>;
+  /** One owner-confirmed local deletion, not cancellation of a send. Older hosts omit it. */
+  deleteMessage?(options: MessageDeleteReference): Promise<unknown>;
   markThreadRead(options: {
     threadId: string;
     throughDate: number;
@@ -1218,6 +1220,23 @@ export interface SmsMessage {
   deliveryReport: "none" | "pending" | "complete" | "failed" | null;
   attachments: number;
 }
+/** A listed provider row, without message content. Dates use listMessages milliseconds. */
+export type MessageDeleteReference = Pick<
+  SmsMessage,
+  "id" | "kind" | "threadId" | "date"
+>;
+export type MessageDeleteStatus =
+  | "deleted"
+  | "not-found"
+  | "stale"
+  | "not-settled"
+  | "unknown";
+/** Only `deleted` confirms this delete. Unknown never grants a retry or hides the message.
+ * `not-settled`: the row is a draft, queued, outbox or failed send; nothing was deleted. */
+export interface MessageDeleteResult {
+  status: MessageDeleteStatus;
+  message: MessageDeleteReference;
+}
 /** Why the host could not read a row completely. Such a row carries no content; open it in the system messaging app. */
 export type SmsIncompleteReason =
   | "body-too-long"
@@ -1271,6 +1290,51 @@ const count = (value: unknown, what: string) => {
     throw invalid(what);
   return value as number;
 };
+/** Validate an immutable selected-message identity, not a body or an address. */
+export function parseMessageDeleteReference(
+  value: unknown,
+): MessageDeleteReference {
+  const data = object(value, "selected message");
+  exact(data, ["id", "kind", "threadId", "date"], "selected message");
+  const id = text(data.id, "message id", 32),
+    threadId = text(data.threadId, "thread id", 32);
+  if (
+    (data.kind !== "sms" && data.kind !== "mms") ||
+    !MESSAGE_ID.test(id) ||
+    !id.startsWith(`${data.kind}:`) ||
+    !THREAD_ID.test(threadId)
+  )
+    throw invalid("selected message");
+  return {
+    id,
+    kind: data.kind,
+    threadId,
+    date: count(data.date, "message date"),
+  };
+}
+export function parseMessageDeleteResult(
+  value: unknown,
+  expected: MessageDeleteReference,
+): MessageDeleteResult {
+  const data = object(value, "message deletion");
+  exact(data, ["status", "message"], "message deletion");
+  if (
+    !["deleted", "not-found", "stale", "not-settled", "unknown"].includes(
+      data.status as string,
+    )
+  )
+    throw invalid("message deletion");
+  const message = parseMessageDeleteReference(data.message),
+    target = parseMessageDeleteReference(expected);
+  if (
+    message.id !== target.id ||
+    message.kind !== target.kind ||
+    message.threadId !== target.threadId ||
+    message.date !== target.date
+  )
+    throw invalid("message deletion target");
+  return { status: data.status as MessageDeleteStatus, message };
+}
 const addresses = (value: unknown) => {
   if (!Array.isArray(value) || value.length > 20)
     throw invalid("message addresses");
@@ -1833,6 +1897,26 @@ export function createTelephonyClient(
       const updated = count(value.updated, "read marker");
       if (!defaultSmsApp && updated !== 0) throw invalid("read marker");
       return { defaultSmsApp, updated };
+    },
+    /** Delete one listed local record after the owner's confirmation. Never retries or cancels a send. */
+    async deleteMessage(reference: MessageDeleteReference) {
+      const bridge = native();
+      if (!bridge.deleteMessage)
+        throw new TelephonyUnavailable(
+          "Message deletion is not available in this install.",
+        );
+      const expected = Object.freeze(
+        parseMessageDeleteReference({
+          id: reference.id,
+          kind: reference.kind,
+          threadId: reference.threadId,
+          date: reference.date,
+        }),
+      );
+      return parseMessageDeleteResult(
+        await bridge.deleteMessage({ ...expected }),
+        expected,
+      );
     },
     /** A reviewed native send. The host's native dialog shows the exact content again before
      * anything is sent. Reusing an operation ID returns its record and never sends twice. */

@@ -309,7 +309,7 @@ test("empty and loading states carry text", async (t) => {
   assert.equal(fd.emptyText, "This folder is empty");
 });
 
-test("a filter is restored after both short and long visits away", async (t) => {
+test("leaving Files clears a filter and its displayed positions", async (t) => {
   t.mock.timers.enable({ apis: ["Date"] });
   const view = files(t, {
     storageQuery: async () => ({
@@ -320,20 +320,90 @@ test("a filter is restored after both short and long visits away", async (t) => 
   });
   view.render();
   await tick();
-  await view.runner.run(
-    { type: "files_filter", kind: "pdf" },
-    new AbortController().signal,
-  );
-  for (const [minutes, kept] of [
-    [1, true],
-    [11, true],
-  ]) {
+  const signal = new AbortController().signal;
+  for (const minutes of [1, 11]) {
+    const filtered = await view.runner.run(
+      { type: "files_filter", kind: "pdf" },
+      signal,
+    );
+    assert.equal(filtered.status, "succeeded");
+    const projected = view.render();
+    assert.ok(projected.chip);
+    assert.equal(projected.filterRows.length, 1);
+    assert.ok(
+      view.render({ open: view.preview }).chip,
+      "preview stays in Files",
+    );
+    const queries = view.named("storageQuery").length;
     view.leave();
     t.mock.timers.tick(minutes * 60 * 1000);
-    view.render();
+    assert.equal(
+      view.render().chip,
+      null,
+      "the first new-visit render is unfiltered",
+    );
     await tick();
-    assert.equal(!!view.render().chip, kept);
+    assert.deepEqual(view.render().filterRows, []);
+    assert.equal(view.render().browse.ready, true);
+    assert.equal(
+      view.named("storageQuery").length,
+      queries,
+      "do not refresh an old filter",
+    );
+    assert.equal(
+      (await view.runner.run({ type: "files_open", shown: 1 }, signal)).status,
+      "failed",
+    );
+    assert.deepEqual(view.named("storageSelect"), []);
   }
+});
+
+test("a filter query retired on leave cannot publish into the next visit", async (t) => {
+  const query = Promise.withResolvers();
+  const view = files(t, {
+    storageQuery: async ({ text }) =>
+      text === "old"
+        ? query.promise
+        : {
+            status: "ready",
+            entries: [file("Download/new.pdf", "application/pdf")],
+            truncated: false,
+          },
+  });
+  view.render();
+  await tick();
+  const signal = new AbortController().signal;
+  const retired = view.runner.run(
+    { type: "files_filter", text: "old" },
+    signal,
+  );
+  await tick();
+  assert.equal(view.render().filterLoading, true);
+  view.leave();
+  const returned = view.render();
+  assert.equal(returned.chip, null);
+  assert.equal(returned.filterLoading, false);
+  assert.equal(returned.filterNote, "");
+  await tick();
+  const current = await view.runner.run(
+    { type: "files_filter", text: "new" },
+    signal,
+  );
+  assert.equal(current.status, "succeeded");
+  query.resolve({
+    status: "ready",
+    entries: [file("Download/old.pdf", "application/pdf")],
+    truncated: false,
+  });
+  assert.equal((await retired).status, "failed");
+  assert.deepEqual(
+    view.render().filterRows.map((row) => row.name),
+    ["new.pdf"],
+  );
+  assert.deepEqual(
+    view.named("storageQuery").map(([, input]) => input.text),
+    ["old", "new"],
+  );
 });
 
 test("a shown position cannot switch to a new filter while access is pending", async (t) => {
@@ -716,4 +786,115 @@ test("unreadable secondary Trash keeps the visible list incomplete until it is r
   await tick();
   assert.equal(view.render().fd.empty, true);
   assert.equal(view.render().nativeTreeStatus, "");
+});
+
+test("Downloads lists folders beside files from the actual Download directory", async (t) => {
+  const view = files(t, {
+    storageCategory: async () => ({ status: "ready", count: 1, entries: [] }),
+    storageList: async () => ({
+      status: "ready",
+      entries: [
+        {
+          path: "Download/Receipts",
+          name: "Receipts",
+          directory: true,
+          modified: 0,
+        },
+        file("Download/receipt.pdf", "application/pdf"),
+      ],
+    }),
+  });
+  view.render();
+  await tick();
+  view
+    .render()
+    .browse.cats.find((category) => category.id === "downloads")
+    .go();
+  await tick();
+  assert.deepEqual(
+    view
+      .render()
+      .fd.items.map((item) => item.name)
+      .sort(),
+    ["Receipts", "receipt.pdf"],
+  );
+  assert.deepEqual(view.named("storageList").at(-1), [
+    "storageList",
+    { path: "Download" },
+  ]);
+});
+
+test("an empty Downloads directory is readable and creates a folder in Downloads", async (t) => {
+  let exists = false;
+  const created = [];
+  const view = files(t, {
+    storageList: async ({ path }) =>
+      path === "Download" && !exists
+        ? { status: "missing" }
+        : {
+            status: "ready",
+            entries: created
+              .filter((entry) => entry.parent === path)
+              .map((entry) => ({
+                path: `${path}/${entry.name}`,
+                name: entry.name,
+                directory: true,
+                modified: 0,
+              })),
+          },
+    storageCreateFolder: async (entry) => {
+      if (entry.parent === "") exists = true;
+      created.push(entry);
+      return { status: "ready" };
+    },
+  });
+  view.render();
+  await tick();
+  view
+    .render()
+    .browse.cats.find((category) => category.id === "downloads")
+    .go();
+  await tick();
+  assert.equal(view.render().fd.empty, true);
+  assert.deepEqual(view.toasts, []);
+  assert.equal(view.render().toolbar.canCreate, true);
+  view.render().toolbar.newFolder();
+  view.render().dlg.onValue({ target: { value: "Receipts" } });
+  view.render().dlg.confirm();
+  await tick();
+  assert.deepEqual(created, [
+    { parent: "", name: "Download" },
+    { parent: "Download", name: "Receipts" },
+  ]);
+  assert.deepEqual(
+    view.render().fd.items.map((item) => item.name),
+    ["Receipts"],
+  );
+});
+
+test("leaving Downloads during the parent read retires folder creation", async (t) => {
+  const pending = Promise.withResolvers();
+  let reads = 0;
+  const view = files(t, {
+    storageList: async ({ path }) => {
+      if (path !== "Download") return { status: "ready", entries: [] };
+      return ++reads === 1 ? { status: "missing" } : pending.promise;
+    },
+    storageCreateFolder: async () => ({ status: "ready" }),
+  });
+  view.render();
+  await tick();
+  view
+    .render()
+    .browse.cats.find((category) => category.id === "downloads")
+    .go();
+  await tick();
+  view.render().toolbar.newFolder();
+  view.render().dlg.onValue({ target: { value: "Receipts" } });
+  view.render().dlg.confirm();
+  await tick();
+  view.leave();
+  pending.resolve({ status: "missing" });
+  await tick();
+  assert.deepEqual(view.named("storageCreateFolder"), []);
 });

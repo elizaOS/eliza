@@ -76,8 +76,11 @@ async function verify(file: string, pin: Pin): Promise<void> {
     throw new Error(`Wrong size: ${file}`);
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(file)) hash.update(chunk);
-  if (hash.digest("hex") !== pin.sha256)
-    throw new Error(`Wrong sha256: ${file}`);
+  const actual = hash.digest("hex");
+  if (actual !== pin.sha256)
+    throw new Error(
+      `Wrong sha256: ${file} (expected ${pin.sha256}, actual ${actual})`,
+    );
 }
 
 const source = path.resolve(values.source);

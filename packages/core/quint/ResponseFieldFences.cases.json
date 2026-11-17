@@ -1,0 +1,37 @@
+{
+	"sources": [
+		"packages/core/src/runtime/response-field-transcript.ts",
+		"packages/core/test/response-field-transcript-fences.test.ts",
+		"packages/core/quint/check-source-integrity.mjs"
+	],
+	"conformance": "packages/core/quint/check-source-integrity.mjs",
+	"bounds": "Five finite line streams cover inline backtick spans, a shorter marker inside a four-backtick fence, an annotated marker inside a fence, a different marker kind, and tilde fences. The parser consumes one line per step. This projection checks field ownership, not the complete Markdown language or arbitrary Unicode/line lengths. The linked parser tests check these streams and exact text preservation; they are concrete cases rather than generated trace replay.",
+	"cases": [
+		{
+			"name": "ResponseFieldFences",
+			"main": "ResponseFieldFences",
+			"init": "init",
+			"step": "step",
+			"invariants": ["TypeOK", "QuotedFieldsStayQuoted", "OuterFieldsSurvive"],
+			"temporal": ["StreamFinishes", "StreamFinishesWithoutFairness"],
+			"temporalChecks": [
+				{
+					"property": "StreamFinishes",
+					"expect": "holds",
+					"assumptions": [
+						"Each enabled read, collection or parser step eventually executes and settles (weak fairness). No wall-clock bound is proved."
+					]
+				},
+				{
+					"property": "StreamFinishesWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness is assumed. The environment may indefinitely delay the next enabled step."
+					]
+				}
+			],
+			"maxSteps": 8,
+			"samples": 100
+		}
+	]
+}

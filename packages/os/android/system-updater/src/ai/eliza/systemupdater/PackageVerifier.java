@@ -9,6 +9,7 @@ import android.system.OsConstants;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileDescriptor;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.channels.FileChannel;
@@ -30,6 +31,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
 
 /** Validate the complete OTA and its signed A/B payload. Only a pre-apply scratch owner can extract. */
 final class PackageVerifier {
@@ -47,9 +49,13 @@ final class PackageVerifier {
                 || ota.length() != expectedLength || !digest(ota).equals(expectedSha256)) {
             throw new IOException("OTA identity or length differs");
         }
-        verifyTrustStore(otaCertificateSha256);
-        // Signature verification is Android's implementation over the complete downloaded zip.
-        RecoverySystem.verifyPackage(ota, null, null);
+        File trust = enrolledTrustStore(outputDirectory, otaCertificateSha256);
+        try {
+            // Android verifies the complete package against the enrolled channel certificate.
+            RecoverySystem.verifyPackage(ota, null, trust);
+        } finally {
+            Files.deleteIfExists(trust.toPath());
+        }
         try (ZipFile zip = new ZipFile(ota)) {
             requireUnique(zip, "META-INF/com/android/metadata");
             requireUnique(zip, "payload_properties.txt");
@@ -266,8 +272,11 @@ final class PackageVerifier {
         if (outputDirectory.getUsableSpace() < requiredSpace) throw new StorageDeferred();
     }
 
-    private static void verifyTrustStore(String expected) throws IOException, GeneralSecurityException {
-        int certificates = 0;
+    private static File enrolledTrustStore(File directory, String expected) throws IOException, GeneralSecurityException {
+        if (!directory.isDirectory() || !directory.getCanonicalFile().equals(directory.getAbsoluteFile())) {
+            throw new IOException("Update trust directory is unavailable");
+        }
+        byte[] enrolled = null;
         try (ZipFile trust = new ZipFile("/system/etc/security/otacerts.zip")) {
             Enumeration<? extends ZipEntry> entries = trust.entries();
             while (entries.hasMoreElements()) {
@@ -275,14 +284,26 @@ final class PackageVerifier {
                 if (entry.isDirectory()) continue;
                 try (InputStream input = trust.getInputStream(entry)) {
                     byte[] encoded = CertificateFactory.getInstance("X.509").generateCertificate(input).getEncoded();
-                    if (!hex(MessageDigest.getInstance("SHA-256").digest(encoded)).equals(expected)) {
-                        throw new GeneralSecurityException("Image OTA trust differs from the enrolled channel");
+                    if (hex(MessageDigest.getInstance("SHA-256").digest(encoded)).equals(expected)) {
+                        enrolled = encoded;
                     }
-                    certificates++;
                 }
             }
         }
-        if (certificates == 0) throw new GeneralSecurityException("Image has no enrolled OTA certificate");
+        if (enrolled == null) throw new GeneralSecurityException("Image has no enrolled OTA certificate");
+        File selected = File.createTempFile("enrolled-ota-", ".zip", directory);
+        try (FileOutputStream file = new FileOutputStream(selected);
+                ZipOutputStream zip = new ZipOutputStream(file)) {
+            zip.putNextEntry(new ZipEntry("enrolled.x509.pem"));
+            zip.write(enrolled);
+            zip.closeEntry();
+            zip.finish();
+            file.getFD().sync();
+        } catch (IOException failure) {
+            Files.deleteIfExists(selected.toPath());
+            throw failure;
+        }
+        return selected;
     }
 
     private static void requireUnique(ZipFile zip, String name) throws IOException {

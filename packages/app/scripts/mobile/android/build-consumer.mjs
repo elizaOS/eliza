@@ -38,6 +38,7 @@ const RESERVED_OUTPUT_NAMES = [
  * `{ root, environment }`, or `{ gradleTasks }`: extra tasks added to the one Gradle
  * invocation that builds the app. `lint` and `androidTest` (default true) select
  * `:app:lint` and the androidTest APKs; the archive's `build-checks.json` records both.
+ * `release: false` assembles only the Debug APKs, for local builds; it cannot be archived.
  * `project` is the Gradle project directory and `output` the artifact directory, both
  * relative to `root`. `gradleArguments` admits `-Pname=value` and `--offline` only.
  * A release named `<variant>-release.apk` is signed, otherwise `-release-unsigned.apk`;
@@ -67,6 +68,7 @@ export function buildAndroidConsumer({
   daemon = false,
   lint = true,
   androidTest = true,
+  release = true,
   project = "android",
   output = "artifacts",
   gradleArguments = [],
@@ -86,7 +88,7 @@ export function buildAndroidConsumer({
   )
     throw new Error("Invalid Android distributions");
   if (
-    [lint, androidTest, mappings, sequential, daemon].some(
+    [lint, androidTest, release, mappings, sequential, daemon].some(
       (value) => typeof value !== "boolean",
     )
   )
@@ -97,6 +99,8 @@ export function buildAndroidConsumer({
     !/^[a-z][a-z0-9-]*$/.test(archive.name)
   )
     throw new Error("Invalid Android archive name");
+  if (!release && archive !== undefined && archive !== null)
+    throw new Error("A debug-only Android build cannot be archived");
   if (!safeRelative(project) || !safeRelative(output))
     throw new Error("Android project and output must be relative paths");
   if (
@@ -185,6 +189,7 @@ export function buildAndroidConsumer({
     } else if (isGradleStep(step)) extraTasks.push(...step.gradleTasks);
     else invoke(step);
   }
+  const modes = release ? ["Debug", "Release"] : ["Debug"];
   const capitalized = variants.map(
     (name) => name[0].toUpperCase() + name.slice(1),
   );
@@ -250,7 +255,7 @@ export function buildAndroidConsumer({
     };
     discardIntermediates();
     for (const name of capitalized)
-      for (const mode of ["Debug", "Release"]) {
+      for (const mode of modes) {
         try {
           gradle([
             `:app:assemble${name}${mode}`,
@@ -265,21 +270,17 @@ export function buildAndroidConsumer({
     if (lint || extraTasks.length)
       gradle([...extraTasks, ...(lint ? [":app:lint"] : [])]);
   } else {
-    const modes = [
-      "Debug",
-      "Release",
-      ...(androidTest ? ["DebugAndroidTest"] : []),
-    ];
     gradle([
-      ...modes.flatMap((mode) =>
-        capitalized.map((name) => `:app:assemble${name}${mode}`),
+      ...[...modes, ...(androidTest ? ["DebugAndroidTest"] : [])].flatMap(
+        (mode) => capitalized.map((name) => `:app:assemble${name}${mode}`),
       ),
       ...extraTasks,
       ...(lint ? [":app:lint"] : []),
     ]);
   }
   const artifacts = variants.flatMap((variant) =>
-    ["debug", "release"].map((mode) => {
+    modes.map((label) => {
+      const mode = label.toLowerCase();
       const directory = path.join(outputs, "apk", variant, mode);
       const signed =
         mode === "release" &&

@@ -23,6 +23,9 @@ function fixture() {
     captures = 0,
     batches = 0,
     notices = 0;
+  let stopRefused = false;
+  let flagEnabled = true;
+  let conversationId = "conversation";
   const sockets: Socket[] = [],
     clients: VoiceSessionClient[] = [];
   class Socket implements VoiceWebSocketLike {
@@ -76,8 +79,8 @@ function fixture() {
   function useConsumer() {
     const voice = useRealtimeVoiceSession({
       agentId: "agent",
-      conversationId: "conversation",
-      flagEnabled: true,
+      conversationId,
+      flagEnabled,
       getConsentNonce: async () => "nonce",
       createClient: (options) => {
         if (!options.fetch) throw Error("Missing isolated voice fixture fetch");
@@ -106,17 +109,19 @@ function fixture() {
         getUserMedia: async () => {
           captures++;
           let stopped = false;
+          const track = {
+            readyState: "live",
+            stop() {
+              if (stopRefused) throw Error("Injected microphone stop failure");
+              if (!stopped) {
+                stopped = true;
+                track.readyState = "ended";
+                captures--;
+              }
+            },
+          };
           return {
-            getTracks: () => [
-              {
-                stop() {
-                  if (!stopped) {
-                    stopped = true;
-                    captures--;
-                  }
-                },
-              },
-            ],
+            getTracks: () => [track],
             getAudioTracks: () => [],
           } as unknown as MediaStream;
         },
@@ -162,6 +167,20 @@ function fixture() {
     view,
     sockets,
     clients,
+    refuseStop() {
+      stopRefused = true;
+    },
+    allowStop() {
+      stopRefused = false;
+    },
+    disable() {
+      flagEnabled = false;
+      view.rerender();
+    },
+    changeConversation() {
+      conversationId = "next-conversation";
+      view.rerender();
+    },
     get mints() {
       return mints;
     },
@@ -214,6 +233,123 @@ test("real hook/client refusal survives rerenders without automatic mint, batch 
   await act(async () => {
     await f.view.result.current.voice.stop();
   });
+});
+
+test("Stop cancels a restart that is still releasing a retained capture", async () => {
+  const f = fixture();
+  let started!: ReturnType<typeof f.view.result.current.voice.start>;
+  await act(async () => {
+    started = f.view.result.current.voice.start();
+    await flush();
+    f.sockets[0].frame({
+      t: "ready",
+      sessionId: "session-1",
+      traceId: "ready-1",
+    });
+    await flush();
+  });
+  expect((await started).kind).toBe("live");
+  f.refuseStop();
+  await act(async () => {
+    await expect(f.view.result.current.voice.stop()).rejects.toMatchObject({
+      code: "release_unconfirmed",
+    });
+  });
+  f.allowStop();
+  await act(async () => {
+    const restart = f.view.result.current.voice.start();
+    await f.view.result.current.voice.stop();
+    expect((await restart).kind).toBe("unavailable");
+  });
+  expect(f.mints).toBe(1);
+  expect(f.captures).toBe(0);
+});
+
+test.each(["unmount", "disable", "changeConversation"] as const)(
+  "%s retries a retained release without starting a new capture",
+  async (retire) => {
+    const f = fixture();
+    let started!: ReturnType<typeof f.view.result.current.voice.start>;
+    await act(async () => {
+      started = f.view.result.current.voice.start();
+      await flush();
+      f.sockets[0].frame({
+        t: "ready",
+        sessionId: "session-1",
+        traceId: "ready-1",
+      });
+      await flush();
+    });
+    expect((await started).kind).toBe("live");
+    f.refuseStop();
+    await act(async () => {
+      await expect(f.view.result.current.voice.stop()).rejects.toMatchObject({
+        code: "release_unconfirmed",
+      });
+    });
+    expect(f.captures).toBe(1);
+    f.allowStop();
+    await act(async () => {
+      if (retire === "unmount") f.view.unmount();
+      else f[retire]();
+      await flush();
+    });
+    expect(f.captures).toBe(0);
+    expect(f.mints).toBe(1);
+  },
+);
+
+test("the real hook retains failed Stop across retry and starts only after release", async () => {
+  const f = fixture();
+  let started!: ReturnType<typeof f.view.result.current.voice.start>;
+  await act(async () => {
+    started = f.view.result.current.voice.start();
+    await flush();
+    f.sockets[0].frame({
+      t: "ready",
+      sessionId: "session-1",
+      traceId: "ready-1",
+    });
+    await flush();
+  });
+  expect((await started).kind).toBe("live");
+  expect(f.captures).toBe(1);
+  f.refuseStop();
+  await act(async () => {
+    await expect(f.view.result.current.voice.stop()).rejects.toMatchObject({
+      code: "release_unconfirmed",
+    });
+  });
+  expect(f.view.result.current.voice.error?.kind).toBe("release");
+  expect(f.captures).toBe(1);
+  await act(async () => {
+    expect((await f.view.result.current.voice.start()).kind).toBe("error");
+  });
+  expect(f.mints).toBe(1);
+  expect(f.batches).toBe(0);
+  f.allowStop();
+  await act(async () => {
+    await f.view.result.current.voice.stop();
+  });
+  expect(f.captures).toBe(0);
+  expect(f.view.result.current.voice.error).toBeNull();
+  await act(async () => {
+    started = f.view.result.current.voice.start();
+    await flush();
+    f.sockets[1].frame({
+      t: "ready",
+      sessionId: "session-2",
+      traceId: "ready-2",
+    });
+    await flush();
+  });
+  expect((await started).kind).toBe("live");
+  expect(f.captures).toBe(1);
+  expect(f.mints).toBe(2);
+  await act(async () => {
+    await f.view.result.current.voice.stop();
+  });
+  expect(f.captures).toBe(0);
 });
 
 test.each(["quota_exhausted", "insufficient_credits", "revoked"])(

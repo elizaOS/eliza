@@ -1,0 +1,31 @@
+[
+  {
+    "id": "NativeContactEdit",
+    "model": "plugins/plugin-native-contacts/quint/NativeContactEdit.qnt",
+    "sources": [
+      "plugins/plugin-native-contacts/android/src/main/java/ai/eliza/plugins/contacts/ContactsEditor.java",
+      "plugins/plugin-native-contacts/android/src/main/java/ai/eliza/plugins/contacts/AddressBookPlugin.java",
+      "plugins/plugin-native-contacts/android/src/test/java/ai/eliza/plugins/contacts/ContactsEditorTest.java",
+      "packages/contracts/src/native-address-book.ts",
+      "packages/contracts/src/native-address-book.test.ts",
+      "plugins/plugin-native-contacts/android/build.gradle",
+      "packages/scripts/quint/check-native-android.ts",
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/scripts/lib/test-output.ts",
+      "packages/scripts/run-with-deadline.ts",
+      "packages/app/scripts/android-native-plugins-gradle/build.gradle",
+      "packages/app/scripts/android-native-plugins-gradle/settings.gradle"
+    ],
+    "invariants": [
+      "TypeOK",
+      "NotesNeverBlockTheContact",
+      "NotesNeverFlattened",
+      "RefusalsWriteNothing",
+      "SavedRenameIsShown"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One owner edit of one contact: one versioned read, one draft and at most one batch, with up to two other writers. The contact is linked from one or two raw contacts, and its notes are one editable value or not (several note rows, or other control characters); another writer can change that. The aggregator choice between two structured names of writable accounts is abstracted to super-primary first, then name complexity (AOSP AbstractContactAggregator.processDisplayNameCandidate). Witness runs remove the notes omission, the notes save guard or the super-primary mark and must break their invariant. The fake provider in ContactsEditorTest models version raises, aggregation by super-primary and complexity, and batch rollback; the real ContactsProvider, sync adapters, other account types and device acceptance remain separate."
+    ]
+  }
+]

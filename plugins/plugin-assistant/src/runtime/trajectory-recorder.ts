@@ -64,7 +64,6 @@ export function resolveTrajectoryDir(): string {
 export function isTrajectoryMarkdownReviewEnabled(): boolean {
   return (
     envFlagEnabled("ELIZA_TRAJECTORY_REVIEW_MODE") ||
-    envFlagEnabled("ELIZA_TRAJECTORY_MARKDOWN") ||
     Boolean(process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR?.trim())
   );
 }

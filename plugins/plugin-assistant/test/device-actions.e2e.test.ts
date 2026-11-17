@@ -1269,6 +1269,8 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         failed: Record<string, unknown>;
         refused: Array<Record<string, unknown>>;
         read?: boolean;
+        /** Changes only what a view shows: no effect receipt and no read result. */
+        view?: boolean;
       }> = [
         {
           capability: "phone.call.v1",
@@ -1350,6 +1352,39 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           ],
         },
         {
+          capability: "contacts.show.v1",
+          operation: { type: "contact_show", query: "Ada" },
+          invalid: [
+            { type: "contact_show", query: "Ada", limit: 5 },
+            { type: "contact_show" },
+          ],
+          applied: { kind: "contact-show", status: "shown" },
+          failed: { kind: "contact-show", status: "not-found" },
+          refused: [
+            { kind: "contact-show", status: "not-found" },
+            { kind: "contact-show", status: "shown", count: 2 },
+            { kind: "contact-show", status: "shown", contact },
+          ],
+          view: true,
+        },
+        {
+          capability: "contacts.read.v1",
+          operation: { type: "contact_read_selected" },
+          invalid: [{ type: "contact_read_selected", query: "Ada" }],
+          applied: { kind: "contact-read", status: "read", contact },
+          failed: { kind: "contact-read", status: "none-selected" },
+          refused: [
+            { kind: "contact-read", status: "none-selected" },
+            { kind: "contact-read", status: "read", contacts: [contact] },
+            {
+              kind: "contact-read",
+              status: "read",
+              contact: { ...contact, id: "7" },
+            },
+          ],
+          read: true,
+        },
+        {
           capability: "messages.read.v1",
           operation: { type: "messages_read_selected" },
           invalid: [{ type: "messages_read_selected", threadId: "4" }],
@@ -1396,6 +1431,33 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           ],
         },
       ];
+      // add and remove are a negotiated extension: never sent to a phone without it.
+      const addEmail = {
+        type: "contact_update",
+        query: "Ada",
+        add: { emailAddresses: ["ada@work.example"] },
+      };
+      await expect(
+        service.propose(
+          { ...credentials, capabilities: ["contacts.write.v1"] },
+          addEmail,
+          "contact-add-no-v2",
+          "fixture",
+        ),
+      ).rejects.toThrow("capability");
+      expect(
+        (
+          await service.propose(
+            {
+              ...credentials,
+              capabilities: ["contacts.write.v1", "contacts.write.v2"],
+            },
+            addEmail,
+            "contact-add",
+            "fixture",
+          )
+        ).payload,
+      ).toMatchObject({ operation: addEmail });
       const every = [...new Set(cases.map((item) => item.capability))];
       for (const item of cases) {
         const { capability, operation } = item;
@@ -1530,8 +1592,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         const receipts = activeCommittedEffectReceipts(
           deviceActionEffectReceipts(replayed),
         );
-        expect(receipts).toHaveLength(item.read ? 0 : 1);
-        if (!item.read) expect(receipts[0].operation).toBe(`device.${kind}`);
+        expect(receipts).toHaveLength(item.read || item.view ? 0 : 1);
+        if (!item.read && !item.view)
+          expect(receipts[0].operation).toBe(`device.${kind}`);
         // The original-request reply reads the stored item, never the phone again.
         if (item.read)
           expect(deviceReadResult(replayed.request)).toEqual(item.applied);
@@ -2002,6 +2065,16 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "phone.call.v1",
           "contacts.write.v1",
           "sms.compose.v1",
+          "sms.compose.v2",
+          "contacts.write.v2",
+          "contacts.show.v1",
+          "contacts.read.v1",
+          "camera.capture-lens.v1",
+          "browser.search.v1",
+          "browser.tabs.v1",
+          "browser.find.v1",
+          "browser.history.v1",
+          "views.telephony.v1",
           "messages.read.v1",
           "voicemail.read.v1",
           "voicemail.delete.v1",
@@ -4058,7 +4131,34 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         status: 200,
         body: { version: 1, profile: null },
       });
+      // Phone, Messages and Contacts are listed and enrolled only for a
+      // phone that advertises views.telephony.v1; an older client never
+      // enrolls a view it cannot open.
       expect(discovery.body.supportedViews).toContain("workflows");
+      for (const view of ["phone", "messages", "contacts"])
+        expect(discovery.body.supportedViews).not.toContain(view);
+      expect(
+        (
+          await request("/view-profile", {
+            version: 1,
+            views: ["notes", "phone"],
+            expectedRevision: null,
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await request(
+            "/view-profile",
+            undefined,
+            "a",
+            deviceKey,
+            "notes.local-record.v1,views.telephony.v1",
+          )
+        ).body.supportedViews,
+      ).toEqual(
+        expect.arrayContaining(["workflows", "phone", "messages", "contacts"]),
+      );
       expect(
         (await request("/register", { label: "Profile fixture" })).body
           .viewProfileVersion,
@@ -4143,6 +4243,8 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         "workflows",
       ]);
       expect(branch(contexts[1]).properties.view.enum).toContain("browser");
+      // A profile-only view is never offered to an installation without one.
+      expect(branch(contexts[1]).properties.view.enum).not.toContain("phone");
       expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(
         globalParameters,
       );
@@ -4383,7 +4485,7 @@ test.each([
     opened: openedUrl,
   }) => {
     const fixture = await createRealTestRuntime({
-      characterName: "DirectBrowserOpenFixture",
+      characterName: "Eliza",
     });
     const runtime = fixture.runtime;
     const owner = resolveOwnerEntityIdOrDefault(runtime);
@@ -5887,6 +5989,27 @@ test("camera capture receipts bind a saved photo to one claimed operation withou
         "Take a photo",
       ),
     ).rejects.toThrow("capability");
+    // A lens is a negotiated extension: never sent to a phone without it.
+    const selfie = { type: "camera_capture_photo", lens: "front" };
+    await expect(
+      service.propose(credential, selfie, "selfie-no-lens", "Take a selfie"),
+    ).rejects.toThrow("capability");
+    expect(
+      (
+        await service.propose(
+          {
+            ...credential,
+            capabilities: [
+              ...credential.capabilities,
+              "camera.capture-lens.v1",
+            ],
+          },
+          selfie,
+          "selfie",
+          "Take a selfie",
+        )
+      ).payload,
+    ).toMatchObject({ operation: selfie });
     const proposal = await service.propose(
       credential,
       { type: "camera_capture_photo" },
