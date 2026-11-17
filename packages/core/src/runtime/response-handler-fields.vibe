@@ -138,8 +138,10 @@ effect function attemptField<A>(work: A!Foreign): FieldAttempt<A>!Foreign {
   }
 }
 
-function shouldRunField(evaluator: ResponseHandlerFieldEvaluator, ctx: ResponseHandlerFieldContext): boolean!Foreign {
-  return foreign(() => evaluator.shouldRun ? evaluator.shouldRun(ctx) : true)
+effect function shouldRunField(evaluator: ResponseHandlerFieldEvaluator, ctx: ResponseHandlerFieldContext): boolean!Foreign {
+  const runPredicate = try foreignSync(() => !!evaluator.shouldRun)
+  if (!runPredicate) return true
+  return try foreign(() => evaluator.shouldRun!(ctx))
 }
 
 function parseFieldValue(evaluator: ResponseHandlerFieldEvaluator, raw: unknown, ctx: ResponseHandlerFieldContext): unknown!Foreign {

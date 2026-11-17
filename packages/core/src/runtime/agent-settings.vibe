@@ -275,7 +275,7 @@ export effect function createPiiSwapSession(): PseudonymSession!SettingsFailure!
   const { runtime } = try Host
   const recognizers: PiiEntityRecognizer[] = [new RegexEntityRecognizer()]
   const nerService = try foreignSync(() => runtime.getService<Service & Partial<PiiEntityRecognizerService>>(PII_ENTITY_RECOGNIZER_SERVICE))
-  const nerRecognizer = nerService?.getRecognizer ? try foreignSync(() => nerService.getRecognizer?.()) : undefined
+  const nerRecognizer = try foreignSync(() => nerService?.getRecognizer?.() ?? null)
   if (nerRecognizer) recognizers.push(nerRecognizer)
   const name = runtime.character.name
   const blocklist = [

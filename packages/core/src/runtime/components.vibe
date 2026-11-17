@@ -1,6 +1,6 @@
 // spec/core/registries.md, "Each extension registry preserves its own normalization and replacement policy"; spec/core/responseEvaluation.md, "Duplicate registration preserves the original evaluator identity"; spec/core/runtime.md, "Stop closes admissions and prepares services once"
 import { Machine, lookupStatus, machine, visibleCategories, type Event as ExtensionsEvent, type Rejected as ExtensionsRejected, type RuntimeRegistries, type SearchCategory } from "../../gen/core__registries.effect.vibe"
-import { Foreign, foreign } from "../edge.vibe"
+import { Foreign, foreign, foreignSync } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { own, type Owned } from "../owned.vibe"
 import type { PromptOptimizationRuntimeHooks } from "../prompt-optimization.vibe"
@@ -193,17 +193,18 @@ effect function assertRuntimeActive(runtime: AgentRuntime, plugin: Plugin): void
   })
 }
 
-function pluginConfig(plugin: Plugin): Record<string, string> {
-  const config: Record<string, string> = {}
-  for (const [key, value] of Object.entries(plugin.config ?? {})) {
-    if (value !== null && value !== undefined) config[key] = String(value)
-  }
-  return config
-}
-
 effect function initializePlugin(runtime: AgentRuntime, plugin: Plugin): void!ComponentsFailure!RuntimeKernel {
+  const config = try foreignSync(() => {
+    const config: Record<string, string> = {}
+    if (plugin.config) {
+      for (const [key, value] of Object.entries(plugin.config)) {
+        if (value !== null && value !== undefined) config[key] = String(value)
+      }
+    }
+    return config
+  })
   effect {
-    try foreign(() => plugin.init?.(pluginConfig(plugin), runtime))
+    try foreign(() => plugin.init!(config, runtime))
     try assertRuntimeActive(runtime, plugin)
   } catch effect (error) => {
     const index = runtime.plugins.indexOf(plugin)

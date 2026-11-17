@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, type ApprovalRequest, type ApprovalResult, ApprovalService, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withRoomDeliverySettlement, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
+import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
@@ -12,6 +12,21 @@ import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
 effect function storeAt(prefix: string) {
   const directory = try scratch(prefix)
   return try host(async () => new SqliteStore(`${directory}/core.sqlite`))
+}
+
+effect function changingMethod(target: object, member: string, next: unknown, armed: () => boolean = () => true) {
+  const observed = { reads: 0, totalReads: 0, cachedCalls: 0 }
+  const cached = async () => { observed.cachedCalls += 1 }
+  try Effect.try(() => Object.defineProperty(target, member, {
+    configurable: true,
+    get: () => {
+      observed.totalReads += 1
+      if (!armed()) return cached
+      observed.reads += 1
+      return observed.reads === 1 ? cached : next
+    },
+  }))
+  return observed
 }
 
 const keyless = ({ id: _id, accountKey: _accountKey, createdAt: _createdAt, updatedAt: _updatedAt, ...rest }: ConnectorAccount) => rest
@@ -820,6 +835,23 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
     [{ scope: "ResponseHandlerEvaluator.evaluate", code: "UNCLASSIFIED", message: "classifier offline", context: { evaluator: "m-broken" } }],
   ]))
 
+  // spec/core/responseFields.md, "All active fields parse before handlers begin and preemption stops subsequent handlers"
+  const volatileFields: unknown[] = []
+  for (const member of ["parse", "shouldRun"] as const) {
+    const registry = try Effect.try(() => new ResponseHandlerFieldRegistry())
+    let handled = 0
+    const field: ResponseHandlerFieldEvaluator = { name: `j02-${member}`, description: "host field", schema: { type: "string" }, handle: async () => { handled += 1; return undefined } }
+    const observed = try changingMethod(field, member, undefined)
+    try Effect.try(() => registry.register(field))
+    const result = try host(() => registry.dispatch({ runtime, message: m1, state: lookupTurn.state, senderRole: "USER", turnSignal: new AbortController().signal, rawParsed: { [field.name]: "input" } }))
+    const trace = result.traces[0]
+    volatileFields.push([trace?.active, trace?.parsed, trace?.parseOutcome, trace?.handled, typeof result.fieldErrors[field.name] === "string", handled, observed])
+  }
+  try Effect.try(() => assert.deepStrictEqual(volatileFields, [
+    [true, false, "hard-fail", false, true, 0, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+    [true, false, "skipped", false, true, 0, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+  ]))
+
   // spec/core/journey.md, "Retirement waits for the admitted turn and its pending reply"; spec/core/postDelivery.md, "Story: Track detached work under runtime and room ownership"; spec/core/postDelivery.md, "Story: Capture and settle a connector delivery boundary"
   delivered.length = 0
   const brokenResult = try host(() => executePlannedToolCall(runtime, { message: m1, activeContexts: ["general"], callback: capture }, { name: "BROKEN" }))
@@ -950,6 +982,110 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
 
   const journey = try Effect.scoped(effect {
     const runtime = try kernel({ store, character: { name: "Eliza", secrets: { OPENAI_API_KEY: KEY } }, plugins: [alpha.plugin, beta.plugin] })
+    // spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+    class RecognizerPort extends Service {
+      static serviceType = "pii_entity_recognizer"
+      capabilityDescription = "j03 recognizer host port"
+      static async start(owner: IAgentRuntime): Promise<RecognizerPort> { return new RecognizerPort(owner) }
+      async stop(): Promise<void> {}
+    }
+    const recognizerModel = try Effect.try(() => scriptedModels("j03-ner", 0, { [ModelType.TEXT_SMALL]: [{ reply: "recognizer reply" }] }))
+    try host(() => runtime.registerPlugin(recognizerModel.plugin))
+    try host(() => runtime.registerPlugin({ name: "j03-recognizer", description: "j03", services: [RecognizerPort] }))
+    const recognizer = try host(() => runtime.getServiceLoadPromise(RecognizerPort.serviceType))
+    const recognition = { reads: 0, calls: 0, receiver: false }
+    const getRecognizer = function (this: unknown) { recognition.calls += 1; recognition.receiver = this === recognizer; return null }
+    try Effect.try(() => Object.defineProperty(recognizer, "getRecognizer", { get: () => { recognition.reads += 1; return recognition.reads === 1 ? getRecognizer : null } }))
+    runtime.setSetting("ELIZA_PII_SWAP_ENABLED", "true")
+    const recognizedReply = try host(() => runtime.useModel(ModelType.TEXT_SMALL, { prompt: "recognizer boundary" }, "j03-ner"))
+    runtime.setSetting("ELIZA_PII_SWAP_ENABLED", "false")
+    answered.push(`useModel:${ModelType.TEXT_SMALL}`)
+    try host(() => runtime.unloadPlugin("j03-recognizer"))
+    try host(() => runtime.unloadPlugin(recognizerModel.plugin.name))
+    try Effect.try(() => assert.deepStrictEqual([recognizedReply, recognition, recognizerModel.seen.length], ["recognizer reply", { reads: 1, calls: 1, receiver: true }, 1]))
+
+    // spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"
+    class TrajectoryPort extends Service {
+      static serviceType = "trajectories"
+      capabilityDescription = "j03 host trajectory port"
+      onEnabled: () => void = () => {}
+      onStart: () => void = () => {}
+      isEnabled: (() => boolean) | undefined = () => { this.onEnabled(); return true }
+      startTrajectory: (() => string) | undefined = () => { this.onStart(); return "j03-host-trajectory" }
+      startStep: (() => string) | undefined = () => "j03-host-step"
+      endTrajectory = async () => {}
+      flushWriteQueue = async () => {}
+      annotateStep: (() => void) | undefined = () => {}
+      logLlmCall: (() => void) | undefined = () => {}
+      static async start(owner: IAgentRuntime): Promise<TrajectoryPort> { return new TrajectoryPort(owner) }
+      async stop(): Promise<void> {}
+    }
+    try host(() => runtime.registerPlugin({ name: "j03-host-trajectory", description: "j03", services: [TrajectoryPort] }))
+    const trajectory = try host(async () => {
+      const service = await runtime.getServiceLoadPromise("trajectories")
+      if (!(service instanceof TrajectoryPort)) throw new TypeError("The registered trajectory service must retain its constructor")
+      return service
+    })
+    const defaults = { isEnabled: trajectory.isEnabled, startTrajectory: trajectory.startTrajectory, startStep: trajectory.startStep, flushWriteQueue: trajectory.flushWriteQueue, annotateStep: trajectory.annotateStep, logLlmCall: trajectory.logLlmCall, onEnabled: trajectory.onEnabled, onStart: trajectory.onStart }
+    const trajectoryFailures: unknown[] = []
+    const diagnostic = (scope: string) => runtime.getRecentReportedErrors().filter((entry) => entry.scope === scope).length
+    for (const next of [undefined, null]) {
+      const observed = try changingMethod(trajectory, "isEnabled", next)
+      const failure = try host(() => withStandaloneTrajectory(runtime, { source: "j03-enabled" }, () => "kept").then(() => undefined, (error: unknown) => error))
+      trajectoryFailures.push([failure instanceof TypeError, observed])
+      try Effect.try(() => { Reflect.deleteProperty(trajectory, "isEnabled"); Object.assign(trajectory, defaults) })
+    }
+    let armedStep = false
+    trajectory.onStart = () => { armedStep = true }
+    const stepObserved = try changingMethod(trajectory, "startStep", undefined, () => armedStep)
+    const stepBefore = diagnostic("StandaloneTrajectory.startStep")
+    const step = try host(() => withStandaloneTrajectory(runtime, { source: "j03-step" }, () => getTrajectoryContext()?.trajectoryStepId))
+    trajectoryFailures.push([step, stepObserved, diagnostic("StandaloneTrajectory.startStep") === stepBefore + 1])
+    try Effect.try(() => { Reflect.deleteProperty(trajectory, "startStep"); Object.assign(trajectory, defaults) })
+    for (const child of [false, true]) {
+      let armedFlush = false
+      const observed = try changingMethod(trajectory, "flushWriteQueue", null, () => armedFlush)
+      const scope = child ? "TrajectoryChildStep.finalize" : "StandaloneTrajectory.flush"
+      const before = diagnostic(scope)
+      const work = () => { armedFlush = true; return "kept" }
+      const value = try host(async () => await (child
+        ? runWithTrajectoryContext({ trajectoryId: "j03-parent", trajectoryStepId: "j03-parent-step" }, () => withEvaluatorStep(runtime, "j03-child", work))
+        : withStandaloneTrajectory(runtime, { source: "j03-flush" }, work)))
+      trajectoryFailures.push([value, observed, diagnostic(scope) === before + 1])
+      try Effect.try(() => { Reflect.deleteProperty(trajectory, "flushWriteQueue"); Object.assign(trajectory, defaults) })
+    }
+    for (const member of ["startTrajectory", "annotateStep", "logLlmCall"] as const) {
+      trajectory.onEnabled = () => { trajectory[member] = undefined }
+      const before = diagnostic("StandaloneTrajectory.start")
+      const capture = try host(async () => {
+        try {
+          if (member === "startTrajectory") return await withStandaloneTrajectory(runtime, { source: "j03-start" }, () => getTrajectoryContext()?.trajectoryId)
+          if (member === "annotateStep") return await annotateActiveTrajectoryStep(runtime, { stepId: "j03-parent-step" })
+          return await runWithTrajectoryContext({ trajectoryId: "j03-parent", trajectoryStepId: "j03-parent-step" }, async () => logActiveTrajectoryLlmCall(runtime, { model: "j03-model", systemPrompt: "", userPrompt: "", response: "", purpose: "test" }))
+        } catch (error) {
+          return error
+        }
+      })
+      trajectoryFailures.push([member === "startTrajectory" ? capture === undefined && diagnostic("StandaloneTrajectory.start") === before + 1 : capture instanceof TypeError])
+      try Effect.try(() => Object.assign(trajectory, defaults))
+    }
+    for (const next of [undefined, null]) {
+      const context: TrajectoryContext = {}
+      const observed = try changingMethod(context, "activateTaskCapture", next)
+      const failure = try host(() => Promise.resolve(runWithTrajectoryContext(context, () => ensureTaskTrajectory())).then(() => undefined, (error: unknown) => error))
+      trajectoryFailures.push([failure instanceof TypeError, observed])
+    }
+    try host(() => runtime.unloadPlugin("j03-host-trajectory"))
+    try Effect.try(() => assert.deepStrictEqual(trajectoryFailures, [
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+      ["j03-host-trajectory", { reads: 2, totalReads: 4, cachedCalls: 0 }, true],
+      ["kept", { reads: 2, totalReads: 4, cachedCalls: 0 }, true],
+      ["kept", { reads: 2, totalReads: 4, cachedCalls: 0 }, true],
+      [true], [true], [true],
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+    ]))
     try Effect.try(() => alphaBackup.register(runtime))
     const large = (params: Record<string, unknown>, provider?: string) =>
       outcome(runtime.useModel(ModelType.TEXT_LARGE, params as never, provider).then((value) => {
@@ -1398,6 +1534,120 @@ it.live("Load, reload and unload plugins, services and hooks (spec/core/plugins.
     ((unstartedFailure as { cause?: { errors?: Array<{ cause?: Error }> } }).cause?.errors ?? []).map((error) => error.cause?.message),
     stoppedQuietly,
   ]
+
+  const guardedHooks: unknown[] = []
+  for (const [index, next] of [undefined, null, "callable"].entries()) {
+    const serviceType = `j04-class-hook-${index}`
+    const service = probe(serviceType, async () => {})
+    const called = { receiver: false, owner: false }
+    const replacement = async function (this: unknown, owner: IAgentRuntime) {
+      called.receiver = this === service.Probe
+      called.owner = owner === runtime
+    }
+    const observed = try changingMethod(service.Probe, "stopRuntime", next === "callable" ? replacement : next)
+    try host(() => runtime.registerPlugin({ name: serviceType, description: "j04", init: async (_config, owner) => { await owner.registerService(service.Probe) } }))
+    try host(() => runtime.getServiceLoadPromise(serviceType))
+    const failure = try host(() => runtime.unloadPlugin(serviceType).then(() => undefined, (error: unknown) => error))
+    guardedHooks.push([failure instanceof AggregateError && failure.errors.length === 1 && failure.errors[0] instanceof TypeError, observed, called, service.record.stops])
+  }
+
+  const guardedAdapters: unknown[] = []
+  for (const [index, member] of ["close", "stop"].entries()) {
+    const name = `j04-adapter-hook-${index}`
+    const candidate = try Effect.try(() => new AgentRuntime({ character: createCharacter({ name }) }))
+    const adapter = try Effect.try(() => new SqliteAdapter(store, name))
+    if (member === "stop") try Effect.try(() => Object.defineProperty(adapter, "close", { configurable: true, value: undefined }))
+    const observed = try changingMethod(adapter, member, index === 0 ? undefined : null)
+    const initError = new Error(name)
+    const failure = try Effect.flip(host(() => candidate.registerPlugin({ name, description: "j04", init: async () => {
+      candidate.registerDatabaseAdapter(adapter)
+      throw initError
+    } })))
+    guardedAdapters.push([failure === initError, observed, candidate.adapter === adapter, candidate.getRecentReportedErrors().some((entry) => entry.scope === "PluginLifecycle.registrationRollback" && entry.context?.plugin === name)])
+    try Effect.try(() => { Reflect.deleteProperty(adapter, "close"); Reflect.deleteProperty(adapter, "stop") })
+    if (!candidate.adapter) candidate.registerDatabaseAdapter(adapter)
+    try host(() => candidate.initialize({ skipMigrations: true }))
+    try host(() => candidate.stop())
+    try host(() => candidate.close())
+  }
+
+  const guardedConfigs: unknown[] = []
+  for (const [index, next] of [undefined, null].entries()) {
+    const name = `j04-config-hook-${index}`
+    const plugin: Plugin = { name, description: "j04", actions: [{ ...incumbent, name: name.toUpperCase() }] }
+    const observed = try changingMethod(plugin, "applyConfig", next)
+    try host(() => runtime.registerPlugin(plugin))
+    const failure = try host(() => runtime.applyPluginConfig(name, {}).then(() => undefined, (error: unknown) => error))
+    guardedConfigs.push([failure instanceof TypeError, observed])
+    try host(() => runtime.unloadPlugin(name))
+  }
+  try Effect.try(() => assert.deepStrictEqual([guardedHooks, guardedAdapters, guardedConfigs], [
+    [
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }, { receiver: false, owner: false }, 1],
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }, { receiver: false, owner: false }, 1],
+      [false, { reads: 2, totalReads: 2, cachedCalls: 0 }, { receiver: true, owner: true }, 1],
+    ],
+    [
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }, true, true],
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }, true, true],
+    ],
+    [
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+    ],
+  ]))
+
+  // spec/core/plugins.md, "Cleanup removes only owned contributions"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+  const guardedInitialization: unknown[] = []
+  for (const mode of ["missing", "callable", "config-error"] as const) {
+    const events: string[] = []
+    const captured: { firstCalls: number; receiver: boolean; owner: boolean; config?: Record<string, string>; presentAtDispose: boolean } = { firstCalls: 0, receiver: false, owner: false, presentAtDispose: false }
+    const plugin: Plugin = { name: `j04-init-${mode}`, description: "j04", dispose: async () => { events.push("dispose"); captured.presentAtDispose = runtime.plugins.includes(plugin) } }
+    let initReads = 0
+    const callback = async function (this: unknown, config: Record<string, string>, owner: IAgentRuntime) {
+      events.push("called")
+      captured.receiver = this === plugin
+      captured.owner = owner === runtime
+      captured.config = config
+    }
+    const invalidConfig = try Effect.try(() => { const pair = Proxy.revocable({ VALUE: "unused" }, {}); pair.revoke(); return pair.proxy })
+    try Effect.try(() => {
+      Object.defineProperty(plugin, "init", { get: () => { events.push("init"); initReads += 1; return initReads === 1 ? async () => { captured.firstCalls += 1 } : mode === "missing" ? undefined : callback } })
+      Object.defineProperty(plugin, "config", { get: () => { events.push("config"); return mode === "config-error" ? invalidConfig : { VALUE: { toString() { events.push("value"); return "2" } } } } })
+    })
+    const failure = try host(() => runtime.registerPlugin(plugin).then(() => undefined, (error: unknown) => error))
+    if (mode === "callable") try host(() => runtime.unloadPlugin(plugin.name))
+    guardedInitialization.push([failure instanceof TypeError, events, captured])
+  }
+  const guardedMigrations: unknown[] = []
+  for (const next of [undefined, null]) {
+    const observed = try changingMethod(hostAdapter, "runMigrations", next)
+    const failure = try host(() => runtime.runMigrations(["j04-migrations"]).then(() => undefined, (error: unknown) => error))
+    guardedMigrations.push([failure instanceof TypeError, observed])
+    try Effect.try(() => Reflect.deleteProperty(hostAdapter, "runMigrations"))
+  }
+  const replacementAdapter = try Effect.try(() => new SqliteAdapter(store, "j04-migration-receiver"))
+  let adapterReads = 0
+  let oldReceiverCalls = 0
+  const firstMigration = async () => { oldReceiverCalls += 1 }
+  try Effect.try(() => Object.defineProperty(hostAdapter, "runMigrations", { configurable: true, get: () => { adapterReads += 1; runtime.adapter = replacementAdapter; return firstMigration } }))
+  try host(() => runtime.runMigrations(["j04-receiver"]))
+  const migrationReceiver = [adapterReads, oldReceiverCalls, replacementAdapter.migrations.map((entry) => [entry.member, entry.args])]
+  try Effect.try(() => Reflect.deleteProperty(hostAdapter, "runMigrations"))
+  runtime.adapter = hostAdapter
+  try host(() => replacementAdapter.close())
+  try Effect.try(() => assert.deepStrictEqual([guardedInitialization, guardedMigrations, migrationReceiver], [
+    [
+      [true, ["init", "config", "config", "value", "init", "dispose"], { firstCalls: 0, receiver: false, owner: false, presentAtDispose: false }],
+      [false, ["init", "config", "config", "value", "init", "called", "dispose"], { firstCalls: 0, receiver: true, owner: true, config: { VALUE: "2" }, presentAtDispose: true }],
+      [true, ["init", "config", "config", "dispose"], { firstCalls: 0, receiver: false, owner: false, presentAtDispose: true }],
+    ],
+    [
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+    ],
+    [1, 0, [["runMigrations", [["j04-receiver"]]]]],
+  ]))
 
   for (let waited = 0; runtime.getService("j04-eager") === null && waited < 20_000; waited += 100) try sleep(100)
   const eagerRun = [
@@ -2128,6 +2378,37 @@ console.log(JSON.stringify(diagnostic));`,
 
 // spec/core/scheduling.md, "Story: Execute due work within its owning agent"; spec/core/scheduling.md, "Stale query results and out-of-scope tasks never become dispatchable"; spec/core/scheduling.md, "Pausing affects later selections while admitted work retains its outcome"; spec/core/scheduling.md, "Retirement fences new admission and drains actual storage ownership"; spec/core/scheduling.md, "Story: Preserve concurrent operator metadata changes"; spec/core/scheduling.md, "Worker bookkeeping changes its keys while retaining the operator pause"; spec/core/taskServiceOwners.md, "Story: Stop admission synchronously and drain every admitted task operation"; spec/core/taskServiceOwners.md, "Exclusive tasks observe every active invocation of the same task"; spec/core/taskServiceOwners.md, "Local timer replacement retains the earliest deadline and exact active tick"; spec/core/sharedScheduler.md, "Story: Replace scheduler storage while process tasks and safely owned queries continue"; spec/core/processScheduler.md, "Story: Reuse one timer and drain the exact disposed task"; spec/core/processScheduler.md, "Process task names are unique only while registered and stale disposers preserve replacements"; spec/core/queryDrain.md, "Story: Replace services without dispatching stale results or closing active storage"; spec/core/taskDrain.md, "Story: Reconcile a reusable drain and retire its persisted task"
 it.live("Story: Execute due work within its owning agent, across scheduler storage replacement, stop and restart (spec/core/scheduling.md, \"Story: Execute due work within its owning agent\")", () => Effect.scoped(effect {
+  // spec/core/batchProcessor.md, "Story: Process every batch item with independent outcomes"; spec/core/batchProcessor.md, "Failure releases capacity before backoff and exhaustion callbacks"; spec/core/batchQueue.md, "A batched call settles successful items before retrying failures"
+  const batchItem = { id: "j07-batch" }
+  const batchError = new Error("j07 batch failure")
+  const exhaustionError = new Error("j07 exhausted observer")
+  const callbackOrder: Array<[string, boolean, boolean, boolean]> = []
+  let batchOwner: BatchProcessor<typeof batchItem> | undefined
+  let retryable = false
+  let callReads = 0
+  const callbacks = {
+    process: async function (this: unknown, item: typeof batchItem) { callbackOrder.push(["process", this === batchOwner, item === batchItem, true]); throw batchError },
+    shouldRetry: function (this: unknown, item: typeof batchItem, error: Error) { callbackOrder.push(["retry", this === batchOwner, item === batchItem, error === batchError]); return retryable },
+    onExhausted: async function (this: unknown, item: typeof batchItem, error: Error) { callbackOrder.push(["exhausted", this === batchOwner, item === batchItem, error === batchError]); throw exhaustionError },
+  }
+  try Effect.try(() => { for (const callback of Object.values(callbacks)) Object.defineProperty(callback, "call", { get: () => { callReads += 1; return undefined } }) })
+  const processor = try Effect.try(() => new BatchProcessor({ ...callbacks, maxParallel: 1, maxRetriesAfterFailure: 2, retryPolicy: { minDelayMs: 0, maxDelayMs: 0, jitter: 0 } }))
+  batchOwner = processor
+  const firstBatch = try host(() => processor.processBatch([batchItem]))
+  const firstCallbacks = [...callbackOrder]
+  callbackOrder.length = 0
+  retryable = true
+  let attemptReads = 0
+  try Effect.try(() => Object.defineProperty(batchItem, "_batchMaxAttempts", { get: () => [2, 2, 2, 1][attemptReads++] }))
+  const secondBatch = try host(() => processor.processBatch([batchItem]))
+  const batchOutcomes = [firstBatch, secondBatch].map((batch) => batch.map((row) => [row.item === batchItem, row.success, row.error === batchError, row.retryCount]))
+  const batchObservation = [firstCallbacks, callbackOrder, batchOutcomes, attemptReads, callReads]
+  const batchExpected = [
+    [["process", true, true, true], ["retry", true, true, true], ["exhausted", true, true, true]],
+    [["process", true, true, true], ["retry", true, true, true], ["process", true, true, true], ["exhausted", true, true, true]],
+    [[[true, false, true, 0]], [[true, false, true, 1]]], 2, 0,
+  ]
+
   const agentA = stringToUuid("j07-agent-a")
   const agentB = stringToUuid("j07-agent-b")
   const who = (id: unknown) => id === agentA ? "A" : id === agentB ? "B" : "other"
@@ -2174,6 +2455,31 @@ it.live("Story: Execute due work within its owning agent, across scheduler stora
     const runtimeB = try kernel({ store, agentId: agentB, label: "b", character: { name: "J07B" }, plugins })
     const serviceA = (try host(() => runtimeA.getServiceLoadPromise(ServiceType.TASK))) as TaskService
     try host(() => runtimeB.getServiceLoadPromise(ServiceType.TASK))
+
+    // spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+    const preflights: unknown[] = []
+    for (const [index, next] of [undefined, null].entries()) {
+      const name = `J07_PREFLIGHT_${index}`
+      let executions = 0
+      const taskWorker: TaskWorker = { name, execute: async () => { executions += 1 } }
+      const observed = try changingMethod(taskWorker, "shouldRun", next)
+      try Effect.try(() => runtimeA.registerTaskWorker(taskWorker))
+      const id = try host(() => runtimeA.createTask({ name, description: "preflight boundary", tags: ["manual"], metadata: {} }))
+      const task = try host(async () => {
+        const stored = (await runtimeA.getTasksByIds([id]))[0]
+        if (!stored) throw new Error("The persisted preflight task must be readable")
+        return stored
+      })
+      const failure = try host(() => serviceA.runTick([task]).then(() => undefined, (error: unknown) => error))
+      const outer = failure instanceof ElizaError ? failure : undefined
+      const inner: unknown = outer?.cause instanceof AggregateError ? outer.cause.errors[0] : undefined
+      preflights.push([outer?.code, outer?.severity, inner instanceof ElizaError ? inner.code : undefined, inner instanceof ElizaError && inner.cause instanceof TypeError, observed, executions])
+      try host(() => runtimeA.deleteTask(id))
+    }
+    try Effect.try(() => assert.deepStrictEqual([batchObservation, preflights], [batchExpected, [
+      ["TASK_TICK_FAILED", "ephemeral", "TASK_PREFLIGHT_FAILED", true, { reads: 2, totalReads: 2, cachedCalls: 0 }, 0],
+      ["TASK_TICK_FAILED", "ephemeral", "TASK_PREFLIGHT_FAILED", true, { reads: 2, totalReads: 2, cachedCalls: 0 }, 0],
+    ]]))
 
     const owned: string[] = []
     for (const runtime of [runtimeA, runtimeB]) {

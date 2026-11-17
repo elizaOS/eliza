@@ -902,7 +902,7 @@ effect function isUsableTrajectoryLogger(
 ) {
   if (required.some((member) => typeof trajectoryLogger[member] !== "function")) return false
   return typeof trajectoryLogger.isEnabled !== "function"
-    || Boolean(try foreignSync(() => trajectoryLogger.isEnabled?.()))
+    || Boolean(try foreignSync(() => trajectoryLogger.isEnabled!()))
 }
 
 export function activateDeferredChildStep(): void {
@@ -921,7 +921,7 @@ export effect function ensureTaskTrajectory() {
   ) {
     return
   }
-  const owner = try foreign(() => context.activateTaskCapture?.())
+  const owner = try foreign(() => context.activateTaskCapture!())
   if (owner) Object.assign(context, owner)
 }
 
@@ -972,7 +972,7 @@ export effect function withStandaloneTrajectory<T>(
 
     const startedId = effect {
       const started = try foreign(() =>
-        trajectoryLogger.startTrajectory?.(runtime.agentId, {
+        trajectoryLogger.startTrajectory!(runtime.agentId, {
           source: options.source,
           metadata: options.metadata,
         })
@@ -993,7 +993,7 @@ export effect function withStandaloneTrajectory<T>(
     let stepId = startedId
     if (typeof trajectoryLogger.startStep === "function") {
       stepId = foreignSync(() =>
-        String(trajectoryLogger.startStep?.(startedId, { timestamp: Date.now() })).trim() || startedId
+        String(trajectoryLogger.startStep!(startedId, { timestamp: Date.now() })).trim() || startedId
       ) catch (error) => {
         runtime.reportError("StandaloneTrajectory.startStep", error.cause, {
           trajectoryId: startedId,
@@ -1023,7 +1023,7 @@ export effect function withStandaloneTrajectory<T>(
     const id = trajectoryId
     if (!id || !trajectoryLogger) return
     if (typeof trajectoryLogger.flushWriteQueue === "function") {
-      foreign(() => trajectoryLogger.flushWriteQueue?.(id)) catch (error) => {
+      foreign(() => trajectoryLogger.flushWriteQueue!(id)) catch (error) => {
         runtime.reportError("StandaloneTrajectory.flush", error.cause, {
           trajectoryId: id,
           diagnosticOnly: true,
@@ -1059,7 +1059,7 @@ effect function annotateActiveTrajectoryStep(
   ) {
     return false
   }
-  try foreign(() => trajectoryLogger.annotateStep?.(params))
+  try foreign(() => trajectoryLogger.annotateStep!(params))
   return true
 }
 
@@ -1093,7 +1093,7 @@ effect function logActiveTrajectoryLlmCall(
 
   const context = getTrajectoryContext()
   try foreignSync(() =>
-    trajectoryLogger.logLlmCall?.({
+    trajectoryLogger.logLlmCall!({
       stepId,
       ...details,
       runId: details.runId ?? context?.runId,
@@ -1318,7 +1318,7 @@ effect function withChildTrajectoryStep<T>(
 
   const finalizeChild = effect {
     if (trajectoryId && typeof trajectoryLogger.flushWriteQueue === "function") {
-      foreign(() => trajectoryLogger.flushWriteQueue?.(trajectoryId)) catch (error) => {
+      foreign(() => trajectoryLogger.flushWriteQueue!(trajectoryId)) catch (error) => {
         runtime.reportError("TrajectoryChildStep.finalize", error.cause, {
           trajectoryId,
           parentStepId: normalizedParentStepId,
