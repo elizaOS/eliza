@@ -410,7 +410,7 @@ test("the shared Pixel 10a source facts do not grant image installation or relea
   const profile = loadProfile("pixel10a");
   assert.equal(
     profile.sourceInventory.sha256,
-    "760a7184c62c93aeac40595cf5733f8089aa16ccd28eb7a5f5ce41d4dae741d3",
+    "87ff43e6830210b8fc8363ccfa21a85badfd17d04582cec654e0a019c533e7f5",
   );
   const source = JSON.parse(
     fs.readFileSync(
@@ -418,6 +418,17 @@ test("the shared Pixel 10a source facts do not grant image installation or relea
       "utf8",
     ),
   );
+  const projectList = Buffer.from(
+    source.projects
+      .map((project) => project.path)
+      .sort()
+      .join("\n") + "\n",
+  );
+  const recordedList = source.manifest.configuration.find(
+    (entry) => entry.path === ".repo/project.list",
+  );
+  assert.equal(recordedList.sizeBytes, projectList.length);
+  assert.equal(recordedList.sha256, sha(projectList));
   assert.equal(source.releaseQualified, false);
   assert.equal(source.developmentOnly, false);
   const inventory = JSON.parse(
