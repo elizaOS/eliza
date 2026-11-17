@@ -19,7 +19,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { SENDER } from "./gen/classify.ts";
-import { NEEDS_DAFNY, bin, exec, run } from "./run.ts";
+import { act, type Input } from "./action.ts";
+import type { Memory } from "./cache.ts";
+import { bin, solver } from "./run.ts";
 import { plainText } from "./scan.ts";
 
 /** The library of general lemmas that proof files call as ProofLib.<Name>. */
@@ -46,52 +48,6 @@ const obligationKey = (def: string, clause: string) => `${def.replace(/_ensures$
 const ensured = (line: string) => line.match(/^\s*ensures\b\s*(.*)$/)?.[1].trimEnd();
 /** The last lines of a tool's output, on one line. */
 const lastLines = (out: string) => out.trim().split("\n").slice(-3).join(" / ");
-
-/** The solver selected by Dafny's installation, pinned for every proof and recorded in its cache key. */
-let selected: Promise<{ path: string; version: string }> | undefined;
-export function solver(): Promise<{ path: string; version: string }> {
-  return selected ??= (async () => {
-    const extensions = process.platform === "win32" ? [".exe", ".cmd", ""] : [""];
-    const onPath = (name: string) => (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
-      .flatMap((dir) => extensions.map((ext) => path.join(dir, name + ext))).find((file) => {
-        try { return fs.statSync(file).isFile(); } catch { return false; }
-      });
-    const candidates: string[] = [];
-    const dafny = onPath("dafny");
-    if (dafny) {
-      const real = fs.realpathSync(dafny);
-      for (const dir of [path.dirname(real), path.join(path.dirname(real), "..", "libexec")]) {
-        const bundled = path.join(dir, "z3", "bin");
-        if (!fs.existsSync(bundled)) continue;
-        const preferred = (name: string) => name.includes("4.12.1") ? 0 : name.includes("4.8.5") ? 1 : 2;
-        candidates.push(...fs.readdirSync(bundled).filter((name) => /^z3(-\d+(\.\d+)*)?(\.exe)?$/.test(name))
-          .sort((a, b) => preferred(a) - preferred(b) || a.localeCompare(b)).map((name) => path.join(bundled, name)));
-      }
-    }
-    const executable = onPath("z3");
-    if (executable) candidates.push(executable);
-    for (const candidate of candidates) {
-      try {
-        const result = await exec(candidate, ["--version"], path.dirname(candidate));
-        const version = result.status === 0 && result.stdout.match(/Z3 version (\d+\.\d+\.\d+)/)?.[1];
-        if (version) return { path: fs.realpathSync(candidate), version };
-      } catch { /* try the next solver supplied by this installation */ }
-    }
-    throw new Error("the proof stage needs the Z3 solver bundled with Dafny or on the PATH");
-  })().catch((e) => { selected = undefined; throw e; });
-}
-
-/** The version of Dafny on the PATH, read once it is read without a problem, or why it could not be read. */
-let dafny: Promise<{ version?: string; problem?: string }> | undefined;
-export function dafnyVersion(): Promise<{ version?: string; problem?: string }> {
-  return (dafny ??= exec("dafny", ["--version"], process.cwd()).then((r) => {
-    const version = r.status === 0 ? r.stdout.match(/\d+\.\d+\.\d+/)?.[0] : undefined;
-    const problem = !version ? `Dafny could not be run (${`${r.stdout}${r.stderr}`.trim().split("\n")[0] || "it printed no version"})`
-      : !version.startsWith("4.11.") ? `this is Dafny ${version}, and LemmaScript targets Dafny 4.11.x` : undefined;
-    return { version, problem: r.stopped ?? (problem && `${problem}: ${NEEDS_DAFNY} (see README, "Getting started")`) };
-  }, (e: Error) => ({ problem: `Dafny could not be run (${e.message}): ${NEEDS_DAFNY} (see README, "Getting started")` }))
-    .then((r) => { if (r.problem) dafny = undefined; return r; }));
-}
 
 // --- proof files ---------------------------------------------------------------
 
@@ -304,7 +260,7 @@ function parameterNames(params: string): string[] {
 }
 
 /**
- * Where a proof starts (.claude/skills/prove/SKILL.md, "To prove an obligation"): each generated lemma that still has no body and an
+ * Where a proof starts (.agents/skills/prove/SKILL.md, "To prove an obligation"): each generated lemma that still has no body and an
  * obligation not proved, under its exact header. A transition's opens on what its first clause assumes, `inv` and the
  * guard, with the state after it; any other is empty.
  */
@@ -621,7 +577,7 @@ function absorb(into: Verdict, from: Verdict) {
  * Verify copies of generated definitions (`isolatedCopies`) in one run of Dafny, every assertion isolated. The verdict
  * names the originals, at their own lines; `copied` is the definitions that were copied.
  */
-async function verifyAgain(dir: string, spliced: Spliced, file: string, tag: string, wanted: Map<string, (ensures: number[]) => number[][]>, solverPath: string): Promise<{ verdict: Verdict; log: string; copied: Set<string> }> {
+async function verifyAgain(memory: Memory, dir: string, spliced: Spliced, file: string, tag: string, wanted: Map<string, (ensures: number[]) => number[][]>, solverPath: string): Promise<{ verdict: Verdict; log: string; copied: Set<string> }> {
   const { dfy, regions } = spliced;
   let prefix = tag;
   while (dfy.includes(prefix)) prefix = `x${prefix}`;
@@ -640,13 +596,13 @@ async function verifyAgain(dir: string, spliced: Spliced, file: string, tag: str
   const text = `${derived.join("\n")}\n`;
   fs.writeFileSync(path.join(dir, name), text);
   const csv = name.replace(/\.dfy$/, ".csv");
-  fs.rmSync(path.join(dir, csv), { force: true });
-  const { out } = await run("dafny", [...verifyArgs(text, solverPath), "--isolate-assertions", "--log-format", `csv;LogFileName=${csv}`, "--filter-symbol", prefix, name], dir);
+  const { out, files } = await act(memory, "dafny", [...verifyArgs(text, solverPath), "--isolate-assertions", "--log-format", `csv;LogFileName=${csv}`, "--filter-symbol", prefix, name],
+    path.join(dir, tag), { [name]: { text, key: text } });
   const copyOf = new Map(copies.map((c) => [c.name, c.def]));
   const verdict = readVerdict(out, text, name, derivedRegions, (n) => copyOf.get(n) ?? n);
   verdict.failing = new Map([...verdict.failing].map(([def, at]) => [def, new Set([...at].map((l) => origin[l - 1]))]));
   absorb(verdict, failedClosed);
-  const rows = fs.existsSync(path.join(dir, csv)) ? fs.readFileSync(path.join(dir, csv), "utf8").split("\n").slice(1) : [];
+  const rows = files[csv]?.split("\n").slice(1) ?? [];
   const checked = new Set(rows.map((row) => {
     const cells = row.match(/^"((?:[^"]|"")*)",|^([^,]*),/);
     return (cells?.[1]?.replace(/""/g, '"') ?? cells?.[2] ?? "").replace(/ \(.*$/, "");
@@ -688,8 +644,8 @@ function restingOn({ dfy, regions }: Spliced, unproved: Map<string, string>): Ma
 }
 
 /** Findings of `dafny audit` in the unit's own file, other than the lemmas the tools add on purpose. */
-async function audit(dir: string, dfy: string, file: string, allowed: Set<string>): Promise<{ findings: string[]; log: string }> {
-  const { ok, out } = await run("dafny", ["audit", ...dafnyFlags(dfy), file], dir);
+async function audit(memory: Memory, dir: string, dfy: string, file: string, allowed: Set<string>): Promise<{ findings: string[]; log: string }> {
+  const { ok, out } = await act(memory, "dafny", ["audit", ...dafnyFlags(dfy), file], path.join(dir, "audit"), { [file]: { text: dfy, key: dfy } });
   const findings = out.split("\n").filter((l) => l.startsWith(`${file}(`) && /: (Warning|Error): /.test(l))
     .filter((l) => !/: Warning: (\w+): Declaration has explicit `\{:axiom\}` attribute/.test(l) || !allowed.has(l.match(/: Warning: (\w+):/)![1]));
   if (!/Dafny auditor completed/.test(out)) findings.push(`dafny audit gave no verdict: ${lastLines(out)}`);
@@ -789,35 +745,32 @@ export function proofPaths(unit: string) {
 }
 
 /** Prove one unit in a directory of its own, so that nothing left over from another run or project can vouch for it. */
-export async function prove(root: string, u: Unit, offered: { proof?: { file: string; text: string }; lib?: string; axioms: Offered[] }): Promise<Proof> {
+export async function prove(memory: Memory, u: Unit, offered: { proof?: { file: string; text: string }; lib?: string; axioms: Offered[] }): Promise<Proof> {
+  const { root } = memory;
   const where = proofPaths(u.unit);
   const dir = path.join(root, where.dir);
   const file = path.basename(where.dfy);
   fs.rmSync(dir, { recursive: true, force: true });
-  const place = (at: string, text: string) => {
-    fs.mkdirSync(at, { recursive: true });
-    fs.writeFileSync(path.join(at, u.unit), text);
-    // A configuration of our own, so that one further up cannot redirect the proof or relax it, and a TypeScript
-    // project of our own, so that the project's tsconfig.json cannot add files, globals or options to it.
-    fs.writeFileSync(path.join(at, "lemmascript.json"), JSON.stringify({ "unread-annotations": "error", "run-log": false }));
-    fs.writeFileSync(path.join(at, "tsconfig.json"), JSON.stringify({
+  fs.mkdirSync(dir, { recursive: true });
+  // A configuration of our own, so that one further up cannot redirect the proof or relax it, and a TypeScript
+  // project of our own, so that the project's tsconfig.json cannot add files, globals or options to it.
+  const sources = (text: string): Record<string, Input> => Object.fromEntries(Object.entries({
+    [u.unit]: text,
+    "lemmascript.json": JSON.stringify({ "unread-annotations": "error", "run-log": false }),
+    "tsconfig.json": JSON.stringify({
       compilerOptions: { target: "es2023", lib: ["es2023"], module: "nodenext", strict: true, noEmit: true, allowImportingTsExtensions: true, types: [] },
       files: [u.unit],
-    }));
-  };
-  place(dir, u.text);
+    }),
+  }).map(([f, t]) => [f, { text: t, key: t }]));
   let total = 0;
   const result = (errors: string[], log: string, dfy = ""): Proof => ({ total, unproved: [], exhausted: [], resting: {}, errors, log, dfy, scaffold: "" });
   // What imported units proved, and the library, are only of use to a proof file. The imported modules are generated
   // again beside the unit, with their obligations, for the lemmas that state them.
-  const importing = offered.proof && offered.axioms.length ? path.join(dir, "imported") : undefined;
-  if (importing) place(importing, u.imports.text);
-  const lsc = async (at: string) => {
-    const { ok, out } = await run("lsc", ["gen", "--backend=dafny", u.unit], at);
-    const genFile = path.join(at, `${file}.gen`);
-    return { out, gen: ok && fs.existsSync(genFile) ? fs.readFileSync(genFile, "utf8") : undefined };
+  const lsc = async (at: string, text: string) => {
+    const { ok, out, files } = await act(memory, "lsc", ["gen", "--backend=dafny", u.unit], path.join(dir, at), sources(text));
+    return { out, gen: ok ? files[`${file}.gen`] : undefined };
   };
-  const [generated, imported] = await Promise.all([lsc(dir), importing ? lsc(importing) : undefined]);
+  const [generated, imported] = await Promise.all([lsc("gen", u.text), offered.proof && offered.axioms.length ? lsc("imported", u.imports.text) : undefined]);
   for (const g of [generated, imported]) if (g && !g.gen) return result([lastLines(g.out) || "lsc generated nothing"], g.out);
   const gen = generated.gen!;
   const prelude = await helperNames(root);
@@ -834,12 +787,11 @@ export async function prove(root: string, u: Unit, offered: { proof?: { file: st
   }
   const axiomNames = new Set([...axioms.map((a) => a.name), ...u.externs]);
   const { dfy } = spliced;
-  fs.writeFileSync(path.join(dir, file), dfy);
   // LemmaScript checks the exact generated-output relationship; Dafny verifies the same file with the pinned solver.
   const [audited, integrity, checked] = await Promise.all([
-    audit(dir, dfy, file, axiomNames),
-    run("lsc", ["gen-check", "--backend=dafny", u.unit], dir),
-    run("dafny", [...verifyArgs(dfy, selectedSolver.path), file], dir),
+    audit(memory, dir, dfy, file, axiomNames),
+    act(memory, "lsc", ["gen-check", "--backend=dafny", u.unit], path.join(dir, "check"), { ...sources(u.text), [file]: { text: dfy, key: dfy } }),
+    act(memory, "dafny", [...verifyArgs(dfy, selectedSolver.path), file], path.join(dir, "verify"), { [file]: { text: dfy, key: dfy } }),
   ]);
   let log = `solver: Z3 ${selectedSolver.version} (${selectedSolver.path})\n${generated.out}${integrity.out}${checked.out}`;
   const v = readVerdict(checked.out, dfy, file, spliced.regions);
@@ -848,7 +800,7 @@ export async function prove(root: string, u: Unit, offered: { proof?: { file: st
   if (!v.errors.size && (!finished(checked.out) || (!checked.ok && !v.unproved.size))) v.errors.add(lastLines(checked.out) || "Dafny produced no verdict");
   // A definition that fails whole is verified again with every assertion isolated, and that verdict replaces its own.
   if (!v.errors.size && v.failing.size) {
-    const isolated = await verifyAgain(dir, spliced, file, "isolated", new Map([...v.failing.keys()].map((def) => [def, (ensures) => [ensures]])), selectedSolver.path);
+    const isolated = await verifyAgain(memory, dir, spliced, file, "isolated", new Map([...v.failing.keys()].map((def) => [def, (ensures) => [ensures]])), selectedSolver.path);
     log += `\n---- each definition with a failure, every assertion isolated ----\n${isolated.log}`;
     for (const [k, def] of v.unproved) if (isolated.copied.has(def)) { v.unproved.delete(k); v.exhausted.delete(k); }
     for (const def of isolated.copied) v.failing.delete(def);
@@ -859,7 +811,7 @@ export async function prove(root: string, u: Unit, offered: { proof?: { file: st
   // another's failure, all of whose obligations are counted as not proved below anyway.
   if (!v.errors.size && v.failing.size) {
     const rests = restingOn(spliced, v.unproved);
-    const alone = await verifyAgain(dir, spliced, file, "alone", new Map([...v.failing].filter(([def]) => !rests.has(def)).map(([def, failed]) => [def, (ensures) => {
+    const alone = await verifyAgain(memory, dir, spliced, file, "alone", new Map([...v.failing].filter(([def]) => !rests.has(def)).map(([def, failed]) => [def, (ensures) => {
       const first = Math.min(...failed);
       return ensures.filter((l) => l > first && !failed.has(l)).map((l) => [l]);
     }])), selectedSolver.path);

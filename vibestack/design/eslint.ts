@@ -51,7 +51,8 @@ const variants = "^(?:.+:)?!?"
 const opacity = "(?:/[^!]+)?!?$"
 // Tailwind's own sizes of a shadow and of a radius; the tokens define some of them.
 const sizes = ["2xs", "xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl"]
-const radii = ["sm", "md", "lg", "xl"]
+// The radii generate.ts derives from `radius`; tokens.rounded names more.
+const derived = ["sm", "md", "lg", "xl"]
 
 /**
  * Flat-config entries that hold `.ts`/`.tsx` to the tokens. The caller passes the eslint-plugin-better-tailwindcss
@@ -61,7 +62,8 @@ export function designSystem<Plugin>({ tailwind, tokens, entryPoint }: { tailwin
   const names = (group: object, prefix = "") => Object.keys(group).map((name) => prefix + name).join(", ")
   const besides = (tokens: string[]) => sizes.filter((size) => !tokens.includes(size)).join("|")
   const colors = `Use a color token: ${names(tokens.color.light)}.`
-  const radius = `Use the radius token: ${radii.map((size) => `rounded-${size}`).join(", ")}.`
+  const radii = [...derived, ...Object.keys(tokens.rounded)]
+  const radius = `Use a radius token:${radii.map((size) => `rounded-${size}`).join(", ")}.`
   const shadow = `Use a shadow token: ${names(tokens.shadow, "shadow-")}.`
   const restrict = [
     { pattern: `${variants}[a-z-]+-(?:(?:${palettes})-\\d{2,3}|white|black)${opacity}`, message: `"$0" is a palette color. ${colors}` },

@@ -1,17 +1,33 @@
 export const colorNames = [
   "background", "foreground", "card", "card-foreground", "popover", "popover-foreground",
   "primary", "primary-foreground", "secondary", "secondary-foreground", "muted", "muted-foreground",
-  "accent", "accent-foreground", "destructive", "destructive-foreground", "border", "input", "ring", "ok", "warn",
+  "accent", "accent-foreground", "destructive", "destructive-foreground", "border", "input", "ring", "ok", "warn", "info",
 ] as const
 type ColorName = (typeof colorNames)[number]
 type Named = Record<string, string>
+/**
+ * Beside the required colors, `color.light` may name a project palette (`lilac`, `glass` …); `color.dark` may
+ * give any of them a dark value, and one it does not give keeps its light value.
+ */
 export interface Tokens {
-  color: { light: Record<ColorName, string>; dark: Record<ColorName, string> }
+  color: { light: Record<ColorName, string> & Named; dark: Record<ColorName, string> & Named }
   radius: string
-  font: { sans: string; mono: string }
+  font: { sans: string; mono: string } & Named
   shadow: Named
   motion: { duration: Named; ease: Named }
   breakpoint: Named
+  /** Named radii beside the derived `rounded-sm` … `rounded-xl`: `rounded-<name>`. */
+  rounded: Named
+  /** Background images, usually gradients over palette colors: `bg-gradient-<name>`. */
+  gradient: Named
+  /** Font sizes: `text-<name>`. */
+  text: Named
+  /** Blur radii: `blur-<name>`, `backdrop-blur-<name>`. */
+  blur: Named
+  /** Keyframe bodies by name, such as `"50%{opacity:0}"`, for `animate` to run. */
+  keyframes: Named
+  /** Animations: `animate-<name>`, such as `"blink 1s step-end infinite"`. */
+  animate: Named
 }
 /** The only way a proposed change enters: a token's dotted path, its new value and why. */
 interface TokenChange { path: string; value: string; reason: string }
@@ -20,10 +36,11 @@ const text: [RegExp, string] = [/\S/, "a value"]
 const length: [RegExp, string] = [/^\d*\.?\d+(?:rem|px)$/, "a length in rem or px"]
 /** What each token path holds; `*` is a name the project chooses. */
 const kinds: [path: string, [RegExp, string]][] = [
-  ...colorNames.map((name): [string, [RegExp, string]] =>
-    [`color.(?:light|dark).${name}`, [/^oklch\((?:0|1|0?\.\d+) (?:0|0?\.\d+) \d{1,3}(?:\.\d+)?\)$/, "oklch(L C H), opaque, with L from 0 to 1"]]),
-  ["radius", length], ["font.sans", text], ["font.mono", text], ["shadow.*", text],
+  ["color.(?:light|dark).*", [/^oklch\((?:0|1|0?\.\d+) (?:0|0?\.\d+) \d{1,3}(?:\.\d+)?\)$/, "oklch(L C H), opaque, with L from 0 to 1"]],
+  ["radius", length], ["font.*", text], ["shadow.*", text],
   ["motion.duration.*", [/^\d+ms$/, "a duration in ms"]], ["motion.ease.*", text], ["breakpoint.*", length],
+  ["rounded.*", length], ["gradient.*", text], ["text.*", length], ["blur.*", length],
+  ["keyframes.*", [/^(?:[^{}]*\{[^{}]*\})+$/, "keyframe stops, such as 50%{opacity:0}"]], ["animate.*", text],
 ]
 const required = ["light", "dark"].flatMap((theme) => colorNames.map((name) => `color.${theme}.${name}`)).concat("radius", "font.sans", "font.mono")
 
@@ -35,13 +52,17 @@ const leaves = (value: unknown, path = ""): [string, unknown][] =>
 export function parseTokens(input: unknown): Tokens {
   const found = leaves(input)
   const problems = found.flatMap(([path, value]) => {
-    const kind = kinds.find(([pattern]) => new RegExp(`^${pattern.replaceAll(".", "\\.").replace("*", "[a-z0-9]+")}$`).test(path))?.[1]
+    const kind = kinds.find(([pattern]) => new RegExp(`^${pattern.replaceAll(".", "\\.").replace("*", "[a-z][a-z0-9-]*")}$`).test(path))?.[1]
     if (!kind) return [`unknown token path: ${path}`]
     return typeof value === "string" && kind[0].test(value) ? [] : [`${path}: expected ${kind[1]}, got ${JSON.stringify(value)}`]
   }).concat(required.filter((path) => !found.some(([at]) => at === path)).map((path) => `${path}: missing`))
+    // A dark value overrides a light one, so a dark-only color would have nothing to stand for in light.
+    .concat(found.filter(([path]) => path.startsWith("color.dark.") && !found.some(([at]) => at === path.replace("dark", "light"))).map(([path]) => `${path}: no light value`))
+    // `text-<name>` is a color when both exist, so the size would silently never apply.
+    .concat(found.filter(([path]) => path.startsWith("text.") && found.some(([at]) => at === `color.light.${path.slice(5)}`)).map(([path]) => `${path}: also a color, so text-${path.slice(5)} would set the color; rename one`))
   if (problems.length) throw new Error(problems.join("\n"))
   const given = structuredClone(input) as Partial<Tokens>
-  return { ...given, shadow: given.shadow ?? {}, motion: { duration: {}, ease: {}, ...given.motion }, breakpoint: given.breakpoint ?? {} } as Tokens
+  return { ...given, shadow: given.shadow ?? {}, motion: { duration: {}, ease: {}, ...given.motion }, breakpoint: given.breakpoint ?? {}, rounded: given.rounded ?? {}, gradient: given.gradient ?? {}, text: given.text ?? {}, blur: given.blur ?? {}, keyframes: given.keyframes ?? {}, animate: given.animate ?? {} } as Tokens
 }
 
 const linear = (color: string) => {
@@ -71,11 +92,10 @@ const contrastPairs: [ColorName, ColorName][] = [
   ["foreground", "background"], ["foreground", "muted"],
   ...(["popover", "muted", "secondary", "accent"] as const).map((surface): [ColorName, ColorName] => ["muted-foreground", surface]),
   ...colorNames.filter((name) => name.endsWith("-foreground")).map((name): [ColorName, ColorName] => [name, name.slice(0, -11) as ColorName]),
-  ...(["muted-foreground", "primary", "destructive", "ok", "warn"] as const).flatMap((name): [ColorName, ColorName][] => [[name, "background"], [name, "card"]]),
+  ...(["muted-foreground", "primary", "destructive", "ok", "warn", "info"] as const).flatMap((name): [ColorName, ColorName][] => [[name, "background"], [name, "card"]]),
 ]
-
-/** WCAG 1.4.11: the edge of a control on what it sits on. */
-const boundaryPairs: [ColorName, ColorName][] = [["input", "background"], ["input", "card"]]
+/** WCAG 1.4.11: the edge of a control and the focus ring, on what they sit on. */
+const boundaryPairs = (["input", "ring"] as const).flatMap((name): [ColorName, ColorName][] => [[name, "background"], [name, "card"]])
 
 /** Every pair below WCAG AA, in both themes: 4.5:1 for text, 3:1 for a boundary. */
 export const contrastIssues = (tokens: Tokens) =>

@@ -12,12 +12,23 @@
     "vibestack/stories/**",
     "vibestack/design/**",
     "!vibestack/**/{node_modules,.cache}/**",
+    "!vibestack/selftest.ts",
+    "!vibestack/remote-cache.ts",
+    "!vibestack/{testing,stories,design}/test/**",
     ".cache/toolchain.json"
   ],
   "tasks": {
     "gen": {
       "outputs": [
         "gen/**",
+        "generated/**"
+      ]
+    },
+    "@repo/ui#gen": {
+      "dependsOn": [
+        "//#gen"
+      ],
+      "outputs": [
         "generated/**"
       ]
     },
@@ -129,27 +140,25 @@
     },
     "//#test": {
       "dependsOn": [
-        "//#gen"
+        "//#gen",
+        "^build"
       ],
       "inputs": [
+        "*",
+        "!*.md",
         "vibestack/**",
-        "!vibestack/examples/**",
+        "!vibestack/{examples,studio}/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
-        "!{apps,packages,vibestack/studio}/**/gen/**",
-        "package.json",
-        "tsconfig.json",
         "spec/**",
+        "!spec/**/*.md",
         "src/**",
-        "test/**",
-        "vitest.config.ts",
-        "packages/design-system/tokens.json",
-        "packages/design-system/design.md"
+        "test/**"
       ],
       "outputs": [
         ".cache/test-result-*.json"
       ]
     },
-    "//#selftest": {
+    "//#selftest:tools": {
       "dependsOn": [
         "//#build",
         "//#test",
@@ -159,18 +168,42 @@
       ],
       "inputs": [
         "vibestack/**",
+        "!vibestack/examples/{assistant,dashboard,fullstack}/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
         "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
+        "apps/*/package.json",
         "packages/**",
-        ".claude/skills/**",
-        ".agents/skills/**",
-        ".claude/settings.json",
+        ".agents/**",
         "AGENTS.md",
         "SPEC.md",
+        "README.md",
+        "LICENSE",
         "spec/**",
         "package.json",
+        "pnpm-lock.yaml",
+        "turbo.json",
         "tsconfig.json",
         "tsconfig.build.json"
+      ],
+      "outputs": []
+    },
+    "//#selftest:docs": {
+      "inputs": [
+        "**",
+        "!.claude/worktrees/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
+        "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**"
+      ],
+      "outputs": []
+    },
+    "//#selftest:examples": {
+      "inputs": [
+        "vibestack/**",
+        "!vibestack/{studio,fixtures}/**",
+        "!vibestack/{testing,stories,design}/test/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
+        "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
+        "package.json"
       ],
       "outputs": []
     },

@@ -6,11 +6,13 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import type { Model } from "./gen.ts";
 import { SENDER } from "./gen/classify.ts";
+import { act, violated, type Input } from "./action.ts";
 import { entry, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
-import { importedMeanings, type Rule, type Spec } from "./parse.ts";
-import { run } from "./run.ts";
-import type { Result } from "./spec.ts";
+import { simulated } from "./gen/harness.ts";
+import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
+import type { Result } from "./pipeline.ts";
+import { SIMULATIONS } from "./units.ts";
 import { allDone, digest, indent } from "./util.ts";
 
 const SAMPLES = 10000;
@@ -41,8 +43,8 @@ export interface Step {
 }
 
 /** A simulated trace; with opaque functions, from the step that settled their tables (gen/harness.ts), and empty if none did. */
-function readTrace(file: string, model: Model): Step[] {
-  const states = JSON.parse(fs.readFileSync(file, "utf8")).states.filter((st: any) => !model.opaques.length || st.settled);
+function readTrace(itf: string, model: Model): Step[] {
+  const states = JSON.parse(itf).states.filter((st: any) => !model.opaques.length || st.settled);
   return states.map((st: any, i: number): Step => {
     // Values are decoded by their type, and sets put in a fixed order, so that they compare equal to TypeScript's.
     const read = (type: any, itf: any) => model.canon(type, model.decode(type, itf));
@@ -110,31 +112,37 @@ async function simulating<T>(root: string, go: () => Promise<T>): Promise<T> {
 const SHARD_SAMPLES = 1000;
 const MAX_SHARDS = 4;
 
+/** What a spec's runs of Quint share: the check's memory, the model, and every file of Quint its harness reads. */
+export interface Harness { memory: Memory; model: Model; files: Record<string, Input> }
+/** What a spec's harness reads: its modules, the harness itself, and the spec as the harness reads it where it has opaque functions. */
+export function harnessFiles(spec: Spec, specs: Spec[], model: Model): Record<string, Input> {
+  const sim = model.opaques.length ? simulated(spec.qnt, model.opaques) : undefined;
+  return { ...modules(spec, specs), [`${model.name}.run.qnt`]: { text: model.harness, key: model.harness }, ...(sim ? { [`${model.name}.sim.qnt`]: { text: sim, key: codeOf(sim) } } : {}) };
+}
+
 /**
  * Simulate the harness until `invariant` breaks; returns the traces Quint wrote, and the command that runs the same
  * simulation again. One run of Quint uses one core, so with `split` a large budget is split among up to four runs of a
  * single thread, each with a seed of its own; how it is split depends only on the budget, so the same harness always gives
- * the same traces. When a run breaks the invariant, the command is the one for that run.
+ * the same traces. When a run breaks the invariant, the command is the one for that run. A run that ran is in
+ * gen/traces until the next check; one remembered (action.ts) is not.
  */
-export async function simulate(root: string, model: Model, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
-  const dir = path.join(root, "gen/traces", `${model.name}.${invariant}.${step}`);
-  fs.rmSync(dir, { recursive: true, force: true });
+export async function simulate({ memory, model, files }: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
+  const dir = `${SIMULATIONS}/${model.name}.${invariant}.${step}`;
   const shards = !split ? 1 : Math.max(1, Math.min(MAX_SHARDS, Math.floor(samples / SHARD_SAMPLES)));
-  const singleThread = shards > 1 || sampleLimit < samples;
   const runs = Array.from({ length: shards }, async (_, k) => {
-    const out = shards === 1 ? dir : path.join(dir, String(k));
-    fs.mkdirSync(out, { recursive: true });
     const derivedSeed = seedFor(seed, model.harness, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));
-    const args = ["run", `gen/${model.name}.run.qnt`, "--main", `${model.name}_run`, "--step", step, "--invariant", invariant,
-      "--max-samples", String(Math.ceil(sampleLimit / shards)), "--max-steps", String(steps), "--mbt", "--seed", derivedSeed, ...(singleThread ? ["--n-threads", "1"] : [])];
-    const r = await simulating(root, () => run("quint", [...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", path.join(out, "{seq}.itf.json")], root));
-    const broken = r.status === 1 && /(?:^|\n)error: Invariant violated$/.test(r.stderr.trimEnd());
+    const main = `${model.name}.run.qnt`;
+    const args = ["--main", `${model.name}_run`, "--step", step, "--invariant", invariant,
+      "--max-samples", String(Math.ceil(sampleLimit / shards)), "--max-steps", String(steps), "--mbt", "--seed", derivedSeed, "--n-threads", "1"];
+    const r = await simulating(memory.root, () => act(memory, "quint", ["run", main, ...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", "{seq}.itf.json"], shards === 1 ? dir : `${dir}/${k}`, files));
+    const broken = violated(r);
     // In the order Quint wrote them, so that the same simulation always gives the traces in the same order.
-    const files = fs.readdirSync(out).filter((f) => f.endsWith(".itf.json")).sort((x, y) => parseInt(x, 10) - parseInt(y, 10) || x.localeCompare(y));
-    const again = `seed ${derivedSeed}; to simulate again: pnpm exec quint ${args.join(" ")}`;
+    const written = Object.keys(r.files).filter((f) => f.endsWith(".itf.json")).sort((x, y) => parseInt(x, 10) - parseInt(y, 10) || x.localeCompare(y));
+    const again = `seed ${derivedSeed}; to simulate again: pnpm exec quint run gen/${main} ${args.join(" ")}`;
     // Anything other than "held" or "violated", each with a trace, is Quint failing to run.
-    if ((!r.ok && !broken) || !files.length) throw new Error(`quint run did not complete (${again}):\n${r.out.trim()}`);
-    return { broken, traces: files.map((f) => readTrace(path.join(out, f), model)).filter((t) => t.length), again };
+    if ((!r.ok && !broken) || !written.length) throw new Error(`quint run did not complete (${again}):\n${r.out.trim()}`);
+    return { broken, traces: written.map((f) => readTrace(r.files[f], model)).filter((t) => t.length), again };
   });
   // Every run finishes before anything is said, so that none is left writing into gen/.
   const done = await allDone(runs);
@@ -145,17 +153,17 @@ export async function simulate(root: string, model: Model, invariant: string, tr
  * Look for a state that breaks `invariant`, which is how a goal is shown reachable: in longer traces while none is
  * found, fewer of them as they lengthen, so each depth costs about as many events as `samples` traces of the first.
  */
-export async function search(root: string, model: Model, invariant: string, step = "step", depths = DEPTHS, samples = WITNESS_SAMPLES, seed = 1): ReturnType<typeof simulate> {
+export async function search(harness: Harness, invariant: string, step = "step", depths = DEPTHS, samples = WITNESS_SAMPLES, seed = 1): ReturnType<typeof simulate> {
   const searches = depths.map((steps) => ({ steps, budget: Math.ceil(samples * STEPS / steps) }));
   if (searches.length > 1) {
     for (const { steps, budget } of searches) {
       if (budget <= WITNESS_PREFLIGHT_SAMPLES) continue;
-      const run = await simulate(root, model, invariant, 1, budget, step, false, steps, seed, WITNESS_PREFLIGHT_SAMPLES);
+      const run = await simulate(harness, invariant, 1, budget, step, false, steps, seed, WITNESS_PREFLIGHT_SAMPLES);
       if (run.broken) return run;
     }
   }
   let run!: Awaited<ReturnType<typeof simulate>>;
-  for (const { steps, budget } of searches) if ((run = await simulate(root, model, invariant, 1, budget, step, false, steps, seed)).broken) break;
+  for (const { steps, budget } of searches) if ((run = await simulate(harness, invariant, 1, budget, step, false, steps, seed)).broken) break;
   return run;
 }
 const SEARCHED = `${WITNESS_SAMPLES} traces of ${STEPS} events and longer ones up to ${DEPTHS.at(-1)}`;
@@ -289,19 +297,24 @@ const COULD_NOT_RUN = "the simulator could not run";
 export interface Simulation { said: Result[]; tested?: Simulated }
 
 /**
- * Simulate one spec and replay its traces through `domain`, its generated module. A spec whose model and harness are
- * unchanged is not simulated again: the seed is part of what is simulated, so a failure comes back the same. Only a
- * simulator that could not run is tried again.
+ * Simulate one spec and replay its traces through `domain`, its generated module. A spec is not simulated again while
+ * what Quint reads is unchanged, and its results are not said again while its rules keep their names and the
+ * definitions they held: the seed is part of what is simulated, so a failure comes back the same. A result cites a
+ * rule at the line it is on now, so prose that moves the rules simulates nothing again. Only a simulator that could
+ * not run is tried again.
  */
 export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Model, domain: any, seed: number): Promise<Simulation> {
-  const citation = (rule: Rule) => `"${rule.key}" (${spec.file}:${rule.line})`;
+  const citation = (rule: Rule) => `"${rule.key}" (${spec.file}:\0${rule.key}\0)`;
   const cite = (def: string) => {
     const rule = spec.rules.find((r) => r.defs.includes(def));
     return rule ? citation(rule) : def;
   };
   const simulationSteps = STEPS + Math.max(0, ...model.within.values());
-  const key = [importedMeanings(spec, specs), spec.meaning, spec.rules.map((r) => r.key).join("\n"), model.harness, String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
-  return remembered<Simulation>(memory, entry(memory.root, "simulate", key), async () => {
+  const files = harnessFiles(spec, specs, model);
+  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
+    String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
+  return remembered<Simulation>(memory, entry(memory.root, "simulate", key), async (memory) => {
+    const harness: Harness = { memory, model, files };
     const said: Result[] = [];
     let tested: Simulated | undefined;
     /** A result concerns the rules it cites. */
@@ -333,11 +346,11 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // can, supplies more traces to replay. Each witness search stops at its goal or at a broken rule, whichever
       // comes first (see the harness). All of them finish before anything is reported, failures included.
       // The usual starting states each get a whole bounded interval after them.
-      const sim = await simulate(memory.root, model, "inv", model.leadsTo.length ? LASSO_TRACES : REPLAYED, SAMPLES, "step", true, simulationSteps, seed);
+      const sim = await simulate(harness, "inv", model.leadsTo.length ? LASSO_TRACES : REPLAYED, SAMPLES, "step", true, simulationSteps, seed);
       if (broke([sim])) return { said, tested };
       const [probe, ...searches] = await allDone([
-        simulate(memory.root, model, "inv", REPLAYED, COMPARED_SAMPLES, "probe", true, STEPS, seed),
-        ...model.sometimes.map((w) => search(memory.root, model, `never_${w}`, "step", DEPTHS, WITNESS_SAMPLES, seed)),
+        simulate(harness, "inv", REPLAYED, COMPARED_SAMPLES, "probe", true, STEPS, seed),
+        ...model.sometimes.map((w) => search(harness, `never_${w}`, "step", DEPTHS, WITNESS_SAMPLES, seed)),
       ]);
       const witnesses = model.sometimes.map((w, i) => ({ w, run: searches[i] }));
       const runs = [sim, probe, ...searches.filter((run) => run.broken)];
@@ -368,7 +381,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // only that search goes deeper and gets the witness budget; one that never refuses it is only reported.
       const missing = guarded.flatMap((t) => (["allows", "refuses"] as const).filter((side) => !seen.get(t.guard!)![side]).map((side) => ({ t, side })));
       const searched = await allDone(missing.map(({ t, side }) => model.evals.some((v) => v.name === t.guard)
-        ? search(memory.root, model, `never_${side}_${t.guard}`, "probe", side === "allows" ? DEPTHS : [STEPS], side === "allows" ? WITNESS_SAMPLES : SAMPLES, seed)
+        ? search(harness, `never_${side}_${t.guard}`, "probe", side === "allows" ? DEPTHS : [STEPS], side === "allows" ? WITNESS_SAMPLES : SAMPLES, seed)
         : Promise.resolve(undefined)));
       for (const [i, { t, side }] of missing.entries()) {
         const found = searched[i];
@@ -422,5 +435,9 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));
     }
     return { said, tested };
-  }, ({ said }) => !said.some((r) => r.summary === COULD_NOT_RUN));
+  }, ({ said }) => !said.some((r) => r.summary === COULD_NOT_RUN)).then(({ said, tested }) => {
+    const lines = new Map(spec.rules.map((r) => [r.key, r.line]));
+    const placed = (text: string) => text.replace(/\0([^\0]*)\0/g, (_, key: string) => String(lines.get(key)));
+    return { said: said.map((r) => ({ ...r, summary: placed(r.summary), detail: placed(r.detail) })), tested };
+  });
 }

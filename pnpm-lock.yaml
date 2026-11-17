@@ -171,6 +171,9 @@ importers:
       '@eslint/js':
         specifier: 'catalog:'
         version: 10.0.1(eslint@10.14.0(jiti@2.7.0))
+      '@repo/design-system':
+        specifier: workspace:*
+        version: link:packages/design-system
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6

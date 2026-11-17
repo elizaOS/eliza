@@ -9,7 +9,7 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest"
 import { chromium } from "playwright"
 import { ChildProcess } from "effect/process"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
-import { acceptReviews, readSpecs, type Result } from "../../spec.ts"
+import { acceptReviews, readSpecs, type Result } from "../../pipeline.ts"
 import { manifestOf, nodesOf } from "../src/doc.ts"
 import { NODE, TOOLS, type Snapshot } from "../src/project.ts"
 import type { ComponentIndex } from "../../stories/emit.ts"
@@ -54,10 +54,9 @@ effect function until<A>(get: () => A!unknown, ok: (a: A) => boolean, show: (a: 
 effect function studioOn(root: string) {
   const { url } = try startStudio({ projects: [{ id: ".", name: "Door", root }], port: 0, agents })
   const page = try client(url.replace("localhost", "127.0.0.1"))
-  /** The project once no job runs, after the watcher has heard any change to the specs (../src/server.vibe debounces it). */
+  /** The project once no job runs and the studio has heard the specs as they are on disk. */
   effect function settled() {
-    try sleep("600 millis")
-    return try until(page.project, (p) => p.session.job === "Idle", (p) => ({ session: p.session, jobs: p.jobs }))
+    return try until(page.project, (p) => p.session.job === "Idle" && p.heard, (p) => ({ session: p.session, heard: p.heard, jobs: p.jobs }))
   }
   return { ...page, url, settled }
 }
@@ -171,7 +170,7 @@ it.live('a spec is published with its origins, checked, and synced by an agent (
 
 it.live('sign-off records the review and a disk write rechecks it (spec/index.md, "Story: Sign off"; spec/index.md, "Story: Check")', effect () => { provide services { try scoped(effect {
   const fs = try FileSystem.FileSystem
-  const text = try fs.readFileString(`${TOOLS}/fixtures/door.md`)
+  const text = "# Door\n"
   const root = try scratch({ "spec/door.md": text })
   const { post, project, settled } = try studioOn(root)
   const checking = (try post("check", {})).status
@@ -236,8 +235,6 @@ it.live("a rule is edited, a story added and both published from the page", () =
   const fs = try FileSystem.FileSystem
   const root = try scratch({ "spec/door.md": try fs.readFileString(`${TOOLS}/fixtures/door.md`) })
   const { url, settled } = try studioOn(root)
-  // The watcher may hear the scratch files being written, and check them; publishing waits for no job.
-  try settled()
   const { page, on } = try browse(`${url}/?project=.`)
   // A story opens to its rules; a rule opens for editing, and its heading changes as it is typed.
   try on(() => page.getByText("Story: Use the door", { exact: true }).click())
