@@ -24,7 +24,9 @@
 import { NOTES_LIST_FILTER_CAPABILITY } from "@elizaos/contracts";
 import {
   browserDestinationMatches,
+  browserSearchQueryMatches,
   directBrowserDestination,
+  directBrowserSearchQuery,
 } from "@elizaos/contracts/browser-request-grounding";
 import { createDeviceActionExecution } from "@elizaos/contracts/device-action-execution";
 import {
@@ -60,6 +62,14 @@ import {
   validateSmsSend,
 } from "@elizaos/contracts/sms-send";
 import {
+  BROWSER_CONTROL_DIRECT_TYPES,
+  type BrowserControlOperation,
+  browserControlCapabilityAvailable,
+  describeBrowserControl,
+  isBrowserControl,
+  validateBrowserControl,
+} from "./browser-contract.ts";
+import {
   CALENDAR_AGENDA_CAPABILITY,
   type CalendarOperation,
   type CalendarResult,
@@ -71,9 +81,9 @@ import {
   validateCalendarResult,
 } from "./calendar-contract.ts";
 import {
-  CAMERA_CAPTURE_CAPABILITY,
   type CameraCaptureOperation,
   type CameraCaptureResult,
+  cameraCaptureCapabilityAvailable,
   isCameraCapture,
   validateCameraCapture,
   validateCameraCaptureResult,
@@ -173,13 +183,16 @@ import {
   validateReminderCreateResult,
 } from "./reminder-create-contract.ts";
 import {
+  type ContactValues,
   isSmsCompose,
   isTelephonyAction,
   isTelephonyRead,
   selectedTelephonyView,
+  smsComposeTarget,
   type TelephonyActionOperation,
   type TelephonyActionResult,
   telephonyActionCapabilityAvailable,
+  telephonyActionFormAvailable,
   telephonyActionReceiptOutcome,
   validateTelephonyAction,
   validateTelephonyActionResult,
@@ -276,6 +289,7 @@ export type DeviceOperation =
   | NativeNotesQueryOperation
   | CalendarOperation
   | WorkflowReadOperation
+  | BrowserControlOperation
   | LegacyDeviceOperation;
 /** Every operation a proposal may carry. Foreground reviews run through their own executor. */
 export type ReviewableDeviceOperation =
@@ -449,6 +463,8 @@ export interface DeviceActionClientProfile<
 > {
   /** Owner-facing product name used in Clock and Photos review text. */
   appName: string;
+  /** The name the owner calls the assistant ("Alpha, open example.com"); "Eliza" when absent. */
+  assistantName?: string;
   operations: DeviceOperationPolicy;
   workflow: DeviceWorkflowPort<R>;
   /** Review copy for record writes; undefined falls back to generic text. */
@@ -482,6 +498,10 @@ const OPENABLE_VIEWS = new Set([
   "inbox",
   "settings",
   "workflows",
+  // Offered only when this host enabled them in its view profile.
+  "phone",
+  "messages",
+  "contacts",
 ]);
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -561,6 +581,7 @@ export function validateDeviceOperation(
   if (isNotesOrganizeOperation(p)) return validateNotesOrganizeOperation(p);
   if (isFilesOperation(p)) return validateFilesOperation(p);
   if (isPhotosViewOperation(p)) return validatePhotosViewOperation(p);
+  if (isBrowserControl(p)) return validateBrowserControl(p);
   if (isReminderOperation(p)) return validateReminderOperation(p);
   if (isNotesOperation(p)) return validateNotesOperation(p);
   if (isCalendarOperation(p)) return validateCalendarOperation(p);
@@ -835,8 +856,9 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
     throw new ContextNotice(
       "Unlock the phone and keep it open to review this number.",
     );
-  // Calls, contact changes, contact SMS, voicemail deletion and reads of the
-  // open thread or voicemail never run on a locked or hidden phone.
+  // Calls, contact changes and searches, contact SMS, voicemail deletion and
+  // reads of the open thread, voicemail or contact never run on a locked or
+  // hidden phone.
   if (
     isTelephonyAction(operation) &&
     (context.sensitive || ports.foregroundHidden())
@@ -883,6 +905,8 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
         ? "Unlock the phone to review this action."
         : "Open Photos to review this action.",
     );
+  if (isBrowserControl(operation) && context.sensitive)
+    throw new ContextNotice("Unlock the phone to review this action.");
   if (isReminderOperation(operation)) assertReminderContext(operation, context);
   if (isNativeNotesQuery(operation)) assertNotesQueryContext(context);
   if (isNotesOperation(operation)) assertNotesContext(operation, context);
@@ -1218,9 +1242,11 @@ export class DeviceActionCoordinator<
     proposal: DeviceProposal,
     proof?: CurrentDeviceActionRequest,
   ): boolean {
+    const operation = proposal.operation;
     if (
       !this.options.currentRequestBrowserPolicy ||
-      proposal.operation.type !== "browser_navigate"
+      (operation.type !== "browser_navigate" &&
+        operation.type !== "browser_search")
     )
       return true;
     if (!proof || proof.messageId !== proposal.requestMessageId) return false;
@@ -1233,11 +1259,18 @@ export class DeviceActionCoordinator<
     ]);
     const cached = this.browserPolicy.get(proposal.id);
     if (cached?.key === key) return cached.allowed;
-    // Automatic client effects need direct intent, not merely a URL mentioned in prose.
-    const allowed = browserDestinationMatches(
-      proposal.operation,
-      directBrowserDestination(proof.text),
-    );
+    // Automatic client effects need direct intent, not merely a URL or
+    // search words mentioned in prose.
+    const allowed =
+      operation.type === "browser_search"
+        ? browserSearchQueryMatches(
+            operation.query,
+            directBrowserSearchQuery(proof.text, this.profile.assistantName),
+          )
+        : browserDestinationMatches(
+            operation,
+            directBrowserDestination(proof.text, this.profile.assistantName),
+          );
     if (this.browserPolicy.has(proposal.id) || this.browserPolicy.size < 128)
       this.browserPolicy.set(proposal.id, { key, allowed });
     return allowed;
@@ -1342,7 +1375,10 @@ export class DeviceActionCoordinator<
         payload.operation,
         this.profile.operations,
       );
-    if (isCameraCapture(op) && !this.capability(CAMERA_CAPTURE_CAPABILITY))
+    if (
+      isCameraCapture(op) &&
+      !cameraCaptureCapabilityAvailable(op, this.credential.capabilities)
+    )
       throw Error("Camera capture was not negotiated with this agent");
     if (
       isPhoneDial(op) &&
@@ -1351,7 +1387,11 @@ export class DeviceActionCoordinator<
       throw Error("Dialing was not negotiated with this phone");
     if (
       isTelephonyAction(op) &&
-      !telephonyActionCapabilityAvailable(op.type, this.credential.capabilities)
+      (!telephonyActionCapabilityAvailable(
+        op.type,
+        this.credential.capabilities,
+      ) ||
+        !telephonyActionFormAvailable(op, this.credential.capabilities))
     )
       throw Error("This telephony action was not negotiated with this phone");
     if (isSmsSend(op) && !this.capability(SMS_SEND_CAPABILITY))
@@ -1385,6 +1425,11 @@ export class DeviceActionCoordinator<
       !photosViewCapabilityAvailable(this.credential.capabilities)
     )
       throw Error("Photos actions were not negotiated with this agent");
+    if (
+      isBrowserControl(op) &&
+      !browserControlCapabilityAvailable(op.type, this.credential.capabilities)
+    )
+      throw Error("This Browser action was not negotiated with this agent");
     if (
       isForegroundReviewOperation(op) &&
       (!foregroundReviewOperationAvailable(op, this.credential.capabilities) ||
@@ -1559,8 +1604,7 @@ export class DeviceActionCoordinator<
       return {
         ...base,
         title: "Take photo",
-        description:
-          "Use the current camera and save one photo in Photos. The photo stays on this device.",
+        description: `Use the ${op.lens ?? "current"} camera and save one photo in Photos. The photo stays on this device.`,
       };
     if (isLibraryOperation(op))
       return { ...base, ...describeLibraryOperation(op, this.profile.appName) };
@@ -1572,6 +1616,7 @@ export class DeviceActionCoordinator<
         ...base,
         ...describePhotosViewOperation(op, this.profile.appName),
       };
+    if (isBrowserControl(op)) return { ...base, ...describeBrowserControl(op) };
     const notesDestination =
       (op.type === "notes_delete" || op.type === "notes_update") &&
       !context.sensitive &&
@@ -1723,7 +1768,7 @@ export class DeviceActionCoordinator<
           items.push({
             proposalId: proposal.id,
             proposal: null,
-            notice: `${card.title}: Ask again from the open ${selectedView === "messages" ? "conversation" : "voicemail"}.`,
+            notice: `${card.title}: Ask again from the open ${selectedView === "messages" ? "conversation" : selectedView === "contacts" ? "contact" : "voicemail"}.`,
           });
           continue;
         }
@@ -1850,6 +1895,7 @@ export class DeviceActionCoordinator<
       ...NOTES_ORGANIZE_DIRECT_TYPES,
       ...FILES_DIRECT_TYPES,
       ...PHOTOS_VIEW_DIRECT_TYPES,
+      ...BROWSER_CONTROL_DIRECT_TYPES,
     ];
     const results: DeviceOperationReceipt[] = [];
     for (const [proposalId, entry] of [...this.proposals]) {
@@ -1866,7 +1912,8 @@ export class DeviceActionCoordinator<
       if (this.card(entry.proposal, context).reviewDestination) continue;
       const browser =
         this.options.currentRequestBrowserPolicy &&
-        entry.proposal.operation.type === "browser_navigate";
+        (entry.proposal.operation.type === "browser_navigate" ||
+          entry.proposal.operation.type === "browser_search");
       const requestKey = this.requestKey(messageId);
       if (
         browser &&
@@ -2435,7 +2482,8 @@ export class DeviceActionCoordinator<
       // Run it only after this exact action's receipt attempt, never as a retry.
       const presentBrowser = () => {
         if (
-          p.operation.type === "browser_navigate" &&
+          (p.operation.type === "browser_navigate" ||
+            isBrowserControl(p.operation)) &&
           result.status === "succeeded"
         ) {
           try {
@@ -3655,21 +3703,59 @@ function describeTelephonyAction(operation: TelephonyActionOperation): {
         title: "Add contact",
         description: `${fields(operation.contact)}\n\nSaves this contact on your phone after you confirm.`,
       };
-    case "contact_update":
+    case "contact_update": {
+      const values = (label: string, change: ContactValues = {}) =>
+        [...(change.phoneNumbers ?? []), ...(change.emailAddresses ?? [])].map(
+          (value) => `${label}: ${value}`,
+        );
+      const lines = [
+        ...(operation.set ? [fields(operation.set)] : []),
+        ...values("Add", operation.add),
+        ...values("Remove", operation.remove),
+      ].join("\n");
       return {
         title: "Change contact",
-        description: `Contact: ${operation.query}\n${fields(operation.set)}\n\nReplaces these details after you confirm. Nothing else is shared with the agent.`,
+        description: `Contact: ${operation.query}\n${lines}\n\n${
+          operation.add || operation.remove
+            ? operation.set
+              ? "Replaces the details listed whole and adds or removes only the values marked, after you confirm."
+              : "Adds or removes only these values after you confirm. The contact's other details stay."
+            : "Replaces these details after you confirm."
+        } Nothing else is shared with the agent.`,
       };
+    }
     case "contact_delete":
       return {
         title: "Delete contact",
         description: `Contact: ${operation.query}\n\nDeletes this contact from your phone after you confirm.`,
       };
-    case "sms_compose":
+    case "contact_show":
       return {
-        title: "Review SMS",
-        description: `To contact: ${operation.query}\n\n${operation.body}\n\nConfirm the recipient again in Android.`,
+        title: "Show contact",
+        description: `Search: ${operation.query}\n\nOpens Contacts on your phone with the matches. The agent learns only whether one was found.`,
       };
+    case "contact_read_selected":
+      return {
+        title: "Share open contact",
+        description:
+          "Share the name, numbers and email addresses of the open contact with the agent. Other contacts stay private.",
+      };
+    case "sms_compose": {
+      const target = smsComposeTarget(operation);
+      const to =
+        target.kind === "number"
+          ? `To: ${target.number}`
+          : `To contact: ${target.query}`;
+      return "draft" in operation
+        ? {
+            title: "Draft SMS",
+            description: `${to}\n\n${operation.body}\n\nPuts this in that conversation's text field. Nothing is sent until you tap Send there.`,
+          }
+        : {
+            title: "Review SMS",
+            description: `${to}\n\n${operation.body}\n\nConfirm the recipient again in Android.`,
+          };
+    }
     case "sms_reply_selected":
       return {
         title: "Draft reply",

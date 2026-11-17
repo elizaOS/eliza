@@ -120,6 +120,9 @@
         "shared phone and reminder-read parity negotiates { type: 'messages_read_selected' } and journals/replays its exact result without acting twice",
         "shared phone and reminder-read parity negotiates { type: 'voicemail_read_selected' } and journals/replays its exact result without acting twice",
         "shared phone and reminder-read parity negotiates { type: 'voicemail_delete_selected' } and journals/replays its exact result without acting twice",
+        "shared phone and reminder-read parity negotiates { type: 'contact_show', query: 'Ada' } and journals/replays its exact result without acting twice",
+        "shared phone and reminder-read parity negotiates { type: 'contact_read_selected' } and journals/replays its exact result without acting twice",
+        "shared phone and reminder-read parity admits a contact update that adds or removes values only with contacts.write.v2",
         "shared phone and reminder-read parity refuses a telephony result that contradicts the reviewed operation or its status",
         "shared phone and reminder-read parity uploads a settled telephony refusal with its typed result",
         "shared phone and reminder-read parity places a reply draft without a review only for the requesting message",
@@ -139,7 +142,8 @@
         "opt-in current telephony request policy keeps messages_read_selected bound to the first reviewed selection and screen revision",
         "opt-in current telephony request policy keeps sms_reply_selected bound to the first reviewed selection and screen revision",
         "opt-in current telephony request policy keeps voicemail_read_selected bound to the first reviewed selection and screen revision",
-        "opt-in current telephony request policy keeps voicemail_delete_selected bound to the first reviewed selection and screen revision"
+        "opt-in current telephony request policy keeps voicemail_delete_selected bound to the first reviewed selection and screen revision",
+        "opt-in current telephony request policy keeps contact_read_selected bound to the first reviewed selection and screen revision"
       ]
     },
     {

@@ -32,8 +32,16 @@ function committed(
 }
 
 export function workflowDefinitionEffect(
-  operation: 'create' | 'modify' | 'activate' | 'deactivate' | 'restore',
-  workflow: WorkflowDefinitionResponse
+  operation:
+    | 'create'
+    | 'modify'
+    | 'rename'
+    | 'activate'
+    | 'deactivate'
+    | 'restore'
+    | 'remove'
+    | 'restore_removed',
+  workflow: Pick<WorkflowDefinitionResponse, 'id' | 'versionId' | 'updatedAt'>
 ): EffectReceipt {
   return committed(
     `workflow.${operation}`,

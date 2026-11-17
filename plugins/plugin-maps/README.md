@@ -100,6 +100,15 @@ registers a `MapsDeviceNavigation` with `MapsService.registerDeviceNavigation`; 
 report its state. Without one they return `MAPS_DEVICE_UNAVAILABLE`. GPS, the active
 route and guidance stay on the device; `MAPS_SHARE` still needs the user's confirmation.
 
+A request about the user's own position returns a `locate` card and sends no
+position to the agent. The card names its subject: `query` (what the device searches
+for around itself), `destination` (the resolved place of a route from here) and
+`travelMode`. "Directions to the nearest pharmacy" (`useCurrentLocation` with a
+`placeQuery` on `MAPS_NAVIGATE` or `MAPS_NAVIGATION_START`) is not searched by the
+agent: the card carries the query. A search around a point asks Cloud for
+`rank: "distance"` when `capabilities.distanceRank` is true. The Google provider then
+reads its largest page (20 places) and returns the closest first.
+
 The Cloud adapter waits up to 20 seconds for an answer (Cloud's own provider
 timeout is 10 seconds), accepts route bodies up to 5 MiB, and asks for at most 20
 places per search. Breaking change: the unused `google`, `transport` and

@@ -29,6 +29,7 @@ import { readDeviceConversationReceipts } from "../device-actions/conversation-r
 import {
   currentAppRecordSource,
   deviceActionToolGuidance,
+  deviceAppRecordOperationAvailable,
   getDeviceActionTurn,
 } from "../device-actions/service.ts";
 import {
@@ -144,6 +145,28 @@ export async function createV5MessageContextObject(args: {
                 args.selectedContexts?.includes(context),
               )),
       );
+    // Without these capabilities the phone's own Phone and Messages apps are
+    // closed to the device tool. The runtime may still have another tool that
+    // calls or messages, so the sentence names only the device tool.
+    const phoneCapabilities =
+      authenticatedDeviceTurn.credential.capabilities ?? [];
+    const unavailableTelephony = [
+      ...(phoneCapabilities.some(
+        (capability) =>
+          capability === "phone.call.v1" || capability === "phone.dial.v1",
+      )
+        ? []
+        : ["place or dial calls"]),
+      ...(phoneCapabilities.some(
+        (capability) =>
+          capability === "sms.send.v1" || capability === "sms.compose.v1",
+      )
+        ? []
+        : ["send or draft text messages"]),
+    ];
+    const telephonyGuidance = unavailableTelephony.length
+      ? `PROPOSE_DEVICE_ACTION cannot ${unavailableTelephony.join(" or ")} with this phone's own Phone and Messages apps. Another exposed tool that calls or messages works as usual. When no tool can do it, say plainly that it is not available on this phone; never claim or imply that a call or message was started without a tool result. `
+      : "";
     // The assistant's own people records (ENTITY, CONTACT) share the contacts
     // domain with the phone's address book. Without this boundary a phone
     // contact request is answered from the relationship store, which wants a
@@ -155,7 +178,8 @@ export async function createV5MessageContextObject(args: {
       ? "With contacts.write.v1, adding, changing or deleting a contact on this phone is a phone address-book operation: PROPOSE_DEVICE_ACTION contact_create, contact_update or contact_delete, reached through the contacts or general context. A name with a phone number or an email address is complete; never ask for a handle, username or platform. ENTITY and CONTACT keep the assistant's own relationship records and never write the phone's address book. "
       : "";
     const compactCapabilityGuidance =
-      `Authenticated phone capabilities: ${JSON.stringify(authenticatedDeviceTurn.credential.capabilities ?? [])}. ` +
+      `Authenticated phone capabilities: ${JSON.stringify(phoneCapabilities)}. ` +
+      telephonyGuidance +
       addressBookGuidance +
       (authenticatedDeviceTurn.viewProfile
         ? `Enabled phone views: ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. `
@@ -173,6 +197,7 @@ export async function createV5MessageContextObject(args: {
         ? (authenticatedDeviceTurn.viewProfile
             ? `The authenticated installation enabled-view profile allows open_view only for ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. Do not offer or propose another view. This subset is not approval to execute. `
             : "") +
+          telephonyGuidance +
           (getDeviceActionTurn()?.credential.capabilities?.some(
             (capability) =>
               capability === "reminders.local-record.v1" ||
@@ -185,8 +210,12 @@ export async function createV5MessageContextObject(args: {
           )
             ? "Notes capability notes.local-record.v1 supports selected read, update and delete. Use exact sourceId/sourceRevision/noteId/revision from the current selected note. It grants no read permission; request approval first. Repeat an identical operation/key only to retrieve its historical receipt, never to refresh content. create_note remains available for new text notes. "
             : "") +
-          (getDeviceActionTurn()?.credential.capabilities?.includes(
-            "calendar.create.v1",
+          // Named only on a turn that offers it: with a canonical CALENDAR
+          // action that is a selected phone calendar or the owner's own words.
+          (deviceAppRecordOperationAvailable(
+            args.runtime,
+            { type: "calendar_create_local" },
+            args.message,
           )
             ? "For an explicit separate phone/OS-calendar request, calendar_create_local resolves the owner-confirmed native destination. This capability does not replace ordinary app Calendar creation through CALENDAR. Do not invent a source ID or require a New Event form. Native approval is required before creation. "
             : "") +

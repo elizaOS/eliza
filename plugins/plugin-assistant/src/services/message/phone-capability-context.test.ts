@@ -15,6 +15,7 @@ const binding = vi.hoisted(() => ({
   turn: undefined as unknown,
   notes: "runtime",
   calendar: "runtime",
+  localCalendarCreate: true,
 }));
 vi.mock("../device-actions/service.ts", async (original) => ({
   ...(await original<typeof import("../device-actions/service.ts")>()),
@@ -22,6 +23,11 @@ vi.mock("../device-actions/service.ts", async (original) => ({
   currentAppRecordSource: (_runtime: unknown, domain: string) =>
     domain === "notes" ? binding.notes : binding.calendar,
   readDeviceConversationReceipts: async () => [],
+  deviceAppRecordOperationAvailable: (
+    _runtime: unknown,
+    operation: { type: string },
+  ) =>
+    operation.type !== "calendar_create_local" || binding.localCalendarCreate,
 }));
 
 import { ACKNOWLEDGMENT_RULE } from "../../prompts/acknowledgment.ts";
@@ -105,6 +111,48 @@ describe("selected phone capability guidance", () => {
     expect(text).toContain("phone owner's approval");
     expect(text).toContain("VIEWS or VIEWS_SHOW");
     expect(text).not.toContain("Snooze means ten minutes");
+  });
+  it("closes only the device tool's calls and texts unless the phone negotiated them", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    const all = await routing();
+    expect(all).toContain(
+      "PROPOSE_DEVICE_ACTION cannot place or dial calls or send or draft text messages with this phone's own Phone and Messages apps.",
+    );
+    // The runtime may have another call or message tool: it is never told
+    // to refuse, or to hide that tool's result.
+    expect(all).toContain(
+      "Another exposed tool that calls or messages works as usual. When no tool can do it, say plainly",
+    );
+    expect(all).toContain("was started without a tool result");
+    capabilities.push("phone.call.v1");
+    try {
+      expect(await routing()).toContain(
+        "PROPOSE_DEVICE_ACTION cannot send or draft text messages with",
+      );
+      capabilities.push("sms.compose.v1");
+      expect(await routing()).not.toContain("PROPOSE_DEVICE_ACTION cannot");
+    } finally {
+      capabilities.splice(capabilities.indexOf("phone.call.v1"));
+    }
+  });
+  it("names the phone's own calendar create only on a turn that offers it", async () => {
+    const planning = async () =>
+      (
+        await guidance({
+          includeTools: true,
+          providerPhase: "planning",
+          selectedContexts: ["general"],
+          preselectedActions: [native],
+        })
+      ).text;
+    expect(await planning()).toContain("calendar_create_local resolves");
+    binding.localCalendarCreate = false;
+    try {
+      expect(await planning()).not.toContain("calendar_create_local");
+    } finally {
+      binding.localCalendarCreate = true;
+    }
   });
   it("does not expand unrelated native instructions for canonical Notes", async () => {
     const { text } = await guidance({
