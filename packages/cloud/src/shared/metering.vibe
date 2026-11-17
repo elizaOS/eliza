@@ -1,4 +1,4 @@
-// spec/cloud/shared/metering.md, "Story: Never overdraw an account, and settle every call once"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"
 import { Rejected, apply, decodeState, initial, fundable, allowanceCharge, creditCharge, reservedTimeout, dispatchedTimeout, type Event, type Hold } from "../../gen/cloud__shared__metering.effect.vibe"
 import { Rejected as PeriodRejected, apply as applyPeriod, decodeState as decodePeriod, initial as initialPeriod, type Event as PeriodEvent, type Period } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { HoldKey } from "../../gen/cloud__shared__types.ts"

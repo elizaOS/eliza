@@ -1,4 +1,4 @@
-// spec/cloud/shared/metering.md, "Story: Never overdraw an account, and settle every call once"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"
 import { Clock, Duration, Effect } from "effect";
 
 export interface ShiftedClock {

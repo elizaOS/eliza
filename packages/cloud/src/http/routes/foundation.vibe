@@ -1,4 +1,4 @@
-// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"; spec/cloud/billing/plans.md, "Story: Offer the paid plans as the provider sells them"; spec/cloud/shared/metering.md, "Story: Never overdraw an account, and settle every call once"
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"; spec/cloud/billing/plans.md, "Story: Offer the paid plans as the provider sells them"; spec/cloud/shared/metering.md, "Story: Settle every call once"
 import { plansAnswer } from "../../billing/plans.vibe"
 import { Deployment, serviceDocument, signInMethods } from "../../profile/profile.vibe"
 import { sweepHolds } from "../../shared/metering.vibe"

@@ -86,7 +86,7 @@ describe("WP0 Foundation", () => {
     ))
   }))
 
-  it.live("Hold a call against the account's credits and settle it once (spec/cloud/shared/metering.md, \"Story: Never overdraw an account, and settle every call once\"; spec/cloud/billing/funds.md, \"Story: Spend only money the account has\")", () => scoped(effect {
+  it.live("Hold a call against the account's credits and settle it once (spec/cloud/shared/metering.md, \"Story: Settle every call once\"; spec/cloud/billing/funds.md, \"Story: Spend only money the account has\")", () => scoped(effect {
     const cloud = try testCloud()
     try organization(cloud, "org-funded")
     try organization(cloud, "org-empty")
@@ -94,7 +94,7 @@ describe("WP0 Foundation", () => {
       const added = try addCredits({ organizationId: "org-funded", amount: 1_000_000, requestKey: "pilot-1" })
       const again = try addCredits({ organizationId: "org-funded", amount: 1_000_000, requestKey: "pilot-1" })
       const owner = { organizationId: "org-funded", userId: "user-1" }
-      const key = { service: "Inference" as const, requestId: "request-1", part: "chat" }
+      const key = { service: "MeteredInference", caller: owner.userId, requestId: "request-1", part: { tag: "WholeRequest" } } as const
       const first = try reserve(owner, key, 100_000)
       const replay = try reserve(owner, key, 100_000)
       const held = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = $1", ["org-funded"])
