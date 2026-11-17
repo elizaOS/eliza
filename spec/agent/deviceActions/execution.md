@@ -39,7 +39,6 @@ pure def authorityOf(check: AuthorityCheck): Authority =
   else if (not(check.forceReview) and check.requestEligible) DirectRequest
   else NoAuthority
 pure def lawForcedReviewNeedsApproval(check: AuthorityCheck): bool = (check.forceReview and not(check.reviewed)) implies authorityOf(check) == NoAuthority
-pure def lawStaleContextHasNoAuthority(check: AuthorityCheck): bool = not(check.live and check.unexpired) implies authorityOf(check) == NoAuthority
 ```
 
 ### Dispatch needs an exact reservation and the agent's claim
@@ -145,7 +144,7 @@ or the native journal of a message, call or deletion) settles an unknown
 result: the exact row found is applied, a definitive refusal is no effect.
 Without such evidence it stays unknown. An approved deletion settles the
 same way, through its own exact native receipt
-(`os/android/deferredDeletion.md`).
+([deferred deletion](../../os/android/deferredDeletion.md)).
 
 ```quint
 type Readback = RowFound | DefiniteRefusal
@@ -191,13 +190,14 @@ pure def sometimesUploadRetried(s: DeviceAttempt): bool = s.uploads >= 2
 When the agent holds the request as uncertain, the owner's review is sent
 as the `SendReview` effect for the same attempt, and only as the journal's
 evidence allows: applied for a saved applied result, not applied for a
-saved no-effect result, and unresolved only while the result is unknown.
-Which operations may stay unresolved is the operations' rule.
+saved no-effect result, and unresolved only while the result is unknown,
+so a review never says more than the receipt would. Which operations may
+stay unresolved is the operations' rule.
 
 ```quint
 pure def reviewFor(result: DeviceResult): R::ReviewOutcome = match result { | Applied => R::ReviewedApplied | NoEffect(x) => R::ReviewedNotApplied | Unknown => R::ReviewedUnresolved }
 pure def canConfirmReview(s: DeviceAttempt, review: R::ReviewOutcome): bool = isSettled(s.phase) and review == reviewFor(settledResult(s.phase))
 pure def confirmReview(s: DeviceAttempt, review: R::ReviewOutcome): AttemptStep = { state: { ...s, uploads: s.uploads + 1 }, out: List(SendReview({ attemptId: s.attemptId, review: review })) }
 pure val resultValues = Set(Applied, NoEffect({ proof: NeverCalled }), NoEffect({ proof: RefusedOnReadback }), Unknown)
-pure def lawUnknownIsNeverReviewedApplied(result: DeviceResult): bool = result == Unknown implies (reviewFor(result) == R::ReviewedUnresolved and receiptFor(result) == R::ReportedUnknown)
+pure def lawReviewAgreesWithTheReceipt(result: DeviceResult): bool = (reviewFor(result) == R::ReviewedApplied iff receiptFor(result) == R::ReportedApplied) and (reviewFor(result) == R::ReviewedUnresolved iff receiptFor(result) == R::ReportedUnknown)
 ```

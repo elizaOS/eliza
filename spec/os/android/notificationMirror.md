@@ -33,11 +33,11 @@ type RowHandle = { key: str, handle: int, postedAt: int }
 type Callback = { instance: int, generation: int, key: str, app: str, postedAt: int, removal: bool }
 type HistoryRecord = { app: str, at: int }
 type HistoryFile = NoFile | KeptFile({ rows: List[HistoryRecord] }) | UndeletedFile
-type MirrorState = { revision: int, enabled: bool, historyConsent: bool, paused: bool, granted: bool, selected: Set[str], changedSigners: Set[str],
+type MirrorState = { revision: int, ownerEnabled: bool, historyConsent: bool, paused: bool, granted: bool, selected: Set[str], changedSigners: Set[str],
   listener: ListenerSlot, nextInstance: int, generation: int, queue: List[Callback], handles: List[RowHandle], nextHandle: int, historyFile: HistoryFile }
-pure val initial: MirrorState = { revision: 0, enabled: false, historyConsent: false, paused: false, granted: false, selected: Set(), changedSigners: Set(),
+pure val initial: MirrorState = { revision: 0, ownerEnabled: false, historyConsent: false, paused: false, granted: false, selected: Set(), changedSigners: Set(),
   listener: Unbound, nextInstance: 1, generation: 0, queue: List(), handles: List(), nextHandle: 1, historyFile: NoFile }
-pure def collecting(s: MirrorState): bool = s.granted and s.enabled and not(s.paused)
+pure def collecting(s: MirrorState): bool = s.granted and s.ownerEnabled and not(s.paused)
 pure def keepsHistory(s: MirrorState): bool = collecting(s) and s.historyConsent
 pure def afterDeletion(file: HistoryFile, deleted: bool): HistoryFile = if (deleted or file == NoFile) NoFile else UndeletedFile
 pure def canObserveAccess(s: MirrorState, granted: bool): bool = granted != s.granted
@@ -86,9 +86,9 @@ saves nothing. A saved change gets a fresh revision.
 
 ```quint
 pure def canSaveSettings(s: MirrorState, expectedRevision: int, facts: HostFacts): bool = meetsNeed(WithFocus, facts) and expectedRevision == s.revision
-pure def saveSettings(s: MirrorState, expectedRevision: int, enabled: bool, historyConsent: bool, facts: HostFacts, deleted: bool, committed: bool): MirrorState = {
+pure def saveSettings(s: MirrorState, expectedRevision: int, ownerEnabled: bool, historyConsent: bool, facts: HostFacts, deleted: bool, committed: bool): MirrorState = {
   val purged = { ...s, generation: s.generation + 1, handles: List(), historyFile: afterDeletion(s.historyFile, deleted) }
-  if (deleted and committed) { ...purged, enabled: enabled, historyConsent: historyConsent, revision: s.revision + 1 } else purged
+  if (deleted and committed) { ...purged, ownerEnabled: ownerEnabled, historyConsent: historyConsent, revision: s.revision + 1 } else purged
 }
 pure def stepPolicyChangeFollowsAPurge(before: MirrorState, after: MirrorState): bool =
   after.revision != before.revision implies (after.revision == before.revision + 1 and after.historyFile == NoFile and after.handles.length() == 0 and after.generation > before.generation)
@@ -113,7 +113,10 @@ type NoticeSource = ForeignAppNotice | OwnAppNotice | OtherUserNotice | Mismatch
 pure val maxActiveRows = 100
 pure def admits(s: MirrorState, source: NoticeSource, app: str): bool =
   source == ForeignAppNotice and s.selected.contains(app) and not(s.changedSigners.contains(app))
-pure def isBound(s: MirrorState): bool = match s.listener { | Bound(_) => true | Unbound => false }
+pure def isBound(s: MirrorState): bool = {
+  val slot = s.listener
+  match slot { | Bound(_) => true | Unbound => false }
+}
 pure def withHandle(handles: List[RowHandle], h: RowHandle): List[RowHandle] = {
   val others = handles.select(x => x.key != h.key).append(h)
   if (others.length() > maxActiveRows) others.removeAt(0) else others
@@ -152,7 +155,10 @@ nothing and drops every row.
 
 ```quint
 pure val noCallback: Callback = { instance: 0, generation: -1, key: "", app: "", postedAt: 0, removal: false }
-pure def boundTo(s: MirrorState, instance: int): bool = match s.listener { | Bound(b) => b.instance == instance | Unbound => false }
+pure def boundTo(s: MirrorState, instance: int): bool = {
+  val slot = s.listener
+  match slot { | Bound(b) => b.instance == instance | Unbound => false }
+}
 pure def connectListener(s: MirrorState): MirrorState =
   { ...s, listener: Bound({ instance: s.nextInstance }), nextInstance: s.nextInstance + 1, generation: s.generation + 1, handles: List() }
 pure def canDisconnectListener(s: MirrorState, instance: int): bool = boundTo(s, instance)
@@ -202,9 +208,9 @@ type NoticeLook = PublicNotice | SecretNotice
 type IntentOwner = NoIntent | PostingAppIntent | OtherAppIntent
 type RowContent = FullContent | HiddenContent
 pure def rowContent(previewAllowed: bool, look: NoticeLook): RowContent = if (previewAllowed and look == PublicNotice) FullContent else HiddenContent
-pure def canOpen(look: NoticeLook, intent: IntentOwner): bool = look == PublicNotice and intent == PostingAppIntent
+pure def opensOwnIntent(look: NoticeLook, intent: IntentOwner): bool = look == PublicNotice and intent == PostingAppIntent
 pure def lawSecretNoticeIsNeitherShownNorOpened(previewAllowed: bool, intent: IntentOwner): bool =
-  rowContent(previewAllowed, SecretNotice) == HiddenContent and not(canOpen(SecretNotice, intent)) and rowContent(false, PublicNotice) == HiddenContent
+  rowContent(previewAllowed, SecretNotice) == HiddenContent and not(opensOwnIntent(SecretNotice, intent)) and rowContent(false, PublicNotice) == HiddenContent
 ```
 
 ## Story: Keep a short private history only while I allow it
@@ -300,7 +306,7 @@ Android's removal callback arrives. The assistant never sends an action.
 ```quint
 type AndroidRow = RowGone | CurrentRow({ look: NoticeLook, intent: IntentOwner, clearable: bool })
 pure def rowAllows(row: AndroidRow, rowAction: RowAction): bool =
-  match row { | CurrentRow(r) => if (rowAction == OpenRow) canOpen(r.look, r.intent) else r.clearable | RowGone => false }
+  match row { | CurrentRow(r) => if (rowAction == OpenRow) opensOwnIntent(r.look, r.intent) else r.clearable | RowGone => false }
 pure def requestAction(s: MirrorState, handle: int, rowAction: RowAction, facts: HostFacts, row: AndroidRow, confirmation: Confirmation): MirrorStep = {
   val admitted = meetsNeed(WithFocus, facts) and collecting(s) and isBound(s) and s.handles.some(h => h.handle == handle) and rowAllows(row, rowAction)
   { state: s, out: List(if (admitted) ActionRequested({ handle: handle, rowAction: rowAction, confirmation: confirmation }) else ActionRefused) }

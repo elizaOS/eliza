@@ -1,9 +1,8 @@
 # Task wire
 
-What the owner's client may send to the [task host](./index.md), what it
-gets back, and how a chat turn shows a task's choice. The host keeps the
-task; this spec decides which requests reach it, which codes leave it, and
-which replies the client may believe.
+Which requests reach the [task host](./index.md), which codes leave it,
+how a chat turn shows a task's choice, and which replies the owner's
+client may believe.
 
 | Route | Command | Body |
 |---|---|---|
@@ -22,8 +21,7 @@ which replies the client may believe.
 names, never ids. A task reply is `{task: view}` or `{task: null}`, where a
 view is `{schemaVersion: 1, id, revision, epoch, status, hasUnknownOutcome}`;
 accepting an unknown outcome replies `{revision, status}`; the record routes
-reply the task store's `{records}`; the event page is core's task event
-page. Every reply is `Cache-Control: no-store`.
+reply the task store's `{records}`; the event page is core's.
 
 ## Story: Admit only the documented task commands
 
@@ -98,13 +96,11 @@ pure val qValues = Set(NoQuery, OtherQuery, AfterQuery({ canonical: true, after:
 
 ### Only the launch account reaches a serving host, and the storage probe needs neither
 
-The sender is checked first: a request not from the launch account is
-`TASK_UNAUTHORIZED`, and one reaching a host that is not started or is
-poisoned is `TASK_UNAVAILABLE`. Then the route, the query, a start without
-an actuator or goal authorizer (`TASK_HELPER_UNAVAILABLE`, so no cosmetic
-task is made) and the body, in that order. Nothing is read or written for a
-refused request. The storage probe answers anyone the agent's own access
-gate admitted, even a poisoned host, and changes nothing.
+Checked in order: the sender (`TASK_UNAUTHORIZED`), a started, unpoisoned
+host (`TASK_UNAVAILABLE`), the route, the query, for a start an actuator and
+goal authorizer (`TASK_HELPER_UNAVAILABLE`: no cosmetic task), the body. A
+refused request reads and writes nothing. The storage probe answers anyone
+the agent's access gate admitted, even on a poisoned host.
 
 ```quint
 type Admission = Admitted({ command: TaskCommand }) | Refused({ error: TaskError })
@@ -147,11 +143,10 @@ pure def startReply(goalConfirmed: bool, running: bool, sameGoal: bool, slotFree
 
 ### A reply after the host stopped serving says whether a change was saved
 
-A request rechecks its sender after it writes. If the host stopped serving
-it meanwhile, a request that saved nothing answers `TASK_UNAUTHORIZED` and
-one that saved a change answers `TASK_ACCOUNT_CHANGED`, so a 401 always
-means nothing happened. A cleanup the actuator has not confirmed answers
-`TASK_CLEANUP_UNCONFIRMED` after the change is saved.
+A request rechecks its sender after it writes: if the host stopped serving
+meanwhile, it answers `TASK_ACCOUNT_CHANGED` when it saved a change and
+`TASK_UNAUTHORIZED` only when it saved nothing. Unconfirmed cleanup after a
+saved change answers `TASK_CLEANUP_UNCONFIRMED`.
 
 ```quint
 pure def lateRefusal(committed: bool): TaskError = if (committed) TaskAccountChanged else TaskUnauthorized
@@ -221,8 +216,7 @@ pure val offeredValues = Set(NoChoice, Offered({ taskId: "task1", epoch: 1, widg
 
 ### A choice batch is shown only when every choice is valid for the task and epoch
 
-The client hides the whole batch when any one choice is malformed or
-belongs to another task or epoch.
+One malformed or foreign choice hides the whole batch.
 
 ```quint
 pure def showChoices(taskId: str, epoch: int, batch: List[TaskChoice]): bool = batch.every(c => choiceBelongs(taskId, epoch, c))
@@ -285,7 +279,7 @@ pure def sometimesPauseConfirmedAfterStart(c: TaskClient): bool = c.followUp == 
 Resume and Cancel carry the revision of the task the client shows. The
 reply must name the same task at a higher revision: Resume an active task
 at the same or a later epoch, Cancel a cancelled one at a later epoch. With
-no task shown there is nothing to send, which succeeds with no task.
+no task shown nothing is sent and no task is shown.
 
 ```quint
 pure def controlAdmitted(command: ClientCommand, base: TaskViewResult, reply: TaskViewResult): bool = {

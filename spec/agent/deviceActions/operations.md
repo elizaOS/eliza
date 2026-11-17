@@ -180,11 +180,11 @@ pure def lawAStandaloneAgendaReadNegotiatedTheAgenda(prop: Proposal, neg: Negoti
   (validate(prop, neg) and prop.binding == AgendaBinding) implies (prop.opType == ReadCalendarRange and negotiatedHas(neg, CalendarAgendaReadV1))
 ```
 
-### Only browsing a list or opening an item may run without a review
+### Only filtering or opening an item, or starting a voice note, may run without a review
 
-Filtering or opening files, filtering, listing or recording notes, and
-filtering or opening photos may run without a review when bound to the
-owner's own current message. Every other operation is reviewed on the
+Filtering or opening files, filtering or listing notes, starting or stopping
+a voice note in the open Notes view, and filtering or opening photos may run
+without a review when bound to the owner's own current message. Every other operation is reviewed on the
 device first; no phone, clock, photo library or sharing operation ever runs
 directly.
 

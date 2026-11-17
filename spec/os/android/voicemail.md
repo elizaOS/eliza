@@ -73,6 +73,7 @@ pure def refresh(s: Voicemail, facts: HostFacts, read: ReadEvidence, sources: Li
 }
 pure val listedValues = Set(List(), List({ id: 1, heard: false, hasAudio: false }), List({ id: 1, heard: false, hasAudio: true }, { id: 2, heard: true, hasAudio: false }),
   List({ id: 2, heard: false, hasAudio: true }), List({ id: 2, heard: false, hasAudio: false }, { id: 2, heard: true, hasAudio: false }))
+pure val rowsValues = Set(List(), List({ id: 1, heard: false, audio: AudioAsked }), List({ id: 2, heard: true, audio: AudioOnPhone }, { id: 3, heard: false, audio: AudioNotAsked }))
 pure def lawRefreshKeepsOnlyListedRows(rows: List[VoicemailRow], listed: List[ListedRow]): bool =
   listingRows(rows, listed).listMap(r => r.id) == listed.listMap(r => r.id)
 pure def alwaysRowsKeyedByProviderId(s: Voicemail): bool = s.rows.length() <= maxVoicemails and s.rows.every(r => r.id > 0 and s.rows.select(q => q.id == r.id).length() == 1)

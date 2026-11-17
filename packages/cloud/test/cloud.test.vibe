@@ -1,0 +1,137 @@
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { assert, describe, it } from "@effect/vitest"
+import { addCredits } from "../src/billing/funds.vibe"
+import { refusalBody } from "../src/http/refusal.vibe"
+import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
+import { Store } from "../src/store/store.vibe"
+import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
+import { catalogPrices } from "./support/profile.ts"
+
+effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
+  return match (try exit(program)) {
+    when Exit.Success(let value): `succeeded with ${JSON.stringify(value)}`;
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error._tag), Option.getOrElse(() => "defect"));
+  }
+}
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+describe("WP0 Foundation", () => {
+  it.live("Refuse a profile that breaks a rule and a catalog the provider does not sell, then serve the public documents (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\"; spec/cloud/billing/plans.md, \"Story: Offer the paid plans as the provider sells them\")", () => scoped(effect {
+    const sharedOrigin = try failureTag(scoped(testCloud({
+      edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, api: profile.environments.production.api } } })
+    })))
+    const wrongPrice = try failureTag(scoped(testCloud({ prices: [{ ...catalogPrices[0], unitAmount: 2_999 }, catalogPrices[1]] })))
+    const liveModePrice = try failureTag(scoped(testCloud({ prices: catalogPrices.map((price) => ({ ...price, livemode: true })) })))
+    try check(() => assert.deepStrictEqual([sharedOrigin, wrongPrice, liveModePrice], ["ProfileInvalid", "CatalogMismatch", "CatalogMismatch"]))
+
+    const cloud = try testCloud()
+    const health = try cloud.call("/api/health", { headers: { "x-request-id": "journey-request-0001" } })
+    const service = try cloud.call("/api/public/service")
+    const methods = try cloud.call("/api/v1/auth/methods")
+    const plans = try cloud.call("/api/v1/subscriptions/plans")
+    try check(() => assert.deepStrictEqual(
+      [health.status, health.headers["x-request-id"], service.headers["cache-control"], methods.body, plans.body],
+      [200, "journey-request-0001", "no-store", { email: true, sms: true, google: true }, {
+        plans: [
+          { key: "plus_monthly", name: "Plus", amountCents: 3000, currency: "usd", interval: "month", allowance: { amountUsd: "25.000000" } },
+          { key: "pro_monthly", name: "Pro", amountCents: 10000, currency: "usd", interval: "month", allowance: { amountUsd: "90.000000" } }
+        ]
+      }]
+    ))
+    try check(() => assert.deepStrictEqual(service.body, {
+      success: true,
+      version: 1,
+      service: {
+        name: "Test Cloud",
+        terms: { title: "Terms", revision: "2026-11-01", sections: [{ title: "Scope", paragraphs: ["Terms of the test deployment."] }] },
+        privacy: { title: "Privacy", revision: "2026-11-01", sections: [{ title: "Scope", paragraphs: ["Privacy of the test deployment."] }] }
+      }
+    }))
+  }))
+
+  it.live("Answer only the deployment's own callers (spec/cloud/deployment.md, \"Story: Answer only the deployment's own callers\"; spec/cloud/shared/types.md, \"Story: Speak one refusal language\")", () => scoped(effect {
+    const cloud = try testCloud({
+      edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, capabilities: ["inference", "speech", "maps", "managedGoogle"] } } })
+    })
+    const disabled = try cloud.call("/api/v1/subscriptions/plans")
+    const unknown = try cloud.call("/api/v1/nothing-here")
+    const foreign = try cloud.call("/api/health", { headers: { origin: "https://evil.example" } })
+    const own = try cloud.call("/api/health", { headers: { origin: "https://www.staging.example.com" } })
+    const preflight = try cloud.call("/api/health", { method: "OPTIONS", headers: { origin: "https://www.staging.example.com", "access-control-request-method": "GET", "access-control-request-headers": "authorization" } })
+    const foreignPreflight = try cloud.call("/api/health", { method: "OPTIONS", headers: { origin: "https://evil.example", "access-control-request-method": "GET" } })
+    try check(() => assert.deepStrictEqual(
+      {
+        disabled: [disabled.status, disabled.body],
+        unknown: [unknown.status, (unknown.body as { error: string }).error, typeof unknown.headers["x-request-id"]],
+        foreign: foreign.headers["access-control-allow-origin"],
+        own: [own.headers["access-control-allow-origin"], own.headers["access-control-allow-credentials"], own.headers["access-control-expose-headers"]?.includes("X-Request-Id")],
+        preflight: [preflight.status, preflight.headers["access-control-allow-headers"]?.includes("Authorization"), preflight.headers["access-control-allow-origin"]],
+        foreignPreflight: foreignPreflight.headers["access-control-allow-origin"]
+      },
+      {
+        disabled: [404, { error: "capability_unavailable", errorDescription: "Capability unavailable.", retryable: false }],
+        unknown: [404, "not_found", "string"],
+        foreign: undefined,
+        own: ["https://www.staging.example.com", "true", true],
+        preflight: [204, true, "https://www.staging.example.com"],
+        foreignPreflight: undefined
+      }
+    ))
+  }))
+
+  it.live("Hold a call against the account's credits and settle it once (spec/cloud/shared/metering.md, \"Story: Never overdraw an account, and settle every call once\"; spec/cloud/billing/funds.md, \"Story: Spend only money the account has\")", () => scoped(effect {
+    const cloud = try testCloud()
+    try organization(cloud, "org-funded")
+    try organization(cloud, "org-empty")
+    provide Store = cloud.store {
+      const added = try addCredits({ organizationId: "org-funded", amount: 1_000_000, requestKey: "pilot-1" })
+      const again = try addCredits({ organizationId: "org-funded", amount: 1_000_000, requestKey: "pilot-1" })
+      const owner = { organizationId: "org-funded", userId: "user-1" }
+      const key = { service: "Inference" as const, requestId: "request-1", part: "chat" }
+      const first = try reserve(owner, key, 100_000)
+      const replay = try reserve(owner, key, 100_000)
+      const held = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = $1", ["org-funded"])
+      try markDispatched(first.key)
+      const settled = try settle(first.key, { kind: "known", actual: 80_000 })
+      const twice = try settle(first.key, { kind: "known", actual: 80_000 })
+      const balance = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = $1", ["org-funded"])
+      const usage = try sql(cloud, "SELECT charged, from_credits, uncollected, outcome FROM usage_records WHERE hold_key = $1", [first.key])
+      const refusedHold = try exit(reserve({ organizationId: "org-empty", userId: "user-2" }, { ...key, requestId: "request-2" }, 1))
+      const refusal = Exit.isFailure(refusedHold) ? Cause.findErrorOption(refusedHold.cause).pipe(Option.map((error) => "refusal" in error ? refusalBody(error.refusal) : error._tag), Option.getOrUndefined) : undefined
+      try check(() => assert.deepStrictEqual(
+        {
+          added: [added.balance, added.replayed, again.balance, again.replayed],
+          reserved: [first.hold.phase, first.hold.fromCredits, first.replayed, replay.replayed, Number(held[0]?.credit_balance)],
+          settled: [settled.phase, settled.charged, twice.charged, Number(balance[0]?.credit_balance)],
+          usage: usage.map((row) => [Number(row.charged), Number(row.from_credits), Number(row.uncollected), row.outcome]),
+          refusal
+        },
+        {
+          added: [1_000_000, false, 1_000_000, true],
+          reserved: ["Reserved", 150_000, false, true, 1_000_000],
+          settled: ["Settled", 80_000, 80_000, 920_000],
+          usage: [[80_000, 80_000, 0, "known"]],
+          refusal: { error: "insufficient_credits", errorDescription: "Insufficient credits.", retryable: false }
+        }
+      ))
+    }
+  }))
+})
+
+describe.todo("WP1 Identity (spec/cloud/identity/accounts.md, \"Story: Get one account on first sign-in\")")
+describe.todo("WP2 Native clients and pages (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")")
+describe.todo("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")")
+describe.todo("WP4 Subscriptions and entitlements (spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\")")
+describe.todo("WP5 Inference (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\")")
+describe.todo("WP6 Speech (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\")")
+describe.todo("WP7 Maps (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")")
+describe.todo("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")")
+describe.todo("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from the device as configured\")")
+describe.todo("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")")

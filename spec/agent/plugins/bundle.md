@@ -35,6 +35,7 @@ agent tree and the product plugin's package. Each bundler input that emitted
 bytes belongs to one package whose resolved path lies inside that root and
 whose `package.json` names it with a version; the package's row carries that
 `package.json`'s SHA-256. An input that emitted nothing contributes nothing.
+`buildVerdict` checks this rule and each rule below in order.
 
 ```quint
 import launch.* from "../host/launch"

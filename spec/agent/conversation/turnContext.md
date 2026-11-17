@@ -83,9 +83,11 @@ pure def lawASensitiveScreenSharesNoRecordAndNoDay(o: ObservationFacts): bool =
   (o.sensitivity == Sensitive and (o.selection == SelectedRecord or o.day != NoDay)) implies not(observationAccepted(o))
 pure def lawACivilDayNeedsTheCalendarInAKnownZone(o: ObservationFacts): bool =
   o.day != NoDay implies (not(observationAccepted({ ...o, view: View({ viewName: "notes" }) })) and not(observationAccepted({ ...o, sensitivity: SensitivityUnstated })) and not(observationAccepted({ ...o, zone: NoZone })))
-pure def lawTheCalendarDayIsAcceptedInItsOwnZone(o: ObservationFacts): bool =
+pure def lawTheCalendarDayIsAcceptedInItsOwnZone(o: ObservationFacts): bool = {
+  val zone = o.zone
   (observationAccepted(withoutOptionalFields(o)) and o.view == calendarView and o.sensitivity == NotSensitive and o.bytesWithoutDay < observationMaxBytes) implies
-    match o.zone { | Zone(z) => observationAccepted({ ...o, day: Day({ dayZone: z.zoneName, dayBytes: observationMaxBytes - o.bytesWithoutDay }) }) | _ => true }
+    match zone { | Zone(z) => observationAccepted({ ...o, day: Day({ dayZone: z.zoneName, dayBytes: observationMaxBytes - o.bytesWithoutDay }) }) | _ => true }
+}
 pure def lawWithoutOptionalFieldsTheObservationStaysAccepted(o: ObservationFacts): bool =
   observationAccepted(o) implies observationAccepted(withoutOptionalFields(o))
 ```
@@ -179,7 +181,10 @@ pure def comparePeer(support: PeerSupport, read: StatusRead): PeerSupport = matc
   | SamePeer(p) => if (read == Read({ instance: p.instance })) support else OrdinaryOnly
   | _ => support
 }
-pure def sendsOptionalFields(support: PeerSupport, read: StatusRead): bool = match comparePeer(support, read) { | SamePeer(_) => true | _ => false }
+pure def sendsOptionalFields(support: PeerSupport, read: StatusRead): bool = {
+  val compared = comparePeer(support, read)
+  match compared { | SamePeer(_) => true | _ => false }
+}
 pure val readValues = Set(Read({ instance: "instance1" }), Read({ instance: "instance2" }), NoInstance, ReadFailed)
 pure val supportValues = Set(NotLearned, SamePeer({ instance: "instance1" }), OrdinaryOnly)
 pure val firstValues = readValues

@@ -84,7 +84,8 @@ pure val entriesValues = Set(List(), List({ id: 1, doc: 1, retention: RetainedRe
 pure val entryValues = Set({ id: 3, doc: 1, retention: RetainedRead }, { id: 3, doc: 2, retention: Transient })
 pure def lawAdmissionKeepsTheNewestWithinCapacity(entries: List[SelectedDocument], entry: SelectedDocument, capacity: int): bool = {
   val admitted = admit(entries, entry, capacity)
-  (capacity >= 1 and entries.length() <= capacity) implies (admitted.length() <= capacity and hasEntry(admitted, entry.id) and admitted.length() >= entries.length())
+  (capacity >= 1 and entries.length() < capacity implies admitted.length() == entries.length() + 1 and hasEntry(admitted, entry.id)) and
+  (capacity >= 1 and entries.length() == capacity implies admitted.length() == capacity and hasEntry(admitted, entry.id) and admitted.nthOr(0, noSelection) == entries.nthOr(1, entry))
 }
 pure def alwaysWithinCapacity(s: DocumentGrants): bool = s.entries.length() <= maxSelections
 ```
