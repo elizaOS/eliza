@@ -153,6 +153,7 @@ public class EmbeddedAgentService extends EmbeddedRuntimeService {
     try {
       AndroidRuntimeDirectories.ensurePrivateRuntimeParent(root.getParentFile());
       if (!root.isDirectory() && !root.mkdirs()) throw new IOException("Cannot create the private runtime directory");
+      AndroidRuntimeDirectories.ensurePrivateRuntimeParent(root);
       long version = getPackageManager().getPackageInfo(getPackageName(), 0).getLongVersionCode();
       return RuntimeBundleStore.prepare(root.toPath().resolve("releases"), version, name -> getAssets().open(name),
         new File(getApplicationInfo().nativeLibraryDir).toPath(), AndroidRuntimeDirectories::syncRuntimeDirectory);
