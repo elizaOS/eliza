@@ -1,0 +1,79 @@
+# Include stock device CIL extensions emitted by pinned adevtool.
+# Adapted from GrapheneOS/platform_system_sepolicy 5e359dcf9ae863a593e9055a85e1657c87c4cb18
+# (2026100600), Android.bp extension wiring only; AOSP platform remains unchanged.
+--- a/system/sepolicy/Android.bp
++++ b/system/sepolicy/Android.bp
+@@ -88,6 +88,16 @@
+ se_build_files {
+     name: "sepolicy_technical_debt",
+     srcs: ["technical_debt.cil"],
++}
++
++se_build_files {
++    name: "sepolicy_ext_cil",
++    srcs: ["sepolicy_ext.cil"],
++}
++
++se_build_files {
++    name: "sepolicy_ext_recovery_cil",
++    srcs: ["sepolicy_ext_recovery.cil"],
+ }
+ 
+ phony {
+@@ -225,6 +235,7 @@
+ 
+ se_policy_cil {
+     name: "system_ext_pub_policy.cil",
++    additional_cil_files: [":sepolicy_ext_cil{.system_ext_public}"],
+     src: ":system_ext_pub_policy.conf",
+     filter_out: [":reqd_policy_mask.cil"],
+     secilc_check: false,
+@@ -332,6 +343,7 @@
+ 
+ se_policy_cil {
+     name: "system_ext_sepolicy.cil",
++    additional_cil_files: [":sepolicy_ext_cil{.system_ext_private}"],
+     src: ":system_ext_sepolicy.conf",
+     system_ext_specific: true,
+     filter_out: [":plat_sepolicy.cil"],
+@@ -354,6 +366,7 @@
+ 
+ se_policy_cil {
+     name: "product_sepolicy.cil",
++    additional_cil_files: [":sepolicy_ext_cil{.product_private}"],
+     src: ":product_sepolicy.conf",
+     product_specific: true,
+     filter_out: [
+@@ -438,6 +451,7 @@
+ 
+ se_policy_cil {
+     name: "vendor_sepolicy.unversioned.cil",
++    additional_cil_files: [":sepolicy_ext_cil{.vendor}"],
+     src: ":vendor_sepolicy.conf",
+     filter_out: [":reqd_policy_mask.cil"],
+     secilc_check: false, // will be done in se_versioned_policy module
+@@ -479,6 +493,7 @@
+ 
+ se_policy_cil {
+     name: "odm_sepolicy.unversioned.cil",
++    additional_cil_files: [":sepolicy_ext_cil{.odm}"],
+     src: ":odm_sepolicy.conf",
+     filter_out: [
+         ":reqd_policy_mask.cil",
+@@ -735,6 +750,7 @@
+ 
+ se_policy_cil {
+     name: "recovery_sepolicy.cil",
++    additional_cil_files: [":sepolicy_ext_cil{.system_ext_public}", ":sepolicy_ext_cil{.system_ext_private}", ":sepolicy_ext_cil{.product_public}", ":sepolicy_ext_cil{.product_private}", ":sepolicy_ext_recovery_cil{.vendor}", ":sepolicy_ext_cil{.odm}"],
+     src: ":recovery_sepolicy.conf",
+     secilc_check: false, // will be done in se_policy_binary module
+     installable: false,
+@@ -819,7 +835,7 @@
+ se_policy_cil {
+     name: "base_product_sepolicy.cil",
+     src: ":base_product_sepolicy.conf",
+-    additional_cil_files: ["private/technical_debt.cil"],
++    additional_cil_files: ["private/technical_debt.cil", ":sepolicy_ext_cil{.product_public}"],
+     product_specific: true,
+     installable: false,
+     secilc_check: false, // done by se_policy_binary

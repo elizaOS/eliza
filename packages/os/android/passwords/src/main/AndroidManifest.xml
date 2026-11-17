@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The library declares its authentication permission and non-exported Activities. Hosts opt in to being an Autofill
+     provider by declaring ElizaPasswordAutofillService themselves (see README). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <application>
+        <activity
+            android:name="ai.eliza.plugins.passwords.PasswordFillActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="false"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode|density"
+            android:theme="@style/ElizaPasswords.Theme.Dialog" />
+        <activity
+            android:name="ai.eliza.plugins.passwords.PasswordSaveActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode|density"
+            android:theme="@style/ElizaPasswords.Theme.Dialog" />
+    </application>
+</manifest>

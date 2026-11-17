@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Reviewed source contract only; not image, locked capture, or device acceptance.",
+  "modules": [
+    {
+      "path": ".repo/manifests",
+      "commit": "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f",
+      "files": {
+        "default.xml": "76ef74339da1e0c973d1ec7cb92045e823223a7724d9aa453b4cab4e246122c4"
+      }
+    },
+    {
+      "path": "packages/apps/Camera2",
+      "commit": "3adb5275b9791c2128e78969579a69f03fe1ac00",
+      "files": {
+        "Android.bp": "6cb4497fe8b972e77f07cba6657094bf0741f4b36bf4123d544c97ccf0d79dcc",
+        "AndroidManifest.xml": "0a7921704cc1bb288ecbd0838aac5d4533c6104f84d7af3cf9aaaaeb5968222a",
+        "src/com/android/camera/CameraActivity.java": "b25515cba3d1373b69cc9560fa694487cc6e68fa97682ac8cd7548e72cf7151c",
+        "src/com/android/camera/SecureCameraActivity.java": "82deaccbfc5ef6dba2d51dd202cc943d3ba155ae5750434d2f4b602def250c92"
+      }
+    },
+    {
+      "path": "frameworks/base",
+      "commit": "94b4c163b7dfe5ce3607f7bb8456f9573f7de57d",
+      "files": {
+        "core/res/res/values/config.xml": "f38d596b66a4326b5135dbb6625e75565ba174214266cb565b912bae54bbd540",
+        "services/core/java/com/android/server/GestureLauncherService.java": "c46b6f48d8ef15aa1849d31fcd4aaf4a08d03d6bbe5d4a010dea64b60cc3ba8d",
+        "packages/SystemUI/src/com/android/systemui/camera/CameraIntents.kt": "5df8a5b95a7441aeb3622d45a1fa5cb18a654c543eadb65ff4a53c9940979c40",
+        "packages/SystemUI/res/values/config.xml": "f9556cc853a04591a54f8470904f023bb41d7c9980217fd7306117dcafcae513"
+      }
+    },
+    {
+      "path": "build/make",
+      "commit": "5ce6f787337d0223710bf7d4a16dbe6d2a35f777",
+      "files": {
+        "target/product/handheld_product.mk": "a450148917a5d5affd30d7b75f1bffb56a6b78678ba6bd4ed4472fae9da21c7a"
+      }
+    }
+  ]
+}

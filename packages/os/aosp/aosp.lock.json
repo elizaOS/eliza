@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "pixel10a": {
+      "kind": "physical",
+      "device": {
+        "sourceTarget": "pixel10a",
+        "codename": "stallion",
+        "marketingName": "Pixel 10a",
+        "androidRelease": "17",
+        "observedSku": "GE1GQ",
+        "buildId": "CP3A.261005.005",
+        "vendorApiLevel": "202604"
+      },
+      "manifest": {
+        "url": "https://android.googlesource.com/platform/manifest",
+        "tag": "android-17.0.0_r1",
+        "tagObject": "7a9e46ba6ed424f922a3457f4964e67e0b966201",
+        "commit": "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f"
+      },
+      "sourceInventory": {
+        "path": "sources/pixel10a-stallion.json",
+        "sha256": "b7041cce4faf186f5c6e410694b52d8ee4ef2edab8edbef58119e943089d2ce3"
+      }
+    },
+    "cuttlefish": {
+      "kind": "virtual",
+      "manifest": {
+        "url": "https://android.googlesource.com/platform/manifest",
+        "tag": "android-17.0.0_r1",
+        "tagObject": "7a9e46ba6ed424f922a3457f4964e67e0b966201",
+        "commit": "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f"
+      },
+      "projects": [
+        {
+          "path": "device/google/cuttlefish",
+          "name": "device/google/cuttlefish",
+          "tagObject": "fc81d4d790cf71b00c17dbcb476c9cf05279f3ff",
+          "commit": "283645aacf6cdb56cc31a9362f54d412dbc132a1"
+        }
+      ],
+      "requiredSourceFiles": [
+        "device/google/cuttlefish/vsoc_arm64/phone/aosp_cf.mk",
+        "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk"
+      ],
+      "supportedProducts": ["eliza_cf_arm64_phone", "eliza_cf_x86_64_phone"]
+    }
+  }
+}

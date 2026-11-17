@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""Test double for apksigner verify --print-certs: prints a package's CERT entry as its signer."""
+import sys
+import zipfile
+
+try:
+    cert = zipfile.ZipFile(sys.argv[-1]).read('CERT').decode()
+except Exception:
+    sys.exit(1)
+print('Signer #1 certificate SHA-256 digest: ' + cert)

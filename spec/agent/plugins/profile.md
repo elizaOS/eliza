@@ -1,302 +1,208 @@
-# Plugin profile
+# Plugin plan
 
-A host boots with a profile: the plugin capability classes a deployment
-admits, and the plugins it denies by name. A consumer build may also ship a
-plugin policy that names the only plugins to load, and an on-device agent
-selects a runtime profile that binds its inference to the owner's cloud
-account. The
-[kernel's plugin registry](../../core/plugins.md) owns initialization and
-shutdown once the host has chosen its inputs; provider admission is in
-[model providers](./modelProviders.md). Action name ownership and the role
-check are [action planning](../../core/actionPlanning.md)'s, and the host
-allowlist is the [chat gateway](../conversation/chatGateway.md)'s.
+The plugins one agent process loads, in what order, and when the plan stops
+boot. The launch names a load list, an optional product plugin, the privacy
+switches, the allowed actions and an optional workflow worker; the bundle
+says which plugins were compiled into it. Registration of each plugin is
+core plugins' (`spec/core/plugins.md`); the action allowlist and its umbrella
+rules are [action planning](../../core/actionPlanning.md), used here and not
+restated. A refused plan ends the process with the `Config` exit class of
+the launch (`spec/agent/host/launch.md`).
 
-## Story: Boot with the admitted plugin profile
+## Story: Load only the plugins my product lists
 
-> As the owner of a branded deployment, my agent boots with exactly the
-> plugins my profile admits, on the phone, on the device image and on a
-> lean server.
+> As the maker of a product, I want my agent to load exactly the plugins my
+> launch lists, so that no plugin I did not choose ever reaches my users.
 
-### A mobile platform selects its mobile profile even when a lean host was asked for
+### A load list names only plugins the bundle carries or the agent's own modules
+
+The agent's own optional modules are named plugins like any other.
+`@elizaos/agent/basic-actions` registers one action, `CALCULATE`: arithmetic
+only, no I/O, for a User caller. Any other name refuses boot.
 
 ```quint
-type HostProfile = MobileAndroid | MobileIos | LeanHost | FullHost
-type CapabilityClass = MessageCore | BootstrapSql | SchedulingCore | BrowserCore | FilesystemCore | ProfileView | WorkflowPlugin | FullAssistant | SelectiveReminder | CalendarOwner | GoalOwner | MobileProvider | LocalInferencePlugin | AndroidPhonePlugin | ImageSurface | ImageTerminal | UnbundledPlugin
-pure def hostProfile(android: bool, ios: bool, leanRequested: bool): HostProfile =
-  if (android) MobileAndroid else if (ios) MobileIos else if (leanRequested) LeanHost else FullHost
-pure def mobileProfile(profile: HostProfile): bool = profile == MobileAndroid or profile == MobileIos
-pure def lawMobileProfileWins(android: bool, ios: bool, leanRequested: bool): bool =
-  (android or ios) implies mobileProfile(hostProfile(android, ios, leanRequested))
+import actionPlanning as AP from "../../core/actionPlanning"
+import authorization as Z from "../../core/authorization"
+type ProductChoice = NoProduct | Product({ name: str })
+type WorkerLaunch = NoWorkerNamed | WorkerNamed({ digest: str })
+type WorkerState = NoWorker | Unverified({ expected: str }) | Verified({ pinned: str })
+type PlanFailure = UnknownPlugin | ReservedPlugin | DuplicatePlugin | MissingProduct | RouteClaimed | StaleAllowlist | WorkerMismatch
+type PlanPhase = Choosing | Registering | Ready | Refused({ cause: PlanFailure })
+type ProcessValue = PlainSetting | DeviceCredential | LaunchToken | StorageKey
+type PluginPlan = { phase: PlanPhase, bundled: Set[str], privacyOn: bool, product: ProductChoice, order: List[str], next: int, allowed: Set[str], actions: Set[str], moduleRoutes: Set[str], productRoutes: Set[str], worker: WorkerState, workerEnv: Set[ProcessValue], workerRuns: int }
+pure val initial: PluginPlan = { phase: Choosing, bundled: Set(), privacyOn: false, product: NoProduct, order: List(), next: 0, allowed: Set(), actions: Set(), moduleRoutes: Set(), productRoutes: Set(), worker: NoWorker, workerEnv: Set(), workerRuns: 0 }
+pure val builtinModules = Set("@elizaos/agent/basic-actions", "@elizaos/agent/approvals", "@elizaos/agent/notifications", "@elizaos/agent/views", "@elizaos/agent/device-actions", "@elizaos/agent/reply-draft", "@elizaos/agent/triggers", "@elizaos/agent/scheduled-tasks", "@elizaos/agent/tasks", "@elizaos/agent/surface")
+pure val calculateAction: AP::ActionDecl = { name: "CALCULATE", subactions: List(), minRole: Z::User }
+pure def available(bundled: Set[str]): Set[str] = bundled.union(builtinModules)
+pure def productName(product: ProductChoice): str = match product { | Product(p) => p.name | NoProduct => "" }
+pure def lawUnknownPluginRefusesBoot(bundled: Set[str], load: List[str], product: ProductChoice): bool =
+  load.some(n => not(available(bundled).contains(n))) implies planPhase(bundled, load, product) != Registering
 ```
 
-### A mobile profile admits only the plugins bundled with it, and a lean host drops the browser and the full assistant
+### Storage, the cloud link and the privacy service always load and cannot be listed
 
-A mobile profile keeps only its statically available named classes; it
-never collects the local inference package through its static
-model-provider list. A lean host drops the browser, the full assistant and
-the device image's terminal contributions.
+They are the agent's own; a load list or product plugin that names one
+refuses boot.
 
 ```quint
-pure def bundleAllows(profile: HostProfile, capability: CapabilityClass): bool =
-  if (mobileProfile(profile)) capability != LocalInferencePlugin and capability != UnbundledPlugin
-  else if (profile == LeanHost) capability != BrowserCore and capability != FullAssistant and capability != ImageTerminal
-  else true
+pure val storagePlugin = "@elizaos/agent/storage"
+pure val cloudLinkPlugin = "@elizaos/agent/cloud"
+pure val privacyPlugin = "@elizaos/core/privacy"
+pure val fixedPlugins = Set("@elizaos/agent/storage", "@elizaos/agent/cloud", "@elizaos/core/privacy")
+pure def reserved(name: str): bool = fixedPlugins.contains(name) or builtinModules.contains(name)
+pure def lawListedFixedPluginRefusesBoot(bundled: Set[str], load: List[str], product: ProductChoice): bool =
+  load.some(n => fixedPlugins.contains(n)) implies planPhase(bundled, load, product) == Refused({ cause: ReservedPlugin })
 ```
 
-### Device-image plugins need their gates, and a lean host collects local inference only by its embedding opt-in
+### A plugin is listed at most once
 
-The Wi-Fi, Contacts and remote-target plugins, and the device image's
-terminal contributions, need the device-image runtime gate: Android with
-`ELIZA_LOCAL_LLAMA=1`. The Phone plugin can also enter through the Android
-SMS draft flag, which the launcher sets only for a verified image. A store
-build (`ELIZA_BUILD_VARIANT=store`) collects no image terminal
-contribution on any profile. On a lean host the local inference package is
-dropped by default; its final gate adds it back, after configured
-disables, exactly when local embeddings are opted in and Cloud embeddings
-are not explicitly switched on. The separate local inference handler and
-actual embedding readiness belong to [model providers](./modelProviders.md);
-the launcher's distribution profile is a separate policy. The shell
-resolves actual package names, availability and denial aliases to these
-classes before startup.
+The product plugin is named on its own and never also in the load list.
 
 ```quint
-type ProfileGates = { deviceImage: bool, smsDraft: bool, store: bool, leanLocalEmbeddings: bool, cloudEmbeddingsPinned: bool }
-pure def mobileBundleAllows(profile: HostProfile, capability: CapabilityClass, gates: ProfileGates): bool =
-  if (capability == AndroidPhonePlugin) profile == MobileAndroid and (gates.deviceImage or gates.smsDraft)
-  else if (capability == ImageSurface or capability == ImageTerminal) profile == MobileAndroid and gates.deviceImage
-  else bundleAllows(profile, capability)
-pure def collectedCandidate(profile: HostProfile, capability: CapabilityClass, gates: ProfileGates, selected: bool): bool =
-  if (profile == LeanHost and capability == LocalInferencePlugin) gates.leanLocalEmbeddings and not(gates.cloudEmbeddingsPinned)
-  else if (capability == ImageTerminal and gates.store) false
-  else selected and (if (mobileProfile(profile)) mobileBundleAllows(profile, capability, gates) else bundleAllows(profile, capability))
-pure val defaultGates: ProfileGates = { deviceImage: false, smsDraft: false, store: false, leanLocalEmbeddings: false, cloudEmbeddingsPinned: false }
-pure val gatesValues = Set(defaultGates, { ...defaultGates, deviceImage: true }, { ...defaultGates, smsDraft: true },
-  { ...defaultGates, deviceImage: true, store: true }, { ...defaultGates, leanLocalEmbeddings: true },
-  { ...defaultGates, leanLocalEmbeddings: true, cloudEmbeddingsPinned: true })
-pure def lawMobileHasNoUnbundledPlugins(profile: HostProfile, gates: ProfileGates, selected: bool): bool =
-  mobileProfile(profile) implies not(collectedCandidate(profile, UnbundledPlugin, gates, selected))
-pure def lawOrdinaryMobileCannotCollectImageSurfaces(profile: HostProfile, gates: ProfileGates, selected: bool): bool =
-  (mobileProfile(profile) and not(profile == MobileAndroid and gates.deviceImage)) implies
-    not(collectedCandidate(profile, ImageSurface, gates, selected) or collectedCandidate(profile, ImageTerminal, gates, selected))
-pure def lawMobilePhoneNeedsImageOrSms(profile: HostProfile, gates: ProfileGates, selected: bool): bool =
-  (mobileProfile(profile) and collectedCandidate(profile, AndroidPhonePlugin, gates, selected)) implies
-    profile == MobileAndroid and (gates.deviceImage or gates.smsDraft)
-pure def lawStoreRejectsImageTerminal(profile: HostProfile, gates: ProfileGates, selected: bool): bool =
-  gates.store implies not(collectedCandidate(profile, ImageTerminal, gates, selected))
-pure def lawLeanLocalEmbeddingGateWins(gates: ProfileGates, selected: bool): bool =
-  collectedCandidate(LeanHost, LocalInferencePlugin, gates, selected) == (gates.leanLocalEmbeddings and not(gates.cloudEmbeddingsPinned))
+pure def distinct(xs: List[str]): bool = xs.every(x => xs.select(y => y == x).length() == 1)
+pure def planPhase(bundled: Set[str], load: List[str], product: ProductChoice): PlanPhase = {
+  val name = productName(product)
+  if (load.some(n => fixedPlugins.contains(n)) or reserved(name)) Refused({ cause: ReservedPlugin })
+  else if (load.some(n => not(available(bundled).contains(n)))) Refused({ cause: UnknownPlugin })
+  else if (not(distinct(load)) or load.includes(name)) Refused({ cause: DuplicatePlugin })
+  else if (name != "" and not(bundled.contains(name))) Refused({ cause: MissingProduct })
+  else Registering
+}
+pure def lawRepeatedPluginRefusesBoot(bundled: Set[str], load: List[str], product: ProductChoice): bool =
+  not(distinct(load)) implies planPhase(bundled, load, product) != Registering
 ```
 
-### The workflow plugin's off switch wins on every profile
+### Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last
 
-Android needs the mobile opt-in, which the launcher supplies only for an
-admitted installation; a lean host needs the lean opt-in; iOS never runs
-workflows.
+The privacy service is core's, in the launch's mode, and loads only when
+either privacy switch is on. Each plugin registers through core plugins in
+this order, one at a time.
 
 ```quint
-pure def workflowSelected(profile: HostProfile, candidate: bool, workflowOff: bool, mobileOptIn: bool, leanOptIn: bool): bool =
-  candidate and not(workflowOff) and
-  (if (profile == MobileAndroid) mobileOptIn else if (profile == MobileIos) false else if (profile == LeanHost) leanOptIn else true)
-pure def lawWorkflowOffWins(profile: HostProfile, candidate: bool, mobileOptIn: bool, leanOptIn: bool): bool =
-  not(workflowSelected(profile, candidate, true, mobileOptIn, leanOptIn))
+pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
+pure def planOrder(load: List[str], product: ProductChoice, privacyOn: bool): List[str] = {
+  val name = productName(product)
+  List(storagePlugin, cloudLinkPlugin).concat(if (privacyOn) List(privacyPlugin) else List()).concat(load).concat(if (name == "") List() else List(name))
+}
+pure val bundledValues = Set(Set("@elizaos/plugin-workflow", "product"), Set("@elizaos/plugin-workflow"))
+pure val loadValues = Set(List(), List("@elizaos/agent/basic-actions"), List("@elizaos/agent/tasks", "@elizaos/plugin-workflow"), List("@elizaos/plugin-wallet"), List("@elizaos/agent/storage"), List("@elizaos/agent/tasks", "@elizaos/agent/tasks"))
+pure val productValues = Set(NoProduct, Product({ name: "product" }))
+pure val allowedValues = Set(Set("REPLY", "CALCULATE"), Set("REPLY", "PRODUCT_ACTION"), Set("REPLY", "RENAMED"))
+pure val workerLaunchValues = Set(NoWorkerNamed, WorkerNamed({ digest: "aa" }))
+pure def canChoosePlan(s: PluginPlan, bundled: Set[str], load: List[str], product: ProductChoice, privacyOn: bool, allowed: Set[str], workerLaunch: WorkerLaunch): bool =
+  s.phase == Choosing and not(bundled.contains("")) and not(load.includes(""))
+pure def choosePlan(s: PluginPlan, bundled: Set[str], load: List[str], product: ProductChoice, privacyOn: bool, allowed: Set[str], workerLaunch: WorkerLaunch): PluginPlan = {
+  val phase = planPhase(bundled, load, product)
+  if (phase != Registering) { ...s, phase: phase }
+  else { ...s, phase: Registering, bundled: bundled, privacyOn: privacyOn, product: product, order: planOrder(load, product, privacyOn), allowed: allowed, actions: messageServiceActions,
+    worker: match workerLaunch { | WorkerNamed(w) => Unverified({ expected: w.digest }) | NoWorkerNamed => NoWorker } }
+}
+pure def lawProductLoadsLast(load: List[str], product: ProductChoice, privacyOn: bool): bool =
+  productName(product) != "" implies planOrder(load, product, privacyOn).nthOr(planOrder(load, product, privacyOn).length() - 1, "") == productName(product)
+pure def alwaysNextWithinPlan(s: PluginPlan): bool = s.next >= 0 and s.next <= s.order.length()
+pure def alwaysPlannedPluginsAreAvailable(s: PluginPlan): bool = s.order.every(n => fixedPlugins.contains(n) or available(s.bundled).contains(n))
+pure def alwaysPrivacyServiceFollowsTheSwitch(s: PluginPlan): bool = s.order.length() > 0 implies (s.order.includes(privacyPlugin) iff s.privacyOn)
+pure def alwaysNoPluginPlannedTwice(s: PluginPlan): bool = distinct(s.order)
+pure def sometimesReadyWithProductAndPrivacy(s: PluginPlan): bool = s.phase == Ready and s.privacyOn and s.product != NoProduct
+pure def sometimesUnknownPluginRefused(s: PluginPlan): bool = s.phase == Refused({ cause: UnknownPlugin })
+pure def sometimesListedFixedPluginRefused(s: PluginPlan): bool = s.phase == Refused({ cause: ReservedPlugin })
+pure def sometimesRepeatedPluginRefused(s: PluginPlan): bool = s.phase == Refused({ cause: DuplicatePlugin })
 ```
 
-### The full assistant owns calendar, goals and selective reminders, and calendar brings the scheduler
-
-A separate plugin cannot compete for those handlers while the full
-assistant is present. Selective reminders bring the scheduler unless it was
-explicitly switched off.
+### A refused plan loads nothing more
 
 ```quint
-pure def survivesComposition(capability: CapabilityClass, assistantPresent: bool): bool =
-  not(assistantPresent and (capability == SelectiveReminder or capability == CalendarOwner or capability == GoalOwner))
-pure def addScheduler(candidate: bool, calendarPresent: bool, reminderPresent: bool, schedulerExplicitOff: bool): bool =
-  candidate or calendarPresent or (reminderPresent and not(schedulerExplicitOff))
-pure def lawAssistantOwnsSelectiveReminder(assistantPresent: bool): bool =
-  assistantPresent implies not(survivesComposition(SelectiveReminder, assistantPresent))
-pure def lawCalendarRequiresScheduler(candidate: bool, reminderPresent: bool, schedulerExplicitOff: bool): bool =
-  addScheduler(candidate, true, reminderPresent, schedulerExplicitOff)
+pure def isRefused(phase: PlanPhase): bool = match phase { | Refused(r) => true | _ => false }
+pure def stepRefusalIsFinal(before: PluginPlan, after: PluginPlan): bool =
+  isRefused(before.phase) implies (after.phase == before.phase and after.next == before.next)
 ```
 
-### Only a plugin the profile admits and nobody denied is registered
+## Story: Register my product's own actions and routes
 
-The boot chooses the profile with its gates; a plugin is admitted when
-that profile and those gates collect it. Nothing registers before the boot
-profile is chosen.
+> As the maker of a product, I want my own plugin to add its actions and
+> routes to the agent, so that my product's abilities run beside Eliza's
+> without taking over any of the agent's own.
+
+### The product plugin must be in the bundle
 
 ```quint
-type PluginPhase = Absent | Migrating | Registering | Ready | Unloading
-type Registration = { chosen: bool, profile: HostProfile, gates: ProfileGates, plugin: CapabilityClass, denied: bool, bootFailed: bool, phase: PluginPhase, inGeneration: bool, roles: bool, schema: bool, published: bool, closed: bool }
-pure val initial: Registration = { chosen: false, profile: FullHost, gates: defaultGates, plugin: MessageCore, denied: false, bootFailed: false, phase: Absent, inGeneration: true, roles: false, schema: false, published: false, closed: false }
-pure def admitted(profile: HostProfile, gates: ProfileGates, plugin: CapabilityClass, denied: bool): bool = collectedCandidate(profile, plugin, gates, true) and not(denied)
-pure val pluginValues = Set(MessageCore, BrowserCore, FullAssistant, WorkflowPlugin, LocalInferencePlugin, ImageTerminal, UnbundledPlugin)
-pure def canChooseBoot(r: Registration, profile: HostProfile, gates: ProfileGates, plugin: CapabilityClass, denied: bool): bool = not(r.chosen)
-pure def chooseBoot(r: Registration, profile: HostProfile, gates: ProfileGates, plugin: CapabilityClass, denied: bool): Registration = { ...r, chosen: true, profile: profile, gates: gates, plugin: plugin, denied: denied }
-pure def alwaysPublishedPluginIsAdmitted(r: Registration): bool = r.phase != Absent implies admitted(r.profile, r.gates, r.plugin, r.denied)
-pure def alwaysNothingRegistersBeforeBootIsChosen(r: Registration): bool = not(r.chosen) implies r.phase == Absent
-pure def sometimesUnbundledPluginStaysAbsent(r: Registration): bool = r.chosen and mobileProfile(r.profile) and r.plugin == UnbundledPlugin and r.phase == Absent
+pure def lawMissingProductRefusesBoot(bundled: Set[str], product: ProductChoice): bool =
+  (productName(product) != "" and not(reserved(productName(product))) and not(bundled.contains(productName(product)))) implies
+    planPhase(bundled, List(), product) == Refused({ cause: MissingProduct })
+pure def sometimesMissingProductRefused(s: PluginPlan): bool = s.phase == Refused({ cause: MissingProduct })
 ```
 
-### Denying the required message service fails boot
+### A product route never claims a route prefix an agent module owns
+
+Each registration names its actions and the route prefixes its routes fall
+under. A product route under a prefix that storage, the cloud link or one of
+the agent's own modules registered refuses boot.
 
 ```quint
-pure def canRefuseBoot(r: Registration): bool = r.chosen and r.denied and r.plugin == MessageCore and not(r.bootFailed)
-pure def refuseBoot(r: Registration): Registration = { ...r, bootFailed: true }
-pure def alwaysFailedBootPublishesNothing(r: Registration): bool = r.bootFailed implies not(r.published) and r.phase == Absent
-pure def sometimesBootRefused(r: Registration): bool = r.bootFailed
+pure val actionsValues = Set(Set(), Set("REPLY"), Set("CALCULATE"), Set("PRODUCT_ACTION"))
+pure val routesValues = Set(Set(), Set("/api/tasks"), Set("/api/product"))
+pure def agentModule(name: str): bool = name == storagePlugin or name == cloudLinkPlugin or builtinModules.contains(name)
+pure def overlaps(a: Set[str], b: Set[str]): bool = a.exists(r => b.contains(r))
+pure def canRegisterNext(s: PluginPlan, actions: Set[str], routes: Set[str]): bool = s.phase == Registering and s.next < s.order.length()
+pure def registerNext(s: PluginPlan, actions: Set[str], routes: Set[str]): PluginPlan = {
+  val name = s.order.nthOr(s.next, "")
+  val isProduct = name == productName(s.product)
+  val clash = if (isProduct) overlaps(routes, s.moduleRoutes) else agentModule(name) and overlaps(routes, s.productRoutes)
+  if (clash) { ...s, phase: Refused({ cause: RouteClaimed }) }
+  else { ...s, next: s.next + 1, actions: s.actions.union(actions),
+    moduleRoutes: if (agentModule(name) and not(isProduct)) s.moduleRoutes.union(routes) else s.moduleRoutes,
+    productRoutes: if (isProduct) s.productRoutes.union(routes) else s.productRoutes }
+}
+pure def alwaysProductRoutesAvoidModuleRoutes(s: PluginPlan): bool = not(overlaps(s.productRoutes, s.moduleRoutes))
+pure def sometimesProductRouteRefused(s: PluginPlan): bool = s.phase == Refused({ cause: RouteClaimed })
 ```
 
-## Story: Register a plugin once, fenced by its generation
+### The agent is ready only when every allowed action is registered
 
-> As the owner, a plugin that is unloaded or replaced while it is still
-> registering never shows up half-installed.
-
-### A plugin publishes only after its roles and schema migration, in the generation that began it
-
-A registration in progress keeps the roles it began with, and once
-migrated keeps its schema, until it is rolled back or unloaded.
+When the last plugin has registered, the launch's allowlist goes through
+core's boot check against every registered action, the message service's
+`REPLY`, `IGNORE` and `NONE` included; an empty or stale allowlist refuses
+boot.
 
 ```quint
-pure def canBeginRegister(r: Registration): bool = r.chosen and r.phase == Absent and not(r.closed) and not(r.bootFailed) and admitted(r.profile, r.gates, r.plugin, r.denied)
-pure def beginRegister(r: Registration): Registration = { ...r, phase: Migrating, inGeneration: true, roles: true }
-pure def canFinishMigration(r: Registration): bool = r.phase == Migrating and r.inGeneration
-pure def finishMigration(r: Registration): Registration = { ...r, phase: Registering, schema: true }
-pure def canPublish(r: Registration): bool = r.phase == Registering and r.inGeneration and not(r.closed)
-pure def publish(r: Registration): Registration = { ...r, phase: Ready, published: true }
-pure def alwaysPublishedIsComplete(r: Registration): bool =
-  r.published implies r.phase == Ready and r.inGeneration and r.roles and r.schema and not(r.closed)
-pure def alwaysRegistrationKeepsItsSteps(r: Registration): bool =
-  ((r.phase == Migrating or r.phase == Registering or r.phase == Ready) implies r.roles) and
-    ((r.phase == Registering or r.phase == Ready) implies r.schema)
-pure def sometimesPluginReady(r: Registration): bool = r.published
+pure def launchAllowlist(names: Set[str]): AP::AllowlistSetting = { present: true, blank: false, parses: true, names: names }
+pure def allowlistAdmitted(s: PluginPlan): bool = AP::allowlistBoot(launchAllowlist(s.allowed), s.actions) == AP::AllowlistAdmitted
+pure def awaitingWorker(worker: WorkerState): bool = match worker { | Unverified(w) => true | _ => false }
+pure def canFinishPlan(s: PluginPlan): bool = s.phase == Registering and s.next == s.order.length() and not(awaitingWorker(s.worker))
+pure def finishPlan(s: PluginPlan): PluginPlan = { ...s, phase: if (allowlistAdmitted(s)) Ready else Refused({ cause: StaleAllowlist }) }
+pure def alwaysReadyLoadedTheWholePlan(s: PluginPlan): bool =
+  s.phase == Ready implies (s.next == s.order.length() and allowlistAdmitted(s) and not(awaitingWorker(s.worker)))
+pure def sometimesStaleAllowlistRefused(s: PluginPlan): bool = s.phase == Refused({ cause: StaleAllowlist })
 ```
 
-### Unloading during registration rolls it back without publishing
+## Story: Run my workflows only in the pinned worker
 
-A plugin that is unloading is never published, and invalidating, rolling
-back or closing the registry never publishes one.
+> As the maker of a product, I want workflows to run only in the worker my
+> launch pinned, so that no other program runs with my user's data.
+
+### The worker is installed only after its executable digest matches the launch
+
+The shell reads the executable under the launch's `runtimeDir` and passes
+its SHA-256; a different digest refuses boot.
 
 ```quint
-pure def canInvalidate(r: Registration): bool = r.phase != Absent and r.phase != Unloading
-pure def invalidate(r: Registration): Registration = { ...r, inGeneration: false, published: false, phase: Unloading }
-pure def canRollBack(r: Registration): bool = r.phase == Migrating or r.phase == Registering or r.phase == Unloading
-pure def rollBack(r: Registration): Registration = { ...r, phase: Absent, published: false, schema: false, roles: false }
-pure def canCloseRegistry(r: Registration): bool = not(r.closed)
-pure def closeRegistry(r: Registration): Registration = { ...r, closed: true, published: false, inGeneration: false, phase: if (r.phase == Absent) Absent else Unloading }
-pure def alwaysUnloadingIsUnpublished(r: Registration): bool = r.phase == Unloading implies not(r.published)
-pure def stepUnloadNeverPublishes(before: Registration, via: str, after: Registration): bool =
-  (via == "invalidate" or via == "rollBack" or via == "closeRegistry") implies not(after.published)
-pure def sometimesInvalidatedMidMigration(r: Registration): bool = r.phase == Absent and not(r.inGeneration) and not(r.closed)
+pure val digestValues = Set("aa", "bb")
+pure def expectedDigest(worker: WorkerState): str = match worker { | Unverified(w) => w.expected | _ => "" }
+pure def canVerifyWorker(s: PluginPlan, digest: str): bool = s.phase == Registering and awaitingWorker(s.worker)
+pure def verifyWorker(s: PluginPlan, digest: str): PluginPlan =
+  if (digest == expectedDigest(s.worker)) { ...s, worker: Verified({ pinned: digest }) } else { ...s, phase: Refused({ cause: WorkerMismatch }) }
+pure def sometimesWorkerMismatchRefused(s: PluginPlan): bool = s.phase == Refused({ cause: WorkerMismatch })
 ```
 
-## Story: Bind an on-device agent's inference to the owner's cloud account
-
-> As the owner of a consumer build, my on-device agent thinks only through
-> my cloud account; either it keeps embeddings on the device, or it carries
-> no local model at all, and it never quietly sends to the cloud what was
-> meant to stay on the device.
-
-### An absent runtime profile selection is the device profile, and an unknown one fails boot
+### The worker never receives the credential, the launch token or the storage key
 
 ```quint
-type RuntimeProfileChoice = NoProfileChosen | DeviceProfileChosen | CloudOnlyProfileChosen | UnknownProfileChosen
-type RuntimeProfile = DeviceProfile | CloudOnlyProfile | ProfileRefused
-pure def runtimeProfile(choice: RuntimeProfileChoice): RuntimeProfile =
-  if (choice == NoProfileChosen or choice == DeviceProfileChosen) DeviceProfile
-  else if (choice == CloudOnlyProfileChosen) CloudOnlyProfile
-  else ProfileRefused
-pure def lawUnknownRuntimeProfileFailsBoot(choice: RuntimeProfileChoice): bool =
-  (runtimeProfile(choice) == ProfileRefused) iff (choice == UnknownProfileChosen)
-```
-
-### Text inference goes only to the owner's cloud account, and a cloud-only profile carries no local model
-
-Both profiles route every text model slot to the owner's cloud account. The
-device profile embeds on the device and packages its local model inputs; the
-cloud-only profile packages none and embeds through the cloud account.
-
-```quint
-type ModelRoute = OwnerCloudAccount | OnDevice | RouteUnavailable
-pure def textRoute(profile: RuntimeProfile): ModelRoute = if (profile == ProfileRefused) RouteUnavailable else OwnerCloudAccount
-pure def carriesLocalModels(profile: RuntimeProfile): bool = profile == DeviceProfile
-pure def lawTextInferenceUsesOnlyTheCloudAccount(profile: RuntimeProfile): bool =
-  textRoute(profile) != OnDevice and (profile != ProfileRefused implies textRoute(profile) == OwnerCloudAccount)
-pure def lawCloudOnlyProfileCarriesNoLocalModel(profile: RuntimeProfile): bool =
-  profile == CloudOnlyProfile implies not(carriesLocalModels(profile))
-```
-
-### A device profile whose local embedding inputs are missing reports embeddings unavailable and never falls back to the cloud
-
-```quint
-pure def embeddingRoute(profile: RuntimeProfile, localInputsPresent: bool): ModelRoute =
-  if (profile == CloudOnlyProfile) OwnerCloudAccount
-  else if (profile == DeviceProfile and localInputsPresent) OnDevice
-  else RouteUnavailable
-pure def lawMissingLocalEmbeddingsNeverReachTheCloud(localInputsPresent: bool): bool =
-  embeddingRoute(DeviceProfile, localInputsPresent) != OwnerCloudAccount and
-    (not(localInputsPresent) implies embeddingRoute(DeviceProfile, localInputsPresent) == RouteUnavailable)
-```
-
-### The agent's own speech never leaves the device, so a cloud-only profile has none
-
-Speech that a host sends to a cloud speech service is the host's own,
-disclosed upload, never the agent's routing.
-
-```quint
-pure def agentSpeechRoute(profile: RuntimeProfile): ModelRoute = if (carriesLocalModels(profile)) OnDevice else RouteUnavailable
-pure def lawAgentSpeechStaysOnTheDevice(profile: RuntimeProfile): bool =
-  agentSpeechRoute(profile) != OwnerCloudAccount and (profile == CloudOnlyProfile implies agentSpeechRoute(profile) == RouteUnavailable)
-```
-
-## Story: Load only the plugins a consumer's policy names
-
-> As the maker of a consumer build, I list the plugins my agent loads and
-> the ones it refuses, and no other plugin, and no action of a plugin I
-> refused, ever reaches my users.
-
-### A load list admits only the plugins it names, and a refused plugin never loads
-
-A policy without a load list leaves the profile's admission as it is. A
-plugin named both to load and to refuse is refused. The policy narrows the
-profile and never widens it.
-
-```quint
-type PluginPolicy = { hasLoadList: bool, load: Set[str], refuse: Set[str] }
-pure def policyAdmits(policy: PluginPolicy, pluginName: str): bool =
-  (not(policy.hasLoadList) or policy.load.contains(pluginName)) and not(policy.refuse.contains(pluginName))
-pure def loadsUnder(policy: PluginPolicy, profile: HostProfile, gates: ProfileGates, capability: CapabilityClass, pluginName: str, denied: bool): bool =
-  admitted(profile, gates, capability, denied) and policyAdmits(policy, pluginName)
-pure val policyValues = Set(
-  { hasLoadList: false, load: Set(), refuse: Set() },
-  { hasLoadList: true, load: Set("assistant", "cloud"), refuse: Set("browser") },
-  { hasLoadList: true, load: Set("assistant", "browser"), refuse: Set("browser") }
-)
-pure val pluginNameValues = Set("assistant", "cloud", "browser", "wallet")
-pure def lawLoadListAdmitsOnlyWhatItNames(policy: PluginPolicy, pluginName: str): bool =
-  (policy.hasLoadList and policyAdmits(policy, pluginName)) implies policy.load.contains(pluginName)
-pure def lawRefusedPluginNeverLoads(policy: PluginPolicy, profile: HostProfile, gates: ProfileGates, capability: CapabilityClass, pluginName: str, denied: bool): bool =
-  policy.refuse.contains(pluginName) implies not(loadsUnder(policy, profile, gates, capability, pluginName, denied))
-pure def lawPolicyNeverWidensTheProfile(policy: PluginPolicy, profile: HostProfile, gates: ProfileGates, capability: CapabilityClass, pluginName: str, denied: bool): bool =
-  loadsUnder(policy, profile, gates, capability, pluginName, denied) implies admitted(profile, gates, capability, denied)
-```
-
-### An action is offered only when the plugin that registered it loaded
-
-Each action name is registered by exactly one plugin, as
-[action planning](../../core/actionPlanning.md) refuses a second
-registration, so the name names its plugin for as long as it is registered.
-An action of a plugin the policy refused is never offered, whatever the
-action allowlist says.
-
-```quint
-type ActionOwner = { actionName: str, plugin: str }
-pure def registeringPlugin(owners: List[ActionOwner], actionName: str): str = owners.select(o => o.actionName == actionName).nthOr(0, { actionName: "", plugin: "" }).plugin
-pure def actionOffered(owners: List[ActionOwner], policy: PluginPolicy, actionName: str): bool =
-  owners.some(o => o.actionName == actionName) and policyAdmits(policy, registeringPlugin(owners, actionName))
-pure val ownersValues = Set(List(), List({ actionName: "REPLY", plugin: "assistant" }, { actionName: "BROWSER", plugin: "browser" }))
-pure val actionNameValues = Set("REPLY", "BROWSER", "WALLET")
-pure def lawActionOfARefusedPluginIsNeverOffered(owners: List[ActionOwner], policy: PluginPolicy, actionName: str): bool =
-  policy.refuse.contains(registeringPlugin(owners, actionName)) implies not(actionOffered(owners, policy, actionName))
-pure def lawUnregisteredActionIsNeverOffered(owners: List[ActionOwner], policy: PluginPolicy, actionName: str): bool =
-  not(owners.some(o => o.actionName == actionName)) implies not(actionOffered(owners, policy, actionName))
+pure val offeredValues = Set(Set(PlainSetting), Set(PlainSetting, DeviceCredential, LaunchToken, StorageKey))
+pure def workerVerified(worker: WorkerState): bool = match worker { | Verified(w) => true | _ => false }
+pure def canSpawnWorker(s: PluginPlan, offered: Set[ProcessValue]): bool = s.phase == Ready and workerVerified(s.worker)
+pure def spawnWorker(s: PluginPlan, offered: Set[ProcessValue]): PluginPlan =
+  { ...s, workerEnv: s.workerEnv.union(offered.filter(v => v == PlainSetting)), workerRuns: s.workerRuns + 1 }
+pure def alwaysWorkerGetsNoSecret(s: PluginPlan): bool = s.workerEnv.forall(v => v == PlainSetting)
+pure def alwaysOnlyAVerifiedWorkerRuns(s: PluginPlan): bool = s.workerRuns >= 0 and (s.workerRuns > 0 implies workerVerified(s.worker))
+pure def sometimesWorkerRan(s: PluginPlan): bool = s.workerRuns > 0
 ```
