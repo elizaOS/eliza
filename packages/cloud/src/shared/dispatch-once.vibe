@@ -11,7 +11,7 @@ export type ProviderReply<A> =
   | { readonly kind: "unknown"; readonly cause: string }
 
 export function renderProviderKey(key: ProviderKey): string {
-  return `${wireName(key.kind)}_${key.id}`
+  return `${wireName(key.providerKind)}_${key.providerId}`
 }
 
 function canonical(value: unknown): string {

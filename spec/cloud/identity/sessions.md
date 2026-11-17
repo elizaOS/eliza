@@ -189,3 +189,50 @@ pure def sometimesFreshOnlyThroughStepUp(f: Family): bool = isActive(f, f.epoch)
 pure def sometimesStaleSession(f: Family): bool = isActive(f, f.epoch) and not(isFresh(f))
 pure def sometimesSteppedUpAtSignIn(f: Family): bool = isActive(f, f.epoch) and isSteppedUp(f) and f.stepUpAt == Never
 ```
+
+## Story: Admit a request only for a live credential of an active account
+
+> As the account owner, I want protected routes to accept only my current
+> credentials and enforce any recent sign-in or second-factor requirement.
+
+### A protected route checks the account, current credential and required assurance
+
+The transport parses the token, matches its digest in the store and reads the
+account and credential in the same operation. A public route authenticates
+no one. A provider callback verifies its signature at the route. A permitted
+device credential serves device-facing services. Routes that name a browser
+session, fresh session or second factor require a session, with the freshness
+periods defined above. A missing, revoked or expired credential cannot pass.
+
+```quint
+type RequestAccountStatus = RequestAccountActive | RequestAccountInactive
+type RequestCredentialKind = RequestSession | RequestDevice
+type RouteClass = Public | ProviderSignature | ServiceAccess | SignedSession | FreshSession | StepUp
+type CredentialView = { kind: RequestCredentialKind, found: bool, live: bool, expiresAt: Millis, issuedAt: Millis,
+  revokedBefore: Millis, accountStatus: RequestAccountStatus, authAt: Millis, stepUpAt: Millis, mfaAt: Millis }
+pure def credentialRefusal(view: CredentialView, now: Millis): RefusalReason =
+  if (not(view.found)) CredentialUnknown
+  else if (not(view.live) or view.issuedAt < view.revokedBefore or view.accountStatus != RequestAccountActive) CredentialRevoked
+  else if (now >= view.expiresAt) CredentialExpired
+  else NoReason
+pure def routeNeedsSession(route: RouteClass): bool = Set(SignedSession, FreshSession, StepUp).contains(route)
+pure def requestHasAssurance(view: CredentialView, route: RouteClass, now: Millis): bool =
+  if (route == FreshSession) view.authAt >= now - freshWindow or (view.stepUpAt > 0 and view.stepUpAt >= now - freshWindow)
+  else if (route == StepUp) view.mfaAt > 0 and view.mfaAt >= now - stepUpWindow
+  else true
+type RequestAdmission = AnonymousRequest | CredentialAccepted | RequestRefused({ refusal: Refusal })
+pure def admitRequest(view: CredentialView, route: RouteClass, now: Millis): RequestAdmission = {
+  val reason = credentialRefusal(view, now)
+  if (route == Public or route == ProviderSignature) AnonymousRequest
+  else if (reason != NoReason) RequestRefused({ refusal: refuseFor(AuthenticationRequired, reason) })
+  else if (routeNeedsSession(route) and view.kind != RequestSession) RequestRefused({ refusal: refuseFor(AuthenticationRequired, CredentialUnknown) })
+  else if (not(requestHasAssurance(view, route, now))) RequestRefused({ refusal: refuse(FreshSessionRequired) })
+  else CredentialAccepted
+}
+pure val activeRequest: CredentialView = { kind: RequestSession, found: true, live: true, expiresAt: 900000, issuedAt: 1,
+  revokedBefore: 0, accountStatus: RequestAccountActive, authAt: 1, stepUpAt: 1, mfaAt: 1 }
+pure val viewValues = Set(activeRequest, { ...activeRequest, found: false }, { ...activeRequest, live: false },
+  { ...activeRequest, accountStatus: RequestAccountInactive }, { ...activeRequest, kind: RequestDevice })
+pure def lawOnlyAnActiveCredentialReachesProtectedRoutes(view: CredentialView, route: RouteClass, now: Millis): bool =
+  admitRequest(view, route, now) == CredentialAccepted implies credentialRefusal(view, now) == NoReason
+```

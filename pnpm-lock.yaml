@@ -311,6 +311,9 @@ importers:
       '@effect/platform-node-shared':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)
+      '@electric-sql/pglite':
+        specifier: 'catalog:'
+        version: 0.4.6
       '@elizaos/core':
         specifier: workspace:*
         version: link:../core
@@ -333,9 +336,6 @@ importers:
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
-      '@electric-sql/pglite':
-        specifier: 'catalog:'
-        version: 0.4.6
       '@repo/design-system':
         specifier: workspace:*
         version: link:../design-system
