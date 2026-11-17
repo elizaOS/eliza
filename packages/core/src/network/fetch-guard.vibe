@@ -63,10 +63,9 @@ module node {
   /** @throws {never} */
   export function isNodeLikeRuntime(): boolean {
     const runtime = globalThis as {
-      Bun?: unknown
       process?: { versions?: { node?: string } }
     }
-    return Boolean(runtime.Bun || runtime.process?.versions?.node)
+    return Boolean(runtime.process?.versions?.node)
   }
 
   /** @throws {never} */

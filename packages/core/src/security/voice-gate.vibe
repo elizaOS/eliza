@@ -113,7 +113,9 @@ export effect function ensureAgentVoice(
   if (content.agentVoiced === true) return content
   if (typeof runtime.useModel !== "function") return content
 
-  const key: StyleCacheKey = { agent: String(runtime.agentId), source: String(options.source), hash: hashText(raw) }
+  const scope = `${runtime.agentId}\u0000${options.source}`
+  const split = scope.indexOf("\u0000")
+  const key: StyleCacheKey = { agent: scope.slice(0, split), source: scope.slice(split + 1), hash: hashText(raw) }
   if (cacheContains(voiceCache, key)) {
     const cached = cachedEntry(voiceCache, key).text
     voiceCache = touchCache(voiceCache, key)
@@ -124,11 +126,11 @@ export effect function ensureAgentVoice(
     && typeof content.metadata === "object"
     && "escalation" in content.metadata
     && content.metadata.escalation === true
-  const diagnostic = {
+  const diagnostic = () => ({
     source: options.source,
     agentId: runtime.agentId,
     ...(escalationDiagnostic ? { diagnosticOnly: true } : {}),
-  }
+  })
   const rephrased = map(
     foreign(() => {
       const prompt = buildVoiceGatePrompt(runtime.character, raw)
@@ -139,7 +141,7 @@ export effect function ensureAgentVoice(
     }),
     (response) => typeof response === "string" ? stripReasoningBlocks(response).trim() : "",
   ) catch ({ cause }) => {
-    runtime.reportError("voice-gate", cause, diagnostic)
+    runtime.reportError("voice-gate", cause, diagnostic())
     return undefined
   }
   if (rephrased === undefined) return content
@@ -148,7 +150,7 @@ export effect function ensureAgentVoice(
     runtime.reportError(
       "voice-gate",
       new Error("voice-gate rephrase returned empty output"),
-      diagnostic,
+      diagnostic(),
     )
     return content
   }
