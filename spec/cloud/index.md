@@ -85,3 +85,38 @@ have separate permissions.
 pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
   ownerSessionActive and connectionPresent and grantOwnerMatches and selected.contains(requested)
 ```
+
+## Story: Use a cloud speech session
+
+> As a signed-in person with a subscription or funded pilot account, I can
+> explicitly allow a bounded microphone and speech playback session. The
+> app can stop the session and never receives the voice provider's keys.
+
+### Consent and an allowance are required before speech is sent
+
+The Cloud binds consent to the signed-in account and its current credential,
+and consumes the consent once to admit a bounded speech window. Signing out or
+revoking that device credential prevents an unopened window from starting. Provider connections open only after the
+relay consumes the window credential. A session reaches its deadline,
+closes on request, and cannot open again.
+
+```quint
+pure def canMintCloudSpeech(ownerMatches: bool, consentUnused: bool, consentLive: bool, accountEntitled: bool, windowAvailable: bool): bool =
+  ownerMatches and consentUnused and consentLive and accountEntitled and windowAvailable
+
+pure def canOpenCloudSpeech(credentialMatches: bool, windowOpen: bool, alreadyOpened: bool, revoked: bool): bool =
+  credentialMatches and windowOpen and not(alreadyOpened) and not(revoked)
+```
+
+### A speech window bounds the audio and text sent to providers
+
+The service reserves funds at the deployment's reviewed provider rate before
+admitting the window. A window allows at most sixty seconds of 16 kHz mono
+PCM16, 4,096 text characters and eight MiB of generated audio. The relay
+records the PCM and text attempted with the providers. The metering owner
+settles a confirmed outcome as measured and an uncertain one at its quote.
+
+```quint
+pure def cloudSpeechUsageFits(pcmBytes: int, textCharacters: int, outputBytes: int): bool =
+  pcmBytes >= 0 and pcmBytes <= 1920000 and textCharacters >= 0 and textCharacters <= 4096 and outputBytes >= 0 and outputBytes <= 8388608
+```

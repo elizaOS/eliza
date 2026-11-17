@@ -1,0 +1,221 @@
+// spec/cloud/index.md, "Story: Use a cloud speech session"
+import type { Client } from "pg"
+import { Digest } from "effect/crypto"
+import { reserveUsage, releaseUsage } from "./worker-metering.vibe"
+import { limitedBody } from "./inference.vibe"
+import { browserNativeRegistration, type NativeRegistryEnv } from "./native-registry.vibe"
+import type { WorkerDatabase } from "./worker-store.vibe"
+import { cloudCredential } from "./identity.vibe"
+import { WorkerResponse, newRequestId } from "./worker-platform.ts"
+import { speechInternalRequest } from "./speech-platform.ts"
+
+type SourceCredential = NonNullable<Awaited<ReturnType<typeof cloudCredential>>>
+
+type SpeechStub = { fetch(request: Request): Promise<Response> }
+type SpeechNamespace = { getByName(name: string): SpeechStub }
+
+export type SpeechEnv = WorkerDatabase & NativeRegistryEnv & {
+  CARTESIA_API_KEY?: string
+  CARTESIA_VOICE_ID?: string
+  SPEECH_STT_MICROS_PER_SECOND?: string
+  SPEECH_TTS_MICROS_PER_CHARACTER?: string
+  SPEECH_DAILY_SESSION_LIMIT?: string
+  SPEECH_RELAY_SESSIONS?: SpeechNamespace
+}
+
+export const speechRoute = "/api/v1/voice/speech"
+export const speechWindowSeconds = 60
+export const speechPcmBudget = speechWindowSeconds * 32_000
+export const speechCharacters = 4096
+export const speechPhraseCharacters = 1024
+export const speechOutputLimit = 8 * 1024 * 1024
+export const speechChunk = 3200
+
+const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
+const encoder = new TextEncoder()
+const json = (status: number, body: object) => WorkerResponse.json(body, { status, headers: { "Cache-Control": "no-store" } })
+
+effect function hash(value: string) {
+  const input = encoder.encode(value)
+  const bytes = try (try Digest.Digest).digest(Digest.sha256, input)
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
+}
+
+export function speechTokenHash(value: string) {
+  return runPromise(Effect.provide(hash(value), Digest.layerWebCrypto))
+}
+
+function usageRate(input: string | undefined) {
+  return input && /^[0-9]+$/.test(input) ? Number(input) : Number.NaN
+}
+
+export function speechSettings(env: SpeechEnv) {
+  const voice = env.CARTESIA_VOICE_ID
+  const key = env.CARTESIA_API_KEY
+  const namespace = env.SPEECH_RELAY_SESSIONS
+  const limit = Number(env.SPEECH_DAILY_SESSION_LIMIT)
+  const sttMicros = usageRate(env.SPEECH_STT_MICROS_PER_SECOND)
+  const ttsMicros = usageRate(env.SPEECH_TTS_MICROS_PER_CHARACTER)
+  const sttQuote = Math.max(1, sttMicros * speechWindowSeconds)
+  const ttsQuote = Math.max(1, ttsMicros * speechCharacters)
+  if (!namespace || !voice || !uuid.test(voice) || !key || !Number.isSafeInteger(limit) || limit < 1 ||
+    !Number.isSafeInteger(sttQuote + ttsQuote)) return null
+  return { voice, key, namespace, limit, sttMicros, ttsMicros, sttQuote, ttsQuote }
+}
+
+async function speechAccountTransaction<T>(db: Client, account: string, work: () => Promise<T>) {
+  await db.query("BEGIN")
+  try {
+    await db.query("SELECT key FROM accounts WHERE key = $1 FOR UPDATE", [account])
+    const result = await work()
+    await db.query("COMMIT")
+    return result
+  } catch (error) {
+    await db.query("ROLLBACK")
+    throw error
+  }
+}
+
+async function consent(db: Client, account: string, credential: SourceCredential) {
+  return speechAccountTransaction(db, account, async () => {
+    const { rows } = await db.query<{ count: number }>("SELECT count(*)::int FROM cloud_speech_consents WHERE account_id = $1 AND issued_at > now() - interval '1 minute'", [account])
+    if (rows[0].count >= 10) return json(429, { error: "speech_consent_rate_limited" })
+    const id = newRequestId()
+    const permit = await db.query<{ expires_at: Date }>(
+      `INSERT INTO cloud_speech_consents(id, account_id, credential_kind, credential_hash, expires_at)
+        SELECT $1, account_id, kind, token_hash, least(expires_at, now() + interval '5 minutes')
+        FROM cloud_speech_credentials WHERE account_id = $2 AND kind = $3 AND token_hash = $4 AND expires_at > now()
+        RETURNING expires_at`, [id, account, credential.kind, credential.hash])
+    if (!permit.rows[0]) return json(401, { error: "authentication_required" })
+    return json(200, { consentNonce: id, expiresAt: permit.rows[0].expires_at })
+  })
+}
+
+schema MintBody { consentNonce: string }
+
+async function mint(request: Request, db: Client, env: SpeechEnv, account: string, credential: SourceCredential, settings: NonNullable<ReturnType<typeof speechSettings>>) {
+  if (request.headers.get("content-type")?.split(";")[0] !== "application/json") return json(415, { error: "json_required" })
+  const payload = await limitedBody(request, 4096)
+  if (!payload) return json(413, { error: "request_too_large" })
+  let raw: unknown
+  try {
+    raw = JSON.parse(new TextDecoder().decode(payload))
+  } catch {
+    return json(400, { error: "invalid_speech_session" })
+  }
+  const parsed = Schema.decodeUnknownOption(MintBody, { onExcessProperty: "error" })(raw)
+  if (Option.isNone(parsed) || !uuid.test(parsed.value.consentNonce)) return json(400, { error: "invalid_speech_session" })
+  const consentNonce = parsed.value.consentNonce
+  const id = newRequestId()
+  const token = newRequestId().replaceAll("-", "") + newRequestId().replaceAll("-", "")
+  const tokenHash = await speechTokenHash(token)
+  const inserted = await speechAccountTransaction(db, account, async () => {
+    const used = await db.query<{ count: number }>(
+      "SELECT count(*)::int FROM cloud_speech_sessions WHERE account_id = $1 AND admitted_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'",
+      [account])
+    if (used.rows[0].count >= settings.limit) return { kind: "rate_limited" } as const
+    const recorded = await db.query<{ expires_at: Date }>(`
+      WITH authorized AS (
+        UPDATE cloud_speech_consents c SET expires_at = now()
+        FROM cloud_speech_credentials live
+        WHERE c.id = $1 AND c.account_id = $2 AND c.credential_kind = $6 AND c.credential_hash = $7
+          AND c.expires_at > now() AND live.account_id = c.account_id AND live.kind = c.credential_kind
+          AND live.token_hash = c.credential_hash AND live.expires_at > now()
+        RETURNING c.account_id, c.credential_kind, c.credential_hash, live.expires_at
+      )
+      INSERT INTO cloud_speech_sessions (id, account_id, credential_kind, credential_hash, token_hash, expires_at, stt_micros_per_second, tts_micros_per_character)
+      SELECT $3, account_id, credential_kind, credential_hash, $4, least(expires_at, now() + $5 * interval '1 second'), $8, $9
+      FROM authorized
+      RETURNING expires_at
+    `, [consentNonce, account, id, tokenHash, speechWindowSeconds, credential.kind, credential.hash, settings.sttMicros, settings.ttsMicros])
+    const session = recorded.rows[0]
+    return session ? { kind: "window", expiresAt: session.expires_at } as const : { kind: "no_consent" } as const
+  })
+  if (inserted.kind === "rate_limited") return json(429, { error: "speech_daily_allowance_reached" })
+  if (inserted.kind === "no_consent") return json(403, { error: "speech_consent_required" })
+  const reserved: string[] = []
+  let attached = false
+  try {
+    const amounts = [
+      { direction: "Transcribe", quoteMicros: settings.sttQuote },
+      { direction: "Synthesize", quoteMicros: settings.ttsQuote }
+    ] as const
+    for (const { direction, quoteMicros } of amounts) {
+      const hold = await reserveUsage(db, { account, requestId: id, service: "speech", quoteMicros,
+        part: { tag: "SpeechWindow", direction, window: 1 } })
+      if (hold.kind !== "reserved") {
+        if (hold.kind === "unfunded") return json(402, { error: "insufficient_credits" })
+        if (hold.kind === "inactive") return json(403, { error: "account_needs_attention" })
+        return json(409, { error: "speech_session_exists" })
+      }
+      reserved.push(hold.key)
+    }
+    const saved = await db.query(`
+      UPDATE cloud_speech_sessions SET stt_hold_key = $2, tts_hold_key = $3
+      WHERE id = $1 AND stt_hold_key IS NULL AND tts_hold_key IS NULL AND revoked_at IS NULL AND expires_at > now()
+    `, [id, reserved[0], reserved[1]])
+    if (!saved.rowCount) throw new Error("Speech window expired before admission")
+    attached = true
+    const ws = new URL(speechRoute + "/ws", env.PUBLIC_API_ORIGIN)
+    ws.protocol = ws.protocol === "https:" ? "wss:" : "ws:"
+    ws.searchParams.set("sessionId", id)
+    return json(200, { version: 1, sessionId: id, token, expiresAt: inserted.expiresAt, wsUrl: ws.href })
+  } finally {
+    if (!attached) {
+      for (const key of reserved) await releaseUsage(db, key)
+      await db.query("DELETE FROM cloud_speech_sessions WHERE id = $1 AND stt_hold_key IS NULL AND tts_hold_key IS NULL", [id])
+    }
+  }
+}
+
+export async function speechRequest(request: Request, env: SpeechEnv, db: Client, account: string) {
+  const path = new URL(request.url).pathname
+  const settings = speechSettings(env)
+  if (request.method !== "POST") return json(404, { error: "route_not_found" })
+  if (request.headers.get("X-Eliza-Speech-Retirement-Version") === "1" || request.headers.get("X-Eliza-Speech-Recovery-Version") === "1") {
+    return json(503, { error: "speech_retirement_unavailable" })
+  }
+  if (path === speechRoute + "/consent" || path === speechRoute + "/session") {
+    if (!settings) return json(503, { error: "speech_unconfigured" })
+    const credential = await cloudCredential(request)
+    if (!credential) return json(401, { error: "authentication_required" })
+    return path === speechRoute + "/consent" ? consent(db, account, credential) : mint(request, db, env, account, credential, settings)
+  }
+  const matches = path.match(/^\/api\/v1\/voice\/speech\/session\/([^/]+)\/revoke$/)
+  if (matches && uuid.test(matches[1])) {
+    const sessionId = matches[1]
+    const stopped = await db.query<{ stt_hold_key: string | null; tts_hold_key: string | null; opened_at: Date | null }>(
+      "UPDATE cloud_speech_sessions SET revoked_at = coalesce(revoked_at, now()) WHERE id = $1 AND account_id = $2 RETURNING stt_hold_key,tts_hold_key,opened_at",
+      [sessionId, account])
+    const session = stopped.rows[0]
+    if (!session) return json(404, { error: "speech_session_not_found" })
+    if (!session.opened_at) {
+      if (session.stt_hold_key) await releaseUsage(db, session.stt_hold_key)
+      if (session.tts_hold_key) await releaseUsage(db, session.tts_hold_key)
+      return json(200, { revoked: true })
+    }
+    const relay = env.SPEECH_RELAY_SESSIONS
+    if (!relay) return json(503, { error: "speech_relay_stop_unavailable" })
+    const result = await relay.getByName(sessionId).fetch(speechInternalRequest("revoke", { method: "POST" }))
+    return result.ok ? json(200, { revoked: true }) : json(503, { error: "speech_relay_stop_unavailable" })
+  }
+  return json(404, { error: "route_not_found" })
+}
+
+export async function speechWebSocket(request: Request, env: SpeechEnv, db: Client) {
+  const url = new URL(request.url)
+  const id = url.searchParams.get("sessionId")
+  if (!id || !uuid.test(id)) return json(400, { error: "invalid_speech_session" })
+  if (request.method !== "GET" || request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+    return json(426, { error: "websocket_required" })
+  }
+  const settings = speechSettings(env)
+  if (!settings) return json(503, { error: "speech_unconfigured" })
+  const candidate = await db.query(`
+    SELECT 1 FROM cloud_speech_sessions s
+    JOIN cloud_speech_credentials c ON c.account_id = s.account_id AND c.kind = s.credential_kind AND c.token_hash = s.credential_hash
+    WHERE s.id = $1 AND (c.kind = 'browser' OR c.client_id = $2) AND s.stt_hold_key IS NOT NULL AND s.tts_hold_key IS NOT NULL AND s.opened_at IS NULL AND s.revoked_at IS NULL AND s.expires_at > now() AND c.expires_at > now()
+  `, [id, browserNativeRegistration(env)?.clientId ?? null])
+  if (!candidate.rowCount) return json(404, { error: "speech_session_not_found" })
+  return settings.namespace.getByName(id).fetch(speechInternalRequest("relay?sessionId=" + id, request))
+}

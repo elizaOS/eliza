@@ -1,0 +1,445 @@
+// spec/cloud/index.md, "Story: Use a cloud speech session"
+import { browserNativeRegistration } from "./native-registry.vibe"
+import { withCloudDatabase } from "./worker-store.vibe"
+import { dispatchUsage, releaseUsage, settleUsage } from "./worker-metering.vibe"
+import { WorkerResponse } from "./worker-platform.ts"
+import { acceptSpeechSocket, drainSpeechInput, openSpeechProvider, speechDeadline, voiceNow, type CloudSocket } from "./speech-platform.ts"
+import {
+  speechCharacters, speechChunk, speechOutputLimit, speechPcmBudget, speechPhraseCharacters,
+  speechSettings, speechTokenHash, type SpeechEnv
+} from "./speech.vibe"
+
+type Lifetime = { waitUntil(work: Promise<unknown>): void }
+type RelayControl = { halt(): Promise<void> }
+
+const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
+const clientId = /^[A-Za-z0-9_-]{1,64}$/
+const plainToken = /^[a-f0-9]{64}$/
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
+const inkVersion = "2026-08-14"
+const sonicVersion = "2026-03-01"
+const inkTypes = new Map([
+  ["turn.start", "start-of-turn"],
+  ["turn.update", "transcript-update"],
+  ["turn.eager_end", "eager-end-of-turn"],
+  ["turn.resume", "turn-resumed"],
+  ["turn.end", "end-of-turn"]
+])
+
+const inkUrl = new URL("https://api.cartesia.ai/stt/turns/websocket")
+inkUrl.search = new URLSearchParams({
+  model: "ink-2", encoding: "pcm_s16le", sample_rate: "16000", cartesia_version: inkVersion,
+  turn_start_threshold: "0.5", turn_eager_end_threshold: "0.3", turn_end_threshold: "0.1", turn_end_timeout_ms: "8000"
+}).toString()
+const sonicUrl = new URL("https://api.cartesia.ai/tts/websocket")
+
+const helloShape = Schema.Struct({ t: Schema.Literal("hello"), token: Schema.String,
+  errorReasons: Schema.optionalKey(Schema.Literal(true)), timings: Schema.optionalKey(Schema.Literal(true)),
+  extend: Schema.optionalKey(Schema.Literal(true))
+})
+const controlShape = Schema.Union([
+  Schema.Struct({ t: Schema.Literal("stop") }),
+  Schema.Struct({ t: Schema.Literals(["prepare", "finish", "cancel"]), id: Schema.String }),
+  Schema.Struct({ t: Schema.Literal("tts"), id: Schema.String, text: Schema.String, flush: Schema.optionalKey(Schema.Boolean) })
+])
+schema InkEvent { type: string; transcript?: string }
+schema SonicEvent { type: string; context_id?: string; data?: string; flush_id?: number }
+
+type Usage = { pcmBytes: number; ttsCharacters: number }
+type EndState = { closed: true }
+type Window = { expires_at: Date; stt_hold_key: string; tts_hold_key: string; stt_micros_per_second: string; tts_micros_per_character: string }
+type Directions<A> = { input: A; output: A }
+
+async function claim(env: SpeechEnv, id: string, rawToken: string) {
+  const digest = await speechTokenHash(rawToken)
+  return withCloudDatabase(env, async (db) => {
+    const { rows } = await db.query<Window>(`
+      UPDATE cloud_speech_sessions s SET opened_at = now()
+      FROM cloud_speech_credentials live
+      WHERE s.id = $1 AND s.token_hash = $2 AND s.stt_hold_key IS NOT NULL AND s.tts_hold_key IS NOT NULL AND s.opened_at IS NULL AND s.revoked_at IS NULL AND s.expires_at > now()
+        AND live.account_id = s.account_id AND live.kind = s.credential_kind AND live.token_hash = s.credential_hash AND live.expires_at > now() AND (live.kind = 'browser' OR live.client_id = $3)
+      RETURNING s.expires_at,s.stt_hold_key,s.tts_hold_key,s.stt_micros_per_second::text,s.tts_micros_per_character::text
+    `, [id, digest, browserNativeRegistration(env)?.clientId ?? null])
+    return rows[0] ?? null
+  })
+}
+
+async function dispatch(env: SpeechEnv, hold: string) {
+  return withCloudDatabase(env, (db) => dispatchUsage(db, hold))
+}
+
+async function settle(env: SpeechEnv, id: string, window: Window, usage: Usage,
+  dispatched: Directions<boolean>, measured: Directions<number | null>) {
+  await withCloudDatabase(env, async (db) => {
+    if (dispatched.input) await settleUsage(db, window.stt_hold_key, measured.input)
+    else await releaseUsage(db, window.stt_hold_key)
+    if (dispatched.output) await settleUsage(db, window.tts_hold_key, measured.output)
+    else await releaseUsage(db, window.tts_hold_key)
+    await db.query(`
+      UPDATE cloud_speech_sessions SET settled_at = now(), pcm_bytes = $2, tts_characters = $3
+      WHERE id = $1 AND opened_at IS NOT NULL AND settled_at IS NULL
+    `, [id, usage.pcmBytes, usage.ttsCharacters])
+  })
+}
+
+function parse(raw: unknown, max: number): unknown {
+  const text = typeof raw === "string" ? raw : raw instanceof ArrayBuffer ? decoder.decode(raw) : null
+  if (text === null || text.length > max || encoder.encode(text).byteLength > max) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+function decodeAudio(value: string) {
+  if (value.length > 92_000) return null
+  try {
+    const bytes = Uint8Array.from(atob(value), (byte) => byte.charCodeAt(0))
+    return bytes.byteLength > 0 && bytes.byteLength <= 65536 && bytes.byteLength % 2 === 0 ? bytes : null
+  } catch {
+    return null
+  }
+}
+
+function sendJson(socket: CloudSocket, payload: object) {
+  if (socket.readyState === 1) socket.send(JSON.stringify(payload))
+}
+
+function sendAudio(socket: CloudSocket, id: string, pcm: Uint8Array) {
+  if (socket.readyState !== 1) return
+  const name = encoder.encode(id)
+  const frame = new Uint8Array(2 + name.length + pcm.length)
+  frame[0] = 1
+  frame[1] = name.length
+  frame.set(name, 2)
+  frame.set(pcm, 2 + name.length)
+  socket.send(frame)
+}
+
+function closeSocket(socket: CloudSocket | null, reason: string, code = 1000) {
+  if (!socket || socket.readyState >= 2) return
+  try {
+    socket.close(code, reason)
+  } catch {
+    return
+  }
+}
+
+function bindRelay(life: Lifetime, env: SpeechEnv, id: string, downstream: CloudSocket, key: string, voice: string, onEnded: () => void): RelayControl {
+  const abort = new AbortController()
+  const contexts = new Map<string, "prepared" | "speaking" | "finishing" | "closed">()
+  const usage: Usage = { pcmBytes: 0, ttsCharacters: 0 }
+  let stt: CloudSocket | null = null
+  let tts: CloudSocket | null = null
+  let ended: EndState | null = null
+  let window: Window | null = null
+  let dispatching: Directions<Promise<boolean>> | null = null
+  let ttsUncertain = false
+  let inkTurnOpen = false
+  let draining = false
+  let readyAt = 0
+  let expiresAt = 0
+  let output = 0
+  let receivedPcm = 0
+  let queuedFrames = 0
+  let ordered = Promise.resolve()
+  let windowDeadline: ReturnType<typeof speechDeadline> | null = null
+  let payment = Promise.resolve()
+  const pending = new Uint8Array(speechChunk)
+  let pendingBytes = 0
+
+  async function close(code?: "protocol" | "unauthorized" | "unavailable" | "closed", graceful = false) {
+    if (ended) return payment
+    ended = { closed: true }
+    helloDeadline.cancel()
+    windowDeadline?.cancel()
+    const claimedWindow = window
+    const pendingDispatch = dispatching
+    const inputProvider = stt
+    const outputProvider = tts
+    const shouldDrain = graceful && inputProvider !== null
+    const outputConfirmed = graceful && outputProvider !== null && !ttsUncertain
+      && [...contexts.values()].every((phase) => phase === "closed" || phase === "prepared")
+    try {
+      if (code) sendJson(downstream, { t: "error", code })
+      closeSocket(downstream, code ?? "complete", code ? 1008 : 1000)
+    } finally {
+      payment = (async () => {
+        draining = shouldDrain
+        const drained = shouldDrain && (usage.pcmBytes === 0 || (await drainSpeechInput(inputProvider, 1500) && !inkTurnOpen))
+        draining = false
+        abort.abort()
+        closeSocket(inputProvider, "speech session closed")
+        closeSocket(outputProvider, "speech session closed")
+        onEnded()
+        if (!claimedWindow) return
+        const dispatched = {
+          input: pendingDispatch ? await pendingDispatch.input : false,
+          output: pendingDispatch ? await pendingDispatch.output : false
+        }
+        const measured = {
+          input: drained ? Math.ceil(Number(claimedWindow.stt_micros_per_second) * usage.pcmBytes / 32_000) : null,
+          output: outputConfirmed ? Number(claimedWindow.tts_micros_per_character) * usage.ttsCharacters : null
+        }
+        await settle(env, id, claimedWindow, { ...usage }, dispatched, measured)
+      })()
+      life.waitUntil(payment)
+    }
+    return payment
+  }
+
+  const helloDeadline = speechDeadline(5000)
+  void helloDeadline.elapsed.then((expired) => expired ? close("unauthorized") : undefined).catch(() => undefined)
+
+  function fail() {
+    void close("unavailable").catch(() => undefined)
+  }
+
+  function active() {
+    if (ended || !expiresAt) return false
+    if (voiceNow() < expiresAt) return true
+    void close("closed").catch(() => undefined)
+    return false
+  }
+
+  function listenInk(event: MessageEvent) {
+    if (!draining && !active()) return
+    const decoded = Schema.decodeUnknownOption(InkEvent)(parse(event.data, 32768))
+    if (Option.isNone(decoded)) {
+      fail()
+      return
+    }
+    const incoming = decoded.value
+    if (incoming.type === "connected") return
+    const kind = inkTypes.get(incoming.type)
+    if (!kind || (kind !== "start-of-turn" && kind !== "turn-resumed" && incoming.transcript === undefined)) {
+      fail()
+      return
+    }
+    inkTurnOpen = kind !== "end-of-turn"
+    if (!draining) sendJson(downstream, { t: "stt", event: { type: kind, transcript: incoming.transcript ?? "" } })
+  }
+
+  function listenSonic(event: MessageEvent) {
+    if (!active()) return
+    const decoded = Schema.decodeUnknownOption(SonicEvent)(parse(event.data, 98304))
+    if (Option.isNone(decoded) || decoded.value.type === "error") {
+      fail()
+      return
+    }
+    const incoming = decoded.value
+    const context = incoming.context_id
+    if (!context) {
+      fail()
+      return
+    }
+    const phase = contexts.get(context)
+    if (phase === "closed") return
+    if (!phase) {
+      fail()
+      return
+    }
+    if (incoming.type === "done") {
+      contexts.set(context, "closed")
+      sendJson(downstream, { t: "complete", id: context })
+    } else if (incoming.type === "flush_done") {
+      sendJson(downstream, { t: "flush_complete", id: context, flushId: incoming.flush_id })
+    } else if (incoming.type === "chunk" && incoming.data) {
+      const pcm = decodeAudio(incoming.data)
+      if (!pcm || output + pcm.length > speechOutputLimit) {
+        fail()
+        return
+      }
+      output += pcm.length
+      sendAudio(downstream, context, pcm)
+    } else {
+      fail()
+    }
+  }
+
+  async function admit(frame: unknown) {
+    const hello = Schema.decodeUnknownOption(helloShape, { onExcessProperty: "error" })(frame)
+    if (Option.isNone(hello) || !plainToken.test(hello.value.token)) {
+      await close("unauthorized")
+      return
+    }
+    const granted = await claim(env, id, hello.value.token)
+    if (!granted) {
+      await close("unauthorized")
+      return
+    }
+    if (ended) {
+      await settle(env, id, granted, usage, { input: false, output: false }, { input: null, output: null })
+      return
+    }
+    window = granted
+    expiresAt = granted.expires_at.getTime()
+    dispatching = {
+      input: dispatch(env, granted.stt_hold_key),
+      output: dispatch(env, granted.tts_hold_key)
+    }
+    const [inputDispatched, outputDispatched] = await Promise.all([dispatching.input, dispatching.output])
+    if (!inputDispatched || !outputDispatched || ended) {
+      await close("unavailable")
+      return
+    }
+    helloDeadline.cancel()
+    if (!active()) return
+    windowDeadline = speechDeadline(expiresAt - voiceNow())
+    void windowDeadline.elapsed.then((expired) => expired ? close("closed") : undefined).catch(() => undefined)
+    const ink = openSpeechProvider(inkUrl, key, inkVersion, abort.signal).then((socket) => {
+      if (ended) closeSocket(socket, "speech expired")
+      else {
+        stt = socket
+        stt.addEventListener("message", listenInk)
+        stt.addEventListener("error", fail)
+        stt.addEventListener("close", fail)
+      }
+    })
+    const sonic = openSpeechProvider(sonicUrl, key, sonicVersion, abort.signal).then((socket) => {
+      if (ended) closeSocket(socket, "speech expired")
+      else {
+        tts = socket
+        tts.addEventListener("message", listenSonic)
+        tts.addEventListener("error", fail)
+        tts.addEventListener("close", fail)
+      }
+    })
+    await Promise.all([ink, sonic])
+    if (!active()) return
+    readyAt = voiceNow()
+    sendJson(downstream, { t: "ready", version: 1, sampleRate: 16000, channels: 1, expiresAt: granted.expires_at.toISOString() })
+  }
+
+  async function audio(data: ArrayBuffer) {
+    if (!active() || !stt) return
+    const size = data.byteLength
+    const maximum = Math.min(speechPcmBudget, (voiceNow() - readyAt + 1000) * 32)
+    if (!size || size % 2 !== 0 || size > speechChunk || receivedPcm + size > maximum) {
+      await close("protocol")
+      return
+    }
+    receivedPcm += size
+    const frame = new Uint8Array(data)
+    const first = Math.min(speechChunk - pendingBytes, size)
+    pending.set(frame.subarray(0, first), pendingBytes)
+    pendingBytes += first
+    if (pendingBytes === speechChunk) {
+      usage.pcmBytes += speechChunk
+      stt.send(pending.slice())
+      pendingBytes = size - first
+      pending.set(frame.subarray(first), 0)
+    }
+  }
+
+  function phrase(context: string, text: string, continuation: boolean, flush?: boolean) {
+    if (!tts) return
+    usage.ttsCharacters += text.length
+    sendJson(tts, {
+      model_id: "sonic-3.6", transcript: text, voice: { mode: "id", id: voice }, language: "en",
+      context_id: context, output_format: { container: "raw", encoding: "pcm_s16le", sample_rate: 16000 },
+      continue: continuation, flush
+    })
+  }
+
+  async function control(frame: unknown) {
+    if (!active()) return
+    const parsed = Schema.decodeUnknownOption(controlShape, { onExcessProperty: "error" })(frame)
+    if (Option.isNone(parsed)) {
+      await close("protocol")
+      return
+    }
+    const message = parsed.value
+    if (message.t === "stop") {
+      await close(undefined, true)
+      return
+    }
+    const context = message.id
+    const phase = contexts.get(context)
+    if (!clientId.test(context) || (!phase && contexts.size >= 64)) {
+      await close("protocol")
+      return
+    }
+    switch (message.t) {
+      case "prepare":
+        if (!phase) contexts.set(context, "prepared")
+        if (!phase || phase === "prepared") sendJson(downstream, { t: "tts_prepared", id: context })
+        return
+      case "cancel":
+        if (tts && phase && phase !== "prepared" && phase !== "closed") {
+          ttsUncertain = true
+          sendJson(tts, { context_id: context, cancel: true })
+        }
+        contexts.set(context, "closed")
+        sendJson(downstream, { t: "complete", id: context })
+        return
+      case "finish":
+        if (phase === "prepared") {
+          contexts.set(context, "closed")
+          sendJson(downstream, { t: "complete", id: context })
+        } else if (phase === "speaking") {
+          contexts.set(context, "finishing")
+          phrase(context, "", false)
+        } else if (phase !== "closed") {
+          await close("protocol")
+        }
+        return
+      case "tts":
+        if (phase === "closed") return
+        if (phase === "finishing" || !message.text.trim() || message.text.length > speechPhraseCharacters || usage.ttsCharacters + message.text.length > speechCharacters) {
+          await close("protocol")
+        } else {
+          if (!phase) sendJson(downstream, { t: "tts_prepared", id: context })
+          contexts.set(context, "speaking")
+          phrase(context, message.text, true, message.flush)
+        }
+    }
+  }
+
+  downstream.addEventListener("message", (event: MessageEvent) => {
+    if (ended) return
+    if (queuedFrames >= 32 || (typeof event.data === "string" && event.data.length > 8192) ||
+      (event.data instanceof ArrayBuffer && event.data.byteLength > speechChunk)) {
+      void close("protocol").catch(() => undefined)
+      return
+    }
+    queuedFrames += 1
+    ordered = ordered.then(async () => {
+      if (ended) return
+      if (!window) await admit(parse(event.data, 8192))
+      else if (event.data instanceof ArrayBuffer) await audio(event.data)
+      else await control(parse(event.data, 8192))
+    }).catch(fail).finally(() => { queuedFrames -= 1 })
+  })
+  downstream.addEventListener("close", () => { void close().catch(() => undefined) })
+  downstream.addEventListener("error", fail)
+  return { halt: () => close("closed", true) }
+}
+
+export class SpeechRelayCoordinator {
+  private active: RelayControl | null = null
+  private blocked = false
+
+  constructor(private readonly lifetime: Lifetime, private readonly env: SpeechEnv) {}
+
+  async fetch(request: Request) {
+    const url = new URL(request.url)
+    if (url.hostname !== "speech.internal") return new WorkerResponse(null, { status: 404 })
+    if (url.pathname === "/revoke" && request.method === "POST") {
+      this.blocked = true
+      await this.active?.halt()
+      return new WorkerResponse(null, { status: 204 })
+    }
+    const id = url.searchParams.get("sessionId")
+    const settings = speechSettings(this.env)
+    if (!settings) return new WorkerResponse(null, { status: 503 })
+    if (url.pathname !== "/relay" || request.method !== "GET" || !id || !uuid.test(id) ||
+        request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new WorkerResponse(null, { status: 400 })
+    if (this.active || this.blocked) return new WorkerResponse(null, { status: 409 })
+    const socket = acceptSpeechSocket()
+    this.active = bindRelay(this.lifetime, this.env, id, socket.relay, settings.key, settings.voice, () => { this.active = null })
+    return socket.response
+  }
+}
