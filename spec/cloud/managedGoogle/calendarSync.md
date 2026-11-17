@@ -26,7 +26,7 @@ type SyncPhase = SyncIdle | FullSync | IncrementalSync
 type CalendarSync = { phase: SyncPhase, grantCurrent: bool, cursor: int, stagedPages: int, copyPresent: bool, copyEpoch: int, needsReplace: bool, commits: int }
 pure val initial: CalendarSync = { phase: SyncIdle, grantCurrent: true, cursor: 0, stagedPages: 0, copyPresent: false, copyEpoch: 0, needsReplace: false, commits: 0 }
 pure def canStartSync(c: CalendarSync): bool = c.phase == SyncIdle and c.grantCurrent
-pure def startSync(c: CalendarSync): CalendarSync = { ...c, phase: if (c.cursor == 0) FullSync else IncrementalSync, stagedPages: 0 }
+pure def startSync(c: CalendarSync): CalendarSync = { ...c, phase: if (c.cursor > 0) IncrementalSync else FullSync, stagedPages: 0 }
 pure def alwaysIncrementalRunHasACursor(c: CalendarSync): bool = c.phase == IncrementalSync implies c.cursor > 0
 pure def alwaysCursorBelongsToACopy(c: CalendarSync): bool = c.cursor > 0 implies c.copyPresent
 pure def sometimesIncrementalRun(c: CalendarSync): bool = c.phase == IncrementalSync and c.stagedPages > 0

@@ -21,14 +21,15 @@ type TokenStatus = ActiveToken | RotatedToken | RevokedToken
 type RefreshToken = { id: int, family: int, status: TokenStatus }
 type SessionFamily = { id: int, user: int, startedAt: int, revoked: bool }
 type AccessToken = { id: int, family: int, issuedAt: int, expiresAt: int }
+type Revocation = { user: int, before: int }
 type ClientOutcome = ClientIdle | ClientRefreshed | ClientKeptCredential | ClientSignedOutByServer | ClientSignedOut
 type Sessions = {
   now: int, nextId: int, families: List[SessionFamily], refreshTokens: List[RefreshToken], accessTokens: List[AccessToken],
-  reuseDetected: List[int], revokedBefore: int -> int,
+  reuseDetected: List[int], revocations: List[Revocation],
   clientRefreshToken: int, clientAccess: int, clientInFlight: int, clientWaiters: int, clientOutcome: ClientOutcome
 }
 pure val initial: Sessions = {
-  now: 0, nextId: 1, families: List(), refreshTokens: List(), accessTokens: List(), reuseDetected: List(), revokedBefore: Map(),
+  now: 0, nextId: 1, families: List(), refreshTokens: List(), accessTokens: List(), reuseDetected: List(), revocations: List(),
   clientRefreshToken: 0, clientAccess: 0, clientInFlight: 0, clientWaiters: 0, clientOutcome: ClientIdle
 }
 pure val accessLifetime = 900
@@ -101,11 +102,12 @@ pure def logout(s: Sessions, token: int): SessionChange = audited(s.families, lo
 pure def canRevokeAll(s: Sessions, user: int): bool = user > 0
 pure def revokeAll(s: Sessions, user: int): SessionChange = {
   val doomed = s.families.select(f => f.user == user).listMap(f => f.id)
-  audited(s.families, { ...s, families: revokedFamilies(s, doomed), refreshTokens: revokeFamilies(s, doomed), revokedBefore: s.revokedBefore.put(user, s.nextId) })
+  audited(s.families, { ...s, families: revokedFamilies(s, doomed), refreshTokens: revokeFamilies(s, doomed), revocations: s.revocations.append({ user: user, before: s.nextId }) })
 }
+pure def revokedBefore(s: Sessions, user: int): int = s.revocations.foldl(0, (mark, r) => if (r.user == user) r.before else mark)
 pure def alwaysRevokeAllCoversEarlierSessions(s: Sessions): bool =
-  s.families.every(f => f.id < s.revokedBefore.getOr(f.user, 0) implies f.revoked) and s.families.every(f => f.id < s.nextId)
-pure def sometimesSignedInAgainAfterRevokeAll(s: Sessions): bool = s.families.some(f => not(f.revoked) and s.revokedBefore.getOr(f.user, 0) > 0 and f.id >= s.revokedBefore.getOr(f.user, 0))
+  s.families.every(f => f.id < revokedBefore(s, f.user) implies f.revoked) and s.families.every(f => f.id < s.nextId)
+pure def sometimesSignedInAgainAfterRevokeAll(s: Sessions): bool = s.families.some(f => not(f.revoked) and revokedBefore(s, f.user) > 0 and f.id >= revokedBefore(s, f.user))
 ```
 
 ### Revocation is visible to every verifier before the revoke call returns
@@ -119,6 +121,21 @@ pure def accepts(s: Sessions, access: int): bool =
 pure def stepRevocationVisibleOnReturn(before: Sessions, via: str, after: Sessions): bool =
   (via == "logout" or via == "revokeAll" or via == "refresh") implies after.accessTokens.every(a => familyOf(after, a.family).revoked implies not(accepts(after, a.id)))
 pure def sometimesRevokedWhileAccessUnexpired(s: Sessions): bool = s.accessTokens.some(a => s.now < a.expiresAt and familyOf(s, a.family).revoked)
+```
+
+### Session ids are unique and stay below the next id
+
+No two families share an id, and no two access tokens share an id. Every
+access token's id and every refresh token's family are below `nextId`, no
+revoke-all mark is above it, and the client's refresh token is zero, meaning
+none, or below it.
+
+```quint
+pure def alwaysIdsComeFromOneCounter(s: Sessions): bool =
+  s.families.every(f => s.families.select(g => g.id == f.id).length() == 1) and
+  s.accessTokens.every(a => a.id < s.nextId and s.accessTokens.select(b => b.id == a.id).length() == 1) and
+  s.refreshTokens.every(t => t.family < s.nextId) and s.revocations.every(r => r.before <= s.nextId) and
+  s.clientRefreshToken >= 0 and s.clientRefreshToken < s.nextId
 ```
 
 ### Overlapping client reads share one pending refresh

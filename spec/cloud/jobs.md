@@ -16,6 +16,8 @@ retracts them. Cloud-hosted application jobs are not part of this package.
 
 ### A worker claims a due job under a new generation and lease
 
+A job's generation is never negative.
+
 ```quint
 type JobStatus = JobPending | JobRunning | JobCompleted | JobFailed | JobCancelled
 type LeaseAge = LeaseLive | LeaseLapsing | LeaseExpired
@@ -29,6 +31,7 @@ pure def claimJob(j: Job, worker: int): Job = { ...j, status: JobRunning, genera
 pure val workerValues = Set(1, 2)
 pure val generationValues = Set(1, 2, 3)
 pure def alwaysLeaseBelongsToARunningGeneration(j: Job): bool = j.leaseOwner != 0 implies (j.status == JobRunning and not(j.quiesced) and j.generation > 0)
+pure def alwaysGenerationsCountFromZero(j: Job): bool = j.generation >= 0
 pure def alwaysRunningJobHasItsOwner(j: Job): bool = j.status == JobRunning implies (j.leaseOwner != 0 and not(j.quiesced))
 pure def alwaysSettledJobHasNoLease(j: Job): bool = terminal(j.status) implies j.leaseOwner == 0
 pure def sometimesSecondGenerationRuns(j: Job): bool = j.status == JobRunning and j.generation == 2
@@ -40,7 +43,8 @@ A lease is current for one worker and generation while the job is running,
 not quiesced, and the lease is live. A lapsed lease passes through a takeover
 period and then expires; until recovery takes the job, its owner may renew
 it. The job's payload and its resource fence change only under the current
-lease, and the fence never names another generation.
+lease, the fence never names another generation, and only a running job
+holds one.
 
 ```quint
 pure def currentLease(j: Job, worker: int, generation: int): bool =
@@ -59,6 +63,7 @@ pure def canMutateJob(j: Job, worker: int, generation: int, value: int): bool = 
 pure def mutateJob(j: Job, worker: int, generation: int, value: int): Job = { ...j, payload: value, lastWriter: worker, lastWriteGeneration: generation }
 pure val valueValues = Set(0, 1)
 pure def alwaysFenceNamesThisGeneration(j: Job): bool = j.resourceFence == 0 or j.resourceFence == j.generation
+pure def alwaysOnlyARunningJobHoldsAFence(j: Job): bool = j.resourceFence != 0 implies j.status == JobRunning
 pure def stepOnlyTheCurrentLeaseWrites(before: Job, after: Job): bool =
   (after.lastWriter != before.lastWriter or after.lastWriteGeneration != before.lastWriteGeneration or after.payload != before.payload) implies
     currentLease(before, after.lastWriter, after.lastWriteGeneration)

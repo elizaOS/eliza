@@ -156,7 +156,9 @@ pure def sometimesRevokedStampRefused(s: Stamp): bool = s.revoked and s.cached a
 Each identity has a burst bucket and a sustained bucket, refilled in
 quarter-token units per tick up to their capacities from the last refill
 boundary. A request spends one token (four units) from both or neither.
-The refill boundary never moves back when the clock does. A refused reply
+The refill boundary never moves back when the clock does. With refill
+rates of zero or more, neither bucket ever holds fewer than zero units or
+more than its capacity. A refused reply
 names the earliest time at which both buckets will hold a token.
 
 ```quint
@@ -179,7 +181,7 @@ pure val ratesValues = Set({ burstCapacity: 4, sustainedCapacity: 12, burstRate:
 pure val bValues = Set({ burst: 4, sustained: 4, at: 4 }, { burst: 0, sustained: 12, at: 4 }, { burst: 3, sustained: 0, at: 6 })
 pure val clockValues = Set(0, 4, 5, 8)
 pure def bucketInBounds(rates: BucketLimits, x: Bucket): bool = x.burst >= 0 and x.burst <= rates.burstCapacity and x.sustained >= 0 and x.sustained <= rates.sustainedCapacity
-pure def lawTokensStayInBounds(rates: BucketLimits, b: Bucket, clock: int): bool = bucketInBounds(rates, b) implies bucketInBounds(rates, consumeRequest(rates, b, clock).bucket)
+pure def lawTokensStayInBounds(rates: BucketLimits, b: Bucket, clock: int): bool = (rates.burstRate >= 0 and rates.sustainedRate >= 0 and bucketInBounds(rates, b)) implies bucketInBounds(rates, consumeRequest(rates, b, clock).bucket)
 pure def lawRefillBoundaryNeverRetreats(rates: BucketLimits, b: Bucket, clock: int): bool = consumeRequest(rates, b, clock).bucket.at >= b.at
 pure def lawRetryTimeIsUsable(rates: BucketLimits, b: Bucket, clock: int): bool = {
   val reply = consumeRequest(rates, b, clock)

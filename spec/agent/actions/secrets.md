@@ -117,6 +117,23 @@ pure def alwaysNoCallbackAfterStop(s: Secrets): bool = not(s.lateCallback) and s
 pure def sometimesBegunCallbackFinishedDuringStop(s: Secrets): bool = s.phase == Stopped and s.callbacks == 1
 ```
 
+### Before its check a registration starts nothing, and an activation leaves only its own poll waiting on a secret
+
+Until the registration check is done, no activation is scheduled or begun,
+nothing is pending, no timer is set and no poll is in flight. A callback has
+begun only once an activation is running or finished, and a finished
+activation leaves nothing pending. While an activation is scheduled, or once
+a callback has begun, the plugin stays pending only while the poll that
+scheduled the activation is activating it.
+
+```quint
+pure def alwaysActivationFollowsCheckAndPoll(s: Secrets): bool =
+  ((s.registration == NotRegistered or s.registration == Checking) implies (s.activation == Idle and not(s.pending) and not(s.timer) and s.poll == PollIdle)) and
+  (s.callbacks == 0 or s.activation == Running or s.activation == Finished) and
+  (s.activation == Finished implies not(s.pending)) and
+  ((s.activation == Scheduled or s.callbacks != 0) implies (not(s.pending) or s.poll == Activating))
+```
+
 ### Stop retires the timer at once and finishes only when no poll or activation is in flight
 
 ```quint

@@ -46,9 +46,14 @@ pure def sometimesRetriedThenSettled(m: Memory): bool = m.retryUsed and pageStat
 
 ### A page of a revision settles at most once, and the task finishes only when no page is pending
 
+A call in flight evaluates one of the task's pages, for the task's revision
+or an older one. While the call is for the current revision and the task is
+live, its page is still pending. A page still pending in the current
+revision has not settled; a new revision starts with no settlements.
+
 ```quint
 pure def canFinishPage(m: Memory, failed: bool): bool = m.running != 0 and not(m.shutdown)
-pure def finishOwnedPage(m: Memory, failed: bool): Memory = {
+pure def settleOwnedPage(failed: bool, m: Memory): Memory = {
   val p = m.running
   val k = pageKey(m.revision, p)
   val updated = m.pages.put(p, if (failed) PageFailed else Evaluated)
@@ -58,25 +63,31 @@ pure def finishOwnedPage(m: Memory, failed: bool): Memory = {
     settlements: m.settlements.put(k, m.settlements.getOr(k, 0) + 1) }
 }
 pure def finishPage(m: Memory, failed: bool): Memory =
-  if (not(ownsRow(m))) { ...m, running: 0 } else finishOwnedPage(m, failed)
+  if (not(ownsRow(m))) { ...m, running: 0 } else settleOwnedPage(failed, m)
 pure def alwaysPendingPageKeepsTask(m: Memory): bool = m.task == Finished implies pageIds.forall(p => pageStatus(m, p) != Pending)
 pure def alwaysPageSettlesOnce(m: Memory): bool =
   pageIds.forall(p => m.settlements.getOr(pageKey(m.revision, p), 0) <= 1) and (pageIds.forall(p => pageStatus(m, p) == Pending) implies pageIds.forall(p => m.settlements.getOr(pageKey(m.revision, p), 0) == 0))
+pure def alwaysRunningPageIsCurrentAndPending(m: Memory): bool =
+  m.attemptRevision <= m.revision and (m.running == 0 or pageIds.contains(m.running)) and
+  ((m.running != 0 and ownsRow(m)) implies pageStatus(m, m.running) == Pending)
+pure def alwaysPendingPageUnsettled(m: Memory): bool =
+  pageIds.forall(p => pageStatus(m, p) == Pending implies m.settlements.getOr(pageKey(m.revision, p), 0) == 0)
 pure def sometimesDeferredPageOutlivesFailure(m: Memory): bool = m.task == Live and m.blocked.size() == 1 and pageIds.exists(p => pageStatus(m, p) == Pending)
 ```
 
 ### A result from an older revision or a cancelled task never writes the current task's row
 
-Reconciling the evidence starts a new revision with every page pending. A
-cancelled task replaced under the same identity gets a new revision too.
+Reconciling the evidence starts a new revision with every page pending and
+none settled. A cancelled task replaced under the same identity gets a new
+revision too.
 
 ```quint
 pure def canReviseTask(m: Memory): bool = m.task == Live
-pure def reviseTask(m: Memory): Memory = { ...m, revision: m.revision + 1, blocked: Set(), pages: allPending }
+pure def reviseTask(m: Memory): Memory = { ...m, revision: m.revision + 1, blocked: Set(), pages: allPending, settlements: Map() }
 pure def canCancelTask(m: Memory): bool = m.task == Live
 pure def cancelTask(m: Memory): Memory = { ...m, task: Cancelled }
 pure def canReplaceCancelled(m: Memory): bool = m.task == Cancelled
-pure def replaceCancelled(m: Memory): Memory = { ...m, task: Live, revision: m.revision + 1, blocked: Set(), backoff: false, pages: allPending }
+pure def replaceCancelled(m: Memory): Memory = { ...m, task: Live, revision: m.revision + 1, blocked: Set(), backoff: false, pages: allPending, settlements: Map() }
 pure def stepStaleResultWritesNothing(before: Memory, via: str, after: Memory): bool =
   (via == "finishPage" and not(ownsRow(before))) implies
     (after.task == before.task and after.revision == before.revision and after.blocked.subseteq(before.blocked) and before.blocked.subseteq(after.blocked) and after.running == 0)

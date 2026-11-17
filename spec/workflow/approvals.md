@@ -111,6 +111,12 @@ pure def sometimesCommittedReplyLost(r: ApprovalRun): bool = r.effects == 1 and 
 pure def sometimesUnsupportedDenied(r: ApprovalRun): bool = not(r.supported) and r.canonical == DeniedRequest
 ```
 
+### Every caller asks to approve or to deny, never for a pending decision
+
+```quint
+pure def alwaysAttemptsWantADecision(r: ApprovalRun): bool = r.attempts.every(a => a.wants != PendingApproval)
+```
+
 ### A caller acts only on the checks it has passed
 
 The lock belongs to exactly the caller that is reading, commanding, reading

@@ -21,6 +21,8 @@ relative-range protocol. A fixed range keeps its dates and needs no newer
 protocol. Once resolved, the range never moves. A read happens only while
 the owner and the source are still authorized and the device still speaks
 the protocol the range needs.
+Until the step resolves, no day is captured; a resolved or queued read
+carries the run's own day, and a read is made only as the run settles.
 
 ```quint
 type ScopePhase = NoProposal | Proposed | Resolved | QueuedRead | ScopeSettled
@@ -48,6 +50,10 @@ pure def downgradePeer(s: RunScope): RunScope = { ...s, peer: s.peer - 1 }
 pure val peerValues = Set(3, 4, 5)
 pure def alwaysOnlyReviewedRead(s: RunScope): bool =
   s.read implies s.authorityAtRead and s.capturedDay == s.runDay and peerUnderstands(s.relative, s.peerAtRead)
+pure def alwaysDayCapturedAtResolution(s: RunScope): bool =
+  (s.read implies s.phase == ScopeSettled) and
+  ((s.phase == NoProposal or s.phase == Proposed) implies s.capturedDay < 0) and
+  ((s.phase == Resolved or s.phase == QueuedRead) implies s.capturedDay == s.runDay)
 pure def alwaysInvalidSourceNeverReads(s: RunScope): bool = not(s.sourceValid) implies not(s.read)
 pure def stepResolutionStaysPinned(before: RunScope, after: RunScope): bool = before.capturedDay >= 0 implies after.capturedDay == before.capturedDay
 pure def sometimesRelativeReadAfterMidnight(s: RunScope): bool = s.read and s.relative and s.day > s.runDay

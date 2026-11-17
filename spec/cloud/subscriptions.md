@@ -57,7 +57,8 @@ pure def stepIntentIsImmutable(before: Subscription, after: Subscription): bool 
 Dispatch, resolution and supersession are compare-and-set writes on the
 command's revision and generation; a stale write is refused. Cancel and
 resume use their own dedicated dispatch and are not sent this way. A
-prepared command may be superseded only before it was ever sent.
+prepared command may be superseded only before it was ever sent, and a
+command not yet dispatched has never been attempted.
 
 ```quint
 pure val revisionValues = Set(0, 1, 2, 3)
@@ -74,6 +75,7 @@ pure def supersede(s: Subscription, revision: int): Subscription = { ...s, comma
 pure def alwaysOneDispatch(s: Subscription): bool = s.attempts <= 1 and s.generation == s.attempts and (s.started == (s.attempts == 1))
 pure def alwaysSupersededWasNeverSent(s: Subscription): bool = s.command == CommandSuperseded implies not(s.started)
 pure def alwaysSucceededHasResponse(s: Subscription): bool = (s.command == CommandSucceeded) implies s.responseDigest > 0
+pure def alwaysUndispatchedNeverAttempted(s: Subscription): bool = (s.command == CommandAbsent or s.command == CommandPrepared) implies s.attempts == 0
 pure def sometimesSuperseded(s: Subscription): bool = s.command == CommandSuperseded
 ```
 
@@ -82,7 +84,10 @@ pure def sometimesSuperseded(s: Subscription): bool = s.command == CommandSupers
 The provider's event, the buyer's return and the recovery sweep all settle
 the same checkout idempotently. The plan changes only for a captured
 payment; a checkout whose session expired, or that was never created
-within the provider's retry horizon, is retired, never a paid one.
+within the provider's retry horizon, is retired, never a paid one. A
+provider event exists only for a paid session, the count of applications
+never goes below zero, and a checkout retired with no session was retired
+only after the create horizon settled, so no session opens for it later.
 
 ```quint
 pure val horizon = 10
@@ -106,6 +111,9 @@ pure def confirmReturn(s: Subscription): Subscription = withPaidApplied(true, s)
 pure def alwaysOneApplication(s: Subscription): bool = s.applications <= 1 and ((s.command == CommandApplied) == (s.applications == 1))
 pure def alwaysAppliedOnlyWhenPaid(s: Subscription): bool = s.command == CommandApplied implies s.session == SessionComplete
 pure def alwaysPaidNeverRetired(s: Subscription): bool = s.command == CommandRetired implies (s.session == SessionExpired or s.session == SessionMissing)
+pure def alwaysWebhookOnlyForPaidSession(s: Subscription): bool = s.webhook != NoWebhook implies s.session == SessionComplete
+pure def alwaysApplicationsNeverNegative(s: Subscription): bool = s.applications >= 0
+pure def alwaysRetiredMissingSessionIsPastHorizon(s: Subscription): bool = (s.command == CommandRetired and s.session == SessionMissing) implies s.clock >= horizon + createSettle
 pure def sometimesAppliedWithoutWebhook(s: Subscription): bool = s.command == CommandApplied and s.webhook == WebhookLost
 ```
 
@@ -118,7 +126,10 @@ between one and four ticks); it applies a captured payment and retires an
 expired session but never expires, creates or closes one. The closure lane
 handles fenced organizations and checkouts past the horizon: it expires a
 payable session only for a fenced organization and retires a missing one
-only after the create horizon has settled.
+only after the create horizon has settled. Each look that does not settle
+the checkout records when it happened, never later than now, and the looks
+never outnumber what the age at the last one allows, plus one once the
+checkout has been applied or retired.
 
 ```quint
 pure def clamp(value: int, low: int, high: int): int = if (value < low) low else if (value > high) high else value
@@ -138,6 +149,8 @@ pure def closeStale(s: Subscription): Subscription =
   else { ...s, inspectedAt: s.clock }
 pure def maxReads(age: int): int = if (age < 1) 0 else if (age < 2) 1 else if (age < 4) 2 else if (age < 8) 3 else 4
 pure def alwaysReadBacksAreBounded(s: Subscription): bool = s.reads <= maxReads(s.clock)
+pure def alwaysReadsFollowTheLastLook(s: Subscription): bool =
+  s.inspectedAt <= s.clock and s.reads <= maxReads(s.inspectedAt) + (if (s.command == CommandApplied or s.command == CommandRetired) 1 else 0)
 pure def stepReadBackOnlyObserves(before: Subscription, via: str, after: Subscription): bool = via == "readBack" implies (after.session == before.session and not(before.fenced) and before.clock < horizon)
 pure val fair_tick = "weak"
 pure val fair_readBack = "weak"
@@ -188,6 +201,15 @@ pure def sometimesTerminalApplied(s: Subscription): bool = s.receipt == ReceiptA
 pure def sometimesLeaseTakenOver(s: Subscription): bool = s.receipt == ReceiptProcessing and s.lease >= 2
 ```
 
+### The last lease number is never negative and the subscription's revision is at least one
+
+The last lease number handed out is never negative, zero meaning none
+yet, and the subscription's revision is never below one.
+
+```quint
+pure def alwaysCountersStartAtOne(s: Subscription): bool = s.lastLease >= 0 and s.sourceRevision >= 1
+```
+
 ### The free plan, audit record and notice are published together, and only under the current authority
 
 Recovery may publish the ending before the receipt does; the receipt then
@@ -220,8 +242,10 @@ A reservation splits the requested amount between the period's included
 allowance and purchased credits (a cash-only reservation uses no
 allowance). Settlement records what was used; the rest of the allowance is
 released, or expires if the period ended, and the rest of the purchased
-credits is released. Cancellation uses nothing. A terminal reservation
-replayed with its own key is unchanged, and its identity never changes.
+credits is released. Cancellation uses nothing. Until it settles or is
+canceled, a reservation has used, released, expired and charged nothing. A
+terminal reservation replayed with its own key is unchanged, and its
+identity never changes.
 
 ```quint
 type FundingStatus = FundingReserved | FundingFinalized | FundingCanceled
@@ -234,7 +258,7 @@ pure def settleFunding(f: Funding, key: int, usedAllowance: int, usedPurchased: 
     releasedPurchased: f.purchased - usedPurchased, overage: overage }
 pure def cancelFunding(f: Funding, key: int): Funding = if (f.status != FundingReserved) f else { ...f, status: FundingCanceled, key: key, releasedAllowance: f.allowance, releasedPurchased: f.purchased }
 pure def conserved(f: Funding): bool = f.allowance >= 0 and f.purchased >= 0 and f.allowance + f.purchased > 0 and
-  (if (f.status == FundingReserved) f.usedAllowance + f.usedPurchased + f.releasedAllowance + f.releasedPurchased + f.expiredAllowance == 0
+  (if (f.status == FundingReserved) f.usedAllowance == 0 and f.usedPurchased == 0 and f.releasedAllowance == 0 and f.releasedPurchased == 0 and f.expiredAllowance == 0 and f.overage == 0
    else f.allowance == f.usedAllowance + f.releasedAllowance + f.expiredAllowance and f.purchased == f.usedPurchased + f.releasedPurchased and (f.status == FundingCanceled implies f.usedAllowance + f.usedPurchased + f.overage == 0))
 pure val fValues = Set(reserveFunding(1, 1), reserveFunding(0, 2), reserveFunding(2, 0), { ...reserveFunding(1, 1), status: FundingFinalized, key: 1, usedAllowance: 1, releasedPurchased: 1 })
 pure val usedAllowanceValues = Set(0, 1, 2)
@@ -243,5 +267,5 @@ pure val keyValues = Set(1, 2)
 pure def lawSettlementConserves(f: Funding, key: int, usedAllowance: int, usedPurchased: int, periodEnded: bool): bool = conserved(f) implies conserved(settleFunding(f, key, usedAllowance, usedPurchased, periodEnded, 0))
 pure def lawCancellationConserves(f: Funding, key: int): bool = conserved(f) implies conserved(cancelFunding(f, key))
 pure def lawTerminalFundingIsFinal(f: Funding, key: int, usedAllowance: int, usedPurchased: int, periodEnded: bool): bool = f.status != FundingReserved implies (settleFunding(f, key, usedAllowance, usedPurchased, periodEnded, 0) == f and cancelFunding(f, key) == f)
-pure def lawExpiredAllowanceIsNotReleased(f: Funding, key: int, usedAllowance: int, usedPurchased: int): bool = settleFunding(f, key, usedAllowance, usedPurchased, true, 0).releasedAllowance == (if (f.status == FundingReserved) 0 else f.releasedAllowance)
+pure def lawExpiredAllowanceIsNotReleased(f: Funding, key: int, usedAllowance: int, usedPurchased: int): bool = conserved(f) implies settleFunding(f, key, usedAllowance, usedPurchased, true, 0).releasedAllowance == (if (f.status == FundingReserved) 0 else f.releasedAllowance)
 ```

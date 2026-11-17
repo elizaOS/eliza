@@ -391,3 +391,141 @@ lemma resetDirectRoutes_ensures(s: RuntimeRegistries, runtimeId: int)
     }
   }
 }
+
+lemma KeyCountsDistinct<T, K>(xs: seq<T>, key: T -> K, p: T -> (T -> bool))
+  requires forall a, b :: p(a)(b) == (key(b) == key(a))
+  ensures (forall x :: x in xs ==> |ProofLib.Filter(p(x), xs)| == 1) <==> ProofLib.DistinctBy(xs, key)
+{
+  forall i | 0 <= i < |xs|
+    ensures |ProofLib.Filter(p(xs[i]), xs)| == 1 <==> forall j :: 0 <= j < |xs| && j != i ==> key(xs[j]) != key(xs[i])
+  {
+    ProofLib.FilterCountOneIffUnique(p(xs[i]), xs, key, i);
+  }
+  if ProofLib.DistinctBy(xs, key) {
+    forall x | x in xs
+      ensures |ProofLib.Filter(p(x), xs)| == 1
+    {
+      var i :| 0 <= i < |xs| && xs[i] == x;
+    }
+  } else {
+    var i, j :| 0 <= i < |xs| && 0 <= j < |xs| && i != j && key(xs[i]) == key(xs[j]);
+    assert xs[i] in xs;
+  }
+}
+
+lemma UniqueKeysFacts(s: RuntimeRegistries)
+  ensures alwaysUniqueKeys(s) == (ProofLib.DistinctBy(s.workers, (w: Worker) => w.name) && ProofLib.DistinctBy(s.categories, (c: SearchCategory) => c.key) && ProofLib.DistinctBy(s.providers, (p: ResolvedProvider) => p.modelType))
+{
+  KeyCountsDistinct(s.workers, (w: Worker) => w.name, (w: Worker) => (other: Worker) => (other.name == w.name));
+  KeyCountsDistinct(s.categories, (c: SearchCategory) => c.key, (c: SearchCategory) => (other: SearchCategory) => (other.key == c.key));
+  KeyCountsDistinct(s.providers, (p: ResolvedProvider) => p.modelType, (p: ResolvedProvider) => (other: ResolvedProvider) => (other.modelType == p.modelType));
+}
+
+lemma UpsertKeepsDistinct<T, K>(xs: seq<T>, ys: seq<T>, key: T -> K, k: K, item: T)
+  requires ProofLib.DistinctBy(xs, key) && key(item) == k
+  requires (exists x :: x in xs && key(x) == k) ==> |ys| == |xs| && forall i :: 0 <= i < |xs| ==> key(ys[i]) == key(xs[i])
+  requires !(exists x :: x in xs && key(x) == k) ==> ys == xs + [item]
+  ensures ProofLib.DistinctBy(ys, key)
+{
+  if !(exists x :: x in xs && key(x) == k) {
+    forall i | 0 <= i < |xs|
+      ensures key(xs[i]) != k
+    {
+      assert xs[i] in xs;
+    }
+  }
+}
+
+lemma ReplaceKeepsDistinct<T, K>(xs: seq<T>, keep: T -> bool, key: T -> K, item: T)
+  requires ProofLib.DistinctBy(xs, key)
+  requires forall x :: keep(x) == (key(x) != key(item))
+  ensures ProofLib.DistinctBy(ProofLib.Filter(keep, xs) + [item], key)
+{
+  ProofLib.FilterKeepsDistinctBy(keep, xs, key);
+  forall x | x in ProofLib.Filter(keep, xs)
+    ensures key(x) != key(item)
+  {
+    ProofLib.FilterMember(keep, xs, x);
+  }
+  ProofLib.DistinctByConcat(ProofLib.Filter(keep, xs), [item], key);
+}
+
+lemma registerWorker_ensures(s: RuntimeRegistries, workerName: string, reference: int)
+  ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysComponentNamesUnique(registerWorker(s, workerName, reference)))
+  ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysComponentOwnershipValid(registerWorker(s, workerName, reference)))
+  ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysModelRegistrationOrderUnique(registerWorker(s, workerName, reference)))
+  ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysModelSelectionPriority(registerWorker(s, workerName, reference)))
+  ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysRegistryCountersNonnegative(registerWorker(s, workerName, reference)))
+  ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysLocalizedSlotUnique(registerWorker(s, workerName, reference)))
+  ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysDirectIdsUniquePerRuntime(registerWorker(s, workerName, reference)))
+  ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysUniqueKeys(registerWorker(s, workerName, reference)))
+  ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> stepRegisterWorkerWakesScheduler(s, "registerWorker", registerWorker(s, workerName, reference)))
+  ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> stepCategoryIsolation(s, "registerWorker", registerWorker(s, workerName, reference)))
+{
+  if inv(s) && canRegisterWorker(s, workerName, reference) {
+    var after := registerWorker(s, workerName, reference);
+    UniqueKeysFacts(s);
+    UniqueKeysFacts(after);
+    UpsertKeepsDistinct(s.workers, after.workers, (w: Worker) => w.name, workerName, Worker(workerName, reference));
+  }
+}
+
+lemma unregisterWorker_ensures(s: RuntimeRegistries, workerName: string)
+  ensures (inv(s) ==> alwaysComponentNamesUnique(unregisterWorker(s, workerName)))
+  ensures (inv(s) ==> alwaysComponentOwnershipValid(unregisterWorker(s, workerName)))
+  ensures (inv(s) ==> alwaysModelRegistrationOrderUnique(unregisterWorker(s, workerName)))
+  ensures (inv(s) ==> alwaysModelSelectionPriority(unregisterWorker(s, workerName)))
+  ensures (inv(s) ==> alwaysRegistryCountersNonnegative(unregisterWorker(s, workerName)))
+  ensures (inv(s) ==> alwaysLocalizedSlotUnique(unregisterWorker(s, workerName)))
+  ensures (inv(s) ==> alwaysDirectIdsUniquePerRuntime(unregisterWorker(s, workerName)))
+  ensures (inv(s) ==> alwaysUniqueKeys(unregisterWorker(s, workerName)))
+  ensures (inv(s) ==> stepRegisterWorkerWakesScheduler(s, "unregisterWorker", unregisterWorker(s, workerName)))
+  ensures (inv(s) ==> stepCategoryIsolation(s, "unregisterWorker", unregisterWorker(s, workerName)))
+{
+  if inv(s) {
+    var after := unregisterWorker(s, workerName);
+    UniqueKeysFacts(s);
+    UniqueKeysFacts(after);
+    ProofLib.FilterKeepsDistinctBy((w: Worker) => (w.name != workerName), s.workers, (w: Worker) => w.name);
+  }
+}
+
+lemma registerCategory_ensures(s: RuntimeRegistries, category: SearchCategory)
+  ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysComponentNamesUnique(registerCategory(s, category)))
+  ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysComponentOwnershipValid(registerCategory(s, category)))
+  ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysModelRegistrationOrderUnique(registerCategory(s, category)))
+  ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysModelSelectionPriority(registerCategory(s, category)))
+  ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysRegistryCountersNonnegative(registerCategory(s, category)))
+  ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysLocalizedSlotUnique(registerCategory(s, category)))
+  ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysDirectIdsUniquePerRuntime(registerCategory(s, category)))
+  ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysUniqueKeys(registerCategory(s, category)))
+  ensures (inv(s) ==> canRegisterCategory(s, category) ==> stepRegisterWorkerWakesScheduler(s, "registerCategory", registerCategory(s, category)))
+  ensures (inv(s) ==> canRegisterCategory(s, category) ==> stepCategoryIsolation(s, "registerCategory", registerCategory(s, category)))
+{
+  if inv(s) && canRegisterCategory(s, category) {
+    var after := registerCategory(s, category);
+    UniqueKeysFacts(s);
+    UniqueKeysFacts(after);
+    UpsertKeepsDistinct(s.categories, after.categories, (c: SearchCategory) => c.key, category.key, category);
+  }
+}
+
+lemma noteResolvedProvider_ensures(s: RuntimeRegistries, modelType: string, providerName: string, nonblank: bool)
+  ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysComponentNamesUnique(noteResolvedProvider(s, modelType, providerName, nonblank)))
+  ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysComponentOwnershipValid(noteResolvedProvider(s, modelType, providerName, nonblank)))
+  ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysModelRegistrationOrderUnique(noteResolvedProvider(s, modelType, providerName, nonblank)))
+  ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysModelSelectionPriority(noteResolvedProvider(s, modelType, providerName, nonblank)))
+  ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysRegistryCountersNonnegative(noteResolvedProvider(s, modelType, providerName, nonblank)))
+  ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysLocalizedSlotUnique(noteResolvedProvider(s, modelType, providerName, nonblank)))
+  ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysDirectIdsUniquePerRuntime(noteResolvedProvider(s, modelType, providerName, nonblank)))
+  ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysUniqueKeys(noteResolvedProvider(s, modelType, providerName, nonblank)))
+  ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> stepRegisterWorkerWakesScheduler(s, "noteResolvedProvider", noteResolvedProvider(s, modelType, providerName, nonblank)))
+  ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> stepCategoryIsolation(s, "noteResolvedProvider", noteResolvedProvider(s, modelType, providerName, nonblank)))
+{
+  if inv(s) && canNoteResolvedProvider(s, modelType, providerName, nonblank) && nonblank {
+    var after := noteResolvedProvider(s, modelType, providerName, nonblank);
+    UniqueKeysFacts(s);
+    UniqueKeysFacts(after);
+    ReplaceKeepsDistinct(s.providers, (p: ResolvedProvider) => (p.modelType != modelType), (p: ResolvedProvider) => p.modelType, ResolvedProvider(modelType, providerName));
+  }
+}

@@ -58,8 +58,8 @@ pure val evidenceValues = Set(
   { predecessorSettled: true, updateAllowsStart: true, listener: false, deploymentMatches: false, recentStamp: true, journaledChildLive: true },
   { predecessorSettled: false, updateAllowsStart: false, listener: false, deploymentMatches: false, recentStamp: false, journaledChildLive: false }
 )
-pure def stepPreservedResidentNeverLaunches(before: ResidentHost, after: ResidentHost): bool =
-  after.phase == PreservedResident implies not(after.launchRequired)
+pure def alwaysPreservedResidentNeverLaunches(s: ResidentHost): bool =
+  s.phase == PreservedResident implies not(s.launchRequired)
 pure def sometimesUnprovenSurvivorPreserved(s: ResidentHost): bool = s.phase == PreservedResident
 ```
 

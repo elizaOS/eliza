@@ -38,6 +38,27 @@ pure def alwaysAttemptBudgets(s: Processor): bool = s.items.every(j => j.attempt
 pure def sometimesBatchItemsRunTogether(s: Processor): bool = s.items.select(j => j.phase == ItemRunning).length() > 1
 ```
 
+### No item is submitted before configuration, and the default budget and cap stay positive
+
+```quint
+pure def alwaysConfigurationPrecedesItems(s: Processor): bool = s.defaultAttempts > 0 and s.maxCap > 0 and (not(s.configured) implies s.items.length() == 0)
+```
+
+### Each item id names exactly one item
+
+```quint
+pure def alwaysItemIdsUnique(s: Processor): bool = s.items.every(j => s.items.select(other => other.id == j.id).length() == 1)
+```
+
+### A running attempt is already counted against its item's budget
+
+Starting an attempt counts it, and a retry is counted only after an attempt
+fails, so a running item has made more attempts than retries.
+
+```quint
+pure def alwaysRunningAttemptIsCounted(s: Processor): bool = s.items.every(j => j.phase == ItemRunning implies j.retryCount < j.attempts)
+```
+
 ### Failure releases capacity before backoff and exhaustion callbacks
 
 Retry refusal or exhausted budget produces a failed item. Exhaustion callback failure cannot change an already failed result or replay successful siblings.

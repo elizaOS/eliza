@@ -22,7 +22,8 @@ other failure refuses. A consent is prepared only after the credential is
 allowed, and its record and expiry alarm are written together. A session is
 minted from it only while it is prepared and unexpired, and only by the same
 owner, organization and nonce; it can be minted at most once, and a refused
-attempt changes nothing.
+attempt changes nothing. Until a consent is minted, no session has been
+admitted from it.
 
 ```quint
 type CredentialCheck = CredentialChecking | CredentialRetrying | CredentialAllowed | CredentialRefused
@@ -55,6 +56,7 @@ pure def alwaysConsentMintedAtMostOnce(s: SpeechSession): bool = s.admissions >=
 pure def alwaysPreparedOnlyUnderAllowedCredential(s: SpeechSession): bool = (s.consent == ConsentPrepared or s.consent == ConsentMinted) implies s.credential == CredentialAllowed
 pure def alwaysLiveConsentIsArmed(s: SpeechSession): bool = (s.consent == ConsentPrepared and s.consentLive) implies s.alarmArmed
 pure def alwaysAdmissionCameFromAConsent(s: SpeechSession): bool = s.admissions > 0 implies s.credential == CredentialAllowed
+pure def alwaysUnmintedConsentHasNoAdmission(s: SpeechSession): bool = (s.consent == ConsentAbsent or s.consent == ConsentPrepared) implies s.admissions == 0
 pure def sometimesSessionMintedAfterRetry(s: SpeechSession): bool = s.consent == ConsentMinted and s.credential == CredentialAllowed
 pure def sometimesConsentExpiresUnused(s: SpeechSession): bool = s.consent == ConsentPrepared and not(s.consentLive)
 ```
@@ -70,7 +72,11 @@ pure def sometimesConsentExpiresUnused(s: SpeechSession): bool = s.consent == Co
 A minted session opens its transport with its first window reserved, funded
 and granted. Each further window is reserved before it is admitted, and the
 session is extended into it only once it is funded; a window the funding
-refuses is settled at zero and never granted.
+refuses is settled at zero and never granted. Every recorded window's
+number is at least zero and below the count of recorded windows, so the
+recorded windows are exactly those numbered from zero up, without gaps.
+Before the transport starts it is not open, no window is pending or
+settled, and nothing is confirmed.
 
 ```quint
 pure def canOpenTransport(s: SpeechSession): bool = s.consent == ConsentMinted and not(s.transportStarted)
@@ -86,6 +92,9 @@ pure def refuseWindow(s: SpeechSession): SpeechSession = { ...s, settled: s.sett
 pure def alwaysGrantedWindowsWereFunded(s: SpeechSession): bool = s.granted.subseteq(s.funded) and s.funded.subseteq(s.recorded)
 pure def alwaysPendingWindowIsRecorded(s: SpeechSession): bool = s.pendingWindow == -1 or (s.recorded.contains(s.pendingWindow) and not(s.granted.contains(s.pendingWindow)) and not(s.settled.contains(s.pendingWindow)))
 pure def alwaysRefusedWindowIsNeverGranted(s: SpeechSession): bool = s.transportOpen implies s.settled.forall(w => not(s.granted.contains(w)) and not(s.funded.contains(w)))
+pure def alwaysNothingBillsBeforeTheTransport(s: SpeechSession): bool =
+  not(s.transportStarted) implies (not(s.transportOpen) and s.pendingWindow == -1 and s.settled.size() == 0 and not(s.confirmed))
+pure def alwaysRecordedWindowsHaveNoGaps(s: SpeechSession): bool = s.recorded.forall(w => w >= 0 and w < s.recorded.size())
 pure def sometimesSessionExtended(s: SpeechSession): bool = s.granted.size() == 2
 pure def sometimesWindowRefusedAtZero(s: SpeechSession): bool = s.transportOpen and s.settled.size() == 1
 ```

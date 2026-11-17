@@ -20,7 +20,8 @@ only when the slot still holds that request; a late cancel for an older
 request leaves a newer one alone. A failed cancel is retried before the
 next dispatch. Disposing the controller shares the cancellation in flight
 and does not wait for it, and work that was only queued owns no native
-attempt.
+attempt. With no cancel pending or failed, the controller remembers no
+cancel at all, and while a cancel is pending it shows no native screen.
 
 ```quint
 type CtlPhase = ShowingMethods | QueuedMethod | NativeMethod
@@ -76,6 +77,8 @@ pure def alwaysCancellationKeepsItsFence(c: SignInCancel): bool =
   (c.cleanup.cleanupState != NoCleanup implies (c.mounted and c.cleanup.request != 0 and c.cleanup.request == c.request)) and
     ((c.phase == QueuedMethod and c.request != 0) implies (c.cleanup.cleanupState == CleanupWaiting and c.cleanup.intent == DispatchIntent)) and
     (c.cleanup.cleanupState == CleanupFailed implies c.phase == ShowingMethods)
+pure def alwaysNoCleanupRemembersNothing(c: SignInCancel): bool = c.cleanup.cleanupState == NoCleanup implies c.cleanup == noCleanup
+pure def alwaysPendingCancelShowsNoNativeScreen(c: SignInCancel): bool = c.cleanup.cleanupState == CleanupWaiting implies c.phase != NativeMethod
 pure def alwaysScopedReceiptPreservesForeignAttempt(c: SignInCancel): bool = receiptScoped(c.receipt)
 pure def sometimesLateCancelSparedNewerRequest(c: SignInCancel): bool = c.receipt.request != 0 and c.receipt.before != c.receipt.request and c.receipt.after != 0
 pure def sometimesFailedCancelRetried(c: SignInCancel): bool = c.cleanup.intent == DispatchIntent

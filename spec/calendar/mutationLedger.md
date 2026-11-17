@@ -50,7 +50,7 @@ pure def alwaysPairedDurableRows(s: MutationLedger): bool =
 A request can be claimed when it has no attempt and is approved, or
 when its attempt failed in a retryable way. The claim marks both rows
 executing and takes the next generation as its token. An unclaimed
-request can instead be invalidated, which expires the approval. Only a live claim holds a token: the token of an executing, ambiguous
+request can instead be invalidated, which expires the approval. Generations count up from zero. Only a live claim holds a token: the token of an executing, ambiguous
 or succeeded attempt is the latest generation, and an attempt that is
 absent, retryable or invalidated holds none. An ambiguous attempt can
 never be claimed again.
@@ -66,6 +66,7 @@ pure def claim(s: MutationLedger): MutationLedger =
 pure def canInvalidateBeforeClaim(s: MutationLedger): bool = claimable(s)
 pure def invalidateBeforeClaim(s: MutationLedger): MutationLedger = { ...s, attempt: Invalidated, approval: Expired }
 pure def alwaysExactClaimToken(s: MutationLedger): bool =
+  s.generation >= 0 and
   ((s.attempt == Executing or s.attempt == Ambiguous or s.attempt == Succeeded) implies s.token == s.generation and s.token > 0) and
   ((s.attempt == Absent or s.attempt == FailedRetryable or s.attempt == Invalidated) implies s.token == 0) and
   (s.approval == ReconciliationRequired implies s.reconciliationAttempt) and

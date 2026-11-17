@@ -137,6 +137,23 @@ pure def sometimesWarmAnswer(a: PaidAccess): bool = a.calls.some(c => c.phase ==
 pure def sometimesCallersShareOneRead(a: PaidAccess): bool = a.calls.some(c => a.calls.some(d => d.caller != c.caller and d.read == c.read and c.read > 0))
 ```
 
+### Reads are numbered in order and never name a tuple ahead of the current one
+
+Reads are numbered from one, and no read's number exceeds the count of
+reads. No read names a plan revision or refusal epoch later than the
+current one, and a read in the current refusal epoch names a key no later
+than the stored one, in the order first key, replacement, none. While a
+read for the current tuple is pending, the shared flight is a pending read
+for the current tuple.
+
+```quint
+pure def keyRank(k: str): int = if (k == "") 2 else if (k == "k2") 1 else 0
+pure def alwaysReadNumbersInRange(a: PaidAccess): bool = a.reads.every(x => x.read >= 1 and x.read <= a.reads.length())
+pure def alwaysReadsPrecedeTheTuple(a: PaidAccess): bool =
+  a.reads.every(x => x.tuple.revision <= a.tuple.revision and x.tuple.epoch <= a.tuple.epoch and (x.tuple.epoch == a.tuple.epoch implies keyRank(x.tuple.key) <= keyRank(a.tuple.key)))
+pure def alwaysCurrentPendingReadIsTheFlight(a: PaidAccess): bool = a.reads.every(x => (x.phase == ReadPending and x.tuple == a.tuple) implies matchingFlight(a))
+```
+
 ### A reply admits a waiting caller only if it was read for that caller's account and key
 
 A read resolves as stale if the account or key changed while it was in
@@ -183,6 +200,15 @@ pure def observeCheck(a: PaidAccess, caller: int): PaidAccess = {
 pure def stepFinishedReadKeepsSuccessorFlight(before: PaidAccess, via: str, after: PaidAccess): bool = via == "finishRead" implies (after.flight == before.flight or after.flight == 0) and (before.flight != 0 and after.flight == 0 implies readOf(after, before.flight).phase == ReadDone)
 pure def alwaysNoWrongOwnerCleared(a: PaidAccess): bool = not(a.wrongOwnerCleared)
 pure def sometimesReplacementKeySurvivesOldRefusal(a: PaidAccess): bool = a.tuple.key == "k2" and a.reads.some(x => x.tuple.key == "k1" and x.outcome == AccessStale)
+```
+
+### A read has no answer until it resolves
+
+A read that is pending, or waiting on the host's revocation work, has no
+answer yet.
+
+```quint
+pure def alwaysUnresolvedReadHasNoAnswer(a: PaidAccess): bool = a.reads.every(x => (x.phase == ReadPending or x.phase == ReadRevoking) implies x.outcome == NoOutcome)
 ```
 
 ### The account, key, plan revision or remote answer may change at any time

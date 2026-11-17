@@ -15,7 +15,8 @@ the stream this client carries.
 
 ### A late refresh cannot warm, poison or retire the current generation
 
-Each refresh starts a new generation and clears the previous failure, before
+Generations count up from zero. Each refresh starts a new generation and
+clears the previous failure, before
 it touches the bridge. When a refresh settles, only the current
 generation's refresh may install a running bridge in the cache, record a
 failure or clear the refresh in progress; an older one changes nothing. A
@@ -42,6 +43,7 @@ pure val epochValues = Set(0, 1, 2, 3)
 pure def alwaysCacheNamesAnIssuedGeneration(c: RuntimeClient): bool =
   c.running >= -1 and c.running <= c.generation and (c.refreshing == -1 or c.refreshing == c.generation) and
   c.request.epoch <= c.generation and c.pendingRefreshes.forall(e => e > 0 and e <= c.generation)
+pure def alwaysGenerationsCountFromZero(c: RuntimeClient): bool = c.generation >= 0
 pure def stepLateRefreshChangesNothing(before: RuntimeClient, via: str, after: RuntimeClient): bool =
   (via == "finishRefresh" and after.settledRefresh != before.generation) implies
     (after.running == before.running and after.refreshFailure == before.refreshFailure and after.refreshing == before.refreshing)

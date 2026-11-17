@@ -60,7 +60,8 @@ pure def sometimesSignedInWithIdToken(s: GoogleSignIn): bool = s.lastResult == I
 
 The service issues at most one App Link code for an attempt, bound to its
 verifier, redirect and tenant. The code's store lifetime may outlast its
-payload expiry; both are checked.
+payload expiry; both are checked. The clock never runs below zero, and an
+attempt awaiting its return is numbered from one.
 
 ```quint
 type AttemptPhase = NoAttempt | AwaitingReturn | Exchanging | AttemptSpent | MfaAdmitted | SignedIn
@@ -99,6 +100,8 @@ pure def canElapse(s: GoogleSignIn, seconds: int): bool = seconds > 0
 pure def elapse(s: GoogleSignIn, seconds: int): GoogleSignIn = { ...s, now: s.now + seconds }
 pure val secondsValues = Set(1, 60, 300)
 pure def sometimesSignedIn(s: GoogleSignIn): bool = s.phase == SignedIn
+pure def alwaysClockNeverNegative(s: GoogleSignIn): bool = s.now >= 0
+pure def alwaysAwaitedAttemptIsNumbered(s: GoogleSignIn): bool = s.attempt >= 0 and (s.phase == AwaitingReturn implies s.attempt >= 1)
 ```
 
 ### A return with a different state or a malformed shape is refused and leaves the attempt intact
@@ -143,7 +146,10 @@ store lifetime again) before it replies. A presenter with a wrong binding
 spends nothing, and a contender for the lock is refused as busy. The model
 lets an outside presenter try an attempt's code while it has fewer than two
 redemptions, and numbers each attempt's redemptions from one, so the service
-can finish every redemption, the host's included.
+can finish every redemption, the host's included. No two redemptions share
+a number, and the code is spent by none of them or by one. Only a
+redemption whose bindings all match passes validation, and only the
+current attempt's code is ever consumed or granted.
 
 ```quint
 pure def canPresentCode(s: GoogleSignIn, binding: Binding): bool = s.codeFor > 0 and s.redemptions.length() < 2
@@ -179,6 +185,10 @@ pure def holdsLock(entry: Redemption): bool = entry.phase == Locked or entry.pha
 pure def alwaysOneLockOwnerWithMatchingBindings(s: GoogleSignIn): bool =
   s.redemptions.every(r => (holdsLock(r) iff s.lockOwner == r.id) and (s.lockOwner == r.id implies r.binding == AllBindingsMatch)) and (s.lockOwner == 0 or s.redemptions.some(r => r.id == s.lockOwner))
 pure def alwaysAtMostOneGrant(s: GoogleSignIn): bool = s.redemptions.select(r => granted(r)).length() <= 1
+pure def alwaysRedemptionIdsUnique(s: GoogleSignIn): bool =
+  s.nextRedemption >= 1 and s.spentBy < s.nextRedemption and s.redemptions.every(r => s.redemptions.select(o => o.id == r.id).length() == 1)
+pure def alwaysValidatedRedemptionMatchesBindings(s: GoogleSignIn): bool = s.redemptions.every(r => r.phase == Validated implies r.binding == AllBindingsMatch)
+pure def alwaysSpentCodeBelongsToAttempt(s: GoogleSignIn): bool = s.redemptions.every(r => (granted(r) or r.phase == CodeConsumed) implies s.codeFor == s.attempt)
 pure def alwaysGrantFollowsLiveConsume(s: GoogleSignIn): bool =
   s.redemptions.every(r => (granted(r) or r.phase == CodeConsumed) implies (s.spentBy == r.id and r.binding == AllBindingsMatch and not(s.codePresent) and s.spentAt >= 0 and s.spentAt < s.storeExpiresAt))
 pure def alwaysGrantUsesIssuedLane(s: GoogleSignIn): bool =
@@ -194,7 +204,9 @@ pure def sometimesWrongBindingThenOwnerRedeems(s: GoogleSignIn): bool = s.redemp
 Cancel advances the epoch and clears the attempt at once; a reply that
 arrives later ends nothing more than the cancelled exchange, so it can
 neither restore the attempt nor admit an MFA challenge. Cancellation settles
-only after the exchange in flight has answered.
+only after the exchange in flight has answered. An exchange is never
+dispatched in an epoch ahead of the current one, and while a cancellation
+settles, the last dispatch is in an epoch behind it.
 
 ```quint
 pure def hostRedemption(s: GoogleSignIn): Redemption = s.redemptions.select(r => r.fromHost).nthOr(0, noRedemption)
@@ -215,6 +227,7 @@ pure def finishCancel(s: GoogleSignIn): GoogleSignIn = { ...s, cancelling: false
 pure def alwaysAdmissionNeedsCurrentEpoch(s: GoogleSignIn): bool =
   ((s.phase == MfaAdmitted or s.phase == SignedIn) implies (s.ticket == s.epoch and not(s.cancelling))) and (s.lastResult == ReplyAfterCancel implies (s.phase == NoAttempt and not(s.verifierLive)))
 pure def alwaysCancellingHoldsNoVerifier(s: GoogleSignIn): bool = s.cancelling implies (not(s.verifierLive) and s.phase != MfaAdmitted and s.phase != SignedIn)
+pure def alwaysTicketNotAhead(s: GoogleSignIn): bool = s.ticket <= s.epoch and (s.cancelling implies s.ticket < s.epoch)
 pure def sometimesMfaAdmitted(s: GoogleSignIn): bool = s.phase == MfaAdmitted
 pure def sometimesReplyAfterCancel(s: GoogleSignIn): bool = s.lastResult == ReplyAfterCancel
 ```

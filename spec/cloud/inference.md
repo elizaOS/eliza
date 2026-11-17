@@ -77,6 +77,21 @@ pure val fair_loseAck = "weak"
 pure def leadsToMarkReturns(r: InferenceRequest, later: InferenceRequest): bool = r.caller == CallerWaiting implies later.caller != CallerWaiting
 ```
 
+### An acknowledgement stands for the one recorded dispatch
+
+A leased request has dispatched nothing yet, and a dispatched one has
+dispatched once. A mark's reply arrives only for a waiting caller whose
+dispatch is recorded, and an acknowledged caller's request holds that one
+dispatch and is past its lease.
+
+```quint
+pure def alwaysAcknowledgementFollowsTheDispatch(r: InferenceRequest): bool =
+  (r.phase == Leased implies r.dispatches == 0) and
+  (r.phase == Dispatched implies r.dispatches == 1) and
+  (r.replied implies r.caller == CallerWaiting and r.dispatches == 1 and r.phase != NoHold and r.phase != Leased) and
+  (r.caller == CallerAuthorized implies r.dispatches == 1 and r.phase != NoHold and r.phase != Leased)
+```
+
 ### A stale policy refuses a deferred mark, which may refill once
 
 A policy change opens a fence and then advances the generation; a revoked
@@ -153,6 +168,18 @@ pure def sometimesKnownChargeSettles(r: InferenceRequest): bool = r.phase == Set
 pure val weight_persistMark = 4
 pure val weight_acceptAck = 4
 pure val weight_invokeProvider = 4
+```
+
+### Only the current recovery owner's publication finishes a recovery
+
+An owner publishes only while it is the current recovery owner, so the last
+publisher is never newer than the current owner, and a recovering request
+whose current owner has published carries its gate debit.
+
+```quint
+pure def alwaysPublisherIsNeverNewerThanTheOwner(r: InferenceRequest): bool =
+  r.publishedBy <= r.recoveryOwner and
+  ((r.phase == Recovering and r.publishedBy == r.recoveryOwner) implies r.gateDebit == 1)
 ```
 
 ### Every finished request passed exactly one credential boundary

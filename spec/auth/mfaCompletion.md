@@ -21,7 +21,9 @@ The host dispatches a code to the service only for the current session,
 with well-formed digits, for the completion operation, before the deadline. A
 failed dispatch keeps the challenge for another try. The service may
 replace the challenge with another method; a replacement can only bring
-the deadline closer.
+the deadline closer. The count of dispatches is never negative, a request
+awaiting the provider has been dispatched at least once, and the current
+challenge is the first one, its replacement, or none.
 
 ```quint
 import mfa as M from "./mfa"
@@ -73,11 +75,15 @@ pure def alwaysReplacementOnlyShortensDeadline(s: MfaCompletion): bool =
   s.deadline <= s.initialDeadline and (s.replacementDeadline == 0 implies s.deadline == s.initialDeadline) and (s.replacementDeadline > 0 implies s.deadline == earlier(s.initialDeadline, s.replacementDeadline))
 pure def alwaysProviderFailureKeepsChallenge(s: MfaCompletion): bool =
   s.result == ProviderError implies (s.challenge == s.request.challenge and s.method == s.request.method and s.phase == Ready)
+pure def alwaysPendingAttemptWasDispatched(s: MfaCompletion): bool =
+  s.dispatches >= 0 and (pending(s) implies s.dispatches > 0) and (s.challenge == 0 or s.challenge == 1 or s.challenge == 2)
 pure def sometimesReplacedFactorSubmitted(s: MfaCompletion): bool = s.phase == AtProvider and s.request.challenge == 2
 pure def sometimesExpiredRefused(s: MfaCompletion): bool = s.result == MfaExpired and s.challenge > 0
 ```
 
 ### A session is handed over only with an empty saved receipt and in the current attempt
+
+The count of sessions handed over is never negative.
 
 ```quint
 pure def canReceiptReply(s: MfaCompletion, hasPending: bool): bool = s.phase == ReadingReceipt
@@ -90,11 +96,14 @@ pure def receiptReply(s: MfaCompletion, hasPending: bool): MfaCompletion = {
 }
 pure def alwaysGrantNeedsCurrentEpochAndEmptyReceipt(s: MfaCompletion): bool =
   s.grants > 0 implies (s.phase == HandedOff and s.result == GrantHandedOff and s.request.epoch == s.epoch and not(s.pendingSeen))
+pure def alwaysGrantsAreNeverNegative(s: MfaCompletion): bool = s.grants >= 0
 pure def sometimesHandedOff(s: MfaCompletion): bool = s.phase == HandedOff
 pure def sometimesSavedReceiptBlocksGrant(s: MfaCompletion): bool = s.result == ReceiptSaved and s.grants == 0
 ```
 
 ### Cancel retires the challenge and no later reply can restore it or hand over a session
+
+A cancel in progress has already begun a later attempt.
 
 ```quint
 pure def canCancel(s: MfaCompletion): bool = not(s.cancelling) and s.phase != HandedOff
@@ -103,6 +112,7 @@ pure def canSettleCancel(s: MfaCompletion): bool = s.cancelling and not(pending(
 pure def settleCancel(s: MfaCompletion): MfaCompletion = { ...s, cancelling: false, result: CancelSettled }
 pure def alwaysCancelCannotRestoreChallengeOrGrant(s: MfaCompletion): bool = s.epoch > 0 implies (s.challenge == 0 and s.grants == 0)
 pure def alwaysPendingRequestIsNoNewerThanTheAttempt(s: MfaCompletion): bool = s.request.epoch <= s.epoch and s.epoch >= 0 and (s.phase == HandedOff implies s.epoch == 0) and (s.epoch > 0 implies s.request.epoch < s.epoch)
+pure def alwaysCancellingIsALaterAttempt(s: MfaCompletion): bool = s.cancelling implies s.epoch > 0
 pure def sometimesCancelledDuringReceiptRead(s: MfaCompletion): bool = s.result == ReplyAfterCancel and s.grants == 0
 pure val fair_providerReplies = "weak"
 pure val fair_receiptReply = "weak"

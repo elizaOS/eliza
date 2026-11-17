@@ -41,7 +41,8 @@ While a read is pending the signed-in owner can change and permission
 can be revoked. The read returns mail only if permission still holds and
 its owner is still the current one; otherwise it fails with no mail. A
 source failure also returns no mail. A finished read is followed by a
-fresh one, which uses whoever is the owner then.
+fresh one, which uses whoever is the owner then. A read not yet begun or
+still pending holds no mail.
 
 ```quint
 pure def canReplaceOwner(s: ManagedInboxRead): bool = s.phase == ReadPending
@@ -63,6 +64,8 @@ pure def alwaysFailureHasNoMail(s: ManagedInboxRead): bool = s.phase == ReadFail
 pure def sometimesChangedOwnerRefused(s: ManagedInboxRead): bool = s.phase == ReadFailed and s.kind == BoundedRead and s.pendingOwner != s.owner
 pure def sometimesMailReturned(s: ManagedInboxRead): bool = s.phase == ReadDone and s.owner == 2
 pure val fair_receiveMail = "weak"
+pure def alwaysUnfinishedReadHasNoMail(s: ManagedInboxRead): bool =
+  (s.phase == ReadIdle or s.phase == ReadPending) implies s.returnedOwner == 0
 pure def leadsToReadFinishes(s: ManagedInboxRead, later: ManagedInboxRead): bool =
   s.phase == ReadPending implies later.phase != ReadPending
 ```

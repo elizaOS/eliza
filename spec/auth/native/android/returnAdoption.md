@@ -72,6 +72,16 @@ pure def sometimesNewerActionRefusedReturn(s: ReturnAdoption): bool =
   s.phase == FinishedReturn and s.completions == 0 and s.actionsSinceRecord > 0 and s.processes > 1
 ```
 
+### Nothing happens before the first attempt, and the process epoch is never negative
+
+Before the first attempt there has been no credential action and no
+completion. The process epoch starts at zero and is never negative.
+
+```quint
+pure def alwaysNothingBeforeTheAttempt(s: ReturnAdoption): bool = s.phase == NoAttempt implies (s.actionsSinceRecord == 0 and s.completions == 0)
+pure def alwaysEpochNeverNegative(s: ReturnAdoption): bool = s.epoch >= 0
+```
+
 ### An adopted return has seen no credential action since its record
 
 Adoption compares the record's generation with the ledger's, and every
@@ -93,9 +103,15 @@ pure def alwaysGenerationTracksActions(s: ReturnAdoption): bool =
 A consumed record is gone, so a repeated return finds nothing to adopt.
 A host that recorded no durable generation never completes a return in
 a new process: it cannot tell whether a credential action happened.
+An adopted return therefore belongs to a host with a durable generation
+and has not completed yet, and once it consumed its record the record is
+gone.
 
 ```quint
 pure def alwaysSingleUse(s: ReturnAdoption): bool = s.completions == 0 or s.completions == 1
 pure def alwaysNoLedgerNoCompletion(s: ReturnAdoption): bool = not(s.hasLedger) implies s.completions == 0
 pure def alwaysCompletionConsumedRecord(s: ReturnAdoption): bool = s.completions > 0 implies not(s.record)
+pure def alwaysAdoptedReturnHoldsLedger(s: ReturnAdoption): bool =
+  ((s.phase == AdoptedReturn or s.phase == ConsumedReturn) implies (s.hasLedger and s.completions == 0)) and
+    (s.phase == ConsumedReturn implies not(s.record))
 ```

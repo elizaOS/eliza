@@ -23,8 +23,9 @@ credential, while the organization's standing is active, within the window's
 request allowance, and only if the credit it may cost is available;
 a plan that includes maps admits it at no cost. An admitted request holds its
 whole price. A second admission of the same identity is a duplicate and
-changes nothing. Credit only moves between the balance, the hold and the
-charge; none is created or lost.
+changes nothing. Before its admission a request holds, observes, chooses
+and charges nothing, and no provider call is outstanding. Credit only moves
+between the balance, the hold and the charge; none is created or lost.
 
 ```quint
 type MapsReceipt = ReceiptAbsent | ReceiptUnknown | ReceiptSucceeded | ReceiptFailed | ReceiptCancelled
@@ -51,6 +52,8 @@ pure def alwaysAdmittedOnce(m: MapsRequest): bool = m.admissions >= 0 and m.admi
 pure def alwaysWithinWindowAllowance(m: MapsRequest): bool = m.windowUsed >= 0 and m.windowUsed <= m.windowAllowance
 pure def alwaysCreditIsNeverNegative(m: MapsRequest): bool = m.balance >= 0 and m.held >= 0 and m.charged >= 0
 pure def stepCreditIsConserved(before: MapsRequest, after: MapsRequest): bool = before.balance + before.held + before.charged == after.balance + after.held + after.charged
+pure def alwaysUnadmittedRequestIsUntouched(m: MapsRequest): bool =
+  m.receipt == ReceiptAbsent implies (m.funding == FundingAbsent and m.held == 0 and m.observed == 0 and m.chosen == 0 and m.charged == 0 and not(m.providerCallPending))
 pure def sometimesRequestAdmitted(m: MapsRequest): bool = m.funding == FundingAdmitted and m.held > 0
 ```
 
@@ -83,7 +86,9 @@ With no provider call outstanding, settlement charges what the calls
 reported and returns the rest of the hold. With a call outstanding, its
 reply is given up as lost and the charge is fixed at the admitted price.
 The first choice stands through retries and failures; the acknowledgement
-returns the unused hold and records the charge once.
+returns the unused hold and records the charge once. Until then the hold is
+the admitted price, nothing is charged, and a chosen charge is within the
+hold.
 
 ```quint
 pure def canSettleKnown(m: MapsRequest): bool = (m.funding == FundingAdmitted or m.funding == FundingDispatched) and not(m.providerCallPending)
@@ -94,6 +99,9 @@ pure def canAcknowledgeSettlement(m: MapsRequest): bool = m.funding == SettlingK
 pure def acknowledgeSettlement(m: MapsRequest): MapsRequest =
   { ...m, balance: m.balance + m.held - m.chosen, held: 0, charged: m.chosen, funding: if (m.funding == SettlingUnknown) FundingUnknown else FundingSettled, providerCallPending: false }
 pure def alwaysChargeWithinTheQuote(m: MapsRequest): bool = m.charged >= 0 and m.charged <= m.quote and m.chosen <= m.quote
+pure def alwaysOpenRequestHoldsItsQuote(m: MapsRequest): bool =
+  (m.funding == FundingAdmitted or m.funding == FundingDispatched or m.funding == SettlingKnown or m.funding == SettlingUnknown) implies
+    (m.held == m.quote and m.charged == 0 and m.chosen >= 0 and ((m.funding == SettlingKnown or m.funding == SettlingUnknown) implies m.chosen <= m.held))
 pure def alwaysUnknownSettlementChargesTheQuote(m: MapsRequest): bool = (m.funding == SettlingUnknown or m.funding == FundingUnknown) implies m.chosen == m.quote
 pure def alwaysSettledRequestHoldsNothing(m: MapsRequest): bool = (m.funding == FundingSettled or m.funding == FundingUnknown) implies (m.held == 0 and m.charged == m.chosen)
 pure def stepSettlementChoiceStands(before: MapsRequest, after: MapsRequest): bool =

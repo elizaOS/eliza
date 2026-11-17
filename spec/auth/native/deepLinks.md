@@ -80,7 +80,8 @@ pure def leadsToQueuedLinkStarts(r: DeepLinks, later: DeepLinks): bool = r.queue
 ### The native receipt is cleared only after the renderer applied or rejected the link
 
 An attempt that finishes applied or explicitly rejected completes; a
-failed one keeps its retry. Only a completed attempt is acknowledged, and
+failed one keeps its retry, so every completed attempt was applied or
+rejected. Only a completed attempt is acknowledged, and
 the native host clears its pending link only on an acknowledgement for
 that exact receipt.
 
@@ -100,6 +101,7 @@ pure def acknowledgeReceipt(r: DeepLinks, id: int): DeepLinks =
     pendingNative: if (r.pendingNative == id) 0 else r.pendingNative,
     cleared: if (r.pendingNative == id) r.cleared.union(Set(id)) else r.cleared }
 pure def alwaysClearedOnlyAfterTerminal(r: DeepLinks): bool = r.cleared.subseteq(r.applied.union(r.rejected))
+pure def alwaysCompletedOnlyWhenTerminal(r: DeepLinks): bool = r.completed.subseteq(r.applied.union(r.rejected))
 pure def sometimesLinkAcknowledged(r: DeepLinks): bool = r.cleared.size() > 0
 pure def sometimesFailedAttemptRetried(r: DeepLinks): bool = r.applied.exists(id => attemptsOf(r, id) == 2)
 ```

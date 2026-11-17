@@ -18,8 +18,8 @@ parsing and the provider's algorithm enter as checked inputs.
 
 A stream opens pending and takes chunks. Finishing seals it if the computed
 hash equals the address it will be published under; otherwise publication
-fails. Only a sealed, complete and synced stream is published, and an aborted
-or failed stream is never public.
+fails. Only a sealed, complete and synced stream is published, a public
+stream stays published, and an aborted or failed stream is never public.
 
 ```quint
 type MediaPhase = MediaAbsent | MediaPending | MediaSealed | MediaPublished | MediaFailed
@@ -39,13 +39,14 @@ pure def canAbortStream(m: MediaObject): bool = m.phase == MediaPending or m.pha
 pure def abortStream(m: MediaObject): MediaObject = { ...m, phase: MediaFailed, chunks: 0 }
 pure def alwaysPublishedContentIsVerified(m: MediaObject): bool = m.published implies (m.complete and m.synced and m.hashVerified)
 pure def alwaysFailedStreamIsNotPublic(m: MediaObject): bool = m.phase == MediaFailed implies not(m.published)
+pure def alwaysPublicStreamStaysPublished(m: MediaObject): bool = m.published implies m.phase == MediaPublished
 pure def sometimesPartialStreamAborted(m: MediaObject): bool = m.phase == MediaFailed and not(m.hashVerified)
 ```
 
 ### A redaction is validated before it is dispatched
 
-A redaction of published media starts new and is validated first; invalid
-input fails it without dispatching anything. Only a validated, uncancelled
+A redaction exists only for published media. It starts new and is validated
+first; invalid input fails it without dispatching anything. Only a validated, uncancelled
 redaction is dispatched to its provider.
 
 ```quint
@@ -57,12 +58,16 @@ pure def validateRedaction(m: MediaObject, valid: bool): MediaObject =
 pure def canDispatchRedaction(m: MediaObject): bool = m.redaction == RedactionValidated and not(m.cancelled)
 pure def dispatchRedaction(m: MediaObject): MediaObject = { ...m, redaction: RedactionRunning, dispatched: true }
 pure def alwaysDispatchFollowsValidation(m: MediaObject): bool = m.dispatched implies m.validated
+pure def alwaysRedactionIsOfPublishedMedia(m: MediaObject): bool = m.redaction != RedactionNone implies m.published
+pure def alwaysValidatedRedactionWasValidated(m: MediaObject): bool = m.redaction == RedactionValidated implies m.validated
 ```
 
 ### A redacted variant is saved only after its result is verified, and every other ending is distinct
 
-The provider's response is verified before the variant is persisted; only a
-persisted variant completes the redaction. A failure or cancellation before
+A running or persisting redaction has been dispatched. The provider's
+response is verified before the variant is persisted; only a persisted
+variant completes the redaction, and a saved variant belongs to a complete
+one. A failure or cancellation before
 dispatch is a failure or a cancellation; after dispatch it is uncertain,
 because the provider may have acted. None of these is a success.
 
@@ -79,6 +84,8 @@ pure def canCancelRedaction(m: MediaObject): bool = m.redaction == RedactionNew 
 pure def cancelRedaction(m: MediaObject): MediaObject = { ...m, redaction: if (m.dispatched) RedactionUncertain else RedactionCancelled, cancelled: true }
 pure def alwaysVariantNeedsVerifiedRedaction(m: MediaObject): bool = m.variant implies (m.verifiedVariant and m.published and m.dispatched and not(m.cancelled))
 pure def alwaysCompleteRedactionHasItsVariant(m: MediaObject): bool = m.redaction == RedactionComplete implies m.variant
+pure def alwaysVariantBelongsToACompleteRedaction(m: MediaObject): bool = m.variant implies m.redaction == RedactionComplete
+pure def alwaysRunningRedactionWasDispatched(m: MediaObject): bool = (m.redaction == RedactionRunning or m.redaction == RedactionPersisting) implies m.dispatched
 pure def stepCancelledAfterDispatchIsUncertain(before: MediaObject, via: str, after: MediaObject): bool =
   (via == "cancelRedaction" and before.dispatched) implies after.redaction == RedactionUncertain
 pure def sometimesVariantPersisted(m: MediaObject): bool = m.variant

@@ -220,7 +220,8 @@ once, and a claimed recording is committed only to its canonical note.
 The owner can discard a recording only while it is still unclaimed. A
 lost reply, a retry, a reload, a refused rebind or an aborted
 transaction keeps the bytes and the claim, so a claimed create is never
-replayed. A claimed or committed recording always has its bytes.
+replayed. A stopped recording has its bytes and no claim yet, and a
+claimed or committed recording always has its bytes.
 
 ```quint
 type PendingPhase = PendingEmpty | PendingStopped | PendingClaimed | PendingCommitted | PendingDiscarded
@@ -236,6 +237,7 @@ pure def discardPending(pending: PendingRecording, isOwner: bool): PendingRecord
   if (pending.phase == PendingStopped and isOwner) { ...pending, phase: PendingDiscarded, bytes: false } else pending
 pure def pendingSafe(pending: PendingRecording): bool =
   pending.claims <= 1 and
+  (pending.phase == PendingStopped implies pending.bytes and pending.claims == 0) and
   ((pending.phase == PendingClaimed or pending.phase == PendingCommitted) implies pending.bytes) and
   (pending.phase == PendingCommitted iff pending.canonicalNote)
 pure def lawClaimHappensOnce(pending: PendingRecording, isOwner: bool): bool =

@@ -20,7 +20,8 @@ live, with an echo naming it or none. Cancellation fences both requests
 and retires each only on its own acknowledged cancel; a missing
 acknowledgement is retried for that request alone. The bridge delivers a
 request's start before its cancel, so a resend is never admitted after
-cancellation retired the sign-in.
+cancellation retired the sign-in: a request that is live, or a resend
+still on its way, stays known until its own cancel is acknowledged.
 
 ```quint
 import signInCancel as C from "./signInCancel"
@@ -76,6 +77,8 @@ pure def alwaysRetirementRequiresReceipts(r: SignInResend): bool =
   r.known.forall(k => k == originalRequest or k == resendRequest) and r.pending.subseteq(r.known) and
     (r.fenced implies (r.stage == CancellingStage and r.known.size() > 0)) and
     (r.stage == RetiredStage implies (r.known.size() == 0 and r.pending.size() == 0 and r.live != originalRequest and r.live != resendRequest))
+pure def alwaysOpenRequestsAreKnown(r: SignInResend): bool =
+  ((r.live == originalRequest or r.live == resendRequest) implies r.known.contains(r.live)) and (r.delivery == SentResend implies r.known.contains(resendRequest))
 pure def alwaysScopedResendReceipt(r: SignInResend): bool = C::receiptScoped(r.receipt)
 pure def alwaysVerificationUsesDisplayedOwner(r: SignInResend): bool =
   (r.stage == VerifyingStage implies r.verifying == r.displayed) and

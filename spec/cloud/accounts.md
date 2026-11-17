@@ -80,7 +80,7 @@ pure def alwaysRevisionsAgree(d: Deletion): bool = (d.status != NoDeletion and d
 
 A ready export exists only during recovery. An export that finishes after
 cancellation or after the window is recorded as expired and needs a fresh
-revocation.
+revocation. Nothing is exported before a deletion is requested.
 
 ```quint
 pure def canStartExport(d: Deletion): bool = recoverable(d) and d.exportStatus == ExportPending and not(d.exportCalling)
@@ -93,6 +93,7 @@ pure def canRevokeExport(d: Deletion): bool = d.revokePending
 pure def revokeExport(d: Deletion): Deletion = { ...d, exportStatus: ExportDeleted, revokeReceipt: true, revokePending: false }
 pure def alwaysExportOnlyDuringRecovery(d: Deletion): bool = d.exportStatus == ExportReady implies d.status == DeletionRecovery
 pure def alwaysLateExportStaysFenced(d: Deletion): bool = (d.exportDelivered and not(recoverable(d))) implies (d.exportStatus == ExportExpired or d.exportStatus == ExportDeleted)
+pure def alwaysNothingExportedBeforeRequest(d: Deletion): bool = d.status == NoDeletion implies (not(d.exportCalling) and not(d.exportDelivered))
 ```
 
 ### Cancellation restores the account only after reactivation and export revocation are both recorded
@@ -121,6 +122,10 @@ pure def sometimesLateExportNeedsRevocation(d: Deletion): bool = d.status == Del
 
 ### After the window the deletion becomes irreversible only with a delivered export and a deactivated account
 
+Only an irreversible deletion runs the saga: no provider phase leaves
+pending, and the deletion is never scheduled or processing, before the
+window has closed.
+
 ```quint
 pure def canExpireRecovery(d: Deletion): bool =
   recoverable(d) and d.now >= d.deadline and d.eligible and not(d.providerWork) and d.exportStatus == ExportReady and d.deactivationReceipt and d.userRevision == d.requestRevision and d.organizationRevision == d.requestRevision
@@ -130,9 +135,10 @@ pure def expireRecovery(d: Deletion): Deletion =
 pure def alwaysIrreversibleCannotRestore(d: Deletion): bool =
   d.irreversible implies (d.status == DeletionScheduled or d.status == DeletionProcessing or d.status == DeletionActionRequired or d.status == DeletionCompleted) and not(d.userActive) and not(d.organizationActive) and not(d.recoveryToken)
 pure def alwaysSagaOnlyAfterTheWindow(d: Deletion): bool = d.phases.every(r => r.status != PhasePending implies d.irreversible)
+pure def alwaysSagaIsIrreversible(d: Deletion): bool = sagaRunning(d) implies d.irreversible
 ```
 
-### Provider phases run in a fixed order, each under one current lease
+### Provider phases run in a fixed order, each under one current lease held by a numbered worker
 
 The phases are, in order: revoke the export; cancel payments; remove stored
 data (spools, secondary backups, object storage and vault key bindings);
@@ -143,6 +149,11 @@ worker holding the current generation may record a call or a completion. A
 lease may expire while its worker is still running. After three leases
 without completion the deletion needs operator action instead of another
 attempt.
+
+The phase table lists each phase once, in that order. Each worker has a
+positive number, so a lease names its holder and an owner of 0 means no
+lease. Only the first phase that is not done can be leased, and only once it
+has left pending.
 
 ```quint
 type OrderCheck = { ok: bool, allDone: bool }
@@ -187,6 +198,8 @@ pure def canExpireLease(d: Deletion, p: ProviderPhase): bool = rowOf(d, p).owner
 pure def expireLease(d: Deletion, p: ProviderPhase): Deletion = { ...d, phases: withRow(d, p, { ...rowOf(d, p), owner: 0 }) }
 pure def alwaysReceiptsStayOrdered(d: Deletion): bool = d.phases.foldl({ ok: true, allDone: true }, (acc, r) => { ok: acc.ok and (r.status != PhaseDone or acc.allDone), allDone: acc.allDone and r.status == PhaseDone }).ok
 pure def alwaysLeasesAreBounded(d: Deletion): bool = d.phases.every(r => r.generation >= 0 and r.generation <= maxLeases)
+pure def alwaysPhasesInProviderOrder(d: Deletion): bool = d.phases.listMap(r => r.phase) == providerOrder and d.workers.every(x => x.id > 0)
+pure def alwaysOnlyTheHeadIsLeased(d: Deletion): bool = d.phases.every(r => r.owner != 0 implies (r.status != PhasePending and r.status != PhaseDone and r == headRow(d)))
 pure def stepGenerationsNeverGoBack(before: Deletion, after: Deletion): bool = providerOrder.every(p => rowOf(after, p).generation >= rowOf(before, p).generation)
 ```
 

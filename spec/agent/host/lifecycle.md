@@ -29,7 +29,8 @@ pure def alwaysLiveOrRestartingHasRuntime(l: Lifecycle): bool =
 ### Start begins one boot when no runtime exists
 
 A repeated start during a boot or restart reports the pending phase and
-starts nothing. A failed first boot leaves no runtime.
+starts nothing. A first boot runs only while no runtime exists, and a failed
+first boot leaves no runtime.
 
 ```quint
 pure def canStart(l: Lifecycle): bool = not(l.runtime) and not(l.boot) and not(l.stopping)
@@ -38,6 +39,7 @@ pure def canBootSucceeded(l: Lifecycle): bool = l.phase == Starting and l.boot
 pure def bootSucceeded(l: Lifecycle): Lifecycle = { ...l, runtime: true, boot: false, phase: Live, built: l.built + 1 }
 pure def canBootFailed(l: Lifecycle): bool = l.phase == Starting and l.boot
 pure def bootFailed(l: Lifecycle): Lifecycle = { ...l, boot: false, phase: Failed }
+pure def alwaysFirstBootHasNoRuntime(l: Lifecycle): bool = l.phase == Starting implies not(l.runtime)
 pure def sometimesFailedFirstBoot(l: Lifecycle): bool = l.phase == Failed and not(l.runtime)
 ```
 

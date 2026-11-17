@@ -16,7 +16,8 @@ and the capture feeds a [live session](./liveSession.md).
 
 ### One owner holds the slot, and others are refused while it does
 
-A reservation succeeds only when the slot is empty and takes a new token.
+A reservation succeeds only when the slot is empty and takes a new token;
+tokens are counted up from zero, so every token taken is positive.
 A second owner's reservation while the slot is held is refused and
 recorded, and the holder keeps the slot. Only the holder's microphone may
 be open.
@@ -51,6 +52,7 @@ pure def openedSlot(m: Microphone): Microphone = { ...m, slot: { ...m.slot, phas
 pure def alwaysOnlyAnOwnerMayOpen(m: Microphone): bool = m.slot.open implies m.slot.owner != 0 and m.slot.token != 0
 pure def alwaysEmptySlotIsIdle(m: Microphone): bool =
   (m.slot.owner == 0) == (m.slot.phase == SlotIdle and m.slot.token == 0 and not(m.slot.open))
+pure def alwaysTokensCountUpFromZero(m: Microphone): bool = m.slot.issued >= 0
 pure def sometimesSecondOwnerRefused(m: Microphone): bool = m.slot.refused > 0 and m.slot.owner > 0 and m.slot.refused != m.slot.owner
 ```
 
@@ -108,7 +110,8 @@ pure def leadsToClosingReports(m: Microphone, later: Microphone): bool =
 A draft request fences automatic reopening and asks the earlier capture to
 stop; a capture still starting finishes opening first and is then stopped.
 The draft is acknowledged only once the earlier capture reports it released
-the microphone and the host is still open. A failed release, or a retired
+the microphone and the host is still open, and records only once
+acknowledged. A failed release, or a retired
 host, refuses the draft. A reservation queued before the request does not
 clear its fence. The earlier capture holds the microphone from the moment
 it finishes starting until its release is confirmed; a failed release
@@ -136,6 +139,7 @@ pure def staleStart(m: Microphone): Microphone = { ...m, handoff: { ...m.handoff
 pure def alwaysReleaseReceiptPrecedesDraft(m: Microphone): bool =
   (m.handoff.acknowledged or m.handoff.draft or m.handoff.live) implies
     m.handoff.earlier == EarlierReleased and not(m.handoff.earlierOwns) and m.handoff.requested
+pure def alwaysDraftIsAcknowledged(m: Microphone): bool = m.handoff.draft implies m.handoff.acknowledged
 pure def alwaysEarlierOwnershipMatchesPhase(m: Microphone): bool =
   m.handoff.earlierOwns == (m.handoff.earlier == EarlierRunning or m.handoff.earlier == EarlierStopping or m.handoff.earlier == EarlierFailed)
 pure def alwaysFailedReleaseFencesDraft(m: Microphone): bool =

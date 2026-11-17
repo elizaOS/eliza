@@ -34,11 +34,12 @@ pure def alwaysOperationIsRecorded(o: Operations): bool = o.status != OpIdle imp
 ### The cheapest available tier at or above the requested one runs the operation
 
 A cold request never falls back to a hot strategy. When no tier at or
-above the request is available, the operation fails without running.
+above the request is available, the operation fails without running. Only
+tiers 0 to 2 can be configured as available.
 
 ```quint
 pure val strategiesValues = Set(Set(0, 1, 2), Set(0, 2), Set(0), Set(1), Set(2))
-pure def canConfigureStrategies(o: Operations, strategies: Set[int]): bool = o.status == OpIdle
+pure def canConfigureStrategies(o: Operations, strategies: Set[int]): bool = o.status == OpIdle and strategies.forall(t => t >= 0 and t <= 2)
 pure def configureStrategies(o: Operations, strategies: Set[int]): Operations = { ...o, strategies: strategies }
 pure def canSelectTier(o: Operations): bool = o.status == Selecting and o.strategies.contains(o.cursor)
 pure def selectTier(o: Operations): Operations = { ...o, selected: o.cursor, status: OpRunning }
@@ -50,11 +51,16 @@ pure def alwaysSelectedTierIsCheapestAvailable(o: Operations): bool =
   (o.selected >= 0 implies o.selected >= o.requested and o.strategies.contains(o.selected) and o.strategies.forall(t => t < o.requested or t >= o.selected)) and
   (o.failure == TierUnavailable implies o.strategies.forall(t => t < o.requested)) and
   (o.status == Selecting implies o.cursor >= o.requested and o.cursor <= 2 and o.strategies.forall(t => t < o.requested or t >= o.cursor))
+pure def alwaysStrategiesAreTiers(o: Operations): bool = o.strategies.forall(t => t >= 0 and t <= 2)
 pure def sometimesWarmUpgradedToCold(o: Operations): bool = o.requested == 1 and o.selected == 2
 pure def sometimesNoTierAvailable(o: Operations): bool = o.failure == TierUnavailable
 ```
 
 ### An operation succeeds only when the strategy applied and the health check passed
+
+The health check runs only after the strategy applied. The runtime counts
+as healthy only once its operation succeeded, and a failure is recorded
+only on a failed operation.
 
 ```quint
 pure def canApplyStrategy(o: Operations): bool = o.status == OpRunning
@@ -67,17 +73,22 @@ pure def canFailHealth(o: Operations): bool = o.status == Checking
 pure def failHealth(o: Operations): Operations = { ...o, status: OpFailed, failure: HealthFailed }
 pure def alwaysSuccessIsHealthy(o: Operations): bool =
   (o.status == OpSucceeded implies o.applied and o.healthy) and (o.healthy implies o.applied) and (o.failure == HealthFailed implies o.applied and not(o.healthy))
+pure def alwaysHealthAndFailureFollowTheStatus(o: Operations): bool =
+  (o.status == Checking implies o.applied) and (o.healthy implies o.status == OpSucceeded) and (o.failure != NoFailure implies o.status == OpFailed)
 pure def sometimesSucceeded(o: Operations): bool = o.status == OpSucceeded
 pure def sometimesAppliedButUnhealthy(o: Operations): bool = o.failure == HealthFailed
 ```
 
 ### Only a terminal record is pruned, which frees the lane
 
+A free lane has no selected tier left over.
+
 ```quint
 pure def canPrune(o: Operations): bool = o.status == OpSucceeded or o.status == OpFailed
 pure def prune(o: Operations): Operations = { ...o, status: OpIdle, key: -1, recorded: false, requested: -1, cursor: -1, selected: -1, applied: false, healthy: false, failure: NoFailure, owner: NoOwner, stale: false }
 pure def stepPruneOnlyTerminal(before: Operations, via: str, after: Operations): bool =
   via == "prune" implies (before.status == OpSucceeded or before.status == OpFailed)
+pure def alwaysFreeLaneIsClear(o: Operations): bool = o.status == OpIdle implies o.selected == -1
 ```
 
 ## Story: Recover operations after a restart

@@ -18,7 +18,9 @@ failure written by someone else.
 ### A lease publishes the exact credential receipt it validated, with that decision's organization
 
 A credential replaced after the decision refuses the lease; the lease
-expires a fixed time after it was published.
+expires a fixed time after it was published. A decision's receipt always
+carries its own organization, a resolved decision names a credential, and an
+active lease publishes one.
 
 ```quint
 type LeasePhase = LeaseIdle | LeasePending | LeaseResolved | LeaseRefused | LeaseRejected | LeaseActive | LeaseReleased | LeaseExpired
@@ -53,12 +55,17 @@ pure def replaceCredential(s: PoolLeases, remove: bool): PoolLeases =
 pure def alwaysPublishedReceiptOwnsItsDecision(s: PoolLeases): bool =
   s.lease.published != 0 implies (s.lease.published == s.lease.receipt and s.lease.publishedOrganization == s.lease.receiptOrganization and s.lease.publishedOrganization == organizationOf(s.lease.published)
     and s.lease.expiresAt == s.lease.issuedAt + leaseLifetime and s.lease.issuedAt <= s.now)
+pure def alwaysReceiptNamesACredential(s: PoolLeases): bool =
+  s.lease.receiptOrganization == organizationOf(s.lease.receipt) and (s.lease.phase == LeaseResolved implies s.lease.receipt > 0) and (s.lease.phase == LeaseActive implies s.lease.published > 0)
 pure def alwaysRefusedLeaseHasNoPublication(s: PoolLeases): bool = (s.lease.phase == LeaseRefused or s.lease.phase == LeaseRejected or s.lease.phase == LeasePending or s.lease.phase == LeaseResolved) implies s.lease.published == 0
 pure def sometimesReplacedAfterDecisionRefused(s: PoolLeases): bool = s.lease.phase == LeaseRefused
 pure def sometimesLeaseOfReplacement(s: PoolLeases): bool = s.lease.phase == LeaseActive and s.lease.published >= 2
 ```
 
 ### Reports against one account are serialized, and a report without an active lease has no effect
+
+Report ids are positive: every report, and every entry of the queue, has
+its own id, below the next one to be issued.
 
 ```quint
 pure def canSubmitReport(s: PoolLeases, kind: ReportKind): bool = s.lease.phase != LeaseIdle
@@ -71,10 +78,16 @@ pure def reportOf(s: PoolLeases, id: int): Report = s.reports.select(r => r.id =
 pure def withReport(id: int, change: Report, s: PoolLeases): List[Report] = s.reports.listMap(r => if (r.id == id) change else r)
 pure def alwaysOnlyTheHeadIsWorking(s: PoolLeases): bool =
   s.reports.every(r => (r.phase == ReportRecorded implies s.queue.nthOr(0, 0) == r.id) and (r.phase == ReportUnknownLease implies (not(r.usageWritten) and not(r.healthWritten))) and ((r.phase == ReportQueued or r.phase == ReportRecorded) iff s.queue.includes(r.id)))
+pure def alwaysReportIdsAreUnique(s: PoolLeases): bool =
+  s.nextReport > 0 and s.reports.every(r => r.id > 0 and r.id < s.nextReport and s.reports.select(o => o.id == r.id).length() == 1)
+    and s.queue.every(q => q > 0 and q < s.nextReport and s.queue.select(o => o == q).length() == 1)
 pure def sometimesReportAfterLeaseEnded(s: PoolLeases): bool = s.reports.some(r => r.phase == ReportUnknownLease)
 ```
 
 ### A report from an old credential generation writes nothing
+
+A queued report has written nothing and a recorded one no health yet, and
+both carry a positive generation, so each names a credential.
 
 ```quint
 pure def canRecordUsage(s: PoolLeases, id: int): bool = s.queue.nthOr(0, 0) == id and reportOf(s, id).phase == ReportQueued
@@ -85,6 +98,9 @@ pure def recordUsage(s: PoolLeases, id: int): PoolLeases = {
 }
 pure val idValues = Set(1, 2)
 pure def alwaysReportEffectsOwnTheirGeneration(s: PoolLeases): bool = s.reports.every(r => (r.usageWritten or r.healthWritten) implies r.generation > 0)
+pure def alwaysPendingReportsWroteNothing(s: PoolLeases): bool =
+  s.reports.every(r => (r.phase == ReportQueued implies (not(r.usageWritten) and not(r.healthWritten))) and (r.phase == ReportRecorded implies not(r.healthWritten))
+    and ((r.phase == ReportQueued or r.phase == ReportRecorded) implies r.generation > 0))
 pure def stepOldGenerationWritesNothing(before: PoolLeases, via: str, after: PoolLeases): bool =
   (via == "recordUsage" or via == "commitHealth") implies after.reports.every(r => (r.phase != reportOf(before, r.id).phase and r.generation != before.generation) implies (r.usageWritten == reportOf(before, r.id).usageWritten and not(r.healthWritten) and after.usage == before.usage and after.health == before.health and after.healthDetail == before.healthDetail))
 pure def sometimesOldReportFenced(s: PoolLeases): bool = s.reports.some(r => r.phase == ReportDone and not(r.usageWritten) and r.generation > 0)
@@ -102,7 +118,7 @@ pure def commitHealth(s: PoolLeases, id: int): PoolLeases = {
   val ownGeneration = r.generation == s.generation
   val invalidates = r.kind == ReportAuth or r.kind == ReportRate
   val write = ownGeneration and (invalidates or (r.kind == ReportSuccess and s.healthDetail == r.observedDetail))
-  { ...s, queue: s.queue.tail(), reports: withReport(id, { ...r, phase: ReportDone, healthWritten: write }, s),
+  { ...s, queue: if (s.queue.length() > 0) s.queue.tail() else List(), reports: withReport(id, { ...r, phase: ReportDone, healthWritten: write }, s),
     health: if (not(write)) s.health else if (r.kind == ReportAuth) NeedsReauth else if (r.kind == ReportRate) RateLimited else HealthOk,
     healthDetail: if (write) s.healthDetail + 1 else s.healthDetail }
 }

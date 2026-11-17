@@ -61,7 +61,8 @@ pure def sometimesBreakerCooling(c: Cache): bool = cooling(c) and c.reply == Rep
 A backend command can settle after the breaker opened. A failed command
 counts towards the breaker. A deletion whose reply was lost may have been
 applied; it is still reported unconfirmed. A cache with no backend issues
-no command, and reports a deletion as having nothing to delete.
+no command, holds no cached value, and reports a deletion as having
+nothing to delete.
 
 ```quint
 pure def canOpFails(c: Cache, slot: int): bool = busy(c, slot)
@@ -80,7 +81,7 @@ pure def canDetachBackend(c: Cache): bool = c.configured and c.pending.length() 
 pure def detachBackend(c: Cache): Cache = { ...c, configured: false, present: false, reply: NoReply }
 pure def alwaysConfirmedDeletionHasBackendAbsence(c: Cache): bool = c.reply == DeleteConfirmed implies (c.configured and not(c.present))
 pure def alwaysUnconfiguredDeletionHasNoBackend(c: Cache): bool = c.reply == DeleteUnconfigured implies (not(c.configured) and not(c.present))
-pure def alwaysNoCommandWithoutBackend(c: Cache): bool = not(c.configured) implies c.pending.length() == 0
+pure def alwaysNoCommandWithoutBackend(c: Cache): bool = not(c.configured) implies (c.pending.length() == 0 and not(c.present))
 pure def sometimesLostDeleteUnconfirmed(c: Cache): bool = c.reply == DeleteUnconfirmed and not(c.present)
 ```
 
@@ -96,7 +97,9 @@ A stale read starts a loader only when nobody owns the key; later reads
 share it. The caller's wait can expire before the loader settles; the
 loader keeps ownership until it resolves or rejects, its result is
 published, and only then is ownership released. Settling the loader
-clears its timer.
+clears its timer. Each load is numbered when it starts and has one
+delivery state; a delivered value stays delivered and a timed-out wait
+stays timed out.
 
 ```quint
 pure val nValues = Set(1, 2, 3)
@@ -121,6 +124,8 @@ pure def alwaysOneActiveLoader(c: Cache): bool = c.active.length() <= 1 and c.ac
 pure def alwaysTimersBelongToActiveLoaders(c: Cache): bool = c.timers.every(n => c.active.includes(n))
 pure def alwaysDeliveredOrTimedOutNotBoth(c: Cache): bool = c.published.every(n => not(c.timedOut.includes(n)))
 pure def alwaysWritingLoaderOwnsKey(c: Cache): bool = c.deliveries.every(d => d.delivery == DeliveryWriting implies c.owner == d.load)
+pure def alwaysEachLoadHasOneDelivery(c: Cache): bool = c.allocated >= 0 and c.active.every(n => n > 0) and c.deliveries.every(d => d.load > 0 and d.load <= c.allocated and deliveryOf(c, d.load) == d.delivery)
+pure def alwaysOutcomesAreFinal(c: Cache): bool = c.published.every(n => deliveryOf(c, n) == DeliveryReady) and c.timedOut.every(n => deliveryOf(c, n) == DeliveryTimedOut)
 pure def sometimesTimedOutLoaderStillOwns(c: Cache): bool = c.owner > 0 and deliveryOf(c, c.owner) == DeliveryTimedOut and c.active.includes(c.owner)
 pure def sometimesRefreshPublished(c: Cache): bool = c.published.length() > 0 and c.owner == 0
 ```

@@ -70,6 +70,14 @@ pure val weight_finishCheck = 4
 pure def sometimesBackedOff(s: UpdateSchedule): bool = s.failures == 3 and s.wakeAt == s.now + checkInterval
 ```
 
+### The scheduler's clock is never negative
+
+The scheduler's clock never reads below zero.
+
+```quint
+pure def alwaysClockNeverNegative(s: UpdateSchedule): bool = s.now >= 0
+```
+
 ### A call whose owner was retired reschedules at once when it returns
 
 When the foreground owner changed or the scheduler was disposed while

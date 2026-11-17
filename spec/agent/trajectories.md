@@ -23,7 +23,8 @@ An execution starts its capture under its own owner identity, with the
 persistence setting in force. While active and not stopping, and once the
 store is initialized, it accepts steps; a failed write keeps the step queued
 for another attempt. Finishing, or
-terminating after a stop, waits until every accepted step is saved.
+terminating after a stop, waits until every accepted step is saved, and so
+does an exit the supervisor confirms.
 
 ```quint
 type CaptureStatus = CaptureAbsent | CaptureActive | CaptureCompleted | CaptureTerminated
@@ -50,18 +51,24 @@ pure def terminate(t: TrajectoryCapture): TrajectoryCapture = { ...t, status: Ca
 pure def alwaysSavedNeverExceedsAccepted(t: TrajectoryCapture): bool = t.persisted >= 0 and t.persisted <= t.accepted
 pure def alwaysStepsNeedAnInitializedStore(t: TrajectoryCapture): bool = t.accepted > 0 implies t.store.initialized
 pure def alwaysGracefulEndIsDrained(t: TrajectoryCapture): bool =
-  ((t.status == CaptureCompleted or t.status == CaptureTerminated) and not(t.crashed)) implies t.persisted == t.accepted
+  ((t.status == CaptureCompleted or t.status == CaptureTerminated or t.dead) and not(t.crashed)) implies t.persisted == t.accepted
 pure def sometimesFailedWriteRetriedBeforeStop(t: TrajectoryCapture): bool = t.status == CaptureTerminated and t.persisted > 0 and not(t.crashed)
+```
+
+### No step is accepted before an execution starts
+
+```quint
+pure def alwaysNothingAcceptedBeforeStart(t: TrajectoryCapture): bool = t.status == CaptureAbsent implies (t.accepted == 0 and t.persisted == 0)
 ```
 
 ### Nothing is captured when persistence is off
 
-An execution started with persistence off accepts and saves no steps.
+An execution with persistence off accepts and saves no steps.
 Whether persistence is on, and its precedence, is
 [core trajectories](../core/trajectories.md).
 
 ```quint
-pure def alwaysPersistenceOffSavesNothing(t: TrajectoryCapture): bool = (t.status != CaptureAbsent and not(t.persistence)) implies (t.accepted == 0 and t.persisted == 0)
+pure def alwaysPersistenceOffSavesNothing(t: TrajectoryCapture): bool = not(t.persistence) implies (t.accepted == 0 and t.persisted == 0)
 pure def sometimesRunWithPersistenceOff(t: TrajectoryCapture): bool = t.status == CaptureCompleted and not(t.persistence)
 ```
 
@@ -84,6 +91,12 @@ pure def lawForeignOwnerCannotRecover(t: TrajectoryCapture, owner: int): bool = 
 pure def stepRecoveryNeedsADeadExecution(before: TrajectoryCapture, via: str, after: TrajectoryCapture): bool =
   via == "recover" implies (before.dead and after.persisted == before.persisted and after.accepted == before.accepted)
 pure def sometimesCrashLostAStep(t: TrajectoryCapture): bool = t.status == CaptureTerminated and t.crashed and t.persisted < t.accepted
+```
+
+### A dead execution is stopping and accepts no more steps
+
+```quint
+pure def alwaysDeadExecutionIsStopping(t: TrajectoryCapture): bool = t.dead implies t.stopping
 ```
 
 ## Story: Initialize the trajectory store once
@@ -113,7 +126,7 @@ pure def migrateSchema(t: TrajectoryCapture): TrajectoryCapture = { ...t, store:
 pure def canPublishStore(t: TrajectoryCapture): bool = t.store.initStage == Publishing
 pure def publishStore(t: TrajectoryCapture): TrajectoryCapture = { ...t, store: { ...t.store, initialized: true, initStage: NoInit, waiting: Set() } }
 pure def alwaysMigrationOnce(t: TrajectoryCapture): bool =
-  t.store.migrations == (if (t.store.schemaMigrated) 1 else 0) and (t.store.initialized implies t.store.schemaMigrated) and (t.store.initStage == Migrating implies not(t.store.schemaMigrated))
+  t.store.migrations == (if (t.store.schemaMigrated) 1 else 0) and (t.store.initialized implies t.store.schemaMigrated) and (t.store.initStage == Migrating implies not(t.store.schemaMigrated)) and (t.store.initStage == Publishing implies t.store.schemaMigrated)
 pure def sometimesPublished(t: TrajectoryCapture): bool = t.store.initialized
 ```
 

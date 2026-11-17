@@ -10,7 +10,7 @@ A cancellable semaphore from `utils/task-scheduling.ts`: a configured positive p
 
 ### A permit is always available or owned by one caller
 
-Capacity is supplied during setup. Immediate acquisitions consume a permit and queued acquisitions retain increasing tickets.
+Capacity is supplied during setup. Immediate acquisitions consume a permit and queued acquisitions retain increasing tickets. Each holder is counted once among the holders.
 
 ```quint
 type Waiter = { id: int, ticket: int }
@@ -28,12 +28,13 @@ pure def acquire(s: SemaphoreState, caller: int): SemaphoreState =
 pure def alwaysPermitConservation(s: SemaphoreState): bool = s.available >= 0 and s.available + s.holders.size() == s.capacity
 pure def alwaysNoIdlePermitWithWaiters(s: SemaphoreState): bool = s.available > 0 implies s.waiters.length() == 0
 pure def alwaysWaitersUnique(s: SemaphoreState): bool = s.waiters.every(w => w.id > 0 and w.ticket > 0 and w.ticket < s.nextTicket and s.waiters.select(x => x.id == w.id).length() == 1 and not(s.holders.contains(w.id)))
+pure def alwaysEachHolderCountedOnce(s: SemaphoreState): bool = s.holders.forall(h => s.holders.filter(x => x == h).size() == 1)
 pure def sometimesCallerWaits(s: SemaphoreState): bool = s.waiters.length() > 0
 ```
 
 ### A release skips cancelled waiters before granting the oldest live ticket
 
-Signal observation and cancellation listener execution remain separate so a release can observe an aborted caller first.
+Signal observation and cancellation listener execution remain separate so a release can observe an aborted caller first. Only an aborted caller is recorded as aborted while queued, the next ticket is positive, and every granted ticket was issued before it.
 
 ```quint
 pure def canAbortWaiter(s: SemaphoreState, caller: int): bool = caller > 0 and not(s.aborted.contains(caller))
@@ -54,6 +55,8 @@ pure def alwaysCancelledQueuedNeverOwns(s: SemaphoreState): bool = s.queuedAbort
 pure def alwaysTerminalCallersDoNotWait(s: SemaphoreState): bool = s.waiters.every(w => not(s.rejected.contains(w.id)) and not(s.completed.contains(w.id)))
 pure def sometimesAbortListenerRaceSettles(s: SemaphoreState): bool = s.queuedAbort.size() > 0 and s.rejected.intersect(s.queuedAbort).size() > 0 and s.waiters.length() == 0
 pure def alwaysFIFOGrants(s: SemaphoreState): bool = s.waiters.every(w => s.granted.every(g => g.ticket < w.ticket))
+pure def alwaysQueuedAbortWasAborted(s: SemaphoreState): bool = s.queuedAbort.subseteq(s.aborted)
+pure def alwaysGrantedTicketsWereIssued(s: SemaphoreState): bool = s.nextTicket > 0 and s.granted.every(g => g.ticket < s.nextTicket)
 pure def sometimesAllPermitsReturned(s: SemaphoreState): bool = s.completed.size() > 0 and s.available == s.capacity
 ```
 

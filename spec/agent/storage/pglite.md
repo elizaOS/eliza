@@ -19,7 +19,10 @@ An exporter takes the export lease and joins the lifecycle queue; a second
 exporter, or any exporter once shutdown began, is refused. The lifecycle lock
 is handed out in queue order. A dump runs only when the store is ready, as the
 only query, inside the lock. A successful dump keeps the lease while the
-archive is consumed; releasing the archive returns it.
+archive is consumed; releasing the archive returns it. The closer is never
+an exporter. The lease is held exactly while an export is under way, by its
+exporter, and the queue holds only that waiting exporter and, behind it, the
+waiting close.
 
 ```quint
 type ExportPhase = ExportIdle | ExportQueued | ExportWaitingReady | ExportDumping | ExportRetained | ExportFailed | ExportReleased
@@ -48,8 +51,13 @@ pure def endDump(p: PgliteStore, success: bool): PgliteStore =
 pure def canReleaseArchive(p: PgliteStore): bool = p.exportPhase == ExportRetained
 pure def releaseArchive(p: PgliteStore): PgliteStore = { ...p, lease: "", exportPhase: ExportReleased }
 pure def alwaysQueryRunsInsideTheLifecycleLock(p: PgliteStore): bool = p.queryOwner != "" implies p.mutex == p.queryOwner
-pure def alwaysOneExportHoldsTheLease(p: PgliteStore): bool =
-  p.lease != "" implies (p.lease == p.exporter and (p.exportPhase == ExportQueued or p.exportPhase == ExportWaitingReady or p.exportPhase == ExportDumping or p.exportPhase == ExportRetained))
+pure def exportUnderWay(phase: ExportPhase): bool =
+  phase == ExportQueued or phase == ExportWaitingReady or phase == ExportDumping or phase == ExportRetained
+pure def alwaysOneExportHoldsTheLease(p: PgliteStore): bool = p.lease != "" implies (p.lease == p.exporter and exportUnderWay(p.exportPhase))
+pure def alwaysExportUnderWayHoldsTheLease(p: PgliteStore): bool =
+  p.exporter != closer and (exportUnderWay(p.exportPhase) implies (p.lease == p.exporter and p.exporter != ""))
+pure def alwaysQueueHoldsTheWaitersInOrder(p: PgliteStore): bool =
+  p.queue == (if (p.exportPhase == ExportQueued) List(p.exporter) else List()).concat(if (p.closePhase == CloseQueued) List(closer) else List())
 pure def sometimesArchiveRetained(p: PgliteStore): bool = p.exportPhase == ExportRetained and p.shuttingDown
 ```
 
@@ -58,7 +66,9 @@ pure def sometimesArchiveRetained(p: PgliteStore): bool = p.exportPhase == Expor
 Closing joins the same queue. Once it holds the lock it waits until no export
 lease is held and the store is ready, then closes, gives up the data
 directory and runs no query afterwards. While an archive holds the lease the
-store stays open with its data directory.
+store stays open with its data directory. The close is idle
+exactly while shutdown has not begun, and the store is closed, without its
+data directory, exactly when the close is done.
 
 ```quint
 pure def canRequestClose(p: PgliteStore): bool = p.closePhase == CloseIdle
@@ -70,6 +80,8 @@ pure def endClose(p: PgliteStore): PgliteStore = { ...p, closed: true, dataDirOw
 pure def alwaysLeaseKeepsTheStoreOpen(p: PgliteStore): bool = p.lease != "" implies (p.dataDirOwned and not(p.closed))
 pure def alwaysClosingRespectsTheExport(p: PgliteStore): bool = (p.closePhase == Closing or p.closePhase == CloseDone) implies p.lease == ""
 pure def alwaysNoQueryAfterClose(p: PgliteStore): bool = p.closed implies (p.queryOwner == "" and p.mutex == "")
+pure def alwaysCloseTracksShutdown(p: PgliteStore): bool =
+  (p.closePhase == CloseIdle) == not(p.shuttingDown) and p.closed == (p.closePhase == CloseDone) and p.dataDirOwned == not(p.closed)
 pure val fair_markReady = "weak"
 pure val fair_acquireLock = "weak"
 pure val fair_beginDump = "weak"

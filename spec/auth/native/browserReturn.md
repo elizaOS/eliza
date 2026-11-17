@@ -39,8 +39,8 @@ pure def sometimesTwoClientsPending(b: BrowserReturns): bool = b.pending.size() 
 A callback is admitted only for a registered client with a pending record,
 when the callback's bound client is that client, its state matches, its
 shape is valid and the record has not expired (ten minutes). Admission
-consumes the record, so a repeated callback finds nothing. A refused
-callback changes nothing.
+consumes the record, so a repeated callback finds nothing, and every return
+goes to a client that started a sign-in. A refused callback changes nothing.
 
 ```quint
 pure def callbackAdmitted(b: BrowserReturns, client: int, boundClient: int, matchingState: bool, validShape: bool): bool =
@@ -55,7 +55,7 @@ pure def expire(b: BrowserReturns, client: int): BrowserReturns = { ...b, expire
 pure val boundClientValues = Set(1, 2)
 pure def deliveries(b: BrowserReturns, client: int): int = b.delivered.select(c => c == client).length()
 pure def alwaysExactLiveClient(b: BrowserReturns): bool =
-  not(b.misdelivered) and b.delivered.select(c => not(b.registered.contains(c))).length() == 0
+  not(b.misdelivered) and b.delivered.select(c => not(b.started.contains(c))).length() == 0
 pure def alwaysConsumedOnce(b: BrowserReturns): bool =
   b.registered.forall(c => deliveries(b, c) <= 1 and (deliveries(b, c) == 1 implies not(b.pending.contains(c))))
 pure def alwaysIndependentClients(b: BrowserReturns): bool =

@@ -96,7 +96,8 @@ pure def lawUnchangedProfileKeepsCredentials(p: Profile): bool = credentialReada
 Staging takes a complete test-mode catalog and production a complete
 live-mode one. A partial catalog, a catalog of the other mode, a catalog
 the provider did not validate, or invalid optional bindings are refused
-before anything is submitted.
+before anything is submitted. A prepared release has queued every binding
+of its catalog and applied none.
 
 ```quint
 type Catalog = CatalogBlank | CatalogPartial | CatalogTest | CatalogLive
@@ -116,6 +117,8 @@ pure def prepare(r: CatalogRelease): CatalogRelease =
   if (catalogAllowed(r)) { ...r, phase: ReleasePrepared, queued: intendedBindings(r) } else { ...r, phase: ReleaseRefused }
 pure def alwaysOnlyValidatedCatalogIsQueued(r: CatalogRelease): bool = (r.queued > 0 or r.applied > 0) implies catalogAllowed(r)
 pure def alwaysRefusalChangesNothing(r: CatalogRelease): bool = ((r.phase == ReleaseDraft or r.phase == ReleaseRefused) implies (r.queued == 0 and r.applied == 0)) and (r.phase == ReleaseCancelled implies r.applied == 0)
+pure def alwaysPreparedReleaseQueuesTheWholeCatalog(r: CatalogRelease): bool =
+  r.phase == ReleasePrepared implies (r.queued == intendedBindings(r) and r.applied == 0)
 pure def sometimesPartialCatalogRefused(r: CatalogRelease): bool = r.phase == ReleaseRefused and r.catalog == CatalogPartial
 ```
 

@@ -18,6 +18,8 @@ Stored settings keys are [core key management](../../core/settingsKeys.md).
 
 ### The sink configuration is fixed before the first record
 
+Nothing is recorded, queued or delivered before the configuration.
+
 ```quint
 type EntryStage = InOutbox | Queued | Delivering | Acknowledged | Refused | Lost
 type AppendResult = Appended | FailedBefore | FailedAfter
@@ -36,9 +38,14 @@ pure def stepConfigurationFixed(before: Audit, after: Audit): bool =
   before.configured implies after.configured and after.requiresDurable == before.requiresDurable and
     after.durable.subseteq(before.durable) and before.durable.subseteq(after.durable) and
     after.required.subseteq(before.required) and before.required.subseteq(after.required)
+pure def alwaysNothingRecordedBeforeConfiguration(a: Audit): bool =
+  not(a.configured) implies (a.entries.length() == 0 and a.queue.length() == 0 and a.inDelivery == 0)
 ```
 
 ### When durability is required, a record waits in the outbox until a durable sink is attached
+
+A record is queued or delivered only while durability is not required or a
+durable sink is attached.
 
 ```quint
 pure def durableAttached(a: Audit): bool = a.attached.some(k => a.durable.contains(k))
@@ -58,10 +65,20 @@ pure def attachSink(a: Audit, sink: int): Audit = {
 }
 pure def alwaysOutboxOnlyWithoutDurableSink(a: Audit): bool =
   a.entries.every(e => e.stage == InOutbox implies a.requiresDurable and not(durableAttached(a)))
+pure def alwaysQueueOnlyWithAllowedSink(a: Audit): bool =
+  (a.queue.length() > 0 or a.inDelivery != 0) implies (not(a.requiresDurable) or durableAttached(a))
 pure def sometimesHeldThenDelivered(a: Audit): bool = a.requiresDurable and a.entries.some(e => e.stage == Acknowledged) and a.attached.length() == 2
 ```
 
 ### Records are delivered one at a time, in record order, to every sink attached when delivery began
+
+Records carry positive numbers that rise in the order they are recorded,
+each below the next number to hand out, which is at least one. The queue
+holds only records in the queued stage, in rising order, and while a record
+is in delivery every queued record is newer than it. A sink is attached
+once, and a delivery walks the sinks attached when it began, each once. Every committed row belongs to a record older than any
+record still waiting; a row of the record in delivery is only for a sink it
+has already been appended to.
 
 ```quint
 pure def canBeginDelivery(a: Audit): bool = a.inDelivery == 0 and a.queue.length() > 0
@@ -82,6 +99,19 @@ pure def appendToSink(a: Audit, result: AppendResult): Audit = {
 type RowOrder = { prior: int, ordered: bool }
 pure def rowsInRecordOrder(rows: List[AuditRow], sink: int): bool =
   rows.foldl({ prior: 0, ordered: true }, (acc, r) => if (r.sink == sink) { prior: r.entry, ordered: acc.ordered and r.entry > acc.prior } else acc).ordered
+type SinkProgress = { count: int, done: List[int] }
+pure def ascending(xs: List[int]): bool = xs.foldl({ prior: 0, ordered: true }, (acc, x) => { prior: x, ordered: acc.ordered and x > acc.prior }).ordered
+pure def distinctSinks(ks: List[int]): bool = ks.every(k => ks.select(j => j == k).length() == 1)
+pure def appendedSinks(a: Audit): List[int] =
+  a.sinkOrder.foldl({ count: 0, done: List() }, (acc, k) => if (acc.count < a.sinkIndex) { count: acc.count + 1, done: acc.done.append(k) } else acc).done
+pure def alwaysRecordsNumberedInOrder(a: Audit): bool = a.nextEntry >= 1 and ascending(a.entries.listMap(e => e.id)) and a.entries.every(e => e.id < a.nextEntry)
+pure def alwaysQueueInRecordOrder(a: Audit): bool =
+  ascending(a.queue) and a.queue.every(q => a.entries.some(e => e.id == q and e.stage == Queued)) and (a.inDelivery != 0 implies a.queue.every(q => q > a.inDelivery))
+pure def alwaysDeliveryWalksAttachedSinks(a: Audit): bool =
+  distinctSinks(a.attached) and distinctSinks(a.sinkOrder) and a.sinkOrder.every(k => a.attached.includes(k)) and a.sinkIndex >= 0 and a.sinkIndex <= a.sinkOrder.length()
+pure def alwaysRowsPrecedeWaitingRecords(a: Audit): bool =
+  a.rows.every(r => a.queue.every(q => r.entry < q) and a.entries.every(e => e.stage == InOutbox implies r.entry < e.id) and
+    (a.inDelivery != 0 implies (r.entry < a.inDelivery or (r.entry == a.inDelivery and appendedSinks(a).includes(r.sink)))))
 pure def alwaysOneDeliveryAtATime(a: Audit): bool =
   a.entries.select(e => e.stage == Delivering).length() == (if (a.inDelivery == 0) 0 else 1) and
   a.entries.every(e => e.stage == Delivering implies e.id == a.inDelivery)

@@ -80,7 +80,8 @@ pure def alwaysSeenResolvedIsHeldWhileFiring(s: Followups): bool =
 ### The owner works on an approval from the queue
 
 The owner may start carrying out a pending approval, which may fail and
-return it to pending, or resolve it.
+return it to pending, or resolve it. A resolved approval is never reopened,
+so a follow-up that saw its approval resolved still finds it resolved.
 
 ```quint
 pure def canStartApproval(s: Followups, id: int): bool = followupOf(id, s).approval == ApprovalPending and not(followupOf(id, s).completed)
@@ -89,6 +90,7 @@ pure def canApprovalPreflightFails(s: Followups, id: int): bool = followupOf(id,
 pure def approvalPreflightFails(s: Followups, id: int): Followups = changeFollowup(id, s, { ...followupOf(id, s), approval: ApprovalPending })
 pure def canResolveApproval(s: Followups, id: int): bool = followupOf(id, s).approval != ApprovalResolved and not(followupOf(id, s).completed)
 pure def resolveApproval(s: Followups, id: int): Followups = changeFollowup(id, s, { ...followupOf(id, s), approval: ApprovalResolved })
+pure def alwaysSeenResolvedStaysResolved(s: Followups): bool = s.followups.every(f => f.seenResolved implies f.approval == ApprovalResolved)
 ```
 
 ### A follow-up keeps its prompt exactly until it is retired

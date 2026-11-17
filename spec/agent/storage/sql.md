@@ -53,6 +53,21 @@ pure def alwaysCompletedReceiptWasVerified(c: CarveOut): bool = c.completed impl
 pure def alwaysNoCopyBeforeAnAttempt(c: CarveOut): bool = c.attempts == 0 implies c.target.size() == 0
 ```
 
+### A held carve-out is a fresh attempt
+
+Every run that holds the carve-out counts as an attempt, and holds it only
+while no receipt has completed and no row has been deleted; a row is only
+ever deleted after a completed receipt. A run copies only when it found no
+receipt left by an older run.
+
+```quint
+pure def alwaysAHeldCarveOutIsAFreshAttempt(c: CarveOut): bool =
+  c.attempts >= 0 and
+  (c.tombstones.size() > 0 implies c.completed) and
+  (c.holder != "" implies c.attempts > 0 and not(c.completed) and c.tombstones.size() == 0) and
+  ((c.holder != "" and (c.phase == CarveCopying or c.phase == CarveVerifying or c.phase == CarveCommitting)) implies c.prior == PriorAbsent)
+```
+
 ### A row deleted after the carve-out stays deleted
 
 After the receipt completes, the owner may delete a carved-out row; it leaves

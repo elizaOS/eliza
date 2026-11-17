@@ -13,6 +13,7 @@ The manager in `connectors/account-manager.ts` retains one storage facade, resol
 A transfer snapshots every account plus each unique pending, unexpired flow, retaining each consumed marker. Already-terminal and expired unconsumed flows are not copied. New facade operations stay queued until transfer and the current operation finish. The selected backend reference remains fixed for that operation even if host configuration changes. Once a durable backend's operation runs, the boot-time store holds no account or flow: either it was empty or the transfer cleared it.
 The fallback facade's successful one-time consume updates the embedded flow's consumed marker before the operation releases its queue ticket; a later handoff must replay that marker on the selected target.
 Every admitted operation eventually settles, whether it succeeds or fails, assuming its external I/O settles.
+No two fallback accounts share a provider and ID. While a transfer runs, its account snapshot is the fallback's accounts, and every account it has copied so far is in the selected target store.
 
 ```quint
 import connectorStorage as D from "./connectorStorage"
@@ -53,6 +54,11 @@ pure def snapshotFlow(s: Handoff): D::FlowEntry = s.flowSnapshot.nthOr(s.flowInd
 pure def canCopyFlow(s: Handoff): bool = s.phase == CopyFlows and s.flowIndex < s.flowSnapshot.length() and (if (s.kind == DatabaseBackend) B::canBeginCreate(s.bridge, snapshotFlow(s).value) else D::canReinsertFlow(targetStore(s), snapshotFlow(s).value))
 pure def copyFlow(s: Handoff): Handoff = if (s.kind == DatabaseBackend) { ...s, bridge: B::beginCreate(s.bridge, snapshotFlow(s).value), phase: AwaitBridgeCreate } else { ...s, targets: s.targets.put(s.selectedTarget, D::reinsertFlow(targetStore(s), snapshotFlow(s).value)), phase: if (snapshotFlow(s).consumed) ReplayConsumption else CopyFlows, flowIndex: if (snapshotFlow(s).consumed) s.flowIndex else s.flowIndex + 1 }
 pure def alwaysDurableOperationSeesNoBootAccounts(s: Handoff): bool = (s.phase == InvokeOperation and s.kind != BootFallback) implies (s.fallback.accounts.length() == 0 and s.fallback.flows.length() == 0)
+pure def firstAccounts(accounts: List[A::AccountValue], count: int): List[A::AccountValue] = accounts.foldl(List(), (done, account) => if (done.length() < count) done.append(account) else done)
+pure def copiedAccounts(s: Handoff): List[A::AccountValue] = firstAccounts(s.accountSnapshot, s.accountIndex)
+pure def alwaysCopiedAccountsReachTheTarget(s: Handoff): bool =
+  D::alwaysAccountIdentityUnique(s.fallback) and
+  ((s.phase != HandoffIdle and s.phase != InvokeOperation) implies (s.accountSnapshot == s.fallback.accounts and copiedAccounts(s).every(account => targetStore(s).accounts.includes(account))))
 ```
 
 ### Backend replacement preserves facade identity and memoizes each current adapter
@@ -82,7 +88,7 @@ pure def sometimesDatabaseSelected(s: Handoff): bool = s.backends.database.ident
 
 ### Consumption replay treats a null idempotent result according to target state
 
-The source consume API returns null for an already consumed, absent, terminal or expired flow, as well as returning the newly consumed row. Migration ignores that nullable return but propagates thrown I/O failures. The model likewise updates the target only when its pending row is currently consumable; an already consumed row stays consumed. If the database backend lacks its optional consume method, the bridge settles immediately using its process mirror and leaves the durable target unchanged. A thrown transfer leaves all fallback state and every already acknowledged target write intact for a fresh retry.
+The source consume API returns null for an already consumed, absent, terminal or expired flow, as well as returning the newly consumed row. Migration ignores that nullable return but propagates thrown I/O failures. The model likewise updates the target only when its pending row is currently consumable; an already consumed row stays consumed. If the database backend lacks its optional consume method, the bridge settles immediately using its process mirror and leaves the durable target unchanged. A thrown transfer leaves all fallback state and every already acknowledged target write intact for a fresh retry. While a flow's creation or consumption is pending, the flow cursor points at that flow of the snapshot.
 
 ```quint
 pure def canConfigureBridge(s: Handoff): bool = s.phase == HandoffIdle and B::canConfigure(s.bridge)
@@ -112,7 +118,8 @@ pure def canFinishOperation(s: Handoff): bool = s.phase == InvokeOperation
 pure def finishOperation(s: Handoff, success: bool): Handoff = { ...s, queue: Q::finish(s.queue, s.activeTicket, success), activeTicket: 0, phase: HandoffIdle, failed: not(success) }
 pure def setClock(s: Handoff, now: int): Handoff = { ...s, fallback: D::setClock(s.fallback, now), bridge: B::setClock(s.bridge, now) }
 pure def alwaysQueueSerializesHandoff(s: Handoff): bool = Q::alwaysOneRunningPerScope(s.queue) and Q::alwaysStartedAfterPredecessors(s.queue) and Q::alwaysAllocatedTickets(s.queue) and Q::alwaysCompletedEntrySettled(s.queue) and (s.phase == HandoffIdle or s.queue.entries.some(entry => entry.ticket == s.activeTicket and entry.running))
-pure def alwaysSnapshotCursorsBounded(s: Handoff): bool = s.accountIndex >= 0 and s.accountIndex <= s.accountSnapshot.length() and s.flowIndex >= 0 and s.flowIndex <= s.flowSnapshot.length()
+pure def alwaysSnapshotCursorsBounded(s: Handoff): bool = s.accountIndex >= 0 and s.accountIndex <= s.accountSnapshot.length() and s.flowIndex >= 0 and s.flowIndex <= s.flowSnapshot.length() and
+  ((s.phase == AwaitBridgeCreate or s.phase == ReplayConsumption or s.phase == AwaitBridgeConsume) implies s.flowIndex < s.flowSnapshot.length())
 pure def stepFailureRetainsFallback(before: Handoff, via: str, after: Handoff): bool = via == "transferFails" implies before.fallback == after.fallback
 pure def stepClearRetainsEveryCopiedAccount(before: Handoff, via: str, after: Handoff): bool = via == "finishTransfer" implies before.accountSnapshot.every(account => targetStore(after).accounts.includes(account))
 pure def sometimesTransferredEveryAccount(s: Handoff): bool = s.phase == InvokeOperation and s.kind != BootFallback and s.fallback.accounts.length() == 0 and targetStore(s).accounts.length() > 0

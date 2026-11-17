@@ -75,8 +75,9 @@ pure def sometimesDirectRequestApplied(s: DeviceAttempt): bool = s.authorityKind
 Calling the executor needs the applying entry, the exact operation and the
 current caller. If the proposal was retired or has expired by then, the
 attempt settles as confirmed with no effect and the executor is never called.
-An effect can only follow that one call, and a dispatched effect may still
-land after its reply is lost.
+Before dispatch the executor has not been called. An effect can only follow
+that one call, and a dispatched effect may still land after its reply is
+lost.
 
 ```quint
 pure def canInvokeExecutor(s: DeviceAttempt, exactOperation: bool, currentCaller: bool): bool =
@@ -89,6 +90,8 @@ pure def canLandEffect(s: DeviceAttempt): bool =
 pure def landEffect(s: DeviceAttempt): DeviceAttempt = { ...s, effects: 1 }
 pure def alwaysAtMostOneCallAndEffect(s: DeviceAttempt): bool =
   s.calls >= 0 and s.calls <= 1 and s.effects >= 0 and s.effects <= s.calls
+pure def alwaysNoCallBeforeDispatch(s: DeviceAttempt): bool =
+  (s.phase != Dispatched and s.phase != Settled) implies s.calls == 0
 pure def stepOnlyApplyingCanCall(before: DeviceAttempt, after: DeviceAttempt): bool =
   after.calls > before.calls implies
     (before.phase == Applying and not(before.retired) and not(before.expired) and before.attemptId > 0)

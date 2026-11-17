@@ -64,9 +64,10 @@ pure def sometimesChangedSourceRefused(s: MapsObservation): bool = s.search.capt
 
 Cancelling the first locate retires it and starts its native cleanup.
 The owner may then locate again or type an origin. A fix accepted by
-the new locate stays accepted. A late fix from the cancelled locate
-changes nothing, and a failed cleanup shows an error only while the
-cancelled locate is still the latest thing the owner did.
+the new locate stays accepted, and only the new locate's fix is ever
+ready. A late fix from the cancelled locate changes nothing, and a failed
+cleanup shows an error only while the cancelled locate is still the
+latest thing the owner did.
 
 ```quint
 pure def canCancelLocate(s: MapsObservation): bool = s.locate.owner and s.locate.phase == OldLoading
@@ -87,7 +88,7 @@ pure def cleanupFailed(s: MapsObservation): MapsObservation =
     phase: if (s.locate.owner and s.locate.generation == 1) LocateError else s.locate.phase } }
 pure def canLeaveMaps(s: MapsObservation): bool = s.locate.owner
 pure def leaveMaps(s: MapsObservation): MapsObservation = { ...s, locate: { ...s.locate, owner: false } }
-pure def alwaysAcceptedFixIsPreserved(s: MapsObservation): bool = s.locate.accepted implies s.locate.phase == FixReady
+pure def alwaysAcceptedFixIsPreserved(s: MapsObservation): bool = (s.locate.accepted implies s.locate.phase == FixReady) and (s.locate.phase == FixReady implies s.locate.generation == 3)
 pure def alwaysCleanupErrorBelongsToCancelledLocate(s: MapsObservation): bool = s.locate.phase == LocateError implies s.locate.generation == 1
 pure def stepReadyStaysReady(before: MapsObservation, after: MapsObservation): bool =
   before.locate.phase == FixReady implies after.locate.phase == FixReady

@@ -83,7 +83,8 @@ pure def sometimesRestoredTriggerRunsAgain(t: Trigger): bool = t.lock == LockRun
 
 A recovery call selects an intent at the current revision. It proceeds only
 for the trigger's owner when nothing holds the trigger; otherwise it is
-refused. It then checks that the revision has not moved, and only then writes:
+refused. While it checks, it holds the trigger for the owner. It then checks
+that the revision has not moved, and only then writes:
 archive or restore, either way leaving the trigger disabled. A refused or
 stale call releases the trigger without writing.
 
@@ -104,6 +105,7 @@ pure def rejectWrite(t: Trigger): Trigger = { ...t, lock: LockFree, phase: Recov
 pure def canSettleReply(t: Trigger): bool = t.phase == RecoveryReplying
 pure def settleReply(t: Trigger): Trigger = { ...t, lock: LockFree, phase: RecoveryIdle }
 pure def alwaysArchivedTriggerIsDisabled(t: Trigger): bool = t.archived implies not(t.enabled)
+pure def alwaysCheckHoldsTheTriggerForTheOwner(t: Trigger): bool = t.phase == RecoveryChecking implies (t.owner and t.lock == LockMutating)
 pure def alwaysWriteHasOwnerAndCurrentRevision(t: Trigger): bool =
   t.phase == RecoveryWriting implies (t.owner and t.expected == t.revision and t.lock == LockMutating)
 pure val fair_settleReply = "weak"

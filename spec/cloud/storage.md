@@ -21,7 +21,8 @@ An upload first reserves its credit, or is refunded at once when there is
 not enough. Its quota is held exactly while it is not refunded; a published
 upload is in the catalog with its credit settled, and a refunded one holds
 no credit. Each terminal upload has its receipt, issued under the lease that
-finished it, and a terminal upload never changes again.
+finished it, and a terminal upload never changes again. An upload not yet
+reserved holds no credit.
 
 ```quint
 type PutPhase = PutPrepared | PutReserved | ProviderStarted | Reconciling | PutCommitted | PutRefunded
@@ -53,18 +54,21 @@ pure def alwaysQuotaHeldUntilRefund(o: StoredObjects): bool = o.quotaHeld == (o.
 pure def alwaysCommittedObjectIsSettled(o: StoredObjects): bool = o.phase == PutCommitted implies (o.providerPresent and o.credit == CreditSettled and o.receipt == ReceiptCommitted)
 pure def alwaysRefundHoldsNoCredit(o: StoredObjects): bool = o.phase == PutRefunded implies o.credit != CreditHeld
 pure def alwaysReceiptExactlyWhenTerminal(o: StoredObjects): bool = terminalPut(o.phase) == (o.receipt != NoReceipt) and (terminalPut(o.phase) implies o.terminalToken == o.token)
+pure def alwaysUnreservedUploadHoldsNoCredit(o: StoredObjects): bool = o.phase == PutPrepared implies o.credit == CreditNone
 pure def stepTerminalUploadIsFinal(before: StoredObjects, after: StoredObjects): bool =
   terminalPut(before.phase) implies (after.phase == before.phase and after.receipt == before.receipt and after.catalogPublished == before.catalogPublished and after.credit == before.credit)
 ```
 
 ### Only the current lease publishes or refunds an upload
 
-A worker claims an upload under a new lease token: a writer when it is
+A worker that has a slot claims an upload under a new lease token: a writer when it is
 reserved or its writer's lease has lapsed, and a recovery worker whenever
 its lease has lapsed. Only a writer sends the bytes. Each worker reads the
 provider for the object and acts only while it still holds the current
 token. A worker that fails or is cancelled loses only what it was doing,
-not the lease or the hold.
+not the lease or the hold. Each of the two workers keeps its own slot, and
+lease tokens count up from zero. Nothing is sent before a writer's first
+claim, and an upload a writer started has sent its bytes.
 
 ```quint
 pure def slotOf(o: StoredObjects, worker: int): WorkSlot = o.slots.select(slot => slot.worker == worker).nthOr(0, idleSlot(0))
@@ -74,7 +78,7 @@ pure def due(o: StoredObjects): bool = (o.phase == PutReserved or leasedPut(o.ph
 pure def canLapsePutLease(o: StoredObjects): bool = (o.phase == PutReserved or leasedPut(o.phase)) and not(o.leaseLapsed)
 pure def lapsePutLease(o: StoredObjects): StoredObjects = { ...o, leaseLapsed: true }
 pure def canClaimPut(o: StoredObjects, worker: int, recovery: bool): bool =
-  slotOf(o, worker).worker == worker and slotOf(o, worker).kind == WorkIdle and
+  worker > 0 and slotOf(o, worker).worker == worker and slotOf(o, worker).kind == WorkIdle and
   (if (recovery) due(o) else (o.phase == PutReserved or (o.phase == ProviderStarted and o.leaseLapsed)))
 pure def claimPut(o: StoredObjects, worker: int, recovery: bool): StoredObjects = {
   val token = o.token + 1
@@ -94,6 +98,10 @@ pure val workerValues = Set(1, 2)
 pure def alwaysLeasedUploadHasAToken(o: StoredObjects): bool = leasedPut(o.phase) implies o.token > 0
 pure def alwaysWorkersHoldNoFutureToken(o: StoredObjects): bool = o.slots.foldl(true, (ok, slot) => ok and slot.token <= o.token)
 pure def alwaysAtMostOneWorkerOwnsTheLease(o: StoredObjects): bool = not(owns(o, 1) and owns(o, 2))
+pure def alwaysEachWorkerKeepsItsSlot(o: StoredObjects): bool =
+  o.slots.length() == 2 and o.slots.nthOr(0, idleSlot(0)).worker == 1 and o.slots.nthOr(1, idleSlot(0)).worker == 2 and o.token >= 0
+pure def alwaysOnlyAWriterSends(o: StoredObjects): bool =
+  ((o.phase == PutPrepared or o.phase == PutReserved) implies not(o.sent)) and (o.phase == ProviderStarted implies o.sent)
 pure def sometimesSecondWorkerTakesOver(o: StoredObjects): bool = o.phase == ProviderStarted and o.token == 2
 ```
 
@@ -104,7 +112,7 @@ and settles its credit. A recovery worker that finds a started upload absent
 does not refund it: it records the absence and waits out a quarantine under
 a new lease, because a request already sent may still land. Only a second
 absence, or an upload whose bytes were never sent, is refunded, returning
-its credit.
+its credit. A worker sees the object present only once the provider has it.
 
 ```quint
 pure def canDeferAbsence(o: StoredObjects, worker: int): bool =
@@ -120,6 +128,7 @@ pure def refundPut(o: StoredObjects, worker: int): StoredObjects =
 pure def alwaysAbsenceOnlyForASentUpload(o: StoredObjects): bool = o.absenceSeen implies (o.sent and o.phase == Reconciling)
 pure def alwaysUnsentRecoveryIsReconciling(o: StoredObjects): bool = (o.phase == Reconciling and not(o.absenceSeen)) implies not(o.sent)
 pure def alwaysSentRefundSawTwoAbsences(o: StoredObjects): bool = (o.phase == PutRefunded and o.sent) implies o.receipt == ReceiptSecondAbsence
+pure def alwaysSeenObjectIsAtTheProvider(o: StoredObjects): bool = o.slots.every(slot => slot.head == HeadPresent implies o.providerPresent)
 pure def sometimesUploadPublished(o: StoredObjects): bool = o.phase == PutCommitted
 pure def sometimesRefundAfterSecondAbsence(o: StoredObjects): bool = o.receipt == ReceiptSecondAbsence
 pure def sometimesLateObjectAfterAbsence(o: StoredObjects): bool = o.phase == Reconciling and o.absenceSeen and o.providerPresent
@@ -138,7 +147,8 @@ A document is created by staging its record and both fragments and
 committing them in one transaction; only committed rows are visible. A
 deletion stages the removal of the fragments and then of the record, and
 commits only once the record's removal is confirmed; anything else rolls
-back. A deleted document stays deleted.
+back. A deleted document has neither its record nor any fragment, and is
+never being created.
 
 ```quint
 pure def canBeginCreate(o: StoredObjects): bool = o.docPhase == DocIdle and not(o.docParent) and not(o.docDeleted)
@@ -161,6 +171,7 @@ pure def canRollbackDoc(o: StoredObjects): bool = o.docPhase != DocIdle
 pure def rollbackDoc(o: StoredObjects): StoredObjects = { ...o, docPhase: DocIdle, stagedParent: false, stagedFragments: 0 }
 pure def alwaysDocumentIsWhole(o: StoredObjects): bool = o.docParent == (o.docFragments == 2) and (o.docFragments > 0 implies o.docParent)
 pure def alwaysDeletedDocumentIsGone(o: StoredObjects): bool = o.docDeleted implies (not(o.docParent) and o.docFragments == 0)
+pure def alwaysCreatingDocumentIsNotDeleted(o: StoredObjects): bool = o.docPhase == DocCreating implies not(o.docDeleted)
 pure def sometimesDocumentDeleted(o: StoredObjects): bool = o.docDeleted
 pure def sometimesDocumentPublished(o: StoredObjects): bool = o.docParent and o.docPhase == DocIdle
 ```

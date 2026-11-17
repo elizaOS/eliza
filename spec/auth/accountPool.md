@@ -74,6 +74,17 @@ pure def sometimesPickedAfterCooldown(s: AccountPool): bool = s.selections.some(
 pure def sometimesNoneEligible(s: AccountPool): bool = s.selections.some(x => x.phase == NonePicked and x.snapshot.length() > 0)
 ```
 
+### Each account has its own positive key, and each slot holds one selection
+
+Each account has its own positive key. Each slot holds one selection, and
+a selection that is still waiting has reused no affinity.
+
+```quint
+pure def alwaysAccountKeysDistinct(s: AccountPool): bool = s.accounts.every(a => a.key > 0 and s.accounts.select(b => b.key == a.key).length() == 1)
+pure def alwaysOneSelectionPerSlot(s: AccountPool): bool =
+  s.selections.every(x => s.selections.select(o => o.slot == x.slot).length() == 1 and (x.phase == Waiting implies not(x.reused)))
+```
+
 ### Priority, then persisted last use, orders a priority selection
 
 ```quint
@@ -109,8 +120,8 @@ pure def sometimesBurstSpreadsOverAccounts(s: AccountPool): bool = s.selections.
 ### Affinity keeps a session on its account while the account stays eligible, for at most three uses
 
 Otherwise a round-robin cursor per provider advances over the eligible
-accounts in key order. A provider and a session together key the
-affinity.
+accounts in key order, and never points before the first of them. A
+provider and a session together key the affinity.
 
 ```quint
 pure val maxAffinityUses = 3
@@ -137,6 +148,7 @@ pure def alwaysAffinityStaysInProvider(s: AccountPool): bool =
   s.affinity.every(f => f.uses >= 1 and f.uses <= maxAffinityUses and accountOf(s, f.account).provider == f.provider and s.affinity.select(o => o.provider == f.provider and o.session == f.session).length() == 1)
 pure def stepAffinityReuseKeepsCursor(before: AccountPool, via: str, after: AccountPool): bool =
   after.selections.every(x => (x.reused and selectionOf(before, x.slot).phase == Waiting) implies after.cursors == before.cursors)
+pure def alwaysCursorsNeverNegative(s: AccountPool): bool = s.cursors.every(c => c.index >= 0)
 pure def sometimesRoundRobinMovesOn(s: AccountPool): bool = s.selections.some(x => x.phase == Picked and x.strategy == RoundRobin and not(x.reused)) and s.affinity.some(f => f.account == 2)
 pure def sometimesAffinityReused(s: AccountPool): bool = s.selections.some(x => x.reused)
 ```

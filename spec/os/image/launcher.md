@@ -134,6 +134,21 @@ pure def alwaysRefusalWritesNothing(s: LauncherInstall): bool =
 pure def sometimesDiscardedCallLeavesNoDestination(s: LauncherInstall): bool = s.phase == Refused and s.valid and not(s.existing) and not(s.output)
 ```
 
+### A call writes nothing before it publishes
+
+Until publication a call leaves the destination as it found it. A call
+that has been admitted was valid and found no existing destination, and
+the payload stays untouched and claims no qualification until it is
+rendered.
+
+```quint
+pure def alwaysNothingWrittenBeforePublication(s: LauncherInstall): bool =
+  ((s.phase == Pending or s.phase == Admitted or s.phase == Rendered) implies s.writes == 0 and s.output == s.existing) and
+  ((s.phase == Admitted or s.phase == Rendered) implies s.valid and not(s.existing)) and
+  ((s.phase == Pending or s.phase == Admitted) implies
+    s.bytesPreserved and s.companionsPlain and s.ownersPreserved and not(s.qualified))
+```
+
 ### Native libraries are installed with their bytes, modes and placement preserved
 
 Native payloads are converted to modules that keep the libraries' bytes

@@ -25,7 +25,9 @@ by a crash is never taken over, even after a timeout. The request is
 dispatched only by its exact owner, only while the saved key is still the
 old one and its plain preference record committed; otherwise nothing is
 sent. A dispatched request stays claimed on every refusal or transport
-uncertainty, so a predecessor is dispatched at most once.
+uncertainty, so a predecessor is dispatched at most once: once its
+request is sent, while the old key is still saved under the same intent, a
+record stays and the renewal is never claimed again.
 
 ```quint
 type RenewJournal = JournalNone | JournalRequest | JournalPending | JournalConfirmed | JournalForeign
@@ -81,6 +83,8 @@ pure def renewReply(k: KeyRenewal, answer: RenewalAnswer): KeyRenewal =
 pure def canLosePreferences(k: KeyRenewal): bool = k.recorded
 pure def losePreferences(k: KeyRenewal): KeyRenewal = { ...k, recorded: false }
 pure def alwaysOnePredecessorDispatch(k: KeyRenewal): bool = k.requests >= 0 and k.requests <= 1
+pure def alwaysSentRequestNeverClaimedAgain(k: KeyRenewal): bool =
+  (k.requests == 1 and k.intentCurrent and k.saved == oldKey) implies (k.journal != JournalNone and k.phase != RenewClaimed)
 pure def alwaysNeverRenewsAfterConfirmedSuccessor(k: KeyRenewal): bool = not(k.renewedTwice)
 pure def sometimesCompetitorBlocked(k: KeyRenewal): bool = k.competitorBlocked and k.requests == 0
 ```
@@ -129,6 +133,20 @@ pure def alwaysActiveSuccessorRecoverable(k: KeyRenewal): bool =
 pure def sometimesLostAckKeepsCustody(k: KeyRenewal): bool = k.successorConfirmed and k.journal == JournalPending and k.phase == RenewFinished
 ```
 
+### While the renewal waits for the server's code, nothing is installed and the record is the request or a newer action's
+
+```quint
+pure def alwaysCodeWaitHoldsTheRequest(k: KeyRenewal): bool =
+  (k.phase == RenewAsked or k.phase == RenewToken) implies (not(k.installed) and (k.journal == JournalRequest or k.journal == JournalForeign))
+```
+
+### A confirmed receipt, or a confirmation being stored, has the successor active on the server
+
+```quint
+pure def alwaysConfirmedReceiptIsActive(k: KeyRenewal): bool =
+  (k.journal == JournalConfirmed or k.phase == RenewConfirm) implies k.server == ServerActive
+```
+
 ### The predecessor is retired only after the successor is durably selected
 
 After confirmation the plugin records a durable duty to retire the
@@ -136,7 +154,10 @@ predecessor, then selects the successor. A partial host write can leave no
 key selected; the confirmed receipt and the duty are enough to repair it
 under the same generation. The receipt is cleaned up and the old key is
 revoked only once the successor is the saved key, and the renewal is
-announced only then. A working key stays saved until it is replaced. A
+announced only then. A working key stays saved until it is replaced:
+under the current intent the saved key is the old key until publication,
+none after a partial write and the successor once it is installed, and no
+newer action has replaced it. A
 renewal can run to the end, with the successor saved and the old key
 retired.
 
@@ -170,6 +191,10 @@ pure def alwaysWorkingKeyKept(k: KeyRenewal): bool =
   (not(k.installed) and k.supersededSaved == -1 and not(k.partialWrite)) implies k.saved == oldKey
 pure def alwaysSavedKeyAcceptedOrReportedRefused(k: KeyRenewal): bool =
   (k.saved == oldKey and k.supersededSaved == -1 and not(k.keyRefused)) implies k.oldAccepted
+pure def alwaysSavedKeyFollowsRenewal(k: KeyRenewal): bool =
+  k.intentCurrent implies (k.supersededSaved == -1 and
+    ((k.saved == oldKey and not(k.installed) and not(k.partialWrite)) or (k.saved == 0 and k.partialWrite) or
+      (k.saved == successorKey and k.installed and not(k.partialWrite))))
 pure def sometimesPartialPublicationLeavesNoKey(k: KeyRenewal): bool = k.partialWrite and k.saved == 0 and k.duty
 pure def sometimesRenewed(k: KeyRenewal): bool = k.verdict == RenewDone and k.saved == successorKey
 pure val weight_check = 40
@@ -188,7 +213,7 @@ pure val weight_revokeOld = 40
 
 ### A newer credential action, a restart or a sign-in wins over a renewal
 
-A sign-out or a newer sign-in saves its own key and journal; a renewal never
+A sign-out or a newer sign-in saves its own key, or none, and its journal; a renewal never
 overwrites them and recovers nothing under the older intent. A restart
 adopts the original durable generation and continues from the journal; a
 sign-in in progress defers the renewal. Losing the plain preference record
@@ -197,7 +222,7 @@ cannot free an encrypted request or receipt.
 ```quint
 pure def canSignInStarts(k: KeyRenewal): bool = not(k.attemptActive)
 pure def signInStarts(k: KeyRenewal): KeyRenewal = { ...k, attemptActive: true }
-pure def canCredentialAction(k: KeyRenewal): bool = k.intentCurrent
+pure def canCredentialAction(k: KeyRenewal, replacement: int): bool = k.intentCurrent and replacement >= 0
 pure def credentialAction(k: KeyRenewal, replacement: int): KeyRenewal =
   { ...k, intentCurrent: false, attemptActive: false, saved: replacement, supersededSaved: replacement,
     journal: JournalForeign, foreignJournal: true, claimOwner: 0 }

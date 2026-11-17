@@ -137,9 +137,9 @@ lemma ProviderDomainWorkMap(s: core__providers__work_ProviderState, after: core_
 lemma invokeProvider_ensures(s: ProviderExecutions, domainId: int, workId: int)
   ensures (inv(s) ==> canInvokeProvider(s, domainId, workId) ==> alwaysKeyedDomainsUnique(invokeProvider(s, domainId, workId)))
   ensures (inv(s) ==> canInvokeProvider(s, domainId, workId) ==> alwaysDomainIdentity(invokeProvider(s, domainId, workId)))
-  ensures (inv(s) ==> canInvokeProvider(s, domainId, workId) ==> alwaysEveryDomainValid(invokeProvider(s, domainId, workId)))
   ensures (inv(s) ==> canInvokeProvider(s, domainId, workId) ==> alwaysDomainCallerAndStopRegistered(invokeProvider(s, domainId, workId)))
   ensures (inv(s) ==> canInvokeProvider(s, domainId, workId) ==> alwaysStoppedDomainsStopped(invokeProvider(s, domainId, workId)))
+  ensures (inv(s) ==> canInvokeProvider(s, domainId, workId) ==> alwaysEveryDomainValid(invokeProvider(s, domainId, workId)))
   ensures (inv(s) ==> canInvokeProvider(s, domainId, workId) ==> alwaysSettledWorkOwnsCleanup(invokeProvider(s, domainId, workId)))
 {
   if inv(s) && canInvokeProvider(s, domainId, workId) {
@@ -210,9 +210,9 @@ lemma ProviderAbortAdmission(s: ProviderExecutions, origin: ProviderDomain, afte
 lemma abortCaller_ensures(s: ProviderExecutions, domainId: int, caller: int)
   ensures (inv(s) ==> canAbortCaller(s, domainId, caller) ==> alwaysKeyedDomainsUnique(abortCaller(s, domainId, caller)))
   ensures (inv(s) ==> canAbortCaller(s, domainId, caller) ==> alwaysDomainIdentity(abortCaller(s, domainId, caller)))
-  ensures (inv(s) ==> canAbortCaller(s, domainId, caller) ==> alwaysEveryDomainValid(abortCaller(s, domainId, caller)))
   ensures (inv(s) ==> canAbortCaller(s, domainId, caller) ==> alwaysDomainCallerAndStopRegistered(abortCaller(s, domainId, caller)))
   ensures (inv(s) ==> canAbortCaller(s, domainId, caller) ==> alwaysStoppedDomainsStopped(abortCaller(s, domainId, caller)))
+  ensures (inv(s) ==> canAbortCaller(s, domainId, caller) ==> alwaysEveryDomainValid(abortCaller(s, domainId, caller)))
   ensures (inv(s) ==> canAbortCaller(s, domainId, caller) ==> alwaysSettledWorkOwnsCleanup(abortCaller(s, domainId, caller)))
 {
   if inv(s) && canAbortCaller(s, domainId, caller) {
@@ -242,9 +242,9 @@ lemma abortCaller_ensures(s: ProviderExecutions, domainId: int, caller: int)
 lemma detachCaller_ensures(s: ProviderExecutions, domainId: int, caller: int)
   ensures (inv(s) ==> canDetachCaller(s, domainId, caller) ==> alwaysKeyedDomainsUnique(detachCaller(s, domainId, caller)))
   ensures (inv(s) ==> canDetachCaller(s, domainId, caller) ==> alwaysDomainIdentity(detachCaller(s, domainId, caller)))
-  ensures (inv(s) ==> canDetachCaller(s, domainId, caller) ==> alwaysEveryDomainValid(detachCaller(s, domainId, caller)))
   ensures (inv(s) ==> canDetachCaller(s, domainId, caller) ==> alwaysDomainCallerAndStopRegistered(detachCaller(s, domainId, caller)))
   ensures (inv(s) ==> canDetachCaller(s, domainId, caller) ==> alwaysStoppedDomainsStopped(detachCaller(s, domainId, caller)))
+  ensures (inv(s) ==> canDetachCaller(s, domainId, caller) ==> alwaysEveryDomainValid(detachCaller(s, domainId, caller)))
   ensures (inv(s) ==> canDetachCaller(s, domainId, caller) ==> alwaysSettledWorkOwnsCleanup(detachCaller(s, domainId, caller)))
 {
   if inv(s) && canDetachCaller(s, domainId, caller) {
@@ -278,9 +278,9 @@ lemma detachCaller_ensures(s: ProviderExecutions, domainId: int, caller: int)
 lemma receiveProvider_ensures(s: ProviderExecutions, domainId: int, caller: int)
   ensures (inv(s) ==> canReceiveProvider(s, domainId, caller) ==> alwaysKeyedDomainsUnique(receiveProvider(s, domainId, caller)))
   ensures (inv(s) ==> canReceiveProvider(s, domainId, caller) ==> alwaysDomainIdentity(receiveProvider(s, domainId, caller)))
-  ensures (inv(s) ==> canReceiveProvider(s, domainId, caller) ==> alwaysEveryDomainValid(receiveProvider(s, domainId, caller)))
   ensures (inv(s) ==> canReceiveProvider(s, domainId, caller) ==> alwaysDomainCallerAndStopRegistered(receiveProvider(s, domainId, caller)))
   ensures (inv(s) ==> canReceiveProvider(s, domainId, caller) ==> alwaysStoppedDomainsStopped(receiveProvider(s, domainId, caller)))
+  ensures (inv(s) ==> canReceiveProvider(s, domainId, caller) ==> alwaysEveryDomainValid(receiveProvider(s, domainId, caller)))
   ensures (inv(s) ==> canReceiveProvider(s, domainId, caller) ==> alwaysSettledWorkOwnsCleanup(receiveProvider(s, domainId, caller)))
 {
   if inv(s) && canReceiveProvider(s, domainId, caller) {
@@ -314,9 +314,9 @@ lemma receiveProvider_ensures(s: ProviderExecutions, domainId: int, caller: int)
 lemma stopProviders_ensures(s: ProviderExecutions)
   ensures (inv(s) ==> canStopProviders(s) ==> alwaysKeyedDomainsUnique(stopProviders(s)))
   ensures (inv(s) ==> canStopProviders(s) ==> alwaysDomainIdentity(stopProviders(s)))
-  ensures (inv(s) ==> canStopProviders(s) ==> alwaysEveryDomainValid(stopProviders(s)))
   ensures (inv(s) ==> canStopProviders(s) ==> alwaysDomainCallerAndStopRegistered(stopProviders(s)))
   ensures (inv(s) ==> canStopProviders(s) ==> alwaysStoppedDomainsStopped(stopProviders(s)))
+  ensures (inv(s) ==> canStopProviders(s) ==> alwaysEveryDomainValid(stopProviders(s)))
   ensures (inv(s) ==> canStopProviders(s) ==> alwaysSettledWorkOwnsCleanup(stopProviders(s)))
 {
   if inv(s) && canStopProviders(s) {
@@ -341,9 +341,9 @@ lemma stopProviders_ensures(s: ProviderExecutions)
 lemma settleProvider_ensures(s: ProviderExecutions, domainId: int, workId: int)
   ensures (inv(s) ==> canSettleProvider(s, domainId, workId) ==> alwaysKeyedDomainsUnique(settleProvider(s, domainId, workId)))
   ensures (inv(s) ==> canSettleProvider(s, domainId, workId) ==> alwaysDomainIdentity(settleProvider(s, domainId, workId)))
-  ensures (inv(s) ==> canSettleProvider(s, domainId, workId) ==> alwaysEveryDomainValid(settleProvider(s, domainId, workId)))
   ensures (inv(s) ==> canSettleProvider(s, domainId, workId) ==> alwaysDomainCallerAndStopRegistered(settleProvider(s, domainId, workId)))
   ensures (inv(s) ==> canSettleProvider(s, domainId, workId) ==> alwaysStoppedDomainsStopped(settleProvider(s, domainId, workId)))
+  ensures (inv(s) ==> canSettleProvider(s, domainId, workId) ==> alwaysEveryDomainValid(settleProvider(s, domainId, workId)))
   ensures (inv(s) ==> canSettleProvider(s, domainId, workId) ==> alwaysSettledWorkOwnsCleanup(settleProvider(s, domainId, workId)))
 {
   if inv(s) && canSettleProvider(s, domainId, workId) {
@@ -369,9 +369,9 @@ lemma settleProvider_ensures(s: ProviderExecutions, domainId: int, workId: int)
 lemma cleanProvider_ensures(s: ProviderExecutions, domainId: int, workId: int)
   ensures (inv(s) ==> canCleanProvider(s, domainId, workId) ==> alwaysKeyedDomainsUnique(cleanProvider(s, domainId, workId)))
   ensures (inv(s) ==> canCleanProvider(s, domainId, workId) ==> alwaysDomainIdentity(cleanProvider(s, domainId, workId)))
-  ensures (inv(s) ==> canCleanProvider(s, domainId, workId) ==> alwaysEveryDomainValid(cleanProvider(s, domainId, workId)))
   ensures (inv(s) ==> canCleanProvider(s, domainId, workId) ==> alwaysDomainCallerAndStopRegistered(cleanProvider(s, domainId, workId)))
   ensures (inv(s) ==> canCleanProvider(s, domainId, workId) ==> alwaysStoppedDomainsStopped(cleanProvider(s, domainId, workId)))
+  ensures (inv(s) ==> canCleanProvider(s, domainId, workId) ==> alwaysEveryDomainValid(cleanProvider(s, domainId, workId)))
   ensures (inv(s) ==> canCleanProvider(s, domainId, workId) ==> alwaysSettledWorkOwnsCleanup(cleanProvider(s, domainId, workId)))
 {
   if inv(s) && canCleanProvider(s, domainId, workId) {
@@ -397,9 +397,9 @@ lemma cleanProvider_ensures(s: ProviderExecutions, domainId: int, workId: int)
 lemma runNextProviderCleanup_ensures(s: ProviderExecutions)
   ensures (inv(s) ==> canRunNextProviderCleanup(s) ==> alwaysKeyedDomainsUnique(runNextProviderCleanup(s)))
   ensures (inv(s) ==> canRunNextProviderCleanup(s) ==> alwaysDomainIdentity(runNextProviderCleanup(s)))
-  ensures (inv(s) ==> canRunNextProviderCleanup(s) ==> alwaysEveryDomainValid(runNextProviderCleanup(s)))
   ensures (inv(s) ==> canRunNextProviderCleanup(s) ==> alwaysDomainCallerAndStopRegistered(runNextProviderCleanup(s)))
   ensures (inv(s) ==> canRunNextProviderCleanup(s) ==> alwaysStoppedDomainsStopped(runNextProviderCleanup(s)))
+  ensures (inv(s) ==> canRunNextProviderCleanup(s) ==> alwaysEveryDomainValid(runNextProviderCleanup(s)))
   ensures (inv(s) ==> canRunNextProviderCleanup(s) ==> alwaysSettledWorkOwnsCleanup(runNextProviderCleanup(s)))
 {
   if inv(s) && canRunNextProviderCleanup(s) {
@@ -588,9 +588,9 @@ lemma ProviderNextCallbackUnit(s: core__providers__work_ProviderState)
 lemma attachProvider_ensures(s: ProviderExecutions, caller: int, key: ProviderKey, refresh: bool)
   ensures (inv(s) ==> canAttachProvider(s, caller, key, refresh) ==> alwaysKeyedDomainsUnique(attachProvider(s, caller, key, refresh)))
   ensures (inv(s) ==> canAttachProvider(s, caller, key, refresh) ==> alwaysDomainIdentity(attachProvider(s, caller, key, refresh)))
-  ensures (inv(s) ==> canAttachProvider(s, caller, key, refresh) ==> alwaysEveryDomainValid(attachProvider(s, caller, key, refresh)))
   ensures (inv(s) ==> canAttachProvider(s, caller, key, refresh) ==> alwaysDomainCallerAndStopRegistered(attachProvider(s, caller, key, refresh)))
   ensures (inv(s) ==> canAttachProvider(s, caller, key, refresh) ==> alwaysStoppedDomainsStopped(attachProvider(s, caller, key, refresh)))
+  ensures (inv(s) ==> canAttachProvider(s, caller, key, refresh) ==> alwaysEveryDomainValid(attachProvider(s, caller, key, refresh)))
   ensures (inv(s) ==> canAttachProvider(s, caller, key, refresh) ==> alwaysSettledWorkOwnsCleanup(attachProvider(s, caller, key, refresh)))
 {
   if inv(s) && canAttachProvider(s, caller, key, refresh) {
@@ -745,9 +745,9 @@ lemma ProviderCallbackDomainRetained(s: ProviderExecutions, domainId: int)
 lemma runNextProviderCallback_ensures(s: ProviderExecutions)
   ensures (inv(s) ==> canRunNextProviderCallback(s) ==> alwaysKeyedDomainsUnique(runNextProviderCallback(s)))
   ensures (inv(s) ==> canRunNextProviderCallback(s) ==> alwaysDomainIdentity(runNextProviderCallback(s)))
-  ensures (inv(s) ==> canRunNextProviderCallback(s) ==> alwaysEveryDomainValid(runNextProviderCallback(s)))
   ensures (inv(s) ==> canRunNextProviderCallback(s) ==> alwaysDomainCallerAndStopRegistered(runNextProviderCallback(s)))
   ensures (inv(s) ==> canRunNextProviderCallback(s) ==> alwaysStoppedDomainsStopped(runNextProviderCallback(s)))
+  ensures (inv(s) ==> canRunNextProviderCallback(s) ==> alwaysEveryDomainValid(runNextProviderCallback(s)))
   ensures (inv(s) ==> canRunNextProviderCallback(s) ==> alwaysSettledWorkOwnsCleanup(runNextProviderCallback(s)))
 {
   if inv(s) && canRunNextProviderCallback(s) {

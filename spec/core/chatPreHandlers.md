@@ -10,6 +10,9 @@ The source is `packages/core/src/runtime/chat-pre-handler-registry.ts` at `72fed
 
 ### A drain owns its ordered snapshot and cancellation signal
 
+Each drain has its own identifier, and a drain about to run or awaiting a
+handler still has that handler in its snapshot.
+
 ```quint
 type PreHandler = {id: str, priority: int, reference: int}
 type DrainPhase = BeforeHandler | WaitingHandler | DrainSucceeded | DrainEmpty | DrainFailed | DrainAborted
@@ -40,6 +43,9 @@ pure def canRejectHandler(s: PreHandlers, drainId: int, errorId: str): bool = pr
 pure def rejectHandler(s: PreHandlers, drainId: int, errorId: str): PreHandlers = { ...s, drains: s.drains.listMap(d => if (d.id == drainId) { ...d, phase: DrainFailed, errorId: errorId } else d) }
 pure def alwaysDrainBounds(s: PreHandlers): bool = s.drains.every(d => d.cursor >= 0 and d.cursor <= d.snapshot.length())
 pure def alwaysSuccessSurvivesPostAwaitCheck(s: PreHandlers): bool = s.drains.every(d => d.phase == DrainSucceeded implies not(d.aborted))
+pure def alwaysDrainIdsUnique(s: PreHandlers): bool = s.drains.every(d => s.drains.select(e => e.id == d.id).length() == 1)
+pure def alwaysActiveDrainHasAHandlerLeft(s: PreHandlers): bool =
+  s.drains.every(d => (d.phase == BeforeHandler or d.phase == WaitingHandler) implies d.cursor < d.snapshot.length())
 pure def stepSnapshotsStable(before: PreHandlers, after: PreHandlers): bool = before.drains.every(d => after.drains.some(other => other.id == d.id and other.snapshot == d.snapshot))
 pure def sometimesEmptyTextResultWins(s: PreHandlers): bool = s.drains.some(d => d.phase == DrainSucceeded and d.text == "")
 pure def sometimesCancellationAfterAwait(s: PreHandlers): bool = s.drains.some(d => d.phase == DrainAborted and d.cursor > 0)

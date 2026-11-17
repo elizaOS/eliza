@@ -58,7 +58,8 @@ command as pending, enqueues it, and then persists the enqueue receipt; if
 that receipt cannot be persisted, the pending record stays and blocks the
 next command until it is recovered. A command, once sent, is never sent
 again: a failed, ambiguous, expired, cancelled or unresolved command ends
-unverified.
+unverified. A command in flight always names the command that was
+dispatched.
 
 ```quint
 type RemotePhase = RemoteIdle | RemoteEnqueuing | RemoteEnqueued | RemoteStarted | RemoteSucceeded | RemoteNotVerified | RemoteRefused
@@ -82,6 +83,7 @@ pure def recoverPendingEnqueue(r: RemoteBrowser): RemoteBrowser = { ...r, pendin
 pure val revisionValues = Set(1, 2)
 pure def alwaysEachCommandSentOnce(r: RemoteBrowser): bool = r.sends == r.commandId and r.commandId >= 0
 pure def alwaysEnqueuingIsPending(r: RemoteBrowser): bool = r.phase == RemoteEnqueuing implies r.pendingEnqueue and r.commandId > 0
+pure def alwaysInFlightCommandIsNamed(r: RemoteBrowser): bool = remoteInFlight(r.phase) implies r.commandId > 0
 pure def stepDispatchUsesCurrentGrant(before: RemoteBrowser, after: RemoteBrowser): bool =
   after.sends > before.sends implies before.paired and after.commandGrant == before.grantRevision and not(before.pendingEnqueue) and not(remoteInFlight(before.phase))
 pure def sometimesUnresolvedEnqueueBlocksNext(r: RemoteBrowser): bool = r.phase == RemoteRefused and r.pendingEnqueue and r.paired

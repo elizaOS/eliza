@@ -73,7 +73,7 @@ device boots; a boot of the candidate moves to verification, while the
 installed build still running on its original slot means the update did
 not take effect and the transfer may be retried. A build that is neither,
 or the installed build on the other slot, refuses the journal. A finished
-journal is never reopened.
+journal is never reopened. The journal counts its transfers up from zero.
 
 ```quint
 type JournalPhase = JournalUnenrolled | JournalIdle | JournalPlanned | JournalTransferred | JournalRetry | JournalBooted | JournalVerified | JournalVerifyFailed | JournalRefused
@@ -104,6 +104,7 @@ pure def alwaysPlannedCandidateMovesForward(j: OperatorJournal): bool =
   (j.phase != JournalUnenrolled and j.phase != JournalIdle and j.phase != JournalVerified) implies updateAllowed(j.channel, j.installed, j.candidate)
 pure def alwaysTransferPrecedesBoot(j: OperatorJournal): bool =
   (j.phase == JournalTransferred or j.phase == JournalRetry or j.phase == JournalBooted or j.phase == JournalVerified or j.phase == JournalVerifyFailed) implies j.transfers > 0
+pure def alwaysTransfersCountFromZero(j: OperatorJournal): bool = j.transfers >= 0
 pure def stepFinishedJournalIsFinal(before: OperatorJournal, after: OperatorJournal): bool = finished(before.phase) implies after == before
 pure def sometimesTransferRetried(j: OperatorJournal): bool = j.phase == JournalTransferred and j.transfers == 2
 pure def sometimesForeignBuildRefused(j: OperatorJournal): bool = j.phase == JournalRefused

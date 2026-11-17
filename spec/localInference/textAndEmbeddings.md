@@ -34,10 +34,10 @@ empty or its model is gone, the request is refused, never answered by
 another model.
 
 ```quint
-pure def localEmbeddingModel(assigned: str, assignedInstalled: bool): str = if (assigned != "" and assignedInstalled) assigned else ""
-pure val assignedValues = Set("", "model1", "model2")
-pure def lawEmbeddingsComeFromTheAssignedModel(assigned: str, assignedInstalled: bool): bool =
-  localEmbeddingModel(assigned, assignedInstalled) == "" or (localEmbeddingModel(assigned, assignedInstalled) == assigned and assignedInstalled)
+pure def localEmbeddingModel(assignedModel: str, assignedInstalled: bool): str = if (assignedModel != "" and assignedInstalled) assignedModel else ""
+pure val assignedModelValues = Set("", "model1", "model2")
+pure def lawEmbeddingsComeFromTheAssignedModel(assignedModel: str, assignedInstalled: bool): bool =
+  localEmbeddingModel(assignedModel, assignedInstalled) == "" or (localEmbeddingModel(assignedModel, assignedInstalled) == assignedModel and assignedInstalled)
 ```
 
 ### Vectors are compared only within one vector space

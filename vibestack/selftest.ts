@@ -464,6 +464,7 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
       ["a type named like a generated one", "type Event = { n: int }\npure val initial: Event = { n: 0 }", /cannot be used as a name/],
       ["a definition named like a JavaScript global", "pure val initial: int = 0\npure def Number(n: int): int = n", /cannot be used as a name/],
       ["a parameter named like Dafny's standard library", "pure val initial: int = 0\npure def f(Std: int): int = Std", /`Std` cannot be used as a name/],
+      ["a parameter named like a word Dafny reserves and LemmaScript does not rename", "pure val initial: int = 0\npure def f(assigned: int): int = assigned", /`assigned` cannot be used as a name/],
       ["a set of two computed members", "pure val initial: int = 0\npure def pair(a: int, b: int): int = Set(a, b).size()", /could hold the same value twice/],
       ["a variant field called tag", "type P = A({ tag: int }) | B\npure val initial: int = 0\npure def tick(n: int): int = n", /cannot be called `tag`/],
       ["a match binder used as a whole value", "type N = { n: int }\ntype P = A(N) | B\npure val initial: int = 0\npure def g(r: N): int = r.n\npure def f(p: P): int = match p { | A(x) => g(x) | _ => 0 }\npure def tick(n: int): int = n", /is what a match arm carries/],
@@ -1028,7 +1029,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(said("sometimes", /\bsave in .* never happened/), text);
   });
 
-  test("tables keyed by integers and variants, getOr, nthOr, removeAt, structural == and a mapped append are simulated, replayed, proved and typed", async () => {
+  test("tables keyed by integers and variants, getOr, nthOr, removeAt, structural == and a mapped append are simulated, replayed, proved and typed, and a variant literal is typed for the prover wherever it stands", async () => {
     const root = fixtures(["hall"], (f) => { f["src/hall.ts"] = "export const hall = 1;\n"; });
     const { failed, said, text } = await run(root);
     assert.deepEqual(failed, ["review"], text);

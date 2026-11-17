@@ -19,7 +19,8 @@ callback to a client are separate protocols.
 Creating an intent writes it with its creation event or not at all. Every
 accepted decision appends exactly its event, so the events of an intent are
 always its creation, its delivery if it was delivered, and its terminal
-decision if it has one.
+decision if it has one. Only an approval intent is delivered, and only after
+it left pending.
 
 ```quint
 type IntentKind = OAuthIntent | ApprovalIntent
@@ -48,7 +49,8 @@ pure def expectedEvents(a: Authorization): List[IntentStatus] =
   else if (terminalStatus(a.status)) openedEvents(a).append(a.status)
   else openedEvents(a)
 pure def alwaysEventsMatchTheIntent(a: Authorization): bool = a.events == expectedEvents(a)
-pure def alwaysOnlyApprovalsAreDelivered(a: Authorization): bool = a.delivered implies a.kind == ApprovalIntent
+pure def alwaysOnlyApprovalsAreDelivered(a: Authorization): bool =
+  a.delivered implies (a.kind == ApprovalIntent and a.status != IntentAbsent and a.status != IntentPending)
 ```
 
 ### A decision is accepted only while the intent is open and current
@@ -59,7 +61,7 @@ intent's lifetime of two clock ticks ends; an approval may be delivered only
 while pending, and only the owning tenant may cancel. Only the expiry sweep
 may expire an intent, and only with a cutoff it read after the lifetime
 ended. A refused or failed commit changes nothing, a decided intent keeps its
-decision, and only an approval carries a signature.
+terminal decision, and only an approval carries a signature.
 
 ```quint
 pure def successStatus(kind: IntentKind): IntentStatus = if (kind == ApprovalIntent) IntentApproved else IntentBound
@@ -89,7 +91,7 @@ pure def canStorageFailure(a: Authorization, caller: int): bool = attemptOf(a, c
 pure def storageFailure(a: Authorization, caller: int): Authorization = { ...a, attempts: withAttempt(a, { ...attemptOf(a, caller), phase: AttemptDone }) }
 pure val callerValues = Set(1, 2)
 pure val tenantValues = Set(1, 2)
-pure def alwaysDecisionIsStable(a: Authorization): bool = a.decided == IntentAbsent or a.status == a.decided
+pure def alwaysDecisionIsStable(a: Authorization): bool = a.decided == IntentAbsent or (a.status == a.decided and terminalStatus(a.decided))
 pure def alwaysAcceptedWithinLifetime(a: Authorization): bool = (a.status == IntentApproved or a.status == IntentBound) implies (a.decidedAt >= 0 and a.decidedAt < intentLifetime)
 pure def alwaysCancelledByTheOwningTenant(a: Authorization): bool = a.status == IntentCanceled implies a.cancelTenant == 1
 pure def alwaysSignatureOnlyOnApproval(a: Authorization): bool = a.signature implies a.status == IntentApproved
@@ -98,6 +100,19 @@ pure def sometimesLateDecisionRefused(a: Authorization): bool = a.status == Inte
 pure def sometimesIntentExpired(a: Authorization): bool = a.status == IntentExpired
 pure val weight_prepareDecision = 3
 pure val weight_commitDecision = 3
+```
+
+### A prepared decision is a delivery or a terminal decision, and only a prepared approval is signed
+
+```quint
+pure def alwaysPreparedDecisionsAreDecisions(a: Authorization): bool =
+  a.attempts.every(t => (t.target == IntentDelivered or terminalStatus(t.target)) and (t.signed implies t.target == IntentApproved))
+```
+
+### The intent's clock counts up from zero
+
+```quint
+pure def alwaysClockCountsUpFromZero(a: Authorization): bool = a.clock >= 0
 ```
 
 ## Story: Connect a provider account to my organization

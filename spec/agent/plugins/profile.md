@@ -70,6 +70,8 @@ pure def lawCalendarRequiresScheduler(candidate: bool, reminderPresent: bool, sc
 
 ### Only a plugin the profile admits and nobody denied is registered
 
+Nothing registers before the boot profile is chosen.
+
 ```quint
 type PluginPhase = Absent | Migrating | Registering | Ready | Unloading
 type Registration = { chosen: bool, profile: HostProfile, plugin: CapabilityClass, denied: bool, bootFailed: bool, phase: PluginPhase, inGeneration: bool, roles: bool, schema: bool, published: bool, closed: bool }
@@ -79,6 +81,7 @@ pure val pluginValues = Set(MessageCore, BrowserCore, FullAssistant, WorkflowPlu
 pure def canChooseBoot(r: Registration, profile: HostProfile, plugin: CapabilityClass, denied: bool): bool = not(r.chosen)
 pure def chooseBoot(r: Registration, profile: HostProfile, plugin: CapabilityClass, denied: bool): Registration = { ...r, chosen: true, profile: profile, plugin: plugin, denied: denied }
 pure def alwaysPublishedPluginIsAdmitted(r: Registration): bool = r.phase != Absent implies admitted(r.profile, r.plugin, r.denied)
+pure def alwaysNothingRegistersBeforeBootIsChosen(r: Registration): bool = not(r.chosen) implies r.phase == Absent
 pure def sometimesUnbundledPluginStaysAbsent(r: Registration): bool = r.chosen and mobileProfile(r.profile) and r.plugin == UnbundledPlugin and r.phase == Absent
 ```
 
@@ -98,6 +101,9 @@ pure def sometimesBootRefused(r: Registration): bool = r.bootFailed
 
 ### A plugin publishes only after its roles and schema migration, in the generation that began it
 
+A registration in progress keeps the roles it began with, and once
+migrated keeps its schema, until it is rolled back or unloaded.
+
 ```quint
 pure def canBeginRegister(r: Registration): bool = r.chosen and r.phase == Absent and not(r.closed) and not(r.bootFailed) and admitted(r.profile, r.plugin, r.denied)
 pure def beginRegister(r: Registration): Registration = { ...r, phase: Migrating, inGeneration: true, roles: true }
@@ -107,6 +113,9 @@ pure def canPublish(r: Registration): bool = r.phase == Registering and r.inGene
 pure def publish(r: Registration): Registration = { ...r, phase: Ready, published: true }
 pure def alwaysPublishedIsComplete(r: Registration): bool =
   r.published implies r.phase == Ready and r.inGeneration and r.roles and r.schema and not(r.closed)
+pure def alwaysRegistrationKeepsItsSteps(r: Registration): bool =
+  ((r.phase == Migrating or r.phase == Registering or r.phase == Ready) implies r.roles) and
+    ((r.phase == Registering or r.phase == Ready) implies r.schema)
 pure def sometimesPluginReady(r: Registration): bool = r.published
 ```
 

@@ -326,3 +326,15 @@ pure def validStackFrame(s: Turns, f: TurnFrame): bool = match f {
 }
 pure def alwaysFramesRetainNotices(s: Turns): bool = s.frames.every(f => validStackFrame(s, f))
 ```
+
+### The stack holds at most one cleanup frame, at its bottom
+
+A turn returns only on an empty stack, so the stack holds at most one
+cleanup frame, and that frame is the bottom one.
+
+```quint
+pure def isCleanupFrame(f: TurnFrame): bool = match f { | CleanupFrameKind(frame) => true | _ => false }
+pure def alwaysCleanupAtBottom(s: Turns): bool =
+  s.frames.select(f => isCleanupFrame(f)).length() == 0 or
+    (s.frames.select(f => isCleanupFrame(f)).length() == 1 and isCleanupFrame(s.frames.nthOr(0, RoomAbortReturnKind({abortRoom: "", fromGlobal: false, changedSignal: false}))))
+```

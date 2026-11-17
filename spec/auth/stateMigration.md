@@ -78,6 +78,12 @@ pure def alwaysAuthSessionNeedsTheCutover(s: StateMigration): bool = s.devices.e
 pure def sometimesDeviceSignedInAgain(s: StateMigration): bool = s.devices.some(d => d.session == AuthSession)
 ```
 
+### No two devices share an id
+
+```quint
+pure def alwaysDeviceIdsUnique(s: StateMigration): bool = s.devices.every(d => s.devices.select(o => o.id == d.id).length() == 1)
+```
+
 ### The v3 names are not served in v4: no alias routes, keys or cookies
 
 A request to a v3 route prefix, or a lookup of a v3 storage key or cookie,

@@ -123,13 +123,33 @@ pure def alwaysRevealedGrantHasItsKey(s: SignIn): bool = s.grants.every(g => g.r
 pure def sometimesExchangeReplayedSameKey(s: SignIn): bool = s.grants.some(g => g.reveals >= 2) and s.keys.length() == 1
 ```
 
+### No code or key exists before the browser approves the sign-in
+
+```quint
+pure def alwaysUnapprovedSignInIsEmpty(s: SignIn): bool = not(s.approved) implies (s.grants.length() == 0 and s.keys.length() == 0)
+```
+
+### Each code has its own number, from one up to the number of codes issued
+
+```quint
+pure def alwaysEachCodeHasItsOwnNumber(s: SignIn): bool = s.grants.every(g => g.id >= 1 and g.id <= s.grants.length() and s.grants.select(o => o.id == g.id).length() == 1)
+```
+
+### A pending code has minted no key, and an exchanged code has been revealed
+
+```quint
+pure def alwaysPendingGrantHasNoKey(s: SignIn): bool = s.grants.every(g => (g.status == GrantPending implies not(hasKey(s, g.id))) and (g.status == GrantExchanged implies g.reveals > 0))
+```
+
 ### A key becomes usable only when its client acknowledges it, which erases the stored copy
 
 Acknowledgement requires the exact proof, an unexpired code, the client
 enabled and the owner still in the organization; a renewal's code also
 requires the key it renews to be usable still. It activates the key until
 the earlier of its lifetime and the sign-in's cap, and erases the encrypted
-copy, so the key is never revealed again.
+copy, so the key is never revealed again. A key is activated only by the
+acknowledgement of its own code, which stays acknowledged until cleanup
+deletes it.
 
 ```quint
 pure def canAcknowledge(s: SignIn, g: int): bool = {
@@ -144,6 +164,8 @@ pure def acknowledge(s: SignIn, g: int): SignIn = {
 pure def alwaysActiveKeyHasReceipt(s: SignIn): bool = s.keys.every(k => k.status == KeyActive implies grantOf(s, k.id).status == GrantAcknowledged)
 pure def alwaysReceiptErasesStoredCopy(s: SignIn): bool = s.grants.every(g => (g.status == GrantAcknowledged or g.status == GrantDeleted) implies not(g.cipher))
 pure def alwaysNoKeyOutlivesCap(s: SignIn): bool = s.keys.every(k => k.activated implies k.expires <= k.start + cap)
+pure def alwaysActivatedKeyWasAcknowledged(s: SignIn): bool =
+  s.keys.every(k => k.activated implies (grantOf(s, k.id).status == GrantAcknowledged or grantOf(s, k.id).status == GrantDeleted))
 ```
 
 ### A renewal issues one successor code from a usable key, counted from the original sign-in
@@ -153,7 +175,8 @@ client and owner are still admitted, before the cap, and only when its own
 lifetime ends before the cap. The successor keeps the original sign-in
 time, so no code is issued and no key lives past the cap. A newer request
 voids a code still in flight for the same key. A key that was already
-renewed and asks again has been copied: the whole sign-in ends.
+renewed and asks again has been copied: the whole sign-in ends. A
+successor code always names a key that exists.
 
 ```quint
 pure def renewed(s: SignIn, k: int): bool = s.grants.some(g => g.from == k and g.status == GrantAcknowledged)
@@ -166,6 +189,7 @@ pure def successorGrants(s: SignIn, k: int): List[Grant] =
 pure def requestRenewal(s: SignIn, k: int): SignIn =
   if (renewed(s, k)) { ...s, keys: revokeAll(s), ended: true } else { ...s, grants: successorGrants(s, k) }
 pure def alwaysSignInTimeNeverMoves(s: SignIn): bool = s.grants.every(g => g.start == signInStart(s)) and s.keys.every(k => k.start == signInStart(s))
+pure def alwaysSuccessorNamesAKey(s: SignIn): bool = s.grants.every(g => g.from == 0 or hasKey(s, g.from))
 pure def alwaysNoCodeAfterCap(s: SignIn): bool = s.grants.every(g => g.issuedAt <= g.start + cap)
 pure def alwaysOneLiveSuccessor(s: SignIn): bool = s.keys.every(k => s.grants.select(g => g.from == k.id and (g.status == GrantPending or g.status == GrantExchanged or g.status == GrantAcknowledged)).length() <= 1)
 pure def sometimesRenewedKeyInUse(s: SignIn): bool = s.keys.some(k => k.id > 1 and k.status == KeyActive) and keyOf(s, 1).status == KeyRevoked and not(s.ended)

@@ -9,7 +9,8 @@
 
 ### Building captures all current closures and description
 
-Each build appends a new class with the next identity and the builder's
+Each build appends a new class with the next identity, counting up from
+one, and the builder's
 current type, description and start and stop closures; changing the
 builder afterwards never changes a class already built. A class without a
 start closure rejects when started, and one without a stop closure stops
@@ -35,6 +36,6 @@ pure def build(s: ServiceBuilder): ServiceBuilder = { ...s, built: s.built.appen
 pure def startDisposition(service: BuiltService): str = if (service.startRef == 0) "missing-start-error" else "invoke-captured-start"
 pure def stopDisposition(service: BuiltService): str = if (service.stopRef == 0) "fulfilled-without-hook" else "await-captured-stop"
 pure def stepBuiltClassesStayFixed(before: ServiceBuilder, after: ServiceBuilder): bool = before.built.every(service => after.built.includes(service))
-pure def alwaysClassIdsUnique(s: ServiceBuilder): bool = s.built.every(service => service.id > 0 and service.id < s.nextId and s.built.select(other => other.id == service.id).length() == 1)
+pure def alwaysClassIdsUnique(s: ServiceBuilder): bool = s.nextId > 0 and s.built.every(service => service.id > 0 and service.id < s.nextId and s.built.select(other => other.id == service.id).length() == 1)
 pure def sometimesDistinctBuildSnapshots(s: ServiceBuilder): bool = s.built.some(first => s.built.some(second => first.id != second.id and (first.startRef != second.startRef or first.stopRef != second.stopRef or first.description != second.description)))
 ```

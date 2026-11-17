@@ -45,7 +45,9 @@ A refresh or a profile edit captured a generation when it read the record.
 It commits only while the record still has that generation, so a deleted
 account is never recreated and an identical replacement still fences an old
 refresh. A refresh keeps the current label, and keeps the ID token when the
-provider sent none.
+provider sent none. The records a provider deletion has set aside to restore
+count as records here: no two of them share a key or a positive generation.
+Generations are handed out from one upward.
 
 ```quint
 type RecordFormat = CurrentFormat | LegacyFormat | CorruptRecord
@@ -101,7 +103,7 @@ pure val keyValues = Set(1, 2, 3, 4)
 pure val providerValues = Set("p1", "p2")
 pure val credentialValues = Set(1, 5)
 pure def alwaysGenerationsAreFresh(s: AccountStorage): bool =
-  s.records.every(r => r.generation < s.nextGeneration and r.generation >= 0 and (r.generation > 0 implies s.records.select(o => o.generation == r.generation).length() == 1) and s.records.select(o => o.key == r.key).length() == 1)
+  s.nextGeneration >= 1 and s.records.concat(s.unlinked).every(r => r.generation < s.nextGeneration and r.generation >= 0 and (r.generation > 0 implies s.records.concat(s.unlinked).select(o => o.generation == r.generation).length() == 1) and s.records.concat(s.unlinked).select(o => o.key == r.key).length() == 1)
     and s.readers.every(r => r.generation < s.nextGeneration)
 pure def stepStaleCommitChangesNothing(before: AccountStorage, via: str, after: AccountStorage): bool =
   (via == "refreshCommit" and (after.result == GenerationChanged or after.result == RecordMissing)) implies after.records == before.records
@@ -134,7 +136,8 @@ pure def sometimesConditionalEditApplied(s: AccountStorage): bool = s.result == 
 ### A record is migrated the first time it is read, keeping its contents and generation; an invalid record is never rewritten
 
 A legacy record is rewritten once in the current format; one without a
-generation gets a fresh one. A failure before the atomic rename leaves the
+generation gets a fresh one. This holds of the records a provider deletion
+has set aside too. A failure before the atomic rename leaves the
 old record for a retry; a failure after it leaves the rewrite visible but
 returns nothing.
 
@@ -150,7 +153,7 @@ pure def migrate(s: AccountStorage, key: int, fault: MigrationFault): AccountSto
   else if (fault == FaultBeforeRename) { ...s, result: ErrorBeforeRename }
   else { ...s, records: withRecord(key, rewritten, s), nextGeneration: following, result: if (fault == FaultAfterRename) ErrorAfterRename else Returned }
 }
-pure def alwaysRewrittenOnce(s: AccountStorage): bool = s.records.every(r => r.rewrites <= 1 and (r.rewrites == 1 implies r.format == CurrentFormat))
+pure def alwaysRewrittenOnce(s: AccountStorage): bool = s.records.concat(s.unlinked).every(r => r.rewrites >= 0 and r.rewrites <= 1 and (r.rewrites == 1 implies r.format == CurrentFormat))
 pure def stepMigrationKeepsContents(before: AccountStorage, via: str, after: AccountStorage): bool =
   via == "migrate" implies (after.records.length() == before.records.length() and after.records.every(r => before.records.some(b => b.key == r.key and b.credential == r.credential and b.label == r.label and (b.generation > 0 implies b.generation == r.generation) and (b.format == CorruptRecord implies b == r))))
 pure def sometimesLegacyMigrated(s: AccountStorage): bool = s.records.some(r => r.key == 2 and r.rewrites == 1 and r.format == CurrentFormat)
@@ -164,7 +167,10 @@ may run between them; the commit then holds the lock until its result, so
 nothing else runs while it unlinks or restores. The commit refuses a changed inventory or a changed
 record before it removes anything; if a later unlink fails, the records
 already removed are restored before the call fails. Accounts of other
-providers are never touched.
+providers are never touched. Only an unlinking or rolling-back deletion
+holds removed records, and while it does, each planned record is either
+still stored for the deleted provider at its planned generation or held at
+that generation for a rollback. A rolled-back deletion is finished.
 
 ```quint
 pure def providerRecords(s: AccountStorage, provider: str): List[PlannedRecord] = s.records.select(r => r.provider == provider).listMap(r => { key: r.key, generation: r.generation })
@@ -188,7 +194,9 @@ pure def canConfirmDeletion(s: AccountStorage): bool = s.deletionPhase == Unlink
 pure def confirmDeletion(s: AccountStorage): AccountStorage = { ...s, deletionPhase: DeletionFinished, deletedCount: s.unlinked.length(), unlinked: List(), result: ProviderDeleted }
 pure def alwaysUnlinksStayInsidePlan(s: AccountStorage): bool =
   s.unlinked.every(u => s.plan.some(p => p.key == u.key and p.generation == u.generation) and not(present(s, u.key)) and u.provider == s.deletionProvider)
-    and ((s.deletionPhase == Unlinking or s.deletionPhase == RollingBack) implies s.plan.every(p => present(s, p.key) or s.unlinked.some(u => u.key == p.key)))
+    and ((s.deletionPhase == Unlinking or s.deletionPhase == RollingBack) implies
+      s.plan.every(p => s.records.some(r => r.key == p.key and r.generation == p.generation and r.provider == s.deletionProvider) or s.unlinked.some(u => u.key == p.key and u.generation == p.generation)))
+    and ((s.deletionPhase != Unlinking and s.deletionPhase != RollingBack) implies s.unlinked.length() == 0)
 pure def stepOtherProvidersUntouched(before: AccountStorage, via: str, after: AccountStorage): bool =
   (via == "unlinkPlanned" or via == "restoreUnlinked" or via == "confirmDeletion" or via == "validateDeletion") implies
     before.records.every(b => b.provider == before.deletionProvider or after.records.includes(b))
@@ -197,7 +205,7 @@ pure def alwaysDeletionResultMatchesPlan(s: AccountStorage): bool =
     and (s.deletionPhase == DeletionPrepared implies s.unlinked.length() == 0)
 pure def stepRefusedPlanRemovesNothing(before: AccountStorage, via: str, after: AccountStorage): bool = via == "validateDeletion" implies after.records == before.records
 pure def alwaysRollbackRestoresThePlan(s: AccountStorage): bool =
-  s.result == DeletionRolledBack implies s.plan.every(p => s.records.some(r => r.key == p.key and r.generation == p.generation))
+  s.result == DeletionRolledBack implies (s.deletionPhase == DeletionFinished and s.plan.every(p => s.records.some(r => r.key == p.key and r.generation == p.generation)))
 pure def sometimesProviderDeleted(s: AccountStorage): bool = s.result == ProviderDeleted and s.deletedCount == 2
 pure def sometimesRolledBack(s: AccountStorage): bool = s.result == DeletionRolledBack
 pure def sometimesChangedTargetRefused(s: AccountStorage): bool = s.result == TargetChanged or s.result == InventoryChanged

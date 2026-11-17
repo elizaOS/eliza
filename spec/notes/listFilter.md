@@ -42,13 +42,14 @@ it saw. Moving to another view and back before it applies makes a new
 list. The filter
 applies only if it is still allowed and the list is the one reviewed;
 otherwise it ends without applying. An ended proposal never applies
-again.
+again. Only an admitted proposal is ever under review.
 
 ```quint
 pure def canReviewFilter(s: ListFilter): bool = s.phase == FilterProposed and s.proposalAdmitted
 pure def reviewFilter(s: ListFilter): ListFilter =
   if (filterAllowed(s)) { ...s, phase: FilterReviewed, reviewedEpoch: s.epoch } else { ...s, phase: FilterEnded }
 pure def canApplyFilter(s: ListFilter): bool = s.phase == FilterReviewed
+pure def alwaysReviewedFilterWasAdmitted(s: ListFilter): bool = s.phase == FilterReviewed implies s.proposalAdmitted
 pure def applyFilter(s: ListFilter): ListFilter = { ...s, phase: FilterEnded, applied: filterAllowed(s) and s.reviewedEpoch == s.epoch }
 pure def canMoveScope(s: ListFilter, scope: NotesScope): bool = s.started and s.phase != FilterEnded and s.scope != scope
 pure def moveScope(s: ListFilter, scope: NotesScope): ListFilter = { ...s, scope: scope, epoch: s.epoch + 1 }

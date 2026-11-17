@@ -84,12 +84,20 @@ pure def sometimesCompletedWithFollowUp(t: ScheduledTask): bool = t.status == Ta
 
 A verb on a scheduled row settles the occurrence it was waiting for, which
 then never fires. A fired, skipped or completed row reopens for its next
-occurrence.
+occurrence. Occurrences count from one, and no occurrence the row fired,
+settled or completed is later than its current one; a scheduled row has
+not yet fired, settled or completed its current occurrence, and a fired row
+has not completed it.
 
 ```quint
 pure def canReopen(t: ScheduledTask): bool = t.status == TaskFired or t.status == TaskSkipped or t.status == TaskCompleted
 pure def reopen(t: ScheduledTask): ScheduledTask = { ...t, status: TaskScheduled, occurrence: t.occurrence + 1, revision: t.revision + 1 }
 pure def alwaysSettledPendingOccurrenceNeverFires(t: ScheduledTask): bool = t.settledPending.every(o => not(t.dispatched.includes(o)))
+pure def alwaysOccurrencesTrailTheRow(t: ScheduledTask): bool =
+  t.occurrence >= 1 and
+  t.dispatched.every(o => o < t.occurrence or (o == t.occurrence and t.status != TaskScheduled)) and
+  t.settledPending.every(o => o < t.occurrence or (o == t.occurrence and t.status != TaskScheduled)) and
+  t.completions.every(o => o < t.occurrence or (o == t.occurrence and t.status != TaskScheduled and t.status != TaskFired))
 pure def sometimesPendingOccurrenceSkipped(t: ScheduledTask): bool = t.settledPending.length() > 0 and t.dispatched.length() > 0
 ```
 

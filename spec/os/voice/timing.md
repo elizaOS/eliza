@@ -17,7 +17,8 @@ turns it times.
 
 A timing record begins for one turn. Its ready and sent marks name that
 same turn, come in that order, and carry times no earlier than the mark
-before them. A sent mark needs a ready mark.
+before them. A sent mark needs a ready mark, and a record is active only
+once it has begun.
 
 ```quint
 type TurnTiming = { turnId: int, begun: bool, active: bool, ready: bool, sent: bool,
@@ -39,7 +40,8 @@ pure val turnIdValues = Set(0, 1, 2)
 pure val atValues = Set(0, 40, 90)
 pure def alwaysMarksAreMonotonic(t: TurnTiming): bool =
   t.begunAt >= 0 and (t.ready implies t.begun and t.readyAt >= t.begunAt) and
-  (t.sent implies t.ready and t.sentAt >= t.readyAt) and (t.begun implies t.turnId > 0)
+  (t.sent implies t.ready and t.sentAt >= t.readyAt) and (t.begun implies t.turnId > 0) and
+  (t.active implies t.begun)
 pure def sometimesTurnFullyTimed(t: TurnTiming): bool = t.sent and t.sentAt > t.begunAt
 ```
 
@@ -47,8 +49,8 @@ pure def sometimesTurnFullyTimed(t: TurnTiming): bool = t.sent and t.sentAt > t.
 
 A mark never writes storage. A storage failure drops the unsaved change but
 leaves the turn exactly as active as it was. Finishing and clearing the
-record end only the record; clearing removes what was stored and nothing
-can bring it back.
+record end only the record; only a begun record is cleared, clearing
+removes what was stored, and nothing can bring it back.
 
 ```quint
 pure def canFlushTiming(t: TurnTiming): bool = t.dirty
@@ -68,7 +70,7 @@ pure def stepMarksDoNoStorageWrite(before: TurnTiming, via: str, after: TurnTimi
 pure def stepStorageFailureKeepsTurn(before: TurnTiming, via: str, after: TurnTiming): bool =
   via == "failTimingStorage" implies after.active == before.active and after.ready == before.ready and after.sent == before.sent
 pure def alwaysClearedTimingStaysGone(t: TurnTiming): bool =
-  t.cleared implies not(t.stored) and not(t.dirty) and not(t.active)
+  t.cleared implies t.begun and not(t.stored) and not(t.dirty) and not(t.active)
 pure def sometimesStorageFailureKeepsTurn(t: TurnTiming): bool = t.active and t.ready and not(t.dirty) and not(t.stored)
 pure def sometimesClearedTiming(t: TurnTiming): bool = t.cleared and t.writes > 0
 ```

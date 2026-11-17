@@ -36,6 +36,8 @@ pure def persistCheckin(s: Checkin, written: bool): Checkin =
   { ...s, checkinPhase: if (written) SummaryStored else CheckinFailed, writes: if (written) 1 else 0 }
 pure def alwaysOnlyAValidSummaryIsStored(s: Checkin): bool =
   s.writes > 0 implies (s.rendered == ValidSummary and s.modelCalled and s.checkinPhase == SummaryStored)
+pure def alwaysOnlyAValidAnswerGoesOnToStorage(s: Checkin): bool =
+  s.checkinPhase == Rendered implies (s.rendered == ValidSummary and s.modelCalled)
 ```
 
 ### A failed check-in leaves storage unchanged, and a summary is stored at most once

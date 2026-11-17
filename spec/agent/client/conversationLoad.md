@@ -127,14 +127,14 @@ selection epoch.
 ```quint
 pure def draftOf(drafts: int -> int, room: int): int = if (drafts.keys().contains(room)) drafts.get(room) else 0
 pure def canChooseConversation(c: ConversationLoad, target: int): bool = target > 0
-pure def switchConversation(c: ConversationLoad, target: int): ConversationLoad = {
+pure def switchedTo(target: int, c: ConversationLoad): ConversationLoad = {
   val saved = if (c.active > 0) c.drafts.put(c.active, c.composer) else c.drafts
   { ...claimedBy(target, c), selectionEpoch: c.selectionEpoch + 1, nextCall: c.nextCall + 1, drafts: saved, composer: draftOf(saved, target),
     calls: c.calls.append({ callId: c.nextCall, epoch: c.selectionEpoch + 1, target: target, previous: c.active, waiting: true }) }
 }
 pure def chooseConversation(c: ConversationLoad, target: int): ConversationLoad =
   if (target == c.active and c.loaded == c.active) { ...c, selectionEpoch: c.selectionEpoch + 1 }
-  else switchConversation(c, target)
+  else switchedTo(target, c)
 pure val targetValues = Set(0, 1, 2, 3)
 pure def stepLeavingSavesDraft(before: ConversationLoad, via: str, after: ConversationLoad): bool =
   (via == "chooseConversation" and after.active != before.active) implies
@@ -149,7 +149,9 @@ If the new conversation is forbidden or fails to load, the client claims
 the previous conversation again and restores its draft; with no previous
 conversation it shows a notice. A missing conversation is left to list
 recovery. An outdated reply changes neither the active conversation nor the
-composer.
+composer. Selection calls are numbered from one, and every call awaiting
+its reply has a number already issued and an epoch no later than the
+current one.
 
 ```quint
 pure def callOf(c: ConversationLoad, callId: int): SelectionCall = c.calls.select(k => k.callId == callId).nthOr(0, noCall)
@@ -168,7 +170,7 @@ pure def stepOutdatedSelectionChangesNothing(before: ConversationLoad, via: str,
 pure def stepFailedSelectionReturnsToPrevious(before: ConversationLoad, via: str, after: ConversationLoad): bool =
   (via == "selectionReply" and after.active != before.active) implies
     (callOf(before, after.lastReply).epoch == before.selectionEpoch and after.active == callOf(before, after.lastReply).previous and after.composer == draftOf(before.drafts, after.active))
-pure def alwaysCallsAreIssued(c: ConversationLoad): bool = c.calls.every(k => k.callId > 0 and k.callId < c.nextCall and k.epoch <= c.selectionEpoch and k.waiting)
+pure def alwaysCallsAreIssued(c: ConversationLoad): bool = c.nextCall > 0 and c.calls.every(k => k.callId > 0 and k.callId < c.nextCall and k.epoch <= c.selectionEpoch and k.waiting)
 pure def sometimesFailedSelectionRestored(c: ConversationLoad): bool = c.lastReply > 0 and c.active == 1 and c.composer == 1 and c.loaded == 1 and c.ownerEpoch > 2
 pure def sometimesNoticeWithoutPrevious(c: ConversationLoad): bool = c.notices > 0
 ```

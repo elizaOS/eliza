@@ -18,6 +18,9 @@ is unknown, is refused before any task or callback is touched.
 
 ### Cancelling deletes the task first and settles a pending owner only after the deletion
 
+Once an opened choice's task is gone, its pending owner has been
+cancelled.
+
 ```quint
 type ApprovalOwner = NotOpened | OwnerPending | OwnerClaimed | OwnerUnknown | NoApproval
 type CancelPhase = Closed | Ready | Deleting | Retained | RefusedCancel | Confirming | Done | DeliveryFailed
@@ -41,6 +44,15 @@ pure def canDeleteDone(c: Cancellation): bool = c.phase == Deleting
 pure def deleteDone(c: Cancellation): Cancellation =
   { ...c, phase: Confirming, caller: if (owned(c)) CallerCancelled else c.caller, deadline: if (owned(c)) DeadlineCleared else NoDeadline }
 pure def alwaysOwnerSettlesAfterDeletion(c: Cancellation): bool = c.caller == CallerCancelled implies not(taskPresent(c))
+pure def alwaysDeletedTaskSettledItsOwner(c: Cancellation): bool = (owned(c) and c.phase != Closed and not(taskPresent(c))) implies c.caller == CallerCancelled
+```
+
+### Before the choice opens, its whole state is the initial one
+
+Until the choice opens it has no owner, no caller and no deadline.
+
+```quint
+pure def alwaysUnopenedChoiceIsEmpty(c: Cancellation): bool = c.phase == Closed implies c == initial
 ```
 
 ### A failed deletion keeps the pending owner and its original deadline

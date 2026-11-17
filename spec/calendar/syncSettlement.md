@@ -16,9 +16,10 @@ owns the pause, resume and dispatch decisions this settles under.
 
 ### Every attempt is in flight, recorded or ignored, and only one of them
 
-The channel numbers its attempts. Each claimed attempt is exactly one of
-in flight, recorded (its result changed the channel) or ignored (it was
-superseded when it returned).
+The channel numbers its attempts from one, and every claimed attempt is
+numbered below the next number it will hand out. Each claimed attempt is
+exactly one of in flight, recorded (its result changed the channel) or
+ignored (it was superseded when it returned).
 
 ```quint
 type ChannelPhase = ChannelActive | ChannelStopping | ChannelStopped | ChannelError
@@ -35,12 +36,14 @@ pure val initial: SyncSettlement = {
   foreground: { active: true, visible: true, generation: 1, running: 0, pending: Set(), issued: Set(), admitted: Set(),
     refused: Set(), cancelled: Set(), settled: Set(), status: SyncIdle, lastReturned: 0 }
 }
-pure def sameMembers(left: Set[int], right: Set[int]): bool = left.subseteq(right) and right.subseteq(left)
 pure def alwaysExactAttemptAccounting(s: SyncSettlement): bool =
   val w = s.watch
-  sameMembers(w.claimed, w.inFlight.union(w.recorded).union(w.ignored)) and
-  w.inFlight.intersect(w.recorded.union(w.ignored)).size() == 0 and
-  w.recorded.intersect(w.ignored).size() == 0
+  w.claimed.forall(a => w.inFlight.contains(a) or w.recorded.contains(a) or w.ignored.contains(a)) and
+  w.inFlight.subseteq(w.claimed) and w.recorded.subseteq(w.claimed) and w.ignored.subseteq(w.claimed) and
+  w.inFlight.forall(a => not(w.recorded.contains(a)) and not(w.ignored.contains(a))) and
+  w.recorded.forall(a => not(w.ignored.contains(a)))
+pure def alwaysAttemptsNumberedBelowTheNext(s: SyncSettlement): bool =
+  s.watch.nextAttempt >= 1 and s.watch.claimed.forall(a => a >= 1 and a < s.watch.nextAttempt)
 ```
 
 ### A new attempt is leased only on an active channel whose previous lease is gone or expired
@@ -80,7 +83,7 @@ pure def sometimesStopped(s: SyncSettlement): bool = s.watch.channel == ChannelS
 A failure of the attempt that holds the lease on an active channel puts
 the channel in error, releases the lease, counts the failure and is
 recorded. The channel is therefore in error exactly when one leased
-attempt has failed. A failure of any other attempt, or one returning
+attempt has failed, and its failure count is never negative. A failure of any other attempt, or one returning
 while the channel is stopping or stopped, is ignored: the channel,
 lease, pending work, last synced point and failure count stay as they
 were.
@@ -100,7 +103,7 @@ pure def stepSupersededFailurePreservesChannel(before: SyncSettlement, via: str,
   after.watch.channel == before.watch.channel and after.watch.lease == before.watch.lease and after.watch.pending == before.watch.pending and
   after.watch.last == before.watch.last and after.watch.failures == before.watch.failures
 pure def alwaysErrorRequiresLeasedFailure(s: SyncSettlement): bool =
-  (s.watch.channel == ChannelError iff s.watch.failures > 0) and s.watch.failures <= 1 and
+  (s.watch.channel == ChannelError iff s.watch.failures > 0) and s.watch.failures >= 0 and s.watch.failures <= 1 and
   (s.watch.channel == ChannelError implies s.watch.recorded.size() > 0)
 pure def sometimesSupersededFailureIgnored(s: SyncSettlement): bool =
   s.watch.channel == ChannelActive and s.watch.ignored.size() > 0
@@ -154,9 +157,10 @@ pure def readOptIn(s: SyncSettlement): SyncSettlement =
   { ...s, foreground: { ...f, pending: f.pending.union(Set(f.generation)), issued: f.issued.union(Set(f.generation)) } }
 pure def alwaysReadHasOneOutcome(s: SyncSettlement): bool =
   val f = s.foreground
-  sameMembers(f.issued, f.pending.union(f.admitted).union(f.refused)) and
-  f.pending.intersect(f.admitted.union(f.refused)).size() == 0 and
-  f.admitted.intersect(f.refused).size() == 0
+  f.issued.forall(g => f.pending.contains(g) or f.admitted.contains(g) or f.refused.contains(g)) and
+  f.pending.subseteq(f.issued) and f.admitted.subseteq(f.issued) and f.refused.subseteq(f.issued) and
+  f.pending.forall(g => not(f.admitted.contains(g)) and not(f.refused.contains(g))) and
+  f.admitted.forall(g => not(f.refused.contains(g)))
 ```
 
 ### Stopping or hiding retires the generation and cancels its running pass

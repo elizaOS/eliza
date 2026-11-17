@@ -71,7 +71,7 @@ pure def commitRequest(s: RequestIntegrity, nonce: int): RequestIntegrity = {
   if (s.store == StoreDown) { ...s, verified: rest, result: StoreUnavailable }
   else if (s.usedNonces.contains(nonce)) { ...s, verified: rest, result: NonceReused }
   else if (not(stillFresh(s, request))) { ...s, verified: rest, result: RequestExpired }
-  else if (request.idempotencyKey > 0 and s.log.some(e => e.key == request.idempotencyKey)) { ...s, verified: rest, usedNonces: s.usedNonces.union(Set(nonce)), result: ReplayedFirstResult }
+  else if (request.idempotencyKey != 0 and s.log.some(e => e.key == request.idempotencyKey)) { ...s, verified: rest, usedNonces: s.usedNonces.union(Set(nonce)), result: ReplayedFirstResult }
   else { ...s, verified: rest, usedNonces: s.usedNonces.union(Set(nonce)), log: s.log.append({ nonce: nonce, key: request.idempotencyKey, timestamp: request.timestamp, committedAt: s.now }), result: Executed }
 }
 pure val nonceValues = Set(1, 2, 3)

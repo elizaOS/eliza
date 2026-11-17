@@ -57,6 +57,12 @@ pure def sometimesLiveOwnerQuarantined(s: StorageLock): bool = s.critical.exists
 
 ### A process enters only when its own lock still holds the ordinary name and no live lock sits in quarantine
 
+Every process id is positive. From creating its lock until it finishes or
+dies, a process holds the token
+that names it; from publishing it until it leaves, its lock exists and is
+published; and while an admitted process's lock still holds the ordinary
+name, nobody is inside.
+
 ```quint
 pure def canCreate(s: StorageLock, p: int): bool = lockerOf(s, p).pc == Fresh and s.current == 0 and lockerOf(s, p).token == 0
 pure def create(s: StorageLock, p: int): StorageLock =
@@ -84,6 +90,11 @@ pure def canLeave(s: StorageLock, p: int): bool = lockerOf(s, p).pc == Inside
 pure def leave(s: StorageLock, p: int): StorageLock = { ...s, critical: s.critical.exclude(Set(p)), lockers: withLocker(p, { ...lockerOf(s, p), pc: Closing }, s) }
 pure def alwaysLockersAreWellFormed(s: StorageLock): bool =
   s.lockers.every(l => (l.token == 0 or l.token == l.process + 1) and ((l.pc == Inside) iff s.critical.contains(l.process)) and (l.pc == Dead iff not(s.alive.contains(l.process))))
+pure def alwaysAdmissionHoldsItsOwnLock(s: StorageLock): bool =
+  s.lockers.every(l => l.process > 0
+    and ((l.pc != Fresh and l.pc != Observed and l.pc != Finished and l.pc != Dead) implies l.token == l.process + 1)
+    and ((l.pc == Ready or l.pc == Checked or l.pc == Inside) implies (s.exists.contains(l.token) and s.published.contains(l.token)))
+    and ((l.pc == Checked and s.current == l.token) implies s.critical.size() == 0))
 pure def sometimesStaleObserverRetired(s: StorageLock): bool = s.lockers.some(l => l.pc == Finished and l.token > 0) and s.critical.size() == 1
 ```
 
@@ -112,7 +123,7 @@ pure def finishRelease(s: StorageLock, p: int): StorageLock = {
 pure def canCrash(s: StorageLock, p: int): bool = s.alive.contains(p)
 pure def crash(s: StorageLock, p: int): StorageLock = { ...s, alive: s.alive.exclude(Set(p)), critical: s.critical.exclude(Set(p)), lockers: withLocker(p, { ...lockerOf(s, p), pc: Dead }, s) }
 pure def stepReleaseRemovesOnlyOwnToken(before: StorageLock, via: str, after: StorageLock): bool =
-  via == "finishRelease" implies before.exists.exclude(after.exists).forall(t => before.lockers.some(l => l.token == t and l.pc == ReleaseCheck and l.staged == t))
+  via == "finishRelease" implies before.exists.forall(t => after.exists.contains(t) or before.lockers.some(l => l.token == t and l.pc == ReleaseCheck and l.staged == t))
 pure def sometimesBothFinished(s: StorageLock): bool = s.lockers.every(l => l.pc == Finished) and s.exists.size() == 0
 pure def sometimesCrashedInside(s: StorageLock): bool = s.lockers.some(l => l.pc == Dead and s.exists.contains(l.process + 1))
 ```

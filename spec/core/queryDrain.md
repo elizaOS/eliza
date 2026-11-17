@@ -50,7 +50,11 @@ pure def eligibleAgent(s: Drain, agent: str): bool = {
   registered.agent == agent and agent != "" and not(s.busyServices.contains(registered.service)) and not(s.retiredServices.contains(registered.service))
 }
 pure def queryRegistrations(s: Drain): List[Registration] = s.dirtyAgents.select(agent => eligibleAgent(s, agent)).listMap(agent => registrationFor(s, agent))
-pure def dirtyToPreserve(s: Drain): List[str] = s.dirtyAgents.select(agent => registrationFor(s, agent).agent != "" and s.busyServices.contains(registrationFor(s, agent).service))
+pure def preservedAgent(s: Drain, agent: str): bool = {
+  val registered = registrationFor(s, agent)
+  registered.agent != "" and s.busyServices.contains(registered.service)
+}
+pure def dirtyToPreserve(s: Drain): List[str] = s.dirtyAgents.select(agent => preservedAgent(s, agent))
 pure def canBeginQuery(s: Drain): bool = s.activeAdapter != "" and not(s.queries.some(query => query.generation == s.generation and query.phase != Done)) and queryRegistrations(s).length() > 0
 pure def beginQuery(s: Drain): Drain = {
   val captured = queryRegistrations(s)

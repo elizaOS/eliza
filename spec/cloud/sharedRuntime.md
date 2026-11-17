@@ -99,7 +99,7 @@ pure def sometimesFailedCheckpointClosesRoom(r: SharedRoom): bool = r.turn == Ro
 Evicting an open room starts a new generation and retires a finalizer that
 has not settled. A reader of a reloaded generation reads the history from
 the durable checkpoint, so it sees an interrupted turn exactly when one was
-checkpointed.
+checkpointed. Generations count up from the first, which is one.
 
 ```quint
 pure def canEvictRoom(r: SharedRoom): bool = r.turn == RoomOpen and not(readerWaiting(r))
@@ -108,6 +108,7 @@ pure def canReloadRoom(r: SharedRoom): bool = r.turn == RoomReloading
 pure def reloadRoom(r: SharedRoom): SharedRoom = { ...r, turn: RoomOpen }
 pure def canReadHistory(r: SharedRoom): bool = r.turn == RoomOpen and r.readGeneration != r.generation
 pure def readHistory(r: SharedRoom): SharedRoom = { ...r, readGeneration: r.generation, readSawInterrupted: r.archived }
+pure def alwaysGenerationsCountFromOne(r: SharedRoom): bool = r.generation >= 1
 pure def alwaysRetiredFinalizerOnlyAfterEviction(r: SharedRoom): bool = r.finalizer == FinalizerRetired implies r.generation > 1
 pure def stepReloadedReaderSeesTheCheckpoint(before: SharedRoom, via: str, after: SharedRoom): bool =
   (via == "readHistory" and after.generation > 1) implies after.readSawInterrupted == before.archived

@@ -91,6 +91,20 @@ pure def sometimesTwoProcessesRefreshAtOnce(s: AccessTokens): bool = s.requests.
 pure def sometimesQueuedCallerUsesRotatedToken(s: AccessTokens): bool = s.requests.some(r => r.outcome == TokenOk and r.issuedGrant == 0 and r.process == 1 and r.observedGeneration >= 3)
 ```
 
+### Each request has its own number, and a queue holds only its own account's requests in that process
+
+Numbers start at one, and each request takes the next, so every request's
+number is below the next one to be given and no two requests share one.
+Every number waiting in a queue belongs to a request for that queue's
+account in that queue's process.
+
+```quint
+pure def alwaysRequestsNumberedOnce(s: AccessTokens): bool =
+  s.nextId >= 1 and s.requests.every(r => r.id >= 1 and r.id < s.nextId and s.requests.select(o => o.id == r.id).length() == 1)
+pure def alwaysQueuesHoldTheirOwnRequests(s: AccessTokens): bool =
+  s.queues.every(q => q.waiting.every(id => s.requests.some(r => r.id == id and r.process == q.process and r.root == q.root)))
+```
+
 ### A request returns a token only when it outlives the requested buffer, and a stored token that cannot be refreshed is never refreshed
 
 A requested buffer below one second counts as one second.
@@ -203,6 +217,41 @@ pure def alwaysRotatedGrantIsRetained(s: AccessTokens): bool =
 pure def sometimesReplacementWinsBeforeCommit(s: AccessTokens): bool = s.requests.some(r => r.outcome == TokenOk and r.resultToken == 5 and not(r.refreshed))
 pure def sometimesResetRejectsCommit(s: AccessTokens): bool = s.requests.some(r => r.outcome == StorageError and r.responseToken > 0 and not(r.published))
 pure def sometimesRefreshed(s: AccessTokens): bool = s.requests.some(r => r.refreshed)
+```
+
+### A request has an outcome and publishes only once it settles
+
+Until a request settles, its outcome is pending and it has published
+nothing.
+
+```quint
+pure def alwaysSettlesBeforeOutcomeOrPublication(s: AccessTokens): bool =
+  s.requests.every(r => (r.published implies r.phase == ResolutionDone) and (r.phase != ResolutionDone implies r.outcome == Pending))
+```
+
+### A provider response waiting to be committed carries a token
+
+```quint
+pure def alwaysCommitCarriesToken(s: AccessTokens): bool = s.requests.every(r => r.phase == Committing implies r.responseToken > 0)
+```
+
+### The next generation to be given is above every generation a request committed
+
+The next generation is at least one, and a request that committed nothing
+counts as having committed generation zero.
+
+```quint
+pure def alwaysCommittedGenerationsBelowNext(s: AccessTokens): bool =
+  s.nextGeneration >= 1 and s.requests.every(r => r.committedGeneration < s.nextGeneration)
+```
+
+### Storage holds at most one credential per account, each with a token and a generation
+
+Every stored credential's token and generation are above zero.
+
+```quint
+pure def alwaysOneCredentialPerAccount(s: AccessTokens): bool =
+  s.records.every(x => x.token > 0 and x.generation > 0 and s.records.select(y => y.root == x.root).length() == 1)
 ```
 
 ### Every admitted request settles

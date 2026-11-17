@@ -29,8 +29,9 @@ pure def stepSeedingAddsOneNewTemplate(before: Routines, via: str, after: Routin
 
 ### An occurrence is answered only after it was shown
 
-A pending occurrence is shown when its window opens. The owner completes,
-skips or snoozes a shown occurrence; a snoozed one is shown again later.
+A pending occurrence is shown when its window opens, and a showing
+occurrence was shown. The owner completes, skips or snoozes a shown
+occurrence; a snoozed one is shown again later.
 
 ```quint
 pure def answerable(phase: OccurrencePhase): bool = phase == OccurrenceVisible
@@ -44,6 +45,7 @@ pure def canSnoozeOccurrence(s: Routines): bool = answerable(s.occurrence)
 pure def snoozeOccurrence(s: Routines): Routines = { ...s, occurrence: OccurrenceSnoozed, snoozes: s.snoozes + 1 }
 pure def alwaysAnsweredOccurrencesWereShown(s: Routines): bool =
   (s.occurrence == OccurrenceCompleted or s.occurrence == OccurrenceSkipped or s.occurrence == OccurrenceSnoozed) implies s.shown
+pure def alwaysShowingOccurrenceWasShown(s: Routines): bool = s.occurrence == OccurrenceVisible implies s.shown
 ```
 
 ### An unanswered occurrence expires when its window ends

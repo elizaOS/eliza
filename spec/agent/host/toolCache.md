@@ -40,6 +40,8 @@ pure def alwaysTiersConsistent(c: ToolCache): bool = c.memory == -1 or c.memory 
 
 ### Concurrent misses for one version share one execution, and a failure releases it
 
+Only a real descriptor version is ever requested or in flight.
+
 ```quint
 pure def canMiss(c: ToolCache): bool = not(c.inflight.contains(c.requested))
 pure def miss(c: ToolCache): ToolCache = { ...c, inflight: c.inflight.union(Set(c.requested)), executions: c.executions + 1, hit: -1 }
@@ -47,6 +49,7 @@ pure def canFailCall(c: ToolCache, version: int): bool = c.inflight.contains(ver
 pure def failCall(c: ToolCache, version: int): ToolCache = { ...c, inflight: c.inflight.exclude(Set(version)) }
 pure def stepOneExecutionPerVersionInFlight(before: ToolCache, via: str, after: ToolCache): bool =
   via == "miss" implies not(before.inflight.contains(before.requested))
+pure def alwaysOnlyRealVersionsInFlight(c: ToolCache): bool = c.requested >= 0 and c.inflight.forall(v => v >= 0)
 pure def sometimesBothVersionsInFlight(c: ToolCache): bool = c.inflight.size() == 2
 ```
 

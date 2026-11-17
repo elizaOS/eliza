@@ -56,7 +56,7 @@ pure def beginDelete(s: OAuthBridge, provider: str, key: str): OAuthBridge = { .
 
 ### Durable terminal acknowledgement releases the correct mirror and verifier
 
-A durable row takes precedence over the captured mirror, while the captured raw verifier is restored only in the returned process value. Terminal update clears the mirror only when a durable row acknowledged it. Terminal status still releases the verifier when persistence methods exist and the durable update returned absent. A durable expiry updates the mirror and the currently stored verifier's expiry. A failed adapter call preserves the mirror and secret changes that happened before the await.
+A durable row takes precedence over the captured mirror, while the captured raw verifier is restored only in the returned process value. Terminal update clears the mirror only when a durable row acknowledged it. Terminal status still releases the verifier when persistence methods exist and the durable update returned absent. A durable expiry updates the mirror and the currently stored verifier's expiry. A failed adapter call preserves the mirror and secret changes that happened before the await. The mirror is the canonical store itself, so its accounts and owner bindings stay as unique as its flow aliases.
 
 ```quint
 pure def capturedVerifier(s: OAuthBridge, durable: D::FlowValue): A::OptionalText = if (s.captured.verifier.present) s.captured.verifier else durable.verifier
@@ -79,6 +79,7 @@ pure def durableResult(s: OAuthBridge, present: bool, value: D::FlowValue, succe
 pure def setClock(s: OAuthBridge, now: int): OAuthBridge = { ...s, mirror: D::setClock(s.mirror, now), secrets: S::setClock(s.secrets, now) }
 pure def alwaysOutboundSecretsAbsent(s: OAuthBridge): bool = not(s.hasOutbound) or not(s.outbound.verifier.present)
 pure def alwaysMirrorIdentityUnique(s: OAuthBridge): bool = D::alwaysFlowAliasesUnique(s.mirror)
+pure def alwaysMirrorKeepsStoreRules(s: OAuthBridge): bool = D::alwaysOwnerBindingIdentityUnique(s.mirror) and D::alwaysAccountIdentityUnique(s.mirror)
 pure def alwaysDurableConsumeFailureDoesNotFallback(s: OAuthBridge): bool = s.phase == BridgeReturned and s.operation == ConsumeFlow and s.methods.consume and not(s.durableAcknowledged) implies not(s.hasResult)
 pure def sometimesFailedWriteRetainsMirror(s: OAuthBridge): bool = s.phase == BridgeFailed and s.mirror.flows.length() > 0
 pure val providerValues = Set("provider1", "provider2")

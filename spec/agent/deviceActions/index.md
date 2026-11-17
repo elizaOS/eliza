@@ -76,7 +76,8 @@ settles the request as applied, or as uncertain when the device cannot say the
 effect happened. A dispatched request whose deadline passes without a receipt
 is uncertain too: the device may have acted. Only a confirmed review of the
 exact attempt settles an uncertain request, as applied or as confirmed not
-applied. Every outcome follows exactly one claim.
+applied. Every outcome follows exactly one claim, and a request that was
+never dispatched has no claim.
 
 ```quint
 pure def canReceipt(d: DeviceRequest, binding: Binding, attemptMatches: bool, applied: bool): bool =
@@ -92,6 +93,7 @@ pure def reconcile(d: DeviceRequest, binding: Binding, attemptMatches: bool, con
 pure def afterDispatch(phase: RequestPhase): bool =
   phase == RequestDispatched or phase == RequestUncertain or phase == AppliedByReceipt or phase == AppliedByReview or phase == ConfirmedNotApplied
 pure def alwaysOutcomeFollowsOneClaim(d: DeviceRequest): bool = afterDispatch(d.phase) implies d.claims == 1
+pure def alwaysUndispatchedHasNoClaim(d: DeviceRequest): bool = not(afterDispatch(d.phase)) implies d.claims == 0
 pure val fair_receipt = "weak"
 pure def leadsToDispatchClassified(d: DeviceRequest, later: DeviceRequest): bool =
   d.phase == RequestDispatched implies later.phase != RequestDispatched

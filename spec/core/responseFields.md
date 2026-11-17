@@ -69,7 +69,7 @@ pure def requiredFields(f: FieldDispatch, selection: Set[str], selected: bool): 
 
 ### All active fields parse before handlers begin and preemption stops subsequent handlers
 
-Dispatch snapshots the sorted registry so concurrent registration affects the next dispatch. The active set is recomputed for each dispatch. Inactive fields and null parse results skip handling. Ordinary parse and activation exceptions add field errors and permit siblings. Cancellation aborts the dispatch. Handler errors add errors and permit later siblings. Preemption retains its requested mode and ends handling. Callback mutation applies only after successful parsing of every sibling. Equal-priority lexical ordering is an adapter contract over the source comparator and its captured fixtures.
+Dispatch snapshots the sorted registry so concurrent registration affects the next dispatch, and only the snapshot's fields await parsing. The active set is recomputed for each dispatch. Inactive fields and null parse results skip handling. Ordinary parse and activation exceptions add field errors and permit siblings. Cancellation aborts the dispatch. Handler errors add errors and permit later siblings. Preemption retains its requested mode and ends handling. Callback mutation applies only after successful parsing of every sibling. Equal-priority lexical ordering is an adapter contract over the source comparator and its captured fixtures.
 
 ```quint
 pure def canBeginDispatch(f: FieldDispatch): bool = not(f.inFlight)
@@ -81,6 +81,7 @@ pure def handleField(f: FieldDispatch, name: str, failed: bool, preempt: bool, c
 pure def canFinishDispatch(f: FieldDispatch): bool = f.inFlight and ((f.pending.size() == 0 and f.ready.size() == 0) or f.preempted or f.aborted)
 pure def finishDispatch(f: FieldDispatch): FieldDispatch = { ...f, inFlight: false }
 pure def alwaysOnlySnapshotHandled(f: FieldDispatch): bool = f.ready.subseteq(f.snapshot) and f.attempted.subseteq(f.snapshot) and f.handled.subseteq(f.attempted)
+pure def alwaysPendingFromSnapshot(f: FieldDispatch): bool = f.pending.subseteq(f.snapshot)
 pure def alwaysHandlersAfterParse(f: FieldDispatch): bool = f.attempted.size() > 0 implies f.pending.size() == 0
 pure def alwaysAttemptedOnce(f: FieldDispatch): bool = f.ready.intersect(f.attempted).size() == 0
 pure def sometimesSiblingErrorRecorded(f: FieldDispatch): bool = f.errors.size() > 0

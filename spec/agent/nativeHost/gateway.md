@@ -52,7 +52,7 @@ pure def canFinishGateway(g: Gateway): bool = g.life.phase == GwCleanup and g.li
 pure def finishGateway(g: Gateway): Gateway = { ...g, life: { ...g.life, phase: GwClosed } }
 pure val resourceValues = Set(0, 1, 2, 3)
 pure def alwaysReleasedOnceInReverse(g: Gateway): bool =
-  g.life.released.subseteq(g.life.acquired) and g.life.acquired.forall(r => r >= 0 and r < g.life.nextResource) and g.life.nextResource <= 4 and
+  g.life.released.subseteq(g.life.acquired) and g.life.acquired.forall(r => r >= 0 and r < g.life.nextResource) and g.life.nextResource >= 0 and g.life.nextResource <= 4 and
   ((g.life.phase != GwCleanup and g.life.phase != GwClosed) implies (g.life.lastReleased == 4 and g.life.released.size() == 0)) and
   g.life.released.forall(r => r >= g.life.lastReleased) and g.life.acquired.forall(r => g.life.released.contains(r) or r < g.life.lastReleased) and
   (g.life.phase == GwReady implies g.life.listening) and (g.life.phase == GwClosed implies g.life.acquired.subseteq(g.life.released)) and

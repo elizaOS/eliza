@@ -95,7 +95,7 @@ pure def releaseHold(b: BrowserBinding, holdId: int): BrowserBinding = {
 }
 pure def alwaysCallbackCustody(b: BrowserBinding): bool =
   b.demand.fired.subseteq(b.demand.registered) and b.demand.registered.subseteq(b.demand.acquired) and
-  b.demand.open.subseteq(b.demand.acquired) and b.demand.waiting.every(id => b.demand.open.contains(id) and not(b.demand.fired.contains(id))) and
+  b.demand.open.subseteq(b.demand.acquired) and b.demand.waiting.every(id => b.demand.open.contains(id) and b.demand.registered.contains(id) and not(b.demand.fired.contains(id))) and
   b.demand.waiting.every(id => b.demand.waiting.select(other => other == id).length() == 1)
 pure def alwaysClosedBindingHasNoWaiters(b: BrowserBinding): bool = b.closed implies b.demand.waiting.length() == 0 and not(b.demand.idle)
 pure def stepCallbackFiresOnce(before: BrowserBinding, after: BrowserBinding): bool = before.demand.fired.subseteq(after.demand.fired)

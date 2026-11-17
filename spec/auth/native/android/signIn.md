@@ -46,7 +46,7 @@ pure def canCodeSent(c: SignIn): bool = c.sending and c.work == noWork
 pure def codeSent(c: SignIn): SignIn = { ...c, sending: false }
 pure def canExpireCode(c: SignIn): bool = c.channel != NoChannel and not(c.sending) and not(c.expired)
 pure def expireCode(c: SignIn): SignIn = { ...c, expired: true }
-pure def verify(c: SignIn, attempt: int, target: VerifyTarget): SignIn = {
+pure def verifyCode(c: SignIn, attempt: int, target: VerifyTarget): SignIn = {
   val ownsAttempt = c.channel != NoChannel and attempt == c.generation and c.waiter == 0 and not(c.sending)
   val rightChannel = target == VerifyFactor or (target == VerifyEmail and c.channel == EmailChannel) or (target == VerifyPhone and c.channel == PhoneChannel)
   val rightStep = if (target == VerifyFactor) c.factor == TotpFactor or c.factor == SmsFactor else c.factor == NoFactor
@@ -82,6 +82,17 @@ pure def alwaysWaiterHasReadyAttempt(c: SignIn): bool = c.waiter != 0 implies (c
 pure def alwaysWorkOwnsItsCall(c: SignIn): bool =
   (c.work.stage == WorkIdle) == (c.work == noWork) and (c.work.stage == Checking or c.work.stage == Granting implies c.work.rpc != 0)
 pure def sometimesRetryWhileReplyDetached(c: SignIn): bool = c.waiter != 0 and detachedRpc(c) != 0
+```
+
+### Attempts and calls are numbered from one, so an open attempt and any work have a number
+
+The attempt number and the waiting call's number are never negative,
+zero meaning none. An open attempt has a number of at least one, and
+work, while there is any, holds a call numbered at least one.
+
+```quint
+pure def alwaysIdsCountFromOne(c: SignIn): bool =
+  c.generation >= 0 and c.waiter >= 0 and (c.channel != NoChannel implies c.generation >= 1) and (c.work == noWork or c.work.rpc >= 1)
 ```
 
 ### Wrong codes are bounded per step, and an unanswered request keeps the step

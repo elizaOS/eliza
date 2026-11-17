@@ -47,6 +47,8 @@ pure def stepNoExpiredCodeConsumed(before: Pairing, via: str, after: Pairing): b
 ### The code is consumed before the identity write, and the write binds the code's owner once
 
 A failed write still consumed the code; pairing then needs a new code.
+While a code is pending or being written, it is for an owner and has bound
+nothing yet.
 
 ```quint
 pure def canConsume(p: Pairing): bool = p.phase == CodePending and not(p.expired) and p.attempts > 0
@@ -56,7 +58,7 @@ pure def identityWritten(p: Pairing): Pairing = { ...p, phase: NoCode, writes: p
 pure def canIdentityWriteFailed(p: Pairing): bool = p.phase == Writing
 pure def identityWriteFailed(p: Pairing): Pairing = { ...p, phase: NoCode, writeFailed: true }
 pure def alwaysWriteFollowsConsumption(p: Pairing): bool =
-  (p.phase == Writing implies p.attempts == 0 and p.owner > 0) and p.writes <= 1 and (p.bound iff p.writes == 1) and (p.bound implies p.boundOwner == p.owner)
+  (p.phase != NoCode implies p.owner > 0 and p.writes == 0) and (p.phase == Writing implies p.attempts == 0) and p.writes <= 1 and (p.bound iff p.writes == 1) and (p.bound implies p.boundOwner == p.owner)
 pure def sometimesBound(p: Pairing): bool = p.bound
 pure def sometimesFailedWriteConsumedCode(p: Pairing): bool = p.writeFailed and p.phase == NoCode and not(p.bound)
 ```

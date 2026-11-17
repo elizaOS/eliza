@@ -18,7 +18,9 @@ clients without a browser is the same session.
 Approval captures its time before the database work, so a completion that
 arrives after the session deadline cannot authenticate it. The first
 approval binds the session to the approving owner and mints that owner's
-key; any other approval finds the session already decided.
+key; any other approval finds the session already decided. A client is
+named by a positive number, the session clock never runs below zero, and a
+session still pending has minted nothing.
 
 ```quint
 type CliPhase = CliPending | CliAuthenticated | CliExpired | CliDeleted
@@ -32,9 +34,9 @@ pure val initial: CliLogin = { clock: 0, phase: CliPending, owner: 0, key: 0, ke
 pure val clientValues = Set(1, 2)
 pure def canTick(s: CliLogin): bool = true
 pure def tick(s: CliLogin): CliLogin = { ...s, clock: s.clock + 1 }
-pure def canPrepareApproval(s: CliLogin, client: int): bool = not(s.approvals.some(a => a.client == client))
+pure def canPrepareApproval(s: CliLogin, client: int): bool = client > 0 and not(s.approvals.some(a => a.client == client))
 pure def prepareApproval(s: CliLogin, client: int): CliLogin = { ...s, approvals: s.approvals.append({ client: client, at: s.clock }) }
-pure def canCompleteApproval(s: CliLogin, client: int): bool = s.approvals.some(a => a.client == client and a.at >= 0)
+pure def canCompleteApproval(s: CliLogin, client: int): bool = client > 0 and s.approvals.some(a => a.client == client and a.at >= 0)
 pure def completeApproval(s: CliLogin, client: int): CliLogin = {
   val at = s.approvals.select(a => a.client == client).nthOr(0, { client: 0, at: sessionDeadline }).at
   val done = s.approvals.listMap(a => if (a.client == client) { client: client, at: -1 } else a)
@@ -44,6 +46,8 @@ pure def completeApproval(s: CliLogin, client: int): CliLogin = {
 pure def canExpireStatus(s: CliLogin): bool = s.clock >= sessionDeadline and (s.phase == CliPending or s.phase == CliAuthenticated)
 pure def expireStatus(s: CliLogin): CliLogin = { ...s, phase: CliExpired }
 pure def alwaysOneMintedKey(s: CliLogin): bool = s.minted <= 1 and (s.minted == 1 iff s.key != 0)
+pure def alwaysPendingSessionMintedNothing(s: CliLogin): bool = s.phase == CliPending implies s.minted == 0
+pure def alwaysClockNeverNegative(s: CliLogin): bool = s.clock >= 0
 pure def sometimesLateApprovalRefused(s: CliLogin): bool = s.minted == 0 and s.approvals.some(a => a.at == -1) and s.phase != CliPending
 ```
 
@@ -53,7 +57,9 @@ A poller reads the stored key while the session is authenticated, not yet
 collected and still within its deadline, and decrypts it outside the
 transaction. Claiming re-reads the session and requires the same key,
 owner and stored hash, the key still active, and the deadline not passed.
-A lost reply after the claim never makes the key collectable again.
+A lost reply after the claim never makes the key collectable again. Each
+poller has one poll, and a claimed poll exists only after the session was
+collected and before its key was revealed.
 
 ```quint
 pure val pollerValues = Set(1, 2)
@@ -77,6 +83,9 @@ pure def canChangeKey(s: CliLogin, change: KeyChange): bool = s.key != 0 and not
 pure def changeKey(s: CliLogin, change: KeyChange): CliLogin =
   { ...s, keyChanged: true, keyActive: s.keyActive and change != RevokeKey, keyOwner: if (change == ReassignKey) 3 - s.keyOwner else s.keyOwner, keyHash: if (change == RotateKeyHash) 2 else s.keyHash }
 pure def alwaysOneReveal(s: CliLogin): bool = s.reveals <= 1 and s.polls.select(p => p.step == PollClaimed).length() <= 1 and (s.reveals == 1 implies s.consumed)
+pure def alwaysOnePollPerPoller(s: CliLogin): bool = s.polls.every(p => s.polls.select(o => o.poller == p.poller).length() == 1)
+pure def alwaysClaimRevealedAtMostOnce(s: CliLogin): bool =
+  s.reveals + s.polls.select(p => p.step == PollClaimed).length() <= 1 and (s.polls.some(p => p.step == PollClaimed) implies s.consumed)
 pure def stepClaimMatchesSession(before: CliLogin, after: CliLogin): bool =
   (not(before.consumed) and after.consumed) implies (before.phase == CliAuthenticated and before.keyActive and before.keyOwner == before.owner and before.clock < sessionDeadline)
 pure def sometimesKeyRevealed(s: CliLogin): bool = s.reveals == 1

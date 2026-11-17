@@ -62,8 +62,9 @@ returned settling, so that a listener can unmount between them.
 
 ### Each request is numbered once and queued in arrival order
 
-The renderer numbers requests from one. Every claim has its own number, no
-number is queued twice, and every queued number was admitted.
+The renderer numbers requests from one, so the count of admitted requests
+is never negative. Every claim has its own number, no number is queued
+twice, and every queued number was admitted.
 
 ```quint
 type ClaimResolution = ClaimPending | ClaimApplied | ClaimRejected | ClaimDropped
@@ -79,6 +80,7 @@ pure def alwaysViewClaimsNumbered(s: Navigation): bool =
   s.views.requests.every(c => c.request >= 1 and c.request <= s.views.admitted and s.views.requests.select(other => other.request == c.request).length() == 1)
     and s.views.queue.every(request => request >= 1 and request <= s.views.admitted)
 pure def alwaysViewQueueDistinct(s: Navigation): bool = s.views.queue.every(request => s.views.queue.select(other => other == request).length() == 1)
+pure def alwaysAdmittedCountNeverNegative(s: Navigation): bool = s.views.admitted >= 0
 ```
 
 ### A full queue drops its oldest request to admit a new one

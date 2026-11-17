@@ -43,7 +43,7 @@ pure def sometimesPlaintextRefused(s: Vault): bool = s.result == KeySourceRefuse
 ### A failed read is never taken as absence and never leads to a new key
 
 A slot is generated only after a read that succeeded and found it empty,
-with no failed read since.
+with no failed read since. The agent's own key is always on the device.
 
 ```quint
 pure def slotOf(profile: str, name: str): SlotName = { profile: profile, name: name }
@@ -66,6 +66,7 @@ pure val valueValues = Set(2, 3)
 pure def stepGenerationFollowsACleanEmptyRead(before: Vault, via: str, after: Vault): bool =
   via == "generateSecret" implies after.generated.select(g => not(before.generated.includes(g))).every(g => before.checkedAbsent.includes(g) and not(before.readFailures.includes(g)) and not(hasEntry(before, g.profile, g.name)))
 pure def alwaysExistingKeyNeverRegenerated(s: Vault): bool = not(s.generated.includes(slotOf("default", "agent-key")))
+pure def alwaysAgentKeyStored(s: Vault): bool = hasEntry(s, "default", "agent-key")
 pure def sometimesReadFailureKeepsKey(s: Vault): bool = s.result == ReadFailed and hasEntry(s, "default", "agent-key")
 pure def sometimesGeneratedAfterEmptyRead(s: Vault): bool = s.generated.length() > 0
 ```
@@ -73,7 +74,9 @@ pure def sometimesGeneratedAfterEmptyRead(s: Vault): bool = s.generated.length()
 ### A write is acknowledged only after the written value reads back
 
 A mismatched readback restores the previous value; a failed restore is
-reported, never hidden.
+reported, never hidden. While a write is pending, the entries it would
+restore differ from the current ones only in the pending write's profile,
+hold one entry per slot and hold the agent's own key.
 
 ```quint
 pure def canWriteSecret(s: Vault, profile: str, name: str, value: int): bool = s.key == VaultUnlocked and hasEntry(s, profile, name) and s.pending.length() == 0
@@ -88,6 +91,10 @@ pure def rollbackFails(s: Vault): Vault = { ...s, pending: List(), lastProfile: 
 pure def stepAcknowledgedWriteIsDurable(before: Vault, via: str, after: Vault): bool =
   after.acked.select(a => not(before.acked.includes(a))).every(a => via == "readBack" and before.pending.includes(a) and after.entries.includes(a))
 pure def alwaysPendingWriteIsOnDisk(s: Vault): bool = s.pending.every(p => s.entries.includes(p)) and s.pending.length() <= 1
+pure def alwaysPreviousEntriesRestorable(s: Vault): bool =
+  s.pending.every(p => s.previous.select(e => e.profile != p.profile) == s.entries.select(e => e.profile != p.profile)) and
+  (s.pending.length() > 0 implies (s.previous.every(e => s.previous.select(o => o.profile == e.profile and o.name == e.name).length() == 1) and
+    s.previous.some(e => e.profile == "default" and e.name == "agent-key")))
 pure def sometimesWriteAcknowledged(s: Vault): bool = s.result == WriteAcknowledged
 pure def sometimesRollbackFailureVisible(s: Vault): bool = s.result == RollbackFailed
 ```

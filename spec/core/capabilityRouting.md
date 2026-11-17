@@ -49,7 +49,7 @@ pure def sometimesRemoteSucceeded(s: Routing): bool = s.requests.some(r => r.run
 
 ### A request uses only a connected account the agent holds
 
-The agent's accounts are the ones the user connected to it, with the [account status](./accountValues.md) connectors share. Only a connected account is eligible, as an account policy admits by default; a pending, disabled, revoked, reauthorization-needing or failed one is not. Routing and the start of work each check eligibility, so an account revoked or released between them fails the request instead of running under it.
+The agent's accounts are the ones the user connected to it, each under its own non-empty id, with the [account status](./accountValues.md) connectors share. Only a connected account is eligible, as an account policy admits by default; a pending, disabled, revoked, reauthorization-needing or failed one is not. Routing and the start of work each check eligibility, so an account revoked or released between them fails the request instead of running under it.
 
 ```quint
 pure val accountIdValues = Set("acct-a", "acct-b")
@@ -60,6 +60,7 @@ pure def canSetAccountStatus(s: Routing, accountId: str, status: A::AccountStatu
 pure def setAccountStatus(s: Routing, accountId: str, status: A::AccountStatus): Routing = { ...s, accounts: s.accounts.listMap(a => if (a.id == accountId) { ...a, status: status } else a) }
 pure def canReleaseAccount(s: Routing, accountId: str): bool = s.accounts.some(a => a.id == accountId)
 pure def releaseAccount(s: Routing, accountId: str): Routing = { ...s, accounts: s.accounts.select(a => a.id != accountId) }
+pure def alwaysHeldAccountIdsAreDistinct(s: Routing): bool = s.accounts.every(a => a.id != "" and s.accounts.select(x => x.id == a.id).length() == 1)
 pure def canStart(s: Routing, id: int): bool = knownRequest(s, id) and requestAt(s, id).phase == Routed
 pure def start(s: Routing, id: int): Routing = {
   val ok = isEligible(s, requestAt(s, id).account)

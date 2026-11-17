@@ -48,6 +48,12 @@ pure def alwaysOneTenantPerOrganization(s: PlatformUsers): bool =
 pure def sometimesTwoUsersShareATenant(s: PlatformUsers): bool = s.users.length() == 2 and s.tenants.length() == 1
 ```
 
+### The next identity user and tenant numbers are never below one
+
+```quint
+pure def alwaysNumberingStartsAtOne(s: PlatformUsers): bool = s.nextIdentity >= 1 and s.nextTenant >= 1
+```
+
 ### A subject owned by another user is never linked, and never by email alone
 
 ```quint

@@ -12,6 +12,8 @@
 
 The timer first queues the current process tasks. When a database adapter is attached and no tick is active, it snapshots dirty registrations, retains busy registrations for a later tick and removes the other visited names. The tick then either owns the newly issued query ticket or completes as an empty tick. A process callback's own settlement and disposal proceed independently. Query completion releases storage ownership, while its tick can still own grouped dispatches, and only the same tick can release its active pointer. A replacement query can dispatch while an older database await is still unresolved; fairness for older work does not impose settlement order.
 
+Each link pairs one issued tick with one issued query: both identities are positive and below their next serial, so no tick serves two queries and no query is owned by two ticks.
+
 ```quint
 import processScheduler as P from "./processScheduler"
 import queryDrain as Q from "./queryDrain"
@@ -55,6 +57,7 @@ pure def canReturnCallback(s: SharedScheduler, id: int): bool = P::canFinishProc
 pure def returnCallback(s: SharedScheduler, id: int, succeeded: bool): SharedScheduler = { ...s, process: P::finishProcess(s.process, id, succeeded) }
 pure def canAdvanceDisposal(s: SharedScheduler): bool = P::canAdvanceDisposal(s.process)
 pure def advanceDisposal(s: SharedScheduler, succeeded: bool): SharedScheduler = { ...s, process: P::advanceDisposal(s.process, succeeded) }
+pure def alwaysLinksPairIssuedTicksAndQueries(s: SharedScheduler): bool = s.links.every(link => link.tick > 0 and link.tick < s.process.serial and link.query > 0 and link.query < s.drain.nextQuery and s.links.every(other => (other.tick == link.tick) == (other.query == link.query)))
 pure val resultRowsValues = Q::resultRowsValues
 pure val keyValues = Q::keyValues
 pure val agentValues = Q::agentValues
@@ -99,6 +102,17 @@ pure val weight_advanceQuery = 5
 pure val weight_fire = 4
 pure val weight_attach = 3
 pure val weight_registerRuntime = 3
+```
+
+### Both owners' own rules still hold inside the composition
+
+Composing the owners must not break their rules, and each step here relies on them. This rule restates, for the composed state, rules that [processScheduler](./processScheduler.md) and [queryDrain](./queryDrain.md) already own: a present process name is registered once; a disposed callback is idle, aborted and unregistered; a disposing callback is aborted and unregistered; every task and tick identity is positive, below the next serial and allocated once; the timer exists while an adapter is attached or a process task is registered; an active tick names an uncompleted tick of the current generation; query tickets are issued in order, each once; the active adapter is neither retired nor closed; only retired services and adapters are closed; and the stop snapshot names only issued query tickets.
+
+```quint
+pure def alwaysOwnersKeepTheirRules(s: SharedScheduler): bool =
+  P::alwaysRegisteredNamesUnique(s.process) and P::alwaysDisposedCallbacksDrained(s.process) and P::alwaysDisposingIsDetached(s.process) and
+  P::alwaysAllocatedIdentitiesFresh(s.process) and P::alwaysTimerIsRequired(s.process) and P::alwaysActiveTickIsOwned(s.process) and
+  Q::alwaysQueryKeysUnique(s.drain) and Q::alwaysActiveAdapterIsOpen(s.drain) and Q::alwaysCloseRequiresRetirement(s.drain) and Q::alwaysStopSnapshotUsesIssuedKeys(s.drain)
 ```
 
 ### Fair timer service captures dirty registrations and releases their owned awaits

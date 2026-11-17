@@ -94,6 +94,24 @@ pure def alwaysProviderFollowsDurableState(s: OAuthFlow): bool =
   ((s.phase == ProviderPending or s.providerSucceeded or s.providerFailed or s.accountStored) implies s.consumed and s.originalStored)
 ```
 
+### Each pending step of a flow carries only the outcomes that led to it
+
+From the start of a flow until its provider exchange answers, the flow
+has no provider outcome, no stored account and no compensation attempt.
+While the account write or the compensation is pending, the exchange has
+succeeded, no account is stored and no compensation was attempted;
+compensation is pending only after the account write failed. A pending
+success write follows no compensation attempt.
+
+```quint
+pure def alwaysProviderOutcomeFollowsTheExchange(s: OAuthFlow): bool =
+  ((s.phase == CreatePending or s.phase == StartProviderPending or s.phase == StartFailureWrite or s.phase == StartSuccessWrite or s.phase == AwaitingCallback or s.phase == ConsumePending or s.phase == ProviderPending) implies
+    not(s.providerSucceeded or s.providerFailed or s.accountStored or s.compensationAttempted)) and
+  ((s.phase == AccountPending or s.phase == CompensationPending) implies (s.providerSucceeded and not(s.accountStored) and not(s.compensationAttempted))) and
+  (s.phase == CompensationPending implies s.persistenceFailed) and
+  (s.phase == SuccessWritePending implies not(s.compensationAttempted))
+```
+
 ### Terminal persistence and verifier cleanup preserve separate outcomes
 
 A provider exchange failure throws after recording a non-null failed row; a

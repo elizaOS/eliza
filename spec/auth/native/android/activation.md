@@ -22,8 +22,9 @@ confirmation was lost, and reported. Key `11` is this sign-in's key and
 The sign-in step ends as activation-pending with the key and its receipt
 stored. Background rounds ask the cloud again until the deadline; after the
 deadline exactly one more request tells a lost confirmation from a dead
-key. A closed plugin or a sign-in superseded by a newer credential action
-sends nothing and leaves the slot and receipt to their owner.
+key, and that request ends the rounds. A closed plugin or a sign-in
+superseded by a newer credential action sends nothing and leaves the slot
+and receipt to their owner.
 
 ```quint
 type RoundAnswer = RoundAcknowledged | RoundAlreadyComplete | RoundRetry | RoundLost | RoundRefused
@@ -55,7 +56,8 @@ pure def canRound(a: ActivationRounds): bool = a.retrying
 pure def round(a: ActivationRounds, answer: RoundAnswer): ActivationRounds = if (not(roundsOwn(a))) { ...a, retrying: false } else answeredRound(answer, a)
 pure def canDeadline(a: ActivationRounds): bool = not(a.deadlinePassed)
 pure def deadline(a: ActivationRounds): ActivationRounds = { ...a, deadlinePassed: true }
-pure def alwaysOneRequestAfterDeadline(a: ActivationRounds): bool = a.roundsAfterDeadline == 0 or a.roundsAfterDeadline == 1
+pure def alwaysOneRequestAfterDeadline(a: ActivationRounds): bool =
+  (a.roundsAfterDeadline == 0 or a.roundsAfterDeadline == 1) and (a.retrying implies a.roundsAfterDeadline == 0)
 pure def alwaysUndecidedKeyStays(a: ActivationRounds): bool =
   (a.retrying and a.supersededSaved == -1) implies (a.saved == myKey and a.receipt == myKey)
 pure def sometimesLateConfirmationAnnounced(a: ActivationRounds): bool =
@@ -69,10 +71,11 @@ key is still saved; it is announced only for a key the cloud confirmed. A
 refusal, or no confirmation by the deadline, removes this sign-in's key and
 receipt, sends a revocation and reports activation-expired. A newer
 credential action's key and receipt are never removed or announced as this
-sign-in's.
+sign-in's. Only a credential action supersedes this sign-in, and it ends
+the sign-in's intent; its replacement is a key or none, never negative.
 
 ```quint
-pure def canCredentialAction(a: ActivationRounds): bool = a.intentCurrent
+pure def canCredentialAction(a: ActivationRounds, replacement: int): bool = a.intentCurrent and replacement >= 0
 pure def credentialAction(a: ActivationRounds, replacement: int): ActivationRounds =
   { ...a, intentCurrent: false, saved: replacement, supersededSaved: replacement, receipt: if (replacement == newerKey) newerKey else a.receipt }
 pure def canCloseRounds(a: ActivationRounds): bool = a.live
@@ -80,8 +83,9 @@ pure def closeRounds(a: ActivationRounds): ActivationRounds = { ...a, live: fals
 pure val replacementValues = Set(0, 12)
 pure def alwaysCompletedOnlyWhenConfirmed(a: ActivationRounds): bool = a.announced == AnnouncedCompleted implies a.serverActive
 pure def alwaysNewerActionWins(a: ActivationRounds): bool =
-  a.supersededSaved != -1 implies (a.saved == a.supersededSaved and
-    (a.supersededSaved == newerKey implies a.receipt == newerKey))
+  (a.intentCurrent implies a.supersededSaved == -1) and
+  (a.supersededSaved != -1 implies (a.saved == a.supersededSaved and
+    (a.supersededSaved == newerKey implies a.receipt == newerKey)))
 pure def alwaysRemovedKeyRevoked(a: ActivationRounds): bool = a.announced == AnnouncedExpired implies a.revokeSent
 pure def sometimesRefusedKeyRemoved(a: ActivationRounds): bool = a.announced == AnnouncedExpired and a.saved == 0
 pure def sometimesNewerSignInKeptItsSlot(a: ActivationRounds): bool =

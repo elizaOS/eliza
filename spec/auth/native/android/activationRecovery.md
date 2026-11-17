@@ -27,6 +27,22 @@ while it is still this run's, then revokes it and reports. With no settling
 answer before the deadline, the background rounds take over. A closed
 plugin sends nothing more.
 
+A run settles exactly the receipt it read. While it reads or removes a
+stale receipt, the stored receipt and key are the ones it read, and a
+receipt being removed as stale is present and parsed and names another key
+or another deployment. From reading until it settles, the run has no
+verdict. Once it sends, confirms or expires, what it read was a present,
+parsed receipt for this deployment naming the key it read, and the stored
+receipt is still that one, or the newer sign-in's once one replaced it. The
+expiry of the receipt it read decides the path: an unexpired receipt is
+sent, awaited or refused on the timely path, an expired one on the late
+path. A run on the timely path has made no late request, and one reading
+or on the late path has made no timely request. While a run is open it has
+not yet been counted as completed, so fewer runs have completed than have
+started. A stored receipt is the one found at start with its key, or, once
+a newer sign-in replaced it, the newer receipt with the newer key. Once a
+key expiry is reported or a key is removed, no receipt is stored.
+
 ```quint
 import activation as A from "./activation"
 type AckReceipt = { present: bool, parsed: bool, environment: int, credential: int, expired: bool }
@@ -146,6 +162,25 @@ pure def alwaysRemoveOnlyStaleAcknowledgedOrDead(r: AckRecovery): bool =
 pure def alwaysReportedOnce(r: AckRecovery): bool =
   r.completed >= 0 and r.completed <= r.runs and r.expiredReports >= 0 and r.expiredReports <= 1 and
     ((r.verdict == KeyConfirmed or r.verdict == KeyExpired or r.verdict == RunSuperseded) implies not(r.pending))
+pure def settlingPhase(p: RecoveryPhase): bool =
+  p == Sending or p == Waiting or p == SendingLate or p == WaitingLate or p == Confirming or p == ExpiringRefused or p == ExpiringUnconfirmed
+pure def alwaysRunSettlesTheReceiptItRead(r: AckRecovery): bool =
+  ((r.phase == Reading or r.phase == RemovingStale) implies (r.receipt == r.runReceipt and r.saved == r.runSaved)) and
+    (r.phase == RemovingStale implies (r.receipt.present and r.receipt.parsed and (r.receipt.credential != r.saved or r.receipt.environment != production))) and
+    ((r.phase == Reading or r.phase == RemovingStale or settlingPhase(r.phase)) implies r.verdict == NoRecoveryOutcome) and
+    (settlingPhase(r.phase) implies (r.runReceipt.present and r.runReceipt.parsed and r.runReceipt.environment == production and
+      r.runReceipt.credential == r.runSaved and (r.receipt == r.runReceipt or (r.replaced and r.receipt == newerReceipt)))) and
+    ((r.phase == Sending or r.phase == Waiting or r.phase == ExpiringRefused) implies not(r.runReceipt.expired)) and
+    ((r.phase == SendingLate or r.phase == WaitingLate or r.phase == ExpiringUnconfirmed) implies r.runReceipt.expired)
+pure def alwaysRunTakesOnePath(r: AckRecovery): bool =
+  ((r.phase == Reading or r.phase == SendingLate or r.phase == WaitingLate or r.phase == ExpiringUnconfirmed) implies r.calls == 0) and
+    ((r.phase == Reading or r.phase == Sending or r.phase == Waiting or r.phase == ExpiringRefused) implies r.latePosts == 0) and
+    ((r.phase != RecoveryIdle and r.phase != RecoveryFinished) implies r.completed < r.runs)
+pure def alwaysStoredReceiptIsTheInitialOrNewer(r: AckRecovery): bool =
+  r.receipt.present implies
+    (if (r.replaced) (r.receipt == newerReceipt and r.saved == A::newerKey) else (r.receipt == r.initialReceipt and r.saved == r.initialSaved))
+pure def alwaysExpiredKeyLeavesNoReceipt(r: AckRecovery): bool =
+  (r.expiredReports > 0 or r.keyRemoval != NoKeyRemoval) implies not(r.receipt.present)
 pure def sometimesStartupConfirmed(a: AckRecovery): bool = a.verdict == KeyConfirmed and a.completed == 1
 pure def sometimesStartupExpiredAfterDeadline(a: AckRecovery): bool = a.keyRemoval == RemovedUnconfirmed
 pure def sometimesStaleReceiptRemoved(a: AckRecovery): bool = a.verdict == StaleRemoved and a.calls == 0

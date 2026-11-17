@@ -116,8 +116,9 @@ A renderer request registers under an id no active request uses.
 Cancelling a request disconnects its open connection and settles it. A
 browser handoff is launched once unless already cancelled; pausing the
 app keeps every pending request, and returning to the foreground resolves
-a handoff only when its browser was actually launched and paused the app.
-A settled request never settles again.
+a handoff only when its browser was actually launched and paused the app,
+and a resolved handoff is settled and never cancelled. A settled request
+never settles again.
 
 ```quint
 pure def activeRequest(s: ResidentHost, id: int): bool = s.requests.some(r => r.id == id and not(r.settled))
@@ -137,7 +138,7 @@ pure def cancelRequest(s: ResidentHost, id: int): ResidentHost =
 pure val idValues = Set(1, 2)
 pure def alwaysRequestIdsUnique(s: ResidentHost): bool = s.requests.every(r => s.requests.select(q => q.id == r.id).length() == 1)
 pure def alwaysResolvedHandoffWasLaunchedAndPaused(s: ResidentHost): bool =
-  s.requests.every(r => r.resolved implies r.browser and r.launched and r.paused and not(r.cancelled))
+  s.requests.every(r => r.resolved implies r.browser and r.launched and r.paused and not(r.cancelled) and r.settled)
 pure def stepSettledStaysSettled(before: ResidentHost, via: str, after: ResidentHost): bool =
   via != "registerRequest" implies before.requests.every(r => not(r.settled) or after.requests.includes(r))
 pure def stepPauseKeepsPendingRequests(before: ResidentHost, via: str, after: ResidentHost): bool =

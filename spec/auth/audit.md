@@ -45,7 +45,7 @@ while it holds the lock.
 pure def canRequestAppend(s: AuditLog, writer: int): bool = writer > 0 and s.appending != writer and not(s.waiting.includes(writer))
 pure def requestAppend(s: AuditLog, writer: int): AuditLog = { ...s, waiting: s.waiting.append(writer) }
 pure def canTakeLock(s: AuditLog): bool = s.appending == 0 and s.waiting.length() > 0
-pure def takeLock(s: AuditLog): AuditLog = { ...s, appending: s.waiting.nthOr(0, 0), waiting: s.waiting.tail() }
+pure def takeLock(s: AuditLog): AuditLog = { ...s, appending: s.waiting.nthOr(0, 0), waiting: if (s.waiting.length() > 0) s.waiting.tail() else List() }
 pure def canAppendRow(s: AuditLog, writer: int, content: int): bool = s.appending == writer and writer > 0
 pure def appendRow(s: AuditLog, writer: int, content: int): AuditLog =
   { ...s, rows: s.rows.append({ seq: s.rows.length() + 1, content: content, prev: headDigest(s.rows) }), appending: 0 }

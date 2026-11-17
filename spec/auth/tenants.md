@@ -58,6 +58,21 @@ pure def sometimesMemberRefused(s: TenantConfig): bool = s.result == ChangeRefus
 pure def sometimesRedirectListed(s: TenantConfig): bool = s.redirects.size() > 0
 ```
 
+### Two app clients never share an id, and a tenant's sets hold each entry once
+
+No two app clients of a tenant have the same id. The redirects, the
+enabled methods and each client's native client ids are sets, so each
+holds an entry once; the rule states that too because the generated code
+and its proof keep sets as lists, and the proof that a removal takes at
+most one entry rests on it.
+
+```quint
+pure def alwaysEntriesListedOnce(s: TenantConfig): bool =
+  s.redirects.forall(u => s.redirects.filter(v => v == u).size() == 1) and
+    s.enabledMethods.forall(m => s.enabledMethods.filter(n => n == m).size() == 1) and
+    s.clients.every(c => s.clients.select(d => d.id == c.id).length() == 1 and c.nativeClientIds.forall(i => c.nativeClientIds.filter(j => j == i).size() == 1))
+```
+
 ### An app client's native Google client ids are its own, and adding one keeps the others
 
 ```quint

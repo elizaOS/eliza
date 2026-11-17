@@ -141,8 +141,9 @@ pure def sometimesPresentedButPaused(s: SurfaceHost): bool = s.surfaces.some(x =
 
 When a page's renderer crashes or Android reclaims it, the surface is
 already closed and its id is free when `surfaceCrashed` is sent, and the
-host app keeps running. Each surface instance is reported at most once,
-however many renderer callbacks arrive. A purge of a keyed profile closes
+host app keeps running. Each surface instance has a generation issued for
+it alone, and is reported at most once, however many renderer callbacks
+arrive. Every reported crash names a generation that was issued. A purge of a keyed profile closes
 every surface on that profile and reports each as `surfaceClosed` with
 reason `profile-purged`.
 
@@ -158,6 +159,8 @@ pure def purgeProfileSurfaces(s: SurfaceHost, profileKey: str): SurfaceHost =
   { ...s, surfaces: s.surfaces.select(x => x.profileKey != profileKey),
     purgeClosed: s.purgeClosed.concat(s.surfaces.select(x => x.profileKey == profileKey).listMap(x => x.id)) }
 pure def alwaysCrashReportedOnce(s: SurfaceHost): bool = uniqueIds(s.crashReports)
+pure def alwaysGenerationNamesOneSurface(s: SurfaceHost): bool =
+  s.surfaces.every(x => x.gen <= s.issued and s.surfaces.every(y => y.gen == x.gen implies y.id == x.id)) and s.crashReports.every(g => g <= s.issued)
 pure def alwaysReportedCrashIsClosed(s: SurfaceHost): bool = s.crashReports.every(g => not(s.surfaces.some(x => x.gen == g)))
 pure def stepPurgeReportsEveryClosedSurface(before: SurfaceHost, via: str, after: SurfaceHost): bool =
   via == "purgeProfileSurfaces" implies after.surfaces.every(x => before.surfaces.includes(x)) and

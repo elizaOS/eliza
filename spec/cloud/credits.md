@@ -69,7 +69,8 @@ The first dispatch time, read from the primary database clock, is
 immutable; a later dispatch with the same provider key is allowed only
 within the provider's idempotency window counted from it, and only after
 listing the provider's sessions for this quote completed and found none.
-A lost provider reply leaves the outcome unknown.
+A lost provider reply leaves the outcome unknown. A quote not yet
+dispatched has no first dispatch time, and the clock is never negative.
 
 ```quint
 pure def retryAllowed(c: Credits): bool = (c.order == ProviderStarted or c.order == ProviderAmbiguous) and c.firstStart >= 0 and c.now < c.firstStart + retryWindow and c.lookup == LookupEmpty
@@ -88,6 +89,8 @@ pure def canBindSession(c: Credits): bool = (c.order == ProviderStarted or c.ord
 pure def bindSession(c: Credits): Credits = { ...c, order: Delivered, bound: true }
 pure def alwaysRetryInsideOriginalWindow(c: Credits): bool = c.lastDispatch == -1 or (c.firstStart >= 0 and c.lastDispatch < c.firstStart + retryWindow)
 pure def alwaysRetryFollowsCompletedLookup(c: Credits): bool = c.retryHadLookup
+pure def alwaysUndispatchedQuoteHasNoStart(c: Credits): bool = (c.order == NoOrder or c.order == Quoted) implies c.firstStart == -1
+pure def alwaysClockIsNeverNegative(c: Credits): bool = c.now >= 0
 pure def stepFirstDispatchIsImmutable(before: Credits, after: Credits): bool = before.firstStart >= 0 implies after.firstStart == before.firstStart
 pure def sometimesRetriedAfterLostReply(c: Credits): bool = c.order == ProviderStarted and c.lastDispatch > c.firstStart
 ```
@@ -99,7 +102,8 @@ order, compare the whole receipt (quote, organization, amount, currency,
 customer, session and payment) and use one grant key. A payment intent
 already claimed by something else rolls the grant back. Following the
 cancel link or an expired session grants nothing. The balance cache is
-invalidated after the grant; a failed invalidation does not undo it.
+invalidated after the grant; a failed invalidation does not undo it. Only
+a provider session is ever paid.
 
 ```quint
 pure def canPay(c: Credits): bool = c.providerSession and not(c.paid) and not(c.expired)
@@ -113,6 +117,7 @@ pure def settleCheckout(c: Credits): Credits = { ...c, order: Settled, bound: tr
 pure def canInvalidateCache(c: Credits): bool = c.cacheDirty
 pure def invalidateCache(c: Credits): Credits = { ...c, cacheDirty: false }
 pure def alwaysCreditGrantedOnce(c: Credits): bool = c.grants >= 0 and c.grants <= 1 and ((c.grants == 1) == (c.order == Settled))
+pure def alwaysPaymentHasASession(c: Credits): bool = c.paid implies c.providerSession
 pure def alwaysGrantIsPaymentBacked(c: Credits): bool = c.grants == 1 implies (c.paid and c.bound and c.providerSession and not(c.foreignIntent))
 pure def sometimesCreditsGranted(c: Credits): bool = c.order == Settled and not(c.cacheDirty)
 pure def sometimesForeignIntentRefused(c: Credits): bool = c.paid and c.foreignIntent and c.grants == 0
@@ -123,7 +128,8 @@ pure def sometimesForeignIntentRefused(c: Credits): bool = c.paid and c.foreignI
 A reservation holds an amount no larger than the balance. Settling it,
 by the request itself or by the recovery sweep, whichever commits first,
 refunds what the actual cost did not use and collects an overage only when
-the balance covers it; the second writer finds it settled.
+the balance covers it; the second writer finds it settled. Each
+reservation has its own id.
 
 ```quint
 pure val idValues = Set(1, 2)
@@ -140,6 +146,7 @@ pure def settleReservation(c: Credits, id: int, cost: int): Credits = {
   { ...c, balance: c.balance + refund - overage, spent: c.spent + r.reserved - refund + overage,
     reservations: c.reservations.listMap(x => if (x.id == id) { ...x, collected: r.reserved - refund + overage, cost: cost, status: ReservationSettled } else x) }
 }
+pure def alwaysReservationIdsUnique(c: Credits): bool = c.reservations.every(r => c.reservations.select(x => x.id == r.id).length() == 1)
 pure def alwaysSettledChargeIsAtMostCost(c: Credits): bool = c.reservations.every(r => r.status == ReservationSettled implies (r.collected >= 0 and r.collected <= r.cost))
 pure def sometimesOverageCollected(c: Credits): bool = c.reservations.some(r => r.status == ReservationSettled and r.collected > r.reserved)
 ```
@@ -237,6 +244,7 @@ pure def settleDelivery(row: OutboxRow, claimToken: int, result: OutboxResult): 
 pure val rowValues = Set({ status: OutboxPending, token: 1, attempts: 1, payload: true }, { status: OutboxPending, token: 2, attempts: 3, payload: true }, { status: OutboxComplete, token: 0, attempts: 1, payload: false })
 pure val claimTokenValues = Set(0, 1, 2)
 pure def lawStaleSettlementChangesNothing(row: OutboxRow, claimToken: int, result: OutboxResult): bool = row.token != claimToken implies settleDelivery(row, claimToken, result) == row
-pure def lawAcknowledgedEventDropsPayload(row: OutboxRow, claimToken: int): bool = settleDelivery(row, claimToken, AckDelivery).status == OutboxComplete implies not(settleDelivery(row, claimToken, AckDelivery).payload)
+pure def lawAcknowledgedEventDropsPayload(row: OutboxRow, claimToken: int): bool =
+  (row.status == OutboxPending and row.token == claimToken) implies (settleDelivery(row, claimToken, AckDelivery).status == OutboxComplete and not(settleDelivery(row, claimToken, AckDelivery).payload))
 pure def lawLastRetryDeadLetters(row: OutboxRow): bool = (row.status == OutboxPending and row.token > 0 and row.attempts >= maxDeliveryAttempts) implies settleDelivery(row, row.token, RetryDelivery).status == OutboxDead
 ```

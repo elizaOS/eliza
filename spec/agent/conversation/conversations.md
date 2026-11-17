@@ -12,7 +12,7 @@ Connector health probes belong to [connectors](../connectors.md).
 > in flight, and no stale write lands on a room that was deleted or
 > replaced.
 
-### Each runtime runs one mutation at a time, and only a current descriptor may write
+### Each runtime runs one numbered mutation at a time, room tokens are never reused, and only a current descriptor may write
 
 A caller captures a descriptor: the room's token and the runtime's topology
 generation, with the proof identity of what it wants written. It enqueues a
@@ -22,7 +22,9 @@ descriptor and proof joins the queued mutation instead of adding one. One
 mutation runs at a time, from the head of the queue, and a stale head is
 skipped without writing. A write that settles reports ready only for a
 descriptor that is still current; a failed write invalidates the topology so
-that queued descriptors stop being current. Room tokens are never reused.
+that queued descriptors stop being current. Job numbers count up from one and
+room tokens from zero: every queued job has a number below the next one, and
+room tokens are never reused.
 
 ```quint
 type Stamp = { topology: int, room: int }
@@ -66,20 +68,20 @@ pure def canSkipMutation(c: Conversations): bool =
   c.queue.length() > 0 and not(c.running) and (headJob(c).timedOut or (not(headJob(c).deletion) and not(stampCurrent(c, headJob(c).stamp))))
 pure def skipMutation(c: Conversations): Conversations = {
   val job = headJob(c)
-  { ...c, queue: c.queue.tail(), outcome: if (job.timedOut) Quiet else MutationFailed, room: if (job.deletion) -1 else c.room }
+  { ...c, queue: if (c.queue.length() > 0) c.queue.tail() else List(), outcome: if (job.timedOut) Quiet else MutationFailed, room: if (job.deletion) -1 else c.room }
 }
 pure def canSettleMutation(c: Conversations): bool = c.running and c.queue.length() > 0
 pure def settleMutation(c: Conversations, ok: bool): Conversations = {
   val job = headJob(c)
   val fresh = not(job.deletion) and stampCurrent(c, job.stamp)
-  { ...c, queue: c.queue.tail(), running: false, room: if (job.deletion) -1 else c.room,
+  { ...c, queue: if (c.queue.length() > 0) c.queue.tail() else List(), running: false, room: if (job.deletion) -1 else c.room,
     topology: if (not(ok) and fresh) c.topology + 1 else c.topology,
     outcome: if (job.timedOut) Quiet else if (not(ok)) MutationFailed else if (job.deletion) RoomDeleted else if (fresh) ReadyFor({ topology: job.stamp.topology, room: job.stamp.room }) else MutationFailed }
 }
 pure val jobIdValues = Set(1, 2, 3)
 pure def alwaysOneRunningMutationAtTheHead(c: Conversations): bool =
-  (c.running implies c.queue.length() > 0) and c.room <= c.roomSequence and c.queue.select(j => j.deletion).length() <= 1 and
-  (deletionQueued(c) implies c.room >= 0) and c.queue.every(j => j.jobId > 0 and j.jobId < c.nextJob)
+  (c.running implies c.queue.length() > 0) and c.room <= c.roomSequence and c.roomSequence >= 0 and c.queue.select(j => j.deletion).length() <= 1 and
+  (deletionQueued(c) implies c.room >= 0) and c.nextJob > 0 and c.queue.every(j => j.jobId > 0 and j.jobId < c.nextJob)
 pure def alwaysReadyOnlyForCurrentDescriptor(c: Conversations): bool = {
   val ready = c.outcome
   match ready { | ReadyFor(stamp) => stamp.topology == c.topology and stamp.room == c.room and c.room >= 0 and not(deletionQueued(c)) | _ => true }

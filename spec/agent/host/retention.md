@@ -28,6 +28,15 @@ pure def stepWorkerPublishedOnlyAtStart(before: Retention, via: str, after: Rete
   (not(before.worker) and after.worker) implies (via == "start" and before.phase == NotStarted)
 ```
 
+### No task is installed before the service starts or while its installation is in flight
+
+Only a finished installation installs the task, so a failed installation
+leaves none behind.
+
+```quint
+pure def alwaysNoTaskBeforeInstallation(r: Retention): bool = (r.installing or r.phase == NotStarted) implies not(r.task)
+```
+
 ### Only a running service sweeps, one sweep at a time
 
 ```quint

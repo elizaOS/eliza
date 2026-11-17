@@ -40,6 +40,7 @@ pure def lawUsersWriteOnlyTheirOwnPrivateDocuments(ownEntity: bool): bool =
 An upload within the limit and the uploader's authority stores the text as
 given. Opening it shows exactly the saved text. Saving returns that text
 unchanged and is requested once; closing without saving writes nothing.
+Only a stored document is ever opened.
 
 ```quint
 type EditPhase = NotOpened | Opened | Closed
@@ -59,6 +60,7 @@ pure def canCloseWithoutSaving(d: KnowledgeDocument): bool = d.phase == Opened
 pure def closeWithoutSaving(d: KnowledgeDocument): KnowledgeDocument = { ...d, phase: Closed }
 pure def alwaysStoredTextIsExact(d: KnowledgeDocument): bool = d.present implies d.savedText == d.original
 pure def alwaysShownTextIsExact(d: KnowledgeDocument): bool = d.phase != NotOpened implies d.observed == d.original
+pure def alwaysOnlyStoredDocumentOpens(d: KnowledgeDocument): bool = not(d.present) implies d.phase == NotOpened
 pure def alwaysAtMostOneSave(d: KnowledgeDocument): bool = d.saveRequests >= 0 and d.saveRequests <= 1
 pure def sometimesSavedRoundTrip(d: KnowledgeDocument): bool = d.present and d.saveRequests == 1 and d.phase == Closed
 ```
@@ -66,12 +68,14 @@ pure def sometimesSavedRoundTrip(d: KnowledgeDocument): bool = d.present and d.s
 ### Deleting needs authority over the document's scope
 
 A document is deleted only by a role that may write its scope, and only when
-the service reports it deletable. A deleted document is gone for good.
+the service reports it deletable. A deleted document is no longer stored
+and is gone for good.
 
 ```quint
 pure def canDeleteDocument(d: KnowledgeDocument, role: DocumentRole, ownEntity: bool, deletable: bool): bool =
   d.present and deletable and mayWrite(role, d.scope, ownEntity)
 pure def deleteDocument(d: KnowledgeDocument, role: DocumentRole, ownEntity: bool, deletable: bool): KnowledgeDocument = { ...d, present: false, deleted: true, phase: NotOpened }
+pure def alwaysDeletedDocumentIsAbsent(d: KnowledgeDocument): bool = d.deleted implies not(d.present)
 pure def stepDeletedDocumentStaysDeleted(before: KnowledgeDocument, after: KnowledgeDocument): bool = before.deleted implies (after.deleted and not(after.present))
 pure def sometimesDeletedByItsOwner(d: KnowledgeDocument): bool = d.deleted and d.scope == OwnerPrivate
 ```

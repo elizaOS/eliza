@@ -53,19 +53,22 @@ pure def sometimesDevelopmentKeySelected(k: KeyCache): bool = not(k.production) 
 
 ### In production a ready key is always the configured private key
 
-Production never yields the process key: a ready key there is the private
-salt that is configured now, whatever an earlier configuration cached.
+Production never yields the process key: a ready or cached key there is
+the private salt that is configured now, whatever an earlier configuration
+cached.
 
 ```quint
 pure def alwaysProductionKeyIsPrivate(k: KeyCache): bool =
-  k.production and k.result == KeyReady implies k.configured == PrivateSalt and k.cachedId == k.privateId
+  k.production and (k.result == KeyReady or k.cachedId > 0) implies k.configured == PrivateSalt and k.cachedId == k.privateId
 ```
 
 ### A stored setting reads back only under the key that stored it
 
 A setting is stored under the ready key. A restart starts a new process
 with no cached key and retires the process key, which no later process
-ever selects again, while the configured private salt carries over.
+ever selects again, while the configured private salt carries over. Every
+retired identity is positive and is neither the cached key, the process key
+nor the private salt, and the process key is never the private salt.
 
 ```quint
 pure def canStoreSetting(k: KeyCache): bool = k.result == KeyReady
@@ -75,6 +78,9 @@ pure def restart(k: KeyCache): KeyCache =
   { ...k, retiredIds: if (k.ephemeralId > 0) k.retiredIds.union(Set(k.ephemeralId)) else k.retiredIds, ephemeralId: 0, cachedId: 0, cachedAt: 0, result: NoResult, warningLogged: false, restarts: k.restarts + 1 }
 pure def readsStored(k: KeyCache): bool = k.storedId > 0 and k.result == KeyReady and k.cachedId == k.storedId
 pure def alwaysEarlierProcessKeyNeverReads(k: KeyCache): bool = k.result == KeyReady implies not(k.retiredIds.contains(k.cachedId))
+pure def alwaysLiveKeysAreNeverRetired(k: KeyCache): bool =
+  k.retiredIds.forall(id => id > 0 and id != k.cachedId and id != k.ephemeralId and id != k.privateId) and
+  (k.ephemeralId > 0 implies k.ephemeralId != k.privateId)
 pure def stepRestartKeepsConfiguredKey(before: KeyCache, via: str, after: KeyCache): bool =
   via == "restart" implies after.configured == before.configured and after.privateId == before.privateId and after.storedId == before.storedId
 pure def sometimesConfiguredKeyReadsAfterRestart(k: KeyCache): bool = k.restarts > 0 and k.configured == PrivateSalt and readsStored(k)

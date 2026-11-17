@@ -38,7 +38,7 @@ pure def withRequest(id: int, update: BrokerRequest, b: SignInRequests): SignInR
 pure def closedRequest(id: int, verdict: BrokerOutcome, b: SignInRequests): SignInRequests =
   if (b.owner == id) { ...withRequest(id, { ...requestAt(b, id), verdict: verdict }, b), owner: 0, ownerKey: "", subscribed: false, retained: false }
   else b
-pure def canOpenRequest(s: SignInRequests): bool = s.owner == 0
+pure def canOpenRequest(s: SignInRequests, key: str): bool = s.owner == 0 and key != ""
 pure def openRequest(s: SignInRequests, key: str): SignInRequests = { ...s, issued: s.issued + 1, owner: s.issued + 1, ownerKey: key,
   requests: s.requests.append({ id: s.issued + 1, key: key, verdict: RequestPending, callback: CallbackIdle }) }
 pure def canRequestWhileOpen(s: SignInRequests): bool = s.owner != 0
@@ -68,15 +68,16 @@ pure def sometimesRetiredCallbackFinished(s: SignInRequests): bool = s.issued ==
 
 ### A native return reaches only the open request with the matching deployment and port
 
-The native event arrives already parsed for the listener's deployment;
-an omitted port joins only another omitted port and its events arrive on
-the default port. A matching return goes to the subscribed view, or is
+The native event arrives already parsed for the listener's deployment and
+always names one; an omitted port joins only another omitted port and its
+events arrive on the default port. A matching return goes to the subscribed view, or is
 held until the view subscribes; a return for another deployment or port is
 a cold return and never reaches the open request.
 
 ```quint
 pure val sourceValues = Set("production:A", "staging:A", "production:B")
 pure def eventKey(key: str): str = if (key == "production:default") "production:A" else key
+pure def canNativeReturn(s: SignInRequests, source: str): bool = source != ""
 pure def nativeReturn(s: SignInRequests, source: str): SignInRequests = {
   val expected = eventKey(s.ownerKey)
   val kind = if (not(s.owner != 0 and source == expected)) ColdRoute else if (s.subscribed) ViewRoute else RetainRoute

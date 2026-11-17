@@ -51,7 +51,7 @@ pure def bodyEnvelope(input: TaskBody): bool =
 pure def bodyRevision(input: TaskBody): bool = input.hasRevisionInteger and taskNonnegativeSafe(input.revision)
 pure def taskBodyAdmitted(command: TaskCommand, input: TaskBody): bool = bodyEnvelope(input) and (
   if (command == StartTask) input.keyCount == 1 and input.hasGoal and taskReference(input.goal, true)
-  else if (command == PauseCurrent) input.keyCount == 0 or (input.keyCount == 1 and input.hasReason and input.closeReason)
+  else if (command == PauseCurrent) (input.keyCount == 0 and not(input.hasReason)) or (input.keyCount == 1 and input.hasReason and input.closeReason)
   else if (command == AcknowledgeUnreadable) input.keyCount == 0
   else if (command == PauseById and input.hasReason) input.keyCount == 2 and input.closeReason and bodyRevision(input)
   else input.keyCount == 1 and bodyRevision(input))
@@ -84,7 +84,7 @@ pure val firstCursor: Cursor = { valid: true, after: -1 }
 pure def taskEventCursor(query: CursorQuery): Cursor =
   if (query.entries == 0) firstCursor
   else if (query.entries != 1 or not(query.namedAfter) or not(query.canonicalDecimal)) badCursor
-  else if (query.after == -1 or (query.safeInteger and taskNonnegativeSafe(query.after))) { valid: true, after: query.after }
+  else if (query.safeInteger and (query.after == -1 or taskNonnegativeSafe(query.after))) { valid: true, after: query.after }
   else badCursor
 pure def taskCursorAllowed(query: CursorQuery, revision: int): bool = {
   val cursor = taskEventCursor(query)

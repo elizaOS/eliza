@@ -20,7 +20,8 @@ other. Expiry, explicit or automatic, and process-exit cleanup use the same
 bound command pair. Cleanup erases the clipboard only while it still holds
 the leased secret: a newer copy is preserved. If the bound executable has
 gone, cleanup does not fall back to another backend and the value stays.
-The lease no longer holds the secret once it is finished.
+The lease no longer holds the secret once it is finished. Only an admitted
+lease can be superseded by a newer copy.
 
 ```quint
 type ClipValue = ClipOther | ClipOwned | ClipNewer | ClipEmpty
@@ -47,7 +48,7 @@ pure def alwaysLeaseUsesBoundBackend(l: ClipboardLease): bool =
 pure def alwaysSecretOnlyWhileActive(l: ClipboardLease): bool = l.secret iff l.phase == LeaseActive
 pure def alwaysOtherBackendsUntouched(l: ClipboardLease): bool =
   clipboardPorts.forall(port => (l.phase == LeaseNew or port != l.bound) implies valueAt(l, port) == ClipOther)
-pure def alwaysNewerCopyPreserved(l: ClipboardLease): bool = l.superseded implies valueAt(l, l.bound) == ClipNewer
+pure def alwaysNewerCopyPreserved(l: ClipboardLease): bool = l.superseded implies (l.phase != LeaseNew and valueAt(l, l.bound) == ClipNewer)
 pure def sometimesErasedAfterBackendChanged(l: ClipboardLease): bool = l.phase == LeaseFinished and l.current != l.bound and valueAt(l, l.bound) == ClipEmpty
 pure def sometimesNewerCopyKept(l: ClipboardLease): bool = l.phase == LeaseFinished and valueAt(l, l.bound) == ClipNewer
 pure def sometimesMissingExecutableLeavesValue(l: ClipboardLease): bool = l.phase == LeaseFinished and valueAt(l, l.bound) == ClipOwned

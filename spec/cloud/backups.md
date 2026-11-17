@@ -159,6 +159,14 @@ pure def stepReleasedLeaseNeverReopens(before: AgentBackups, after: AgentBackups
 pure def sometimesSecondAttemptHoldsLease(b: AgentBackups): bool = b.leaseLive and b.released.size() == 1
 ```
 
+### The recorded lease holder is always an attempt that acquired the lease
+
+A released or lapsed lease keeps its last holder on record.
+
+```quint
+pure def alwaysLeaseHolderAcquired(b: AgentBackups): bool = b.leaseHolder != 0 implies b.acquired.contains(b.leaseHolder)
+```
+
 ### Traffic moves to a restored container only after it is committed, booted and probed
 
 A restore seeds the vault, creates the container, materializes the backup
@@ -168,6 +176,9 @@ route published to it, after which the previous container is retired. A
 failure before anything is materialized can resume where it stopped; a
 later failure before publication is terminal and brings the previous
 container back. A failure after publication is recorded and keeps the route.
+Each phase keeps the evidence that led to it: a committed, booted or probed
+candidate was committed, a booted or probed one was attested, a probed one
+was probed, and a published route has moved.
 
 ```quint
 pure def restoreOpen(phase: RestorePhase): bool = phase != RestoreFinalized and phase != RetryableFailure and phase != TerminalFailure
@@ -197,6 +208,11 @@ pure def resumeRestore(b: AgentBackups): AgentBackups = { ...b, restorePhase: b.
 pure def alwaysRouteMovesOnlyToAVerifiedCandidate(b: AgentBackups): bool = b.routeNew implies (b.candidateCommitted and b.attested and b.probed)
 pure def alwaysPreviousRetiredOnlyAfterRouteMoved(b: AgentBackups): bool = b.previousRetired implies b.routeNew
 pure def alwaysFinalizedRestoreMovedTheRoute(b: AgentBackups): bool = b.restorePhase == RestoreFinalized implies (b.routeNew and b.previousRetired)
+pure def alwaysRestorePhaseKeepsItsEvidence(b: AgentBackups): bool =
+  ((b.restorePhase == CandidateCommitted or b.restorePhase == RestartAttested or b.restorePhase == CandidateProbed) implies b.candidateCommitted) and
+  ((b.restorePhase == RestartAttested or b.restorePhase == CandidateProbed) implies b.attested) and
+  (b.restorePhase == CandidateProbed implies b.probed) and
+  (b.restorePhase == RoutePublished implies b.routeNew)
 pure def alwaysTerminalFailureKeepsTheOldRoute(b: AgentBackups): bool = b.restorePhase == TerminalFailure implies (not(b.routeNew) and not(b.previousStopped))
 pure def alwaysLateFailureKeepsTheNewRoute(b: AgentBackups): bool = b.failedAfterPublication implies b.routeNew
 pure def alwaysResumeBeforeMaterializing(b: AgentBackups): bool = b.resumeAt == RestoreReserved or b.resumeAt == VaultSeeded or b.resumeAt == ContainerCreated

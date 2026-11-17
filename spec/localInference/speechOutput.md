@@ -173,6 +173,16 @@ pure def releaseWarmup(s: SpeechOutput, id: int): SpeechOutput = updateWorker(id
 pure def alwaysOutputReleasedAtMostOnce(s: SpeechOutput): bool = s.warmup.workers.every(w => w.releases <= 1)
 ```
 
+### An unfinished worker has released nothing
+
+A worker's output is released only as the worker finishes, so a worker
+still opening, playing, writing or cleaning up has released nothing yet.
+
+```quint
+pure def alwaysUnfinishedWorkerReleasedNothing(s: SpeechOutput): bool =
+  s.warmup.workers.every(w => w.workerPhase != WorkerDone implies w.releases == 0)
+```
+
 ### A retired worker finishes
 
 ```quint
@@ -222,6 +232,22 @@ pure def canStopBootstrap(s: SpeechOutput): bool = s.bootstrap.started and s.boo
 pure def stopBootstrap(s: SpeechOutput): SpeechOutput = { ...s, bootstrap: { ...s.bootstrap, pending: false, stopped: true } }
 pure def alwaysBootstrapIsBounded(s: SpeechOutput): bool =
   s.bootstrap.stage >= 0 and s.bootstrap.stage <= 3 and s.bootstrap.connections >= 0 and s.bootstrap.connections <= 3 and (s.bootstrap.stopped implies not(s.bootstrap.pending))
+```
+
+### Each bootstrap request opens at most one connection
+
+Before the bootstrap starts nothing connects, no request has completed
+and none is in flight. A request opens at most one
+connection, so a running bootstrap with no request in flight has no more
+connections than completed requests, and at most one more while a request
+is in flight or after a stop. Once a request was sent, a connection is open.
+
+```quint
+pure def alwaysEachRequestOpensAtMostOneConnection(s: SpeechOutput): bool =
+  (not(s.bootstrap.started) implies s.bootstrap.connections == 0 and s.bootstrap.stage == 0 and not(s.bootstrap.pending)) and
+  s.bootstrap.connections <= s.bootstrap.stage + 1 and
+  ((not(s.bootstrap.stopped) and not(s.bootstrap.pending)) implies s.bootstrap.connections <= s.bootstrap.stage) and
+  ((s.bootstrap.stage > 0 or s.bootstrap.pending) implies s.bootstrap.connections >= 1)
 ```
 
 ### A persistent HTTP/1.1 server needs one connection for the whole bootstrap

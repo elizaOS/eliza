@@ -10,7 +10,7 @@ Priority decides dequeue order, and `maxSize` is a pressure threshold, not a har
 
 ### High priority precedes normal priority which precedes low priority
 
-Every enqueue gets a unique ticket even when the same payload value is enqueued more than once. Invalid priority is normalized to normal and warns once.
+Every enqueue gets a unique ticket even when the same payload value is enqueued more than once. Tickets count up from one. Invalid priority is normalized to normal and warns once.
 
 ```quint
 type QueuePriority = High | Normal | Low | InvalidPriority
@@ -39,6 +39,7 @@ pure def canResolvePressure(s: PriorityState, accepted: bool): bool = s.pressure
 pure def resolvePressure(s: PriorityState, accepted: bool): PriorityState = if (accepted) insertPayload(s.pendingPayload, s.pendingPriority, { ...s, pressurePending: false }) else { ...s, pressurePending: false, lastAccepted: false }
 pure def alwaysPriorityBucketsAgree(s: PriorityState): bool = s.high.every(j => j.priority == High) and s.normal.every(j => j.priority == Normal) and s.low.every(j => j.priority == Low)
 pure def alwaysQueueTicketsUnique(s: PriorityState): bool = queuedItems(s).every(j => j.ticket > 0 and j.ticket < s.nextTicket and queuedItems(s).select(other => other.ticket == j.ticket).length() == 1)
+pure def alwaysTicketsCountFromOne(s: PriorityState): bool = s.nextTicket >= 1
 pure def sometimesSoftThresholdExceeded(s: PriorityState): bool = s.hasMax and not(s.hasPressure) and queueSize(s) > s.maxSize
 pure def sometimesPressureRejected(s: PriorityState): bool = s.hasPressure and s.configured and not(s.pressurePending) and not(s.lastAccepted) and s.nextTicket > 1
 ```

@@ -23,6 +23,12 @@ captured a policy later.
 
 ### A reset's intent is durable before deletion, and success needs the new epoch
 
+The epoch is 0 while a reset is idle, deleting, calling the host,
+committing or rolling back, and 1 while it cleans up. A reset at the host's
+callback or at its commit, and a recovery about to publish the epoch, find
+every artifact deleted. An intent is pending only while its reset holds the
+storage or after that reset crashed.
+
 ```quint
 type ResetPhase = ResetIdle | ResetDeleting | ResetCallback | ResetCommit | ResetCleanup | ResetRollback | ResetDone | ResetFailed | ResetCrashed
 type RecoveryPhase = RecoveryIdle | RecoveryDeleting | RecoveryCommit | RecoveryCleanup | RecoveryDone
@@ -59,6 +65,11 @@ pure val weight_restoreArtifact = 3
 pure val weight_finishRollback = 3
 pure def alwaysSuccessRequiresTheFence(s: StorageReset): bool = s.phase == ResetDone implies (s.epoch == 1 and not(s.intent))
 pure def alwaysDeletionHappensUnderIntent(s: StorageReset): bool = (s.phase == ResetDeleting or s.phase == ResetCallback or s.phase == ResetCommit or s.recovery == RecoveryDeleting) implies s.intent
+pure def alwaysEpochFollowsTheResetPhase(s: StorageReset): bool =
+  ((s.phase == ResetIdle or s.phase == ResetDeleting or s.phase == ResetCallback or s.phase == ResetCommit or s.phase == ResetRollback) implies s.epoch == 0)
+    and (s.phase == ResetCleanup implies s.epoch == 1)
+    and ((s.phase == ResetCallback or s.phase == ResetCommit or s.recovery == RecoveryCommit) implies allDeleted(s))
+    and (s.intent implies (resetHeld(s) or s.phase == ResetCrashed))
 pure def sometimesResetDone(s: StorageReset): bool = s.phase == ResetDone
 ```
 
@@ -89,6 +100,11 @@ pure def sometimesInterruptedRecoveryRetried(s: StorageReset): bool = s.recovery
 
 ### A reset that fails before publishing the epoch restores every artifact and clears its intent
 
+What it restores is the snapshot it took before deleting. An artifact holds
+0 when nothing is stored and otherwise one more than the epoch it was
+written in, so every value of the snapshot is 0 or 1: nothing, or a record
+written before any epoch was published.
+
 ```quint
 pure def canFailBeforePublication(s: StorageReset): bool = s.phase == ResetDeleting or s.phase == ResetCallback or s.phase == ResetCommit
 pure def failBeforePublication(s: StorageReset): StorageReset = { ...s, phase: ResetRollback, rollbackComplete: false }
@@ -96,6 +112,7 @@ pure def canRestoreArtifact(s: StorageReset, id: int): bool = s.phase == ResetRo
 pure def restoreArtifact(s: StorageReset, id: int): StorageReset = { ...s, artifacts: s.artifacts.put(id, s.snapshot.getOr(id, 0)) }
 pure def canFinishRollback(s: StorageReset): bool = s.phase == ResetRollback and artifactIds.every(id => s.artifacts.getOr(id, 0) == s.snapshot.getOr(id, 0))
 pure def finishRollback(s: StorageReset): StorageReset = { ...s, phase: ResetFailed, intent: false, rollbackComplete: true }
+pure def alwaysSnapshotPrecedesTheEpoch(s: StorageReset): bool = artifactIds.every(id => s.snapshot.getOr(id, 0) == 0 or s.snapshot.getOr(id, 0) == 1)
 pure def alwaysCompleteRollbackClearsIntent(s: StorageReset): bool = s.phase == ResetFailed implies (s.rollbackComplete and not(s.intent) and s.epoch == 0)
 pure def sometimesRolledBack(s: StorageReset): bool = s.phase == ResetFailed
 ```

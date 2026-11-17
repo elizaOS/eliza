@@ -37,6 +37,9 @@ pure def alwaysKeysAreUnique(s: Todos): bool = s.mutations.every(m => s.mutation
 
 ### An item is added unless an open item already says the same, unless the owner confirms the duplicate
 
+Each new item takes the next id, counting up from one, so no two items
+share an id.
+
 ```quint
 pure def createRequest(content: str, affirmed: bool): TodoRequest = { op: CreateOp, requestContent: content, requestStatus: TodoPending, affirmed: affirmed }
 pure def openWith(s: Todos, content: str): bool = s.todos.some(t => t.content == content and (t.todoStatus == TodoPending or t.todoStatus == TodoInProgress))
@@ -46,6 +49,7 @@ pure def createTodo(s: Todos, key: str, content: str, affirmed: bool): Todos =
   else if (openWith(s, content) and not(affirmed)) recordMutation(key, createRequest(content, affirmed), s, Duplicate)
   else recordMutation(key, createRequest(content, affirmed), { ...s, todos: s.todos.append({ todoId: s.nextId, content: content, todoStatus: TodoPending, completedAt: false }), nextId: s.nextId + 1 }, Applied)
 pure def alwaysTodoIdsAreUnique(s: Todos): bool = s.todos.every(t => t.todoId > 0 and t.todoId < s.nextId and s.todos.select(o => o.todoId == t.todoId).length() == 1)
+pure def alwaysNextIdIsPositive(s: Todos): bool = s.nextId > 0
 ```
 
 ### A change by text applies only when exactly one item matches

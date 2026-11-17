@@ -60,8 +60,8 @@ pure def sometimesLateProbeDiscarded(e: PermissionEntry): bool = e.returned and 
 ### Unsaved state is kept after a failed save and saved before shutdown returns
 
 A flush writes the current state; a failed flush keeps it marked unsaved.
-Shutdown returns only when no probe is running or queued, no settings screen
-is open and nothing is unsaved.
+Shutdown returns only after the registry stopped, and only when no probe is
+running or queued, no settings screen is open and nothing is unsaved.
 
 ```quint
 pure def canFlush(e: PermissionEntry): bool = e.dirty
@@ -72,6 +72,7 @@ pure def canDrain(e: PermissionEntry): bool = e.stopped and not(e.checking) and 
 pure def drain(e: PermissionEntry): PermissionEntry = { ...e, returned: true }
 pure def alwaysSavedStateMatchesCurrent(e: PermissionEntry): bool = not(e.dirty) implies e.durable == e.status
 pure def alwaysReturnedRegistryIsDrained(e: PermissionEntry): bool = e.returned implies not(e.checking or e.dirty or e.queued or e.settingsOpen)
+pure def alwaysReturnedRegistryHasStopped(e: PermissionEntry): bool = e.returned implies e.stopped
 pure def sometimesFailedSaveRetainedThenSaved(e: PermissionEntry): bool = e.returned and e.durable == Denied
 pure def sometimesUnsavedAfterFailure(e: PermissionEntry): bool = e.dirty and e.persistFailed
 ```

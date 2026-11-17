@@ -1,8 +1,8 @@
 lemma readApproval_ensures(s: ApprovalState, id: int, readAt: int, success: bool)
-  ensures (inv(s) ==> canReadApproval(s, id) ==> alwaysRequestOwnerIsStable(readApproval(s, id, readAt, success)))
-  ensures (inv(s) ==> canReadApproval(s, id) ==> alwaysGrantMatchesRequest(readApproval(s, id, readAt, success)))
   ensures (inv(s) ==> canReadApproval(s, id) ==> alwaysConsumedExactRequest(readApproval(s, id, readAt, success)))
   ensures (inv(s) ==> canReadApproval(s, id) ==> alwaysStoredRequestHasIssuedId(readApproval(s, id, readAt, success)))
+  ensures (inv(s) ==> canReadApproval(s, id) ==> alwaysRequestOwnerIsStable(readApproval(s, id, readAt, success)))
+  ensures (inv(s) ==> canReadApproval(s, id) ==> alwaysGrantMatchesRequest(readApproval(s, id, readAt, success)))
   ensures (inv(s) ==> canReadApproval(s, id) ==> stepExistingGrantIdentityIsStable(s, "readApproval", readApproval(s, id, readAt, success)))
 {
   if inv(s) && canReadApproval(s, id) && success {
@@ -15,10 +15,10 @@ lemma readApproval_ensures(s: ApprovalState, id: int, readAt: int, success: bool
 }
 
 lemma consume_ensures(s: ApprovalState, id: int, success: bool)
-  ensures (inv(s) ==> canConsume(s, id) ==> alwaysRequestOwnerIsStable(consume(s, id, success)))
-  ensures (inv(s) ==> canConsume(s, id) ==> alwaysGrantMatchesRequest(consume(s, id, success)))
   ensures (inv(s) ==> canConsume(s, id) ==> alwaysConsumedExactRequest(consume(s, id, success)))
   ensures (inv(s) ==> canConsume(s, id) ==> alwaysStoredRequestHasIssuedId(consume(s, id, success)))
+  ensures (inv(s) ==> canConsume(s, id) ==> alwaysRequestOwnerIsStable(consume(s, id, success)))
+  ensures (inv(s) ==> canConsume(s, id) ==> alwaysGrantMatchesRequest(consume(s, id, success)))
   ensures (inv(s) ==> canConsume(s, id) ==> stepExistingGrantIdentityIsStable(s, "consume", consume(s, id, success)))
 {
   if inv(s) && canConsume(s, id) {
@@ -35,10 +35,10 @@ lemma consume_ensures(s: ApprovalState, id: int, success: bool)
 }
 
 lemma grant_ensures(s: ApprovalState, id: int, grantInput: GrantAttempt)
-  ensures (inv(s) ==> canGrant(s, id, grantInput) ==> alwaysRequestOwnerIsStable(grant(s, id, grantInput)))
-  ensures (inv(s) ==> canGrant(s, id, grantInput) ==> alwaysGrantMatchesRequest(grant(s, id, grantInput)))
   ensures (inv(s) ==> canGrant(s, id, grantInput) ==> alwaysConsumedExactRequest(grant(s, id, grantInput)))
   ensures (inv(s) ==> canGrant(s, id, grantInput) ==> alwaysStoredRequestHasIssuedId(grant(s, id, grantInput)))
+  ensures (inv(s) ==> canGrant(s, id, grantInput) ==> alwaysRequestOwnerIsStable(grant(s, id, grantInput)))
+  ensures (inv(s) ==> canGrant(s, id, grantInput) ==> alwaysGrantMatchesRequest(grant(s, id, grantInput)))
   ensures (inv(s) ==> canGrant(s, id, grantInput) ==> stepExistingGrantIdentityIsStable(s, "grant", grant(s, id, grantInput)))
 {
   if inv(s) && canGrant(s, id, grantInput) {
@@ -52,10 +52,10 @@ lemma grant_ensures(s: ApprovalState, id: int, grantInput: GrantAttempt)
 }
 
 lemma settleCleanup_ensures(s: ApprovalState, requestId: string, success: bool)
-  ensures (inv(s) ==> canSettleCleanup(s, requestId) ==> alwaysRequestOwnerIsStable(settleCleanup(s, requestId, success)))
-  ensures (inv(s) ==> canSettleCleanup(s, requestId) ==> alwaysGrantMatchesRequest(settleCleanup(s, requestId, success)))
   ensures (inv(s) ==> canSettleCleanup(s, requestId) ==> alwaysConsumedExactRequest(settleCleanup(s, requestId, success)))
   ensures (inv(s) ==> canSettleCleanup(s, requestId) ==> alwaysStoredRequestHasIssuedId(settleCleanup(s, requestId, success)))
+  ensures (inv(s) ==> canSettleCleanup(s, requestId) ==> alwaysRequestOwnerIsStable(settleCleanup(s, requestId, success)))
+  ensures (inv(s) ==> canSettleCleanup(s, requestId) ==> alwaysGrantMatchesRequest(settleCleanup(s, requestId, success)))
   ensures (inv(s) ==> canSettleCleanup(s, requestId) ==> stepExistingGrantIdentityIsStable(s, "settleCleanup", settleCleanup(s, requestId, success)))
 {
   if inv(s) && canSettleCleanup(s, requestId) && success {
@@ -65,10 +65,10 @@ lemma settleCleanup_ensures(s: ApprovalState, requestId: string, success: bool)
 }
 
 lemma advanceApproval_ensures(s: ApprovalState, grantInput: GrantAttempt, readAt: int, success: bool)
-  ensures (inv(s) ==> canAdvanceApproval(s, grantInput) ==> alwaysRequestOwnerIsStable(advanceApproval(s, grantInput, readAt, success)))
-  ensures (inv(s) ==> canAdvanceApproval(s, grantInput) ==> alwaysGrantMatchesRequest(advanceApproval(s, grantInput, readAt, success)))
   ensures (inv(s) ==> canAdvanceApproval(s, grantInput) ==> alwaysConsumedExactRequest(advanceApproval(s, grantInput, readAt, success)))
   ensures (inv(s) ==> canAdvanceApproval(s, grantInput) ==> alwaysStoredRequestHasIssuedId(advanceApproval(s, grantInput, readAt, success)))
+  ensures (inv(s) ==> canAdvanceApproval(s, grantInput) ==> alwaysRequestOwnerIsStable(advanceApproval(s, grantInput, readAt, success)))
+  ensures (inv(s) ==> canAdvanceApproval(s, grantInput) ==> alwaysGrantMatchesRequest(advanceApproval(s, grantInput, readAt, success)))
   ensures (inv(s) ==> canAdvanceApproval(s, grantInput) ==> stepExistingGrantIdentityIsStable(s, "advanceApproval", advanceApproval(s, grantInput, readAt, success)))
 {
   if inv(s) && canAdvanceApproval(s, grantInput) {
@@ -152,10 +152,10 @@ lemma PairingLookupCapture(s: ApprovalState, key: ApprovalKey, readAt: int)
 }
 
 lemma restoreRequest_ensures(s: ApprovalState, row: core__pairing__admission_PendingRow)
-  ensures (inv(s) ==> canRestoreRequest(s, row) ==> alwaysRequestOwnerIsStable(restoreRequest(s, row)))
-  ensures (inv(s) ==> canRestoreRequest(s, row) ==> alwaysGrantMatchesRequest(restoreRequest(s, row)))
   ensures (inv(s) ==> canRestoreRequest(s, row) ==> alwaysConsumedExactRequest(restoreRequest(s, row)))
   ensures (inv(s) ==> canRestoreRequest(s, row) ==> alwaysStoredRequestHasIssuedId(restoreRequest(s, row)))
+  ensures (inv(s) ==> canRestoreRequest(s, row) ==> alwaysRequestOwnerIsStable(restoreRequest(s, row)))
+  ensures (inv(s) ==> canRestoreRequest(s, row) ==> alwaysGrantMatchesRequest(restoreRequest(s, row)))
   ensures (inv(s) ==> canRestoreRequest(s, row) ==> stepExistingGrantIdentityIsStable(s, "restoreRequest", restoreRequest(s, row)))
 {
   if inv(s) && canRestoreRequest(s, row) {
@@ -166,10 +166,10 @@ lemma restoreRequest_ensures(s: ApprovalState, row: core__pairing__admission_Pen
 }
 
 lemma writePending_ensures(s: ApprovalState, writeResult: core__pairing__admission_WriteOutcome)
-  ensures (inv(s) ==> canWritePending(s, writeResult) ==> alwaysRequestOwnerIsStable(writePending(s, writeResult)))
-  ensures (inv(s) ==> canWritePending(s, writeResult) ==> alwaysGrantMatchesRequest(writePending(s, writeResult)))
   ensures (inv(s) ==> canWritePending(s, writeResult) ==> alwaysConsumedExactRequest(writePending(s, writeResult)))
   ensures (inv(s) ==> canWritePending(s, writeResult) ==> alwaysStoredRequestHasIssuedId(writePending(s, writeResult)))
+  ensures (inv(s) ==> canWritePending(s, writeResult) ==> alwaysRequestOwnerIsStable(writePending(s, writeResult)))
+  ensures (inv(s) ==> canWritePending(s, writeResult) ==> alwaysGrantMatchesRequest(writePending(s, writeResult)))
   ensures (inv(s) ==> canWritePending(s, writeResult) ==> stepExistingGrantIdentityIsStable(s, "writePending", writePending(s, writeResult)))
 {
   if inv(s) && canWritePending(s, writeResult) {

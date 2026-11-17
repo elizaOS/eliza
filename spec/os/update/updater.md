@@ -76,7 +76,8 @@ pure def alwaysInactiveUntilEnrolled(s: SystemUpdate): bool =
 
 A job verifies the downloaded payload before it applies it, and the
 apply call needs both a verified payload and a check made in the current
-job. A rejected payload that was never applied may be replaced by a new
+job. A candidate the updater holds as verified has passed verification.
+A rejected payload that was never applied may be replaced by a new
 download.
 
 ```quint
@@ -112,6 +113,7 @@ pure def replaceRejected(s: SystemUpdate): SystemUpdate = { ...s, phase: HostIdl
 pure def canApplyUpdate(s: SystemUpdate): bool = s.active and not(s.stopped) and s.eligible and s.phase == VerifiedUpdate and s.checked
 pure def applyUpdate(s: SystemUpdate): SystemUpdate = { ...s, phase: Applying, applyCalls: s.applyCalls + 1 }
 pure def alwaysNoUnverifiedApply(s: SystemUpdate): bool = (s.applyCalls == 0 or s.verified) and (s.phase != Applying or s.checked)
+pure def alwaysVerifiedCandidatePassedVerification(s: SystemUpdate): bool = s.phase == VerifiedUpdate implies s.verified
 pure def sometimesCheckedCandidate(s: SystemUpdate): bool = s.phase == VerifiedUpdate and s.checked and s.active
 ```
 

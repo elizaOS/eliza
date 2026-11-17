@@ -125,7 +125,8 @@ pure def sometimesRemovedConversationHasNoFallback(c: Chat): bool = c.prompt.res
 After resolution the host reads the conversation's room and then persists
 the prompt. It persists only if resolution was verified, the room read
 found the conversation and the runtime is still the one captured at the
-start; otherwise the prompt ends not admitted.
+start; otherwise the prompt ends not admitted. Until then it is neither
+persisted nor given an outcome.
 
 ```quint
 pure def canReadRoom(c: Chat): bool = c.prompt.phase == PromptReading
@@ -137,6 +138,8 @@ pure def persistPrompt(c: Chat): Chat = {
 }
 pure def alwaysPersistedPromptIsCurrent(c: Chat): bool =
   c.prompt.persisted implies (c.prompt.verified and c.prompt.roomValid and c.prompt.epoch == c.prompt.captured)
+pure def alwaysPromptInFlightHoldsNothing(c: Chat): bool =
+  (c.prompt.phase == PromptResolving or c.prompt.phase == PromptReading or c.prompt.phase == PromptPersisting) implies (not(c.prompt.persisted) and c.prompt.verdict == NoOutcome)
 pure def sometimesRetiredRuntimeRefusesPersistence(c: Chat): bool =
   c.prompt.verdict == NotAdmitted and c.prompt.verified and c.prompt.epoch != c.prompt.captured
 ```

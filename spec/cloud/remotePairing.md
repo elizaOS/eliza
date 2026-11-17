@@ -158,7 +158,8 @@ pure def alwaysActivationIsConfirmed(s: Remote): bool = s.sessions.every(r => (r
 The host's own credential commits the activation; the cloud checks the live
 host, the exact stage and both deadlines. A pairing that missed a deadline
 expires instead. The host may deny a pairing before it commits, and the
-owner may revoke any open pairing.
+owner may revoke any open pairing. The clock is never negative, and a
+pairing still awaiting its commit has no commit time.
 
 ```quint
 pure def canCommitSession(s: Remote, id: int, authenticated: bool): bool = authenticated and s.hostActive and sessionOf(s, id).status == SessionActivating
@@ -174,14 +175,18 @@ pure def revokeSession(s: Remote, id: int, authorized: bool): Remote = {
 pure def canCompensate(s: Remote, id: int, authenticated: bool): bool = authenticated and hasSession(s, id) and beforeCommit(sessionOf(s, id).status)
 pure def compensate(s: Remote, id: int, authenticated: bool): Remote = { ...s, sessions: putSession(s, ended(sessionOf(s, id), SessionDenied)) }
 pure def permitsCommands(s: Remote, id: int): bool = s.hostActive and sessionOf(s, id).status == SessionActive and s.now < sessionOf(s, id).grantUntil
+pure def alwaysCommitTimeIsSetOnlyByCommit(s: Remote): bool = s.now >= 0 and s.sessions.every(r => beforeCommit(r.status) implies r.committedAt < 0)
 pure def alwaysCommittedBeforeDeadline(s: Remote): bool = s.sessions.every(r => r.committedAt >= 0 implies (r.confirmed and r.committedAt < r.pairUntil))
 pure def alwaysCommandsNeedCommittedPairing(s: Remote): bool = s.sessions.every(r => permitsCommands(s, r.id) implies (r.confirmed and r.committedAt >= 0))
 pure def sometimesPairingCommitted(s: Remote): bool = s.sessions.some(r => r.status == SessionActive)
 ```
 
-### A pairing's owner, deadlines and outcome never change once recorded
+### Each pairing id names one pairing, whose owner, deadlines and outcome never change once recorded
+
+A pairing id is positive and names exactly one pairing.
 
 ```quint
+pure def alwaysOnePairingPerId(s: Remote): bool = s.sessions.every(a => a.id > 0 and s.sessions.every(b => a.id == b.id implies a == b))
 pure def stepPairingOwnershipIsDurable(before: Remote, after: Remote): bool =
   before.sessions.every(r => hasSession(after, r.id) and sessionOf(after, r.id).pairUntil == r.pairUntil and sessionOf(after, r.id).grantUntil == r.grantUntil
     and (r.controller != 0 implies sessionOf(after, r.id).controller == r.controller) and (r.confirmed implies sessionOf(after, r.id).confirmed)
@@ -189,7 +194,10 @@ pure def stepPairingOwnershipIsDurable(before: Remote, after: Remote): bool =
     and ((r.status == SessionDenied or r.status == SessionRevoked or r.status == SessionExpired) implies sessionOf(after, r.id).status == r.status))
 ```
 
-### A command is claimed, started and completed at most once, and only while its pairing carries commands
+### Each command number names one command, claimed, started and completed at most once, and only while its pairing carries commands
+
+A command number names one command, and a claimed or started command holds
+its claim receipt.
 
 ```quint
 pure val commandValues = Set(1, 2)
@@ -206,6 +214,8 @@ pure def advanceCommand(s: Remote, command: int, succeeded: bool): Remote = {
     else if (c.status == CommandClaimed) { ...c, status: CommandStarted }
     else { ...c, status: if (succeeded) CommandCompleted else CommandFailed, ended: true }) }
 }
+pure def alwaysOneCommandPerNumber(s: Remote): bool = s.commands.every(a => s.commands.every(b => a.command == b.command implies a == b))
+pure def alwaysClaimedCommandHoldsItsClaim(s: Remote): bool = s.commands.every(c => (c.status == CommandClaimed or c.status == CommandStarted) implies c.claimToken)
 pure def stepSettledCommandIsFinal(before: Remote, after: Remote): bool =
   before.commands.every(c => not(commandOpen(c.status)) implies commandOf(after, c.command) == c)
 pure def sometimesCommandCompleted(s: Remote): bool = s.commands.some(c => c.status == CommandCompleted)
@@ -225,7 +235,9 @@ not locked by other work: a command that had started becomes ambiguous and
 keeps its claim receipt for reconciliation, and one that had not started is
 cancelled and loses its claim. Locked rows are skipped, and the receipt says
 whether rows remain; repeating the revocation continues the cleanup. A
-failed transaction publishes nothing.
+failed transaction publishes nothing. Only revocation writes a receipt, and
+the same transaction ends the host, so a live host has no revocation
+receipt.
 
 ```quint
 pure def canLockSession(s: Remote, id: int): bool = hasSession(s, id) and not(s.lockedSessions.contains(id))
@@ -244,6 +256,7 @@ pure def revokeHost(s: Remote, authorized: bool): Remote = {
   { ...s, hostActive: false, sessions: sessions, commands: commands, observedClaim: 0, revocationReceipt: true,
     more: sessions.some(r => openSession(r.status)) or commands.some(c => commandOpen(c.status)) }
 }
+pure def alwaysLiveHostHasNoRevocationReceipt(s: Remote): bool = s.hostActive implies not(s.revocationReceipt)
 pure def alwaysReceiptCoversOutstandingRows(s: Remote): bool = (s.revocationReceipt and not(s.more)) implies (s.sessions.every(r => not(openSession(r.status))) and s.commands.every(c => not(commandOpen(c.status))))
 pure def alwaysRevokedHostKeepsOnlyLockedWork(s: Remote): bool = not(s.hostActive) implies (s.revocationReceipt and (s.more or (s.sessions.every(r => not(openSession(r.status))) and s.commands.every(c => not(commandOpen(c.status))))))
 pure def alwaysCancelledCommandDropsClaim(s: Remote): bool = s.commands.every(c => c.status == CommandCancelled implies (not(c.claimToken) and c.ended))

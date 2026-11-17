@@ -44,7 +44,9 @@ pure def lawProvisionedCredentialAloneIsNotOwnership(topologyUsesCloud: bool): b
 ### Callers of one encoding share its pending load, and each caller's result is its load's result
 
 Encoders are loaded lazily and cached per encoding: callers waiting on the
-same encoding share one load and see its result.
+same encoding share one load and see its result. A caller waits on one
+encoder at a time, and each load has its own number, issued once and never
+reused.
 
 ```quint
 type LoadPhase = LoadPending | LoadRejecting | LoadReady | LoadFailed
@@ -77,6 +79,10 @@ pure def observeEncoder(t: Tokenizers, caller: int): Tokenizers =
 pure def alwaysCallersOwnTheirLoad(t: Tokenizers): bool =
   t.waits.every(w => loadAt(t, w.load).load == w.load and loadAt(t, w.load).encoding == w.encoding and
     (w.phase == Resolved implies loadAt(t, w.load).phase == LoadReady) and (w.phase == Failed implies loadAt(t, w.load).phase == LoadFailed))
+pure def alwaysLoadNumbersAreIssuedOnce(t: Tokenizers): bool =
+  t.nextLoad >= 0 and t.loads.every(l => l.load >= 0 and l.load < t.nextLoad and t.loads.select(o => o.load == l.load).length() == 1)
+pure def alwaysOneWaitPerCaller(t: Tokenizers): bool =
+  t.waits.every(w => t.waits.select(v => v.caller == w.caller).length() == 1)
 pure def sometimesTwoCallersShareALoad(t: Tokenizers): bool = t.waits.some(a => t.waits.some(b => a.caller != b.caller and a.load == b.load and a.phase == Waiting and b.phase == Waiting))
 ```
 

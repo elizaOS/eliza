@@ -15,7 +15,7 @@ settles after the acquired leases release.
 
 ### Each transaction captures the sorted deduplicated room set
 
-Positive room identities represent the ordering of source room strings by JavaScript code units. Batch identities denote unique invocation promises and, paired with a room, identify the only lease this invocation can hold for that room. The imported room queue owns the actual leases, FIFO tickets, write counts and admission limits. Batch position selects the next requested room. A partially acquired batch retains exactly one room per completed acquisition. Its next room is in range until its callback can begin. Only unwind or completed phases retain a terminal result. Released room IDs remain in the original request so that failure and completion can be attributed to the exact operation.
+Positive room identities represent the ordering of source room strings by JavaScript code units. Batch identities denote unique invocation promises and, paired with a room, identify the only lease this invocation can hold for that room. The imported room queue owns the actual leases, FIFO tickets, write counts and admission limits. Batch position selects the next requested room. A partially acquired batch retains exactly one room per completed acquisition. Its next room is in range until its callback can begin. Only unwind or completed phases retain a terminal result. Released room IDs remain in the original request so that failure and completion can be attributed to the exact operation. Each captured room set stays in strictly ascending rank for the whole life of its batch.
 
 ```quint
 import concurrency as C from "./concurrency"
@@ -52,11 +52,12 @@ pure def canConfigure(s: MultiRoomLeases, capacity: int, maxPerRoom: int, maxRoo
 pure def configure(s: MultiRoomLeases, capacity: int, maxPerRoom: int, maxRooms: int): MultiRoomLeases = { ...s, queue: C::configureRooms(s.queue, capacity, maxPerRoom, maxRooms) }
 pure def canOpenBatch(s: MultiRoomLeases, caller: int, requestedRooms: List[int], ambient: int, explicitOwner: int): bool = s.queue.configured and caller > 0 and batchAt(s, caller).id == 0 and requestedRooms.every(r => r > 0) and (requestedRooms.length() == 0 or (ambientRooms(s, ambient).length() == 0 and explicitOwner == 0))
 pure def openBatch(s: MultiRoomLeases, caller: int, requestedRooms: List[int], ambient: int, explicitOwner: int): MultiRoomLeases = { ...s, calls: s.calls.append({id: caller, wanted: orderedRooms(requestedRooms), position: 0, phase: if (requestedRooms.length() == 0) BatchInvoking else BatchAcquiring, resultKind: BatchPending, errorRoom: 0, cause: 0, aborted: false, abortCause: 0}) }
+pure def alwaysRequestedRoomsAscending(s: MultiRoomLeases): bool = s.calls.every(c => roomRanksAscending(c.wanted))
 ```
 
 ### The next admission either obtains a FIFO ticket or enters unwind
 
-Closed admission takes precedence over a pre-aborted signal. Exhausting active rooms takes precedence over total and per-room capacity failure. The model uses occupied queue identities at the admission boundary; the separate queue-observer model exposes the empty-object interval around synchronous telemetry and pruning. Error cause denotes the original opaque failure identity. The first available FIFO slot is reserved synchronously, so a later signal cannot cancel it as a waiter.
+Closed admission takes precedence over a pre-aborted signal. Exhausting active rooms takes precedence over total and per-room capacity failure. The model uses occupied queue identities at the admission boundary; the separate queue-observer model exposes the empty-object interval around synchronous telemetry and pruning. Error cause denotes the original opaque failure identity. The first available FIFO slot is reserved synchronously, so a later signal cannot cancel it as a waiter. The room queue cancels only the caller of an opened batch.
 
 ```quint
 pure def roomDepth(s: MultiRoomLeases, room: int): int = C::roomOccupancy(s.queue, room)
@@ -94,6 +95,7 @@ pure def abortBatch(s: MultiRoomLeases, caller: int, cause: int): MultiRoomLease
 }
 pure def canCloseAdmission(s: MultiRoomLeases, cause: int): bool = C::canCloseRoomAdmission(s.queue) and cause > 0
 pure def closeAdmission(s: MultiRoomLeases, cause: int): MultiRoomLeases = { ...s, queue: C::closeRoomAdmission(s.queue), closeCause: cause }
+pure def alwaysCancelledCallersOpened(s: MultiRoomLeases): bool = s.queue.cancelled.forall(caller => s.calls.some(c => c.id == caller))
 ```
 
 ### A nested room request reuses the exact live subset or rejects widening

@@ -18,7 +18,8 @@ a reply can still explain why the model refused.
 ### A body over the cap is never dispatched, and no more than the cap is retained
 
 The cap is two body increments. A declared length over the cap starts
-discarding at once; a chunked body starts when the cap is crossed.
+discarding at once; a chunked body starts when the cap is crossed. Only
+increments that arrived are retained.
 
 ```quint
 type Response = NoResponse | Accepted | TooLarge
@@ -39,7 +40,7 @@ pure def endRequest(r: Requests): Requests = { ...r, requestDone: true }
 pure def canDispatchBody(r: Requests): bool = r.requestDone and not(r.closed or r.oversized or r.dispatched) and r.response == NoResponse
 pure def dispatchBody(r: Requests): Requests = { ...r, dispatched: true }
 pure def alwaysBodyBounded(r: Requests): bool =
-  r.retained >= 0 and r.retained <= bodyCap and (r.dispatched implies r.requestDone and not(r.oversized))
+  r.retained >= 0 and r.retained <= r.received and r.retained <= bodyCap and (r.dispatched implies r.requestDone and not(r.oversized))
 pure def sometimesChunkedOverflowRefused(r: Requests): bool = r.response == TooLarge and r.received > bodyCap and r.closed and not(r.peerAborted)
 ```
 
@@ -142,6 +143,18 @@ pure def appendLog(r: Requests, credit: bool): Requests = {
 pure def elapse(r: Requests): Requests = { ...r, now: r.now + 30 }
 pure def alwaysLogBounded(r: Requests): bool =
   r.buffer.length() <= logCapacity and r.history.every(e => e.id < r.nextLog - 2 or r.buffer.includes(e))
+```
+
+### Log entries are numbered and stamped in order, and the buffer holds each logged entry once
+
+Each entry takes the next number, counting from zero, and the current
+time, so no two entries share a number and a later entry is never older.
+The buffer holds only logged entries, none of them twice.
+
+```quint
+pure def alwaysLogEntriesInOrder(r: Requests): bool =
+  r.nextLog >= 0 and r.history.every(e => e.id >= 0 and e.id < r.nextLog and e.at <= r.now and r.history.select(f => f.id == e.id).length() == 1 and r.history.every(f => e.id < f.id implies e.at <= f.at))
+    and r.buffer.every(e => r.history.includes(e) and r.buffer.select(f => f.id == e.id).length() == 1)
 ```
 
 ### A credit warning inside the lookback survives a burst of later entries

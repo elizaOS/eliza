@@ -47,7 +47,8 @@ pure def sometimesChangedIdentityReapsChild(s: Supervisor): bool = s.running == 
 ### A failed launch reaps its child and backs off before retrying
 
 If the launch or its receipt fails, the supervisor reaps the child, records
-the failure and waits out a backoff before it may launch again. A running
+the failure and waits out a backoff before it may launch again: a recorded
+failure always has its backoff pending. A running
 child can be stopped at any time, which reaps it.
 
 ```quint
@@ -57,7 +58,7 @@ pure def canRetryLaunch(s: Supervisor): bool = s.backoff
 pure def retryLaunch(s: Supervisor): Supervisor = { ...s, backoff: false, failed: false }
 pure def canStopChild(s: Supervisor): bool = s.running != 0
 pure def stopChild(s: Supervisor): Supervisor = { ...s, running: 0, spawned: false, receipt: false }
-pure def alwaysFailureLeavesNoChild(s: Supervisor): bool = (s.failed implies not(s.spawned)) and (s.backoff implies not(s.busy))
+pure def alwaysFailureLeavesNoChild(s: Supervisor): bool = (s.failed implies (s.backoff and not(s.spawned))) and (s.backoff implies not(s.busy))
 pure def sometimesBackingOff(s: Supervisor): bool = s.backoff and s.captured != 0
 ```
 

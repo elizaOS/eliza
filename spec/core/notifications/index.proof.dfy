@@ -324,8 +324,8 @@ lemma enqueueNotice_ensures(s: Inbox, id: string)
   ensures (inv(s) ==> canEnqueueNotice(s, id) ==> alwaysFreshNotificationIdentity(enqueueNotice(s, id)))
   ensures (inv(s) ==> canEnqueueNotice(s, id) ==> stepAddPrunesExpiredPriorRows(s, "enqueueNotice", enqueueNotice(s, id)))
   ensures (inv(s) ==> canEnqueueNotice(s, id) ==> stepGroupedAddReplacesEveryPriorGroupRow(s, "enqueueNotice", enqueueNotice(s, id)))
-  ensures (inv(s) ==> canEnqueueNotice(s, id) ==> stepProjectionEvaluationKeepsRows(s, "enqueueNotice", enqueueNotice(s, id)))
   ensures (inv(s) ==> canEnqueueNotice(s, id) ==> stepReadMarksPreserveCoordinates(s, "enqueueNotice", enqueueNotice(s, id)))
+  ensures (inv(s) ==> canEnqueueNotice(s, id) ==> stepProjectionEvaluationKeepsRows(s, "enqueueNotice", enqueueNotice(s, id)))
 {
   if inv(s) && canEnqueueNotice(s, id) {
     var after := enqueueNotice(s, id);
@@ -350,8 +350,8 @@ lemma enqueueGrouped_ensures(s: Inbox, input: NoticeInput)
   ensures (inv(s) ==> canEnqueueGrouped(s, input) ==> alwaysFreshNotificationIdentity(enqueueGrouped(s, input)))
   ensures (inv(s) ==> canEnqueueGrouped(s, input) ==> stepAddPrunesExpiredPriorRows(s, "enqueueGrouped", enqueueGrouped(s, input)))
   ensures (inv(s) ==> canEnqueueGrouped(s, input) ==> stepGroupedAddReplacesEveryPriorGroupRow(s, "enqueueGrouped", enqueueGrouped(s, input)))
-  ensures (inv(s) ==> canEnqueueGrouped(s, input) ==> stepProjectionEvaluationKeepsRows(s, "enqueueGrouped", enqueueGrouped(s, input)))
   ensures (inv(s) ==> canEnqueueGrouped(s, input) ==> stepReadMarksPreserveCoordinates(s, "enqueueGrouped", enqueueGrouped(s, input)))
+  ensures (inv(s) ==> canEnqueueGrouped(s, input) ==> stepProjectionEvaluationKeepsRows(s, "enqueueGrouped", enqueueGrouped(s, input)))
 {
   if inv(s) && canEnqueueGrouped(s, input) {
     var after := enqueueGrouped(s, input);
@@ -376,8 +376,8 @@ lemma ensureGroupedProjection_ensures(s: Inbox, input: NoticeInput)
   ensures (inv(s) ==> canEnsureGroupedProjection(s, input) ==> alwaysFreshNotificationIdentity(ensureGroupedProjection(s, input)))
   ensures (inv(s) ==> canEnsureGroupedProjection(s, input) ==> stepAddPrunesExpiredPriorRows(s, "ensureGroupedProjection", ensureGroupedProjection(s, input)))
   ensures (inv(s) ==> canEnsureGroupedProjection(s, input) ==> stepGroupedAddReplacesEveryPriorGroupRow(s, "ensureGroupedProjection", ensureGroupedProjection(s, input)))
-  ensures (inv(s) ==> canEnsureGroupedProjection(s, input) ==> stepProjectionEvaluationKeepsRows(s, "ensureGroupedProjection", ensureGroupedProjection(s, input)))
   ensures (inv(s) ==> canEnsureGroupedProjection(s, input) ==> stepReadMarksPreserveCoordinates(s, "ensureGroupedProjection", ensureGroupedProjection(s, input)))
+  ensures (inv(s) ==> canEnsureGroupedProjection(s, input) ==> stepProjectionEvaluationKeepsRows(s, "ensureGroupedProjection", ensureGroupedProjection(s, input)))
 {
   if inv(s) && canEnsureGroupedProjection(s, input) {
     var after := ensureGroupedProjection(s, input);
@@ -402,8 +402,8 @@ lemma remove_ensures(s: Inbox, id: string)
   ensures (inv(s) ==> canRemove(s, id) ==> alwaysFreshNotificationIdentity(remove(s, id)))
   ensures (inv(s) ==> canRemove(s, id) ==> stepAddPrunesExpiredPriorRows(s, "remove", remove(s, id)))
   ensures (inv(s) ==> canRemove(s, id) ==> stepGroupedAddReplacesEveryPriorGroupRow(s, "remove", remove(s, id)))
-  ensures (inv(s) ==> canRemove(s, id) ==> stepProjectionEvaluationKeepsRows(s, "remove", remove(s, id)))
   ensures (inv(s) ==> canRemove(s, id) ==> stepReadMarksPreserveCoordinates(s, "remove", remove(s, id)))
+  ensures (inv(s) ==> canRemove(s, id) ==> stepProjectionEvaluationKeepsRows(s, "remove", remove(s, id)))
 {
   if inv(s) && canRemove(s, id) {
     var after := remove(s, id);
@@ -427,8 +427,8 @@ lemma markRead_ensures(s: Inbox, id: string)
   ensures (inv(s) ==> canMarkRead(s, id) ==> alwaysFreshNotificationIdentity(markRead(s, id)))
   ensures (inv(s) ==> canMarkRead(s, id) ==> stepAddPrunesExpiredPriorRows(s, "markRead", markRead(s, id)))
   ensures (inv(s) ==> canMarkRead(s, id) ==> stepGroupedAddReplacesEveryPriorGroupRow(s, "markRead", markRead(s, id)))
-  ensures (inv(s) ==> canMarkRead(s, id) ==> stepProjectionEvaluationKeepsRows(s, "markRead", markRead(s, id)))
   ensures (inv(s) ==> canMarkRead(s, id) ==> stepReadMarksPreserveCoordinates(s, "markRead", markRead(s, id)))
+  ensures (inv(s) ==> canMarkRead(s, id) ==> stepProjectionEvaluationKeepsRows(s, "markRead", markRead(s, id)))
 {
   if inv(s) && canMarkRead(s, id) {
     var after := markRead(s, id);
@@ -452,8 +452,8 @@ lemma markGroupRead_ensures(s: Inbox, groupKey: string)
   ensures (inv(s) ==> canMarkGroupRead(s, groupKey) ==> alwaysFreshNotificationIdentity(markGroupRead(s, groupKey)))
   ensures (inv(s) ==> canMarkGroupRead(s, groupKey) ==> stepAddPrunesExpiredPriorRows(s, "markGroupRead", markGroupRead(s, groupKey)))
   ensures (inv(s) ==> canMarkGroupRead(s, groupKey) ==> stepGroupedAddReplacesEveryPriorGroupRow(s, "markGroupRead", markGroupRead(s, groupKey)))
-  ensures (inv(s) ==> canMarkGroupRead(s, groupKey) ==> stepProjectionEvaluationKeepsRows(s, "markGroupRead", markGroupRead(s, groupKey)))
   ensures (inv(s) ==> canMarkGroupRead(s, groupKey) ==> stepReadMarksPreserveCoordinates(s, "markGroupRead", markGroupRead(s, groupKey)))
+  ensures (inv(s) ==> canMarkGroupRead(s, groupKey) ==> stepProjectionEvaluationKeepsRows(s, "markGroupRead", markGroupRead(s, groupKey)))
 {
   if inv(s) && canMarkGroupRead(s, groupKey) {
     var after := markGroupRead(s, groupKey);
@@ -477,8 +477,8 @@ lemma markAllRead_ensures(s: Inbox)
   ensures (inv(s) ==> canMarkAllRead(s) ==> alwaysFreshNotificationIdentity(markAllRead(s)))
   ensures (inv(s) ==> canMarkAllRead(s) ==> stepAddPrunesExpiredPriorRows(s, "markAllRead", markAllRead(s)))
   ensures (inv(s) ==> canMarkAllRead(s) ==> stepGroupedAddReplacesEveryPriorGroupRow(s, "markAllRead", markAllRead(s)))
-  ensures (inv(s) ==> canMarkAllRead(s) ==> stepProjectionEvaluationKeepsRows(s, "markAllRead", markAllRead(s)))
   ensures (inv(s) ==> canMarkAllRead(s) ==> stepReadMarksPreserveCoordinates(s, "markAllRead", markAllRead(s)))
+  ensures (inv(s) ==> canMarkAllRead(s) ==> stepProjectionEvaluationKeepsRows(s, "markAllRead", markAllRead(s)))
 {
   if inv(s) && canMarkAllRead(s) {
     var after := markAllRead(s);
@@ -502,8 +502,8 @@ lemma clear_ensures(s: Inbox)
   ensures (inv(s) ==> canClear(s) ==> alwaysFreshNotificationIdentity(clear(s)))
   ensures (inv(s) ==> canClear(s) ==> stepAddPrunesExpiredPriorRows(s, "clear", clear(s)))
   ensures (inv(s) ==> canClear(s) ==> stepGroupedAddReplacesEveryPriorGroupRow(s, "clear", clear(s)))
-  ensures (inv(s) ==> canClear(s) ==> stepProjectionEvaluationKeepsRows(s, "clear", clear(s)))
   ensures (inv(s) ==> canClear(s) ==> stepReadMarksPreserveCoordinates(s, "clear", clear(s)))
+  ensures (inv(s) ==> canClear(s) ==> stepProjectionEvaluationKeepsRows(s, "clear", clear(s)))
 {
   if inv(s) && canClear(s) {
     var after := clear(s);
@@ -527,8 +527,8 @@ lemma startNext_ensures(s: Inbox)
   ensures (inv(s) ==> canStartNext(s) ==> alwaysFreshNotificationIdentity(startNext(s)))
   ensures (inv(s) ==> canStartNext(s) ==> stepAddPrunesExpiredPriorRows(s, "startNext", startNext(s)))
   ensures (inv(s) ==> canStartNext(s) ==> stepGroupedAddReplacesEveryPriorGroupRow(s, "startNext", startNext(s)))
-  ensures (inv(s) ==> canStartNext(s) ==> stepProjectionEvaluationKeepsRows(s, "startNext", startNext(s)))
   ensures (inv(s) ==> canStartNext(s) ==> stepReadMarksPreserveCoordinates(s, "startNext", startNext(s)))
+  ensures (inv(s) ==> canStartNext(s) ==> stepProjectionEvaluationKeepsRows(s, "startNext", startNext(s)))
 {
   if inv(s) && canStartNext(s) {
     NotificationRowsAfterStart(s);
@@ -550,8 +550,8 @@ lemma checkGroupedProjection_ensures(s: Inbox, decision: ProjectionDecision)
   ensures (inv(s) ==> canCheckGroupedProjection(s, decision) ==> alwaysFreshNotificationIdentity(checkGroupedProjection(s, decision)))
   ensures (inv(s) ==> canCheckGroupedProjection(s, decision) ==> stepAddPrunesExpiredPriorRows(s, "checkGroupedProjection", checkGroupedProjection(s, decision)))
   ensures (inv(s) ==> canCheckGroupedProjection(s, decision) ==> stepGroupedAddReplacesEveryPriorGroupRow(s, "checkGroupedProjection", checkGroupedProjection(s, decision)))
-  ensures (inv(s) ==> canCheckGroupedProjection(s, decision) ==> stepProjectionEvaluationKeepsRows(s, "checkGroupedProjection", checkGroupedProjection(s, decision)))
   ensures (inv(s) ==> canCheckGroupedProjection(s, decision) ==> stepReadMarksPreserveCoordinates(s, "checkGroupedProjection", checkGroupedProjection(s, decision)))
+  ensures (inv(s) ==> canCheckGroupedProjection(s, decision) ==> stepProjectionEvaluationKeepsRows(s, "checkGroupedProjection", checkGroupedProjection(s, decision)))
 {
   if inv(s) && canCheckGroupedProjection(s, decision) {
     var after := checkGroupedProjection(s, decision);
@@ -576,8 +576,8 @@ lemma rejectQueuedUnreadable_ensures(s: Inbox)
   ensures (inv(s) ==> canRejectQueuedUnreadable(s) ==> alwaysFreshNotificationIdentity(rejectQueuedUnreadable(s)))
   ensures (inv(s) ==> canRejectQueuedUnreadable(s) ==> stepAddPrunesExpiredPriorRows(s, "rejectQueuedUnreadable", rejectQueuedUnreadable(s)))
   ensures (inv(s) ==> canRejectQueuedUnreadable(s) ==> stepGroupedAddReplacesEveryPriorGroupRow(s, "rejectQueuedUnreadable", rejectQueuedUnreadable(s)))
-  ensures (inv(s) ==> canRejectQueuedUnreadable(s) ==> stepProjectionEvaluationKeepsRows(s, "rejectQueuedUnreadable", rejectQueuedUnreadable(s)))
   ensures (inv(s) ==> canRejectQueuedUnreadable(s) ==> stepReadMarksPreserveCoordinates(s, "rejectQueuedUnreadable", rejectQueuedUnreadable(s)))
+  ensures (inv(s) ==> canRejectQueuedUnreadable(s) ==> stepProjectionEvaluationKeepsRows(s, "rejectQueuedUnreadable", rejectQueuedUnreadable(s)))
 {
   if inv(s) && canRejectQueuedUnreadable(s) {
     NotificationFreshFacts(s);

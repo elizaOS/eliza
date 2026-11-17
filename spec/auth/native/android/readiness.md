@@ -145,8 +145,11 @@ pure def sometimesWatchMeasuredVerifiedLink(c: ReadinessCache): bool = c.watchPr
 
 The plugin announces `signInReadinessChanged` when a measurement changes an
 earlier answer; the first answer and an unchanged one are not announced.
+Each measurement announces at most once, so a probe still running has not
+announced yet.
 
 ```quint
 pure def alwaysAnnouncedOnlyChanges(c: ReadinessCache): bool = c.announcements == c.changes and c.announcements <= c.probes
+pure def alwaysRunningProbeNotYetAnnounced(c: ReadinessCache): bool = c.announcements + (if (c.probing) 1 else 0) <= c.probes
 pure def sometimesChangeAnnounced(c: ReadinessCache): bool = c.announcements > 0
 ```

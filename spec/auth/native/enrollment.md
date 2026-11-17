@@ -79,6 +79,16 @@ pure def sometimesEnrollmentAuthenticated(e: Enrollment): bool = e.reply == Enro
 pure def sometimesPendingAckCanResume(e: Enrollment): bool = e.phase == EnrollmentIdle and e.journal == PendingEnrollment and e.reply == EnrollmentOffline
 ```
 
+### A session check starts with an empty journal
+
+An attempt checks its session only while no pending proof or revocation
+marker is journaled, so saving the pending proof never overwrites a
+revocation marker.
+
+```quint
+pure def alwaysSessionCheckHasEmptyJournal(e: Enrollment): bool = e.phase == CheckingSession implies e.journal == EmptyJournal
+```
+
 ### Cancel retires the pending attempt and logout retires the connected key
 
 Cancellation invalidates the enrollment epoch and waits for in-flight
