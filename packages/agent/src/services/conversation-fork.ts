@@ -56,6 +56,7 @@ export async function conversationForkSnapshot(
     // Historical evidence stays historical. A copied request cannot recover or
     // dispatch a source turn through the durable idempotency mechanism.
     delete content.chatIdempotency;
+    delete content.replyRecoveryAvailable;
     if (content.inReplyTo && ids.has(content.inReplyTo))
       content.inReplyTo = ids.get(content.inReplyTo);
     copies.push({

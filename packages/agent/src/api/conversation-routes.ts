@@ -4582,13 +4582,19 @@ async function forkConversation(
           messageId?: string;
           requestId?: string;
           fingerprint?: string;
+          expectedTextSha256?: string;
         }
       | undefined;
+    const expectedTextSha256 = crypto
+      .createHash("sha256")
+      .update(expectedText)
+      .digest("hex");
     if (
       prior &&
       (prior.sourceId !== source.id ||
         prior.messageId !== messageId ||
-        prior.requestId !== requestId)
+        prior.requestId !== requestId ||
+        prior.expectedTextSha256 !== expectedTextSha256)
     )
       throw Error("Branch request changed");
     if (previous && previous.metadata?.conversationForkPending === false) {
@@ -4616,6 +4622,7 @@ async function forkConversation(
       messageId,
       requestId,
       fingerprint: snapshot.fingerprint,
+      expectedTextSha256,
     };
     if (previous && !isDeepStrictEqual(prior, marker))
       throw Error("The original conversation changed. Start a new edit.");

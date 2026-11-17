@@ -304,6 +304,23 @@ it("forks before an edited user message and preserves the original after restart
           )?.id,
       ),
     ).toBe(true);
+    const concurrent = await Promise.all([
+      call(state, "POST", `/api/conversations/${source.id}/fork`, request),
+      call(state, "POST", `/api/conversations/${source.id}/fork`, request),
+    ]);
+    expect(concurrent.map((r) => r.status)).toEqual([200, 200]);
+    expect(
+      concurrent.map(
+        (r) => (r.payload as { conversation: { id: string } }).conversation.id,
+      ),
+    ).toEqual([fork.id, fork.id]);
+    const altered = await call(
+      state,
+      "POST",
+      `/api/conversations/${source.id}/fork`,
+      { ...request, expectedText: "different" },
+    );
+    expect(altered.status).toBe(409);
     const again = await call(
       state,
       "POST",
