@@ -1808,6 +1808,26 @@ describe("shared phone and reminder-read parity", () => {
       { kind: "voicemail-delete", status: "deleted" },
       "Delete voicemail",
     ],
+    [
+      { type: "contact_show", query: "Ada" },
+      "contacts.show.v1",
+      { kind: "contact-show", status: "shown" },
+      "Show contact",
+    ],
+    [
+      { type: "contact_read_selected" },
+      "contacts.read.v1",
+      {
+        kind: "contact-read",
+        status: "read",
+        contact: {
+          displayName: "Ada Lovelace",
+          phoneNumbers: ["(555) 555-0123"],
+          emailAddresses: [],
+        },
+      },
+      "Share open contact",
+    ],
   ] as const;
   it.each(telephonyCases)(
     "negotiates %o and journals/replays its exact result without acting twice",
@@ -1864,6 +1884,42 @@ describe("shared phone and reminder-read parity", () => {
       expect(effects).toBe(1);
     },
   );
+  it("admits a contact update that adds or removes values only with contacts.write.v2", async () => {
+    const { request } = fixtureServer({
+      type: "contact_update",
+      query: "Ada",
+      add: { emailAddresses: ["ada@work.example"] },
+      remove: { phoneNumbers: ["+15555550123"] },
+    });
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const execute: DeviceExecutor = async () => {
+      effects++;
+      return {
+        status: "succeeded",
+        summary: "Done",
+        telephonyResult: { kind: "contact-write", status: "saved" },
+      };
+    };
+    await expect(
+      make(request, journal, execute, ["contacts.write.v1"]).pending(
+        home,
+        signal(),
+      ),
+    ).rejects.toThrow(/negotiated/);
+    const actions = make(request, journal, execute, [
+      "contacts.write.v1",
+      "contacts.write.v2",
+    ]);
+    const [card] = await actions.pending(home, signal());
+    expect(card.description).toBe(
+      "Contact: Ada\nAdd: ada@work.example\nRemove: +15555550123\n\nAdds or removes only these values after you confirm. The contact's other details stay. Nothing else is shared with the agent.",
+    );
+    expect((await actions.approve("proposal", home, signal())).status).toBe(
+      "succeeded",
+    );
+    expect(effects).toBe(1);
+  });
   it("refuses a telephony result that contradicts the reviewed operation or its status", async () => {
     for (const [operation, capability, result] of [
       // A call can never report more than a started call.
@@ -2634,6 +2690,7 @@ describe("opt-in current telephony request policy", () => {
     ["sms_reply_selected", "sms.compose.v1", "messages"],
     ["voicemail_read_selected", "voicemail.read.v1", "phone"],
     ["voicemail_delete_selected", "voicemail.delete.v1", "phone"],
+    ["contact_read_selected", "contacts.read.v1", "contacts"],
   ] as const) {
     it(`keeps ${type} bound to the first reviewed selection and screen revision`, async () => {
       const f = fixtureServer({

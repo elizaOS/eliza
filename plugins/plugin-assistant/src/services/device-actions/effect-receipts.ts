@@ -187,7 +187,9 @@ export function deviceActionEffectReceipts(
               outcome: "noop",
               reason: noMatch
                 ? "The reviewed name matched no local record; no resource was changed."
-                : "Retrieved the immutable historical selected-read snapshot; no resource was changed or reread.",
+                : operation.type === "contact_show"
+                  ? "Changed only what Contacts shows; no contact was changed or shared."
+                  : "Retrieved the immutable historical selected-read snapshot; no resource was changed or reread.",
             }
           : {
               ...evidence,
@@ -289,6 +291,7 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "read_selected_reminders":
     case "messages_read_selected":
     case "voicemail_read_selected":
+    case "contact_read_selected":
       return true;
     case "calendar_named":
       return operation.action === "read";
@@ -297,6 +300,7 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "photos_open":
     case "files_filter":
     case "files_open":
+    case "contact_show":
       return true;
     // A data change and an outward share, each opened as an owner review.
     case "photos_album_create":

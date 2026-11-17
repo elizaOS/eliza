@@ -241,6 +241,7 @@ export const ORIGINAL_DEVICE_READ_TYPES = [
   "maps_read_selected",
   "messages_read_selected",
   "voicemail_read_selected",
+  "contact_read_selected",
 ] as const;
 export function isOriginalDeviceReadOperationType(type: string): boolean {
   return (ORIGINAL_DEVICE_READ_TYPES as readonly string[]).includes(type);

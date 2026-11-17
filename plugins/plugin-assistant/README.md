@@ -209,6 +209,24 @@ number can be texted from any view. `draft: true` puts the text into that
 conversation's text field and sends nothing. A phone without telephony
 capabilities is told to say that calls and texts are not available.
 
+## Contacts from chat
+
+`contacts.write.v1` adds `contact_create`, `contact_update` and
+`contact_delete`. The phone finds the contact, shows the owner the change, and
+writes only after approval. The agent receives the outcome only.
+
+A phone that also negotiates `contacts.write.v2` receives `contact_update` with
+`add` and `remove`. Each holds numbers or email addresses. The phone removes
+and adds only those values and keeps the others. Without it, `set` replaces a
+field whole, and the model is told to ask before it replaces.
+
+`contacts.show.v1` adds `contact_show {query}`. The phone opens Contacts with
+the matches. The agent learns only `shown` or `not-found`.
+
+`contacts.read.v1` adds `contact_read_selected`. The owner approves sharing
+the one contact open in Contacts: its name, numbers and email addresses. The
+agent never searches or lists the address book.
+
 ## Requested Camera capture
 
 The `camera.capture-photo.v1` device capability adds `camera_capture_photo`.

@@ -1269,6 +1269,8 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         failed: Record<string, unknown>;
         refused: Array<Record<string, unknown>>;
         read?: boolean;
+        /** Changes only what a view shows: no effect receipt and no read result. */
+        view?: boolean;
       }> = [
         {
           capability: "phone.call.v1",
@@ -1350,6 +1352,39 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           ],
         },
         {
+          capability: "contacts.show.v1",
+          operation: { type: "contact_show", query: "Ada" },
+          invalid: [
+            { type: "contact_show", query: "Ada", limit: 5 },
+            { type: "contact_show" },
+          ],
+          applied: { kind: "contact-show", status: "shown" },
+          failed: { kind: "contact-show", status: "not-found" },
+          refused: [
+            { kind: "contact-show", status: "not-found" },
+            { kind: "contact-show", status: "shown", count: 2 },
+            { kind: "contact-show", status: "shown", contact },
+          ],
+          view: true,
+        },
+        {
+          capability: "contacts.read.v1",
+          operation: { type: "contact_read_selected" },
+          invalid: [{ type: "contact_read_selected", query: "Ada" }],
+          applied: { kind: "contact-read", status: "read", contact },
+          failed: { kind: "contact-read", status: "none-selected" },
+          refused: [
+            { kind: "contact-read", status: "none-selected" },
+            { kind: "contact-read", status: "read", contacts: [contact] },
+            {
+              kind: "contact-read",
+              status: "read",
+              contact: { ...contact, id: "7" },
+            },
+          ],
+          read: true,
+        },
+        {
           capability: "messages.read.v1",
           operation: { type: "messages_read_selected" },
           invalid: [{ type: "messages_read_selected", threadId: "4" }],
@@ -1396,6 +1431,33 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           ],
         },
       ];
+      // add and remove are a negotiated extension: never sent to a phone without it.
+      const addEmail = {
+        type: "contact_update",
+        query: "Ada",
+        add: { emailAddresses: ["ada@work.example"] },
+      };
+      await expect(
+        service.propose(
+          { ...credentials, capabilities: ["contacts.write.v1"] },
+          addEmail,
+          "contact-add-no-v2",
+          "fixture",
+        ),
+      ).rejects.toThrow("capability");
+      expect(
+        (
+          await service.propose(
+            {
+              ...credentials,
+              capabilities: ["contacts.write.v1", "contacts.write.v2"],
+            },
+            addEmail,
+            "contact-add",
+            "fixture",
+          )
+        ).payload,
+      ).toMatchObject({ operation: addEmail });
       const every = [...new Set(cases.map((item) => item.capability))];
       for (const item of cases) {
         const { capability, operation } = item;
@@ -1530,8 +1592,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         const receipts = activeCommittedEffectReceipts(
           deviceActionEffectReceipts(replayed),
         );
-        expect(receipts).toHaveLength(item.read ? 0 : 1);
-        if (!item.read) expect(receipts[0].operation).toBe(`device.${kind}`);
+        expect(receipts).toHaveLength(item.read || item.view ? 0 : 1);
+        if (!item.read && !item.view)
+          expect(receipts[0].operation).toBe(`device.${kind}`);
         // The original-request reply reads the stored item, never the phone again.
         if (item.read)
           expect(deviceReadResult(replayed.request)).toEqual(item.applied);
@@ -2003,6 +2066,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "contacts.write.v1",
           "sms.compose.v1",
           "sms.compose.v2",
+          "contacts.write.v2",
+          "contacts.show.v1",
+          "contacts.read.v1",
           "camera.capture-lens.v1",
           "messages.read.v1",
           "voicemail.read.v1",

@@ -199,6 +199,9 @@ import {
   validateSmsResult,
 } from "./sms-contract.ts";
 import {
+  CONTACT_READ_CAPABILITY,
+  CONTACT_SHOW_CAPABILITY,
+  CONTACT_UPDATE_VALUES_CAPABILITY,
   CONTACT_WRITE_CAPABILITY,
   isSmsCompose,
   isSmsReply,
@@ -1187,6 +1190,9 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   PHOTOS_VIEW_CAPABILITY,
   CAMERA_LENS_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
+  CONTACT_UPDATE_VALUES_CAPABILITY,
+  CONTACT_SHOW_CAPABILITY,
+  CONTACT_READ_CAPABILITY,
 ];
 export class DeviceActionService {
   constructor(private readonly runtime: IAgentRuntime) {}

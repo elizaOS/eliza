@@ -196,6 +196,56 @@ it("offers a camera lens and an SMS target only to a phone that negotiated them"
   ).toBe(true);
 });
 
+it("offers contact_update with add and remove only to a phone that negotiated contacts.write.v2", () => {
+  const branches = (capabilities: string[]) =>
+    deviceActionForCapabilities(proposeDeviceAction, capabilities)
+      .parameters!.find((p: any) => p.name === "operation")!
+      .schema.anyOf!.filter(
+        (b: any) => b.properties?.type?.enum?.[0] === "contact_update",
+      );
+  const base = ["contacts.write.v1"];
+  const next = [...base, "contacts.write.v2"];
+  expect(branches(base)).toHaveLength(1);
+  expect(branches(base)[0].properties).not.toHaveProperty("add");
+  expect(branches(base)[0].required).toContain("set");
+  expect(branches(next)).toHaveLength(1);
+  expect(branches(next)[0].properties).toHaveProperty("add");
+  expect(branches(next)[0].properties).toHaveProperty("remove");
+  expect(branches(next)[0].required).toEqual(["type", "query"]);
+  const newer = deviceActionForCapabilities(
+    proposeDeviceAction,
+    next,
+  ).description;
+  expect(newer).toContain("Use add when the owner asks to add a number");
+  expect(newer).not.toContain("This phone cannot add one number");
+  const payload = (operation: unknown) =>
+    validateDevicePayload({
+      action: "device_action",
+      version: 1,
+      installationId: "device",
+      enrollmentId: "enrollment",
+      operation,
+    }).operation;
+  const addEmail = {
+    type: "contact_update",
+    query: "Sam",
+    add: { emailAddresses: ["sam@example.com"] },
+  };
+  expect(payload(addEmail)).toEqual(addEmail);
+  expect(deviceOperationFormSupported(payload(addEmail), base)).toBe(false);
+  expect(deviceOperationFormSupported(payload(addEmail), next)).toBe(true);
+  expect(
+    deviceOperationFormSupported(
+      payload({
+        type: "contact_update",
+        query: "Sam",
+        set: { phoneNumbers: [] },
+      }),
+      base,
+    ),
+  ).toBe(true);
+});
+
 it("accepts the browser camera's 25-digit saved identity without numeric coercion", () => {
   const mediaId = "1792274767123" + "123456789012";
   const result = {
@@ -248,6 +298,8 @@ it("offers each telephony action only with its own capability and states its lim
   const telephony = {
     "phone.call.v1": ["phone_call"],
     "contacts.write.v1": ["contact_create", "contact_update", "contact_delete"],
+    "contacts.show.v1": ["contact_show"],
+    "contacts.read.v1": ["contact_read_selected"],
     "sms.compose.v1": ["sms_compose", "sms_reply_selected"],
     "messages.read.v1": ["messages_read_selected"],
     "voicemail.read.v1": ["voicemail_read_selected"],
@@ -296,11 +348,17 @@ it("offers each telephony action only with its own capability and states its lim
     "never a sent message",
     "return only what the owner has open in front",
     "never use them to enumerate",
+    "you receive only shown or not-found, never a name, number or count",
+    "returns only the one contact the owner has open in Contacts",
+    "This phone cannot add one number or email address to a contact",
   ])
     expect(text).toContain(required);
+  expect(text).not.toContain("contacts.write.v2");
   for (const operation of [
     { type: "phone_call", target: { kind: "contact", query: "Ada" } },
     { type: "contact_delete", query: "Ada" },
+    { type: "contact_show", query: "Ada" },
+    { type: "contact_read_selected" },
     { type: "sms_compose", query: "Ada", body: "Late." },
     { type: "sms_reply_selected", body: "Late." },
     { type: "messages_read_selected" },
@@ -326,6 +384,9 @@ it("offers each telephony action only with its own capability and states its lim
     { type: "sms_reply_selected", body: "Late.", threadId: "4" },
     { type: "sms_reply_selected", body: " " },
     { type: "contact_update", query: "Ada", set: {} },
+    { type: "contact_update", query: "Ada", add: { phoneNumbers: [] } },
+    { type: "contact_show", query: "Ada", limit: 5 },
+    { type: "contact_read_selected", query: "Ada" },
   ])
     expect(() =>
       validateDevicePayload({

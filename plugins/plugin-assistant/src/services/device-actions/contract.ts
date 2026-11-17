@@ -75,11 +75,11 @@ import {
   validateSmsSend,
 } from "./sms-contract.ts";
 import {
-  isSmsCompose,
+  isTelephonyAction,
   isTelephonyActionType,
-  smsComposeCapabilityAvailable,
   type TelephonyActionOperation,
   telephonyActionCapabilityAvailable,
+  telephonyActionFormAvailable,
   validateTelephonyAction,
 } from "./telephony-actions-contract.ts";
 import {
@@ -214,8 +214,8 @@ export function deviceOperationSupportedByCapabilities(
 }
 /**
  * An optional form of an operation needs its own negotiated capability: a
- * requested camera lens, or an SMS `target`. It is never sent to a phone that
- * did not advertise it.
+ * requested camera lens, an SMS `target`, or a contact update with `add` or
+ * `remove`. It is never sent to a phone that did not advertise it.
  */
 export function deviceOperationFormSupported(
   operation: DeviceOperation,
@@ -223,8 +223,8 @@ export function deviceOperationFormSupported(
 ): boolean {
   if (isCameraCapture(operation))
     return cameraCaptureCapabilityAvailable(operation, capabilities);
-  if (isSmsCompose(operation))
-    return smsComposeCapabilityAvailable(operation, capabilities);
+  if (isTelephonyAction(operation))
+    return telephonyActionFormAvailable(operation, capabilities);
   return true;
 }
 export type DeviceActionPayload = {
@@ -396,7 +396,15 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         return validateTelephonyAction(p);
       } catch {
         throw new DeviceActionError(
-          "Invalid contact operation. contact_create needs contact {displayName, phoneNumbers, emailAddresses}; contact_update needs query and a non-empty set of those fields; contact_delete needs query. Numbers are digits with an optional leading +.",
+          "Invalid contact operation. contact_create needs contact {displayName, phoneNumbers, emailAddresses}; contact_update needs query and at least one of set (a non-empty object of those fields), add and remove (each a non-empty object of phoneNumbers and emailAddresses lists with at least one value; a field in set cannot also be in add or remove); contact_delete needs query. Numbers are digits with an optional leading +.",
+        );
+      }
+    case "contact_show":
+      try {
+        return validateTelephonyAction(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid contact search operation. Use only query (the contact name).",
         );
       }
     case "sms_compose":
@@ -417,6 +425,7 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       }
     case "messages_read_selected":
     case "voicemail_read_selected":
+    case "contact_read_selected":
     case "voicemail_delete_selected":
       try {
         return validateTelephonyAction(p);

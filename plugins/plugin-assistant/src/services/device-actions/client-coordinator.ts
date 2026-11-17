@@ -173,15 +173,16 @@ import {
   validateReminderCreateResult,
 } from "./reminder-create-contract.ts";
 import {
+  type ContactValues,
   isSmsCompose,
   isTelephonyAction,
   isTelephonyRead,
   selectedTelephonyView,
-  smsComposeCapabilityAvailable,
   smsComposeTarget,
   type TelephonyActionOperation,
   type TelephonyActionResult,
   telephonyActionCapabilityAvailable,
+  telephonyActionFormAvailable,
   telephonyActionReceiptOutcome,
   validateTelephonyAction,
   validateTelephonyActionResult,
@@ -841,8 +842,9 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
     throw new ContextNotice(
       "Unlock the phone and keep it open to review this number.",
     );
-  // Calls, contact changes, contact SMS, voicemail deletion and reads of the
-  // open thread or voicemail never run on a locked or hidden phone.
+  // Calls, contact changes and searches, contact SMS, voicemail deletion and
+  // reads of the open thread, voicemail or contact never run on a locked or
+  // hidden phone.
   if (
     isTelephonyAction(operation) &&
     (context.sensitive || ports.foregroundHidden())
@@ -1364,8 +1366,7 @@ export class DeviceActionCoordinator<
         op.type,
         this.credential.capabilities,
       ) ||
-        (isSmsCompose(op) &&
-          !smsComposeCapabilityAvailable(op, this.credential.capabilities)))
+        !telephonyActionFormAvailable(op, this.credential.capabilities))
     )
       throw Error("This telephony action was not negotiated with this phone");
     if (isSmsSend(op) && !this.capability(SMS_SEND_CAPABILITY))
@@ -1736,7 +1737,7 @@ export class DeviceActionCoordinator<
           items.push({
             proposalId: proposal.id,
             proposal: null,
-            notice: `${card.title}: Ask again from the open ${selectedView === "messages" ? "conversation" : "voicemail"}.`,
+            notice: `${card.title}: Ask again from the open ${selectedView === "messages" ? "conversation" : selectedView === "contacts" ? "contact" : "voicemail"}.`,
           });
           continue;
         }
@@ -3668,15 +3669,42 @@ function describeTelephonyAction(operation: TelephonyActionOperation): {
         title: "Add contact",
         description: `${fields(operation.contact)}\n\nSaves this contact on your phone after you confirm.`,
       };
-    case "contact_update":
+    case "contact_update": {
+      const values = (label: string, change: ContactValues = {}) =>
+        [...(change.phoneNumbers ?? []), ...(change.emailAddresses ?? [])].map(
+          (value) => `${label}: ${value}`,
+        );
+      const lines = [
+        ...(operation.set ? [fields(operation.set)] : []),
+        ...values("Add", operation.add),
+        ...values("Remove", operation.remove),
+      ].join("\n");
       return {
         title: "Change contact",
-        description: `Contact: ${operation.query}\n${fields(operation.set)}\n\nReplaces these details after you confirm. Nothing else is shared with the agent.`,
+        description: `Contact: ${operation.query}\n${lines}\n\n${
+          operation.add || operation.remove
+            ? operation.set
+              ? "Replaces the details listed whole and adds or removes only the values marked, after you confirm."
+              : "Adds or removes only these values after you confirm. The contact's other details stay."
+            : "Replaces these details after you confirm."
+        } Nothing else is shared with the agent.`,
       };
+    }
     case "contact_delete":
       return {
         title: "Delete contact",
         description: `Contact: ${operation.query}\n\nDeletes this contact from your phone after you confirm.`,
+      };
+    case "contact_show":
+      return {
+        title: "Show contact",
+        description: `Search: ${operation.query}\n\nOpens Contacts on your phone with the matches. The agent learns only whether one was found.`,
+      };
+    case "contact_read_selected":
+      return {
+        title: "Share open contact",
+        description:
+          "Share the name, numbers and email addresses of the open contact with the agent. Other contacts stay private.",
       };
     case "sms_compose": {
       const target = smsComposeTarget(operation);

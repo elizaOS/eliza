@@ -62,6 +62,7 @@ import { validateNotesResult } from "./notes-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { validateReminderResult } from "./reminder-contract.ts";
 import {
+  validateContactReadResult,
   validateMessagesReadResult,
   validateVoicemailReadResult,
 } from "./telephony-actions-contract.ts";
@@ -314,11 +315,14 @@ export function deviceReadResult(request: ApprovalRequest): JsonValue {
                       ? validateMessagesReadResult(receipt.result)
                       : op.type === "voicemail_read_selected"
                         ? validateVoicemailReadResult(receipt.result)
-                        : fail();
+                        : op.type === "contact_read_selected"
+                          ? validateContactReadResult(receipt.result)
+                          : fail();
   // An applied open-item read always carries the item; an empty selection is a failed receipt.
   if (
     (op.type === "messages_read_selected" ||
-      op.type === "voicemail_read_selected") &&
+      op.type === "voicemail_read_selected" ||
+      op.type === "contact_read_selected") &&
     (result as { status?: unknown }).status !== "read"
   )
     fail();
@@ -674,7 +678,10 @@ export async function synthesizeDeviceReadReply(
             : validateDevicePayload(request.payload).operation.type ===
                 "voicemail_read_selected"
               ? "Voicemail"
-              : "Maps";
+              : validateDevicePayload(request.payload).operation.type ===
+                  "contact_read_selected"
+                ? "Contacts"
+                : "Maps";
   const context: ContextObject = {
     id: `${binding.origin.original.id}:approved-read`,
     metadata: {

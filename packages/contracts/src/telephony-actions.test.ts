@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  CONTACT_READ_CAPABILITY,
+  CONTACT_READ_FIELD_MAX,
+  CONTACT_SHOW_CAPABILITY,
+  CONTACT_UPDATE_VALUES_CAPABILITY,
   CONTACT_WRITE_CAPABILITY,
+  contactShowResultText,
+  contactWriteCapabilityAvailable,
   contactWriteReceiptOutcome,
   contactWriteResultText,
   isTelephonyAction,
@@ -23,6 +29,10 @@ import {
   telephonyActionCapability,
   VOICEMAIL_DELETE_CAPABILITY,
   VOICEMAIL_READ_CAPABILITY,
+  validateContactRead,
+  validateContactReadResult,
+  validateContactShow,
+  validateContactShowResult,
   validateContactWrite,
   validateContactWriteResult,
   validateMessagesRead,
@@ -210,12 +220,141 @@ test("a contact change is exact and closed", () => {
     { type: "contact_update", query: "", set: { displayName: "Ada" } },
     { type: "contact_update", set: { displayName: "Ada" } },
     { type: "contact_update", query: "Ada", set: [] },
+    { type: "contact_update", query: "Ada" },
+    { type: "contact_update", query: "Ada", add: {} },
+    { type: "contact_update", query: "Ada", add: { phoneNumbers: [] } },
+    { type: "contact_update", query: "Ada", add: { displayName: "Ada King" } },
+    { type: "contact_update", query: "Ada", remove: { phoneNumbers: ["x"] } },
+    {
+      type: "contact_update",
+      query: "Ada",
+      set: { emailAddresses: [] },
+      add: { emailAddresses: ["a@b.co"] },
+    },
+    {
+      type: "contact_update",
+      query: "Ada",
+      add: { phoneNumbers: ["5551234"] },
+      remove: { phoneNumbers: ["5551234"] },
+    },
     { type: "contact_delete", query: "Ada", contactId: "7" },
     { type: "contact_delete", query: " Ada " },
     { type: "contact_delete" },
     { type: "contact_merge", query: "Ada" },
   ])
     assert.throws(() => validateContactWrite(bad), REJECTED);
+});
+
+test("a contact update adds or removes single values only with contacts.write.v2", () => {
+  const addEmail = {
+    type: "contact_update",
+    query: "Ada",
+    add: { emailAddresses: ["ada@work.example"] },
+  };
+  const mixed = {
+    type: "contact_update",
+    query: "Ada",
+    set: { displayName: "Ada King" },
+    add: { phoneNumbers: ["+15555550199"] },
+    remove: { phoneNumbers: ["5551234"], emailAddresses: ["old@b.co"] },
+  };
+  assert.deepEqual(validateContactWrite(addEmail), addEmail);
+  assert.deepEqual(validateContactWrite(mixed), mixed);
+  const v1 = [CONTACT_WRITE_CAPABILITY];
+  const v2 = [...v1, CONTACT_UPDATE_VALUES_CAPABILITY];
+  for (const operation of [addEmail, mixed].map(validateContactWrite)) {
+    assert.equal(contactWriteCapabilityAvailable(operation, v1), false);
+    assert.equal(contactWriteCapabilityAvailable(operation, v2), true);
+    assert.equal(
+      contactWriteCapabilityAvailable(operation, [
+        CONTACT_UPDATE_VALUES_CAPABILITY,
+      ]),
+      false,
+    );
+  }
+  // The forms an older phone knows need nothing new.
+  for (const operation of [create, update, remove])
+    assert.equal(contactWriteCapabilityAvailable(operation, v1), true);
+  assert.equal(contactWriteCapabilityAvailable(update, undefined), false);
+});
+
+test("a contact search returns only shown or not-found", () => {
+  const show = { type: "contact_show", query: "Sam" };
+  assert.deepEqual(validateContactShow(show), show);
+  for (const bad of [
+    { type: "contact_show" },
+    { type: "contact_show", query: " Sam " },
+    { type: "contact_show", query: "Sam", limit: 5 },
+    { type: "contact_read_selected" },
+  ])
+    assert.throws(() => validateContactShow(bad), REJECTED);
+  for (const status of ["shown", "not-found", "unavailable"] as const) {
+    const result = validateContactShowResult({ kind: "contact-show", status });
+    assert.deepEqual(result, { kind: "contact-show", status });
+    assert.ok(contactShowResultText(result));
+  }
+  assert.match(
+    contactShowResultText({ kind: "contact-show", status: "shown" }),
+    /No contact detail was shared/,
+  );
+  for (const bad of [
+    { kind: "contact-show", status: "read" },
+    { kind: "contact-show", status: "shown", count: 2 },
+    { kind: "contact-show", status: "shown", displayName: "Sam Lee" },
+    { kind: "contact-write", status: "shown" },
+  ])
+    assert.throws(() => validateContactShowResult(bad), REJECTED);
+});
+
+test("an open-contact read is one bounded contact and nothing else", () => {
+  assert.deepEqual(validateContactRead({ type: "contact_read_selected" }), {
+    type: "contact_read_selected",
+  });
+  assert.throws(
+    () => validateContactRead({ type: "contact_read_selected", query: "Sam" }),
+    REJECTED,
+  );
+  const read = {
+    kind: "contact-read",
+    status: "read",
+    contact: {
+      displayName: "Sam Lee",
+      phoneNumbers: ["(415) 555-0100", "+15555550123"],
+      emailAddresses: ["sam@example.com"],
+    },
+  };
+  assert.deepEqual(validateContactReadResult(read), read);
+  const unnamed = {
+    ...read,
+    contact: { displayName: null, phoneNumbers: [], emailAddresses: [] },
+  };
+  assert.deepEqual(validateContactReadResult(unnamed), unnamed);
+  for (const status of ["none-selected", "unavailable"])
+    assert.deepEqual(
+      validateContactReadResult({ kind: "contact-read", status }),
+      { kind: "contact-read", status },
+    );
+  const withContact = (contact: object) => ({
+    ...read,
+    contact: { ...read.contact, ...contact },
+  });
+  for (const bad of [
+    { kind: "contact-read", status: "read" },
+    { kind: "contact-read", status: "none-selected", contact: read.contact },
+    { ...read, contacts: [read.contact] },
+    withContact({ id: "7" }),
+    withContact({ displayName: "" }),
+    withContact({ phoneNumbers: ["5551234\u0000"] }),
+    withContact({ phoneNumbers: ["5".repeat(65)] }),
+    withContact({
+      phoneNumbers: Array.from(
+        { length: CONTACT_READ_FIELD_MAX + 1 },
+        (_, i) => `555${i}`,
+      ),
+    }),
+    withContact({ emailAddresses: [""] }),
+  ])
+    assert.throws(() => validateContactReadResult(bad), REJECTED);
 });
 
 test("a contact result fits the change that was reviewed", () => {
@@ -613,6 +752,8 @@ test("each operation type has one capability and one validator", () => {
       ["contact_create", CONTACT_WRITE_CAPABILITY],
       ["contact_update", CONTACT_WRITE_CAPABILITY],
       ["contact_delete", CONTACT_WRITE_CAPABILITY],
+      ["contact_show", CONTACT_SHOW_CAPABILITY],
+      ["contact_read_selected", CONTACT_READ_CAPABILITY],
       ["sms_compose", SMS_COMPOSE_CAPABILITY],
       ["sms_reply_selected", SMS_COMPOSE_CAPABILITY],
       ["messages_read_selected", MESSAGES_READ_CAPABILITY],
@@ -625,6 +766,8 @@ test("each operation type has one capability and one validator", () => {
     create,
     update,
     remove,
+    { type: "contact_show", query: "Ada" },
+    { type: "contact_read_selected" },
     { type: "sms_compose", query: "Ada", body: "hi" },
     { type: "sms_reply_selected", body: "hi" },
     { type: "messages_read_selected" },
@@ -674,5 +817,34 @@ test("capabilities follow the native profile and its parts", () => {
       voicemail: false,
     }),
     [SMS_COMPOSE_CAPABILITY, MESSAGES_READ_CAPABILITY],
+  );
+  // A host opts in to each contact addition; adding values needs the write.
+  assert.deepEqual(
+    telephonyActionCapabilities({
+      ...all,
+      call: false,
+      sms: false,
+      voicemail: false,
+      contactValues: true,
+      contactsShow: true,
+      contactsRead: true,
+    }),
+    [
+      CONTACT_WRITE_CAPABILITY,
+      CONTACT_UPDATE_VALUES_CAPABILITY,
+      CONTACT_SHOW_CAPABILITY,
+      CONTACT_READ_CAPABILITY,
+    ],
+  );
+  assert.deepEqual(
+    telephonyActionCapabilities({
+      ...all,
+      call: false,
+      contactsWrite: false,
+      sms: false,
+      voicemail: false,
+      contactValues: true,
+    }),
+    [],
   );
 });
