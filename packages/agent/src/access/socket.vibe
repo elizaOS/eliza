@@ -1,0 +1,175 @@
+// spec/agent/access/transport.md, "Story: Answer each local request exactly once"
+module node {
+  import { Schema } from "effect"
+  import { once } from "node:events"
+  import { chmod, lstat } from "node:fs/promises"
+  import { createServer, type Socket } from "node:net"
+  import { dirname } from "node:path"
+  import { bodyLimitBytes, deadlineMs, frameLimitBytes, type RouteClass } from "../../gen/agent__access__transport.ts"
+  import type { LocalCall, LocalRouter } from "./routes.vibe"
+
+  const Headers = Schema.Record(Schema.String, Schema.String)
+  const Inbound = Schema.Struct({
+    id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+    method: Schema.Literals(["http_request", "http_request_stream"]),
+    payload: Schema.Struct({
+      path: Schema.String.check(Schema.isPattern(/^\/(?!\/)/)),
+      method: Schema.String,
+      headers: Headers,
+      body: Schema.optionalKey(Schema.String),
+      bodyBase64: Schema.optionalKey(Schema.String),
+    }).check(Schema.makeFilter((payload) => payload.body === undefined || payload.bodyBase64 === undefined)),
+  })
+  const decode = Schema.decodeUnknownOption(Schema.fromJsonString(Inbound), { onExcessProperty: "error" })
+
+  function parseFrame(frame: Uint8Array): { id: string; call: LocalCall } | undefined {
+    try {
+      const decoded = decode(new TextDecoder("utf-8", { fatal: true }).decode(frame))
+      if (decoded._tag !== "Some") return undefined
+      const { id, method, payload } = decoded.value
+      const authorization = Object.entries(payload.headers).filter(([key]) => key.toLowerCase() === "authorization")
+      if (authorization.length > 1) return undefined
+      const body = payload.body !== undefined ? Buffer.from(payload.body)
+        : payload.bodyBase64 !== undefined ? Buffer.from(payload.bodyBase64, "base64") : undefined
+      if (payload.bodyBase64 !== undefined && body?.toString("base64") !== payload.bodyBase64) return undefined
+      return {
+        id,
+        call: {
+          target: payload.path, method: payload.method, streamed: method === "http_request_stream",
+          authorization: authorization[0]?.[1], body,
+        },
+      }
+    } catch {
+      return undefined
+    }
+  }
+
+  function routeClass(target: string): RouteClass {
+    const path = target.split("?", 1)[0]
+    if (/^\/api\/conversations\/[^/]+\/messages(?:\/stream)?$/.test(path)) return "MessageRoute"
+    if (/^\/api\/(?:voice|local-speech)(?:\/|$)/.test(path)) return "SpeechRoute"
+    return "PlainRoute"
+  }
+
+  const responseFor = (status: number, error: string): Response => Response.json({ error }, { status })
+  const frameLine = (frame: object): string => JSON.stringify(frame) + "\n"
+
+  async function send(socket: Socket, signal: AbortSignal, frame: object): Promise<void> {
+    signal.throwIfAborted()
+    if (!socket.write(frameLine(frame))) await once(socket, "drain", { signal })
+  }
+
+  async function respond(socket: Socket, id: string, streamed: boolean, response: Response, signal: AbortSignal): Promise<void> {
+    const head = { id, status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers) }
+    if (!streamed) {
+      const body = await response.text()
+      await send(socket, signal, { id, ok: true, result: { ...head, body, bodyBase64: null, bodyEncoding: "utf8" } })
+      return
+    }
+    await send(socket, signal, { ...head, stream: "response" })
+    if (response.body !== null) {
+      const reader = response.body.getReader()
+      const cancel = () => { void reader.cancel().catch(() => undefined) }
+      signal.addEventListener("abort", cancel, { once: true })
+      try {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          await send(socket, signal, { id, stream: "chunk", dataBase64: Buffer.from(value).toString("base64") })
+        }
+      } finally {
+        signal.removeEventListener("abort", cancel)
+        await reader.cancel().catch(() => undefined)
+        reader.releaseLock()
+      }
+    }
+    await send(socket, signal, { id, stream: "complete" })
+  }
+
+  async function dispatch(socket: Socket, route: LocalRouter, id: string, call: LocalCall, peer: AbortSignal): Promise<void> {
+    const kind = routeClass(call.target)
+    const deadline = AbortSignal.timeout(deadlineMs(kind, call.streamed))
+    const signal = AbortSignal.any([peer, deadline])
+    if ((call.body?.byteLength ?? 0) > bodyLimitBytes(kind)) {
+      await respond(socket, id, call.streamed, responseFor(413, "too_large"), peer)
+      return
+    }
+    let response
+    try {
+      response = await route(call, signal)
+      signal.throwIfAborted()
+    } catch {
+      if (peer.aborted) return
+      response = deadline.aborted ? responseFor(504, "deadline") : responseFor(500, "request_failed")
+    }
+    try {
+      await respond(socket, id, call.streamed, response, deadline.aborted ? peer : signal)
+    } catch {
+      if (call.streamed && !peer.aborted) {
+        await send(socket, peer, { id, stream: "complete", error: deadline.aborted ? "deadline" : "stream_failed" })
+      }
+    }
+  }
+
+  function accept(socket: Socket, route: LocalRouter): void {
+    const controller = new AbortController()
+    socket.on("error", () => controller.abort())
+    socket.once("close", () => controller.abort())
+    socket.setTimeout(10_000, () => socket.destroy())
+    const chunks: Buffer[] = []
+    let size = 0
+    let received = false
+    socket.on("data", (bytes: Buffer) => {
+      if (received) { socket.destroy(); return }
+      const end = bytes.indexOf(10)
+      const data = end < 0 ? bytes : bytes.subarray(0, end)
+      size += data.length
+      if (size > frameLimitBytes) {
+        received = true
+        socket.end(frameLine({ ok: false, error: "unreadable" }))
+        return
+      }
+      chunks.push(data)
+      if (end < 0) return
+      received = true
+      if (end + 1 !== bytes.length) { socket.destroy(); return }
+      const frame = parseFrame(Buffer.concat(chunks, size))
+      if (frame === undefined) {
+        socket.end(frameLine({ ok: false, error: "unreadable" }))
+        return
+      }
+      socket.setTimeout(0)
+      void dispatch(socket, route, frame.id, frame.call, controller.signal)
+        .catch(() => socket.destroy())
+        .finally(() => socket.end())
+    })
+  }
+
+  export async function listenOnSocket(path: string, route: LocalRouter): Promise<() => Promise<void>> {
+    const directory = await lstat(dirname(path))
+    if (!directory.isDirectory() || directory.uid !== process.getuid?.() || (directory.mode & 0o077) !== 0) {
+      throw new Error("The agent socket directory must be owner-only")
+    }
+    const sockets = new Set<Socket>()
+    const server = createServer((socket) => {
+      sockets.add(socket)
+      socket.once("close", () => sockets.delete(socket))
+      accept(socket, route)
+    })
+    server.listen(path)
+    await once(server, "listening")
+    const close = () => {
+      for (const socket of sockets) socket.destroy()
+      return new Promise<void>((resolve, reject) => server.close((failure) => failure ? reject(failure) : resolve()))
+    }
+    try {
+      await chmod(path, 0o600)
+      return close
+    } catch (failure) {
+      await close()
+      throw failure
+    }
+  }
+}
+
+export { listenOnSocket } from node

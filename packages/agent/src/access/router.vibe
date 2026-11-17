@@ -1,0 +1,64 @@
+// spec/agent/access/auth.md, "Story: Admit only the supervising host"; spec/agent/access/transport.md, "Story: Answer each local request exactly once"
+module node {
+  import { Redacted } from "effect"
+  import { createHash, timingSafeEqual } from "node:crypto"
+  import { authStatus, entry } from "../../gen/agent__access__auth.ts"
+  import { defineRoutes, modelRoute, type Route, type LocalCall, type LocalRoute, type LocalRouter } from "./routes.vibe"
+
+  type Token = Redacted.Redacted<string>
+
+  interface RouterOptions {
+    readonly token: Token
+    readonly epoch: number
+    readonly instanceId: string
+    readonly routes: readonly LocalRoute[]
+  }
+
+  const json = (status: number, value: object): Response => Response.json(value, { status })
+  const digest = (text: string): Buffer => createHash("sha256").update(text).digest()
+
+  function location(target: string) {
+    const at = target.indexOf("?")
+    const segments = (at < 0 ? target : target.slice(0, at)).split("/").slice(1)
+    const query = new Map(new URLSearchParams(at < 0 ? "" : target.slice(at + 1).replaceAll("+", "%2B")))
+    return { segments, query }
+  }
+
+  export function createRouter({ token, epoch, instanceId, routes }: RouterOptions): LocalRouter {
+    const expected = digest(Redacted.value(token))
+    const health: LocalRoute = {
+      method: "GET", path: "/api/health",
+      handler: () => json(200, { ready: true, runtime: "ok", agentState: "running", epoch }),
+    }
+    const auth = { method: "GET", path: "/api/auth/status" } satisfies Route
+    const stripHandler = ({ handler: _handler, ...route }: LocalRoute) => route
+    const gate = defineRoutes([stripHandler(health), auth, ...routes.map(stripHandler)])
+    const bindings = new Map([health, ...routes].reverse().map((binding) => [JSON.stringify(modelRoute(binding)), binding]))
+    return async (request: LocalCall, signal: AbortSignal): Promise<Response> => {
+      const admitted = gate.admit(request)
+      if (admitted.tag === "RouteRefused") return json(404, { error: "not_found" })
+      if (admitted.tag === "TooLarge") return json(413, { error: "too_large" })
+      const proposed = request.authorization?.startsWith("Bearer ") ? request.authorization.slice(7) : ""
+      const caller = proposed && timingSafeEqual(expected, digest(proposed)) ? "Root" : "Anonymous"
+      const { segments, query } = location(request.target)
+      const path = "/" + segments.join("/")
+      if (request.method === auth.method && path === auth.path) return json(200, authStatus(caller, instanceId))
+      const binding = bindings.get(JSON.stringify(admitted.route))
+      if (!binding) return json(404, { error: "not_found" })
+      const origin = binding === health ? { tag: "Builtin" } as const : { tag: "FromPlugin", declared: "RootOnly" } as const
+      if (entry({ verb: admitted.route.method, path, origin }, caller) !== "Allowed") {
+        return json(401, { error: "unauthorized" })
+      }
+      const parameters = new Map<string, string>()
+      binding.path.split("/").slice(1).forEach((piece, index) => {
+        if (piece.startsWith("{")) parameters.set(piece.slice(1, -1), segments[index])
+      })
+      const body: unknown = request.body === undefined ? undefined : JSON.parse(new TextDecoder().decode(request.body))
+      const result = await binding.handler({ parameters, query, body, signal })
+      return result instanceof Response ? result : json(result.status, result.body)
+    }
+  }
+
+}
+
+export { createRouter } from node
