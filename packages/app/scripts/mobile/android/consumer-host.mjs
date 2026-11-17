@@ -4,7 +4,10 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseEmbeddedAgentData } from "../../../../../plugins/plugin-native-agent/native-host/embedded-agent.mjs";
+import {
+  parseEmbeddedAgentData,
+  readEmbeddedAgentFile,
+} from "../../../../../plugins/plugin-native-agent/native-host/embedded-agent.mjs";
 import { injectAndroidRuntimeBytePreservation } from "../../lib/android-runtime-packaging.ts";
 
 const templates = fileURLToPath(new URL("./consumer-host/", import.meta.url));
@@ -676,7 +679,7 @@ export function generateAndroidConsumerHost({
         Object.fromEntries(
           Object.entries(files).map(([key, file]) => [
             key,
-            JSON.parse(fs.readFileSync(file, "utf8")),
+            readEmbeddedAgentFile(file),
           ]),
         ),
       );
