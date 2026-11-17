@@ -450,7 +450,10 @@ effect function processBatchItem<T>(context: ProcessorItem<T>) {
   let lastError = new Error("unknown")
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try acquirePermit(state.semaphore)
-    const failed = try ensuring(attemptItem({ ...context, attempt, maxAttempts }), sync(() => state.semaphore.release()))
+    const failed = try ensuring(effect {
+      try foreign(async () => undefined)
+      return try attemptItem({ ...context, attempt, maxAttempts })
+    }, sync(() => state.semaphore.release()))
     if (!failed) return { item, success: true, retryCount } satisfies BatchItemOutcome<T>
     const error = failed.error
     lastError = error
@@ -493,6 +496,6 @@ export class BatchProcessor<T> {
   }
 
   async processBatch(items: T[]): Promise<BatchItemOutcome<T>[]> {
-    return runDetached(processBatchItems(this, items))
+    return Promise.all(items.map((item) => runDetached(processBatchItem({ processor: this, state: this.state, item }))))
   }
 }

@@ -2619,6 +2619,45 @@ it.live("Story: Execute due work within its owning agent, across scheduler stora
     [[[true, false, true, 0]], [[true, false, true, 1]]], 2, 0,
   ]
 
+  const nativeItems: Array<[string, boolean, string | undefined]> = []
+  let nativeOwner: BatchProcessor<string> | undefined
+  const nativeProcessor = try Effect.try(() => new BatchProcessor<string>({ maxParallel: 1, maxRetriesAfterFailure: 0, process: async function (this: unknown, item: string) {
+    nativeItems.push([item, this === nativeOwner, getTrajectoryContext()?.trajectoryStepId])
+  } }))
+  nativeOwner = nativeProcessor
+  const nativeBatch = (items: string[]) => host(async () => await runWithTrajectoryContext({ trajectoryId: "j07-native-array", trajectoryStepId: "j07-native-step" }, () => nativeProcessor.processBatch(items)))
+  const ordinaryArray = try nativeBatch(["ordinary"])
+  const sparseArray = try Effect.try(() => new Array<string>(1))
+  const sparseResult = try nativeBatch(sparseArray)
+  const indexedArray = ["indexed"]
+  try Effect.try(() => Object.defineProperty(indexedArray, Symbol.iterator, { value: function* () { yield "iterator-value" } }))
+  const indexedResult = try nativeBatch(indexedArray)
+  try Effect.try(() => assert.deepStrictEqual([ordinaryArray, sparseResult, indexedResult, nativeItems], [
+    [{ item: "ordinary", success: true, retryCount: 0 }],
+    [undefined],
+    [{ item: "indexed", success: true, retryCount: 0 }],
+    [["ordinary", true, "j07-native-step"], ["indexed", true, "j07-native-step"]],
+  ]))
+
+  const firstInput = { id: "first" }
+  const secondInput = { id: "second" }
+  const replacementInput = { id: "replacement" }
+  const orderedInputs = [firstInput, secondInput]
+  const nativeOrder: string[] = []
+  try Effect.try(() => {
+    for (const item of orderedInputs) Object.defineProperty(item, "_batchMaxAttempts", { get: () => { nativeOrder.push(`budget:${item.id}`); return 1 } })
+  })
+  const orderedProcessor = try Effect.try(() => new BatchProcessor({ maxParallel: 1, maxRetriesAfterFailure: 0, process: async (item: typeof firstInput) => {
+    nativeOrder.push(`process:${item.id}`)
+    if (item === firstInput) orderedInputs[1] = replacementInput
+  } }))
+  const orderedOutcomes = try host(() => orderedProcessor.processBatch(orderedInputs))
+  try Effect.try(() => assert.deepStrictEqual([nativeOrder, orderedOutcomes.map((row) => [row.item === firstInput, row.item === secondInput, row.success]), orderedInputs[1] === replacementInput], [
+    ["budget:first", "budget:first", "budget:second", "budget:second", "process:first", "process:second"],
+    [[true, false, true], [false, true, true]],
+    true,
+  ]))
+
   const scheduled = try host(async () => new SqliteAdapter(store, "s1"))
   const replacement = try host(async () => new SqliteAdapter(store, "s2"))
   try acquireRelease(sync(() => replacement), (adapter) => orDie(host(() => adapter.close())))
