@@ -3,7 +3,6 @@
  * Smithers workflows through the same elizaOS service used by the Workflows UI.
  */
 import { randomUUID } from 'node:crypto';
-import { WORKFLOW_SCOPE_REASONS, workflowScopeCategories } from '@elizaos/contracts/workflow-scope';
 import {
   type Action,
   type ActionResult,
@@ -105,20 +104,6 @@ function ownerTimeZone(runtime: IAgentRuntime, message: Memory): string {
     validTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone) ??
     'UTC'
   );
-}
-
-/**
- * Refuses a request no workflow can carry out, before any model call. The
- * `code` category is not refused here: a chat workflow is authored as code and
- * may carry a cron schedule, so those words describe supported requests.
- */
-function scopeRefusal(instruction: string, outcome: string): ActionResult | undefined {
-  const categories = workflowScopeCategories(instruction).filter((category) => category !== 'code');
-  if (!categories.length) return undefined;
-  const sentence = `A workflow can’t ${new Intl.ListFormat('en', { type: 'conjunction' }).format(
-    categories.map((category) => WORKFLOW_SCOPE_REASONS[category])
-  )}. ${outcome}`;
-  return notApplied('WORKFLOW_SCOPE_REFUSED', sentence, sentence, false, { categories });
 }
 
 function serviceFor(runtime: IAgentRuntime): WorkflowService | null {
@@ -285,8 +270,6 @@ export const workflowAction: Action = {
         const instruction =
           text(params.seedPrompt) ?? text(params.instruction) ?? message.content.text;
         if (!instruction) return { success: false, text: 'A workflow description is required.' };
-        const refused = scopeRefusal(instruction, 'No workflow was created.');
-        if (refused) return refused;
         const draft = await service.generateWorkflowDraft(instruction, {
           userId: ownerId,
           timeZone,
@@ -402,8 +385,6 @@ export const workflowAction: Action = {
             `${label} was built in the Workflows view. Open it there to change its steps or schedule. From chat you can rename, pause, run or remove it.`,
             false
           );
-        const refused = scopeRefusal(instruction, `${label} was not changed.`);
-        if (refused) return refused;
         const draft = await service.modifyWorkflowDraft(current, instruction, {
           userId: ownerId,
           timeZone,

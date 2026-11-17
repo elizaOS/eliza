@@ -364,17 +364,60 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
       active: false,
     });
     expect((await invoke({ action: 'remove', workflowId: spare.id })).success).toBe(true);
+    // A name the owner gives in full names that workflow, never a shorter-named one. A
+    // workflow whose name is only part of the reference is not a match.
+    const named: Record<string, string> = {};
+    for (const name of ['Backup', 'Backup workflow', 'The Daily', 'Report', 'Daily reports'])
+      named[name] = (
+        await facade.deployWorkflowDefinition({ ...definition, name }, owner, { activate: false })
+      ).id;
+    for (const [workflowName, name] of [
+      ['Backup workflow', 'Backup workflow'],
+      ['backup', 'Backup'],
+      ['The Daily', 'The Daily'],
+      ['daily report', 'Daily reports'],
+      ['the report workflow', 'Report'],
+    ])
+      expect((await invoke({ action: 'get', workflowName })).data).toMatchObject({
+        workflow: { id: named[name] },
+      });
+    expect(await invoke({ action: 'remove', workflowName: 'the backup workflow' })).toMatchObject({
+      success: false,
+      failureProvenance: { code: 'WORKFLOW_AMBIGUOUS' },
+    });
+    expect(await invoke({ action: 'remove', workflowName: 'the weekly report' })).toMatchObject({
+      success: false,
+      failureProvenance: { code: 'WORKFLOW_NOT_FOUND' },
+    });
+    for (const workflowId of Object.values(named))
+      expect((await invoke({ action: 'remove', workflowId })).success).toBe(true);
     // An active workflow edited from chat is turned off until the owner reviews the change.
     expect((await invoke({ action: 'activate', workflowId: row.id })).success).toBe(true);
     const editedLive = await invoke({ action: 'modify', workflowId: row.id, instruction: 'Edit' });
     expect(editedLive.text).toContain('it is now off');
     expect((await facade.getWorkflow(row.id, owner)).active).toBe(false);
-    // A request no workflow can carry out is refused before any model call.
+    // The phone catalog's phrase filter bounds typed phone workflows only. A chat workflow
+    // that posts a message through an integration, or an edit that removes a step, is generated.
     generated = 0;
+    const posting = await invoke({
+      action: 'create',
+      seedPrompt: 'When a new Slack message arrives, send a message to the Discord channel',
+    });
+    expect(posting.success).toBe(true);
     expect(
-      await invoke({ action: 'create', seedPrompt: 'Text Sam the summary every morning' })
-    ).toMatchObject({ success: false, failureProvenance: { code: 'WORKFLOW_SCOPE_REFUSED' } });
-    expect(generated).toBe(0);
+      (
+        await invoke({
+          action: 'modify',
+          workflowId: posting.effectReceipts![0].resource.id,
+          instruction: 'Remove the step that sends an email to the team',
+        })
+      ).success
+    ).toBe(true);
+    expect(generated).toBe(1);
+    expect(
+      (await invoke({ action: 'remove', workflowId: posting.effectReceipts![0].resource.id }))
+        .success
+    ).toBe(true);
     // A workflow built in the Workflows view keeps its reviewed steps and its on-phone confirmation.
     const typedSpec = {
       version: 1,
