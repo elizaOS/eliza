@@ -123,11 +123,22 @@ export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
    */
   interceptNavigation?: boolean;
   /**
+   * Android: this owner answers the page's dialogs (`dialogRequested`), file inputs
+   * (`fileChooserRequested`) and camera, microphone and location requests
+   * (`sitePermissionRequested`), so they wait for its answer while it listens for the
+   * event. Without it a dialog is cancelled at once, a file input gets no files and a site
+   * permission is denied, whatever any other owner listens for; `interceptNavigation` does
+   * not hold them. Fixed for the life of the surface: a
+   * repeated `createSurface` with a different value rejects. Default false.
+   */
+  answersRequests?: boolean;
+  /**
    * Android, isolated storage only: one persistent profile per owner and key (for
    * example a signed-in account id, 1 to 128 of `A-Z a-z 0-9 . _ : @ -`), so website
    * sign-ins survive across openings. The profile name is a digest, never the key.
    * Remove it with `purgeProfiles`. Without a key every surface gets a fresh profile
-   * that is cleared when it closes and deleted once Android releases it.
+   * that is cleared when it closes and deleted once Android releases it. A keyed profile
+   * accepts third-party cookies, so embedded sign-ins work there as in a browser.
    */
   profileKey?: string;
   /** Default `above-host`. Fixed for the life of the surface. */
@@ -150,10 +161,12 @@ export interface NavigationRequestedEvent extends SurfaceIdOptions {
 
 /**
  * A JavaScript dialog (`alert`, `confirm`, `prompt`, leave-page) waiting for the host.
- * The page is paused until `answerDialog`. Only surfaces created with
- * `interceptNavigation: true` hold dialogs; any other surface dismisses them at once.
- * Nothing is ever accepted for the person: a dialog of a hidden, closed or navigating
- * surface is dismissed (cancelled).
+ * The page is paused until `answerDialog`. Dialogs wait only on a surface created with
+ * `answersRequests` while a `dialogRequested` listener exists; any other surface's,
+ * `interceptNavigation` ones included, are dismissed at once, so no page freezes on a
+ * dialog nobody shows. Nothing is ever accepted for the person: a dialog of a hidden,
+ * paused, closed or navigating surface is dismissed (cancelled). A dismissed
+ * `beforeunload` dialog keeps the page and drops the navigation.
  */
 export interface DialogRequestedEvent extends SurfaceIdOptions {
   dialogId: string;
@@ -166,16 +179,124 @@ export interface DialogRequestedEvent extends SurfaceIdOptions {
 }
 
 /**
- * The page asked for a file. Nothing is downloaded. `url` is http(s) only and can carry
- * access tokens: keep it out of models, threads and logs.
+ * The page asked for a file. Nothing is downloaded until `saveDownload` names `requestId`;
+ * a later request replaces this one without an event, and the page navigating or the
+ * surface being hidden or closed ends it (`saveDownload` then rejects `DOWNLOAD_NOT_PENDING`). `url` is http(s)
+ * only and can carry access tokens: keep it out of models, threads and logs.
  */
 export interface DownloadRequestedEvent extends SurfaceIdOptions {
+  requestId: string;
   url: string | null;
   fileName: string;
   mimeType: string;
   /** -1 when unknown. */
   contentLength: number;
   pdf: boolean;
+}
+
+/** A `saveDownload` ended. `saved` files are in the device's Downloads. */
+export interface DownloadFinishedEvent extends SurfaceIdOptions {
+  requestId: string;
+  status: "saved" | "failed";
+  fileName: string;
+  mimeType: string;
+}
+
+/**
+ * Android: a file input of a shown page waits for `answerFileChooser`; the page gets no
+ * file until then. Reported only for a surface created with `answersRequests` while the
+ * host listens; otherwise, and when the surface is paused, the input gets no files at once.
+ * Hiding, navigating or closing the surface answers it with no files.
+ */
+export interface FileChooserRequestedEvent extends SurfaceIdOptions {
+  requestId: string;
+  /** The input's `accept` MIME types (extensions are dropped); empty means any file. */
+  acceptTypes: string[];
+  multiple: boolean;
+  /** The input asks for a new photo or recording (`capture`); the picker offers files only. */
+  capture: boolean;
+}
+
+/** Website access to device sensors a host may grant. */
+export type SitePermissionKind = "camera" | "microphone" | "location";
+
+/**
+ * Android: a shown page asked for the camera, microphone or location. A request from the
+ * https page's own origin waits for `answerSitePermission` and is never remembered; the
+ * page withdrawing it, or hiding, navigating or closing the surface, ends it and sends
+ * `sitePermissionWithdrawn`. One `answerSitePermission` answers every kind in `kinds`.
+ * Another origin's request is already denied and reported with `topFrame: false` and no `requestId`, so the host can say it
+ * was blocked. Reported only for a surface created with `answersRequests` while the host
+ * listens; kinds the host app declares no Android permission for are never offered.
+ */
+export interface SitePermissionRequestedEvent extends SurfaceIdOptions {
+  requestId: string | null;
+  origin: string | null;
+  kinds: SitePermissionKind[];
+  /**
+   * The requesting origin is the page's own top-level origin. WebView names only the
+   * requesting origin, never the frame, so a same-origin embedded frame also counts as
+   * the page and an embedded frame of another origin does not.
+   */
+  topFrame: boolean;
+  /**
+   * Android runtime permissions the host app does not hold yet, for example
+   * `android.permission.CAMERA`. `answerSitePermission({ grant: true })` asks Android for
+   * them itself, so the person sees Android's own dialog after the host's.
+   */
+  androidPermissions: string[];
+}
+
+/**
+ * Android: a held `sitePermissionRequested` request ended without the host's answer. Either
+ * the page withdrew it (WebView already cancelled it; the plugin answers nothing), or the
+ * page navigated or the surface was hidden, reconciled or closed and the plugin denied it.
+ * Close its prompt; `answerSitePermission` would reject `SITE_PERMISSION_CLOSED`, and a
+ * grant already waiting on Android's dialog resolves `outcome: "ended"`.
+ */
+export interface SitePermissionWithdrawnEvent extends SurfaceIdOptions {
+  requestId: string;
+}
+
+/**
+ * Why `answerSitePermission` resolved as it did. Only `granted` gives the page anything.
+ * - `granted`: the page has every requested kind.
+ * - `denied`: the host answered `grant: false`.
+ * - `android-refused`: Android's runtime permission dialog was shown and a permission is
+ *   still missing.
+ * - `ended`: the request ended unanswered: the page withdrew it, navigating, hiding or
+ *   closing ended it while Android asked, the page left the requesting origin, or Android
+ *   could not ask (no dialog could open, or Android returned no answer, e.g. another
+ *   request was showing).
+ */
+export type SitePermissionOutcome =
+  | "granted"
+  | "denied"
+  | "android-refused"
+  | "ended";
+
+/** Result of `answerSitePermission`; `granted` is `outcome === "granted"`. */
+export interface SitePermissionAnswer {
+  granted: boolean;
+  outcome: SitePermissionOutcome;
+}
+
+/**
+ * Android: the surface's main frame started loading a new document (WebView's
+ * `onPageStarted`; frames and same-document moves never send it, an error page does).
+ * What the previous page waited on has ended first, so every `sitePermissionWithdrawn`
+ * this start caused arrives before it. A camera or microphone grant's autoplay ends here.
+ */
+export interface PageStartedEvent extends SurfaceIdOptions {
+  url: string;
+}
+
+/**
+ * Android: a page's fullscreen view (usually video) opened above the host, or closed.
+ * Leaving it restores the host's system bars as they were before.
+ */
+export interface FullscreenChangedEvent extends SurfaceIdOptions {
+  active: boolean;
 }
 
 /**
@@ -193,9 +314,11 @@ export interface ExternalLinkRequestedEvent extends SurfaceIdOptions {
 
 /**
  * A sign-in page that refuses embedded WebViews (Google's `disallowed_useragent`,
- * Facebook's OAuth dialog). It is not loaded; the host opens it in a full browser.
+ * Facebook's OAuth dialog). It is not loaded; the host opens it in a full browser with
+ * `openIdentityProvider`.
  */
 export interface IdentityProviderRequestedEvent extends SurfaceIdOptions {
+  requestId: string;
   provider: "google" | "facebook";
   url: string;
 }
@@ -344,8 +467,18 @@ export interface SurfaceState {
   progress?: number;
   /** Android: the main-frame load error of the current page, if any. */
   pageError?: string | null;
+  /**
+   * Android: the page's certificate was refused (it is never passed), so the surface shows
+   * an error page in its place. Show a security block over it.
+   */
+  securityBlocked?: boolean;
   /** Android: text zoom in percent. */
   textZoom?: number | null;
+  /**
+   * Android: pinch zoom in density-independent pixels per CSS pixel: 1 is the page's own
+   * mobile size, below 1 a wide page shown whole, above 1 zoomed in.
+   */
+  pageScale?: number | null;
 }
 
 export interface SurfaceStateWithId extends SurfaceState {
@@ -429,13 +562,18 @@ export interface ElizaSurfaceManagerPlugin {
    * the first call.
    */
   setOcclusionRects(options: SetOcclusionRectsOptions): Promise<void>;
-  /** Load a URL in an existing surface. */
+  /**
+   * Load a URL in an existing surface. Android: `navigate`, `reloadSurface`, `goBack` and
+   * `goForward` first end what the page holds (held dialogs, a leave-page one included,
+   * are cancelled), so a page frozen on a dialog still loads; `beforeunload` runs again.
+   */
   navigate(options: NavigateOptions): Promise<void>;
-  /** Reload an existing surface's current page. */
+  /** Reload an existing surface's current page; Android ends what it holds first (`navigate`). */
   reloadSurface(options: SurfaceIdOptions): Promise<void>;
   /**
    * Android: stops the current page load where it is; a no-op when nothing is loading.
-   * `navigationChanged` follows so the host re-reads `progress`.
+   * `navigationChanged` follows so the host re-reads `progress`. Ends nothing the page
+   * holds: a held dialog, file input or site permission request still waits.
    */
   stopLoading(options: SurfaceIdOptions): Promise<void>;
   /** Move back in this surface's own history; never replays after a lost reply. */
@@ -452,8 +590,52 @@ export interface ElizaSurfaceManagerPlugin {
     },
   ): Promise<void>;
   /**
+   * Android: answer a `fileChooserRequested` file input once. `open: true` shows the
+   * system document picker (one picker at a time, else `FILE_CHOOSER_BUSY`); the files
+   * the person picks go to the page. `open: false` gives it no files.
+   */
+  answerFileChooser(
+    options: SurfaceIdOptions & { requestId: string; open: boolean },
+  ): Promise<void>;
+  /**
+   * Android: answer a `sitePermissionRequested` request once. `grant: true` first asks
+   * Android for any of the event's `androidPermissions` the app still lacks; the page is
+   * granted only if Android allowed them all and it is still at the requesting origin,
+   * and is denied otherwise. Resolves with what the page got and why
+   * (`SitePermissionOutcome`). A camera or microphone grant lets the current page play
+   * media without a gesture, as Chrome does while a page captures, until the next page
+   * start. Only media elements the page creates after the grant play on their own: WebView
+   * fixes the requirement into each element when it is created. The setting changes before
+   * the grant is answered, but reaches the page by an asynchronous settings sync, so an
+   * element made in the `getUserMedia` handler plays on its own only as best effort
+   * (observed to on WebView 124). A request already
+   * answered or withdrawn rejects `SITE_PERMISSION_CLOSED`.
+   */
+  answerSitePermission(
+    options: SurfaceIdOptions & { requestId: string; grant: boolean },
+  ): Promise<SitePermissionAnswer>;
+  /**
+   * Android 10+: save the `downloadRequested` file to Downloads once the person said yes,
+   * with the surface's cookie only for the requesting page's exact origin. Resolves once
+   * started; `downloadFinished` follows. A `blob:` file rejects `DOWNLOAD_UNSUPPORTED`.
+   */
+  saveDownload(
+    options: SurfaceIdOptions & { requestId: string },
+  ): Promise<void>;
+  /**
+   * Android: open the `identityProviderRequested` sign-in page in the person's browser
+   * (a Custom Tab): the default browser, or another when the default is this app or
+   * Android would ask. It is sent to that browser by package, so it never comes back into
+   * this app; with no other browser it rejects `IDENTITY_BROWSER_UNAVAILABLE`. The
+   * address never comes back from the host.
+   */
+  openIdentityProvider(
+    options: SurfaceIdOptions & { requestId: string },
+  ): Promise<{ status: "dispatched" }>;
+  /**
    * Android: open the other-app link the person just tapped (`externalLinkRequested`)
-   * with a fresh Intent. Rejects for any other address, and when no app handles it.
+   * with a fresh Intent, once: a later tap replaces it (`EXTERNAL_LINK_NOT_PENDING` for the
+   * earlier address). Rejects `EXTERNAL_APP_UNAVAILABLE` when no other app handles it.
    */
   openExternalLink(
     options: SurfaceIdOptions & { url: string },
@@ -481,9 +663,10 @@ export interface ElizaSurfaceManagerPlugin {
    * surfaces (`surfaceClosed`); use it on account sign-out. `idleMs` (at least one
    * hour) purges every keyed profile unused for that long that no surface has open.
    * `all: true` purges every keyed and ephemeral profile of any owner and closes their
-   * surfaces; it resolves after the cookies are removed, with `clean` true when no
-   * purged profile still holds a cookie. Use it to sign the device out of every website.
-   * Data is cleared at once; the profile directory goes once Android releases it.
+   * surfaces; use it to sign the device out of every website. `profileKey` and `all`
+   * resolve after the cookies are removed, with `clean` true when no purged profile still
+   * holds a cookie; `idleMs` resolves at once, without `clean`. Data is cleared at once;
+   * the profile directory goes once Android releases it.
    */
   purgeProfiles(
     options: SurfaceOwnerOptions &
@@ -512,6 +695,10 @@ export interface ElizaSurfaceManagerPlugin {
    * Android host-only one-shot dispatch using a fresh observed entry reference.
    * Task authorization and preview are required at the trusted caller. A receipt
    * does not prove arrival; changed/hidden/paused history refuses before dispatch.
+   * While the page holds a dialog it rejects `DIALOG_OPEN` at once, keeping the
+   * reference: the frozen page could take the traversal only after the answer. It ends
+   * nothing the page holds. A page that does not reply within 5 seconds rejects
+   * `UNCERTAIN_OUTCOME`.
    */
   navigateHistory(options: SurfaceIdOptions & { reference: string }): Promise<{
     documentId: string;
@@ -613,6 +800,30 @@ export interface ElizaSurfaceManagerPlugin {
     listener: (event: DownloadRequestedEvent) => void,
   ): Promise<PluginListenerHandle>;
   addListener(
+    eventName: "downloadFinished",
+    listener: (event: DownloadFinishedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "fileChooserRequested",
+    listener: (event: FileChooserRequestedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "sitePermissionRequested",
+    listener: (event: SitePermissionRequestedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "sitePermissionWithdrawn",
+    listener: (event: SitePermissionWithdrawnEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "pageStarted",
+    listener: (event: PageStartedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "fullscreenChanged",
+    listener: (event: FullscreenChangedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
     eventName: "externalLinkRequested",
     listener: (event: ExternalLinkRequestedEvent) => void,
   ): Promise<PluginListenerHandle>;
@@ -644,8 +855,11 @@ export interface ElizaSurfaceManagerPlugin {
    * `presentSurface` does not resume it; call `resumeSurface` before the person sees it
    * again. While it is paused, `captureSurface`, `controlPage`, `observeHistory` and
    * `navigateHistory` reject; `goBack`, `goForward`, `navigate` and `reloadSurface` still
-   * run, and `readPage` still reads. Pausing also cancels held page dialogs, refuses new
-   * ones, takes focus and the keyboard from the page, and stops sending it touches.
+   * run, and `readPage` still reads. Pausing also cancels held page dialogs and ends
+   * fullscreen, refuses new dialogs, file inputs and site permission requests, takes focus
+   * and the keyboard from the page, and stops sending it touches. Held file inputs and
+   * site permission requests stay open, since the system picker or the host's Android
+   * permission prompt may be what covers the page.
    * Repeating the call does nothing. iOS rejects with `UNSUPPORTED`, so a cross-platform
    * caller must catch it; web rejects as unavailable. The process-wide
    * `WebView.pauseTimers()` is never called, as it would also stop the host WebView.
