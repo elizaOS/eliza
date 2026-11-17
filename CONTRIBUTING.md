@@ -95,14 +95,16 @@ The two suites of the tools, the command line and each kind of mistake, run side
 edits copy and a few long checks of fixtures are shared projects: each starts with the tool runs (`action-*` entries)
 earlier selftests kept in `.cache/selftest/.spec-cache` and leaves its own there; entries unused for a week are pruned.
 A test that observes a tool really running uses a scratch project of its own, which starts empty.
-`pnpm selftest` runs all five through Turborepo, side by side, as `pnpm verify` does; on a machine too small for
-that, `pnpm selftest --concurrency=1` runs one at a time, to the same cached results. What a change to the
+`pnpm selftest` runs all five through Turborepo, side by side, as `pnpm verify` does. Each of the three
+`selftest:tools` processes bounds its own tests and tools to the machine and checks the order project once for itself,
+so three at once ask about three times what one does: on a machine too small for that,
+`pnpm selftest --concurrency=1` runs one at a time, to the same cached results, as a release does. What a change to the
 tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENTS.md#definition-of-done).
 
 ## Releasing
 
 Set `version` in the root `package.json`, merge to `main`, and push the tag `v<version>` from it.
-`.github/workflows/release.yml` builds, packs with `pnpm pack`, runs `pnpm selftest`, which the shared cache answers for a commit CI has verified, and attaches the tarball to a GitHub release of that tag.
+`.github/workflows/release.yml` builds, packs with `pnpm pack`, runs `pnpm selftest --concurrency=1`, which the shared cache answers for a commit CI has verified, and attaches the tarball to a GitHub release of that tag.
 A project installs it as [README.md, "Using it from another package"](README.md#using-it-from-another-package) says.
 ## Architecture
 
@@ -305,7 +307,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 |---|---|
 | Pull request or push to `main` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `main`. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
-| A `v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest` read from the shared cache, and the tarball attached to a GitHub release |
+| A `v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest --concurrency=1` read from the shared cache, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken

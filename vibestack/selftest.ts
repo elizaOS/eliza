@@ -2982,7 +2982,7 @@ describe("the documents name what exists", () => {
     assert.deepEqual(Object.fromEntries(titles.map((title) => [title, ranBy(title)])), Object.fromEntries(titles.map((title) => [title, [elsewhere[title] ?? "selftest:tools:rest"]])));
     const jobs = [...read(".github/workflows/ci.yml").matchAll(/^ +tasks: (.+)$/gm)].flatMap(([, tasks]) => tasks.split(" "));
     assert.deepEqual(jobs.sort(), listed("verify").sort(), "CI's jobs run the tasks of pnpm verify between them, each once");
-    assert.match(read(".github/workflows/release.yml"), /^ +- run: pnpm selftest$/m);
+    assert.match(read(".github/workflows/release.yml"), /^ +- run: pnpm selftest --concurrency=1$/m, "a release runs the selftest's tasks one at a time: its one runner is sized for one");
     assert.deepEqual(read(".github/workflows/fuzz.yml").match(/^ +shard: \[(.+)\]$/m)?.[1].split(", "), shards.map((task) => task.split(":")[2]), "the nightly run names every shard");
     const [first, ...others] = shards.map((task) => JSON.parse(read("turbo.json")).tasks[`//#${task}`]);
     assert.deepEqual(others, others.map(() => first), "the shards wait for the same tasks and are keyed by the same files");
