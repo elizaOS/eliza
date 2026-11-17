@@ -8,6 +8,17 @@ As a runtime I start pending classes together, retain their exact attempt genera
 
 ### Acquisition snapshots keep each class and attempt generation
 
+This model assumes each constructor keeps one service type throughout its
+modeled lifetime. Its class identity owns one captured type as well as the
+constructor's shared pending and live-instance slots. That is a model-domain
+condition, not a runtime validation or an immutable JavaScript property.
+The pinned source and replacement runtime reread the mutable static
+`serviceType` on every registration and permit the same constructor in
+different type buckets. Such schedules remain outside this projection and
+require separate source conformance for constructor-shared starts, publication,
+withdrawal and stop ownership; assigning a fresh class identity per type would
+incorrectly separate those shared slots.
+
 Discovered by the proof. The attempt and type-promise allocators stay positive
 even when their history is empty. Each acquisition and type aggregate retains
 a unique identity so that clearing one captured promise cannot affect another. Class
