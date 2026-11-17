@@ -12,7 +12,7 @@ import type { Model } from "./gen.ts";
 import { heading, type Spec } from "./parse.ts";
 import type { Step } from "./simulate.ts";
 import { exec, startGroup } from "./run.ts";
-import { filesUnder, indent, type Reported } from "./util.ts";
+import { COUNTEREXAMPLES, DRIVERS, filesUnder, indent, sha, testInputs, TRACES, type Remember, type Reported } from "./util.ts";
 
 export type Simulated = Found<any> & { traces: Sent<any>[][] };
 export interface Machine { domain: Oracle<any, any>; model: Model; found: Simulated }
@@ -42,11 +42,10 @@ export function conformanceFound(model: Model, spec: Spec, traces: Step[][], wit
 }
 
 /** gen/<name>.conformance.ts: the types a test/drivers/<name>.ts is written to, over a copy of conformance.ts. */
-export function writeConformance(root: string, model: Model) {
+export function writeConformance(model: Model, write: (name: string, text: string) => void) {
   if (!model.stateType || !model.transitions.length) return;
-  const dir = path.join(root, "gen");
-  fs.copyFileSync(path.join(import.meta.dirname, "conformance.ts"), path.join(dir, "_conformance.ts"));
-  fs.writeFileSync(path.join(dir, `${model.name}.conformance.ts`), [
+  write("_conformance.ts", fs.readFileSync(path.join(import.meta.dirname, "conformance.ts"), "utf8"));
+  write(`${model.name}.conformance.ts`, [
     `// Generated from ${model.source}; do not edit. What test/drivers/${model.name}.ts exports, as \`driver\` and \`options\`.`,
     `import type * as oracle from "./${model.name}.ts";`,
     `import type { Driver as Reaching, Options as Choosing } from "./_conformance.ts";`,
@@ -58,7 +57,6 @@ export function writeConformance(root: string, model: Model) {
   ].join("\n"));
 }
 
-const TRACES = "test/traces", DRIVERS = "test/drivers", COUNTEREXAMPLES = "test/counterexamples";
 const ANSWER_WITHIN = 10_000;
 
 /** A real program, one JSON answer for each reset/event request. */
@@ -149,12 +147,15 @@ export const driver: Driver = {
 
 /**
  * Run `test/drivers/<name>.ts` of the package `root` in a Node of its own that runs VibeLang (`main` below), and say
- * what it found: every saved counterexample, then the journeys, the probes and the walks.
+ * what it found: every saved counterexample, then the journeys, the probes and the walks. A counterexample it saves
+ * is added to `wrote`.
  */
-async function driven(root: string, name: string, machine: Machine, mode: TestProfile): Promise<{ problem?: string; summary?: string }> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "spec-driver-")), found = path.join(dir, "found.json");
+async function driven(root: string, name: string, machine: Machine, mode: TestProfile, wrote: Map<string, string>): Promise<{ problem?: string; summary?: string }> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "spec-driver-")), found = path.join(dir, "found.json"), saved = `${COUNTEREXAMPLES}/${name}`;
+  const before = new Set(filesUnder(root, saved));
   fs.writeFileSync(found, JSON.stringify(machine.found));
   const r = await exec(process.execPath, ["--import", "vibelang/register", import.meta.filename, name, found, mode], root).finally(() => fs.rmSync(dir, { recursive: true, force: true }));
+  for (const file of filesUnder(root, saved).filter((file) => !before.has(file))) wrote.set(path.join(root, file), fs.readFileSync(path.join(root, file), "utf8"));
   const said = r.stdout.trimEnd().split("\n").at(-1) ?? "";
   let verdict: { problem?: string; summary?: string } | undefined;
   try { verdict = JSON.parse(said); } catch { /* not the last line it writes, so the driver never finished */ }
@@ -193,10 +194,12 @@ if (import.meta.main) {
 }
 
 /**
- * Every driver, configured program and recorded trace of the package `root`, run afresh: outside service state is not
- * part of a source-code cache key. A shell with no driver gets one to fill in.
+ * Every driver, configured program and recorded trace of the package `root`. A driver's pass is remembered until what
+ * its run reads changes: the package's tests, drivers, counterexamples and code (util.ts, `testInputs`), and the
+ * events the simulator found; a failure runs again. A `driver:` program may be anything, so it runs every time. A shell
+ * with no driver gets one to fill in; what the stage writes is added to `wrote`.
  */
-export async function conformance(root: string, machines: Map<string, Machine>, scripts: Record<string, string>, mode: TestProfile = "normal"): Promise<Reported<"traces">[]> {
+export async function conformance(root: string, machines: Map<string, Machine>, scripts: Record<string, string>, remember: Remember, wrote: Map<string, string>, mode: TestProfile = "normal"): Promise<Reported<"traces">[]> {
   const results: Reported<"traces">[] = [];
   const add = (where: string, machine: Machine | undefined, problem: string | undefined, subject: string) => results.push([!problem, "traces",
     `${where}: ${problem ? /^(?:conformance to|trace|line) /.test(problem) ? "the program departs from the spec" : "the run did not get as far as comparing" : `${subject} agree with ${machine!.model.source}${machine!.found.outputShape ? "; effects checked where out is reported" : ""}`}`,
@@ -205,12 +208,17 @@ export async function conformance(root: string, machines: Map<string, Machine>, 
     const file = path.join(root, DRIVERS, `${name}.ts`), model = machines.get(name)?.model;
     if (model && !fs.existsSync(file)) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, stub(name, model));
+      const text = stub(name, model);
+      fs.writeFileSync(file, text);
+      wrote.set(file, text);
     }
   }
+  let inputs: string | undefined;
   for (const file of filesUnder(root, DRIVERS).filter((f) => /^test\/drivers\/\w+\.ts$/.test(f))) {
     const name = path.basename(file, ".ts"), machine = machines.get(name);
-    const { problem, summary } = machine ? await driven(root, name, machine, mode) : { problem: "no state-machine spec has this name" };
+    const { problem, summary } = machine
+      ? await remember(JSON.stringify([name, inputs ??= testInputs(root, mode), sha(JSON.stringify(machine.found))]), () => driven(root, name, machine, mode, wrote), (r) => !r.problem)
+      : { problem: "no state-machine spec has this name" };
     add(file, machine, problem, summary!);
   }
   const dir = path.join(root, TRACES);

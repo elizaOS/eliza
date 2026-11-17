@@ -46,8 +46,9 @@ obligations simulated only lists them.
 ## Proof files
 
 A unit's proof file sits beside it: `spec/billing/index.proof.dfy` proves
-`gen/billing.ts`, `src/<path>.proof.dfy` proves `src/<path>.ts`. A proof file that
-belongs to no unit is reported.
+`gen/billing.ts`, `src/<path>.proof.dfy` proves `src/<path>.ts`. A spec that
+defines no type or value of its own is no unit, and starts no prover. A proof
+file that belongs to no unit is reported.
 
 **What the prover sees** is `gen/proof/<unit>/<unit>.dfy`, written by every
 `pnpm check`, and Dafny's full output is `gen/proof/<unit>.log`. The file
