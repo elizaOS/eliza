@@ -174,3 +174,53 @@ pure def alwaysCallsAreIssued(c: ConversationLoad): bool = c.nextCall > 0 and c.
 pure def sometimesFailedSelectionRestored(c: ConversationLoad): bool = c.lastReply > 0 and c.active == 1 and c.composer == 1 and c.loaded == 1 and c.ownerEpoch > 2
 pure def sometimesNoticeWithoutPrevious(c: ConversationLoad): bool = c.notices > 0
 ```
+
+## Story: Restore a long conversation without duplicates or an endless read
+
+> As a user reopening a long conversation, I see its recent messages and as
+> much older history as the client keeps, oldest first, with no message
+> twice, and I am told when older history was left on the agent.
+
+### Paging back continues only while the agent says more remain and the page added something
+
+After the recent window, the client asks for the page older than its oldest
+message. It asks again only when the agent reported that more remain, the
+last page added a message the client did not already have, and the client
+holds fewer messages than its bound. A page without that report, a refused
+cursor, or a page that adds nothing ends the read as partial; reaching the
+bound ends it as partial; an agent that reports none remain ends it
+complete.
+
+```quint
+type PagingStep = PageAgain | PagingComplete | PagingPartial
+type PageReply = { reported: bool, hasMore: bool, fresh: int }
+pure def pagingStep(reply: PageReply, held: int, bound: int): PagingStep =
+  if (held >= bound or not(reply.reported)) PagingPartial
+  else if (not(reply.hasMore)) PagingComplete
+  else if (reply.fresh <= 0) PagingPartial
+  else PageAgain
+pure val replyValues = Set({ reported: true, hasMore: true, fresh: 3 }, { reported: true, hasMore: true, fresh: 0 }, { reported: true, hasMore: false, fresh: 2 }, { reported: false, hasMore: true, fresh: 3 })
+pure val heldValues = Set(0, 200, 2000)
+pure val boundValues = Set(2000)
+pure def lawPagingAgainNeedsReportedProgress(reply: PageReply, held: int, bound: int): bool =
+  pagingStep(reply, held, bound) == PageAgain implies (reply.reported and reply.hasMore and reply.fresh > 0 and held < bound)
+pure def lawSilentAgentEndsThePaging(reply: PageReply, held: int, bound: int): bool =
+  not(reply.reported) implies pagingStep(reply, held, bound) == PagingPartial
+```
+
+### A replaced message is confirmed only by a count of removed messages
+
+The client replaces one of the user's own messages by truncating at it,
+inclusively, after rereading it unchanged in the current conversation. The
+replacement is confirmed only by a reply that removed at least one message.
+Once the truncation was sent, any other ending is unknown: the client
+reloads the conversation to check and never sends the truncation again.
+
+```quint
+type TruncationOutcome = TruncationConfirmed | TruncationUnknown | TruncationNotSent
+pure def truncationOutcome(sent: bool, replyOk: bool, removed: int): TruncationOutcome =
+  if (not(sent)) TruncationNotSent else if (replyOk and removed >= 1) TruncationConfirmed else TruncationUnknown
+pure val removedValues = Set(0, 1, 3)
+pure def lawNothingRemovedIsNotConfirmed(sent: bool, replyOk: bool): bool = truncationOutcome(sent, replyOk, 0) != TruncationConfirmed
+pure def lawSentTruncationIsNeverNotSent(replyOk: bool, removed: int): bool = truncationOutcome(true, replyOk, removed) != TruncationNotSent
+```

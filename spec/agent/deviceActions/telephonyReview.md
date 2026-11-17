@@ -69,3 +69,64 @@ pure def lawMultipleSimsNeedAnExplicitChoice(sms: SmsEvidence): bool = sms.activ
 pure def lawDirectSendHasFewerRecipients(sms: SmsEvidence): bool = sms.recipients > 5 implies not(validSms(Direct, sms))
 pure def lawHandoffIsTerminal(laterOutcome: SmsOutcome): bool = not(smsProgress(SmsHandedOff, laterOutcome))
 ```
+
+## Story: Let the agent draft my reply without ever sending it
+
+> As a user with a message thread open on my verified device, I can ask the
+> agent for a reply. It puts a draft in that thread's text field for me to
+> edit and send myself; it never sends anything, never names a recipient and
+> never overwrites what I was typing.
+
+### A reply draft goes only into the open thread's empty or agent-held slot
+
+A reply draft names no recipient: its target is the one message thread
+the owner has open in the foreground. Each thread has one draft slot. The
+draft is placed only on a verified device image with the compose
+capability, with a nonblank, well formed body of at most 1,600 UTF-16
+units. With no thread open the outcome is none-selected; when the slot
+holds the owner's own text the outcome is occupied and that text is left
+untouched; a slot that is empty or holds an earlier agent draft receives
+the new draft, which replaces the earlier one. Anything else is
+unavailable and changes nothing.
+
+```quint
+type DraftSlot = EmptySlot | OwnerText | AgentDraft
+type ReplyDraftOutcome = Drafted | NoneSelected | Occupied | DraftUnavailable
+type ReplyDraftRequest = { verifiedImage: bool, composeCapability: bool, threadOpen: bool, slot: DraftSlot, bodyUnits: int, bodyWellFormed: bool }
+pure def replyDraftOutcome(r: ReplyDraftRequest): ReplyDraftOutcome =
+  if (not(r.verifiedImage and r.composeCapability) or r.bodyUnits <= 0 or r.bodyUnits > 1600 or not(r.bodyWellFormed)) DraftUnavailable
+  else if (not(r.threadOpen)) NoneSelected
+  else if (r.slot == OwnerText) Occupied
+  else Drafted
+pure def slotAfterDraft(r: ReplyDraftRequest): DraftSlot = if (replyDraftOutcome(r) == Drafted) AgentDraft else r.slot
+pure val draftValues = Set(
+  { verifiedImage: true, composeCapability: true, threadOpen: true, slot: EmptySlot, bodyUnits: 120, bodyWellFormed: true },
+  { verifiedImage: true, composeCapability: true, threadOpen: true, slot: AgentDraft, bodyUnits: 120, bodyWellFormed: true },
+  { verifiedImage: true, composeCapability: true, threadOpen: true, slot: OwnerText, bodyUnits: 120, bodyWellFormed: true },
+  { verifiedImage: true, composeCapability: true, threadOpen: false, slot: EmptySlot, bodyUnits: 120, bodyWellFormed: true },
+  { verifiedImage: false, composeCapability: true, threadOpen: true, slot: EmptySlot, bodyUnits: 120, bodyWellFormed: true },
+  { verifiedImage: true, composeCapability: true, threadOpen: true, slot: EmptySlot, bodyUnits: 1700, bodyWellFormed: true }
+)
+pure def lawOwnerTextIsNeverOverwritten(draft: ReplyDraftRequest): bool = draft.slot == OwnerText implies slotAfterDraft(draft) == OwnerText
+pure def lawUnverifiedImageDraftsNothing(draft: ReplyDraftRequest): bool =
+  not(draft.verifiedImage) implies (replyDraftOutcome(draft) == DraftUnavailable and slotAfterDraft(draft) == draft.slot)
+pure def lawNoThreadNoDraft(draft: ReplyDraftRequest): bool = not(draft.threadOpen) implies slotAfterDraft(draft) == draft.slot
+pure def lawAgentDraftIsReplaced(draft: ReplyDraftRequest): bool =
+  (draft.slot == AgentDraft and draft.threadOpen and draft.verifiedImage and draft.composeCapability and draft.bodyUnits > 0 and draft.bodyUnits <= 1600 and draft.bodyWellFormed)
+    implies replyDraftOutcome(draft) == Drafted
+```
+
+### A reply draft has no send path and its outcome is never uncertain
+
+Drafting writes only the local draft slot: no outcome of a reply draft is
+a sent message, and nothing the agent drafts reaches the message provider
+or a thread until the owner sends it through the ordinary send review.
+Because nothing is sent, a draft's receipt is applied exactly when it was
+drafted and failed otherwise, never uncertain.
+
+```quint
+type DraftReceipt = DraftApplied | DraftFailed
+pure def draftReceipt(draftOutcome: ReplyDraftOutcome): DraftReceipt = if (draftOutcome == Drafted) DraftApplied else DraftFailed
+pure def lawDraftReceiptIsAppliedOnlyWhenDrafted(draft: ReplyDraftRequest): bool =
+  (draftReceipt(replyDraftOutcome(draft)) == DraftApplied) == (replyDraftOutcome(draft) == Drafted)
+```

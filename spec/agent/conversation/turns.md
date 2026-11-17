@@ -63,3 +63,23 @@ pure def alwaysUncertainTurnHoldsItsSlot(r: RoomSlot): bool =
   (r.phase == TurnAborting implies r.turn == r.abortedTurn)
 pure def sometimesUncertainSlotReleased(r: RoomSlot): bool = r.phase == SlotFree and r.outcome == TurnOutcomeUnknown
 ```
+
+### A Stop names a room and acts only on the turn holding its slot
+
+A Stop names the conversation's room, never a turn: a turn's identity is the
+server's own and is not on the wire. On a room with no turn it stops
+nothing and reports that nothing was running; on a running turn it starts
+the abort; on a turn already aborting or uncertain it adds nothing and
+reports the abort already in progress or its uncertain outcome.
+
+```quint
+type StopReply = NothingRunning | StopStarted | StopInProgress | StopUncertain
+pure def stopReply(r: RoomSlot): StopReply =
+  if (r.phase == SlotFree) NothingRunning
+  else if (r.phase == TurnRunning) StopStarted
+  else if (r.phase == TurnAborting) StopInProgress
+  else StopUncertain
+pure def lawStopStartsOnlyOnARunningTurn(slot: RoomSlot): bool = (stopReply(slot) == StopStarted) == canRequestAbort(slot)
+pure def lawStopOnAFreeRoomStopsNothing(slot: RoomSlot): bool = slot.phase == SlotFree implies (stopReply(slot) == NothingRunning and not(canRequestAbort(slot)))
+pure val slotValues = Set(initial, { ...initial, phase: TurnRunning, turn: 1, nextTurn: 2 }, { ...initial, phase: TurnAborting, turn: 1, nextTurn: 2, abortedTurn: 1 }, { ...initial, phase: TurnUncertain, turn: 1, nextTurn: 2, abortedTurn: 1, outcome: TurnOutcomeUnknown })
+```

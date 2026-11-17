@@ -3,7 +3,8 @@
 A consumer's camera adapter composes Eliza
 `plugins/plugin-native-camera/src/session.ts` and `host-ports.ts` with the
 foreground Camera, native `ElizaCamera` or browser camera, and its media
-library. The system lock-screen camera has its own owner. The [assistant shutter and saved
+library. Capture from the lock screen belongs to the system camera's
+secure activity, staged into every image as the last story here says. The [assistant shutter and saved
 photo receipt](../../agent/deviceActions/camera.md) uses this viewfinder and its exclusive
 capture slot. The [scan document](../../files/scan/review.md) owns scan review.
 
@@ -174,4 +175,43 @@ pure def stepRecordingConfirmationFollowsFinalization(before: CameraView, via: s
   (before.finished != RecordingConfirmed and after.finished == RecordingConfirmed) implies via == "observeVideoFinish" and before.work == RecordingFinishing
 pure def sometimesVideoConfirmed(s: CameraView): bool = s.finished == RecordingConfirmed
 pure def sometimesVideoFailed(s: CameraView): bool = s.finished == RecordingFailed
+```
+
+## Story: Take a photo from the lock screen with the system's secure camera
+
+> As the person, I want the camera I open from the lock screen to be the
+> system's own secure camera, so that a locked phone never shows the app's
+> surface or hands it my capture.
+
+### Lock-screen capture is the system secure camera's, staged from reviewed source and checked on the booted image
+
+Every image stages the system camera's secure capture activity from
+reviewed source: each module's checkout is at its reviewed commit, its
+index hides no change, it has no ignored input files, its changes are
+exactly the reviewed overrides with their reviewed sizes and digests, and
+each reviewed file has its reviewed digest. When the product refuses
+lock-screen surfaces, a launcher that declares an activity shown over the
+lock screen, or that handles either secure capture action, is refused
+([product composition](../image/product.md)). On a
+booted image, for an explicit user and the exact expected image
+fingerprint, the system camera must be enabled and both the secure still
+and secure capture actions must resolve to its secure activity, and the
+launcher must handle neither. None of these checks is evidence that a
+locked capture is isolated, that unlocking returns correctly, or that a
+device was accepted.
+
+```quint
+type SecureCameraEvidence = { sourceVerified: bool, imageVerified: bool, lockedCaptureVerified: bool }
+pure def secureCameraSourceVerified(atReviewedCommit: bool, indexHidesNothing: bool, noIgnoredInputs: bool, changesAreReviewed: bool, filesMatch: bool): bool =
+  atReviewedCommit and indexHidesNothing and noIgnoredInputs and changesAreReviewed and filesMatch
+pure def secureCameraImageEvidence(sourceVerified: bool, fingerprintMatches: bool, cameraEnabled: bool, systemHandlesBoth: bool, launcherHandlesEither: bool): SecureCameraEvidence =
+  { sourceVerified: sourceVerified,
+    imageVerified: sourceVerified and fingerprintMatches and cameraEnabled and systemHandlesBoth and not(launcherHandlesEither),
+    lockedCaptureVerified: false }
+pure def lawLauncherHandlerFailsTheImageCheck(sourceVerified: bool, fingerprintMatches: bool, cameraEnabled: bool, systemHandlesBoth: bool): bool =
+  not(secureCameraImageEvidence(sourceVerified, fingerprintMatches, cameraEnabled, systemHandlesBoth, true).imageVerified)
+pure def lawHiddenSourceChangeIsNotVerified(atReviewedCommit: bool, noIgnoredInputs: bool, changesAreReviewed: bool, filesMatch: bool): bool =
+  not(secureCameraSourceVerified(atReviewedCommit, false, noIgnoredInputs, changesAreReviewed, filesMatch))
+pure def lawChecksNeverClaimLockedCapture(sourceVerified: bool, fingerprintMatches: bool, cameraEnabled: bool, systemHandlesBoth: bool, launcherHandlesEither: bool): bool =
+  not(secureCameraImageEvidence(sourceVerified, fingerprintMatches, cameraEnabled, systemHandlesBoth, launcherHandlesEither).lockedCaptureVerified)
 ```

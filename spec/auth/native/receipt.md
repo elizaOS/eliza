@@ -56,3 +56,63 @@ pure def lawAuthenticationRequiresCompleteIdentity(facts: NativeFacts, now: int)
 pure def lawGoogleMfaCannotCrossDeployment(facts: NativeFacts, now: int): bool = admitNativeReceipt(GoogleMfaMetadata, facts, now) == NativeAccepted implies facts.environmentPresent and facts.environmentMatches and facts.expiresAt > now
 pure def lawExtraFieldsCannotCrossSecretBoundary(facts: NativeFacts, now: int): bool = not(facts.exactFields) implies admitNativeReceipt(AuthenticationMetadata, facts, now) == NativeUnavailable and admitNativeReceipt(GoogleMfaMetadata, facts, now) == NativeUnavailable
 ```
+
+## Story: Sign in on the application's own screens
+
+> As a person signing in, I want every step to happen on the application's
+> own screens, and when something fails, to be told what happened in the
+> application's words, never in a server's.
+
+### No sign-in outcome opens a hosted web page
+
+A code sent asks for the code, a required second factor asks for it, an
+authentication shows the person signed in, and a failure shows its
+failure code's message. None of them opens the deployment's hosted sign-in
+page, and only an authentication reports the person signed in.
+
+```quint
+type SignInOutcome = OutcomeCodeSent | OutcomeSecondFactor | OutcomeAuthenticated | OutcomeFailed
+type RendererStep = AskForCode | AskForSecondFactor | ShowSignedIn | ShowFailure | OpenHostedSignIn
+pure def rendererStep(result: SignInOutcome): RendererStep =
+  if (result == OutcomeCodeSent) AskForCode
+  else if (result == OutcomeSecondFactor) AskForSecondFactor
+  else if (result == OutcomeAuthenticated) ShowSignedIn
+  else ShowFailure
+pure def lawNoOutcomeOpensHostedSignIn(result: SignInOutcome): bool = rendererStep(result) != OpenHostedSignIn
+pure def lawOnlyAuthenticationSignsIn(result: SignInOutcome): bool = (rendererStep(result) == ShowSignedIn) iff (result == OutcomeAuthenticated)
+```
+
+### A failure reaches the renderer only as one of the plugin's failure codes
+
+The plugin rejects with a code from a fixed list, and the renderer keeps a
+code only when it is on that list; anything else reads as `unavailable`.
+A code is never taken from a response body: the plugin derives it from
+the step and the HTTP status. A rate limit is `rate-limited`, a 410 is
+`expired`, a 403 is `account-check`, a 400 or 401 is `invalid-code` while
+verifying a code or factor and `expired` at the code exchange, a timeout
+or server error is `unavailable`, and anything else is `rejected`. So a
+server that could not answer is never reported as a wrong code.
+
+```quint
+type FailureCode = Cancelled | LoginActive | InvalidPhone | InvalidEmail | InvalidCode | Cooldown | Expired | RateLimited | Offline
+  | Unavailable | AccountCheck | StateMismatch | BrowserClosed | BrowserUnavailable | ProviderRefused | MfaBrowser | MfaUnsupported
+  | ActivationPending | ActivationExpired | StorageFailed | Rejected | InvalidRequest | AppLinkUnverified | AttemptsExhausted | GoogleAccountUnavailable
+type NativeRejection = { listed: bool, code: FailureCode }
+type ServerStep = VerifyStep | FactorStep | ExchangeStep | SendStep
+pure def rendererFailure(rejection: NativeRejection): FailureCode = if (rejection.listed) rejection.code else Unavailable
+pure def failureForStatus(stage: ServerStep, status: int): FailureCode =
+  if (status == 429) RateLimited
+  else if (status == 410) Expired
+  else if (status == 403) AccountCheck
+  else if ((status == 400 or status == 401) and (stage == VerifyStep or stage == FactorStep)) InvalidCode
+  else if ((status == 400 or status == 401) and stage == ExchangeStep) Expired
+  else if (status >= 500 or status == 408) Unavailable
+  else Rejected
+pure val rejectionValues = Set({ listed: true, code: InvalidCode }, { listed: false, code: InvalidCode }, { listed: false, code: Cancelled }, { listed: true, code: StorageFailed })
+pure val statusValues = Set(400, 401, 403, 404, 408, 410, 429, 500, 503)
+pure def lawUnlistedCodeReadsAsUnavailable(rejection: NativeRejection): bool = not(rejection.listed) implies rendererFailure(rejection) == Unavailable
+pure def lawServerTroubleIsNeverAWrongCode(stage: ServerStep, status: int): bool =
+  (status >= 500 or status == 408 or status == 429) implies failureForStatus(stage, status) != InvalidCode
+pure def lawWrongCodeOnlyWhileVerifying(stage: ServerStep, status: int): bool =
+  failureForStatus(stage, status) == InvalidCode implies ((stage == VerifyStep or stage == FactorStep) and (status == 400 or status == 401))
+```

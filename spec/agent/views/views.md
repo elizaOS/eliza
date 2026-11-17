@@ -21,8 +21,9 @@ active installation leaves none active. A revoked installation can neither
 be prepared nor committed again.
 
 ```quint
-type Views = { closed: bool, pending: int, active: int, revoked: Set[int], waiter: int, claimed: bool, done: bool, resultEntry: int }
-pure val initial: Views = { closed: false, pending: 0, active: 0, revoked: Set(), waiter: 0, claimed: false, done: false, resultEntry: 0 }
+type InteractOutcome = NoInteractOutcome | InteractAnswered | InteractUnknown
+type Views = { closed: bool, pending: int, active: int, revoked: Set[int], waiter: int, claimed: bool, done: bool, resultEntry: int, waits: int, deliveries: int, outcome: InteractOutcome }
+pure val initial: Views = { closed: false, pending: 0, active: 0, revoked: Set(), waiter: 0, claimed: false, done: false, resultEntry: 0, waits: 0, deliveries: 0, outcome: NoInteractOutcome }
 pure def revokedWith(v: Views, installation: int): Set[int] = if (installation != 0) v.revoked.union(Set(installation)) else v.revoked
 pure def canBeginInstall(v: Views, installation: int): bool =
   not(v.closed) and installation > 0 and installation != v.active and installation != v.pending and not(v.revoked.contains(installation))
@@ -47,17 +48,57 @@ be claimed or answered; it can only be cancelled.
 
 ```quint
 pure def canWaitInteraction(v: Views): bool = not(v.closed) and v.active != 0 and v.waiter == 0 and not(v.done)
-pure def waitInteraction(v: Views): Views = { ...v, waiter: v.active, claimed: false }
+pure def waitInteraction(v: Views): Views = { ...v, waiter: v.active, claimed: false, waits: v.waits + 1, outcome: NoInteractOutcome }
 pure def canClaimInteraction(v: Views): bool = not(v.closed) and v.waiter != 0 and v.waiter == v.active and not(v.claimed)
-pure def claimInteraction(v: Views): Views = { ...v, claimed: true }
+pure def claimInteraction(v: Views): Views = { ...v, claimed: true, deliveries: v.deliveries + 1 }
 pure def canAnswerInteraction(v: Views): bool = not(v.closed) and v.waiter != 0 and v.waiter == v.active and v.claimed
-pure def answerInteraction(v: Views): Views = { ...v, done: true, resultEntry: v.waiter, waiter: 0, claimed: false }
+pure def answerInteraction(v: Views): Views = { ...v, done: true, resultEntry: v.waiter, waiter: 0, claimed: false, outcome: InteractAnswered }
 pure def canCancelInteraction(v: Views): bool = v.waiter != 0
 pure def cancelInteraction(v: Views): Views = { ...v, waiter: 0, claimed: false }
 pure def stepAnswerComesFromActiveInstallation(before: Views, via: str, after: Views): bool =
   via == "answerInteraction" implies (before.waiter == before.active and before.claimed and after.resultEntry == before.active)
 pure def sometimesInteractionAnswered(v: Views): bool = v.done and v.resultEntry != 0
 pure def sometimesStaleWaiterAfterReplacement(v: Views): bool = v.waiter != 0 and v.waiter != v.active and v.claimed
+```
+
+### An interaction whose answer was lost is unknown and is never delivered again
+
+A claimed interaction may lose its answer: the renderer's result, or the
+acknowledgement of it, never arrives. It then ends with an unknown outcome,
+never as failed or answered, and the waiter is gone, so the same
+interaction cannot be claimed or delivered again; only a new interaction,
+with its own waiter, reaches the renderer. Each waiter is delivered to a
+renderer at most once.
+
+```quint
+pure def canLoseInteractionAnswer(v: Views): bool = v.waiter != 0 and v.claimed
+pure def loseInteractionAnswer(v: Views): Views = { ...v, waiter: 0, claimed: false, outcome: InteractUnknown }
+pure def alwaysEachWaiterIsDeliveredOnce(v: Views): bool =
+  v.deliveries >= 0 and v.deliveries + (if (v.waiter != 0 and not(v.claimed)) 1 else 0) <= v.waits and (v.waiter != 0 implies v.waits > 0)
+pure def alwaysUnknownOutcomeHasNoWaiter(v: Views): bool = v.outcome == InteractUnknown implies v.waiter == 0
+pure def stepUnknownOutcomeIsNotReplayed(before: Views, via: str, after: Views): bool =
+  before.outcome == InteractUnknown implies via != "claimInteraction"
+pure def sometimesInteractionUnknown(v: Views): bool = v.outcome == InteractUnknown and v.deliveries > 0
+```
+
+### A view's own interaction accepts only what the view declares and grants the agent
+
+A request to interact with a view names one of its capabilities. It is
+admitted only for an installed view the caller's role may use, a
+capability that is standard or that the view declares, and one the view's
+manifest lets the agent invoke; anything else is refused before the view
+is reached.
+
+```quint
+type ViewInteractRequest = { installed: bool, roleAllowed: bool, standard: bool, declared: bool, manifestAllows: bool, agentAuthority: bool }
+pure def viewInteractAdmitted(r: ViewInteractRequest): bool =
+  r.installed and r.roleAllowed and (r.standard or r.declared) and r.manifestAllows and r.agentAuthority
+pure val admittedRequest: ViewInteractRequest = { installed: true, roleAllowed: true, standard: false, declared: true, manifestAllows: true, agentAuthority: true }
+pure val requestValues = Set(admittedRequest, { ...admittedRequest, declared: false }, { ...admittedRequest, roleAllowed: false }, { ...admittedRequest, agentAuthority: false }, { ...admittedRequest, declared: false, standard: true })
+pure def lawUndeclaredCapabilityIsRefused(request: ViewInteractRequest): bool =
+  not(request.standard or request.declared) implies not(viewInteractAdmitted(request))
+pure def lawManifestDecidesAgentAuthority(request: ViewInteractRequest): bool =
+  not(request.manifestAllows and request.agentAuthority) implies not(viewInteractAdmitted(request))
 ```
 
 ### Closing the agent clears every installation and waiter

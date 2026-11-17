@@ -86,6 +86,33 @@ pure val weight_approveShare = 8
 pure val weight_finishShare = 8
 ```
 
+### A query receipt carries the original query, an allowed basis and a record only on a match
+
+The device answers a `notes.query.v1` operation with a receipt that repeats
+the query exactly as asked. A title query's receipt is a title match or no
+match; a latest query's receipt is latest, only note, the owner's uncertain
+choice, or no match. A no-match receipt carries no note and no record; every
+other receipt carries the one selected note and its record. The basis the
+device computes is always one its query allows.
+
+```quint
+type QueryReceipt = { sameQuery: bool, basis: CandidateBasis, carriesRecord: bool }
+pure def receiptBasisAllowed(queryKind: QueryKind, basis: CandidateBasis): bool =
+  basis == NoMatch or (if (queryKind == ByTitle) basis == TitleMatch else (basis == Latest or basis == OnlyNote or basis == Uncertain))
+pure def queryReceiptAdmitted(queryKind: QueryKind, receipt: QueryReceipt): bool =
+  receipt.sameQuery and receiptBasisAllowed(queryKind, receipt.basis) and receipt.carriesRecord == (receipt.basis != NoMatch)
+pure val receiptValues = Set({ sameQuery: true, basis: TitleMatch, carriesRecord: true }, { sameQuery: true, basis: NoMatch, carriesRecord: true }, { sameQuery: false, basis: Latest, carriesRecord: true }, { sameQuery: true, basis: Uncertain, carriesRecord: true })
+pure val countValues = Set(0, 1, 3)
+pure val matchesValues = Set(0, 2)
+pure val tiesValues = Set(1, 2)
+pure def lawTitleReceiptIsATitleMatch(receipt: QueryReceipt): bool =
+  queryReceiptAdmitted(ByTitle, receipt) implies (receipt.basis == TitleMatch or receipt.basis == NoMatch)
+pure def lawNoMatchCarriesNoRecord(queryKind: QueryKind, receipt: QueryReceipt): bool =
+  (queryReceiptAdmitted(queryKind, receipt) and receipt.basis == NoMatch) implies not(receipt.carriesRecord)
+pure def lawComputedBasisIsAllowed(queryKind: QueryKind, count: int, matches: int, allDatesKnown: bool, ties: int): bool =
+  receiptBasisAllowed(queryKind, notesBasis(queryKind, count, matches, allDatesKnown, ties))
+```
+
 ### Wire and authored content have different boundaries
 
 Selected device reads return exactly title and body under the reviewed

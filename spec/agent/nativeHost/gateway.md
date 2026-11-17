@@ -123,6 +123,34 @@ pure def lawHealthSuccessNeedsNativeBearer(localRequest: LocalHealthRequest): bo
   localHealthRoute(localRequest) == LocalHealthy implies localRequest.expectsNativeToken and localRequest.bearerMatches and localRequest.callerAllowed and not(localRequest.hasOrigin) and localRequest.methodGet and not(localRequest.hasQuery) and localRequest.ownershipLoaded
 ```
 
+## Story: Serve on-device speech only to the native host
+
+> As a device owner, the speech routes of the agent on my device answer
+> only the native host that started it, never a page holding my session.
+
+### The live, readiness and end-of-turn speech routes accept only the per-boot token
+
+The gateway's live segment, live readiness and end-of-turn speech routes
+([on-device speech](../../os/voice/localSpeech.md)) accept only the
+per-boot token the native host minted when it started the agent; that
+token never leaves native code. The owner's session token, any other
+token and no token at all are unauthenticated (401) on these routes, and
+the native host has already admitted the owner before it calls them. The
+recorded recognition and read-aloud routes are owner session routes like
+any other.
+
+```quint
+type SpeechBearer = PerBootBearer | OwnerSessionBearer | OtherBearer | NoBearer
+type SpeechRouteAnswer = SpeechRouteServed | SpeechRouteUnauthenticated
+pure def speechRouteAuth(perBootFamily: bool, bearer: SpeechBearer): SpeechRouteAnswer =
+  if (perBootFamily) (if (bearer == PerBootBearer) SpeechRouteServed else SpeechRouteUnauthenticated)
+  else if (bearer == OwnerSessionBearer) SpeechRouteServed else SpeechRouteUnauthenticated
+pure def lawOwnerTokenRefusedOnPerBootRoutes(bearer: SpeechBearer): bool =
+  bearer != PerBootBearer implies speechRouteAuth(true, bearer) == SpeechRouteUnauthenticated
+pure def lawPerBootRouteServesItsToken(perBootFamily: bool): bool =
+  perBootFamily implies speechRouteAuth(perBootFamily, PerBootBearer) == SpeechRouteServed
+```
+
 ## Story: Answer a turn only for the owner who sent it
 
 > As a device owner, my turn is sent to the agent and its reply returned to

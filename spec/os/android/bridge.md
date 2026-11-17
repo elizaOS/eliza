@@ -5,9 +5,10 @@ descriptor and generates it with Eliza's
 [Android host generator](../build/consumerHost.md). Explicit registration is
 in each consumer's `MainActivity.java`. The build emits
 settings, variants, source sets and Gradle wiring from the consumer
-identity and modules. A consumer may independently select `upstream`,
-`patchedNative`, `consumer` and `dependencies` roots, and then rejects
-unadmitted native patch staging before Gradle assembles its modules.
+identity and modules. The generator resolves a module only under the
+upstream, consumer or dependency root; a consumer that patches native
+modules stages them inside its own checkout first and names the staged
+copy under its consumer root, as the last story says.
 
 | Shared boundary | Producer modules a consumer may register |
 | --- | --- |
@@ -120,4 +121,86 @@ pure def stepNewTreeRequiresVerifiedStage(before: StageTransaction, after: Stage
   after.newTreeLive and not(before.newTreeLive) implies before.phase == StageVerified
 pure def sometimesStagedTreePublished(s: StageTransaction): bool = s.phase == NewTreePublished
 pure def sometimesRestoreFailurePreservesPrior(s: StageTransaction): bool = s.phase == PriorTreeRetained
+```
+
+## Story: Keep the host renderer's WebView safe through the Activity's life
+
+> As a consumer, I want my host Activity to inherit one WebView lifecycle,
+> so a renderer that Android ends never takes the app down, a stopped
+> screen never runs as visible, and a page below the host shows through.
+
+### The host Activity never loads mixed content, recreates itself after its renderer dies, and pauses its page while stopped
+
+A consumer's main Activity extends the shared host Activity and registers
+its plugins before calling the base `onCreate`; a plugin registered later
+is not part of that bridge. The host WebView never loads mixed content.
+When Android ends the host renderer, the Activity removes and destroys the
+dead WebView instead of letting the whole process die, and recreates
+itself when it is next started, at once if it is on screen. After that it
+never uses the dead WebView: a subclass checks `isRendererGone()` before
+it reaches the WebView through `getBridge().getWebView()`. Stopping the
+Activity pauses the host page, so a screen turned off never leaves it
+running as visible, and starting it resumes the page; a permission dialog
+over a visible app does not. A surface below the host shows only when the
+host WebView and every view up to the content are transparent, which the
+consumer sets.
+
+```quint
+type ActivityHook = HookCreate | HookStart | HookStop | HookRendererGone
+type HostWebView = { rendererGone: bool, started: bool }
+type HookAction = { blocksMixedContent: bool, recreate: bool, resumePage: bool, pausePage: bool, destroyDeadView: bool, usesView: bool }
+pure val noAction: HookAction = { blocksMixedContent: false, recreate: false, resumePage: false, pausePage: false, destroyDeadView: false, usesView: false }
+pure def onHook(view: HostWebView, hook: ActivityHook): HookAction =
+  if (hook == HookRendererGone) { ...noAction, destroyDeadView: true, recreate: view.started }
+  else if (view.rendererGone) { ...noAction, recreate: hook == HookStart }
+  else if (hook == HookCreate) { ...noAction, blocksMixedContent: true, usesView: true }
+  else if (hook == HookStart) { ...noAction, resumePage: true, usesView: true }
+  else { ...noAction, pausePage: true, usesView: true }
+pure def pluginInBridge(registeredBeforeBaseCreate: bool): bool = registeredBeforeBaseCreate
+pure def belowHostShows(hostTransparent: bool, ancestorsTransparent: bool): bool = hostTransparent and ancestorsTransparent
+pure def lawDeadViewIsNeverUsed(view: HostWebView, hook: ActivityHook): bool =
+  view.rendererGone or hook == HookRendererGone implies not(onHook(view, hook).usesView)
+pure def lawRendererDeathRecreatesTheActivity(view: HostWebView): bool =
+  onHook(view, HookRendererGone).destroyDeadView and onHook(view, HookRendererGone).recreate == view.started and
+  (view.rendererGone implies onHook(view, HookStart).recreate)
+pure def lawStoppedPageIsPaused(view: HostWebView): bool =
+  not(view.rendererGone) implies onHook(view, HookStop).pausePage and onHook(view, HookStart).resumePage and onHook(view, HookCreate).blocksMixedContent
+pure def lawLateRegistrationIsNotInTheBridge(registeredBeforeBaseCreate: bool): bool = pluginInBridge(registeredBeforeBaseCreate) iff registeredBeforeBaseCreate
+pure def lawBelowHostNeedsTransparentHost(hostTransparent: bool, ancestorsTransparent: bool): bool =
+  belowHostShows(hostTransparent, ancestorsTransparent) implies hostTransparent and ancestorsTransparent
+pure val viewValues = Set({ rendererGone: false, started: true }, { rendererGone: false, started: false }, { rendererGone: true, started: true }, { rendererGone: true, started: false })
+```
+
+## Story: Hand the generator only patched native sources staged from the pinned commit
+
+> As a consumer that carries native patches, I want them built only from
+> the reviewed bytes of the commit I pinned, so an unreviewed patch never
+> reaches my Android host.
+
+### A patched native module reaches the generator only as a staged copy under the consumer root
+
+The host descriptor may mark a module as patched native. The consumer
+stages those modules before generation: only inside its own checkout,
+only for a manifest whose schema it knows and whose base commit is the
+pinned one, only for admitted native modules, and only when every staged
+byte and file mode matches the reviewed manifest with no symbolic link or
+other non-regular file. It then names the staged copy under its consumer
+root. A staging that fails any of these is refused, and a descriptor that
+still names a patched native root is refused by the generator, so nothing
+unstaged is ever built.
+
+```quint
+type PatchStaging = { insideCheckout: bool, schemaKnown: bool, pinMatches: bool, modulesAdmitted: bool, bytesMatchManifest: bool, modesMatch: bool, regularFilesOnly: bool }
+type DescriptorRoot = UpstreamSource | ConsumerSource | DependencySource | PatchedNativeSource
+pure def patchStaged(stage: PatchStaging): bool =
+  stage.insideCheckout and stage.schemaKnown and stage.pinMatches and stage.modulesAdmitted and stage.bytesMatchManifest and stage.modesMatch and stage.regularFilesOnly
+pure def generatorAccepts(root: DescriptorRoot): bool = root != PatchedNativeSource
+pure def patchedReference(stage: PatchStaging): DescriptorRoot = if (patchStaged(stage)) ConsumerSource else PatchedNativeSource
+pure def lawPatchedRootNeverReachesTheGenerator(stage: PatchStaging): bool =
+  generatorAccepts(patchedReference(stage)) implies patchStaged(stage)
+pure def lawStagingNeedsThePinnedReviewedBytes(stage: PatchStaging): bool =
+  patchStaged(stage) implies stage.insideCheckout and stage.pinMatches and stage.bytesMatchManifest and stage.modesMatch
+pure val stagedPatch: PatchStaging = { insideCheckout: true, schemaKnown: true, pinMatches: true, modulesAdmitted: true, bytesMatchManifest: true, modesMatch: true, regularFilesOnly: true }
+pure val stageValues = Set(stagedPatch, { ...stagedPatch, insideCheckout: false }, { ...stagedPatch, pinMatches: false }, { ...stagedPatch, modulesAdmitted: false },
+  { ...stagedPatch, bytesMatchManifest: false }, { ...stagedPatch, regularFilesOnly: false })
 ```

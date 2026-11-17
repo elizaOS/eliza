@@ -1,15 +1,19 @@
-# Browser surface page requests
+# Browser surface pages and page requests
 
-A page in a native browser surface can ask the person for something: a
-JavaScript dialog, a file, a site permission, a download, another app or
-a sign-in page that refuses embedded WebViews. The surface holds each
-request under a request id and reports it (`dialogRequested`,
+A native browser surface shows one page at a time and keeps its own
+history. The consumer's renderer moves it with `navigate`,
+`reloadSurface`, `goBack`, `goForward` and `stopLoading`, and hears
+`pageStarted`, `navigationChanged` and `sitePermissionWithdrawn` on the
+surface's one ordered event thread. A page can ask the person for
+something: a JavaScript dialog, a file, a site permission, a download,
+another app or a sign-in page that refuses embedded WebViews. The surface
+holds each request under a request id and reports it (`dialogRequested`,
 `fileChooserRequested`, `sitePermissionRequested`, `downloadRequested`,
 `externalLinkRequested`, `identityProviderRequested`); the consumer's
 renderer answers through `answerDialog`, `answerFileChooser`,
 `answerSitePermission`, `saveDownload`, `openExternalLink` and
 `openIdentityProvider`. [Surface lifecycle](./lifecycle.md) owns which
-surfaces exist.
+surfaces exist and which renderer may command them.
 
 ## Story: Answer what a website asks only for the page I am looking at
 
@@ -24,21 +28,28 @@ requests holds them; any other surface dismisses a request at once. An
 answer names the request id and the kind it answers; an answer for an id
 that is not held, or for another kind, changes nothing. Once a request
 has an outcome it never changes again, except that a started download
-settles once.
+settles once. A surface holds at most one file request, one download, one
+other-app link and one sign-in page at a time: a newer one of the same
+kind ends the older, so the renderer can only open the last sign-in page
+of a tab.
 
 ```quint
 type RequestKind = DialogAsk | FileChooserAsk | SitePermissionAsk | DownloadAsk | ExternalLinkAsk | IdentityProviderAsk
 type RequestOutcome = Pending | Accepted | Declined | PickerOpened | NoFile | Granted | SiteDenied | AndroidDenied | PermissionWithdrawn | Ended
   | Saving | Saved | SaveFailed | SaveUnconfirmed | SaveCancelled | Dispatched | ExternalAppUnavailable | BrowserUnavailable
 type LinkKind = PhoneLink | MailLink | TextLink | MapLink | StoreLink | ForeignIntent | InvalidLink
+type LoadKind = NoLoad | LoadAddress | LoadBack | LoadForward | LoadReload
+type PageEventKind = WithdrawnEvent | StartedEvent | ChangedEvent
+type PageEvent = { kind: PageEventKind, surface: int, requestId: int }
 type PageRequest = { surface: int, requestId: int, kind: RequestKind, page: int, verdict: RequestOutcome, resolvable: bool, link: LinkKind }
-type SurfacePage = { surface: int, page: int, visible: bool, holdsRequests: bool }
-type PageRequests = { pages: List[SurfacePage], requests: List[PageRequest], popupGestureSpent: Set[int] }
+type SurfacePage = { surface: int, page: int, visible: bool, paused: bool, holdsRequests: bool, back: int, forward: int, pending: LoadKind, loading: bool }
+type PageRequests = { pages: List[SurfacePage], requests: List[PageRequest], popupGestureSpent: Set[int], lastEvents: List[PageEvent] }
+pure val shownPage: SurfacePage = { surface: 1, page: 1, visible: true, paused: false, holdsRequests: true, back: 0, forward: 0, pending: NoLoad, loading: false }
 pure val initial: PageRequests = {
-  pages: List({ surface: 1, page: 1, visible: true, holdsRequests: true }, { surface: 2, page: 1, visible: false, holdsRequests: false }),
-  requests: List(), popupGestureSpent: Set()
+  pages: List(shownPage, { ...shownPage, surface: 2, visible: false, holdsRequests: false }),
+  requests: List(), popupGestureSpent: Set(), lastEvents: List()
 }
-pure val noPage: SurfacePage = { surface: 0, page: 0, visible: false, holdsRequests: false }
+pure val noPage: SurfacePage = { ...shownPage, surface: 0, page: 0, visible: false, holdsRequests: false }
 pure val noRequest: PageRequest = { surface: 0, requestId: 0, kind: DialogAsk, page: 0, verdict: Ended, resolvable: false, link: InvalidLink }
 pure def pageOf(s: PageRequests, surface: int): SurfacePage = s.pages.select(p => p.surface == surface).nthOr(0, noPage)
 pure def requestOf(s: PageRequests, surface: int, requestId: int): PageRequest =
@@ -46,13 +57,17 @@ pure def requestOf(s: PageRequests, surface: int, requestId: int): PageRequest =
 pure def held(s: PageRequests, surface: int, requestId: int, kind: RequestKind): bool =
   s.requests.some(r => r.surface == surface and r.requestId == requestId and r.kind == kind and r.verdict == Pending)
 pure def resolve(surface: int, s: PageRequests, requestId: int, verdict: RequestOutcome): PageRequests =
-  { ...s, requests: s.requests.listMap(r => if (r.surface == surface and r.requestId == requestId) { ...r, verdict: verdict } else r) }
+  { ...s, requests: s.requests.listMap(r => if (r.surface == surface and r.requestId == requestId) { ...r, verdict: verdict } else r), lastEvents: List() }
+pure def singleSlot(kind: RequestKind): bool = kind != DialogAsk and kind != SitePermissionAsk
+pure def pauseRefuses(kind: RequestKind): bool = kind == DialogAsk or kind == FileChooserAsk or kind == SitePermissionAsk
+pure def admitsAsk(p: SurfacePage, kind: RequestKind): bool = p.holdsRequests and p.visible and not(p.paused and pauseRefuses(kind))
 pure def canAsk(s: PageRequests, surface: int, requestId: int, kind: RequestKind, resolvable: bool, link: LinkKind): bool =
   pageOf(s, surface).surface > 0 and requestId > 0 and not(s.requests.some(r => r.surface == surface and r.requestId == requestId))
 pure def ask(s: PageRequests, surface: int, requestId: int, kind: RequestKind, resolvable: bool, link: LinkKind): PageRequests = {
   val p = pageOf(s, surface)
-  { ...s, requests: s.requests.append({ surface: surface, requestId: requestId, kind: kind, page: p.page,
-    verdict: if (p.visible and p.holdsRequests) Pending else Ended, resolvable: resolvable,
+  val replaced = s.requests.listMap(r => if (singleSlot(kind) and r.surface == surface and r.kind == kind and r.verdict == Pending) { ...r, verdict: Ended } else r)
+  { ...s, lastEvents: List(), requests: replaced.append({ surface: surface, requestId: requestId, kind: kind, page: p.page,
+    verdict: if (admitsAsk(p, kind)) Pending else Ended, resolvable: resolvable,
     link: if (kind == ExternalLinkAsk) link else InvalidLink }) }
 }
 pure def canAnswerDialog(s: PageRequests, surface: int, requestId: int, accept: bool): bool = held(s, surface, requestId, DialogAsk)
@@ -64,40 +79,152 @@ pure def declineRequest(s: PageRequests, surface: int, requestId: int): PageRequ
 pure def settledOutcome(o: RequestOutcome): bool = o != Pending and o != Saving
 pure def alwaysRequestIdsUnique(s: PageRequests): bool =
   s.requests.every(r => s.requests.select(q => q.surface == r.surface and q.requestId == r.requestId).length() == 1)
+pure def alwaysOneHeldRequestPerSlot(s: PageRequests): bool =
+  s.requests.every(r => s.requests.every(q => not(r.verdict == Pending and q.verdict == Pending and singleSlot(r.kind) and q.kind == r.kind and q.surface == r.surface) or q.requestId == r.requestId))
 pure def stepSettledRequestNeverChanges(before: PageRequests, after: PageRequests): bool =
   before.requests.every(r => not(settledOutcome(r.verdict)) or after.requests.includes(r))
 pure def stepOutcomeNeverReturnsToPending(before: PageRequests, after: PageRequests): bool =
   before.requests.every(r => r.verdict == Pending or after.requests.every(q => q.surface != r.surface or q.requestId != r.requestId or q.verdict != Pending))
 pure def sometimesDialogAccepted(s: PageRequests): bool = s.requests.some(r => r.verdict == Accepted)
+pure def sometimesNewerSignInReplacesOlder(s: PageRequests): bool =
+  s.requests.some(r => r.kind == IdentityProviderAsk and r.verdict == Ended) and s.requests.some(r => r.kind == IdentityProviderAsk and r.verdict == Pending)
 pure val surfaceValues = Set(1, 2)
 pure val requestIdValues = Set(1, 2, 3)
 pure val linkValues = Set(PhoneLink, StoreLink, InvalidLink)
 ```
 
-### A page that starts, or a surface I stop seeing, ends what it asked and never accepts it
+### A page that starts ends everything it asked, hiding ends what only the shown page may ask, and pausing ends only its dialogs
 
-When the surface's page starts a new document, or the surface is hidden
-or paused, every request that page still holds ends without being
-accepted: a dialog is cancelled, a file request gets no file and a
-permission is denied. The renderer hears that page started before it
-hears any request of the new page.
+Nothing a page asked is ever accepted for the person when it ends this
+way. When the surface's page starts a new document, every request that
+page still holds ends: a dialog is cancelled, a file request gets no file
+and a permission is denied. Hiding the surface, and a host `navigate`,
+`reloadSurface`, `goBack` or `goForward` that moves it, end its dialogs,
+file requests, site permissions and downloads, but keep a held other-app
+link and sign-in page, which only a page start, a newer one or an answer
+ends. Pausing the surface cancels its dialogs only; held file requests and
+site permissions stay open, since the system picker or Android's own
+permission prompt may be what covers the page, and while it is paused a
+new dialog, file request or site permission is refused at once. Showing
+or resuming it again brings nothing back.
 
 ```quint
-pure def endHeld(s: PageRequests, surface: int): List[PageRequest] =
-  s.requests.listMap(r => if (r.surface == surface and r.verdict == Pending) { ...r, verdict: Ended } else r)
+type EndScope = EndAll | EndUnseen | EndDialogs
+pure def hideEnds(kind: RequestKind): bool = kind != ExternalLinkAsk and kind != IdentityProviderAsk
+pure def ends(scope: EndScope, kind: RequestKind): bool =
+  if (scope == EndAll) true else if (scope == EndUnseen) hideEnds(kind) else kind == DialogAsk
+pure def endHeld(s: PageRequests, surface: int, scope: EndScope): List[PageRequest] =
+  s.requests.listMap(r => if (r.surface == surface and r.verdict == Pending and ends(scope, r.kind)) { ...r, verdict: Ended } else r)
+pure def withdrawnOf(r: PageRequest): PageEvent = { kind: WithdrawnEvent, surface: r.surface, requestId: r.requestId }
+pure def withdrawals(s: PageRequests, surface: int): List[PageEvent] =
+  s.requests.select(r => r.surface == surface and r.kind == SitePermissionAsk and r.verdict == Pending).listMap(r => withdrawnOf(r))
+pure def startedPage(p: SurfacePage): SurfacePage =
+  { ...p, page: p.page + 1, pending: NoLoad, loading: true,
+    back: if (p.pending == LoadBack) p.back - 1 else if (p.pending == LoadReload) p.back else p.back + 1,
+    forward: if (p.pending == LoadBack) p.forward + 1 else if (p.pending == LoadForward) p.forward - 1 else if (p.pending == LoadReload) p.forward else 0 }
 pure def canStartPage(s: PageRequests, surface: int): bool = pageOf(s, surface).surface > 0
 pure def startPage(s: PageRequests, surface: int): PageRequests =
-  { ...s, pages: s.pages.listMap(p => if (p.surface == surface) { ...p, page: p.page + 1 } else p), requests: endHeld(s, surface) }
+  { ...s, pages: s.pages.listMap(p => if (p.surface == surface) startedPage(p) else p), requests: endHeld(s, surface, EndAll),
+    lastEvents: withdrawals(s, surface).append({ kind: StartedEvent, surface: surface, requestId: 0 }) }
 pure def canSetPageVisible(s: PageRequests, surface: int, visible: bool): bool = pageOf(s, surface).surface > 0 and pageOf(s, surface).visible != visible
 pure def setPageVisible(s: PageRequests, surface: int, visible: bool): PageRequests =
   { ...s, pages: s.pages.listMap(p => if (p.surface == surface) { ...p, visible: visible } else p),
-    requests: if (visible) s.requests else endHeld(s, surface) }
-pure def alwaysHeldRequestIsOnItsVisiblePage(s: PageRequests): bool =
-  s.requests.every(r => r.verdict != Pending or (pageOf(s, r.surface).page == r.page and pageOf(s, r.surface).visible and pageOf(s, r.surface).holdsRequests))
+    requests: if (visible) s.requests else endHeld(s, surface, EndUnseen), lastEvents: if (visible) List() else withdrawals(s, surface) }
+pure def canSetPagePaused(s: PageRequests, surface: int, paused: bool): bool = pageOf(s, surface).surface > 0 and pageOf(s, surface).paused != paused
+pure def setPagePaused(s: PageRequests, surface: int, paused: bool): PageRequests =
+  { ...s, pages: s.pages.listMap(p => if (p.surface == surface) { ...p, paused: paused } else p),
+    requests: if (paused) endHeld(s, surface, EndDialogs) else s.requests, lastEvents: List() }
+pure def heldAllowed(p: SurfacePage, r: PageRequest): bool =
+  p.page == r.page and p.holdsRequests and (p.visible or not(hideEnds(r.kind))) and not(p.paused and r.kind == DialogAsk)
+pure def alwaysHeldRequestIsOnItsPage(s: PageRequests): bool =
+  s.requests.every(r => r.verdict != Pending or heldAllowed(pageOf(s, r.surface), r))
 pure def stepLookingAwayNeverAccepts(before: PageRequests, via: str, after: PageRequests): bool =
-  (via == "startPage" or via == "setPageVisible") implies
+  (via == "startPage" or via == "setPageVisible" or via == "setPagePaused" or via == "requestLoad") implies
     after.requests.every(r => before.requests.includes(r) or r.verdict == Ended)
 pure def sometimesRequestEndedByLookingAway(s: PageRequests): bool = s.requests.some(r => r.verdict == Ended and pageOf(s, r.surface).holdsRequests)
+pure def sometimesHandoffKeptWhileHidden(s: PageRequests): bool =
+  s.requests.some(r => r.verdict == Pending and not(hideEnds(r.kind)) and not(pageOf(s, r.surface).visible))
+pure def sometimesPermissionKeptWhilePaused(s: PageRequests): bool =
+  s.requests.some(r => r.verdict == Pending and r.kind == SitePermissionAsk and pageOf(s, r.surface).paused)
+```
+
+### A site permission is never remembered, and each request is granted only by its own answer
+
+The surface keeps no site permission between requests: a request is
+granted only by the `answerSitePermission` that names it, never by an
+earlier answer for the same site.
+
+```quint
+pure def stepGrantOnlyByItsOwnAnswer(before: PageRequests, via: str, after: PageRequests): bool =
+  via != "answerSitePermission" implies after.requests.every(r => r.verdict != Granted or before.requests.includes(r))
+```
+
+## Story: Move the page through its own history
+
+> As the consumer's renderer, I want the surface to load, reload, go back,
+> go forward and stop only as I ask, and to tell me what changed in the
+> order it happened, so my tab's address and history always match the
+> page.
+
+### The history moves only when a page starts, and a step past it does nothing
+
+`navigate`, `reloadSurface`, `goBack` and `goForward` end what the page
+holds, as hiding does, and ask for a load; the history records the step
+only when the new page starts, so `canGoBack` and `canGoForward` change
+then and not before. `goBack` with nothing behind, or `goForward` with
+nothing ahead, resolves and changes nothing. A page that starts by itself
+adds a new entry and drops what was ahead. `stopLoading` stops the load
+where it is, ends nothing the page holds, and sends `navigationChanged`
+so the renderer reads the state again; so does a load that finishes.
+
+```quint
+pure def loadAccepted(p: SurfacePage, load: LoadKind): bool =
+  load != NoLoad and (load != LoadBack or p.back > 0) and (load != LoadForward or p.forward > 0)
+pure def canRequestLoad(s: PageRequests, surface: int, load: LoadKind): bool = pageOf(s, surface).surface > 0 and load != NoLoad
+pure def requestLoad(s: PageRequests, surface: int, load: LoadKind): PageRequests =
+  if (not(loadAccepted(pageOf(s, surface), load))) { ...s, lastEvents: List() }
+  else { ...s, pages: s.pages.listMap(p => if (p.surface == surface and loadAccepted(p, load)) { ...p, pending: load, loading: true } else p),
+    requests: endHeld(s, surface, EndUnseen), lastEvents: withdrawals(s, surface) }
+pure def changedEvent(surface: int): PageEvent = { kind: ChangedEvent, surface: surface, requestId: 0 }
+pure def canStopLoading(s: PageRequests, surface: int): bool = pageOf(s, surface).surface > 0
+pure def stopLoading(s: PageRequests, surface: int): PageRequests =
+  { ...s, pages: s.pages.listMap(p => if (p.surface == surface) { ...p, pending: NoLoad, loading: false } else p), lastEvents: List(changedEvent(surface)) }
+pure def canFinishLoad(s: PageRequests, surface: int): bool = pageOf(s, surface).loading and pageOf(s, surface).pending == NoLoad
+pure def finishLoad(s: PageRequests, surface: int): PageRequests =
+  { ...s, pages: s.pages.listMap(p => if (p.surface == surface) { ...p, loading: false } else p), lastEvents: List(changedEvent(surface)) }
+pure val loadValues = Set(LoadAddress, LoadBack, LoadForward, LoadReload)
+pure def lawStepPastHistoryIsIgnored(tab: PageRequests, surface: int, load: LoadKind): bool =
+  ((load == LoadBack and pageOf(tab, surface).back <= 0) or (load == LoadForward and pageOf(tab, surface).forward <= 0)) implies
+    requestLoad(tab, surface, load).pages == tab.pages and requestLoad(tab, surface, load).requests == tab.requests
+pure val tabValues = Set(initial, { ...initial, pages: List({ ...shownPage, back: 1 }), requests: List({ ...noRequest, surface: 1, requestId: 1, page: 1, verdict: Pending }) },
+  { ...initial, pages: List({ ...shownPage, forward: 2 }), requests: List({ ...noRequest, surface: 1, requestId: 1, page: 1, verdict: Pending }) })
+pure def alwaysHistoryIsCounted(s: PageRequests): bool =
+  s.pages.every(p => p.back >= 0 and p.forward >= 0 and (p.pending == LoadBack implies p.back > 0) and (p.pending == LoadForward implies p.forward > 0))
+pure def stepHistoryMovesOnlyAtPageStart(before: PageRequests, via: str, after: PageRequests): bool =
+  via != "startPage" implies after.pages.every(p => before.pages.some(q => q.surface == p.surface and q.back == p.back and q.forward == p.forward))
+pure def stepStopEndsNothingAndReports(before: PageRequests, via: str, after: PageRequests): bool =
+  via == "stopLoading" implies after.requests == before.requests and after.lastEvents.length() == 1 and after.lastEvents.nthOr(0, withdrawnOf(noRequest)).kind == ChangedEvent
+pure def sometimesWentBackWithForwardAhead(s: PageRequests): bool = s.pages.some(p => p.back > 0 and p.forward > 0)
+pure def sometimesLoadStopped(s: PageRequests): bool = s.lastEvents.some(e => e.kind == ChangedEvent)
+```
+
+### A page start reports every permission it withdrew before the start itself
+
+Events of one surface reach the renderer in the order the surface sent
+them. When a page starts, whatever started the load, every site
+permission request of the old page that it ends is reported
+(`sitePermissionWithdrawn`) before `pageStarted`, so the renderer closes
+those prompts before it hears of the new page, and it hears any request of
+the new page only after `pageStarted`.
+
+```quint
+pure def stepPageStartReportsWithdrawalsFirst(before: PageRequests, via: str, after: PageRequests): bool = {
+  val started = after.lastEvents.nthOr(after.lastEvents.length() - 1, withdrawnOf(noRequest))
+  via == "startPage" implies started.kind == StartedEvent and
+    before.requests.every(r => not(r.surface == started.surface and r.kind == SitePermissionAsk and r.verdict == Pending) or after.lastEvents.includes(withdrawnOf(r)))
+}
+pure def sometimesWithdrawalBeforeStart(s: PageRequests): bool =
+  s.lastEvents.some(e => e.kind == WithdrawnEvent) and s.lastEvents.some(e => e.kind == StartedEvent)
 ```
 
 ### A site gets a device permission only when I allow it for the current presentation and Android allows it too
@@ -122,7 +249,8 @@ pure def answerSitePermission(s: PageRequests, surface: int, requestId: int, gra
 pure def lawGrantNeedsPersonAndAndroid(grant: bool, androidAllows: bool): bool =
   (permissionOutcome(grant, androidAllows) == Granted) iff (grant and androidAllows)
 pure def canWithdrawSitePermission(s: PageRequests, surface: int, requestId: int): bool = held(s, surface, requestId, SitePermissionAsk)
-pure def withdrawSitePermission(s: PageRequests, surface: int, requestId: int): PageRequests = resolve(surface, s, requestId, PermissionWithdrawn)
+pure def withdrawSitePermission(s: PageRequests, surface: int, requestId: int): PageRequests =
+  { ...resolve(surface, s, requestId, PermissionWithdrawn), lastEvents: List({ kind: WithdrawnEvent, surface: surface, requestId: requestId }) }
 pure def alwaysGrantedOnlyForSitePermission(s: PageRequests): bool = s.requests.every(r => r.verdict == Granted implies r.kind == SitePermissionAsk)
 pure def stepWithdrawnPermissionIsNeverGranted(before: PageRequests, after: PageRequests): bool =
   before.requests.every(r => r.verdict != PermissionWithdrawn or after.requests.includes(r))
@@ -259,4 +387,59 @@ pure def openIdentityProvider(s: PageRequests, surface: int, requestId: int): Pa
 pure def alwaysDispatchOnlyForHandoffs(s: PageRequests): bool =
   s.requests.every(r => r.verdict == Dispatched implies (r.kind == ExternalLinkAsk or r.kind == IdentityProviderAsk) and r.resolvable)
 pure def sometimesIdentityProviderOpened(s: PageRequests): bool = s.requests.some(r => r.kind == IdentityProviderAsk and r.verdict == Dispatched)
+```
+
+## Story: Hear what the surface did in a fixed vocabulary
+
+> As the consumer's renderer, I want every request and answer to name its
+> kind from a closed set, so I can show each one and nothing unknown
+> reaches the person.
+
+### A permission answer is granted, denied, refused by Android or ended, and only granted gives the page anything
+
+`answerSitePermission` resolves with one outcome: `granted` when the page
+has every kind it asked for, `denied` when the renderer said no,
+`android-refused` when Android's own dialog left a permission missing,
+and `ended` when the request ended unanswered: the page withdrew it, a
+start, hide or close ended it while Android asked, or Android could not
+ask.
+
+```quint
+type PermissionAnswer = AnswerGranted | AnswerDenied | AnswerAndroidRefused | AnswerEnded
+pure def permissionAnswer(o: RequestOutcome): PermissionAnswer =
+  if (o == Granted) AnswerGranted else if (o == SiteDenied) AnswerDenied else if (o == AndroidDenied) AnswerAndroidRefused else AnswerEnded
+pure def lawOnlyGrantedGivesThePage(o: RequestOutcome): bool = (permissionAnswer(o) == AnswerGranted) iff (o == Granted)
+pure val oValues = Set(Granted, SiteDenied, AndroidDenied, PermissionWithdrawn, Ended, Pending)
+```
+
+### Dialogs, other-app handoffs, sign-in providers and site permission kinds come from closed sets
+
+A dialog is an alert, a confirm, a prompt or a leave-page dialog; a
+dismissed dialog is cancelled, and a dismissed leave-page dialog keeps the
+page and drops the navigation. An other-app link is handed off as
+send-to, dial, view or refuse, matching its review action, and a refused
+link can never open. A sign-in page that refuses embedded browsers comes
+from Google or Facebook. A site asks for the camera, the microphone or
+the location, and a kind the host app declares no Android permission for
+is never offered to the person.
+
+```quint
+type DialogKind = AlertDialog | ConfirmDialog | PromptDialog | LeavePageDialog
+type DialogDismissal = DialogCancelled | LeavePageKept
+pure def dismissal(kind: DialogKind): DialogDismissal = if (kind == LeavePageDialog) LeavePageKept else DialogCancelled
+type Handoff = SendToHandoff | DialHandoff | ViewHandoff | RefuseHandoff
+pure def handoffOf(kind: LinkKind): Handoff =
+  if (kind == PhoneLink) DialHandoff
+  else if (kind == MailLink or kind == TextLink) SendToHandoff
+  else if (kind == InvalidLink) RefuseHandoff
+  else ViewHandoff
+type SignInProvider = GoogleSignInPage | FacebookSignInPage
+type SitePermissionKind = CameraKind | MicrophoneKind | LocationKind
+pure def offeredKinds(requested: Set[SitePermissionKind], declared: Set[SitePermissionKind]): Set[SitePermissionKind] = requested.intersect(declared)
+pure def lawLeavePageDismissalKeepsThePage(dialog: DialogKind): bool = (dismissal(dialog) == LeavePageKept) iff (dialog == LeavePageDialog)
+pure def lawHandoffMatchesReview(tapped: LinkKind): bool =
+  ((handoffOf(tapped) == RefuseHandoff) iff (reviewAction(tapped) == NoReview)) and ((handoffOf(tapped) == DialHandoff) iff (reviewAction(tapped) == DialReview))
+pure def lawUndeclaredKindNeverOffered(requested: Set[SitePermissionKind], declared: Set[SitePermissionKind]): bool =
+  offeredKinds(requested, declared).subseteq(declared) and offeredKinds(requested, declared).subseteq(requested)
+pure val signInProviders: Set[SignInProvider] = Set(GoogleSignInPage, FacebookSignInPage)
 ```

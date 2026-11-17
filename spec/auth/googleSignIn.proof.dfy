@@ -94,6 +94,7 @@ lemma AppendRedemption(s: GoogleSignIn, v: Redemption, after: GoogleSignIn)
 
 lemma deviceReturns_ensures(s: GoogleSignIn, returnedAttempt: int, form: ReturnForm)
   ensures (inv(s) ==> alwaysIdTokenSignInHadListedAudience(deviceReturns(s, returnedAttempt, form)))
+  ensures (inv(s) ==> alwaysIdTokenUsedOnce(deviceReturns(s, returnedAttempt, form)))
   ensures (inv(s) ==> alwaysClockNeverNegative(deviceReturns(s, returnedAttempt, form)))
   ensures (inv(s) ==> alwaysAwaitedAttemptIsNumbered(deviceReturns(s, returnedAttempt, form)))
   ensures (inv(s) ==> alwaysRefusedReturnKeepsAttempt(deviceReturns(s, returnedAttempt, form)))
@@ -110,6 +111,8 @@ lemma deviceReturns_ensures(s: GoogleSignIn, returnedAttempt: int, form: ReturnF
   ensures (inv(s) ==> alwaysAdmissionNeedsCurrentEpoch(deviceReturns(s, returnedAttempt, form)))
   ensures (inv(s) ==> alwaysCancellingHoldsNoVerifier(deviceReturns(s, returnedAttempt, form)))
   ensures (inv(s) ==> alwaysTicketNotAhead(deviceReturns(s, returnedAttempt, form)))
+  ensures (inv(s) ==> stepRefusedNativeProofSpendsNothing(s, "deviceReturns", deviceReturns(s, returnedAttempt, form)))
+  ensures (inv(s) ==> stepNativeSignInSpendsItsChallenge(s, "deviceReturns", deviceReturns(s, returnedAttempt, form)))
 {
   if inv(s) && returnRefusal(s, returnedAttempt, form).NothingYet? && form.CodeReturned? {
     var after := deviceReturns(s, returnedAttempt, form);
@@ -125,6 +128,7 @@ lemma deviceReturns_ensures(s: GoogleSignIn, returnedAttempt: int, form: ReturnF
 
 lemma presentCode_ensures(s: GoogleSignIn, binding: Binding)
   ensures (inv(s) ==> canPresentCode(s, binding) ==> alwaysIdTokenSignInHadListedAudience(presentCode(s, binding)))
+  ensures (inv(s) ==> canPresentCode(s, binding) ==> alwaysIdTokenUsedOnce(presentCode(s, binding)))
   ensures (inv(s) ==> canPresentCode(s, binding) ==> alwaysClockNeverNegative(presentCode(s, binding)))
   ensures (inv(s) ==> canPresentCode(s, binding) ==> alwaysAwaitedAttemptIsNumbered(presentCode(s, binding)))
   ensures (inv(s) ==> canPresentCode(s, binding) ==> alwaysRefusedReturnKeepsAttempt(presentCode(s, binding)))
@@ -141,6 +145,8 @@ lemma presentCode_ensures(s: GoogleSignIn, binding: Binding)
   ensures (inv(s) ==> canPresentCode(s, binding) ==> alwaysAdmissionNeedsCurrentEpoch(presentCode(s, binding)))
   ensures (inv(s) ==> canPresentCode(s, binding) ==> alwaysCancellingHoldsNoVerifier(presentCode(s, binding)))
   ensures (inv(s) ==> canPresentCode(s, binding) ==> alwaysTicketNotAhead(presentCode(s, binding)))
+  ensures (inv(s) ==> canPresentCode(s, binding) ==> stepRefusedNativeProofSpendsNothing(s, "presentCode", presentCode(s, binding)))
+  ensures (inv(s) ==> canPresentCode(s, binding) ==> stepNativeSignInSpendsItsChallenge(s, "presentCode", presentCode(s, binding)))
 {
   if inv(s) && canPresentCode(s, binding) {
     AppendRedemption(s, Redemption(s.nextRedemption, binding, (if codeLive(s) then RedemptionPhase.Peeked else RedemptionPhase.RedemptionRefused), false), presentCode(s, binding));
@@ -149,6 +155,7 @@ lemma presentCode_ensures(s: GoogleSignIn, binding: Binding)
 
 lemma validate_ensures(s: GoogleSignIn, id: int)
   ensures (inv(s) ==> canValidate(s, id) ==> alwaysIdTokenSignInHadListedAudience(validate(s, id)))
+  ensures (inv(s) ==> canValidate(s, id) ==> alwaysIdTokenUsedOnce(validate(s, id)))
   ensures (inv(s) ==> canValidate(s, id) ==> alwaysClockNeverNegative(validate(s, id)))
   ensures (inv(s) ==> canValidate(s, id) ==> alwaysAwaitedAttemptIsNumbered(validate(s, id)))
   ensures (inv(s) ==> canValidate(s, id) ==> alwaysRefusedReturnKeepsAttempt(validate(s, id)))
@@ -165,6 +172,8 @@ lemma validate_ensures(s: GoogleSignIn, id: int)
   ensures (inv(s) ==> canValidate(s, id) ==> alwaysAdmissionNeedsCurrentEpoch(validate(s, id)))
   ensures (inv(s) ==> canValidate(s, id) ==> alwaysCancellingHoldsNoVerifier(validate(s, id)))
   ensures (inv(s) ==> canValidate(s, id) ==> alwaysTicketNotAhead(validate(s, id)))
+  ensures (inv(s) ==> canValidate(s, id) ==> stepRefusedNativeProofSpendsNothing(s, "validate", validate(s, id)))
+  ensures (inv(s) ==> canValidate(s, id) ==> stepNativeSignInSpendsItsChallenge(s, "validate", validate(s, id)))
 {
   if inv(s) && canValidate(s, id) {
     var after := validate(s, id);
@@ -175,6 +184,7 @@ lemma validate_ensures(s: GoogleSignIn, id: int)
 
 lemma acquire_ensures(s: GoogleSignIn, id: int)
   ensures (inv(s) ==> canAcquire(s, id) ==> alwaysIdTokenSignInHadListedAudience(acquire(s, id)))
+  ensures (inv(s) ==> canAcquire(s, id) ==> alwaysIdTokenUsedOnce(acquire(s, id)))
   ensures (inv(s) ==> canAcquire(s, id) ==> alwaysClockNeverNegative(acquire(s, id)))
   ensures (inv(s) ==> canAcquire(s, id) ==> alwaysAwaitedAttemptIsNumbered(acquire(s, id)))
   ensures (inv(s) ==> canAcquire(s, id) ==> alwaysRefusedReturnKeepsAttempt(acquire(s, id)))
@@ -191,6 +201,8 @@ lemma acquire_ensures(s: GoogleSignIn, id: int)
   ensures (inv(s) ==> canAcquire(s, id) ==> alwaysAdmissionNeedsCurrentEpoch(acquire(s, id)))
   ensures (inv(s) ==> canAcquire(s, id) ==> alwaysCancellingHoldsNoVerifier(acquire(s, id)))
   ensures (inv(s) ==> canAcquire(s, id) ==> alwaysTicketNotAhead(acquire(s, id)))
+  ensures (inv(s) ==> canAcquire(s, id) ==> stepRefusedNativeProofSpendsNothing(s, "acquire", acquire(s, id)))
+  ensures (inv(s) ==> canAcquire(s, id) ==> stepNativeSignInSpendsItsChallenge(s, "acquire", acquire(s, id)))
 {
   if inv(s) && canAcquire(s, id) {
     var after := acquire(s, id);
@@ -202,6 +214,7 @@ lemma acquire_ensures(s: GoogleSignIn, id: int)
 
 lemma consumeCode_ensures(s: GoogleSignIn, id: int)
   ensures (inv(s) ==> canConsumeCode(s, id) ==> alwaysIdTokenSignInHadListedAudience(consumeCode(s, id)))
+  ensures (inv(s) ==> canConsumeCode(s, id) ==> alwaysIdTokenUsedOnce(consumeCode(s, id)))
   ensures (inv(s) ==> canConsumeCode(s, id) ==> alwaysClockNeverNegative(consumeCode(s, id)))
   ensures (inv(s) ==> canConsumeCode(s, id) ==> alwaysAwaitedAttemptIsNumbered(consumeCode(s, id)))
   ensures (inv(s) ==> canConsumeCode(s, id) ==> alwaysRefusedReturnKeepsAttempt(consumeCode(s, id)))
@@ -218,6 +231,8 @@ lemma consumeCode_ensures(s: GoogleSignIn, id: int)
   ensures (inv(s) ==> canConsumeCode(s, id) ==> alwaysAdmissionNeedsCurrentEpoch(consumeCode(s, id)))
   ensures (inv(s) ==> canConsumeCode(s, id) ==> alwaysCancellingHoldsNoVerifier(consumeCode(s, id)))
   ensures (inv(s) ==> canConsumeCode(s, id) ==> alwaysTicketNotAhead(consumeCode(s, id)))
+  ensures (inv(s) ==> canConsumeCode(s, id) ==> stepRefusedNativeProofSpendsNothing(s, "consumeCode", consumeCode(s, id)))
+  ensures (inv(s) ==> canConsumeCode(s, id) ==> stepNativeSignInSpendsItsChallenge(s, "consumeCode", consumeCode(s, id)))
 {
   if inv(s) && canConsumeCode(s, id) {
     var after := consumeCode(s, id);
@@ -228,6 +243,7 @@ lemma consumeCode_ensures(s: GoogleSignIn, id: int)
 
 lemma reply_ensures(s: GoogleSignIn, id: int)
   ensures (inv(s) ==> canReply(s, id) ==> alwaysIdTokenSignInHadListedAudience(reply(s, id)))
+  ensures (inv(s) ==> canReply(s, id) ==> alwaysIdTokenUsedOnce(reply(s, id)))
   ensures (inv(s) ==> canReply(s, id) ==> alwaysClockNeverNegative(reply(s, id)))
   ensures (inv(s) ==> canReply(s, id) ==> alwaysAwaitedAttemptIsNumbered(reply(s, id)))
   ensures (inv(s) ==> canReply(s, id) ==> alwaysRefusedReturnKeepsAttempt(reply(s, id)))
@@ -244,6 +260,8 @@ lemma reply_ensures(s: GoogleSignIn, id: int)
   ensures (inv(s) ==> canReply(s, id) ==> alwaysAdmissionNeedsCurrentEpoch(reply(s, id)))
   ensures (inv(s) ==> canReply(s, id) ==> alwaysCancellingHoldsNoVerifier(reply(s, id)))
   ensures (inv(s) ==> canReply(s, id) ==> alwaysTicketNotAhead(reply(s, id)))
+  ensures (inv(s) ==> canReply(s, id) ==> stepRefusedNativeProofSpendsNothing(s, "reply", reply(s, id)))
+  ensures (inv(s) ==> canReply(s, id) ==> stepNativeSignInSpendsItsChallenge(s, "reply", reply(s, id)))
 {
   if inv(s) && canReply(s, id) {
     var after := reply(s, id);
@@ -255,6 +273,50 @@ lemma reply_ensures(s: GoogleSignIn, id: int)
         assert s.redemptions[j] in s.redemptions;
       }
       ProofLib.FilterNone((r: Redemption) => granted(r), s.redemptions);
+    }
+  }
+}
+
+lemma UsedTokensBridge(s: GoogleSignIn)
+  ensures alwaysIdTokenUsedOnce(s) == !(exists t :: t in s.usedIdTokens && !(|ProofLib.Filter((u: int) => (u == t), s.usedIdTokens)| == 1))
+{
+}
+
+lemma presentIdToken_ensures(s: GoogleSignIn, token: IdTokenEvidence, proof: ChallengeProof)
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysIdTokenSignInHadListedAudience(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysIdTokenUsedOnce(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysClockNeverNegative(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysAwaitedAttemptIsNumbered(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysRefusedReturnKeepsAttempt(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysMatchedFailureSpendsWithoutExchange(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysOneExchangePerAttempt(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysOneLockOwnerWithMatchingBindings(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysAtMostOneGrant(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysRedemptionIdsUnique(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysValidatedRedemptionMatchesBindings(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysSpentCodeBelongsToAttempt(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysGrantFollowsLiveConsume(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysGrantUsesIssuedLane(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysWrongBindingSpendsNothing(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysAdmissionNeedsCurrentEpoch(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysCancellingHoldsNoVerifier(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> alwaysTicketNotAhead(presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> stepRefusedNativeProofSpendsNothing(s, "presentIdToken", presentIdToken(s, token, proof)))
+  ensures (inv(s) ==> canPresentIdToken(s, token, proof) ==> stepNativeSignInSpendsItsChallenge(s, "presentIdToken", presentIdToken(s, token, proof)))
+{
+  if inv(s) && canPresentIdToken(s, token, proof) {
+    var after := presentIdToken(s, token, proof);
+    UsedTokensBridge(s);
+    UsedTokensBridge(after);
+    if after.usedIdTokens != s.usedIdTokens {
+      assert after.usedIdTokens == s.usedIdTokens + [token.token];
+      assert !(token.token in s.usedIdTokens);
+      forall a | a in after.usedIdTokens ensures |ProofLib.Filter((u: int) => (u == a), after.usedIdTokens)| == 1 {
+        ProofLib.FilterAppend((u: int) => (u == a), s.usedIdTokens, token.token);
+        if a == token.token {
+          ProofLib.FilterNone((u: int) => (u == a), s.usedIdTokens);
+        }
+      }
     }
   }
 }

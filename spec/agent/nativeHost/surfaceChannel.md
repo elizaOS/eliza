@@ -61,3 +61,50 @@ pure def stepDeliveredCannotReturnToQueue(before: Channel, after: Channel): bool
 pure def sometimesDeliverySettles(c: Channel): bool = c.phase == SettledCommand
 pure def sometimesDeliveredEffectRetiresUncertain(c: Channel): bool = c.phase == UncertainCommand
 ```
+
+## Story: Hand a page command to the current document once
+
+> As a user, I want a command to reach only the page document it was meant
+> for, so a reply that was lost never makes the page act twice.
+
+### The page end accepts a command only for its current document and a newer sequence, consumed before it runs
+
+The last hop runs in an isolated world of the page's main frame, on an
+http or https page, through a channel the website itself never receives.
+Each document gets a fresh opaque identifier. The page end accepts a
+command only while it is active, for its current document, with a
+sequence number higher than any it accepted before, and records that
+sequence before running the command, so a lost reply never replays an
+effect. It runs only the fixed page commands; an input needs a policy
+issued by the host, and a history step only the one the host observed,
+against an unchanged history. The native end keeps one command waiting
+at a time and refuses another as busy. Hiding, pausing or navigating the
+page, or five seconds without a reply, interrupts the waiting command:
+an effect is then reported uncertain and anything else stale, and a
+navigation retires the document, so its later replies are ignored.
+
+```quint
+type PageChannelCommand = PageSnapshot | PageInput | PageGuide | PageHistoryStep | PageOther
+type PageChannelRequest = { active: bool, sameDocument: bool, sequence: int, lastSequence: int, command: PageChannelCommand, hostPolicy: bool, historyUnchanged: bool }
+type PageChannelReply = PageAccepted | PageStaleRef | PageUnsupported | PagePolicyBlocked
+pure def pageChannelReply(req: PageChannelRequest): PageChannelReply =
+  if (not(req.active and req.sameDocument and req.sequence > req.lastSequence)) PageStaleRef
+  else if (req.command == PageOther) PageUnsupported
+  else if (req.command == PageInput and not(req.hostPolicy)) PagePolicyBlocked
+  else if (req.command == PageHistoryStep and not(req.historyUnchanged)) PageStaleRef
+  else PageAccepted
+pure def sequenceAfter(req: PageChannelRequest): int =
+  if (req.active and req.sameDocument and req.sequence > req.lastSequence) req.sequence else req.lastSequence
+type InterruptReply = InterruptUncertain | InterruptStale
+pure def interruptReply(effect: bool): InterruptReply = if (effect) InterruptUncertain else InterruptStale
+pure def lawSpentSequenceIsNeverAcceptedAgain(req: PageChannelRequest): bool =
+  pageChannelReply(req) == PageAccepted implies req.sequence > req.lastSequence and sequenceAfter(req) == req.sequence and pageChannelReply({ ...req, lastSequence: sequenceAfter(req) }) == PageStaleRef
+pure def lawInputNeedsHostPolicy(req: PageChannelRequest): bool =
+  pageChannelReply(req) == PageAccepted and req.command == PageInput implies req.hostPolicy
+pure def lawInterruptedEffectIsUncertain(effect: bool): bool = (interruptReply(effect) == InterruptUncertain) iff effect
+pure val currentRequest: PageChannelRequest = { active: true, sameDocument: true, sequence: 2, lastSequence: 1, command: PageInput, hostPolicy: true, historyUnchanged: true }
+pure val reqValues = Set(currentRequest, { ...currentRequest, sequence: 1 }, { ...currentRequest, sameDocument: false }, { ...currentRequest, active: false },
+  { ...currentRequest, hostPolicy: false }, { ...currentRequest, command: PageOther }, { ...currentRequest, command: PageHistoryStep, historyUnchanged: false },
+  { ...currentRequest, command: PageSnapshot, hostPolicy: false })
+pure val effectValues = Set(true, false)
+```

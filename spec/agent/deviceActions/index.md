@@ -12,8 +12,8 @@ device side:
   and receipt
 - [Device effect authority and SMS bounds](./telephonyReview.md)
 - [Original read completion](./readCompletion.md)
-- [Camera](./camera.md), [Photos](./photos.md) and
-  [Clock and reminders](./clock.md)
+- [Calendar](./calendar.md), [Camera](./camera.md), [Photos](./photos.md)
+  and [Clock and reminders](./clock.md)
 
 ## Story: Approve a device request once and learn exactly what happened
 

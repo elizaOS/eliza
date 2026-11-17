@@ -114,4 +114,73 @@ pure def alwaysGrantOnlyForCurrentAttempt(c: SignIn): bool = c.work.stage == Gra
 pure def sometimesFactorAfterCode(c: SignIn): bool = c.factor != NoFactor and c.channel != NoChannel
 pure def sometimesGrantHandedOff(c: SignIn): bool = c.work.stage == Granting and ownsWork(c)
 pure def sometimesWrongCodesCounted(c: SignIn): bool = c.failed >= 2
+pure val weight_verifyCode = 4
+pure val weight_startWork = 4
+pure val weight_wrongCode = 4
+pure val weight_deliverRetryReply = 4
+```
+
+## Story: Register a host application with the Android sign-in plugin
+
+> As a team building an application on Eliza, I want to give the Android
+> sign-in plugin my application's identity, deployments and storage names
+> as data, so that the plugin carries no product's values and refuses a
+> registration that is incomplete.
+
+### A registration is data, and an incomplete or ambiguous one is refused when the plugin loads
+
+The host gives its mobile client id, its device and product labels, the
+identity service's app client id for native Google, and the deployments
+it admits, the first being the default; none of these has a default in
+the plugin. Its storage names (the readiness file, the pending sign-in
+slot, and the per-deployment prefixes of the credential, receipt and
+retiring slots) and the Google sign-in mode have generic defaults it may
+replace. A value missing or malformed, no deployment, or a deployment
+named twice refuses the registration. A sign-in for a deployment the
+registration does not list is refused, and each deployment's slots are
+its prefix followed by its name, so two deployments never share a slot.
+
+```quint
+type GoogleSignInMode = NativeGoogle | BrowserGoogle
+type SlotKind = CredentialSlot | ReceiptSlot | RetiringSlot
+type SlotName = { kind: SlotKind, deployment: str }
+type Registration = { identityGiven: bool, identityValid: bool, storageNamesValid: bool, modeGiven: bool, mode: GoogleSignInMode, deployments: List[str] }
+pure def registrationAccepted(r: Registration): bool =
+  r.identityGiven and r.identityValid and r.storageNamesValid and r.deployments.length() > 0 and
+    r.deployments.every(d => r.deployments.select(o => o == d).length() == 1)
+pure def googleMode(r: Registration): GoogleSignInMode = if (r.modeGiven) r.mode else NativeGoogle
+pure def deploymentAdmitted(r: Registration, deployment: str): bool = registrationAccepted(r) and r.deployments.includes(deployment)
+pure def slotFor(kind: SlotKind, deployment: str): SlotName = { kind: kind, deployment: deployment }
+pure val rValues = Set(
+  { identityGiven: true, identityValid: true, storageNamesValid: true, modeGiven: false, mode: BrowserGoogle, deployments: List("production", "staging") },
+  { identityGiven: true, identityValid: true, storageNamesValid: true, modeGiven: true, mode: BrowserGoogle, deployments: List("production") },
+  { identityGiven: false, identityValid: true, storageNamesValid: true, modeGiven: false, mode: NativeGoogle, deployments: List("production") },
+  { identityGiven: true, identityValid: true, storageNamesValid: true, modeGiven: false, mode: NativeGoogle, deployments: List("production", "production") },
+  { identityGiven: true, identityValid: true, storageNamesValid: true, modeGiven: false, mode: NativeGoogle, deployments: List() })
+pure val deploymentValues = Set("production", "staging", "other")
+pure def lawRegistrationNeedsIdentityAndADeployment(r: Registration): bool =
+  registrationAccepted(r) implies (r.identityGiven and r.deployments.length() > 0)
+pure def lawUnlistedDeploymentRefused(r: Registration, deployment: str): bool =
+  not(r.deployments.includes(deployment)) implies not(deploymentAdmitted(r, deployment))
+pure def lawDeploymentsNeverShareASlot(kind: SlotKind, deployment: str, other: str): bool =
+  deployment != other implies slotFor(kind, deployment) != slotFor(kind, other)
+pure val otherValues = Set("production", "staging", "other")
+```
+
+### Google uses the account picker unless the host selects the browser
+
+The native account picker is the default. The browser is used only when
+the registration selects it. A picker that is dismissed, has no account
+or cannot run ends the attempt with `cancelled`,
+`google-account-unavailable` or `unavailable`, and never falls back to
+the browser.
+
+```quint
+type GoogleRoute = AccountPicker | ExternalBrowser | PickerFailed
+pure def googleRoute(r: Registration, pickerFailed: bool): GoogleRoute =
+  if (googleMode(r) == BrowserGoogle) ExternalBrowser else if (pickerFailed) PickerFailed else AccountPicker
+pure def lawPickerNeverFallsBackToBrowser(r: Registration, pickerFailed: bool): bool =
+  googleRoute(r, pickerFailed) == ExternalBrowser implies (r.modeGiven and r.mode == BrowserGoogle)
+pure def lawNativeIsTheDefault(r: Registration, pickerFailed: bool): bool =
+  not(r.modeGiven) implies googleRoute(r, pickerFailed) != ExternalBrowser
 ```

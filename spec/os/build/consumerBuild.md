@@ -137,3 +137,23 @@ pure def lawNativeAndroidBinaryRequiresArm64(abi: NativeAbi): bool =
 pure def lawProjectionStagingRequiresService(outsideProducer: bool, emptyIndependentOutput: bool, validIdentity: bool, helpersComplete: bool, exactAnchors: bool): bool =
   not(projectionStaging(outsideProducer, emptyIndependentOutput, validIdentity, false, helpersComplete, exactAnchors))
 ```
+
+### The build leaves the producer source at its pinned commit
+
+The producer source a build stages from is checked out at the exact
+pinned commit with no tracked change before the build starts, and it is
+checked again after the build: a build that moved it to another commit or
+left a tracked change in it fails before anything is staged. Host
+configuration a consumer adds is written beside the staged payload, never
+into the producer source.
+
+```quint
+pure def producerSourceKept(atPinBefore: bool, cleanBefore: bool, atPinAfter: bool, cleanAfter: bool): bool =
+  atPinBefore and cleanBefore and atPinAfter and cleanAfter
+pure def lawMovedProducerSourceIsNotStaged(atPinBefore: bool, cleanBefore: bool, cleanAfter: bool): bool =
+  not(producerSourceKept(atPinBefore, cleanBefore, false, cleanAfter))
+pure def lawUnpinnedProducerSourceIsNotStaged(cleanBefore: bool, atPinAfter: bool, cleanAfter: bool): bool =
+  not(producerSourceKept(false, cleanBefore, atPinAfter, cleanAfter)) and not(producerSourceKept(true, false, atPinAfter, cleanAfter))
+pure def lawDirtiedProducerSourceIsNotStaged(atPinBefore: bool, cleanBefore: bool, atPinAfter: bool): bool =
+  not(producerSourceKept(atPinBefore, cleanBefore, atPinAfter, false))
+```

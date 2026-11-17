@@ -7,7 +7,9 @@ short-lived App Link code bound to the verifier, the redirect and the
 tenant. The device hands the return to the host, which checks the state and
 exchanges the code with its verifier at `POST /auth/oauth/exchange`. The
 service redeems a code once, under a short lock, before it answers with a
-session or an MFA challenge.
+session or an MFA challenge. On a device with a Google account picker the
+host can skip the browser: it answers a one-time native challenge with an
+ID token and its own verifier.
 
 An admitted MFA challenge is finished in [MFA completion](./mfaCompletion.md);
 the durable credential that follows a session is in
@@ -39,21 +41,63 @@ The device account picker hands the host a Google ID token, which signs
 the person in directly when no browser attempt is under way. The token's
 signature, issuer and expiry are checked by the verifier and supplied as
 evidence; its audience must be one of the native client ids the tenant
-lists for this app client.
+lists for this app client, and it must carry the nonce of the challenge it
+answers.
 
 ```quint
-type IdTokenEvidence = { signatureValid: bool, issuerIsGoogle: bool, unexpired: bool, audienceListed: bool }
-pure def idTokenAccepted(token: IdTokenEvidence): bool = token.signatureValid and token.issuerIsGoogle and token.unexpired and token.audienceListed
-pure def canPresentIdToken(s: GoogleSignIn, token: IdTokenEvidence): bool = s.phase == NoAttempt and not(s.exchangeInFlight) and not(s.cancelling) and s.lockOwner == 0
-pure def presentIdToken(s: GoogleSignIn, token: IdTokenEvidence): GoogleSignIn =
-  if (idTokenAccepted(token)) { ...s, idToken: token, phase: SignedIn, ticket: s.epoch, lastResult: IdTokenSignedIn }
-  else { ...s, idToken: token, lastResult: IdTokenRefused }
+type IdTokenEvidence = { signatureValid: bool, issuerIsGoogle: bool, unexpired: bool, audienceListed: bool, nonceMatches: bool, token: int }
+pure def idTokenAccepted(token: IdTokenEvidence): bool = token.signatureValid and token.issuerIsGoogle and token.unexpired and token.audienceListed and token.nonceMatches
 pure val tokenValues = Set(
-  { signatureValid: true, issuerIsGoogle: true, unexpired: true, audienceListed: true },
-  { signatureValid: true, issuerIsGoogle: true, unexpired: true, audienceListed: false })
+  { signatureValid: true, issuerIsGoogle: true, unexpired: true, audienceListed: true, nonceMatches: true, token: 1 },
+  { signatureValid: true, issuerIsGoogle: true, unexpired: true, audienceListed: true, nonceMatches: true, token: 2 },
+  { signatureValid: true, issuerIsGoogle: true, unexpired: true, audienceListed: false, nonceMatches: true, token: 3 },
+  { signatureValid: true, issuerIsGoogle: true, unexpired: true, audienceListed: true, nonceMatches: false, token: 4 })
 pure def alwaysIdTokenSignInHadListedAudience(s: GoogleSignIn): bool = s.lastResult == IdTokenSignedIn implies (idTokenAccepted(s.idToken) and s.phase == SignedIn)
 pure def sometimesForeignAudienceRefused(s: GoogleSignIn): bool = s.lastResult == IdTokenRefused and not(s.idToken.audienceListed)
 pure def sometimesSignedInWithIdToken(s: GoogleSignIn): bool = s.lastResult == IdTokenSignedIn
+```
+
+### A native Google sign-in spends one fresh challenge, answered with its own verifier and nonce
+
+Before the account picker opens, the host asks the identity service for a
+native challenge with an S256 code challenge. The service keeps it for
+five minutes in the challenge store, bound to the tenant, the app client,
+the Google audience, a fresh nonce and the code challenge, and answers
+with its id, the nonce and the server client id. Each challenge has its
+own id; the host presents the ID token with the id of the challenge it
+asked for last and that challenge's verifier. A challenge that is missing, expired or
+spent, a request whose tenant, client, audience or verifier does not
+match, and a token that fails verification are refused and spend nothing.
+A verified request spends the challenge once, before any session exists,
+and a Google ID token signs in at most once: a token used before is
+refused after its challenge is spent.
+
+```quint
+type NativeChallenge = { issued: bool, spent: bool, expiresAt: int }
+type ChallengeProof = { bindingMatches: bool, verifierMatches: bool }
+pure def nativeChallengeLive(s: GoogleSignIn): bool = s.nativeChallenge.issued and not(s.nativeChallenge.spent) and s.now < s.nativeChallenge.expiresAt
+pure def canIssueNativeChallenge(s: GoogleSignIn, method: CodeChallengeMethod): bool = method == S256
+pure def issueNativeChallenge(s: GoogleSignIn, method: CodeChallengeMethod): GoogleSignIn =
+  { ...s, nativeChallenge: { issued: true, spent: false, expiresAt: s.now + stateLifetime } }
+pure val methodValues = Set(S256, PlainChallenge)
+pure def canPresentIdToken(s: GoogleSignIn, token: IdTokenEvidence, proof: ChallengeProof): bool = s.phase == NoAttempt and not(s.exchangeInFlight) and not(s.cancelling) and s.lockOwner == 0
+pure def presentIdToken(s: GoogleSignIn, token: IdTokenEvidence, proof: ChallengeProof): GoogleSignIn =
+  if (not(nativeChallengeLive(s))) { ...s, lastResult: NativeChallengeUnavailable }
+  else if (not(proof.bindingMatches) or not(proof.verifierMatches)) { ...s, lastResult: NativeChallengeMismatch }
+  else if (not(idTokenAccepted(token))) { ...s, idToken: token, lastResult: IdTokenRefused }
+  else if (s.usedIdTokens.includes(token.token)) { ...s, nativeChallenge: { ...s.nativeChallenge, spent: true }, lastResult: IdTokenReplayed }
+  else { ...s, idToken: token, nativeChallenge: { ...s.nativeChallenge, spent: true }, usedIdTokens: s.usedIdTokens.append(token.token), phase: SignedIn, ticket: s.epoch, lastResult: IdTokenSignedIn }
+pure val proofValues = Set({ bindingMatches: true, verifierMatches: true }, { bindingMatches: false, verifierMatches: true }, { bindingMatches: true, verifierMatches: false })
+pure def stepRefusedNativeProofSpendsNothing(before: GoogleSignIn, via: str, after: GoogleSignIn): bool =
+  (via == "presentIdToken" and (after.lastResult == NativeChallengeUnavailable or after.lastResult == NativeChallengeMismatch or after.lastResult == IdTokenRefused)) implies
+    (after.nativeChallenge == before.nativeChallenge and after.usedIdTokens == before.usedIdTokens and after.phase == before.phase)
+pure def stepNativeSignInSpendsItsChallenge(before: GoogleSignIn, via: str, after: GoogleSignIn): bool =
+  (via == "presentIdToken" and after.lastResult == IdTokenSignedIn) implies
+    (before.nativeChallenge.issued and not(before.nativeChallenge.spent) and before.now < before.nativeChallenge.expiresAt and after.nativeChallenge.spent and not(before.usedIdTokens.includes(after.idToken.token)))
+pure def alwaysIdTokenUsedOnce(s: GoogleSignIn): bool = s.usedIdTokens.every(t => s.usedIdTokens.select(u => u == t).length() == 1)
+pure def sometimesReplayedIdTokenRefused(s: GoogleSignIn): bool = s.lastResult == IdTokenReplayed and s.usedIdTokens.length() == 1
+pure def sometimesMismatchedProofKeepsChallenge(s: GoogleSignIn): bool = s.lastResult == NativeChallengeMismatch and nativeChallengeLive(s)
+pure def sometimesExpiredChallengeRefused(s: GoogleSignIn): bool = s.lastResult == NativeChallengeUnavailable and s.nativeChallenge.issued and not(s.nativeChallenge.spent)
 ```
 
 ### The host starts one attempt at a time with its own state and verifier
@@ -66,7 +110,7 @@ attempt awaiting its return is numbered from one.
 ```quint
 type AttemptPhase = NoAttempt | AwaitingReturn | Exchanging | AttemptSpent | MfaAdmitted | SignedIn
 type ReturnForm = MalformedReturn | MalformedCode | FailureLink | CodeReturned
-type HostResult = NothingYet | ReturnBusy | ReturnUnavailable | ReturnMalformed | StateMismatch | CodeMalformed | GoogleSignInFailed | ExchangeDispatched | ExchangeFailed | ReplyAfterCancel | CancelRequested | CancelSettled | IdTokenSignedIn | IdTokenRefused
+type HostResult = NothingYet | ReturnBusy | ReturnUnavailable | ReturnMalformed | StateMismatch | CodeMalformed | GoogleSignInFailed | ExchangeDispatched | ExchangeFailed | ReplyAfterCancel | CancelRequested | CancelSettled | IdTokenSignedIn | IdTokenRefused | IdTokenReplayed | NativeChallengeUnavailable | NativeChallengeMismatch
 type Lane = SessionLane | MfaLane
 type Binding = AllBindingsMatch | WrongVerifier | WrongRedirect | WrongTenant | PolicyRefusal
 type RedemptionPhase = Peeked | Validated | Locked | CodeConsumed | CodeMissing | RedemptionRefused | LockBusy | GrantedSession | GrantedMfa
@@ -75,14 +119,16 @@ type GoogleSignIn = {
   now: int, attempt: int, phase: AttemptPhase, attemptExpiresAt: int, verifierLive: bool, epoch: int, ticket: int,
   exchangeInFlight: bool, cancelling: bool, exchanges: List[int], lastResult: HostResult,
   codeFor: int, lane: Lane, codePresent: bool, payloadExpiresAt: int, storeExpiresAt: int,
-  lockOwner: int, spentBy: int, spentAt: int, redemptions: List[Redemption], nextRedemption: int, idToken: IdTokenEvidence
+  lockOwner: int, spentBy: int, spentAt: int, redemptions: List[Redemption], nextRedemption: int, idToken: IdTokenEvidence,
+  nativeChallenge: NativeChallenge, usedIdTokens: List[int]
 }
 pure val initial: GoogleSignIn = {
   now: 0, attempt: 0, phase: NoAttempt, attemptExpiresAt: 0, verifierLive: false, epoch: 0, ticket: 0,
   exchangeInFlight: false, cancelling: false, exchanges: List(), lastResult: NothingYet,
   codeFor: 0, lane: SessionLane, codePresent: false, payloadExpiresAt: 0, storeExpiresAt: 0,
   lockOwner: 0, spentBy: 0, spentAt: -1, redemptions: List(), nextRedemption: 1,
-  idToken: { signatureValid: false, issuerIsGoogle: false, unexpired: false, audienceListed: false }
+  idToken: { signatureValid: false, issuerIsGoogle: false, unexpired: false, audienceListed: false, nonceMatches: false, token: 0 },
+  nativeChallenge: { issued: false, spent: false, expiresAt: 0 }, usedIdTokens: List()
 }
 pure val codeLifetime = 60
 pure def canStartAttempt(s: GoogleSignIn, request: AuthorizeRequest): bool =

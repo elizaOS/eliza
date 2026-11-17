@@ -6,6 +6,18 @@ A consumer owns its product: the os package names none, and
 [product composition](./image/product.md) takes the consumer's descriptor
 over one pinned device profile.
 
+Everything a consumer uses from Eliza on the device is specified here:
+the scripts that generate, build and stage a consumer's Android host are
+the [consumer host](./build/consumerHost.md),
+[consumer build](./build/consumerBuild.md) and
+[source integrity](./build/sourceIntegrity.md); the device's local speech
+routes and services are [local speech](./voice/localSpeech.md) and the
+rest of the voice area. A consumer owns its own interface (its mobile
+shell, view primitives and screen focus handling), its Android test
+harness (isolated test users, device leases, instrumentation results and
+fixture observation and reboot) and any desktop library staging or symbol
+checks for its own builds; the os package specifies none of them.
+
 | Area | Specifications |
 | --- | --- |
 | Image | [Product composition](./image/product.md), [source lock](./image/sourceLock.md), [launcher staging](./image/launcher.md), [release signing](./image/signing.md), [image capabilities](./image/capabilities.md) |

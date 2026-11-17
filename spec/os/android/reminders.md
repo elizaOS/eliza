@@ -101,3 +101,57 @@ pure def lawReminderNeverRequestsAlarmCapability(heldAtCheck: bool, heldAtArm: b
 pure def lawReminderIconFallsBack(heldAtCheck: bool, heldAtArm: bool): bool =
   armReminderAlarm(heldAtCheck, heldAtArm, 0).icon == fallbackReminderIcon
 ```
+
+## Story: Get my reminders back after the phone restarts or the app is stopped
+
+> As the person, I want a reminder I scheduled to still ring, and a
+> reminder notice I had not handled to come back, after the phone restarts
+> or the app's process is stopped, without anything being skipped or
+> repeated.
+
+### Recovery re-arms scheduled reminders and re-posts unhandled notices once per boot without advancing any occurrence
+
+Recovery runs when the device finishes booting, when the app is
+replaced, when the time or time zone changes, and when the reminder
+plugin loads. Android drops alarms and notifications at a reboot. Each
+record is recovered on its own, so a damaged record or a failed alarm
+does not stop the others. A scheduled record's alarm is armed again. A
+posted record's notice is posted again, with the same occurrence, target
+and tap route, only once per boot: a boot marker records the boot
+recovered, and it advances only when every posted notice was re-posted,
+so a notice that could not be posted is retried at the next recovery. A
+record whose alarm permission was denied waits for an explicit
+reschedule, and a record whose deletion is pending loses its alarm and
+notice. Recovery never advances a recurrence or changes an occurrence.
+
+```quint
+type StoredStatus = StoredScheduled | StoredPosted | StoredPermissionDenied | StoredDeletionPending
+type StoredReminder = { keptStatus: StoredStatus, armed: bool, noticeShown: bool, storedOccurrence: int }
+pure def afterReboot(kept: StoredReminder): StoredReminder = { ...kept, armed: false, noticeShown: false }
+pure def restoreReminder(kept: StoredReminder, newBoot: bool, notifyAllowed: bool): StoredReminder =
+  if (kept.keptStatus == StoredDeletionPending) { ...kept, armed: false, noticeShown: false }
+  else if (kept.keptStatus == StoredScheduled) { ...kept, armed: true }
+  else if (kept.keptStatus == StoredPosted and newBoot and notifyAllowed) { ...kept, noticeShown: true }
+  else kept
+pure def bootMarkerAdvances(newBoot: bool, postedPending: bool, repostFailed: bool): bool =
+  newBoot and (not(repostFailed) or not(postedPending))
+pure val keptValues = Set(
+  { keptStatus: StoredScheduled, armed: true, noticeShown: false, storedOccurrence: 1 },
+  { keptStatus: StoredPosted, armed: false, noticeShown: true, storedOccurrence: 2 },
+  { keptStatus: StoredPermissionDenied, armed: false, noticeShown: false, storedOccurrence: 1 },
+  { keptStatus: StoredDeletionPending, armed: true, noticeShown: true, storedOccurrence: 3 }
+)
+pure def lawRecoveryNeverAdvancesOccurrence(kept: StoredReminder, newBoot: bool, notifyAllowed: bool): bool =
+  restoreReminder(kept, newBoot, notifyAllowed).storedOccurrence == kept.storedOccurrence and
+  restoreReminder(kept, newBoot, notifyAllowed).keptStatus == kept.keptStatus
+pure def lawScheduledReminderRingsAfterReboot(kept: StoredReminder, notifyAllowed: bool): bool =
+  kept.keptStatus == StoredScheduled implies restoreReminder(afterReboot(kept), true, notifyAllowed).armed
+pure def lawPostedNoticeReturnsAfterReboot(kept: StoredReminder): bool =
+  kept.keptStatus == StoredPosted implies restoreReminder(afterReboot(kept), true, true).noticeShown
+pure def lawNoRepostWithinABoot(kept: StoredReminder, notifyAllowed: bool): bool =
+  kept.keptStatus != StoredDeletionPending implies restoreReminder(kept, false, notifyAllowed).noticeShown == kept.noticeShown
+pure def lawFailedRepostIsRetried(repostFailed: bool): bool =
+  repostFailed implies not(bootMarkerAdvances(true, true, repostFailed))
+pure def lawDeniedReminderWaitsForReschedule(kept: StoredReminder, newBoot: bool, notifyAllowed: bool): bool =
+  kept.keptStatus == StoredPermissionDenied implies restoreReminder(kept, newBoot, notifyAllowed) == kept
+```

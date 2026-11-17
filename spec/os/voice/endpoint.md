@@ -68,3 +68,69 @@ pure def sometimesSemanticAfterCloud(t: EndpointTurn): bool = t.cause == Semanti
 pure def sometimesTimeoutUsesGap(t: EndpointTurn): bool = t.cause == GapVoiceSubmit and t.semantic == DecisionTimeout
 pure def sometimesSpeechRetired(t: EndpointTurn): bool = t.phase == UtteranceRetired
 ```
+
+### The resident's end-of-turn route scores text only, at most 4,096 characters
+
+The local endpoint is `POST /api/asr/local-inference/end-of-turn` on the
+resident ([on-device speech](./localSpeech.md)). Its body is the
+utterance's transcript with whitespace collapsed, never audio; the route
+never starts voice or loads a model. An empty transcript is not sent, and
+one longer than 4,096 characters is never sent either, since the route
+refuses it with 400 rather than truncating it; both read as unavailable.
+A reply that the scorer is unavailable, with a reason from its closed set,
+or a reply of any other shape is unavailable. Only an explicit available
+score with a boolean complete value can finish or continue the utterance,
+and a scoring failure (502) or a lost request is an error.
+
+```quint
+type EndOfTurnReply = ScoredComplete | ScoredIncomplete | ScorerUnavailable | ReplyMalformed | ScoringFailed
+pure def endOfTurnSendable(transcriptChars: int): bool = transcriptChars >= 1 and transcriptChars <= 4096
+pure def endOfTurnVerdict(transcriptChars: int, reply: EndOfTurnReply): EndpointVerdict =
+  if (not(endOfTurnSendable(transcriptChars))) DecisionUnavailable
+  else if (reply == ScoredComplete) DecisionFinished
+  else if (reply == ScoredIncomplete) DecisionContinue
+  else if (reply == ScoringFailed) DecisionError
+  else DecisionUnavailable
+pure val transcriptCharsValues = Set(0, 1, 4096, 4097)
+pure def lawOverlongTranscriptNeverScored(transcriptChars: int, reply: EndOfTurnReply): bool =
+  transcriptChars > 4096 implies endOfTurnVerdict(transcriptChars, reply) == DecisionUnavailable
+pure def lawOnlyACompleteScoreFinishes(transcriptChars: int, reply: EndOfTurnReply): bool =
+  endOfTurnVerdict(transcriptChars, reply) == DecisionFinished implies reply == ScoredComplete and endOfTurnSendable(transcriptChars)
+```
+
+### A pause shorter than the long gap never ends the utterance by itself
+
+The host configures both gaps as engineering settings, with no setting
+shown to the person: by default a 300 ms short gap and a 1,200 ms long
+gap, both measured from the speech end, and a long gap never shorter than
+the short one. Silence ends an utterance only once it lasts the long gap;
+a scored finished from the endpoint can end it sooner. A host that must
+keep a two-second pause inside an utterance sets a long gap above two
+seconds.
+
+```quint
+type GapTiming = { shortGapMs: int, longGapMs: int }
+pure val defaultGapTiming: GapTiming = { shortGapMs: 300, longGapMs: 1200 }
+pure def gapTimingValid(timing: GapTiming): bool = timing.shortGapMs >= 0 and timing.longGapMs >= timing.shortGapMs
+pure def silenceSubmits(timing: GapTiming, pauseMs: int): bool = gapTimingValid(timing) and pauseMs >= timing.longGapMs
+pure val timingValues = Set(defaultGapTiming, { shortGapMs: 300, longGapMs: 2500 }, { shortGapMs: 900, longGapMs: 600 })
+pure val pauseMsValues = Set(0, 300, 1199, 1200, 2000, 2500)
+pure def lawPauseUnderLongGapContinues(timing: GapTiming, pauseMs: int): bool =
+  pauseMs < timing.longGapMs implies not(silenceSubmits(timing, pauseMs))
+pure def lawTwoSecondPauseKeptUnderLongerGap(timing: GapTiming): bool =
+  timing.longGapMs > 2000 implies not(silenceSubmits(timing, 2000))
+```
+
+### A submission's diagnostics carry only enums and numbers
+
+Each submission reports which path took it and the last semantic outcome
+of the utterance, and whether the cloud stage was asked. The report holds
+no transcript or reply text.
+
+```quint
+type TurnDiagnostic = { cause: SubmitCause, outcome: EndpointVerdict, cloudStageAsked: bool }
+pure def turnDiagnostic(t: EndpointTurn): TurnDiagnostic = { cause: t.cause, outcome: t.semantic, cloudStageAsked: t.cloudAsked }
+pure val endpointTurnValues = Set(initial, { ...initial, phase: UtteranceSubmitted, cause: GapVoiceSubmit, semantic: DecisionTimeout })
+pure def lawDiagnosticNamesTheSubmittingPath(endpointTurn: EndpointTurn): bool =
+  turnDiagnostic(endpointTurn).cause == endpointTurn.cause and turnDiagnostic(endpointTurn).outcome == endpointTurn.semantic
+```

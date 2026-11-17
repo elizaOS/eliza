@@ -29,7 +29,8 @@ trusted either.
 
 ```quint
 type ListenerGrant = { identityMatches: bool, settingsOwned: bool, hotwordCapture: bool, backgroundStart: bool, otherPrivilege: bool,
-  recordAudioConsented: bool, notificationsConsented: bool, indicatorExempt: bool, powerExempt: bool }
+  recordAudioConsented: bool, notificationsConsented: bool, indicatorExempt: bool, powerExempt: bool,
+  ownDomain: bool, domainOpensSockets: bool, domainSharesPrivileged: bool }
 pure def privilegedExactly(grant: ListenerGrant): bool =
   grant.identityMatches and grant.settingsOwned and grant.hotwordCapture and grant.backgroundStart and not(grant.otherPrivilege)
 pure def lawExtraPrivilegeIsNeverTrusted(grant: ListenerGrant): bool =
@@ -49,27 +50,46 @@ pure def lawIndicatorAlwaysShows(grant: ListenerGrant): bool =
   grant.indicatorExempt implies not(consentedWithoutExemption(grant))
 ```
 
+### The listener runs confined to its own SELinux domain
+
+The image's policy gives the listener, selected by its signer and package
+as a privileged install, a domain of its own with its own private data.
+That domain cannot create network sockets and belongs to no network,
+privileged-app, platform-app or audio hardware domain; it reaches consent,
+notifications, app operations and audio capture only through named system
+services. A listener running in any other domain is not trusted, and an
+image is released only with that domain observed enforcing on the device.
+
+```quint
+pure def confinedDomain(grant: ListenerGrant): bool =
+  grant.ownDomain and not(grant.domainOpensSockets) and not(grant.domainSharesPrivileged)
+pure def lawNetworkedListenerNeverTrusted(grant: ListenerGrant): bool =
+  grant.domainOpensSockets implies not(confinedDomain(grant))
+```
+
 ### Listening starts only in an admitted listener
 
-Listening begins only when the listener is both privileged exactly as
-above and consented without exemption. Starting to listen opens no
+Listening begins only when the listener is privileged exactly as above,
+confined to its own domain and consented without exemption. Starting to listen opens no
 microphone window of its own: that needs a wake.
 
 ```quint
 type WakePhase = WakeIdle | WakeOpen | AwaitingReply
 type Wake = { listening: bool, stopConfirmed: bool, phase: WakePhase, openedAt: int, awaitingSince: int,
-  generation: int, consumed: bool, starts: int, sentUtterances: int }
+  generation: int, consumed: bool, starts: int, sentUtterances: int, crashExits: int, tripped: bool }
 pure val initial: Wake = { listening: false, stopConfirmed: false, phase: WakeIdle, openedAt: 0, awaitingSince: 0,
-  generation: 0, consumed: true, starts: 0, sentUtterances: 0 }
-pure def listenerAdmitted(grant: ListenerGrant): bool = privilegedExactly(grant) and consentedWithoutExemption(grant)
+  generation: 0, consumed: true, starts: 0, sentUtterances: 0, crashExits: 0, tripped: false }
+pure def listenerAdmitted(grant: ListenerGrant): bool =
+  privilegedExactly(grant) and confinedDomain(grant) and consentedWithoutExemption(grant)
 pure def windowClosed(listening: bool, w: Wake): Wake =
   { ...w, listening: listening, phase: WakeIdle, openedAt: 0, awaitingSince: 0 }
-pure def canStartListening(w: Wake, grant: ListenerGrant): bool = not(w.listening) and listenerAdmitted(grant)
+pure def canStartListening(w: Wake, grant: ListenerGrant): bool = not(w.listening) and not(w.tripped) and listenerAdmitted(grant)
 pure def startListening(w: Wake, grant: ListenerGrant): Wake = { ...w, listening: true, stopConfirmed: false }
 pure val admittedGrant: ListenerGrant = { identityMatches: true, settingsOwned: true, hotwordCapture: true, backgroundStart: true, otherPrivilege: false,
-  recordAudioConsented: true, notificationsConsented: true, indicatorExempt: false, powerExempt: false }
+  recordAudioConsented: true, notificationsConsented: true, indicatorExempt: false, powerExempt: false,
+  ownDomain: true, domainOpensSockets: false, domainSharesPrivileged: false }
 pure val grantValues = Set(admittedGrant, { ...admittedGrant, identityMatches: false }, { ...admittedGrant, settingsOwned: false }, { ...admittedGrant, otherPrivilege: true },
-  { ...admittedGrant, recordAudioConsented: false }, { ...admittedGrant, indicatorExempt: true })
+  { ...admittedGrant, recordAudioConsented: false }, { ...admittedGrant, indicatorExempt: true }, { ...admittedGrant, domainOpensSockets: true })
 pure def sometimesListening(w: Wake): bool = w.listening
 ```
 
@@ -123,6 +143,76 @@ pure def lawUnsafeReplyNeverConfirms(status: ListenerStatus): bool =
   (status.reply == ListenerUnknown or status.reply == ListenerActive or status.reply == ListenerContradictory) implies not(listenerStopped(status))
 pure def alwaysConfirmedStopIsNotListening(w: Wake): bool = w.stopConfirmed implies not(w.listening)
 pure def sometimesStopConfirmed(w: Wake): bool = w.stopConfirmed and w.generation > 0
+```
+
+### Three crashes while capturing within ten minutes stop listening until the person turns it on
+
+Android restarts the persistent listener after every crash. A process
+start that finds its capture session still marked open counts as an
+unclean exit, unless the mark was written in another boot or by another
+install of the listener, since a shutdown, a reboot and an update all end
+the process without a clean stop. Unclean exits older than ten minutes no
+longer count. At three that count, listening stops, any wake window
+closes, and listening stays off until the person turns it on again from
+the listener's own consent.
+
+```quint
+pure def uncleanExit(markerOpen: bool, sameBoot: bool, sameInstall: bool): bool = markerOpen and sameBoot and sameInstall
+pure def restartListenerProcess(w: Wake, markerOpen: bool, sameBoot: bool, sameInstall: bool, windowLapsed: bool): Wake = {
+  val exits = (if (windowLapsed) 0 else w.crashExits) + (if (uncleanExit(markerOpen, sameBoot, sameInstall)) 1 else 0)
+  if (exits >= 3) { ...windowClosed(false, w), crashExits: 3, tripped: true, stopConfirmed: false }
+  else { ...w, crashExits: exits }
+}
+pure def canTurnListeningBackOn(w: Wake, grant: ListenerGrant): bool = w.tripped and listenerAdmitted(grant)
+pure def turnListeningBackOn(w: Wake, grant: ListenerGrant): Wake = { ...w, tripped: false, crashExits: 0, listening: true, stopConfirmed: false }
+pure def lawRebootOrUpdateIsNotACrash(markerOpen: bool, sameInstall: bool): bool =
+  not(uncleanExit(markerOpen, false, sameInstall)) and not(uncleanExit(markerOpen, true, false))
+pure def alwaysTrippedListenerIsOff(w: Wake): bool =
+  w.crashExits >= 0 and w.crashExits <= 3 and (w.tripped implies not(w.listening) and w.phase == WakeIdle) and
+    (w.crashExits == 3 implies w.tripped)
+pure def stepOnlyThePersonEndsATrip(before: Wake, via: str, after: Wake): bool =
+  before.tripped and not(after.tripped) implies via == "turnListeningBackOn"
+pure def sometimesCrashLoopTripped(w: Wake): bool = w.tripped and w.generation > 0
+```
+
+### Capture continues only under a fresh, attributed indicator lease
+
+The system UI holds a lease that says the listening indicator is visible.
+The listener stamps each renewal with its own monotonic clock; a lease
+not renewed within 3 seconds expires, and a lease of another boot, one
+not yet acknowledged, revoked or replaced never counts. Capture may
+continue only while the lease is live and the indicator's surface is
+shown. A hidden indicator with a reason the system UI states (the display
+off, a full-screen app, the shade expanded, or a screen transition) is a
+pause; any other hidden surface, an unknown display state while the
+screen is interactive, or a recording the indicator has not attributed to
+the listener 2.5 seconds after capture opened, is a loss. Both release
+the microphone. The lease carries visibility facts only: it can withhold
+capture and never starts listening.
+
+```quint
+type LeaseVerdict = LeaseAllowsCapture | LeasePause | LeaseLoss
+type IndicatorLease = { live: bool, sameBoot: bool, acknowledged: bool, msToExpiry: int, displayKnown: bool, displayOn: bool,
+  screenInteractive: bool, surfaceShown: bool, chipShown: bool, recordingSeen: bool, hiddenExplained: bool, captureMs: int }
+pure val attributionWindowMs = 2500
+pure def leaseVerdict(lease: IndicatorLease): LeaseVerdict =
+  if (not(lease.live) or not(lease.sameBoot) or not(lease.acknowledged) or lease.msToExpiry <= 0) LeaseLoss
+  else if (not(lease.displayKnown)) (if (lease.screenInteractive) LeaseLoss else LeasePause)
+  else if (not(lease.displayOn)) LeasePause
+  else if (not(lease.surfaceShown) or (lease.recordingSeen and not(lease.chipShown))) (if (lease.hiddenExplained) LeasePause else LeaseLoss)
+  else if (lease.captureMs >= attributionWindowMs and not(lease.recordingSeen and lease.chipShown)) LeaseLoss
+  else LeaseAllowsCapture
+pure val shownLease: IndicatorLease = { live: true, sameBoot: true, acknowledged: true, msToExpiry: 2000, displayKnown: true, displayOn: true,
+  screenInteractive: true, surfaceShown: true, chipShown: true, recordingSeen: true, hiddenExplained: false, captureMs: 3000 }
+pure val leaseValues = Set(shownLease, { ...shownLease, msToExpiry: 0 }, { ...shownLease, sameBoot: false }, { ...shownLease, acknowledged: false },
+  { ...shownLease, surfaceShown: false }, { ...shownLease, surfaceShown: false, hiddenExplained: true }, { ...shownLease, displayKnown: false },
+  { ...shownLease, chipShown: false, recordingSeen: false }, { ...shownLease, chipShown: false, recordingSeen: false, captureMs: 2499 })
+pure def lawCaptureNeedsAFreshLease(lease: IndicatorLease): bool =
+  leaseVerdict(lease) == LeaseAllowsCapture implies lease.live and lease.sameBoot and lease.acknowledged and lease.msToExpiry > 0 and lease.surfaceShown
+pure def lawUnattributedCaptureStops(lease: IndicatorLease): bool =
+  lease.captureMs >= attributionWindowMs and not(lease.recordingSeen and lease.chipShown) implies leaseVerdict(lease) != LeaseAllowsCapture
+pure def lawFreshCaptureHasItsWindow(lease: IndicatorLease): bool =
+  leaseVerdict({ ...lease, captureMs: 0 }) == LeaseAllowsCapture or leaseVerdict(lease) != LeaseAllowsCapture
 ```
 
 ## Story: Hold the microphone open for one wake window

@@ -18,7 +18,7 @@ A consumer that does not register this plugin hands Wi-Fi off to
 
 Only a build that manages the device's Wi-Fi runs discovery; standalone and
 web builds skip it and may still use the system settings route. The adapter
-caches the capability probe and needs Android, the registered `DeviceWifi`
+caches the capability probe and needs Android, the registered `ElizaWiFi`
 plugin and an explicit `approvedJoin: true`, which the native probe derives
 from the build gate, Android API 30 or newer and `WifiManager`. The native gate returns
 `DISABLED` for every bridge method on standalone, including permission
@@ -61,6 +61,30 @@ pure def lawOrdinaryAppSkipsDeviceWifi(build: WifiBuild): bool = not(managesWifi
 pure def lawRefusedLocationDoesNotPrompt(build: WifiBuild): bool = not(mayPromptLocation(build, LocationDenied))
 pure def lawUnqualifiedScanCannotOffer(build: WifiBuild, scanFacts: ScanFacts, observed: ScanRead): bool =
   (not(approvedJoinSupported(build)) or not(scanFacts.radio and scanFacts.preciseLocation and scanFacts.locationOn)) implies scanResult(build, scanFacts, observed) == UnsupportedScan
+```
+
+### The plugin registers as ElizaWiFi and its library declares exactly the Wi-Fi, network and location permissions
+
+The JavaScript bridge and the native plugin are both registered under the
+name `ElizaWiFi`. A host that subclasses the plugin to limit it declares
+its own registration with that same name and the location permission
+alias, because Android plugin registration is not inherited; its gate is
+checked by every method, the permission methods included. The library
+manifest declares reading and changing Wi-Fi state, reading and changing
+network state, and precise and approximate location, which a scan asks
+for together; it declares no other permission.
+
+```quint
+type WifiLibraryPermission = AccessWifiState | ChangeWifiState | AccessNetworkState | ChangeNetworkState | FineLocation | CoarseLocation | OtherPermission
+pure val wifiRegistrationName = "ElizaWiFi"
+pure val wifiLibraryPermissions: Set[WifiLibraryPermission] =
+  Set(AccessWifiState, ChangeWifiState, AccessNetworkState, ChangeNetworkState, FineLocation, CoarseLocation)
+pure def wifiRegistrationAdmitted(registeredName: str, locationAlias: bool): bool = registeredName == wifiRegistrationName and locationAlias
+pure val registeredNameValues = Set("ElizaWiFi", "DeviceWifi", "")
+pure def lawOnlyTheSharedNameRegisters(registeredName: str, locationAlias: bool): bool =
+  wifiRegistrationAdmitted(registeredName, locationAlias) implies registeredName == "ElizaWiFi"
+pure def lawLibraryDeclaresNetworkChange(declared: WifiLibraryPermission): bool =
+  wifiLibraryPermissions.contains(ChangeNetworkState) and (declared == OtherPermission implies not(wifiLibraryPermissions.contains(declared)))
 ```
 
 ### A discovery result offers the strongest usable row per disclosed network name
@@ -285,4 +309,33 @@ pure def lawHiddenNameNeverConfirmsJoin(read: ConnectivityRead, requested: str):
   not(read.wifi and read.nameDisclosed) implies exactWifiEvidence(requested, connectivityObservation(read)) == NoEvidence
 pure def lawCaptiveReadNeverShowsOnline(read: ConnectivityRead): bool =
   read.offersInternet and read.androidCaptive implies wifiDisplay(true, true, connectivityObservation(read).validated, connectivityObservation(read).captive) != WifiOnline
+```
+
+## Story: Disconnect from or forget a network through Android
+
+> As the person, I want Disconnect and Forget to do what Android lets the
+> app do and to tell me only what Android confirmed, so that a network is
+> never shown as gone when it is not.
+
+### Disconnect reports only Android's answer, and forgetting a network is Android Settings' job
+
+Disconnect needs the bridge's gate, the change-Wi-Fi-state permission and
+the Wi-Fi service; it answers success only when Android accepted the
+disconnect, and says nothing about connectivity, which a fresh status
+read reports. The bridge never removes a saved network itself: Forget
+opens Android's Wi-Fi settings, which are unavailable when no settings
+page starts, and what was forgotten is read back from status.
+
+```quint
+type DisconnectAnswer = DisconnectRefused | DisconnectUnavailable | DisconnectAccepted | DisconnectNotAccepted
+type ForgetOutcome = ForgetOpenedSettings | ForgetUnavailable | ForgetRemovedNetwork
+pure def disconnectAnswer(gateAdmits: bool, changePermission: bool, managerPresent: bool, androidAccepted: bool): DisconnectAnswer =
+  if (not(gateAdmits and changePermission)) DisconnectRefused
+  else if (not(managerPresent)) DisconnectUnavailable
+  else if (androidAccepted) DisconnectAccepted else DisconnectNotAccepted
+pure def forgetOutcome(settingsStarted: bool): ForgetOutcome = if (settingsStarted) ForgetOpenedSettings else ForgetUnavailable
+pure def lawDisconnectSuccessIsAndroidsAnswer(gateAdmits: bool, changePermission: bool, managerPresent: bool, androidAccepted: bool): bool =
+  disconnectAnswer(gateAdmits, changePermission, managerPresent, androidAccepted) == DisconnectAccepted implies
+    gateAdmits and changePermission and managerPresent and androidAccepted
+pure def lawForgetNeverClaimsRemoval(settingsStarted: bool): bool = forgetOutcome(settingsStarted) != ForgetRemovedNetwork
 ```

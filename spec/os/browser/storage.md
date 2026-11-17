@@ -255,3 +255,25 @@ pure def lawIdlePurgeSparesOpenProfiles(purge: PurgeRequest, profile: BrowserPro
 pure def lawIdlePurgeNeedsAnHour(purge: PurgeRequest, profile: BrowserProfile): bool =
   purge.selector == PurgeIdle and purge.idleMs < oneHourMs implies not(purges(purge, profile))
 ```
+
+### A key or all purge answers only after the cookies are removed, and says clean only when no purged profile keeps a cookie
+
+A purge by profile key or of all profiles resolves only after the purged
+profiles' cookies have been removed, with how many profiles it purged and
+`clean` true exactly when none of them still holds a cookie; the renderer
+may tell the person they are signed out only on `clean`. An idle purge
+resolves at once with its count and never claims `clean`.
+
+```quint
+type PurgeReply = { purged: int, answered: bool, reportsClean: bool, clean: bool }
+pure def purgeReply(purge: PurgeRequest, purged: int, cookiesRemoved: bool, cookieLeft: bool): PurgeReply =
+  if (purge.selector == PurgeIdle) { purged: purged, answered: true, reportsClean: false, clean: false }
+  else { purged: purged, answered: cookiesRemoved, reportsClean: cookiesRemoved, clean: cookiesRemoved and not(cookieLeft) }
+pure def lawCleanOnlyAfterCookiesAreGone(purge: PurgeRequest, purged: int, cookiesRemoved: bool, cookieLeft: bool): bool =
+  purgeReply(purge, purged, cookiesRemoved, cookieLeft).clean implies purge.selector != PurgeIdle and cookiesRemoved and not(cookieLeft)
+pure def lawKeyOrAllPurgeWaitsForCookies(purge: PurgeRequest, purged: int, cookiesRemoved: bool, cookieLeft: bool): bool =
+  purge.selector != PurgeIdle and purgeReply(purge, purged, cookiesRemoved, cookieLeft).answered implies cookiesRemoved
+pure def lawIdlePurgeNeverClaimsClean(purge: PurgeRequest, purged: int, cookiesRemoved: bool, cookieLeft: bool): bool =
+  purge.selector == PurgeIdle implies not(purgeReply(purge, purged, cookiesRemoved, cookieLeft).reportsClean)
+pure val purgedValues = Set(0, 2)
+```

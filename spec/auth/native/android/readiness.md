@@ -153,3 +153,21 @@ pure def alwaysAnnouncedOnlyChanges(c: ReadinessCache): bool = c.announcements =
 pure def alwaysRunningProbeNotYetAnnounced(c: ReadinessCache): bool = c.announcements + (if (c.probing) 1 else 0) <= c.probes
 pure def sometimesChangeAnnounced(c: ReadinessCache): bool = c.announcements > 0
 ```
+
+### The sign-in screen shows only the methods the answer names, and never a hosted sign-in
+
+A ready answer shows Google with email; a partial one shows email
+without Google; with no answer, or one that readiness is unavailable,
+email stays with its error and retry. SMS appears only when the host
+reports it, never inferred. No answer ever offers the deployment's hosted
+sign-in page in place of a method.
+
+```quint
+type SignInMethod = EmailMethod | PhoneMethod | GoogleMethod | HostedSignIn
+pure def methodsShown(answer: Readiness, phoneReported: bool): List[SignInMethod] =
+  List(EmailMethod).concat(if (phoneReported and (answer == Ready or answer == Partial)) List(PhoneMethod) else List())
+    .concat(if (answer == Ready) List(GoogleMethod) else List())
+pure def lawNeverOffersHostedSignIn(answer: Readiness, phoneReported: bool): bool = not(methodsShown(answer, phoneReported).includes(HostedSignIn))
+pure def lawGoogleShownOnlyWhenReady(answer: Readiness, phoneReported: bool): bool = methodsShown(answer, phoneReported).includes(GoogleMethod) iff answer == Ready
+pure def lawPhoneNeverInferred(answer: Readiness, phoneReported: bool): bool = methodsShown(answer, phoneReported).includes(PhoneMethod) implies phoneReported
+```

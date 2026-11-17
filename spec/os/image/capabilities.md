@@ -1,7 +1,9 @@
 # Image capabilities
 
 Some native surfaces, such as phone, contacts and SMS in the native
-messages bridge, answer only on an image built for them. The image says so
+messages bridge, the [dial handoff](../android/phone.md) and the agent's
+SMS reply drafting in [telephony review](../../agent/deviceActions/telephonyReview.md),
+answer only on an image built for them. The image says so
 with a versioned system feature named after the staged launcher package,
 `<launcher package>.aosp_image`, written as a product permissions file
 beside the staged launcher. Only an image product can put the feature in
@@ -45,4 +47,17 @@ pure def lawSideloadedHostHasNoImageSurface(featureDeclared: bool, featureVersio
   not(imageSurfaceAvailable(false, featureDeclared, featureVersion))
 pure def lawStaleFeatureVersionHasNoSurface(systemInstall: bool, featureDeclared: bool): bool =
   not(imageSurfaceAvailable(systemInstall, featureDeclared, imageFeatureVersion - 1))
+```
+
+### SMS reply drafting and the dial handoff are enabled only where the image surface is available
+
+The agent may read and rewrite a reply draft, and a host may advertise
+the dial handoff, only on a host that sees a current image feature from a
+system install. Drafting never sends: the person sends from the review.
+
+```quint
+pure def smsReplyDraftingEnabled(systemInstall: bool, featureDeclared: bool, featureVersion: int): bool =
+  imageSurfaceAvailable(systemInstall, featureDeclared, featureVersion)
+pure def lawSideloadedHostNeverDraftsReplies(featureDeclared: bool, featureVersion: int): bool =
+  not(smsReplyDraftingEnabled(false, featureDeclared, featureVersion))
 ```

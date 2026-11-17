@@ -1,26 +1,35 @@
 lemma beginInstall_ensures(v: Views, installation: int)
   ensures (inv(v) ==> canBeginInstall(v, installation) ==> alwaysLiveInstallationsAreUnrevoked(beginInstall(v, installation)))
+  ensures (inv(v) ==> canBeginInstall(v, installation) ==> alwaysEachWaiterIsDeliveredOnce(beginInstall(v, installation)))
+  ensures (inv(v) ==> canBeginInstall(v, installation) ==> alwaysUnknownOutcomeHasNoWaiter(beginInstall(v, installation)))
   ensures (inv(v) ==> canBeginInstall(v, installation) ==> alwaysClosedHoldsNothing(beginInstall(v, installation)))
   ensures (inv(v) ==> canBeginInstall(v, installation) ==> alwaysResultHasAnEntry(beginInstall(v, installation)))
   ensures (inv(v) ==> canBeginInstall(v, installation) ==> stepAnswerComesFromActiveInstallation(v, "beginInstall", beginInstall(v, installation)))
+  ensures (inv(v) ==> canBeginInstall(v, installation) ==> stepUnknownOutcomeIsNotReplayed(v, "beginInstall", beginInstall(v, installation)))
 {
   RevokedWithMembers(v, v.pending);
 }
 
 lemma commitInstall_ensures(v: Views)
   ensures (inv(v) ==> canCommitInstall(v) ==> alwaysLiveInstallationsAreUnrevoked(commitInstall(v)))
+  ensures (inv(v) ==> canCommitInstall(v) ==> alwaysEachWaiterIsDeliveredOnce(commitInstall(v)))
+  ensures (inv(v) ==> canCommitInstall(v) ==> alwaysUnknownOutcomeHasNoWaiter(commitInstall(v)))
   ensures (inv(v) ==> canCommitInstall(v) ==> alwaysClosedHoldsNothing(commitInstall(v)))
   ensures (inv(v) ==> canCommitInstall(v) ==> alwaysResultHasAnEntry(commitInstall(v)))
   ensures (inv(v) ==> canCommitInstall(v) ==> stepAnswerComesFromActiveInstallation(v, "commitInstall", commitInstall(v)))
+  ensures (inv(v) ==> canCommitInstall(v) ==> stepUnknownOutcomeIsNotReplayed(v, "commitInstall", commitInstall(v)))
 {
   RevokedWithMembers(v, v.active);
 }
 
 lemma revokeInstall_ensures(v: Views)
   ensures (inv(v) ==> canRevokeInstall(v) ==> alwaysLiveInstallationsAreUnrevoked(revokeInstall(v)))
+  ensures (inv(v) ==> canRevokeInstall(v) ==> alwaysEachWaiterIsDeliveredOnce(revokeInstall(v)))
+  ensures (inv(v) ==> canRevokeInstall(v) ==> alwaysUnknownOutcomeHasNoWaiter(revokeInstall(v)))
   ensures (inv(v) ==> canRevokeInstall(v) ==> alwaysClosedHoldsNothing(revokeInstall(v)))
   ensures (inv(v) ==> canRevokeInstall(v) ==> alwaysResultHasAnEntry(revokeInstall(v)))
   ensures (inv(v) ==> canRevokeInstall(v) ==> stepAnswerComesFromActiveInstallation(v, "revokeInstall", revokeInstall(v)))
+  ensures (inv(v) ==> canRevokeInstall(v) ==> stepUnknownOutcomeIsNotReplayed(v, "revokeInstall", revokeInstall(v)))
 {
   RevokedWithMembers(v, v.active);
 }
