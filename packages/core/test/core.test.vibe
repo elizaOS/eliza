@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, type ApprovalRequest, type ApprovalResult, ApprovalService, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withRoomDeliverySettlement, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
+import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, type ApprovalRequest, type ApprovalResult, ApprovalService, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, EventType, executePlannedToolCall, type ExecutionTrace, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, type ScoreSignal, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withRoomDeliverySettlement, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
@@ -7,6 +7,14 @@ import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from
 import { scriptedOAuthProvider } from "./support/oauth.ts"
 import { type Handler, loopback, loopbackTls, pinnedLookup } from "./support/servers.ts"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
+
+module traceBoundary {
+  /** @throws {never} */
+  export function throwOnRead({ failure }: { failure: Error }): () => never {
+    return () => { throw failure }
+  }
+}
+import { throwOnRead } from traceBoundary
 
 effect function storeAt(prefix: string) {
   const directory = try scratch(prefix)
@@ -941,6 +949,181 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
 
   const journey = try Effect.scoped(effect {
     const runtime = try kernel({ store, character: { name: "Eliza", secrets: { OPENAI_API_KEY: KEY } }, plugins: [alpha.plugin, beta.plugin] })
+    // spec/core/traces.md, "Story: Retain enrich and retire active trace records"; spec/core/traces.md, "Recording preserves the insertion position of a replacement in its run"
+    try Effect.try(() => {
+      const runA = stringToUuid("j03-trace-a")
+      const runB = stringToUuid("j03-trace-b")
+      const nativeNow = Date.now
+      let clock = 1_000_000
+      const ttl = 300_000
+      const trace = ({ id, runId, createdAt = clock }: Pick<ExecutionTrace, "id" | "runId"> & Partial<Pick<ExecutionTrace, "createdAt">>): ExecutionTrace => ({
+        id, runId, createdAt, traceVersion: 1, type: "trace", promptKey: "j03.trace", modelSlot: ModelType.TEXT_LARGE, modelId: "synthetic-model", templateHash: "synthetic-template", schemaFingerprint: "synthetic-schema", variant: "baseline", parseSuccess: true, schemaValid: true, validationCodesMatched: true, retriesUsed: 0, tokenEstimate: 1, latencyMs: 1, scoreCard: { signals: [], compositeScore: 0 },
+      })
+      const clear = () => { runtime.deleteActiveTrace(runA); runtime.deleteActiveTrace(runB) }
+      Date.now = () => clock
+      try {
+        const expired = trace({ id: "cadence", runId: runA, createdAt: clock - ttl - 1 })
+        runtime.recordPromptTrace(expired)
+        const ignored = trace({ id: "ignored", runId: undefined })
+        let ignoredIdReads = 0
+        Object.defineProperty(ignored, "id", { get: () => { ignoredIdReads += 1; return "ignored" } })
+        for (let attempt = 0; attempt < 98; attempt += 1) runtime.recordPromptTrace(ignored)
+        const replacement = trace({ id: "cadence", runId: runB })
+        const purgeBeforeIdentity: boolean[] = []
+        Object.defineProperty(replacement, "runId", { get: () => { purgeBeforeIdentity.push(runtime.getActiveTrace(runA) === undefined); return runB } })
+        runtime.recordPromptTrace(replacement)
+        assert.deepStrictEqual({ ignoredIdReads, purgeBeforeIdentity }, { ignoredIdReads: 0, purgeBeforeIdentity: [true] })
+        assert.strictEqual(runtime.getActiveTrace(runB), replacement)
+        clear()
+
+        const first = trace({ id: "x", runId: runA })
+        const second = trace({ id: "y", runId: runB })
+        const transferred = trace({ id: "x", runId: runB })
+        runtime.recordPromptTrace(first)
+        runtime.recordPromptTrace(second)
+        runtime.recordPromptTrace(transferred)
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runA), [])
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runB), [second, transferred])
+        const rerecorded = trace({ id: "x", runId: runB })
+        runtime.recordPromptTrace(rerecorded)
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runB), [second, rerecorded])
+        const purgeOrder: string[] = []
+        Object.defineProperty(rerecorded, "createdAt", { get: () => { purgeOrder.push("x"); return clock } })
+        Object.defineProperty(second, "createdAt", { get: () => { purgeOrder.push("y"); return clock } })
+        runtime.purgePromptTraces()
+        assert.deepStrictEqual(purgeOrder, ["x", "y"])
+        runtime.deleteActiveTrace(runA)
+        assert.strictEqual(runtime.getActiveTrace(runB), rerecorded)
+        const emptyId = trace({ id: "", runId: runA })
+        runtime.recordPromptTrace(emptyId)
+        assert.strictEqual(runtime.getActiveTrace(runA), emptyId)
+        runtime.deleteActiveTraceById("")
+        assert.strictEqual(runtime.getActiveTrace(runA), undefined)
+        clear()
+
+        const changingId = trace({ id: "initial-id", runId: runA })
+        let admissionIdReads = 0
+        Object.defineProperty(changingId, "id", { get: () => { admissionIdReads += 1; return admissionIdReads === 1 ? "captured-id" : "unadmitted-alias" } })
+        runtime.recordPromptTrace(changingId)
+        assert.strictEqual(admissionIdReads, 1)
+        assert.strictEqual(runtime.getActiveTrace(runA), changingId)
+        runtime.deleteActiveTraceById("unadmitted-alias")
+        assert.strictEqual(runtime.getActiveTrace(runA), changingId)
+        runtime.deleteActiveTraceById("captured-id")
+        assert.strictEqual(runtime.getActiveTrace(runA), undefined)
+        assert.strictEqual(admissionIdReads, 1)
+
+        const numeric = {
+          nan: trace({ id: "numeric-nan", runId: runA, createdAt: Number.NaN }),
+          infinity: trace({ id: "numeric-infinity", runId: runA, createdAt: Number.POSITIVE_INFINITY }),
+          negativeInfinity: trace({ id: "numeric-negative-infinity", runId: runA, createdAt: Number.NEGATIVE_INFINITY }),
+          boundary: trace({ id: "numeric-boundary", runId: runA, createdAt: clock - ttl }),
+          expiredFraction: trace({ id: "numeric-expired-fraction", runId: runA, createdAt: clock - ttl - 0.5 }),
+          freshFraction: trace({ id: "numeric-fresh-fraction", runId: runA, createdAt: clock - ttl + 0.5 }),
+        }
+        for (const entry of Object.values(numeric)) runtime.recordPromptTrace(entry)
+        runtime.purgePromptTraces()
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runA), [numeric.infinity, numeric.boundary, numeric.freshFraction])
+        numeric.infinity.createdAt = clock - ttl - 1
+        runtime.purgePromptTraces()
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runA), [numeric.boundary, numeric.freshFraction])
+        const mutable = numeric.boundary
+        const card: ExecutionTrace["scoreCard"] = { signals: [], compositeScore: 0 }
+        mutable.scoreCard = card
+        mutable.id = "caller-mutated-id"
+        mutable.runId = runB
+        const signal: ScoreSignal = { source: "fixture", kind: "quality", value: 0.5, traceId: "numeric-boundary" }
+        runtime.enrichTrace(runA, signal)
+        assert.strictEqual(mutable.scoreCard, card)
+        assert.strictEqual(card.signals[0], signal)
+        assert.strictEqual(card.compositeScore, 0.5)
+        assert.strictEqual(runtime.getActiveTracesForRun(runA)[0], mutable)
+        runtime.deleteActiveTraceById("caller-mutated-id")
+        assert.strictEqual(runtime.getActiveTracesForRun(runA)[0], mutable)
+        clock += 1
+        runtime.purgePromptTraces()
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runA), [])
+        clear()
+
+        const sharedCard: ExecutionTrace["scoreCard"] = { signals: [], compositeScore: 0 }
+        const sharedA = trace({ id: "shared-a", runId: runA })
+        const sharedB = trace({ id: "shared-b", runId: runB })
+        sharedA.scoreCard = sharedCard
+        sharedB.scoreCard = sharedCard
+        runtime.recordPromptTrace(sharedA)
+        runtime.recordPromptTrace(sharedB)
+        const sharedSignal: ScoreSignal = { source: "fixture", kind: "quality", value: 0.5 }
+        runtime.enrichTrace(runA, sharedSignal)
+        assert.strictEqual(sharedA.scoreCard, sharedCard)
+        assert.strictEqual(sharedB.scoreCard, sharedCard)
+        assert.strictEqual(sharedB.scoreCard.signals[0], sharedSignal)
+        clear()
+
+        const beforeThrow = trace({ id: "before-throw", runId: runA, createdAt: clock - ttl - 1 })
+        const hostile = trace({ id: "hostile", runId: runA })
+        const afterThrow = trace({ id: "after-throw", runId: runA, createdAt: clock - ttl - 1 })
+        const failure = new Error("createdAt observer failed")
+        Object.defineProperty(hostile, "createdAt", { get: throwOnRead({ failure }) })
+        for (const entry of [beforeThrow, hostile, afterThrow]) runtime.recordPromptTrace(entry)
+        let caught: unknown
+        try { runtime.purgePromptTraces() } catch (error) { caught = error }
+        assert.strictEqual(caught, failure)
+        const retained = runtime.getActiveTracesForRun(runA)
+        assert.strictEqual(retained.length, 2)
+        assert.strictEqual(retained[0], hostile)
+        assert.strictEqual(retained[1], afterThrow)
+        clear()
+
+        const appended = trace({ id: "append-c", runId: runA })
+        const appendFirst = trace({ id: "append-a", runId: runA })
+        const appendSecond = trace({ id: "append-b", runId: runA })
+        const appendCard = appendFirst.scoreCard
+        let append = true
+        Object.defineProperty(appendFirst, "scoreCard", { get: () => { if (append) { append = false; runtime.recordPromptTrace(appended) } return appendCard } })
+        runtime.recordPromptTrace(appendFirst)
+        runtime.recordPromptTrace(appendSecond)
+        assert.strictEqual(runtime.getActiveTracesForRun(runA).length, 2)
+        const appendedSignal: ScoreSignal = { source: "fixture", kind: "quality", value: 0.25 }
+        runtime.enrichTrace(runA, appendedSignal)
+        for (const entry of [appendFirst, appendSecond, appended]) assert.strictEqual(entry.scoreCard.signals[0], appendedSignal)
+        clear()
+
+        const retiredFirst = trace({ id: "retired-a", runId: runA })
+        const retiredSecond = trace({ id: "retired-b", runId: runA })
+        const newSecond = trace({ id: "retired-b", runId: runA })
+        const unvisited = trace({ id: "retired-c", runId: runA })
+        const retiredCard = retiredFirst.scoreCard
+        let replace = true
+        Object.defineProperty(retiredFirst, "scoreCard", { get: () => { if (replace) { replace = false; runtime.deleteActiveTrace(runA); runtime.recordPromptTrace(newSecond); runtime.recordPromptTrace(unvisited) } return retiredCard } })
+        runtime.recordPromptTrace(retiredFirst)
+        runtime.recordPromptTrace(retiredSecond)
+        const retiredSignal: ScoreSignal = { source: "fixture", kind: "quality", value: 0.75 }
+        runtime.enrichTrace(runA, retiredSignal)
+        assert.strictEqual(retiredCard.signals[0], retiredSignal)
+        assert.strictEqual(newSecond.scoreCard.signals[0], retiredSignal)
+        assert.strictEqual(retiredSecond.scoreCard.signals.length, 0)
+        assert.strictEqual(unvisited.scoreCard.signals.length, 0)
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runA), [newSecond, unvisited])
+        clear()
+
+        const selectedFirst = trace({ id: "selected-a", runId: runA })
+        const selectedSecond = trace({ id: "selected-b", runId: runA })
+        const foreignSecond = trace({ id: "selected-b", runId: runB })
+        const foreignUnvisited = trace({ id: "selected-c", runId: runA })
+        runtime.recordPromptTrace(selectedFirst)
+        runtime.recordPromptTrace(selectedSecond)
+        const capturedSignal: ScoreSignal = { source: "fixture", kind: "quality", value: 1 }
+        Object.defineProperty(capturedSignal, "traceId", { get: () => { runtime.deleteActiveTrace(runA); runtime.recordPromptTrace(foreignSecond); runtime.recordPromptTrace(foreignUnvisited); return undefined } })
+        runtime.enrichTrace(runA, capturedSignal)
+        assert.strictEqual(foreignSecond.scoreCard.signals[0], capturedSignal)
+        assert.strictEqual(foreignUnvisited.scoreCard.signals.length, 0)
+        assert.strictEqual(selectedSecond.scoreCard.signals.length, 0)
+        assert.strictEqual(runtime.getActiveTrace(runB), foreignSecond)
+      } finally {
+        Date.now = nativeNow
+        clear()
+      }
+    })
     try Effect.try(() => alphaBackup.register(runtime))
     const large = (params: Record<string, unknown>, provider?: string) =>
       outcome(runtime.useModel(ModelType.TEXT_LARGE, params as never, provider).then((value) => {

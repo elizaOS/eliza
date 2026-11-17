@@ -2656,20 +2656,26 @@
     },
     {
       "source": "packages/core/src/runtime/active-prompt-traces.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/traces.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires bound receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Recording preserves the insertion position of a replacement in its run",
+        "Native expiry observations retire the exact captured key",
+        "Emitted instructions reproduce owner changes and publish the captured record"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "cba59c217657a8a8107772461fc07063532e3f51103a07d2505646a5a766dced",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/active-prompt-traces.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
+      "implementationProofBoundary": "The generated owner captures admitted keys, independent run order, cadence and successful-current-owner completion counts since latest admission. Native raw Map/Set objects are I/O representations driven by generated effects. Proofs of state and effect contracts do not establish TypeScript-to-VibeLang or arbitrary foreign object-history equivalence. Native IEEE TTL comparison, mutable original timestamps/cards/signals, retained captured Set objects, getter scheduling and completed-prefix exceptions require runtime conformance; the integer TTL law is not applied to raw host numbers.",
       "relatedSpecs": [
         "spec/core/traces.md"
+      ],
+      "intendedCompatibilityChanges": [
+        {
+          "baseline": "Cross-run replacement leaves a stale earlier-run alias; record reads an admitted trace.id twice.",
+          "replacement": "Compatible coherent owner transfer removes earlier run memberships, retains original references and void APIs, preserves global/destination order, and captures the admitted id once. Human review remains pending; no public conflict error or validation restriction is added.",
+          "regressionScenario": "x/A, y/B, x/B -> A empty and B[y,x]; deleting A preserves x/B. Changing admitted id getter is read once and lookup/deletion uses the captured key. Empty-run id getter remains unread."
+        }
       ]
     },
     {

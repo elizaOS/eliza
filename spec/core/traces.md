@@ -1,103 +1,186 @@
-# Active prompt traces and run indexes
+# Runtime trace lifecycle
 
-The source is `packages/core/src/runtime/active-prompt-traces.ts` at `72fed7e4069ecd35d61d886ab6eec5c02c137517`. The model stores one insertion-ordered list and derives the active ID and per-run views from it. Cross-run identity reuse fails before mutation. Same-run re-recording replaces trace content without moving its insertion slot. This corrects the source alias bug documented in the baseline: source re-recording can retain old run aliases and allow one run deletion to erase another run's trace.
+The active trace registry retains each original `ExecutionTrace` object. The generated owner captures the admitted key and run, global key insertion order, independent per-run admission order, and purge cadence. A raw reference map and native run sets are I/O projections of that owner. They are not copied trace metadata or another ownership policy. The pending conflict-rejection proposal is replaced by compatible cross-run transfer: `record` remains void and adds no rejection.
 
 ## Story: Retain enrich and retire active trace records
 
-As a runtime I record complete trace identities and score-signal references, enrich all selected active traces in a run index, and retire expired records without discarding unexpired peers. The five-minute TTL is fixed. Every admitted record attempt increments the purge counter, including a trace whose run ID is empty. Cross-run reuse returns the typed `TraceIdentityConflict` failure without changing stored records, indexes or the purge cadence. Every hundredth record purges before inserting the new trace.
+As a runtime I retain original active trace references, enrich the selected native run index, and retire expired keys without discarding retained peers. Every record call increments the purge counter before reading incoming fields. Every hundredth call purges before reading the incoming run ID. An empty run is ignored without reading its trace ID. Cross-run reuse transfers the key to the receiving run while keeping its global insertion slot.
 
 ### Recording preserves the insertion position of a replacement in its run
 
-An active ID identifies one trace across every run. Viewing one run filters
-the same ordered collection. Updating an existing trace or its score
-signals keeps its position. A new ID is appended and a purged ID can be
-recorded again at the new end. The captured signal and composite-score inputs
-stay attached to the selected trace. Composite score calculation follows
-the [score card model](./scoreCard.md).
+Global key order and per-run admission order are independent. Re-recording a key preserves its global slot. Existing destination membership keeps its run position; otherwise the receiving run appends it. Transfer removes other run memberships. Deleting an old run cannot erase a transferred trace. Empty trace IDs remain valid, so absence uses a tagged lookup.
+
+Admission reads the run ID after cadence and any due purge. A falsy run returns without reading the trace ID; an admitted ID is captured once for both its global key and run membership. This intentionally replaces the pinned source's two ID reads for a volatile accessor, so arbitrary getter-count equivalence is not claimed. The original trace object remains stored under the captured key. Admission does not read `createdAt`, `scoreCard`, signals or enrichment timestamps. Enrichment history below counts successful per-key completion observations since its latest admission, and only when the key still has the captured run owner. It is not a snapshot or complete history of mutable foreign score-card writes. The host always performs the original captured native Set loop, including reentrant foreign effects; it does not reject or skip work because this receipt projection does not match. Original trace, score-card and signal references remain host obligations. Composite scoring follows the [score-card model](./scoreCard.md).
 
 ```quint
-type Trace = {id: str, runId: str, createdAt: int, signals: List[str], enrichedAt: int}
-type TraceRecordResult = NoRecordResult | TraceRecorded | TraceIgnored | TraceIdentityConflict
-pure val recordedResult: TraceRecordResult = TraceRecorded
-pure val ignoredResult: TraceRecordResult = TraceIgnored
-type TraceState = {now: int, purgeCounter: int, traces: List[Trace], lastResult: TraceRecordResult, rejectedId: str, registeredRun: str, requestedRun: str, lastEnrichedRun: str}
-pure val initial: TraceState = {now: 0, purgeCounter: 0, traces: List(), lastResult: NoRecordResult, rejectedId: "", registeredRun: "", requestedRun: "", lastEnrichedRun: ""}
-pure val traceValues = Set({id: "trace-a", runId: "run-a", createdAt: 0, signals: List(), enrichedAt: 0}, {id: "trace-a", runId: "run-b", createdAt: 0, signals: List(), enrichedAt: 0}, {id: "trace-b", runId: "run-a", createdAt: 1, signals: List("existing"), enrichedAt: 0}, {id: "ignored", runId: "", createdAt: 0, signals: List(), enrichedAt: 0})
-pure val idValues = Set("trace-a", "trace-b", "missing", "")
-pure val runIdValues = Set("run-a", "run-b", "")
-pure val signalValues = Set("score-a", "score-b")
-pure val nowValues = Set(0, 1, 300000, 300001, 300002)
-pure val emptyTrace: Trace = {id: "", runId: "", createdAt: 0, signals: List(), enrichedAt: 0}
-pure def runTraces(s: TraceState, runId: str): List[Trace] = s.traces.select(trace => trace.runId == runId)
-pure def indexedIds(s: TraceState, runId: str): List[str] = runTraces(s, runId).listMap(trace => trace.id)
-pure def latestTrace(s: TraceState, runId: str): str = {
-  val traces = runTraces(s, runId)
-  traces.nthOr(traces.length() - 1, emptyTrace).id
+type Trace = {id: str, runId: str, enrichments: int}
+type RunEntry = {runId: str, traceId: str}
+type TraceLookup = NoActiveTrace | ActiveTrace({id: str})
+type TraceRecordResult = NoRecordResult | TraceRecorded({id: str, previousRun: str, runId: str}) | TraceIgnored
+type TraceRetention = KeepObserved | ExpireObserved
+type PurgeObservation = {id: str, retention: TraceRetention}
+type PurgeReceipt = NoPurgeReceipt | PurgeObserved(PurgeObservation)
+type TraceState = {purgeCounter: int, traces: List[Trace], runEntries: List[RunEntry], lastResult: TraceRecordResult, lastEnrichedRun: str, lastPurge: PurgeReceipt}
+type TraceEffect = RetireTrace({id: str}) | RemoveRunMember({runId: str, id: str}) | DropRunIndex({runId: str}) | EnsureRunMember({runId: str, id: str})
+type TraceChange = {state: TraceState, out: List[TraceEffect]}
+pure val initial: TraceState = {purgeCounter: 0, traces: List(), runEntries: List(), lastResult: NoRecordResult, lastEnrichedRun: "", lastPurge: NoPurgeReceipt}
+pure val noTrace: Trace = {id: "", runId: "", enrichments: 0}
+pure val traceTtlMs = 300000
+pure def traceIds(traces: List[Trace]): List[str] = traces.listMap(trace => trace.id)
+pure def traceFor(s: TraceState, id: str): Trace = s.traces.select(trace => trace.id == id).nthOr(0, noTrace)
+pure def indexedIds(s: TraceState, runId: str): List[str] = s.runEntries.select(entry => entry.runId == runId).listMap(entry => entry.traceId)
+pure def runTraces(s: TraceState, runId: str): List[Trace] = indexedIds(s, runId).listMap(id => traceFor(s, id))
+pure def latestTrace(s: TraceState, runId: str): TraceLookup = {
+  val ids = indexedIds(s, runId)
+  if (ids.length() == 0) NoActiveTrace else ActiveTrace({id: ids.nthOr(ids.length() - 1, "")})
 }
 pure def withoutIds(ids: List[str], s: TraceState): TraceState =
-  { ...s, traces: s.traces.select(t => not(ids.includes(t.id))) }
-pure def purgeAt(traces: List[Trace], now: int): List[Trace] =
-  traces.select(trace => now - trace.createdAt <= 300000)
-pure def recordConflict(s: TraceState, trace: Trace): bool =
-  trace.runId != "" and s.traces.some(t => t.id == trace.id and t.runId != trace.runId)
-pure def canRecordTrace(s: TraceState, trace: Trace): bool = not(recordConflict(s, trace))
-pure def canRejectTrace(s: TraceState, trace: Trace): bool = recordConflict(s, trace)
-pure def rejectTrace(s: TraceState, trace: Trace): TraceState =
-  { ...s, lastResult: TraceIdentityConflict, rejectedId: trace.id,
-    registeredRun: s.traces.select(t => t.id == trace.id and t.runId != trace.runId).nthOr(0, emptyTrace).runId,
-    requestedRun: trace.runId }
-pure def recordBase(s: TraceState): List[Trace] =
-  if ((s.purgeCounter + 1) % 100 == 0) purgeAt(s.traces, s.now) else s.traces
-pure def installTrace(base: List[Trace], trace: Trace): List[Trace] =
-  if (trace.runId == "") base
-  else if (base.some(t => t.id == trace.id)) base.listMap(t => if (t.id == trace.id) trace else t)
-  else base.append(trace)
-pure def recordTrace(s: TraceState, trace: Trace): TraceState =
-  { ...s, traces: installTrace(recordBase(s), trace), purgeCounter: s.purgeCounter + 1,
-    lastResult: if (trace.runId == "") ignoredResult else recordedResult,
-    rejectedId: "", registeredRun: "", requestedRun: "" }
-pure def enrichTraces(s: TraceState, runId: str, id: str, signal: str): TraceState =
-  { ...s, lastEnrichedRun: runId, traces: s.traces.listMap(t =>
-    if (t.runId == runId and (id == "" or t.id == id)) { ...t, signals: t.signals.append(signal), enrichedAt: s.now } else t) }
-pure def deleteTrace(s: TraceState, id: str): TraceState = withoutIds(List(id), s)
-pure def finalizeRun(s: TraceState, runId: str): TraceState =
-  { ...s, traces: s.traces.select(t => t.runId != runId) }
-pure def purgeTraces(s: TraceState): TraceState = { ...s, traces: purgeAt(s.traces, s.now) }
-pure def setClock(s: TraceState, now: int): TraceState = { ...s, now: now }
-pure def alwaysTraceIdentitiesUnique(s: TraceState): bool = s.traces.every(t => s.traces.select(other => other.id == t.id).length() == 1)
+  { ...s, traces: s.traces.select(trace => not(ids.includes(trace.id))), runEntries: s.runEntries.select(entry => not(ids.includes(entry.traceId))) }
+pure def removalEffects(removed: List[RunEntry], remaining: List[RunEntry]): List[TraceEffect] =
+  removed.foldl(List(), (effects, entry) => effects.concat(List(RemoveRunMember({runId: entry.runId, id: entry.traceId}))).concat(
+    if (remaining.every(other => other.runId != entry.runId)) List(DropRunIndex({runId: entry.runId})) else List()))
+pure def purgeDueAfterRecord(s: TraceState): bool = s.purgeCounter > 0 and s.purgeCounter % 100 == 0
+pure def beginRecord(s: TraceState): TraceChange = {state: { ...s, purgeCounter: s.purgeCounter + 1 }, out: List()}
+pure def ignoreRecord(s: TraceState): TraceChange = {state: { ...s, lastResult: TraceIgnored }, out: List()}
+pure def recordTrace(s: TraceState, id: str, runId: str): TraceChange = {
+  val remaining = s.runEntries.select(entry => entry.traceId != id or entry.runId == runId)
+  val removed = s.runEntries.select(entry => entry.traceId == id and entry.runId != runId)
+  val admitted = {id: id, runId: runId, enrichments: 0}
+  if (runId == "") ignoreRecord(s)
+  else {state: { ...s,
+    traces: if (s.traces.some(trace => trace.id == id)) s.traces.listMap(trace => if (trace.id == id) admitted else trace) else s.traces.append(admitted),
+    runEntries: if (remaining.some(entry => entry.runId == runId and entry.traceId == id)) remaining else remaining.append({runId: runId, traceId: id}),
+    lastResult: TraceRecorded({id: id, previousRun: traceFor(s, id).runId, runId: runId}) },
+    out: removalEffects(removed, remaining).append(EnsureRunMember({runId: runId, id: id})) }
+}
+pure def enrichObservedTrace(s: TraceState, runId: str, id: str): TraceChange =
+  {state: { ...s, lastEnrichedRun: runId, traces: s.traces.listMap(trace =>
+    if (trace.runId == runId and trace.id == id) { ...trace, enrichments: trace.enrichments + 1 } else trace) }, out: List()}
+pure def deleteTrace(s: TraceState, id: str): TraceChange = {
+  val kept = withoutIds(List(id), s)
+  {state: kept, out: List(RetireTrace({id: id})).concat(removalEffects(s.runEntries.select(entry => entry.traceId == id), kept.runEntries))}
+}
+pure def finalizeRun(s: TraceState, runId: str): TraceChange = {
+  val ids = indexedIds(s, runId)
+  {state: withoutIds(ids, s), out: if (ids.length() == 0) List() else ids.listMap(id => RetireTrace({id: id})).append(DropRunIndex({runId: runId}))}
+}
+pure def purgeObservedTrace(s: TraceState, observation: PurgeObservation): TraceChange = {
+  val retired = deleteTrace(s, observation.id)
+  {state: { ...(if (observation.retention == ExpireObserved) retired.state else s), lastPurge: PurgeObserved({id: observation.id, retention: observation.retention}) },
+   out: if (observation.retention == ExpireObserved) retired.out else List()}
+}
+pure def alwaysTraceIdentitiesUnique(s: TraceState): bool = s.traces.every(trace => s.traces.select(other => other.id == trace.id).length() == 1)
 pure def alwaysPurgeCounterNonnegative(s: TraceState): bool = s.purgeCounter >= 0
-pure def stepRecordCountsEveryAttempt(before: TraceState, via: str, after: TraceState): bool = via == "recordTrace" implies after.purgeCounter == before.purgeCounter + 1
-pure def traceIds(traces: List[Trace]): List[str] = traces.listMap(trace => trace.id)
+pure def alwaysRunIndexesOwned(s: TraceState): bool =
+  s.traces.every(trace => trace.runId != "" and s.runEntries.select(entry => entry.traceId == trace.id).length() == 1) and
+  s.runEntries.every(entry => s.traces.some(trace => trace.id == entry.traceId and trace.runId == entry.runId))
+pure def alwaysEnrichmentReceiptsNonnegative(s: TraceState): bool = s.traces.every(trace => trace.enrichments >= 0)
+pure def stepRecordCountsEveryAttempt(before: TraceState, via: str, after: TraceState): bool =
+  if (via == "beginRecord") after.purgeCounter == before.purgeCounter + 1 else after.purgeCounter == before.purgeCounter
 pure def stepEnrichmentStaysInOneRun(before: TraceState, via: str, after: TraceState): bool =
-  via == "enrichTraces" implies traceIds(before.traces) == traceIds(after.traces) and
-    before.traces.every(t => after.traces.every(other =>
-      t.id != other.id or t.runId == after.lastEnrichedRun or t == other))
+  via == "enrichObservedTrace" implies traceIds(before.traces) == traceIds(after.traces) and before.runEntries == after.runEntries and
+    before.traces.every(trace => after.traces.every(other => trace.id != other.id or trace.runId == after.lastEnrichedRun or trace == other))
 pure def stepIndexInsertionOrder(before: TraceState, via: str, after: TraceState): bool =
-  via == "recordTrace" implies
-    traceIds(after.traces) == traceIds(recordBase(before)) or
-      (traceIds(after.traces).length() == traceIds(recordBase(before)).length() + 1 and
-        traceIds(after.traces).removeAt(after.traces.length() - 1) == traceIds(recordBase(before)))
-pure def sometimesTwoTracesInOneRun(s: TraceState): bool =
-  s.traces.some(trace => runTraces(s, trace.runId).length() > 1)
-pure def sometimesTraceEnriched(s: TraceState): bool = s.traces.some(t => t.signals.length() > 0 and t.enrichedAt == s.now)
-pure def sometimesTraceAtTtlRetained(s: TraceState): bool = s.traces.some(t => s.now - t.createdAt == 300000)
+  via == "recordTrace" implies traceIds(after.traces) == traceIds(before.traces) or
+    (traceIds(after.traces).length() == traceIds(before.traces).length() + 1 and traceIds(after.traces).removeAt(after.traces.length() - 1) == traceIds(before.traces))
+pure def stepTransferPreservesUnrelatedRuns(before: TraceState, via: str, after: TraceState): bool = {
+  val result = after.lastResult
+  via == "recordTrace" implies match result {
+    | TraceRecorded(receipt) => before.runEntries.every(entry => entry.runId == receipt.previousRun or entry.runId == receipt.runId or indexedIds(before, entry.runId) == indexedIds(after, entry.runId))
+    | _ => true }
+}
+pure def stepFinalizationPreservesCapturedSetMembers(before: TraceState, via: str, after: TraceState, out: List[TraceEffect]): bool =
+  via == "finalizeRun" implies out.every(effect => match effect { | RetireTrace(_) => true | DropRunIndex(_) => true | _ => false })
+pure def lawRunViewKeepsOwners(s: TraceState, runId: str): bool = alwaysTraceIdentitiesUnique(s) and alwaysRunIndexesOwned(s) implies runTraces(s, runId).every(trace => trace.runId == runId)
+pure def lawDestinationRunKeepsAdmissionOrder(s: TraceState, id: str, runId: str): bool = runId != "" implies
+  indexedIds(recordTrace(s, id, runId).state, runId) == (if (indexedIds(s, runId).includes(id)) indexedIds(s, runId) else indexedIds(s, runId).append(id))
+pure def lawEmptyTraceIdIsPresent(s: TraceState, runId: str): bool = {
+  val latest = latestTrace(recordTrace(s, "", runId).state, runId)
+  runId != "" implies match latest { | NoActiveTrace => false | _ => true }
+}
+pure def sometimesTwoTracesInOneRun(s: TraceState): bool = s.traces.some(trace => runTraces(s, trace.runId).length() > 1)
+pure def sometimesTraceEnriched(s: TraceState): bool = s.traces.some(trace => trace.enrichments > 0)
 pure def sometimesAllTracesFinalized(s: TraceState): bool = s.purgeCounter > 0 and s.traces.length() == 0
-pure val tracesValues = Set(List(), List(emptyTrace))
-pure val sValues = Set(initial, { ...initial, traces: List({ ...emptyTrace, id: "trace-a", runId: "run-a" }) })
-pure def lawRunViewKeepsOwners(s: TraceState, runId: str): bool =
-  runTraces(s, runId).every(trace => trace.runId == runId)
-pure def stepConflictPreservesTraces(before: TraceState, via: str, after: TraceState): bool =
-  via == "rejectTrace" implies after.traces == before.traces and after.purgeCounter == before.purgeCounter
-pure def sometimesCrossRunReuseRejected(s: TraceState): bool =
-  s.lastResult == TraceIdentityConflict and s.registeredRun != s.requestedRun and
-    indexedIds(s, s.registeredRun).includes(s.rejectedId)
+pure def sometimesCrossRunTransfer(s: TraceState): bool = {
+  val result = s.lastResult
+  match result {
+  | TraceRecorded(receipt) => receipt.previousRun != "" and receipt.previousRun != receipt.runId and s.traces.some(trace => trace.id == receipt.id and trace.runId == receipt.runId)
+  | _ => false }
+}
+pure val idValues = Set("trace-a", "trace-b", "missing", "")
+pure val runIdValues = Set("run-a", "run-b", "")
+pure val observationValues = Set({id: "trace-a", retention: KeepObserved}, {id: "trace-a", retention: ExpireObserved}, {id: "trace-b", retention: KeepObserved}, {id: "trace-b", retention: ExpireObserved}, {id: "", retention: KeepObserved}, {id: "", retention: ExpireObserved})
+pure val sValues = Set(initial)
 ```
 
-### Expired trace progress follows the observed wall clock
+### Native expiry observations retire the exact captured key
 
-Discovered by simulation: moving the wall clock backward can make a previously expired trace fresh again. Fair purge promises removal while the expiry condition persists. The progress obligation is discharged by retirement or by an observation that revokes expiry; unconditional retirement requires an additional monotonic elapsed-clock contract.
+A purge samples the wall clock once, then reads each current original object's `createdAt` in live global Map order. The native comparison retains exactly when `now - createdAt <= 300000`; its negation retires, including NaN. Fractions and infinities remain accepted source values. No timestamp is parsed, clamped or converted into a generated integer event. Each observation is committed before reading the next object, so earlier deletions survive a later getter throw. Native comparison and reflection are explicit source-conformance boundaries.
+
+The integer arithmetic below is a reference law, not a snapshot of a mutable foreign timestamp. It is not called with raw host numbers. It replaces the old captured-timestamp `leadsToStaleTraceReevaluated` model: persistent native expiry implies retirement only with eventual successfully completed purge sweeps; changed metadata or clock observations may revoke expiry. Arbitrarily repeated throwing getters do not promise retirement. Run getters and enrichment retain captured native Set objects, including after their run-map entry is dropped. Reentrant foreign score-card writes are not equated to the logical successful-current-owner enrichment receipts above.
 
 ```quint
-pure val fair_purgeTraces = "weak"
-pure def leadsToStaleTraceReevaluated(s: TraceState, later: TraceState): bool = s.traces.every(t => s.now - t.createdAt > 300000 implies not(later.traces.some(other => other.id == t.id and other == t)) or later.now - t.createdAt <= 300000)
+pure def integerTraceTtlRetains(now: int, createdAt: int): bool = now - createdAt <= traceTtlMs
+pure def lawTraceTtlArithmetic(now: int, createdAt: int): bool = integerTraceTtlRetains(now, createdAt) == (now <= createdAt + traceTtlMs)
+pure def lawObservedExpiryRetiresOnlyItsKey(s: TraceState, id: str): bool = {
+  val after = purgeObservedTrace(s, {id: id, retention: ExpireObserved}).state
+  after.traces == s.traces.select(trace => trace.id != id) and after.runEntries == s.runEntries.select(entry => entry.traceId != id)
+}
+pure def lawObservedRetentionKeepsOwners(s: TraceState, id: str): bool = {
+  val after = purgeObservedTrace(s, {id: id, retention: KeepObserved}).state
+  after.traces == s.traces and after.runEntries == s.runEntries and after.purgeCounter == s.purgeCounter
+}
+pure def sometimesTraceRetainedByObservation(s: TraceState): bool = {
+  val receipt = s.lastPurge
+  match receipt {
+  | PurgeObserved(observation) => observation.retention == KeepObserved and s.traces.some(trace => trace.id == observation.id)
+  | _ => false }
+}
+pure val nowValues = Set(0, 1, 300000, 300001, 300002)
+pure val createdAtValues = Set(0, 1, 300000)
+```
+
+### Emitted instructions reproduce owner changes and publish the captured record
+
+Discovered by review: state-only rules allowed an admitted record with no emitted storage instructions. Emitted instructions must reproduce the resulting global keys and ordered run memberships from a coherent prior owner. Retirement removes a global key; member removal removes only its exact run/key pair; dropping an index removes its current run view without clearing a previously captured native Set; ensure preserves existing positions and adds missing global keys or target memberships.
+
+Every admitted record emits an ensure for its captured key and receiving run, including same-key same-run replacement of the original reference. All record ensures name that pair, record emits no retirement, and its member removals or drops affect only other runs of that captured key. No other transition emits ensure: its generic shell interpreter has no incoming trace reference to publish. Except for finalization, an index drop follows removal of every exact prior member of that run. Finalization deliberately preserves the detached captured Set's members. The audit below is a pure derived relation over instructions, not stored history or another owner. Final snapshot agreement alone does not prove reference replacement or every live captured-Set behavior; original-object and native-iteration conformance remain host obligations.
+
+```quint
+type TraceProjection = {globalIds: List[str], runEntries: List[RunEntry]}
+type TraceEffectAudit = {seenRemoves: List[RunEntry], valid: bool}
+pure val emptyTraceEffectAudit: TraceEffectAudit = {seenRemoves: List(), valid: true}
+pure def traceProjection(s: TraceState): TraceProjection = {globalIds: traceIds(s.traces), runEntries: s.runEntries}
+pure def applyTraceProjectionEffect(projected: TraceProjection, instruction: TraceEffect): TraceProjection = match instruction {
+  | RetireTrace(retired) => { ...projected, globalIds: projected.globalIds.select(id => id != retired.id) }
+  | RemoveRunMember(removed) => { ...projected, runEntries: projected.runEntries.select(entry => entry.runId != removed.runId or entry.traceId != removed.id) }
+  | DropRunIndex(dropped) => { ...projected, runEntries: projected.runEntries.select(entry => entry.runId != dropped.runId) }
+  | EnsureRunMember(ensured) => {
+      globalIds: if (projected.globalIds.includes(ensured.id)) projected.globalIds else projected.globalIds.append(ensured.id),
+      runEntries: if (projected.runEntries.some(entry => entry.runId == ensured.runId and entry.traceId == ensured.id)) projected.runEntries else projected.runEntries.append({runId: ensured.runId, traceId: ensured.id}) }
+}
+pure def replayTraceEffects(projected: TraceProjection, effects: List[TraceEffect]): TraceProjection = effects.foldl(projected, (value, instruction) => applyTraceProjectionEffect(value, instruction))
+pure def auditTraceProjectionEffect(audit: TraceEffectAudit, instruction: TraceEffect, beforeEntries: List[RunEntry], via: str): TraceEffectAudit = match instruction {
+  | RemoveRunMember(removed) => { ...audit, seenRemoves: audit.seenRemoves.append({runId: removed.runId, traceId: removed.id}) }
+  | DropRunIndex(dropped) => { ...audit, valid: audit.valid and (via == "finalizeRun" or beforeEntries.every(entry => entry.runId != dropped.runId or audit.seenRemoves.some(prior => prior.runId == entry.runId and prior.traceId == entry.traceId))) }
+  | EnsureRunMember(_) => { ...audit, valid: audit.valid and via == "recordTrace" }
+  | _ => audit
+}
+pure def replayTraceEffectAudit(beforeEntries: List[RunEntry], via: str, effects: List[TraceEffect]): TraceEffectAudit = effects.foldl(emptyTraceEffectAudit, (audit, instruction) => auditTraceProjectionEffect(audit, instruction, beforeEntries, via))
+pure def recordEffectAllowed(instruction: TraceEffect, id: str, targetRun: str): bool = match instruction {
+  | RetireTrace(_) => false
+  | EnsureRunMember(ensured) => ensured.id == id and ensured.runId == targetRun
+  | RemoveRunMember(removed) => removed.id == id and removed.runId != targetRun
+  | DropRunIndex(dropped) => dropped.runId != targetRun
+}
+pure def recordEffectsMatchCapture(effects: List[TraceEffect], id: str, targetRun: str): bool = effects.every(instruction => recordEffectAllowed(instruction, id, targetRun)) and effects.some(instruction => match instruction { | EnsureRunMember(ensured) => ensured.id == id and ensured.runId == targetRun | _ => false })
+pure def stepEffectsMatchOwner(before: TraceState, via: str, after: TraceState, out: List[TraceEffect]): bool =
+  alwaysTraceIdentitiesUnique(before) and alwaysRunIndexesOwned(before) implies replayTraceEffects(traceProjection(before), out) == traceProjection(after) and replayTraceEffectAudit(before.runEntries, via, out).valid
+pure def stepRecordEffectsUseCapturedIdentity(before: TraceState, via: str, after: TraceState, out: List[TraceEffect]): bool = {
+  val result = after.lastResult
+  via == "recordTrace" implies match result {
+    | TraceRecorded(receipt) => recordEffectsMatchCapture(out, receipt.id, receipt.runId)
+    | TraceIgnored => out.length() == 0
+    | _ => false }
+}
 ```

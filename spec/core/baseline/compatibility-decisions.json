@@ -82,13 +82,13 @@
     },
     {
       "id": "trace-owner-conflict",
-      "kind": "cross-owner-identity-validation",
+      "kind": "cross-owner-identity-transfer",
       "source": "packages/core/src/runtime/active-prompt-traces.ts",
       "sourceBehavior": "A trace ID may be overwritten by another run while the earlier run index retains that ID; deleting the earlier run can remove the newer run trace.",
-      "targetBehavior": "Reject cross-run trace ID reuse with TraceIdentityConflict carrying the trace ID and both run identities. Preserve trace rows, run indexes and purge count on rejection. Permit same-run overwrite.",
+      "targetBehavior": "Retain void recording and original trace, score-card and signal references. Increment cadence before incoming fields and perform every hundredth purge before the run ID. Ignore an empty run without reading id; otherwise capture id once for global key and run membership. Transfer removes old run memberships, preserves global position and existing destination position, or appends a new destination membership. No public conflict error or added validation is introduced.",
       "specification": "spec/core/traces.md",
-      "publicResult": "A trace identity conflict is an explicit failure instead of silently transferring ownership across runs.",
-      "approval": "Proposed specification change for user review; implementation has not been written.",
+      "publicResult": "Deleting an old run cannot erase a transferred trace. Same-run replacement retains position and stores the new original object. The single admitted id read intentionally replaces the source two-read accessor behavior; arbitrary getter-count equivalence is not claimed. Native number/time comparison, live Map/Set iteration, original mutable objects and completed-prefix failures remain runtime conformance obligations; model enrichment counts are successful current-owner completions since latest admission, not raw foreign score-card history.",
+      "approval": "Proposed compatibility revision awaiting human review; coherent transfer and original-reference runtime implementation is present, final scoped J03/types/lint pass, and the canonical trace state/effect closure proves 85 trace plus 6 score-card obligations. Historical verification below describes the earlier rejection proposal. No policy approval or root acceptance is recorded.",
       "verification": {
         "pinnedSourceSha256": "cba59c217657a8a8107772461fc07063532e3f51103a07d2505646a5a766dced",
         "modelRevision": "afdb27e31373a1a66374a9eb1cf9145f08dbb473",

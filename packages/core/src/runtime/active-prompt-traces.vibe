@@ -1,89 +1,188 @@
 // spec/core/traces.md, "Story: Retain enrich and retire active trace records"; spec/core/traces.md, "Recording preserves the insertion position of a replacement in its run"
 import type { ExecutionTrace, ScoreSignal } from "../prompt-optimization.vibe"
 import { ScoreCard } from "../prompt-optimization.vibe"
-export class ActivePromptTraces {
-  private activeTraces = new Map<string, ExecutionTrace>()
-  private runToTraces = new Map<string, Set<string>>()
-  enrichTrace(runId: string, signal: ScoreSignal): void {
-    const traceIds = this.runToTraces.get(runId)
-    if (!traceIds) return
+import { foreignSync } from "../edge.vibe"
+import { own, type Owned } from "../owned.vibe"
+import { Machine, machine, purgeDueAfterRecord, traceTtlMs, type Event, type Rejected, type TraceChange, type TraceEffect, type TraceRetention, type TraceState } from "../../gen/core__traces.effect.vibe"
 
-    const targetTraceId = signal.traceId
+interface TracePayload {
+  activeTraces: Map<ExecutionTrace["id"], ExecutionTrace>
+  runToTraces: Map<string, Set<ExecutionTrace["id"]>>
+}
 
-    for (const tid of traceIds) {
-      if (targetTraceId && tid !== targetTraceId) continue
+export interface TraceRegistry {
+  owned: Owned<TraceState, Event, TraceChange, Rejected, TracePayload>
+}
 
-      const trace = this.activeTraces.get(tid)
-      if (!trace) continue
+export effect function createTraceRegistry() {
+  provide machine() {
+    const owned = try own(try Machine, {
+      activeTraces: new Map<ExecutionTrace["id"], ExecutionTrace>(),
+      runToTraces: new Map<string, Set<ExecutionTrace["id"]>>(),
+    })
+    return { owned }
+  }
+}
+
+function projectTraceEffect({ payload, instruction }: { payload: TracePayload; instruction: TraceEffect }): void {
+  switch (instruction.tag) {
+    case "RetireTrace":
+      payload.activeTraces.delete(instruction.id)
+      return
+    case "RemoveRunMember":
+      payload.runToTraces.get(instruction.runId)?.delete(instruction.id)
+      return
+    case "DropRunIndex":
+      payload.runToTraces.delete(instruction.runId)
+      return
+    case "EnsureRunMember": {
+      const members = payload.runToTraces.get(instruction.runId)
+      if (members) members.add(instruction.id)
+      else payload.runToTraces.set(instruction.runId, new Set([instruction.id]))
+      return
+    }
+    default: {
+      const _exhaustive: never = instruction
+      return _exhaustive
+    }
+  }
+}
+
+effect function sendTraceEvent({ registry, event }: { registry: TraceRegistry; event: Event }) {
+  return try registry.owned.step(event, (payload, change) => {
+    for (const instruction of change.out) projectTraceEffect({ payload, instruction })
+    return [undefined, payload]
+  })
+}
+
+export effect function purgeTraces({ registry }: { registry: TraceRegistry }) {
+  const now = try foreignSync(() => Date.now())
+  const active = try registry.owned.read((_, payload) => payload.activeTraces)
+  for (const [id, trace] of active) {
+    const retention = try foreignSync<TraceRetention>(() => now - trace.createdAt <= traceTtlMs ? "KeepObserved" : "ExpireObserved")
+    try sendTraceEvent({ registry, event: { type: "purgeObservedTrace", observation: { id, retention } } })
+  }
+}
+
+export effect function recordTrace({ registry, trace }: { registry: TraceRegistry; trace: ExecutionTrace }) {
+  try sendTraceEvent({ registry, event: { type: "beginRecord" } })
+  if (try registry.owned.read((state) => purgeDueAfterRecord(state))) try purgeTraces({ registry })
+  const runId = try foreignSync(() => trace.runId)
+  if (!runId) {
+    try sendTraceEvent({ registry, event: { type: "ignoreRecord" } })
+    return
+  }
+  const id = try foreignSync(() => trace.id)
+  try registry.owned.step({ type: "recordTrace", id, runId }, (payload, change) => {
+    for (const instruction of change.out) {
+      if (instruction.tag === "EnsureRunMember") payload.activeTraces.set(instruction.id, trace)
+      projectTraceEffect({ payload, instruction })
+    }
+    return [undefined, payload]
+  })
+}
+
+export effect function enrichTrace({ registry, runId, signal }: { registry: TraceRegistry; runId: string; signal: ScoreSignal }) {
+  const payload = try registry.owned.read((_, current) => current)
+  const members = payload.runToTraces.get(runId)
+  if (!members) return
+  const targetTraceId = try foreignSync(() => signal.traceId)
+  for (const id of members) {
+    if (targetTraceId && id !== targetTraceId) continue
+    const trace = payload.activeTraces.get(id)
+    if (!trace) continue
+    try foreignSync(() => {
       trace.scoreCard.signals.push(signal)
       const card = ScoreCard.fromJSON(trace.scoreCard)
       trace.scoreCard.compositeScore = card.composite()
       trace.enrichedAt = Date.now()
+    })
+    try sendTraceEvent({ registry, event: { type: "enrichObservedTrace", runId, id } })
+  }
+}
+
+export effect function tracesForRun({ registry, runId }: { registry: TraceRegistry; runId: string }) {
+  const payload = try registry.owned.read((_, current) => current)
+  const members = payload.runToTraces.get(runId)
+  const traces: ExecutionTrace[] = []
+  if (members) {
+    for (const id of members) {
+      const trace = payload.activeTraces.get(id)
+      if (trace) traces.push(trace)
     }
   }
-  getActiveTrace(runId: string): ExecutionTrace | undefined {
-    const traceIds = this.runToTraces.get(runId)
-    if (!traceIds) return undefined
-    let latest: ExecutionTrace | undefined
-    for (const tid of traceIds) {
-      const t = this.activeTraces.get(tid)
-      if (t) latest = t
-    }
-    return latest
-  }
-  getActiveTracesForRun(runId: string): ExecutionTrace[] {
-    const traceIds = this.runToTraces.get(runId)
-    if (!traceIds) return []
-    const traces: ExecutionTrace[] = []
-    for (const tid of traceIds) {
-      const t = this.activeTraces.get(tid)
-      if (t) traces.push(t)
-    }
-    return traces
-  }
-  deleteActiveTrace(runId: string): void {
-    const traceIds = this.runToTraces.get(runId)
-    if (traceIds) {
-      for (const tid of traceIds) {
-        this.activeTraces.delete(tid)
-      }
-      this.runToTraces.delete(runId)
+  return traces
+}
+
+export effect function latestForRun({ registry, runId }: { registry: TraceRegistry; runId: string }) {
+  const payload = try registry.owned.read((_, current) => current)
+  const members = payload.runToTraces.get(runId)
+  let latest: ExecutionTrace | undefined
+  if (members) {
+    for (const id of members) {
+      const trace = payload.activeTraces.get(id)
+      if (trace) latest = trace
     }
   }
-  deleteActiveTraceById(traceId: string): void {
-    this.activeTraces.delete(traceId)
-    for (const [rid, tids] of this.runToTraces) {
-      if (tids.delete(traceId) && tids.size === 0) {
-        this.runToTraces.delete(rid)
-      }
+  return latest
+}
+
+export effect function deleteTrace({ registry, traceId }: { registry: TraceRegistry; traceId: ExecutionTrace["id"] }) {
+  try sendTraceEvent({ registry, event: { type: "deleteTrace", id: traceId } })
+}
+
+export effect function finalizeRun({ registry, runId }: { registry: TraceRegistry; runId: string }) {
+  try sendTraceEvent({ registry, event: { type: "finalizeRun", runId } })
+}
+
+module edge {
+  import { runDetachedSync } from "../edge.vibe"
+  import type { ExecutionTrace, ScoreSignal } from "../prompt-optimization.vibe"
+  import { createTraceRegistry, deleteTrace, enrichTrace, finalizeRun, latestForRun, purgeTraces, recordTrace, tracesForRun, type TraceRegistry } from "./active-prompt-traces.vibe"
+
+  export class ActivePromptTraces {
+    readonly #registry: TraceRegistry
+
+    /** @throws {never} */
+    constructor() {
+      this.#registry = runDetachedSync(createTraceRegistry())
     }
-  }
-  private static readonly ACTIVE_TRACE_TTL_MS = 5 * 60 * 1000
-  private activeTraceTtlPurgeCounter = 0
-  purgeStaleActiveTraces(): void {
-    const now = Date.now()
-    const ttl = ActivePromptTraces.ACTIVE_TRACE_TTL_MS
-    for (const [id, t] of this.activeTraces) {
-      if (now - t.createdAt <= ttl) continue
-      this.activeTraces.delete(id)
-      for (const [rid, tids] of this.runToTraces) {
-        tids.delete(id)
-        if (tids.size === 0) this.runToTraces.delete(rid)
-      }
+
+    /** @throws {never} */
+    record(trace: ExecutionTrace): void {
+      runDetachedSync(recordTrace({ registry: this.#registry, trace }))
     }
-  }
-  private maybeRunActiveTraceTTLPurge(): void {
-    if (++this.activeTraceTtlPurgeCounter % 100 !== 0) return
-    this.purgeStaleActiveTraces()
-  }
-  record(trace: ExecutionTrace): void {
-    this.maybeRunActiveTraceTTLPurge()
-    const runId = trace.runId
-    if (runId) {
-      this.activeTraces.set(trace.id, trace)
-      const traceIds = this.runToTraces.get(runId)
-      if (traceIds) traceIds.add(trace.id)
-      else this.runToTraces.set(runId, new Set([trace.id]))
+
+    /** @throws {never} */
+    enrichTrace(runId: string, signal: ScoreSignal): void {
+      runDetachedSync(enrichTrace({ registry: this.#registry, runId, signal }))
+    }
+
+    /** @throws {never} */
+    getActiveTracesForRun(runId: string): ExecutionTrace[] {
+      return runDetachedSync(tracesForRun({ registry: this.#registry, runId }))
+    }
+
+    /** @throws {never} */
+    getActiveTrace(runId: string): ExecutionTrace | undefined {
+      return runDetachedSync(latestForRun({ registry: this.#registry, runId }))
+    }
+
+    /** @throws {never} */
+    deleteActiveTrace(runId: string): void {
+      runDetachedSync(finalizeRun({ registry: this.#registry, runId }))
+    }
+
+    /** @throws {never} */
+    deleteActiveTraceById(traceId: string): void {
+      runDetachedSync(deleteTrace({ registry: this.#registry, traceId }))
+    }
+
+    /** @throws {never} */
+    purgeStaleActiveTraces(): void {
+      runDetachedSync(purgeTraces({ registry: this.#registry }))
     }
   }
 }
+import { ActivePromptTraces } from edge
+export { ActivePromptTraces }
