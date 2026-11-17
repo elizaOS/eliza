@@ -109,6 +109,9 @@ public final class CloudDeviceAccount {
   }
  }
 
+ URI passwordBackupEndpoint(String path) { return cloud.resolve(path); }
+ Uri passwordBackupCallback() { return callback; }
+
  public boolean handles(Uri data) {
   return data != null && callback.getScheme().equals(data.getScheme()) && callback.getAuthority().equals(data.getEncodedAuthority())
       && callback.getPath().equals(data.getEncodedPath()) && data.getEncodedFragment() == null;
