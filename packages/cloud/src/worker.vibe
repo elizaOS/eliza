@@ -76,7 +76,7 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
         cors.set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key")
         return new WorkerResponse(null, { status: 204, headers: cors })
       }
-      if (request.method !== "GET" && !origin && !request.headers.has("authorization") && new URL(request.url).pathname !== stripeWebhookRoute && new URL(request.url).pathname !== "/api/auth/device/exchange") {
+      if (request.method !== "GET" && !origin && !request.headers.has("authorization") && new URL(request.url).pathname !== stripeWebhookRoute && new URL(request.url).pathname !== "/api/auth/device/exchange" && !ownsPasswordBackupPath(new URL(request.url).pathname)) {
         return WorkerResponse.json({ error: "origin_required" }, { status: 403, headers: cors })
       }
       try {

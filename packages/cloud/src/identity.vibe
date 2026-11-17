@@ -146,7 +146,7 @@ effect function external(url: string, input: { authorization?: string; form?: UR
   return timeout(result, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
 }
 
-effect function googleStart(env: IdentityEnv) {
+effect function googleStart(env: IdentityEnv, chooseAccount: boolean) {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) throw new ProviderUnavailable()
   const state = try token()
   const verifier = try token()
@@ -161,6 +161,7 @@ effect function googleStart(env: IdentityEnv) {
     code_challenge: challenge,
     code_challenge_method: "S256"
   })
+  if (chooseAccount) params.set("prompt", "select_account")
   return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + params, [cookieValue(flowCookie, state + "." + verifier, codeSeconds)])
 }
 
@@ -458,7 +459,7 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
         return json(200, { account: account ? { id: account.id, email: account.email } : null })
       }
       case "/api/auth/google/start":
-        return try googleStart(env)
+        return try googleStart(env, url.searchParams.get("password_backup") === "1")
       case callbackPath: {
         const clear = cookieValue(flowCookie, "", 0)
         return effect {

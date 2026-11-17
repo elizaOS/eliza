@@ -182,9 +182,14 @@ pure def cloudSpeechUsageFits(pcmBytes: int, textCharacters: int, outputBytes: i
 
 ### Only a current, separately approved device grant accesses the owner’s backup
 
-Opting in needs an explicit native request and recent interactive approval. The
-registered native client binds the approval to its own one-time verifier.
-Owner verification can authorize local use without opening any cloud copy.
+Opting in needs an explicit native request and recent interactive approval.
+The first-party browser shows the purpose and signed-in account before the
+owner approves. Approval returns a single-use code through the exact
+registered app link. The active native enrollment for the same owner
+exchanges that code using the original purpose, state and one-time verifier.
+Owner verification returns the verified owner scope without opening any
+cloud copy. Other purposes return a single-operation proof bound to the
+active enrollment and browser session.
 The backup grant belongs to the current deployment, registered product and
 account. The cloud refuses a grant after expiry or revocation, or if the
 account or registration is no longer eligible. An inference credential
@@ -205,6 +210,10 @@ pure def canApprovePasswordBackup(active: bool, recent: bool, registered: bool):
   active and recent and registered
 pure def lawStaleSignInCannotApprovePasswordBackup(active: bool, registered: bool): bool =
   not(canApprovePasswordBackup(active, false, registered))
+pure def mayExchangeBackupCode(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, currentBrowser: bool, enrolledDevice: bool, sameOwner: bool, unspent: bool): bool =
+  approved == requested and exactVerifier and exactState and currentBrowser and enrolledDevice and sameOwner and unspent
+pure def lawDifferentOwnerCannotExchangeBackupCode(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, currentBrowser: bool, enrolledDevice: bool, unspent: bool): bool =
+  not(mayExchangeBackupCode(approved, requested, exactVerifier, exactState, currentBrowser, enrolledDevice, false, unspent))
 pure def canRedeemBackupApproval(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, grantLive: bool, unspent: bool): bool =
   approved == requested and requested != BackupVerify and exactVerifier and exactState and grantLive and unspent
 pure def lawBackupApprovalCannotBeReplayed(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, grantLive: bool): bool =

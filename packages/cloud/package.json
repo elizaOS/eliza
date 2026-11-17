@@ -68,6 +68,7 @@
     "@antithesishq/bombadil": "0.7.10",
     "@effect/vitest": "4.1.1",
     "@electric-sql/pglite": "catalog:",
+    "@electric-sql/pglite-socket": "0.1.6",
     "@repo/design-system": "workspace:*",
     "@repo/ui": "workspace:*",
     "@tailwindcss/vite": "catalog:",
