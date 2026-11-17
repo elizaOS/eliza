@@ -125,6 +125,11 @@ pure val weight_reserveWindow = 3
 pure val weight_fundWindow = 3
 pure val weight_extendWindow = 3
 pure val weight_settleWindow = 4
+pure val weight_checkCredential = 5
+pure val weight_prepareConsent = 5
+pure val weight_mintSession = 5
+pure val weight_openTransport = 5
+pure val weight_stopTransport = 2
 ```
 
 ### No opening reaches the provider after the session stops
@@ -144,6 +149,161 @@ pure def settleOpening(s: SpeechSession): SpeechSession = { ...s, opening: Openi
 pure def stepNoAdmissionAfterStop(before: SpeechSession, after: SpeechSession): bool =
   (before.transportStarted and not(before.transportOpen) and before.opening != OpeningOutside) implies after.opening != OpeningOutside
 pure def sometimesOpeningSettledByStop(s: SpeechSession): bool = s.opening == OpeningSettled and s.confirmed
+```
+
+## Story: Speak the relay protocol on a single-use socket
+
+> As a device connecting to a minted speech session, I want one socket, one
+> greeting that proves the session token, and replies I can rely on: the
+> audio format once, each utterance prepared once, a flush acknowledged after
+> its audio, and every refusal named and closed, so that I can tell an
+> exhausted account from a bad token or an outage.
+
+### A session is minted only from a live consent and lives at most a minute
+
+A consent is good for five minutes after it is prepared. Asking for a
+session without a prepared, unexpired, unused consent of the caller is
+refused as `speech_consent_required` (403). A minted session ends sixty
+seconds after minting, or when the caller's credential expires if that is
+sooner.
+
+```quint
+pure val consentLifetimeSeconds = 300
+pure val sessionLifetimeSeconds = 60
+type MintAnswer = SessionMinted | SpeechConsentRequired
+pure def mintAnswer(consentPrepared: bool, consentUnexpired: bool, consentUnused: bool): MintAnswer =
+  if (consentPrepared and consentUnexpired and consentUnused) SessionMinted else SpeechConsentRequired
+pure def mintStatus(answer: MintAnswer): int = if (answer == SessionMinted) 200 else 403
+pure def sessionEnds(mintedAt: int, credentialExpires: bool, credentialEnds: int): int =
+  if (credentialExpires and credentialEnds < mintedAt + sessionLifetimeSeconds) credentialEnds else mintedAt + sessionLifetimeSeconds
+pure def lawNoSessionWithoutALiveConsent(consentPrepared: bool, consentUnexpired: bool, consentUnused: bool): bool =
+  mintAnswer(consentPrepared, consentUnexpired, consentUnused) == SessionMinted iff (consentPrepared and consentUnexpired and consentUnused)
+pure def lawMissingConsentIsForbidden(consentUnused: bool): bool = mintStatus(mintAnswer(false, true, consentUnused)) == 403
+pure def lawSessionNeverOutlivesAMinuteOrTheCredential(mintedAt: int, credentialExpires: bool, credentialEnds: int): bool =
+  sessionEnds(mintedAt, credentialExpires, credentialEnds) <= mintedAt + sessionLifetimeSeconds and
+  (credentialExpires implies sessionEnds(mintedAt, credentialExpires, credentialEnds) <= credentialEnds)
+pure val mintedAtValues = Set(0, 100)
+pure val credentialEndsValues = Set(30, 60, 200)
+```
+
+### A session's socket opens once, and never after it ended or was revoked
+
+The socket is asked for by session id. An unknown session is `not_found`
+(404). A session whose socket was already opened, whose end has passed, or
+that its owner revoked is `session_closed` (410). Only a live session never
+opened before is upgraded, so a token can never serve a second socket.
+
+```quint
+type RelayConnect = { sessionKnown: bool, sessionLive: bool, alreadyOpened: bool, revoked: bool }
+type RelayConnectAnswer = RelayUpgraded | RelayNotFound | RelaySessionClosed
+pure def relayConnect(c: RelayConnect): RelayConnectAnswer =
+  if (not(c.sessionKnown)) RelayNotFound else if (c.alreadyOpened or c.revoked or not(c.sessionLive)) RelaySessionClosed else RelayUpgraded
+pure def relayConnectStatus(answer: RelayConnectAnswer): int = if (answer == RelayUpgraded) 101 else if (answer == RelayNotFound) 404 else 410
+pure def lawSocketOpensOnce(c: RelayConnect): bool = (c.sessionKnown and c.alreadyOpened) implies relayConnectStatus(relayConnect(c)) == 410
+pure def lawRevokedSessionNeverOpens(c: RelayConnect): bool = c.revoked implies relayConnect(c) != RelayUpgraded
+pure def lawOnlyALiveFreshSessionUpgrades(c: RelayConnect): bool =
+  relayConnect(c) == RelayUpgraded iff (c.sessionKnown and c.sessionLive and not(c.alreadyOpened) and not(c.revoked))
+pure val cValues = Set(
+  { sessionKnown: true, sessionLive: true, alreadyOpened: false, revoked: false },
+  { sessionKnown: true, sessionLive: true, alreadyOpened: true, revoked: false },
+  { sessionKnown: true, sessionLive: true, alreadyOpened: false, revoked: true },
+  { sessionKnown: true, sessionLive: false, alreadyOpened: false, revoked: false },
+  { sessionKnown: false, sessionLive: false, alreadyOpened: false, revoked: false })
+```
+
+### The first frame must be a hello with the session token, answered once with the audio format
+
+The relay starts awaiting a hello. A hello that carries the session's
+token makes it ready and is answered with exactly one `ready`, which
+announces protocol version 1 and 16 kHz mono audio; the hello may ask for
+refusal reasons. Anything else first is refused: audio as `unavailable`,
+any other text as `unauthorized`. Every refusal sends one `error` and then
+closes the socket with the policy code 1008. Once ready, a second hello or
+a malformed frame is refused as `unavailable`. A closed relay answers
+nothing.
+
+```quint
+pure val relayVersion = 1
+pure val relaySampleRate = 16000
+pure val relayChannels = 1
+pure val policyCloseCode = 1008
+type RelayPhase = AwaitingHello | RelayReady | RelayClosed
+type RelayFrame = HelloFrame | HelloWithReasonsFrame | WrongTokenHelloFrame | MalformedFrame | AudioFrame | PrepareFrame | SpeakFrame | SpeakFlushFrame | FinishFrame | CancelFrame | StopFrame | ProviderStartOfTurn | ProviderEndOfTurn | FundingRefused
+type RelayReply = ReadyReply | PreparedReply | SpeechAudioReply | FlushCompleteReply | CompleteReply | StartOfTurnEvent | EndOfTurnEvent | UnauthorizedError | UnavailableError | FundingRefusedError | PolicyClose
+type RelayState = { phase: RelayPhase, prepared: List[int], reasons: bool }
+type RelayAnswer = { relay: RelayState, replies: List[RelayReply] }
+pure val awaitingRelay: RelayState = { phase: AwaitingHello, prepared: List(), reasons: false }
+pure def refused(r: RelayState, error: RelayReply): RelayAnswer = { relay: { ...r, phase: RelayClosed }, replies: List(error, PolicyClose) }
+pure def isRelayError(reply: RelayReply): bool = reply == UnauthorizedError or reply == UnavailableError or reply == FundingRefusedError
+pure def preparing(r: RelayState, utterance: int): List[RelayReply] = if (r.prepared.includes(utterance)) List() else List(PreparedReply)
+pure def withPrepared(r: RelayState, utterance: int): RelayState = if (r.prepared.includes(utterance)) r else { ...r, prepared: r.prepared.append(utterance) }
+pure def relayStep(r: RelayState, frame: RelayFrame, utterance: int): RelayAnswer =
+  if (r.phase == RelayClosed) { relay: r, replies: List() }
+  else if (r.phase == AwaitingHello)
+    (if (frame == HelloFrame or frame == HelloWithReasonsFrame) { relay: { ...r, phase: RelayReady, reasons: frame == HelloWithReasonsFrame }, replies: List(ReadyReply) }
+     else if (frame == AudioFrame) refused(r, UnavailableError)
+     else refused(r, UnauthorizedError))
+  else if (frame == HelloFrame or frame == HelloWithReasonsFrame or frame == WrongTokenHelloFrame or frame == MalformedFrame) refused(r, UnavailableError)
+  else if (frame == FundingRefused) refused(r, if (r.reasons) FundingRefusedError else UnavailableError)
+  else if (frame == StopFrame) { relay: { ...r, phase: RelayClosed }, replies: List() }
+  else if (frame == ProviderStartOfTurn) { relay: r, replies: List(StartOfTurnEvent) }
+  else if (frame == ProviderEndOfTurn) { relay: r, replies: List(EndOfTurnEvent) }
+  else if (frame == PrepareFrame) { relay: withPrepared(r, utterance), replies: preparing(r, utterance) }
+  else if (frame == SpeakFrame) { relay: withPrepared(r, utterance), replies: preparing(r, utterance).concat(List(SpeechAudioReply)) }
+  else if (frame == SpeakFlushFrame) { relay: withPrepared(r, utterance), replies: preparing(r, utterance).concat(List(SpeechAudioReply, FlushCompleteReply)) }
+  else if (frame == FinishFrame or frame == CancelFrame) { relay: r, replies: List(CompleteReply) }
+  else { relay: r, replies: List() }
+pure val rValues = Set(awaitingRelay, { phase: RelayReady, prepared: List(), reasons: false }, { phase: RelayReady, prepared: List(1), reasons: true }, { phase: RelayClosed, prepared: List(1), reasons: false })
+pure val utteranceValues = Set(1, 2)
+pure def lawOnlyAHelloWithTheTokenOpensTheRelay(r: RelayState, frame: RelayFrame, utterance: int): bool =
+  (r.phase == AwaitingHello and relayStep(r, frame, utterance).relay.phase == RelayReady) implies
+    ((frame == HelloFrame or frame == HelloWithReasonsFrame) and relayStep(r, frame, utterance).replies == List(ReadyReply))
+pure def lawNothingIsSpokenBeforeTheHello(r: RelayState, frame: RelayFrame, utterance: int): bool =
+  r.phase == AwaitingHello implies relayStep(r, frame, utterance).replies.every(x => x == ReadyReply or x == UnauthorizedError or x == UnavailableError or x == PolicyClose)
+pure def lawEveryRefusalIsOneErrorThenAPolicyClose(r: RelayState, frame: RelayFrame, utterance: int): bool =
+  relayStep(r, frame, utterance).replies.some(x => isRelayError(x)) implies
+    (relayStep(r, frame, utterance).relay.phase == RelayClosed and relayStep(r, frame, utterance).replies.length() == 2 and relayStep(r, frame, utterance).replies.nthOr(1, ReadyReply) == PolicyClose)
+pure def lawAClosedRelayAnswersNothing(r: RelayState, frame: RelayFrame, utterance: int): bool =
+  r.phase == RelayClosed implies relayStep(r, frame, utterance) == { relay: r, replies: List() }
+```
+
+### Each utterance is prepared once, a flush is acknowledged after its audio, and finishing is acknowledged
+
+While ready, `prepare` or the first `tts` of an utterance is answered with
+one `tts_prepared` for it, and never again for the same utterance. Each
+`tts` frame is answered with its audio; one asking to flush is then
+answered with `flush_complete`, after that audio. `finish` and `cancel` are
+answered with `complete`. The provider's start-of-turn and end-of-turn
+edges are passed on as `stt` events, only while ready. `stop` closes the
+socket without an error.
+
+```quint
+pure def lawAnUtteranceIsPreparedOnce(r: RelayState, frame: RelayFrame, utterance: int): bool =
+  r.prepared.includes(utterance) implies not(relayStep(r, frame, utterance).replies.includes(PreparedReply))
+pure def lawFlushIsAcknowledgedAfterItsAudio(r: RelayState, utterance: int): bool = {
+  val replies = relayStep(r, SpeakFlushFrame, utterance).replies
+  r.phase == RelayReady implies (replies.length() >= 2 and replies.nthOr(replies.length() - 2, ReadyReply) == SpeechAudioReply and replies.nthOr(replies.length() - 1, ReadyReply) == FlushCompleteReply)
+}
+pure def lawFinishAndCancelAreAcknowledged(r: RelayState, utterance: int): bool =
+  r.phase == RelayReady implies (relayStep(r, FinishFrame, utterance).replies == List(CompleteReply) and relayStep(r, CancelFrame, utterance).replies == List(CompleteReply))
+pure def lawTurnEdgesOnlyWhileReady(r: RelayState, frame: RelayFrame, utterance: int): bool =
+  (relayStep(r, frame, utterance).replies.includes(StartOfTurnEvent) or relayStep(r, frame, utterance).replies.includes(EndOfTurnEvent)) implies r.phase == RelayReady
+pure def lawStopClosesWithoutAnError(r: RelayState, utterance: int): bool =
+  r.phase == RelayReady implies relayStep(r, StopFrame, utterance) == { relay: { ...r, phase: RelayClosed }, replies: List() }
+```
+
+### Exhausted funding is reported as its own reason, never as a bad token
+
+When the organization's credit or speech allowance refuses the next
+billing window, the relay closes. A device whose hello asked for reasons is
+told the funding was refused (`insufficient_credits`); otherwise it is told
+`unavailable`. Exhausted funding is never reported as `unauthorized`.
+
+```quint
+pure def lawFundingRefusalIsNeverUnauthorized(r: RelayState, utterance: int): bool =
+  r.phase == RelayReady implies not(relayStep(r, FundingRefused, utterance).replies.includes(UnauthorizedError))
+pure def lawAskedReasonsNameTheFunding(r: RelayState, utterance: int): bool =
+  (r.phase == RelayReady and r.reasons) implies relayStep(r, FundingRefused, utterance).replies == List(FundingRefusedError, PolicyClose)
 ```
 
 ## Story: Hold an organization to its daily speech quota

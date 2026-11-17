@@ -51,8 +51,14 @@ pure def sometimesResolved(e: Escalation): bool = e.resolved and e.delivered > 0
 
 ### Shutdown cancels the timer and keeps an unresolved escalation
 
+Shutting down leaves the escalation's level, notices and resolution as they
+were, and after it no notice is sent and no level is raised.
+
 ```quint
 pure def canShutDown(e: Escalation): bool = not(e.stopped)
 pure def shutDown(e: Escalation): Escalation = { ...e, stopped: true, timer: false }
+pure def stepShutdownKeepsTheEscalation(before: Escalation, via: str, after: Escalation): bool =
+  (via == "shutDown" implies (not(after.timer) and after.active == before.active and after.resolved == before.resolved and after.level == before.level and after.delivered == before.delivered)) and
+    (before.stopped implies (after.level == before.level and after.delivered == before.delivered))
 pure def sometimesUnresolvedKeptAtShutdown(e: Escalation): bool = e.stopped and e.active and not(e.resolved)
 ```

@@ -9,6 +9,33 @@ Identity comes from [auth](../auth/), wire shapes from
 Each specification below is one area of the host; a product composes them
 and supplies its own character, branding and configuration.
 
+A consumer build composes the host from these modules, and each has its
+rules here:
+
+- the resident agent service an Android host app installs, with its
+  provider slot, credential shutdown lease, route gate and attach decision:
+  [the Android host](./resident/host.md) and the
+  [resident lifecycle](./resident/lifecycle.md);
+- the runtime profile that binds an on-device agent's inference to the
+  owner's cloud account, and a consumer's plugin policy:
+  [plugin profile](./plugins/profile.md);
+- the in-memory session of the owner's own provider keys:
+  [resident credential](./resident/credential.md);
+- the character a provisioned or local deployment boots as, its routing id
+  and who connects its connectors: [character](./host/character.md);
+- the private runtime a desktop native host launches for its account:
+  [runtime supervisor](./nativeHost/runtimeSupervisor.md), with its private
+  files and environment in [configuration](./host/config.md);
+- the launch policy a host hands the agent, its native views, browser
+  commands and time zone: [configuration](./host/config.md);
+- the owner's managed Google services, which a host reaches through the
+  cloud: [managed Google connection](../cloud/managedGoogle/connection.md);
+- the device as a target a controller pairs with through the cloud:
+  [cloud remote pairing](../cloud/remotePairing.md).
+
+A consumer's screens, its user interface components and its test harness
+are its own and are not specified here.
+
 Host:
 
 - [Boot and teardown](./host/boot.md)

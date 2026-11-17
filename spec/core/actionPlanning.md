@@ -114,3 +114,80 @@ pure def stepSettledCallKeepsItsOutcome(before: Planning, after: Planning): bool
   before.calls.every(b => not(resolved(b)) or after.calls.some(c => c == b))
 pure def alwaysCallIdentitiesUnique(s: Planning): bool = s.calls.every(c => c.id > 0 and s.calls.select(other => other.id == c.id).length() == 1)
 ```
+
+## Story: Offer only the actions a product allows
+
+> As the maker of a product built on the agent, I name the actions my product
+> offers; nothing else runs for anyone, the owner and the agent's own turns
+> included, and a broken or stale list stops the agent from starting rather
+> than opening everything up.
+
+### A product allowlist refuses every action it does not name, for every caller
+
+A host may set a product allowlist of exact action names. When it is set, an
+action it does not name is refused before any role or context gate is
+consulted, whatever the caller's role, including the owner and the agent's
+own autonomous and scheduled turns. Without an allowlist every action stays
+subject to its own gates.
+
+```quint
+type ProductAllowlist = { set: bool, names: Set[str] }
+pure def productAllows(allowlist: ProductAllowlist, actionName: str): bool = not(allowlist.set) or allowlist.names.contains(actionName)
+pure def gateAdmits(allowlist: ProductAllowlist, actionName: str, role: Z::Role, minRole: Z::Role): bool =
+  productAllows(allowlist, actionName) and Z::rank(role) >= Z::rank(minRole)
+pure val allowlistValues = Set({ set: false, names: Set() }, { set: true, names: Set("reply") }, { set: true, names: Set("reply", "manage") }, { set: true, names: Set("reply", "manage_create") })
+pure val minRoleValues = Set(Z::Guest, Z::Admin)
+pure def lawAllowlistRefusesUnnamedActionsForEveryone(allowlist: ProductAllowlist, actionName: str, role: Z::Role, minRole: Z::Role): bool =
+  (allowlist.set and not(allowlist.names.contains(actionName))) implies not(gateAdmits(allowlist, actionName, role, minRole))
+pure def lawOwnerIsNotExemptFromTheAllowlist(allowlist: ProductAllowlist, actionName: str): bool =
+  gateAdmits(allowlist, actionName, Z::Owner, Z::Guest) implies productAllows(allowlist, actionName)
+```
+
+### A promoted subaction is checked by its own name and its umbrella's, so allowing an umbrella allows none of its subactions and refusing it refuses them all
+
+An umbrella action may promote each of its subactions to a top-level action
+of its own name that runs the umbrella's handler. Each promoted name, and
+each subaction a running umbrella plans, passes the allowlist only when both
+its own name and its umbrella's are named: a product that allows the
+umbrella and names none of its subactions refuses them all, and a product that refuses the umbrella refuses
+every one of its subactions, even one it names.
+
+```quint
+pure def subactionAllowed(allowlist: ProductAllowlist, parentName: str, subactionName: str): bool =
+  productAllows(allowlist, parentName) and productAllows(allowlist, subactionName)
+pure val parentNameValues = Set("manage", "reply")
+pure val subactionNameValues = Set("manage_create", "create")
+pure def lawAllowingAnUmbrellaAllowsNoSubaction(allowlist: ProductAllowlist, parentName: str, subactionName: str): bool =
+  (allowlist.set and not(allowlist.names.contains(subactionName))) implies not(subactionAllowed(allowlist, parentName, subactionName))
+pure def lawRefusedUmbrellaRefusesEverySubaction(allowlist: ProductAllowlist, parentName: str, subactionName: str): bool =
+  (allowlist.set and not(allowlist.names.contains(parentName))) implies not(subactionAllowed(allowlist, parentName, subactionName))
+```
+
+### An empty, malformed or stale allowlist stops boot
+
+A set allowlist that is empty, does not parse as a list of nonempty names,
+or names an action no plugin registered when boot finishes stops the boot,
+so a broken setting or an action renamed upstream never leaves the product
+with everything or without what it promised.
+
+```quint
+type AllowlistSetting = { present: bool, blank: bool, parses: bool, names: Set[str] }
+type AllowlistBoot = AllowlistAbsent | AllowlistAdmitted | AllowlistRefused
+pure def allowlistBoot(setting: AllowlistSetting, registeredNames: Set[str]): AllowlistBoot =
+  if (not(setting.present)) AllowlistAbsent
+  else if (setting.blank or not(setting.parses) or setting.names.size() == 0) AllowlistRefused
+  else if (not(setting.names.subseteq(registeredNames))) AllowlistRefused
+  else AllowlistAdmitted
+pure val settingValues = Set(
+  { present: false, blank: false, parses: false, names: Set() },
+  { present: true, blank: true, parses: false, names: Set() },
+  { present: true, blank: false, parses: true, names: Set("reply") },
+  { present: true, blank: false, parses: true, names: Set("reply", "renamed") }
+)
+pure val registeredNamesValues = Set(Set("reply"), Set("reply", "manage"))
+pure def lawBrokenOrStaleAllowlistStopsBoot(setting: AllowlistSetting, registeredNames: Set[str]): bool =
+  (setting.present and (setting.blank or not(setting.parses) or not(setting.names.subseteq(registeredNames)))) implies
+    allowlistBoot(setting, registeredNames) == AllowlistRefused
+pure def lawAdmittedAllowlistNamesOnlyRegisteredActions(setting: AllowlistSetting, registeredNames: Set[str]): bool =
+  allowlistBoot(setting, registeredNames) == AllowlistAdmitted implies (setting.names.size() > 0 and setting.names.subseteq(registeredNames))
+```

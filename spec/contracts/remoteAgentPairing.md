@@ -6,8 +6,8 @@ or opened as a deep link, of the form
 It carries the agent's HTTPS origin, a one-time pairing code and the agent
 process that issued the code, and never a bearer token. This contract
 builds and reads that link. The pairing exchange itself, the code's
-lifetime and the session it mints are the
-[cloud's remote pairing](../cloud/remotePairing.md).
+lifetime and the session it mints are the agent host's
+[route access](../agent/host/access.md).
 
 A link and its embedded origin are modeled as the facts the parser checks:
 the outer scheme, host and path, anything else on the outer URL, how many

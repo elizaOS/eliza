@@ -70,9 +70,15 @@ pure def sometimesExitedWithFailure(p: Process): bool = p.phase == ExitedFailed
 
 ### Only an explicit external kill ends the process during the drain
 
+The drain ends only by an exit after cleanup or by a kill, and only a kill
+ends the process killed.
+
 ```quint
 pure def canKill(p: Process): bool = p.phase == Draining
 pure def kill(p: Process): Process = { ...p, phase: Killed }
+pure def stepDrainEndsOnlyByExitOrKill(before: Process, via: str, after: Process): bool =
+  ((before.phase == Draining and after.phase != Draining) implies (via == "kill" or via == "exitClean" or via == "exitFailed")) and
+    ((after.phase == Killed and before.phase != Killed) implies via == "kill")
 pure def sometimesKilledMidCleanup(p: Process): bool = p.phase == Killed and not(cleanupDone(p))
 ```
 

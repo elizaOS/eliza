@@ -46,7 +46,8 @@ pure def sometimesFailedFirstBoot(l: Lifecycle): bool = l.phase == Failed and no
 ### Restart keeps serving the old runtime until the replacement is ready
 
 A replacement that fails to build before admission closes leaves the old
-runtime running.
+runtime running. While a restart is in progress the old runtime is never
+closed except by publishing the replacement.
 
 ```quint
 pure def canRestart(l: Lifecycle): bool = l.runtime and l.phase == Live and not(l.boot) and not(l.stopping)
@@ -57,7 +58,19 @@ pure def canEnterTurn(l: Lifecycle): bool = l.runtime and (l.phase == Live or l.
 pure def enterTurn(l: Lifecycle): Lifecycle = { ...l, active: l.active + 1 }
 pure def canExitTurn(l: Lifecycle): bool = l.active > 0
 pure def exitTurn(l: Lifecycle): Lifecycle = { ...l, active: l.active - 1 }
+pure def stepOldRuntimeServesUntilReplaced(before: Lifecycle, via: str, after: Lifecycle): bool =
+  before.phase == Restarting implies (after.closed == before.closed or via == "replace") and (via == "restartFailed" implies after.runtime and after.built == before.built)
 pure def sometimesOldRuntimeServesDuringRestart(l: Lifecycle): bool = l.phase == Restarting and l.active > 0
+```
+
+### A restart in progress is a boot in progress
+
+A restart holds the boot until it publishes the replacement or fails, so a
+stop or reset, which a boot refuses, never closes the old runtime before the
+replacement is published.
+
+```quint
+pure def alwaysRestartIsABoot(l: Lifecycle): bool = l.phase == Restarting implies l.boot
 ```
 
 ### The replacement is published only after admission closed and admitted turns drained
@@ -93,21 +106,34 @@ pure def sometimesDeferredConfigPublished(l: Lifecycle): bool = l.configSaved an
 
 ### Pause and resume need a live runtime that is not booting or stopping
 
+Only a pause enters the paused phase, from a live runtime, and only a resume
+returns from it to live.
+
 ```quint
 pure def canPause(l: Lifecycle): bool = l.runtime and l.phase == Live and not(l.boot) and not(l.stopping)
 pure def pause(l: Lifecycle): Lifecycle = { ...l, phase: Paused }
 pure def canResume(l: Lifecycle): bool = l.runtime and l.phase == Paused and not(l.boot) and not(l.stopping) and not(l.cordoned)
 pure def resume(l: Lifecycle): Lifecycle = { ...l, phase: Live }
+pure def stepPauseOnlyFromLiveAndResumeOnlyFromPaused(before: Lifecycle, via: str, after: Lifecycle): bool =
+  ((after.phase == Paused and before.phase != Paused) implies (via == "pause" and before.phase == Live and before.runtime)) and
+    ((before.phase == Paused and after.phase == Live) implies via == "resume")
 pure def sometimesPaused(l: Lifecycle): bool = l.phase == Paused
 ```
 
 ### Stop is refused during a boot, closes admission and waits for admitted turns
+
+A stop of a running runtime closes admission at once; while it stops no turn
+is admitted, and it settles only when no admitted turn is left.
 
 ```quint
 pure def canStop(l: Lifecycle): bool = l.phase != Starting and l.phase != Restarting and not(l.stopping)
 pure def stop(l: Lifecycle): Lifecycle = if (l.runtime) { ...l, stopping: true, cordoned: true } else { ...l, phase: Stopped }
 pure def canStopSettled(l: Lifecycle): bool = l.stopping and l.active == 0
 pure def stopSettled(l: Lifecycle): Lifecycle = { ...l, stopping: false, runtime: false, phase: Stopped, cordoned: false, closed: l.closed + 1 }
+pure def stepStopClosesAdmissionAndWaitsForTurns(before: Lifecycle, via: str, after: Lifecycle): bool =
+  (via == "stop" implies (before.phase != Starting and before.phase != Restarting and (before.runtime implies after.cordoned))) and
+    (via == "stopSettled" implies before.active == 0) and
+    (before.stopping implies after.active <= before.active)
 pure def sometimesStoppedThenStartedAgain(l: Lifecycle): bool = l.phase == Live and l.closed >= 1 and l.built >= 2
 ```
 

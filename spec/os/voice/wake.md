@@ -157,12 +157,17 @@ closes, and listening stays off until the person turns it on again from
 the listener's own consent.
 
 ```quint
+type ProcessStart = { markerOpen: bool, sameBoot: bool, sameInstall: bool }
 pure def uncleanExit(markerOpen: bool, sameBoot: bool, sameInstall: bool): bool = markerOpen and sameBoot and sameInstall
-pure def restartListenerProcess(w: Wake, markerOpen: bool, sameBoot: bool, sameInstall: bool, windowLapsed: bool): Wake = {
-  val exits = (if (windowLapsed) 0 else w.crashExits) + (if (uncleanExit(markerOpen, sameBoot, sameInstall)) 1 else 0)
+pure val startValues = Set({ markerOpen: true, sameBoot: true, sameInstall: true }, { markerOpen: false, sameBoot: true, sameInstall: true },
+  { markerOpen: true, sameBoot: false, sameInstall: true }, { markerOpen: true, sameBoot: true, sameInstall: false })
+pure def restartListenerProcess(w: Wake, start: ProcessStart): Wake = {
+  val exits = w.crashExits + (if (uncleanExit(start.markerOpen, start.sameBoot, start.sameInstall)) 1 else 0)
   if (exits >= 3) { ...windowClosed(false, w), crashExits: 3, tripped: true, stopConfirmed: false }
   else { ...w, crashExits: exits }
 }
+pure def canForgetOldCrashes(w: Wake): bool = w.crashExits > 0 and not(w.tripped)
+pure def forgetOldCrashes(w: Wake): Wake = { ...w, crashExits: 0 }
 pure def canTurnListeningBackOn(w: Wake, grant: ListenerGrant): bool = w.tripped and listenerAdmitted(grant)
 pure def turnListeningBackOn(w: Wake, grant: ListenerGrant): Wake = { ...w, tripped: false, crashExits: 0, listening: true, stopConfirmed: false }
 pure def lawRebootOrUpdateIsNotACrash(markerOpen: bool, sameInstall: bool): bool =

@@ -30,8 +30,12 @@ pure def alwaysPhaseWithinPipeline(b: Boot): bool = b.phase >= 0 and b.phase <= 
 
 ### The host is ready only when every blocking phase is done
 
+The host becomes ready only by finishing the last blocking phase.
+
 ```quint
 pure def isReady(b: Boot): bool = b.phase == bootPhases and not(b.closing)
+pure def stepReadyOnlyByTheLastPhase(before: Boot, via: str, after: Boot): bool =
+  (isReady(after) and not(isReady(before))) implies (via == "advance" and before.phase == bootPhases - 1)
 pure def sometimesReadyWithDeferredWork(b: Boot): bool = isReady(b) and b.tasks.size() > 0
 ```
 

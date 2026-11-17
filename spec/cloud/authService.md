@@ -7,7 +7,9 @@ attests the client's address; the service trusts an attested address only
 when the attestation verifies, and limits sign-in attempts with an atomic
 sliding window. There is no second login service and no other mount path.
 Sessions, challenges, tenants and accounts are specified in the auth
-package; this spec covers the hosted deployment around them.
+package; this spec covers the hosted deployment around them. Passkey
+sign-in is outside this spec: no rule here admits a passkey, and nothing
+relies on one.
 
 ## Story: Serve sign-in from one hosted auth service
 
@@ -74,6 +76,34 @@ pure val aValues = Set(
   { secretConfigured: true, addressValid: true, signatureMatches: true, expiresAt: 200000 })
 pure def lawUnverifiedAddressNotTrusted(a: IpAttestation, now: int): bool = not(a.signatureMatches) implies not(trustForwardedAddress(a, now))
 pure def lawFarFutureAttestationRefused(a: IpAttestation, now: int): bool = a.expiresAt > now + attestationHorizon implies not(trustForwardedAddress(a, now))
+```
+
+### The service answers no sign-in without its deployment's tenant, and no method whose configuration is missing
+
+The service takes its tenant, the mail sender of the
+[deployment profile](./deployment.md) and the Google client identifiers
+from the deployment, and carries no default for any of them. Without a
+tenant it answers no sign-in at all. Email sign-in is answered only with a
+configured mail sender, and its mail is sent from that sender only; Google
+sign-in, in the browser or from a device's account picker, is answered
+only with configured Google clients. A method missing its configuration is
+refused as not configured, never served with another deployment's values.
+
+```quint
+type SignInMethod = EmailSignIn | GoogleSignIn
+type IdentityConfig = { tenant: str, mailSender: str, googleClients: bool }
+pure def methodConfigured(config: IdentityConfig, signInMethod: SignInMethod): bool =
+  config.tenant != "" and (if (signInMethod == EmailSignIn) config.mailSender != "" else config.googleClients)
+pure def mailSentFrom(config: IdentityConfig): str = config.mailSender
+pure val configValues = Set(
+  { tenant: "tenant-one", mailSender: "sign-in@mail.one", googleClients: true },
+  { tenant: "", mailSender: "sign-in@mail.one", googleClients: true },
+  { tenant: "tenant-one", mailSender: "", googleClients: true },
+  { tenant: "tenant-one", mailSender: "sign-in@mail.one", googleClients: false })
+pure def lawNoTenantAnswersNothing(config: IdentityConfig, signInMethod: SignInMethod): bool = config.tenant == "" implies not(methodConfigured(config, signInMethod))
+pure def lawEmailNeedsTheConfiguredSender(config: IdentityConfig): bool =
+  methodConfigured(config, EmailSignIn) implies (config.mailSender != "" and mailSentFrom(config) == config.mailSender)
+pure def lawGoogleNeedsConfiguredClients(config: IdentityConfig): bool = not(config.googleClients) implies not(methodConfigured(config, GoogleSignIn))
 ```
 
 ## Story: Limit sign-in attempts per key

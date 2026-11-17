@@ -89,3 +89,31 @@ pure def stepCleanupDoesNotInventExit(before: ScopeLaunch, via: str, after: Scop
 pure def sometimesUnobservedTermination(s: ScopeLaunch): bool = s.phase == ScopeClosed and s.agentLive
 pure def sometimesCleanupFailed(s: ScopeLaunch): bool = s.phase == CleanupFailed
 ```
+
+## Story: Start the agent before a provider is chosen
+
+> As a new device owner, my agent starts even before I chose a model
+> provider, and every message I send then tells me that no provider is set
+> instead of failing in some other way or using a provider I never chose.
+
+### An empty provider slot launches the agent unbound, and each turn answers that no provider is set
+
+A launch with an empty provider slot is admitted under the unbound provider
+generation and serves screens as a bound launch does. While it is unbound,
+each turn ends with the no-provider answer and reaches no model. A turn of
+a bound launch is answered by its provider, or fails as that provider
+failed. A slot that cannot be read refuses the launch.
+
+```quint
+type ProviderSlot = EmptySlot | BoundSlot | UnreadableSlot
+type TurnAnswer = NoProviderAnswer | ProviderAnswer | ProviderFailure | LaunchRefused
+pure def launchAdmitted(slot: ProviderSlot): bool = slot != UnreadableSlot
+pure def turnAnswer(slot: ProviderSlot, providerSucceeded: bool): TurnAnswer =
+  if (slot == UnreadableSlot) LaunchRefused
+  else if (slot == EmptySlot) NoProviderAnswer
+  else if (providerSucceeded) ProviderAnswer else ProviderFailure
+pure def lawEmptySlotLaunchesAndAnswersNoProvider(providerSucceeded: bool): bool =
+  launchAdmitted(EmptySlot) and turnAnswer(EmptySlot, providerSucceeded) == NoProviderAnswer
+pure def lawOnlyABoundSlotReachesAModel(slot: ProviderSlot, providerSucceeded: bool): bool =
+  (turnAnswer(slot, providerSucceeded) == ProviderAnswer or turnAnswer(slot, providerSucceeded) == ProviderFailure) implies slot == BoundSlot
+```

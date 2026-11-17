@@ -230,6 +230,10 @@ lemma planSubaction_ensures(s: Planning, id: int, parent: int, actionName: strin
     Views(s);
     CallAt(s, parent);
     Extend(s, t, PlannedCall(id, actionName, parent, callAt(s, parent).role, false, CallPhase.Planned, RejectReason.NotRejected));
+    forall b | b in s.calls ensures b in t.calls {
+      var j :| 0 <= j < |s.calls| && s.calls[j] == b;
+      assert t.calls[j] == b;
+    }
     assert forall q :: q in s.calls && q.id == parent ==> q == callAt(s, parent) by {
       forall q | q in s.calls && q.id == parent ensures q == callAt(s, parent) { var j :| 0 <= j < |s.calls| && s.calls[j] == q; }
     }

@@ -216,3 +216,100 @@ pure def lawAnswerCannotChangeTheReviewedEdit(t: NamedTarget, answer: NamedAnswe
   (namedAnswerValid(t, answer) and answer.ownerChosen) implies
     (answer.exact.operation == exactOperationType(t) and answer.answerName == t.recordName and (t.namedAction == UpdateNamed implies answer.exact.exactFields == t.proposedFields))
 ```
+
+## Story: Hear what a phone effect did, and no more
+
+> As an owner, when I approve a text message, a dial or a call on my phone,
+> the agent is told only what the phone saw happen: a text is sent or
+> delivered only when every part says so, and a dial or call is never
+> reported as answered or connected.
+
+The bounds of a direct text message and who may authorize a phone effect
+are [device effect authority](../agent/deviceActions/telephonyReview.md);
+journaling and running the effect are
+[device action custody](../agent/deviceActions/execution.md). These receipts
+are what the phone reports back and what both sides read the same way.
+
+### A text message's reported status is supported by the evidence of every part
+
+A receipt names the operation, its subscription and its binding hash, and
+lists at most fifty parts in recipient order, at most ten per recipient. A
+part's delivery can succeed only after it was sent. A cancelled or denied
+send has no parts; a submitted, sent or delivered one has a part for every
+recipient; a sent or delivered one has every part sent; a delivered one has
+every part delivered; and a submitted one has no failed part. A receipt
+whose status its parts do not support is refused. Submitted, sent and
+delivered are applied; cancelled and denied are failed; anything else is
+unknown.
+
+```quint
+type PartState = PartUnknown | PartSucceeded | PartFailed
+type SmsPart = { recipient: int, sent: PartState, delivery: PartState }
+type SmsStatus = SmsCancelled | SmsDenied | SmsFailed | SmsUnknown | SmsSubmitted | SmsSentStatus | SmsDeliveredStatus
+type EffectOutcome = EffectApplied | EffectFailed | EffectUnknown
+pure def partCoherent(p: SmsPart): bool = p.delivery == PartSucceeded implies p.sent == PartSucceeded
+pure def everyRecipientHasAPart(recipients: int, parts: List[SmsPart]): bool =
+  recipients > 0 and parts.every(p => p.recipient >= 0 and p.recipient < recipients) and
+    parts.select(p => p.recipient == 0).length() > 0 and parts.select(p => p.recipient == recipients - 1).length() > 0 and
+    parts.every(p => p.recipient == 0 or parts.some(q => q.recipient == p.recipient - 1))
+pure def smsReceiptSupported(status: SmsStatus, recipients: int, parts: List[SmsPart]): bool =
+  parts.length() <= 50 and parts.every(p => partCoherent(p)) and
+  (if (status == SmsCancelled or status == SmsDenied) parts.length() == 0
+   else if (status == SmsSubmitted) everyRecipientHasAPart(recipients, parts) and parts.every(p => p.sent != PartFailed and p.delivery != PartFailed)
+   else if (status == SmsSentStatus) everyRecipientHasAPart(recipients, parts) and parts.every(p => p.sent == PartSucceeded)
+   else if (status == SmsDeliveredStatus) everyRecipientHasAPart(recipients, parts) and parts.every(p => p.sent == PartSucceeded and p.delivery == PartSucceeded)
+   else true)
+pure def smsOutcome(status: SmsStatus): EffectOutcome =
+  if (status == SmsSubmitted or status == SmsSentStatus or status == SmsDeliveredStatus) EffectApplied
+  else if (status == SmsCancelled or status == SmsDenied) EffectFailed
+  else EffectUnknown
+pure val recipientsValues = Set(1, 2)
+pure val partsValues = Set(
+  List(),
+  List({ recipient: 0, sent: PartSucceeded, delivery: PartSucceeded }),
+  List({ recipient: 0, sent: PartSucceeded, delivery: PartUnknown }, { recipient: 1, sent: PartSucceeded, delivery: PartSucceeded }),
+  List({ recipient: 0, sent: PartFailed, delivery: PartUnknown }),
+  List({ recipient: 0, sent: PartUnknown, delivery: PartSucceeded })
+)
+pure def lawDeliveredMeansEveryPartDelivered(recipients: int, parts: List[SmsPart]): bool =
+  smsReceiptSupported(SmsDeliveredStatus, recipients, parts) implies parts.length() > 0 and parts.every(p => p.sent == PartSucceeded and p.delivery == PartSucceeded)
+pure def lawNoDeliveryBeforeSending(status: SmsStatus, recipients: int, parts: List[SmsPart]): bool =
+  smsReceiptSupported(status, recipients, parts) implies parts.every(p => p.delivery == PartSucceeded implies p.sent == PartSucceeded)
+pure def lawCancelledSendHasNoParts(recipients: int, parts: List[SmsPart]): bool =
+  (smsReceiptSupported(SmsCancelled, recipients, parts) or smsReceiptSupported(SmsDenied, recipients, parts)) implies parts.length() == 0
+pure def lawOnlyAnAttemptedSendIsApplied(status: SmsStatus): bool =
+  smsOutcome(status) == EffectApplied iff (status == SmsSubmitted or status == SmsSentStatus or status == SmsDeliveredStatus)
+```
+
+### A dial is applied only when the dial screen opened, and no dial or call receipt claims a connected call
+
+A dial hands the reviewed number to the phone's dial screen, where the
+owner places the call or not: only an opened dial screen is applied, and
+only it names the app that opened. A call is applied when the phone
+accepted it or, for an emergency number, opened the emergency dialer
+instead; the agent never places an emergency call itself. No status of
+either says the call was answered or connected. A number target cannot
+report a contact choice, and only a contact target can report that no
+contact matched.
+
+```quint
+type DialStatus = DialHandedOff | DialUnavailable | DialCancelled | DialFailed
+type CallStatus = CallPlaced | CallEmergencyHandoff | CallNotFound | CallBusy | CallUnavailable | CallCancelled | CallFailed
+type DialTarget = NumberTarget | ContactTarget
+type DialReceipt = { status: DialStatus, namesHandler: bool, contact: bool }
+type CallReceipt = { status: CallStatus, contact: bool }
+pure def dialReceiptValid(target: DialTarget, r: DialReceipt): bool =
+  (r.contact implies target == ContactTarget) and (r.namesHandler implies r.status == DialHandedOff)
+pure def callReceiptValid(target: DialTarget, r: CallReceipt): bool =
+  (r.contact implies target == ContactTarget) and (r.status == CallNotFound implies target == ContactTarget)
+pure def dialOutcome(r: DialReceipt): EffectOutcome = if (r.status == DialHandedOff) EffectApplied else EffectFailed
+pure def callOutcome(r: CallReceipt): EffectOutcome = if (r.status == CallPlaced or r.status == CallEmergencyHandoff) EffectApplied else EffectFailed
+pure val dialValues = Set({ status: DialHandedOff, namesHandler: true, contact: false }, { status: DialCancelled, namesHandler: false, contact: true }, { status: DialFailed, namesHandler: true, contact: false })
+pure val callValues = Set({ status: CallPlaced, contact: true }, { status: CallNotFound, contact: false }, { status: CallEmergencyHandoff, contact: false }, { status: CallBusy, contact: false })
+pure def lawOnlyAnOpenedDialScreenIsApplied(target: DialTarget, dial: DialReceipt): bool =
+  dialReceiptValid(target, dial) implies ((dialOutcome(dial) == EffectApplied) iff (dial.status == DialHandedOff)) and (dial.namesHandler implies dial.status == DialHandedOff)
+pure def lawNumberTargetReportsNoContact(dial: DialReceipt, call: CallReceipt): bool =
+  (dialReceiptValid(NumberTarget, dial) implies not(dial.contact)) and (callReceiptValid(NumberTarget, call) implies (not(call.contact) and call.status != CallNotFound))
+pure def lawCallFailsUnlessThePhoneAcceptedIt(call: CallReceipt): bool =
+  callOutcome(call) == EffectApplied iff (call.status == CallPlaced or call.status == CallEmergencyHandoff)
+```

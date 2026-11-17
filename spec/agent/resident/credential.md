@@ -97,3 +97,99 @@ pure def lawOnlyAChangedValueStopsTheResident(latestIntent: int, intent: int, st
 pure def lawStaleMutationNeverCommits(latestIntent: int, intent: int, storedValue: int, nextValue: int): bool =
   intent != latestIntent implies mutationPlan(latestIntent, intent, storedValue, nextValue) == StaleMutation
 ```
+
+## Story: Keep my own provider keys for this session only
+
+> As a device owner who brings my own provider keys, I add, change, remove
+> and choose them on my phone; they live only in memory for my current
+> session, the agent receives them only when I chose my own provider, and a
+> change made from a stale screen is refused instead of overwriting mine.
+
+The resident host keeps one key session for its trusted local owner. It
+holds a text key and a voice key, the chosen route (the owner's cloud
+account or the owner's own keys) and a revision that names the session's
+current state. It touches no network, file or environment, and its keys
+are never written anywhere.
+
+### Every change names the current revision, and a stale or closed session refuses it unchanged
+
+Editing a key, choosing the route and removing a key each name the revision
+the caller last saw. A different revision, or a closed session, refuses the
+change as a provider change and leaves the session as it was; an applied
+change issues a new revision. An edit names at least one key and leaves the
+key it does not name as it was.
+
+```quint
+type KeyRoute = CloudAccountRoute | OwnKeysRoute
+type KeySession = { route: KeyRoute, revision: int, textKey: bool, voiceKey: bool, closed: bool }
+type KeyChange = EditKeys({ text: bool, voice: bool }) | ChooseRoute({ route: KeyRoute }) | RemoveTextKey | RemoveVoiceKey
+type KeyReply = KeysChanged | ProviderChanged | ChangeInvalid
+type KeyResult = { session: KeySession, reply: KeyReply }
+pure def changeKeys(k: KeySession, expected: int, change: KeyChange): KeyResult =
+  if (k.closed or expected != k.revision) { session: k, reply: ProviderChanged }
+  else match change {
+    | EditKeys(e) => if (not(e.text) and not(e.voice)) { session: k, reply: ChangeInvalid }
+        else { session: { ...k, textKey: k.textKey or e.text, voiceKey: k.voiceKey or e.voice, revision: k.revision + 1 }, reply: KeysChanged }
+    | ChooseRoute(c) => if (c.route == OwnKeysRoute and not(k.textKey)) { session: k, reply: ChangeInvalid }
+        else { session: { ...k, route: c.route, revision: k.revision + 1 }, reply: KeysChanged }
+    | RemoveTextKey => { session: { ...k, textKey: false, revision: k.revision + 1 }, reply: KeysChanged }
+    | RemoveVoiceKey => { session: { ...k, voiceKey: false, revision: k.revision + 1 }, reply: KeysChanged }
+  }
+pure val freshSession: KeySession = { route: CloudAccountRoute, revision: 0, textKey: false, voiceKey: false, closed: false }
+pure val kValues = Set(freshSession, { ...freshSession, textKey: true, revision: 1 }, { ...freshSession, route: OwnKeysRoute, textKey: true, voiceKey: true, revision: 2 }, { ...freshSession, closed: true, revision: 3 })
+pure val expectedValues = Set(0, 1, 2, 3)
+pure val changeValues = Set(EditKeys({ text: true, voice: false }), EditKeys({ text: false, voice: false }), ChooseRoute({ route: OwnKeysRoute }), ChooseRoute({ route: CloudAccountRoute }), RemoveTextKey, RemoveVoiceKey)
+pure def lawStaleOrClosedChangeLeavesTheSession(k: KeySession, expected: int, change: KeyChange): bool =
+  (k.closed or expected != k.revision) implies changeKeys(k, expected, change) == { session: k, reply: ProviderChanged }
+pure def lawAppliedChangeIssuesANewRevision(k: KeySession, expected: int, change: KeyChange): bool =
+  changeKeys(k, expected, change).reply == KeysChanged implies changeKeys(k, expected, change).session.revision > k.revision
+pure def lawRefusedChangeChangesNothing(k: KeySession, expected: int, change: KeyChange): bool =
+  changeKeys(k, expected, change).reply != KeysChanged implies changeKeys(k, expected, change).session == k
+```
+
+### The owner's own keys are chosen only with a text key, and the agent receives keys only on that route
+
+Choosing the owner's own keys needs a saved text key. A launch receives the
+saved keys only while the owner's own keys are the chosen route; on the
+cloud account route it receives none. The session's status reports the
+route, the revision and whether each key is saved, never a key.
+
+```quint
+type LaunchKeys = { given: bool, text: bool, voice: bool }
+pure def launchKeys(k: KeySession): LaunchKeys =
+  if (not(k.closed) and k.route == OwnKeysRoute) { given: true, text: k.textKey, voice: k.voiceKey } else { given: false, text: false, voice: false }
+pure def lawOwnKeysNeedATextKey(k: KeySession, expected: int): bool =
+  changeKeys(k, expected, ChooseRoute({ route: OwnKeysRoute })).reply == KeysChanged implies k.textKey
+pure def lawCloudRouteLaunchesWithNoKeys(k: KeySession): bool =
+  k.route == CloudAccountRoute implies not(launchKeys(k).given or launchKeys(k).text or launchKeys(k).voice)
+```
+
+### Closing the session forgets every key and refuses every later change
+
+```quint
+pure def closeKeys(k: KeySession): KeySession = { ...k, textKey: false, voiceKey: false, closed: true, revision: k.revision + 1 }
+pure def lawClosedSessionHoldsNoKeys(k: KeySession, expected: int, change: KeyChange): bool = {
+  val closedSession = closeKeys(k)
+  not(closedSession.textKey) and not(closedSession.voiceKey) and not(launchKeys(closedSession).given) and
+    changeKeys(closedSession, expected, change).reply == ProviderChanged
+}
+```
+
+### A saved key is shown back only for the current revision, and an owner change invalidates every revision a screen holds
+
+The owner may read back a saved key by naming the current revision; a stale
+revision, a closed session or a key that is not saved shows nothing. When
+the owner changes, the host invalidates the session's revision, so every
+change prepared on an earlier screen is refused.
+
+```quint
+type KeyName = TextKeyName | VoiceKeyName
+pure def revealAllowed(k: KeySession, expected: int, which: KeyName): bool =
+  not(k.closed) and expected == k.revision and (if (which == TextKeyName) k.textKey else k.voiceKey)
+pure def invalidateKeys(k: KeySession): KeySession = if (k.closed) k else { ...k, revision: k.revision + 1 }
+pure def lawRevealNeedsTheCurrentRevisionAndASavedKey(k: KeySession, expected: int, which: KeyName): bool =
+  revealAllowed(k, expected, which) implies
+    (not(k.closed) and expected == k.revision and (which == TextKeyName implies k.textKey) and (which == VoiceKeyName implies k.voiceKey))
+pure def lawInvalidationRefusesEveryEarlierRevision(k: KeySession, change: KeyChange): bool =
+  not(k.closed) implies changeKeys(invalidateKeys(k), k.revision, change) == { session: invalidateKeys(k), reply: ProviderChanged }
+```

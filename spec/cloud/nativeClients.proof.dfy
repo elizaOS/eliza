@@ -100,6 +100,7 @@ lemma View(s: SignIn)
   forall i | 0 <= i < |s.grants| ensures grantOf(s, s.grants[i].id) == s.grants[i] { GrantAt(s, s.grants[i].id); }
   forall i | 0 <= i < |s.keys| ensures keyOf(s, s.keys[i].id) == s.keys[i] { KeyAt(s, s.keys[i].id); }
   forall i | 0 <= i < |s.keys| ensures exists j :: 0 <= j < |s.grants| && s.grants[j].id == s.keys[i].id {
+    assert exists g :: g in s.grants && g.id == s.keys[i].id;
     var g :| g in s.grants && g.id == s.keys[i].id;
     var j :| 0 <= j < |s.grants| && s.grants[j] == g;
   }
@@ -500,5 +501,31 @@ lemma reap_ensures(s: SignIn, g: int)
     GrantIds(after); KeyIds(after); View(after);
     SameStart(s, after);
     LiveKept(s, after);
+  }
+}
+
+lemma signInNatively_ensures(s: SignIn, identityVerified: bool, challengeFresh: bool)
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysOneKeyPerGrant(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysRevealedGrantHasItsKey(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysUnapprovedSignInIsEmpty(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysEachCodeHasItsOwnNumber(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysPendingGrantHasNoKey(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysReceiptErasesStoredCopy(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysNoKeyOutlivesCap(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysActiveKeyHasReceipt(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysActivatedKeyWasAcknowledged(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysNoCodeAfterCap(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysOneLiveSuccessor(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysSuccessorNamesAKey(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysSignInTimeNeverMoves(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysEndedSignInHasNoKey(signInNatively(s, identityVerified, challengeFresh)))
+  ensures (inv(s) ==> canSignInNatively(s, identityVerified, challengeFresh) ==> alwaysCleanupKeepsLiveKeys(signInNatively(s, identityVerified, challengeFresh)))
+{
+  if inv(s) && canSignInNatively(s, identityVerified, challengeFresh) {
+    var after := signInNatively(s, identityVerified, challengeFresh);
+    assert |after.grants| == 1 && |after.keys| == 1;
+    GrantIds(after); KeyIds(after); GrantAt(after, 1); KeyAt(after, 1);
+    assert after.grants[0] in after.grants;
+    assert signInStart(after) == s.clock;
   }
 }

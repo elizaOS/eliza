@@ -235,6 +235,88 @@ pure val keyCheckValues = Set(
   { cached: FreshAllow, revocationGate: false, expired: false, originAllows: false, gateAllows: true })
 ```
 
+### A key not yet acknowledged is refused as unauthenticated
+
+A native client's key is minted inactive and works only after its client
+acknowledges it ([registered native clients](./nativeClients.md)). Until
+then every metered request with it is refused with 401, whatever a cached
+verdict says; an acknowledged key is answered as the key check decides.
+
+```quint
+pure def credentialStatus(acknowledged: bool, keyCheck: KeyCheck): int = if (acknowledged and keyVerdict(keyCheck) == KeyAllowed) 200 else 401
+pure def lawUnacknowledgedKeyIsUnauthenticated(keyCheck: KeyCheck): bool = credentialStatus(false, keyCheck) == 401
+pure def lawAcknowledgedKeyFollowsTheCheck(keyCheck: KeyCheck): bool = (credentialStatus(true, keyCheck) == 200) iff (keyVerdict(keyCheck) == KeyAllowed)
+```
+
+## Story: Answer a chat completion in the shape clients read
+
+> As a client of the hosted chat completions API, I want a streamed reply as
+> server-sent chunks ending in `[DONE]`, a single completion when I do not
+> stream, a failure I can tell from a success, nothing cached, images in my
+> messages passed to the model in place, and the provider call stopped when
+> I hang up.
+
+### A streamed reply is chunks then [DONE], a failure carries an error frame, and a hang-up ends it at once
+
+A streamed reply is `text/event-stream`, marked `no-store`. Each event is
+one `data:` line holding a `chat.completion.chunk` whose choices carry a
+delta. A reply the provider finished ends with its chunks, an optional
+usage chunk and `data: [DONE]`. A provider failure after streaming began
+sends one error frame and then `[DONE]`, so a client never mistakes it for
+a short success. A client that hangs up gets nothing more, and its request
+signal aborts the provider call itself, not only the charge. A request
+that is not streamed is answered once, with a single `chat.completion`
+whose choice carries the whole message and its finish reason, also
+`no-store`. A stream completes for the client exactly when it ends with
+`[DONE]` and carries no error frame.
+
+```quint
+type StreamEnding = ProviderFinished | ProviderFailedMidStream | ClientHungUp
+type CompletionFrame = ChunkFrame | UsageFrame | ErrorFrame | DoneFrame
+type CompletionReply = { eventStream: bool, noStore: bool, frames: List[CompletionFrame], providerCallAborted: bool }
+pure def chunkFrames(chunks: int): List[CompletionFrame] =
+  if (chunks <= 0) List() else if (chunks == 1) List(ChunkFrame) else if (chunks == 2) List(ChunkFrame, ChunkFrame) else List(ChunkFrame, ChunkFrame, ChunkFrame)
+pure def streamedReply(ending: StreamEnding, chunks: int, usageReported: bool): CompletionReply =
+  if (ending == ProviderFinished) { eventStream: true, noStore: true, frames: chunkFrames(chunks).concat(if (usageReported) List(UsageFrame, DoneFrame) else List(DoneFrame)), providerCallAborted: false }
+  else if (ending == ProviderFailedMidStream) { eventStream: true, noStore: true, frames: chunkFrames(chunks).concat(List(ErrorFrame, DoneFrame)), providerCallAborted: false }
+  else { eventStream: true, noStore: true, frames: chunkFrames(chunks), providerCallAborted: true }
+pure def singleReply(ending: StreamEnding): CompletionReply =
+  { eventStream: false, noStore: true, frames: if (ending == ClientHungUp) List() else List(ChunkFrame), providerCallAborted: ending == ClientHungUp }
+pure def clientSeesCompletion(reply: CompletionReply): bool =
+  reply.frames.length() > 0 and reply.frames.nthOr(reply.frames.length() - 1, ChunkFrame) == DoneFrame and not(reply.frames.includes(ErrorFrame))
+pure val chunksValues = Set(0, 1, 3)
+pure def lawDoneEndsEveryDeliveredStream(ending: StreamEnding, chunks: int, usageReported: bool): bool = {
+  val frames = streamedReply(ending, chunks, usageReported).frames
+  ending != ClientHungUp implies (frames.nthOr(frames.length() - 1, ChunkFrame) == DoneFrame and not(frames.removeAt(frames.length() - 1).includes(DoneFrame)))
+}
+pure def lawOnlyAFinishedStreamCompletes(ending: StreamEnding, chunks: int, usageReported: bool): bool =
+  clientSeesCompletion(streamedReply(ending, chunks, usageReported)) iff ending == ProviderFinished
+pure def lawHangUpAbortsTheProviderCall(ending: StreamEnding, chunks: int, usageReported: bool): bool =
+  (streamedReply(ending, chunks, usageReported).providerCallAborted iff ending == ClientHungUp) and (singleReply(ending).providerCallAborted iff ending == ClientHungUp)
+pure def lawNoCompletionIsStored(ending: StreamEnding, chunks: int, usageReported: bool): bool =
+  streamedReply(ending, chunks, usageReported).noStore and streamedReply(ending, chunks, usageReported).eventStream and singleReply(ending).noStore and not(singleReply(ending).eventStream)
+```
+
+### An image in a message reaches the model in its place, and an image without a source refuses the request
+
+A message's content is a string or a list of parts. Text parts and image
+parts, by URL or data URL, are passed to the model in their order, each
+image with its media type, so a client can ask about a picture. An image
+part with no URL, or a part of a kind the adapter does not know, makes the
+transcript invalid: the request is refused before any provider call.
+
+```quint
+type ContentPart = TextPart | ImagePart | SourcelessImagePart | UnknownPart
+type AdaptedParts = { accepted: bool, forwarded: List[ContentPart] }
+pure def partForwardable(part: ContentPart): bool = part == TextPart or part == ImagePart
+pure def adaptParts(parts: List[ContentPart]): AdaptedParts =
+  if (parts.every(p => partForwardable(p))) { accepted: true, forwarded: parts } else { accepted: false, forwarded: List() }
+pure val partsValues = Set(List(TextPart, ImagePart), List(ImagePart, TextPart, ImagePart), List(TextPart, SourcelessImagePart), List(UnknownPart), List())
+pure def lawImagesKeepTheirPlace(parts: List[ContentPart]): bool = adaptParts(parts).accepted implies adaptParts(parts).forwarded == parts
+pure def lawSourcelessImageRefusesTheRequest(parts: List[ContentPart]): bool =
+  (parts.includes(SourcelessImagePart) or parts.includes(UnknownPart)) implies (not(adaptParts(parts).accepted) and adaptParts(parts).forwarded == List())
+```
+
 ## Story: Reopen the inference gate only after its own cooldown
 
 > As an operator, the inference admission gate reopens after a cache
