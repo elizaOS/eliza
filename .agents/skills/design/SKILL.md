@@ -86,20 +86,48 @@ it, `node ../../spec.ts` in an example. In `@repo/ui`: `pnpm gen` (the stories),
   value is reported, with the field to add; it never invents data.
 - **A component that shows a model** says so: `@model spec/index.md` in its
   JSDoc links it to that spec's state and events, and `@design design.md#…`
-  to its design document. Studio's Components view follows both ways.
+  to its design document. Studio's Components view follows both ways. The spec
+  must have state (its generated module exports `initial`); a tag on a stateless
+  dispatcher is reported, so name the spec whose model holds what it shows.
 - **A file named after one of its exports** (`Dialog.tsx`) gives stories to
   that component; its other exports are its parts.
-- **Colors, radii, shadows and fonts are tokens.** Use the utilities named
-  after them (`bg-primary`, `text-muted-foreground`, `rounded-md`); the lint
-  rules of `vibestack/design/eslint.ts` refuse a palette class (`white` and
-  `black` too), an arbitrary or named color, a radius, shadow or font the
-  tokens do not define, and a literal or named color in a style. Merge classes with `cn()`; use CVA
+- **What `tokens.json` holds.** Each group becomes the Tailwind v4 theme
+  variables, and so the utilities, shown; all but `color`, `radius` and
+  `font.sans`/`font.mono` are optional, and `*` is a name the project chooses.
+
+  | Path | Value | Utility |
+  |---|---|---|
+  | `color.light.*`, `color.dark.*` | opaque `oklch(L C H)`; the 22 required roles (shadcn's, `ok`, `warn`, `info`) and any palette color, named in `light`; one `dark` leaves out keeps its light value | `bg-*`, `text-*`, `border-*` … |
+  | `radius`; `rounded.*` | rem or px | `rounded-sm` … `rounded-xl` derived from `radius`; `rounded-*` |
+  | `font.*` | a font stack | `font-*` |
+  | `text.*` | rem or px, or `{ size, leading?, tracking? }` to set its line height and letter spacing too | `text-*` |
+  | `weight.*` | 1 to 1000 | `font-*` |
+  | `leading.*`, `tracking.*` | a number or rem/px; em | `leading-*`, `tracking-*` |
+  | `z.*` | an integer | `z-*` |
+  | `focus.width`, `focus.offset` | rem or px, 2px unless given | the `:focus-visible` ring; `outline-focus` only when `focus.width` is declared, `outline-offset-focus` only when `focus.offset` is |
+  | `shadow.*`, `blur.*`, `gradient.*`, `animate.*` with `keyframes.*`, `motion.duration.*`, `motion.ease.*`, `breakpoint.*` | CSS values | `shadow-*`, `blur-*`, `bg-gradient-*`, `animate-*`, `duration-*`, `ease-*`, `sm:` … |
+
+  A scale's names (`text`, `weight`, `leading`, `tracking`, `z`) may start
+  with a digit (`2xl`, `10`); a color's may not. A name Tailwind already gives
+  another meaning in the same classes is refused (a color `sm` would also be
+  `text-sm` and `shadow-sm`; a weight `mono` would be `font-mono`), as is one
+  name in two groups that share a utility: a color and a text size or shadow,
+  a font and a weight.
+- **Colors, radii, shadows, fonts and type are tokens.** Use the utilities
+  named after them (`bg-primary`, `text-muted-foreground`, `rounded-md`); the
+  lint rules of `vibestack/design/eslint.ts` refuse a palette class (`white`
+  and `black` too), an arbitrary or named color, a radius, shadow or font the
+  tokens do not define, and a literal or named color in a style. Once
+  `tokens.json` declares a non-empty `text`, `weight`, `leading`, `tracking`
+  or `z`, they also refuse an arbitrary value and Tailwind's own names in
+  that group (`text-sm`, `font-bold`, `leading-none`, `leading-6`, `z-50`),
+  never a name the project declared. Merge classes with `cn()`; use CVA
   only where a component has real variants.
 - **A design change is a token change.** Describe it in `design.md`, write
   it as `[{ "path": "color.light.primary", "value": "oklch(…)", "reason": "…" }]`,
   and run `spec tokens apply changes.json`: it refuses an
   unknown path, an invalid value and a contrast below WCAG AA (4.5:1 for
-  text, 3:1 for the edge of a control, `input`), and prints
+  text, 3:1 for the edge of a control, `input`, and the focus `ring`), and prints
   the diff; `--write` applies it and rebuilds the CSS. Prose is never read
   as tokens.
 

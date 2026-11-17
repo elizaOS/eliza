@@ -48,21 +48,19 @@ export interface Model extends Roles {
   exports: { types: string[]; values: string[]; variants: string[]; visible: Json[]; samples: { name: string; elem: Json }[] };
   ts: string;
   harness: string;
+  /** The supplemental Quint harness for finding positive guard evaluations on long event traces. */
+  guardHarness: string;
 }
 
 /** Where a definition came from in the spec, for doc comments and ordering. */
 export interface Origin { rule: string; line: number }
 
-/**
- * Names a spec may not bind: the generated code, the harness, Dafny's standard library (Std) or the proof library
- * (ProofLib) use them, TypeScript reserves them, or Dafny does and LemmaScript passes them on unchanged.
- */
+/** Names a spec may not bind: the generated code, the harness, Dafny's standard library (Std) or the proof library (ProofLib) use them, or TypeScript reserves them. */
 const TAKEN = new Set([...EMITTED, ...HARNESS, ...`
   Std ProofLib Number Math Object Array JSON Record Set Map String Boolean Symbol Error RangeError undefined NaN Infinity globalThis
   break case catch class const continue debugger default delete do else enum export extends false finally for function
   if import in instanceof new null return super switch this throw true try typeof var void while with yield let static await
   eval arguments implements interface package private protected public
-  assigned least greatest older hide
 `.split(/\s+/).filter(Boolean)]);
 const RULE_OR_GUARD = new RegExp(`^(${[...ROLES, "can"].join("|")})[A-Z]`);
 const GENERATED = new RegExp(`^(${[...HELPERS, "eval", "Out", "set", "opaque", "table", "else"].join("|")})_|^x\\d+$|__\\d+$`);
@@ -201,7 +199,7 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
 
   // --- TypeScript -------------------------------------------------------------------
   // A heading is prose from the spec; it must not be able to end the comment it is quoted in.
-  const doc = (d: string) => (origin(d) ? `/** ${origin(d)!.rule.replace(/\*\//g, "* /").replace(/[\r\n]+/g, " ")} (${source}:${origin(d)!.line}) */\n` : "");
+  const doc = (d: string) => (origin(d) ? `/** ${origin(d)!.rule.replace(/\*\//g, "* /").replace(/[\r\n]+/g, " ")} (${source}) */\n` : "");
   const importLine = (l: (typeof links)[number]) => {
     const item = (n: string, isType: boolean) => `${isType ? "type " : ""}${n} as ${l.module}_${n}`;
     return `import { ${[...l.exports.types.map((t) => item(t, true)), ...l.exports.values.map((v) => item(v, false))].join(", ")} } from "./${l.module}.ts";`;
@@ -226,7 +224,7 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
 
   const run = harness(name, source, [...imports, ...typeOnly], funs, sig, samples, roles, types, { weights, fair });
   return {
-    name, source, imports, ...roles, fair, within, evals: run.evals, uncompared: run.uncompared, harness: run.text,
+    name, source, imports, ...roles, fair, within, evals: run.evals, uncompared: run.uncompared, harness: run.text, guardHarness: run.guardHarness,
     ts, render, decode: types.decode, canon: types.canon,
     shape: roles.stateType ? types.comparison(roles.stateType) : undefined,
     outputShape: roles.output ? types.comparison(roles.output.out) : undefined,

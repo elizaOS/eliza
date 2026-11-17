@@ -5,7 +5,7 @@ import { useSyncExternalStore } from "react";
 import { enabled as allowed, type Event as SessionEvent, type Session } from "../../gen/index.ts";
 import { enabled, step, type Event as Edit, type Outline, type Rule, type Story } from "../../gen/outline.ts";
 import { bodyOf, nodeId, nodesOfOutline, specOrder, textBody, textOf, type Item } from "../markdown.ts";
-import type { Result } from "../../../spec.ts";
+import type { Result } from "../../../pipeline.ts";
 import type { Snapshot, SpecView } from "../project.ts";
 import type { ComponentIndex } from "../../../stories/emit.ts";
 

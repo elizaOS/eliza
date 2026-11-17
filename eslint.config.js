@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import js from "@eslint/js"
 import react from "@eslint-react/eslint-plugin"
 import tailwind from "eslint-plugin-better-tailwindcss"
@@ -15,7 +15,7 @@ const monorepo = 'CONTRIBUTING.md, "The monorepo"'
 const banned = ["redux", "react-redux", "zustand", "mobx", "jotai", "recoil", "valtio", "xstate", "vue", "svelte", "jest"]
 const scopes = ["reduxjs", "angular", "xstate", "vue", "sveltejs", "jest"]
 // Each workspace package's `exports` beyond its root: "@repo/design-system/theme.css".
-const exported = readdirSync("packages").flatMap((dir) => {
+const exported = readdirSync("packages").filter((dir) => existsSync(`packages/${dir}/package.json`)).flatMap((dir) => {
   const { name, exports = {} } = JSON.parse(readFileSync(`packages/${dir}/package.json`, "utf8"))
   return Object.keys(exports).filter((key) => key !== ".").map((key) => RegExp.escape(`${name}/${key.slice(2)}`))
 })
@@ -32,6 +32,8 @@ const untyped = ["*.{js,ts}", "**/.storybook/**", "packages/design-system/**", "
 // Every React interface: Studio's page is built on the same theme (vibestack/studio/vite.config.ts).
 const tsx = ["packages/ui/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}", "vibestack/studio/src/page/**/*.{ts,tsx}"]
 const design = "packages/design-system"
+const unused = { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }
+const coreUnused = { ...unused, ignoreRestSiblings: true }
 
 // The tool reads Quint's JSON and the TypeScript compiler API as `any` at its boundaries; packages and apps stay strict.
 const loose = Object.fromEntries(["no-explicit-any", "no-unsafe-argument", "no-unsafe-assignment", "no-unsafe-call", "no-unsafe-member-access", "no-unsafe-return"].map((rule) => [`@typescript-eslint/${rule}`, "off"]))
@@ -65,7 +67,7 @@ export default defineConfig(
       // Nor does it reach a file outside every package and the tool.
       "boundaries/no-unknown-dependencies": "error",
       "@typescript-eslint/consistent-type-imports": ["error", { fixStyle: "inline-type-imports" }],
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": ["error", unused],
       "@typescript-eslint/no-unused-expressions": ["error", { allowShortCircuit: true, allowTernary: true }],
       // node:test runs what `test` and `describe` return; an async event listener is awaited by nobody by design.
       "@typescript-eslint/no-floating-promises": ["error", { allowForKnownSafeCalls: [{ from: "package", package: "node:test", name: ["test", "describe", "it"] }] }],
@@ -100,9 +102,39 @@ export default defineConfig(
   },
   // VibeLang's parser gives .vibe files typescript-eslint's tree without a program, so the rules that need types stay off: `vibelang --noEmit` checks them.
   { files: ["**/*.{vibe,vibex}"], extends: [tseslint.configs.disableTypeChecked], languageOptions: { parser: vibelang, parserOptions: { projectService: false } }, rules: { "no-undef": "off" } },
+  { files: ["packages/core/**/*.{ts,tsx,vibe,vibex}"], rules: { "no-redeclare": "off", "@typescript-eslint/no-unused-vars": ["error", coreUnused] } },
+  { files: ["packages/core/**/*.{vibe,vibex}"], rules: { "no-empty": ["error", { allowEmptyCatch: true }] } },
+  {
+    files: ["packages/core/src/utils/filesystem.vibe"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "no-restricted-syntax": ["error", { selector: 'TSAnyKeyword:not(VibeModuleDeclaration[id.name="edge"] > TSModuleBlock > ExportNamedDeclaration > FunctionDeclaration[id.name="readJsonPromise"] > TSTypeParameterDeclaration > TSTypeParameter[name.name="T"] > TSAnyKeyword.default)', message: "Explicit any is reserved for readJsonPromise's compatibility default." }],
+    },
+  },
+  {
+    files: ["packages/core/src/types/service.vibe", "packages/core/src/types/service-interfaces.vibe"],
+    rules: { "@typescript-eslint/no-empty-object-type": ["error", { allowWithName: "^(?:ServiceTypeRegistry|StoredPrivateFile)$" }] },
+  },
+  { files: ["packages/core/src/runtime.vibe"], rules: { "@typescript-eslint/no-unsafe-declaration-merging": "off" } },
+  {
+    files: ["packages/core/src/logger.vibe", "packages/core/src/messaging/interactive-task.vibe", "packages/core/src/retrieval.vibe", "packages/core/src/utils/stage-directions.vibe"],
+    rules: { "no-control-regex": "off" },
+  },
+  {
+    files: ["packages/core/src/runtime/pipeline-hooks.vibe", "packages/core/src/utils/task-scheduling.vibe"],
+    rules: { "no-useless-assignment": "off" },
+  },
+  {
+    files: ["packages/core/src/runtime/room-handler-queue.vibe", "packages/core/src/security/pii-pseudonymizer.vibe", "packages/core/src/security/pii-scrub-seam.vibe", "packages/core/src/utils/unicode.vibe"],
+    rules: { "@typescript-eslint/no-unused-vars": ["error", { ...coreUnused, varsIgnorePattern: "^(?:_|ElizaError$|Foreign$|PiiScrubFabricationError$)" }] },
+  },
+  {
+    files: ["packages/core/src/catalog/loader.vibe"],
+    rules: { "no-warning-comments": ["error", { terms: ["todo", "fixme", "deprecated"], location: "anywhere" }] },
+  },
   // React belongs to interfaces: the tools apart from Studio's page, and schemas, contracts, drivers and the shell everywhere, do without it.
   {
-    files: ["vibestack/**", "**/*.{schema,contract}.ts", "**/test/drivers/**", "**/*.vibe"],
+    files: ["vibestack/**", "packages/core/**", "**/*.{schema,contract}.ts", "**/test/drivers/**", "**/*.vibe"],
     ignores: ["vibestack/studio/src/page/**"],
     rules: { "no-restricted-imports": ["error", noReact] },
   },

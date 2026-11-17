@@ -11,7 +11,7 @@ import { type Plan, type Story, plan } from "./variants.ts";
 export type { Prop, Story };
 
 /** Part of every hash: raise it when the same inputs would be written differently. */
-const VERSION = 6;
+const VERSION = 7;
 
 export interface Component {
   id: string;
@@ -42,6 +42,8 @@ interface Entry { hash: string; inputs: string[]; outputs: string[]; manual: str
 const COMPONENTS = ["src/**/*.tsx", "packages/*/src/**/*.tsx"];
 // Not a dot-directory: Storybook's index does not follow changes inside one (verified on 10.6.7).
 export const outOf = (root: string) => join(root, "generated", "stories");
+/** What each source gave, kept in a hidden directory, which no stage's key reads: it changes when only its inputs' hashes do. */
+const MANIFEST = ".cache/manifest.json";
 /** Whether a changed path can change the stories: the project's source and tsconfig, outside `out`, dot-directories and `node_modules`. */
 export const watched = (root: string, out = outOf(root)) => (file: string) => {
   const path = relative(root, resolve(root, file));
@@ -90,6 +92,8 @@ function story(c: Found, p: Plan, from: (file: string) => string): string {
       ? [
           "/** A disabled or loading story refuses a person: a click, Enter or Space on what it renders calls no spy it was given. */",
           "const refuses = async ({ args, canvasElement }) => {",
+          "  // Spies in `base` are shared by every story of the file: count only what this one does.",
+          "  for (const value of Object.values(args)) if (isMockFunction(value)) value.mockClear();",
           '  const target = canvasElement.querySelector("a, button, input, select, textarea, [role=button], [role=checkbox], [role=switch], [tabindex]");',
           "  if (target) {",
           "    await userEvent.click(target, { pointerEventsCheck: 0 });",
@@ -191,12 +195,12 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
     built = undefined;
     // Compiler options are read again only when the tsconfig changed.
     if (configured !== (configured = text(config))) build = programs(root);
-    const manifest = join(out, "manifest.json");
+    const manifest = join(out, MANIFEST);
     const known: Record<string, Entry> = existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")) : {};
     const written: string[] = [];
     const write = (name: string, text: string) => {
       if (existsSync(join(out, name)) && readFileSync(join(out, name), "utf8") === text) return;
-      mkdirSync(out, { recursive: true });
+      mkdirSync(dirname(join(out, name)), { recursive: true });
       writeFileSync(join(out, name), text);
       written.push(name);
     };
@@ -247,7 +251,7 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
     write("stories.test.tsx", smoke(tested));
     const preview = ["ts", "tsx", "js", "jsx"].map((ext) => join(root, ".storybook", `preview.${ext}`)).find(existsSync);
     write("stories.browser.test.tsx", browser(tested, preview && from(preview)));
-    write("manifest.json", `${JSON.stringify(entries)}\n`);
+    write(MANIFEST, `${JSON.stringify(entries)}\n`);
     const removed = (existsSync(out) ? readdirSync(out) : []).filter((name) => name.endsWith(".stories.tsx") && !outputs.includes(name));
     for (const name of removed) rmSync(join(out, name));
     return { index, written, removed, analyzed: stale.length, diagnostics: index.components.flatMap((c) => c.diagnostics) };

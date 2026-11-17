@@ -5,6 +5,7 @@
 //   ignoreIssues server.vibe exports        AGENTS is used in its own file, in a body ignoreExportsUsedInFile cannot see
 //   root @informalsystems/quint, lemmascript  run as executables by vibestack/units.ts and vibestack/prove.ts
 //   root @vitest/browser                    loaded by Vitest's browser mode, beside @vitest/browser-playwright
+//   root @repo/design-system                read as files by vibestack/design/test/design.test.ts
 //   tailwindcss (ui, design-system, studio, apps)  resolved by @tailwindcss/vite and the lint plugin from CSS
 //   entry *.schema, *.contract              imported by the tests vibestack/testing/generate.ts writes under .cache/
 //   design-system eslint, eslint-plugin-better-tailwindcss, typescript-eslint  loaded by name in vibestack/design/test/design.test.ts
@@ -36,7 +37,8 @@ export default {
       "ignoreDependencies": [
         "@informalsystems/quint",
         "lemmascript",
-        "@vitest/browser"
+        "@vitest/browser",
+        "@repo/design-system"
       ]
     },
     "packages/ui": {
@@ -70,6 +72,24 @@ export default {
       ],
       "ignoreDependencies": [
         "tailwindcss"
+      ]
+    },
+    "packages/core": {
+      "entry": [
+        "src/{index,protocol,logging,view-interaction,speech,read-memo,schema-types}.vibe",
+        "src/types/permissions.vibe",
+        "src/security/redact.vibe",
+        "src/entry/{task-events,task-widgets}.vibe",
+        "test/**/*.test.{ts,vibe}",
+        "test/drivers/*.ts",
+        "src/**/*.{schema,contract}.{ts,vibe}"
+      ],
+      "project": [
+        "src/**/*.{ts,vibe}",
+        "test/**/*.{ts,vibe}"
+      ],
+      "ignoreDependencies": [
+        "@effect/platform-node-shared"
       ]
     },
     "apps/*": {

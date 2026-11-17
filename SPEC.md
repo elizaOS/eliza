@@ -2,7 +2,7 @@
 
 The spec format, the generated code and the code built on it. The procedure
 is [AGENTS.md](AGENTS.md); the agent's loop is the
-[`sync` skill](.claude/skills/sync/SKILL.md); the stages of
+[`sync` skill](.agents/skills/sync/SKILL.md); the stages of
 `pnpm check` are [below](#stages-of-pnpm-check).
 
 A path under `vibestack/` names a file of the
@@ -10,7 +10,8 @@ A path under `vibestack/` names a file of the
 installed package does not ship. There, "the order example" is
 `vibestack/examples/order/spec/index.md` and "the tracker example" is
 `vibestack/examples/dashboard/spec/tracker.md`. The root `spec/index.md` links to
-the spec of each package under `packages/` that owns one.
+`spec/app/index.md`, the hello world in `apps/app` that uses one of each thing
+Vibestack offers (`apps/app/README.md`), to be replaced by your application.
 
 ## Stages of `pnpm check`
 
@@ -23,14 +24,14 @@ with the reason.
 | `always` | `always` rules and laws hold on simulated traces; `leadsTo` rules on fair runs | the spec is not a valid model |
 | `sometimes` | each `sometimes` goal is reached, and each event happens in some simulated state | the model is invalid, or simulation stopped at an `always` failure |
 | `replay` | the generated TypeScript agrees with Quint on the simulated traces | as `sometimes` |
-| `types` | the `vibelang` compiler checks `src/`, the tests and `gen/` ([shell skill](.claude/skills/shell/SKILL.md)) | a stage above failed; without a `tsconfig.json` it passes as skipped only when there is no `src/` or `test/` |
+| `types` | the `vibelang` compiler checks `src/`, the tests and `gen/` ([shell skill](.agents/skills/shell/SKILL.md)) | a stage above failed; without a `tsconfig.json` it passes as skipped only when there is no `src/` or `test/` |
 | `proof` | Dafny proves each unit's obligations, or `spec/lock.json` records them as simulated only | a stage above `types` failed; it runs beside `types` |
 | `tests` | the package's [tests](AGENTS.md#tests) pass, each cites a story or rule the spec has and reaches past `gen/`, and its drivers import `gen/` as types only | a stage above failed |
 | `traces` | the application, through its drivers, `driver:` programs and recorded traces, agrees with the spec ([Conformance](#conformance)) | a stage above failed |
 | `explore` | Bombadil explores the package's page, served by its `start` or `dev` script, and the properties of `test/bombadil.ts`, or Bombadil's defaults, hold in every state it reaches ([Exploring the page](#exploring-the-page)) | a stage above failed; a `-` line on a platform Bombadil has no executable for |
 | `review` | every story, rule and contract changed since `spec/lock.json` was accepted ([Review](#review)) | never |
 
-Types and proofs run concurrently; tests, traces and explore wait for both.
+Types and proofs start once every model is valid, and run while the simulations do; they are reported only if every simulation passed, and otherwise finish unreported before the check returns. Tests, traces and explore wait for all three.
 
 ## Writing a spec
 
@@ -118,8 +119,9 @@ from its name and signature:
 | `pure val within_leadsToPaid = 3` | a bound for a `leadsTo` rule: every run meets it within 3 events, from 1 to 100 | a search of simulated traces for a run that does not ("Liveness", below) |
 | any other `pure val` or `pure def` | a constant or helper | the same constant or function |
 
-When a reachability search uses multiple trace lengths, it tries short,
-single-threaded batches before spending the full search budgets. A trace
+When a reachability search uses multiple trace lengths, it tries two
+single-threaded rounds before spending the full search budgets. The rounds
+use 32 and 1,024 traces at each length whose full budget is larger. A trace
 that reaches the goal or breaks a rule goes through the usual replay.
 
 A transition parameter named `by` identifies its sender. All such parameters
@@ -153,7 +155,7 @@ or another prefix the generated module uses for itself (`GENERATED` in
 and near-misses of the conventions above such as `alwayspaid` or `CanPay`.
 A state machine is also refused the names of its Effect adapter: `Rejected`,
 `NotAnEvent`, `NotAState`, `NotASender`, `Machine`, `machine`, `machineOver`,
-`stored`, `apply`, `decodeEvent`, `decodeState` and `decodeSender` ([shell skill](.claude/skills/shell/SKILL.md)).
+`stored`, `apply`, `decodeEvent`, `decodeState` and `decodeSender` ([shell skill](.agents/skills/shell/SKILL.md)).
 
 ### Using one spec from another
 
@@ -204,18 +206,18 @@ it does for the root's own `src/` and `test/`:
 
 - **`gen/`.** The modules of the owner's specs, and of every spec they
   import, are also written to `<owner>/gen/` under the names they have in the
-  root's: `spec/app/index.md` is `apps/app/gen/app.ts`, with
-  `app.effect.vibe` and `app.conformance.ts` (its driver's types); `spec/app/cart.md` is
-  `app__cart.ts`; a library `spec/shared/money.md` it imports is
+  root's: `spec/agent/index.md` is `packages/agent/gen/agent.ts`, with
+  `agent.effect.vibe` and `agent.conformance.ts` (its driver's types); `spec/agent/cart.md` is
+  `agent__cart.ts`; a library `spec/shared/money.md` it imports is
   `shared__money.ts`. A package imports only from its own `gen/`. `pnpm gen`
   and `pnpm install` write it too.
 - **Stages.** `types`, `tests` and `traces` run in the owner's directory, on
   its `tsconfig.json`, `test` script, `test/drivers/`, `test/traces/` and
   `driver:` scripts;
   its `//@` files under `src/` are proved and their contracts reviewed. Each
-  result names the package: `packages/agent: pass`.
+  result names the package: `apps/app: pass`.
 - **Citations** in an owner's code are written from the root, as everywhere:
-  `// spec/app/index.md, "A rule"`.
+  `// spec/agent/index.md, "A rule"`.
 
 An owner has no `check`, `gen` or `accept` script: the root's are its own.
 
@@ -397,7 +399,7 @@ the state marked.
 
 `pnpm accept` records a fingerprint of everything a person has
 reconciled; `review` lists what differs. Each status, and what it
-asks of the agent, is in the [`sync` skill](.claude/skills/sync/SKILL.md).
+asks of the agent, is in the [`sync` skill](.agents/skills/sync/SKILL.md).
 
 | What | Recorded in, under | Fingerprint of |
 |---|---|---|
@@ -464,10 +466,10 @@ line.
 - Calling a transition directly (`pay(o, 5)`) is only meaningful when its
   guard holds. Application code goes through `apply`, or a `Machine` in memory
   (`machine()`), kept in a store (`stored(key)`) or kept by the shell
-  (`machineOver(start, keep)`), of the Effect adapter
+  (`machineOver(load, keep)`), of the Effect adapter
   `gen/<name>.effect.vibe`, which use `enabled` and `step`; a React component
   goes through `useMachine` of `gen/<name>.react.ts`
-  ([shell skill](.claude/skills/shell/SKILL.md)).
+  ([shell skill](.agents/skills/shell/SKILL.md)).
 - `gen/` is rebuilt by `pnpm gen` and `pnpm check`, and by
   `pnpm install` when every spec is valid.
 
@@ -484,9 +486,9 @@ spec, in the package whose code it is, with the events the simulator found.
 | `driver:<name>` script | a program, in any language, that answers each `{}` (reset) or `{event, by?}` line with one `{state, out?}` line | on the simulated traces |
 
 `<name>` is the module's name in the root's `gen/`, and the paths are the
-package's own: an owner of `spec/app/cart.md` writes
-`test/drivers/app__cart.ts` on `gen/app__cart.conformance.ts`, records
-`test/traces/app__cart.jsonl` or names its script `driver:app__cart`, all in
+package's own: an owner of `spec/agent/cart.md` writes
+`test/drivers/agent__cart.ts` on `gen/agent__cart.conformance.ts`, records
+`test/traces/agent__cart.jsonl` or names its script `driver:agent__cart`, all in
 the owner's directory. `vibestack/examples/order/test/drivers/index.ts` is a worked
 driver; `effectDriver` from `vibestack/testing` builds one from a `Layer`.
 
@@ -540,15 +542,22 @@ under `src/`.
   error), and export a property for each rule the page must keep, citing
   it as a test does. The types come from `@antithesishq/bombadil`, which
   `spec init` adds. Without the file, the defaults are checked.
-  `vibestack/examples/fullstack/test/bombadil.ts` is a worked one.
+  `apps/app/test/bombadil.ts` is a worked one.
 - **A broken property is saved.** The run is kept in
   `test/__traces__/bombadil`, which is not committed;
   `pnpm exec bombadil browser inspect test/__traces__/bombadil` shows each
   state. Later runs replay it first: one that still breaks fails, one that
   cannot run keeps it, and one that breaks nothing or no longer applies to
   the page removes it. A bug worth keeping fixed becomes a step of the journey it broke.
-- **A pass is remembered** until the package's test inputs, Bombadil's
-  version or the script change. The nightly check always explores afresh.
+- **A pass is remembered** until what the page reads changes, or the
+  installed Bombadil and the packages it loads, or the script: the package's
+  files but its tests and their configuration, drivers, traces,
+  counterexamples, contracts, proofs and `spec/`; each file and directory its
+  code or scripts name by a path; what each workspace package its code
+  imports, or its scripts run, exports; and the generated modules it imports,
+  or all of them where its code names none. A page that runs the tools, as
+  Studio's does, reads the code of them all. The nightly check always
+  explores afresh.
 
 ## Large applications
 
@@ -561,10 +570,27 @@ under `src/`.
 - **One tree for every package.** Each application or shared package keeps
   its specs in `spec/<its name>/` and its code in its own directory; the
   root's `check` covers them all ([One spec tree](#one-spec-tree)).
-- **Only what changed is checked again.** Each simulation result, a failing
-  one too (its seed is fixed), and each passing proof result is kept in
-  `.spec-cache/` under a fingerprint of the spec's Quint without its comments,
-  everything it imports and the versions of the tools. The specs are simulated at once.
+- **Only what changed is checked again.** Each run of Quint is kept in
+  `.spec-cache/` under what it reads, the Quint of the spec and of everything
+  it imports without its prose, comments and layout, and the Quint installed,
+  so a change to the prose or to the tools that leaves the Quint alone runs no
+  Quint again; each run of Dafny on a proof, likewise, under the Dafny it
+  checks and the Dafny and Z3 installed. Each
+  simulation result, a failing one too (its seed is fixed), and each passing
+  proof result is kept beside them, under a fingerprint of the spec's Quint
+  without its comments, everything it imports and the versions of the tools
+  that compute it, so a change to the tools reruns only the stages that run
+  the changed code. A passing typecheck is kept under what the compiler read:
+  the package's files but its Markdown and Quint, its `tsconfig.json` and the
+  configurations it extends, every file outside `node_modules` the compile
+  read, the lock file and the compiler's bytes. A test pass is kept under the
+  files its tests read, which are the package's but its specs' Markdown and
+  their Quint in `gen/`, the simulations' traces and the agent and reader
+  prose at its top: a test reads the generated modules, so a prose edit
+  runs no test again. A driver's passing run is kept under those files and the
+  events the simulator found; a failure, and a `driver:` program, run every
+  time.
+  The specs are simulated at once.
 - **The spec covers the rules, not the plumbing.** Chat, HTTP and storage stay
   hand-written around the generated core, as `vibestack/examples/dashboard/src/notify.vibe`
   does for sending messages.

@@ -7,7 +7,7 @@ import type { Json, Types } from "./types.ts";
 /** The names a module defines beside the spec's, and the locals of what it defines (TAKEN in gen.ts). */
 export const EMITTED = ["Event", "opaque", "inv", "enabled", "step", "parseEvent", "parseState", "parseSender", "initialHolds", "current", "event", "raw"];
 /** Prefixes reserved for the helpers a module may carry for itself, each named `<helper>_<module>`, and for local bindings. */
-export const HELPERS = ["quotient", "remainder", "exact", "equal", "nth", "get", "lookup\\d+", "typed\\d+", "snapshot", "local"];
+export const HELPERS = ["quotient", "remainder", "exact", "equal", "nth", "get", "lookup\\d+", "snapshot", "local"];
 
 export interface Source {
   /** The line that opens the file, and one import line per spec this one imports. */
@@ -70,7 +70,7 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
     `  return given(${o.params.map((p) => p.name).join(", ")});`,
     `}`,
   );
-  out.push(``, ...vals.map((d) => `${doc(d.name)}export const ${L(d.name)}: ${tsType(typeOf(d.id))} = ${print.constant(d.expr)};`));
+  out.push(``, ...vals.map((d) => `${doc(d.name)}export const ${L(d.name)}: ${tsType(typeOf(d.id))} = ${print.ex(d.expr)};`));
   if (state) out.push(
     ``,
     `/** Every \`always\` rule at once. Holds initially and after every transition. */`,
@@ -104,7 +104,6 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
   const admits = (t: Transition) => call(t.guard!, t.guardParams);
   const applies = (t: Transition) => call(t.name, t.params.map((p) => p.name));
   const when = (t: Transition) => `event.type === ${JSON.stringify(t.name)}`;
-  const result = (t: Transition) => (t.emits ? applies(t) : outputs(applies(t)));
   // A copy through JSON drops what JSON cannot hold; a value it cannot copy at all is not one the program accepts.
   const cloned = [`  let raw: any;`, `  try {`, `    raw = JSON.parse(JSON.stringify(x));`, `  } catch {`, `    return undefined;`, `  }`];
   const parsed = (t: Transition) => `{ ${[`type: ${JSON.stringify(t.name)}`, ...carried(t).map((p) => `${p.name}: ${copy(`raw.${p.name}`, p.type)}`)].join(", ")} }`;
@@ -130,10 +129,13 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
     `export function ${L("step")}(current: ${state}, event: ${L("Event")}${by}): ${output ? tsType(output.type) : state} {`,
     `  //@ requires ${L("inv")}(current)`,
     `  //@ ensures ${L("inv")}(\\result${output ? ".state" : ""})`,
-    // One case per event, so that the prover checks each on its own rather than past the guards of all before it.
-    `  switch (event.type) {`,
-    ...transitions.map((t) => `    case ${JSON.stringify(t.name)}: return ${t.guard ? `${admits(t)} ? ${result(t)} : ${outputs("current")}` : result(t)};`),
-    `  }`,
+    ...transitions.map((t) => {
+      const condition = when(t);
+      const guard = t.guard ? admits(t) : undefined;
+      const result = t.emits ? applies(t) : outputs(applies(t));
+      return `  if (${condition}) return ${guard ? `${guard} ? ${result} : ${outputs("current")}` : result};`;
+    }),
+    `  return ${outputs("current")};`,
     `}`,
     ``,
     `/**`,
@@ -189,15 +191,6 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
     `export function ${helper(`lookup${i}`)}(m: ${map}, k: ${key}, otherwise: ${of}): ${of} {`,
     `  const key = ${stored};`,
     `  return key in m ? m[key] : otherwise;`,
-    `}`,
-  ));
-  // Only in the prover's code, which states a type where LemmaScript would not know it (Expected in print.ts).
-  print.typings.forEach((type, i) => out.push(
-    ``,
-    `/** A value of type ${type}, as the prover reads it. */`,
-    `//@ pure`,
-    `export function ${helper(`typed${i}`)}(x: ${type}): ${type} {`,
-    `  return x;`,
     `}`,
   ));
   // Only in the code Node runs, which checks what the proof takes as given (Scope.proof in print.ts).

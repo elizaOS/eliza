@@ -20,9 +20,9 @@ The spec format, naming rules and everything the tools accept are in
   Open each final report with it too, your final reply included, except after
   a fully specified one-line edit.
 - **Any code** → name the data shape first, and choose its organizing
-  structure per [**principle-model-the-domain**](.claude/skills/principle-model-the-domain/SKILL.md).
+  structure per [**principle-model-the-domain**](.agents/skills/principle-model-the-domain/SKILL.md).
 - **Code crossing a function boundary** → the
-  [**architect** skill](.claude/skills/architect/SKILL.md), parallel design
+  [**architect** skill](.agents/skills/architect/SKILL.md), parallel design
   exploration before implementing.
 - **Just do it.** Use any available MCP tool within its permissions. Reversible
   work and authorized external actions (team chat, ticket updates, kicking off
@@ -37,11 +37,12 @@ The spec format, naming rules and everything the tools accept are in
 
 ## Loading skills
 
-The canonical skill files are in `.claude/skills/`, including `sync`,
-`shell`, `prove`, `design`, `architect` and the [principles](#principles).
-Claude Code reads them there. The shared `.agents/skills/` directory has one
-relative link per skill for agents such as Codex. Edit the canonical files
-and run `pnpm install` or `spec init` to create missing links in the project.
+The canonical skill files are committed in `.agents/skills/`, including
+`sync`, `shell`, `prove`, `design`, `architect` and the [principles](#principles).
+Edit them there. `pnpm install` and `spec init` create project-relative skill
+links for Claude, Cursor, Muse, Grokbot and the other supported agents, and
+`CLAUDE.md` links to `AGENTS.md`. These generated paths are ignored by Git;
+`.claude/` contains no committed files.
 
 A skill's name and description are only its discovery metadata. Before
 the work listed in [Where the rest is](#where-the-rest-is), read the matching
@@ -53,16 +54,16 @@ files, ask for the relevant instructions before doing that work.
 
 Apply imported skills within this repository's stack, hard rules and test policy.
 
-Architect uses [`arena`](.claude/skills/arena/SKILL.md) for parallel design
-exploration and [`why`](.claude/skills/why/SKILL.md) to trace the rationale
+Architect uses [`arena`](.agents/skills/arena/SKILL.md) for parallel design
+exploration and [`why`](.agents/skills/why/SKILL.md) to trace the rationale
 for existing ownership or layering when a design changes it. If the client
 cannot run Arena's runners, use its parallel subagents for at least two
 independent design sketches with the architect's
-[`runner-prompt.md`](.claude/skills/architect/references/runner-prompt.md).
+[`runner-prompt.md`](.agents/skills/architect/references/runner-prompt.md).
 Screen and synthesize the sketches as the architect skill directs before
 implementing.
 
-Use [`benchmark-checklist`](.claude/skills/benchmark-checklist/SKILL.md)
+Use [`benchmark-checklist`](.agents/skills/benchmark-checklist/SKILL.md)
 when measuring performance. For other referenced skills, see the
 [upstream pstack skills at the imported revision](https://github.com/cursor/plugins/tree/bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7/pstack/skills).
 
@@ -73,7 +74,7 @@ Quint → prose, counterexample → rule. That is your work in this session; it
 needs no other program or account.
 
 **Whenever `spec/` or `src/` has changed, follow
-[.claude/skills/sync/SKILL.md](.claude/skills/sync/SKILL.md)**: the loop, what
+[.agents/skills/sync/SKILL.md](.agents/skills/sync/SKILL.md)**: the loop, what
 each failure asks of you, and what to report. Read the skill before following
 its loop.
 
@@ -88,7 +89,7 @@ Every project built here uses this, and nothing beside it:
 | Runtime | Node 26 | an older Node |
 | Packages | pnpm workspaces, pinned by `packageManager`; Turborepo runs and caches tasks across them ([SPEC.md](SPEC.md#one-spec-tree)) | npm, yarn, bun; a second task runner |
 | Rules and state | the spec, and the code `gen/` derives from it | a second model of the same state |
-| Shell: effects, services, I/O, async | [VibeLang](.claude/skills/shell/SKILL.md) (`.vibe`) on Effect 4 | plain TypeScript for effectful code; Redux, Zustand or another state library |
+| Shell: effects, services, I/O, async | [VibeLang](.agents/skills/shell/SKILL.md) (`.vibe`) on Effect 4 | plain TypeScript for effectful code; Redux, Zustand or another state library |
 | User interface | React, in `.tsx`, built with Vite | Vue, Svelte, Angular, hand-built DOM |
 | UI state | React hooks over the generated machine's `Machine` service | state kept in a component that the spec owns |
 | Styling | Tailwind CSS v4 with the project's design tokens, shadcn/ui conventions on Radix primitives | hard-coded colors, a second token set, global CSS beyond the token file |
@@ -98,7 +99,7 @@ Every project built here uses this, and nothing beside it:
 - **Reuse before adding.** Find the component, token or service that exists
   and extend it; add one only when none fits.
 - **TypeScript stays** for `gen/`, for verified `//@` logic
-  ([prove skill](.claude/skills/prove/SKILL.md)), for React components and for the tools.
+  ([prove skill](.agents/skills/prove/SKILL.md)), for React components and for the tools.
 
 ## Where the rest is
 
@@ -109,12 +110,12 @@ installed the tools has `README.md` in `node_modules/vibestack/`.
 | Read | Before |
 |---|---|
 | [SPEC.md](SPEC.md) | writing or reading a spec: its format, the Quint it accepts, the generated code, review and conformance |
-| [`sync` skill](.claude/skills/sync/SKILL.md) | any change to `spec/` or `src/`, and whenever `pnpm check` shows a `✗` |
-| [`shell` skill](.claude/skills/shell/SKILL.md) | writing `src/` or a test: VibeLang, the Effect adapter, the React interface, building and running |
-| [`prove` skill](.claude/skills/prove/SKILL.md) | a `proof` stage `✗`, writing a `.proof.dfy`, or a `//@` file |
-| [`design` skill](.claude/skills/design/SKILL.md) | anything a person looks at: layout, components, stories and tokens |
+| [`sync` skill](.agents/skills/sync/SKILL.md) | any change to `spec/` or `src/`, and whenever `pnpm check` shows a `✗` |
+| [`shell` skill](.agents/skills/shell/SKILL.md) | writing `src/` or a test: VibeLang, the Effect adapter, the React interface, building and running |
+| [`prove` skill](.agents/skills/prove/SKILL.md) | a `proof` stage `✗`, writing a `.proof.dfy`, or a `//@` file |
+| [`design` skill](.agents/skills/design/SKILL.md) | anything a person looks at: layout, components, stories and tokens |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | generated files, tests, caching and CI; adding a package or task, or changing the tools under `vibestack/` |
-| [Toolchain guide](vibestack/README.md#commands) | the commands, Studio, and [using the tools from another package](vibestack/README.md#using-it-from-another-package) |
+| [README.md](README.md#commands) | the commands, Studio, and [using the tools from another package](README.md#using-it-from-another-package) |
 
 ## Hard rules
 
@@ -132,7 +133,7 @@ installed the tools has `README.md` in `node_modules/vibestack/`.
 - Never weaken or delete a rule (`always`, `step`, `sometimes`, `leadsTo` or `law`) to
   make a check pass without telling the user which rule and why.
 - Proving obligations is your work, in `spec/<path>.proof.dfy` or
-  `src/<path>.proof.dfy` ([prove skill](.claude/skills/prove/SKILL.md)). Satisfy a check;
+  `src/<path>.proof.dfy` ([prove skill](.agents/skills/prove/SKILL.md)). Satisfy a check;
   never get past it: no trust or skip annotations, no edits to the tools or
   what they generate, no workaround for what a proof file may not contain.
 - Verified logic belongs in the spec as `pure def`. Hand-write code in `src/`
@@ -149,7 +150,7 @@ installed the tools has `README.md` in `node_modules/vibestack/`.
 Check each point before you write, and again after.
 
 - **Design.** Anything a person looks at follows
-  [.claude/skills/design/SKILL.md](.claude/skills/design/SKILL.md).
+  [.agents/skills/design/SKILL.md](.agents/skills/design/SKILL.md).
 - **One path.** Replace old code; do not keep it beside its replacement. No
   feature flags, environment variables or settings for a change.
 - **Reuse.** Search for existing code and types first. Extend and share; no
@@ -242,7 +243,7 @@ its name.
 
 ## TypeScript best practices
 
-Read the [`typescript-best-practices` skill](.claude/skills/typescript-best-practices/SKILL.md)
+Read the [`typescript-best-practices` skill](.agents/skills/typescript-best-practices/SKILL.md)
 before reading or editing `.ts` or `.tsx` files. Adapt the
 [TypeScript type reference](vibestack/reference/typereferences.md)
 to the repository's schema library. Validate that a duration is nonnegative
@@ -260,11 +261,11 @@ over proliferating handlers.
 - **External data is untyped until parsed.** Parse RPC payloads, JSON, IPC
   messages, CLI args, config files, environment variables, and database rows
   into the typed model at each boundary. See the
-  [**boundary-discipline** principle skill](.claude/skills/principle-boundary-discipline/SKILL.md).
+  [**boundary-discipline** principle skill](.agents/skills/principle-boundary-discipline/SKILL.md).
 - **Derive types from authoritative schemas.** When a protocol buffer, OpenAPI
   spec, GraphQL schema, database migration, design-token file, or another file
   owns a shape, derive the type from that source. See the
-  [**encode-lessons-in-structure** principle skill](.claude/skills/principle-encode-lessons-in-structure/SKILL.md).
+  [**encode-lessons-in-structure** principle skill](.agents/skills/principle-encode-lessons-in-structure/SKILL.md).
 
 | Rule | Summary |
 |---|---|

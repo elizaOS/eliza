@@ -23,3 +23,10 @@ storybook-static/
 build/
 !spec/**/build/
 test-results/
+# A failed exploration's trace, replayed by the next check (SPEC.md, "Exploring the page").
+**/test/__traces__/bombadil/
+test/__traces__/
+/.claude/
+/CLAUDE.md
+/.grokbot/skills
+/.muse/skills

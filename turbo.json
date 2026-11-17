@@ -12,12 +12,23 @@
     "vibestack/stories/**",
     "vibestack/design/**",
     "!vibestack/**/{node_modules,.cache}/**",
+    "!vibestack/selftest.ts",
+    "!vibestack/remote-cache.ts",
+    "!vibestack/{testing,stories,design}/test/**",
     ".cache/toolchain.json"
   ],
   "tasks": {
     "gen": {
       "outputs": [
         "gen/**",
+        "generated/**"
+      ]
+    },
+    "@repo/ui#gen": {
+      "dependsOn": [
+        "//#gen"
+      ],
+      "outputs": [
         "generated/**"
       ]
     },
@@ -101,6 +112,7 @@
         "vibestack/**",
         "!vibestack/examples/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!**/.DS_Store",
         "!{apps,packages,vibestack/studio}/**/gen/**",
         "package.json",
         "tsconfig.json",
@@ -118,6 +130,7 @@
         "vibestack/**",
         "!vibestack/examples/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!**/.DS_Store",
         "!{apps,packages,vibestack/studio}/**/gen/**",
         "package.json",
         "tsconfig.json",
@@ -129,27 +142,26 @@
     },
     "//#test": {
       "dependsOn": [
-        "//#gen"
+        "//#gen",
+        "^build"
       ],
       "inputs": [
+        "*",
+        "!*.md",
         "vibestack/**",
-        "!vibestack/examples/**",
+        "!vibestack/{examples,studio}/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
-        "!{apps,packages,vibestack/studio}/**/gen/**",
-        "package.json",
-        "tsconfig.json",
+        "!**/.DS_Store",
         "spec/**",
+        "!spec/**/*.md",
         "src/**",
-        "test/**",
-        "vitest.config.ts",
-        "packages/design-system/tokens.json",
-        "packages/design-system/design.md"
+        "test/**"
       ],
       "outputs": [
         ".cache/test-result-*.json"
       ]
     },
-    "//#selftest": {
+    "//#selftest:tools": {
       "dependsOn": [
         "//#build",
         "//#test",
@@ -159,18 +171,44 @@
       ],
       "inputs": [
         "vibestack/**",
+        "!vibestack/examples/{assistant,dashboard,fullstack}/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
+        "!**/.DS_Store",
         "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
+        "apps/*/package.json",
         "packages/**",
-        ".claude/skills/**",
-        ".agents/skills/**",
-        ".claude/settings.json",
+        ".agents/**",
         "AGENTS.md",
         "SPEC.md",
+        "README.md",
+        "LICENSE",
         "spec/**",
         "package.json",
+        "pnpm-lock.yaml",
+        "turbo.json",
         "tsconfig.json",
         "tsconfig.build.json"
+      ],
+      "outputs": []
+    },
+    "//#selftest:docs": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!.claude/worktrees/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
+        "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**"
+      ],
+      "outputs": []
+    },
+    "//#selftest:examples": {
+      "inputs": [
+        "vibestack/**",
+        "!vibestack/{studio,fixtures}/**",
+        "!vibestack/{testing,stories,design}/test/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
+        "!**/.DS_Store",
+        "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
+        "package.json"
       ],
       "outputs": []
     },
@@ -179,13 +217,17 @@
         "//#build",
         "//#typecheck",
         "//#test",
-        "vibestack-studio#test"
+        "@elizaos/core#build",
+        "@elizaos/core#typecheck",
+        "@elizaos/core#test"
       ],
       "cache": false
     },
     "//#lint:js": {
       "dependsOn": [
-        "@repo/design-system#build"
+        "@repo/design-system#build",
+        "vibestack-studio#typecheck",
+        "@elizaos/core#typecheck"
       ],
       "inputs": [
         "apps/**",
@@ -193,6 +235,7 @@
         "vibestack/**",
         "!vibestack/examples/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!**/.DS_Store",
         "!{apps,packages,vibestack/studio}/**/gen/**",
         "package.json",
         "pnpm-workspace.yaml",
@@ -204,17 +247,15 @@
     },
     "//#lint:css": {
       "inputs": [
-        "apps/**",
-        "packages/**",
-        "vibestack/**",
-        "!vibestack/examples/**",
+        "**/*.css",
+        "!.claude/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!**/.DS_Store",
         "!{apps,packages,vibestack/studio}/**/gen/**",
+        "!vibestack/{examples,fixtures}/**",
+        "stylelint.config.js",
         "package.json",
-        "pnpm-workspace.yaml",
-        "tsconfig.json",
-        "*.config.js",
-        "*.config.ts"
+        "pnpm-workspace.yaml"
       ],
       "outputs": []
     },
@@ -225,6 +266,7 @@
         "vibestack/**",
         "!vibestack/examples/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
+        "!**/.DS_Store",
         "!{apps,packages,vibestack/studio}/**/gen/**",
         "package.json",
         "pnpm-workspace.yaml",
@@ -244,34 +286,67 @@
       "cache": false,
       "persistent": true
     },
+    "vibestack-studio#build": {
+      "dependsOn": [
+        "gen",
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "vibestack-studio#typecheck": {
+      "dependsOn": [
+        "gen",
+        "^build"
+      ],
+      "outputs": [
+        ".vibe/declarations/**"
+      ]
+    },
     "vibestack-studio#test": {
       "dependsOn": [
         "gen",
-        "//#gen",
         "^build",
-        "//#build"
+        "build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vibestack/fixtures/**",
+        "!$TURBO_ROOT$/vibestack/fixtures/**/.DS_Store"
       ],
       "outputs": [
         ".cache/test-result-*.json"
       ]
     },
-    "@repo/design-system#build": {
+    "vibestack-studio#test:browser": {
       "dependsOn": [
         "gen",
-        "//#gen",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@repo/ui#build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@repo/ui#typecheck": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        ".vibe/declarations/**"
+      ]
+    },
+    "@repo/design-system#build": {
+      "dependsOn": [
         "^build"
       ],
       "outputs": [
         "generated/**",
         "design.md"
-      ]
-    },
-    "@repo/ui#gen": {
-      "dependsOn": [
-        "//#gen"
-      ],
-      "outputs": [
-        "generated/**"
       ]
     }
   },

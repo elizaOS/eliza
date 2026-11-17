@@ -12,7 +12,7 @@ import type { Event, Session } from "../gen/index.ts"
 import { promptFor } from "./doc.ts"
 import {
   NODE, PUBLIC, SPEC, checkCommand, createServer, finder, interactive, manifestFile, opener, ownedFiles, buildPage, appScript, servedAt, buildable, buildCommand, componentsOf,
-  planPublish, projectName, readManifest, readTree, skillPath, stateFile, studioRoot, verdictOf, type Check, type JobView, type Publish, type Snapshot,
+  planPublish, projectName, readManifest, readTree, skillPath, specStamp, stateFile, studioRoot, verdictOf, type Check, type JobView, type Publish, type Snapshot,
 } from "./project.ts"
 
 const DEEPLINK_LIMIT = 5000 // characters of a prompt a claude-cli:// link carries
@@ -87,6 +87,7 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
   try session.send({ type: "resume", changes: waiting })
   const jobs: Partial<Record<Kind, Job>> = {}
   let check: Check | undefined
+  let lastHeard = specStamp(root)
   /** A job's progress, for the pages; the session's changes reach them by `session.changes`. */
   const ticks = try PubSub.unbounded<void>()
   /** The specs changed on disk: the pages read them again. */
@@ -104,10 +105,7 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
   /** Why the session refuses `what` now. */
   const notNow = (what: string) => new Refused({ status: 409, message: running() ? `${running()!.label} is still running` : `${what} is not allowed now` })
 
-  const clearManifest = effect {
-    try files.remove(stateFile(root), { force: true })
-    try files.remove(manifestFile(root), { force: true })
-  }
+  const clearManifest = Effect.forEach([stateFile(root), manifestFile(root)], (file) => files.remove(file, { force: true }), { discard: true })
 
   /** Run a program in the project, colours off: `each` hears every line it prints, and whether on standard output. Gives its exit code. */
   effect function spawned([program, args]: [string, string[]], each: (line: string, out: boolean) => void!!, options: { input?: string; env?: Record<string, string> } = {}) {
@@ -138,7 +136,7 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
       }
       job.finished = Date.now()
       job.status = code === 0 ? "passed" : "failed"
-      done(job, out.join("\n")) catch (e) => failed(job, e)
+      lock.withPermits(1)(done(job, out.join("\n"))) catch (e) => failed(job, e)
       try changed
     }, scope)
     try changed
@@ -179,6 +177,7 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
   effect function runCheck() {
     const now: Check = { results: [] }
     check = now
+    lastHeard = specStamp(root)
     const line = (text: string): any => { try { return JSON.parse(text) } catch { return undefined } }
     try run("check", "check", [NODE, [SPEC, "check", "--json"]], undefined, (text) => {
       const result = line(text)
@@ -214,7 +213,8 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
       id, label: a.label, available: try onPath(a.command({ root, check: context.check })[0]),
       link: a.link?.({ root, prompt: promptFor(read.manifest, context, DEEPLINK_LIMIT) }),
     })
-    return { project, session: try session.get(), ...read, prompt: promptFor(read.manifest, context), check, jobs: jobsView(), agents: shown,
+    const current = try lock.withPermits(1)(effect { return { session: try session.get(), heard: specStamp(root) === lastHeard } })
+    return { project, ...current, ...read, prompt: promptFor(read.manifest, context), check, jobs: jobsView(), agents: shown,
       app: { script: appScript(root), url: app.url, log: app.log, buildable: buildable(root) } }
   }
   const jobsView = (): Partial<Record<Kind, JobView>> => Object.fromEntries(Object.entries(jobs).map(([kind, { fiber: _fiber, ...j }]) => [kind, { ...j, log: j.log.slice(-400) }]))
@@ -329,8 +329,12 @@ effect function studio(project: Project, agents: Record<string, Agent>) {
   // checked (spec/index.md, "A change to the specs on disk is checked when no job runs and nothing is unpublished").
   if (try files.exists(path.join(root, "spec"))) try Effect.forkIn(effect {
     return Stream.runForEach(Stream.debounce(Stream.retry(files.watch(path.join(root, "spec"), { recursive: true }), Schedule.spaced("1 second")), "300 millis"), () => lock.withPermits(1)(effect {
-      const was = (try session.get()).job
-      if ((try act({ type: "touch" })).job !== was) try runCheck()
+      const stamp = specStamp(root)
+      if (stamp !== lastHeard) {
+        lastHeard = stamp
+        const was = (try session.get()).job
+        if ((try act({ type: "touch" })).job !== was) try runCheck()
+      }
       try PubSub.publish(touched, undefined)
     })) catch () => undefined
   }, scope)

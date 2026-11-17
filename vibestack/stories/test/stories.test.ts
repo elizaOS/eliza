@@ -2,7 +2,7 @@
 // directory. The copy needs no install: fixtures/modules, its `node_modules`, declares what the fixtures import.
 import { cpSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { afterAll, expect, it } from "vitest";
 import { type Component, generator, watched } from "../emit.ts";
 
@@ -17,7 +17,7 @@ const first = run();
 const component = (name: string, from = first): Component => from.index.components.find((c) => c.name === name)!;
 const stories = (name: string, from = first) => component(name, from).stories.map((s) => `${s.kind} ${s.id}`);
 const read = (name: string) => readFileSync(join(out, name), "utf8");
-const everything = () => Object.fromEntries(readdirSync(out).sort().map((name) => [name, read(name)]));
+const everything = () => Object.fromEntries(readdirSync(out, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => relative(out, join(e.parentPath, e.name))).sort().map((name) => [name, read(name)]));
 const edit = (file: string, change: (text: string) => string) => writeFileSync(join(root, file), change(readFileSync(join(root, file), "utf8")));
 
 it("finds the exported components and nothing else", () => {
@@ -109,6 +109,8 @@ it("plays a disabled or loading story to check that a click, Enter or Space call
   for (const line of [
     'import { expect, fn, isMockFunction, userEvent } from "storybook/test";',
     "const refuses = async ({ args, canvasElement }) => {",
+    // A spy another story of the file called is not this story's doing.
+    "  for (const value of Object.values(args)) if (isMockFunction(value)) value.mockClear();",
     // A play of its own runs first.
     'export const Loading = { args: { ...base, loading: true, onClick: fn() }, play: async (context) => { await given.play["Loading"](context); await refuses(context); } };',
   ])
@@ -149,7 +151,7 @@ it("writes the same bytes again, and nothing when nothing changed", () => {
 
 it("rewrites only what a change touches, and removes what a deleted component left", () => {
   edit("src/Tag.tsx", (text) => text.replace('lg: "l" }', 'lg: "l", xl: "x" }'));
-  expect(run()).toMatchObject({ written: ["kit-tag.stories.tsx", "catalog.json", "manifest.json"], removed: [], analyzed: 1 });
+  expect(run()).toMatchObject({ written: ["kit-tag.stories.tsx", "catalog.json", ".cache/manifest.json"], removed: [], analyzed: 1 });
   expect(stories("Tag", run())).toContain("prop kit-tag--size-xl");
   expect(["src/Tag.tsx", "tsconfig.json", "generated/stories/kit-tag.stories.tsx", "node_modules/react/index.ts", ".cache/Tag.tsx"].filter(watched(root))).toEqual(["src/Tag.tsx", "tsconfig.json"]);
 
@@ -157,20 +159,24 @@ it("rewrites only what a change touches, and removes what a deleted component le
   edit("src/shades.ts", (text) => text.replace('"red"', '"crimson"'));
   expect(stories("Many", run())).toContain("prop kit-many--hue-crimson");
   edit("tsconfig.json", (text) => text.replace('"strict": true', '"strict": false'));
-  expect(run()).toMatchObject({ written: ["manifest.json"], analyzed: 7 });
+  expect(run()).toMatchObject({ written: [".cache/manifest.json"], analyzed: 7 });
 
   writeFileSync(join(root, "src/Table.meta.ts"), 'export const meta = { args: { rows: [{ id: 1 }], sort: { by: "id" } } };\n');
   const given = run();
-  expect(given).toMatchObject({ written: ["kit-table.stories.tsx", "catalog.json", "stories.test.tsx", "stories.browser.test.tsx", "manifest.json"], analyzed: 1, diagnostics: [] });
+  expect(given).toMatchObject({ written: ["kit-table.stories.tsx", "catalog.json", "stories.test.tsx", "stories.browser.test.tsx", ".cache/manifest.json"], analyzed: 1, diagnostics: [] });
   expect(component("Table", given).stories).toEqual([{ id: "kit-table--default", name: "Default", kind: "default", args: { rows: [{ id: 1 }], sort: { by: "id" } } }, { id: "kit-table--empty", name: "Empty", kind: "state", args: { rows: [], sort: { by: "id" } } }]);
 
   // Args that are not all written out may give a required prop; a bound that is not a pair is reported, not thrown.
   edit("src/Table.meta.ts", (text) => text.replace("rows: [{ id: 1 }],", "...{ rows: [{ id: 1 }] },"));
   // A field ComponentMeta does not have, such as the `snapshot` it once had, is reported, not ignored.
   edit("src/Meter.meta.ts", (text) => text.replace("[0, full]", "full").replace("decorator:", 'snapshot: ["Failed"],\n  decorator:'));
+  // A `@model` naming a spec with no state machine, such as a stateless dispatcher, is reported, not dropped.
+  writeFileSync(join(root, "gen/views.ts"), 'export type Event = { type: "open" };\n');
+  edit("src/Tag.tsx", (text) => text.replace("export function Tag", "/** @model spec/views.md */\nexport function Tag"));
   expect(run().diagnostics).toEqual([
     'Meter: `bounds` of "value" must be written out as two numbers, `[least, greatest]`, in Meter.meta.ts',
     "Meter: `snapshot` is no field of ComponentMeta (vibestack/stories/meta.ts) and is not read; remove it from Meter.meta.ts",
+    "Tag: @model spec/views.md has no state to show: views.ts exports no `initial`; name the spec whose model holds what it shows",
   ]);
 
   rmSync(join(root, "src/Chip.tsx"));
