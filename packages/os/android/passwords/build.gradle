@@ -5,6 +5,7 @@ android {
  // BiometricPrompt, AutofillService web schemes and save IntentSenders require API 28+;
  // device-credential BiometricPrompt fallback requires API 29.
  defaultConfig { minSdk 29; targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+ sourceSets.androidTest.java.srcDir '../secure-store/src/main/java/ai/eliza/plugins/securestore/nativeonly'
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 repositories { google(); mavenCentral() }
