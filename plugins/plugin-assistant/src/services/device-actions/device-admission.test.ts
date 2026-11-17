@@ -72,11 +72,12 @@ async function admitted(
   context: Record<string, unknown>,
   types: readonly string[],
   capabilities: string[] = ALL,
+  actions: { name: string }[] = [],
 ) {
   const runtime = {
     agentId,
     getSetting: () => undefined,
-    actions: [],
+    actions,
     getService: () => null,
     logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
   } as unknown as IAgentRuntime;
@@ -195,6 +196,39 @@ describe("device Notes/Calendar admission", () => {
       (await admitted({ view: "home", sensitive: false, timeZone }, [type]))
         .admitted[type],
     ).toBe(true);
+  });
+
+  it("leaves a new event to the canonical CALENDAR action unless a phone calendar is selected", async () => {
+    const canonical = [{ name: "CALENDAR" }];
+    const types = ["calendar_create_local", "calendar_read_next"];
+    for (const view of ["home", "calendar"])
+      expect(
+        (
+          await admitted(
+            { view, sensitive: false, timeZone },
+            types,
+            ALL,
+            canonical,
+          )
+        ).admitted,
+      ).toEqual({ calendar_create_local: false, calendar_read_next: true });
+    const selected = await admitted(
+      {
+        view: "calendar",
+        sensitive: false,
+        timeZone,
+        selectedObject: {
+          kind: "calendar-source",
+          id: "phone-calendar",
+          revision,
+        },
+      },
+      types,
+      ALL,
+      canonical,
+    );
+    expect(selected.calendar).toBe("device");
+    expect(selected.admitted.calendar_create_local).toBe(true);
   });
 
   it("keeps Home reviews closed without their capability, with a canonical selection, or on a private screen", async () => {

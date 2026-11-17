@@ -717,6 +717,8 @@ export const DEVICE_RECORD_ADMISSION: Readonly<
     selection: "none",
   },
   // Native code fixes the window or the default calendar from any open screen.
+  // A host with a canonical CALENDAR action also needs a selected phone
+  // calendar for the local create (see deviceAppRecordOperationAvailable).
   calendar_read_next: { domain: "calendar", views: "any", selection: "none" },
   calendar_create_local: {
     domain: "calendar",
@@ -775,6 +777,16 @@ export function deviceAppRecordOperationAvailable(
   if (!current.active || !current.isCurrent()) return false;
   const source = currentAppRecordSource(runtime, rule.domain, message);
   if (rule.selection === "device") return source === "device";
+  // A new event has one store per turn. With a canonical CALENDAR action it
+  // is the runtime calendar, so the phone's own create needs a selected phone
+  // calendar; without that selection two create tools would write to
+  // different stores and a later read would miss the phone's copy.
+  if (
+    type === "calendar_create_local" &&
+    source !== "device" &&
+    runtime.actions.some((action) => action.name === "CALENDAR")
+  )
+    return false;
   if (
     source === "unavailable" ||
     !deviceOperationSupportedByCapabilities(
