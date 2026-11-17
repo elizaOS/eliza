@@ -39,7 +39,8 @@ import org.json.JSONObject;
  * still names are left untouched (keeping what this class does not model, such as the primary flag),
  * removed rows are deleted, new rows are added to the contact's first raw contact, and name or note values change in place only when the owner edits them.
  * Structured name edits retain middle names, prefixes, suffixes and phonetic/style columns;
- * a legacy display-name edit retains those columns too, without deleting other raw names. A new contact is stored in the device-local account.
+ * a legacy display-name edit lets the provider re-derive the name parts from the new label, keeping phonetic/style columns,
+ * without deleting other raw names. A new contact is stored in the device-local account.
  * Nothing is retried. Call every method off the main thread.
  */
 public final class ContactsEditor {
@@ -363,7 +364,16 @@ public final class ContactsEditor {
       values.remove(StructuredName.DISPLAY_NAME);
       if (draft.givenName != null) values.put(StructuredName.GIVEN_NAME, draft.givenName);
       if (draft.familyName != null) values.put(StructuredName.FAMILY_NAME, draft.familyName);
-    } else values.put(StructuredName.DISPLAY_NAME, draft.displayName);
+    } else {
+      // A legacy edit names only the display label. The provider splits a label into its components only
+      // when the update carries none (DataRowHandlerForStructuredName.fixStructuredNameComponents), so the
+      // old given, family, prefix, middle and suffix are cleared and re-derived from the new label. Writing
+      // the old components back would keep the old structured name under a new label; an empty label then
+      // clears the name. Phonetic and style columns are kept.
+      values.put(StructuredName.DISPLAY_NAME, draft.displayName);
+      for (String part : new String[] { StructuredName.GIVEN_NAME, StructuredName.FAMILY_NAME, StructuredName.PREFIX,
+        StructuredName.MIDDLE_NAME, StructuredName.SUFFIX }) values.putNull(part);
+    }
     return values;
   }
   /** Deletes the stored rows the draft no longer names and inserts the draft's rows that are not stored; equal rows stay untouched. */

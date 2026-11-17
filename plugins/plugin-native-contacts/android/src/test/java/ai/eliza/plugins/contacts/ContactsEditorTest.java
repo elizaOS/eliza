@@ -260,6 +260,22 @@ public final class ContactsEditorTest {
     require(renamed.getString("status").equals("saved") && get("101").getString("displayName").equals("Ada King") && writes == 1 && data.containsKey(name), "the name changes in place");
   }
 
+  @Test public void aLegacyRenameClearsTheOldNamePartsSoTheProviderReDerivesThem() throws Exception {
+    long raw = addRaw(0);
+    long name = addData(raw, NAME, "Ada Lovelace", null, null);
+    Map<String, Object> row = data.get(name);
+    row.put("data2", "Ada"); row.put("data3", "Lovelace"); row.put("data4", "Dr"); row.put("data5", "B"); row.put("data6", "Jr");
+    row.put("data7", "AY-da"); row.put("data10", 1);
+    String version = get("101").getString("version");
+    writes = 0;
+    JSObject renamed = off(() -> editor.save("101", version, draft("Ada King", new JSONArray(), new JSONArray())));
+    require(renamed.getString("status").equals("saved") && writes == 1, "one in-place name write");
+    require("Ada King".equals(row.get("data1")), "the new label is written");
+    for (String part : new String[] { "data2", "data3", "data4", "data5", "data6" })
+      require(row.get(part) == null, "the old " + part + " is cleared so the provider splits the new label");
+    require("AY-da".equals(row.get("data7")) && Integer.valueOf(1).equals(row.get("data10")), "phonetic and style columns are kept");
+  }
+
   @Test public void committedSavesStillReportSavedWhenReadbackFails() throws Exception {
     refuseReadback = true;
     ContactsEditor.Draft original = draft("Ada", new JSONArray(), new JSONArray());
