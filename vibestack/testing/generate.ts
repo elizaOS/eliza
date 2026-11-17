@@ -49,7 +49,15 @@ export async function generateTests(packageDir: string): Promise<Generated> {
   const library = (file: string) => path.join(import.meta.dirname, file);
 
   const sources = glob("src/**/*.{schema,contract}.{ts,vibe}");
-  if (sources.some((source) => source.endsWith(".vibe"))) await import(pathToFileURL(createRequire(path.join(root, "package.json")).resolve("vibelang/register")).href);
+  if (sources.length) {
+    let register: string | undefined;
+    try {
+      register = createRequire(path.join(root, "package.json")).resolve("vibelang/register");
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "MODULE_NOT_FOUND")) throw error;
+    }
+    if (register) await import(pathToFileURL(register).href);
+  }
   for (const source of sources) {
     const hash = sha(read(source));
     const skip = (name: string, reason: string) => void result.skipped.push({ file: source, export: name, reason });
