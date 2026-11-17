@@ -262,8 +262,6 @@ export function resolveCloudSttCandidateUrls(env: NodeJS.ProcessEnv = process.en
 export function shouldRetryCloudTtsUpstream(status: number): boolean {
     return status === 404 || status === 502 || status === 503;
 }
-/** Eliza Cloud default premade voice (matches eliza-cloud-v2 ElevenLabs service). */
-const DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 const DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID = "eleven_flash_v2_5";
 /** Matches `MAX_TEXT_LENGTH` in eliza-cloud-v2 `app/api/v1/voice/tts/route.ts`. */
 export const ELIZA_CLOUD_TTS_MAX_TEXT_CHARS = 5000;
@@ -271,19 +269,19 @@ function isLikelyEdgeOrAzureNeuralVoiceId(raw: string): boolean {
     const t = raw.trim();
     return /^[a-z]{2}-[A-Z]{2}-/i.test(t) && /Neural$/i.test(t);
 }
-function normalizeElizaCloudVoiceId(raw: string): string {
+function normalizeElizaCloudVoiceId(raw: string): string | undefined {
     const trimmed = raw.trim();
     if (!trimmed)
-        return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
+        return undefined;
     if (isOpenAiVoiceAlias(trimmed)) {
-        return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
+        return undefined;
     }
     if (isLikelyEdgeOrAzureNeuralVoiceId(trimmed)) {
-        return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
+        return undefined;
     }
     return trimmed;
 }
-export function resolveElizaCloudTtsVoiceId(bodyVoiceId: unknown, env: NodeJS.ProcessEnv = process.env): string {
+export function resolveElizaCloudTtsVoiceId(bodyVoiceId: unknown, env: NodeJS.ProcessEnv = process.env): string | undefined {
     if (typeof bodyVoiceId === "string" && bodyVoiceId.trim()) {
         return normalizeElizaCloudVoiceId(bodyVoiceId);
     }
@@ -291,7 +289,7 @@ export function resolveElizaCloudTtsVoiceId(bodyVoiceId: unknown, env: NodeJS.Pr
     if (envVoice) {
         return normalizeElizaCloudVoiceId(envVoice);
     }
-    return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
+    return undefined;
 }
 export function normalizeElizaCloudTtsModelId(raw: string): string {
     const trimmed = raw.trim();

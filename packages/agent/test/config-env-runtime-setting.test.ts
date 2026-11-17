@@ -8,6 +8,7 @@ import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { buildVoiceConfigForCharacterEntry } from "../../ui/src/components/character/character-voice-config.ts";
 import { resolveCharacterVoiceConfigFromAppConfig } from "../../ui/src/voice/character-voice-config.ts";
+import { resolveEffectiveVoiceConfig } from "../../ui/src/voice/voice-chat-types.ts";
 import { handleConfigRoutes } from "../src/api/config-routes.ts";
 import {
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
@@ -94,34 +95,66 @@ it("applies a changed or cleared config env setting to the running agent", async
     expect(runtime.getSetting(KEY)).toBeNull();
 
     const preset = getDefaultStylePreset("en");
-    const selected = buildVoiceConfigForCharacterEntry({
-      entry: {
-        id: preset.id,
-        name: preset.name,
-        avatarIndex: preset.avatarIndex,
-        voicePresetId: "brian",
-        preset,
-      },
-      useElevenLabs: true,
-      voiceConfig: {
-        provider: "elevenlabs",
-        mode: "own-key",
-        elevenlabs: { modelId: "owner-model", stability: 0.3 },
-      },
-    });
-    if (!selected) throw new Error("Voice selection did not resolve");
-    expect(
-      await put({ messages: { tts: selected.persistedVoiceConfig } }),
-    ).toBe(200);
-    expect(loadElizaConfig().messages?.tts?.elevenlabs).toMatchObject({
-      voiceId: "8dEUmyPMdDdK91vboYih",
+    const voiceConfig: Parameters<
+      typeof buildVoiceConfigForCharacterEntry
+    >[0]["voiceConfig"] = {
+      provider: "elevenlabs",
+      mode: "own-key",
+      elevenlabs: { modelId: "owner-model", stability: 0.3 },
+    };
+    const implicit = resolveEffectiveVoiceConfig(voiceConfig);
+    expect(await put({ messages: { tts: implicit } })).toBe(200);
+    expect(loadElizaConfig().messages?.tts?.elevenlabs).toEqual({
       modelId: "owner-model",
       stability: 0.3,
+      similarityBoost: 0.75,
+      speed: 1,
     });
-    for (const voiceId of ["owner-selected-voice", "nPczCjzI2devNBz1zQrb"]) {
+    for (const [voicePresetId, voiceId] of [
+      ["sarah", "OZ0L6eISlOejga3XjDFt"],
+      ["matilda", "QtY3JBOUKEB5xzrRfOKc"],
+      ["lily", "22N9cF8z0o7y23njdyaY"],
+      ["alice", "BFd5oBc2DDna33pSi4Gf"],
+      ["brian", "8dEUmyPMdDdK91vboYih"],
+      ["daniel", "fnYMz3F5gMEDGMWcH1ex"],
+      ["liam", "ktkP7Nsj67dw2zcplQYt"],
+      ["callum", "fs2OqxduwXgp9foh2xjK"],
+    ]) {
+      const selected = buildVoiceConfigForCharacterEntry({
+        entry: {
+          id: preset.id,
+          name: preset.name,
+          avatarIndex: preset.avatarIndex,
+          voicePresetId,
+          preset,
+        },
+        useElevenLabs: true,
+        voiceConfig,
+      });
+      if (!selected) throw new Error("Voice selection did not resolve");
+      expect(
+        await put({ messages: { tts: selected.persistedVoiceConfig } }),
+      ).toBe(200);
+      expect(loadElizaConfig().messages?.tts?.elevenlabs).toMatchObject({
+        voiceId,
+        modelId: "owner-model",
+        stability: 0.3,
+      });
+    }
+    for (const voiceId of [
+      "owner-selected-voice",
+      "EXAVITQu4vr4xnSDxMaL",
+      "XrExE9yKIg1WjnnlVkGX",
+      "pFZP5JQG7iQjIQuC4Bku",
+      "Xb7hH8MSUJpSbSDYk0k2",
+      "nPczCjzI2devNBz1zQrb",
+      "onwK4e9ZLuTAKqWW03F9",
+      "TX3LPaxmHKxFdv7VOQHJ",
+      "N2lVS1w4EtoT3dr4eOWO",
+    ]) {
       const explicit = {
-        ...selected.persistedVoiceConfig,
-        elevenlabs: { ...selected.persistedVoiceConfig.elevenlabs, voiceId },
+        ...voiceConfig,
+        elevenlabs: { ...voiceConfig.elevenlabs, voiceId },
       };
       expect(await put({ messages: { tts: explicit } })).toBe(200);
       const stored = loadElizaConfig();

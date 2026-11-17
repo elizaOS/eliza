@@ -4,6 +4,7 @@ import {
   synthesizeCloudflareAudio,
 } from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { DEFAULT_ELEVENLABS_VOICE_ID } from "@elizaos/host/protocol";
 
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 
@@ -526,7 +527,9 @@ async function __hono_POST(c: AppContext) {
     const resolvedVoiceId =
       providerSelection.provider === "cartesia"
         ? cartesiaVoiceId
-        : voiceId || "EXAVITQu4vr4xnSDxMaL";
+        : voiceId ||
+          (env.ELEVENLABS_VOICE_ID ?? process.env.ELEVENLABS_VOICE_ID) ||
+          DEFAULT_ELEVENLABS_VOICE_ID;
     const resolvedModelId = modelId || "eleven_flash_v2_5";
     const snipResult = firstSentenceSnip(text);
     // Context and rendering controls change audio. Never read or populate a
@@ -824,7 +827,7 @@ async function __hono_POST(c: AppContext) {
         const synthesis = {
           ...TtsSynthesisOptions.parse(body),
           text,
-          voiceId,
+          voiceId: resolvedVoiceId,
           modelId,
         };
         audioStream = body.withTimestamps

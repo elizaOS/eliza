@@ -377,7 +377,7 @@ export interface AssistantSpeechState {
 // ── Constants ─────────────────────────────────────────────────────────
 
 export const DEFAULT_ELEVEN_MODEL = "eleven_flash_v2_5";
-export const DEFAULT_ELEVEN_VOICE = "EXAVITQu4vr4xnSDxMaL";
+export { DEFAULT_ELEVENLABS_VOICE_ID as DEFAULT_ELEVEN_VOICE } from "@elizaos/host/protocol";
 /** Bound retained synthesized audio by bytes rather than utterance count. */
 export const MAX_CACHED_AUDIO_BYTES = 32 * 1024 * 1024;
 /** Secondary metadata bound for pathological streams of tiny audio payloads. */
@@ -594,7 +594,6 @@ export function resolveEffectiveVoiceConfig(
   );
   const elevenlabs: NonNullable<VoiceConfig["elevenlabs"]> = {
     ...currentElevenLabs,
-    voiceId: currentElevenLabs.voiceId ?? DEFAULT_ELEVEN_VOICE,
     modelId: currentElevenLabs.modelId ?? DEFAULT_ELEVEN_MODEL,
     stability:
       typeof currentElevenLabs.stability === "number"

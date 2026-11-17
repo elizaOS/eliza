@@ -14,7 +14,7 @@ import { asRecord } from "../state/config-readers";
 import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";
 
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_flash_v2_5";
-const DEFAULT_ELEVENLABS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+const LEGACY_DEFAULT_ELEVENLABS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 const LEGACY_CHARACTER_VOICE_PRESET_IDS: Record<string, string> = {
   jin: "adam",
   kei: "josh",
@@ -134,7 +134,7 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
     selectedCharacterVoice.voiceId !== currentVoiceId &&
     (!currentVoiceId ||
       (!isExplicitElevenLabsChoice(storedVoiceConfig) &&
-        (currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID ||
+        (currentVoiceId === LEGACY_DEFAULT_ELEVENLABS_VOICE_ID ||
           currentVoiceId === legacyVoiceId)));
   if (!releaseLegacyProvider && !shouldUpdatePresetVoice) {
     return storedVoiceConfig;
