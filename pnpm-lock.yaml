@@ -336,6 +336,9 @@ importers:
       '@electric-sql/pglite':
         specifier: 'catalog:'
         version: 0.4.6
+      '@electric-sql/pglite-socket':
+        specifier: 0.1.6
+        version: 0.1.6(@electric-sql/pglite@0.4.6)
       '@repo/design-system':
         specifier: workspace:*
         version: link:../design-system
@@ -1094,6 +1097,12 @@ packages:
     peerDependencies:
       effect: ^4.1.1
       vitest: '>=5.0.0 <6.0.0'
+
+  '@electric-sql/pglite-socket@0.1.6':
+    resolution: {integrity: sha512-QAPUOwUdFnv3grJoLQbtkN8MywMK92kPfCeQ9QIJlB9DfPlExvU19cI2djxyffRF2WJL89eiZ1GAyfBDVH2xGQ==}
+    hasBin: true
+    peerDependencies:
+      '@electric-sql/pglite': 0.4.6
 
   '@electric-sql/pglite@0.4.6':
     resolution: {integrity: sha512-qmlmfN8UyKCee35qkV0r/MBp+Znl8FjBz7OpoglNvww3GJpw0/DLP0o1ZymvLNmcD5DTLOQdzKPtF8Hd3mdl1w==}
@@ -5994,6 +6003,10 @@ snapshots:
     dependencies:
       effect: 4.1.1
       vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4)(jsdom@31.0.1)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  '@electric-sql/pglite-socket@0.1.6(@electric-sql/pglite@0.4.6)':
+    dependencies:
+      '@electric-sql/pglite': 0.4.6
 
   '@electric-sql/pglite@0.4.6': {}
 
