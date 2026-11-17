@@ -85,6 +85,24 @@ function manualSubtitleUrl(
   return tracks.find((t) => t?.url && !t.ext)?.url;
 }
 
+/**
+ * Pick an English manual subtitle url. yt-dlp keys a manual YouTube track by
+ * its language code, so an uploader's English track can be `en-US`, `en-GB`
+ * or a named `en-<name>` track; read `en` first, then the others in order.
+ */
+function englishManualSubtitleUrl(
+  subtitles: Record<string, YtDlpSubtitleTrack[]> | undefined,
+): string | undefined {
+  const langs = Object.keys(subtitles ?? {})
+    .filter((lang) => /^en(?:-|$)/i.test(lang))
+    .sort((a, b) => Number(b === "en") - Number(a === "en"));
+  for (const lang of langs) {
+    const url = manualSubtitleUrl(subtitles?.[lang]);
+    if (url) return url;
+  }
+  return undefined;
+}
+
 /** Result `parseCaption` returns when the content is not caption JSON. */
 const CAPTION_PARSE_ERROR = "Error: Unable to parse captions";
 
@@ -615,7 +633,7 @@ export class VideoService extends IVideoService {
       // variant that carries a usable url so a malformed leading entry does not
       // discard the recoverable ones behind it, and an entirely unusable
       // listing degrades to the next grounded source instead of throwing.
-      const manualUrl = manualSubtitleUrl(videoInfo.subtitles?.en);
+      const manualUrl = englishManualSubtitleUrl(videoInfo.subtitles);
       if (manualUrl) {
         elizaLogger.log("Manual subtitles found");
         const srtContent = await this.downloadSRT(manualUrl);
