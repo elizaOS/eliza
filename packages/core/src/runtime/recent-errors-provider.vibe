@@ -1,4 +1,4 @@
-// spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"; spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"
+// spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"; spec/core/security.md, "A secret never appears in a log line"
 import { foreignSync, runDetached } from "../edge.vibe"
 import type { ReportedError } from "../errors.vibe"
 import { logger } from "../logger.vibe"

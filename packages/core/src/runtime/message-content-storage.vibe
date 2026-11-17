@@ -1,4 +1,4 @@
-// spec/core/ingressSnapshots.md, "Binding requires matching message agent room and entity identity"; spec/core/ingressSnapshots.md, "Reuse requires exact redacted content and every projected stored segment"
+// spec/core/ingressSnapshots.md, "Binding requires matching message, agent, room and entity identity"; spec/core/ingressSnapshots.md, "Reuse requires exact redacted content and every projected stored segment"
 import { foreign, type Foreign, promised, thrown, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Memory } from "../types/memory.vibe"

@@ -1,4 +1,4 @@
-// SPEC.md, "Conformance": spec/core/identityGroups.md against UnionFind of src/utils/union-find.vibe, one per key, observed through groups() sorted by identity
+// spec/core/identityGroups.md, "Story: Merge identity groups without losing their members"; spec/core/identityGroups.md, "Every registered identity belongs to one registered canonical root"
 import type { Driver, Options } from "../../gen/core__identityGroups.conformance.ts";
 import type { IdentityGroups, IdentityNode } from "../../gen/core__identityGroups.ts";
 import { UnionFind } from "../../src/utils/union-find.vibe";
@@ -24,7 +24,6 @@ export const driver: Driver = {
     const set = setOf(key);
     if (event.type === "registerIdentity") set.add(event.identity);
     else if (event.type === "unionIdentities") set.union(event.left, event.right);
-    else if (event.type === "findIdentity") set.find(event.identity);
     else set.clear();
     return "accepted";
   },

@@ -1,4 +1,4 @@
-// spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
+// spec/core/security.md, "A blocked address is never fetched"
 import { Arbitrary, Schema } from "effect";
 import { contract } from "vibestack/testing";
 import { isPrivateIpAddress } from "./ssrf.vibe";

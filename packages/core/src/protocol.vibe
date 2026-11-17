@@ -1,4 +1,4 @@
-// spec/core/contracts.md, "Story: Consume the replacement through existing imports"
+// spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 export { actionToJsonSchemaOrThrow as actionToJsonSchema } from "./actions/action-schema.vibe"
 export {
   composedPromotedSubactionDescription,
@@ -186,13 +186,6 @@ export {
   type ToolDiagnosticTextRedactor,
 } from "./security/tool-diagnostics.vibe"
 export {
-  OPTIMIZED_PROMPT_SERVICE,
-  type OptimizedPromptRuntimeLike,
-  resolveOptimizedPromptOrThrow as resolveOptimizedPrompt,
-  resolveOptimizedPromptForRuntimeOrThrow as resolveOptimizedPromptForRuntime,
-  type RuntimePromptResolver,
-} from "./services/optimized-prompt-resolver.vibe"
-export {
   parseTrajectorySemanticStageOrThrow as parseTrajectorySemanticStage,
   parseTrajectorySemanticStagesOrThrow as parseTrajectorySemanticStages,
   recordedStagesToSemanticStagesOrThrow as recordedStagesToSemanticStages,
@@ -267,25 +260,6 @@ export {
   type PendingUserActionResolution,
   type PendingUserActionResolutionTarget,
 } from "./types/pending-user-action.vibe"
-export {
-  type ActionAttempt,
-  type ARTTrajectory,
-  CONTEXT_OBJECT_TRAJECTORY_VERSION,
-  type ContextObjectTrajectoryExport,
-  type ContextObjectTrajectoryVersion,
-  type EnvironmentState,
-  type LLMCall,
-  type ProviderAccess,
-  type RewardComponents,
-  type RewardRequest,
-  type RewardResponse,
-  type TrainingBatch,
-  type Trajectory,
-  type ChatMessage as TrajectoryChatMessage,
-  type TrajectoryGroup,
-  type TrajectoryRecord,
-  type TrajectoryStep,
-} from "./types/trajectory-export.vibe"
 export {
   ACTION_RESULT_OVERSIZE_WARNING_TOKENS,
   collectActionResultSizeWarnings,
@@ -583,12 +557,6 @@ export {
   type PluginResponseHandlerFieldEvaluatorShouldRunParams,
   type PluginResponseHandlerFieldEvaluatorShouldRunResult,
   type RemotePluginActionManifest,
-  type RemotePluginAppBridgeHook,
-  type RemotePluginAppBridgeManifest,
-  type RemotePluginAppManifest,
-  type RemotePluginAppNavTabManifest,
-  type RemotePluginAppSessionManifest,
-  type RemotePluginAppViewerManifest,
   type RemotePluginBackgroundPolicy,
   type RemotePluginCapability,
   type RemotePluginComponentTypeManifest,
@@ -658,58 +626,6 @@ export {
   formatAgentCapabilityCatalog,
   parsePersonalWorkspaceCapabilityHandoff,
 } from "./capability-catalog.vibe"
-export {
-  APP_SESSION_SERVICE_TYPE,
-  type AppLaunchDiagnostic,
-  type AppLaunchDiagnosticSeverity,
-  type AppLaunchPreparation,
-  type AppLaunchResult,
-  type AppLaunchSessionContext,
-  type AppRunActionResult,
-  type AppRunAwaySummary,
-  type AppRunCapabilityAvailability,
-  type AppRunEvent,
-  type AppRunEventKind,
-  type AppRunEventSeverity,
-  type AppRunHealth,
-  type AppRunHealthDetails,
-  type AppRunHealthFacet,
-  type AppRunHealthState,
-  type AppRunSessionContext,
-  type AppRunSummary,
-  type AppRunViewerAttachment,
-  type AppSessionActionResult,
-  type AppSessionActivityItem,
-  type AppSessionConfig,
-  type AppSessionControlAction,
-  type AppSessionFeature,
-  type AppSessionJsonValue,
-  type AppSessionMode,
-  type AppSessionRecommendation,
-  type AppSessionServiceLike,
-  type AppSessionState,
-  type AppStopResult,
-  type AppUiExtensionConfig,
-  type AppViewerAuthMessage,
-  type AppViewerConfig,
-  ELIZA_CURATED_APP_DEFINITIONS,
-  type ElizaCuratedAppDefinition,
-  getCuratedAppDefinitions,
-  getElizaCuratedAppCatalogOrder,
-  getElizaCuratedAppDefinition,
-  getRegisteredCuratedApps,
-  hasAppInterface,
-  type InstalledAppInfo,
-  isElizaCuratedAppName,
-  isValidAppRouteSlug,
-  normalizeElizaCuratedAppName,
-  packageNameToAppDisplayName,
-  packageNameToAppRouteSlug,
-  registerCuratedApp,
-  type RegistryAppInfo,
-  type RegistryAppNpmInfo,
-  type RegistryAppSupports,
-} from "./catalog/apps.vibe"
 export {
   decodeRuntimeRegistryOrThrow as decodeRuntimeRegistry,
   type DecodeRuntimeRegistryOptions,
@@ -1057,19 +973,6 @@ export {
   validateTaskChoiceWidgetOrThrow as validateTaskChoiceWidget,
 } from "./messaging/task-widgets.vibe"
 export { MobileDeviceBridgeService, type MobileDeviceBridgeStatus } from "./mobile-device-bridge-service.vibe"
-export {
-  applyModelGateway,
-  type GetSettingFn,
-  MODEL_GATEWAY_STRICT_KEY,
-  MODEL_GATEWAY_TOKEN_KEY,
-  MODEL_GATEWAY_URL_KEY,
-  type ModelGatewayResolution,
-  ModelGatewayStrictError,
-  type OpenAiCompatibleCreds,
-  RAW_PROVIDER_KEY_VARS,
-  type RawProviderKeyVar,
-  resolveModelGatewayOrThrow as resolveModelGateway,
-} from "./model-gateway.vibe"
 export { replaceIndexedNameTokens, replaceNameTokens, tokenizeNameOccurrences } from "./name-tokens.vibe"
 export {
   createPinnedLookup,
@@ -1089,18 +992,6 @@ export {
   SsrfBlockedError,
   type SsrfPolicy,
 } from "./network/ssrf.vibe"
-export {
-  DEFAULT_SIGNAL_WEIGHTS,
-  type ExecutionTrace,
-  type MergePromptTemplateContext,
-  type PromptKey,
-  type PromptOptimizationRegistryWrite,
-  type PromptOptimizationRuntimeHooks,
-  ScoreCard,
-  type ScoreCardData,
-  type ScoreSignal,
-  type SlotKey,
-} from "./prompt-optimization.vibe"
 export { getRecentMessagesData } from "./recent-messages-state.vibe"
 export {
   BM25,
@@ -1374,15 +1265,6 @@ export {
   RuntimeCapabilityService,
   type RuntimeCapabilityServiceOptions,
 } from "./services/runtime-capability-service.vibe"
-export {
-  buildElizaNativeTrajectoryRowsOrThrow as buildElizaNativeTrajectoryRows,
-  iterateTrajectoryLlmCallsOrThrow as iterateTrajectoryLlmCalls,
-  resolveJsonShapeOrThrow as resolveJsonShape,
-  resolveTrajectoryStatus,
-  serializeTrajectoryExportOrThrow as serializeTrajectoryExport,
-  summarizeTrajectoryCacheOrThrow as summarizeTrajectoryCache,
-  summarizeTrajectoryUsageOrThrow as summarizeTrajectoryUsage,
-} from "./services/trajectory-export.vibe"
 export {
   createTrajectoryJsonBudget,
   type SanitizationState,
@@ -2048,7 +1930,6 @@ export {
   type AudioProcessingParams,
   type AudioStreamResult,
   type BatchTextEmbeddingParams,
-  type ChatMessage,
   type ChatMessageContentPart,
   type ChatMessageRole,
   type DetokenizeTextParams,
@@ -2229,24 +2110,6 @@ export {
   PermissionNarrowedRejection,
   type Plugin,
   PLUGIN_WIDGET_SLOTS,
-  type PluginApp,
-  type PluginAppActivityItem,
-  type PluginAppBridge,
-  type PluginAppBridgeLaunchContext,
-  type PluginAppBridgeRunContext,
-  type PluginAppControlAction,
-  type PluginAppLaunchDiagnostic,
-  type PluginAppLaunchPreparation,
-  type PluginAppNavTab,
-  type PluginAppRecommendation,
-  type PluginAppSession,
-  type PluginAppSessionFeature,
-  type PluginAppSessionMode,
-  type PluginAppSessionState,
-  type PluginAppTelemetryValue,
-  type PluginAppUiExtension,
-  type PluginAppViewer,
-  type PluginAppViewerAuthMessage,
   type PluginDiagnosticDescriptor,
   type PluginDiagnosticPrerequisite,
   type PluginEventRegistration,
@@ -2300,7 +2163,7 @@ export type {
   PluginSortDirection,
   PluginTableSchema,
 } from "./types/plugin-store.vibe"
-export type { JsonObject, JsonPrimitive, JsonValue } from "./types/json.vibe"
+export type { JsonObject, JsonPrimitive } from "./types/json.vibe"
 export {
   createReminderPresentationOrThrow as createReminderPresentation,
   readReminderPresentation,

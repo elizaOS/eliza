@@ -1,4 +1,4 @@
-// spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import { failingAs, thrown } from "./edge.vibe"
 
 export const MAX_RESTORABLE_AGENT_BACKUP_BYTES = 128 * 1024 * 1024

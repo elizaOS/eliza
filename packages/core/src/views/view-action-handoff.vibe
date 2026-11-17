@@ -1,5 +1,5 @@
-// spec/core/views.md, "Completion requires matching request renderer installation and view identities"
-import { failingAs, thrown } from "../edge.vibe"
+// spec/core/views.md, "Story: Deliver a completed action to the intended view"; spec/core/views.md, "Completion requires matching request renderer installation and view identities"
+import { type Foreign, foreignSync, thrown } from "../edge.vibe"
 import { normalizeCompletedActionHandoffId } from "../events.vibe"
 import { parseViewInteractionClientId } from "./view-interact-protocol.vibe"
 import { asNonEmptyString } from "../utils/type-guards.vibe"
@@ -25,11 +25,10 @@ function readOwnValue(value: unknown, key: string): unknown {
   }
   return Object.getOwnPropertyDescriptor(value, key)?.value
 }
-error MalformedViewUrl { message: string }
 
 effect function findViewActionHandoff(
   actionResults: readonly unknown[] | undefined,
-): (ViewActionHandoff | null)!MalformedViewUrl {
+): (ViewActionHandoff | null)!Foreign {
   if (!Array.isArray(actionResults)) return null
   for (let index = actionResults.length - 1; index >= 0; index--) {
     const result = actionResults[index]
@@ -68,10 +67,7 @@ effect function findViewActionHandoff(
       const declaredViewPath = asNonEmptyString(readOwnValue(values, "viewPath"))
 
       const viewPath = isBrowserWorkspaceHandoff && actionUrl
-        ? `/browser?browse=${try Effect.try({
-          try: () => encodeURIComponent(actionUrl),
-          catch: (cause) => new MalformedViewUrl({ message: (cause as URIError).message }),
-        })}`
+        ? `/browser?browse=${try foreignSync(() => encodeURIComponent(actionUrl))}`
         : declaredViewPath
       const subview = asNonEmptyString(readOwnValue(values, "subview"))
       const completedActionHandoffId = normalizeCompletedActionHandoffId(
@@ -125,4 +121,4 @@ effect function findViewActionHandoff(
   return null
 }
 
-export const findViewActionHandoffOrThrow = thrown(failingAs(URIError, findViewActionHandoff))
+export const findViewActionHandoffOrThrow = thrown(findViewActionHandoff)

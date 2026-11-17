@@ -1,6 +1,7 @@
+// spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
 import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, type ApprovalRequest, type ApprovalResult, ApprovalService, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withRoomDeliverySettlement, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
-import { coreDir, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
+import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
 import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from "./support/models.ts"
@@ -30,6 +31,14 @@ const startInChild = [
   "console.log(JSON.stringify({ id: flow.id, callback: google.consent(flow.authUrl ?? \"\", \"user-4\") }))",
   "await runtime.stop()",
   "await runtime.close()",
+].join("\n")
+
+const generateInChild = [
+  "const { Effect } = await import(\"effect\")",
+  "const { collectFirstPartyEntries, generateFirstPartyRegistry } = await import(\"./src/catalog/generate.vibe\")",
+  "const settle = (run) => Effect.runPromise(Effect.match(run, { onFailure: ({ _tag, message }) => ({ _tag, message }), onSuccess: (value) => value }))",
+  "const entries = await settle(collectFirstPartyEntries())",
+  "console.log(JSON.stringify({ ids: Array.isArray(entries) ? entries.map((entry) => entry.id) : entries, registry: await settle(generateFirstPartyRegistry()) }))",
 ].join("\n")
 
 // spec/core/runtime.md, "Story: Initialize an explicit host composition"; spec/core/runtime.md, "Initialization releases waiters on success and failure"; spec/core/runtime.md, "Only open ingress admits new turns"; spec/core/runtime.md, "Story: Retire every owned operation"; spec/core/runtime.md, "Stop closes admissions and prepares services once"; spec/core/runtime.md, "Strict retirement succeeds only when original work is drained"; spec/core/runtimeShutdown.md, "Story: Join one active shutdown attempt"; spec/core/runtimeShutdown.md, "Stop ownership is published before service preparation"; spec/core/runtimeShutdown.md, "Story: Establish strict quiescence after bounded shutdown"; spec/core/runtimeShutdown.md, "All strict callers share the original strict result"; spec/core/adapterOwnership.md, "Registration captures object references and rollback preserves close ordering"; spec/core/adapterOwnership.md, "Story: Preserve adapter identity through plugin failure and migrations"; spec/core/settings.md, "Story: Resolve the same setting in every host"; spec/core/settings.md, "Resolution preserves precedence and valid false zero and empty values"; spec/core/settings.md, "Setting and clearing align live secret and constructor slots"; spec/core/connectionLocks.md, "Story: Reconcile overlapping records without lost in-process updates"; spec/core/entities.md, "Story: Observe committed mutations through fresh runtime reads"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/diagnostics.md, "A structured failure retains its identity and an unclassified one gets a code"; spec/core/index.md, "Story: Compose a kernel through explicit services"; spec/core/settings.md, "Story: Isolate settings between agents and keys"; spec/core/memoConcurrency.md, "Story: Read after a completed mutation without receiving an older snapshot"; spec/core/serviceStopObservation.md, "Story: Continue best-effort shutdown with its failures retained"; spec/core/retirementTracker.md, "Story: Drain every owned retirement operation and report retained failures"
@@ -339,7 +348,7 @@ it.live("Host a runtime from construction to close and restart (spec/core/runtim
   ))
 }, 60_000)
 
-// spec/core/journey.md, "Story: Complete or cancel a turn and retire its runtime"; spec/core/journey.md, "A turn composes the existing machines without a second state store"; spec/core/journey.md, "Action evidence and transport acknowledgement remain distinct"; spec/core/journey.md, "Retirement waits for the admitted turn and its pending reply"; spec/core/providers.md, "Story: Share provider work without sharing cancellation"; spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/execution.md, "Callbacks wait for a valid admitted result"; spec/core/execution.md, "Every callback from a finished source reaches delivery settlement"; spec/core/receipts.md, "Story: Confirm only a committed requested effect"; spec/core/receipts.md, "Delivery rechecks the exact text and receipt IDs after hooks have run"; spec/core/authorization.md, "Role gates combine exclusions, minimum rank and all required memberships"; spec/core/messaging.md, "Story: Dispatch through a selected connector account"; spec/core/messaging.md, "Send routing and hook routing have distinct fallback rules"; spec/core/postDelivery.md, "Story: Capture and settle a connector delivery boundary"; spec/core/terminal.md, "Story: Finalize one run after all admitted child work"; spec/core/events.md, "Story: Emit ordered events with their run session"; spec/core/concurrency.md, "Story: Own each room through durable settlement"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"; spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/confirmation.md, "Story: Settle an explicit confirmation from the user's reply"; spec/core/responseEvaluation.md, "Story: Apply response evaluator decisions in priority order"; spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"; spec/core/providerExecutions.md, "Story: Share exactly equivalent provider requests"; spec/core/actionReceipts.md, "Story: Drain action callbacks with exact receipt evidence"; spec/core/receiptBindings.md, "Story: Preserve authentic binding identity across concurrent replies"; spec/core/postDelivery.md, "Story: Track detached work under runtime and room ownership"; spec/core/context.md, "Story: Select relevant history while retaining complete evidence"
+// spec/core/journey.md, "Story: Complete or cancel a turn and retire its runtime"; spec/core/journey.md, "A turn composes the existing machines without a second state store"; spec/core/journey.md, "Action evidence and transport acknowledgement remain distinct"; spec/core/journey.md, "Retirement waits for the admitted turn and its pending reply"; spec/core/providers/work.md, "Story: Share provider work without sharing cancellation"; spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/execution.md, "Callbacks wait for a valid admitted result"; spec/core/execution.md, "Every callback from a finished source reaches delivery settlement"; spec/core/receipts.md, "Story: Confirm only a committed requested effect"; spec/core/receipts.md, "Delivery rechecks the exact text and receipt IDs after hooks have run"; spec/core/authorization.md, "Role gates combine exclusions, minimum rank and all required memberships"; spec/core/messaging.md, "Story: Dispatch through a selected connector account"; spec/core/messaging.md, "Send routing and hook routing have distinct fallback rules"; spec/core/postDelivery.md, "Story: Capture and settle a connector delivery boundary"; spec/core/terminal.md, "Story: Finalize one run after all admitted child work"; spec/core/events.md, "Story: Emit ordered events with their run session"; spec/core/concurrency.md, "Story: Own each room through durable settlement"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"; spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/confirmation.md, "Story: Settle an explicit confirmation from the user's reply"; spec/core/responseEvaluation.md, "Story: Apply response evaluator decisions in priority order"; spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"; spec/core/providers/index.md, "Story: Share exactly equivalent provider requests"; spec/core/actionReceipts.md, "Story: Drain action callbacks with exact receipt evidence"; spec/core/receiptBindings.md, "Story: Preserve authentic binding identity across concurrent replies"; spec/core/postDelivery.md, "Story: Track detached work under runtime and room ownership"; spec/core/context.md, "Story: Select relevant history while retaining complete evidence"
 it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journey.md, \"Story: Complete or cancel a turn and retire its runtime\")", () => effect {
   const log: string[] = []
   const gate = () => Effect.try(() => Promise.withResolvers<void>())
@@ -582,7 +591,7 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   try host(() => store(say("j02-e2", dm, earlier[1] ?? "")))
   try host(() => store(m1))
 
-  // spec/core/providers.md, "Story: Share provider work without sharing cancellation"; spec/core/providerExecutions.md, "Story: Share exactly equivalent provider requests"
+  // spec/core/providers/work.md, "Story: Share provider work without sharing cancellation"; spec/core/providers/index.md, "Story: Share exactly equivalent provider requests"
   const firstCompose = try Effect.try(() => runtime.composeState(m1, ["NOTES_CONTEXT"], true))
   try host(() => providerStarted.promise)
   const secondCompose = try Effect.try(() => runtime.composeState(m1, ["NOTES_CONTEXT"], true))
@@ -1157,7 +1166,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
   }))
 }), 60_000)
 
-// spec/core/plugins.md, "Story: Load and roll back a plugin"; spec/core/plugins.md, "Duplicate callers share the registration outcome"; spec/core/plugins.md, "Cleanup removes only owned contributions"; spec/core/plugins.md, "Service start remains owned across rollback and unload"; spec/core/pluginRegistry.md, "Story: Retry and reload plugins without losing epoch ownership"; spec/core/pluginRegistry.md, "A retired epoch cannot mutate a replacement epoch"; spec/core/pluginServices.md, "Story: Withdraw plugin declarations without losing asynchronous instances"; spec/core/services.md, "Story: Acquire a declared service"; spec/core/services.md, "Concurrent acquisition joins the original startup"; spec/core/services.md, "An observer failure retains the running service"; spec/core/services.md, "Story: Stop a late or removed service once"; spec/core/services.md, "Late startup enters retirement without publication"; spec/core/serviceInstances.md, "Story: Share starts and stop each returned object once"; spec/core/eagerServices.md, "Story: Retry transient eager startup without restarting shutdown work"; spec/core/eagerServices.md, "Backoff starts only after rejection and uses the declared delay sequence"; spec/core/registries.md, "Story: Register actions providers and evaluators"; spec/core/registries.md, "Plugin contributions cannot displace an incumbent component"; spec/core/registries.md, "Story: Remove only registrations owned by a plugin epoch"; spec/core/messaging.md, "A captured handler survives registry removal and replacement"; spec/core/concurrentConnectors.md, "Story: Retain captured transports during registry replacement"; spec/core/hooks.md, "Story: Dispatch an immutable phase snapshot"; spec/core/hooks.md, "Each phase dispatch captures the current handler identities"; spec/core/hookService.md, "Story: Dispatch eligible event hooks in a stable order"; spec/core/hookService.md, "Eligibility returns every failure in source order and caches successful binary probes"; spec/core/adapterOwnership.md, "Story: Preserve adapter identity through plugin failure and migrations"; spec/core/concurrentHooks.md, "Story: Replace hooks while independent phase calls are in flight"; spec/core/serviceAcquisitionResult.md, "Story: Explain a service acquisition failure with every original cause"; spec/core/serviceBuilder.md, "Story: Build independent service classes from a mutable builder"
+// spec/core/plugins.md, "Story: Load and roll back a plugin"; spec/core/plugins.md, "Duplicate callers share the registration outcome"; spec/core/plugins.md, "Cleanup removes only owned contributions"; spec/core/plugins.md, "Service start remains owned across rollback and unload"; spec/core/pluginServices.md, "Story: Retry and reload plugins without losing epoch ownership"; spec/core/pluginServices.md, "A retired epoch cannot mutate a replacement epoch"; spec/core/pluginServices.md, "Story: Withdraw plugin declarations without losing asynchronous instances"; spec/core/services.md, "Story: Acquire a declared service"; spec/core/services.md, "Concurrent acquisition joins the original startup"; spec/core/services.md, "An observer failure retains the running service"; spec/core/services.md, "Story: Stop a late or removed service once"; spec/core/services.md, "Late startup enters retirement without publication"; spec/core/serviceInstances.md, "Story: Share starts and stop each returned object once"; spec/core/eagerServices.md, "Story: Retry transient eager startup without restarting shutdown work"; spec/core/eagerServices.md, "Backoff starts only after rejection and uses the declared delay sequence"; spec/core/registries.md, "Story: Register actions providers and evaluators"; spec/core/registries.md, "Plugin contributions cannot displace an incumbent component"; spec/core/registries.md, "Story: Remove only registrations owned by a plugin epoch"; spec/core/messaging.md, "A captured handler survives registry removal and replacement"; spec/core/concurrentConnectors.md, "Story: Retain captured transports during registry replacement"; spec/core/hooks.md, "Story: Dispatch an immutable phase snapshot"; spec/core/hooks.md, "Each phase dispatch captures the current handler identities"; spec/agent/host/eventHooks.md, "Story: Dispatch eligible event hooks in a stable order"; spec/agent/host/eventHooks.md, "Eligibility returns every failure in source order and caches successful binary probes"; spec/core/adapterOwnership.md, "Story: Preserve adapter identity through plugin failure and migrations"; spec/core/concurrentHooks.md, "Story: Replace hooks while independent phase calls are in flight"; spec/core/serviceAcquisitionResult.md, "Story: Explain a service acquisition failure with every original cause"; spec/core/serviceBuilder.md, "Story: Build independent service classes from a mutable builder"
 it.live("Load, reload and unload plugins, services and hooks (spec/core/plugins.md, \"Story: Load and roll back a plugin\")", () => effect {
   const store = try storeAt("j04-store")
   const runtime = try kernel({ store })
@@ -1452,7 +1461,7 @@ it.live("Load, reload and unload plugins, services and hooks (spec/core/plugins.
   ]))
 }, 120_000)
 
-// spec/core/storage.md, "Story: Publish complete immutable source revisions"; spec/core/storage.md, "Every page read checks current authorization and expected revision"; spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/core/storage.md, "Revisions and pagination reject invalid numeric inputs"; spec/core/ingressSnapshots.md, "Story: Preserve a durable original through prompt-only augmentation"; spec/core/authorization.md, "Story: Read only the authorized records"; spec/core/embeddingSpace.md, "Story: Keep stored vectors in their verified representation"; spec/core/embeddingSpace.md, "A probe prepares dimensions and representation before pinning"; spec/core/embeddingService.md, "Story: Activate once and retain every distinct source snapshot"; spec/core/embeddingService.md, "Initialization has one shared promise and a failed activation can retry"; spec/core/embeddingBatch.md, "Story: Finish the primary batch before retrying individual items"; spec/core/factWrites.md, "Story: Merge every contribution once into its canonical fact"; spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"; spec/core/privacy.md, "A marker follows successful scrub and persisted pseudonym assignments"; spec/core/privacyService.md, "Story: Share service startup while keeping independent scrub attempts"; spec/core/ingressSnapshots.md, "Reuse requires exact redacted content and every projected stored segment"; spec/core/secretSession.md, "Story: Restore known placeholders while keeping credentials out of replies"
+// spec/core/storage.md, "Story: Publish complete immutable source revisions"; spec/core/storage.md, "Every page read checks current authorization and expected revision"; spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/core/storage.md, "A stale or malformed revision, or invalid pagination, exposes no page"; spec/core/ingressSnapshots.md, "Story: Preserve a durable original through prompt-only augmentation"; spec/core/authorization.md, "Story: Read only the authorized records"; spec/core/embeddingSpace.md, "Story: Keep stored vectors in their verified representation"; spec/core/embeddingSpace.md, "A probe prepares dimensions and representation before pinning"; spec/core/embeddingService.md, "Story: Activate once and retain every distinct source snapshot"; spec/core/embeddingService.md, "Initialization has one shared promise and a failed activation can retry"; spec/core/batchQueue.md, "A batched call settles successful items before retrying failures"; spec/core/factWrites.md, "Story: Merge every contribution once into its canonical fact"; spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"; spec/core/privacy.md, "A marker follows successful scrub and persisted pseudonym assignments"; spec/core/privacyService.md, "Story: Share service startup while keeping independent scrub attempts"; spec/core/ingressSnapshots.md, "Reuse requires exact redacted content and every projected stored segment"; spec/core/secretSession.md, "Story: Restore known placeholders while keeping credentials out of replies"
 it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/storage.md, \"Story: Publish complete immutable source revisions\")", () => effect {
   try withEnv({ SECRET_SALT: "j05-pseudonym-map-salt" })
   class People extends Service {
@@ -1563,7 +1572,7 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
     stored: try host(() => runtime.getMemoryById(messageId)),
   }
 
-  // spec/core/storage.md, "Every page read checks current authorization and expected revision"; spec/core/storage.md, "Revisions and pagination reject invalid numeric inputs"
+  // spec/core/storage.md, "Every page read checks current authorization and expected revision"; spec/core/storage.md, "A stale or malformed revision, or invalid pagination, exposes no page"
   const replacement = "second revision 漢字\n".repeat(9_000)
   const before = try page(messageId, 0)
   try host(() => runtime.replaceMessageMemoryContent(messageId, { text: replacement }))
@@ -1673,7 +1682,7 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
     probes: embeddingCalls().filter((call) => call.params === null).length,
   }
 
-  // spec/core/embeddingBatch.md, "Story: Finish the primary batch before retrying individual items"
+  // spec/core/batchQueue.md, "A batched call settles successful items before retrying failures"
   const batchModel = try fixture(() => scriptedModels("j05-first", 10, { [ModelType.TEXT_EMBEDDING_BATCH]: [{ fail: new Error("actual provider batch failure") }] }))
   try fixture(() => batchModel.register(runtime))
   const batchTexts = ["retained text one", "retained text two"]
@@ -2502,8 +2511,8 @@ it.live("Story: Execute due work within its owning agent, across scheduler stora
   }))
 }), 90_000)
 
-// spec/core/pairing.md, "Story: Approve a pairing code without losing a failed request"; spec/core/pairingAdmission.md, "Story: Admit pending pairing requests without evicting existing senders"; spec/core/pairingGrants.md, "Story: Receive the actual stored grant identity"; spec/core/pairingReplies.md, "Story: Suppress repeated pairing replies within the retained TTL"; spec/core/approvals.md, "Story: Resolve an approval exactly once"; spec/core/approvals.md, "Persisting a request precedes publishing its in-memory callback"; spec/core/approvals.md, "Claiming removes pending ownership before a callback starts"; spec/core/approvals.md, "Restart drops process-owned callbacks and service retirement drains a claimed callback"; spec/core/approvalService.md, "Story: Drain every approval without crossing identities"; spec/core/approvalRetirement.md, "Story: Stop waits for approvals and their independent queries"; spec/core/approvalWorkers.md, "Story: Register each approval type once before creating its task"
-it.live("Pair a sender and approve an action across a restart (spec/core/pairing.md, \"Story: Approve a pairing code without losing a failed request\")", () => effect {
+// spec/core/pairing/index.md, "Story: Approve a pairing code without losing a failed request"; spec/core/pairing/admission.md, "Story: Admit pending pairing requests without evicting existing senders"; spec/core/pairing/grants.md, "Story: Receive the actual stored grant identity"; spec/core/pairing/replies.md, "Story: Suppress repeated pairing replies within the retained TTL"; spec/core/approvals.md, "Story: Resolve an approval exactly once"; spec/core/approvals.md, "Persisting a request precedes publishing its in-memory callback"; spec/core/approvals.md, "Claiming removes pending ownership before a callback starts"; spec/core/approvals.md, "Restart drops process-owned callbacks and service retirement drains a claimed callback"; spec/core/approvalService.md, "Story: Drain every approval without crossing identities"; spec/core/approvalRetirement.md, "Story: Stop waits for approvals and their independent queries"; spec/core/approvalService.md, "Story: Register each approval type once before creating its task"
+it.live("Pair a sender and approve an action across a restart (spec/core/pairing/index.md, \"Story: Approve a pairing code without losing a failed request\")", () => effect {
   const until = (check: () => Promise<boolean>) => effect {
     while (!(try host(check))) try sleep("5 millis")
   }
@@ -2537,7 +2546,7 @@ it.live("Pair a sender and approve an action across a restart (spec/core/pairing
     const pairing = (try host(() => runtime.getServiceLoadPromise(ServiceType.PAIRING))) as PairingService
     const approvals = (try host(() => runtime.getServiceLoadPromise(ServiceType.APPROVAL))) as ApprovalService
 
-    // spec/core/pairingAdmission.md, "One read-check-write admission owns the captured row and exact payload"; spec/core/pairingReplies.md, "A live retained claim suppresses a reply and expired claims can rearm it"
+    // spec/core/pairing/admission.md, "One read-check-write admission owns the captured row and exact payload"; spec/core/pairing/replies.md, "A live retained claim suppresses a reply and expired claims can rearm it"
     const checks = []
     for (const senderId of ["alice", "bob", "carol", "dave"]) {
       checks.push(try host(() => checkPairingAllowed(runtime, { channel, senderId })))
@@ -2562,7 +2571,7 @@ it.live("Pair a sender and approve an action across a restart (spec/core/pairing
     ]
     const admission = { checks, queued, claims, unchanged: JSON.stringify(identity(again)) === JSON.stringify(identity(first)), refreshed: seenAt(again) > seenAt(first) }
 
-    // spec/core/pairing.md, "Each request lookup selects the exact oldest live row for the normalized code"; spec/core/pairing.md, "A retained grant is captured before deletion of that request's ID"; spec/core/pairingGrants.md, "Both owner and grant-key indexes identify the same complete row"
+    // spec/core/pairing/index.md, "Each request lookup selects the exact oldest live row for the normalized code"; spec/core/pairing/index.md, "A retained grant is captured before deletion of that request's ID"; spec/core/pairing/grants.md, "Both owner and grant-key indexes identify the same complete row"
     const both = try host(() => Promise.all([
       pairing.approveCode({ channel, code: ` ${codes.alice.toLowerCase()} ` }),
       pairing.approveCode({ channel, code: codes.alice }),
@@ -2590,7 +2599,7 @@ it.live("Pair a sender and approve an action across a restart (spec/core/pairing
       pending: (try host(() => pairing.listPendingRequests(channel))).map((request) => request.senderId),
     }
 
-    // spec/core/approvals.md, "Persisting a request precedes publishing its in-memory callback"; spec/core/approvalWorkers.md, "Successful registrations retain one name and failed registrations retain none"
+    // spec/core/approvals.md, "Persisting a request precedes publishing its in-memory callback"; spec/core/approvalService.md, "Successful registrations retain one name and failed registrations retain none"
     const seen: string[] = []
     const persisted = Promise.withResolvers<void>()
     const slow = Promise.withResolvers<void>()
@@ -2796,8 +2805,8 @@ it.live("Pair a sender and approve an action across a restart (spec/core/pairing
   }))
 }, 60_000)
 
-// spec/core/notifications.md, "Story: Read durable notifications across retries and restart"; spec/core/notifications.md, "Inbox mutations retain stable IDs and increasing sequence coordinates"; spec/core/notifications.md, "Acknowledgement publishes success while ambiguity requires reconciliation"; spec/core/notifications.md, "Read fences use quiescent durable state and restart reloads that state"; spec/core/notifications.md, "Story: Preserve notification group and expiry policy"; spec/core/notifications.md, "Story: Reject invalid persisted inbox coordinates"; spec/core/notificationHydration.md, "Story: Publish a notification service only after durable hydration"; spec/core/notificationRecovery.md, "Story: Retry a failed notification service without concurrent loaders"; spec/core/notificationPayload.md, "Story: Keep notification data independent of the producer and observers"; spec/core/notificationCursor.md, "Story: Page a fixed notification snapshot without skipping unreadable rows"; spec/core/events.md, "Original fanout precedes its diagnostic reports"
-it.live("Notify the owner and bridge agent events across a restart (spec/core/notifications.md, \"Story: Read durable notifications across retries and restart\")", () => effect {
+// spec/core/notifications/index.md, "Story: Read durable notifications across retries and restart"; spec/core/notifications/index.md, "Inbox mutations retain stable IDs and increasing sequence coordinates"; spec/core/notifications/index.md, "Acknowledgement publishes success while ambiguity requires reconciliation"; spec/core/notifications/index.md, "Read fences use quiescent durable state and restart reloads that state"; spec/core/notifications/index.md, "Story: Preserve notification group and expiry policy"; spec/core/notifications/startup.md, "Hydration validates every row and the complete coordinate map"; spec/core/notifications/startup.md, "Story: Publish a notification service only after durable hydration"; spec/core/notifications/recovery.md, "Story: Retry a failed notification service without concurrent loaders"; spec/core/notifications/payload.md, "Story: Keep notification data independent of the producer and observers"; spec/core/notifications/cursor.md, "Story: Page a fixed notification snapshot without skipping unreadable rows"; spec/core/events.md, "Original fanout precedes its diagnostic reports"
+it.live("Notify the owner and bridge agent events across a restart (spec/core/notifications/index.md, \"Story: Read durable notifications across retries and restart\")", () => effect {
   const agentId = "0f9c2a64-7d1e-4b3a-9c55-09a0b1c2d3e4" as UUID
   const key = `notifications:${agentId}`
   const store = try storeAt("eliza-core-j09")
@@ -2848,7 +2857,7 @@ it.live("Notify the owner and bridge agent events across a restart (spec/core/no
     const reported = runtime.getRecentReportedErrors()
       .filter((entry) => entry.scope === "AgentEventService.listener")
       .map((entry) => ({ scope: entry.scope, context: entry.context }))
-    // spec/core/notifications.md, "Inbox mutations retain stable IDs and increasing sequence coordinates"; spec/core/events.md, "Original fanout precedes its diagnostic reports"
+    // spec/core/notifications/index.md, "Inbox mutations retain stable IDs and increasing sequence coordinates"; spec/core/events.md, "Original fanout precedes its diagnostic reports"
     try Effect.try(() => assert.deepStrictEqual({
       emptyTitle,
       first: { title: first.title, body: first.body, category: first.category, priority: first.priority, source: first.source, readAt: first.readAt, agentId: first.agentId, nativeSequence: first.nativeSequence },
@@ -2896,7 +2905,7 @@ it.live("Notify the owner and bridge agent events across a restart (spec/core/no
       try host(() => inbox.markReadByGroupKey("")),
     ]
     const durable = (try host(() => runtime.getCache<NotificationInboxSnapshot>(key)))!
-    // spec/core/notifications.md, "Story: Preserve notification group and expiry policy"
+    // spec/core/notifications/index.md, "Story: Preserve notification group and expiry policy"
     try Effect.try(() => assert.deepStrictEqual({
       counts: grouped.map((row) => row.data),
       builds: inbox.list().filter((row) => row.groupKey === "builds").map((row) => ({ title: row.title, read: row.readAt !== null, data: row.data })),
@@ -2938,7 +2947,7 @@ it.live("Notify the owner and bridge agent events across a restart (spec/core/no
     const fenced = failureOf(try Effect.flip(host(() => inbox.listNativePage())))
     const reconciled = try host(() => inbox.notify({ title: "After reconciliation" }))
     const afterFaults = (try host(() => runtime.getCache<NotificationInboxSnapshot>(key)))!
-    // spec/core/notifications.md, "Acknowledgement publishes success while ambiguity requires reconciliation"
+    // spec/core/notifications/index.md, "Acknowledgement publishes success while ambiguity requires reconciliation"
     try Effect.try(() => assert.deepStrictEqual({
       refused: refused === writeFailure,
       unacknowledged,
@@ -2975,7 +2984,7 @@ it.live("Notify the owner and bridge agent events across a restart (spec/core/no
     const afterFence = try host(() => inbox.notify({ title: "After captured fence" }))
     const rest = try host(() => inbox.listNativePage({ nativeEpoch: firstPage.nativeEpoch, afterSequence: firstPage.nextSequence, throughSequence: firstPage.throughSequence, limit: 1 }))
     const allRead = [try host(() => inbox.markAllRead()), try host(() => inbox.markAllRead())]
-    // spec/core/notificationCursor.md, "Story: Page a fixed notification snapshot without skipping unreadable rows"
+    // spec/core/notifications/cursor.md, "Story: Page a fixed notification snapshot without skipping unreadable rows"
     try Effect.try(() => assert.deepStrictEqual({
       marks,
       noOpsWroteNothing: witness === noWrite,
@@ -3012,7 +3021,7 @@ it.live("Notify the owner and bridge agent events across a restart (spec/core/no
     return { titles: shown(inbox.listIncludingExpired()), page }
   })
 
-  // spec/core/notificationHydration.md, "Story: Publish a notification service only after durable hydration"; spec/core/notifications.md, "Story: Reject invalid persisted inbox coordinates"
+  // spec/core/notifications/startup.md, "Story: Publish a notification service only after durable hydration"; spec/core/notifications/startup.md, "Hydration validates every row and the complete coordinate map"
   try Effect.scoped(effect {
     const runtime = try kernel({ store, agentId, label: "b", plugins: services([AgentEventService]) })
     const adapter = runtime.adapter as unknown as SqliteAdapter
@@ -3100,7 +3109,7 @@ it.live("Notify the owner and bridge agent events across a restart (spec/core/no
     }))
   })
 
-  // spec/core/notificationRecovery.md, "Story: Retry a failed notification service without concurrent loaders"
+  // spec/core/notifications/recovery.md, "Story: Retry a failed notification service without concurrent loaders"
   try Effect.scoped(effect {
     const runtime = try kernel({ store, agentId, label: "c", plugins: services([NotificationService]) })
     const startError = (try Effect.flip(host(() => runtime.getServiceLoadPromise(ServiceType.NOTIFICATION)))) as ElizaError
@@ -3126,8 +3135,8 @@ it.live("Notify the owner and bridge agent events across a restart (spec/core/no
   })
 }, 60_000)
 
-// spec/core/oauthStart.md, "Story: Start authorization only after preserving its original state"; spec/core/oauthLifecycle.md, "Story: Complete one authorization without reusing a consumed state"; spec/core/oauthLifecycle.md, "A callback consumes a pending unexpired flow before provider work"; spec/core/oauthSecrets.md, "Story: Use a one-time verifier only with its originating flow"; spec/core/connectorBackends.md, "Story: Keep a stable facade while durable storage becomes available"; spec/core/connectorHandoff.md, "Story: Transfer complete fallback state before invoking the next backend"; spec/core/connectorStorage.md, "Story: Retain full account and flow values under exact identities"; spec/core/accountValues.md, "Story: Patch account policy without changing its durable identity"; spec/core/messaging.md, "Story: Dispatch through a selected connector account"; spec/core/connectorManagers.md, "Story: Resolve account providers through the correct manager"; spec/core/oauthBridge.md, "Story: Preserve one-time flow ownership across durable and process state"
-it.live("Connect a connector account through OAuth and send through it (spec/core/oauthLifecycle.md, \"Story: Complete one authorization without reusing a consumed state\"; spec/core/connectorBackends.md, \"Story: Keep a stable facade while durable storage becomes available\"; spec/core/messaging.md, \"Story: Dispatch through a selected connector account\")", () => scoped(effect {
+// spec/core/oauth/index.md, "Story: Start authorization only after preserving its original state"; spec/core/oauth/index.md, "Story: Complete one authorization without reusing a consumed state"; spec/core/oauth/index.md, "A callback consumes a pending unexpired flow before provider work"; spec/core/oauth/verifiers.md, "Story: Use a one-time verifier only with its originating flow"; spec/core/connectorHandoff.md, "Story: Transfer complete fallback state before invoking the next backend"; spec/core/connectorStorage.md, "Story: Retain full account and flow values under exact identities"; spec/core/accountValues.md, "Story: Patch account policy without changing its durable identity"; spec/core/messaging.md, "Story: Dispatch through a selected connector account"; spec/core/connectorManagers.md, "Story: Resolve account providers through the correct manager"; spec/core/oauth/bridge.md, "Story: Preserve one-time flow ownership across durable and process state"
+it.live("Connect a connector account through OAuth and send through it (spec/core/oauth/index.md, \"Story: Complete one authorization without reusing a consumed state\"; spec/core/connectorHandoff.md, \"Story: Transfer complete fallback state before invoking the next backend\"; spec/core/messaging.md, \"Story: Dispatch through a selected connector account\")", () => scoped(effect {
   const store = try storeAt("eliza-core-connect-an-account")
   let retired = false
   const runtime = try acquireRelease(
@@ -3168,7 +3177,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const facade = manager.getStorage()
   // spec/core/accountValues.md, "Normalization preserves explicit values and applies only documented defaults"
   const team = try host(() => manager.upsertAccount("slack", { label: "", role: "SERVICE", purpose: ["messaging", " "] }, " team-bot "))
-  // spec/core/oauthStart.md, "Persistence precedes provider initiation and failed cleanup retains both errors"
+  // spec/core/oauth/index.md, "Persistence precedes provider initiation and failed cleanup retains both errors"
   const work = try host(() => manager.startOAuth("google", { accountId: "user-1", label: "Work", scopes: ["gmail.send"], redirectUri: "https://agent.test/oauth/callback" }))
   const workVerifier = work.codeVerifier ?? ""
   const started = {
@@ -3182,7 +3191,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const staleFallback = try host(() => manager.startOAuth("outlook", {}))
   try sleep("20 millis")
 
-  // spec/core/connectorBackends.md, "Backend replacement preserves facade identity and memoizes each current adapter"
+  // spec/core/connectorHandoff.md, "Backend replacement preserves facade identity and memoizes each current adapter"
   const adapter = try Effect.try(() => new SqliteAdapter(store, "a"))
   try Effect.try(() => runtime.registerDatabaseAdapter(adapter))
   try host(() => runtime.initialize({ skipMigrations: true }))
@@ -3192,7 +3201,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const teamRows = try host(() => adapter.listConnectorAccounts({ provider: "slack" }))
   const workRow = try host(() => adapter.getOAuthFlowState({ state: work.state, provider: "google" }))
   const staleRow = try host(() => adapter.getOAuthFlowState({ state: staleFallback.state, provider: "outlook", includeConsumed: true, includeExpired: true }))
-  // spec/core/oauthStart.md, "Persistence precedes provider initiation and failed cleanup retains both errors"; spec/core/oauthSecrets.md, "Story: Use a one-time verifier only with its originating flow"
+  // spec/core/oauth/index.md, "Persistence precedes provider initiation and failed cleanup retains both errors"; spec/core/oauth/verifiers.md, "Story: Use a one-time verifier only with its originating flow"
   const insertFailure = new Error("the database refused the OAuth flow")
   try Effect.try(() => adapter.fault("createOAuthFlowState", { reject: insertFailure }))
   const refusedStart = try Effect.flip(host(() => manager.startOAuth("google", { accountId: "user-3" })))
@@ -3214,7 +3223,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const denied = try host(() => manager.startOAuth("google", { accountId: "user-9" }))
   const expiringCallback = try Effect.try(() => outlook.consent(expiring.authUrl ?? ""))
   try sleep("20 millis")
-  // spec/core/oauthLifecycle.md, "A callback consumes a pending unexpired flow before provider work"
+  // spec/core/oauth/index.md, "A callback consumes a pending unexpired flow before provider work"
   const workCallback = try Effect.try(() => google.consent(work.authUrl ?? "", "user-1"))
   const workDone = try host(() => manager.completeOAuth("google", workCallback))
   const afterWork = exchanges()
@@ -3224,7 +3233,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const refusal = try host(() => manager.completeOAuth("google", deniedCallback))
   const afterRefusals = exchanges()
   const deniedRow = try host(() => adapter.getOAuthFlowState({ state: denied.state, provider: "google", includeConsumed: true, includeExpired: true }))
-  // spec/core/oauthBridge.md, "Mirror mutation precedes optional durable calls and captured results remain stable"
+  // spec/core/oauth/bridge.md, "Mirror mutation precedes optional durable calls and captured results remain stable"
   const personalCallback = try Effect.try(() => google.consent(personal.authUrl ?? "", "user-2"))
   const consumeFailure = new Error("the database lost the connection while consuming")
   try Effect.try(() => adapter.fault("consumeOAuthFlowState", { reject: consumeFailure }))
@@ -3265,7 +3274,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
     personal: [personalDone.flow.status, personalAccount?.accountKey, personalAccount?.label, personalId !== workId],
   }
 
-  // spec/core/connectorManagers.md, "Stored disable and revoke decisions win over provider readiness"
+  // spec/core/accountValues.md, "Provider refresh preserves stored identity and protected policy fields"
   const disabled = try host(() => manager.patchAccount("google", workId, { status: "disabled" }))
   const listed = try host(() => manager.listAccounts("google"))
   const workPolicy = try host(() => manager.evaluatePolicy({ provider: "google" }, { accountId: workId }))
@@ -3304,7 +3313,7 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const accounts = try host(() => reloaded.listAccounts("google"))
   const finished = try host(() => reloaded.getOAuthFlow("google", work.id))
   const replayedAfterRestart = try Effect.flip(host(() => reloaded.completeOAuth("google", workCallback)))
-  // spec/core/oauthSecrets.md, "Story: Use a one-time verifier only with its originating flow"; spec/core/oauthLifecycle.md, "A callback consumes a pending unexpired flow before provider work"
+  // spec/core/oauth/verifiers.md, "Story: Use a one-time verifier only with its originating flow"; spec/core/oauth/index.md, "A callback consumes a pending unexpired flow before provider work"
   const beforeChild = exchanges()
   const child = try host(() => runNode({ script: startInChild, args: [store.path, runtime.agentId], vibe: true, timeoutMs: 120_000 }))
   const fromChild = try Effect.try(() => JSON.parse(child.stdout.split("\n").find((line) => line.startsWith("{\"id\"")) ?? "null") as { id: string; callback: { state: string; code: string; query: Record<string, string> } })
@@ -3608,8 +3617,8 @@ it.live("Fetch media and guard outbound requests (spec/core/media.md, \"Story: F
   }))
 }), 60_000)
 
-// spec/core/atomicPublication.md, "Story: Publish complete durable JSON with an honest receipt"; spec/core/atomicPublication.md, "The final path changes only after a complete temporary file is renamed"; spec/core/atomicWriters.md, "Story: Publish whole snapshots despite interleaved processes"; spec/core/atomicWriters.md, "The latest successful rename owns the whole final snapshot"; spec/core/temporaryNames.md, "Story: Give concurrent publications distinct temporary paths"; spec/core/logFiles.md, "Story: Open optional log files lazily and close their descriptors"; spec/core/logFiles.md, "A single initialization attempt opens output prompt and chat sinks in order"; spec/core/logListeners.md, "Story: Retain recent diagnostics and notify current listeners"; spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"; spec/core/diagnostics.md, "A credential field emits only a replacement marker"
-it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.md, \"Story: Publish complete durable JSON with an honest receipt\"; spec/core/atomicWriters.md, \"Story: Publish whole snapshots despite interleaved processes\"; spec/core/temporaryNames.md, \"Story: Give concurrent publications distinct temporary paths\"; spec/core/logFiles.md, \"Story: Open optional log files lazily and close their descriptors\"; spec/core/logListeners.md, \"Story: Retain recent diagnostics and notify current listeners\"; spec/core/diagnostics.md, \"Story: Redact untrusted diagnostic fields at the sink\")", () => effect {
+// spec/core/atomicPublication.md, "Story: Publish complete durable JSON with an honest receipt"; spec/core/atomicPublication.md, "The final path changes only after a complete temporary file is renamed"; spec/core/atomicWriters.md, "Story: Publish whole snapshots despite interleaved processes"; spec/core/atomicWriters.md, "The latest successful rename owns the whole final snapshot"; spec/core/temporaryNames.md, "Story: Give concurrent publications distinct temporary paths"; spec/core/logging/files.md, "Story: Open optional log files lazily and close their descriptors"; spec/core/logging/files.md, "A single initialization attempt opens output, prompt and chat sinks in order"; spec/core/logging/index.md, "Story: Retain recent diagnostics and notify current listeners"; spec/core/security.md, "Story: Admit content and outbound data"; spec/core/security.md, "A secret never appears in a log line"
+it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.md, \"Story: Publish complete durable JSON with an honest receipt\"; spec/core/atomicWriters.md, \"Story: Publish whole snapshots despite interleaved processes\"; spec/core/temporaryNames.md, \"Story: Give concurrent publications distinct temporary paths\"; spec/core/logging/files.md, \"Story: Open optional log files lazily and close their descriptors\"; spec/core/logging/index.md, \"Story: Retain recent diagnostics and notify current listeners\"; spec/core/security.md, \"Story: Admit content and outbound data\")", () => effect {
   const time = /\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g
   const core = `${coreDir}/src/index.vibe`
   const writerScript = `${coreDir}/test/support/atomic-json-writer.ts`
@@ -3678,12 +3687,9 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
 
   const shared = `${dir}/shared.json`
   try host(() => writeJsonAtomic(shared, { writer: "initial", revision: -1, payload: "" }))
-  const writers = try host(async () => [spawnNode({ file: writerScript, args: [shared, "a", "sync"], vibe: true }), spawnNode({ file: writerScript, args: [shared, "b", "async"], vibe: true })])
-  const finished = try Ref.make(false)
-  const waiting = try fork(ensuring(host(() => Promise.all(writers.map((writer) => writer.exited))), Ref.set(finished, true)))
   const seen: string[] = []
   const observed = new Set<string>()
-  while (!(try Ref.get(finished))) {
+  const observe = effect {
     const read = host(() => readJsonFile<{ writer: string; revision: number; payload: string }>(shared)) catch (error) => ({ torn: String(error) })
     if (read === null) seen.push("missing")
     else if ("torn" in read) seen.push(read.torn)
@@ -3692,8 +3698,29 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
       seen.push(read.writer)
       observed.add(`${read.writer}:${read.revision}`)
     } else seen.push(`partial ${read.writer} ${read.revision}`)
+    return read
+  }
+  try observe
+  const writerNames = ["a", "b"]
+  const writers = try host(async () => [spawnNode({ file: writerScript, args: [shared, "a", "sync", "pause"], vibe: true }), spawnNode({ file: writerScript, args: [shared, "b", "async", "pause"], vibe: true })])
+  const finished = try Ref.make(false)
+  const waiting = try fork(ensuring(host(() => Promise.all(writers.map((writer) => writer.exited))), Ref.set(finished, true)))
+  const release = (writer: string) => host(() => writeJsonAtomic(`${shared}.go-${writer}`, {}))
+  const coordinating = try fork(effect {
+    try host(() => Promise.all(writers.map((writer) => writer.output("paused"))))
+    const paused = try observe
+    const later = paused !== null && "writer" in paused ? paused.writer : "a"
+    const earlier = writerNames.find((writer) => writer !== later) ?? "b"
+    try release(earlier)
+    try host(() => writers[writerNames.indexOf(earlier)].exited)
+    try observe
+    try release(later)
+  })
+  while (!(try Ref.get(finished))) {
+    try observe
     try sleep("5 millis")
   }
+  try Fiber.join(coordinating)
   const exits = (try Fiber.join(waiting)).map((result) => [result.status, result.signal])
   const last = try host(() => readJsonFile<{ writer: string; revision: number; payload: string }>(shared))
   const interleaved = [exits, [...new Set(seen)].sort(), [...observed].some((key) => !key.endsWith(":29")), last === null ? null : [last.revision, last.payload === last.writer.repeat(16_384)]]
@@ -3804,8 +3831,8 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
   }))
 }, 300_000)
 
-// spec/core/voice.md, "Story: Interrupt one voice turn across its consumers"; spec/core/voice.md, "Reason ownership precedes unlinking and signal abortion follows callbacks"; spec/core/voiceRegistry.md, "Story: Replace and cancel the active voice turn by room"; spec/core/voiceRewrite.md, "Story: Reuse scoped rephrasing while retaining original text on failure"; spec/core/voiceRewrite.md, "Cache hits move to most recent and capacity evicts only the oldest key"
-it.live("Speak a reply and interrupt it (spec/core/voice.md, \"Story: Interrupt one voice turn across its consumers\"; spec/core/voiceRegistry.md, \"Story: Replace and cancel the active voice turn by room\"; spec/core/voiceRewrite.md, \"Story: Reuse scoped rephrasing while retaining original text on failure\")", () => scoped(effect {
+// spec/core/voice.md, "Story: Interrupt one voice turn across its consumers"; spec/core/voice.md, "Reason ownership precedes unlinking and signal abortion follows callbacks"; spec/core/voiceRegistry.md, "Story: Replace and cancel the active voice turn by room"; spec/core/outboundStyle.md, "Story: Reuse scoped rephrasing while retaining original text on failure"; spec/core/outboundStyle.md, "Cache hits move to most recent and capacity evicts only the oldest key"
+it.live("Speak a reply and interrupt it (spec/core/voice.md, \"Story: Interrupt one voice turn across its consumers\"; spec/core/voiceRegistry.md, \"Story: Replace and cancel the active voice turn by room\"; spec/core/outboundStyle.md, \"Story: Reuse scoped rephrasing while retaining original text on failure\")", () => scoped(effect {
   let arrivals = 0
   const bothRequests = Deferred.makeUnsafe<void>()
   const server = try acquireRelease(host(() => loopback(() => { arrivals += 1; if (arrivals === 2) Deferred.doneUnsafe(bothRequests, Exit.void) })), (open) => orDie(host(() => open.close())))
@@ -3824,7 +3851,7 @@ it.live("Speak a reply and interrupt it (spec/core/voice.md, \"Story: Interrupt 
   const large = try fork(host(() => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Tell me a story", signal: token.signal })))
   const speech = try fork(host(() => runtime.useModel(ModelType.TEXT_TO_SPEECH, { text: "Sure, here it is.", signal: token.signal })))
 
-  // spec/core/voiceRewrite.md, "Cache hits move to most recent and capacity evicts only the oldest key"
+  // spec/core/outboundStyle.md, "Cache hits move to most recent and capacity evicts only the oldest key"
   const voice = (text: string, source: string) => host(() => ensureAgentVoice(runtime, { text }, { source }))
   const rewrites = [
     try voice("Sure, here it is.", "discord"),
@@ -3957,8 +3984,65 @@ it.live("Speak a reply and interrupt it (spec/core/voice.md, \"Story: Interrupt 
   }))
 }), 15_000)
 
-// spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/release.md, "Every release check names the candidate it actually examined"; spec/core/contracts.md, "Story: Consume the replacement through existing imports"; spec/core/contracts.md, "A release accounts for every required public symbol and consumer"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"; spec/core/curatedApps.md, "Story: Resolve apps registered through a different package instance"; spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/accountBridges.md, "Story: Install and clear shared account-selection contracts"; spec/core/catalog.md, "A valid runtime registration overrides its id and invalidates cached indexes"
-it.live('the packed tarball installs, imports, compiles and shares state across copies (spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/contracts.md, "Story: Consume the replacement through existing imports")', () => effect {
+// spec/core/catalog.md, "Story: Discover and register first-party capabilities"
+it.live("Generate the first-party catalog from plugin-owned and curated manifests (spec/core/catalog.md, \"Story: Discover and register first-party capabilities\")", () => scoped(effect {
+  const work = try scratch("eliza-core-catalog")
+  const { root: dir, sourceDir } = try host(() => freezeCore(coreDir, work))
+  const catalog = `${sourceDir}/src/catalog`
+  try host(() => removeScratch(`${catalog}/curated`))
+  const write = (path: string, value: unknown) => host(() => writeJsonAtomic(`${dir}/${path}`, value))
+  const app = (id: string, launch: string, extra: object) => ({ id, name: id, kind: "app", subtype: "tool", launch: { type: launch }, render: { group: "apps" }, ...extra })
+  try write("plugins/beta/registry-entry.json", [
+    { id: "bravo", name: "Bravo", npmName: "@fx/plugin-bravo", kind: "plugin", subtype: "ai-provider", render: { group: "ai" }, channels: ["discord"], shortIds: ["bee", "b"], config: { BRAVO_MODEL: { type: "string", required: false }, BRAVO_API_KEY: { type: "secret", required: true, autoEnableProvider: true } } },
+    { id: "alpha-two", name: "Alpha Two", npmName: "@fx/plugin-alpha", kind: "connector", subtype: "messaging", render: { group: "connector" }, channels: ["Slack"] },
+  ])
+  try write("plugins/alphaone/registry-entry.json", { id: "alphaone", name: "Alpha One", npmName: "@fx/plugin-alpha", kind: "connector", subtype: "social", render: { group: "connector" }, channels: ["Slack"], config: { ALPHA_TOKEN: { type: "secret", required: true, autoEnableProvider: false } } })
+  try write("plugins/empty/notes.json", { id: "ignored" })
+  try write("plugins/stray.json", { id: "ignored" })
+  try write("packages/delta/registry-entry.json", app("delta", "internal-tab", { npmName: "@fx/app-delta", curatedApp: { slug: "delta", order: 2, aliases: ["d"] } }))
+  try write("packages/core/src/catalog/curated/apps/echo.json", app("echo", "overlay", { curatedApp: { slug: "echo", order: 1 } }))
+  try write("packages/core/src/catalog/curated/apps/nested/foxtrot.json", app("foxtrot", "overlay", { npmName: "@fx/app-foxtrot", curatedApp: { slug: "charlie-app", order: 2 } }))
+  try write("packages/core/src/catalog/curated/connectors/charlie.json", { id: "charlie", name: "Charlie", kind: "connector", subtype: "email", render: { group: "connector" }, channels: ["telegram"] })
+  try write("packages/core/src/catalog/curated/notes.txt", { id: "ignored" })
+
+  const generated = effect {
+    const result = try host(() => runNode({ script: generateInChild, cwd: sourceDir, vibe: true, timeoutMs: 120_000 }))
+    return try Effect.try({ try: () => JSON.parse(result.status === 0 ? result.stdout : "") as unknown, catch: () => result })
+  }
+  const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
+  const bundled = (head: object, config: object, group: string, tail: object) => ({ ...head, source: "bundled", tags: [], config, render: { visible: true, pinTo: [], style: "card", group, actions: [] }, resources: {}, dependsOn: [], ...tail })
+  const appTail = (curatedApp: object, launch: string) => ({ channels: [], shortIds: [], curatedApp, kind: "app", subtype: "tool", launch: { type: launch, capabilities: [] } })
+  assert.deepStrictEqual(try generated, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot"], registry: {
+    full: json({ entries: [
+      bundled({ id: "alpha-two", name: "Alpha Two", npmName: "@fx/plugin-alpha" }, {}, "connector", { channels: ["Slack"], shortIds: [], kind: "connector", subtype: "messaging" }),
+      bundled({ id: "alphaone", name: "Alpha One", npmName: "@fx/plugin-alpha" }, { ALPHA_TOKEN: { type: "secret", required: true, autoEnableProvider: false } }, "connector", { channels: ["Slack"], shortIds: [], kind: "connector", subtype: "social" }),
+      bundled({ id: "bravo", name: "Bravo", npmName: "@fx/plugin-bravo" }, { BRAVO_MODEL: { type: "string", required: false }, BRAVO_API_KEY: { type: "secret", required: true, autoEnableProvider: true } }, "ai", { channels: ["discord"], shortIds: ["bee", "b"], kind: "plugin", subtype: "ai-provider" }),
+      bundled({ id: "charlie", name: "Charlie" }, {}, "connector", { channels: ["telegram"], shortIds: [], kind: "connector", subtype: "email" }),
+      bundled({ id: "delta", name: "delta", npmName: "@fx/app-delta" }, {}, "apps", appTail({ slug: "delta", order: 2, aliases: ["d"] }, "internal-tab")),
+      bundled({ id: "echo", name: "echo" }, {}, "apps", appTail({ slug: "echo", order: 1, aliases: [] }, "overlay")),
+      bundled({ id: "foxtrot", name: "foxtrot", npmName: "@fx/app-foxtrot" }, {}, "apps", appTail({ slug: "charlie-app", order: 2, aliases: [] }, "overlay")),
+    ] }),
+    channels: json({ Slack: "@fx/plugin-alpha", discord: "@fx/plugin-bravo" }),
+    providers: json({ BRAVO_API_KEY: "@fx/plugin-bravo" }),
+    shortIds: json({ b: "@fx/plugin-bravo", bee: "@fx/plugin-bravo" }),
+  } })
+
+  const failing = (failure: { _tag: string; message: string }) => ({ ids: failure, registry: failure })
+  try write("packages/core/src/catalog/curated/plugins/bravo.json", { id: "bravo", name: "Bravo again", kind: "plugin", subtype: "other", render: { group: "ai" } })
+  assert.deepStrictEqual(try generated, failing({ _tag: "DuplicateRegistryId", message: `[registry/generate] duplicate id "bravo" in ${catalog}/curated/plugins/bravo.json and ${dir}/plugins/beta/registry-entry.json` }))
+  try host(() => removeScratch(`${catalog}/curated/plugins/bravo.json`))
+  try write("packages/core/src/catalog/curated/plugins/broken.json", { id: "Broken Id", name: "Broken", kind: "plugin", subtype: "other", render: {} })
+  assert.deepStrictEqual(try generated, failing({ _tag: "InvalidRegistryEntryFile", message: `[registry/generate] ${catalog}/curated/plugins/broken.json failed validation: ${JSON.stringify([
+    { origin: "string", code: "invalid_format", format: "regex", pattern: "/^[a-z0-9][a-z0-9-]*$/", path: ["id"], message: "id must be kebab-case ascii" },
+    { expected: "string", code: "invalid_type", path: ["render", "group"], message: "Invalid input: expected string, received undefined" },
+  ], null, 2)}` }))
+  try host(() => removeScratch(`${catalog}/curated/plugins/broken.json`))
+  try write("plugins/gamma/registry-entry.json", { id: "gamma", name: "Gamma", npmName: "@fx/plugin-gamma", kind: "plugin", subtype: "feature", render: { group: "ai" }, channels: ["discord"] })
+  assert.deepStrictEqual(try generated, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot", "gamma"], registry: { _tag: "RegistryClaimConflict", message: "[registry/generate] channel \"discord\" claimed by both @fx/plugin-bravo and @fx/plugin-gamma" } })
+}), 300_000)
+
+// spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/release.md, "Every release check names the candidate it actually examined"; spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/accountBridges.md, "Each bridge slot preserves the last installed object identity"; spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/accountBridges.md, "Story: Install and clear shared account-selection contracts"; spec/core/catalog.md, "A valid runtime registration overrides its id and invalidates cached indexes"
+it.live('the packed tarball installs, imports, compiles and shares state across copies (spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package")', () => effect {
   const BASELINE = `import fs from "node:fs"; import path from "node:path";
 const read = (name) => JSON.parse(fs.readFileSync(path.resolve(JSON.parse(process.argv[1]), "../../spec/core/baseline", name), "utf8"));
 const surface = read("core-public-surface.json"); const consumers = read("core-consumers.json"); const graph = read("import-graph.json");
@@ -3966,7 +4050,7 @@ console.log(JSON.stringify({
   closures: graph.entrypoints.map(({ entry, externalRuntimeImports }) => ({ entry, externalRuntimeImports })),
   entrypoints: surface.entrypoints.map(({ entry, conditions, exports }) => ({ entry, conditions, exports: exports.map(({ name, typeOnly }) => ({ name, typeOnly })) })),
   files: surface.files.map(({ path, sha256 }) => ({ path, sha256 })),
-  imports: consumers.imports.map(({ module, kind, names, text }) => ({ module, kind, names: names.map(({ name, typeOnly }) => ({ name, typeOnly })), text })),
+  imports: consumers.imports.map(({ file, line, module, kind, names, text }) => ({ file, line, module, kind, names: names.map(({ name, typeOnly }) => ({ name, typeOnly })), text })),
 }));`
   const NAMES = `const entries = JSON.parse(process.argv[1]); const names = {};
 for (const entry of entries) names[entry] = Object.keys(await import("@elizaos/core" + entry.slice(1), entry.endsWith(".json") ? { with: { type: "json" } } : undefined)).sort();
@@ -4053,8 +4137,7 @@ const [a, b] = JSON.parse(process.argv[1]); const load = (file) => import(pathTo
 const attempt = (f) => { try { return f(); } catch (error) { return "threw: " + String(error).replace(/\\s+/g, " "); } };
 const A = await load(a.root); const B = await load(b.root);
 const anthropic = { name: "anthropic" }; const coding = { name: "coding" }; const manager = { run: (_context, fn) => fn(), active: () => undefined };
-const early = [B.getElizaCuratedAppDefinition("journey alias")?.slug ?? null, B.getRegisteredCuratedApps().length]; const before = B.getTrajectoryContextManager();
-A.registerCuratedApp({ slug: "journey-app", canonicalName: "@journey/app-journey", aliases: ["journey alias"] });
+const before = B.getTrajectoryContextManager();
 A.setAnthropicAccountPoolBridge(anthropic); A.setCodingAgentSelectorBridge(coding);
 const installed = [B.getAnthropicAccountPoolBridge() === anthropic, B.getCodingAgentSelectorBridge() === coding];
 A.setAnthropicAccountPoolBridge(null);
@@ -4063,9 +4146,7 @@ const bundled = attempt(() => A.loadRegistry().byId.get("agent-orchestrator") ??
 const registered = attempt(() => { A.registerRegistryEntry({ ...bundled, description: "registered at runtime" }); return "registered"; });
 console.log(JSON.stringify({
   errors: [new A.ElizaError("journey", { code: "JOURNEY" }) instanceof B.ElizaError, A.ElizaError === (await load(a.protocol)).ElizaError, A.ElizaError === (await load(a.speech)).ElizaError],
-  curated: [B.getRegisteredCuratedApps().map((app) => app.slug), B.getElizaCuratedAppDefinition("journey alias")?.slug ?? null, B.getElizaCuratedAppDefinition("journey")?.slug ?? null],
   bridges: [...installed, B.getAnthropicAccountPoolBridge(), B.getCodingAgentSelectorBridge() === coding],
-  early,
   ambient: [before !== manager, B.getTrajectoryContextManager() === manager],
   registry: [typeof bundled === "object" && bundled !== null ? bundled.description : bundled, registered, attempt(() => A.loadRegistry().byId.get("agent-orchestrator")?.description ?? null), attempt(() => B.loadRegistry().byId.get("agent-orchestrator")?.description ?? null)],
 }));`
@@ -4087,7 +4168,7 @@ console.log(JSON.stringify({
     closures: Array<{ entry: string; externalRuntimeImports: string[] }>
     entrypoints: Array<{ entry: string; conditions: Record<string, string>; exports: Array<{ name: string; typeOnly: boolean }> }>
     files: Array<{ path: string; sha256: string }>
-    imports: Array<{ module: string; kind: string; names: Array<{ name: string; typeOnly: boolean }>; text: string }>
+    imports: Array<{ file: string; line: number; module: string; kind: string; names: Array<{ name: string; typeOnly: boolean }>; text: string }>
   }
   const selected = { ...selection, artifactDigest: packed.sha256 }
   const examined = effect {
@@ -4135,14 +4216,21 @@ console.log(JSON.stringify({
     specifier.startsWith("@elizaos/") || !(specifier.startsWith("node:") || packageName(specifier) in (manifest.dependencies ?? {}))).map((specifier) => `.: imports ${specifier}`))
 
   const required = new Map<string, { module: string; name: string; typeOnly: boolean }>()
+  const droppedConsumerNames = new Set(["@elizaos/core\u0000TrajectoryChatMessage"])
+  const unlistedConsumerNames: string[] = []
   for (const site of consumerImports) {
-    if (!baseline.some((entry) => `@elizaos/core${entry.entry.slice(1)}` === site.module)) continue
+    const imported = baseline.find((entry) => `@elizaos/core${entry.entry.slice(1)}` === site.module)
+    if (imported === undefined) continue
     const named = site.kind === "LastTypeNode"
       ? [...site.text.matchAll(/import\("[^"]+"\)\.([A-Za-z_$][\w$]*)/g)].map((found) => ({ name: found[1], typeOnly: true }))
       : site.kind === "ImportDeclaration" || site.kind === "ExportDeclaration" ? site.names : []
     for (const { name, typeOnly } of named) {
       if (name === "*" || name === "default") continue
       const key = `${site.module}\u0000${name}`
+      if (!imported.exports.some((symbol) => symbol.name === name)) {
+        if (!droppedConsumerNames.has(key)) unlistedConsumerNames.push(`${site.file}:${site.line} ${site.module} ${name}: consumer import not in baseline`)
+        continue
+      }
       required.set(key, { module: site.module, name, typeOnly: typeOnly && (required.get(key)?.typeOnly ?? true) })
     }
   }
@@ -4157,6 +4245,7 @@ console.log(JSON.stringify({
   try node(consumer, WRITE, [consumer, { "imports.ts": importsTs, "tsconfig.json": tsconfig }])
   const compiled = try host(() => runNode({ file: `${consumer}/node_modules/typescript/bin/tsc`, args: ["--noEmit", "-p", consumer], cwd: consumer, timeoutMs: 300_000 }))
   const consumerTypes = try record("PackedTypes", "consumer compilation", [
+    ...unlistedConsumerNames,
     ...compiled.stdout.split("\n").filter((line) => line.includes("error TS")),
     ...(compiled.status === 0 ? [] : [`tsc exit ${compiled.status}`]),
   ])
@@ -4177,9 +4266,7 @@ console.log(JSON.stringify({
   const shared = (try node(consumer, COPIES, [files(consumer), files(other)])) as Record<string, unknown>
   const expectedShared: Record<string, unknown> = {
     errors: [true, true, true],
-    curated: [["journey-app"], "journey-app", "journey-app"],
     bridges: [true, true, null, true],
-    early: [null, 0],
     ambient: [true, true],
     registry: ["Task-agent orchestration plugin - spawn and manage open-ended CLI task agents via PTY", "registered", "registered at runtime", "registered at runtime"],
   }

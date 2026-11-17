@@ -1,4 +1,4 @@
-// spec/core/providers.md, "Story: Share provider work without sharing cancellation"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+// spec/core/capabilityRouting.md, "Story: Route to a local or remote runner"; spec/core/capabilityRouting.md, "A request runs on at most one runner, chosen once"; spec/core/capabilityRouting.md, "A failed request carries a typed failure"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
 import { errorText } from "../utils/errors.vibe"
 import { foreign, runDetached } from "../edge.vibe"
 import type { JsonObject, JsonValue } from "../types/primitives.vibe"

@@ -1,4 +1,4 @@
-// spec/core/numbers.md, "Canonical integers reject signs leading zeroes padding fractions and unsafe values"
+// spec/core/numbers.md, "Canonical integers reject signs, leading zeroes, padding, fractions and unsafe values"
 import { canonicalDecimal } from "../../gen/core__numbers.effect.vibe"
 import { failingAs, thrown } from "../edge.vibe"
 

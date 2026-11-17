@@ -1,4 +1,4 @@
-// spec/core/sensitiveRequestAdapters.md, "Story: Resolve the correct connector while retaining registration order"; spec/core/sensitiveRequestAdapters.md, "Per-target identity and callback order determine resolution"
+// spec/core/sensitiveRequestAdapters.md, "Story: Resolve the correct connector while retaining registration order"; spec/core/sensitiveRequestAdapters.md, "Each target holds one nonempty adapter list in registration order"; spec/core/sensitiveRequestAdapters.md, "Registering the same adapter twice for a target is a no-op"; spec/core/sensitiveRequestAdapters.md, "Resolution takes the oldest supporting adapter and falls back to the newest"
 import type { SensitiveRequestTunnelRouting } from "./sensitive-request-policy.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 import { Service } from "./types/service.vibe"

@@ -1,4 +1,4 @@
-// spec/core/runtime.md, "Story: Initialize an explicit host composition"; spec/core/runtime.md, "Story: Retire every owned operation"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+// spec/core/runtime.md, "Story: Initialize an explicit host composition"; spec/core/runtime.md, "Story: Retire every owned operation"; spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package"
 
 module edge {
   import type { ReportedError } from "./errors.vibe"

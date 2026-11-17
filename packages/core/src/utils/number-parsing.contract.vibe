@@ -1,4 +1,4 @@
-// spec/core/numbers.md, "Canonical integers reject signs leading zeroes padding fractions and unsafe values"
+// spec/core/numbers.md, "Canonical integers reject signs, leading zeroes, padding, fractions and unsafe values"
 import { Arbitrary, Effect, Exit, Schema } from "effect";
 import { contract } from "vibestack/testing";
 import { parseCanonicalInteger } from "./number-parsing.vibe";

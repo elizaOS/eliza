@@ -1,4 +1,4 @@
-// spec/core/contracts.md, "Story: Consume the replacement through existing imports"
+// spec/core/release.md, "Story: Install the replacement through existing npm entry points"
 export * from "./protocol.vibe"
 export {
   beginRequestOperationAttempt,
@@ -64,9 +64,7 @@ export {
   type AccountAuthKind,
   type AccountConfig,
   accountConfigSchema,
-  type AppEntry,
   appEntrySchema,
-  type AppLaunch,
   appLaunchSchema,
   type ConfigField,
   configFieldSchema,

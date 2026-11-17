@@ -1,4 +1,4 @@
-// spec/core/channelTopics.md, "Retirement rejects new work and joins admitted operations before clearing local state"; spec/core/topicService.md, "Stop blocks every new room admission and joins the complete room snapshot"; spec/core/topicRooms.md, "Every room observation reads the one authoritative room record"
+// spec/core/channelTopics.md, "Retirement rejects new work and joins admitted operations before clearing local state"; spec/core/topicService.md, "Stop blocks every new room admission and joins the complete room snapshot"
 import { refreshTopic } from "../../gen/core__channelTopics.effect.vibe"
 import { compareMemoryIds } from "../database.vibe"
 import { foreign, runDetached } from "../edge.vibe"

@@ -1,4 +1,4 @@
-// spec/core/contracts.md, "Story: Consume the replacement through existing imports"
+// spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package"; spec/core/taskEventReader.md, "Replay is idempotent and histories reject conflicting duplicates or gaps"
 export {
   mergeTaskEventPageOrThrow as mergeTaskEventPage,
   mergeTaskEventsOrThrow as mergeTaskEvents,

@@ -1,4 +1,4 @@
-// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+// spec/core/actionPlanning.md, "Story: Plan and execute tool calls"
 import { toActionParameterValue } from "./action-parameter-value.vibe"
 import { testSchemaPattern } from "./actions/validate-tool-args.vibe"
 import { type Foreign, thrown } from "./edge.vibe"

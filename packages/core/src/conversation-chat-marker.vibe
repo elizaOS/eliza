@@ -1,4 +1,4 @@
-// spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+// spec/core/protocols.md, "A store holds only values of the version it declares"
 import { failingAs, thrown } from "./edge.vibe"
 import type { UUID } from "./types/primitives.vibe"
 import { stringToUuid } from "./utils/string-to-uuid.vibe"

@@ -1,4 +1,4 @@
-// spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/ambientManagers.md, "A symbol slot is the single source of manager identity"; spec/core/trajectorySources.md, "Story: Apply the current registered training-exclusion policy"; spec/core/trajectorySources.md, "The latest copied metadata record determines exclusion"
+// spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/ambientManagers.md, "A symbol slot is the single source of manager identity"; spec/core/trajectories.md, "The latest copied metadata record determines exclusion"
 import { errorText } from "./utils/errors.vibe"
 import { getAmbientSingleton } from "./ambient-context.vibe"
 import { asLegacy, type Foreign, foreign, foreignSync, failingAs, promised, runDetached, thrown, thrownValue } from "./edge.vibe"
@@ -14,12 +14,7 @@ import { getTrajectoryContext, runWithTrajectoryContext, type TrajectoryContext 
 import type { ActionResult } from "./types/components.vibe"
 import { isTextGenerationModelType } from "./types/model.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
-import {
-  CONTEXT_OBJECT_TRAJECTORY_VERSION,
-  type ContextObjectTrajectoryExport,
-  type JsonValue,
-  type Trajectory,
-} from "./types/trajectory-export.vibe"
+import type { JsonObject, JsonValue, UUID } from "./types/primitives.vibe"
 import { AsyncContextManager } from "./utils/async-context-manager.vibe"
 import { isTruthyEnvValue } from "./utils/env.vibe"
 import { rawEnv } from "./utils/environment.vibe"
@@ -158,6 +153,57 @@ interface LlmInputSubstringAttestationContextManager {
     fn: () => T | Promise<T>,
   ): T | Promise<T>
   active(): LlmInputSubstringAttestationStore | undefined
+}
+
+const CONTEXT_OBJECT_TRAJECTORY_VERSION = 5 as const
+
+interface ContextObjectTrajectoryExport {
+  contextObjectVersion: typeof CONTEXT_OBJECT_TRAJECTORY_VERSION
+  trajectoryId?: string
+  agentId?: string
+  contextObjectId?: string
+  createdAt?: number
+  source?: string
+  events: ContextEvent[]
+  metrics?: JsonObject
+  metadata?: JsonObject
+  contextObject?: JsonObject & {
+    id: string
+  }
+}
+
+interface Trajectory {
+  trajectoryId: UUID
+  agentId: UUID
+  metrics: {
+    episodeLength: number
+    finalStatus: "active" | "completed" | "terminated" | "error" | "timeout"
+    finalBalance?: number
+    finalPnL?: number
+    tradesExecuted?: number
+    postsCreated?: number
+    messagesHandled?: number
+    successRate?: number
+    errorCount?: number
+    [key: string]: JsonValue | undefined
+  }
+  metadata: {
+    agentName?: string
+    agentModel?: string
+    agentVersion?: string
+    environmentVersion?: string
+    randomSeed?: number
+    isTrainingData?: boolean
+    isEvaluation?: boolean
+    comparisonGroup?: string
+    initialState?: Record<string, JsonValue>
+    goalDescription?: string
+    constraints?: string[]
+    trueProbabilities?: Record<string, number>
+    futureOutcomes?: Record<string, JsonValue>
+    hiddenVariables?: Record<string, JsonValue>
+    [key: string]: JsonValue | undefined
+  }
 }
 
 export type ContextObjectTrajectoryExportTrajectoryInput =

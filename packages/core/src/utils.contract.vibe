@@ -1,4 +1,4 @@
-// spec/core/media.md, "Story: Infer media type with the established precedence"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+// spec/core/media.md, "Story: Infer media type with the established precedence"; spec/core/media.md, "Specific sniffed types win and generic containers defer to a known extension"
 import { Arbitrary, Schema } from "effect";
 import { contract } from "vibestack/testing";
 import { getContentTypeFromMimeType, parseBooleanFromText } from "./utils.vibe";

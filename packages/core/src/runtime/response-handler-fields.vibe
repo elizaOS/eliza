@@ -1,5 +1,5 @@
 // spec/core/responseFields.md, "Story: Extend structured responses without hiding sibling failures"; spec/core/responseFields.md, "Valid registration is first-wins and invalidates full-schema caches only when changed"; spec/core/responseFields.md, "All active fields parse before handlers begin and preemption stops subsequent handlers"
-import { Foreign, foreign } from "../edge.vibe"
+import { type Foreign, foreign, foreignSync } from "../edge.vibe"
 import type { ReplyEffectStatus } from "../types/components.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { JSONSchema } from "../types/model.vibe"
@@ -129,8 +129,6 @@ export effect function admitResponseHandlerField(
   return !registered.has(evaluator.name)
 }
 
-type FieldPreempt = NonNullable<ResponseHandlerFieldEffect["preempt"]>
-
 type FieldAttempt<A> = { ok: true; value: A } | { ok: false; cause: unknown }
 
 effect function attemptField<A>(work: A!Foreign): FieldAttempt<A>!Foreign {
@@ -141,12 +139,11 @@ effect function attemptField<A>(work: A!Foreign): FieldAttempt<A>!Foreign {
 }
 
 function shouldRunField(evaluator: ResponseHandlerFieldEvaluator, ctx: ResponseHandlerFieldContext): boolean!Foreign {
-  const shouldRun = evaluator.shouldRun
-  return shouldRun ? foreign(() => shouldRun.call(evaluator, ctx)) : succeed(true)
+  return foreign(() => evaluator.shouldRun ? evaluator.shouldRun(ctx) : true)
 }
 
 function parseFieldValue(evaluator: ResponseHandlerFieldEvaluator, raw: unknown, ctx: ResponseHandlerFieldContext): unknown!Foreign {
-  return Effect.try({ try: () => evaluator.parse?.(raw, ctx), catch: (cause) => new Foreign({ cause }) })
+  return foreignSync(() => evaluator.parse!(raw, ctx))
 }
 
 effect function handleField(
@@ -154,17 +151,23 @@ effect function handleField(
   trace: ResponseHandlerFieldTrace,
   ctx: ResponseHandlerFieldHandleContext<unknown>,
   parsed: ResponseHandlerResult,
-): (ResponseHandlerFieldEffect | undefined)!Foreign {
+): ({ preempt: ResponseHandlerFieldEffect["preempt"] } | undefined)!Foreign {
+  if (try foreignSync(() => ctx.turnSignal.aborted)) return undefined
   const outcome = try foreign(() => evaluator.handle?.(ctx))
-  trace.handled = true
-  if (outcome?.debug?.length) {
-    trace.debug = outcome.debug.slice()
-  }
-  const mutateResult = outcome?.mutateResult
-  if (mutateResult) {
-    try Effect.try({ try: () => mutateResult.call(outcome, parsed), catch: (cause) => new Foreign({ cause }) })
-  }
-  return outcome
+  return try foreignSync(() => {
+    trace.handled = true
+    if (outcome?.debug?.length) {
+      trace.debug = outcome.debug.slice()
+    }
+    if (outcome?.mutateResult) {
+      outcome.mutateResult(parsed)
+    }
+    if (!outcome?.preempt) return undefined
+    trace.preempted = true
+    trace.preemptMode = outcome.preempt.mode
+    trace.preemptReason = outcome.preempt.reason
+    return { preempt: outcome.preempt }
+  })
 }
 
 function recordFieldFailure(
@@ -228,7 +231,7 @@ export effect function dispatchResponseHandlerFields(
 ): ResponseHandlerFieldRunResult!Foreign {
   const traces: ResponseHandlerFieldTrace[] = []
   const fieldErrors: Record<string, string> = {}
-  let preempt: FieldPreempt | undefined
+  let preempt: ResponseHandlerFieldEffect["preempt"]
   const parsed = buildDefaultedResult(evaluators, args.rawParsed)
   const baseCtx: ResponseHandlerFieldContext = {
     runtime: args.runtime,
@@ -248,10 +251,13 @@ export effect function dispatchResponseHandlerFields(
       handled: false,
       preempted: false,
     }
+    const failActivation = (cause: unknown) => {
+      traces.push(trace)
+      recordFieldFailure(args.runtime, evaluator.name, trace, fieldErrors, cause, "shouldRun", "Response-handler field shouldRun failed")
+    }
     const activation = try attemptField(shouldRunField(evaluator, baseCtx))
     if (!activation.ok) {
-      traces.push(trace)
-      recordFieldFailure(args.runtime, evaluator.name, trace, fieldErrors, activation.cause, "shouldRun", "Response-handler field shouldRun failed")
+      failActivation(activation.cause)
       continue
     }
     if (!activation.value) {
@@ -259,8 +265,13 @@ export effect function dispatchResponseHandlerFields(
       traces.push(trace)
       continue
     }
-    let value: unknown = args.rawParsed[evaluator.name]
-    if (evaluator.parse) {
+    const reading = try attemptField(foreignSync(() => ({ raw: args.rawParsed[evaluator.name], parses: Boolean(evaluator.parse) })))
+    if (!reading.ok) {
+      failActivation(reading.cause)
+      continue
+    }
+    let value: unknown = reading.value.raw
+    if (reading.value.parses) {
       const parsing = try attemptField(parseFieldValue(evaluator, value, baseCtx))
       if (!parsing.ok) {
         trace.parseOutcome = "hard-fail"
@@ -280,23 +291,21 @@ export effect function dispatchResponseHandlerFields(
     trace.parseOutcome = "ok"
     parsed[evaluator.name] = value
     traces.push(trace)
-    if (evaluator.handle) handlers.push({ evaluator, trace, value })
+    const handles = try attemptField(foreignSync(() => Boolean(evaluator.handle)))
+    if (!handles.ok) {
+      failActivation(handles.cause)
+      continue
+    }
+    if (handles.value) handlers.push({ evaluator, trace, value })
   }
 
   for (const { evaluator, trace, value } of handlers) {
-    if (args.turnSignal.aborted) continue
     const handling = try attemptField(handleField(evaluator, trace, { ...baseCtx, value, parsed }, parsed))
     if (!handling.ok) {
       recordFieldFailure(args.runtime, evaluator.name, trace, fieldErrors, handling.cause, "handle", "Response-handler field handler failed")
       continue
     }
-    const fieldPreempt = handling.value?.preempt
-    if (fieldPreempt) {
-      trace.preempted = true
-      trace.preemptMode = fieldPreempt.mode
-      trace.preemptReason = fieldPreempt.reason
-      preempt = fieldPreempt
-    }
+    if (handling.value) preempt = handling.value.preempt
     if (preempt) break
   }
 

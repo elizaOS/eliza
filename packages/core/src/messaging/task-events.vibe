@@ -5,7 +5,6 @@ import {
   Machine,
   machine,
   noPage,
-  validPollingInterval,
   type Event as ReaderEvent,
   type EventKind as ModelEventKind,
   type OperationStatus as ModelOperationStatus,
@@ -382,7 +381,7 @@ export interface ReaderRuntime {
 
 export effect function createReader(options: TaskEventReaderOptions, poll: () => void): ReaderRuntime!InvalidPollingInterval {
   const interval = options.pollIntervalMs ?? 2000
-  if (!Number.isSafeInteger(interval) || !validPollingInterval(interval)) {
+  if (!Number.isSafeInteger(interval) || interval < 1 || interval > 2147483647) {
     throw new InvalidPollingInterval({ message: "Invalid task event polling interval" })
   }
   const copied = { ...options }

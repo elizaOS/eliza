@@ -1,4 +1,4 @@
-// SPEC.md, "Conformance": spec/core/timingRegistry.md against inferenceTimingRegistry and nextInferenceTurnId of src/inference-timing.vibe, process-wide, observed through its recent turns and histogram summaries
+// spec/core/timingRegistry.md, "Story: Retain recent telemetry with explicit missing measurements"; spec/core/timingRegistry.md, "Histogram admission keeps finite samples in arrival order"
 import type { Driver, Options } from "../../gen/core__timingRegistry.conformance.ts";
 import type { Measurement, Registry, SpanTotal, TurnSummary } from "../../gen/core__timingRegistry.ts";
 import {

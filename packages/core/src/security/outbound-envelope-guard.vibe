@@ -1,5 +1,5 @@
-// spec/core/outboundEnvelope.md, "Story: Stop forwarding after external envelope material is detected"; spec/core/outboundEnvelope.md, "The first positive detection trips the stream and reports once"
-import { Machine, machine } from "../../gen/core__outboundEnvelope.effect.vibe"
+// spec/core/security.md, "Story: Admit content and outbound data"; spec/core/security.md, "Outbound text carrying the content envelope is blocked"; spec/core/security.md, "The first positive detection trips the stream and reports once"
+import { observeChunk, type EnvelopeLatch } from "../../gen/core__security.effect.vibe"
 import type { Media } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.vibe"
@@ -57,27 +57,20 @@ export function guardOutboundEnvelopeAttachments(
   return safe.length === attachments.length ? attachments : safe
 }
 
-effect function envelopeLatch() {
-  provide machine() {
-    return try Machine
-  }
-}
-
 export function createOutboundEnvelopeStreamLatch(
   runtime: Pick<IAgentRuntime, "reportError">,
   seam: string,
 ): (accumulated: string) => boolean {
-  const latch = Effect.runSync(envelopeLatch())
-  return (accumulated: string): boolean =>
-    Effect.runSync(orDie(effect {
-      if ((try latch.get()).tripped) {
-        return true
-      }
-      const found = Boolean(accumulated) && containsExternalEnvelopeMaterial(accumulated)
-      const { tripped } = try latch.send({ type: "observe", accumulatedContainsEnvelope: found })
-      if (found) {
-        reportOutboundEnvelopeBlock(runtime, accumulated, seam)
-      }
-      return tripped
-    }))
+  let latch: EnvelopeLatch = { tripped: false, reports: 0, forwarded: 0 }
+  return (accumulated: string): boolean => {
+    if (latch.tripped) {
+      return true
+    }
+    const found = Boolean(accumulated) && containsExternalEnvelopeMaterial(accumulated)
+    latch = observeChunk(latch, found)
+    if (found) {
+      reportOutboundEnvelopeBlock(runtime, accumulated, seam)
+    }
+    return latch.tripped
+  }
 }

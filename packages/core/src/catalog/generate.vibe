@@ -2,7 +2,6 @@
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import { Effect } from "effect"
 import { Foreign, thrown } from "../edge.vibe"
-import type { ElizaCuratedAppDefinition } from "./apps.vibe"
 import { type RegistryEntry, registryEntrySchema } from "./schema.vibe"
 
 export error RegistryClaimConflict { message: string }
@@ -72,20 +71,9 @@ const HERE = import.meta.dirname
 const REPO_ROOT = joinPath(HERE, "..", "..", "..", "..")
 const CURATED_DIR = joinPath(HERE, "curated")
 const GENERATED_PATH = joinPath(HERE, "generated.json")
-const CURATED_DEFS_PATH = joinPath(HERE, "curated-app-definitions.json")
 const CHANNEL_MAP_PATH = joinPath(HERE, "channel-plugin-map.json")
 const PROVIDER_MAP_PATH = joinPath(HERE, "provider-plugin-map.json")
 const SHORTID_MAP_PATH = joinPath(HERE, "short-id-plugin-map.json")
-
-export function collectCuratedAppDefinitions(entries: RegistryEntry[]): ElizaCuratedAppDefinition[] {
-  const curated: Array<{ entry: RegistryEntry; curatedApp: NonNullable<RegistryEntry["curatedApp"]> }> = []
-  for (const entry of entries) {
-    if (entry.curatedApp) curated.push({ entry, curatedApp: entry.curatedApp })
-  }
-  return curated
-    .sort((a, b) => a.curatedApp.order - b.curatedApp.order || a.curatedApp.slug.localeCompare(b.curatedApp.slug))
-    .map(({ entry, curatedApp }) => ({ slug: curatedApp.slug, canonicalName: entry.npmName ?? "", aliases: curatedApp.aliases }))
-}
 
 effect function collectClaimMap(entries: RegistryEntry[], label: string, claimedKeys: (entry: RegistryEntry) => Iterable<string>) {
   const map = new Map<string, string>()
@@ -179,7 +167,6 @@ function asJson(value: unknown): string {
 effect function render(entries: RegistryEntry[]) {
   return {
     full: asJson({ entries }),
-    curated: asJson(collectCuratedAppDefinitions(entries)),
     channels: asJson(try collectChannelPluginMap(entries)),
     providers: asJson(try collectProviderPluginMap(entries)),
     shortIds: asJson(try collectShortIdPluginMap(entries)),
@@ -206,7 +193,6 @@ effect function main() {
   const artifacts: Array<[string, string]> = []
   for (const [path, content] of [
     [GENERATED_PATH, next.full],
-    [CURATED_DEFS_PATH, next.curated],
     [CHANNEL_MAP_PATH, next.channels],
     [PROVIDER_MAP_PATH, next.providers],
     [SHORTID_MAP_PATH, next.shortIds],
@@ -223,7 +209,7 @@ effect function main() {
     return try Console.log("[registry/generate] generated artifacts are up to date.")
   }
   for (const [path, content] of artifacts) try writeFile(path, content)
-  try Console.log(`[registry/generate] wrote ${entries.length} entries + ${entries.filter((entry) => entry.curatedApp).length} curated-app definitions`)
+  try Console.log(`[registry/generate] wrote ${entries.length} entries`)
 }
 
 if (import.meta.main) NodeRuntime.runMain(main())

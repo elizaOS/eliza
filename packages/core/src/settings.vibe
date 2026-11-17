@@ -1,5 +1,5 @@
-// spec/core/settingsKeys.md, "Production rejects unset and public salts on refresh"; spec/core/settingsKeys.md, "A configured private salt always has a positive key identity"; spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/settingsKeys.md, "The ephemeral-key warning is emitted once until explicit cache clearing"
-import { Machine, cacheValid, encryptionRequired, machine, type EnvelopeKind, type KeyCache, type SaltKind } from "../gen/core__settingsKeys.effect.vibe"
+// spec/core/settingsKeys.md, "Production rejects unset and public salts on refresh"; spec/core/settingsKeys.md, "In production a ready key is always the configured private key"; spec/core/settingsKeys.md, "A configured private salt always has a positive key identity"; spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/settingsKeys.md, "The ephemeral-key warning is emitted once until explicit cache clearing"
+import { Machine, cacheValid, encryptedEnvelope, machine, type EnvelopeKind, type KeyCache, type SaltKind } from "../gen/core__settingsKeys.effect.vibe"
 import { failingAs, foreign, Foreign, promised, thrown, thrownValue } from "./edge.vibe"
 import { createUniqueUuid } from "./entities.vibe"
 import { ElizaError } from "./errors.vibe"
@@ -147,7 +147,8 @@ function settingsKey(salt: string) {
 }
 
 export effect function encryptStringValue(value: string, salt: string) {
-  if (!encryptionRequired(envelopeKind(value, true))) {
+  const kind = envelopeKind(value, true)
+  if (encryptedEnvelope(kind) === kind) {
     return value
   }
 

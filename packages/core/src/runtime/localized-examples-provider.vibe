@@ -1,4 +1,4 @@
-// spec/core/routingRegistries.md, "Each registry follows its source identity and ordering policy"
+// spec/core/registries.md, "Each routing registry follows its source identity and ordering policy"
 import type { ActionExample } from "../types/components.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 

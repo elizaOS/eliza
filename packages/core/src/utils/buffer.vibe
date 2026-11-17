@@ -1,4 +1,4 @@
-// spec/core/protocols.md, "Binary helpers preserve byte contents and the input slice ownership contract"
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import type { Buffer as NodeBuffer } from "node:buffer"
 
 export type BufferLike = NodeBuffer | Uint8Array
