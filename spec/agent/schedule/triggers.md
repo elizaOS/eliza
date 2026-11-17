@@ -76,7 +76,10 @@ pure def canEdit(t: Trigger, schedule: TriggerType, requested: str, eventKind: s
 pure def edit(t: Trigger, schedule: TriggerType, requested: str, eventKind: str, at: int, roomExists: bool, expected: RevisionCheck): Trigger = { ...t, schedule: schedule, room: chosenRoom(requested, t.room), eventKind: if (schedule == OnRuntimeEvent) eventKind else "", nextAt: if (schedule == OnRuntimeEvent) 0 else at, revision: t.revision + 1 }
 pure def canRemove(t: Trigger, expected: RevisionCheck): bool = t.life == Saved and revisionMatches(expected, t.revision)
 pure def remove(t: Trigger, expected: RevisionCheck): Trigger = { ...t, life: Removed }
-pure def sometimesEditedWhileRunning(t: Trigger): bool = t.life == Saved and match t.activity { | Running(r) => r.revision < t.revision | Idle => false }
+pure def sometimesEditedWhileRunning(t: Trigger): bool = {
+  val activity = t.activity
+  t.life == Saved and match activity { | Running(r) => r.revision < t.revision | Idle => false }
+}
 pure def sometimesDeleted(t: Trigger): bool = t.life == Removed and t.schedule == CronSchedule
 ```
 
@@ -132,7 +135,10 @@ pure def fire(t: Trigger, nextInstant: int, processStartedAt: int): Trigger = {
   if (missedWhileStopped(t, processStartedAt)) { ...fired, history: recordRun(t.history, Missed({ scheduledAt: t.nextAt })), enabled: t.schedule == CronSchedule }
   else { ...fired, activity: Running({ source: Scheduled, revision: t.revision, room: t.room }) }
 }
-pure def runningScheduledOnce(t: Trigger): bool = t.schedule == OnceAt and match t.activity { | Running(r) => r.source == Scheduled and r.revision == t.revision | Idle => false }
+pure def runningScheduledOnce(t: Trigger): bool = {
+  val activity = t.activity
+  t.schedule == OnceAt and match activity { | Running(r) => r.source == Scheduled and r.revision == t.revision | Idle => false }
+}
 pure def alwaysFiredOccurrencesAreNotAhead(t: Trigger): bool = t.lastFiredAt <= t.now
 pure def alwaysTheNextOccurrenceHasNotFired(t: Trigger): bool = (t.life == Saved and t.enabled and t.schedule != OnRuntimeEvent and not(runningScheduledOnce(t))) implies t.nextAt > t.lastFiredAt
 pure def stepAFiringRunsOrIsMissed(before: Trigger, via: str, after: Trigger): bool = via == "fire" implies (if (after.activity == Idle) after.history.nthOr(after.history.length() - 1, Ran({ source: RunNow, turn: Completed })) == Missed({ scheduledAt: before.nextAt }) else after.history == before.history)
@@ -208,7 +214,10 @@ keeps it. A run of a removed trigger records nothing.
 type RunStatus = RunSuccess | RunError | RunSkipped
 pure def runStatus(entry: RunRecord): RunStatus = match entry { | Ran(r) => if (r.turn == Completed) RunSuccess else RunError | Missed(m) => RunSkipped }
 pure def runSource(a: Activity): RunSource = match a { | Running(r) => r.source | Idle => RunNow }
-pure def alwaysARunUsesTheSavedTrigger(t: Trigger): bool = match t.activity { | Running(r) => t.life != Unsaved and r.room != "" and r.revision >= 1 and r.revision <= t.revision | Idle => true }
+pure def alwaysARunUsesTheSavedTrigger(t: Trigger): bool = {
+  val activity = t.activity
+  match activity { | Running(r) => t.life != Unsaved and r.room != "" and r.revision >= 1 and r.revision <= t.revision | Idle => true }
+}
 pure def canFinishRun(t: Trigger, roomExists: bool, turn: RunOutcome): bool = t.activity != Idle and turn != RoomUnavailable
 pure def finishRun(t: Trigger, roomExists: bool, turn: RunOutcome): Trigger = {
   val record = Ran({ source: runSource(t.activity), turn: if (roomExists) turn else RoomUnavailable })

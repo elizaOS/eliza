@@ -1,4 +1,4 @@
-# Followed links
+# Android links and alerts
 
 A link the person follows, such as a sign-in return or an App Link, reaches
 the app three ways: the Intent that launched the process, a warm Intent to
@@ -109,4 +109,87 @@ pure def stepOnlyANewCaptureTakesTheSlot(before: DeepLinks, after: DeepLinks): b
       (after.pending == after.captured and after.captured == before.captured + 1))
 pure def sometimesSecondLinkSurvivesFirst(d: DeepLinks): bool =
   d.pending == 2 and d.settled.contains(1) and not(d.acks.contains(1)) and not(d.settled.contains(2))
+```
+
+## Story: Open the exact result from my notification
+
+> As the device owner, I want tapping a result notice to open the result
+> that was posted for me, including after a restart.
+
+### A tap opens only its confirmed route for the current owner
+
+Android's `NoticeRoutes` saves the exact typed route and its delivery
+binding in encrypted host storage before it returns the tap token. The
+intent carries only that opaque token. The route's owner includes origin,
+owner, agent and scope. A retry for the same notice returns the stored
+token only when the binding and route match. A notice token never grants
+permission to perform an action.
+
+The host confirms the route against the posted delivery receipt and checks
+the current owner before a tap is captured or opens. A tap becomes durable
+before the renderer receives it. Repeated taps keep one pending entry,
+and the renderer consumes it only once. A withdrawn, lost or failed
+receipt retires its tap. While the receipt is temporarily unsettled, a tap
+waits. The ledger holds at most 512 routes and 192 KiB. It reclaims settled
+routes oldest first when their notice is no longer shown and their tap is
+no longer pending.
+
+```quint
+type NoticeTap = NoticeUntapped | NoticePending | NoticeConsumed
+type NoticeReceipt = NoticePosted | NoticeUnsettled | NoticeEnded
+type NoticeEvidence = { ownerMatches: bool, routeMatches: bool, receipt: NoticeReceipt, tap: NoticeTap }
+pure val postedNotice: NoticeEvidence = { ownerMatches: true, routeMatches: true, receipt: NoticePosted, tap: NoticePending }
+pure val eValues = Set(postedNotice, { ...postedNotice, ownerMatches: false }, { ...postedNotice, routeMatches: false },
+  { ...postedNotice, receipt: NoticeUnsettled }, { ...postedNotice, receipt: NoticeEnded }, { ...postedNotice, tap: NoticeConsumed })
+pure def noticeTapCapturable(e: NoticeEvidence): bool =
+  e.ownerMatches and e.routeMatches and e.receipt == NoticePosted and e.tap != NoticeConsumed
+pure def noticeTapOpenable(e: NoticeEvidence): bool =
+  noticeTapCapturable(e) and e.tap == NoticePending
+pure def noticeTapDiscardable(e: NoticeEvidence, targetGone: bool): bool =
+  e.ownerMatches and e.tap == NoticePending and (e.receipt == NoticeEnded or (e.routeMatches and e.receipt == NoticePosted and targetGone))
+pure def lawOnlyCurrentPostedRoutesOpen(e: NoticeEvidence): bool =
+  noticeTapOpenable(e) implies (e.ownerMatches and e.routeMatches and e.receipt == NoticePosted)
+pure def lawAConsumedNoticeCannotOpenAgain(e: NoticeEvidence): bool =
+  e.tap == NoticeConsumed implies not(noticeTapOpenable(e))
+pure def lawUnsettledDeliveryKeepsItsTap(e: NoticeEvidence, targetGone: bool): bool =
+  e.receipt == NoticeUnsettled implies not(noticeTapDiscardable(e, targetGone))
+```
+
+## Story: Receive an alert for the current reminder occurrence
+
+> As the device owner, I want a scheduled reminder to alert me when it is
+> due, while an old or cancelled occurrence stays quiet.
+
+### An alert uses the saved occurrence and the host's existing alarm capability
+
+The Android reminders module keeps the occurrence, its due time and alert
+setting before arming an alarm. A reminder without an alert or with a
+suspended deletion arms no alarm. The host uses an exact alarm only when
+Android already permits it. Missing or withdrawn exact-alarm authority
+uses an inexact alarm. This module never asks for exact-alarm permission.
+
+The receiver reads the current record under the store lock and checks its
+occurrence and deadline. A stale delivery cannot alert. An early delivery
+of the current occurrence rearms against the saved deadline. Android
+notification permission is observed at delivery. A refused or failed post
+produces no successful receipt. The notice's opaque tap opens only its
+current saved occurrence.
+
+```quint
+type ReminderAlarm = NoReminderAlarm | InexactReminderAlarm | ExactReminderAlarm
+type ReminderDelivery = IgnoreReminder | RearmReminder | DenyReminderNotice | PostReminderNotice
+pure def alarmForReminder(hasAlert: bool, suspended: bool, exactPermitted: bool, exactAccepted: bool): ReminderAlarm =
+  if (not(hasAlert) or suspended) NoReminderAlarm
+  else if (exactPermitted and exactAccepted) ExactReminderAlarm
+  else InexactReminderAlarm
+pure def deliverReminder(matchingOccurrence: bool, scheduled: bool, hasAlert: bool, suspended: bool, due: bool, postingAllowed: bool): ReminderDelivery =
+  if (not(matchingOccurrence and scheduled and hasAlert) or suspended) IgnoreReminder
+  else if (not(due)) RearmReminder
+  else if (not(postingAllowed)) DenyReminderNotice
+  else PostReminderNotice
+pure def lawAWithdrawnExactAlarmKeepsAnInexactAlarm(exactPermitted: bool): bool =
+  alarmForReminder(true, false, exactPermitted, false) == InexactReminderAlarm
+pure def lawOnlyTheCurrentDueOccurrenceCanPost(matchingOccurrence: bool, scheduled: bool, hasAlert: bool, suspended: bool, due: bool, postingAllowed: bool): bool =
+  deliverReminder(matchingOccurrence, scheduled, hasAlert, suspended, due, postingAllowed) == PostReminderNotice implies
+    (matchingOccurrence and scheduled and hasAlert and not(suspended) and due and postingAllowed)
 ```
