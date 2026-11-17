@@ -31,8 +31,8 @@
       },
       {
         "path": ".repo/local_manifests/alpha-pins.xml",
-        "sizeBytes": 154204,
-        "sha256": "36c916c7e0c9b3855c4f0226a66f1f1a2520d7746bf8381e25d21dda17aa9f43"
+        "sizeBytes": 154763,
+        "sha256": "ba5bf58592162528831d67acf0c50e0ef2bdf28d7e2458ab786a5a37a9146c5c"
       }
     ]
   },

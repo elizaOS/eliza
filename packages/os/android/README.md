@@ -37,7 +37,7 @@ bun packages/os/scripts/android/verify-source-lock.ts --profile pixel10a \
 This profile binds all 1,087 project revisions, manifest configuration, 16 reviewed
 source overrides, 6,360 generated files, and recorded ignored inputs. The inventory
 is copied byte-for-byte from Alpha's reviewed source contract (SHA-256
-`87ff43e6830210b8fc8363ccfa21a85badfd17d04582cec654e0a019c533e7f5`).
+`74d92925c7ae52f4032876de36c8ee76eb7ee449ef5083411796b3d003c8552b`).
 Alpha names inside that immutable inventory identify provenance, not launcher branding.
 Pixel staging uses the reviewed `patches/soong-app-native` extension because
 Android 17 image products can omit legacy Android.mk application modules. Apply
