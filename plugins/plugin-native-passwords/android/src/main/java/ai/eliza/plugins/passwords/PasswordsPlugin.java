@@ -201,14 +201,26 @@ public class PasswordsPlugin extends Plugin {
     });
   }
 
+  private static Long expectedRevision(PluginCall call) {
+    if (!call.getData().has("expectedRevision")) return null;
+    Object value = call.getData().opt("expectedRevision");
+    if (value instanceof Integer || value instanceof Long) {
+      long revision = ((Number) value).longValue();
+      if (revision >= 0 && revision <= 9_007_199_254_740_991L) return revision;
+    }
+    throw new IllegalArgumentException("Invalid revision");
+  }
+
   @PluginMethod public void remove(PluginCall call) {
     PasswordVaultAccess access = vault(call); if (access == null) return;
     String id = call.getString("id");
     if (id == null) { call.reject("Choose a saved password", "invalid"); return; }
     try {
-      access.use(store -> { store.get(id); store.delete(id); return true; });
+      Long revision = expectedRevision(call);
+      access.use(store -> { store.removeExisting(id, revision); return true; });
       JSObject result = new JSObject(); result.put("removed", true); call.resolve(result);
-    } catch (Exception failure) { fail(call, failure); }
+    } catch (IllegalArgumentException invalid) { call.reject("Invalid revision", "invalid"); }
+    catch (Exception failure) { fail(call, failure); }
   }
 
   /** Deletes the vault only when its key is lost or invalidated (see PasswordVaultStore). */
@@ -230,15 +242,15 @@ public class PasswordsPlugin extends Plugin {
     if (id == null || activity == null) { call.reject("Choose a saved password", "invalid"); return; }
     try {
       long ticket = access.ticket();
-      JSONObject record = access.use(ticket, store -> store.get(id));
-      String label = record.optString("label", record.optString("origin", ""));
-      String value = record.getString("password");
+      Long revision = expectedRevision(call);
       activity.runOnUiThread(() -> {
         try {
           if (activity.isFinishing() || activity.isDestroyed() || !activity.hasWindowFocus()) throw new PasswordVaultAccess.Locked();
           JSObject result = new JSObject();
-          access.deliverSecret(activity, ticket, () -> {
+          access.deliverSecret(activity, ticket, store -> store.useRecord(id, revision, record -> {
+            String value = record.getString("password");
             if (reveal) {
+              String label = record.optString("label", record.optString("origin", ""));
               SecretSurfaces.revealOwned(activity, label, value,
                 () -> access.unlocked(ticket) && PasswordVaultAccess.admitted(activity));
               result.put("shown", true);
@@ -248,11 +260,13 @@ public class PasswordsPlugin extends Plugin {
               result.put("copied", true);
               result.put("clearsAfterMs", SecretSurfaces.CLIPBOARD_MILLIS);
             }
-          });
+            return true;
+          }));
           call.resolve(result);
         } catch (Exception failure) { fail(call, failure); }
       });
-    } catch (Exception failure) { fail(call, failure); }
+    } catch (IllegalArgumentException invalid) { call.reject("Invalid revision", "invalid"); }
+    catch (Exception failure) { fail(call, failure); }
   }
 
   /** Android's own confirmation selects the provider; nothing is set or inferred here. */
