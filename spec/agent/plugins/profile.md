@@ -26,7 +26,7 @@ import authorization as Z from "../../core/authorization"
 type ProductChoice = NoProduct | Product({ name: str })
 type WorkerLaunch = NoWorkerNamed | WorkerNamed({ digest: str })
 type WorkerState = NoWorker | Unverified({ expected: str }) | Verified({ pinned: str })
-type PlanFailure = UnknownPlugin | ReservedPlugin | DuplicatePlugin | MissingProduct | RouteClaimed | StaleAllowlist | WorkerMismatch
+type PlanFailure = UnknownPlugin | ReservedPlugin | MissingProduct | RouteClaimed | StaleAllowlist | WorkerMismatch
 type PlanPhase = Choosing | Registering | Ready | Refused({ cause: PlanFailure })
 type ProcessValue = PlainSetting | DeviceCredential | LaunchToken | StorageKey
 type PluginPlan = { phase: PlanPhase, bundled: Set[str], privacyOn: bool, product: ProductChoice, order: List[str], next: int, allowed: Set[str], actions: Set[str], moduleRoutes: Set[str], productRoutes: Set[str], worker: WorkerState, workerEnv: Set[ProcessValue], workerRuns: int }
@@ -41,10 +41,17 @@ pure def lawUnknownPluginRefusesBoot(bundled: Set[str], load: List[str], product
 
 ### Storage, the cloud link and the privacy service always load and cannot be listed
 
-They are the agent's own; a load list or product plugin that names one
-refuses boot.
+They are the agent's own; a load list that names one, or a product plugin
+named like one of them or like an agent module, refuses boot.
 
 ```quint
+pure def planPhase(bundled: Set[str], load: List[str], product: ProductChoice): PlanPhase = {
+  val name = productName(product)
+  if (load.some(n => fixedPlugins.contains(n)) or reserved(name)) Refused({ cause: ReservedPlugin })
+  else if (load.some(n => not(available(bundled).contains(n)))) Refused({ cause: UnknownPlugin })
+  else if (name != "" and not(bundled.contains(name))) Refused({ cause: MissingProduct })
+  else Registering
+}
 pure val storagePlugin = "@elizaos/agent/storage"
 pure val cloudLinkPlugin = "@elizaos/agent/cloud"
 pure val privacyPlugin = "@elizaos/core/privacy"
@@ -54,43 +61,28 @@ pure def lawListedFixedPluginRefusesBoot(bundled: Set[str], load: List[str], pro
   load.some(n => fixedPlugins.contains(n)) implies planPhase(bundled, load, product) == Refused({ cause: ReservedPlugin })
 ```
 
-### A plugin is listed at most once
-
-The product plugin is named on its own and never also in the load list.
-
-```quint
-pure def distinct(xs: List[str]): bool = xs.every(x => xs.select(y => y == x).length() == 1)
-pure def planPhase(bundled: Set[str], load: List[str], product: ProductChoice): PlanPhase = {
-  val name = productName(product)
-  if (load.some(n => fixedPlugins.contains(n)) or reserved(name)) Refused({ cause: ReservedPlugin })
-  else if (load.some(n => not(available(bundled).contains(n)))) Refused({ cause: UnknownPlugin })
-  else if (not(distinct(load)) or load.includes(name)) Refused({ cause: DuplicatePlugin })
-  else if (name != "" and not(bundled.contains(name))) Refused({ cause: MissingProduct })
-  else Registering
-}
-pure def lawRepeatedPluginRefusesBoot(bundled: Set[str], load: List[str], product: ProductChoice): bool =
-  not(distinct(load)) implies planPhase(bundled, load, product) != Registering
-```
-
 ### Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last
 
 The privacy service is core's, in the launch's mode, and loads only when
 either privacy switch is on. Each plugin registers through core plugins in
-this order, one at a time.
+this order, one at a time. The plan starts from an admitted launch, which
+already names each plugin once and never names the product plugin in the
+load list (`spec/agent/host/launch.md`), so no plugin is planned twice.
 
 ```quint
 pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
+pure def distinct(xs: List[str]): bool = xs.every(x => xs.select(y => y == x).length() == 1)
 pure def planOrder(load: List[str], product: ProductChoice, privacyOn: bool): List[str] = {
   val name = productName(product)
   List(storagePlugin, cloudLinkPlugin).concat(if (privacyOn) List(privacyPlugin) else List()).concat(load).concat(if (name == "") List() else List(name))
 }
 pure val bundledValues = Set(Set("@elizaos/plugin-workflow", "product"), Set("@elizaos/plugin-workflow"))
-pure val loadValues = Set(List(), List("@elizaos/agent/basic-actions"), List("@elizaos/agent/tasks", "@elizaos/plugin-workflow"), List("@elizaos/plugin-wallet"), List("@elizaos/agent/storage"), List("@elizaos/agent/tasks", "@elizaos/agent/tasks"))
-pure val productValues = Set(NoProduct, Product({ name: "product" }))
+pure val loadValues = Set(List(), List("@elizaos/agent/basic-actions"), List("@elizaos/agent/tasks", "@elizaos/plugin-workflow"), List("@elizaos/plugin-wallet"), List("@elizaos/agent/storage"))
+pure val productValues = Set(NoProduct, Product({ name: "product" }), Product({ name: "@elizaos/agent/tasks" }))
 pure val allowedValues = Set(Set("REPLY", "CALCULATE"), Set("REPLY", "PRODUCT_ACTION"), Set("REPLY", "RENAMED"))
 pure val workerLaunchValues = Set(NoWorkerNamed, WorkerNamed({ digest: "aa" }))
 pure def canChoosePlan(s: PluginPlan, bundled: Set[str], load: List[str], product: ProductChoice, privacyOn: bool, allowed: Set[str], workerLaunch: WorkerLaunch): bool =
-  s.phase == Choosing and not(bundled.contains("")) and not(load.includes(""))
+  s.phase == Choosing and not(bundled.contains("")) and not(load.includes("")) and distinct(load) and not(load.includes(productName(product)))
 pure def choosePlan(s: PluginPlan, bundled: Set[str], load: List[str], product: ProductChoice, privacyOn: bool, allowed: Set[str], workerLaunch: WorkerLaunch): PluginPlan = {
   val phase = planPhase(bundled, load, product)
   if (phase != Registering) { ...s, phase: phase }
@@ -106,7 +98,6 @@ pure def alwaysNoPluginPlannedTwice(s: PluginPlan): bool = distinct(s.order)
 pure def sometimesReadyWithProductAndPrivacy(s: PluginPlan): bool = s.phase == Ready and s.privacyOn and s.product != NoProduct
 pure def sometimesUnknownPluginRefused(s: PluginPlan): bool = s.phase == Refused({ cause: UnknownPlugin })
 pure def sometimesListedFixedPluginRefused(s: PluginPlan): bool = s.phase == Refused({ cause: ReservedPlugin })
-pure def sometimesRepeatedPluginRefused(s: PluginPlan): bool = s.phase == Refused({ cause: DuplicatePlugin })
 ```
 
 ### A refused plan loads nothing more
@@ -147,10 +138,9 @@ pure def canRegisterNext(s: PluginPlan, actions: Set[str], routes: Set[str]): bo
 pure def registerNext(s: PluginPlan, actions: Set[str], routes: Set[str]): PluginPlan = {
   val name = s.order.nthOr(s.next, "")
   val isProduct = name == productName(s.product)
-  val clash = if (isProduct) overlaps(routes, s.moduleRoutes) else agentModule(name) and overlaps(routes, s.productRoutes)
-  if (clash) { ...s, phase: Refused({ cause: RouteClaimed }) }
+  if (isProduct and overlaps(routes, s.moduleRoutes)) { ...s, phase: Refused({ cause: RouteClaimed }) }
   else { ...s, next: s.next + 1, actions: s.actions.union(actions),
-    moduleRoutes: if (agentModule(name) and not(isProduct)) s.moduleRoutes.union(routes) else s.moduleRoutes,
+    moduleRoutes: if (agentModule(name)) s.moduleRoutes.union(routes) else s.moduleRoutes,
     productRoutes: if (isProduct) s.productRoutes.union(routes) else s.productRoutes }
 }
 pure def alwaysProductRoutesAvoidModuleRoutes(s: PluginPlan): bool = not(overlaps(s.productRoutes, s.moduleRoutes))

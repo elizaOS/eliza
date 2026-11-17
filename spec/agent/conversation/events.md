@@ -29,24 +29,25 @@ and the event payloads stay in the shell.
 > view interactions and live transcripts as they happen, so that it shows
 > them without asking again.
 
-### A subscription names its streams once each, and names a client id when it asks for view interactions
+### A subscription names its streams once each, and asks for view interactions alone and with a client id
 
-An unknown stream name is refused when the input is decoded. The client id
-is `[A-Za-z0-9._-]{1,128}`, checked at the boundary.
+A view-interaction feed is the renderer feed of one client, so it names no
+other stream. An unknown stream name is refused when the input is decoded.
+The client id is `[A-Za-z0-9._-]{1,128}`, checked at the boundary.
 
 ```quint
 type StreamName = ConversationStream | NotificationStream | ViewInteractStream | VoiceTranscriptStream
 type FeedEvent = ConversationUpdated | ProactiveMessage | SystemNotice({ code: str }) | NoticeAdded | ViewInteraction({ clientId: str }) | Transcript
 type Feed = { id: int, streams: List[StreamName], clientId: str, since: int, lastSeq: int }
 type EndReason = PeerClosed | Overflowed | Stopped
-type Frame = SubscribedFrame({ feed: int, streams: List[StreamName] }) | EventFrame({ feed: int, seq: int, news: FeedEvent }) | EndFrame({ feed: int, reason: EndReason })
-type EventFeed = { feeds: List[Feed], nextFeed: int, published: int, overflowCount: int, noticed: Set[str], stopped: bool }
+type Frame = Subscribed({ feed: int, streams: List[StreamName] }) | Delivered({ feeds: Set[int], seq: int, news: FeedEvent }) | Ended({ feeds: Set[int], reason: EndReason })
+type EventFeed = { live: Set[int], feeds: List[Feed], nextFeed: int, published: int, overflowCount: int, noticed: Set[str], stopped: bool }
 type FeedStep = { state: EventFeed, out: List[Frame] }
-pure val initial: EventFeed = { feeds: List(), nextFeed: 1, published: 0, overflowCount: 0, noticed: Set(), stopped: false }
+pure val initial: EventFeed = { live: Set(), feeds: List(), nextFeed: 1, published: 0, overflowCount: 0, noticed: Set(), stopped: false }
 pure def distinctStreams(streams: List[StreamName]): bool = streams.every(x => streams.select(y => y == x).length() == 1)
 pure def validRequest(streams: List[StreamName], clientId: str): bool =
-  streams.length() > 0 and distinctStreams(streams) and (streams.includes(ViewInteractStream) implies clientId != "")
-pure val streamsValues = Set(List(ConversationStream), List(ViewInteractStream), List(ConversationStream, NotificationStream), List(VoiceTranscriptStream, ConversationStream), List(), List(NotificationStream, NotificationStream))
+  streams.length() > 0 and distinctStreams(streams) and (streams.includes(ViewInteractStream) implies (streams == List(ViewInteractStream) and clientId != ""))
+pure val streamsValues = Set(List(ConversationStream), List(ViewInteractStream), List(ConversationStream, NotificationStream), List(VoiceTranscriptStream, ConversationStream), List(ViewInteractStream, ConversationStream), List(), List(NotificationStream, NotificationStream))
 pure val clientIdValues = Set("", "c1", "c2")
 pure def alwaysFeedsAskedValidly(s: EventFeed): bool = s.feeds.every(f => validRequest(f.streams, f.clientId))
 ```
@@ -59,32 +60,36 @@ leaks feeds cannot starve the agent.
 ```quint
 pure val maxLiveFeeds = 4
 pure def canSubscribe(s: EventFeed, streams: List[StreamName], clientId: str): bool =
-  not(s.stopped) and validRequest(streams, clientId) and s.feeds.length() < maxLiveFeeds
-pure def alwaysAtMostFourLiveFeeds(s: EventFeed): bool = s.feeds.length() <= maxLiveFeeds
-pure def sometimesFourLiveFeeds(s: EventFeed): bool = s.feeds.length() == maxLiveFeeds
+  not(s.stopped) and validRequest(streams, clientId) and s.live.size() < maxLiveFeeds
+pure def alwaysAtMostFourLiveFeeds(s: EventFeed): bool = s.live.size() <= maxLiveFeeds
+pure def sometimesFourLiveFeeds(s: EventFeed): bool = s.live.size() == maxLiveFeeds
 ```
 
 ### Subscribing answers with one subscribed frame and replays nothing
 
-The new feed hears only events published after its subscribed frame.
+The new feed takes a fresh id and hears only events published after its
+subscribed frame.
 
 ```quint
 pure def subscribe(s: EventFeed, streams: List[StreamName], clientId: str): FeedStep = {
   val feed: Feed = { id: s.nextFeed, streams: streams, clientId: clientId, since: s.published, lastSeq: s.published }
-  { state: { ...s, feeds: s.feeds.append(feed), nextFeed: s.nextFeed + 1 }, out: List(SubscribedFrame({ feed: s.nextFeed, streams: streams })) }
+  { state: { ...s, live: s.live.union(Set(s.nextFeed)), feeds: s.feeds.append(feed), nextFeed: s.nextFeed + 1 },
+    out: List(Subscribed({ feed: s.nextFeed, streams: streams })) }
 }
+pure def alwaysFeedIdsAreFresh(s: EventFeed): bool =
+  s.nextFeed > 0 and s.live.forall(id => id > 0 and id < s.nextFeed) and s.feeds.every(f => s.live.contains(f.id))
+pure def subscribedAs(fr: Frame, feed: int): bool = match fr { | Subscribed(x) => x.feed == feed | _ => false }
 pure def stepSubscribeAnswersOnceWithoutReplay(before: EventFeed, via: str, after: EventFeed, out: List[Frame]): bool =
   via == "subscribe" implies
-    (out.length() == 1 and after.feeds.length() == before.feeds.length() + 1 and
-     after.feeds.every(f => f.id == before.nextFeed implies (f.since == before.published and f.lastSeq == before.published and out.includes(SubscribedFrame({ feed: f.id, streams: f.streams })))))
-pure def alwaysFeedIdsAreFresh(s: EventFeed): bool =
-  s.nextFeed > 0 and s.feeds.every(f => f.id > 0 and f.id < s.nextFeed and s.feeds.select(g => g.id == f.id).length() == 1)
+    (out.length() == 1 and out.every(fr => subscribedAs(fr, before.nextFeed)) and
+     not(before.live.contains(before.nextFeed)) and after.live.contains(before.nextFeed) and
+     after.feeds.every(f => f.id == before.nextFeed implies (f.since == before.published and f.lastSeq == before.published)))
 ```
 
 ### Each published event reaches every live feed that asked for its stream, and no other
 
-A view interaction counts as asked for only by the feeds of its own client
-id.
+A view interaction counts as asked for only by the feed of its own client
+id. The feeds that hear one event form a set, so no feed hears it twice.
 
 ```quint
 pure def streamOf(news: FeedEvent): StreamName = match news {
@@ -94,30 +99,30 @@ pure def boundToFeed(f: Feed, news: FeedEvent): bool = match news { | ViewIntera
 pure def wants(f: Feed, news: FeedEvent): bool = f.streams.includes(streamOf(news)) and boundToFeed(f, news)
 pure def deliver(news: FeedEvent, s: EventFeed): FeedStep = {
   val seq = s.published + 1
+  val hearers = s.live.filter(id => s.feeds.some(f => f.id == id and wants(f, news)))
   { state: { ...s, published: seq, feeds: s.feeds.listMap(f => if (wants(f, news)) { ...f, lastSeq: seq } else f) },
-    out: s.feeds.select(f => wants(f, news)).listMap(f => EventFrame({ feed: f.id, seq: seq, news: news })) }
-}
-pure def framesFor(out: List[Frame], feed: int): int = out.select(fr => match fr { | EventFrame(e) => e.feed == feed | _ => false }).length()
-pure def lawEveryAskingFeedHearsOnce(s: EventFeed, news: FeedEvent): bool = {
-  val r = deliver(news, s)
-  s.feeds.every(f => framesFor(r.out, f.id) == (if (wants(f, news)) 1 else 0)) and r.out.length() == s.feeds.select(f => wants(f, news)).length()
+    out: if (hearers.size() > 0) List(Delivered({ feeds: hearers, seq: seq, news: news })) else List() }
 }
 pure val newsValues = Set(ConversationUpdated, ProactiveMessage, NoticeAdded, ViewInteraction({ clientId: "c1" }), ViewInteraction({ clientId: "c2" }), Transcript, SystemNotice({ code: "E1" }))
-pure val sValues = Set(initial,
-  { ...initial, nextFeed: 4, published: 2, feeds: List({ id: 1, streams: List(ConversationStream), clientId: "", since: 0, lastSeq: 2 }, { id: 2, streams: List(ViewInteractStream), clientId: "c1", since: 1, lastSeq: 1 }, { id: 3, streams: List(ViewInteractStream, VoiceTranscriptStream), clientId: "c2", since: 2, lastSeq: 2 }) })
 pure def sometimesViewInteractionSkipsOtherClient(s: EventFeed): bool =
   s.feeds.some(a => a.streams == List(ViewInteractStream) and a.lastSeq == s.published and a.since < s.published and
     s.feeds.some(b => b.streams == List(ViewInteractStream) and b.clientId != a.clientId and b.since < s.published and b.lastSeq < s.published))
+pure def sometimesTranscriptHeard(s: EventFeed): bool = s.feeds.some(f => f.streams.includes(VoiceTranscriptStream) and f.lastSeq > f.since)
 ```
 
 ### A feed hears events in publication order and only those published after it subscribed
 
+Every delivery carries the next publication number, which is above the
+point at which each of its feeds subscribed.
+
 ```quint
 pure def alwaysFeedOrderWithinPublished(s: EventFeed): bool =
   s.published >= 0 and s.feeds.every(f => f.since >= 0 and f.since <= f.lastSeq and f.lastSeq <= s.published)
-pure def stepFeedsAdvanceToNewestEvent(before: EventFeed, after: EventFeed): bool =
-  after.feeds.every(f => before.feeds.every(g => g.id == f.id implies (f.since == g.since and (f.lastSeq == g.lastSeq or (f.lastSeq > g.lastSeq and f.lastSeq == after.published)))))
-pure def sometimesTranscriptHeard(s: EventFeed): bool = s.feeds.some(f => f.streams.includes(VoiceTranscriptStream) and f.lastSeq > f.since)
+pure def isNewestFor(fr: Frame, before: EventFeed, after: EventFeed): bool = match fr {
+  | Delivered(d) => d.seq == before.published + 1 and d.seq == after.published and before.feeds.every(f => d.feeds.contains(f.id) implies f.since < d.seq)
+  | _ => true }
+pure def stepEveryDeliveryIsTheNewestEvent(before: EventFeed, after: EventFeed, out: List[Frame]): bool =
+  after.published >= before.published and out.every(fr => isNewestFor(fr, before, after))
 ```
 
 ### Only the voice-transcript stream is open to plugins
@@ -141,36 +146,37 @@ pure def publish(s: EventFeed, source: Source, news: FeedEvent): FeedStep = deli
 > too far behind or when the agent stops, so that a stalled screen never
 > holds the agent's memory.
 
-### A feed ends when its peer closes it
+### A feed ends when its peer closes it, and every ended feed is announced
 
 ```quint
-pure def hasFeed(s: EventFeed, feed: int): bool = s.feeds.some(f => f.id == feed)
 pure def endFeed(feed: int, reason: EndReason, s: EventFeed): FeedStep =
-  { state: { ...s, feeds: s.feeds.select(f => f.id != feed), overflowCount: s.overflowCount + (if (reason == Overflowed) 1 else 0) }, out: List(EndFrame({ feed: feed, reason: reason })) }
-pure def canCloseFeed(s: EventFeed, feed: int): bool = hasFeed(s, feed)
+  { state: { ...s, live: s.live.exclude(Set(feed)), feeds: s.feeds.select(f => f.id != feed), overflowCount: s.overflowCount + (if (reason == Overflowed) 1 else 0) },
+    out: List(Ended({ feeds: Set(feed), reason: reason })) }
+pure def canCloseFeed(s: EventFeed, feed: int): bool = s.live.contains(feed)
 pure def closeFeed(s: EventFeed, feed: int): FeedStep = endFeed(feed, PeerClosed, s)
 pure val feedValues = Set(1, 2, 3, 4, 5)
+pure def endsFeed(fr: Frame, feed: int): bool = match fr { | Ended(e) => e.feeds.contains(feed) | _ => false }
 pure def stepEndedFeedsAreAnnounced(before: EventFeed, after: EventFeed, out: List[Frame]): bool =
-  before.feeds.every(f => hasFeed(after, f.id) or out.some(fr => match fr { | EndFrame(e) => e.feed == f.id | _ => false }))
-pure def sometimesFeedClosedAfterHearing(s: EventFeed): bool = s.nextFeed > 2 and s.feeds.length() == 0 and s.published > 0
+  before.live.forall(id => after.live.contains(id) or out.some(fr => endsFeed(fr, id)))
+pure def sometimesFeedClosedAfterHearing(s: EventFeed): bool = s.nextFeed > 2 and s.live.size() == 0 and s.published > 0
 ```
 
 ### A feed with 256 events waiting unread is closed
 
 The transport counts the frames it has written for a feed that the peer has
-not yet read, and reports that count. At 256 the feed ends; below it the
-feed stays.
+not yet read, and reports that count. At 256 the feed ends and counts as
+one overflow; below it the feed stays.
 
 ```quint
 pure val maxWaiting = 256
-pure def canBacklog(s: EventFeed, feed: int, waiting: int): bool = hasFeed(s, feed) and waiting >= 0
+pure def canBacklog(s: EventFeed, feed: int, waiting: int): bool = s.live.contains(feed) and waiting >= 0
 pure def backlog(s: EventFeed, feed: int, waiting: int): FeedStep =
   if (waiting >= maxWaiting) endFeed(feed, Overflowed, s) else { state: s, out: List() }
 pure val waitingValues = Set(0, 255, 256, 900)
 pure def lawBacklogEndsAFeedOnlyAtTheLimit(s: EventFeed, feed: int, waiting: int): bool =
-  canBacklog(s, feed, waiting) implies (hasFeed(backlog(s, feed, waiting).state, feed) iff waiting < maxWaiting)
+  canBacklog(s, feed, waiting) implies (backlog(s, feed, waiting).state.live.contains(feed) iff waiting < maxWaiting)
 pure def stepOverflowCountsOneEndedFeed(before: EventFeed, after: EventFeed): bool =
-  after.overflowCount == before.overflowCount or (after.overflowCount == before.overflowCount + 1 and after.feeds.length() == before.feeds.length() - 1)
+  after.overflowCount == before.overflowCount or (after.overflowCount == before.overflowCount + 1 and after.live.size() == before.live.size() - 1)
 pure def sometimesSlowFeedClosed(s: EventFeed): bool = s.overflowCount > 0
 ```
 
@@ -179,8 +185,9 @@ pure def sometimesSlowFeedClosed(s: EventFeed): bool = s.overflowCount > 0
 ```quint
 pure def canStop(s: EventFeed): bool = not(s.stopped)
 pure def stop(s: EventFeed): FeedStep =
-  { state: { ...s, stopped: true, feeds: List() }, out: s.feeds.listMap(f => EndFrame({ feed: f.id, reason: Stopped })) }
-pure def alwaysStoppedHasNoFeeds(s: EventFeed): bool = s.stopped implies s.feeds.length() == 0
+  { state: { ...s, stopped: true, live: Set(), feeds: List() },
+    out: if (s.live.size() > 0) List(Ended({ feeds: s.live, reason: Stopped })) else List() }
+pure def alwaysStoppedHasNoFeeds(s: EventFeed): bool = s.stopped implies (s.live.size() == 0 and s.feeds.length() == 0)
 pure def stepStoppedStaysQuiet(before: EventFeed, after: EventFeed): bool =
   before.stopped implies (after.stopped and after.published == before.published and after.nextFeed == before.nextFeed)
 pure def sometimesStoppedWithLiveFeed(s: EventFeed): bool = s.stopped and s.nextFeed > 1 and s.published > 0
@@ -208,7 +215,7 @@ pure def reportError(s: EventFeed, code: str, quiet: bool): FeedStep =
   if (quiet or s.noticed.contains(code)) { state: s, out: List() } else raiseNotice(code, s)
 pure val codeValues = Set("E1", "E2", "")
 pure def codeOf(news: FeedEvent): str = match news { | SystemNotice(n) => n.code | _ => "" }
-pure def noticeCode(fr: Frame): str = match fr { | EventFrame(e) => codeOf(e.news) | _ => "" }
+pure def noticeCode(fr: Frame): str = match fr { | Delivered(d) => codeOf(d.news) | _ => "" }
 pure def stepNoticeOncePerCode(before: EventFeed, after: EventFeed, out: List[Frame]): bool =
   before.noticed.subseteq(after.noticed) and out.every(fr => noticeCode(fr) == "" or (not(before.noticed.contains(noticeCode(fr))) and after.noticed.contains(noticeCode(fr))))
 pure def lawQuietErrorRaisesNothing(s: EventFeed, code: str): bool = {

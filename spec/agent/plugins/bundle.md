@@ -42,7 +42,7 @@ pure def rowOf(i: BundleInput): PackageRow = { val identity = i.identity
 pure def packageRows(b: Build): List[PackageRow] =
   b.inputs.foldl(List(), (rows, i) => if (inputDisposition(i) == Contributes and not(rows.includes(rowOf(i)))) rows.append(rowOf(i)) else rows)
 pure def lawEscapingOrUnnamedInputRefusesTheBuild(b: Build): bool =
-  b.inputs.some(i => i.emittedBytes > 0 and (not(i.insideSource) or i.identity == Unreadable)) implies buildVerdict(b) != Built
+  b.inputs.some(i => i.emittedBytes > 0 and (not(i.insideSource) or not(namedIdentity(i.identity)))) implies buildVerdict(b) != Built
 pure def lawBuiltBundleHasAPackage(b: Build): bool =
   buildVerdict(b) == Built implies packageRows(b).length() > 0
 ```
@@ -71,11 +71,13 @@ pure def lawNoBuiltBundleCarriesWeightsOrAddons(b: Build): bool =
 ### A bundle without local inference carries no native library, local inference program or speech or model directory
 
 The `localInference` plugin is the only way local inference reaches a
-bundle; without it the bundle is cloud-only.
+bundle; without it the bundle is cloud-only: no `.so` library, no local
+inference server program, and nothing under a `tts`, `asr`, `model` or
+`models` directory.
 
 ```quint
 pure val localInferenceDirectories = Set("tts", "asr", "model", "models")
-pure val localInferencePrograms = Set("llama-server")
+pure val localInferencePrograms = Set("llama-server", "llama-omnivoice-server")
 pure def fileAdmitted(localInference: bool, f: PayloadFile): bool =
   not(modelWeightExtensions.contains(f.extension)) and f.extension != "node" and
   (localInference or (f.extension != "so" and not(localInferencePrograms.contains(f.name)) and f.directories.intersect(localInferenceDirectories).size() == 0))
@@ -132,6 +134,8 @@ pure val bValues = Set(
   goodBuild,
   { ...goodBuild, inputs: List(goodInput, { emittedBytes: 0, insideSource: false, identity: Unreadable }) },
   { ...goodBuild, inputs: List(goodInput, { ...goodInput, insideSource: false }) },
+  { ...goodBuild, inputs: List(goodInput, { ...goodInput, identity: Identified({ name: "", version: "1", manifestSha256: "h3" }) }) },
+  { ...goodBuild, files: List({ name: "llama-server", extension: "", directories: Set("bin") }) },
   { ...goodBuild, inputs: List({ ...goodInput, identity: Identified({ name: "canvas", version: "2", manifestSha256: "h2" }) }) },
   { ...goodBuild, inputs: List() },
   { ...goodBuild, files: List({ name: "embed.gguf", extension: "gguf", directories: Set("models") }) },

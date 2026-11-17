@@ -23,10 +23,10 @@ read-all route, and no owner session: the only caller is Root.
 The shell decodes each repeated query parameter into a list, a decimal
 digit string into a number and a UUID-shaped `nativeEpoch` into the inbox
 epoch it names. A query is refused (400) when any parameter is repeated,
-`nativeTransport` or `unreadOnly` is not empty, `true` or `false`, a
-number is not decimal, a category is not one of the nine known ones, or an
-owner limit is outside 1 to 100. An absent owner limit lists every
-matching notice. A limit is never silently lowered.
+`nativeTransport` is not `true` or `false`, `unreadOnly` is not empty,
+`true` or `false`, a number is not decimal, a category is not one of the
+nine known ones, or an owner limit is outside 1 to 100. An absent owner
+limit lists every matching notice. A limit is never silently lowered.
 
 ```quint
 import notifications as N from "../core/notifications"
@@ -45,10 +45,10 @@ pure def decimalOr(given: List[DecimalText], fallback: int): int = { val first =
   match first { | Decimal(d) => d.value | NotDecimal => fallback } }
 pure def epochOr(given: List[EpochText], fallback: int): int = { val first = given.nthOr(0, NotUuid)
   match first { | KnownEpoch(e) => e.epoch | NotUuid => fallback } }
-pure def flagValid(given: List[str]): bool = given.every(v => v == "" or v == "true" or v == "false")
+pure def repeated(asked: ListParams): bool =
+  asked.category.length() > 1 or asked.unreadOnly.length() > 1 or asked.limit.length() > 1 or asked.nativeTransport.length() > 1 or asked.nativeEpoch.length() > 1 or asked.afterSequence.length() > 1 or asked.throughSequence.length() > 1
 pure def wellFormed(asked: ListParams): bool =
-  asked.category.length() <= 1 and asked.unreadOnly.length() <= 1 and asked.limit.length() <= 1 and asked.nativeTransport.length() <= 1 and asked.nativeEpoch.length() <= 1 and asked.afterSequence.length() <= 1 and asked.throughSequence.length() <= 1 and
-  flagValid(asked.nativeTransport) and flagValid(asked.unreadOnly) and asked.limit.every(t => decimalValid(t)) and asked.afterSequence.every(t => decimalValid(t)) and asked.throughSequence.every(t => decimalValid(t)) and asked.nativeEpoch.every(t => epochValid(t))
+  not(repeated(asked)) and asked.nativeTransport.every(v => v == "true" or v == "false") and asked.unreadOnly.every(v => v == "" or v == "true" or v == "false") and asked.limit.every(t => decimalValid(t)) and asked.afterSequence.every(t => decimalValid(t)) and asked.throughSequence.every(t => decimalValid(t)) and asked.nativeEpoch.every(t => epochValid(t))
 pure def ownerRequest(asked: ListParams): ListRequest = {
   val limit = decimalOr(asked.limit, 0)
   val cursorGiven = asked.nativeEpoch.length() > 0 or asked.afterSequence.length() > 0 or asked.throughSequence.length() > 0
@@ -72,9 +72,9 @@ pure val askedValues = Set(
   { ...noParams, nativeTransport: List("true"), afterSequence: List(Decimal({ value: 0 })), limit: List(Decimal({ value: 128 })) },
   { ...noParams, nativeTransport: List("true"), nativeEpoch: List(KnownEpoch({ epoch: 0 })), afterSequence: List(Decimal({ value: 1 })), throughSequence: List(Decimal({ value: 3 })) },
   { ...noParams, nativeTransport: List("true"), afterSequence: List(Decimal({ value: 1 })) }, { ...noParams, nativeTransport: List("true"), category: List("reminder") },
-  { ...noParams, nativeTransport: List("true"), limit: List(Decimal({ value: 129 })) }, { ...noParams, nativeTransport: List("1") })
+  { ...noParams, nativeTransport: List("true"), limit: List(Decimal({ value: 129 })) }, { ...noParams, nativeTransport: List("1") }, { ...noParams, nativeTransport: List("") }, { ...noParams, nativeTransport: List("false"), category: List("message", "reminder") })
 pure def lawRepeatedParameterIsRefused(asked: ListParams, epoch: int, sequence: int): bool =
-  (asked.unreadOnly.length() > 1 or asked.limit.length() > 1) implies listRequest(asked, epoch, sequence) == BadQuery
+  repeated(asked) implies listRequest(asked, epoch, sequence) == BadQuery
 pure def lawUnknownCategoryIsRefused(asked: ListParams, epoch: int, sequence: int): bool =
   asked.category.some(c => not(knownCategories.contains(c))) implies listRequest(asked, epoch, sequence) == BadQuery
 pure def lawOwnerLimitIsNeverLowered(asked: ListParams, epoch: int, sequence: int): bool = {
@@ -140,22 +140,26 @@ pure def lawListNeverExceedsItsLimit(notices: List[Row], category: str, unreadOn
 ### An inbox that is not durably available answers 503, never an empty list
 
 A well-formed request to an inbox that is still starting, has failed or
-is closing is answered 503 with `Retry-After`; a failed inbox asks core to
-recover it. It never answers an empty list or `ok: false` in its place.
-A malformed request is refused first, whatever the inbox's state.
+is closed is answered 503 with `Retry-After`, and only a failed inbox asks
+core to recover it. It never answers an empty list or `ok: false` in
+its place. A malformed request is refused first, whatever the inbox's
+state.
 
 ```quint
-type InboxStatus = InboxReady | InboxStarting | InboxFailed
-type ListAnswer = Refused | Unavailable | Listed({ notices: List[Row], unreadCount: int }) | PagedByCursor
+type InboxStatus = InboxReady | InboxStarting | InboxFailed | InboxClosed
+type ListAnswer = Refused | Unavailable({ recover: bool }) | Listed({ notices: List[Row], unreadCount: int }) | PagedByCursor
+pure def recovers(availability: InboxStatus): bool = availability == InboxFailed
 pure def listAnswer(request: ListRequest, availability: InboxStatus, notices: List[Row], now: int): ListAnswer =
   match request {
     | BadQuery => Refused
-    | OwnerList(q) => if (availability != InboxReady) Unavailable else Listed({ notices: newestFirst(ownerRows(notices, q.category, q.unreadOnly, q.pageSize, now)), unreadCount: badgeCount(notices, now) })
-    | NativePage(n) => if (availability != InboxReady) Unavailable else PagedByCursor
+    | OwnerList(q) => if (availability != InboxReady) Unavailable({ recover: recovers(availability) }) else Listed({ notices: newestFirst(ownerRows(notices, q.category, q.unreadOnly, q.pageSize, now)), unreadCount: badgeCount(notices, now) })
+    | NativePage(n) => if (availability != InboxReady) Unavailable({ recover: recovers(availability) }) else PagedByCursor
   }
 pure val requestValues = Set(BadQuery, OwnerList({ category: "", unreadOnly: false, pageSize: AllRows }), NativePage({ query: { epoch: 0, after: 0, through: 2 }, limit: 128 }))
 pure def lawUnavailableInboxListsNothing(request: ListRequest, availability: InboxStatus, notices: List[Row], now: int): bool =
-  (availability != InboxReady and request != BadQuery) implies listAnswer(request, availability, notices, now) == Unavailable
+  (availability != InboxReady and request != BadQuery) implies listAnswer(request, availability, notices, now) == Unavailable({ recover: recovers(availability) })
+pure def lawOnlyAFailedInboxIsRecovered(request: ListRequest, availability: InboxStatus, notices: List[Row], now: int): bool =
+  listAnswer(request, availability, notices, now) == Unavailable({ recover: true }) iff (availability == InboxFailed and request != BadQuery)
 ```
 
 ### Marking a notice read answers ok only when this call durably marked an unread notice
@@ -169,20 +173,18 @@ client reads the notice back. A missing or already read notice answers
 
 ```quint
 type NoticeIdText = NoticeUuid({ id: str }) | NotNoticeUuid
-type MarkReadAnswer = BadNoticeId | MarkedRead({ ok: bool }) | MarkUnavailable
+type MarkReadAnswer = BadNoticeId | MarkedRead({ ok: bool }) | MarkUnavailable({ recover: bool })
 pure def requestedId(requested: NoticeIdText): str = match requested { | NoticeUuid(x) => x.id | NotNoticeUuid => "" }
 pure def unreadNotice(notices: List[Row], id: str): bool = notices.some(row => row.notice.id == id and not(row.notice.read))
 pure def markReadAnswer(requested: NoticeIdText, availability: InboxStatus, notices: List[Row], writeOutcome: N::WriteOutcome): MarkReadAnswer =
   if (requested == NotNoticeUuid) BadNoticeId
-  else if (availability != InboxReady) MarkUnavailable
+  else if (availability != InboxReady) MarkUnavailable({ recover: recovers(availability) })
   else if (not(unreadNotice(notices, requestedId(requested)))) MarkedRead({ ok: false })
   else if (writeOutcome == N::Acknowledged) MarkedRead({ ok: true })
-  else MarkUnavailable
+  else MarkUnavailable({ recover: false })
 pure val requestedValues = Set(NoticeUuid({ id: "n1" }), NoticeUuid({ id: "n2" }), NoticeUuid({ id: "n9" }), NotNoticeUuid)
 pure def lawOkMeansThisCallMarkedAnUnreadNotice(requested: NoticeIdText, availability: InboxStatus, notices: List[Row], writeOutcome: N::WriteOutcome): bool =
   markReadAnswer(requested, availability, notices, writeOutcome) == MarkedRead({ ok: true }) implies (availability == InboxReady and unreadNotice(notices, requestedId(requested)) and writeOutcome == N::Acknowledged)
 pure def lawUnconfirmedWriteIsNeverAnswered(requested: NoticeIdText, notices: List[Row], writeOutcome: N::WriteOutcome): bool =
-  (requested != NotNoticeUuid and unreadNotice(notices, requestedId(requested)) and writeOutcome != N::Acknowledged) implies markReadAnswer(requested, InboxReady, notices, writeOutcome) == MarkUnavailable
-pure def lawMalformedIdIsRefused(availability: InboxStatus, notices: List[Row], writeOutcome: N::WriteOutcome): bool =
-  markReadAnswer(NotNoticeUuid, availability, notices, writeOutcome) == BadNoticeId
+  (requested != NotNoticeUuid and unreadNotice(notices, requestedId(requested)) and writeOutcome != N::Acknowledged) implies markReadAnswer(requested, InboxReady, notices, writeOutcome) == MarkUnavailable({ recover: false })
 ```

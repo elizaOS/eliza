@@ -5,11 +5,13 @@ versioned vocabulary. The agent offers the whole vocabulary when the device
 registers; the device picks the part it can run and names it in the
 `X-Eliza-Device-Capabilities` header of every request (comma-separated,
 trimmed; a value with a line break is refused before parsing). The agent
-proposes an operation only when that request negotiated what the operation
-needs. The device also keeps an enabled-view profile: the views the agent
-may open on it. The device request (`deviceActions/index.md`) owns enrollment and the
-request itself, and the operations (`deviceActions/operations.md`) name what each
-operation needs. The bounds of each review are owned where the data is:
+proposes, and later lets the device decide or claim, an operation only when
+that request negotiated what the operation needs. The device also keeps an
+enabled-view profile: the views the agent may open on it.
+
+The device request (`deviceActions/index.md`) owns enrollment and the request itself, and
+the operations (`deviceActions/operations.md`) give each operation its need. The bounds of
+each review are owned where the data is:
 `spec/calendar/availability.md`,
 `spec/notes/read.md` and the `spec/workflow`
 device protocol. Neither the header nor the profile grants review or proves
@@ -21,10 +23,10 @@ an effect.
 > it can run, at the version it said, and to open only views I enabled, so
 > that nothing reaches my device that it cannot check.
 
-### The capability vocabulary is closed and versioned
+### The capability vocabulary is closed and versioned, with one wire name per capability
 
-Every capability has one wire name, which ends in its version. Nothing
-outside this table is a capability.
+Every capability has one wire name, which ends in its version, and no two
+capabilities share a name. Nothing outside this table is a capability.
 
 ```quint
 type Capability =
@@ -53,33 +55,35 @@ pure val vocabulary: List[CapabilityEntry] = List(
   { capability: VoicemailDeleteV1, name: "voicemail.delete.v1" })
 pure def isCapabilityName(name: str): bool = vocabulary.some(e => e.name == name)
 pure def capabilityName(c: Capability): str = vocabulary.foldl("", (found, e) => if (e.capability == c) e.name else found)
-pure val nameValues = Set("calendar.local-event.v1", "reminders.local-record.v2", "clock.handoff.v1", "gmail.request-policy.v1", "")
-pure def lawEveryCapabilityHasItsName(c: Capability): bool = isCapabilityName(capabilityName(c))
-pure def lawAnUnlistedNameIsNoCapability(c: Capability, name: str): bool = not(isCapabilityName(name)) implies capabilityName(c) != name
+pure def lawEveryCapabilityHasAWireName(c: Capability): bool = isCapabilityName(capabilityName(c))
+pure def lawNoTwoCapabilitiesShareAName(a: Capability, b: Capability): bool = capabilityName(a) == capabilityName(b) implies a == b
 ```
 
 ### A request negotiates exactly the capabilities its header names, and only on a live enrollment
 
 The header is read anew on every request. It is refused whole when the
-enrollment is not live, when it names anything outside the vocabulary, or
-when it names a capability twice. An absent header negotiates nothing.
+enrollment is not live, when it names anything outside the vocabulary, when
+it names a capability twice, or when it names both reminder record versions
+(next rule). An absent header negotiates nothing.
 
 ```quint
 type Negotiation = Refused | Negotiated({ capabilities: Set[Capability] })
 pure def distinctNames(names: List[str]): bool = names.foldl(Set(), (seen, n) => seen.union(Set(n))).size() == names.length()
 pure def namedCapabilities(names: List[str]): Set[Capability] =
   vocabulary.foldl(Set(), (found, e) => if (names.includes(e.name)) found.union(Set(e.capability)) else found)
-pure def headerAdmitted(names: List[str]): bool =
-  names.every(n => isCapabilityName(n)) and distinctNames(names) and not(names.includes("reminders.local-record.v1") and names.includes("reminders.local-record.v2"))
+pure def headerAdmitted(names: List[str]): bool = names.every(n => isCapabilityName(n)) and distinctNames(names) and oneReminderVersion(names)
 pure def negotiate(liveEnrollment: bool, names: List[str]): Negotiation =
   if (liveEnrollment and headerAdmitted(names)) Negotiated({ capabilities: namedCapabilities(names) }) else Refused
+pure def isRefused(n: Negotiation): bool = match n { | Refused => true | Negotiated(x) => false }
+pure def negotiatedHas(n: Negotiation, c: Capability): bool = match n { | Negotiated(x) => x.capabilities.contains(c) | Refused => false }
 pure val namesValues: Set[List[str]] = Set(List(), List("calendar.local-event.v1", "notes.local-record.v1"), List("clock.handoff.v1", "clock.handoff.v1"),
   List("reminders.local-record.v1", "reminders.local-record.v2"), List("reminders.local-record.v2", "clock.handoff.v2"), List("gmail.request-policy.v1"), List(""))
-pure def negotiatedHas(n: Negotiation, c: Capability): bool = match n { | Negotiated(x) => x.capabilities.contains(c) | Refused => false }
-pure def lawNoLiveEnrollmentNegotiatesNothing(names: List[str], c: Capability): bool = not(negotiatedHas(negotiate(false, names), c))
-pure def lawAnUnknownNameRefusesTheHeader(names: List[str]): bool = not(names.every(n => isCapabilityName(n))) implies negotiate(true, names) == Refused
-pure def lawARepeatedNameRefusesTheHeader(names: List[str]): bool = not(distinctNames(names)) implies negotiate(true, names) == Refused
+pure def lawNoLiveEnrollmentNegotiatesNothing(names: List[str]): bool = isRefused(negotiate(false, names))
+pure def lawAnUnknownNameRefusesTheHeader(names: List[str]): bool = not(names.every(n => isCapabilityName(n))) implies isRefused(negotiate(true, names))
+pure def lawARepeatedNameRefusesTheHeader(names: List[str]): bool = not(distinctNames(names)) implies isRefused(negotiate(true, names))
 pure def lawOnlyNamedCapabilitiesAreNegotiated(names: List[str], c: Capability): bool = negotiatedHas(negotiate(true, names), c) implies names.includes(capabilityName(c))
+pure def lawEveryNamedCapabilityIsNegotiated(names: List[str], c: Capability): bool =
+  (not(isRefused(negotiate(true, names))) and names.includes(capabilityName(c))) implies negotiatedHas(negotiate(true, names), c)
 ```
 
 ### A device speaks one reminder record version
@@ -88,16 +92,17 @@ A header that names both reminder record versions is refused, so a reminder
 read or edit always runs under one version.
 
 ```quint
+pure def oneReminderVersion(names: List[str]): bool = not(names.includes("reminders.local-record.v1") and names.includes("reminders.local-record.v2"))
 pure def lawBothReminderVersionsAreRefused(liveEnrollment: bool, names: List[str]): bool =
-  (names.includes("reminders.local-record.v1") and names.includes("reminders.local-record.v2")) implies negotiate(liveEnrollment, names) == Refused
+  not(oneReminderVersion(names)) implies isRefused(negotiate(liveEnrollment, names))
 ```
 
-### An operation is proposed only when the request negotiated what it needs
+### An operation runs only on a request that negotiated what it needs
 
-An operation needs every capability of `required` and, when `oneOf` is not empty,
-at least one of `oneOf`. The operations (`deviceActions/operations.md`) give each
-operation its need; a need that names nothing is never met, so no operation
-runs on a device that negotiated nothing for it.
+An operation needs every capability of `required` and, when `oneOf` is not
+empty, at least one of `oneOf`. The operations give each
+operation its need, and the proposal, decide and claim requests each check it
+against their own header. A need that names nothing is never met.
 
 ```quint
 type Need = { required: Set[Capability], oneOf: Set[Capability] }
@@ -107,20 +112,21 @@ pure def meets(n: Negotiation, need: Need): bool = match n {
 }
 pure def needOne(c: Capability): Need = { required: Set(c), oneOf: Set() }
 pure val needValues: Set[Need] = Set(needOne(NotesQueryV1), { required: Set(NotesQueryV1, NotesLocalRecordV1), oneOf: Set() },
-  { required: Set(CalendarLocalEventV1), oneOf: Set(NamedTargetV1, CalendarNamedReadV1) }, { required: Set(), oneOf: Set() })
+  { required: Set(CalendarLocalEventV1), oneOf: Set(NamedTargetV1, CalendarNamedReadV1) }, { required: Set(), oneOf: Set(ClockHandoffV1, ClockHandoffV2) }, { required: Set(), oneOf: Set() })
 pure val nValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: Set() }), Negotiated({ capabilities: Set(NotesQueryV1) }),
   Negotiated({ capabilities: Set(NotesQueryV1, NotesLocalRecordV1, CalendarLocalEventV1) }), Negotiated({ capabilities: Set(CalendarNamedReadV1, ClockHandoffV1, RemindersLocalRecordV1) }))
 pure def lawARefusedHeaderMeetsNoNeed(need: Need): bool = not(meets(Refused, need))
-pure def lawEveryNeededCapabilityWasNegotiated(n: Negotiation, need: Need, c: Capability): bool = (meets(n, need) and need.required.contains(c)) implies negotiatedHas(n, c)
+pure def lawEveryRequiredCapabilityWasNegotiated(n: Negotiation, need: Need, c: Capability): bool = (meets(n, need) and need.required.contains(c)) implies negotiatedHas(n, c)
+pure def lawOneOfTheAlternativesWasNegotiated(n: Negotiation, need: Need): bool = (meets(n, need) and need.oneOf.size() > 0) implies need.oneOf.exists(c => negotiatedHas(n, c))
 pure def lawAnEmptyNeedIsNeverMet(n: Negotiation): bool = not(meets(n, { required: Set(), oneOf: Set() }))
 ```
 
 ### A newer operation cannot use an older capability version
 
-A Clock handoff with its own repeat days needs `clock.handoff.v2`; an
-ordinary handoff runs under either version. A reminder read or edit whose
-target or timing is version two needs `reminders.local-record.v2`; otherwise
-it runs under either record version.
+A Clock handoff that carries its own repeat days (an empty list included)
+needs `clock.handoff.v2`; an ordinary handoff runs under either version. A
+reminder read or edit whose target or timing is version two needs
+`reminders.local-record.v2`; otherwise it runs under either record version.
 
 ```quint
 pure def clockHandoffNeed(withRepeatDays: bool): Need =
@@ -136,9 +142,9 @@ pure def lawEitherClockVersionRunsAnOrdinaryHandoff(n: Negotiation): bool =
 ### The enabled-view profile changes only against the revision the device read
 
 A device reads its profile and the views the agent supports, then names the
-revision it read (none, before any profile) with the views it wants. Any other
-revision is refused and changes nothing. The same views keep the profile as
-it is; other views get a fresh revision.
+revision it read (none, before any profile) with the views it wants. Any
+other revision is refused and changes nothing. The same views keep the
+profile as it is; other views get a fresh revision.
 
 ```quint
 type DeviceView = HomeView | NotesView | RemindersView | BrowserView | CalendarView | FilesView | PhotosView | CameraView | MapsView | InboxView | SettingsView | WorkflowsView
@@ -156,18 +162,18 @@ pure val readValues: Set[RevisionRead] = Set(NoRevisionRead, ReadAt({ revision: 
 pure val viewsValues: Set[Set[DeviceView]] = Set(Set(), Set(HomeView, NotesView), Set(HomeView))
 pure val freshValues = Set("r1", "r2")
 pure def lawAStaleRevisionIsRefused(p: ViewProfile, read: RevisionRead, fresh: ProfileRevision): bool = read != revisionOf(p) implies not(canSetViewProfile(p, read, fresh))
-pure def lawChangedViewsGetANewRevision(p: ViewProfile, read: RevisionRead, views: Set[DeviceView], fresh: ProfileRevision): bool =
+pure def lawChangedViewsGetAFreshRevision(p: ViewProfile, read: RevisionRead, views: Set[DeviceView], fresh: ProfileRevision): bool =
   (canSetViewProfile(p, read, fresh) and not(unchangedViews(p, views))) implies revisionOf(setViewProfile(p, read, views, fresh)) == ReadAt({ revision: fresh })
 pure def lawSameViewsKeepTheRevision(p: ViewProfile, read: RevisionRead, views: Set[DeviceView], fresh: ProfileRevision): bool =
   unchangedViews(p, views) implies revisionOf(setViewProfile(p, read, views, fresh)) == revisionOf(p)
 ```
 
-### An open-view proposal runs only on the profile revision it bound and a view it enables
+### An open-view proposal runs only on the profile revision it bound and a view the profile enables
 
-A proposal to open a view binds the revision the agent read, and is made
-only for an enabled view. Approving or claiming it checks the profile again:
-a changed revision, a view no longer enabled, or a bound revision on a device
-without a profile refuses it.
+A proposal to open a view binds the profile revision current when it was
+made, none on a device without a profile. Deciding or claiming it checks the
+profile again: a changed revision, a view no longer enabled, or a bound
+revision on a device without a profile refuses it.
 
 ```quint
 pure def viewEnabled(p: ViewProfile, view: DeviceView): bool = match p { | Profile(x) => x.views.contains(view) | NoProfile => true }

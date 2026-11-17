@@ -15,7 +15,7 @@ late occurrence is missed. Workflow schedules are not triggers.
 > time or on its event, and never to run twice for one press, occurrence or
 > event, so that my edits and my run history stay true.
 
-### A trigger is saved disabled, with a future time, an event name and an existing conversation
+### A new trigger is saved disabled, for an existing conversation, with a future first instant or an event name
 
 The create body is `{kind: "prompt", displayName, instructions, triggerType,
 timezone, scheduledAtIso | cronExpression | eventKind,
@@ -31,11 +31,11 @@ import schedule as WS from "../../workflow/schedule"
 type TriggerType = OnceAt | CronSchedule | OnRuntimeEvent
 type Lifecycle = Unsaved | Saved | Removed
 type RunSource = RunNow | Scheduled | FromEvent
-type TurnOutcome = Completed | Failed | Cancelled | Denied | RoomUnavailable
+type RunOutcome = Completed | Failed | Cancelled | Denied | RoomUnavailable
 type Activity = Idle | Running({ source: RunSource, revision: int, room: str })
-type RunRecord = Ran({ source: RunSource, turn: TurnOutcome }) | Missed({ scheduledAt: int })
-type Trigger = { life: Lifecycle, schedule: TriggerType, enabled: bool, revision: int, room: str, eventKind: str, nextAt: int, activity: Activity, runKeys: Set[str], seenEvents: Set[str], history: List[RunRecord], runCount: int, missed: int, now: int, startedAt: int, firedAt: Set[int] }
-pure val initial: Trigger = { life: Unsaved, schedule: OnceAt, enabled: false, revision: 0, room: "", eventKind: "", nextAt: 0, activity: Idle, runKeys: Set(), seenEvents: Set(), history: List(), runCount: 0, missed: 0, now: 0, startedAt: 0, firedAt: Set() }
+type RunRecord = Ran({ source: RunSource, turn: RunOutcome }) | Missed({ scheduledAt: int })
+type Trigger = { life: Lifecycle, schedule: TriggerType, enabled: bool, revision: int, room: str, eventKind: str, nextAt: int, activity: Activity, seenEvents: Set[str], history: List[RunRecord], runCount: int, missed: int, now: int, startedAt: int, firedAt: Set[int] }
+pure val initial: Trigger = { life: Unsaved, schedule: OnceAt, enabled: false, revision: 0, room: "", eventKind: "", nextAt: 0, activity: Idle, seenEvents: Set(), history: List(), runCount: 0, missed: 0, now: 0, startedAt: 0, firedAt: Set() }
 pure val roomValues = Set("room1", "room2")
 pure val eventKindValues = Set("message_received", "reaction_received")
 pure val atValues = Set(1000, 2000)
@@ -44,7 +44,7 @@ pure def canCreate(t: Trigger, schedule: TriggerType, room: str, eventKind: str,
 pure def create(t: Trigger, schedule: TriggerType, room: str, eventKind: str, at: int, roomExists: bool): Trigger = { ...t, life: Saved, schedule: schedule, room: room, eventKind: eventKind, nextAt: at, enabled: false, revision: 1 }
 ```
 
-### Edits, enabling and removal apply only to the revision read and never while a run holds the trigger
+### Edits, enabling and removal are refused while a run holds the trigger or once the revision they read has moved on
 
 `PUT` and `DELETE` while a run holds the trigger are 409; a body that names
 the revision it read is 409 when the trigger has moved on. An edit of an
@@ -79,18 +79,15 @@ pure def setEnabled(t: Trigger, on: bool, at: int, activeOthers: int, expected: 
 pure def sometimesEnabledCron(t: Trigger): bool = t.life == Saved and t.enabled and t.schedule == CronSchedule
 ```
 
-### A run-now key starts at most one run, even on a disabled trigger
+### Run now starts one run of the saved trigger, even a disabled one, after any run in progress
 
-`POST /api/triggers/:id/execute {}` waits for a run in progress, then runs
-the trigger once per request key; the same key again replies with the first
-result. The reply is `{ok, result: {status}}` with the status of
-`runStatus`.
+`POST /api/triggers/:id/execute {}` waits for a run in progress, then starts
+one run; the transport never replays a request, so one press is one run. The
+reply is `{ok, result: {status}}` with the status of `runStatus`.
 
 ```quint
-pure val keyValues = Set("k1", "k2", "")
-pure def canRunNow(t: Trigger, key: str): bool = t.life == Saved and t.activity == Idle and key != "" and not(t.runKeys.contains(key))
-pure def runNow(t: Trigger, key: str): Trigger = { ...t, runKeys: t.runKeys.union(Set(key)), activity: Running({ source: RunNow, revision: t.revision, room: t.room }) }
-pure def stepRunNowUsesAFreshKey(before: Trigger, via: str, after: Trigger): bool = via == "runNow" implies after.runKeys.size() == before.runKeys.size() + 1
+pure def canRunNow(t: Trigger): bool = t.life == Saved and t.activity == Idle
+pure def runNow(t: Trigger): Trigger = { ...t, activity: Running({ source: RunNow, revision: t.revision, room: t.room }) }
 pure def sometimesRanNowWhileDisabled(t: Trigger): bool = not(t.enabled) and t.history.includes(Ran({ source: RunNow, turn: Completed }))
 ```
 
@@ -167,18 +164,19 @@ pure def sometimesOnceRemovedAfterItsRun(t: Trigger): bool = t.life == Removed a
 
 ### A run delivers only to the trigger's conversation and succeeds only when its turn completed
 
-The prompt is one turn in the trigger's conversation. If that conversation
-is gone, the run fails with `RoomUnavailable` and is never delivered
-elsewhere. A turn that failed, was cancelled or denied is an error even
+The prompt is one turn in the conversation the run started with, which no
+edit can change while it runs. If that conversation is gone when the turn is
+delivered (`roomExists`, a boundary fact), the run fails with
+`RoomUnavailable` and is never delivered elsewhere. A turn that failed, was cancelled or denied is an error even
 when part of a reply was delivered; a missed occurrence is `skipped`.
 
 ```quint
 type RunStatus = RunSuccess | RunError | RunSkipped
 pure def runStatus(entry: RunRecord): RunStatus = match entry { | Ran(r) => if (r.turn == Completed) RunSuccess else RunError | Missed(m) => RunSkipped }
-pure def canFinishRun(t: Trigger, turn: TurnOutcome): bool = t.activity != Idle
-pure def finishRun(t: Trigger, turn: TurnOutcome): Trigger = {
+pure def canFinishRun(t: Trigger, roomExists: bool, turn: RunOutcome): bool = t.activity != Idle and turn != RoomUnavailable
+pure def finishRun(t: Trigger, roomExists: bool, turn: RunOutcome): Trigger = {
   val source = runSource(t.activity)
-  { ...t, activity: Idle, runCount: t.runCount + 1, history: recordRun(t.history, Ran({ source: source, turn: turn })), life: if (source == Scheduled and t.schedule == OnceAt) Removed else t.life }
+  { ...t, activity: Idle, runCount: t.runCount + 1, history: recordRun(t.history, Ran({ source: source, turn: if (roomExists) turn else RoomUnavailable })), life: if (source == Scheduled and t.schedule == OnceAt) Removed else t.life }
 }
 pure def sometimesGoneConversationFailedTheRun(t: Trigger): bool = t.history.includes(Ran({ source: RunNow, turn: RoomUnavailable }))
 ```
