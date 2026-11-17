@@ -76,6 +76,9 @@ export const mapsPlugin: Plugin = {
     {
       id: "maps",
       label: "Maps",
+      // Saved places and routes are owner-private. The view follows the Notes
+      // and Calendar precedent, which also keeps a host's native Maps navigable.
+      roleGate: { minRole: "OWNER" },
       description:
         "Explore places, compare route alternatives, and hand off map actions to Eliza.",
       icon: "Map",
