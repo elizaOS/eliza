@@ -14534,7 +14534,7 @@
           "expectationCount": 5
         }
       ],
-      "proofBoundary": "Generated state laws cover the mapped lifecycle. Pure parser/codec algorithms retain these documented contracts and source test vectors; their future implementation needs a proved //@ contract or adapter conformance.",
+      "proofBoundary": "The canonical traversal models a paid root, frame admission, host extent observation, breadth reservation before per-slot inspection, frame-owned prepaid children, independent output reservation, depth and ancestor-cycle guards, and terminal rejection. Disposition laws preserve sparse-hole and invisible-value policy. Reflection traps, descriptor classification, scalar encoding, UTF-16 key sorting, exact bytes and typed host error propagation require adapter conformance. Model proofs do not establish source-to-model refinement.",
       "functionContracts": [
         {
           "name": "failCanonicalJsonUnbounded",
@@ -27733,7 +27733,7 @@
       ],
       "reexports": [],
       "tests": [],
-      "proofBoundary": "Generated state laws cover the mapped lifecycle. Pure parser/codec algorithms retain these documented contracts and source test vectors; their future implementation needs a proved //@ contract or adapter conformance.",
+      "proofBoundary": "Manager getter selection composes one connectorBackends.BackendCache per native object, separate runtime-cache bindings, native-service storage override, duck-compatible bypass, standalone selection, provider replacement position, and a ghost allocator reserving observed external manager/provider references. First-seen foreign native backend snapshots, service classification, identity mapping, storage truthiness, provider normalization and public listProviders localeCompare ordering require host conformance. Other account/backend/flow contracts retain their separate owner models. Model proofs do not establish source-to-model refinement.",
       "functionContracts": [
         {
           "name": "normalizeConnectorAccountId",
@@ -43552,7 +43552,7 @@
       ],
       "reexports": [],
       "tests": [],
-      "proofBoundary": "Generated state laws cover the mapped lifecycle. Pure parser/codec algorithms retain these documented contracts and source test vectors; their future implementation needs a proved //@ contract or adapter conformance.",
+      "proofBoundary": "Generated state laws cover the mapped lifecycle. Pure parser/codec algorithms retain these documented contracts and source test vectors; their future implementation needs a proved //@ contract or adapter conformance. The legacy responseFences policy consumes compatible lexical observations of delimiter kind/length, valid info strings and closing suffixes from this scanner. This reference does not establish field-envelope extraction or source-to-model refinement; the response-handler field registry implements no Markdown lexer.",
       "functionContracts": [
         {
           "name": "startFenceScan",
@@ -100633,7 +100633,7 @@
       ],
       "reexports": [],
       "tests": [],
-      "proofBoundary": "Generated state laws cover the mapped lifecycle. Pure parser/codec algorithms retain these documented contracts and source test vectors; their future implementation needs a proved //@ contract or adapter conformance.",
+      "proofBoundary": "The registry policy snapshots pending parsing work, settles every activation/parsing attempt before handling, preserves ordinary sibling errors and distinguishes callback failure/cancellation from returned-effect failure/cancellation so handled traces retain their source stage. One authoritative field/mode/reason record supplies exact ack-and-stop, ignore and direct-reply accepted preemption, including blank reasons, for run and field-trace projections over fully observed, stable, nonthrowing data-effect records. The source sets trace.preempted, reads mode, reads reason, then assigns run preemption; throwing mode/reason getters can leave partial host trace fields without run preemption while siblings continue. Those raw accessor diagnostics and property-read order must be retained by the runtime adapter outside this pure projection. Arbitrary callbacks, effect/debug/result mutation, returned payloads, cancellation exceptions, schema construction and localeCompare tie ordering require host conformance. Markdown fence recognition is not implemented by this pinned registry module. Model proofs do not establish source-to-model refinement.",
       "functionContracts": [
         {
           "name": "register",

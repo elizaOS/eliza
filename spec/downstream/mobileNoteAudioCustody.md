@@ -26,6 +26,12 @@ up to 150,000 UTF-16 units in audio metadata without splitting a
 surrogate pair. The complete transcript belongs to the note. The
 separate encrypted slot still applies its serialized byte cap.
 
+`RetainFacts` describes the arguments supplied to `RecordingStore.retain`.
+Its `transcriptUnits` is the supplied metadata string length: the whole
+transcript for `ShortClip`, and the result of Alpha's `transcriptPrefix`
+for `LongNote`. `longTranscriptUnits` models that raw-to-stored length
+conversion.
+
 New audio first moves or copies to `<id>.pending`. The same-filesystem
 move can avoid duplication. A copy uses bounded streaming and file sync.
 Then the pending file is renamed to `<id>.audio`. A failed pending copy

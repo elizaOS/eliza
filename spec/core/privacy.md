@@ -1,10 +1,10 @@
 # PII scrub persistence and retirement
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/services/pii-scrub.ts`, `security/pii-scrub-markers.ts`, `security/pii-scrub-seam.ts`, `runtime/trajectory-gate.ts`, LazyPiiDrain and PiiScrubSettlement. The machine follows one exact content and ruleset key through a lazy queue. Different content or ruleset values require different keys. Pseudonym assignment storage is encrypted and must precede completion markers. Model and storage failures preserve quarantine and retry ownership.
+The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/services/pii-scrub.ts`, `security/pii-scrub-markers.ts`, `security/pii-scrub-seam.ts`, `runtime/trajectory-gate.ts`, LazyPiiDrain and PiiScrubSettlement. This component is a single-active settlement projection for one exact content and ruleset key. The [PII service queue and promise owner](./privacyService.md) embeds a separate component for each job and owns the shared markers, two-job concurrency, lazy queue and stop promises. Different content or ruleset values require different keys. Pseudonym assignment storage is encrypted and must precede completion markers. Model and storage failures preserve quarantine and retry ownership.
 
 ## Story: Publish scrub completion only after durable privacy work
 
-As an operator, I receive a completion event only after the scrub succeeded, pseudonym assignments persisted and the exact content/ruleset marker was acknowledged. A failed observer does not revoke an existing marker or repeat committed work. Concurrent initial misses may both scrub, since the marker check is not an exclusive claim.
+As an operator, I receive a completion event only after the scrub succeeded, pseudonym assignments persisted and the exact content/ruleset marker was acknowledged. A failed observer does not revoke an existing marker or repeat committed work. In the service composition, concurrent initial misses may both scrub, since the marker check is not an exclusive claim.
 
 ### Admission checks shutdown again after the asynchronous marker lookup
 
@@ -68,6 +68,8 @@ pure def stop(s: Privacy): Privacy = { ...s, life: Stopping }
 pure def canDispose(s: Privacy): bool = s.life == Stopping and s.startup != Starting and s.phase == Idle
 pure def dispose(s: Privacy): Privacy = { ...s, life: Stopped, startup: Dormant, discarded: s.discarded + s.queued, queued: 0 }
 pure def alwaysStoppedOwnsNoQueue(s: Privacy): bool = s.life != Stopped or (s.startup == Dormant and s.queued == 0 and s.phase == Idle)
+pure def wellFormed(s: Privacy): bool = alwaysAcceptedWorkIsAccounted(s) and alwaysCountsAreNonnegative(s) and
+  alwaysCompletionRequiresPersistentMarker(s) and alwaysStoppedOwnsNoQueue(s)
 pure def sometimesShutdownDuringLookup(s: Privacy): bool = s.life == Stopped and s.checking and s.accepted == 0
 ```
 
