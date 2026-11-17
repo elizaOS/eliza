@@ -2959,7 +2959,7 @@ describe("the documents name what exists", () => {
     const plan: { globalCacheInputs: { files: Record<string, string> }; tasks: { taskId: string; inputs: Record<string, string> }[] } = JSON.parse(dry.stdout);
     const global = Object.keys(plan.globalCacheInputs.files);
     const [docs, examples, ...tools] = ["selftest:docs", "selftest:examples", ...shards].map((task) => new Set([...global, ...Object.keys(plan.tasks.find((t) => t.taskId === `//#${task}`)!.inputs)]));
-    const tracked = (await exec("git", ["ls-files"], project)).stdout.trim().split("\n").filter((file) => !fs.lstatSync(path.join(project, file)).isSymbolicLink());
+    const tracked = (await exec("git", ["ls-files"], project)).stdout.trim().split("\n").filter((file) => fs.lstatSync(path.join(project, file)).isFile());
     const missed = (hashed: Set<string>, read: (file: string) => boolean) => tracked.filter((file) => read(file) && !hashed.has(file));
     assert.deepEqual({
       docs: missed(docs, () => true),
@@ -2992,6 +2992,7 @@ describe("the documents name what exists", () => {
   test("a task waits for the root's gen unless its package can never own a root spec; Studio's dev waits for what its build does; prose, the selftest and a failed run's leftovers rerun no Studio task, and the fixtures its tests read do", async () => {
     const root = scratch({ "spec/kit/index.md": "# Kit\n", "packages/kit/package.json": JSON.stringify({ name: "@repo/kit", scripts: Object.fromEntries(["build", "typecheck", "test", "test:browser"].map((task) => [task, "true"])) }) });
     for (const file of (await exec("git", ["ls-files"], project)).stdout.trim().split("\n")) {
+      if (fs.lstatSync(path.join(project, file)).isDirectory()) continue;
       fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
       fs.cpSync(path.join(project, file), path.join(root, file), { verbatimSymlinks: true });
     }
