@@ -8,6 +8,9 @@ package ai.eliza.plugins.browsersurface;
  * written only from an engine-attested or engine-bound origin, never from page content.
  */
 public final class BrowserAutofillExtras {
+  public static final BrowserAutofillExtras ELIZA_PASSWORDS = new BrowserAutofillExtras(
+      "ai.alphacompute.autofill.fieldOrigin", "ai.eliza.passwords.topOrigin");
+
   public final String fieldOrigin;
   public final String topOrigin;
 
