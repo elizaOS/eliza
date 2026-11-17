@@ -179,6 +179,15 @@ export async function billingRequest(request: Request, env: BillingEnv, db: Clie
   const account = (await db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active'", [user])).rows[0]?.organization_id
   if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
   const route = new URL(request.url).pathname
+  const configured = Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.STRIPE_PRICE_ID && env.STRIPE_PRODUCT_ID &&
+    (env.STRIPE_PLAN === "plus_monthly" || env.STRIPE_PLAN === "pro_monthly"))
+  if (!configured) {
+    if (route === "/api/v1/billing/subscription" && request.method === "GET") {
+      if (await customerFor(db, account)) return WorkerResponse.json({error:"billing_unavailable"}, {status:503})
+      return WorkerResponse.json({status:"inactive",canManage:false,canCheckout:false})
+    }
+    return WorkerResponse.json({error:"billing_unavailable"}, {status:503})
+  }
   if (route === "/api/v1/billing/subscription" && request.method === "GET") {
     const customer = await customerFor(db, account)
     const state = customer ? await billingTransaction(db, account, () => reconcile(provider(env), env, db, account, customer.customer_id)) : { active: false, ongoing: false }
