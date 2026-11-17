@@ -226,7 +226,10 @@ export function parseExplicitLocalDate(
     const yearRaw = numericMatch[4];
     const parsedYear =
       yearRaw === undefined
-        ? localToday.year
+        ? (resolveLeadingYearModifier(
+            normalized.slice(0, numericMatch.index),
+            localToday.year,
+          ) ?? localToday.year)
         : yearRaw.length === 2
           ? 2000 + Number(yearRaw)
           : Number(yearRaw);
